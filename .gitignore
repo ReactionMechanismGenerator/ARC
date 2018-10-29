@@ -1,0 +1,19 @@
+################################################################################
+#
+#   Files for git to ignore
+#
+################################################################################
+
+# MacOS files
+.DS_Store
+
+# Compiled Python modules
+*.pyc
+*.so
+*.pyd
+
+# PyCharm project files
+.idea/*
+
+# settings file
+arc/settings.py
