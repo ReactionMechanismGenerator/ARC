@@ -69,14 +69,13 @@ class Job(object):
                 job_type, job_types))
         self.job_type = job_type
 
-        self.level_of_theory = level_of_theory.lower()
-        self.composite_method = None
-        if '\\' not in self.level_of_theory:  # This is a composite method, like 'CBS-QB3'
-            self.composite_method = self.level_of_theory
         # determine level of theory and software to use:
-        self.method, self.basis_set = self.level_of_theory.split('\\')
+        self.level_of_theory = level_of_theory.lower()
+        self.method, self.basis_set = '', ''
         if job_type == 'composite':
-            self.method, self.basis_set = self.composite_method, ''
+            self.method, self.basis_set = self.level_of_theory, ''
+        else:
+            self.method, self.basis_set = self.level_of_theory.split('/')
         if software is not None:
             self.software = software.lower()
         else:
