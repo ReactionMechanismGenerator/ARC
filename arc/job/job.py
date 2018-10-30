@@ -4,11 +4,6 @@
 import os
 import datetime
 import csv
-import string
-import random
-
-from rmgpy.molecule import Molecule
-from rmgpy import Species
 
 from arc.settings import arc_path, software_server, servers, submit_filename, output_filename
 from arc.job.submit import submit_sctipts
@@ -31,7 +26,7 @@ class Job(object):
     `multiplicity`    ``int``            The species multiplicity.
     `spin`            ``int``            The spin. automatically derived from the multiplicity
     `xyz`             ``str``            The xyz geometry. Used for the calculation
-    `conformer`       ``int``            Conformer number matching xyz
+    `conformer`       ``int``            Conformer number if optimizing conformers
     `is_ts`           ``bool``           Whether this species represents a transition structure
     `level_of_theory` ``str``            Level of theory, e.g. 'CBS-QB3', 'CCSD(T)-F12a/aug-cc-pVTZ',
                                            'B3LYP/6-311++G(3df,3pd)'...
@@ -48,7 +43,7 @@ class Job(object):
     `date`             ``str``           The date this job was initiated. Determined automatically
     `run_time`         ``float``         Runtime is seconds. Determined automatically
     `job_status`       ``list``          The job's server and ESS statuses. Determined automatically
-    `job_name`         ``str``           Job's name. Determined automatically
+    `job_name`         ``str``           Job's name (e.g., 'a103'). Determined automatically
     `job_id`           ``int``           The job's ID determined by the server.
     `local_path`       ``str``           Local path to job's folder. Determined automatically
     `remote_path`      ``str``           Remote path to job's folder. Determined automatically
@@ -57,15 +52,10 @@ class Job(object):
     `server`           ``str``           Server's name. Determined automatically
     ================ =================== ===============================================================================
     """
-    def __init__(self, project, conformer, xyz, job_type, level_of_theory, multiplicity, charge=0, species_name='',
+    def __init__(self, project, species_name, xyz, job_type, level_of_theory, multiplicity, charge=0, conformer=-1,
                  fine=False, shift='', software=None, is_ts=False, scan='', memory=1000, comments=''):
         self.project = project
         self.species_name = species_name
-        if len(species_name):
-            self.species_name = species_name
-        else:  # assign a random species name
-            self.species_name = 'species' +\
-                                ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(6))
         self.job_num = -1
         self.charge = charge
         self.multiplicity = multiplicity
@@ -82,7 +72,7 @@ class Job(object):
         self.level_of_theory = level_of_theory.lower()
         self.composite_method = None
         if '\\' not in self.level_of_theory:  # This is a composite method, like 'CBS-QB3'
-            self.composite_method = level_of_theory.lower()
+            self.composite_method = self.level_of_theory
         # determine level of theory and software to use:
         self.method, self.basis_set = self.level_of_theory.split('\\')
         if job_type == 'composite':
@@ -116,16 +106,17 @@ class Job(object):
         self.job_id = 0
         self.comments = comments
 
+        self._set_job_number()
+        self.job_name = 'a' + str(self.job_num)
+        conformer_folder = '' if self.conformer < 0 else os.path.join('conformers',str(self.conformer))
         self.local_path = os.path.join(arc_path, 'Projects', self.project,
-                                       self.species_name, str(self.conformer), self.job_name)
+                                       self.species_name, conformer_folder, self.job_name)
         self.remote_path = os.path.join('runs', 'ARC_Projects', self.project,
-                                       self.species_name, str(self.conformer), self.job_name)
+                                       self.species_name, conformer_folder, self.job_name)
         self.submit = ''
         self.input = ''
 
         self.server = software_server[self.software]
-        self._set_job_number()
-        self.job_name = 'a' + str(self.job_num)
         self._write_initiated_job_to_csv_file()
 
     def _set_job_number(self):
@@ -152,9 +143,12 @@ class Job(object):
         Write an initiated ARCJob into the initiated_jobs.csv file.
         """
         csv_path = os.path.join(arc_path, 'initiated_jobs.csv')
+        if self.conformer < 0:  # this is not a conformer search job
+            conformer = '-'
+        else: conformer = str(self.conformer)
         with open(csv_path, 'ab') as f:
             writer = csv.writer(f, dialect='excel')
-            row = [self.job_num, self.project, self.species_name, self.conformer, self.is_ts, self.charge,
+            row = [self.job_num, self.project, self.species_name, conformer, self.is_ts, self.charge,
                    self.multiplicity, self.job_type, self.job_name, self.job_id, self.server, self.software,
                    self.memory, self.method, self.basis_set, self.date, self.comments]
             writer.writerow(row)
@@ -173,9 +167,12 @@ class Job(object):
                        'job_status_(server)', 'job_status_(ESS)', 'comments']
                 writer.writerow(row)
         csv_path = os.path.join(arc_path, 'completed_jobs.csv')
+        if self.conformer < 0:  # this is not a conformer search job
+            conformer = '-'
+        else: conformer = str(self.conformer)
         with open(csv_path, 'ab') as f:
             writer = csv.writer(f, dialect='excel')
-            row = [self.job_num, self.project, self.species_name, self.conformer, self.is_ts, self.charge,
+            row = [self.job_num, self.project, self.species_name, conformer, self.is_ts, self.charge,
                    self.multiplicity, self.job_type, self.job_name, self.job_id, self.server, self.software,
                    self.memory, self.method, self.basis_set, self.date, self.run_time, self.job_status[0],
                    self.job_status[1], self.comments]
@@ -349,7 +346,9 @@ $end
         local_file_path = os.path.join(self.local_path, 'output.out')
         ssh.download_file(remote_file_path=remote_file_path, local_file_path=local_file_path)
 
-    def run_job(self):
+    def run(self):
+        self.write_submit_script()
+        self.write_input_file()
         ssh = SSH_Client(self.server)
         self.job_status[0], self.job_id = ssh.submit_job(remote_path=self.remote_path)
 
