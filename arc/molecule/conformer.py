@@ -10,9 +10,13 @@ import pybel as pyb
 
 
 class ConformerSearch(object):
+    """
+    ConformerSearch object. Generates conformers for `mol` which is an ``RMG.Molecule`` object using the method/s
+    specified in `method`: 'rdkit', 'openbabel', or 'all'. result/s saved to self.xyzs
+    """
     def __init__(self, mol, method='all'):
         self.mol = mol
-        self.xyzs = []
+        self.xyzs = list()
         self.method = method
         self.search()
 
