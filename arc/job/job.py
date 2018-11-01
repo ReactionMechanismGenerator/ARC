@@ -2,8 +2,9 @@
 # encoding: utf-8
 
 import os
-import datetime
+import time
 import csv
+import logging
 
 from arc.settings import arc_path, software_server, servers, submit_filename, output_filename
 from arc.job.submit import submit_sctipts
@@ -30,7 +31,6 @@ class Job(object):
     `is_ts`           ``bool``           Whether this species represents a transition structure
     `level_of_theory` ``str``            Level of theory, e.g. 'CBS-QB3', 'CCSD(T)-F12a/aug-cc-pVTZ',
                                            'B3LYP/6-311++G(3df,3pd)'...
-    `composite_method` ``str``           Stores the level of theory if `job_type` is a composite method
     `job_type`         ``str``           The job's type
     `scan`             ``str``           A string representing atom labels for the dihedral scan (e.g., '2, 1, 3, 5')
     `software`         ``str``           The electronic structure software to be used
@@ -99,7 +99,7 @@ class Job(object):
         self.memory = memory
         self.fine = fine
         self.shift = shift
-        self.date = str(datetime.datetime.now())
+        self.date = time.asctime()
         self.run_time = 0
         self.job_status = ['initializing', 'initializing']
         self.job_id = 0
@@ -346,9 +346,13 @@ $end
         ssh.download_file(remote_file_path=remote_file_path, local_file_path=local_file_path)
 
     def run(self):
+        logging.info('\nrunning job {0}'.format(self.job_name))
+        logging.info('writing submit script...')
         self.write_submit_script()
+        logging.info('writing input file...')
         self.write_input_file()
         ssh = SSH_Client(self.server)
+        logging.info('submitting job...')
         self.job_status[0], self.job_id = ssh.submit_job(remote_path=self.remote_path)
 
     def determine_job_status(self):
