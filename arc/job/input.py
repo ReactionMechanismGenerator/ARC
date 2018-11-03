@@ -36,7 +36,7 @@ input_files = {
 %mem={memory}mb
 %nproc=8
 
-# {job_type_1} {restricted}{method}{slash}{basis} {job_type_2}
+# {job_type_1} {restricted}{method}{slash}{basis} {job_type_2} {fine} {trsh}
 
 name
 
@@ -55,23 +55,23 @@ $rem
    JOBTYPE       {job_type_1}
    METHOD        {method}
    UNRESTRICTED  {restricted}
-   BASIS         {basis}{fine}
+   BASIS         {basis}{fine}{trsh}
 $end
 
 """,
     'molpro_2012': """***,name
 memory,{memory},m;
-geometry={angstrom;
+geometry={{angstrom;
 {xyz}
-}
+}}
 
 basis={basis}
 
 int;
 
-{hf;
+{{hf;{shift}
 maxit,1000;
-wf,spin={spin},charge={charge};}
+wf,spin={spin},charge={charge};}}
 
 {restricted}{method};
 {job_type_1}
@@ -81,17 +81,17 @@ wf,spin={spin},charge={charge};}
 """,
     'molpro_2015': """***,name
 memory,{memory},m;
-geometry={angstrom;
+geometry={{angstrom;
 {xyz}
-}
+}}
 
 basis={basis}
 
 int;
 
-{hf;
+{{hf;{shift}
 maxit,1000;
-wf,spin={spin},charge={charge};}
+wf,spin={spin},charge={charge};}}
 
 {restricted}{method};
 {job_type_1}
@@ -100,5 +100,3 @@ wf,spin={spin},charge={charge};}
 
 """,
 }
-
-# TODO: fine opt in gaussian, shift in molpro
