@@ -50,6 +50,8 @@ class Job(object):
     `submit`           ``str``           The submit script. Created automatically
     `input`            ``str``           The input file. Created automatically
     `server`           ``str``           Server's name. Determined automatically
+    'trsh'             ''str''           A troubleshooting handle to be appended to input files
+    'ess_trsh_methods' ``list``          A list of troubleshooting methods already tried out for ESS convergence
     ================ =================== ===============================================================================
 
     self.job_status:
@@ -59,7 +61,7 @@ class Job(object):
 
     """
     def __init__(self, project, species_name, xyz, job_type, level_of_theory, multiplicity, charge=0, conformer=-1,
-                 fine=False, shift='', software=None, is_ts=False, scan='', memory=1000, comments=''):
+                 fine=False, shift='', software=None, is_ts=False, scan='', memory=1000, comments='', trsh=''):
         self.project = project
         self.species_name = species_name
         self.job_num = -1
@@ -69,6 +71,8 @@ class Job(object):
         self.xyz = xyz
         self.conformer = conformer
         self.is_ts = is_ts
+        self.ess_trsh_methods = list()
+        self.trsh = trsh
         job_types = ['conformer', 'opt', 'ts', 'freq', 'optfreq', 'tsfreq', 'sp', 'composite', 'scan', 'irc', 'gsm']
         # the 'conformer' job type is identical to 'opt', but we differentiate them to be identifiable in Scheduler
         if job_type not in job_types:
@@ -103,6 +107,9 @@ class Job(object):
                 self.software = 'gaussian03'
 
         self.scan = scan
+        if 'molpro' in self.software:
+            # molpro's memory is in MW, 500 should be enough
+            memory /= 2
         self.memory = memory
         self.fine = fine
         self.shift = shift
@@ -215,6 +222,8 @@ class Job(object):
         if self.job_type in ['conformer', 'opt']:
             if self.software == 'gaussian03':
                 job_type_1 = 'opt=calcfc'
+                if self.fine:
+                    fine = 'scf=(tight)'
             elif self.software == 'qchem':
                 job_type_1 = 'opt'
                 if self.fine:
@@ -327,7 +336,7 @@ $end
         self.input = self.input.format(memory=self.memory, method=self.method, slash=slash, basis=self.basis_set,
                                        charge=self.charge, multiplicity=self.multiplicity, spin=self.spin, xyz=self.xyz,
                                        job_type_1=job_type_1, job_type_2=job_type_2, scan=self.scan,
-                                       restricted=restricted, fine=fine, shift=self.shift)
+                                       restricted=restricted, fine=fine, shift=self.shift, trsh=self.trsh)
 
         if not os.path.exists(self.local_path):
             os.makedirs(self.local_path)
@@ -411,7 +420,7 @@ $end
                                 reason = 'Angle in z-matrix outside the allowed range 0 < x < 180.'
                             if 'l301.exe' in line:
                                 reason = 'Input Error. Either charge, multiplicity, or basis set was not specified ' \
-                                         'correctly. Or, an atom specified  does not match any standard atomic symbol.'
+                                         'correctly. Or, an atom specified does not match any standard atomic symbol.'
                             if 'NtrErr Called from FileIO' in line:
                                 reason = 'Operation on .chk file was specified, but .chk was not found.'
                             if 'l101.exe' in line:
@@ -433,7 +442,7 @@ $end
                     if 'opt' in self.job_type or 'conformer' in self.job_type or 'ts' in self.job_type:
                         for line in lines[::-1]:
                             if 'MAXIMUM OPTIMIZATION CYCLES REACHED' in line:
-                                return 'unconverged'
+                                return 'unconverged, max opt cycles reached'
                             if 'OPTIMIZATION CONVERGED' in line:
                                 break
                     if 'Thank you very much for using Q-Chem' in line:
@@ -454,8 +463,7 @@ $end
                 return 'errored: Unknown reason'
 
     def troubleshoot_server(self):
-        # change node? forbid a node on pharos? this method should also delete and resubmit
+        # TODO: change node? forbid a node on pharos? this method should also delete a stuck job and resubmit
         pass
 
 # TODO: irc, gsm input files
-# TODO: write server troubleshooting method
