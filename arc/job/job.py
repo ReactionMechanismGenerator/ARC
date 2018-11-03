@@ -51,6 +51,12 @@ class Job(object):
     `input`            ``str``           The input file. Created automatically
     `server`           ``str``           Server's name. Determined automatically
     ================ =================== ===============================================================================
+
+    self.job_status:
+    The job server status is in job.job_status[0] and can be either 'initializing' / 'running' / 'errored' / 'done'
+    The job ess (electronic structure software calculation) status is in  job.job_status[0] and can be
+    either `initializing` / `running` / `errored: {error type / message}` / `unconverged` / `done`
+
     """
     def __init__(self, project, species_name, xyz, job_type, level_of_theory, multiplicity, charge=0, conformer=-1,
                  fine=False, shift='', software=None, is_ts=False, scan='', memory=1000, comments=''):
@@ -63,7 +69,8 @@ class Job(object):
         self.xyz = xyz
         self.conformer = conformer
         self.is_ts = is_ts
-        job_types = ['opt', 'ts', 'freq', 'optfreq', 'tsfreq', 'sp', 'composite', 'scan', 'irc', 'gsm']
+        job_types = ['conformer', 'opt', 'ts', 'freq', 'optfreq', 'tsfreq', 'sp', 'composite', 'scan', 'irc', 'gsm']
+        # the 'conformer' job type is identical to 'opt', but we differentiate them to be identifiable in Scheduler
         if job_type not in job_types:
             raise ValueError("Job type {0} not understood. Must be on of the following: {1}".format(
                 job_type, job_types))
@@ -81,7 +88,7 @@ class Job(object):
         else:
             if job_type == 'composite':
                 self.software = 'gaussian03'
-            elif job_type in ['opt', 'ts', 'optfreq', 'tsfreq', 'sp']:
+            elif job_type in ['conformer', 'opt', 'ts', 'optfreq', 'tsfreq', 'sp']:
                 if 'ccs' in self.method or 'cis' in self.method or 'pv' in self.basis_set:
                     self.software = 'molpro2012'
                 elif 'b3lyp' in self.method:
@@ -156,6 +163,7 @@ class Job(object):
         """
         Write a completed ARCJob into the completed_jobs.csv file.
         """
+        self.determine_job_status()
         csv_path = os.path.join(arc_path, 'completed_jobs.csv')
         if not os.path.isfile(csv_path):
             # check file, make index file and write headers if file doesn't exists
@@ -204,7 +212,7 @@ class Job(object):
             restricted = ''
 
         job_type_1, job_type_2, fine = '', '', ''
-        if self.job_type == 'opt':
+        if self.job_type in ['conformer', 'opt']:
             if self.software == 'gaussian03':
                 job_type_1 = 'opt=calcfc'
             elif self.software == 'qchem':
@@ -353,6 +361,7 @@ $end
         self.write_input_file()
         ssh = SSH_Client(self.server)
         logging.info('submitting job...')
+        # submit_job returns job server status and job server id
         self.job_status[0], self.job_id = ssh.submit_job(remote_path=self.remote_path)
 
     def determine_job_status(self):
@@ -421,7 +430,7 @@ $end
                     return 'errored: Unknown reason'
             elif self.software == 'qchem':
                 for line in lines[-1:-15]:
-                    if 'opt' in self.job_type or 'ts' in self.job_type:
+                    if 'opt' in self.job_type or 'conformer' in self.job_type or 'ts' in self.job_type:
                         for line in lines[::-1]:
                             if 'MAXIMUM OPTIMIZATION CYCLES REACHED' in line:
                                 return 'unconverged'
