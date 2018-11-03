@@ -4,6 +4,7 @@
 from rdkit.Chem import AllChem
 import openbabel as ob
 from rmgpy.molecule.converter import toOBMol
+from rmgpy.molecule.element import getElement
 import pybel as pyb
 
 ##################################################################
@@ -106,7 +107,7 @@ class ConformerSearch(object):
         minind = energies.index(minval)
         return xyzs[minind]
 
-    def get_xyz_matrix(self, xyz):
+    def get_xyz_matrix(self, xyz, from_arkane=False, number=None):
         result = ''
         longest_xyz_coord = 1
         for coord in xyz:
@@ -114,7 +115,10 @@ class ConformerSearch(object):
                 if len(str(c)) > longest_xyz_coord:
                     longest_xyz_coord = len(str(c))
         for i, coord in enumerate(xyz):
-            element_label = self.mol.atoms[i].element.symbol
+            if from_arkane:
+                element_label = getElement(number[i]).symbol
+            else:
+                element_label = self.mol.atoms[i].element.symbol
             result += element_label + ' ' * (4 - len(element_label))
             for j, c in enumerate(coord):
                 if c > 0:  # add space for positive numbers
@@ -124,3 +128,6 @@ class ConformerSearch(object):
                     result += ' ' * (longest_xyz_coord - len(str(abs(c))) + 2)
             result += '\n'
         return result
+
+# TODO: isomorphism check for final conformer
+# TODO: solve chirality issues? How can I get the N4 isomer?
