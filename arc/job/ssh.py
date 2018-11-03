@@ -107,7 +107,7 @@ class SSH_Client(object):
         pharos: '540420 0.45326 xq1340b    alongd       r     10/26/2018 11:08:30 long1@node18.cluster'
         rmg: '14428     debug xq1371m2   alongd  R 50-04:04:46      1 node06'
         """
-        cmd = check_status_command[self.server] + job_id
+        cmd = check_status_command[self.server] + ' -j ' + job_id
         stdout, stderr = self.send_command_to_server(cmd)
         for status_line in stdout:
             if job_id in status_line:
@@ -125,14 +125,30 @@ class SSH_Client(object):
             else:
                 raise ValueError('Unknown server {0}'.format(self.server))
 
+    def check_running_jobs_ids(self, active_servers):
+        """
+        Return the job IDs of all relevant jobs in a Project in all active servers
+        """
+        running_jobs_ids = list()
+        for server in active_servers:
+            cmd = check_status_command[self.server] + ' -u ' + servers[server]['un']
+            stdout, stderr = self.send_command_to_server(cmd)
+            for i, status_line in enumerate(stdout):
+                if (server == 'rmg' and i > 1) or (server == 'pharos' and i > 2):
+                    running_jobs_ids.append(stdout.split()[0])
+        return running_jobs_ids
+
     def submit_job(self, remote_path):
         job_status = ''
         job_id = 0
         cmd = submit_command[self.server] + ' ' + submit_filename[self.server]
         stdout, stderr = self.send_command_to_server(cmd, remote_path)
-        if stdout[0].startswith('Your job') and stdout[0].endswith('has been submitted\n'):
-            job_status = 'submitted'
-            job_id = int(stdout[0].split()[2])
+        if 'submitted' in stdout[0].lower():
+            job_status = 'running'
+            if self.server == 'pharos':
+                job_id = int(stdout[0].split()[2])
+            elif self.server == 'rmg':
+                job_id = int(stdout[0].split()[3])
         if len(stderr) > 0:
             job_status = 'errored'
         return job_status, job_id
