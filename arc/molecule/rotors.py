@@ -98,6 +98,7 @@ class Rotors(object):
                                 if i < smallest_index:
                                     smallest_index = i
                         rotor['scan'].append(smallest_index + 1)
+                        rotor['success'] = None
                         self.rotors.append(rotor)
 
 # TODO: determine rotor symmetry (in Cantherm?)
