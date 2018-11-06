@@ -1,11 +1,13 @@
 #!/usr/bin/env python
 # encoding: utf-8
 
+import logging
 from rdkit.Chem import AllChem
 import openbabel as ob
+import pybel as pyb
+
 from rmgpy.molecule.converter import toOBMol
 from rmgpy.molecule.element import getElement
-import pybel as pyb
 
 ##################################################################
 
@@ -34,12 +36,13 @@ class ConformerSearch(object):
 
         if rdkit:
             rd_xyzs, rd_energies = self.get_possible_conformers_rdkit()
-            rd_xyz = self.get_min_energy_conformer(xyzs=rd_xyzs, energies=rd_energies)
-            self.xyzs.append(self.get_xyz_matrix(rd_xyz))
+            if rd_xyzs:
+                rd_xyz = self.get_min_energy_conformer(xyzs=rd_xyzs, energies=rd_energies)
+                self.xyzs.append(get_xyz_matrix(xyz=rd_xyz, conformer_search=self))
         if ob:
             ob_xyzs, ob_energies = self.get_possible_conformers_openbabel()
             ob_xyz = self.get_min_energy_conformer(xyzs=ob_xyzs, energies=ob_energies)
-            self.xyzs.append(self.get_xyz_matrix(ob_xyz))
+            self.xyzs.append(get_xyz_matrix(xyz=ob_xyz, conformer_search=self))
 
     def get_possible_conformers_rdkit(self):
         """
@@ -53,7 +56,10 @@ class ConformerSearch(object):
         for k, atm in enumerate(self.mol.atoms):
             ind = rdInds[atm]
             rdIndMap[ind] = k
-        AllChem.EmbedMultipleConfs(rdmol, numConfs=(len(self.mol.atoms) - 3) * 30, randomSeed=1)
+        if len(self.mol.atoms) > 5:
+            AllChem.EmbedMultipleConfs(rdmol, numConfs=(len(self.mol.atoms) - 3) * 30, randomSeed=1)
+        else:
+            AllChem.EmbedMultipleConfs(rdmol, numConfs=120, randomSeed=1)
         energies = []
         xyzs = []
         for i in xrange(rdmol.GetNumConformers()):
@@ -62,16 +68,17 @@ class ConformerSearch(object):
                 v = AllChem.MMFFOptimizeMolecule(rdmol, mmffVariant='MMFF94s', confId=i,
                                                  maxIters=500, ignoreInterfragInteractions=False)
             mp = AllChem.MMFFGetMoleculeProperties(rdmol, mmffVariant='MMFF94s')
-            ff = AllChem.MMFFGetMoleculeForceField(rdmol, mp, confId=i)
-            E = ff.CalcEnergy()
-            energies.append(E)
-            cf = rdmol.GetConformer(i)
-            xyz = []
-            for j in xrange(cf.GetNumAtoms()):
-                pt = cf.GetAtomPosition(j)
-                xyz.append([pt.x, pt.y, pt.z])
-            xyz = [xyz[rdIndMap[i]] for i in xrange(len(xyz))]  # reorder
-            xyzs.append(xyz)
+            if mp is not None:
+                ff = AllChem.MMFFGetMoleculeForceField(rdmol, mp, confId=i)
+                E = ff.CalcEnergy()
+                energies.append(E)
+                cf = rdmol.GetConformer(i)
+                xyz = []
+                for j in xrange(cf.GetNumAtoms()):
+                    pt = cf.GetAtomPosition(j)
+                    xyz.append([pt.x, pt.y, pt.z])
+                xyz = [xyz[rdIndMap[i]] for i in xrange(len(xyz))]  # reorder
+                xyzs.append(xyz)
         return xyzs, energies
 
     def get_possible_conformers_openbabel(self):
@@ -89,7 +96,10 @@ class ConformerSearch(object):
 
         ff = ob.OBForceField.FindForceField("mmff94s")
         ff.Setup(obmol)
-        ff.WeightedRotorSearch(len(self.mol.atoms) * 10 - 3, 2000)
+        if len(self.mol.atoms) > 5:
+            ff.WeightedRotorSearch(len(self.mol.atoms) * 10 - 3, 2000)
+        else:
+            ff.WeightedRotorSearch(120, 2000)
         ff.GetConformers(obmol)
         for n in xrange(obmol.NumConformers()):
             xyz = []
@@ -107,27 +117,31 @@ class ConformerSearch(object):
         minind = energies.index(minval)
         return xyzs[minind]
 
-    def get_xyz_matrix(self, xyz, from_arkane=False, number=None):
-        result = ''
-        longest_xyz_coord = 1
-        for coord in xyz:
-            for c in coord:
-                if len(str(c)) > longest_xyz_coord:
-                    longest_xyz_coord = len(str(c))
-        for i, coord in enumerate(xyz):
-            if from_arkane:
-                element_label = getElement(number[i]).symbol
-            else:
-                element_label = self.mol.atoms[i].element.symbol
-            result += element_label + ' ' * (4 - len(element_label))
-            for j, c in enumerate(coord):
-                if c > 0:  # add space for positive numbers
-                    result += ' '
-                result += str(c)
-                if j < 2:  # add trailing spaces only for x, y (not z)
-                    result += ' ' * (longest_xyz_coord - len(str(abs(c))) + 2)
-            result += '\n'
-        return result
+
+def get_xyz_matrix(xyz, conformer_search=None, from_arkane=False, number=None):
+    if conformer_search is None and not from_arkane:
+        logging.error("Must have either a ConformerSearch object as input, or 'from_arkane' set to True.")
+        raise ValueError("Must have either a ConformerSearch object as input, or 'from_arkane' set to True.")
+    result = ''
+    longest_xyz_coord = 1
+    for coord in xyz:
+        for c in coord:
+            if len(str(c)) > longest_xyz_coord:
+                longest_xyz_coord = len(str(c))
+    for i, coord in enumerate(xyz):
+        if from_arkane:
+            element_label = getElement(number[i]).symbol
+        else:
+            element_label = conformer_search.mol.atoms[i].element.symbol
+        result += element_label + ' ' * (4 - len(element_label))
+        for j, c in enumerate(coord):
+            if c > 0:  # add space for positive numbers
+                result += ' '
+            result += str(c)
+            if j < 2:  # add trailing spaces only for x, y (not z)
+                result += ' ' * (longest_xyz_coord - len(str(abs(c))) + 2)
+        result += '\n'
+    return result
 
 # TODO: isomorphism check for final conformer
 # TODO: solve chirality issues? How can I get the N4 isomer?
