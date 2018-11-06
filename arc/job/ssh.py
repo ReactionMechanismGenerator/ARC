@@ -2,7 +2,9 @@
 # encoding: utf-8
 
 import paramiko
+import logging
 import os
+
 from arc.settings import servers, check_status_command, submit_command, submit_filename
 
 ##################################################################
@@ -24,6 +26,9 @@ class SSH_Client(object):
         self.address = servers[server]['adddress']
         self.un = servers[server]['un']
         self.key = servers[server]['key']
+        # logger = paramiko.util.logging.getLogger()
+        # logger.setLevel(50)
+        logging.getLogger("paramiko").setLevel(logging.WARNING)
 
     def send_command_to_server(self, command, remote_path=''):
         """
@@ -107,10 +112,10 @@ class SSH_Client(object):
         pharos: '540420 0.45326 xq1340b    alongd       r     10/26/2018 11:08:30 long1@node18.cluster'
         rmg: '14428     debug xq1371m2   alongd  R 50-04:04:46      1 node06'
         """
-        cmd = check_status_command[self.server] + ' -j ' + job_id
+        cmd = check_status_command[self.server] + ' -u ' + servers[self.server]['un']
         stdout, stderr = self.send_command_to_server(cmd)
         for status_line in stdout:
-            if job_id in status_line:
+            if str(job_id) in status_line:
                 break
         else:
             return 'done'
@@ -125,17 +130,16 @@ class SSH_Client(object):
             else:
                 raise ValueError('Unknown server {0}'.format(self.server))
 
-    def check_running_jobs_ids(self, active_servers):
+    def check_running_jobs_ids(self):
         """
-        Return the job IDs of all relevant jobs in a Project in all active servers
+        Return a list of ``int`` representing job IDs of all jobs submited by the user on a server
         """
         running_jobs_ids = list()
-        for server in active_servers:
-            cmd = check_status_command[self.server] + ' -u ' + servers[server]['un']
-            stdout, stderr = self.send_command_to_server(cmd)
-            for i, status_line in enumerate(stdout):
-                if (server == 'rmg' and i > 1) or (server == 'pharos' and i > 2):
-                    running_jobs_ids.append(stdout.split()[0])
+        cmd = check_status_command[self.server] + ' -u ' + servers[self.server]['un']
+        stdout, stderr = self.send_command_to_server(cmd)
+        for i, status_line in enumerate(stdout):
+            if (self.server == 'rmg' and i > 0) or (self.server == 'pharos' and i > 1):
+                running_jobs_ids.append(int(status_line.split()[0]))
         return running_jobs_ids
 
     def submit_job(self, remote_path):
