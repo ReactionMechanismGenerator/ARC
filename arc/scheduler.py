@@ -4,6 +4,7 @@
 import logging
 import time
 import os
+import datetime
 
 import cclib
 
@@ -270,11 +271,12 @@ class Scheduler(object):
         A helper function for checking job status, saving in cvs file, and downloading output files.
         Returns ``True`` if job terminated successfully on the server, ``False`` otherwise
         """
-        logging.info('  Ending job {0}'.format(job.job_name))
         job.determine_job_status()  # also downloads output file
-        job.write_completed_job_to_csv_file()
         self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
         self.timer = False
+        job.run_time = str(datetime.datetime.now() - job.date_time).split('.')[0]
+        job.write_completed_job_to_csv_file()
+        logging.info('  Ending job {name} ({time})'.format(name=job.job_name, time=job.run_time))
         if job.job_status[0] != 'done':
             job.troubleshoot_server()
             return False
