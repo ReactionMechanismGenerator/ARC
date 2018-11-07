@@ -33,6 +33,7 @@ class ARCSpecies(object):
     `conformer_energies`    ``list``           A list of conformers E0 (Hartree)
     'initial_xyz'           ``string``         The initial geometry guess
     'final_xyz'             ``string``         The optimized species geometry
+    'monoatomic'            ``bool``           Whether the species has only one atom or not
     ====================== =================== =========================================================================
 
     Dictionary structure:
@@ -252,9 +253,12 @@ class ARCSpecies(object):
                 else:
                     self.rotors_dict[self.number_of_rotors] = new_rotor
                     self.number_of_rotors += 1
-        logging.info('Found {0} rotor(s) for {1}'.format(self.number_of_rotors, self.label))
+        if self.number_of_rotors == 1:
+            logging.info('Found 1 rotor for {0}'.format(self.label))
+        elif self.number_of_rotors > 1:
+            logging.info('Found {0} rotors for {1}'.format(self.number_of_rotors, self.label))
         if self.number_of_rotors > 0:
-            logging.info('Pivot lists for {0}: {1}'.format(self.label,
+            logging.info('Pivot list(s) for {0}: {1}\n'.format(self.label,
                                                 [self.rotors_dict[i]['pivots'] for i in xrange(self.number_of_rotors)]))
 
 
