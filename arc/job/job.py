@@ -418,12 +418,10 @@ $end
 
     def run(self):
         if self.fine:
-            logging.info('\nRunning a fine {type} job {name} for {label}'.format(type=self.job_type,
-                                                                                 name=self.job_server_name,
-                                                                                 label=self.species_name))
+            logging.info('Running job {name} for {label} (fine opt)'.format(name=self.job_name,
+                                                                              label=self.species_name))
         else:
-            logging.info('\nRunning {type} job {name} for {label}'.format(type=self.job_type, name=self.job_server_name,
-                                                                      label=self.species_name))
+            logging.info('Running job {name} for {label}'.format(name=self.job_name, label=self.species_name))
         logging.debug('writing submit script...')
         self.write_submit_script()
         logging.debug('writing input file...')
