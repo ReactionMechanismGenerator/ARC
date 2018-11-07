@@ -37,7 +37,7 @@ class ARCSpecies(object):
 
     Dictionary structure:
 
-*   rotors_dict: {1: {'pivots': pivot_list,
+*   rotors_dict: {1: {'pivots': pivots_list,
                       'top': top_list,
                       'scan': scan_list,
                       'success: ''bool''},
@@ -244,7 +244,7 @@ class ARCSpecies(object):
         in self.species_dict[species.label]['rotors_dict']. Also updates 'number_of_rotors'.
         """
         for mol in self.molecule:
-            rotors = self.find_internal_rotors(mol)
+            rotors = find_internal_rotors(mol)
             for new_rotor in rotors:
                 for key, existing_rotor in self.rotors_dict.iteritems():
                     if existing_rotor['pivots'] == new_rotor['pivots']:
@@ -257,98 +257,99 @@ class ARCSpecies(object):
             logging.info('Pivot lists for {0}: {1}'.format(self.label,
                                                 [self.rotors_dict[i]['pivots'] for i in xrange(self.number_of_rotors)]))
 
-    def find_internal_rotors(self, mol):
-        """
-        Locates the sets of indices corresponding to every internal rotor.
-        Returns for each rotors the gaussian scan coordinates, the pivots and the top.
-        """
-        rotors = []
-        for atom1 in mol.vertices:
-            for atom2, bond in atom1.edges.items():
-                if mol.vertices.index(atom1) < mol.vertices.index(atom2) \
-                        and (bond.isSingle() or bond.isHydrogenBond()) and not mol.isBondInCycle(bond):
-                    if len(atom1.edges) > 1 and len(
-                            atom2.edges) > 1:  # none of the pivotal atoms is terminal (nor hydrogen)
-                        rotor = dict()
-                        # pivots:
-                        rotor['pivots'] = [mol.vertices.index(atom1) + 1, mol.vertices.index(atom2) + 1]
-                        # top:
-                        top1, top2 = [], []
-                        top1_has_heavy_atoms, top2_has_heavy_atoms = False, False
-                        atom_list = [atom1]
-                        while len(atom_list):
-                            for atom in atom_list:
-                                top1.append(mol.vertices.index(atom) + 1)
-                                for atom3, bond3 in atom.edges.items():
-                                    if atom3.isHydrogen():
-                                        top1.append(mol.vertices.index(atom3) + 1)  # append H's
-                                    elif atom3 is not atom2:
-                                        top1_has_heavy_atoms = True
-                                        if not bond3.isSingle():
-                                            top1.append(
-                                                mol.vertices.index(atom3) + 1)  # append non-single-bonded heavy atoms
-                                            atom_list.append(atom3)
-                                atom_list.pop(atom_list.index(atom))
-                        atom_list = [atom2]
-                        while len(atom_list):
-                            for atom in atom_list:
-                                top2.append(mol.vertices.index(atom) + 1)
-                                for atom3, bond3 in atom.edges.items():
-                                    if atom3.isHydrogen():
-                                        top2.append(mol.vertices.index(atom3) + 1)  # append H's
-                                    elif atom3 is not atom1:
-                                        top2_has_heavy_atoms = True
-                                        if not bond3.isSingle():
-                                            top2.append(
-                                                mol.vertices.index(atom3) + 1)  # append non-single-bonded heavy atoms
-                                            atom_list.append(atom3)
-                                atom_list.pop(atom_list.index(atom))
-                        if top1_has_heavy_atoms and not top2_has_heavy_atoms:
-                            rotor['top'] = top2
-                        elif top2_has_heavy_atoms and not top1_has_heavy_atoms:
-                            rotor['top'] = top1
-                        else:
-                            rotor['top'] = top1 if len(top1) < len(top2) else top2
-                        # scan:
-                        rotor['scan'] = []
-                        heavy_atoms = []
-                        hydrogens = []
-                        for atom3, bond13 in atom1.edges.items():
-                            if atom3.isHydrogen():
-                                hydrogens.append(mol.vertices.index(atom3))
-                            elif atom3 is not atom2:
-                                heavy_atoms.append(mol.vertices.index(atom3))
-                        smallest_index = len(mol.vertices)
-                        if len(heavy_atoms):
-                            for i in heavy_atoms:
-                                if i < smallest_index:
-                                    smallest_index = i
-                        else:
-                            for i in hydrogens:
-                                if i < smallest_index:
-                                    smallest_index = i
-                        rotor['scan'].append(smallest_index + 1)
-                        rotor['scan'].extend([mol.vertices.index(atom1) + 1, mol.vertices.index(atom2) + 1])
-                        heavy_atoms = []
-                        hydrogens = []
-                        for atom3, bond3 in atom2.edges.items():
-                            if atom3.isHydrogen():
-                                hydrogens.append(mol.vertices.index(atom3))
-                            elif atom3 is not atom1:
-                                heavy_atoms.append(mol.vertices.index(atom3))
-                        smallest_index = len(mol.vertices)
-                        if len(heavy_atoms):
-                            for i in heavy_atoms:
-                                if i < smallest_index:
-                                    smallest_index = i
-                        else:
-                            for i in hydrogens:
-                                if i < smallest_index:
-                                    smallest_index = i
-                        rotor['scan'].append(smallest_index + 1)
-                        rotor['success'] = None
-                        rotors.append(rotor)
-        return rotors
+
+def find_internal_rotors(mol):
+    """
+    Locates the sets of indices corresponding to every internal rotor.
+    Returns for each rotors the gaussian scan coordinates, the pivots and the top.
+    """
+    rotors = []
+    for atom1 in mol.vertices:
+        for atom2, bond in atom1.edges.items():
+            if mol.vertices.index(atom1) < mol.vertices.index(atom2) \
+                    and (bond.isSingle() or bond.isHydrogenBond()) and not mol.isBondInCycle(bond):
+                if len(atom1.edges) > 1 and len(
+                        atom2.edges) > 1:  # none of the pivotal atoms is terminal (nor hydrogen)
+                    rotor = dict()
+                    # pivots:
+                    rotor['pivots'] = [mol.vertices.index(atom1) + 1, mol.vertices.index(atom2) + 1]
+                    # top:
+                    top1, top2 = [], []
+                    top1_has_heavy_atoms, top2_has_heavy_atoms = False, False
+                    atom_list = [atom1]
+                    while len(atom_list):
+                        for atom in atom_list:
+                            top1.append(mol.vertices.index(atom) + 1)
+                            for atom3, bond3 in atom.edges.items():
+                                if atom3.isHydrogen():
+                                    top1.append(mol.vertices.index(atom3) + 1)  # append H's
+                                elif atom3 is not atom2:
+                                    top1_has_heavy_atoms = True
+                                    if not bond3.isSingle():
+                                        top1.append(
+                                            mol.vertices.index(atom3) + 1)  # append non-single-bonded heavy atoms
+                                        atom_list.append(atom3)
+                            atom_list.pop(atom_list.index(atom))
+                    atom_list = [atom2]
+                    while len(atom_list):
+                        for atom in atom_list:
+                            top2.append(mol.vertices.index(atom) + 1)
+                            for atom3, bond3 in atom.edges.items():
+                                if atom3.isHydrogen():
+                                    top2.append(mol.vertices.index(atom3) + 1)  # append H's
+                                elif atom3 is not atom1:
+                                    top2_has_heavy_atoms = True
+                                    if not bond3.isSingle():
+                                        top2.append(
+                                            mol.vertices.index(atom3) + 1)  # append non-single-bonded heavy atoms
+                                        atom_list.append(atom3)
+                            atom_list.pop(atom_list.index(atom))
+                    if top1_has_heavy_atoms and not top2_has_heavy_atoms:
+                        rotor['top'] = top2
+                    elif top2_has_heavy_atoms and not top1_has_heavy_atoms:
+                        rotor['top'] = top1
+                    else:
+                        rotor['top'] = top1 if len(top1) < len(top2) else top2
+                    # scan:
+                    rotor['scan'] = []
+                    heavy_atoms = []
+                    hydrogens = []
+                    for atom3, bond13 in atom1.edges.items():
+                        if atom3.isHydrogen():
+                            hydrogens.append(mol.vertices.index(atom3))
+                        elif atom3 is not atom2:
+                            heavy_atoms.append(mol.vertices.index(atom3))
+                    smallest_index = len(mol.vertices)
+                    if len(heavy_atoms):
+                        for i in heavy_atoms:
+                            if i < smallest_index:
+                                smallest_index = i
+                    else:
+                        for i in hydrogens:
+                            if i < smallest_index:
+                                smallest_index = i
+                    rotor['scan'].append(smallest_index + 1)
+                    rotor['scan'].extend([mol.vertices.index(atom1) + 1, mol.vertices.index(atom2) + 1])
+                    heavy_atoms = []
+                    hydrogens = []
+                    for atom3, bond3 in atom2.edges.items():
+                        if atom3.isHydrogen():
+                            hydrogens.append(mol.vertices.index(atom3))
+                        elif atom3 is not atom1:
+                            heavy_atoms.append(mol.vertices.index(atom3))
+                    smallest_index = len(mol.vertices)
+                    if len(heavy_atoms):
+                        for i in heavy_atoms:
+                            if i < smallest_index:
+                                smallest_index = i
+                    else:
+                        for i in hydrogens:
+                            if i < smallest_index:
+                                smallest_index = i
+                    rotor['scan'].append(smallest_index + 1)
+                    rotor['success'] = None
+                    rotors.append(rotor)
+    return rotors
 
 
 def get_xyz_matrix(xyz, mol=None, from_arkane=False, number=None):
