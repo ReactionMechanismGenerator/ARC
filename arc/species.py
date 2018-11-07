@@ -250,8 +250,12 @@ class ARCSpecies(object):
                     if existing_rotor['pivots'] == new_rotor['pivots']:
                         break
                 else:
-                    self.number_of_rotors += 1
                     self.rotors_dict[self.number_of_rotors] = new_rotor
+                    self.number_of_rotors += 1
+        logging.info('Found {0} rotor(s) for {1}'.format(self.number_of_rotors, self.label))
+        if self.number_of_rotors > 0:
+            logging.info('Pivot lists for {0}: {1}'.format(self.label,
+                                                [self.rotors_dict[i]['pivots'] for i in xrange(self.number_of_rotors)]))
 
     def find_internal_rotors(self, mol):
         """
