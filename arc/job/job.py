@@ -2,7 +2,7 @@
 # encoding: utf-8
 
 import os
-import time
+import datetime
 import csv
 import logging
 
@@ -44,8 +44,8 @@ class Job(object):
     `fine`             ``bool``          Whether to use fine geometry optimization parameters
     `shift`            ``str``           A string representation alpha- and beta-spin orbitals shifts (molpro only)
     `comments`         ``str``           Job comments (archived, not used)
-    `date`             ``str``           The date this job was initiated. Determined automatically
-    `run_time`         ``float``         Runtime is seconds. Determined automatically
+    `date_time`        ``datetime``      The date-time this job was initiated. Determined automatically
+    `run_time`         ``str``           Runtime. Determined automatically
     `job_status`       ``list``          The job's server and ESS statuses. Determined automatically
     `job_server_name`  ``str``           Job's name on the server (e.g., 'a103'). Determined automatically
     `job_name`         ``str``           Job's name for interal usage (e.g., 'opt_a103'). Determined automatically
@@ -142,8 +142,8 @@ class Job(object):
         self.memory = memory
         self.fine = fine
         self.shift = shift
-        self.date = time.asctime()
-        self.run_time = 0
+        self.date_time = datetime.datetime.now()
+        self.run_time = ''
         self.job_status = ['initializing', 'initializing']
         self.job_id = 0
         self.comments = comments
@@ -180,7 +180,8 @@ class Job(object):
             with open(csv_path, 'wb') as f:
                 writer = csv.writer(f, dialect='excel')
                 row = ['job_num', 'project', 'species_name', 'conformer', 'is_ts', 'charge', 'multiplicity', 'job_type',
-                       'job_name', 'job_id', 'server', 'software', 'memory', 'method', 'basis_set', 'date', 'comments']
+                       'job_name', 'job_id', 'server', 'software', 'memory', 'method', 'basis_set', 'date_time',
+                       'comments']
                 writer.writerow(row)
         with open(csv_path, 'rb') as f:
             reader = csv.reader(f, dialect='excel')
@@ -201,7 +202,7 @@ class Job(object):
             writer = csv.writer(f, dialect='excel')
             row = [self.job_num, self.project, self.species_name, conformer, self.is_ts, self.charge,
                    self.multiplicity, self.job_type, self.job_name, self.job_id, self.server, self.software,
-                   self.memory, self.method, self.basis_set, self.date, self.comments]
+                   self.memory, self.method, self.basis_set, self.date_time, self.comments]
             writer.writerow(row)
 
     def write_completed_job_to_csv_file(self):
@@ -215,8 +216,9 @@ class Job(object):
             with open(csv_path, 'wb') as f:
                 writer = csv.writer(f, dialect='excel')
                 row = ['job_num', 'project', 'species_name', 'conformer', 'is_ts', 'charge', 'multiplicity', 'job_type',
-                       'job_name', 'job_id', 'server', 'software', 'memory', 'method', 'basis_set', 'date', 'run_time',
-                       'job_status_(server)', 'job_status_(ESS)', 'ESS troubleshooting methods used','comments']
+                       'job_name', 'job_id', 'server', 'software', 'memory', 'method', 'basis_set', 'date_time',
+                       'run_time', 'job_status_(server)', 'job_status_(ESS)', 'ESS troubleshooting methods used',
+                       'comments']
                 writer.writerow(row)
         csv_path = os.path.join(arc_path, 'completed_jobs.csv')
         if self.conformer < 0:  # this is not a conformer search job
@@ -226,7 +228,7 @@ class Job(object):
             writer = csv.writer(f, dialect='excel')
             row = [self.job_num, self.project, self.species_name, conformer, self.is_ts, self.charge,
                    self.multiplicity, self.job_type, self.job_name, self.job_id, self.server, self.software,
-                   self.memory, self.method, self.basis_set, self.date, self.run_time, self.job_status[0],
+                   self.memory, self.method, self.basis_set, self.date_time, self.run_time, self.job_status[0],
                    self.job_status[1], self.ess_trsh_methods, self.comments]
             writer.writerow(row)
 
