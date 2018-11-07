@@ -502,28 +502,29 @@ $end
                             return 'errored: {0}; {1}'.format(line, reason)
                     return 'errored: Unknown reason'
             elif self.software == 'qchem':
-                converged = False
-                for line in lines[-1:-100:-1]:
-                    if 'opt' in self.job_type or 'conformer' in self.job_type or 'ts' in self.job_type:
-                        for line0 in lines[::-1]:
-                            if 'MAXIMUM OPTIMIZATION CYCLES REACHED' in line0:
-                                return 'unconverged, max opt cycles reached'
-                            if 'OPTIMIZATION CONVERGED' in line0:
-                                converged = True
-                    if 'Thank you very much for using Q-Chem' in line:
-                        if 'opt' in self.job_type or 'conformer' in self.job_type or 'ts' in self.job_type:
-                            if converged:
-                                return 'done'
-                            else:
-                                return 'errored: unconverged, max opt cycles reached'
-                        else:
-                            return 'done'
+                done = False
+                error_message = ''
                 for line in lines[::-1]:
-                    if 'error' in line and 'DIIS' not in line:
-                        # these are normal lines: "SCF converges when DIIS error is below 1.0E-08", or
+                    if 'Thank you very much for using Q-Chem' in line:
+                        done = True
+                    elif 'opt' in self.job_type or 'conformer' in self.job_type or 'ts' in self.job_type:
+                            if 'MAXIMUM OPTIMIZATION CYCLES REACHED' in line:
+                                return 'errored: unconverged, max opt cycles reached'
+                            elif 'OPTIMIZATION CONVERGED' in line and done:  # `done` should already be assigned
+                                return 'done'
+                    elif 'SCF failed' in line:
+                        return 'errored: {0}'.format(line)
+                    elif 'error' in line and 'DIIS' not in line:
+                        # these are *normal* lines: "SCF converges when DIIS error is below 1.0E-08", or
                         # "Cycle       Energy         DIIS Error"
-                        return 'errored: ' + line
-                return 'errored: Unknown reason000'
+                        error_message = line
+                if done:
+                    return 'done'
+                else:
+                    if error_message:
+                        return 'errored: ' + error_message
+                    else:
+                        return 'errored: Unknown reason'
             elif 'molpro' in self.software:
                 for line in lines[::-1]:
                     if 'molpro calculation terminated' in line.lower()\
