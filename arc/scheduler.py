@@ -25,10 +25,10 @@ class Scheduler(object):
 
     The attributes are:
 
-    ====================== =================== =========================================================================
-    Attribute              Type                Description
-    ====================== =================== =========================================================================
-    `project`               ``str``            The project's name. Used for naming the directory.
+    ======================= ================== =========================================================================
+    Attribute               Type               Description
+    ======================= ================== =========================================================================
+    `project`               ``str``            The project's name. Used for naming the working directory.
     'servers'               ''list''           A list of servers used for the present project
     `species_list`          ``list``           Contains input ``ARCSpecies`` objects (both species and TSs).
     `species_dict`          ``dict``           A convenient way to call species by their labels
@@ -43,8 +43,10 @@ class Scheduler(object):
     'running_jobs'          ``dict``           A dictionary of currently running jobs (a subset of `job_dict`).
                                                  Keys are species/TS label, values are lists of job names
                                                  (e.g. 'conformer3', 'opt_a123').
-    'servers_jobs_ids'       ``list``           A list of relevant job IDs currently running on the server
-    ====================== =================== =========================================================================
+    'servers_jobs_ids'      ``list``           A list of relevant job IDs currently running on the server
+    'fine'                  ``bool``           Whether or not to use a fine grid for opt jobs (spawns an additional job)
+    'output'                ``dict``           Output dictionary with status and final QM files for all species
+    ======================= ================== =========================================================================
 
     Dictionary structures:
 
@@ -81,13 +83,18 @@ class Scheduler(object):
              label_2: {...},
              }
     """
-    def __init__(self, project, species_list, level_of_theory, freq_level='', scan_level=''):
+    def __init__(self, project, species_list, level_of_theory, freq_level='', scan_level='', fine=False):
         self.project = project
         self.servers = list()
         self.species_list = species_list
         self.level_of_theory = level_of_theory.lower()
         self.freq_level = freq_level
         self.scan_level = scan_level
+        self.fine = fine
+        if not self.fine:
+            logging.info('\n')
+            logging.warning('Not using a fine grid for geometry optimization jobs')
+            logging.info('\n')
         self.composite = not '//' in self.level_of_theory
         self.job_dict = dict()
         self.running_jobs = dict()
@@ -155,7 +162,7 @@ class Scheduler(object):
                                         break
                                 else:
                                     # All conformer jobs terminated. Run opt on most stable conformer geometry.
-                                    logging.info('\nConformer jobs for {0} successfully terminated.'.format(
+                                    logging.info('\nConformer jobs for {0} successfully terminated.\n'.format(
                                         label))
                                     self.determine_most_stable_conformer(label)
                                     if not self.composite:
@@ -235,8 +242,7 @@ class Scheduler(object):
 
             if self.timer:
                 logging.debug('zzz... setting timer for 1 minute... zzz')
-                time.sleep(60)  # wait a minute before bugging the servers again.
-        # When exiting the while loop, make sure we got all we asked for. Otherwise spawn and rerun schedule_jobs()
+                time.sleep(30)  # wait 30 sec before bugging the servers again.
 
     def run_job(self, label, xyz, level_of_theory, job_type, fine=False, software=None, shift='', trsh='', memory=1000,
                 conformer=-1, ess_trsh_methods=list(), scan='', pivots=list()):
@@ -433,37 +439,40 @@ class Scheduler(object):
         Check that a freq job converged successfully. Also checks (QA) that no imaginary frequencies were assigned for
         stable species, and that exactly one imaginary frequency was assigned for a TS.
         """
-        if job.job_status[1] != 'done':
-            self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level_of_theory, job_type='freq')
-        local_path_to_output_file = os.path.join(job.local_path, 'output.out')
-        parser = cclib.io.ccopen(local_path_to_output_file)
-        data = parser.parse()
-        neg_freq_counter = 0
-        for freq in data.vibfreqs:
-            if freq < 0:
-                neg_freq_counter += 1
-        if self.species_dict[label].is_ts and neg_freq_counter != 1:
-                logging.error('TS {0} has {1} imaginary frequencies,'
-                              ' should have exactly 1.'.format(label, neg_freq_counter))
-                self.output[label]['status'] += 'Error: {0} imaginary freq for TS; '.format(neg_freq_counter)
-        elif not self.species_dict[label].is_ts and neg_freq_counter != 0:
-                logging.error('species {0} has {1} imaginary frequencies,'
-                              ' should have exactly 0.'.format(label, neg_freq_counter))
-                self.output[label]['status'] += 'Error: {0} imaginary freq for stable species; '.format(neg_freq_counter)
+        if job.job_status[1] == 'done':
+            local_path_to_output_file = os.path.join(job.local_path, 'output.out')
+            if not os.path.isfile(local_path_to_output_file):
+                raise SchedulerError('Called check_freq_job with no output file')
+            parser = cclib.io.ccopen(local_path_to_output_file)
+            data = parser.parse()
+            neg_freq_counter = 0
+            for freq in data.vibfreqs:
+                if freq < 0:
+                    neg_freq_counter += 1
+            if self.species_dict[label].is_ts and neg_freq_counter != 1:
+                    logging.error('TS {0} has {1} imaginary frequencies,'
+                                  ' should have exactly 1.'.format(label, neg_freq_counter))
+                    self.output[label]['status'] += 'Error: {0} imaginary freq for TS; '.format(neg_freq_counter)
+            elif not self.species_dict[label].is_ts and neg_freq_counter != 0:
+                    logging.error('species {0} has {1} imaginary frequencies,'
+                                  ' should have exactly 0.'.format(label, neg_freq_counter))
+                    self.output[label]['status'] += 'Error: {0} imaginary freq for stable species; '.format(neg_freq_counter)
+            else:
+                self.output[label]['status'] += 'freq converged; '
+                self.output[label]['geo'] = local_path_to_output_file
+                self.output[label]['freq'] = local_path_to_output_file
         else:
-            self.output[label]['status'] += 'freq converged; '
-            self.output[label]['geo'] = local_path_to_output_file
-            self.output[label]['freq'] = local_path_to_output_file
+            self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level_of_theory, job_type='freq')
 
     def check_sp_job(self, label, job):
         """
         Check that a single point job converged successfully.
         """
-        if job.job_status[1] != 'done':
-            self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level_of_theory, job_type='sp')
-        else:
+        if job.job_status[1] == 'done':
             self.output[label]['status'] += 'sp converged; '
             self.output[label]['sp'] = os.path.join(job.local_path, 'output.out')
+        else:
+            self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level_of_theory, job_type='sp')
 
     def check_scan_job(self, label, job):
         """
@@ -553,8 +562,8 @@ class Scheduler(object):
         Troubleshoot issues related to the electronic structure software, such as conversion
         """
         logging.info('\n')
-        logging.warn('Troubleshooting {job_type} job for {label} which failed with status'
-                     ' {stat} in {soft}.'.format(job_type=job_type, label=label, stat=job.job_status[1],
+        logging.warn('Troubleshooting job {job_name} for {label} which failed with status'
+                     ' {stat} in {soft}.'.format(job_name=job.job_name, label=label, stat=job.job_status[1],
                                                  soft=job.software))
         xyz = self.species_dict[label].initial_xyz
         if job.software == 'gaussian03':
@@ -613,14 +622,14 @@ class Scheduler(object):
                              conformer=conformer)
             elif 'qchem' not in job.ess_trsh_methods:
                 # Try QChem
-                logging.info('Troubleshooting {type} job in {software} using qchem'.format(
+                logging.info('Troubleshooting {type} job using qchem instead of {software}'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('qchem')
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, job_type=job_type, fine=False,
                              software='qchem', ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
             elif 'molpro_2012' not in job.ess_trsh_methods:
                 # Try molpro
-                logging.info('Troubleshooting {type} job in {software} using molpro_2012'.format(
+                logging.info('Troubleshooting {type} job using molpro_2012 instead of {software}'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('molpro_2012')
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, job_type=job_type, fine=False,
@@ -637,8 +646,17 @@ class Scheduler(object):
                 # this is a common error, increase max cycles and continue running from last geometry
                 logging.info('Troubleshooting {type} job in {software} using max_cycles'.format(
                     type=job_type, software=job.software))
-                job.ess_trsh_methods.append('max_cycles')  # avoids infinite looping
-                trsh = '\nGEOM_OPT_MAX_CYCLES 250'  # default is 50
+                job.ess_trsh_methods.append('max_cycles')
+                trsh = '\n   GEOM_OPT_MAX_CYCLES 250'  # default is 50
+                self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
+                             job_type=job_type, fine=False, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
+                             conformer=conformer)
+            elif 'SCF failed' in job.job_status[1] and 'DIIS_GDM' not in job.ess_trsh_methods:
+                # change the SCF algorithm and increase max SCF cycles
+                logging.info('Troubleshooting {type} job in {software} using DIIS_GDM SCF algorithm'.format(
+                    type=job_type, software=job.software))
+                job.ess_trsh_methods.append('DIIS_GDM')
+                trsh = '\n   SCF_ALGORITHM DIIS_GDM\n   MAX_SCF_CYCLES 250'  # default is 50
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
                              job_type=job_type, fine=False, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
                              conformer=conformer)
@@ -652,14 +670,14 @@ class Scheduler(object):
                              job_type=job_type, fine=False, ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
             elif 'gaussian03' not in job.ess_trsh_methods:
                 # Try Gaussian
-                logging.info('Troubleshooting {type} job in {software} using gaussian03'.format(
+                logging.info('Troubleshooting {type} job using gaussian03 instead of {software}'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('gaussian03')
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, job_type=job_type, fine=False,
                              software='gaussian03', ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
             elif 'molpro' not in job.ess_trsh_methods:
                 # Try molpro
-                logging.info('Troubleshooting {type} job in {software} using molpro'.format(
+                logging.info('Troubleshooting {type} job using molpro instead of {software}'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('molpro')
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, job_type=job_type, fine=False,
@@ -710,14 +728,14 @@ class Scheduler(object):
                              ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
             elif 'gaussian03' not in job.ess_trsh_methods:
                 # Try Gaussian
-                logging.info('Troubleshooting {type} job in {software} using gaussian03'.format(
+                logging.info('Troubleshooting {type} job using gaussian03 instead of {software}'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('gaussian03')
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, job_type=job_type, fine=False,
                              software='gaussian03', ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
             elif 'qchem' not in job.ess_trsh_methods:
                 # Try QChem
-                logging.info('Troubleshooting {type} job in {software} using qchem'.format(
+                logging.info('Troubleshooting {type} job using qchem instead of {software}'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('qchem')
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, job_type=job_type, fine=False,
@@ -735,14 +753,16 @@ class Scheduler(object):
         Check that we have all required data for the species/TS in ``label``
         """
         status = self.output[label]['status']
-        if 'opt converged' in status and 'sp converged' in status\
-                and (self.species_dict[label].monoatomic or 'freq converged' in status):  # TODO: add scan check
+        if 'sp converged' in status and (self.species_dict[label].monoatomic or
+                                             ('freq converged' in status and 'opt converged' in status)):
+            # TODO: check that no errors were introduced by scan / irc / gsm
             logging.info('All jobs of species {0} successfully converged'.format(label))
         else:
+            if not self.output[label]['status']:
+                self.output[label]['status'] = 'nothing converged'
             logging.error('species {0} did not converge. Status is: {1}'.format(label, status))
 
 
-#TODO: write completed jobs to csv file
 #TODO: check spin contamination (in molpro, this is in the output.log file(!) as "Spin contamination <S**2-Sz**2-Sz>     0.00000000")
 #TODO: check T3 or other MR indication
 #TODO: make visuallization files
