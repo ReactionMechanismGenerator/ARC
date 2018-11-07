@@ -298,7 +298,7 @@ wf,spin={spin},charge={charge};}}
                 else:
                     job_type_1 = 'opt=calcfc'
                 if self.fine:
-                    fine = 'scf=(tight)'
+                    fine = 'scf=(tight,direct) int=finegrid'
             elif self.software == 'qchem':
                 if self.is_ts:
                     job_type_1 = 'ts'
