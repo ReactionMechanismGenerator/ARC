@@ -12,6 +12,7 @@ from rmgpy.reaction import Reaction
 from arc.settings import arc_path
 from arc.scheduler import Scheduler
 from arc.exceptions import InputError
+from arc.species import ARCSpecies
 
 ##################################################################
 
@@ -21,13 +22,15 @@ class ARC(object):
     Main ARC object.
     The software should be run on a local computer, sending commands to one or more servers.
     """
-    def __init__(self, project, species_list, rxn_list, level_of_theory, freq_level='', verbose=logging.INFO):
+    def __init__(self, project, species_list, rxn_list, level_of_theory, freq_level='', scan_level='',
+                 verbose=logging.INFO):
         self.project = project
         self.species_list = species_list
         self.rxn_list = rxn_list
         self.ts_list = rxn_list  # TODO: derive TS from rxns
         self.level_of_theory = level_of_theory.lower()
         self.freq_level = freq_level.lower()
+        self.scan_level = scan_level.lower()
         if not ('cbs' in self.level_of_theory or '//' in self.level_of_theory):
             raise InputError('Level of theory should either be a composite method (like CBS-QB3) or be of the'
                              'form sp//geometry, e.g., CCSD(T)-F12/avtz//wB97x-D3/6-311++g**')
@@ -42,18 +45,18 @@ class ARC(object):
         # TODO: also allow xyz as input for both species and TSs
         logging.info('Starting project {0}\n\n'.format(self.project))
         for species in self.species_list:
-            if not isinstance(species, Species):
-                logging.error('`species_list` must be a list of RMG.Species objects. Got {0}'.format(type(species)))
-                raise ValueError()
-            logging.info('Considering species {0}'.format(species))
+            if not isinstance(species, ARCSpecies):
+                raise ValueError('All species in species_list must be ARCSpecies objects.'
+                                 ' Got {0}'.format(type(species)))
+            logging.info('Considering species: {0}'.format(species.label))
         self.species_list = self.species_list
         for rxn in self.rxn_list:
             if not isinstance(rxn, Reaction):
                 logging.error('`rxn_list` must be a list of RMG.Reaction objects. Got {0}'.format(type(rxn)))
                 raise ValueError()
             logging.info('Considering reacrion {0}'.format(rxn))
-        Scheduler(project=self.project, species_list=self.species_list, ts_list=self.ts_list,
-                  level_of_theory=self.level_of_theory, freq_level=self.freq_level)
+        Scheduler(project=self.project, species_list=self.species_list,  level_of_theory=self.level_of_theory,
+                  freq_level=self.freq_level, scan_level=self.scan_level)
         self.log_footer()
 
     def initialize_log(self, verbose=logging.INFO, log_file=None):
