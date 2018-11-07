@@ -90,6 +90,7 @@ class ARCSpecies(object):
 
         if xyz is not None:
             self.initial_xyz = xyz
+            self.monoatomic = len(xyz.split('\n')) == 1
         else:
             self.initial_xyz = ''
 
@@ -103,6 +104,7 @@ class ARCSpecies(object):
 
         if self.rmg_species.molecule:
             self.molecule = self.rmg_species.molecule
+            self.monoatomic = len(self.molecule[0].atoms) == 1
         else:
             self.molecule = list()
 
