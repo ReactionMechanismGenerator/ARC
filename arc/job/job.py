@@ -294,7 +294,7 @@ wf,spin={spin},charge={charge};}}
 {job_type_2}
 ---;"""
 
-        if self.job_type in ['conformer', 'opt']:
+        if self.job_type in ['conformer', 'opt', 'optfreq']:
             if self.software == 'gaussian03':
                 if self.is_ts:
                     job_type_1 = 'opt=(calcfc,ts,noeigen)'
