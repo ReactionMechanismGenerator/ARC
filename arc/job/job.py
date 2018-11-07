@@ -523,7 +523,8 @@ $end
                 return 'errored: Unknown reason000'
             elif 'molpro' in self.software:
                 for line in lines[::-1]:
-                    if 'Molpro calculation terminated' in line:
+                    if 'molpro calculation terminated' in line.lower()\
+                            or 'variable memory released' in line.lower():
                         return 'done'
                     if 'No convergence' in line:
                         return 'unconverged'
