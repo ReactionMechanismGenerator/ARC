@@ -103,13 +103,26 @@ class Scheduler(object):
             self.output[species.label] = dict()
             self.output[species.label]['status'] = ''
             self.job_dict[species.label] = dict()
-            species.generate_localized_structures()
-            if species.initial_xyz:
-                self.run_opt_job(species.label)
-            else:
-                species.generate_conformers()
-            species.determine_rotors()
             self.species_dict[species.label] = species
+            self.species_dict[species.label].generate_localized_structures()
+            self.species_dict[species.label].determine_rotors()
+            self.running_jobs[species.label] = list()  # initialize before running the first job
+            if self.species_dict[species.label].monoatomic:
+                if not self.species_dict[species.label].initial_xyz:
+                    if self.species_dict[species.label].rmg_species is not None:
+                        assert len(self.species_dict[species.label].rmg_species.molecule[0].atoms) == 1
+                        symbol = self.species_dict[species.label].rmg_species.molecule[0].atoms[0].symbol
+                    else:
+                        symbol = species.label
+                        logging.warning('Could not determine element of monoatomic species {0}.'
+                                        ' Assuming element is {1}'.format(species.label, symbol))
+                    self.species_dict[species.label].initial_xyz = symbol + '   0.0   0.0   0.0'
+                    self.species_dict[species.label].final_xyz = symbol + '   0.0   0.0   0.0'
+                self.run_sp_job(label=species.label)
+            elif self.species_dict[species.label].initial_xyz:
+                self.run_opt_job(species.label)
+            elif not self.species_dict[species.label].is_ts:
+                self.species_dict[species.label].generate_conformers()
         self.timer = True
         self.schedule_jobs()
 
@@ -273,10 +286,8 @@ class Scheduler(object):
         The resulting conformer is saved in <xyz matrix with element labels> format
         in self.species_dict[species.label]['initial_xyz']
         """
-        logging.info('\nGenerating conformer jobs for all species without an initial geometry guess')
         for label in self.unique_species_labels:
             if not self.species_dict[label].is_ts and not self.species_dict[label].initial_xyz:
-                self.running_jobs[label] = list()  # initialize running_jobs for all species
                 self.job_dict[label]['conformers'] = dict()
                 for i, xyz in enumerate(self.species_dict[label].conformers):
                     self.run_job(label=label, xyz=xyz, level_of_theory='b3lyp/6-311++g(d,p)', job_type='conformer',
@@ -334,7 +345,7 @@ class Scheduler(object):
         Spawn a single point job using 'final_xyz' for species ot TS 'label'.
         """
         if 'sp' not in self.job_dict[label]:  # Check whether or not single point jobs have been spawned yet
-            # we're spawning the first sp jobfor this species
+            # we're spawning the first sp job for this species
             self.job_dict[label]['sp'] = dict()
         if self.composite:
             raise SchedulerError('run_sp_job() was called for {0} which has a composite method level of theory'.format(
@@ -403,7 +414,7 @@ class Scheduler(object):
             log.determine_qm_software(fullpath=local_path_to_output_file)
             coord, number, mass = log.software_log.loadGeometry()
             self.species_dict[label].final_xyz = get_xyz_matrix(xyz=coord, from_arkane=True, number=number)
-            if not job.fine:
+            if not job.fine and self.fine:
                 # Run opt again using a finer grid.
                 xyz = self.species_dict[label].final_xyz
                 self.species_dict[label].initial_xyz = xyz  # save for troubleshooting, since trsh goes by initial
