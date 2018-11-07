@@ -31,6 +31,7 @@ class Scheduler(object):
     'servers'               ''list''           A list of servers used for the present project
     `species_list`          ``list``           Contains input ``ARCSpecies`` objects (both species and TSs).
     `species_dict`          ``dict``           A convenient way to call species by their labels
+    `output`                ``dict``           A dictionary of
     'unique_species_labels' ``list``           A list of species labels (checked for duplicates)
     `level_of_theory`       ``str``            *FULL* level of theory, e.g. 'CBS-QB3',
                                                  'CCSD(T)-F12a/aug-cc-pVTZ//B3LYP/6-311++G(3df,3pd)'...
@@ -44,28 +45,41 @@ class Scheduler(object):
     'servers_jobs_ids'       ``list``           A list of relevant job IDs currently running on the server
     ====================== =================== =========================================================================
 
-    Dictionary structure:
+    Dictionary structures:
 
-*   job_dict = {'label_1': {'conformers':       {0: Job1,
-                                                 1: Job2, ...},
-                            'opt':             {job_name1: Job1,
-                                                job_name2: Job2, ...},
-                            'sp':              {job_name1: Job1,
-                                                job_name2: Job2, ...},
-                            'freq':            {job_name1: Job1,
-                                                job_name2: Job2, ...},
-                            'composite':       {job_name1: Job1,
-                                                job_name2: Job2, ...},
-                            'scan': {pivots_1: {job_name1: Job1,
-                                                job_name2: Job2, ...},
-                                     pivots_2: {job_name1: Job1,
-                                                job_name2: Job2, ...},
-                            }
+*   job_dict = {label_1: {'conformers':       {0: Job1,
+                                               1: Job2, ...},
+                          'opt':             {job_name1: Job1,
+                                              job_name2: Job2, ...},
+                          'sp':              {job_name1: Job1,
+                                              job_name2: Job2, ...},
+                          'freq':            {job_name1: Job1,
+                                              job_name2: Job2, ...},
+                          'composite':       {job_name1: Job1,
+                                              job_name2: Job2, ...},
+                          'scan': {pivot_1: {job_name1: Job1,
+                                             job_name2: Job2, ...},
+                                   pivot_2: {job_name1: Job1,
+                                             job_name2: Job2, ...},
+                                  }
+                          }
+                label_2: {...},
                 }
+
+*   output = {label_1: {'status': ``str``,  # 'converged', or 'Error: <reason>'
+                        'geo': <path to geometry optimization output file>,
+                        'freq': <path to freq output file>,
+                        'sp': <path to sp output file>,
+                        'number_of_rotors': <number of rotors>,
+                        'rotors': {1: {'path': <path to scan output file>,
+                                       'pivots': pivots_list,
+                                       'top': top_list},
+                                   2:  {...}
+                                  }
+                        },
+             label_2: {...},
+             }
     """
-    # TODO: a dict of job names and output files of final geo, freq, sp, scans. the final result returned
-    # TODO: also track failed jobs/species like unconverged opt or neg freq
-    # TODO: adding that could be done in check functions
     def __init__(self, project, species_list, level_of_theory, freq_level='', scan_level=''):
         self.project = project
         self.servers = list()
@@ -79,13 +93,15 @@ class Scheduler(object):
         self.servers_jobs_ids = list()
         self.species_dict = dict()
         self.unique_species_labels = list()
-        # TODO: repeat the below loop for rxns and create TS labels and an empty job_dict[label] = dict() for each
+        self.output = dict()
         for species in self.species_list:
             if not isinstance(species, ARCSpecies):
                 raise SpeciesError('Each species in `species_list` must be a ARCSpecies object.')
             if species.label in self.unique_species_labels:
                 raise SpeciesError('Each species in `species_list` has to have a unique label.')
             self.unique_species_labels.append(species.label)
+            self.output[species.label] = dict()
+            self.output[species.label]['status'] = ''
             self.job_dict[species.label] = dict()
             species.generate_localized_structures()
             if species.initial_xyz:
@@ -146,15 +162,18 @@ class Scheduler(object):
                                         # This was originally a composite method, probably troubleshooted as 'opt'
                                         self.run_composite_job(label)
                                     else:
-                                        if 'freq' not in job_name:
-                                            self.run_freq_job(label)
+                                        if not self.species_dict[label].monoatomic:
+                                            if 'freq' not in job_name:
+                                                self.run_freq_job(label)
+                                            else:  # this is an 'optfreq' job type
+                                                self.check_freq_job(label=label, job=job)
                                         self.run_sp_job(label)
                                         self.run_scan_jobs(label)
                             self.timer = False
                             break
                         elif 'freq' in job_name\
                                 and not self.job_dict[label]['freq'][job_name].job_id in self.servers_jobs_ids:
-                            # this is not an 'optfreq' job
+                            # this is NOT an 'optfreq' job
                             job = self.job_dict[label]['freq'][job_name]
                             successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
                             if successful_server_termination:
@@ -180,7 +199,8 @@ class Scheduler(object):
                                         # This wasn't originally a composite method, probably troubleshooted as such
                                         self.run_opt_job(label)
                                     else:
-                                        self.run_freq_job(label)
+                                        if not self.species_dict[label].monoatomic:
+                                            self.run_freq_job(label)
                                         self.run_scan_jobs(label)
                             self.timer = False
                             break
@@ -197,7 +217,6 @@ class Scheduler(object):
                     pass
                 if not self.running_jobs[label]:
                     self.check_all_done(label)
-                    logging.info('All jobs of species {0} are done'.format(label))
                     del self.running_jobs[label]
 
             if self.timer:
@@ -238,7 +257,7 @@ class Scheduler(object):
         A helper function for checking job status, saving in cvs file, and downloading output files.
         Returns ``True`` if job terminated successfully on the server, ``False`` otherwise
         """
-        logging.info('ending job {0}'.format(job.job_name))
+        logging.info('  Ending job {0}'.format(job.job_name))
         job.determine_job_status()  # also downloads output file
         job.write_completed_job_to_csv_file()
         self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
@@ -390,6 +409,7 @@ class Scheduler(object):
                 self.species_dict[label].initial_xyz = xyz  # save for troubleshooting, since trsh goes by initial
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, job_type='opt', fine=True)
             else:
+                self.output[label]['status'] += 'opt converged; '
                 return True  # run freq / sp / scan jobs on this fine optimized geometry
         else:
             self.troubleshoot_opt_jobs(label=label)
@@ -412,9 +432,15 @@ class Scheduler(object):
         if self.species_dict[label].is_ts and neg_freq_counter != 1:
                 logging.error('TS {0} has {1} imaginary frequencies,'
                               ' should have exactly 1.'.format(label, neg_freq_counter))
+                self.output[label]['status'] += 'Error: {0} imaginary freq for TS; '.format(neg_freq_counter)
         elif not self.species_dict[label].is_ts and neg_freq_counter != 0:
                 logging.error('species {0} has {1} imaginary frequencies,'
                               ' should have exactly 0.'.format(label, neg_freq_counter))
+                self.output[label]['status'] += 'Error: {0} imaginary freq for stable species; '.format(neg_freq_counter)
+        else:
+            self.output[label]['status'] += 'freq converged; '
+            self.output[label]['geo'] = local_path_to_output_file
+            self.output[label]['freq'] = local_path_to_output_file
 
     def check_sp_job(self, label, job):
         """
@@ -422,6 +448,9 @@ class Scheduler(object):
         """
         if job.job_status[1] != 'done':
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level_of_theory, job_type='sp')
+        else:
+            self.output[label]['status'] += 'sp converged; '
+            self.output[label]['sp'] = os.path.join(job.local_path, 'output.out')
 
     def check_scan_job(self, label, job):
         """
@@ -429,7 +458,6 @@ class Scheduler(object):
         and recommends whether or not to use this rotor using the 'successful_rotors' and 'unsuccessful_rotors'
         attributes.
         """
-
         for i in xrange(self.species_dict[label].number_of_rotors):
             if self.species_dict[label].rotors_dict[i]['pivots'] == job.pivots:
                 if job.job_status[1] == 'done':
@@ -441,7 +469,8 @@ class Scheduler(object):
             raise SchedulerError('Could not match rotor with pivots {0} in species {1}'.format(job.pivots, label))
         # ESS converged. Is rotor smooth?
         # if self.species_dict[label].rotors_dict[i]['success'] == True:
-        # TODO: is rotor smooth?
+        # TODO: is rotor smooth? then add to self.output[label]['rotors'][i]
+        # TODO: also check (via Arkane) if rotors start at minimum enery. otherwise, troubleshoot (important!)
         pass
 
     def get_servers_jobs_ids(self):
@@ -692,38 +721,16 @@ class Scheduler(object):
         """
         Check that we have all required data for the species/TS in ``label``
         """
-        pass
+        status = self.output[label]['status']
+        if 'opt converged' in status and 'sp converged' in status\
+                and (self.species_dict[label].monoatomic or 'freq converged' in status):  # TODO: add scan check
+            logging.info('All jobs of species {0} successfully converged'.format(label))
+        else:
+            logging.error('species {0} did not converge. Status is: {1}'.format(label, status))
 
 
-# TODO: TSs, troubleshooting convergence problems (do CBS-QB3, molpro tricks)
-# TODO: a log file for each species with sucsessfull runs/rotors/ etc. all statuses
-
-"""
-
-    # An additional freq job has to be spawned since gaussian can only be forced to output the complete
-    # Hessian for the first part of the its job.
-Maybe define (in this file) an ARCSpecies object with all properties? (inc. TS?)
-
-generate and explore all conformers
-get all species
-(bother with TS's later)
-ask what additional jobs are needed for the species
-parse output
-write completed jobs to csv file
-actually run the jobs
-
-check (using Arkane) if the rotors start at the minimal energy. if not, re opt.
-"""
-
-
-
-"""
-troubleshoot geomerty unconverged in gaussian: add Opt=CalcFC
-troubleshoot sp in molpro: use a lower but reasonable basis set, then the higher one
-
-QA: check number of negative frequencies
-
-check spin contamination (in molpro, this is in the output.log file(!) as "Spin contamination <S**2-Sz**2-Sz>     0.00000000")
-check T3 or other MR indication
-make visuallization files
-"""
+#TODO: write completed jobs to csv file
+#TODO: check spin contamination (in molpro, this is in the output.log file(!) as "Spin contamination <S**2-Sz**2-Sz>     0.00000000")
+#TODO: check T3 or other MR indication
+#TODO: make visuallization files
+#TODO: MRCI input file and auto-occ
