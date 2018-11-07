@@ -226,8 +226,11 @@ class Job(object):
         else: conformer = str(self.conformer)
         with open(csv_path, 'ab') as f:
             writer = csv.writer(f, dialect='excel')
+            job_type = self.job_type
+            if self.fine:
+                job_type += ' (fine)'
             row = [self.job_num, self.project, self.species_name, conformer, self.is_ts, self.charge,
-                   self.multiplicity, self.job_type, self.job_name, self.job_id, self.server, self.software,
+                   self.multiplicity, job_type, self.job_name, self.job_id, self.server, self.software,
                    self.memory, self.method, self.basis_set, self.date_time, self.run_time, self.job_status[0],
                    self.job_status[1], self.ess_trsh_methods, self.comments]
             writer.writerow(row)
