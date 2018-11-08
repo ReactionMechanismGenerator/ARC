@@ -33,39 +33,88 @@ class ARC(object):
     `arc_species_list`     ``list``            A list of ARCSpecies objects (each entry represent either a stable well
                                                  or a TS)
     'rxn_list'             ``list``            A list of RMG Reaction objects. Will (hopefully) be converted into TSs
-    `level_of_theory`      ``str``             *FULL* level of theory, e.g. 'CBS-QB3',
-                                                 'CCSD(T)-F12a/aug-cc-pVTZ//B3LYP/6-311++G(3df,3pd)'...
-    'freq_level'           ``str``             Level of theory for frequency jobs. Default is the optimization level.
-    'scan_level'           ``str``             Level of theory for rotor scan jobs. Default is 'b3lyp/6-311++g(d,p)'.
+    'conformer_level'      ``str``             Level of theory for conformer searches
+    'composite_method'     ``str``             Composite method
+    'opt_level'            ``str``             Level of theory for geometry optimization
+    'freq_level'           ``str``             Level of theory for frequency calculations
+    'sp_level'             ``str``             Level of theory for single point calculations
+    'scan_level'           ``str``             Level of theory for rotor scans
     'output'               ``dict``            Output dictionary with status and final QM files for all species
+    'fine'                 ``bool``            Whether or not to use a fine grid for opt jobs (spawns an additional job)
     ====================== =================== =========================================================================
+
+    `level_of_theory` is a string representing either sp//geometry levels or a composite method, e.g. 'CBS-QB3',
+                                                 'CCSD(T)-F12a/aug-cc-pVTZ//B3LYP/6-311++G(3df,3pd)'...
     """
     def __init__(self, project, rmg_species_list=list(), arc_species_list=list(), rxn_list=list(),
-                 level_of_theory='', freq_level='', scan_level='', verbose=logging.INFO):
+                 level_of_theory='', conformer_level='', composite_method='', opt_level='', freq_level='', sp_level='',
+                 scan_level='', fine=True, verbose=logging.INFO):
+
         self.project = project
+
         if level_of_theory.count('//') > 1:
-            raise InputError('Level of theory seems wrong. Got: {0}'.format(level_of_theory))
+            raise InputError('Level of theory seems wrong. It should either be a composite method (like CBS-QB3)'
+                             ' or be of the form sp//geometry, e.g., CCSD(T)-F12/avtz//wB97x-D3/6-311++g**.'
+                             ' Got: {0}'.format(level_of_theory))
+
+        if conformer_level:
+            self.conformer_level = conformer_level.lower()
+            logging.info('Using {0} for refined conformer searches (after filtering via force fields)'.format(
+                conformer_level))
+        else:
+            logging.info('Using B97-D3/def2_mSVP for refined conformer searches (after filtering via force fields)')
+            self.conformer_level = 'b97-d3/def2_msvp'  # use B97-D3/def2_mSVP as default for conformer search
+
         if level_of_theory:
-            if '/' in level_of_theory and '//' not in level_of_theory:
-                # assume this is not a composite method, and the user meant to run both opt and sp at this level
+            if '/' not in level_of_theory:
+                # assume this is a composite method
+                self.composite_method = level_of_theory.lower()
+                logging.info('Using composite method {0}'.format(level_of_theory))
+            elif '//' in level_of_theory:
+                self.opt_level = level_of_theory.lower().split('//')[1]
+                self.freq_level = level_of_theory.lower().split('//')[1]
+                self.sp_level = level_of_theory.lower().split('//')[0]
+                logging.info('Using {0} for geometry optimizations'.format(level_of_theory.split('//')[1]))
+                logging.info('Using {0} for frequency calculations'.format(level_of_theory.split('//')[1]))
+                logging.info('Using {0} for single point calculations'.format(level_of_theory.split('//')[0]))
+            elif '/' in level_of_theory and '//' not in level_of_theory:
+                # assume this is not a composite method, and the user meant to run opt, freq and sp at this level.
                 # running an sp after opt at the same level is meaningless, but doesn't matter much also
                 # The '//' combination will later assist in differentiating between composite to non-composite methods
-                level_of_theory = level_of_theory + '//' + level_of_theory
-            self.level_of_theory = level_of_theory.lower()
+                self.opt_level = level_of_theory.lower()
+                self.freq_level = level_of_theory.lower()
+                self.sp_level = level_of_theory.lower()
+                logging.info('Using {0} for geometry optimizations'.format(level_of_theory))
+                logging.info('Using {0} for frequency calculations'.format(level_of_theory))
+                logging.info('Using {0} for single point calculations'.format(level_of_theory))
         else:
-            logging.warning('No level of theory specified, using B3LYP/6-311++G(d,p) by default.')
-            self.level_of_theory = 'b3lyp/6-311++g(d,p)//b3lyp/6-311++g(d,p)'
-        if freq_level:
-            self.freq_level = freq_level.lower()
-        elif '//' in self.level_of_theory:
-            logging.info('No level of theory specified for frequencies.'
-                         ' Using the geometry optimization level, {0}'.format(self.level_of_theory.split('//')[1]))
-            self.freq_level = self.level_of_theory.split('//')[1]
-        if scan_level:
-            self.scan_level = scan_level.lower()
-        else:
-            logging.info('No level of theory specified for rotor scans. Using B3LYP/6-311++G(d,p) by default.')
-            self.scan_level = 'b3lyp/6-311++g(d,p)'
+            if composite_method:
+                self.composite_level = composite_method
+                logging.info('Using composite method {0}'.format(composite_method))
+            if opt_level and not self.composite_level:
+                self.opt_level = opt_level.lower()
+                logging.info('Using {0} for geometry optimizations'.format(opt_level))
+            else:
+                self.opt_level = 'wb97x-d3/def2_tzvpd'
+                logging.info('Using wB97x-D3/def2_TZVPD for geometry optimizations')
+            if freq_level:
+                self.freq_level = freq_level.lower()
+                logging.info('Using {0} for frequency calculations'.format(freq_level))
+            else:
+                self.freq_level = 'wb97x-d3/def2_tzvpd'
+                logging.info('Using wB97x-D3/def2_TZVPD for frequency calculations')
+            if sp_level:
+                self.sp_level = sp_level.lower()
+                logging.info('Using {0} for single point calculations'.format(sp_level))
+            else:
+                logging.info('Using CCSD(T)-F12a/aug-cc-pVTZ for single point calculations')
+                self.sp_level = 'ccsd(T)-f12a/aug-cc-pvtz'
+            if scan_level:
+                self.scan_level = scan_level.lower()
+                logging.info('Using {0} for rotor scans'.format(scan_level))
+            else:
+                self.scan_level = 'b97-d3/def2_tzvp'
+                logging.info('Using B97-D3/def2_TZVP for rotor scans')
 
         self.rmg_species_list = rmg_species_list
         self.arc_species_list = arc_species_list
@@ -81,11 +130,8 @@ class ARC(object):
 
         self.rxn_list = rxn_list
 
+        self.fine = fine
         self.output = dict()
-
-        if not ('cbs' in self.level_of_theory or '//' in self.level_of_theory):
-            raise InputError('Level of theory should either be a composite method (like CBS-QB3) or be of the'
-                             'form sp//geometry, e.g., CCSD(T)-F12/avtz//wB97x-D3/6-311++g**')
         self.verbose = verbose
         self.output_directory = os.path.join(arc_path, 'Projects', self.project)
         if not os.path.exists(self.output_directory):
@@ -106,10 +152,10 @@ class ARC(object):
                 raise ValueError()
             logging.info('Considering reacrion {0}'.format(rxn))
         scheduler = Scheduler(project=self.project, species_list=self.arc_species_list,
-                              level_of_theory=self.level_of_theory, freq_level=self.freq_level,
-                              scan_level=self.scan_level)
+                              composite_method=self.composite_method, conformer_level=self.conformer_level,
+                              opt_level=self.opt_level, freq_level=self.freq_level, sp_level=self.sp_level,
+                              scan_level=self.scan_level, fine=self.fine)
         self.output = scheduler.output
-        print self.output
         self.log_footer()
 
     def initialize_log(self, verbose=logging.INFO, log_file=None):
