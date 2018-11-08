@@ -147,100 +147,99 @@ class Scheduler(object):
                 self.get_servers_jobs_ids()  # updates `self.servers_jobs_ids`
                 try:
                     job_list = self.running_jobs[label]
-                    for job_name in job_list:
-                        if 'conformer' in job_name:
-                            i = int(job_name[9:])  # the conformer number. parsed from a string like 'conformer12'.
-                            if self.job_dict[label]['conformers'][i].job_id not in self.servers_jobs_ids:
-                                # this is a completed conformer job
-                                job = self.job_dict[label]['conformers'][i]
-                                successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
-                                if successful_server_termination:
-                                    self.parse_conformer_energy(job=job, label=label, i=i)
-                                # Just terminated a conformer job.
-                                # Are there additional conformer jobs currently running for this species?
-                                for spec_jobs in job_list:
-                                    if 'conformer' in spec_jobs:
-                                        break
-                                else:
-                                    # All conformer jobs terminated. Run opt on most stable conformer geometry.
-                                    logging.info('\nConformer jobs for {0} successfully terminated.\n'.format(
-                                        label))
-                                    self.determine_most_stable_conformer(label)
-                                    if not self.composite:
-                                        self.run_opt_job(label)
-                                    else:
-                                        self.run_composite_job(label)
-                                self.timer = False
-                                break
-                        elif 'opt' in job_name\
-                                and not self.job_dict[label]['opt'][job_name].job_id in self.servers_jobs_ids:
-                            # val is 'opt1', 'opt2', etc., or 'optfreq1', optfreq2', etc.
-                            job = self.job_dict[label]['opt'][job_name]
-                            successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
-                            if successful_server_termination:
-                                success = self.parse_opt_geo(label=label, job=job)
-                                if success:
-                                    if self.composite:
-                                        # This was originally a composite method, probably troubleshooted as 'opt'
-                                        self.run_composite_job(label)
-                                    else:
-                                        if not self.species_dict[label].monoatomic:
-                                            if 'freq' not in job_name:
-                                                self.run_freq_job(label)
-                                            else:  # this is an 'optfreq' job type
-                                                self.check_freq_job(label=label, job=job)
-                                        self.run_sp_job(label)
-                                        self.run_scan_jobs(label)
-                            self.timer = False
-                            break
-                        elif 'freq' in job_name\
-                                and not self.job_dict[label]['freq'][job_name].job_id in self.servers_jobs_ids:
-                            # this is NOT an 'optfreq' job
-                            job = self.job_dict[label]['freq'][job_name]
-                            successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
-                            if successful_server_termination:
-                                self.check_freq_job(label=label, job=job)
-                            self.timer = False
-                            break
-                        elif 'sp' in job_name\
-                                and not self.job_dict[label]['sp'][job_name].job_id in self.servers_jobs_ids:
-                            job = self.job_dict[label]['sp'][job_name]
-                            successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
-                            if successful_server_termination:
-                                self.check_sp_job(label=label, job=job)
-                            self.timer = False
-                            break
-                        elif 'composite' in job_name\
-                                and not self.job_dict[label]['composite'][job_name].job_id in self.servers_jobs_ids:
-                            job = self.job_dict[label]['composite'][job_name]
-                            successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
-                            if successful_server_termination:
-                                success = self.parse_opt_geo(label=label, job=job)
-                                if success:
-                                    if not self.composite:
-                                        # This wasn't originally a composite method, probably troubleshooted as such
-                                        self.run_opt_job(label)
-                                    else:
-                                        if not self.species_dict[label].monoatomic:
-                                            self.run_freq_job(label)
-                                        self.run_scan_jobs(label)
-                            self.timer = False
-                            break
-                        elif 'scan' in job_name\
-                                and not self.job_dict[label]['scan'][job_name].job_id in self.servers_jobs_ids:
-                            job = self.job_dict[label]['scan'][job_name]
-                            successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
-                            if successful_server_termination:
-                                self.check_scan_job(label=label, job=job)
-                            self.timer = False
-                            break
-                        # TODO: GSM, IRC
                 except KeyError:
-                    pass
-                if not self.running_jobs[label]:
+                    continue
+                for job_name in job_list:
+                    if 'conformer' in job_name:
+                        i = int(job_name[9:])  # the conformer number. parsed from a string like 'conformer12'.
+                        if self.job_dict[label]['conformers'][i].job_id not in self.servers_jobs_ids:
+                            # this is a completed conformer job
+                            job = self.job_dict[label]['conformers'][i]
+                            successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
+                            if successful_server_termination:
+                                self.parse_conformer_energy(job=job, label=label, i=i)
+                            # Just terminated a conformer job.
+                            # Are there additional conformer jobs currently running for this species?
+                            for spec_jobs in job_list:
+                                if 'conformer' in spec_jobs:
+                                    break
+                            else:
+                                # All conformer jobs terminated. Run opt on most stable conformer geometry.
+                                logging.info('\nConformer jobs for {0} successfully terminated.\n'.format(
+                                    label))
+                                self.determine_most_stable_conformer(label)
+                                if not self.composite_method:
+                                    self.run_opt_job(label)
+                                else:
+                                    self.run_composite_job(label)
+                            self.timer = False
+                            break
+                    elif 'opt' in job_name\
+                            and not self.job_dict[label]['opt'][job_name].job_id in self.servers_jobs_ids:
+                        # val is 'opt1', 'opt2', etc., or 'optfreq1', optfreq2', etc.
+                        job = self.job_dict[label]['opt'][job_name]
+                        successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
+                        if successful_server_termination:
+                            success = self.parse_opt_geo(label=label, job=job)
+                            if success:
+                                if self.composite_method:
+                                    # This was originally a composite method, probably troubleshooted as 'opt'
+                                    self.run_composite_job(label)
+                                else:
+                                    if not self.species_dict[label].monoatomic:
+                                        if 'freq' not in job_name:
+                                            self.run_freq_job(label)
+                                        else:  # this is an 'optfreq' job type
+                                            self.check_freq_job(label=label, job=job)
+                                    self.run_sp_job(label)
+                                    self.run_scan_jobs(label)
+                        self.timer = False
+                        break
+                    elif 'freq' in job_name\
+                            and not self.job_dict[label]['freq'][job_name].job_id in self.servers_jobs_ids:
+                        # this is NOT an 'optfreq' job
+                        job = self.job_dict[label]['freq'][job_name]
+                        successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
+                        if successful_server_termination:
+                            self.check_freq_job(label=label, job=job)
+                        self.timer = False
+                        break
+                    elif 'sp' in job_name\
+                            and not self.job_dict[label]['sp'][job_name].job_id in self.servers_jobs_ids:
+                        job = self.job_dict[label]['sp'][job_name]
+                        successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
+                        if successful_server_termination:
+                            self.check_sp_job(label=label, job=job)
+                        self.timer = False
+                        break
+                    elif 'composite' in job_name\
+                            and not self.job_dict[label]['composite'][job_name].job_id in self.servers_jobs_ids:
+                        job = self.job_dict[label]['composite'][job_name]
+                        successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
+                        if successful_server_termination:
+                            success = self.parse_opt_geo(label=label, job=job)
+                            if success:
+                                if not self.composite_method:
+                                    # This wasn't originally a composite method, probably troubleshooted as such
+                                    self.run_opt_job(label)
+                                else:
+                                    if not self.species_dict[label].monoatomic:
+                                        self.run_freq_job(label)
+                                    self.run_scan_jobs(label)
+                        self.timer = False
+                        break
+                    elif 'scan' in job_name\
+                            and not self.job_dict[label]['scan'][job_name].job_id in self.servers_jobs_ids:
+                        job = self.job_dict[label]['scan'][job_name]
+                        successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
+                        if successful_server_termination:
+                            self.check_scan_job(label=label, job=job)
+                        self.timer = False
+                        break
+                    # TODO: GSM, IRC
+                if not job_list:  # if it's an empty dictionary
                     self.check_all_done(label)
                     del self.running_jobs[label]
-
             if self.timer:
                 logging.debug('zzz... setting timer for 1 minute... zzz')
                 time.sleep(30)  # wait 30 sec before bugging the servers again.
