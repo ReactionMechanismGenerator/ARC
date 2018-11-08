@@ -111,10 +111,10 @@ class Job(object):
                 elif 'b97' in self.method or 'm06-2x' in self.method or 'def2' in self.basis_set:
                     self.software = 'qchem'
             elif job_type == 'scan':
-                # if 'b97' in self.method or 'm06-2x' in self.method or 'def2' in self.basis_set:
-                self.software = 'qchem'
-                # else:
-                #     self.software = 'gaussian03'
+                if 'b97' in self.method or 'm06-2x' in self.method or 'def2' in self.basis_set:
+                    self.software = 'qchem'
+                else:
+                    self.software = 'gaussian03'
             elif job_type == 'gsm':
                 self.software = 'gaussian03'
             elif job_type == 'irc':
