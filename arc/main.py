@@ -113,8 +113,8 @@ class ARC(object):
                 self.scan_level = scan_level.lower()
                 logging.info('Using {0} for rotor scans'.format(scan_level))
             else:
-                self.scan_level = 'b97-d3/def2_tzvp'
-                logging.info('Using B97-D3/def2_TZVP for rotor scans')
+                self.scan_level = 'b3lyp/6-311++g(d,p)'
+                logging.info('Using B3LYP/6-311++G(d,p) for rotor scans')
 
         self.rmg_species_list = rmg_species_list
         self.arc_species_list = arc_species_list
