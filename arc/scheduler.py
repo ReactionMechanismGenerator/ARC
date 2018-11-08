@@ -369,9 +369,8 @@ class Scheduler(object):
         """
         if job.job_status[1] == 'done':
             job = self.job_dict[label]['conformers'][i]
-            local_path_to_output_file = os.path.join(job.local_path, 'output.out')
             log = Log(path='')
-            log.determine_qm_software(fullpath=local_path_to_output_file)
+            log.determine_qm_software(fullpath=job.local_path_to_output_file)
             e0 = log.software_log.loadEnergy()
             self.species_dict[label].conformer_energies[i] = e0
         else:
@@ -398,9 +397,8 @@ class Scheduler(object):
         """
         logging.debug('parsing opt geo for {0}'.format(job.job_name))
         if job.job_status[1] == 'done':
-            local_path_to_output_file = os.path.join(job.local_path, 'output.out')
             log = Log(path='')
-            log.determine_qm_software(fullpath=local_path_to_output_file)
+            log.determine_qm_software(fullpath=job.local_path_to_output_file)
             coord, number, mass = log.software_log.loadGeometry()
             self.species_dict[label].final_xyz = get_xyz_matrix(xyz=coord, from_arkane=True, number=number)
             if not job.fine and self.fine:
@@ -423,10 +421,9 @@ class Scheduler(object):
         stable species, and that exactly one imaginary frequency was assigned for a TS.
         """
         if job.job_status[1] == 'done':
-            local_path_to_output_file = os.path.join(job.local_path, 'output.out')
-            if not os.path.isfile(local_path_to_output_file):
+            if not os.path.isfile(job.local_path_to_output_file):
                 raise SchedulerError('Called check_freq_job with no output file')
-            parser = cclib.io.ccopen(local_path_to_output_file)
+            parser = cclib.io.ccopen(job.local_path_to_output_file)
             data = parser.parse()
             neg_freq_counter = 0
             for freq in data.vibfreqs:
@@ -442,8 +439,8 @@ class Scheduler(object):
                     self.output[label]['status'] += 'Error: {0} imaginary freq for stable species; '.format(neg_freq_counter)
             else:
                 self.output[label]['status'] += 'freq converged; '
-                self.output[label]['geo'] = local_path_to_output_file
-                self.output[label]['freq'] = local_path_to_output_file
+                self.output[label]['geo'] = job.local_path_to_output_file
+                self.output[label]['freq'] = job.local_path_to_output_file
         else:
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level_of_theory, job_type='freq')
 
