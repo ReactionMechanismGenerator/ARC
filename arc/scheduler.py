@@ -32,7 +32,6 @@ class Scheduler(object):
     'servers'               ''list''           A list of servers used for the present project
     `species_list`          ``list``           Contains input ``ARCSpecies`` objects (both species and TSs).
     `species_dict`          ``dict``           A convenient way to call species by their labels
-    `output`                ``dict``           A dictionary of
     'unique_species_labels' ``list``           A list of species labels (checked for duplicates)
     `level_of_theory`       ``str``            *FULL* level of theory, e.g. 'CBS-QB3',
                                                  'CCSD(T)-F12a/aug-cc-pVTZ//B3LYP/6-311++G(3df,3pd)'...
@@ -83,19 +82,22 @@ class Scheduler(object):
              label_2: {...},
              }
     """
-    def __init__(self, project, species_list, level_of_theory, freq_level='', scan_level='', fine=False):
+    def __init__(self, project, species_list, composite_method, conformer_level, opt_level, freq_level, sp_level,
+                 scan_level, fine=False):
         self.project = project
         self.servers = list()
         self.species_list = species_list
-        self.level_of_theory = level_of_theory.lower()
+        self.composite_method = composite_method
+        self.conformer_level = conformer_level
+        self.opt_level = opt_level
         self.freq_level = freq_level
+        self.sp_level = sp_level
         self.scan_level = scan_level
         self.fine = fine
         if not self.fine:
             logging.info('\n')
             logging.warning('Not using a fine grid for geometry optimization jobs')
             logging.info('\n')
-        self.composite = not '//' in self.level_of_theory
         self.job_dict = dict()
         self.running_jobs = dict()
         self.servers_jobs_ids = list()
@@ -139,7 +141,6 @@ class Scheduler(object):
         The main job scheduling block
         """
         self.run_conformer_jobs()  # also writes jobs to self.running_jobs
-        # TODO: get xyz guesses for all TSs
         while self.running_jobs != {}:  # loop while jobs are still running
             self.timer = True
             for label in self.unique_species_labels:  # look for completed jobs and decide what jobs to run next
@@ -298,7 +299,7 @@ class Scheduler(object):
             if not self.species_dict[label].is_ts and not self.species_dict[label].initial_xyz:
                 self.job_dict[label]['conformers'] = dict()
                 for i, xyz in enumerate(self.species_dict[label].conformers):
-                    self.run_job(label=label, xyz=xyz, level_of_theory='b3lyp/6-311++g(d,p)', job_type='conformer',
+                    self.run_job(label=label, xyz=xyz, level_of_theory=self.conformer_level, job_type='conformer',
                                  conformer=i)
 
     def run_opt_job(self, label):
@@ -306,22 +307,17 @@ class Scheduler(object):
         Spawn a geometry optimization job. The initial guess is taken from the `initial_xyz` attribute.
         """
         if 'opt' not in self.job_dict[label]:  # Check whether or not opt jobs have been spawned yet
-            # we're spawning the first opt jobfor this species
+            # we're spawning the first opt job for this species
             self.job_dict[label]['opt'] = dict()
-        if not self.composite:
-            level_of_theory = self.level_of_theory.split('//')[1]
-        else:
-            level_of_theory = 'b3lyp/6-311++g(d,p)'  # this is probably a troubleshooting opt job for a composite method
-        self.run_job(label=label, xyz=self.species_dict[label].initial_xyz, level_of_theory=level_of_theory,
+        self.run_job(label=label, xyz=self.species_dict[label].initial_xyz, level_of_theory=self.opt_level,
                      job_type='opt', fine=False)
 
     def run_composite_job(self, label):
         """
         Spawn a composite job (e.g., CBS-QB3) using 'final_xyz' for species ot TS 'label'.
         """
-        if not self.composite:
-            logging.error('Cannot run {0} as a composite method'.format(self.level_of_theory))
-            raise SchedulerError('Cannot run {0} as a composite method'.format(self.level_of_theory))
+        if not self.composite_method:
+            raise SchedulerError('Cannot run {0} as a composite method, without specifying a method.'.format(label))
         if 'composite' not in self.job_dict[label]:  # Check whether or not composite jobs have been spawned yet
             # we're spawning the first composite job for this species
             self.job_dict[label]['composite'] = dict()
@@ -329,7 +325,7 @@ class Scheduler(object):
             xyz = self.species_dict[label].final_xyz
         else:
             xyz = self.species_dict[label].initial_xyz
-        self.run_job(label=label, xyz=xyz, level_of_theory=self.level_of_theory, job_type='composite', fine=False)
+        self.run_job(label=label, xyz=xyz, level_of_theory=self.composite_method, job_type='composite', fine=False)
 
     def run_freq_job(self, label):
         """
@@ -339,14 +335,8 @@ class Scheduler(object):
         if 'freq' not in self.job_dict[label]:  # Check whether or not freq jobs have been spawned yet
             # we're spawning the first freq job for this species
             self.job_dict[label]['freq'] = dict()
-        if self.freq_level:
-            level_of_theory = self.freq_level
-        elif self.composite:
-            level_of_theory = 'b3lyp/cbsb7'  # this is the freq basis set used in CBS-QB3
-        else:
-            level_of_theory = self.level_of_theory.split('//')[1]  # use the geometry optimization's level of theory
         self.run_job(label=label, xyz=self.species_dict[label].final_xyz,
-                     level_of_theory=level_of_theory, job_type='freq')
+                     level_of_theory=self.freq_level, job_type='freq')
 
     def run_sp_job(self, label):
         """
@@ -355,30 +345,23 @@ class Scheduler(object):
         if 'sp' not in self.job_dict[label]:  # Check whether or not single point jobs have been spawned yet
             # we're spawning the first sp job for this species
             self.job_dict[label]['sp'] = dict()
-        if self.composite:
+        if self.composite_method:
             raise SchedulerError('run_sp_job() was called for {0} which has a composite method level of theory'.format(
                 label))
-        else:
-            level_of_theory = self.level_of_theory.split('//')[0]
-        self.run_job(label=label, xyz=self.species_dict[label].final_xyz,
-                     level_of_theory=level_of_theory, job_type='sp')
+        self.run_job(label=label, xyz=self.species_dict[label].final_xyz, level_of_theory=self.sp_level, job_type='sp')
 
     def run_scan_jobs(self, label):
         """
         Spawn rotor scan jobs using 'final_xyz' for species ot TS 'label'.
         """
         if 'scan' not in self.job_dict[label]:  # Check whether or not rotor scan jobs have been spawned yet
-            # we're spawning the first scan jobfor this species
+            # we're spawning the first scan job for this species
             self.job_dict[label]['scan'] = dict()
-        if self.scan_level:
-            level_of_theory = self.scan_level
-        else:
-            level_of_theory = 'b3lyp/6-311++g(d,p)'  # default level for rotor scans
         for i in xrange(self.species_dict[label].number_of_rotors):
             scan = self.species_dict[label].rotors_dict[i]['scan']
             pivots = self.species_dict[label].rotors_dict[i]['pivots']
             self.run_job(label=label, xyz=self.species_dict[label].final_xyz,
-                         level_of_theory=level_of_theory, job_type='scan', scan=scan, pivots=pivots)
+                         level_of_theory=self.scan_level, job_type='scan', scan=scan, pivots=pivots)
 
     def parse_conformer_energy(self, job, label, i):
         """
@@ -393,8 +376,7 @@ class Scheduler(object):
             e0 = log.software_log.loadEnergy()
             self.species_dict[label].conformer_energies[i] = e0
         else:
-            self.troubleshoot_ess(label=label, job=job, level_of_theory='b3lyp/6-311++g(d,p)',
-                                  job_type='conformer', conformer=i)
+            logging.error('Conformer {i} for {label} did not converge!'.format(i=i, label=label))
 
     def determine_most_stable_conformer(self, label):
         """
@@ -429,6 +411,8 @@ class Scheduler(object):
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, job_type='opt', fine=True)
             else:
                 self.output[label]['status'] += 'opt converged; '
+                logging.info('\nOptimized geometry for {label} at {level}:\n{xyz}'.format(label=label,
+                            level=job.level_of_theory, xyz=self.species_dict[label].final_xyz))
                 return True  # run freq / sp / scan jobs on this fine optimized geometry
         else:
             self.troubleshoot_opt_jobs(label=label)
@@ -510,12 +494,6 @@ class Scheduler(object):
         First check for server status and troubleshoot if needed. Then check for ESS status and troubleshoot
         if needed. Finally, check whether or not the last job had fine=True, add if it didn't run with fine.
         """
-        if not self.composite:
-            # Take only the geometry part for level of theory
-            level_of_theory = self.level_of_theory.split('//')[1]
-        else:
-            # This is a composite method
-            level_of_theory = self.level_of_theory
         previous_job_num = -1
         latest_job_num = -1
         job = None
@@ -538,7 +516,7 @@ class Scheduler(object):
                     self.parse_opt_geo(label=label, job=job)
                     xyz = self.species_dict[label].final_xyz
                     self.species_dict[label].initial_xyz = xyz  # save for troubleshooting, since trsh goes by initial
-                    self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, job_type='opt', fine=True)
+                    self.run_job(label=label, xyz=xyz, level_of_theory=self.opt_level, job_type='opt', fine=True)
             else:
                 # job passed on the server, but failed in ESS calculation
                 if previous_job_num >= 0 and job.fine:
@@ -553,7 +531,7 @@ class Scheduler(object):
                                       ' grid again.')
                         self.parse_opt_geo(label=label, job=previous_job)
                 else:
-                    self.troubleshoot_ess(label=label, job=job, level_of_theory=level_of_theory, job_type='opt')
+                    self.troubleshoot_ess(label=label, job=job, level_of_theory=self.opt_level, job_type='opt')
         else:
             job.troubleshoot_server()
 
@@ -562,12 +540,11 @@ class Scheduler(object):
         Troubleshoot issues related to the electronic structure software, such as conversion
         """
         logging.info('\n')
-        logging.warn('Troubleshooting job {job_name} for {label} which failed with status'
-                     ' {stat} in {soft}.'.format(job_name=job.job_name, label=label, stat=job.job_status[1],
-                                                 soft=job.software))
+        logging.warn('Troubleshooting {label} job {job_name} which failed with status "{stat}" in {soft}.'.format(
+            job_name=job.job_name, label=label, stat=job.job_status[1], soft=job.software))
         xyz = self.species_dict[label].initial_xyz
         if job.software == 'gaussian03':
-            if 'cbs-qb3' not in job.ess_trsh_methods and self.level_of_theory != 'cbs-qb3':
+            if 'cbs-qb3' not in job.ess_trsh_methods and self.composite_method != 'cbs-qb3':
                 # try running CBS-QB3, which is relatively robust
                 logging.info('Troubleshooting {type} job in {software} using CBS-QB3'.format(
                     type=job_type, software=job.software))
@@ -610,7 +587,7 @@ class Scheduler(object):
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
                              job_type=job_type, fine=False, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
                              conformer=conformer)
-            elif self.level_of_theory != 'cbs-qb3':
+            elif self.composite_method != 'cbs-qb3' and 'scf=(qc,nosymm) & CBS-QB3' not in job.ess_trsh_methods:
                 # try both qc and nosymm with CBS-QB3
                 logging.info('Troubleshooting {type} job in {software} using oth qc and nosymm with CBS-QB3'.format(
                     type=job_type, software=job.software))
@@ -690,16 +667,7 @@ class Scheduler(object):
                                      ' troubleshooting with the following methods: {methods}'.format(
                     label=label, methods=job.ess_trsh_methods))
         elif 'molpro' in job.software:
-            if 'vdz' not in job.ess_trsh_methods:
-                # try adding a level shift for alpha- and beta-spin orbitals
-                logging.info('Troubleshooting {type} job in {software} using vdz'.format(
-                    type=job_type, software=job.software))
-                job.ess_trsh_methods.append('vdz')
-                trsh = 'vdz'
-                self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
-                             job_type=job_type, fine=False, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
-                             conformer=conformer)
-            elif 'shift' not in job.ess_trsh_methods:
+            if 'shift' not in job.ess_trsh_methods:
                 # try adding a level shift for alpha- and beta-spin orbitals
                 logging.info('Troubleshooting {type} job in {software} using shift'.format(
                     type=job_type, software=job.software))
@@ -716,6 +684,16 @@ class Scheduler(object):
                 trsh = 'vdz'
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
                              job_type=job_type, fine=False, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
+                             conformer=conformer)
+            elif 'vdz & shift' not in job.ess_trsh_methods:
+                # try adding a level shift for alpha- and beta-spin orbitals
+                logging.info('Troubleshooting {type} job in {software} using vdz'.format(
+                    type=job_type, software=job.software))
+                job.ess_trsh_methods.append('vdz & shift')
+                shift = 'shift,-1.0,-0.5;'
+                trsh = 'vdz'
+                self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
+                             job_type=job_type, fine=False, shift=shift, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
                              conformer=conformer)
             elif 'memory' not in job.ess_trsh_methods:
                 # Increase memory allocation, also run with a shift
