@@ -51,6 +51,7 @@ class Job(object):
     `job_name`         ``str``           Job's name for interal usage (e.g., 'opt_a103'). Determined automatically
     `job_id`           ``int``           The job's ID determined by the server.
     `local_path`       ``str``           Local path to job's folder. Determined automatically
+    'local_path_to_output_file' ``str``  The local path to the output.out file
     `remote_path`      ``str``           Remote path to job's folder. Determined automatically
     `submit`           ``str``           The submit script. Created automatically
     `input`            ``str``           The input file. Created automatically
@@ -157,8 +158,11 @@ class Job(object):
         conformer_folder = '' if self.conformer < 0 else os.path.join('conformers',str(self.conformer))
         self.local_path = os.path.join(arc_path, 'Projects', self.project,
                                        self.species_name, conformer_folder, self.job_name)
+        self.local_path_to_output_file = os.path.join(self.local_path, 'output.out')
+        # parentheses don't play well in folder names:
+        species_name_for_remote_path = self.species_name.replace('(', '_').replace(')','_')
         self.remote_path = os.path.join('runs', 'ARC_Projects', self.project,
-                                       self.species_name, conformer_folder, self.job_name)
+                                        species_name_for_remote_path, conformer_folder, self.job_name)
         self.submit = ''
         self.input = ''
         try:
