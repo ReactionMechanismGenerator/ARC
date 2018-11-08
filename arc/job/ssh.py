@@ -6,6 +6,7 @@ import logging
 import os
 
 from arc.settings import servers, check_status_command, submit_command, submit_filename
+from arc.exceptions import InputError
 
 ##################################################################
 
@@ -52,18 +53,21 @@ class SSH_Client(object):
 
     def upload_file(self, remote_file_path, local_file_path='', file_string=''):
         """
-        Upload `local_file_path` to `remote_file_path`.
+        Upload `local_file_path` or the contents of `file_string` to `remote_file_path`.
         Either `file_string` or `local_file_path` must be given.
         """
+        if local_file_path and not os.path.isfile(local_file_path):
+            raise InputError('Cannot upload a non-existing file.'
+                             ' Check why file in path {0} is missing.'.format(local_file_path))
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         ssh.load_system_host_keys(filename=self.key)
         ssh.connect(hostname=self.address, username=self.un)
         sftp = ssh.open_sftp()
         with sftp.open(remote_file_path, "w") as f_remote:
-            if len(file_string):
+            if file_string:
                 f_remote.write(file_string)
-            elif len(local_file_path):
+            elif local_file_path:
                 # with open(local_file_path, 'r') as f_local:
                 #     f_remote.write(f_local.readlines())
                 sftp.put(localpath=local_file_path, remotepath=remote_file_path)
