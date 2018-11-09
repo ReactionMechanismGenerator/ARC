@@ -2,16 +2,19 @@
 # encoding: utf-8
 
 import logging
+import numpy as np
 
-from rdkit.Chem import AllChem
+from rdkit import Chem
+from rdkit.Chem import rdMolTransforms as rdmt
 import openbabel as ob
 import pybel as pyb
 
 from rmgpy.molecule.converter import toOBMol
 from rmgpy.molecule.element import getElement
 from rmgpy.species import Species
+from rmgpy.molecule.molecule import Atom, Molecule
 
-from arc.exceptions import SpeciesError
+from arc.exceptions import SpeciesError, RotorError
 
 ##################################################################
 
@@ -41,7 +44,8 @@ class ARCSpecies(object):
 *   rotors_dict: {1: {'pivots': pivots_list,
                       'top': top_list,
                       'scan': scan_list,
-                      'success: ''bool''},
+                      'success: ''bool''.
+                      'times_dihedral_set': ``int``},
                   2: {}, ...
                  }
     """
@@ -144,33 +148,33 @@ class ARCSpecies(object):
         and converts them back in terms of the RMG atom ordering
         Returns the coordinates and energies
         """
-        rdmol, rdInds = mol.toRDKitMol(removeHs=False, returnMapping=True)
-        rdIndMap = dict()
-        for k, atm in enumerate(mol.atoms):
-            ind = rdInds[atm]
-            rdIndMap[ind] = k
+        rd_mol, rd_inds = mol.toRDKitMol(removeHs=False, returnMapping=True)
+        rd_indx_map = dict()
+        for k, atom in enumerate(mol.atoms):
+            ind = rd_inds[atom]
+            rd_indx_map[ind] = k
         if len(mol.atoms) > 5:
-            AllChem.EmbedMultipleConfs(rdmol, numConfs=(len(mol.atoms) - 3) * 30, randomSeed=1)
+            Chem.AllChem.EmbedMultipleConfs(rd_mol, numConfs=(len(mol.atoms) - 3) * 30, randomSeed=1)
         else:
-            AllChem.EmbedMultipleConfs(rdmol, numConfs=120, randomSeed=1)
+            Chem.AllChem.EmbedMultipleConfs(rd_mol, numConfs=120, randomSeed=1)
         energies = []
         xyzs = []
-        for i in xrange(rdmol.GetNumConformers()):
+        for i in xrange(rd_mol.GetNumConformers()):
             v = 1
             while v == 1:
-                v = AllChem.MMFFOptimizeMolecule(rdmol, mmffVariant='MMFF94s', confId=i,
+                v = Chem.AllChem.MMFFOptimizeMolecule(rd_mol, mmffVariant='MMFF94s', confId=i,
                                                  maxIters=500, ignoreInterfragInteractions=False)
-            mp = AllChem.MMFFGetMoleculeProperties(rdmol, mmffVariant='MMFF94s')
+            mp = Chem.AllChem.MMFFGetMoleculeProperties(rd_mol, mmffVariant='MMFF94s')
             if mp is not None:
-                ff = AllChem.MMFFGetMoleculeForceField(rdmol, mp, confId=i)
+                ff = Chem.AllChem.MMFFGetMoleculeForceField(rd_mol, mp, confId=i)
                 E = ff.CalcEnergy()
                 energies.append(E)
-                cf = rdmol.GetConformer(i)
+                cf = rd_mol.GetConformer(i)
                 xyz = []
                 for j in xrange(cf.GetNumAtoms()):
                     pt = cf.GetAtomPosition(j)
                     xyz.append([pt.x, pt.y, pt.z])
-                xyz = [xyz[rdIndMap[i]] for i in xrange(len(xyz))]  # reorder
+                xyz = [xyz[rd_indx_map[i]] for i in xrange(len(xyz))]  # reorder
                 xyzs.append(xyz)
         return xyzs, energies
 
@@ -260,6 +264,62 @@ class ARCSpecies(object):
         if self.number_of_rotors > 0:
             logging.info('Pivot list(s) for {0}: {1}\n'.format(self.label,
                                                 [self.rotors_dict[i]['pivots'] for i in xrange(self.number_of_rotors)]))
+
+    def set_dihedral(self, scan, pivots, deg_increment):
+        """
+        Generated an RDKit molecule object from the given self.final_xyz.
+        Increments the current dihedral angle between atoms i, j, k, l in the `scan` list by 'deg_increment` in degrees.
+        All bonded atoms are moved accordingly. The result is saved in self.initial_xyz.
+        `pivots` is used to identify the rotor.
+        """
+        if deg_increment == 0:
+            logging.warning('set_dihedral was called with zero increment for {label} with pivots {pivots}'.format(
+                label=self.label, pivots=pivots))
+            for rotor in self.rotors_dict.itervalues():  # penalize this rotor to avoid inf. looping
+                if rotor['pivots'] == pivots:
+                    rotor['times_dihedral_set'] += 1
+                    break
+        else:
+            for rotor in self.rotors_dict.itervalues():
+                if rotor['pivots'] == pivots and rotor['times_dihedral_set'] <= 10:
+                    rotor['times_dihedral_set'] += 1
+                    break
+            else:
+                logging.info('\n\n')
+                for i, rotor in self.rotors_dict.iteritems():
+                    logging.error('Rotor {i} with pivots {pivots} was set {times} times'.format(
+                        i=i, pivots=rotor['pivots'], times=rotor['times_dihedral_set']))
+                raise RotorError('Rotors for {0} were set beyond the maximal number of times without converging')
+            for i in xrange(len(scan)):
+                scan[i] -= 1  # atom indices start from 0, but atom labels (as in scan) start from 1
+            mol = Molecule()
+            coordinates = list()
+            for line in self.final_xyz.split('\n'):
+                atom = Atom(element=line.split()[0])
+                coordinates.append([float(line.split()[1]), float(line.split()[2]), float(line.split()[3])])
+                atom.coords = np.array(coordinates[-1], np.float64)
+                mol.addAtom(atom)
+            mol.connectTheDots()  # only adds single bonds, but we don't care
+            rd_mol, rd_inds = mol.toRDKitMol(removeHs=False, returnMapping=True)
+            Chem.AllChem.EmbedMolecule(rd_mol)  # unfortunately, this mandatory embedding changes the coordinates
+            indx_map = dict()
+            for xyz_index, atom in enumerate(mol.atoms):  # generate an atom index mapping dictionary
+                rd_index = rd_inds[atom]
+                indx_map[xyz_index] = rd_index
+            conf = rd_mol.GetConformer(id=0)
+            for i in xrange(rd_mol.GetNumAtoms()):  # reset atom coordinates
+                conf.SetAtomPosition(indx_map[i], coordinates[i])
+
+            rd_scan = [indx_map[scan[i]] for i in xrange(4)]  # convert the atom indices in `scan` to RDkit indices
+
+            deg0 = rdmt.GetDihedralDeg(conf, rd_scan[0], rd_scan[1], rd_scan[2], rd_scan[3])  # get the original dihedral
+            deg = deg0 + deg_increment
+            rdmt.SetDihedralDeg(conf, rd_scan[0], rd_scan[1], rd_scan[2], rd_scan[3], deg)
+            new_xyz = list()
+            for i in xrange(rd_mol.GetNumAtoms()):
+                new_xyz.append([conf.GetAtomPosition(indx_map[i]).x, conf.GetAtomPosition(indx_map[i]).y,
+                            conf.GetAtomPosition(indx_map[i]).z])
+            self.initial_xyz = get_xyz_matrix(new_xyz, mol=mol)
 
 
 def find_internal_rotors(mol):
@@ -352,12 +412,28 @@ def find_internal_rotors(mol):
                                 smallest_index = i
                     rotor['scan'].append(smallest_index + 1)
                     rotor['success'] = None
+                    rotor['times_dihedral_set'] = 0
                     rotors.append(rotor)
     return rotors
 
 
 def get_xyz_matrix(xyz, mol=None, from_arkane=False, number=None):
     """
+    Convert list of lists xyz form:
+    [[0.6616514836, 0.4027481525, -0.4847382281]
+    [-0.6039793084, 0.6637270105, 0.0671637135]
+    [-1.4226865648, -0.4973210697, -0.2238712255]
+    [-0.4993010635, 0.6531020442, 1.0853092315]
+    [-2.2115796924, -0.4529256762, 0.4144516252]
+    [-1.8113671395, -0.3268900681, -1.1468957003]]
+    into a geometry form read by ESS:
+    C    0.6616514836    0.4027481525   -0.4847382281
+    N   -0.6039793084    0.6637270105    0.0671637135
+    H   -1.4226865648   -0.4973210697   -0.2238712255
+    H   -0.4993010635    0.6531020442    1.0853092315
+    H   -2.2115796924   -0.4529256762    0.4144516252
+    H   -1.8113671395   -0.3268900681   -1.1468957003
+    The atom symbol is derived from either an RMG Molecule object (`mol`) or atom numbers ('number`).
     This function isn't defined as a method of ARCSpecies since it is also used when parsing opt geometry in Scheduler
     (using the from_arkane=True keyword)
     """
@@ -377,7 +453,7 @@ def get_xyz_matrix(xyz, mol=None, from_arkane=False, number=None):
             element_label = mol.atoms[i].element.symbol
         result += element_label + ' ' * (4 - len(element_label))
         for j, c in enumerate(coord):
-            if c > 0:  # add space for positive numbers
+            if c >= 0:  # add space for positive numbers (or zero)
                 result += ' '
             result += str(c)
             if j < 2:  # add trailing spaces only for x, y (not z)
