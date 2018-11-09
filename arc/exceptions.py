@@ -34,6 +34,14 @@ class SpeciesError(Exception):
     """
     pass
 
+class RotorError(Exception):
+    """
+    An exception class for exceptional behavior that occurs while working with
+    chemical species. Pass a string describing the circumstances that caused the
+    exceptional behavior.
+    """
+    pass
+
 class SchedulerError(Exception):
     """
     An exception class for exceptional behavior that occurs while working with
