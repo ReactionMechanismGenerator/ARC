@@ -55,6 +55,10 @@ class ARC(object):
         if not os.path.exists(self.output_directory):
             os.makedirs(self.output_directory)
         self.fine = fine
+        if not self.fine:
+            logging.info('\n')
+            logging.warning('Not using a fine grid for geometry optimization jobs')
+            logging.info('\n')
         self.output = dict()
         self.verbose = verbose
         self.initialize_log(verbose=self.verbose, log_file=os.path.join(self.output_directory, 'arc.log'))
@@ -106,7 +110,7 @@ class ARC(object):
                 # self.opt_level = 'wb97x-d3/def2-tzvpd'
                 # logging.info('Using wB97x-D3/def2-TZVPD for geometry optimizations')
                 self.opt_level = 'wb97x-d3/6-311++G(d,p)'
-                logging.info('Using wB97x-D3/6-311++g(d,p) for geometry optimizations')
+                logging.info('Using wB97x-D3/6-311++G(d,p) for geometry optimizations')
             if freq_level:
                 self.freq_level = freq_level.lower()
                 logging.info('Using {0} for frequency calculations'.format(freq_level))
@@ -128,8 +132,8 @@ class ARC(object):
             self.scan_level = scan_level.lower()
             logging.info('Using {0} for rotor scans'.format(scan_level))
         else:
-            self.scan_level = 'b3lyp/6-311++g(d,p)'
-            logging.info('Using B3LYP/6-311++G(d,p) for rotor scans')
+            self.scan_level = 'b3lyp/6-311+g(d,p)'
+            logging.info('Using B3LYP/6-311+G(d,p) for rotor scans')
 
         self.rmg_species_list = rmg_species_list
         self.arc_species_list = arc_species_list
