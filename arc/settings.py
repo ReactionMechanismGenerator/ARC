@@ -44,3 +44,9 @@ output_filename = {'gaussian03': 'input.log',
 }
 
 arc_path = 'path/to/ARC/'  # on local machine
+rotor_scan_resolution = 30.0  # degrees. default: 10
+
+# rotor validation parameters
+inconsistency_az = 6   # maximum allowed inconsistency (kJ/mol) between initial and final rotor scan points. Default: 6
+inconsistency_ab = 25  # maximum allowed inconsistency (kJ/mol) between consecutive points in the scan. Default: 25
+maximum_barrier = 100  # maximum allowed barrier (kJ/mol) for a hindered rotor
