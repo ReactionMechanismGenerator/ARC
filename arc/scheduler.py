@@ -694,10 +694,19 @@ class Scheduler(object):
                              conformer=conformer)
             elif 'SCF failed' in job.job_status[1] and 'DIIS_GDM' not in job.ess_trsh_methods:
                 # change the SCF algorithm and increase max SCF cycles
-                logging.info('Troubleshooting {type} job in {software} using DIIS_GDM SCF algorithm'.format(
+                logging.info('Troubleshooting {type} job in {software} using the DIIS_GDM SCF algorithm'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('DIIS_GDM')
                 trsh = '\n   SCF_ALGORITHM DIIS_GDM\n   MAX_SCF_CYCLES 250'  # default is 50
+                self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
+                             job_type=job_type, fine=False, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
+                             conformer=conformer)
+            elif 'SYM_IGNORE' not in job.ess_trsh_methods:
+                # change the SCF algorithm and increase max SCF cycles
+                logging.info('Troubleshooting {type} job in {software} using SYM_IGNORE'
+                             ' as well as the DIIS_GDM SCF algorithm'.format(type=job_type, software=job.software))
+                job.ess_trsh_methods.append('SYM_IGNORE')
+                trsh = '\n   SCF_ALGORITHM DIIS_GDM\n   MAX_SCF_CYCLES 250\n   SYM_IGNORE     True'
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
                              job_type=job_type, fine=False, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
                              conformer=conformer)
