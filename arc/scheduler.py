@@ -5,15 +5,18 @@ import logging
 import time
 import os
 import datetime
+import numpy as np
 
 import cclib
 
 from rmgpy.cantherm.statmech import Log
+import rmgpy.constants as constants
 
 from arc.job.job import Job
 from arc.exceptions import SpeciesError, SchedulerError
 from arc.job.ssh import SSH_Client
 from arc.species import ARCSpecies, get_xyz_matrix
+from arc.settings import rotor_scan_resolution, inconsistency_ab, inconsistency_az, maximum_barrier
 
 ##################################################################
 
@@ -94,10 +97,6 @@ class Scheduler(object):
         self.sp_level = sp_level
         self.scan_level = scan_level
         self.fine = fine
-        if not self.fine:
-            logging.info('\n')
-            logging.warning('Not using a fine grid for geometry optimization jobs')
-            logging.info('\n')
         self.job_dict = dict()
         self.running_jobs = dict()
         self.servers_jobs_ids = list()
@@ -244,7 +243,7 @@ class Scheduler(object):
                 logging.debug('zzz... setting timer for 1 minute... zzz')
                 time.sleep(30)  # wait 30 sec before bugging the servers again.
 
-    def run_job(self, label, xyz, level_of_theory, job_type, fine=False, software=None, shift='', trsh='', memory=1000,
+    def run_job(self, label, xyz, level_of_theory, job_type, fine=False, software=None, shift='', trsh='', memory=1500,
                 conformer=-1, ess_trsh_methods=list(), scan='', pivots=list()):
         """
         A helper function for running (all) jobs
@@ -457,23 +456,92 @@ class Scheduler(object):
     def check_scan_job(self, label, job):
         """
         Check that a rotor scan job converged successfully. Also checks (QA) whether the scan is relatively "smooth",
-        and recommends whether or not to use this rotor using the 'successful_rotors' and 'unsuccessful_rotors'
-        attributes.
+        and whether the optimized geometry indeed represents the minimum energy conformer.
+        Recommends whether or not to use this rotor using the 'successful_rotors' and 'unsuccessful_rotors' attributes.
+        * rotors_dict structure (attribute of ARCSpecies):
+            rotors_dict: {1: {'pivots': pivots_list,
+                              'top': top_list,
+                              'scan': scan_list,
+                              'success: ''bool'',
+                              'times_dihedral_set': ``int``},
+                          2: {}, ...
+                         }
         """
         for i in xrange(self.species_dict[label].number_of_rotors):
             if self.species_dict[label].rotors_dict[i]['pivots'] == job.pivots:
+                invalidate = False
                 if job.job_status[1] == 'done':
-                    self.species_dict[label].rotors_dict[i]['success'] = True
+                    # ESS converged. Get PES using Arkane:
+                    log = Log(path='')
+                    log.determine_qm_software(fullpath=job.local_path_to_output_file)
+                    try:
+                        v_list, angle = log.software_log.loadScanEnergies()
+                    except ZeroDivisionError:
+                        logging.error('Energies from rotor scan of {label} between pivots {pivots} could not'
+                                      'be read. Invalidating rotor.'.format(label=label, pivots=job.pivots))
+                        invalidate = True
+                    else:
+                        v_list = np.array(v_list, np.float64)
+                        v_list = v_list * constants.E_h * constants.Na / 1000  # convert to kJ/mol
+                        # 1. Check smoothness:
+                        if abs(v_list[-1] - v_list[0]) > inconsistency_az:
+                            # initial and final points differ by more than `inconsistency_az` kJ/mol.
+                            # seems like this rotor broke the conformer. Invalidate
+                            logging.error('Rotor scan of {label} between pivots {pivots} is inconsistent by more than'
+                                          ' {inconsistency} kJ/mol between initial and final positions.'
+                                          ' Invalidating rotor.'.format(label=label, pivots=job.pivots,
+                                                                        inconsistency=inconsistency_az))
+                            invalidate = True
+                        if not invalidate:
+                            v_last = v_list[-1]
+                            for v in v_list:
+                                if abs(v - v_last) > inconsistency_ab:
+                                    # Two consecutive points on the scan differ by more than `inconsistency_ab` kJ/mol.
+                                    # This is a serious inconsistency. Invalidate
+                                    logging.error('Rotor scan of {label} between pivots {pivots} is inconsistent by'
+                                                  'more than {inconsistency} kJ/mol between two consecutive points.'
+                                                  ' Invalidating rotor.'.format(label=label, pivots=job.pivots,
+                                                                                inconsistency=inconsistency_ab))
+                                    invalidate = True
+                                if abs(v - v_list[0]) > maximum_barrier:
+                                    # The barrier for the hinderd rotor is higher than `maximum_barrier` kJ/mol.
+                                    # Invalidate
+                                    logging.error('Rotor scan of {label} between pivots {pivots} has a barrier larger'
+                                                  ' than {maximum_barrier} kJ/mol. Invalidating rotor.'.format(
+                                                   label=label, pivots=job.pivots, maximum_barrier=maximum_barrier))
+                                v_last = v
+                        # 2. Check conformation:
+                        if not invalidate:
+                            v_diff = (v_list[0] - np.min(v_list))
+                            if v_diff >= 2:
+                                self.species_dict[label].rotors_dict[i]['success'] = False
+                                logging.info('Species {label} is not oriented correctly around pivots {pivots}, searching'
+                                             ' for a better conformation...'.format(label=label, pivots=job.pivots))
+                                # Find the rotation dihedral in degrees to the closest minimum:
+                                min_v = v_list[0]
+                                min_index = 0
+                                for i, v in enumerate(v_diff):
+                                    if v < min_v - 2:
+                                        print v, ' < ', min_v - 2
+                                        min_v = v
+                                        min_index = i
+                                self.species_dict[label].set_dihedral(scan=self.species_dict[label].rotors_dict[i]['scan'],
+                                                                      pivots=self.species_dict[label].rotors_dict[i]['pivots'],
+                                                                      deg_increment=min_index*rotor_scan_resolution)
+                                self.run_opt_job(label)  # run opt on newly generated initial_xyz with the desired dihedral
+                            else:
+                                self.species_dict[label].rotors_dict[i]['success'] = True
                 else:
+                    # scan job crashed
+                    invalidate = True
+                if invalidate:
                     self.species_dict[label].rotors_dict[i]['success'] = False
-                break
+
+                else:
+                    self.species_dict[label].rotors_dict[i]['success'] = True
+                break  # `job` has only one pivot. Break if found, otherwise raise an error.
         else:
             raise SchedulerError('Could not match rotor with pivots {0} in species {1}'.format(job.pivots, label))
-        # ESS converged. Is rotor smooth?
-        # if self.species_dict[label].rotors_dict[i]['success'] == True:
-        # TODO: is rotor smooth? then add to self.output[label]['rotors'][i]
-        # TODO: also check (via Arkane) if rotors start at minimum enery. otherwise, troubleshoot (important!)
-        pass
 
     def get_servers_jobs_ids(self):
         """
@@ -572,7 +640,7 @@ class Scheduler(object):
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('memory')
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
-                             job_type=job_type, fine=False, memory=2500, ess_trsh_methods=job.ess_trsh_methods,
+                             job_type=job_type, fine=False, memory=3000, ess_trsh_methods=job.ess_trsh_methods,
                              conformer=conformer)
             elif 'scf=(qc,nosymm)' not in job.ess_trsh_methods:
                 # try both qc and nosymm
