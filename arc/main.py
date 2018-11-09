@@ -51,6 +51,15 @@ class ARC(object):
                  scan_level='', fine=True, verbose=logging.INFO):
 
         self.project = project
+        self.output_directory = os.path.join(arc_path, 'Projects', self.project)
+        if not os.path.exists(self.output_directory):
+            os.makedirs(self.output_directory)
+        self.fine = fine
+        self.output = dict()
+        self.verbose = verbose
+        self.initialize_log(verbose=self.verbose, log_file=os.path.join(self.output_directory, 'arc.log'))
+
+        logging.info('Starting project {0}\n\n'.format(self.project))
 
         if level_of_theory.count('//') > 1:
             raise InputError('Level of theory seems wrong. It should either be a composite method (like CBS-QB3)'
@@ -62,8 +71,8 @@ class ARC(object):
             logging.info('Using {0} for refined conformer searches (after filtering via force fields)'.format(
                 conformer_level))
         else:
-            logging.info('Using B97-D3/def2_mSVP for refined conformer searches (after filtering via force fields)')
-            self.conformer_level = 'b97-d3/def2_msvp'  # use B97-D3/def2_mSVP as default for conformer search
+            logging.info('Using B97-D3/def2-SVP for refined conformer searches (after filtering via force fields)')
+            self.conformer_level = 'b97-d3/def2-msvp'  # use B97-D3/def2-mSVP as default for conformer search
 
         if level_of_theory:
             if '/' not in level_of_theory:
@@ -88,33 +97,33 @@ class ARC(object):
                 logging.info('Using {0} for frequency calculations'.format(level_of_theory))
                 logging.info('Using {0} for single point calculations'.format(level_of_theory))
         else:
-            if composite_method:
-                self.composite_level = composite_method
-                logging.info('Using composite method {0}'.format(composite_method))
-            if opt_level and not self.composite_level:
+            if opt_level and not self.composite_method:
                 self.opt_level = opt_level.lower()
                 logging.info('Using {0} for geometry optimizations'.format(opt_level))
             else:
-                self.opt_level = 'wb97x-d3/def2_tzvpd'
-                logging.info('Using wB97x-D3/def2_TZVPD for geometry optimizations')
+                self.opt_level = 'wb97x-d3/def2-tzvpd'
+                logging.info('Using wB97x-D3/def2-TZVPD for geometry optimizations')
             if freq_level:
                 self.freq_level = freq_level.lower()
                 logging.info('Using {0} for frequency calculations'.format(freq_level))
             else:
-                self.freq_level = 'wb97x-d3/def2_tzvpd'
-                logging.info('Using wB97x-D3/def2_TZVPD for frequency calculations')
+                self.freq_level = 'wb97x-d3/def2-tzvpd'
+                logging.info('Using wB97x-D3/def2-TZVPD for frequency calculations')
             if sp_level:
                 self.sp_level = sp_level.lower()
                 logging.info('Using {0} for single point calculations'.format(sp_level))
             else:
                 logging.info('Using CCSD(T)-F12a/aug-cc-pVTZ for single point calculations')
                 self.sp_level = 'ccsd(T)-f12a/aug-cc-pvtz'
-            if scan_level:
-                self.scan_level = scan_level.lower()
-                logging.info('Using {0} for rotor scans'.format(scan_level))
-            else:
-                self.scan_level = 'b3lyp/6-311++g(d,p)'
-                logging.info('Using B3LYP/6-311++G(d,p) for rotor scans')
+        self.composite_method = composite_method.lower()
+        if self.composite_method:
+            logging.info('Using composite method {0}'.format(composite_method))
+        if scan_level:
+            self.scan_level = scan_level.lower()
+            logging.info('Using {0} for rotor scans'.format(scan_level))
+        else:
+            self.scan_level = 'b3lyp/6-311++g(d,p)'
+            logging.info('Using B3LYP/6-311++G(d,p) for rotor scans')
 
         self.rmg_species_list = rmg_species_list
         self.arc_species_list = arc_species_list
@@ -130,17 +139,10 @@ class ARC(object):
 
         self.rxn_list = rxn_list
 
-        self.fine = fine
-        self.output = dict()
-        self.verbose = verbose
-        self.output_directory = os.path.join(arc_path, 'Projects', self.project)
-        if not os.path.exists(self.output_directory):
-            os.makedirs(self.output_directory)
-        self.initialize_log(self.verbose, os.path.join(self.output_directory, 'arc.log'))
         self.execute()
 
     def execute(self):
-        logging.info('Starting project {0}\n\n'.format(self.project))
+        logging.info('\n\n')
         for species in self.arc_species_list:
             if not isinstance(species, ARCSpecies):
                 raise ValueError('All species in species_list must be ARCSpecies objects.'
@@ -190,7 +192,7 @@ class ARC(object):
         ch.setFormatter(formatter)
         logger.addHandler(ch)
 
-        # Create file handler; always be at least verbose in the file
+        # Create file handler
         if log_file:
             fh = logging.FileHandler(filename=log_file)
             fh.setLevel(min(logging.DEBUG,verbose))
