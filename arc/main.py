@@ -71,8 +71,10 @@ class ARC(object):
             logging.info('Using {0} for refined conformer searches (after filtering via force fields)'.format(
                 conformer_level))
         else:
-            logging.info('Using B97-D3/def2-SVP for refined conformer searches (after filtering via force fields)')
-            self.conformer_level = 'b97-d3/def2-msvp'  # use B97-D3/def2-mSVP as default for conformer search
+            # logging.info('Using B97-D3/def2-SVP for refined conformer searches (after filtering via force fields)')
+            # self.conformer_level = 'b97-d3/def2-msvp'  # use B97-D3/def2-mSVP as default for conformer search
+            logging.info('Using B97-D3/6-311++G(d,p) for refined conformer searches (after filtering via force fields)')
+            self.conformer_level = 'b97-d3/6-311++g(d,p)'  # use B97-D3/def2-mSVP as default for conformer search
 
         if level_of_theory:
             if '/' not in level_of_theory:
@@ -101,14 +103,18 @@ class ARC(object):
                 self.opt_level = opt_level.lower()
                 logging.info('Using {0} for geometry optimizations'.format(opt_level))
             else:
-                self.opt_level = 'wb97x-d3/def2-tzvpd'
-                logging.info('Using wB97x-D3/def2-TZVPD for geometry optimizations')
+                # self.opt_level = 'wb97x-d3/def2-tzvpd'
+                # logging.info('Using wB97x-D3/def2-TZVPD for geometry optimizations')
+                self.opt_level = 'wb97x-d3/6-311++G(d,p)'
+                logging.info('Using wB97x-D3/6-311++g(d,p) for geometry optimizations')
             if freq_level:
                 self.freq_level = freq_level.lower()
                 logging.info('Using {0} for frequency calculations'.format(freq_level))
             else:
-                self.freq_level = 'wb97x-d3/def2-tzvpd'
-                logging.info('Using wB97x-D3/def2-TZVPD for frequency calculations')
+                # self.freq_level = 'wb97x-d3/def2-tzvpd'
+                # logging.info('Using wB97x-D3/def2-TZVPD for frequency calculations')
+                self.freq_level = 'wb97x-d3/6-311++g(d,p)'
+                logging.info('Using wB97x-D3/6-311++G(d,p) for frequency calculations')
             if sp_level:
                 self.sp_level = sp_level.lower()
                 logging.info('Using {0} for single point calculations'.format(sp_level))
