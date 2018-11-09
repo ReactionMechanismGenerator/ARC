@@ -6,7 +6,7 @@ import datetime
 import csv
 import logging
 
-from arc.settings import arc_path, software_server, servers, submit_filename, output_filename
+from arc.settings import arc_path, software_server, servers, submit_filename, output_filename, rotor_scan_resolution
 from arc.job.submit import submit_sctipts
 from arc.job.input import input_files
 from arc.job.ssh import SSH_Client
@@ -33,7 +33,7 @@ class Job(object):
     `level_of_theory` ``str``            Level of theory, e.g. 'CBS-QB3', 'CCSD(T)-F12a/aug-cc-pVTZ',
                                            'B3LYP/6-311++G(3df,3pd)'...
     `job_type`         ``str``           The job's type
-    `scan`             ``str``           A string (list also acceptable) representing atom labels for the dihedral scan
+    `scan`             ``list``          A list representing atom labels for the dihedral scan
                                            (e.g., "2 1 3 5" as a string or [2, 1, 3, 5] as a list of integers)
     `pivots`           ``list``          The rotor scan pivots, if the job type is scan. Not used directly in these
                                            methods, but used to identify the rotor.
@@ -67,7 +67,7 @@ class Job(object):
 
     """
     def __init__(self, project, species_name, xyz, job_type, level_of_theory, multiplicity, charge=0, conformer=-1,
-                 fine=False, shift='', software=None, is_ts=False, scan='', pivots=list(), memory=1000, comments='',
+                 fine=False, shift='', software=None, is_ts=False, scan='', pivots=list(), memory=1500, comments='',
                  trsh='', ess_trsh_methods=list()):
         self.project = project
         self.species_name = species_name
@@ -154,9 +154,6 @@ class Job(object):
 
         self.scan = scan
         self.pivots = pivots
-        if isinstance(self.scan, list):
-            # convert self.scan to a string if it's a list. Assuming here that each entry in the list is a positive int
-            self.scan = ''.join([str(num) + ' ' for num in self.scan])[0:-1]
 
         conformer_folder = '' if self.conformer < 0 else os.path.join('conformers',str(self.conformer))
         self.local_path = os.path.join(arc_path, 'Projects', self.project,
@@ -387,7 +384,8 @@ $end
         if self.job_type == 'scan':
             if self.software == 'gaussian03':
                 job_type_1 = 'opt=modredundant'
-                self.scan = '\nD ' + self.scan + ' S 36 10.000000'
+                scan_string = ''.join([str(num) + ' ' for num in self.scan])
+                self.scan = 'D ' + scan_string + 'S 36 ' + str(rotor_scan_resolution)
             else:
                 raise ValueError('Currently rotor scan is only supported in gaussian03')
 
@@ -432,6 +430,10 @@ $end
         if self.fine:
             logging.info('Running job {name} for {label} (fine opt)'.format(name=self.job_name,
                                                                               label=self.species_name))
+        elif self.pivots:
+            logging.info('Running job {name} for {label} (pivots: {pivots})'.format(name=self.job_name,
+                                                                              label=self.species_name,
+                                                                              pivots=self.pivots))
         else:
             logging.info('Running job {name} for {label}'.format(name=self.job_name, label=self.species_name))
         logging.debug('writing submit script...')
