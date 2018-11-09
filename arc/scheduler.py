@@ -804,10 +804,9 @@ class Scheduler(object):
         Check that we have all required data for the species/TS in ``label``
         """
         status = self.output[label]['status']
-        if 'sp converged' in status and (self.species_dict[label].monoatomic or
-                                             ('freq converged' in status and 'opt converged' in status)):
-            # TODO: check that no errors were introduced by scan / irc / gsm
-            logging.info('All jobs of species {0} successfully converged'.format(label))
+        if 'error' not in status and 'sp converged' in status and (self.species_dict[label].monoatomic or
+                ('freq converged' in status and 'opt converged' in status)):
+            logging.info('\nAll jobs for species {0} successfully converged'.format(label))
         else:
             if not self.output[label]['status']:
                 self.output[label]['status'] = 'nothing converged'
