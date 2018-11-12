@@ -116,7 +116,7 @@ class SSH_Client(object):
         pharos: '540420 0.45326 xq1340b    alongd       r     10/26/2018 11:08:30 long1@node18.cluster'
         rmg: '14428     debug xq1371m2   alongd  R 50-04:04:46      1 node06'
         """
-        cmd = check_status_command[self.server] + ' -u ' + servers[self.server]['un']
+        cmd = check_status_command[servers[self.server]['cluster_soft']] + ' -u ' + servers[self.server]['un']
         stdout, stderr = self.send_command_to_server(cmd)
         for status_line in stdout:
             if str(job_id) in status_line:
@@ -139,7 +139,7 @@ class SSH_Client(object):
         Return a list of ``int`` representing job IDs of all jobs submited by the user on a server
         """
         running_jobs_ids = list()
-        cmd = check_status_command[self.server] + ' -u ' + servers[self.server]['un']
+        cmd = check_status_command[servers[self.server]['cluster_soft']] + ' -u ' + servers[self.server]['un']
         stdout, stderr = self.send_command_to_server(cmd)
         for i, status_line in enumerate(stdout):
             if (self.server == 'rmg' and i > 0) or (self.server == 'pharos' and i > 1):
@@ -149,7 +149,7 @@ class SSH_Client(object):
     def submit_job(self, remote_path):
         job_status = ''
         job_id = 0
-        cmd = submit_command[self.server] + ' ' + submit_filename[self.server]
+        cmd = submit_command[servers[self.server]['cluster_soft']] + ' ' + submit_filename[servers[self.server]['cluster_soft']]
         stdout, stderr = self.send_command_to_server(cmd, remote_path)
         if 'submitted' in stdout[0].lower():
             job_status = 'running'
