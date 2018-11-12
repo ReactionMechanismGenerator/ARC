@@ -6,11 +6,12 @@ import datetime
 import csv
 import logging
 
-from arc.settings import arc_path, software_server, servers, submit_filename, output_filename, rotor_scan_resolution
+from arc.settings import arc_path, software_server, servers, submit_filename,\
+    input_filename, output_filename, rotor_scan_resolution, delete_command, list_available_nodes_command
 from arc.job.submit import submit_sctipts
 from arc.job.input import input_files
 from arc.job.ssh import SSH_Client
-from arc.exceptions import JobError
+from arc.exceptions import JobError, ServerError
 
 ##################################################################
 
@@ -38,6 +39,7 @@ class Job(object):
     `pivots`           ``list``          The rotor scan pivots, if the job type is scan. Not used directly in these
                                            methods, but used to identify the rotor.
     `software`         ``str``           The electronic structure software to be used
+    `server_nodes`     ``list``          A list of nodes this job was submitted to (for troubleshooting)
     `memory`           ``int``           The allocated memory (1000 mb by default)
     `method`           ``str``           The calculation method (e.g., 'B3LYP', 'CCSD(T)', 'CBS-QB3'...)
     `basis_set`        ``str``           The basis set (e.g., '6-311++G(d,p)', 'aug-cc-pVTZ'...)
@@ -172,6 +174,7 @@ class Job(object):
             raise JobError('Could not determine server for software {soft}.'
                            ' Please use one othe these options: {softs}'.format(soft=self.software,
                                                                                 softs=software_server.iterkeys()))
+        self.server_nodes = list()
         self._write_initiated_job_to_csv_file()
 
     def _set_job_number(self):
@@ -244,7 +247,7 @@ class Job(object):
         self.submit = submit_sctipts[self.software].format(self.job_server_name, un)
         if not os.path.exists(self.local_path):
             os.makedirs(self.local_path)
-        with open(os.path.join(self.local_path, submit_filename[self.server]), 'wb') as f:
+        with open(os.path.join(self.local_path, submit_filename[servers[self.server]['cluster_soft']]), 'wb') as f:
             f.write(self.submit)
         self._upload_submit_file()
 
@@ -385,7 +388,9 @@ $end
             if self.software == 'gaussian03':
                 job_type_1 = 'opt=modredundant'
                 scan_string = ''.join([str(num) + ' ' for num in self.scan])
-                self.scan = 'D ' + scan_string + 'S 36 ' + str(rotor_scan_resolution)
+                if not divmod(360, rotor_scan_resolution):
+                    raise JobError('Scan job got an illegal rotor scan resolution of {0}'.format(rotor_scan_resolution))
+                self.scan = 'D ' + scan_string + 'S ' + str(int(360 / rotor_scan_resolution)) + ' ' + str(rotor_scan_resolution)
             else:
                 raise ValueError('Currently rotor scan is only supported in gaussian03')
 
@@ -404,20 +409,20 @@ $end
             raise e
         if not os.path.exists(self.local_path):
             os.makedirs(self.local_path)
-        with open(os.path.join(self.local_path, 'input.in'), 'wb') as f:
+        with open(os.path.join(self.local_path, input_filename[self.software]), 'wb') as f:
             f.write(self.input)
         self._upload_input_file()
 
     def _upload_submit_file(self):
         ssh = SSH_Client(self.server)
         ssh.send_command_to_server(command='mkdir -p {0}'.format(self.remote_path))
-        remote_file_path = os.path.join(self.remote_path, submit_filename[self.server])
+        remote_file_path = os.path.join(self.remote_path, submit_filename[servers[self.server]['cluster_soft']])
         ssh.upload_file(remote_file_path=remote_file_path, file_string=self.submit)
 
     def _upload_input_file(self):
         ssh = SSH_Client(self.server)
         ssh.send_command_to_server(command='mkdir -p {0}'.format(self.remote_path))
-        remote_file_path = os.path.join(self.remote_path, 'input.in')
+        remote_file_path = os.path.join(self.remote_path, input_filename[self.software])
         ssh.upload_file(remote_file_path=remote_file_path, file_string=self.input)
 
     def _download_output_file(self):
@@ -451,7 +456,11 @@ $end
         server_status = self._check_job_server_status()
         ess_status = ''
         if server_status == 'done':
-            ess_status = self._check_job_ess_status()
+            try:
+                ess_status = self._check_job_ess_status()
+            except IOError:
+                logging.error('Got an IOError when trying to download output file for job {0}.'.format(self.job_name))
+                raise
         elif server_status == 'running':
             ess_status = 'running'
         self.job_status = [server_status, ess_status]
@@ -547,7 +556,34 @@ $end
                 return 'errored: Unknown reason'
 
     def troubleshoot_server(self):
-        # TODO: change node? forbid a node on pharos? this method should also delete a stuck job and resubmit
-        pass
+        # TODO: troubleshoot node on RMG
+        # delete present server run
+        logging.error('Job {name} has server status {stat} on {server}. Troubleshooting by changing node.'.format(
+            name=self.job_name, stat=self.job_status[0], server=self.server))
+        ssh = SSH_Client(self.server)
+        ssh.send_command_to_server(command=delete_command[servers[self.server]['cluster_soft']] + ' ' + self.job_id)
+        # find available nodes
+        stdout, stderr = ssh.send_command_to_server(command=list_available_nodes_command[servers[self.server]['cluster_soft']])
+        for line in stdout:
+            node = line.split()[0].split('.')[0].split['node'][1]
+            if servers[self.server]['cluster_soft'] == 'OGE' and '0/0/8' in line and node not in self.server_nodes:
+                self.server_nodes.append(node)
+                break
+        else:
+            raise ServerError('Cold not find an available node on the server')  # TODO: put job to sleep for x min
+        # modify submit file
+        content = ssh.read_remote_file(remote_path=self.remote_path,
+                                       filename=submit_filename[servers[self.server]['cluster_soft']])
+        for i, line in enumerate(content):
+            if '#$ -l h=node' in line:
+                content[i] = '#$ -l h=node{0}.cluster'.format(node)
+                break
+        else:
+            content.insert(7, '#$ -l h=node{0}.cluster'.format(node))
+        # resubmit
+        ssh.upload_file(remote_file_path=os.path.join(self.remote_path,
+                                                      submit_filename[servers[self.server]['cluster_soft']]),
+                        file_string=content)
+        self.run()
 
 # TODO: irc, gsm input files
