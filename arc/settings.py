@@ -11,11 +11,13 @@ servers = {
         'adddress': 'server1.host.edu',
         'un': 'username',
         'key': 'rsa key path',
+        'cluster_soft': 'OGE',  # Oracle Grid Engine (Sun Grin Engine)
     },
     'server2': {
         'adddress': 'server2.host.edu',
         'un': 'username',
         'key': 'rsa key path',
+        'cluster_soft': 'Slurm',  # Simple Linux Utility for Resource Management
     }
 }
 
@@ -25,17 +27,27 @@ software_server = {'gaussian03': 'server1',
                    'molpro_2012': 'server1',
 }
 
-check_status_command = {'server1': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat -u ',
-                        'server2': 'squeue -u '}
+check_status_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat',
+                        'Slurm': 'squeue -u '}
 
-submit_command = {'server1': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qsub',
-                  'server2': 'sbatch'}
+submit_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qsub',
+                  'Slurm': 'sbatch'}
 
-delete_command = {'server1': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qdel ',
-                  'server2': 'scancel '}
+delete_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qdel',
+                  'Slurm': 'scancel '}
 
-submit_filename = {'server1': 'submit.sh',
-                   'server2': 'submit.sl'}
+list_available_nodes_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat -f | grep "/8 " | grep'
+                                       ' "long" | grep -v "8/8"| grep -v "aAu"',
+                                'Slurm': 'list? '}
+
+submit_filename = {'OGE': 'submit.sh',
+                   'Slurm': 'submit.sl'}
+
+input_filename = {'gaussian03': 'input.gjf',
+                   'qchem': 'input.in',
+                   'molpro_2015': 'input.in',
+                   'molpro_2012': 'input.in',
+}
 
 output_filename = {'gaussian03': 'input.log',
                    'qchem': 'output.out',
@@ -44,9 +56,11 @@ output_filename = {'gaussian03': 'input.log',
 }
 
 arc_path = 'path/to/ARC/'  # on local machine
-rotor_scan_resolution = 30.0  # degrees. default: 10
+rotor_scan_resolution = 10.0  # degrees. default: 10
 
 # rotor validation parameters
 inconsistency_az = 6   # maximum allowed inconsistency (kJ/mol) between initial and final rotor scan points. Default: 6
 inconsistency_ab = 25  # maximum allowed inconsistency (kJ/mol) between consecutive points in the scan. Default: 25
-maximum_barrier = 100  # maximum allowed barrier (kJ/mol) for a hindered rotor
+maximum_barrier = 200  # maximum allowed barrier (kJ/mol) for a hindered rotor. Default: 200
+
+arc_path = '/home/alongd/Code/ARC/'  # on local machine
