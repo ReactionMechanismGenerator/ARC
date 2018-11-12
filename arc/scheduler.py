@@ -9,9 +9,10 @@ import numpy as np
 
 import cclib
 
-from rmgpy.cantherm.statmech import Log
+from arkane.statmech import Log
 import rmgpy.constants as constants
 
+from arc import plotter
 from arc.job.job import Job
 from arc.exceptions import SpeciesError, SchedulerError
 from arc.job.ssh import SSH_Client
@@ -34,7 +35,7 @@ class Scheduler(object):
     `project`               ``str``            The project's name. Used for naming the working directory.
     'servers'               ''list''           A list of servers used for the present project
     `species_list`          ``list``           Contains input ``ARCSpecies`` objects (both species and TSs).
-    `species_dict`          ``dict``           A convenient way to call species by their labels
+    `species_dict`          ``dict``           Keys are labels, values are ARCSpecies objects
     'unique_species_labels' ``list``           A list of species labels (checked for duplicates)
     `level_of_theory`       ``str``            *FULL* level of theory, e.g. 'CBS-QB3',
                                                  'CCSD(T)-F12a/aug-cc-pVTZ//B3LYP/6-311++G(3df,3pd)'...
@@ -409,6 +410,7 @@ class Scheduler(object):
                 self.output[label]['status'] += 'opt converged; '
                 logging.info('\nOptimized geometry for {label} at {level}:\n{xyz}'.format(label=label,
                             level=job.level_of_theory, xyz=self.species_dict[label].final_xyz))
+                plotter.show_sticks(xyz=self.species_dict[label].final_xyz)
                 return True  # run freq / sp / scan jobs on this fine optimized geometry
         else:
             self.troubleshoot_opt_jobs(label=label)
@@ -463,7 +465,8 @@ class Scheduler(object):
                               'top': top_list,
                               'scan': scan_list,
                               'success: ''bool'',
-                              'times_dihedral_set': ``int``},
+                              'times_dihedral_set': ``int``
+                              'scan_path': <path to scan output file>},
                           2: {}, ...
                          }
         """
@@ -474,15 +477,17 @@ class Scheduler(object):
                     # ESS converged. Get PES using Arkane:
                     log = Log(path='')
                     log.determine_qm_software(fullpath=job.local_path_to_output_file)
+                    plot_scan = True
                     try:
                         v_list, angle = log.software_log.loadScanEnergies()
                     except ZeroDivisionError:
                         logging.error('Energies from rotor scan of {label} between pivots {pivots} could not'
                                       'be read. Invalidating rotor.'.format(label=label, pivots=job.pivots))
                         invalidate = True
+                        plot_scan = False
                     else:
                         v_list = np.array(v_list, np.float64)
-                        v_list = v_list * constants.E_h * constants.Na / 1000  # convert to kJ/mol
+                        v_list = v_list * 0.001  # convert to kJ/mol
                         # 1. Check smoothness:
                         if abs(v_list[-1] - v_list[0]) > inconsistency_az:
                             # initial and final points differ by more than `inconsistency_az` kJ/mol.
@@ -491,6 +496,7 @@ class Scheduler(object):
                                           ' {inconsistency} kJ/mol between initial and final positions.'
                                           ' Invalidating rotor.'.format(label=label, pivots=job.pivots,
                                                                         inconsistency=inconsistency_az))
+                            logging.error('v_list[0] = {0}, v_list[-1] = {1]'.format(v_list[0], v_list[1]))
                             invalidate = True
                         if not invalidate:
                             v_last = v_list[-1]
@@ -503,12 +509,15 @@ class Scheduler(object):
                                                   ' Invalidating rotor.'.format(label=label, pivots=job.pivots,
                                                                                 inconsistency=inconsistency_ab))
                                     invalidate = True
+                                    break
                                 if abs(v - v_list[0]) > maximum_barrier:
                                     # The barrier for the hinderd rotor is higher than `maximum_barrier` kJ/mol.
                                     # Invalidate
                                     logging.error('Rotor scan of {label} between pivots {pivots} has a barrier larger'
                                                   ' than {maximum_barrier} kJ/mol. Invalidating rotor.'.format(
                                                    label=label, pivots=job.pivots, maximum_barrier=maximum_barrier))
+                                    invalidate = True
+                                    break
                                 v_last = v
                         # 2. Check conformation:
                         if not invalidate:
@@ -531,6 +540,15 @@ class Scheduler(object):
                                 self.run_opt_job(label)  # run opt on newly generated initial_xyz with the desired dihedral
                             else:
                                 self.species_dict[label].rotors_dict[i]['success'] = True
+                        if plot_scan:
+                            invalidated = ''
+                            if invalidate:
+                                invalidated = '*INVALIDATED* '
+                            else:
+                                logging.info('{invalidated}Rotor scan between pivots {pivots} for {label} is:'.format(
+                                    invalidated=invalidated, pivots=self.species_dict[label].rotors_dict[i]['pivots'],
+                                    label=label))
+                            plotter.plot_rotor_scan(angle, v_list)
                 else:
                     # scan job crashed
                     invalidate = True
@@ -539,6 +557,7 @@ class Scheduler(object):
 
                 else:
                     self.species_dict[label].rotors_dict[i]['success'] = True
+                    self.species_dict[label].rotors_dict[i]['scan_path'] = job.local_path_to_output_file
                 break  # `job` has only one pivot. Break if found, otherwise raise an error.
         else:
             raise SchedulerError('Could not match rotor with pivots {0} in species {1}'.format(job.pivots, label))
@@ -807,13 +826,9 @@ class Scheduler(object):
         if 'error' not in status and 'sp converged' in status and (self.species_dict[label].monoatomic or
                 ('freq converged' in status and 'opt converged' in status)):
             logging.info('\nAll jobs for species {0} successfully converged'.format(label))
-        else:
-            if not self.output[label]['status']:
-                self.output[label]['status'] = 'nothing converged'
+            self.output[label]['status'] = 'converged'
+        elif not self.output[label]['status']:
+            self.output[label]['status'] = 'nothing converged'
             logging.error('species {0} did not converge. Status is: {1}'.format(label, status))
 
 
-#TODO: check spin contamination (in molpro, this is in the output.log file(!) as "Spin contamination <S**2-Sz**2-Sz>     0.00000000")
-#TODO: check T3 or other MR indication
-#TODO: make visuallization files
-#TODO: MRCI input file and auto-occ
