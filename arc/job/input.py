@@ -99,4 +99,25 @@ wf,spin={spin},charge={charge};}}
 ---;
 
 """,
+    'arkane_species': """#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+linear = {linear}
+
+externalSymmetry = {symmetry}
+
+spinMultiplicity = {multiplicity}
+
+opticalIsomers = {optical}
+
+energy = {{'{model_chemistry}': Log('{sp_path}')}}
+
+geometry = Log('{opt_path}')
+
+frequencies = Log('{freq_path}')
+
+{rotors}
+
+""",
+    'arkane_rotor': """HinderedRotor(scanLog=Log('{rotor_path}'), pivots={pivots}, top={top}, symmetry={symmetry}, fit='best')"""
 }
