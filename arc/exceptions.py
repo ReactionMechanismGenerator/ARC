@@ -57,3 +57,11 @@ class JobError(Exception):
     exceptional behavior.
     """
     pass
+
+class ServerError(Exception):
+    """
+    An exception class for exceptional behavior that occurs while working with
+    chemical species. Pass a string describing the circumstances that caused the
+    exceptional behavior.
+    """
+    pass
