@@ -13,6 +13,7 @@ from arc.settings import arc_path
 from arc.scheduler import Scheduler
 from arc.exceptions import InputError
 from arc.species import ARCSpecies
+from arc.processor import Processor
 
 ##################################################################
 
@@ -167,7 +168,7 @@ class ARC(object):
                               composite_method=self.composite_method, conformer_level=self.conformer_level,
                               opt_level=self.opt_level, freq_level=self.freq_level, sp_level=self.sp_level,
                               scan_level=self.scan_level, fine=self.fine)
-        self.output = scheduler.output
+        Processor(self.project, scheduler.species_dict, scheduler.output)
         self.log_footer()
 
     def initialize_log(self, verbose=logging.INFO, log_file=None):
