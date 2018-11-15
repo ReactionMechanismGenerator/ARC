@@ -6,6 +6,7 @@ import numpy as np
 
 from rdkit import Chem
 from rdkit.Chem import rdMolTransforms as rdmt
+from rdkit.Chem.rdchem import EditableMol as RDMol
 import openbabel as ob
 import pybel as pyb
 
@@ -34,7 +35,7 @@ class ARCSpecies(object):
     `is_ts`                 ``bool``           Whether or not the species represents a transition state
     'number_of_rotors'      ``int``            The number of potential rotors to scan
     'rotors_dict'           ``dict``           A dictionary of rotors. structure given below.
-    `conformers`            ``list``           A list of all conformers XYZs
+    `conformers`            ``list``           A list of selected conformers XYZs
     `conformer_energies`    ``list``           A list of conformers E0 (Hartree)
     'initial_xyz'           ``string``         The initial geometry guess
     'final_xyz'             ``string``         The optimized species geometry
@@ -47,7 +48,8 @@ class ARCSpecies(object):
                       'top': top_list,
                       'scan': scan_list,
                       'success: ''bool''.
-                      'times_dihedral_set': ``int``},
+                      'times_dihedral_set': ``int``,
+                      'scan_path': <path to scan output file>},
                   2: {}, ...
                  }
     """
@@ -65,13 +67,13 @@ class ARCSpecies(object):
 
         if self.rmg_species is None:
             if xyz is None:
-                raise SpeciesError('xyz must be specified if an RMG Species isnt given.')
+                raise SpeciesError('xyz must be specified for ARCSpecies.')
             if multiplicity is None:
-                raise SpeciesError('multiplicity must be specified if an RMG Species isnt given.')
+                raise SpeciesError('multiplicity must be specified for ARCSpecies.')
             if charge is None:
-                raise SpeciesError('charge must be specified if an RMG Species isnt given.')
+                raise SpeciesError('charge must be specified for ARCSpecies.')
             if label is None:
-                raise SpeciesError('label must be specified if an RMG Species isnt given.')
+                raise SpeciesError('label must be specified for ARCSpecies.')
         else:
             if not isinstance(self.rmg_species, Species):
                 raise SpeciesError('The rmg_species parameter has to be a valid RMG Species object.'
@@ -84,22 +86,23 @@ class ARCSpecies(object):
         if self.rmg_species is not None:
             self.multiplicity = self.rmg_species.molecule[0].multiplicity
             self.charge = self.rmg_species.molecule[0].getNetCharge()
-            self.label = self.rmg_species.label
-
-        if multiplicity is not None:
+            if self.rmg_species.label:
+                self.label = self.rmg_species.label
+            else:
+                self.label = label
+        else:
             self.multiplicity = multiplicity
-
-        if charge is not None:
-            self.multiplicity = charge
-
-        if label is not None:
+            self.charge = charge
             self.label = label
 
         if xyz is not None:
             self.initial_xyz = xyz
+            self.molecule = list()
             self.monoatomic = len(xyz.split('\n')) == 1
         else:
             self.initial_xyz = ''
+            self.molecule = self.rmg_species.molecule
+            self.monoatomic = len(self.molecule[0].atoms) == 1
 
         self.final_xyz = ''
 
@@ -109,16 +112,50 @@ class ARCSpecies(object):
         self.conformers = list()
         self.conformer_energies = list()
 
-        if self.rmg_species.molecule:
-            self.molecule = self.rmg_species.molecule
-            self.monoatomic = len(self.molecule[0].atoms) == 1
-        else:
-            self.molecule = list()
-
         self.xyzs = list()  # used for conformer search
 
         self.external_symmetry = 1
         self.optical_isomers = 1
+
+    def generate_conformers(self):
+        """
+        Generate conformers using RDKit and OpenBabel for all representative localized structures of each species
+        """
+        if not self.initial_xyz:
+            if self.molecule:
+                for mol in self.molecule:
+                    self.find_conformers(mol)
+                    for xyz in self.xyzs:
+                        self.conformers.append(xyz)
+                        self.conformer_energies.append(0.0)  # a placeholder (lists are synced)
+            else:
+                logging.info(self.molecule)
+                raise SpeciesError('Cannot generate conformers without a molecule list')
+        else:
+            logging.warn('Generating conformers for species {0}, without bond order information (using coordinates'
+                         ' only).'.format(self.label))
+            mol = Molecule()
+            coordinates = list()
+            for line in self.initial_xyz.split('\n'):
+                atom = Atom(element=line.split()[0])
+                coordinates.append([float(line.split()[1]), float(line.split()[2]), float(line.split()[3])])
+                atom.coords = np.array(coordinates[-1], np.float64)
+                mol.addAtom(atom)
+            mol.connectTheDots()  # only adds single bonds, but we don't care
+            rd_mol, rd_inds = mol.toRDKitMol(removeHs=False, returnMapping=True)
+            Chem.AllChem.EmbedMolecule(rd_mol)  # unfortunately, this mandatory embedding changes the coordinates
+            indx_map = dict()
+            for xyz_index, atom in enumerate(mol.atoms):  # generate an atom index mapping dictionary
+                rd_index = rd_inds[atom]
+                indx_map[xyz_index] = rd_index
+            conf = rd_mol.GetConformer(id=0)
+            for i in xrange(rd_mol.GetNumAtoms()):  # reset atom coordinates
+                conf.SetAtomPosition(indx_map[i], coordinates[i])
+            self.find_conformers(mol, method='rdkit')
+            for xyz in self.xyzs:
+                self.conformers.append(xyz)
+                self.conformer_energies.append(0.0)  # a placeholder (lists are synced)
+
     def find_conformers(self, mol, method='all'):
         """
         Generates conformers for `mol` which is an ``RMG.Molecule`` object using the method/s
@@ -126,6 +163,7 @@ class ARCSpecies(object):
         """
         rdkit = False
         ob = False
+        rd_xyzs, ob_xyzs = list(), list()
         if method == 'all':
             rdkit = True
             ob = True
@@ -143,6 +181,8 @@ class ARCSpecies(object):
             ob_xyzs, ob_energies = self._get_possible_conformers_openbabel(mol)
             ob_xyz = self.get_min_energy_conformer(xyzs=ob_xyzs, energies=ob_energies)
             self.xyzs.append(get_xyz_matrix(xyz=ob_xyz, mol=mol))
+        logging.info('Considering {0} conformers out of {1} conformers ran using a force field for {2}'.format(
+            len(rd_xyzs+ob_xyzs), len(self.xyzs), self.label))
 
     def _get_possible_conformers_rdkit(self, mol):
         """
@@ -152,12 +192,19 @@ class ARCSpecies(object):
         and converts them back in terms of the RMG atom ordering
         Returns the coordinates and energies
         """
-        rd_mol, rd_inds = mol.toRDKitMol(removeHs=False, returnMapping=True)
-        rd_indx_map = dict()
-        for k, atom in enumerate(mol.atoms):
-            ind = rd_inds[atom]
-            rd_indx_map[ind] = k
-        if len(mol.atoms) > 5:
+        if not isinstance(mol, (Molecule, RDMol)):
+            raise SpeciesError('Can generate conformers to either an RDKit or RMG molecule. Got {0}'.format(type(mol)))
+        if isinstance(mol, RDMol):
+            rd_mol = mol
+        else:
+            rd_mol, rd_inds = mol.toRDKitMol(removeHs=False, returnMapping=True)
+            rd_indx_map = dict()
+            for k, atom in enumerate(mol.atoms):
+                ind = rd_inds[atom]
+                rd_indx_map[ind] = k
+        if len(mol.atoms) > 50:
+            Chem.AllChem.EmbedMultipleConfs(rd_mol, numConfs=(len(mol.atoms)) * 3, randomSeed=1)
+        elif len(mol.atoms) > 5:
             Chem.AllChem.EmbedMultipleConfs(rd_mol, numConfs=(len(mol.atoms) - 3) * 30, randomSeed=1)
         else:
             Chem.AllChem.EmbedMultipleConfs(rd_mol, numConfs=120, randomSeed=1)
@@ -178,7 +225,8 @@ class ARCSpecies(object):
                 for j in xrange(cf.GetNumAtoms()):
                     pt = cf.GetAtomPosition(j)
                     xyz.append([pt.x, pt.y, pt.z])
-                xyz = [xyz[rd_indx_map[i]] for i in xrange(len(xyz))]  # reorder
+                if isinstance(mol, Molecule):
+                    xyz = [xyz[rd_indx_map[i]] for i in xrange(len(xyz))]  # reorder
                 xyzs.append(xyz)
         return xyzs, energies
 
@@ -223,27 +271,9 @@ class ARCSpecies(object):
         """
         Generate localized (resonance) structures
         """
-        if len(self.rmg_species.molecule) == 1:
+        if self.rmg_species is not None and len(self.rmg_species.molecule) == 1:
             self.rmg_species.generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
             self.molecule = self.rmg_species.molecule
-
-    def generate_conformers(self):
-        """
-        Generate conformers using RDKit and OpenBabel for all representative localized structures of each species
-        """
-        if not self.initial_xyz:
-            if self.molecule:
-                for mol in self.molecule:
-                    self.find_conformers(mol)
-                    for xyz in self.xyzs:
-                        self.conformers.append(xyz)
-                        self.conformer_energies.append(0.0)  # a placeholder (lists are synced)
-            else:
-                logging.info(self.molecule)
-                raise SpeciesError('Cannot generate conformers without a molecule list')
-        else:
-            logging.debug('Not generating conformers for species {0},'
-                          ' since it already has an initial xyz'.format(self.label))
 
     def determine_rotors(self):
         """
@@ -369,93 +399,94 @@ def find_internal_rotors(mol):
     Locates the sets of indices corresponding to every internal rotor.
     Returns for each rotors the gaussian scan coordinates, the pivots and the top.
     """
+    # TODO: find rotors for xyz input
     rotors = []
     for atom1 in mol.vertices:
-        for atom2, bond in atom1.edges.items():
-            if mol.vertices.index(atom1) < mol.vertices.index(atom2) \
-                    and (bond.isSingle() or bond.isHydrogenBond()) and not mol.isBondInCycle(bond):
-                if len(atom1.edges) > 1 and len(
-                        atom2.edges) > 1:  # none of the pivotal atoms is terminal (nor hydrogen)
-                    rotor = dict()
-                    # pivots:
-                    rotor['pivots'] = [mol.vertices.index(atom1) + 1, mol.vertices.index(atom2) + 1]
-                    # top:
-                    top1, top2 = [], []
-                    top1_has_heavy_atoms, top2_has_heavy_atoms = False, False
-                    atom_list = [atom1]
-                    while len(atom_list):
-                        for atom in atom_list:
-                            top1.append(mol.vertices.index(atom) + 1)
-                            for atom3, bond3 in atom.edges.items():
-                                if atom3.isHydrogen():
-                                    top1.append(mol.vertices.index(atom3) + 1)  # append H's
-                                elif atom3 is not atom2:
-                                    top1_has_heavy_atoms = True
-                                    if not bond3.isSingle():
-                                        top1.append(
-                                            mol.vertices.index(atom3) + 1)  # append non-single-bonded heavy atoms
-                                        atom_list.append(atom3)
-                            atom_list.pop(atom_list.index(atom))
-                    atom_list = [atom2]
-                    while len(atom_list):
-                        for atom in atom_list:
-                            top2.append(mol.vertices.index(atom) + 1)
-                            for atom3, bond3 in atom.edges.items():
-                                if atom3.isHydrogen():
-                                    top2.append(mol.vertices.index(atom3) + 1)  # append H's
-                                elif atom3 is not atom1:
-                                    top2_has_heavy_atoms = True
-                                    if not bond3.isSingle():
-                                        top2.append(
-                                            mol.vertices.index(atom3) + 1)  # append non-single-bonded heavy atoms
-                                        atom_list.append(atom3)
-                            atom_list.pop(atom_list.index(atom))
-                    if top1_has_heavy_atoms and not top2_has_heavy_atoms:
-                        rotor['top'] = top2
-                    elif top2_has_heavy_atoms and not top1_has_heavy_atoms:
-                        rotor['top'] = top1
-                    else:
-                        rotor['top'] = top1 if len(top1) < len(top2) else top2
-                    # scan:
-                    rotor['scan'] = []
-                    heavy_atoms = []
-                    hydrogens = []
-                    for atom3, bond13 in atom1.edges.items():
-                        if atom3.isHydrogen():
-                            hydrogens.append(mol.vertices.index(atom3))
-                        elif atom3 is not atom2:
-                            heavy_atoms.append(mol.vertices.index(atom3))
-                    smallest_index = len(mol.vertices)
-                    if len(heavy_atoms):
-                        for i in heavy_atoms:
-                            if i < smallest_index:
-                                smallest_index = i
-                    else:
-                        for i in hydrogens:
-                            if i < smallest_index:
-                                smallest_index = i
-                    rotor['scan'].append(smallest_index + 1)
-                    rotor['scan'].extend([mol.vertices.index(atom1) + 1, mol.vertices.index(atom2) + 1])
-                    heavy_atoms = []
-                    hydrogens = []
-                    for atom3, bond3 in atom2.edges.items():
-                        if atom3.isHydrogen():
-                            hydrogens.append(mol.vertices.index(atom3))
-                        elif atom3 is not atom1:
-                            heavy_atoms.append(mol.vertices.index(atom3))
-                    smallest_index = len(mol.vertices)
-                    if len(heavy_atoms):
-                        for i in heavy_atoms:
-                            if i < smallest_index:
-                                smallest_index = i
-                    else:
-                        for i in hydrogens:
-                            if i < smallest_index:
-                                smallest_index = i
-                    rotor['scan'].append(smallest_index + 1)
-                    rotor['success'] = None
-                    rotor['times_dihedral_set'] = 0
-                    rotors.append(rotor)
+        if atom1.isNonHydrogen():
+            for atom2, bond in atom1.edges.items():
+                if atom2.isNonHydrogen() and mol.vertices.index(atom1) < mol.vertices.index(atom2) \
+                        and (bond.isSingle() or bond.isHydrogenBond()) and not mol.isBondInCycle(bond):
+                    if len(atom1.edges) > 1 and len(atom2.edges) > 1:  # none of the pivotal atoms are terminal
+                        rotor = dict()
+                        # pivots:
+                        rotor['pivots'] = [mol.vertices.index(atom1) + 1, mol.vertices.index(atom2) + 1]
+                        # top:
+                        top1, top2 = [], []
+                        top1_has_heavy_atoms, top2_has_heavy_atoms = False, False
+                        explored_atom_list = [atom2]
+                        atom_list_to_explore = [atom1]
+                        while len(atom_list_to_explore):
+                            for atom in atom_list_to_explore:
+                                top1.append(mol.vertices.index(atom) + 1)
+                                for atom3, bond3 in atom.edges.items():
+                                    if atom3.isHydrogen():
+                                        # append H w/o further exploring
+                                        top1.append(mol.vertices.index(atom3) + 1)
+                                    elif atom3 not in explored_atom_list:
+                                        top1_has_heavy_atoms = True
+                                        atom_list_to_explore.append(atom3)  # explore it further
+                                atom_list_to_explore.pop(atom_list_to_explore.index(atom))
+                                explored_atom_list.append(atom)  # mark as explored
+                        explored_atom_list, atom_list_to_explore = [atom1, atom2], [atom2]
+                        while len(atom_list_to_explore):
+                            for atom in atom_list_to_explore:
+                                top2.append(mol.vertices.index(atom) + 1)
+                                for atom3, bond3 in atom.edges.items():
+                                    if atom3.isHydrogen():
+                                        # append H w/o further exploring
+                                        top2.append(mol.vertices.index(atom3) + 1)
+                                    elif atom3 not in explored_atom_list:
+                                        top2_has_heavy_atoms = True
+                                        atom_list_to_explore.append(atom3)  # explore it further
+                                atom_list_to_explore.pop(atom_list_to_explore.index(atom))
+                                explored_atom_list.append(atom)  # mark as explored
+                        if top1_has_heavy_atoms and not top2_has_heavy_atoms:
+                            rotor['top'] = top2
+                        elif top2_has_heavy_atoms and not top1_has_heavy_atoms:
+                            rotor['top'] = top1
+                        else:
+                            rotor['top'] = top1 if len(top1) <= len(top2) else top2
+                        # scan:
+                        rotor['scan'] = []
+                        heavy_atoms = []
+                        hydrogens = []
+                        for atom3, bond13 in atom1.edges.items():
+                            if atom3.isHydrogen():
+                                hydrogens.append(mol.vertices.index(atom3))
+                            elif atom3 is not atom2:
+                                heavy_atoms.append(mol.vertices.index(atom3))
+                        smallest_index = len(mol.vertices)
+                        if len(heavy_atoms):
+                            for i in heavy_atoms:
+                                if i < smallest_index:
+                                    smallest_index = i
+                        else:
+                            for i in hydrogens:
+                                if i < smallest_index:
+                                    smallest_index = i
+                        rotor['scan'].append(smallest_index + 1)
+                        rotor['scan'].extend([mol.vertices.index(atom1) + 1, mol.vertices.index(atom2) + 1])
+                        heavy_atoms = []
+                        hydrogens = []
+                        for atom3, bond3 in atom2.edges.items():
+                            if atom3.isHydrogen():
+                                hydrogens.append(mol.vertices.index(atom3))
+                            elif atom3 is not atom1:
+                                heavy_atoms.append(mol.vertices.index(atom3))
+                        smallest_index = len(mol.vertices)
+                        if len(heavy_atoms):
+                            for i in heavy_atoms:
+                                if i < smallest_index:
+                                    smallest_index = i
+                        else:
+                            for i in hydrogens:
+                                if i < smallest_index:
+                                    smallest_index = i
+                        rotor['scan'].append(smallest_index + 1)
+                        rotor['success'] = None
+                        rotor['times_dihedral_set'] = 0
+                        rotor['scan_path'] = ''
+                        rotors.append(rotor)
     return rotors
 
 
