@@ -35,7 +35,7 @@ source .bashrc
 mkdir -p /scratch/{1}
 cd $WorkDir
 
-g03 input.in
+g03 input.gjf
 
 """,
     'qchem': """#!/bin/bash
