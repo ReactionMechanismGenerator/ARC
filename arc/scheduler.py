@@ -546,6 +546,7 @@ class Scheduler(object):
                                 self.species_dict[label].set_dihedral(scan=self.species_dict[label].rotors_dict[i]['scan'],
                                                                       pivots=self.species_dict[label].rotors_dict[i]['pivots'],
                                                                       deg_increment=min_index*rotor_scan_resolution)
+                                self.delete_all_species_jobs(label)
                                 self.run_opt_job(label)  # run opt on newly generated initial_xyz with the desired dihedral
                             else:
                                 self.species_dict[label].rotors_dict[i]['success'] = True
@@ -840,4 +841,12 @@ class Scheduler(object):
             self.output[label]['status'] = 'nothing converged'
             logging.error('species {0} did not converge. Status is: {1}'.format(label, status))
 
-
+    def delete_all_species_jobs(self, label):
+        """
+        Deletes all jobs of species/TS represented by `label`
+        """
+        if self.job_dict[label] == dict():
+            return
+        for job_type, job_dict in self.job_dict[label].iteritems():
+            for job_name, job in job_dict.iteritems():
+                job.delete()

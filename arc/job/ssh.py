@@ -5,7 +5,7 @@ import paramiko
 import logging
 import os
 
-from arc.settings import servers, check_status_command, submit_command, submit_filename
+from arc.settings import servers, check_status_command, submit_command, submit_filename, delete_command
 from arc.exceptions import InputError
 
 ##################################################################
@@ -133,6 +133,13 @@ class SSH_Client(object):
                 return 'errored on node ' + status_line.split()[-1][-2:]
             else:
                 raise ValueError('Unknown server {0}'.format(self.server))
+
+    def delete_job(self, job_id):
+        """
+        Deletes a running job
+        """
+        cmd = delete_command[servers[self.server]['cluster_soft']] + ' ' + str(job_id)
+        self.send_command_to_server(cmd)
 
     def check_running_jobs_ids(self):
         """

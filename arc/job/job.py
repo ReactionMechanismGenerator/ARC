@@ -7,7 +7,7 @@ import csv
 import logging
 
 from arc.settings import arc_path, software_server, servers, submit_filename,\
-    input_filename, output_filename, rotor_scan_resolution, delete_command, list_available_nodes_command
+    input_filename, output_filename, rotor_scan_resolution, list_available_nodes_command
 from arc.job.submit import submit_sctipts
 from arc.job.input import input_files
 from arc.job.ssh import SSH_Client
@@ -441,6 +441,12 @@ $end
         logging.debug('submitting job...')
         # submit_job returns job server status and job server id
         self.job_status[0], self.job_id = ssh.submit_job(remote_path=self.remote_path)
+
+    def delete(self):
+        logging.info('Deleting job {name} for {label}'.format(name=self.job_name, label=self.species_name))
+        ssh = SSH_Client(self.server)
+        logging.debug('deleting job...')
+        ssh.delete_job(self.job_id)
 
     def determine_job_status(self):
         if self.job_status[0] == 'errored':
