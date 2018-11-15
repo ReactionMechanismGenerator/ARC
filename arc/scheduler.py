@@ -539,11 +539,10 @@ class Scheduler(object):
                                 # Find the rotation dihedral in degrees to the closest minimum:
                                 min_v = v_list[0]
                                 min_index = 0
-                                for i, v in enumerate(v_diff):
+                                for j, v in enumerate(v_list):
                                     if v < min_v - 2:
-                                        print v, ' < ', min_v - 2
                                         min_v = v
-                                        min_index = i
+                                        min_index = j
                                 self.species_dict[label].set_dihedral(scan=self.species_dict[label].rotors_dict[i]['scan'],
                                                                       pivots=self.species_dict[label].rotors_dict[i]['pivots'],
                                                                       deg_increment=min_index*rotor_scan_resolution)
