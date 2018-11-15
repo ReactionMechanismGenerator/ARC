@@ -34,15 +34,16 @@ def plot_rotor_scan(angle, v_list):
 
 def show_sticks(xyz):
     """
-    Draws the molecule in "sticks" style according to supplied xyz coordinates
+    Draws the molecule in a "sticks" style according to supplied xyz coordinates
     """
     mol = Molecule()
     coordinates = list()
     for line in xyz.split('\n'):
-        atom = Atom(element=line.split()[0])
-        coordinates.append([float(line.split()[1]), float(line.split()[2]), float(line.split()[3])])
-        atom.coords = np.array(coordinates[-1], np.float64)
-        mol.addAtom(atom)
+        if line:
+            atom = Atom(element=line.split()[0])
+            coordinates.append([float(line.split()[1]), float(line.split()[2]), float(line.split()[3])])
+            atom.coords = np.array(coordinates[-1], np.float64)
+            mol.addAtom(atom)
     mol.connectTheDots()  # only adds single bonds, but we don't care
     rd_mol, rd_inds = mol.toRDKitMol(removeHs=False, returnMapping=True)
     Chem.AllChem.EmbedMolecule(rd_mol)  # unfortunately, this mandatory embedding changes the coordinates
