@@ -87,7 +87,7 @@ class Scheduler(object):
              }
     """
     def __init__(self, project, species_list, composite_method, conformer_level, opt_level, freq_level, sp_level,
-                 scan_level, fine=False):
+                 scan_level, fine=False, generate_conformers=True):
         self.project = project
         self.servers = list()
         self.species_list = species_list
@@ -98,6 +98,7 @@ class Scheduler(object):
         self.sp_level = sp_level
         self.scan_level = scan_level
         self.fine = fine
+        self.generate_conformers = generate_conformers
         self.job_dict = dict()
         self.running_jobs = dict()
         self.servers_jobs_ids = list()
@@ -129,9 +130,9 @@ class Scheduler(object):
                     self.species_dict[species.label].initial_xyz = symbol + '   0.0   0.0   0.0'
                     self.species_dict[species.label].final_xyz = symbol + '   0.0   0.0   0.0'
                 self.run_sp_job(label=species.label)
-            elif self.species_dict[species.label].initial_xyz:
+            elif self.species_dict[species.label].initial_xyz and not self.generate_conformers:
                 self.run_opt_job(species.label)
-            elif not self.species_dict[species.label].is_ts:
+            elif not self.species_dict[species.label].is_ts and self.generate_conformers:
                 self.species_dict[species.label].generate_conformers()
         self.timer = True
         self.schedule_jobs()
@@ -255,7 +256,7 @@ class Scheduler(object):
                   is_ts=species.is_ts, memory=memory, trsh=trsh, conformer=conformer, ess_trsh_methods=ess_trsh_methods,
                   scan=scan, pivots=pivots)
         if conformer < 0:
-            # this is not a conformer job
+            # this is NOT a conformer job
             self.running_jobs[label].append(job.job_name)  # mark as a running job
             try:
                 self.job_dict[label][job_type]
@@ -295,11 +296,20 @@ class Scheduler(object):
         in self.species_dict[species.label]['initial_xyz']
         """
         for label in self.unique_species_labels:
-            if not self.species_dict[label].is_ts and not self.species_dict[label].initial_xyz:
-                self.job_dict[label]['conformers'] = dict()
-                for i, xyz in enumerate(self.species_dict[label].conformers):
-                    self.run_job(label=label, xyz=xyz, level_of_theory=self.conformer_level, job_type='conformer',
-                                 conformer=i)
+            if not self.species_dict[label].is_ts and self.generate_conformers:
+                if len(self.species_dict[label].conformers) > 1:
+                    self.job_dict[label]['conformers'] = dict()
+                    for i, xyz in enumerate(self.species_dict[label].conformers):
+                        self.run_job(label=label, xyz=xyz, level_of_theory=self.conformer_level, job_type='conformer',
+                                     conformer=i)
+                else:
+                    logging.info('Only one conformer is available for species {0},'
+                                 ' using it for geometry optimization'.format(label))
+                    self.species_dict[label].initial_xyz = self.species_dict[label].conformers[0]
+                    if not self.composite_method:
+                        self.run_opt_job(label)
+                    else:
+                        self.run_composite_job(label)
 
     def run_opt_job(self, label):
         """

@@ -49,13 +49,14 @@ class ARC(object):
     """
     def __init__(self, project, rmg_species_list=list(), arc_species_list=list(), rxn_list=list(),
                  level_of_theory='', conformer_level='', composite_method='', opt_level='', freq_level='', sp_level='',
-                 scan_level='', fine=True, verbose=logging.INFO):
+                 scan_level='', fine=True, generate_conformers=True, verbose=logging.INFO):
 
         self.project = project
         self.output_directory = os.path.join(arc_path, 'Projects', self.project)
         if not os.path.exists(self.output_directory):
             os.makedirs(self.output_directory)
         self.fine = fine
+        self.generate_conformers = generate_conformers
         if not self.fine:
             logging.info('\n')
             logging.warning('Not using a fine grid for geometry optimization jobs')
