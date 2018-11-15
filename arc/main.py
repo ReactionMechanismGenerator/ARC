@@ -9,7 +9,7 @@ import time
 from rmgpy.species import Species
 from rmgpy.reaction import Reaction
 
-from arc.settings import arc_path
+from arc.settings import arc_path, default_levels_of_theory
 from arc.scheduler import Scheduler
 from arc.exceptions import InputError
 from arc.species import ARCSpecies
@@ -78,8 +78,11 @@ class ARC(object):
         else:
             # logging.info('Using B97-D3/def2-SVP for refined conformer searches (after filtering via force fields)')
             # self.conformer_level = 'b97-d3/def2-msvp'  # use B97-D3/def2-mSVP as default for conformer search
-            logging.info('Using B97-D3/6-311++G(d,p) for refined conformer searches (after filtering via force fields)')
-            self.conformer_level = 'b97-d3/6-311++g(d,p)'  # use B97-D3/def2-mSVP as default for conformer search
+            logging.info('Using {0} for refined conformer searches (after filtering via force fields)'.format(
+                default_levels_of_theory['conformer']))
+            self.conformer_level = default_levels_of_theory['conformer']
+
+        self.composite_method = composite_method
 
         if level_of_theory:
             if '/' not in level_of_theory:
@@ -110,22 +113,22 @@ class ARC(object):
             else:
                 # self.opt_level = 'wb97x-d3/def2-tzvpd'
                 # logging.info('Using wB97x-D3/def2-TZVPD for geometry optimizations')
-                self.opt_level = 'wb97x-d3/6-311++G(d,p)'
-                logging.info('Using wB97x-D3/6-311++G(d,p) for geometry optimizations')
+                self.opt_level = default_levels_of_theory['opt']
+                logging.info('Using {0} for geometry optimizations'.format(default_levels_of_theory['opt']))
             if freq_level:
                 self.freq_level = freq_level.lower()
                 logging.info('Using {0} for frequency calculations'.format(freq_level))
             else:
                 # self.freq_level = 'wb97x-d3/def2-tzvpd'
                 # logging.info('Using wB97x-D3/def2-TZVPD for frequency calculations')
-                self.freq_level = 'wb97x-d3/6-311++g(d,p)'
-                logging.info('Using wB97x-D3/6-311++G(d,p) for frequency calculations')
+                self.freq_level = default_levels_of_theory['freq']
+                logging.info('Using {0} for frequency calculations'.format(default_levels_of_theory['freq']))
             if sp_level:
                 self.sp_level = sp_level.lower()
                 logging.info('Using {0} for single point calculations'.format(sp_level))
             else:
-                logging.info('Using CCSD(T)-F12a/aug-cc-pVTZ for single point calculations')
-                self.sp_level = 'ccsd(T)-f12a/aug-cc-pvtz'
+                logging.info('Using {0} for single point calculations'.format(default_levels_of_theory['sp']))
+                self.sp_level = default_levels_of_theory['sp']
         self.composite_method = composite_method.lower()
         if self.composite_method:
             logging.info('Using composite method {0}'.format(composite_method))
@@ -133,8 +136,10 @@ class ARC(object):
             self.scan_level = scan_level.lower()
             logging.info('Using {0} for rotor scans'.format(scan_level))
         else:
-            self.scan_level = 'b3lyp/6-311+g(d,p)'
-            logging.info('Using B3LYP/6-311+G(d,p) for rotor scans')
+            # self.scan_level = 'b3lyp/6-311+g(d,p)'
+            self.scan_level = default_levels_of_theory['scan']
+            # logging.info('Using B3LYP/6-311+G(d,p) for rotor scans')
+            logging.info('Using {0} for rotor scans'.format(default_levels_of_theory['scan']))
 
         self.rmg_species_list = rmg_species_list
         self.arc_species_list = arc_species_list
@@ -167,7 +172,7 @@ class ARC(object):
         scheduler = Scheduler(project=self.project, species_list=self.arc_species_list,
                               composite_method=self.composite_method, conformer_level=self.conformer_level,
                               opt_level=self.opt_level, freq_level=self.freq_level, sp_level=self.sp_level,
-                              scan_level=self.scan_level, fine=self.fine)
+                              scan_level=self.scan_level, fine=self.fine, generate_conformers=self.generate_conformers)
         Processor(self.project, scheduler.species_dict, scheduler.output)
         self.log_footer()
 

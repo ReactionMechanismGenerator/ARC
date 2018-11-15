@@ -55,7 +55,15 @@ output_filename = {'gaussian03': 'input.log',
                    'molpro_2012': 'input.out',
 }
 
-arc_path = 'path/to/ARC/'  # on local machine
+default_levels_of_theory = {'conformer': 'b97-d3/6-311+g(d,p)',
+                            'opt': 'wb97x-d3/6-311+g(d,p)',
+                            'freq': 'wb97x-d3/6-311+g(d,p)',
+                            'sp': 'ccsd(t)-f12a/aug-cc-pvtz',
+                            'scan': 'b3lyp/6-31+g*',
+                            'irc': 'b3lyp/6-31+g*',
+                            'gsm': 'b3lyp/6-31+g*',
+}
+
 rotor_scan_resolution = 10.0  # degrees. default: 10
 
 # rotor validation parameters
