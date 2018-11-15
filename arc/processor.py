@@ -36,8 +36,7 @@ class Processor(object):
         for species in self.species_dict.itervalues():
             if self.output[species.label]['status'] == 'converged':
                 linear = False  # TODO
-                species.determine_external_symmerty()
-                species.determine_optical_isomers()
+                species.determine_symmetry()
                 multiplicity = species.multiplicity
                 model_chemistry = 'CCSD(T)-F12/aug-cc-pVTZ'.lower()  # TODO
                 sp_path = self.output[species.label]['sp']

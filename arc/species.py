@@ -13,6 +13,8 @@ from rmgpy.molecule.converter import toOBMol
 from rmgpy.molecule.element import getElement
 from rmgpy.species import Species
 from rmgpy.molecule.molecule import Atom, Molecule
+from rmgpy.qm.qmdata import QMData
+from rmgpy.qm.symmetry import PointGroupCalculator
 
 from arc.exceptions import SpeciesError, RotorError
 
@@ -115,6 +117,8 @@ class ARCSpecies(object):
 
         self.xyzs = list()  # used for conformer search
 
+        self.external_symmetry = 1
+        self.optical_isomers = 1
     def find_conformers(self, mol, method='all'):
         """
         Generates conformers for `mol` which is an ``RMG.Molecule`` object using the method/s
@@ -320,6 +324,44 @@ class ARCSpecies(object):
                 new_xyz.append([conf.GetAtomPosition(indx_map[i]).x, conf.GetAtomPosition(indx_map[i]).y,
                             conf.GetAtomPosition(indx_map[i]).z])
             self.initial_xyz = get_xyz_matrix(new_xyz, mol=mol)
+
+    def determine_symmetry(self):
+        """
+        Input:
+          `atom_nums`:  List of atomic numbers
+          `coords`:     N x 3 numpy.ndarray of atomic coordinates in same order as `atom_nums`
+          `unique_id`:  Just some name that the SYMMETRY code gives to one of its jobs
+          `scr_dir`:    Scratch directory that the SYMMETRY code writes its files in
+
+        Output:
+          `symmetry`:   External symmetry number
+          `opt_isos`:   Number of optical isomers
+        """
+        atom_numbers = list()  # List of atomic numbers
+        coordinates = list()
+        for line in self.final_xyz.split('\n'):
+            atom_numbers.append(getElement(line.split()[0]).number)
+            coordinates.append([float(line.split()[1]), float(line.split()[2]), float(line.split()[3])])
+        coordinates = np.array(coordinates, np.float64)  # N x 3 numpy.ndarray of atomic coordinates
+        #  in the same order as `atom_numbers`
+        unique_id = '0'  # Just some name that the SYMMETRY code gives to one of its jobs
+        scr_dir = 'SCRATCH'  # Scratch directory that the SYMMETRY code writes its files in
+        symmetry = optical_isomers = 1
+        qmdata = QMData(
+            groundStateDegeneracy=1,  # Only needed to check if valid QMData
+            numberOfAtoms=len(atom_numbers),
+            atomicNumbers=atom_numbers,
+            atomCoords=(coordinates, 'angstrom'),
+            energy=(0.0, 'kcal/mol')  # Only needed to avoid error
+        )
+        settings = type("", (), dict(symmetryPath='symmetry', scratchDirectory=scr_dir))()  # Creates anonymous class
+        pgc = PointGroupCalculator(settings, unique_id, qmdata)
+        pg = pgc.calculate()
+        if pg is not None:
+            symmetry = pg.symmetryNumber
+            optical_isomers = 2 if pg.chiral else optical_isomers
+        self.optical_isomers = optical_isomers
+        self.symmetry = symmetry
 
 
 def find_internal_rotors(mol):
