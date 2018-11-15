@@ -87,7 +87,7 @@ class Scheduler(object):
              }
     """
     def __init__(self, project, species_list, composite_method, conformer_level, opt_level, freq_level, sp_level,
-                 scan_level, fine=False, generate_conformers=True):
+                 scan_level, fine=False, generate_conformers=True, scan_rotors=True):
         self.project = project
         self.servers = list()
         self.species_list = species_list
@@ -99,6 +99,7 @@ class Scheduler(object):
         self.scan_level = scan_level
         self.fine = fine
         self.generate_conformers = generate_conformers
+        self.scan_rotors = scan_rotors
         self.job_dict = dict()
         self.running_jobs = dict()
         self.servers_jobs_ids = list()
@@ -116,7 +117,8 @@ class Scheduler(object):
             self.job_dict[species.label] = dict()
             self.species_dict[species.label] = species
             self.species_dict[species.label].generate_localized_structures()
-            self.species_dict[species.label].determine_rotors()
+            if self.scan_rotors:
+                self.species_dict[species.label].determine_rotors()
             self.running_jobs[species.label] = list()  # initialize before running the first job
             if self.species_dict[species.label].monoatomic:
                 if not self.species_dict[species.label].initial_xyz:
@@ -363,14 +365,15 @@ class Scheduler(object):
         """
         Spawn rotor scan jobs using 'final_xyz' for species ot TS 'label'.
         """
-        if 'scan' not in self.job_dict[label]:  # Check whether or not rotor scan jobs have been spawned yet
-            # we're spawning the first scan job for this species
-            self.job_dict[label]['scan'] = dict()
-        for i in xrange(self.species_dict[label].number_of_rotors):
-            scan = self.species_dict[label].rotors_dict[i]['scan']
-            pivots = self.species_dict[label].rotors_dict[i]['pivots']
-            self.run_job(label=label, xyz=self.species_dict[label].final_xyz,
-                         level_of_theory=self.scan_level, job_type='scan', scan=scan, pivots=pivots)
+        if self.scan_rotors:
+            if 'scan' not in self.job_dict[label]:  # Check whether or not rotor scan jobs have been spawned yet
+                # we're spawning the first scan job for this species
+                self.job_dict[label]['scan'] = dict()
+            for i in xrange(self.species_dict[label].number_of_rotors):
+                scan = self.species_dict[label].rotors_dict[i]['scan']
+                pivots = self.species_dict[label].rotors_dict[i]['pivots']
+                self.run_job(label=label, xyz=self.species_dict[label].final_xyz,
+                             level_of_theory=self.scan_level, job_type='scan', scan=scan, pivots=pivots)
 
     def parse_conformer_energy(self, job, label, i):
         """
