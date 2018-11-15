@@ -131,14 +131,6 @@ class Job(object):
             logging.error('software: {0}'.format(self.software))
             logging.error('method: {0}'.format(self.method))
             logging.error('basis_set: {0}'.format(self.basis_set))
-            print self.ess_trsh_methods
-            print self.trsh
-            print self.job_type
-            print self.job_name
-            print self.level_of_theory
-            print self.software
-            print self.method
-            print self.basis_set
             logging.error('Could not determine software for job {0}. Setting to gaussian03'.format(self.job_name))
             self.software = 'gaussian03'
 
