@@ -155,9 +155,18 @@ class Scheduler(object):
                 for job_name in job_list:
                     if 'conformer' in job_name:
                         i = int(job_name[9:])  # the conformer number. parsed from a string like 'conformer12'.
+                        job = self.job_dict[label]['conformers'][i]
+                        max_time = datetime.timedelta(seconds=max(1800, job.n_atoms ^ 4))
+                        if datetime.datetime.now() - job.date_time > max_time:
+                            # resubmit this conformer job
+                            logging.error('Conformer job {name} for {label} is taking too long (already {delta}).'
+                                          'Terminating job and re-submitting'.format(name=job.job_name, label=label,
+                                                                                     delta=max_time))
+                            job.delete()
+                            self.run_job(label=label, xyz=job.xyz, level_of_theory=self.conformer_level,
+                                         job_type='conformer', conformer=job.conformer)
                         if self.job_dict[label]['conformers'][i].job_id not in self.servers_jobs_ids:
                             # this is a completed conformer job
-                            job = self.job_dict[label]['conformers'][i]
                             successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
                             if successful_server_termination:
                                 self.parse_conformer_energy(job=job, label=label, i=i)
