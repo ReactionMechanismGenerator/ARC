@@ -64,8 +64,21 @@ qchem -nt 6 input.in output.out
 
 """,
     'molpro_2015': """#!/bin/bash
+#SBATCH -p normal
 #SBATCH -J {0}
-#SBATCH --nodelist=node[08]
+#SBATCH -N 1
+#SBATCH -c 8
+#SBATCH --mem-per-cpu=2048
+
+export PATH=/opt/molpro/molprop_2015_1_linux_x86_64_i8/bin:$PATH
+
+echo "============================================================"
+echo "Job ID : $SLURM_JOB_ID"
+echo "Job Name : $SLURM_JOB_NAME"
+echo "Starting on : $(date)"
+echo "Running on node : $SLURMD_NODENAME"
+echo "Current directory : $(pwd)"
+echo "============================================================"
 
 WorkDir=`pwd`
 cd
@@ -91,6 +104,10 @@ rm -rf $sdir
 #$ -cwd
 #$ -o out.txt
 #$ -e err.txt
+
+export MPICH2_ROOT=/opt/mpich2-1.2.1p1
+export PATH=/opt/molpro2012/molprop_2012_1_Linux_x86_64_i8/bin:$PATH
+export LD_LIBRARY_PATH=/opt/gcc-4.7/lib:$LD_LIBRARY_PATH
 
 WorkDir=`pwd`
 cd
