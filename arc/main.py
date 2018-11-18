@@ -178,7 +178,20 @@ class ARC(object):
                                    opt_level=self.opt_level, freq_level=self.freq_level, sp_level=self.sp_level,
                                    scan_level=self.scan_level, fine=self.fine,
                                    generate_conformers=self.generate_conformers, scan_rotors=self.scan_rotors)
+        Processor(self.project, self.scheduler.species_dict, self.scheduler.output)
+        self.summary()
         self.log_footer()
+
+    def summary(self):
+        """
+        Report status and data of all species / reactions
+        """
+        logging.info('\n\n\nAll jobs terminated. Project summary:\n')
+        for label, output in self.scheduler.output.iteritems():
+            if output['status'] == 'converged':
+                logging.info('Species {0} converged successfully'.format(label))
+            else:
+                logging.info('Species {0} failed with message:\n  {1}'.format(label, output['status']))
 
     def initialize_log(self, verbose=logging.INFO, log_file=None):
         """
