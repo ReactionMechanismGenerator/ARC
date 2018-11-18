@@ -294,9 +294,16 @@ class Scheduler(object):
         self.timer = False
         job.run_time = str(datetime.datetime.now() - job.date_time).split('.')[0]
         job.write_completed_job_to_csv_file()
-        logging.info('  Ending job {name} ({time})'.format(name=job.job_name, time=job.run_time))
+        logging.info('  Ending job {name} for {label} ({time})'.format(name=job.job_name, label=label,
+                                                                       time=job.run_time))
+        if 'conformer' not in job_name:
+            running_jobs = list()
+            for job_type, job_dict in self.job_dict[label].iteritems():
+                for job_name, job in job_dict.iteritems():
+                    running_jobs.append(job.job_name)
+            # TODO: it prints all jobs, even the ones ended...
+            logging.info('Currently running jobs: {0}'.format(running_jobs))  # good for deleting jobs if interrupting
         if job.job_status[0] != 'done':
-            job.troubleshoot_server()
             return False
         return True
 
@@ -777,7 +784,7 @@ class Scheduler(object):
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
                              job_type=job_type, fine=False, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
                              conformer=conformer)
-            elif 'SYM_IGNORE' not in job.ess_trsh_methods:
+            elif 'SYM_IGNORE' not in job.ess_trsh_methods:  # symmetry - look in manual, no symm if fails
                 # change the SCF algorithm and increase max SCF cycles
                 logging.info('Troubleshooting {type} job in {software} using SYM_IGNORE'
                              ' as well as the DIIS_GDM SCF algorithm'.format(type=job_type, software=job.software))
@@ -892,9 +899,8 @@ class Scheduler(object):
         """
         Deletes all jobs of species/TS represented by `label`
         """
-        if self.job_dict[label] == dict():
-            return
         # TODO: check whether the job is actually ruinning before deleting (so the logging of deleted jobs makes sence)
         for job_type, job_dict in self.job_dict[label].iteritems():
             for job_name, job in job_dict.iteritems():
                 job.delete()
+        self.job_dict[label] = dict()
