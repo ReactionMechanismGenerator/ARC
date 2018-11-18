@@ -49,7 +49,7 @@ class ARC(object):
     """
     def __init__(self, project, rmg_species_list=list(), arc_species_list=list(), rxn_list=list(),
                  level_of_theory='', conformer_level='', composite_method='', opt_level='', freq_level='', sp_level='',
-                 scan_level='', fine=True, generate_conformers=True, verbose=logging.INFO):
+                 scan_level='', fine=True, generate_conformers=True, scan_rotors=True, verbose=logging.INFO):
 
         self.project = project
         self.output_directory = os.path.join(arc_path, 'Projects', self.project)
@@ -57,6 +57,7 @@ class ARC(object):
             os.makedirs(self.output_directory)
         self.fine = fine
         self.generate_conformers = generate_conformers
+        self.scan_rotors = scan_rotors
         if not self.fine:
             logging.info('\n')
             logging.warning('Not using a fine grid for geometry optimization jobs')
@@ -156,6 +157,8 @@ class ARC(object):
 
         self.rxn_list = rxn_list
 
+        self.scheduler = None
+
         self.execute()
 
     def execute(self):
@@ -170,11 +173,11 @@ class ARC(object):
                 logging.error('`rxn_list` must be a list of RMG.Reaction objects. Got {0}'.format(type(rxn)))
                 raise ValueError()
             logging.info('Considering reacrion {0}'.format(rxn))
-        scheduler = Scheduler(project=self.project, species_list=self.arc_species_list,
-                              composite_method=self.composite_method, conformer_level=self.conformer_level,
-                              opt_level=self.opt_level, freq_level=self.freq_level, sp_level=self.sp_level,
-                              scan_level=self.scan_level, fine=self.fine, generate_conformers=self.generate_conformers)
-        Processor(self.project, scheduler.species_dict, scheduler.output)
+        self.scheduler = Scheduler(project=self.project, species_list=self.arc_species_list,
+                                   composite_method=self.composite_method, conformer_level=self.conformer_level,
+                                   opt_level=self.opt_level, freq_level=self.freq_level, sp_level=self.sp_level,
+                                   scan_level=self.scan_level, fine=self.fine,
+                                   generate_conformers=self.generate_conformers, scan_rotors=self.scan_rotors)
         self.log_footer()
 
     def initialize_log(self, verbose=logging.INFO, log_file=None):
