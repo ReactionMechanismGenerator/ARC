@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # encoding: utf-8
 
+import os
 import logging
 import numpy as np
 
@@ -182,8 +183,8 @@ class ARCSpecies(object):
             ob_xyzs, ob_energies = self._get_possible_conformers_openbabel(mol)
             ob_xyz = self.get_min_energy_conformer(xyzs=ob_xyzs, energies=ob_energies)
             self.xyzs.append(get_xyz_matrix(xyz=ob_xyz, mol=mol))
-        logging.info('Considering {0} conformers out of {1} conformers ran using a force field for {2}'.format(
-            len(rd_xyzs+ob_xyzs), len(self.xyzs), self.label))
+        logging.info('Considering {actual} conformers for {label} out of {total} total ran using a force field'.format(
+            actual=len(self.xyzs), total=len(rd_xyzs+ob_xyzs), label=self.label))
 
     def _get_possible_conformers_rdkit(self, mol):
         """
@@ -307,6 +308,7 @@ class ARCSpecies(object):
         All bonded atoms are moved accordingly. The result is saved in self.initial_xyz.
         `pivots` is used to identify the rotor.
         """
+        # TODO: show 3D structure before and after the change
         if deg_increment == 0:
             logging.warning('set_dihedral was called with zero increment for {label} with pivots {pivots}'.format(
                 label=self.label, pivots=pivots))
@@ -330,10 +332,11 @@ class ARCSpecies(object):
             mol = Molecule()
             coordinates = list()
             for line in self.final_xyz.split('\n'):
-                atom = Atom(element=line.split()[0])
-                coordinates.append([float(line.split()[1]), float(line.split()[2]), float(line.split()[3])])
-                atom.coords = np.array(coordinates[-1], np.float64)
-                mol.addAtom(atom)
+                if line:
+                    atom = Atom(element=line.split()[0])
+                    coordinates.append([float(line.split()[1]), float(line.split()[2]), float(line.split()[3])])
+                    atom.coords = np.array(coordinates[-1], np.float64)
+                    mol.addAtom(atom)
             mol.connectTheDots()  # only adds single bonds, but we don't care
             rd_mol, rd_inds = mol.toRDKitMol(removeHs=False, returnMapping=True)
             Chem.AllChem.EmbedMolecule(rd_mol)  # unfortunately, this mandatory embedding changes the coordinates
@@ -546,3 +549,9 @@ def determine_occ(label, xyz, charge):
 
 # TODO: isomorphism check for final conformer
 # TODO: solve chirality issues? How can I get the N4 isomer?
+#  RDkit has 'FindMolChiralCenters'
+# and rdkit.Chem.rdmolops.AssignAtomChiralTagsFromStructure, rdkit.Chem.rdmolops.AssignStereochemistry
+# TODO: parse spin contamination and multireference characteristic from sp file in output dictionary
+# TODO: spin contamination (in molpro, this is in the **output.log** file(!) as
+#  "Spin contamination <S**2-Sz**2-Sz>     0.00000000")
+
