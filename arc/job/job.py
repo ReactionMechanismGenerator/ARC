@@ -29,6 +29,7 @@ class Job(object):
     `multiplicity`    ``int``            The species multiplicity.
     `spin`            ``int``            The spin. automatically derived from the multiplicity
     `xyz`             ``str``            The xyz geometry. Used for the calculation
+    `n_atoms`         ``int``            The number of atoms in self.xyz
     `conformer`       ``int``            Conformer number if optimizing conformers
     `is_ts`           ``bool``           Whether this species represents a transition structure
     `level_of_theory` ``str``            Level of theory, e.g. 'CBS-QB3', 'CCSD(T)-F12a/aug-cc-pVTZ',
@@ -79,6 +80,7 @@ class Job(object):
         self.multiplicity = multiplicity
         self.spin = self.multiplicity - 1
         self.xyz = xyz
+        self.n_atoms = self.xyz.count('\n')
         self.conformer = conformer
         self.is_ts = is_ts
         self.ess_trsh_methods = ess_trsh_methods
