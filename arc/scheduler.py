@@ -16,7 +16,7 @@ from arc import plotter
 from arc.job.job import Job
 from arc.exceptions import SpeciesError, SchedulerError
 from arc.job.ssh import SSH_Client
-from arc.species import ARCSpecies, get_xyz_matrix
+from arc.species import ARCSpecies, get_xyz_matrix, determine_occ
 from arc.settings import rotor_scan_resolution, inconsistency_ab, inconsistency_az, maximum_barrier
 
 ##################################################################
@@ -248,7 +248,7 @@ class Scheduler(object):
                 time.sleep(30)  # wait 30 sec before bugging the servers again.
 
     def run_job(self, label, xyz, level_of_theory, job_type, fine=False, software=None, shift='', trsh='', memory=1500,
-                conformer=-1, ess_trsh_methods=list(), scan='', pivots=list()):
+                conformer=-1, ess_trsh_methods=list(), scan='', pivots=list(), occ=None):
         """
         A helper function for running (all) jobs
         """
@@ -256,7 +256,7 @@ class Scheduler(object):
         job = Job(project=self.project, species_name=label, xyz=xyz, job_type=job_type, level_of_theory=level_of_theory,
                   multiplicity=species.multiplicity, charge=species.charge, fine=fine, shift=shift, software=software,
                   is_ts=species.is_ts, memory=memory, trsh=trsh, conformer=conformer, ess_trsh_methods=ess_trsh_methods,
-                  scan=scan, pivots=pivots)
+                  scan=scan, pivots=pivots, occ=occ)
         if conformer < 0:
             # this is NOT a conformer job
             self.running_jobs[label].append(job.job_name)  # mark as a running job
@@ -352,13 +352,45 @@ class Scheduler(object):
     def run_sp_job(self, label):
         """
         Spawn a single point job using 'final_xyz' for species ot TS 'label'.
+        If the method is MRCI, first spawn a simple CCSD job, and use orbital determination to run the MRCI job
         """
+        # determine_occ(label=self.label, xyz=self.xyz, charge=self.charge)
         if 'sp' not in self.job_dict[label]:  # Check whether or not single point jobs have been spawned yet
             # we're spawning the first sp job for this species
             self.job_dict[label]['sp'] = dict()
         if self.composite_method:
             raise SchedulerError('run_sp_job() was called for {0} which has a composite method level of theory'.format(
                 label))
+        if 'mrci' in self.sp_level:
+            if self.job_dict[label]['sp']:
+                # Parse orbital information from the CCSD job, then run MRCI
+                job0 = None
+                jobname0 = 0
+                for job_name, job in self.job_dict[label]['sp']:
+                    if int(job_name.split('_a')[-1]) > jobname0:
+                        jobname0 = int(job_name.split('_a')[-1])
+                        job0 = job
+                with open(job0.local_path_to_output_file, 'rb') as f:
+                    lines = f.readlines()
+                    core = val = 0, 0
+                    for line in lines:
+                        if 'NUMBER OF CORE ORBITALS' in line:
+                            core = int(line.split()[4])
+                        elif 'NUMBER OF VALENCE ORBITALS' in line:
+                            val = int(line.split()[4])
+                        if val * core:
+                            break
+                    else:
+                        raise SchedulerError('Could not determine number of core and valence orbitals from CCSD'
+                                             ' sp calculation for {label}'.format(label=label))
+                occ = val + core  # the occupied orbitals are the core and valence orbitals
+                self.run_job(label=label, xyz=self.species_dict[label].final_xyz, level_of_theory='ccsd/vdz',
+                             job_type='sp', occ=occ)
+            else:
+                # MRCI was requested but no sp job ran for this species, run CCSD first
+                logging.info('running a CCSD job for {0} before MRCI'.format(label))
+                self.run_job(label=label, xyz=self.species_dict[label].final_xyz, level_of_theory='ccsd/vdz',
+                             job_type='sp')
         self.run_job(label=label, xyz=self.species_dict[label].final_xyz, level_of_theory=self.sp_level, job_type='sp')
 
     def run_scan_jobs(self, label):
@@ -462,7 +494,10 @@ class Scheduler(object):
         """
         Check that a single point job converged successfully.
         """
-        if job.job_status[1] == 'done':
+        if 'mrci' in self.sp_level and 'mrci' not in job.level_of_theory:
+            # This is a CCSD job ran before MRCI. Spawn MRCI
+            self.run_sp_job(label)
+        elif job.job_status[1] == 'done':
             self.output[label]['status'] += 'sp converged; '
             self.output[label]['sp'] = os.path.join(job.local_path, 'output.out')
         else:

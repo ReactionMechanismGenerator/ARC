@@ -534,5 +534,18 @@ def get_xyz_matrix(xyz, mol=None, from_arkane=False, number=None):
         result += '\n'
     return result
 
+
+def determine_occ(label, xyz, charge):
+    """
+    Determines the number of occupied orbitals for an MRCI calculation
+    """
+    electrons = 0
+    for line in xyz.split('\n'):
+        if line:
+            atom = Atom(element=line.split()[0])
+            electrons += atom.number
+    electrons -= charge
+
+
 # TODO: isomorphism check for final conformer
 # TODO: solve chirality issues? How can I get the N4 isomer?

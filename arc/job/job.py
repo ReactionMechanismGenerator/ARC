@@ -60,6 +60,7 @@ class Job(object):
     `server`           ``str``           Server's name. Determined automatically
     'trsh'             ''str''           A troubleshooting handle to be appended to input files
     'ess_trsh_methods' ``list``          A list of troubleshooting methods already tried out for ESS convergence
+    `occ`              ``int``           The number of occupied orbitals (core + val) from a molpro CCSD sp calc
     ================ =================== ===============================================================================
 
     self.job_status:
@@ -70,7 +71,7 @@ class Job(object):
     """
     def __init__(self, project, species_name, xyz, job_type, level_of_theory, multiplicity, charge=0, conformer=-1,
                  fine=False, shift='', software=None, is_ts=False, scan='', pivots=list(), memory=1500, comments='',
-                 trsh='', ess_trsh_methods=list()):
+                 trsh='', ess_trsh_methods=list(), occ=None):
         self.project = project
         self.species_name = species_name
         self.job_num = -1
@@ -140,6 +141,7 @@ class Job(object):
         self.memory = memory
         self.fine = fine
         self.shift = shift
+        self.occ = occ
         self.date_time = datetime.datetime.now()
         self.run_time = ''
         self.job_status = ['initializing', 'initializing']
@@ -391,14 +393,30 @@ $end
 
         if self.job_type == 'gsm':  # TODO
             pass
-        try:
-            self.input = self.input.format(memory=self.memory, method=self.method, slash=slash, basis=self.basis_set,
-                                           charge=self.charge, multiplicity=self.multiplicity, spin=self.spin, xyz=self.xyz,
-                                           job_type_1=job_type_1, job_type_2=job_type_2, scan=self.scan,
-                                           restricted=restricted, fine=fine, shift=self.shift, trsh=self.trsh)
-        except KeyError as e:
-            logging.error('Could not interpret all input file keys in\n{0}'.format(self.input))
-            raise e
+
+        if 'mrci' in self.method:
+            if 'molpro' not in self.software:
+                raise JobError('Can only run MRCI on Molpro, not {0}'.format(self.software))
+            if self.occ > 16:
+                raise JobError('Will not excecute an MRCI calculation with more than 16 occupied orbitals.'
+                               'Selective occ, closed, core, frozen keyword still not implemented.')
+            else:
+                try:
+                    self.input = input_files['mrci'].format(memory=self.memory, xyz=self.xyz, basis=self.basis_set,
+                                                            spin=self.spin, charge=self.charge, trsh=self.trsh)
+                except KeyError as e:
+                    logging.error('Could not interpret all input file keys in\n{0}'.format(self.input))
+                    raise e
+        else:
+            try:
+                self.input = self.input.format(memory=self.memory, method=self.method, slash=slash,
+                                               basis=self.basis_set, charge=self.charge, multiplicity=self.multiplicity,
+                                               spin=self.spin, xyz=self.xyz, job_type_1=job_type_1,
+                                               job_type_2=job_type_2, scan=self.scan, restricted=restricted, fine=fine,
+                                               shift=self.shift, trsh=self.trsh)
+            except KeyError as e:
+                logging.error('Could not interpret all input file keys in\n{0}'.format(self.input))
+                raise e
         if not os.path.exists(self.local_path):
             os.makedirs(self.local_path)
         with open(os.path.join(self.local_path, input_filename[self.software]), 'wb') as f:
