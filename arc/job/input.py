@@ -46,6 +46,7 @@ name
 
 
 """,
+
     'qchem': """$molecule
 {charge} {multiplicity}
 {xyz}
@@ -59,11 +60,11 @@ $rem
 $end
 
 """,
+
     'molpro_2012': """***,name
 memory,{memory},m;
 geometry={{angstrom;
-{xyz}
-}}
+{xyz}}}
 
 basis={basis}
 
@@ -79,11 +80,11 @@ wf,spin={spin},charge={charge};}}
 ---;
 
 """,
+
     'molpro_2015': """***,name
 memory,{memory},m;
 geometry={{angstrom;
-{xyz}
-}}
+{xyz}}}
 
 basis={basis}
 
@@ -99,6 +100,37 @@ wf,spin={spin},charge={charge};}}
 ---;
 
 """,
+
+    'mrci': """***,name
+memory,{memory},m;
+geometry={{angstrom;
+{xyz}}}
+
+gprint,orbitals;
+
+basis={basis}
+
+{{hf;shift,-1.0,-0.5;
+maxit,1000;
+wf,spin={spin},charge={charge};}}
+
+{{multi;
+{occ}noextra,failsafe,config,csf;
+wf,spin={spin},charge={charge};
+natorb,print,ci;}}
+
+{{mrci;
+{occ}wf,spin={spin},charge={charge};}}
+
+E_mrci=energy;
+E_mrci_Davidson=energd;
+
+table,E_mrci,E_mrci_Davidson;
+
+---;
+
+""",
+
     'arkane_species': """#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
@@ -119,5 +151,6 @@ frequencies = Log('{freq_path}')
 {rotors}
 
 """,
+
     'arkane_rotor': """HinderedRotor(scanLog=Log('{rotor_path}'), pivots={pivots}, top={top}, symmetry={symmetry}, fit='best')"""
 }
