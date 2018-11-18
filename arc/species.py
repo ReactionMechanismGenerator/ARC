@@ -18,6 +18,7 @@ from rmgpy.qm.qmdata import QMData
 from rmgpy.qm.symmetry import PointGroupCalculator
 
 from arc.exceptions import SpeciesError, RotorError
+from arc.settings import arc_path
 
 ##################################################################
 
@@ -357,25 +358,21 @@ class ARCSpecies(object):
 
     def determine_symmetry(self):
         """
-        Input:
-          `atom_nums`:  List of atomic numbers
-          `coords`:     N x 3 numpy.ndarray of atomic coordinates in same order as `atom_nums`
-          `unique_id`:  Just some name that the SYMMETRY code gives to one of its jobs
-          `scr_dir`:    Scratch directory that the SYMMETRY code writes its files in
-
-        Output:
-          `symmetry`:   External symmetry number
-          `opt_isos`:   Number of optical isomers
+        Determine external symmetry and optical isomers
         """
+        # TODO: test this on several benchmark species
         atom_numbers = list()  # List of atomic numbers
         coordinates = list()
         for line in self.final_xyz.split('\n'):
-            atom_numbers.append(getElement(line.split()[0]).number)
-            coordinates.append([float(line.split()[1]), float(line.split()[2]), float(line.split()[3])])
+            if line:
+                atom_numbers.append(getElement(line.split()[0]).number)
+                coordinates.append([float(line.split()[1]), float(line.split()[2]), float(line.split()[3])])
         coordinates = np.array(coordinates, np.float64)  # N x 3 numpy.ndarray of atomic coordinates
         #  in the same order as `atom_numbers`
         unique_id = '0'  # Just some name that the SYMMETRY code gives to one of its jobs
-        scr_dir = 'SCRATCH'  # Scratch directory that the SYMMETRY code writes its files in
+        scr_dir = os.path.join(arc_path, 'scratch')  # Scratch directory that the SYMMETRY code writes its files in
+        if not os.path.exists(scr_dir):
+            os.makedirs(scr_dir)
         symmetry = optical_isomers = 1
         qmdata = QMData(
             groundStateDegeneracy=1,  # Only needed to check if valid QMData
