@@ -6,7 +6,7 @@ import datetime
 import csv
 import logging
 
-from arc.settings import arc_path, software_server, servers, submit_filename,\
+from arc.settings import arc_path, software_server, servers, submit_filename, delete_command,\
     input_filename, output_filename, rotor_scan_resolution, list_available_nodes_command
 from arc.job.submit import submit_sctipts
 from arc.job.input import input_files
@@ -68,7 +68,6 @@ class Job(object):
     The job server status is in job.job_status[0] and can be either 'initializing' / 'running' / 'errored' / 'done'
     The job ess (electronic structure software calculation) status is in  job.job_status[0] and can be
     either `initializing` / `running` / `errored: {error type / message}` / `unconverged` / `done`
-
     """
     def __init__(self, project, species_name, xyz, job_type, level_of_theory, multiplicity, charge=0, conformer=-1,
                  fine=False, shift='', software=None, is_ts=False, scan='', pivots=list(), memory=1500, comments='',
@@ -259,7 +258,7 @@ class Job(object):
         if self.software == 'gaussian03' and not self.job_type == 'composite':
             slash = '/'
 
-        if self.multiplicity > 1:
+        if self.multiplicity > 1 and '/' in self.level_of_theory:  # only applies for non-composite jobs
             if self.software == 'qchem':
                 restricted = 'True'  # In QChem this attribute is "unrestricted"
             else:
@@ -579,7 +578,7 @@ $end
         logging.error('Job {name} has server status {stat} on {server}. Troubleshooting by changing node.'.format(
             name=self.job_name, stat=self.job_status[0], server=self.server))
         ssh = SSH_Client(self.server)
-        ssh.send_command_to_server(command=delete_command[servers[self.server]['cluster_soft']] + ' ' + self.job_id)
+        ssh.send_command_to_server(command=delete_command[servers[self.server]['cluster_soft']] + ' ' + str(self.job_id))
         # find available nodes
         stdout, stderr = ssh.send_command_to_server(command=list_available_nodes_command[servers[self.server]['cluster_soft']])
         for line in stdout:
