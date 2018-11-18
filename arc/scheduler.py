@@ -885,6 +885,7 @@ class Scheduler(object):
         """
         if self.job_dict[label] == dict():
             return
+        # TODO: check whether the job is actually ruinning before deleting (so the logging of deleted jobs makes sence)
         for job_type, job_dict in self.job_dict[label].iteritems():
             for job_name, job in job_dict.iteritems():
                 job.delete()

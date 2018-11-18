@@ -243,4 +243,15 @@ class ARC(object):
 # TODO: sucsessive opt (B3LYP, CCSD, CISD(T), MRCI)
 # TODO: need to know optical isomers and external symmetry (could also be read from QM, but not always right) for thermo
 # TODO: calc thermo and rates
+# TODO: mongodb?  https://github.com/PACChem/QTC/blob/master/qtc/dbtools.py
+# TODO: make visuallization files
+# TODO: MRCI input file and auto-occ/closed/frozed...
+# TODO: eventually log all levels of theory used for a species. Could be in YAML
+# TODO: make it run on the server
+# TODO: what if a species has an imaginary freq? wait for rotor results, it could improve via the dihedral correction. But if not?
+# TODO: solve the problem w/ molpro running from ARC
+# TODO: find where to chack status and call  job.troubleshoot_server()
+# TODO: submit jobs in a job list (Colin)
+# TODO: Py3 proof (__future__)
+
 

@@ -5,6 +5,9 @@
 ##################################################################
 
 # These submit scripts must be filled with {0} = job_name, {1} = user_name
+
+# TODO: u/n and compilers as parameters; fix QChem and molpro, check rmgs
+
 submit_sctipts = {
     'gaussian03': """#!/bin/bash
 #$ -N {0}

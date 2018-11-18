@@ -78,4 +78,6 @@ class Processor(object):
                 thermo_job.execute(outputFile=output_file_path, plot=True)
                 # plotter.log_thermo(species)
 
+# TODO: automate bond energy corrections. Should be in the Arkane input file if model_chemistry is supported.
+
 

@@ -169,3 +169,4 @@ class SSH_Client(object):
         return job_status, job_id
 
 # TODO: troubleshoot for job stuck on pharos in bad node. Also, if rmgs says 'priority', change node until 8
+# TODO: delete scratch files of a failed job: ssh nodeXX; rm scratch/dhdhdhd/job_number
