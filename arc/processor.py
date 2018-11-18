@@ -55,6 +55,8 @@ class Processor(object):
                         rotor_symmetry = 1  # TODO
                         rotors += input_files['arkane_rotor'].format(rotor_path=rotor_path, pivots=pivots, top=top,
                                                                      symmetry=rotor_symmetry)
+                        if i < species.number_of_rotors - 1:
+                            rotors += ',\n          '
                 if rotors:
                     rotors += ']'
                 # write the Arkane species input file
