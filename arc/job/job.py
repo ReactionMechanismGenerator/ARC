@@ -97,10 +97,10 @@ class Job(object):
         self.level_of_theory = level_of_theory.lower()
         self.software = software
         self.method, self.basis_set = '', ''
-        if job_type == 'composite':
-            self.method, self.basis_set = self.level_of_theory, ''
-        else:
+        if '/' in self.level_of_theory:
             self.method, self.basis_set = self.level_of_theory.split('/')
+        else:  # this is a composite job
+            self.method, self.basis_set = self.level_of_theory, ''
         if self.software is not None:
             self.software = self.software.lower()
         else:
@@ -108,7 +108,7 @@ class Job(object):
                 self.software = 'gaussian03'
             elif job_type in ['conformer', 'opt', 'freq', 'optfreq', 'sp']:
                 if 'ccs' in self.method or 'cis' in self.method or 'pv' in self.basis_set:
-                    self.software = 'molpro_2012'
+                    self.software = 'molpro_2015'
                 elif 'b3lyp' in self.method:
                     self.software = 'gaussian03'
                 elif 'b97' in self.method or 'm06-2x' in self.method or 'def2' in self.basis_set:
@@ -132,7 +132,7 @@ class Job(object):
             logging.error('software: {0}'.format(self.software))
             logging.error('method: {0}'.format(self.method))
             logging.error('basis_set: {0}'.format(self.basis_set))
-            logging.error('Could not determine software for job {0}. Setting to gaussian03'.format(self.job_name))
+            logging.error('Could not determine software for job {0}. Setting it to gaussian03'.format(self.job_name))
             self.software = 'gaussian03'
 
         if 'molpro' in self.software:
