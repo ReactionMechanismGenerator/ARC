@@ -28,13 +28,13 @@ software_server = {'gaussian03': 'server1',
 }
 
 check_status_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat',
-                        'Slurm': 'squeue -u '}
+                        'Slurm': '/usr/bin/squeue'}
 
 submit_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qsub',
-                  'Slurm': 'sbatch'}
+                  'Slurm': '/usr/bin/sbatch'}
 
 delete_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qdel',
-                  'Slurm': 'scancel '}
+                  'Slurm': '/usr/bin/scancel'}
 
 list_available_nodes_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat -f | grep "/8 " | grep'
                                        ' "long" | grep -v "8/8"| grep -v "aAu"',
