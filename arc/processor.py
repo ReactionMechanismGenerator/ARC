@@ -24,6 +24,7 @@ class Processor(object):
     ================ =================== ===============================================================================
     `project`         ``str``            The project's name. Used for naming the directory.
     `species_dict`    ``dict``           Keys are labels, values are ARCSpecies objects
+    `output`          ``dict``           Keys are labels, values are output file paths
     ================ =================== ===============================================================================
     """
     def __init__(self, project, species_dict, output):
@@ -39,9 +40,12 @@ class Processor(object):
                 species.determine_symmetry()
                 multiplicity = species.multiplicity
                 model_chemistry = 'CCSD(T)-F12/aug-cc-pVTZ'.lower()  # TODO
-                sp_path = self.output[species.label]['sp']
-                opt_path = self.output[species.label]['geo']
+                try:
+                    sp_path = self.output[species.label]['composite']
+                except KeyError:
+                    sp_path = self.output[species.label]['sp']
                 freq_path = self.output[species.label]['freq']
+                opt_path = self.output[species.label]['freq']
                 rotors = ''
                 for i in xrange(species.number_of_rotors):
                     if species.rotors_dict[i]['success']:
@@ -78,7 +82,7 @@ class Processor(object):
                 stat_mech_job.execute(outputFile=output_file_path, plot=True)
                 thermo_job = ThermoJob(spec, 'NASA')
                 thermo_job.execute(outputFile=output_file_path, plot=True)
-                # plotter.log_thermo(species)
+                plotter.log_thermo(species.label, path=output_file_path)
 
 # TODO: automate bond energy corrections. Should be in the Arkane input file if model_chemistry is supported.
 
