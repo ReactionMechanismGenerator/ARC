@@ -105,7 +105,8 @@ class ARCSpecies(object):
 
         if xyz is not None:
             self.initial_xyz = xyz
-            self.molecule = list()
+            mol, _ = mol_from_xyz(xyz)
+            self.molecule = [mol]
             self.monoatomic = len(xyz.split('\n')) == 1
         else:
             self.initial_xyz = ''
@@ -142,14 +143,7 @@ class ARCSpecies(object):
         else:
             logging.warn('Generating conformers for species {0}, without bond order information (using coordinates'
                          ' only).'.format(self.label))
-            mol = Molecule()
-            coordinates = list()
-            for line in self.initial_xyz.split('\n'):
-                atom = Atom(element=line.split()[0])
-                coordinates.append([float(line.split()[1]), float(line.split()[2]), float(line.split()[3])])
-                atom.coords = np.array(coordinates[-1], np.float64)
-                mol.addAtom(atom)
-            mol.connectTheDots()  # only adds single bonds, but we don't care
+            mol, coordinates = mol_from_xyz(self.initial_xyz)
             rd_mol, rd_inds = mol.toRDKitMol(removeHs=False, returnMapping=True)
             Chem.AllChem.EmbedMolecule(rd_mol)  # unfortunately, this mandatory embedding changes the coordinates
             indx_map = dict()
@@ -551,6 +545,21 @@ def determine_occ(label, xyz, charge):
             atom = Atom(element=line.split()[0])
             electrons += atom.number
     electrons -= charge
+
+
+def mol_from_xyz(xyz):
+    """
+    A helper function for creating an `RMG:Molecule` object from xyz
+    """
+    mol = Molecule()
+    coordinates = list()
+    for line in xyz.split('\n'):
+        atom = Atom(element=line.split()[0])
+        coordinates.append([float(line.split()[1]), float(line.split()[2]), float(line.split()[3])])
+        atom.coords = np.array(coordinates[-1], np.float64)
+        mol.addAtom(atom)
+    mol.connectTheDots()  # only adds single bonds, but we don't care
+    return mol, coordinates
 
 
 # TODO: isomorphism check for final conformer
