@@ -36,8 +36,7 @@ submit_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qsub
 delete_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qdel',
                   'Slurm': '/usr/bin/scancel'}
 
-list_available_nodes_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat -f | grep "/8 " | grep'
-                                       ' "long" | grep -v "8/8"| grep -v "aAu"',
+list_available_nodes_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat -f | grep "/8 " | grep "long" | grep -v "8/8"| grep -v "aAu"',
                                 'Slurm': 'list? '}
 
 submit_filename = {'OGE': 'submit.sh',
@@ -62,9 +61,10 @@ default_levels_of_theory = {'conformer': 'b97-d3/6-311+g(d,p)',
                             'scan': 'b3lyp/6-31+g*',
                             'irc': 'b3lyp/6-31+g*',
                             'gsm': 'b3lyp/6-31+g*',
+                            'freq_for_composite': 'B3LYP/CBSB7',
 }
 
-rotor_scan_resolution = 10.0  # degrees. default: 10
+rotor_scan_resolution = 10.0  # degrees. default: 10.0
 
 # rotor validation parameters
 inconsistency_az = 6   # maximum allowed inconsistency (kJ/mol) between initial and final rotor scan points. Default: 6
