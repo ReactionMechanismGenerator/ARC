@@ -387,7 +387,8 @@ $end
                 scan_string = ''.join([str(num) + ' ' for num in self.scan])
                 if not divmod(360, rotor_scan_resolution):
                     raise JobError('Scan job got an illegal rotor scan resolution of {0}'.format(rotor_scan_resolution))
-                self.scan = 'D ' + scan_string + 'S ' + str(int(360 / rotor_scan_resolution)) + ' ' + str(rotor_scan_resolution)
+                self.scan = 'D ' + scan_string + 'S ' + str(int(360 / rotor_scan_resolution)) + ' ' +\
+                            '{0:10}'.format(float(rotor_scan_resolution))
             else:
                 raise ValueError('Currently rotor scan is only supported in gaussian03')
 
