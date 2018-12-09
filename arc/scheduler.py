@@ -133,7 +133,10 @@ class Scheduler(object):
                     self.species_dict[species.label].final_xyz = symbol + '   0.0   0.0   0.0'
                 self.run_sp_job(label=species.label)
             elif self.species_dict[species.label].initial_xyz and not self.generate_conformers:
-                self.run_opt_job(species.label)
+                if self.composite_method:
+                    self.run_composite_job(species.label)
+                else:
+                    self.run_opt_job(species.label)
             elif not self.species_dict[species.label].is_ts and self.generate_conformers:
                 self.species_dict[species.label].generate_conformers()
         self.timer = True
@@ -143,7 +146,8 @@ class Scheduler(object):
         """
         The main job scheduling block
         """
-        self.run_conformer_jobs()  # also writes jobs to self.running_jobs
+        if self.generate_conformers:
+            self.run_conformer_jobs()
         while self.running_jobs != {}:  # loop while jobs are still running
             self.timer = True
             for label in self.unique_species_labels:  # look for completed jobs and decide what jobs to run next
@@ -229,7 +233,7 @@ class Scheduler(object):
                         job = self.job_dict[label]['composite'][job_name]
                         successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
                         if successful_server_termination:
-                            success = self.parse_opt_geo(label=label, job=job)
+                            success = self.parse_composite_geo(label=label, job=job)
                             if success:
                                 if not self.composite_method:
                                     # This wasn't originally a composite method, probably troubleshooted as such
@@ -296,13 +300,6 @@ class Scheduler(object):
         job.write_completed_job_to_csv_file()
         logging.info('  Ending job {name} for {label} ({time})'.format(name=job.job_name, label=label,
                                                                        time=job.run_time))
-        if 'conformer' not in job_name:
-            running_jobs = list()
-            for job_type, job_dict in self.job_dict[label].iteritems():
-                for job_name, job in job_dict.iteritems():
-                    running_jobs.append(job.job_name)
-            # TODO: it prints all jobs, even the ones ended...
-            logging.info('Currently running jobs: {0}'.format(running_jobs))  # good for deleting jobs if interrupting
         if job.job_status[0] != 'done':
             return False
         return True
@@ -314,7 +311,7 @@ class Scheduler(object):
         in self.species_dict[species.label]['initial_xyz']
         """
         for label in self.unique_species_labels:
-            if not self.species_dict[label].is_ts and self.generate_conformers:
+            if not self.species_dict[label].is_ts:
                 if len(self.species_dict[label].conformers) > 1:
                     self.job_dict[label]['conformers'] = dict()
                     for i, xyz in enumerate(self.species_dict[label].conformers):
@@ -449,6 +446,41 @@ class Scheduler(object):
                 i_min = i
         self.species_dict[label].initial_xyz = self.species_dict[label].conformers[i_min]
 
+    def parse_composite_geo(self, label, job):
+        """
+        Check that a 'composite' job converged successfully, and parse the geometry into `final_xyz`.
+        Also checks (QA) that no imaginary frequencies were assigned for stable species,
+        and that exactly one imaginary frequency was assigned for a TS.
+        Returns ``True`` if the job converged successfully, ``False`` otherwise and troubleshoots.
+        """
+        logging.debug('parsing composite geo for {0}'.format(job.job_name))
+        if job.job_status[1] == 'done':
+            log = Log(path='')
+            log.determine_qm_software(fullpath=job.local_path_to_output_file)
+            coord, number, mass = log.software_log.loadGeometry()
+            self.species_dict[label].final_xyz = get_xyz_matrix(xyz=coord, from_arkane=True, number=number)
+            self.output[label]['status'] += 'composite converged; '
+            logging.info('\nOptimized geometry for {label} at {level}:\n{xyz}'.format(label=label,
+                        level=job.level_of_theory, xyz=self.species_dict[label].final_xyz))
+            plotter.show_sticks(xyz=self.species_dict[label].final_xyz)
+
+            # Check frequencies (using cclib crashed for CBS-QB3 output, using an explicit parser here)
+            if not os.path.isfile(job.local_path_to_output_file):
+                raise SchedulerError('Called parse_composite_geo with no output file')
+            frequencies = []
+            with open(job.local_path_to_output_file, 'r') as f:
+                line = f.readline()
+                while line != '':
+                    if 'Frequencies --' in line:
+                        frequencies.extend(line.split()[2:])
+                    line = f.readline()
+            frequencies = [float(freq) for freq in frequencies]
+            freq_ok = self.check_negative_freq(job, label, frequencies)
+            return True  # run freq / scan jobs on this optimized geometry
+        # if job.job_status[1] != 'done' or not freq_ok:
+        #     self.troubleshoot_composite_jobs(label=label)
+        return False  # return ``False``, so no freq / scan jobs are initiated for this unoptimized geometry
+
     def parse_opt_geo(self, label, job):
         """
         Check that an 'opt' or 'optfreq' job converged successfully, and parse the geometry into `final_xyz`.
@@ -472,7 +504,9 @@ class Scheduler(object):
                 logging.info('\nOptimized geometry for {label} at {level}:\n{xyz}'.format(label=label,
                             level=job.level_of_theory, xyz=self.species_dict[label].final_xyz))
                 plotter.show_sticks(xyz=self.species_dict[label].final_xyz)
-                return True  # run freq / sp / scan jobs on this fine optimized geometry
+                return True  # run freq / sp / scan jobs on this optimized geometry
+            if 'optfreq' in job.job_name:
+                self.check_freq_job(label, job)
         else:
             self.troubleshoot_opt_jobs(label=label)
         return False  # return ``False``, so no freq / sp / scan jobs are initiated for this unoptimized geometry
@@ -487,24 +521,34 @@ class Scheduler(object):
                 raise SchedulerError('Called check_freq_job with no output file')
             parser = cclib.io.ccopen(job.local_path_to_output_file)
             data = parser.parse()
-            neg_freq_counter = 0
-            for freq in data.vibfreqs:
-                if freq < 0:
-                    neg_freq_counter += 1
-            if self.species_dict[label].is_ts and neg_freq_counter != 1:
-                    logging.error('TS {0} has {1} imaginary frequencies,'
-                                  ' should have exactly 1.'.format(label, neg_freq_counter))
-                    self.output[label]['status'] += 'Error: {0} imaginary freq for TS; '.format(neg_freq_counter)
-            elif not self.species_dict[label].is_ts and neg_freq_counter != 0:
-                    logging.error('species {0} has {1} imaginary frequencies,'
-                                  ' should have exactly 0.'.format(label, neg_freq_counter))
-                    self.output[label]['status'] += 'Error: {0} imaginary freq for stable species; '.format(neg_freq_counter)
-            else:
-                self.output[label]['status'] += 'freq converged; '
-                self.output[label]['geo'] = job.local_path_to_output_file
-                self.output[label]['freq'] = job.local_path_to_output_file
-        else:
+            freq_ok = self.check_negative_freq(job, label, data.vibfreqs)
+        if job.job_status[1] != 'done' or not freq_ok:
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level_of_theory, job_type='freq')
+
+    def check_negative_freq(self, job, label, frequencies):
+        """
+        A helper function for determining the number of negative frequencies. Also logs appropriate errors.
+        Returns ``True`` if the number of negative frequencies is as excepted, ``False`` otherwise.
+        """
+        neg_freq_counter = 0
+        for freq in frequencies:
+            if freq < 0:
+                neg_freq_counter += 1
+        if self.species_dict[label].is_ts and neg_freq_counter != 1:
+                logging.error('TS {0} has {1} imaginary frequencies,'
+                              ' should have exactly 1.'.format(label, neg_freq_counter))
+                self.output[label]['status'] += 'Error: {0} imaginary freq for TS; '.format(neg_freq_counter)
+                return False
+        elif not self.species_dict[label].is_ts and neg_freq_counter != 0:
+                logging.error('species {0} has {1} imaginary frequencies,'
+                              ' should have exactly 0.'.format(label, neg_freq_counter))
+                self.output[label]['status'] += 'Error: {0} imaginary freq for stable species; '.format(neg_freq_counter)
+                return False
+        else:
+            self.output[label]['status'] += 'freq converged; '
+            self.output[label]['geo'] = job.local_path_to_output_file
+            self.output[label]['freq'] = job.local_path_to_output_file
+            return True
 
     def check_sp_job(self, label, job):
         """
@@ -518,6 +562,16 @@ class Scheduler(object):
             self.output[label]['sp'] = os.path.join(job.local_path, 'output.out')
         else:
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level_of_theory, job_type='sp')
+
+    def check_composite_job(self, label, job):
+        """
+        Check that a composite job converged successfully.
+        """
+        if job.job_status[1] == 'done':
+            self.output[label]['status'] += 'composite converged; '
+            self.output[label]['composite'] = os.path.join(job.local_path, 'output.out')
+        else:
+            self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level_of_theory, job_type='composite')
 
     def check_scan_job(self, label, job):
         """
@@ -887,8 +941,8 @@ class Scheduler(object):
         Check that we have all required data for the species/TS in ``label``
         """
         status = self.output[label]['status']
-        if 'error' not in status and 'sp converged' in status and (self.species_dict[label].monoatomic or
-                ('freq converged' in status and 'opt converged' in status)):
+        if 'error' not in status and ('composite converged' in status or ('sp converged' in status and
+                (self.species_dict[label].monoatomic or ('freq converged' in status and 'opt converged' in status)))):
             logging.info('\nAll jobs for species {0} successfully converged'.format(label))
             self.output[label]['status'] = 'converged'
         elif not self.output[label]['status']:
@@ -897,7 +951,7 @@ class Scheduler(object):
 
     def delete_all_species_jobs(self, label):
         """
-        Deletes all jobs of species/TS represented by `label`
+        Delete all jobs of species/TS represented by `label`
         """
         # TODO: check whether the job is actually ruinning before deleting (so the logging of deleted jobs makes sence)
         for job_type, job_dict in self.job_dict[label].iteritems():
