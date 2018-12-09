@@ -93,6 +93,12 @@ class ARCSpecies(object):
             else:
                 self.label = label
         else:
+            if multiplicity < 1:
+                raise SpeciesError('multiplicity for species {0} is lower than 1 (got {1})'.format(self.label,
+                                                                                                   multiplicity))
+            if not isinstance(multiplicity, int):
+                raise SpeciesError('multiplicity for species {0} is not an integer (got {1})'.format(self.label,
+                                                                                                     multiplicity))
             self.multiplicity = multiplicity
             self.charge = charge
             self.label = label
