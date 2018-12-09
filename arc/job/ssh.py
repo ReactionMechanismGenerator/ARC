@@ -113,8 +113,8 @@ class SSH_Client(object):
         """
         Possible statuses: `before_submission`, `running`, `errored on node xx`, `done`
         Status line formats:
-        pharos: '540420 0.45326 xq1340b    alongd       r     10/26/2018 11:08:30 long1@node18.cluster'
-        rmg: '14428     debug xq1371m2   alongd  R 50-04:04:46      1 node06'
+        pharos: '540420 0.45326 xq1340b    user_name       r     10/26/2018 11:08:30 long1@node18.cluster'
+        rmg: '14428     debug xq1371m2   user_name  R 50-04:04:46      1 node06'
         """
         cmd = check_status_command[servers[self.server]['cluster_soft']] + ' -u ' + servers[self.server]['un']
         stdout, stderr = self.send_command_to_server(cmd)
