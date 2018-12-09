@@ -372,6 +372,8 @@ $end
 
         if self.job_type == 'composite':
             if self.software == 'gaussian03':
+                if self.fine:
+                    fine = 'scf=(tight,direct) int=finegrid'
                 if self.is_ts:
                     job_type_1 = 'opt=(ts,noeigentest,calcfc)'
                 else:
