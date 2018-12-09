@@ -63,3 +63,25 @@ def show_sticks(xyz):
     p.zoomTo()
     p.show()
 
+
+def log_thermo(label, path):
+    """
+    Logging thermodata from an Arkane output file
+    """
+    logging.debug('Thermodata for species {0}'.format(label))
+    log = False
+    with open(path, 'r') as f:
+        line = f.readline()
+        while line != '':
+            if 'Thermodynamics for' in line:
+                thermo_block = ''
+                log = True
+            elif 'thermo(' in line:
+                log = False
+            if log:
+                thermo_block += line[2:]
+            line = f.readline()
+    logging.info(thermo_block)
+    logging.info('\n\n')
+
+
