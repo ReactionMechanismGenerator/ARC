@@ -55,7 +55,7 @@ class ARCSpecies(object):
                   2: {}, ...
                  }
     """
-    def __init__(self, is_ts, rmg_species=None, label=None, xyz=None, multiplicity=None, charge=None):
+    def __init__(self, is_ts=False, rmg_species=None, label=None, xyz=None, multiplicity=None, charge=None):
         """
         All parameters get precedence over their respective rmg_species values if the latter is given.
         'is_ts' is a mandatory parameter.
