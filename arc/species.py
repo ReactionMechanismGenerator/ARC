@@ -294,9 +294,9 @@ class ARCSpecies(object):
                     self.rotors_dict[self.number_of_rotors] = new_rotor
                     self.number_of_rotors += 1
         if self.number_of_rotors == 1:
-            logging.info('Found 1 rotor for {0}'.format(self.label))
+            logging.info('\nFound 1 rotor for {0}'.format(self.label))
         elif self.number_of_rotors > 1:
-            logging.info('Found {0} rotors for {1}'.format(self.number_of_rotors, self.label))
+            logging.info('\nFound {0} rotors for {1}'.format(self.number_of_rotors, self.label))
         if self.number_of_rotors > 0:
             logging.info('Pivot list(s) for {0}: {1}\n'.format(self.label,
                                                 [self.rotors_dict[i]['pivots'] for i in xrange(self.number_of_rotors)]))
@@ -528,7 +528,7 @@ def get_xyz_matrix(xyz, mol=None, from_arkane=False, number=None):
         for j, c in enumerate(coord):
             if c >= 0:  # add space for positive numbers (or zero)
                 result += ' '
-            result += str(c)
+            result += '{0:f}'.format(c)  # this avoids printing small numbers in scientific form, e.g., 1e-6
             if j < 2:  # add trailing spaces only for x, y (not z)
                 result += ' ' * (longest_xyz_coord - len(str(abs(c))) + 2)
         result += '\n'
