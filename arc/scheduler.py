@@ -76,6 +76,7 @@ class Scheduler(object):
                         'geo': <path to geometry optimization output file>,
                         'freq': <path to freq output file>,
                         'sp': <path to sp output file>,
+                        'composite': <path to composite output file>,
                         'number_of_rotors': <number of rotors>,
                         'rotors': {1: {'path': <path to scan output file>,
                                        'pivots': pivots_list,
