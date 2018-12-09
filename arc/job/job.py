@@ -582,7 +582,7 @@ $end
         # find available nodes
         stdout, stderr = ssh.send_command_to_server(command=list_available_nodes_command[servers[self.server]['cluster_soft']])
         for line in stdout:
-            node = line.split()[0].split('.')[0].split['node'][1]
+            node = line.split()[0].split('.')[0].split('node')[1]
             if servers[self.server]['cluster_soft'] == 'OGE' and '0/0/8' in line and node not in self.server_nodes:
                 self.server_nodes.append(node)
                 break
