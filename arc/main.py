@@ -62,6 +62,11 @@ class ARC(object):
             logging.info('\n')
             logging.warning('Not using a fine grid for geometry optimization jobs')
             logging.info('\n')
+        if not self.scan_rotors:
+            logging.info('\n')
+            logging.warning("Not running rotor scans."
+                            " This might compromise geometry as dihedral angles won't be corrected")
+            logging.info('\n')
         self.output = dict()
         self.verbose = verbose
         self.initialize_log(verbose=self.verbose, log_file=os.path.join(self.output_directory, 'arc.log'))
