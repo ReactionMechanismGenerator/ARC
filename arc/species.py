@@ -189,7 +189,7 @@ class ARCSpecies(object):
             ob_xyzs, ob_energies = self._get_possible_conformers_openbabel(mol)
             ob_xyz = self.get_min_energy_conformer(xyzs=ob_xyzs, energies=ob_energies)
             self.xyzs.append(get_xyz_matrix(xyz=ob_xyz, mol=mol))
-        logging.info('Considering {actual} conformers for {label} out of {total} total ran using a force field'.format(
+        logging.debug('Considering {actual} conformers for {label} out of {total} total ran using a force field'.format(
             actual=len(self.xyzs), total=len(rd_xyzs+ob_xyzs), label=self.label))
 
     def _get_possible_conformers_rdkit(self, mol):
