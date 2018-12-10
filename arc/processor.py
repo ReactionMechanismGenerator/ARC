@@ -81,7 +81,7 @@ class Processor(object):
                 stat_mech_job.modelChemistry = model_chemistry
                 stat_mech_job.execute(outputFile=output_file_path, plot=True)
                 thermo_job = ThermoJob(spec, 'NASA')
-                thermo_job.execute(outputFile=output_file_path, plot=True)
+                thermo_job.execute(outputFile=output_file_path, plot=False)
                 plotter.log_thermo(species.label, path=output_file_path)
 
 # TODO: automate bond energy corrections. Should be in the Arkane input file if model_chemistry is supported.
