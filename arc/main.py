@@ -5,15 +5,17 @@ import logging
 import sys
 import os
 import time
+import re
 
 from rmgpy.species import Species
 from rmgpy.reaction import Reaction
 
-from arc.settings import arc_path, default_levels_of_theory
+from arc.settings import arc_path, default_levels_of_theory, check_status_command, servers
 from arc.scheduler import Scheduler
 from arc.exceptions import InputError
 from arc.species import ARCSpecies
 from arc.processor import Processor
+from arc.job.ssh import SSH_Client
 
 ##################################################################
 
@@ -275,6 +277,24 @@ class ARC(object):
         logging.log(level, 'ARC execution terminated at {0}'.format(time.asctime()))
 
 # TODO: MRCI, determine occ
+
+def delete_all_arc_jobs(server_name):
+    """
+    Delete all ARC-spawned jobs (with job name starting with `a` and a digit) from server `server_name`
+    Make sure you know what you're doing, so unrelated jobs won't be deleted...
+    Useful when terminating ARC while some (ghost) jobs are still running.
+    """
+    logging.info('Deleting all ARC jobs from {0}'.format(server_name))
+    cmd = check_status_command[servers[server_name]['cluster_soft']] + ' -u ' + servers[server_name]['un']
+    ssh = SSH_Client(server_name)
+    stdout, stderr = ssh.send_command_to_server(cmd)
+    for status_line in stdout:
+        if re.match(' a\d', status_line):
+            job_id = re.search(' a\d+', status_line)
+            ssh.delete_job(job_id)
+            logging.info('deleted job {0}'.format(job_id))
+
+
 # TODO: sucsessive opt (B3LYP, CCSD, CISD(T), MRCI)
 # TODO: need to know optical isomers and external symmetry (could also be read from QM, but not always right) for thermo
 # TODO: calc thermo and rates
