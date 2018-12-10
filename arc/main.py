@@ -159,8 +159,6 @@ class ARC(object):
 
         self.scheduler = None
 
-        self.execute()
-
     def execute(self):
         logging.info('\n\n')
         for species in self.arc_species_list:
