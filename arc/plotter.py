@@ -68,6 +68,7 @@ def log_thermo(label, path):
     """
     Logging thermodata from an Arkane output file
     """
+    logging.info('\n\n')
     logging.debug('Thermodata for species {0}'.format(label))
     log = False
     with open(path, 'r') as f:
