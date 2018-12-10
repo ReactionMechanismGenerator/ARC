@@ -103,6 +103,12 @@ class ARCSpecies(object):
             self.charge = charge
             self.label = label
 
+        # Check `label` since it is used for folder names
+        valid_chars = "-_()<=>%s%s" % (string.ascii_letters, string.digits)
+        for char in self.label:
+            if char not in valid_chars:
+                raise SpeciesError('Species label {0} contains an invalid character: "{1}"'.format(self.label, char))
+
         if xyz is not None:
             self.initial_xyz = xyz
             mol, _ = mol_from_xyz(xyz)
