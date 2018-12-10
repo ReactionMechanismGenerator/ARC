@@ -3,6 +3,7 @@
 
 import os
 import logging
+import string
 import numpy as np
 
 from rdkit import Chem
@@ -499,11 +500,11 @@ def find_internal_rotors(mol):
 def get_xyz_matrix(xyz, mol=None, from_arkane=False, number=None):
     """
     Convert list of lists xyz form:
-    [[0.6616514836, 0.4027481525, -0.4847382281]
-    [-0.6039793084, 0.6637270105, 0.0671637135]
-    [-1.4226865648, -0.4973210697, -0.2238712255]
-    [-0.4993010635, 0.6531020442, 1.0853092315]
-    [-2.2115796924, -0.4529256762, 0.4144516252]
+    [[0.6616514836, 0.4027481525, -0.4847382281],
+    [-0.6039793084, 0.6637270105, 0.0671637135],
+    [-1.4226865648, -0.4973210697, -0.2238712255],
+    [-0.4993010635, 0.6531020442, 1.0853092315],
+    [-2.2115796924, -0.4529256762, 0.4144516252],
     [-1.8113671395, -0.3268900681, -1.1468957003]]
     into a geometry form read by ESS:
     C    0.6616514836    0.4027481525   -0.4847382281
@@ -517,14 +518,8 @@ def get_xyz_matrix(xyz, mol=None, from_arkane=False, number=None):
     (using the from_arkane=True keyword)
     """
     if mol is None and not from_arkane:
-        logging.error("Must have either a ConformerSearch object as input, or 'from_arkane' set to True.")
-        raise ValueError("Must have either a ConformerSearch object as input, or 'from_arkane' set to True.")
+        raise ValueError("Must have either an RMG:Molecule object as input as `mol`, or 'from_arkane' set to True.")
     result = ''
-    longest_xyz_coord = 1
-    for coord in xyz:
-        for c in coord:
-            if len(str(c)) > longest_xyz_coord:
-                longest_xyz_coord = len(str(c))
     for i, coord in enumerate(xyz):
         if from_arkane:
             element_label = getElement(number[i]).symbol
@@ -532,11 +527,7 @@ def get_xyz_matrix(xyz, mol=None, from_arkane=False, number=None):
             element_label = mol.atoms[i].element.symbol
         result += element_label + ' ' * (4 - len(element_label))
         for j, c in enumerate(coord):
-            if c >= 0:  # add space for positive numbers (or zero)
-                result += ' '
-            result += '{0:f}'.format(c)  # this avoids printing small numbers in scientific form, e.g., 1e-6
-            if j < 2:  # add trailing spaces only for x, y (not z)
-                result += ' ' * (longest_xyz_coord - len(str(abs(c))) + 2)
+            result += '{0:14.8f}'.format(c)
         result += '\n'
     return result
 
