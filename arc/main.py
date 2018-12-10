@@ -79,21 +79,18 @@ class ARC(object):
                              ' Got: {0}'.format(level_of_theory))
 
         if conformer_level:
-            self.conformer_level = conformer_level.lower()
             logging.info('Using {0} for refined conformer searches (after filtering via force fields)'.format(
                 conformer_level))
+            self.conformer_level = conformer_level.lower()
+        elif self.generate_conformers:
+            self.conformer_level = default_levels_of_theory['conformer'].lower()
+            logging.info('Using default level {0} for refined conformer searches (after filtering via force'
+                         ' fields)'.format(default_levels_of_theory['conformer']))
         else:
-            # logging.info('Using B97-D3/def2-SVP for refined conformer searches (after filtering via force fields)')
-            # self.conformer_level = 'b97-d3/def2-msvp'  # use B97-D3/def2-mSVP as default for conformer search
-            logging.info('Using {0} for refined conformer searches (after filtering via force fields)'.format(
-                default_levels_of_theory['conformer']))
-            self.conformer_level = default_levels_of_theory['conformer']
-
-        self.composite_method = composite_method
+            self.conformer_level = ''
 
         if level_of_theory:
-            if '/' not in level_of_theory:
-                # assume this is a composite method
+            if '/' not in level_of_theory:  # assume this is a composite method
                 self.composite_method = level_of_theory.lower()
                 logging.info('Using composite method {0}'.format(level_of_theory))
             elif '//' in level_of_theory:
@@ -114,42 +111,59 @@ class ARC(object):
                 logging.info('Using {0} for frequency calculations'.format(level_of_theory))
                 logging.info('Using {0} for single point calculations'.format(level_of_theory))
         else:
-            if opt_level and not self.composite_method:
-                self.opt_level = opt_level.lower()
+            self.composite_method = composite_method.lower()
+            if self.composite_method:
+                if level_of_theory and level_of_theory.lower != self.composite_method:
+                    raise InputError('Specify either composite_method or level_of_theory')
+                logging.info('Using composite method {0}'.format(composite_method))
+
+            if opt_level:
                 logging.info('Using {0} for geometry optimizations'.format(opt_level))
-            else:
+                self.opt_level = opt_level.lower()
+            elif not self.composite_method:
                 # self.opt_level = 'wb97x-d3/def2-tzvpd'
                 # logging.info('Using wB97x-D3/def2-TZVPD for geometry optimizations')
-                self.opt_level = default_levels_of_theory['opt']
-                logging.info('Using {0} for geometry optimizations'.format(default_levels_of_theory['opt']))
+                self.opt_level = default_levels_of_theory['opt'].lower()
+                logging.info('Using default level {0} for geometry optimizations'.format(
+                    default_levels_of_theory['opt']))
+            else:
+                self.opt_level = ''
+
             if freq_level:
                 self.freq_level = freq_level.lower()
-                logging.info('Using {0} for frequency calculations'.format(freq_level))
-            else:
+                logging.info('Using {0} for frequency calculations'.format(self.freq_level))
+            elif not self.composite_method:
                 # self.freq_level = 'wb97x-d3/def2-tzvpd'
                 # logging.info('Using wB97x-D3/def2-TZVPD for frequency calculations')
-                self.freq_level = default_levels_of_theory['freq']
-                logging.info('Using {0} for frequency calculations'.format(default_levels_of_theory['freq']))
+                self.freq_level = default_levels_of_theory['freq'].lower()
+                logging.info('Using default level {0} for frequency calculations'.format(self.freq_level))
+            else:
+                self.freq_level = default_levels_of_theory['freq_for_composite'].lower()
+                logging.info('Using default level {0} for frequency calculations after composite jobs'.format(
+                    self.freq_level))
+
             if sp_level:
                 self.sp_level = sp_level.lower()
                 logging.info('Using {0} for single point calculations'.format(sp_level))
+            elif not self.composite_method:
+                self.sp_level = default_levels_of_theory['sp'].lower()
+                logging.info('Using default level {0} for single point calculations'.format(
+                    default_levels_of_theory['sp']))
             else:
-                logging.info('Using {0} for single point calculations'.format(default_levels_of_theory['sp']))
-                self.sp_level = default_levels_of_theory['sp']
-        self.composite_method = composite_method.lower()
-        if self.composite_method:
-            logging.info('Using composite method {0}'.format(composite_method))
+                self.sp_level = ''
+
         if scan_level:
             self.scan_level = scan_level.lower()
-            logging.info('Using {0} for rotor scans'.format(scan_level))
+            logging.info('Using {0} for rotor scans'.format(self.scan_level))
+        elif self.scan_rotors:
+            self.scan_level = default_levels_of_theory['scan'].lower()
+            logging.info('Using default level {0} for rotor scans'.format(self.scan_level))
         else:
-            # self.scan_level = 'b3lyp/6-311+g(d,p)'
-            self.scan_level = default_levels_of_theory['scan']
-            # logging.info('Using B3LYP/6-311+G(d,p) for rotor scans')
-            logging.info('Using {0} for rotor scans'.format(default_levels_of_theory['scan']))
+            self.scan_level = ''
 
+        self.arc_species_list = []
+        self.arc_species_list.extend(arc_species_list)
         self.rmg_species_list = rmg_species_list
-        self.arc_species_list = arc_species_list
         if self.rmg_species_list:
             for rmg_spc in self.rmg_species_list:
                 if not isinstance(rmg_spc, Species):
@@ -171,11 +185,13 @@ class ARC(object):
                 raise ValueError('All species in species_list must be ARCSpecies objects.'
                                  ' Got {0}'.format(type(species)))
             logging.info('Considering species: {0}'.format(species.label))
+        logging.info('\n')
         for rxn in self.rxn_list:
             if not isinstance(rxn, Reaction):
                 logging.error('`rxn_list` must be a list of RMG.Reaction objects. Got {0}'.format(type(rxn)))
                 raise ValueError()
             logging.info('Considering reacrion {0}'.format(rxn))
+        logging.info('\n')
         self.scheduler = Scheduler(project=self.project, species_list=self.arc_species_list,
                                    composite_method=self.composite_method, conformer_level=self.conformer_level,
                                    opt_level=self.opt_level, freq_level=self.freq_level, sp_level=self.sp_level,
