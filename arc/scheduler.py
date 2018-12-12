@@ -325,13 +325,15 @@ class Scheduler(object):
                         self.run_job(label=label, xyz=xyz, level_of_theory=self.conformer_level, job_type='conformer',
                                      conformer=i)
                 else:
-                    logging.info('Only one conformer is available for species {0},'
-                                 ' using it for geometry optimization'.format(label))
-                    self.species_dict[label].initial_xyz = self.species_dict[label].conformers[0]
-                    if not self.composite_method:
-                        self.run_opt_job(label)
-                    else:
-                        self.run_composite_job(label)
+                    if 'opt' not in self.job_dict[label] and 'composite' not in self.job_dict[label]:
+                        # proceed only if opt (/composite) not already spawned
+                        logging.info('Only one conformer is available for species {0},'
+                                     ' using it for geometry optimization'.format(label))
+                        self.species_dict[label].initial_xyz = self.species_dict[label].conformers[0]
+                        if not self.composite_method:
+                            self.run_opt_job(label)
+                        else:
+                            self.run_composite_job(label)
 
     def run_opt_job(self, label):
         """
