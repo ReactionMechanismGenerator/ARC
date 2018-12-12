@@ -322,14 +322,15 @@ class ARC(object):
             # model chemistry was not given, try to determine it from the sp_level
             model_chemistry = ''
             sp_level = self.sp_level.lower()
-            sp_level.replace('f12a', 'f12').replace('f12b', 'f12')
+            sp_level = sp_level.replace('f12a', 'f12').replace('f12b', 'f12')
             if sp_level in ['ccsd(t)-f12/cc-pvdz', 'ccsd(t)-f12/cc-pvtz', 'ccsd(t)-f12/cc-pvqz']:
                 logging.warning('Using model chemistry {0} based on sp level {1}.'.format(
                     sp_level + '-f12', sp_level))
                 model_chemistry = sp_level + '-f12'
-            if not model_chemistry and sp_level in ['cbs-qb3', 'cbs-qb3-paraskevas', 'ccsd(t)-f12/cc-pvdz-f12',
-                                                    'ccsd(t)-f12/cc-pvtz-f12', 'ccsd(t)-f12/cc-pvqz-f12', 'b3lyp/cbsb7',
-                                                    'b3lyp/6-311g(2d,d,p)', 'b3lyp/6-311+g(3df,2p)', 'b3lyp/6-31g**']:
+            elif not model_chemistry and sp_level in ['cbs-qb3', 'cbs-qb3-paraskevas', 'ccsd(t)-f12/cc-pvdz-f12',
+                                                      'ccsd(t)-f12/cc-pvtz-f12', 'ccsd(t)-f12/cc-pvqz-f12',
+                                                      'b3lyp/cbsb7', 'b3lyp/6-311g(2d,d,p)', 'b3lyp/6-311+g(3df,2p)',
+                                                      'b3lyp/6-31g**']:
                 model_chemistry = sp_level
             elif self.use_bac:
                 raise InputError('Could not determine appropriate model chemistry to be used in Arkane for'
