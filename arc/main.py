@@ -60,6 +60,7 @@ class ARC(object):
                  model_chemistry='', verbose=logging.INFO):
 
         self.project = project
+        self.t0 = time.time()  # init time
         self.output_directory = os.path.join(arc_path, 'Projects', self.project)
         if not os.path.exists(self.output_directory):
             os.makedirs(self.output_directory)
@@ -293,6 +294,15 @@ class ARC(object):
         Output a footer to the log.
         """
         logging.log(level, '')
+        t = time.time() - self.t0
+        m, s = divmod(t, 60)
+        h, m = divmod(m, 60)
+        d, h = divmod(h, 24)
+        if d > 0:
+            d = str(d) + ' days, '
+        else:
+            d = ''
+        logging.log(level, 'Total execution time: {0}{1:02.0f}:{2:02.0f}:{3:02.0f}'.format(d,h,m,s))
         logging.log(level, 'ARC execution terminated at {0}'.format(time.asctime()))
 
     def check_model_chemistry(self):
