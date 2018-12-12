@@ -122,17 +122,22 @@ class Scheduler(object):
             self.running_jobs[species.label] = list()  # initialize before running the first job
             if self.species_dict[species.label].monoatomic:
                 if not self.species_dict[species.label].initial_xyz:
-                    if self.species_dict[species.label].rmg_species is not None:
-                        assert len(self.species_dict[species.label].rmg_species.molecule[0].atoms) == 1
-                        symbol = self.species_dict[species.label].rmg_species.molecule[0].atoms[0].symbol
+                    # generate a simple "Symb   0.0   0.0   0.0" xyz matrix
+                    if self.species_dict[species.label].mol is not None:
+                        assert len(self.species_dict[species.label].mol.atoms) == 1
+                        symbol = self.species_dict[species.label].mol.atoms[0].symbol
                     else:
                         symbol = species.label
                         logging.warning('Could not determine element of monoatomic species {0}.'
                                         ' Assuming element is {1}'.format(species.label, symbol))
                     self.species_dict[species.label].initial_xyz = symbol + '   0.0   0.0   0.0'
                     self.species_dict[species.label].final_xyz = symbol + '   0.0   0.0   0.0'
-                self.run_sp_job(label=species.label)
-            elif self.species_dict[species.label].initial_xyz and not self.generate_conformers:
+                # No need to run any job for a monoatomic species other than sp (or composite if relevant)
+                if self.composite_method:
+                    self.run_composite_job(species.label)
+                else:
+                    self.run_sp_job(label=species.label)
+            elif self.species_dict[species.label].initial_xyz:
                 if self.composite_method:
                     self.run_composite_job(species.label)
                 else:
