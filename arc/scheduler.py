@@ -873,7 +873,7 @@ class Scheduler(object):
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('molpro')
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, job_type=job_type, fine=False,
-                             software='molpro_2012', ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
+                             software='molpro_2015', ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
             else:
                 logging.error('Could not troubleshoot geometry optimization for {label}! Tried'
                               ' troubleshooting with the following methods: {methods}'.format(
@@ -967,7 +967,6 @@ class Scheduler(object):
         """
         Delete all jobs of species/TS represented by `label`
         """
-        # TODO: check whether the job is actually ruinning before deleting (so the logging of deleted jobs makes sence)
         for job_type, job_dict in self.job_dict[label].iteritems():
             for job_name, job in job_dict.iteritems():
                 job.delete()
