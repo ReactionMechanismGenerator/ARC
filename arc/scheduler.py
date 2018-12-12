@@ -463,6 +463,7 @@ class Scheduler(object):
         Returns ``True`` if the job converged successfully, ``False`` otherwise and troubleshoots.
         """
         logging.debug('parsing composite geo for {0}'.format(job.job_name))
+        freq_ok = False
         if job.job_status[1] == 'done':
             log = Log(path='')
             log.determine_qm_software(fullpath=job.local_path_to_output_file)
@@ -486,9 +487,10 @@ class Scheduler(object):
                     line = f.readline()
             frequencies = [float(freq) for freq in frequencies]
             freq_ok = self.check_negative_freq(job, label, frequencies)
-            return True  # run freq / scan jobs on this optimized geometry
-        # if job.job_status[1] != 'done' or not freq_ok:
-        #     self.troubleshoot_composite_jobs(label=label)
+            if freq_ok:
+                return True  # run freq / scan jobs on this optimized geometry
+        if job.job_status[1] != 'done' or not freq_ok:
+            self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level_of_theory, job_type='composite')
         return False  # return ``False``, so no freq / scan jobs are initiated for this unoptimized geometry
 
     def parse_opt_geo(self, label, job):
