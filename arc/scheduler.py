@@ -573,16 +573,6 @@ class Scheduler(object):
         else:
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level_of_theory, job_type='sp')
 
-    def check_composite_job(self, label, job):
-        """
-        Check that a composite job converged successfully.
-        """
-        if job.job_status[1] == 'done':
-            self.output[label]['status'] += 'composite converged; '
-            self.output[label]['composite'] = os.path.join(job.local_path, 'output.out')
-        else:
-            self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level_of_theory, job_type='composite')
-
     def check_scan_job(self, label, job):
         """
         Check that a rotor scan job converged successfully. Also checks (QA) whether the scan is relatively "smooth",
