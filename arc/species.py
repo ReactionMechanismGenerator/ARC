@@ -110,15 +110,15 @@ class ARCSpecies(object):
             if char not in valid_chars:
                 raise SpeciesError('Species label {0} contains an invalid character: "{1}"'.format(self.label, char))
 
-        if xyz is not None:
-            self.initial_xyz = xyz
-            mol, _ = mol_from_xyz(xyz)
-            self.molecule = [mol]
+        if self.mol is None:
+            mol, _ = mol_from_xyz(self.initial_xyz)
+            self.mol_list = [mol]
             self.monoatomic = len(xyz.split('\n')) == 1
         else:
-            self.initial_xyz = ''
-            self.molecule = self.rmg_species.molecule
-            self.monoatomic = len(self.molecule[0].atoms) == 1
+            self.mol_list = self.mol.generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
+            self.monoatomic = len(self.mol.atoms) == 1
+            if not bond_corrections:
+                self.determine_bond_corrections()
 
         self.final_xyz = ''
 
@@ -275,14 +275,6 @@ class ARCSpecies(object):
         minval = min(energies)
         minind = energies.index(minval)
         return xyzs[minind]
-
-    def generate_localized_structures(self):
-        """
-        Generate localized (resonance) structures
-        """
-        if self.rmg_species is not None and len(self.rmg_species.molecule) == 1:
-            self.rmg_species.generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
-            self.molecule = self.rmg_species.molecule
 
     def determine_rotors(self):
         """

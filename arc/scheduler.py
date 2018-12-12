@@ -117,7 +117,6 @@ class Scheduler(object):
             self.output[species.label]['status'] = ''
             self.job_dict[species.label] = dict()
             self.species_dict[species.label] = species
-            self.species_dict[species.label].generate_localized_structures()
             if self.scan_rotors:
                 self.species_dict[species.label].determine_rotors()
             self.running_jobs[species.label] = list()  # initialize before running the first job
