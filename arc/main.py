@@ -152,10 +152,15 @@ class ARC(object):
                 self.freq_level = freq_level.lower()
                 logging.info('Using {0} for frequency calculations'.format(self.freq_level))
             elif not self.composite_method:
-                # self.freq_level = 'wb97x-d3/def2-tzvpd'
-                # logging.info('Using wB97x-D3/def2-TZVPD for frequency calculations')
-                self.freq_level = default_levels_of_theory['freq'].lower()
-                logging.info('Using default level {0} for frequency calculations'.format(self.freq_level))
+                if opt_level:
+                    self.freq_level = opt_level.lower()
+                    logging.info('Using user-defined opt level {0} for frequency calculations as well'.format(
+                        self.freq_level))
+                else:
+                    # self.freq_level = 'wb97x-d3/def2-tzvpd'
+                    # logging.info('Using wB97x-D3/def2-TZVPD for frequency calculations')
+                    self.freq_level = default_levels_of_theory['freq'].lower()
+                    logging.info('Using default level {0} for frequency calculations'.format(self.freq_level))
             else:
                 self.freq_level = default_levels_of_theory['freq_for_composite'].lower()
                 logging.info('Using default level {0} for frequency calculations after composite jobs'.format(
