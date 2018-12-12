@@ -29,21 +29,28 @@ class ARCSpecies(object):
     """
     ARCSpecies class
 
-    ====================== =================== =========================================================================
-    Attribute              Type                Description
-    ====================== =================== =========================================================================
-    `label`                 ``str``            The species' label
-    `multiplicity`          ``int``            The species' multiplicity
-    'charge'                ``int''            The species' net charge
-    `is_ts`                 ``bool``           Whether or not the species represents a transition state
-    'number_of_rotors'      ``int``            The number of potential rotors to scan
-    'rotors_dict'           ``dict``           A dictionary of rotors. structure given below.
-    `conformers`            ``list``           A list of selected conformers XYZs
-    `conformer_energies`    ``list``           A list of conformers E0 (Hartree)
-    'initial_xyz'           ``string``         The initial geometry guess
-    'final_xyz'             ``string``         The optimized species geometry
-    'monoatomic'            ``bool``           Whether the species has only one atom or not
-    ====================== =================== =========================================================================
+    ====================== ============= ===============================================================================
+    Attribute              Type          Description
+    ====================== ============= ===============================================================================
+    `label`                 ``str``      The species' label
+    `multiplicity`          ``int``      The species' multiplicity
+    'charge'                ``int''      The species' net charge
+    `is_ts`                 ``bool``     Whether or not the species represents a transition state
+    'number_of_rotors'      ``int``      The number of potential rotors to scan
+    'rotors_dict'           ``dict``     A dictionary of rotors. structure given below.
+    `conformers`            ``list``     A list of selected conformers XYZs
+    `conformer_energies`    ``list``     A list of conformers E0 (Hartree)
+    'initial_xyz'           ``string``   The initial geometry guess
+    'final_xyz'             ``string``   The optimized species geometry
+    'monoatomic'            ``bool``     Whether the species has only one atom or not
+    'smiles'                ``str``      The SMILES structure. Either SMILES, adjList, or mol is required for BAC.
+    'adjlist'               ``str``      The Adjacency List structure.
+    'mol'                   ``Molecule`` An RMG:Molecule object used for BAC determination.
+                                           Does not correctly describe bond orders.
+    'bond_corrections'      ``dict``     The bond additivity corrections (BAC) to be used. Determined from the structure
+                                           if not directly given.
+    't0'                    ``float``    Initial time when the first species job was spawned
+    ====================== ============= ===============================================================================
 
     Dictionary structure:
 
@@ -67,6 +74,11 @@ class ARCSpecies(object):
         self.is_ts = is_ts
 
         self.rmg_species = rmg_species
+        if bond_corrections is None:
+            self.bond_corrections = dict()
+        else:
+            self.bond_corrections = bond_corrections
+
 
         if self.rmg_species is None:
             if xyz is None:
@@ -391,6 +403,33 @@ class ARCSpecies(object):
             optical_isomers = 2 if pg.chiral else optical_isomers
         self.optical_isomers = optical_isomers
         self.symmetry = symmetry
+
+    def determine_bond_corrections(self):
+        """
+        A helper function to determine bond types for applying BAC
+        """
+        explored_atoms = []
+        for atom1 in self.mol.vertices:
+            for atom2, bond12 in atom1.edges.items():
+                if atom2 not in explored_atoms:
+                    bac = atom1.symbol
+                    if bond12.isSingle():
+                        bac += '-'
+                    elif bond12.isDouble():
+                        bac += '='
+                    elif bond12.isTriple():
+                        bac += '#'
+                    else:
+                        break
+                    bac += atom2.symbol
+                    if bac in self.bond_corrections:
+                        self.bond_corrections[bac] += 1
+                    elif bac[::-1] in self.bond_corrections:  # check in reverse
+                        self.bond_corrections[bac] += 1
+                    else:
+                        self.bond_corrections[bac] = 1
+            explored_atoms.append(atom1)
+        logging.debug('Using the following BAC for {0}: {1}'.format(self.label, self.bond_corrections))
 
 
 def find_internal_rotors(mol):
