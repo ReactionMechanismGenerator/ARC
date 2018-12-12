@@ -63,15 +63,16 @@ class ARCSpecies(object):
                   2: {}, ...
                  }
     """
-    def __init__(self, is_ts=False, rmg_species=None, label=None, xyz=None, multiplicity=None, charge=None):
+    def __init__(self, is_ts=False, rmg_species=None, label=None, xyz=None, multiplicity=None, charge=None, smiles='',
+                 adjlist='', mol=None, bond_corrections=None):
         """
         All parameters get precedence over their respective rmg_species values if the latter is given.
         'is_ts' is a mandatory parameter.
         If 'rmg_species' is given, all other parameters are optional.
         Note that if an xyz guess is given directly, localized (resonance) structures won't be generated
         """
-
         self.is_ts = is_ts
+        self.t0 = None
 
         self.rmg_species = rmg_species
         if bond_corrections is None:
@@ -79,17 +80,49 @@ class ARCSpecies(object):
         else:
             self.bond_corrections = bond_corrections
 
+        self.mol = None
+        self.mol_no_bond_info = None
+        self.initial_xyz = xyz
 
         if self.rmg_species is None:
-            if xyz is None:
-                raise SpeciesError('xyz must be specified for ARCSpecies.')
-            if multiplicity is None:
-                raise SpeciesError('multiplicity must be specified for ARCSpecies.')
-            if charge is None:
-                raise SpeciesError('charge must be specified for ARCSpecies.')
+            # parameters were entered directly, not via an RMG:Species object
             if label is None:
-                raise SpeciesError('label must be specified for ARCSpecies.')
+                raise SpeciesError('label must be specified for an ARCSpecies object.')
+            else:
+                self.label = label
+            if xyz is None and not smiles and not adjlist and mol is None:
+                raise SpeciesError('A structure must be specified for an ARCSpecies object. Specify either'
+                                   'smiles, adjlist, xyz or mol for {0}.'.format(self.label))
+            if not smiles and not adjlist and mol is None:
+                logging.warn('No structure (SMILES, adjList, or Molecule) was given for species {0}, will not be able'
+                             ' to use bind additivity corrections (BAC).'.format(label))
+            if multiplicity is None:
+                raise SpeciesError('No multiplicity was specified for {0}.'.format(self.label))
+            if charge is None:
+                raise SpeciesError('No charge was specified for {0}.'.format(self.label))
+            else:
+                if mol:
+                    self.mol = mol
+                elif smiles and not adjlist:
+                    self.mol = Molecule(SMILES=smiles)
+                elif adjlist:
+                    self.mol = Molecule().fromAdjacencyList(adjlist=adjlist)
+                else:
+                    logging.warn('No structure was given for species {0}. BAC will not be used for'
+                                 ' thermo computation.'.format(label))
+            if multiplicity < 1:
+                raise SpeciesError('Multiplicity for species {0} is lower than 1 (got {1})'.format(
+                    self.label, multiplicity))
+            if not isinstance(multiplicity, int):
+                raise SpeciesError('Multiplicity for species {0} is not an integer (got {1}, a {2})'.format(
+                    self.label, multiplicity, type(multiplicity)))
+            if not isinstance(charge, int):
+                raise SpeciesError('Charge for species {0} is not an integer (got {1}, a {2})'.format(
+                    self.label, charge, type(charge)))
+            self.multiplicity = multiplicity
+            self.charge = charge
         else:
+            # an RMG Species was given
             if not isinstance(self.rmg_species, Species):
                 raise SpeciesError('The rmg_species parameter has to be a valid RMG Species object.'
                                    ' Got: {0}'.format(type(self.rmg_species)))
@@ -97,26 +130,19 @@ class ARCSpecies(object):
                 raise SpeciesError('If an RMG Species given, it must have a non-empty molecule list')
             if not self.rmg_species.label and not label:
                 raise SpeciesError('If an RMG Species given, it must have a label or a label must be given separately')
-
-        if self.rmg_species is not None:
+            else:
+                if self.rmg_species.label:
+                    self.label = self.rmg_species.label
+                else:
+                    self.label = label
+            self.mol = self.rmg_species.molecule[0]
+            if len(self.rmg_species.molecule) > 1:
+                logging.info('Using localized structure {0} of species {1} for BAC determination.'.format(
+                    self.mol.toSMILES(), self.label))
             self.multiplicity = self.rmg_species.molecule[0].multiplicity
             self.charge = self.rmg_species.molecule[0].getNetCharge()
-            if self.rmg_species.label:
-                self.label = self.rmg_species.label
-            else:
-                self.label = label
-        else:
-            if multiplicity < 1:
-                raise SpeciesError('multiplicity for species {0} is lower than 1 (got {1})'.format(self.label,
-                                                                                                   multiplicity))
-            if not isinstance(multiplicity, int):
-                raise SpeciesError('multiplicity for species {0} is not an integer (got {1})'.format(self.label,
-                                                                                                     multiplicity))
-            self.multiplicity = multiplicity
-            self.charge = charge
-            self.label = label
 
-        # Check `label` since it is used for folder names
+        # Check `label` is valid, since it is used for folder names
         valid_chars = "-_()<=>%s%s" % (string.ascii_letters, string.digits)
         for char in self.label:
             if char not in valid_chars:
@@ -140,6 +166,10 @@ class ARCSpecies(object):
         self.conformers = list()
         self.conformer_energies = list()
 
+        if self.initial_xyz is not None:
+            self.conformers.append(self.initial_xyz)
+            self.conformer_energies.append(0.0)  # dummy
+
         self.xyzs = list()  # used for conformer search
 
         self.external_symmetry = 1
@@ -149,16 +179,12 @@ class ARCSpecies(object):
         """
         Generate conformers using RDKit and OpenBabel for all representative localized structures of each species
         """
-        if not self.initial_xyz:
-            if self.molecule:
-                for mol in self.molecule:
-                    self.find_conformers(mol)
-                    for xyz in self.xyzs:
-                        self.conformers.append(xyz)
-                        self.conformer_energies.append(0.0)  # a placeholder (lists are synced)
-            else:
-                logging.info(self.molecule)
-                raise SpeciesError('Cannot generate conformers without a molecule list')
+        if self.mol:
+            for mol in self.mol_list:
+                self.find_conformers(mol)
+                for xyz in self.xyzs:
+                    self.conformers.append(xyz)
+                    self.conformer_energies.append(0.0)  # a placeholder (lists are synced)
         else:
             logging.warn('Generating conformers for species {0}, without bond order information (using coordinates'
                          ' only).'.format(self.label))
@@ -295,7 +321,7 @@ class ARCSpecies(object):
         The resulting rotors are saved in {'pivots': [1, 3], 'top': [3, 7], 'scan': [2, 1, 3, 7]} format
         in self.species_dict[species.label]['rotors_dict']. Also updates 'number_of_rotors'.
         """
-        for mol in self.molecule:
+        for mol in self.mol_list:
             rotors = find_internal_rotors(mol)
             for new_rotor in rotors:
                 for key, existing_rotor in self.rotors_dict.iteritems():
