@@ -270,6 +270,8 @@ class Scheduler(object):
         """
         A helper function for running (all) jobs
         """
+        if self.species_dict[label].t0 is None:
+            self.species_dict[label].t0 = time.time()
         species = self.species_dict[label]
         job = Job(project=self.project, species_name=label, xyz=xyz, job_type=job_type, level_of_theory=level_of_theory,
                   multiplicity=species.multiplicity, charge=species.charge, fine=fine, shift=shift, software=software,
@@ -948,7 +950,16 @@ class Scheduler(object):
         status = self.output[label]['status']
         if 'error' not in status and ('composite converged' in status or ('sp converged' in status and
                 (self.species_dict[label].monoatomic or ('freq converged' in status and 'opt converged' in status)))):
-            logging.info('\nAll jobs for species {0} successfully converged'.format(label))
+            t = time.time() - self.species_dict[label].t0
+            m, s = divmod(t, 60)
+            h, m = divmod(m, 60)
+            d, h = divmod(h, 24)
+            if d > 0:
+                d = str(d) + ' days, '
+            else:
+                d = ''
+            logging.info('\nAll jobs for species {0} successfully converged.'
+                         ' Elapsed time: {1}{2:02.0f}:{3:02.0f}:{4:02.0f}'.format(label,d,h,m,s))
             self.output[label]['status'] = 'converged'
         elif not self.output[label]['status']:
             self.output[label]['status'] = 'nothing converged'
