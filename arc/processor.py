@@ -5,12 +5,13 @@ import os
 import logging
 
 from arkane.input import species as arkane_species
-from arkane.statmech import StatMechJob
+from arkane.statmech import StatMechJob, assign_frequency_scale_factor
 from arkane.thermo import ThermoJob
 
 from arc.settings import arc_path
 from arc.job.input import input_files
 from arc import plotter
+from arc.exceptions import SchedulerError
 
 ##################################################################
 
@@ -19,19 +20,23 @@ class Processor(object):
     """
     ARC Processor class. Post processes results in Arkane. The attributes are:
 
-    ================ =================== ===============================================================================
-    Attribute        Type                Description
-    ================ =================== ===============================================================================
-    `project`         ``str``            The project's name. Used for naming the directory.
-    `species_dict`    ``dict``           Keys are labels, values are ARCSpecies objects
-    `output`          ``dict``           Keys are labels, values are output file paths
-    ================ =================== ===============================================================================
+    ================ =========== ===============================================================================
+    Attribute        Type        Description
+    ================ =========== ===============================================================================
+    `project`         ``str``    The project's name. Used for naming the directory.
+    `species_dict`    ``dict``   Keys are labels, values are ARCSpecies objects
+    `output`          ``dict``   Keys are labels, values are output file paths
+    'use_bac'         ``bool``   Whether or not to use bond additivity corrections for thermo calculations
+    'model_chemistry' ``list``   The model chemistry in Arkane for energy corrections (AE, BAC).
+                                   This can be usually determined automatically.
+    ================ =========== ===============================================================================
     """
-    def __init__(self, project, species_dict, output):
+    def __init__(self, project, species_dict, output, use_bac, model_chemistry):
         self.project = project
         self.species_dict = species_dict
         self.output = output
-        self.process()
+        self.use_bac = use_bac
+        self.model_chemistry = model_chemistry
 
     def process(self):
         for species in self.species_dict.itervalues():
@@ -39,11 +44,14 @@ class Processor(object):
                 linear = False  # TODO
                 species.determine_symmetry()
                 multiplicity = species.multiplicity
-                model_chemistry = 'CCSD(T)-F12/aug-cc-pVTZ'.lower()  # TODO
                 try:
                     sp_path = self.output[species.label]['composite']
                 except KeyError:
-                    sp_path = self.output[species.label]['sp']
+                    try:
+                        sp_path = self.output[species.label]['sp']
+                    except KeyError:
+                        raise SchedulerError('Could not find path to sp calculation for species {0}'.format(
+                            species.label))
                 freq_path = self.output[species.label]['freq']
                 opt_path = self.output[species.label]['freq']
                 rotors = ''
@@ -72,18 +80,18 @@ class Processor(object):
                 input_file = input_files['arkane_species']
                 input_file= input_file.format(linear=linear, symmetry=species.external_symmetry,
                                               multiplicity=multiplicity, optical=species.optical_isomers,
-                                              model_chemistry=model_chemistry, sp_path=sp_path, opt_path=opt_path,
+                                              model_chemistry=self.model_chemistry, sp_path=sp_path, opt_path=opt_path,
                                               freq_path=freq_path, rotors=rotors)
                 with open(input_file_path, 'wb') as f:
                     f.write(input_file)
                 spec = arkane_species(species.label, input_file_path)
                 stat_mech_job = StatMechJob(spec, input_file_path)
-                stat_mech_job.modelChemistry = model_chemistry
-                stat_mech_job.execute(outputFile=output_file_path, plot=True)
+                stat_mech_job.applyBondEnergyCorrections = self.use_bac
+                if self.use_bac:
+                    stat_mech_job.bonds = species.bond_corrections
+                stat_mech_job.modelChemistry = self.model_chemistry
+                stat_mech_job.frequencyScaleFactor = assign_frequency_scale_factor(self.model_chemistry)
+                stat_mech_job.execute(outputFile=output_file_path, plot=False)
                 thermo_job = ThermoJob(spec, 'NASA')
                 thermo_job.execute(outputFile=output_file_path, plot=False)
                 plotter.log_thermo(species.label, path=output_file_path)
-
-# TODO: automate bond energy corrections. Should be in the Arkane input file if model_chemistry is supported.
-
-

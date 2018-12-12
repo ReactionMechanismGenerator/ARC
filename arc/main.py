@@ -27,31 +27,37 @@ class ARC(object):
 
     The attributes are:
 
-    ====================== =================== =========================================================================
-    Attribute              Type                Description
-    ====================== =================== =========================================================================
-    `project`              ``str``             The project's name. Used for naming the working directory.
-    'rmg_species_list'     ''list''            A list RMG Species objects. Species must have a non-empty label attribute
-                                                 and are assumed to be stab;e wells (not TSs)
-    `arc_species_list`     ``list``            A list of ARCSpecies objects (each entry represent either a stable well
-                                                 or a TS)
-    'rxn_list'             ``list``            A list of RMG Reaction objects. Will (hopefully) be converted into TSs
-    'conformer_level'      ``str``             Level of theory for conformer searches
-    'composite_method'     ``str``             Composite method
-    'opt_level'            ``str``             Level of theory for geometry optimization
-    'freq_level'           ``str``             Level of theory for frequency calculations
-    'sp_level'             ``str``             Level of theory for single point calculations
-    'scan_level'           ``str``             Level of theory for rotor scans
-    'output'               ``dict``            Output dictionary with status and final QM files for all species
-    'fine'                 ``bool``            Whether or not to use a fine grid for opt jobs (spawns an additional job)
-    ====================== =================== =========================================================================
+    ====================== ========== =========================================================================
+    Attribute              Type       Description
+    ====================== ========== =========================================================================
+    `project`              ``str``    The project's name. Used for naming the working directory.
+    'rmg_species_list'     ''list''   A list RMG Species objects. Species must have a non-empty label attribute
+                                        and are assumed to be stab;e wells (not TSs)
+    `arc_species_list`     ``list``   A list of ARCSpecies objects (each entry represent either a stable well
+                                        or a TS)
+    'rxn_list'             ``list``   A list of RMG Reaction objects. Will (hopefully) be converted into TSs
+    'conformer_level'      ``str``    Level of theory for conformer searches
+    'composite_method'     ``str``    Composite method
+    'opt_level'            ``str``    Level of theory for geometry optimization
+    'freq_level'           ``str``    Level of theory for frequency calculations
+    'sp_level'             ``str``    Level of theory for single point calculations
+    'scan_level'           ``str``    Level of theory for rotor scans
+    'output'               ``dict``   Output dictionary with status and final QM files for all species
+    'fine'                 ``bool``   Whether or not to use a fine grid for opt jobs (spawns an additional job)
+    'generate_conformers'  ``bool``   Whether or not to generate conformers when an initial geometry is given
+    'scan_rotors'          ``bool``   Whether or not to perform rotor scans
+    'use_bac'              ``bool``   Whether or not to use bond additivity corrections for thermo calculations
+    'model_chemistry'      ``list``   The model chemistry in Arkane for energy corrections (AE, BAC).
+                                        This can be usually determined automatically.
+    ====================== ========== =========================================================================
 
     `level_of_theory` is a string representing either sp//geometry levels or a composite method, e.g. 'CBS-QB3',
                                                  'CCSD(T)-F12a/aug-cc-pVTZ//B3LYP/6-311++G(3df,3pd)'...
     """
     def __init__(self, project, rmg_species_list=list(), arc_species_list=list(), rxn_list=list(),
                  level_of_theory='', conformer_level='', composite_method='', opt_level='', freq_level='', sp_level='',
-                 scan_level='', fine=True, generate_conformers=True, scan_rotors=True, verbose=logging.INFO):
+                 scan_level='', fine=True, generate_conformers=True, scan_rotors=True, use_bac=True,
+                 model_chemistry='', verbose=logging.INFO):
 
         self.project = project
         self.output_directory = os.path.join(arc_path, 'Projects', self.project)
@@ -60,6 +66,10 @@ class ARC(object):
         self.fine = fine
         self.generate_conformers = generate_conformers
         self.scan_rotors = scan_rotors
+        self.use_bac = use_bac
+        self.model_chemistry = model_chemistry
+        if self.model_chemistry:
+            logging.info('Using {0} as model chemistry for energy corrections in Arkane'.format(self.model_chemistry))
         if not self.fine:
             logging.info('\n')
             logging.warning('Not using a fine grid for geometry optimization jobs')
@@ -94,7 +104,7 @@ class ARC(object):
         if level_of_theory:
             if '/' not in level_of_theory:  # assume this is a composite method
                 self.composite_method = level_of_theory.lower()
-                logging.info('Using composite method {0}'.format(level_of_theory))
+                logging.info('Using composite method {0}'.format(self.composite_method))
             elif '//' in level_of_theory:
                 self.opt_level = level_of_theory.lower().split('//')[1]
                 self.freq_level = level_of_theory.lower().split('//')[1]
@@ -118,16 +128,22 @@ class ARC(object):
                 if level_of_theory and level_of_theory.lower != self.composite_method:
                     raise InputError('Specify either composite_method or level_of_theory')
                 logging.info('Using composite method {0}'.format(composite_method))
+                if self.composite_method == 'cbs-qb3':
+                    self.model_chemistry = self.composite_method
+                    logging.info('Using {0} as model chemistry for energy corrections in Arkane'.format(
+                        self.model_chemistry))
+                elif self.use_bac:
+                    raise InputError('Could not determine model chemistry to use for composite method {0}'.format(
+                        self.composite_method))
 
             if opt_level:
-                logging.info('Using {0} for geometry optimizations'.format(opt_level))
                 self.opt_level = opt_level.lower()
+                logging.info('Using {0} for geometry optimizations'.format(self.opt_level))
             elif not self.composite_method:
                 # self.opt_level = 'wb97x-d3/def2-tzvpd'
                 # logging.info('Using wB97x-D3/def2-TZVPD for geometry optimizations')
                 self.opt_level = default_levels_of_theory['opt'].lower()
-                logging.info('Using default level {0} for geometry optimizations'.format(
-                    default_levels_of_theory['opt']))
+                logging.info('Using default level {0} for geometry optimizations'.format(self.opt_level))
             else:
                 self.opt_level = ''
 
@@ -146,11 +162,12 @@ class ARC(object):
 
             if sp_level:
                 self.sp_level = sp_level.lower()
-                logging.info('Using {0} for single point calculations'.format(sp_level))
+                logging.info('Using {0} for single point calculations'.format(self.sp_level))
+                self.check_model_chemistry()
             elif not self.composite_method:
                 self.sp_level = default_levels_of_theory['sp'].lower()
-                logging.info('Using default level {0} for single point calculations'.format(
-                    default_levels_of_theory['sp']))
+                logging.info('Using default level {0} for single point calculations'.format(self.sp_level))
+                self.check_model_chemistry()
             else:
                 self.sp_level = ''
 
@@ -199,7 +216,9 @@ class ARC(object):
                                    opt_level=self.opt_level, freq_level=self.freq_level, sp_level=self.sp_level,
                                    scan_level=self.scan_level, fine=self.fine,
                                    generate_conformers=self.generate_conformers, scan_rotors=self.scan_rotors)
-        Processor(self.project, self.scheduler.species_dict, self.scheduler.output)
+        prc = Processor(project=self.project, species_dict=self.scheduler.species_dict, output=self.scheduler.output,
+                        use_bac=self.use_bac, model_chemistry=self.model_chemistry)
+        prc.process()
         self.summary()
         self.log_footer()
 
@@ -276,7 +295,58 @@ class ARC(object):
         logging.log(level, '')
         logging.log(level, 'ARC execution terminated at {0}'.format(time.asctime()))
 
-# TODO: MRCI, determine occ
+    def check_model_chemistry(self):
+        if self.model_chemistry:
+            self.model_chemistry = self.model_chemistry.lower()
+            logging.info('Using {0} as model chemistry for energy corrections in Arkane'.format(
+                self.model_chemistry))
+            if self.model_chemistry not in ['cbs-qb3', 'cbs-qb3-paraskevas', 'ccsd(t)-f12/cc-pvdz-f12',
+                                            'ccsd(t)-f12/cc-pvtz-f12', 'ccsd(t)-f12/cc-pvqz-f12',
+                                            'b3lyp/cbsb7', 'b3lyp/6-311g(2d,d,p)', 'b3lyp/6-311+g(3df,2p)',
+                                            'b3lyp/6-31g**']:
+                logging.warn('No bond additivity corrections (BAC) are available in Arkane for "model chemistry"'
+                             ' {0}. As a result, thermodynamic parameters are expected to be inaccurate. Make sure that'
+                             ' atom energy corrections (AEC) were supplied or are available in Arkane to avoid'
+                             ' error.'.format(self.model_chemistry))
+        else:
+            # model chemistry was not given, try to determine it from the sp_level
+            model_chemistry = ''
+            sp_level = self.sp_level.lower()
+            sp_level.replace('f12a', 'f12').replace('f12b', 'f12')
+            if sp_level in ['ccsd(t)-f12/cc-pvdz', 'ccsd(t)-f12/cc-pvtz', 'ccsd(t)-f12/cc-pvqz']:
+                logging.warning('Using model chemistry {0} based on sp level {1}.'.format(
+                    sp_level + '-f12', sp_level))
+                model_chemistry = sp_level + '-f12'
+            if not model_chemistry and sp_level in ['cbs-qb3', 'cbs-qb3-paraskevas', 'ccsd(t)-f12/cc-pvdz-f12',
+                                                    'ccsd(t)-f12/cc-pvtz-f12', 'ccsd(t)-f12/cc-pvqz-f12', 'b3lyp/cbsb7',
+                                                    'b3lyp/6-311g(2d,d,p)', 'b3lyp/6-311+g(3df,2p)', 'b3lyp/6-31g**']:
+                model_chemistry = sp_level
+            elif self.use_bac:
+                raise InputError('Could not determine appropriate model chemistry to be used in Arkane for'
+                                 ' thermochemical parameter calculations. Either turn off the "use_bac" flag'
+                                 ' (and BAC will not be used), or specify a correct model chemistry. For a'
+                                 ' comprehensive model chemistry list allowed in Arkane, see the Arkane documentation'
+                                 ' on the RMG website, rmg.mit.edu.')
+            else:
+                # use_bac is False, and no model chemistry was specified
+                if sp_level in ['m06-2x/cc-pvtz', 'g3', 'm08so/mg3s*', 'klip_1', 'klip_2', 'klip_3', 'klip_2_cc',
+                                'ccsd(t)-f12/cc-pvdz-f12_h-tz', 'ccsd(t)-f12/cc-pvdz-f12_h-qz',
+                                'ccsd(t)-f12/cc-pvdz-f12', 'ccsd(t)-f12/cc-pvtz-f12', 'ccsd(t)-f12/cc-pvqz-f12',
+                                'ccsd(t)-f12/cc-pcvdz-f12', 'ccsd(t)-f12/cc-pcvtz-f12', 'ccsd(t)-f12/cc-pcvqz-f12',
+                                'ccsd(t)-f12/cc-pvtz-f12(-pp)', 'ccsd(t)/aug-cc-pvtz(-pp)', 'ccsd(t)-f12/aug-cc-pvdz',
+                                'ccsd(t)-f12/aug-cc-pvtz', 'ccsd(t)-f12/aug-cc-pvqz', 'b-ccsd(t)-f12/cc-pvdz-f12',
+                                'b-ccsd(t)-f12/cc-pvtz-f12', 'b-ccsd(t)-f12/cc-pvqz-f12', 'b-ccsd(t)-f12/cc-pcvdz-f12',
+                                'b-ccsd(t)-f12/cc-pcvtz-f12', 'b-ccsd(t)-f12/cc-pcvqz-f12', 'b-ccsd(t)-f12/aug-cc-pvdz',
+                                'b-ccsd(t)-f12/aug-cc-pvtz', 'b-ccsd(t)-f12/aug-cc-pvqz', 'mp2_rmp2_pvdz',
+                                'mp2_rmp2_pvtz', 'mp2_rmp2_pvqz', 'ccsd-f12/cc-pvdz-f12',
+                                'ccsd(t)-f12/cc-pvdz-f12_noscale', 'g03_pbepbe_6-311++g_d_p', 'fci/cc-pvdz',
+                                'fci/cc-pvtz', 'fci/cc-pvqz','bmk/cbsb7', 'bmk/6-311g(2d,d,p)', 'b3lyp/6-31g**',
+                                'b3lyp/6-311+g(3df,2p)', 'MRCI+Davidson/aug-cc-pV(T+d)Z']:
+                    model_chemistry = sp_level
+            self.model_chemistry = model_chemistry
+            logging.info('Using {0} as model chemistry for energy corrections in Arkane'.format(
+                self.model_chemistry))
+
 
 def delete_all_arc_jobs(server_name):
     """
