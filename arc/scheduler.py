@@ -746,7 +746,10 @@ class Scheduler(object):
         logging.warn('Troubleshooting {label} job {job_name} which failed with status "{stat}" in {soft}.'.format(
             job_name=job.job_name, label=label, stat=job.job_status[1], soft=job.software))
         xyz = self.species_dict[label].initial_xyz
-        if job.software == 'gaussian03':
+        if 'Unknown reason' in job.job_status[1] and 'change_node' not in job.ess_trsh_methods:
+            job.ess_trsh_methods.append('change_node')
+            job.troubleshoot_server()
+        elif job.software == 'gaussian03':
             if 'cbs-qb3' not in job.ess_trsh_methods and self.composite_method != 'cbs-qb3':
                 # try running CBS-QB3, which is relatively robust
                 logging.info('Troubleshooting {type} job in {software} using CBS-QB3'.format(
