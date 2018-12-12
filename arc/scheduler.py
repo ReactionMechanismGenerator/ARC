@@ -469,6 +469,7 @@ class Scheduler(object):
             coord, number, mass = log.software_log.loadGeometry()
             self.species_dict[label].final_xyz = get_xyz_matrix(xyz=coord, from_arkane=True, number=number)
             self.output[label]['status'] += 'composite converged; '
+            self.output[label]['composite'] = os.path.join(job.local_path, 'output.out')
             logging.info('\nOptimized geometry for {label} at {level}:\n{xyz}'.format(label=label,
                         level=job.level_of_theory, xyz=self.species_dict[label].final_xyz))
             plotter.show_sticks(xyz=self.species_dict[label].final_xyz)
