@@ -616,7 +616,7 @@ class Scheduler(object):
                                           ' {inconsistency} kJ/mol between initial and final positions.'
                                           ' Invalidating rotor.'.format(label=label, pivots=job.pivots,
                                                                         inconsistency=inconsistency_az))
-                            logging.error('v_list[0] = {0}, v_list[-1] = {1]'.format(v_list[0], v_list[1]))
+                            logging.error('v_list[0] = {0}, v_list[-1] = {1}'.format(v_list[0], v_list[1]))
                             invalidate = True
                         if not invalidate:
                             v_last = v_list[-1]
