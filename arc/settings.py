@@ -6,6 +6,8 @@
 
 # Modifications to this file aren't tracked by git
 
+arc_path = '/home/alongd/Code/ARC/'  # on local machine
+
 servers = {
     'server1': {
         'cluster_soft': 'OGE',  # Oracle Grid Engine
@@ -91,5 +93,3 @@ rotor_scan_resolution = 10.0  # degrees. default: 10.0
 inconsistency_az = 6   # maximum allowed inconsistency (kJ/mol) between initial and final rotor scan points. Default: 6
 inconsistency_ab = 25  # maximum allowed inconsistency (kJ/mol) between consecutive points in the scan. Default: 25
 maximum_barrier = 200  # maximum allowed barrier (kJ/mol) for a hindered rotor. Default: 200
-
-arc_path = '/home/alongd/Code/ARC/'  # on local machine
