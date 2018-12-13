@@ -78,11 +78,11 @@ output_filename = {'gaussian03': 'input.log',
 default_levels_of_theory = {'conformer': 'b97-d3/6-311+g(d,p)',
                             'opt': 'wb97x-d3/6-311+g(d,p)',
                             'freq': 'wb97x-d3/6-311+g(d,p)',
-                            'sp': 'ccsd(t)-f12a/aug-cc-pvtz',
-                            'scan': 'b3lyp/6-31+g*',
-                            'irc': 'b3lyp/6-31+g*',
-                            'gsm': 'b3lyp/6-31+g*',
-                            'freq_for_composite': 'B3LYP/CBSB7',
+                            'sp': 'ccsd(t)-f12a/cc-pvtz-f12a',  # This should be a level for which BAC is available
+                            'scan': 'b3lyp/6-311+g(d,p)',
+                            'irc': 'b3lyp/6-31+g(d)',
+                            'gsm': 'b3lyp/6-31+g(d)',
+                            'freq_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of the CBS-QB3 method
 }
 
 rotor_scan_resolution = 10.0  # degrees. default: 10.0
