@@ -8,24 +8,45 @@
 
 servers = {
     'server1': {
+        'cluster_soft': 'OGE',  # Oracle Grid Engine
         'adddress': 'server1.host.edu',
         'un': 'username',
         'key': 'rsa key path',
-        'cluster_soft': 'OGE',  # Oracle Grid Engine (Sun Grin Engine)
     },
     'server2': {
+        'cluster_soft': 'Slurm',  # Simple Linux Utility for Resource Management
         'adddress': 'server2.host.edu',
         'un': 'username',
         'key': 'rsa key path',
-        'cluster_soft': 'Slurm',  # Simple Linux Utility for Resource Management
     }
 }
+
+# servers = {
+#     'pharos': {
+#         'cluster_soft': 'OGE',  # Oracle Grid Engine (Sun Grin Engine)
+#         'adddress': 'pharos.mit.edu',
+#         'un': '<username>',
+#         'key': '/home/<username>/.ssh/known_hosts',
+#     },
+#     'rmg': {
+#         'cluster_soft': 'Slurm',  # Simple Linux Utility for Resource Management
+#         'adddress': 'rmg.mit.edu',
+#         'un': '<username>',
+#         'key': '/home/<username>/.ssh/id_rsa',
+#     }
+# }
 
 software_server = {'gaussian03': 'server1',
                    'qchem': 'server1',
                    'molpro_2015': 'server2',
                    'molpro_2012': 'server1',
-}
+                   }
+
+# software_server = {'gaussian03': 'pharos',
+#                    'qchem': 'pharos',
+#                    'molpro_2015': 'rmg',
+#                    'molpro_2012': 'pharos',
+#                    }
 
 check_status_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat',
                         'Slurm': '/usr/bin/squeue'}
