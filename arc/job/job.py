@@ -590,7 +590,7 @@ $end
                 self.server_nodes.append(node)
                 break
         else:
-            raise ServerError('Cold not find an available node on the server')  # TODO: put job to sleep for x min
+            logging.error('Cold not find an available node on the server')  # TODO: continue troubleshooting; if all else fails, put job to sleep for x min and try again searching for a node
         # modify submit file
         content = ssh.read_remote_file(remote_path=self.remote_path,
                                        filename=submit_filename[servers[self.server]['cluster_soft']])
