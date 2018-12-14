@@ -325,7 +325,8 @@ class Scheduler(object):
                         self.run_job(label=label, xyz=xyz, level_of_theory=self.conformer_level, job_type='conformer',
                                      conformer=i)
                 else:
-                    if 'opt' not in self.job_dict[label] and 'composite' not in self.job_dict[label]:
+                    if 'opt' not in self.job_dict[label] and 'composite' not in self.job_dict[label]\
+                            and not self.species_dict[label].monoatomic:
                         # proceed only if opt (/composite) not already spawned
                         logging.info('Only one conformer is available for species {0},'
                                      ' using it for geometry optimization'.format(label))
