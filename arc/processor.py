@@ -52,8 +52,12 @@ class Processor(object):
                     except KeyError:
                         raise SchedulerError('Could not find path to sp calculation for species {0}'.format(
                             species.label))
-                freq_path = self.output[species.label]['freq']
-                opt_path = self.output[species.label]['freq']
+                if species.monoatomic:
+                    freq_path = sp_path
+                    opt_path = sp_path
+                else:
+                    freq_path = self.output[species.label]['freq']
+                    opt_path = self.output[species.label]['freq']
                 rotors = ''
                 for i in xrange(species.number_of_rotors):
                     if species.rotors_dict[i]['success']:
