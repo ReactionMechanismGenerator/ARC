@@ -375,10 +375,11 @@ def delete_all_arc_jobs(server_name):
     ssh = SSH_Client(server_name)
     stdout, stderr = ssh.send_command_to_server(cmd)
     for status_line in stdout:
-        if re.match(' a\d', status_line):
-            job_id = re.search(' a\d+', status_line)
+        s = re.search(' a\d+', status_line)
+        if s is not None:
+            job_id = s.group()[1:]
             ssh.delete_job(job_id)
-            logging.info('deleted job {0}'.format(job_id))
+            print('deleted job {0}'.format(job_id))
 
 
 # TODO: sucsessive opt (B3LYP, CCSD, CISD(T), MRCI)
