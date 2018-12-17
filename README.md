@@ -7,7 +7,7 @@ This program automates quantum chemical calculations. Currently Gaussian, Molpro
 The current version should be run locally; it communicates with servers (defined in settings.py) using an RSA key to spawn the calculations.
 
 Currently ARC can calculate Thermodynamic properties relying on Arkane (see Arkane's user guide: http://reactionmechanismgenerator.github.io/RMG-Py/users/arkane/index.html).
-We plan to elaborate ARC to automatically identify and compute transition states and evebtually calculate kinetic rates and pressure-dependent networks using Arkane.
+We plan to elaborate ARC to automatically identify and compute transition states and eventually calculate kinetic rates and pressure-dependent networks using Arkane.
 
 To install ARC, follow these steps:
 
@@ -20,7 +20,7 @@ To install ARC, follow these steps:
    - `py3dmol` (https://anaconda.org/RMG/py3dmol)
 5. Generate RSA SSH keys to your favorite server/s. Instructions could be found here: https://www.digitalocean.com/community/tutorials/how-to-set-up-ssh-keys--2
 6. Copy the RSA SSH key path/s to ARC/arc/settings.py in the servers dictionary under "keys".
-7. Make sure that the server/s address/es and your username under "un" in that dictionary is correct
+7. Make sure that the server/s address/es and your username under "un" in that dictionary are all correct
 8. Update the arc_path in ARC/arc/settings.py
-9. Have all relevant ESS software (currently in this version g03, QChem, molpro2012, molpro2015) defined in your .bashrc on the server
+9. Have all relevant ESS software (currently in this version g03, QChem, molpro2012, molpro2015 are supported) defined in your .bashrc on the server
 10. Run the ARCDemo ipy notebook
