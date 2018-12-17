@@ -9,7 +9,18 @@ The current version should be run locally; it communicates with servers (defined
 Currently ARC can calculate Thermodynamic properties relying on Arkane (see Arkane's user guide: http://reactionmechanismgenerator.github.io/RMG-Py/users/arkane/index.html).
 We plan to elaborate ARC to automatically identify and compute transition states and evebtually calculate kinetic rates and pressure-dependent networks using Arkane.
 
-Run ARC using an RMG anaconda environement, supplemented with the following packages:
-- `paramico` (https://anaconda.org/anaconda/paramiko)
-- `cclib` (https://anaconda.org/omnia/cclib)
-- `py3dmol` (https://anaconda.org/RMG/py3dmol)
+To install ARC, follow these steps:
+
+1. Clone this repository to your local machine.
+2. Add ARC to your local path in .bashrc: export PYTHONPATH=$PYTHONPATH:~/Path/to/ARC/
+3. Install the latest version of RMG (which has Arkane) and activate the RMG environment (usually called rmg_env)
+4. Install the following libraries onto the RMG environment:
+   - `paramico` (https://anaconda.org/anaconda/paramiko)
+   - `cclib` (https://anaconda.org/omnia/cclib)
+   - `py3dmol` (https://anaconda.org/RMG/py3dmol)
+5. Generate RSA SSH keys to your favorite server/s. Instructions could be found here: https://www.digitalocean.com/community/tutorials/how-to-set-up-ssh-keys--2
+6. Copy the RSA SSH key path/s to ARC/arc/settings.py in the servers dictionary under "keys".
+7. Make sure that the server/s address/es and your username under "un" in that dictionary is correct
+8. Update the arc_path in ARC/arc/settings.py
+9. Have all relevant ESS software (currently in this version g03, QChem, molpro2012, molpro2015) defined in your .bashrc on the server
+10. Run the ARCDemo ipy notebook
