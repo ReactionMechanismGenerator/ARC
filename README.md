@@ -23,4 +23,6 @@ To install ARC, follow these steps:
 7. Make sure that the server/s address/es and your username under "un" in that dictionary are all correct
 8. Update the arc_path in ARC/arc/settings.py
 9. Have all relevant ESS software (currently in this version g03, QChem, molpro2012, molpro2015 are supported) defined in your .bashrc on the server
-10. Run the ARCDemo ipy notebook
+10. Update all additional dictionaries in ARC/arc/settings.py (e.g., software_server, submit_command, delete_command...) accordingly.
+11. Update the submit scripts in ARC/arc/job/submit.py to align with your servers definitions.
+12. Run the ARCDemo.ipynb to test. This demo also shows different methods to define species for thermo calculations.
