@@ -90,6 +90,7 @@ class Scheduler(object):
     def __init__(self, project, species_list, composite_method, conformer_level, opt_level, freq_level, sp_level,
                  scan_level, fine=False, generate_conformers=True, scan_rotors=True):
         self.project = project
+        self.report_time = time.time()  # init time for reporting status every 1 hr
         self.servers = list()
         self.species_list = species_list
         self.composite_method = composite_method
@@ -264,6 +265,11 @@ class Scheduler(object):
             if self.timer:
                 logging.debug('zzz... setting timer for 1 minute... zzz')
                 time.sleep(30)  # wait 30 sec before bugging the servers again.
+            t = time.time() - self.report_time
+            if t > 3600:
+                self.report_time = time.time()
+                logging.info('Currently running jobs:\n{0}'.format(self.running_jobs))
+
 
     def run_job(self, label, xyz, level_of_theory, job_type, fine=False, software=None, shift='', trsh='', memory=1500,
                 conformer=-1, ess_trsh_methods=list(), scan='', pivots=list(), occ=None):
