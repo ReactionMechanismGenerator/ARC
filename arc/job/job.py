@@ -11,7 +11,7 @@ from arc.settings import arc_path, software_server, servers, submit_filename, de
 from arc.job.submit import submit_sctipts
 from arc.job.input import input_files
 from arc.job.ssh import SSH_Client
-from arc.exceptions import JobError, ServerError
+from arc.exceptions import JobError, ServerError, SpeciesError
 
 ##################################################################
 
@@ -556,6 +556,9 @@ $end
                         # these are *normal* lines: "SCF converges when DIIS error is below 1.0E-08", or
                         # "Cycle       Energy         DIIS Error"
                         error_message = line
+                    elif 'Invalid charge/multiplicity combination' in line:
+                        raise SpeciesError('The multiplicity and charge combination for species {0} are wrong.'.format(
+                            self.species_name))
                 if done:
                     return 'done'
                 else:
