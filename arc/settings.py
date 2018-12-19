@@ -87,9 +87,11 @@ default_levels_of_theory = {'conformer': 'b97-d3/6-311+g(d,p)',
                             'freq_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of the CBS-QB3 method
 }
 
-rotor_scan_resolution = 10.0  # degrees. default: 10.0
+# A scan with better resolution (lower number here) takes more time to compute,
+# but the automatically-derived rotor symmetry number is more likely to be correct.
+rotor_scan_resolution = 5.0  # degrees. Default: 5.0
 
 # rotor validation parameters
-inconsistency_az = 6   # maximum allowed inconsistency (kJ/mol) between initial and final rotor scan points. Default: 6
-inconsistency_ab = 25  # maximum allowed inconsistency (kJ/mol) between consecutive points in the scan. Default: 25
-maximum_barrier = 200  # maximum allowed barrier (kJ/mol) for a hindered rotor. Default: 200
+inconsistency_az = 5   # maximum allowed inconsistency (kJ/mol) between initial and final rotor scan points. Default: 5
+inconsistency_ab = 10  # maximum allowed inconsistency (kJ/mol) between consecutive points in the scan. Default: 10
+maximum_barrier = 100  # maximum allowed barrier (kJ/mol) for a hindered rotor. Default: 100
