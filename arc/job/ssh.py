@@ -40,7 +40,10 @@ class SSH_Client(object):
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         ssh.load_system_host_keys(filename=self.key)
-        ssh.connect(hostname=self.address, username=self.un)
+        try:
+            ssh.connect(hostname=self.address, username=self.un)
+        except:
+            return '', 'paramiko failed to connect'
         if remote_path != '':
             # execute command in remote_path directory. Since each `.exec_command()` is a single session,
             # this must to be added to all commands.
