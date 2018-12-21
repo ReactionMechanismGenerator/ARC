@@ -306,7 +306,15 @@ class Scheduler(object):
         A helper function for checking job status, saving in cvs file, and downloading output files.
         Returns ``True`` if job terminated successfully on the server, ``False`` otherwise
         """
-        job.determine_job_status()  # also downloads output file
+        try:
+            job.determine_job_status()  # also downloads output file
+        except IOError:
+            logging.warn('Tried to determine status of job {0}, but it seems like the job never ran.'
+                         ' Re-running job.'.format(job.job_name))
+            self.run_job(label=label, xyz=job.xyz, level_of_theory=job.level_of_theory, job_type=job.job_type,
+                         fine=job.fine, software=job.software, shift=job.shift, trsh=job.trsh, memory=job.memory,
+                         conformer=job.conformer, ess_trsh_methods=job.ess_trsh_methods, scan=job.scan,
+                         pivots=job.pivots, occ=job.occ)
         self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
         self.timer = False
         job.run_time = str(datetime.datetime.now() - job.date_time).split('.')[0]
