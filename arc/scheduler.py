@@ -558,9 +558,11 @@ class Scheduler(object):
         Returns ``True`` if the number of negative frequencies is as excepted, ``False`` otherwise.
         """
         neg_freq_counter = 0
+        neg_fre = None
         for freq in frequencies:
             if freq < 0:
                 neg_freq_counter += 1
+                neg_fre = freq
         if self.species_dict[label].is_ts and neg_freq_counter != 1:
                 logging.error('TS {0} has {1} imaginary frequencies,'
                               ' should have exactly 1.'.format(label, neg_freq_counter))
@@ -572,6 +574,8 @@ class Scheduler(object):
                 self.output[label]['status'] += 'Error: {0} imaginary freq for stable species; '.format(neg_freq_counter)
                 return False
         else:
+            if self.species_dict[label].is_ts:
+                logging.info('TS {0} has exactly one imaginary frequency: {1}'.format(label, neg_fre))
             self.output[label]['status'] += 'freq converged; '
             self.output[label]['geo'] = job.local_path_to_output_file
             self.output[label]['freq'] = job.local_path_to_output_file
