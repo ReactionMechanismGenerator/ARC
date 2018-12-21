@@ -239,7 +239,7 @@ class Job(object):
 
     def write_submit_script(self):
         un = servers[self.server]['un']  # user name
-        self.submit = submit_sctipts[self.software].format(self.job_server_name, un)
+        self.submit = submit_sctipts[self.software].format(name=self.job_server_name, un=un)
         if not os.path.exists(self.local_path):
             os.makedirs(self.local_path)
         with open(os.path.join(self.local_path, submit_filename[servers[self.server]['cluster_soft']]), 'wb') as f:

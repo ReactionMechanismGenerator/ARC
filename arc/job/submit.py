@@ -10,7 +10,7 @@
 
 submit_sctipts = {
     'gaussian03': """#!/bin/bash
-#$ -N {0}
+#$ -N {name}
 #$ -l long
 #$ -l h_rt=120:00:00
 #$ -l harpertown
@@ -20,11 +20,11 @@ submit_sctipts = {
 #$ -o out.txt
 #$ -e err.txt
 
-PATH=$PATH:/home/alongd
+PATH=$PATH:/home/{un}
 export LD_LIBRARY_PATH=/opt/intel/Compiler/11.0/074/bin/intel64:$LD_LIBRARY_PATH
 export LD_LIBRARY_PATH=/opt/intel/Compiler/11.0/074/mkl/lib/em64t:$LD_LIBRARY_PATH
 g03root=/opt
-GAUSS_SCRDIR=/scratch/alongd
+GAUSS_SCRDIR=/scratch/{un}
 export g03root GAUSS_SCRDIR
 . $g03root/g03/bsd/g03.profile
 export LD_LIBRARY_PATH=$HOME'/gcc/gcc-4.7/lib64':$LD_LIBRARY_PATH
@@ -35,7 +35,7 @@ export PATH=$PATH:/opt/mpich2-1.2.1p1/bin
 WorkDir=`pwd`
 cd
 source .bashrc
-mkdir -p /scratch/{1}
+mkdir -p /scratch/{un}
 cd $WorkDir
 
 g03 input.gjf
@@ -43,7 +43,7 @@ g03 input.gjf
 """,
     'qchem': """#!/bin/bash
  
-#$ -N {0}
+#$ -N {name}
 #$ -l long
 #$ -l h_rt=120:00:00
 #$ -l harpertown
@@ -53,11 +53,16 @@ g03 input.gjf
 #$ -o out.txt
 #$ -e err.txt
 
+export QC=/opt/qchem
+export QCSCRATCH=/scratch/{un}
+export QCLOCALSCR=/scratch/{un}/qlscratch
+. $QC/qcenv.sh
+
 WorkDir=`pwd`
 cd
 source .bashrc
-mkdir -p /scratch/{1}
-mkdir -p /scratch/{1}/qlscratch
+mkdir -p /scratch/{un}
+mkdir -p /scratch/{un}/qlscratch
 cd $WorkDir
 
 qchem -nt 6 input.in output.out
@@ -65,7 +70,7 @@ qchem -nt 6 input.in output.out
 """,
     'molpro_2015': """#!/bin/bash
 #SBATCH -p normal
-#SBATCH -J {0}
+#SBATCH -J {name}
 #SBATCH -N 1
 #SBATCH -c 8
 #SBATCH --mem-per-cpu=2048
@@ -83,7 +88,7 @@ echo "============================================================"
 WorkDir=`pwd`
 cd
 source .bashrc
-sdir=/scratch/{1}/$SLURM_JOB_ID
+sdir=/scratch/{un}/$SLURM_JOB_ID
 mkdir -p $sdir
 export TMPDIR=$sdir
 cd $WorkDir
@@ -95,7 +100,7 @@ rm -rf $sdir
 """,
     'molpro_2012': """#! /bin/bash
  
-#$ -N {0}
+#$ -N {name}
 #$ -l long
 #$ -l h_rt=120:00:00
 #$ -l harpertown
@@ -112,8 +117,8 @@ export LD_LIBRARY_PATH=/opt/gcc-4.7/lib:$LD_LIBRARY_PATH
 WorkDir=`pwd`
 cd
 source .bashrc
-mkdir -p /scratch/{1}
-mkdir -p /scratch/{1}/qlscratch
+mkdir -p /scratch/{un}
+mkdir -p /scratch/{un}/qlscratch
 cd $WorkDir
 
 molpro -n 6 input.in
