@@ -64,13 +64,7 @@ class ARCSpecies(object):
                  }
     """
     def __init__(self, is_ts=False, rmg_species=None, label=None, xyz=None, multiplicity=None, charge=None, smiles='',
-                 adjlist='', mol=None, bond_corrections=None):
-        """
-        All parameters get precedence over their respective rmg_species values if the latter is given.
-        'is_ts' is a mandatory parameter.
-        If 'rmg_species' is given, all other parameters are optional.
-        Note that if an xyz guess is given directly, localized (resonance) structures won't be generated
-        """
+                 adjlist='', bond_corrections=None):
         self.is_ts = is_ts
         self.t0 = None
 
@@ -90,26 +84,17 @@ class ARCSpecies(object):
                 raise SpeciesError('label must be specified for an ARCSpecies object.')
             else:
                 self.label = label
-            if xyz is None and not smiles and not adjlist and mol is None:
-                raise SpeciesError('A structure must be specified for an ARCSpecies object. Specify either'
-                                   'smiles, adjlist, xyz or mol for {0}.'.format(self.label))
-            if not smiles and not adjlist and mol is None:
-                logging.warn('No structure (SMILES, adjList, or Molecule) was given for species {0}, will not be able'
-                             ' to use bind additivity corrections (BAC).'.format(label))
             if multiplicity is None:
                 raise SpeciesError('No multiplicity was specified for {0}.'.format(self.label))
             if charge is None:
                 raise SpeciesError('No charge was specified for {0}.'.format(self.label))
-            else:
-                if mol:
-                    self.mol = mol
-                elif smiles and not adjlist:
-                    self.mol = Molecule(SMILES=smiles)
-                elif adjlist:
-                    self.mol = Molecule().fromAdjacencyList(adjlist=adjlist)
-                else:
-                    logging.warn('No structure was given for species {0}. BAC will not be used for'
-                                 ' thermo computation.'.format(label))
+            if adjlist:
+                self.mol = Molecule().fromAdjacencyList(adjlist=adjlist)
+            elif smiles:
+                self.mol = Molecule(SMILES=smiles)
+            elif not self.is_ts:
+                logging.warn('No structure (SMILES, adjList, or an RMG:Species object) was given for species {0},'
+                             ' NOT using bond additivity corrections (BAC) for thermo computation'.format(label))
             if multiplicity < 1:
                 raise SpeciesError('Multiplicity for species {0} is lower than 1 (got {1})'.format(
                     self.label, multiplicity))
@@ -137,8 +122,9 @@ class ARCSpecies(object):
                     self.label = label
             self.mol = self.rmg_species.molecule[0]
             if len(self.rmg_species.molecule) > 1:
-                logging.info('Using localized structure {0} of species {1} for BAC determination.'.format(
-                    self.mol.toSMILES(), self.label))
+                logging.info('Using localized structure {0} of species {1} for BAC determination. To use a different'
+                             ' structure, place it first in the molecule list of the RMG:Species object '.format(
+                                self.mol.toSMILES(), self.label))
             self.multiplicity = self.rmg_species.molecule[0].multiplicity
             self.charge = self.rmg_species.molecule[0].getNetCharge()
 
@@ -159,19 +145,17 @@ class ARCSpecies(object):
                 self.determine_bond_corrections()
 
         self.final_xyz = ''
-
         self.number_of_rotors = 0
         self.rotors_dict = dict()
-
         self.conformers = list()
         self.conformer_energies = list()
-
         if self.initial_xyz is not None:
+            # consider the initial guess as one of the conformers if generating others.
+            # otherwise, just consider it as the conformer.
             self.conformers.append(self.initial_xyz)
             self.conformer_energies.append(0.0)  # dummy
 
         self.xyzs = list()  # used for conformer search
-
         self.external_symmetry = 1
         self.optical_isomers = 1
 
@@ -428,7 +412,7 @@ class ARCSpecies(object):
             symmetry = pg.symmetryNumber
             optical_isomers = 2 if pg.chiral else optical_isomers
         self.optical_isomers = optical_isomers
-        self.symmetry = symmetry
+        self.external_symmetry = symmetry
 
     def determine_bond_corrections(self):
         """
