@@ -42,7 +42,7 @@ class ARCSpecies(object):
     `conformer_energies`    ``list``     A list of conformers E0 (Hartree)
     'initial_xyz'           ``string``   The initial geometry guess
     'final_xyz'             ``string``   The optimized species geometry
-    'monoatomic'            ``bool``     Whether the species has only one atom or not
+    'number_of_atoms'       ``int``      The number of atoms in the species/TS
     'smiles'                ``str``      The SMILES structure. Either SMILES, adjList, or mol is required for BAC.
     'adjlist'               ``str``      The Adjacency List structure.
     'mol'                   ``Molecule`` An RMG:Molecule object used for BAC determination.
@@ -137,13 +137,12 @@ class ARCSpecies(object):
         if self.mol is None:
             mol, _ = mol_from_xyz(self.initial_xyz)
             self.mol_list = [mol]
-            self.monoatomic = len(xyz.split('\n')) == 1
         else:
             self.mol_list = self.mol.generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
-            self.monoatomic = len(self.mol.atoms) == 1
             if not bond_corrections:
                 self.determine_bond_corrections()
 
+        self.number_of_atoms = len(self.mol.atoms)
         self.final_xyz = ''
         self.number_of_rotors = 0
         self.rotors_dict = dict()

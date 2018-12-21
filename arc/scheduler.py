@@ -121,7 +121,7 @@ class Scheduler(object):
             if self.scan_rotors:
                 self.species_dict[species.label].determine_rotors()
             self.running_jobs[species.label] = list()  # initialize before running the first job
-            if self.species_dict[species.label].monoatomic:
+            if self.species_dict[species.label].number_of_atoms == 1:
                 if not self.species_dict[species.label].initial_xyz:
                     # generate a simple "Symb   0.0   0.0   0.0" xyz matrix
                     if self.species_dict[species.label].mol is not None:
@@ -208,7 +208,7 @@ class Scheduler(object):
                                     # This was originally a composite method, probably troubleshooted as 'opt'
                                     self.run_composite_job(label)
                                 else:
-                                    if not self.species_dict[label].monoatomic:
+                                    if self.species_dict[label].number_of_atoms > 1:
                                         if 'freq' not in job_name:
                                             self.run_freq_job(label)
                                         else:  # this is an 'optfreq' job type
@@ -245,7 +245,7 @@ class Scheduler(object):
                                     # This wasn't originally a composite method, probably troubleshooted as such
                                     self.run_opt_job(label)
                                 else:
-                                    if not self.species_dict[label].monoatomic:
+                                    if self.species_dict[label].number_of_atoms > 1:
                                         self.run_freq_job(label)
                                     self.run_scan_jobs(label)
                         self.timer = False
@@ -340,7 +340,7 @@ class Scheduler(object):
                                      conformer=i)
                 else:
                     if 'opt' not in self.job_dict[label] and 'composite' not in self.job_dict[label]\
-                            and not self.species_dict[label].monoatomic:
+                            and self.species_dict[label].number_of_atoms > 1:
                         # proceed only if opt (/composite) not already spawned
                         logging.info('Only one conformer is available for species {0},'
                                      ' using it for geometry optimization'.format(label))
@@ -966,7 +966,7 @@ class Scheduler(object):
         """
         status = self.output[label]['status']
         if 'error' not in status and ('composite converged' in status or ('sp converged' in status and
-                (self.species_dict[label].monoatomic or ('freq converged' in status and 'opt converged' in status)))):
+                (self.species_dict[label].number_of_atoms == 1 or ('freq converged' in status and 'opt converged' in status)))):
             t = time.time() - self.species_dict[label].t0
             m, s = divmod(t, 60)
             h, m = divmod(m, 60)

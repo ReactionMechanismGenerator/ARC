@@ -52,7 +52,7 @@ class Processor(object):
                     except KeyError:
                         raise SchedulerError('Could not find path to sp calculation for species {0}'.format(
                             species.label))
-                if species.monoatomic:
+                if species.number_of_atoms == 1:
                     freq_path = sp_path
                     opt_path = sp_path
                 else:
