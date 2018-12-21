@@ -137,12 +137,13 @@ class ARCSpecies(object):
         if self.mol is None:
             mol, _ = mol_from_xyz(self.initial_xyz)
             self.mol_list = [mol]
+            self.number_of_atoms = len(mol.atoms)
         else:
             self.mol_list = self.mol.generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
             if not bond_corrections:
                 self.determine_bond_corrections()
+            self.number_of_atoms = len(self.mol.atoms)
 
-        self.number_of_atoms = len(self.mol.atoms)
         self.final_xyz = ''
         self.number_of_rotors = 0
         self.rotors_dict = dict()
