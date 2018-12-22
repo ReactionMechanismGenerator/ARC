@@ -49,6 +49,7 @@ class Scheduler(object):
     'servers_jobs_ids'      ``list``           A list of relevant job IDs currently running on the server
     'fine'                  ``bool``           Whether or not to use a fine grid for opt jobs (spawns an additional job)
     'output'                ``dict``           Output dictionary with status and final QM files for all species
+    `settings`              ``dict``           A dictionary of available servers and software
     ======================= ================== =========================================================================
 
     Dictionary structures:
@@ -87,9 +88,10 @@ class Scheduler(object):
              label_2: {...},
              }
     """
-    def __init__(self, project, species_list, composite_method, conformer_level, opt_level, freq_level, sp_level,
-                 scan_level, fine=False, generate_conformers=True, scan_rotors=True):
+    def __init__(self, project, settings, species_list, composite_method, conformer_level, opt_level, freq_level,
+                 sp_level, scan_level, fine=False, generate_conformers=True, scan_rotors=True):
         self.project = project
+        self.settings=settings
         self.report_time = time.time()  # init time for reporting status every 1 hr
         self.servers = list()
         self.species_list = species_list
@@ -279,10 +281,10 @@ class Scheduler(object):
         if self.species_dict[label].t0 is None:
             self.species_dict[label].t0 = time.time()
         species = self.species_dict[label]
-        job = Job(project=self.project, species_name=label, xyz=xyz, job_type=job_type, level_of_theory=level_of_theory,
-                  multiplicity=species.multiplicity, charge=species.charge, fine=fine, shift=shift, software=software,
-                  is_ts=species.is_ts, memory=memory, trsh=trsh, conformer=conformer, ess_trsh_methods=ess_trsh_methods,
-                  scan=scan, pivots=pivots, occ=occ)
+        job = Job(project=self.project, settings=self.settings, species_name=label, xyz=xyz, job_type=job_type,
+                  level_of_theory=level_of_theory, multiplicity=species.multiplicity, charge=species.charge, fine=fine,
+                  shift=shift, software=software, is_ts=species.is_ts, memory=memory, trsh=trsh, conformer=conformer,
+                  ess_trsh_methods=ess_trsh_methods, scan=scan, pivots=pivots, occ=occ)
         if conformer < 0:
             # this is NOT a conformer job
             self.running_jobs[label].append(job.job_name)  # mark as a running job
@@ -314,7 +316,7 @@ class Scheduler(object):
             self.run_job(label=label, xyz=job.xyz, level_of_theory=job.level_of_theory, job_type=job.job_type,
                          fine=job.fine, software=job.software, shift=job.shift, trsh=job.trsh, memory=job.memory,
                          conformer=job.conformer, ess_trsh_methods=job.ess_trsh_methods, scan=job.scan,
-                         pivots=job.pivots, occ=job.occ)
+                         pivots=job.pivots, occ=job.occ, settings=job.settings)
         self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
         self.timer = False
         job.run_time = str(datetime.datetime.now() - job.date_time).split('.')[0]

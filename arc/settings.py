@@ -23,6 +23,10 @@ servers = {
     }
 }
 
+# If ARC is run locally and communication with servers is desired,
+# complete the following server dictionary.
+# Note that the order matters, and that if two serers have the same ESS installed,
+# ARC will used the copy on the latest server it finds it on.
 # servers = {
 #     'pharos': {
 #         'cluster_soft': 'OGE',  # Oracle Grid Engine (Sun Grin Engine)
@@ -38,17 +42,6 @@ servers = {
 #     }
 # }
 
-software_server = {'gaussian03': 'server1',
-                   'qchem': 'server1',
-                   'molpro_2015': 'server2',
-                   'molpro_2012': 'server1',
-                   }
-
-# software_server = {'gaussian03': 'pharos',
-#                    'qchem': 'pharos',
-#                    'molpro_2015': 'rmg',
-#                    'molpro_2012': 'pharos',
-#                    }
 
 check_status_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat',
                         'Slurm': '/usr/bin/squeue'}

@@ -6,13 +6,14 @@ import sys
 import os
 import time
 import re
+from distutils.spawn import find_executable
 
 from rmgpy.species import Species
 from rmgpy.reaction import Reaction
 
 from arc.settings import arc_path, default_levels_of_theory, check_status_command, servers
 from arc.scheduler import Scheduler
-from arc.exceptions import InputError
+from arc.exceptions import InputError, SettingsError
 from arc.species import ARCSpecies
 from arc.processor import Processor
 from arc.job.ssh import SSH_Client
@@ -49,6 +50,7 @@ class ARC(object):
     'use_bac'              ``bool``   Whether or not to use bond additivity corrections for thermo calculations
     'model_chemistry'      ``list``   The model chemistry in Arkane for energy corrections (AE, BAC).
                                         This can be usually determined automatically.
+    `settings`             ``dict``   A dictionary of available servers and software
     ====================== ========== =========================================================================
 
     `level_of_theory` is a string representing either sp//geometry levels or a composite method, e.g. 'CBS-QB3',
@@ -223,7 +225,7 @@ class ARC(object):
         self.scheduler = Scheduler(project=self.project, species_list=self.arc_species_list,
                                    composite_method=self.composite_method, conformer_level=self.conformer_level,
                                    opt_level=self.opt_level, freq_level=self.freq_level, sp_level=self.sp_level,
-                                   scan_level=self.scan_level, fine=self.fine,
+                                   scan_level=self.scan_level, fine=self.fine, settings=self.settings,
                                    generate_conformers=self.generate_conformers, scan_rotors=self.scan_rotors)
         prc = Processor(project=self.project, species_dict=self.scheduler.species_dict, output=self.scheduler.output,
                         use_bac=self.use_bac, model_chemistry=self.model_chemistry)
@@ -365,6 +367,79 @@ class ARC(object):
             self.model_chemistry = model_chemistry
             logging.info('Using {0} as model chemistry for energy corrections in Arkane'.format(
                 self.model_chemistry))
+
+    def determine_remote(self):
+        """
+        Determine whether ARC is executed remotely
+        and if so the available ESS software and the cluster software of the server
+        """
+        os.system('. ~/.bashrc')
+        if 'SSH_CONNECTION' in os.environ:
+            # ARC is executed on a server, proceed
+            logging.info('\n\nExecuting QM jobs locally.')
+            self.settings['ssh'] = False
+            g03 = find_executable('g03')
+            g09 = find_executable('g09')
+            g16 = find_executable('g16')
+            if g03 or g09 or g16:
+                self.settings['gaussian'] = True
+            else:
+                self.settings['gaussian'] = False
+            qchem = find_executable('qchem')
+            if qchem:
+                self.settings['qchem'] = True
+            else:
+                self.settings['qchem'] = False
+            molpro = find_executable('molpro')
+            if molpro:
+                self.settings['molpro'] = True
+            else:
+                self.settings['molpro'] = False
+            if self.settings['gaussian']:
+                logging.info('Found Gaussian')
+            if self.settings['qchem']:
+                logging.info('Found QChem')
+            if self.settings['molpro']:
+                logging.info('Found Molpro')
+        else:
+            # ARC is executed locally, communication with servers need to be established
+            self.settings['ssh'] = True
+            logging.info('\n\nExecuting QM jobs remotely. Mapping servers...')
+            # map servers
+            self.settings['gaussian'], self.settings['qchem'], self.settings['molpro'] = None, None, None
+            for server in servers:
+                ssh = SSH_Client(server)
+                cmd = '. ~/.bashrc; which g03'
+                g03, stderr = ssh.send_command_to_server(cmd)
+                cmd = '. ~/.bashrc; which g09'
+                g09, stderr = ssh.send_command_to_server(cmd)
+                cmd = '. ~/.bashrc; which g16'
+                g16, stderr = ssh.send_command_to_server(cmd)
+                if g03 or g09 or g16:
+                    self.settings['gaussian'] = server
+                elif not self.settings['gaussian']:
+                    self.settings['gaussian'] = None
+                cmd = '. ~/.bashrc; which qchem'
+                qchem, stderr = ssh.send_command_to_server(cmd)
+                if qchem:
+                    self.settings['qchem'] = server
+                elif not self.settings['gaussian']:
+                    self.settings['qchem'] = None
+                cmd = '. .bashrc; which molpro'
+                molpro, stderr = ssh.send_command_to_server(cmd)
+                if molpro:
+                    self.settings['molpro'] = server
+                elif not self.settings['molpro']:
+                    self.settings['molpro'] = None
+            if self.settings['gaussian']:
+                logging.info('Using Gaussian on {0}'.format(self.settings['gaussian']))
+            if self.settings['qchem']:
+                logging.info('Using QChem on {0}'.format(self.settings['qchem']))
+            if self.settings['molpro']:
+                logging.info('Using Molpro on {0}'.format(self.settings['molpro']))
+            logging.info('\n')
+        if not self.settings['gaussian'] and not self.settings['qchem'] and not self.settings['molpro']:
+            raise SettingsError('Could not find any ESS')
 
 
 def delete_all_arc_jobs(server_name):

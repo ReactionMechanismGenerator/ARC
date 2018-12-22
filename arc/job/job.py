@@ -6,9 +6,9 @@ import datetime
 import csv
 import logging
 
-from arc.settings import arc_path, software_server, servers, submit_filename, delete_command,\
+from arc.settings import arc_path, servers, submit_filename, delete_command,\
     input_filename, output_filename, rotor_scan_resolution, list_available_nodes_command
-from arc.job.submit import submit_sctipts
+from arc.job.submit import submit_scripts
 from arc.job.input import input_files
 from arc.job.ssh import SSH_Client
 from arc.exceptions import JobError, ServerError, SpeciesError
@@ -24,6 +24,7 @@ class Job(object):
     Attribute        Type                Description
     ================ =================== ===============================================================================
     `project`         ``str``            The project's name. Used for naming the directory.
+    `settings`        ``dict``           A dictionary of available servers and software
     `species_name`    ``str``            The species/TS name. Used for naming the directory.
     `charge`          ``int``            The species net charge. Default is 0
     `multiplicity`    ``int``            The species multiplicity.
@@ -69,10 +70,12 @@ class Job(object):
     The job ess (electronic structure software calculation) status is in  job.job_status[0] and can be
     either `initializing` / `running` / `errored: {error type / message}` / `unconverged` / `done`
     """
-    def __init__(self, project, species_name, xyz, job_type, level_of_theory, multiplicity, charge=0, conformer=-1,
-                 fine=False, shift='', software=None, is_ts=False, scan='', pivots=list(), memory=1500, comments='',
-                 trsh='', ess_trsh_methods=list(), occ=None):
+    def __init__(self, project, settings, species_name, xyz, job_type, level_of_theory, multiplicity, charge=0,
+                 conformer=-1, fine=False, shift='', software=None, is_ts=False, scan='', pivots=list(), memory=1500,
+                 comments='', trsh='', ess_trsh_methods=list(), occ=None):
         self.project = project
+        self.settings=settings
+        self.date_time = datetime.datetime.now()
         self.species_name = species_name
         self.job_num = -1
         self.charge = charge
@@ -106,23 +109,44 @@ class Job(object):
             self.software = self.software.lower()
         else:
             if job_type == 'composite':
-                self.software = 'gaussian03'
+                if not self.settings['gaussian']:
+                    raise JobError('Could not find the Gaussian software to run the composite method {0}'.format(
+                        self.method))
+                self.software = 'gaussian'
             elif job_type in ['conformer', 'opt', 'freq', 'optfreq', 'sp']:
                 if 'ccs' in self.method or 'cis' in self.method or 'pv' in self.basis_set:
-                    self.software = 'molpro_2015'
+                    if self.settings['molpro']:
+                        self.software = 'molpro'
+                    elif self.settings['gaussian']:
+                        self.software = 'gaussian'
+                    elif self.settings['qchem']:
+                        self.software = 'qchem'
                 elif 'b3lyp' in self.method:
-                    self.software = 'gaussian03'
+                    if self.settings['gaussian']:
+                        self.software = 'gaussian'
+                    elif self.settings['qchem']:
+                        self.software = 'qchem'
+                    elif self.settings['molpro']:
+                        self.software = 'molpro'
                 elif 'b97' in self.method or 'm06-2x' in self.method or 'def2' in self.basis_set:
+                    if not self.settings['qchem']:
+                        raise JobError('Could not find the QChem software to run {0}/{1}'.format(
+                            self.method, self.basis_set))
                     self.software = 'qchem'
             elif job_type == 'scan':
                 if 'b97' in self.method or 'm06-2x' in self.method or 'def2' in self.basis_set:
+                    if not self.settings['qchem']:
+                        raise JobError('Could not find the QChem software to run {0}/{1}'.format(
+                            self.method, self.basis_set))
                     self.software = 'qchem'
                 else:
-                    self.software = 'gaussian03'
-            elif job_type == 'gsm':
-                self.software = 'gaussian03'
-            elif job_type == 'irc':
-                self.software = 'gaussian03'
+                    if self.settings['gaussian']:
+                        self.software = 'gaussian'
+                    else:
+                        self.software = 'qchem'
+            elif job_type in ['gsm', 'irc']:
+                if not self.settings['gaussian']:
+                    raise JobError('Could not find the Gaussian software to run {0}'.format(job_type))
         if self.software is None:
             logging.error('job_num: {0}'.format(self.job_num))
             logging.error('ess_trsh_methods: {0}'.format(self.ess_trsh_methods))
@@ -133,17 +157,30 @@ class Job(object):
             logging.error('software: {0}'.format(self.software))
             logging.error('method: {0}'.format(self.method))
             logging.error('basis_set: {0}'.format(self.basis_set))
-            logging.error('Could not determine software for job {0}. Setting it to gaussian03'.format(self.job_name))
-            self.software = 'gaussian03'
+            logging.error('Could not determine software for job {0}'.format(self.job_name))
+            if self.settings['gaussian']:
+                logging.error('Setting it to gaussian')
+                self.software = 'gaussian'
+            elif self.settings['qchem']:
+                logging.error('Setting it to qchem')
+                self.software = 'qchem'
+            elif self.settings['molpro']:
+                logging.error('Setting it to molpro')
+                self.software = 'molpro'
 
-        if 'molpro' in self.software:
+        if self.settings['ssh']:
+            self.server = self.settings[self.software]
+        else:
+            self.server = None
+
+        if self.software == 'molpro':
             # molpro's memory is in MW, 500 should be enough
             memory /= 2
         self.memory = memory
+
         self.fine = fine
         self.shift = shift
         self.occ = occ
-        self.date_time = datetime.datetime.now()
         self.run_time = ''
         self.job_status = ['initializing', 'initializing']
         self.job_id = 0
@@ -162,13 +199,6 @@ class Job(object):
                                         species_name_for_remote_path, conformer_folder, self.job_name)
         self.submit = ''
         self.input = ''
-        try:
-            self.server = software_server[self.software]
-        except KeyError:
-            logging.info('key error')
-            raise JobError('Could not determine server for software {soft}.'
-                           ' Please use one othe these options: {softs}'.format(soft=self.software,
-                                                                                softs=software_server.iterkeys()))
         self.server_nodes = list()
         self._write_initiated_job_to_csv_file()
 
@@ -239,12 +269,13 @@ class Job(object):
 
     def write_submit_script(self):
         un = servers[self.server]['un']  # user name
-        self.submit = submit_sctipts[self.software].format(name=self.job_server_name, un=un)
+        self.submit = submit_scripts[self.software].format(name=self.job_server_name, un=un)
         if not os.path.exists(self.local_path):
             os.makedirs(self.local_path)
         with open(os.path.join(self.local_path, submit_filename[servers[self.server]['cluster_soft']]), 'wb') as f:
             f.write(self.submit)
-        self._upload_submit_file()
+        if self.settings['ssh']:
+            self._upload_submit_file()
 
     def write_input_file(self):
         """
@@ -255,7 +286,7 @@ class Job(object):
         self.input = input_files[self.software]
 
         slash = ''
-        if self.software == 'gaussian03' and not self.job_type == 'composite':
+        if self.software == 'gaussian' and not self.job_type == 'composite':
             slash = '/'
 
         if self.multiplicity > 1 and '/' in self.level_of_theory:  # only applies for non-composite jobs
@@ -272,7 +303,7 @@ class Job(object):
         job_type_1, job_type_2, fine = '', '', ''
 
         # 'vdz' troubleshooting in molpro:
-        if 'molpro' in self.software and self.trsh == 'vdz':
+        if self.software == 'molpro' and self.trsh == 'vdz':
             self.trsh = ''
             self.input = """***,name
 memory,{memory},m;
@@ -297,7 +328,7 @@ wf,spin={spin},charge={charge};}}
 ---;"""
 
         if self.job_type in ['conformer', 'opt', 'optfreq']:
-            if self.software == 'gaussian03':
+            if self.software == 'gaussian':
                 if self.is_ts:
                     job_type_1 = 'opt=(calcfc,ts,noeigen)'
                 else:
@@ -311,22 +342,22 @@ wf,spin={spin},charge={charge};}}
                     job_type_1 = 'opt'
                 if self.fine:
                     fine = '\n   GEOM_OPT_TOL_GRADIENT 15\n   GEOM_OPT_TOL_DISPLACEMENT 60\n   GEOM_OPT_TOL_ENERGY 5'
-            elif 'molpro' in self.software:
+            elif self.software == 'molpro':
                 if self.is_ts:
                     job_type_1 = "\noptg,root=2,method=qsd,readhess,savexyz='geometry.xyz'"
                 else:
                     job_type_1 = "\noptg,savexyz='geometry.xyz'"
 
         elif self.job_type == 'freq':
-            if self.software == 'gaussian03':
+            if self.software == 'gaussian':
                 job_type_2 = 'freq iop(7/33=1)'
             elif self.software == 'qchem':
                 job_type_1 = 'freq'
-            elif 'molpro' in self.software:
+            elif self.software == 'molpro':
                 job_type_1 = '\n{frequencies;\nthermo;\nprint,HESSIAN,thermo;}'
 
         elif self.job_type == 'optfreq':
-            if self.software == 'gaussian03':
+            if self.software == 'gaussian':
                 if self.is_ts:
                     job_type_1 = 'opt=(calcfc,ts,noeigen)'
                 else:
@@ -355,7 +386,7 @@ $end
                 job_type_2 = 'freq'
                 if self.fine:
                     fine = '\n   GEOM_OPT_TOL_GRADIENT 15\n   GEOM_OPT_TOL_DISPLACEMENT 60\n   GEOM_OPT_TOL_ENERGY 5'
-            elif 'molpro' in self.software:
+            elif self.software == 'molpro':
                 if self.is_ts:
                     job_type_1 = "\noptg,root=2,method=qsd,readhess,savexyz='geometry.xyz'"
                 else:
@@ -363,15 +394,15 @@ $end
                 job_type_2 = '\n{frequencies;\nthermo;\nprint,HESSIAN,thermo;}'
 
         if self.job_type == 'sp':
-            if self.software == 'gaussian03':
+            if self.software == 'gaussian':
                 pass
             elif self.software == 'qchem':
                 job_type_1 = 'sp'
-            elif 'molpro' in self.software:
+            elif self.software == 'molpro':
                 pass
 
         if self.job_type == 'composite':
-            if self.software == 'gaussian03':
+            if self.software == 'gaussian':
                 if self.fine:
                     fine = 'scf=(tight,direct) int=finegrid'
                 if self.is_ts:
@@ -379,10 +410,10 @@ $end
                 else:
                     pass  # no need to specify anything else for a basic composite method run
             else:
-                raise ValueError('Currently composite methods are only supported in gaussian03')
+                raise JobError('Currently composite methods are only supported in gaussian')
 
         if self.job_type == 'scan':
-            if self.software == 'gaussian03':
+            if self.software == 'gaussian':
                 job_type_1 = 'opt=modredundant'
                 scan_string = ''.join([str(num) + ' ' for num in self.scan])
                 if not divmod(360, rotor_scan_resolution):
@@ -390,7 +421,7 @@ $end
                 self.scan = 'D ' + scan_string + 'S ' + str(int(360 / rotor_scan_resolution)) + ' ' +\
                             '{0:10}'.format(float(rotor_scan_resolution))
             else:
-                raise ValueError('Currently rotor scan is only supported in gaussian03')
+                raise ValueError('Currently rotor scan is only supported in gaussian')
 
         if self.job_type == 'irc':  # TODO
             pass
@@ -399,7 +430,7 @@ $end
             pass
 
         if 'mrci' in self.method:
-            if 'molpro' not in self.software:
+            if self.software != 'molpro':
                 raise JobError('Can only run MRCI on Molpro, not {0}'.format(self.software))
             if self.occ > 16:
                 raise JobError('Will not excecute an MRCI calculation with more than 16 occupied orbitals.'
@@ -425,7 +456,8 @@ $end
             os.makedirs(self.local_path)
         with open(os.path.join(self.local_path, input_filename[self.software]), 'wb') as f:
             f.write(self.input)
-        self._upload_input_file()
+        if self.settings['ssh']:
+            self._upload_input_file()
 
     def _upload_submit_file(self):
         ssh = SSH_Client(self.server)
@@ -459,16 +491,18 @@ $end
         self.write_submit_script()
         logging.debug('writing input file...')
         self.write_input_file()
-        ssh = SSH_Client(self.server)
-        logging.debug('submitting job...')
-        # submit_job returns job server status and job server id
-        self.job_status[0], self.job_id = ssh.submit_job(remote_path=self.remote_path)
+        if self.settings['ssh']:
+            ssh = SSH_Client(self.server)
+            logging.debug('submitting job...')
+            # submit_job returns job server status and job server id
+            self.job_status[0], self.job_id = ssh.submit_job(remote_path=self.remote_path)
 
     def delete(self):
         logging.info('Deleting job {name} for {label}'.format(name=self.job_name, label=self.species_name))
-        ssh = SSH_Client(self.server)
-        logging.debug('deleting job...')
-        ssh.delete_job(self.job_id)
+        if self.settings['ssh']:
+            ssh = SSH_Client(self.server)
+            logging.debug('deleting job...')
+            ssh.delete_job(self.job_id)
 
     def determine_job_status(self):
         if self.job_status[0] == 'errored':
@@ -489,8 +523,9 @@ $end
         """
         Possible statuses: `initializing`, `running`, `errored on node xx`, `done`
         """
-        ssh = SSH_Client(self.server)
-        return ssh.check_job_status(self.job_id)
+        if self.settings['ssh']:
+            ssh = SSH_Client(self.server)
+            return ssh.check_job_status(self.job_id)
 
     def _check_job_ess_status(self):
         """
@@ -500,10 +535,11 @@ $end
         output_path = os.path.join(self.local_path, 'output.out')
         if os.path.exists(output_path):
             os.remove(output_path)
-        self._download_output_file()
+        if self.settings['ssh']:
+            self._download_output_file()
         with open(output_path, 'rb') as f:
             lines = f.readlines()
-            if self.software == 'gaussian03':
+            if self.software == 'gaussian':
                 for line in lines[-1:-20:-1]:
                     if 'Normal termination of Gaussian' in line:
                         return 'done'
@@ -566,7 +602,7 @@ $end
                         return 'errored: ' + error_message
                     else:
                         return 'errored: Unknown reason'
-            elif 'molpro' in self.software:
+            elif self.software == 'molpro':
                 for line in lines[::-1]:
                     if 'molpro calculation terminated' in line.lower()\
                             or 'variable memory released' in line.lower():
@@ -583,30 +619,34 @@ $end
         # delete present server run
         logging.error('Job {name} has server status {stat} on {server}. Troubleshooting by changing node.'.format(
             name=self.job_name, stat=self.job_status[0], server=self.server))
-        ssh = SSH_Client(self.server)
-        ssh.send_command_to_server(command=delete_command[servers[self.server]['cluster_soft']] + ' ' + str(self.job_id))
-        # find available nodes
-        stdout, stderr = ssh.send_command_to_server(command=list_available_nodes_command[servers[self.server]['cluster_soft']])
-        for line in stdout:
-            node = line.split()[0].split('.')[0].split('node')[1]
-            if servers[self.server]['cluster_soft'] == 'OGE' and '0/0/8' in line and node not in self.server_nodes:
-                self.server_nodes.append(node)
-                break
-        else:
-            logging.error('Cold not find an available node on the server')  # TODO: continue troubleshooting; if all else fails, put job to sleep for x min and try again searching for a node
-        # modify submit file
-        content = ssh.read_remote_file(remote_path=self.remote_path,
-                                       filename=submit_filename[servers[self.server]['cluster_soft']])
-        for i, line in enumerate(content):
-            if '#$ -l h=node' in line:
-                content[i] = '#$ -l h=node{0}.cluster'.format(node)
-                break
-        else:
-            content.insert(7, '#$ -l h=node{0}.cluster'.format(node))
-        # resubmit
-        ssh.upload_file(remote_file_path=os.path.join(self.remote_path,
-                                                      submit_filename[servers[self.server]['cluster_soft']]),
-                        file_string=content)
-        self.run()
+        if self.settings['ssh']:
+            ssh = SSH_Client(self.server)
+            ssh.send_command_to_server(command=delete_command[servers[self.server]['cluster_soft']] +
+                                       ' ' + str(self.job_id))
+            # find available nodes
+            stdout, stderr = ssh.send_command_to_server(
+                command=list_available_nodes_command[servers[self.server]['cluster_soft']])
+            for line in stdout:
+                node = line.split()[0].split('.')[0].split('node')[1]
+                if servers[self.server]['cluster_soft'] == 'OGE' and '0/0/8' in line and node not in self.server_nodes:
+                    self.server_nodes.append(node)
+                    break
+            else:
+                logging.error('Cold not find an available node on the server')  # TODO: continue troubleshooting; if all else fails, put job to sleep for x min and try again searching for a node
+                return
+            # modify submit file
+            content = ssh.read_remote_file(remote_path=self.remote_path,
+                                           filename=submit_filename[servers[self.server]['cluster_soft']])
+            for i, line in enumerate(content):
+                if '#$ -l h=node' in line:
+                    content[i] = '#$ -l h=node{0}.cluster'.format(node)
+                    break
+            else:
+                content.insert(7, '#$ -l h=node{0}.cluster'.format(node))
+            content = ''.join(content)  # convert list into a single string, not to upset paramico
+            # resubmit
+            ssh.upload_file(remote_file_path=os.path.join(self.remote_path,
+                            submit_filename[servers[self.server]['cluster_soft']]), file_string=content)
+            self.run()
 
 # TODO: irc, gsm input files
