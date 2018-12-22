@@ -70,6 +70,7 @@ def log_thermo(label, path):
     """
     logging.info('\n\n')
     logging.debug('Thermodata for species {0}'.format(label))
+    thermo_block = ''
     log = False
     with open(path, 'r') as f:
         line = f.readline()
@@ -83,6 +84,6 @@ def log_thermo(label, path):
                 thermo_block += line[2:]
             line = f.readline()
     logging.info(thermo_block)
-    logging.info('\n\n')
+    logging.info('\n')
 
 
