@@ -63,8 +63,8 @@ class ARCSpecies(object):
                   2: {}, ...
                  }
     """
-    def __init__(self, is_ts=False, rmg_species=None, label=None, xyz=None, multiplicity=None, charge=None, smiles='',
-                 adjlist='', bond_corrections=None):
+    def __init__(self, is_ts=False, rmg_species=None, mol=None, label=None, xyz=None, multiplicity=None, charge=None,
+                 smiles='', adjlist='', bond_corrections=None,):
         self.is_ts = is_ts
         self.t0 = None
 
@@ -74,7 +74,7 @@ class ARCSpecies(object):
         else:
             self.bond_corrections = bond_corrections
 
-        self.mol = None
+        self.mol = mol
         self.mol_no_bond_info = None
         self.initial_xyz = xyz
 
@@ -88,11 +88,11 @@ class ARCSpecies(object):
                 raise SpeciesError('No multiplicity was specified for {0}.'.format(self.label))
             if charge is None:
                 raise SpeciesError('No charge was specified for {0}.'.format(self.label))
-            if adjlist:
+            if adjlist and not mol:
                 self.mol = Molecule().fromAdjacencyList(adjlist=adjlist)
-            elif smiles:
+            elif smiles and not mol:
                 self.mol = Molecule(SMILES=smiles)
-            elif not self.is_ts:
+            if not self.is_ts and not smiles and not adjlist and not mol:
                 logging.warn('No structure (SMILES, adjList, or an RMG:Species object) was given for species {0},'
                              ' NOT using bond additivity corrections (BAC) for thermo computation'.format(label))
             if multiplicity < 1:
@@ -120,10 +120,11 @@ class ARCSpecies(object):
                     self.label = self.rmg_species.label
                 else:
                     self.label = label
-            self.mol = self.rmg_species.molecule[0]
+            if not self.mol:
+                self.mol = self.rmg_species.molecule[0]
             if len(self.rmg_species.molecule) > 1:
                 logging.info('Using localized structure {0} of species {1} for BAC determination. To use a different'
-                             ' structure, place it first in the molecule list of the RMG:Species object '.format(
+                             ' structure, pass the RMG:Molecule object in the `mol` parameter'.format(
                                 self.mol.toSMILES(), self.label))
             self.multiplicity = self.rmg_species.molecule[0].multiplicity
             self.charge = self.rmg_species.molecule[0].getNetCharge()
