@@ -62,8 +62,13 @@ class ARC(object):
                  model_chemistry='', verbose=logging.INFO):
 
         self.project = project
-        self.t0 = time.time()  # init time
         self.output_directory = os.path.join(arc_path, 'Projects', self.project)
+        self.t0 = time.time()  # init time
+        self.verbose = verbose
+        self.initialize_log(verbose=self.verbose, log_file=os.path.join(self.output_directory, 'arc.log'))
+        self.settings = dict()
+        self.determine_remote()
+        self.output = dict()
         if not os.path.exists(self.output_directory):
             os.makedirs(self.output_directory)
         self.fine = fine
@@ -82,11 +87,6 @@ class ARC(object):
             logging.warning("Not running rotor scans."
                             " This might compromise geometry as dihedral angles won't be corrected")
             logging.info('\n')
-        self.output = dict()
-        self.verbose = verbose
-        self.initialize_log(verbose=self.verbose, log_file=os.path.join(self.output_directory, 'arc.log'))
-
-        logging.info('Starting project {0}\n\n'.format(self.project))
 
         if level_of_theory.count('//') > 1:
             raise InputError('Level of theory seems wrong. It should either be a composite method (like CBS-QB3)'
@@ -206,7 +206,7 @@ class ARC(object):
         self.scheduler = None
 
     def execute(self):
-        logging.info('\n\n')
+        logging.info('\n')
         for species in self.arc_species_list:
             if not isinstance(species, ARCSpecies):
                 raise ValueError('All species in species_list must be ARCSpecies objects.'
@@ -220,8 +220,7 @@ class ARC(object):
             if not isinstance(rxn, Reaction):
                 logging.error('`rxn_list` must be a list of RMG.Reaction objects. Got {0}'.format(type(rxn)))
                 raise ValueError()
-            logging.info('Considering reacrion {0}'.format(rxn))
-        logging.info('\n')
+            logging.info('Considering reaction {0}'.format(rxn))
         self.scheduler = Scheduler(project=self.project, species_list=self.arc_species_list,
                                    composite_method=self.composite_method, conformer_level=self.conformer_level,
                                    opt_level=self.opt_level, freq_level=self.freq_level, sp_level=self.sp_level,
@@ -288,7 +287,7 @@ class ARC(object):
         """
         Output a header containing identifying information about CanTherm to the log.
         """
-        logging.log(level, 'ARC execution initiated at {0}'.format(time.asctime()))
+        logging.log(level, 'ARC execution initiated on {0}'.format(time.asctime()))
         logging.log(level, '')
         logging.log(level, '###############################################################')
         logging.log(level, '#                                                             #')
@@ -298,6 +297,7 @@ class ARC(object):
         logging.log(level, '#                                                             #')
         logging.log(level, '###############################################################')
         logging.log(level, '')
+        logging.info('Starting project {0}'.format(self.project))
 
     def log_footer(self, level=logging.INFO):
         """
@@ -313,7 +313,7 @@ class ARC(object):
         else:
             d = ''
         logging.log(level, 'Total execution time: {0}{1:02.0f}:{2:02.0f}:{3:02.0f}'.format(d,h,m,s))
-        logging.log(level, 'ARC execution terminated at {0}'.format(time.asctime()))
+        logging.log(level, 'ARC execution terminated on {0}'.format(time.asctime()))
 
     def check_model_chemistry(self):
         if self.model_chemistry:
