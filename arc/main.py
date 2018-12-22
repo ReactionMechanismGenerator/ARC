@@ -63,6 +63,8 @@ class ARC(object):
 
         self.project = project
         self.output_directory = os.path.join(arc_path, 'Projects', self.project)
+        if not os.path.exists(self.output_directory):
+            os.mkdir(self.output_directory)
         self.t0 = time.time()  # init time
         self.verbose = verbose
         self.initialize_log(verbose=self.verbose, log_file=os.path.join(self.output_directory, 'arc.log'))
