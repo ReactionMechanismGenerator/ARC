@@ -272,7 +272,6 @@ class Scheduler(object):
                 self.report_time = time.time()
                 logging.info('Currently running jobs:\n{0}'.format(self.running_jobs))
 
-
     def run_job(self, label, xyz, level_of_theory, job_type, fine=False, software=None, shift='', trsh='', memory=1500,
                 conformer=-1, ess_trsh_methods=list(), scan='', pivots=list(), occ=None):
         """
@@ -316,7 +315,7 @@ class Scheduler(object):
             self.run_job(label=label, xyz=job.xyz, level_of_theory=job.level_of_theory, job_type=job.job_type,
                          fine=job.fine, software=job.software, shift=job.shift, trsh=job.trsh, memory=job.memory,
                          conformer=job.conformer, ess_trsh_methods=job.ess_trsh_methods, scan=job.scan,
-                         pivots=job.pivots, occ=job.occ, settings=job.settings)
+                         pivots=job.pivots, occ=job.occ)
         self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
         self.timer = False
         job.run_time = str(datetime.datetime.now() - job.date_time).split('.')[0]
@@ -329,8 +328,8 @@ class Scheduler(object):
 
     def run_conformer_jobs(self):
         """
-        Select the most stable conformer for each species by spawning opt jobs at B3LYP/6-311++(d,p).
-        The resulting conformer is saved in <xyz matrix with element labels> format
+        Select the most stable conformer for each species by spawning opt jobs at a selected low level DFT.
+        The resulting conformer is saved in a <xyz matrix with element labels> format
         in self.species_dict[species.label]['initial_xyz']
         """
         for label in self.unique_species_labels:
