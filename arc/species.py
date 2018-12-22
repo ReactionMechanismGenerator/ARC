@@ -539,7 +539,7 @@ def find_internal_rotors(mol):
     return rotors
 
 
-def get_xyz_matrix(xyz, mol=None, from_arkane=False, number=None):
+def get_xyz_matrix(xyz, mol=None, number=None):
     """
     Convert list of lists xyz form:
     [[0.6616514836, 0.4027481525, -0.4847382281],
@@ -557,16 +557,15 @@ def get_xyz_matrix(xyz, mol=None, from_arkane=False, number=None):
     H   -1.8113671395   -0.3268900681   -1.1468957003
     The atom symbol is derived from either an RMG Molecule object (`mol`) or atom numbers ('number`).
     This function isn't defined as a method of ARCSpecies since it is also used when parsing opt geometry in Scheduler
-    (using the from_arkane=True keyword)
     """
-    if mol is None and not from_arkane:
-        raise ValueError("Must have either an RMG:Molecule object as input as `mol`, or 'from_arkane' set to True.")
+    if mol is None and number is None:
+        raise ValueError("Must have either an RMG:Molecule object input as `mol`, or atomic numbers.")
     result = ''
     for i, coord in enumerate(xyz):
-        if from_arkane:
-            element_label = getElement(number[i]).symbol
-        else:
+        if mol is not None:
             element_label = mol.atoms[i].element.symbol
+        else:
+            element_label = getElement(number[i]).symbol
         result += element_label + ' ' * (4 - len(element_label))
         for j, c in enumerate(coord):
             result += '{0:14.8f}'.format(c)

@@ -484,7 +484,7 @@ class Scheduler(object):
             log = Log(path='')
             log.determine_qm_software(fullpath=job.local_path_to_output_file)
             coord, number, mass = log.software_log.loadGeometry()
-            self.species_dict[label].final_xyz = get_xyz_matrix(xyz=coord, from_arkane=True, number=number)
+            self.species_dict[label].final_xyz = get_xyz_matrix(xyz=coord, number=number)
             self.output[label]['status'] += 'composite converged; '
             self.output[label]['composite'] = os.path.join(job.local_path, 'output.out')
             logging.info('\nOptimized geometry for {label} at {level}:\n{xyz}'.format(label=label,
@@ -521,7 +521,7 @@ class Scheduler(object):
             log = Log(path='')
             log.determine_qm_software(fullpath=job.local_path_to_output_file)
             coord, number, mass = log.software_log.loadGeometry()
-            self.species_dict[label].final_xyz = get_xyz_matrix(xyz=coord, from_arkane=True, number=number)
+            self.species_dict[label].final_xyz = get_xyz_matrix(xyz=coord, number=number)
             if not job.fine and self.fine:
                 # Run opt again using a finer grid.
                 xyz = self.species_dict[label].final_xyz
