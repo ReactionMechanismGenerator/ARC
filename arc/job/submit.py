@@ -4,12 +4,9 @@
 
 ##################################################################
 
-# These submit scripts must be filled with {0} = job_name, {1} = user_name
 
-# TODO: u/n and compilers as parameters; fix QChem and molpro, check rmgs
-
-submit_sctipts = {
-    'gaussian03': """#!/bin/bash
+submit_scripts = {
+    'gaussian': """#!/bin/bash
 #$ -N {name}
 #$ -l long
 #$ -l h_rt=120:00:00
@@ -68,14 +65,12 @@ cd $WorkDir
 qchem -nt 6 input.in output.out
 
 """,
-    'molpro_2015': """#!/bin/bash
+    'molpro': """#!/bin/bash
 #SBATCH -p normal
 #SBATCH -J {name}
 #SBATCH -N 1
 #SBATCH -c 8
 #SBATCH --mem-per-cpu=2048
-
-export PATH=/opt/molpro/molprop_2015_1_linux_x86_64_i8/bin:$PATH
 
 echo "============================================================"
 echo "Job ID : $SLURM_JOB_ID"
@@ -98,29 +93,29 @@ molpro input.in
 rm -rf $sdir
 
 """,
-    'molpro_2012': """#! /bin/bash
- 
-#$ -N {name}
-#$ -l long
-#$ -l h_rt=120:00:00
-#$ -l harpertown
-#$ -m ae
-#$ -pe singlenode 8
-#$ -cwd
-#$ -o out.txt
-#$ -e err.txt
-
-export MPICH2_ROOT=/opt/mpich2-1.2.1p1
-export PATH=/opt/molpro2012/molprop_2012_1_Linux_x86_64_i8/bin:$PATH
-export LD_LIBRARY_PATH=/opt/gcc-4.7/lib:$LD_LIBRARY_PATH
-
-WorkDir=`pwd`
-cd
-source .bashrc
-mkdir -p /scratch/{un}
-mkdir -p /scratch/{un}/qlscratch
-cd $WorkDir
-
-molpro -n 6 input.in
-""",
+#     'molpro': """#! /bin/bash
+#
+# #$ -N {name}
+# #$ -l long
+# #$ -l h_rt=120:00:00
+# #$ -l harpertown
+# #$ -m ae
+# #$ -pe singlenode 8
+# #$ -cwd
+# #$ -o out.txt
+# #$ -e err.txt
+#
+# export MPICH2_ROOT=/opt/mpich2-1.2.1p1
+# export PATH=/opt/molpro2012/molprop_2012_1_Linux_x86_64_i8/bin:$PATH
+# export LD_LIBRARY_PATH=/opt/gcc-4.7/lib:$LD_LIBRARY_PATH
+#
+# WorkDir=`pwd`
+# cd
+# source .bashrc
+# mkdir -p /scratch/{un}
+# mkdir -p /scratch/{un}/qlscratch
+# cd $WorkDir
+#
+# molpro -n 6 input.in
+# """,
 }

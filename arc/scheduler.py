@@ -768,7 +768,7 @@ class Scheduler(object):
         if 'Unknown reason' in job.job_status[1] and 'change_node' not in job.ess_trsh_methods:
             job.ess_trsh_methods.append('change_node')
             job.troubleshoot_server()
-        elif job.software == 'gaussian03':
+        elif job.software == 'gaussian':
             if 'cbs-qb3' not in job.ess_trsh_methods and self.composite_method != 'cbs-qb3':
                 # try running CBS-QB3, which is relatively robust
                 logging.info('Troubleshooting {type} job in {software} using CBS-QB3'.format(
@@ -829,13 +829,13 @@ class Scheduler(object):
                 job.ess_trsh_methods.append('qchem')
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, job_type=job_type, fine=False,
                              software='qchem', ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
-            elif 'molpro_2012' not in job.ess_trsh_methods:
+            elif 'molpro' not in job.ess_trsh_methods:
                 # Try molpro
-                logging.info('Troubleshooting {type} job using molpro_2012 instead of {software}'.format(
+                logging.info('Troubleshooting {type} job using molpro instead of {software}'.format(
                     type=job_type, software=job.software))
-                job.ess_trsh_methods.append('molpro_2012')
+                job.ess_trsh_methods.append('molpro')
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, job_type=job_type, fine=False,
-                             software='molpro_2012', ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
+                             software='molpro', ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
             else:
                 logging.error('Could not troubleshoot geometry optimization for {label}! Tried'
                               ' troubleshooting with the following methods: {methods}'.format(
@@ -879,20 +879,20 @@ class Scheduler(object):
                 level_of_theory = 'b3lyp/6-311++g(d,p)'
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
                              job_type=job_type, fine=False, ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
-            elif 'gaussian03' not in job.ess_trsh_methods:
+            elif 'gaussian' not in job.ess_trsh_methods:
                 # Try Gaussian
-                logging.info('Troubleshooting {type} job using gaussian03 instead of {software}'.format(
+                logging.info('Troubleshooting {type} job using gaussian instead of {software}'.format(
                     type=job_type, software=job.software))
-                job.ess_trsh_methods.append('gaussian03')
+                job.ess_trsh_methods.append('gaussian')
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, job_type=job_type, fine=False,
-                             software='gaussian03', ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
+                             software='gaussian', ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
             elif 'molpro' not in job.ess_trsh_methods:
                 # Try molpro
                 logging.info('Troubleshooting {type} job using molpro instead of {software}'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('molpro')
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, job_type=job_type, fine=False,
-                             software='molpro_2015', ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
+                             software='molpro', ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
             else:
                 logging.error('Could not troubleshoot geometry optimization for {label}! Tried'
                               ' troubleshooting with the following methods: {methods}'.format(
@@ -938,13 +938,13 @@ class Scheduler(object):
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
                              job_type=job_type, fine=False, shift=shift, memory=5000,
                              ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
-            elif 'gaussian03' not in job.ess_trsh_methods:
+            elif 'gaussian' not in job.ess_trsh_methods:
                 # Try Gaussian
-                logging.info('Troubleshooting {type} job using gaussian03 instead of {software}'.format(
+                logging.info('Troubleshooting {type} job using gaussian instead of {software}'.format(
                     type=job_type, software=job.software))
-                job.ess_trsh_methods.append('gaussian03')
+                job.ess_trsh_methods.append('gaussian')
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, job_type=job_type, fine=False,
-                             software='gaussian03', ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
+                             software='gaussian', ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
             elif 'qchem' not in job.ess_trsh_methods:
                 # Try QChem
                 logging.info('Troubleshooting {type} job using qchem instead of {software}'.format(

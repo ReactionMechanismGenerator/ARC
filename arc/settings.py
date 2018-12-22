@@ -65,16 +65,14 @@ list_available_nodes_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/l
 submit_filename = {'OGE': 'submit.sh',
                    'Slurm': 'submit.sl'}
 
-input_filename = {'gaussian03': 'input.gjf',
+input_filename = {'gaussian': 'input.gjf',
                    'qchem': 'input.in',
-                   'molpro_2015': 'input.in',
-                   'molpro_2012': 'input.in',
+                   'molpro': 'input.in',
 }
 
-output_filename = {'gaussian03': 'input.log',
+output_filename = {'gaussian': 'input.log',
                    'qchem': 'output.out',
-                   'molpro_2015': 'input.out',
-                   'molpro_2012': 'input.out',
+                   'molpro': 'input.out',
 }
 
 default_levels_of_theory = {'conformer': 'b97-d3/6-311+g(d,p)',

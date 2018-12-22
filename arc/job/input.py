@@ -32,7 +32,7 @@ qchem:
 """
 
 input_files = {
-    'gaussian03': """%chk=check.chk
+    'gaussian': """%chk=check.chk
 %mem={memory}mb
 %nproc=8
 
@@ -61,27 +61,7 @@ $end
 
 """,
 
-    'molpro_2012': """***,name
-memory,{memory},m;
-geometry={{angstrom;
-{xyz}}}
-
-basis={basis}
-
-int;
-
-{{hf;{shift}
-maxit,1000;
-wf,spin={spin},charge={charge};}}
-
-{restricted}{method};
-{job_type_1}
-{job_type_2}
----;
-
-""",
-
-    'molpro_2015': """***,name
+    'molpro': """***,name
 memory,{memory},m;
 geometry={{angstrom;
 {xyz}}}
