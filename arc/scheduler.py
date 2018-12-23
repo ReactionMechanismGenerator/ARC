@@ -1073,6 +1073,7 @@ class Scheduler(object):
         logging.debug('Deleting all jobs for species {0}'.format(label))
         for job_type, job_dict in self.job_dict[label].iteritems():
             for job_name, job in job_dict.iteritems():
-                logging.debug('Deleted job {0}'.format(job_name))
-                job.delete()
-        self.job_dict[label] = dict()
+                if job_name in self.running_jobs[label]:
+                    logging.debug('Deleted job {0}'.format(job_name))
+                    job.delete()
+        self.running_jobs[label] = list()
