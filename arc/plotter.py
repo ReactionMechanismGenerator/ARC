@@ -10,6 +10,7 @@ import py3Dmol
 from rdkit import Chem
 
 from rmgpy.molecule.molecule import Atom, Molecule
+from rmgpy.exceptions import AtomTypeError
 
 
 ##################################################################
@@ -44,7 +45,10 @@ def show_sticks(xyz):
             coordinates.append([float(line.split()[1]), float(line.split()[2]), float(line.split()[3])])
             atom.coords = np.array(coordinates[-1], np.float64)
             mol.addAtom(atom)
-    mol.connectTheDots()  # only adds single bonds, but we don't care
+    try:
+        mol.connectTheDots()  # only adds single bonds, but we don't care
+    except AtomTypeError:
+        return
     rd_mol, rd_inds = mol.toRDKitMol(removeHs=False, returnMapping=True)
     Chem.AllChem.EmbedMolecule(rd_mol)  # unfortunately, this mandatory embedding changes the coordinates
     indx_map = dict()
