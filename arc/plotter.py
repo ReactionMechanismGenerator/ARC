@@ -21,9 +21,9 @@ def plot_rotor_scan(angle, v_list):
     plots a 1D rotor PES for v_list vs. angle
     """
     angle = angle * 180 / math.pi  # convert radians to degree
-    v_list = np.array(v_list, np.float64)
-    v_list = v_list * 0.001  # convert to kJ/mol
-    plt.figure(num=None, figsize=(4, 3), dpi=120, facecolor='w', edgecolor='k')
+    v_list = np.array(v_list, np.float64)  # in kJ/mol
+    plt.figure(figsize=(4, 3), dpi=120)
+    plt.subplot(1, 1, 1)
     plt.plot(angle, v_list, 'g.')
     plt.xlabel('dihedral (deg)')
     plt.xlim = (0, 360)
