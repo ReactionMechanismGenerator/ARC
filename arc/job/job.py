@@ -498,7 +498,7 @@ $end
             self.job_status[0], self.job_id = ssh.submit_job(remote_path=self.remote_path)
 
     def delete(self):
-        logging.info('Deleting job {name} for {label}'.format(name=self.job_name, label=self.species_name))
+        logging.debug('Deleting job {name} for {label}'.format(name=self.job_name, label=self.species_name))
         if self.settings['ssh']:
             ssh = SSH_Client(self.server)
             logging.debug('deleting job...')
