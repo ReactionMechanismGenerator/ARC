@@ -444,22 +444,26 @@ class ARC(object):
             raise SettingsError('Could not find any ESS')
 
 
-def delete_all_arc_jobs(server_name):
+def delete_all_arc_jobs(server_list):
     """
-    Delete all ARC-spawned jobs (with job name starting with `a` and a digit) from server `server_name`
+    Delete all ARC-spawned jobs (with job name starting with `a` and a digit) from :list:servers
+    (`servers` could also be a string of one server name)
     Make sure you know what you're doing, so unrelated jobs won't be deleted...
     Useful when terminating ARC while some (ghost) jobs are still running.
     """
-    logging.info('Deleting all ARC jobs from {0}'.format(server_name))
-    cmd = check_status_command[servers[server_name]['cluster_soft']] + ' -u ' + servers[server_name]['un']
-    ssh = SSH_Client(server_name)
-    stdout, stderr = ssh.send_command_to_server(cmd)
-    for status_line in stdout:
-        s = re.search(' a\d+', status_line)
-        if s is not None:
-            job_id = s.group()[1:]
-            ssh.delete_job(job_id)
-            print('deleted job {0}'.format(job_id))
+    if isinstance(server_list, str):
+        server_list = [server_list]
+    for server in server_list:
+        logging.info('Deleting all ARC jobs from {0}'.format(server))
+        cmd = check_status_command[servers[server]['cluster_soft']] + ' -u ' + servers[server]['un']
+        ssh = SSH_Client(server)
+        stdout, stderr = ssh.send_command_to_server(cmd)
+        for status_line in stdout:
+            s = re.search(' a\d+', status_line)
+            if s is not None:
+                job_id = s.group()[1:]
+                ssh.delete_job(job_id)
+                print('deleted job {0}'.format(job_id))
     print('\ndone.')
 
 
