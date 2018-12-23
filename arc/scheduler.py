@@ -493,8 +493,8 @@ class Scheduler(object):
             self.output[label]['composite'] = os.path.join(job.local_path, 'output.out')
             logging.info('\nOptimized geometry for {label} at {level}:\n{xyz}'.format(label=label,
                         level=job.level_of_theory, xyz=self.species_dict[label].final_xyz))
-            plotter.show_sticks(xyz=self.species_dict[label].final_xyz)
-
+            if self.species_dict[label].number_of_atoms > 2:
+                plotter.show_sticks(xyz=self.species_dict[label].final_xyz)
             # Check frequencies (using cclib crashed for CBS-QB3 output, using an explicit parser here)
             if not os.path.isfile(job.local_path_to_output_file):
                 raise SchedulerError('Called parse_composite_geo with no output file')
@@ -537,7 +537,8 @@ class Scheduler(object):
                 self.output[label]['status'] += 'opt converged; '
                 logging.info('\nOptimized geometry for {label} at {level}:\n{xyz}'.format(label=label,
                             level=job.level_of_theory, xyz=self.species_dict[label].final_xyz))
-                plotter.show_sticks(xyz=self.species_dict[label].final_xyz)
+                if self.species_dict[label].number_of_atoms > 2:
+                    plotter.show_sticks(xyz=self.species_dict[label].final_xyz)
                 return True  # run freq / sp / scan jobs on this optimized geometry
             if 'optfreq' in job.job_name:
                 self.check_freq_job(label, job)
