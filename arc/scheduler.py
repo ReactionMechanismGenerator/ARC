@@ -457,12 +457,16 @@ class Scheduler(object):
             e0 = log.software_log.loadEnergy()
             self.species_dict[label].conformer_energies[i] = e0
         else:
-            logging.error('Conformer {i} for {label} did not converge!'.format(i=i, label=label))
+            logging.warn('Conformer {i} for {label} did not converge!'.format(i=i, label=label))
 
     def determine_most_stable_conformer(self, label):
         """
         Determine the most stable conformer of species. Save the resulting xyz as `initial_xyz`
         """
+        if all(e == 0.0 for e in self.species_dict[label].conformer_energies):
+            logging.error('No conformer converged for species {0}. Will try to optimize the first conformer'
+                          ' anyway'.format(label))
+            self.output[label]['status'] += 'No conformers; '
         e_min = self.species_dict[label].conformer_energies[0]
         i_min = 0
         for i, ei in enumerate(self.species_dict[label].conformer_energies):
@@ -502,9 +506,11 @@ class Scheduler(object):
                         frequencies.extend(line.split()[2:])
                     line = f.readline()
             frequencies = [float(freq) for freq in frequencies]
-            freq_ok = self.check_negative_freq(job, label, frequencies)
+            freq_ok = self.check_negative_freq(label=label, job=job, vibfreqs=frequencies)
             if freq_ok:
                 return True  # run freq / scan jobs on this optimized geometry
+            elif not self.species_dict[label].is_ts:
+                self.troubleshoot_negative_freq(label=label, job=job)
         if job.job_status[1] != 'done' or not freq_ok:
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level_of_theory, job_type='composite')
         return False  # return ``False``, so no freq / scan jobs are initiated for this unoptimized geometry
@@ -549,18 +555,20 @@ class Scheduler(object):
                 raise SchedulerError('Called check_freq_job with no output file')
             parser = cclib.io.ccopen(job.local_path_to_output_file)
             data = parser.parse()
-            freq_ok = self.check_negative_freq(job, label, data.vibfreqs)
-        if job.job_status[1] != 'done' or not freq_ok:
+            freq_ok = self.check_negative_freq(label=label, job=job, vibfreqs=data.vibfreqs)
+            if not self.species_dict[label].is_ts and not freq_ok:
+                self.troubleshoot_negative_freq(label=label, job=job)
+        else:
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level_of_theory, job_type='freq')
 
-    def check_negative_freq(self, job, label, frequencies):
+    def check_negative_freq(self, label, job, vibfreqs):
         """
         A helper function for determining the number of negative frequencies. Also logs appropriate errors.
         Returns ``True`` if the number of negative frequencies is as excepted, ``False`` otherwise.
         """
         neg_freq_counter = 0
         neg_fre = None
-        for freq in frequencies:
+        for freq in vibfreqs:
             if freq < 0:
                 neg_freq_counter += 1
                 neg_fre = freq
@@ -710,6 +718,80 @@ class Scheduler(object):
         for server in self.servers:
             ssh = SSH_Client(server)
             self.servers_jobs_ids.extend(ssh.check_running_jobs_ids())
+
+    def troubleshoot_negative_freq(self, label, job):
+        """
+        Troubleshooting cases where stable species (not TS's) have negative frequencies.
+        We take  +/-1.1 displacements, generating several initial geometries, and running them as conformers
+        """
+        factor = 1.1
+        parser = cclib.io.ccopen(job.local_path_to_output_file)
+        data = parser.parse()
+        vibfreqs = data.vibfreqs
+        vibdisps = data.vibdisps
+        atomnos = data.atomnos
+        atomcoords = data.atomcoords
+        if len(self.species_dict[label].neg_freqs_trshed) > 10:
+            logging.error('Species {0} was troubleshooted for negative frequencies too many times.')
+            if not self.scan_rotors:
+                logging.error('The `scan_rotors` parameter is turned off, cannot troubleshoot geometry using'
+                              ' dihedral modifications.')
+                self.output[label]['status'] = 'scan_rotors = False; '
+            logging.error('Invalidating species.')
+            self.output[label]['status'] = 'Error: Encountered negative frequencies too many times; '
+            return
+        neg_freqs_idx = list()  # store indices w.r.t. vibfreqs
+        largest_neg_freq_idx = 0  # index in vibfreqs
+        for i, freq in enumerate(vibfreqs):
+            if freq < 0:
+                neg_freqs_idx.append(i)
+                if vibfreqs[i] < vibfreqs[largest_neg_freq_idx]:
+                    largest_neg_freq_idx = i
+            else:
+                # assuming frequencies are ordered, break after the first positive freq encounter
+                break
+        if vibfreqs[largest_neg_freq_idx] >= 0 or len(neg_freqs_idx) == 0:
+            raise SchedulerError('Could not determine negative frequency in species {0} while troubleshooting for'
+                                 ' negative frequencies'.format(label))
+        if len(neg_freqs_idx) == 1 and len(self.species_dict[label].neg_freqs_trshed) == 0:
+            # species has one negative frequency, and has not been troubleshooted for it before
+            logging.info('Species {0} has a negative frequencies ({1}). Perturbing its geometry using the respective '
+                         'vibrational displacements'.format(label, vibfreqs[largest_neg_freq_idx]))
+            neg_freqs_idx = [largest_neg_freq_idx]  # indices of the negative frequencies to troubleshoot for
+        elif len(neg_freqs_idx) == 1 and len(self.species_dict[label].neg_freqs_trshed) == 0:
+            # species has one negative frequency, and has been troubleshooted for it before
+            factor = 1.3
+            logging.info('Species {0} has a negative frequencies ({1}). Perturbing its geometry using the respective '
+                         'vibrational displacements, this time using a larger factor ({2})'.format(
+                label, vibfreqs[largest_neg_freq_idx], factor))
+            neg_freqs_idx = [largest_neg_freq_idx]  # indices of the negative frequencies to troubleshoot for
+        elif len(neg_freqs_idx) > 1 and len(self.species_dict[label].neg_freqs_trshed) == 0:
+            # species has more than one negative frequency, and has not been troubleshooted for it before
+            logging.info('Species {0} has {1} negative frequencies. Perturbing its geometry using the vibrational '
+                         'displacements of its largest negative frequency, {2}'.format(label, len(neg_freqs_idx),
+                                                                                       vibfreqs[largest_neg_freq_idx]))
+            neg_freqs_idx = [largest_neg_freq_idx]  # indices of the negative frequencies to troubleshoot for
+        elif len(neg_freqs_idx) > 1 and len(self.species_dict[label].neg_freqs_trshed) > 0:
+            # species has more than one negative frequency, and has been troubleshooted for it before
+            logging.info('Species {0} has {1} negative frequencies. Perturbing its geometry using the vibrational'
+                         ' displacements of ALL negative frequencies'.format(label, len(neg_freqs_idx)))
+        self.species_dict[label].neg_freqs_trshed.extend([vibfreqs[i] for i in neg_freqs_idx])  # record frequencies
+        logging.info('Deleting all currently running jobs for species {0} before troubleshooting for'
+                     ' negative frequency...'.format(label))
+        self.delete_all_species_jobs(label)
+        self.species_dict[label].conformers = list()  # initialize the conformer list
+        self.species_dict[label].conformer_energies = list()
+        atomcoords = atomcoords[-1]  # it's a list within a list, take the last geometry
+        for neg_freq_idx in neg_freqs_idx:
+            displacement = vibdisps[neg_freq_idx]
+            xyz1 = atomcoords + factor * displacement
+            xyz2 = atomcoords - factor * displacement
+            self.species_dict[label].conformers.append(get_xyz_matrix(xyz=xyz1, number=atomnos))
+            self.species_dict[label].conformers.append(get_xyz_matrix(xyz=xyz2, number=atomnos))
+            self.species_dict[label].conformer_energies.extend([0.0, 0.0])  # a placeholder (lists are synced)
+        self.job_dict[label]['conformers'] = dict()  # initialize the conformer job dictionary
+        for i, xyz in enumerate(self.species_dict[label].conformers):
+            self.run_job(label=label, xyz=xyz, level_of_theory=self.conformer_level, job_type='conformer', conformer=i)
 
     def troubleshoot_opt_jobs(self, label):
         """
@@ -987,7 +1069,9 @@ class Scheduler(object):
         """
         Delete all jobs of species/TS represented by `label`
         """
+        logging.debug('Deleting all jobs for species {0}'.format(label))
         for job_type, job_dict in self.job_dict[label].iteritems():
             for job_name, job in job_dict.iteritems():
+                logging.debug('Deleted job {0}'.format(job_name))
                 job.delete()
         self.job_dict[label] = dict()

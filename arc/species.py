@@ -50,6 +50,7 @@ class ARCSpecies(object):
     'bond_corrections'      ``dict``     The bond additivity corrections (BAC) to be used. Determined from the structure
                                            if not directly given.
     't0'                    ``float``    Initial time when the first species job was spawned
+    `neg_freqs_trshed`      ``list``     A list of negative frequencies this species was troubleshooted for
     ====================== ============= ===============================================================================
 
     Dictionary structure:
@@ -159,6 +160,7 @@ class ARCSpecies(object):
         self.xyzs = list()  # used for conformer search
         self.external_symmetry = 1
         self.optical_isomers = 1
+        self.neg_freqs_trshed = list()
 
     def generate_conformers(self):
         """
@@ -565,7 +567,7 @@ def get_xyz_matrix(xyz, mol=None, number=None):
         if mol is not None:
             element_label = mol.atoms[i].element.symbol
         else:
-            element_label = getElement(number[i]).symbol
+            element_label = getElement(int(number[i])).symbol
         result += element_label + ' ' * (4 - len(element_label))
         for j, c in enumerate(coord):
             result += '{0:14.8f}'.format(c)
