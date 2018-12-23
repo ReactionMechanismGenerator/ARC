@@ -204,7 +204,7 @@ class Job(object):
 
     def _set_job_number(self):
         """
-        Used only as the entry number in csv archiving
+        Used as the entry number in the database, as well as the job name on the server
         """
         csv_path = os.path.join(arc_path, 'initiated_jobs.csv')
         if not os.path.isfile(csv_path):
@@ -220,6 +220,8 @@ class Job(object):
             job_num = 0
             for row in reader:
                 job_num += 1
+            if job_num == 100000:
+                job_num = 0
             self.job_num = job_num
 
     def _write_initiated_job_to_csv_file(self):
