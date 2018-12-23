@@ -130,9 +130,12 @@ class SSH_Client(object):
         if status.lower() == 'r':
             return 'running'
         else:
-            if self.server == 'pharos':
-                return 'errored on node ' + status_line.split()[-1].split('@')[1].split('.')[0][-2:]
-            elif self.server == 'rmg':
+            if servers[self.server]['cluster_soft'] == 'OGE':
+                if '.cluster' in status_line:
+                    return 'errored on node ' + status_line.split()[-1].split('@')[1].split('.')[0][-2:]
+                else:
+                    return 'errored'
+            elif servers[self.server]['cluster_soft'] == 'Slurm':
                 return 'errored on node ' + status_line.split()[-1][-2:]
             else:
                 raise ValueError('Unknown server {0}'.format(self.server))
