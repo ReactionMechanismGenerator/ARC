@@ -20,3 +20,14 @@ arc/settings.py
 
 # Projects
 Projects/
+
+# Unit test files
+.coverage
+testing/*
+htmlcov/*
+
+# Scratch
+scratch/
+
+# scv database
+*.csv
