@@ -51,6 +51,7 @@ class ARC(object):
     'model_chemistry'      ``list``   The model chemistry in Arkane for energy corrections (AE, BAC).
                                         This can be usually determined automatically.
     `settings`             ``dict``   A dictionary of available servers and software
+    `ess_settings`         ``dict``   An optional input parameter: a dictionary relating ESS to servers
     ====================== ========== =========================================================================
 
     `level_of_theory` is a string representing either sp//geometry levels or a composite method, e.g. 'CBS-QB3',
@@ -59,7 +60,7 @@ class ARC(object):
     def __init__(self, project, rmg_species_list=list(), arc_species_list=list(), rxn_list=list(),
                  level_of_theory='', conformer_level='', composite_method='', opt_level='', freq_level='', sp_level='',
                  scan_level='', fine=True, generate_conformers=True, scan_rotors=True, use_bac=True,
-                 model_chemistry='', verbose=logging.INFO):
+                 model_chemistry='', ess_settings=None, verbose=logging.INFO):
 
         self.project = project
         self.output_directory = os.path.join(arc_path, 'Projects', self.project)
@@ -69,6 +70,7 @@ class ARC(object):
         self.verbose = verbose
         self.initialize_log(verbose=self.verbose, log_file=os.path.join(self.output_directory, 'arc.log'))
         self.settings = dict()
+        self.ess_settings = ess_settings
         self.determine_remote()
         self.output = dict()
         if not os.path.exists(self.output_directory):
@@ -370,32 +372,57 @@ class ARC(object):
             logging.info('Using {0} as model chemistry for energy corrections in Arkane'.format(
                 self.model_chemistry))
 
-    def determine_remote(self):
+    def determine_remote(self, diagnostics=False):
         """
         Determine whether ARC is executed remotely
         and if so the available ESS software and the cluster software of the server
+        if `diagnostics` is True, this method will not raise errors, and will print its findings
         """
+        if self.ess_settings is not None:
+            self.settings['ssh'] = True
+            for ess, server in self.ess_settings.iteritems():
+                if ess.lower() not in ['gaussian', 'qchem', 'molpro']:
+                    raise SettingsError('Recognized ESS software are Gaussian, QChem or Molpro. Got: {0}'.format(ess))
+                if server.lower() not in servers:
+                    server_names = [name for name in servers]
+                    raise SettingsError('Recognized servers are {0}. Got: {1}'.format(server_names, servers))
+                self.settings[ess.lower()] = server.lower()
+            logging.info('\nUsing the following user input: {0}\n'.format(self.settings))
+            return
+        if diagnostics:
+            logging.info('\n\n\n ***** Running ESS diagnostics: *****\n')
         os.system('. ~/.bashrc')
         if 'SSH_CONNECTION' in os.environ:
             # ARC is executed on a server, proceed
             logging.info('\n\nExecuting QM jobs locally.')
+            if diagnostics:
+                logging.info('ARC is being excecuted on a server (found "SSH_CONNECTION" in the os.environ dictionary')
+                logging.info('Using distutils.spawn.find_executable() to find ESS')
             self.settings['ssh'] = False
             g03 = find_executable('g03')
             g09 = find_executable('g09')
             g16 = find_executable('g16')
             if g03 or g09 or g16:
+                if diagnostics:
+                    logging.info('Found Gaussian: g03={0}, g09={1}, g16={2}'.format(g03, g09, g16))
                 self.settings['gaussian'] = True
             else:
+                if diagnostics:
+                    logging.info('Did NOT find Gaussian: g03={0}, g09={1}, g16={2}'.format(g03, g09, g16))
                 self.settings['gaussian'] = False
             qchem = find_executable('qchem')
             if qchem:
                 self.settings['qchem'] = True
             else:
+                if diagnostics:
+                    logging.info('Did not find QChem')
                 self.settings['qchem'] = False
             molpro = find_executable('molpro')
             if molpro:
                 self.settings['molpro'] = True
             else:
+                if diagnostics:
+                    logging.info('Did not find Molpro')
                 self.settings['molpro'] = False
             if self.settings['gaussian']:
                 logging.info('Found Gaussian')
@@ -404,12 +431,16 @@ class ARC(object):
             if self.settings['molpro']:
                 logging.info('Found Molpro')
         else:
-            # ARC is executed locally, communication with servers need to be established
+            # ARC is executed locally, communication with a server needs to be established
+            if diagnostics:
+                logging.info('ARC is being excecuted on a PC (did not find "SSH_CONNECTION" in the os.environ dictionary')
             self.settings['ssh'] = True
             logging.info('\n\nExecuting QM jobs remotely. Mapping servers...')
             # map servers
             self.settings['gaussian'], self.settings['qchem'], self.settings['molpro'] = None, None, None
             for server in servers:
+                if diagnostics:
+                    logging.info('Trying {0}'.format(server))
                 ssh = SSH_Client(server)
                 cmd = '. ~/.bashrc; which g03'
                 g03, stderr = ssh.send_command_to_server(cmd)
@@ -418,21 +449,32 @@ class ARC(object):
                 cmd = '. ~/.bashrc; which g16'
                 g16, stderr = ssh.send_command_to_server(cmd)
                 if g03 or g09 or g16:
-                    self.settings['gaussian'] = server
-                elif not self.settings['gaussian']:
-                    self.settings['gaussian'] = None
+                    if diagnostics:
+                        logging.info('Found Gaussian on {3}: g03={0}, g09={1}, g16={2}'.format(g03, g09, g16, server))
+                    if self.settings['gaussian'] is None or server['precedence'] == 'gaussian':
+                        self.settings['gaussian'] = server
+                elif diagnostics:
+                    logging.info('Did NOT find Gaussian on {3}: g03={0}, g09={1}, g16={2}'.format(g03, g09, g16, server))
                 cmd = '. ~/.bashrc; which qchem'
                 qchem, stderr = ssh.send_command_to_server(cmd)
                 if qchem:
-                    self.settings['qchem'] = server
-                elif not self.settings['gaussian']:
-                    self.settings['qchem'] = None
+                    if diagnostics:
+                        logging.info('Found QChem on {0}'.format(server))
+                    if self.settings['qchem'] is None or server['precedence'] == 'qchem':
+                        self.settings['qchem'] = server
+                elif diagnostics:
+                    logging.info('Did NOT find QChem on {0}'.format(server))
                 cmd = '. .bashrc; which molpro'
                 molpro, stderr = ssh.send_command_to_server(cmd)
                 if molpro:
-                    self.settings['molpro'] = server
-                elif not self.settings['molpro']:
-                    self.settings['molpro'] = None
+                    if diagnostics:
+                        logging.info('Found Molpro on {0}'.format(server))
+                    if self.settings['molpro'] is None or server['precedence'] == 'molpro':
+                        self.settings['molpro'] = server
+                elif diagnostics:
+                    logging.info('Did NOT find Molpro on {0}'.format(server))
+            if diagnostics:
+                logging.info('\n')
             if self.settings['gaussian']:
                 logging.info('Using Gaussian on {0}'.format(self.settings['gaussian']))
             if self.settings['qchem']:
@@ -440,8 +482,12 @@ class ARC(object):
             if self.settings['molpro']:
                 logging.info('Using Molpro on {0}'.format(self.settings['molpro']))
             logging.info('\n')
-        if not self.settings['gaussian'] and not self.settings['qchem'] and not self.settings['molpro']:
-            raise SettingsError('Could not find any ESS')
+        if not self.settings['gaussian'] and not self.settings['qchem'] and not self.settings['molpro']\
+                and not diagnostics:
+            raise SettingsError('Could not find any ESS. Check your .bashrc definitions on the server.\n'
+                                'Alternatively, you could pass a software-server dictionary to arc as `ess_settings`')
+        elif diagnostics:
+            logging.info('ESS diagnostics completed')
 
 
 def delete_all_arc_jobs(server_list):
