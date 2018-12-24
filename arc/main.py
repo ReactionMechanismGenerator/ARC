@@ -465,9 +465,3 @@ def delete_all_arc_jobs(server_list):
                 ssh.delete_job(job_id)
                 print('deleted job {0}'.format(job_id))
     print('\ndone.')
-
-
-# TODO: mongodb?  https://github.com/PACChem/QTC/blob/master/qtc/dbtools.py
-# TODO: make visuallization files
-# TODO: Py3 proof (__future__)
-
