@@ -169,9 +169,9 @@ class ARCSpecies(object):
         if self.mol:
             for mol in self.mol_list:
                 self.find_conformers(mol)
-                for xyz in self.xyzs:
-                    self.conformers.append(xyz)
-                    self.conformer_energies.append(0.0)  # a placeholder (lists are synced)
+            for xyz in self.xyzs:
+                self.conformers.append(xyz)
+                self.conformer_energies.append(0.0)  # a placeholder (lists are synced)
         else:
             logging.warn('Generating conformers for species {0}, without bond order information (using coordinates'
                          ' only).'.format(self.label))
@@ -195,8 +195,7 @@ class ARCSpecies(object):
         Generates conformers for `mol` which is an ``RMG.Molecule`` object using the method/s
         specified in `method`: 'rdkit', 'openbabel', or 'all'. result/s saved to self.xyzs
         """
-        rdkit = False
-        ob = False
+        rdkit, ob = False, False
         rd_xyzs, ob_xyzs = list(), list()
         if method == 'all':
             rdkit = True
@@ -205,7 +204,6 @@ class ARCSpecies(object):
             rdkit = True
         elif method.lower() in ['ob', 'openbabel']:
             ob = True
-
         if rdkit:
             rd_xyzs, rd_energies = self._get_possible_conformers_rdkit(mol)
             if rd_xyzs:
