@@ -9,4 +9,4 @@ The current version should be run locally; it communicates with servers (defined
 Currently ARC can calculate Thermodynamic properties relying on Arkane (see Arkane's user guide: http://reactionmechanismgenerator.github.io/RMG-Py/users/arkane/index.html).
 We plan to elaborate ARC to automatically identify and compute transition states and eventually calculate kinetic rates and pressure-dependent networks using Arkane.
 
-Installation instructions are in the Wiki pages of this progect.
+Installation instructions are in the Wiki pages of this project.
