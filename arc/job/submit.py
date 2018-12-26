@@ -72,6 +72,8 @@ qchem -nt 6 input.in output.out
 #SBATCH -c 8
 #SBATCH --mem-per-cpu=2048
 
+export PATH=/opt/molpro/molprop_2015_1_linux_x86_64_i8/bin:$PATH
+
 echo "============================================================"
 echo "Job ID : $SLURM_JOB_ID"
 echo "Job Name : $SLURM_JOB_NAME"
