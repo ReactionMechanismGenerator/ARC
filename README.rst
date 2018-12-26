@@ -1,4 +1,5 @@
-# ARC
+|arc|
+
 ARC - Automatic Rate Calculator
 
 Version 0.1
@@ -10,3 +11,10 @@ Currently ARC can calculate Thermodynamic properties relying on Arkane (see Arka
 We plan to elaborate ARC to automatically identify and compute transition states and eventually calculate kinetic rates and pressure-dependent networks using Arkane.
 
 Installation instructions are in the Wiki pages of this project.
+
+
+.. |arc| image:: https://github.com/ReactionMechanismGenerator/ARC/blob/master/logo/ARC-logo.jpg
+    :target: https://github.com/ReactionMechanismGenerator/ARC
+    :alt: arc logo
+    :width: 500px
+    :align: middle
