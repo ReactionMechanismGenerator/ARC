@@ -3,14 +3,13 @@
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
 import os
-import logging
 
 from arkane.input import species as arkane_species
 from arkane.statmech import StatMechJob, assign_frequency_scale_factor
 from arkane.thermo import ThermoJob
 
 from arc.settings import arc_path
-from arc.job.input import input_files
+from arc.job.inputs import input_files
 from arc import plotter
 from arc.exceptions import SchedulerError
 
@@ -40,7 +39,7 @@ class Processor(object):
         self.model_chemistry = model_chemistry
 
     def process(self):
-        for species in self.species_dict.itervalues():
+        for species in self.species_dict.values():
             if self.output[species.label]['status'] == 'converged' and not species.is_ts:
                 linear = False  # TODO
                 species.determine_symmetry()

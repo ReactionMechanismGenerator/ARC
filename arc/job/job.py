@@ -10,9 +10,9 @@ import logging
 from arc.settings import arc_path, servers, submit_filename, delete_command,\
     input_filename, output_filename, rotor_scan_resolution, list_available_nodes_command
 from arc.job.submit import submit_scripts
-from arc.job.input import input_files
+from arc.job.inputs import input_files
 from arc.job.ssh import SSH_Client
-from arc.exceptions import JobError, ServerError, SpeciesError
+from arc.exceptions import JobError, SpeciesError
 
 ##################################################################
 
@@ -72,8 +72,8 @@ class Job(object):
     either `initializing` / `running` / `errored: {error type / message}` / `unconverged` / `done`
     """
     def __init__(self, project, settings, species_name, xyz, job_type, level_of_theory, multiplicity, charge=0,
-                 conformer=-1, fine=False, shift='', software=None, is_ts=False, scan='', pivots=list(), memory=1500,
-                 comments='', trsh='', ess_trsh_methods=list(), occ=None):
+                 conformer=-1, fine=False, shift='', software=None, is_ts=False, scan='', pivots=None, memory=1500,
+                 comments='', trsh='', ess_trsh_methods=None, occ=None):
         self.project = project
         self.settings=settings
         self.date_time = datetime.datetime.now()
@@ -86,7 +86,7 @@ class Job(object):
         self.n_atoms = self.xyz.count('\n')
         self.conformer = conformer
         self.is_ts = is_ts
-        self.ess_trsh_methods = ess_trsh_methods
+        self.ess_trsh_methods = ess_trsh_methods if ess_trsh_methods is not None else list()
         self.trsh = trsh
         job_types = ['conformer', 'opt', 'freq', 'optfreq', 'sp', 'composite', 'scan', 'gsm', 'irc']
         # the 'conformer' job type is identical to 'opt', but we differentiate them to be identifiable in Scheduler
@@ -188,7 +188,7 @@ class Job(object):
         self.comments = comments
 
         self.scan = scan
-        self.pivots = pivots
+        self.pivots = list() if pivots is None else pivots
 
         conformer_folder = '' if self.conformer < 0 else os.path.join('conformers',str(self.conformer))
         self.local_path = os.path.join(arc_path, 'Projects', self.project,
@@ -545,7 +545,7 @@ $end
             if self.software == 'gaussian':
                 for line in lines[-1:-20:-1]:
                     if 'Normal termination of Gaussian' in line:
-                        return 'done'
+                        break
                 else:
                     for line in lines[::-1]:
                         if 'Error' in line or 'NtrErr' in line or 'Erroneous' in line or 'malloc' in line\
@@ -578,6 +578,7 @@ $end
                                 reason = 'Check .inp carefully for syntax errors in keywords.'
                             return 'errored: {0}; {1}'.format(line, reason)
                     return 'errored: Unknown reason'
+                return 'done'
             elif self.software == 'qchem':
                 done = False
                 error_message = ''
@@ -627,7 +628,7 @@ $end
             ssh.send_command_to_server(command=delete_command[servers[self.server]['cluster_soft']] +
                                        ' ' + str(self.job_id))
             # find available nodes
-            stdout, stderr = ssh.send_command_to_server(
+            stdout, _ = ssh.send_command_to_server(
                 command=list_available_nodes_command[servers[self.server]['cluster_soft']])
             for line in stdout:
                 node = line.split()[0].split('.')[0].split('node')[1]

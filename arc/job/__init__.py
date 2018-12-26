@@ -3,5 +3,5 @@
 
 import job
 import ssh
-import input
+import inputs
 import submit

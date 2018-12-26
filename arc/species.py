@@ -206,99 +206,16 @@ class ARCSpecies(object):
         elif method.lower() in ['ob', 'openbabel', 'opnbbl']:
             opnbbl = True
         if rdkit:
-            rd_xyzs, rd_energies = self._get_possible_conformers_rdkit(mol)
+            rd_xyzs, rd_energies = _get_possible_conformers_rdkit(mol)
             if rd_xyzs:
-                rd_xyz = self.get_min_energy_conformer(xyzs=rd_xyzs, energies=rd_energies)
+                rd_xyz = get_min_energy_conformer(xyzs=rd_xyzs, energies=rd_energies)
                 self.xyzs.append(get_xyz_matrix(xyz=rd_xyz, mol=mol))
         if opnbbl:
-            ob_xyzs, ob_energies = self._get_possible_conformers_openbabel(mol)
-            ob_xyz = self.get_min_energy_conformer(xyzs=ob_xyzs, energies=ob_energies)
+            ob_xyzs, ob_energies = _get_possible_conformers_openbabel(mol)
+            ob_xyz = get_min_energy_conformer(xyzs=ob_xyzs, energies=ob_energies)
             self.xyzs.append(get_xyz_matrix(xyz=ob_xyz, mol=mol))
         logging.debug('Considering {actual} conformers for {label} out of {total} total ran using a force field'.format(
             actual=len(self.xyzs), total=len(rd_xyzs+ob_xyzs), label=self.label))
-
-    def _get_possible_conformers_rdkit(self, mol):
-        """
-        A helper function for conformer search
-        Uses rdkit to automatically generate a set of len(mol.atoms)-3)*30 initial geometries, optimizes
-        these geometries using MMFF94s, calculates the energies using MMFF94s
-        and converts them back in terms of the RMG atom ordering
-        Returns the coordinates and energies
-        """
-        if not isinstance(mol, (Molecule, RDMol)):
-            raise SpeciesError('Can generate conformers to either an RDKit or RMG molecule. Got {0}'.format(type(mol)))
-        if isinstance(mol, RDMol):
-            rd_mol = mol
-        else:
-            rd_mol, rd_inds = mol.toRDKitMol(removeHs=False, returnMapping=True)
-            rd_indx_map = dict()
-            for k, atom in enumerate(mol.atoms):
-                ind = rd_inds[atom]
-                rd_indx_map[ind] = k
-        if len(mol.atoms) > 50:
-            Chem.AllChem.EmbedMultipleConfs(rd_mol, numConfs=(len(mol.atoms)) * 3, randomSeed=1)
-        elif len(mol.atoms) > 5:
-            Chem.AllChem.EmbedMultipleConfs(rd_mol, numConfs=(len(mol.atoms) - 3) * 30, randomSeed=1)
-        else:
-            Chem.AllChem.EmbedMultipleConfs(rd_mol, numConfs=120, randomSeed=1)
-        energies = []
-        xyzs = []
-        for i in xrange(rd_mol.GetNumConformers()):
-            v = 1
-            while v == 1:
-                v = Chem.AllChem.MMFFOptimizeMolecule(rd_mol, mmffVariant='MMFF94s', confId=i,
-                                                 maxIters=500, ignoreInterfragInteractions=False)
-            mp = Chem.AllChem.MMFFGetMoleculeProperties(rd_mol, mmffVariant='MMFF94s')
-            if mp is not None:
-                ff = Chem.AllChem.MMFFGetMoleculeForceField(rd_mol, mp, confId=i)
-                E = ff.CalcEnergy()
-                energies.append(E)
-                cf = rd_mol.GetConformer(i)
-                xyz = []
-                for j in xrange(cf.GetNumAtoms()):
-                    pt = cf.GetAtomPosition(j)
-                    xyz.append([pt.x, pt.y, pt.z])
-                if isinstance(mol, Molecule):
-                    xyz = [xyz[rd_indx_map[i]] for i in xrange(len(xyz))]  # reorder
-                xyzs.append(xyz)
-        return xyzs, energies
-
-    def _get_possible_conformers_openbabel(self, mol):
-        """
-        A helper function for conformer search
-        Uses OpenBabel to automatically generate set of len(mol.atoms)*10-3 initial geometries,
-        optimizes these geometries using MMFF94s, calculates the energies using MMFF94s
-        Returns the coordinates and energies
-        """
-        energies = []
-        xyzs = []
-        obmol, obInds = toOBMol(mol, returnMapping=True)
-        pybmol = pyb.Molecule(obmol)
-        pybmol.make3D()
-        obmol = pybmol.OBMol
-
-        ff = ob.OBForceField.FindForceField("mmff94s")
-        ff.Setup(obmol)
-        if len(mol.atoms) > 5:
-            ff.WeightedRotorSearch(len(mol.atoms) * 10 - 3, 2000)
-        else:
-            ff.WeightedRotorSearch(120, 2000)
-        ff.GetConformers(obmol)
-        for n in xrange(obmol.NumConformers()):
-            xyz = []
-            obmol.SetConformer(n)
-            ff.Setup(obmol)
-            # ff.ConjugateGradientsTakeNSteps(1000)
-            energies.append(ff.Energy())
-            for atm in pybmol.atoms:
-                xyz.append(list(atm.coords))
-            xyzs.append(xyz)
-        return xyzs, energies
-
-    def get_min_energy_conformer(self, xyzs, energies):
-        minval = min(energies)
-        minind = energies.index(minval)
-        return xyzs[minind]
 
     def determine_rotors(self):
         """
@@ -310,7 +227,7 @@ class ARCSpecies(object):
         for mol in self.mol_list:
             rotors = find_internal_rotors(mol)
             for new_rotor in rotors:
-                for key, existing_rotor in self.rotors_dict.iteritems():
+                for existing_rotor in self.rotors_dict.values():
                     if existing_rotor['pivots'] == new_rotor['pivots']:
                         break
                 else:
@@ -335,22 +252,22 @@ class ARCSpecies(object):
         if deg_increment == 0:
             logging.warning('set_dihedral was called with zero increment for {label} with pivots {pivots}'.format(
                 label=self.label, pivots=pivots))
-            for rotor in self.rotors_dict.itervalues():  # penalize this rotor to avoid inf. looping
+            for rotor in self.rotors_dict.values():  # penalize this rotor to avoid inf. looping
                 if rotor['pivots'] == pivots:
                     rotor['times_dihedral_set'] += 1
                     break
         else:
-            for rotor in self.rotors_dict.itervalues():
+            for rotor in self.rotors_dict.values():
                 if rotor['pivots'] == pivots and rotor['times_dihedral_set'] <= 10:
                     rotor['times_dihedral_set'] += 1
                     break
             else:
                 logging.info('\n\n')
-                for i, rotor in self.rotors_dict.iteritems():
+                for i, rotor in self.rotors_dict.items():
                     logging.error('Rotor {i} with pivots {pivots} was set {times} times'.format(
                         i=i, pivots=rotor['pivots'], times=rotor['times_dihedral_set']))
                 raise RotorError('Rotors for {0} were set beyond the maximal number of times without converging')
-            for i in xrange(len(scan)):
+            for i, _ in enumerate(scan):
                 scan[i] -= 1  # atom indices start from 0, but atom labels (as in scan) start from 1
             mol = Molecule()
             coordinates = list()
@@ -444,6 +361,93 @@ class ARCSpecies(object):
         logging.debug('Using the following BAC for {0}: {1}'.format(self.label, self.bond_corrections))
 
 
+def _get_possible_conformers_rdkit(mol):
+    """
+    A helper function for conformer search
+    Uses rdkit to automatically generate a set of len(mol.atoms)-3)*30 initial geometries, optimizes
+    these geometries using MMFF94s, calculates the energies using MMFF94s
+    and converts them back in terms of the RMG atom ordering
+    Returns the coordinates and energies
+    """
+    if not isinstance(mol, (Molecule, RDMol)):
+        raise SpeciesError('Can generate conformers to either an RDKit or RMG molecule. Got {0}'.format(type(mol)))
+    rd_indx_map = dict()
+    if isinstance(mol, RDMol):
+        rd_mol = mol
+    else:
+        rd_mol, rd_inds = mol.toRDKitMol(removeHs=False, returnMapping=True)
+
+        for k, atom in enumerate(mol.atoms):
+            ind = rd_inds[atom]
+            rd_indx_map[ind] = k
+    if len(mol.atoms) > 50:
+        Chem.AllChem.EmbedMultipleConfs(rd_mol, numConfs=(len(mol.atoms)) * 3, randomSeed=1)
+    elif len(mol.atoms) > 5:
+        Chem.AllChem.EmbedMultipleConfs(rd_mol, numConfs=(len(mol.atoms) - 3) * 30, randomSeed=1)
+    else:
+        Chem.AllChem.EmbedMultipleConfs(rd_mol, numConfs=120, randomSeed=1)
+    energies = []
+    xyzs = []
+    for i in range(rd_mol.GetNumConformers()):
+        v = 1
+        while v == 1:
+            v = Chem.AllChem.MMFFOptimizeMolecule(rd_mol, mmffVariant=str('MMFF94s'), confId=i,
+                                             maxIters=500, ignoreInterfragInteractions=False)
+        mp = Chem.AllChem.MMFFGetMoleculeProperties(rd_mol, mmffVariant=str('MMFF94s'))
+        if mp is not None:
+            ff = Chem.AllChem.MMFFGetMoleculeForceField(rd_mol, mp, confId=i)
+            E = ff.CalcEnergy()
+            energies.append(E)
+            cf = rd_mol.GetConformer(i)
+            xyz = []
+            for j in range(cf.GetNumAtoms()):
+                pt = cf.GetAtomPosition(j)
+                xyz.append([pt.x, pt.y, pt.z])
+            if isinstance(mol, Molecule):
+                xyz = [xyz[rd_indx_map[j]] for j, _ in enumerate(xyz)]  # reorder
+            xyzs.append(xyz)
+    return xyzs, energies
+
+
+def _get_possible_conformers_openbabel(mol):
+    """
+    A helper function for conformer search
+    Uses OpenBabel to automatically generate set of len(mol.atoms)*10-3 initial geometries,
+    optimizes these geometries using MMFF94s, calculates the energies using MMFF94s
+    Returns the coordinates and energies
+    """
+    energies = []
+    xyzs = []
+    obmol, _ = toOBMol(mol, returnMapping=True)
+    pybmol = pyb.Molecule(obmol)
+    pybmol.make3D()
+    obmol = pybmol.OBMol
+
+    ff = ob.OBForceField.FindForceField("mmff94s")
+    ff.Setup(obmol)
+    if len(mol.atoms) > 5:
+        ff.WeightedRotorSearch(len(mol.atoms) * 10 - 3, 2000)
+    else:
+        ff.WeightedRotorSearch(120, 2000)
+    ff.GetConformers(obmol)
+    for n in range(obmol.NumConformers()):
+        xyz = []
+        obmol.SetConformer(n)
+        ff.Setup(obmol)
+        # ff.ConjugateGradientsTakeNSteps(1000)
+        energies.append(ff.Energy())
+        for atm in pybmol.atoms:
+            xyz.append(list(atm.coords))
+        xyzs.append(xyz)
+    return xyzs, energies
+
+
+def get_min_energy_conformer(xyzs, energies):
+    minval = min(energies)
+    minind = energies.index(minval)
+    return xyzs[minind]
+
+
 def find_internal_rotors(mol):
     """
     Locates the sets of indices corresponding to every internal rotor.
@@ -468,7 +472,7 @@ def find_internal_rotors(mol):
                         while len(atom_list_to_explore):
                             for atom in atom_list_to_explore:
                                 top1.append(mol.vertices.index(atom) + 1)
-                                for atom3, bond3 in atom.edges.items():
+                                for atom3, _ in atom.edges.items():
                                     if atom3.isHydrogen():
                                         # append H w/o further exploring
                                         top1.append(mol.vertices.index(atom3) + 1)
@@ -481,7 +485,7 @@ def find_internal_rotors(mol):
                         while len(atom_list_to_explore):
                             for atom in atom_list_to_explore:
                                 top2.append(mol.vertices.index(atom) + 1)
-                                for atom3, bond3 in atom.edges.items():
+                                for atom3, _ in atom.edges.items():
                                     if atom3.isHydrogen():
                                         # append H w/o further exploring
                                         top2.append(mol.vertices.index(atom3) + 1)
@@ -500,7 +504,7 @@ def find_internal_rotors(mol):
                         rotor['scan'] = []
                         heavy_atoms = []
                         hydrogens = []
-                        for atom3, bond13 in atom1.edges.items():
+                        for atom3, _ in atom1.edges.items():
                             if atom3.isHydrogen():
                                 hydrogens.append(mol.vertices.index(atom3))
                             elif atom3 is not atom2:
@@ -518,7 +522,7 @@ def find_internal_rotors(mol):
                         rotor['scan'].extend([mol.vertices.index(atom1) + 1, mol.vertices.index(atom2) + 1])
                         heavy_atoms = []
                         hydrogens = []
-                        for atom3, bond3 in atom2.edges.items():
+                        for atom3, _ in atom2.edges.items():
                             if atom3.isHydrogen():
                                 hydrogens.append(mol.vertices.index(atom3))
                             elif atom3 is not atom1:
@@ -568,7 +572,7 @@ def get_xyz_matrix(xyz, mol=None, number=None):
         else:
             element_label = getElement(int(number[i])).symbol
         result += element_label + ' ' * (4 - len(element_label))
-        for j, c in enumerate(coord):
+        for c in coord:
             result += '{0:14.8f}'.format(c)
         result += '\n'
     return result

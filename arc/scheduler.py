@@ -11,13 +11,12 @@ import numpy as np
 import cclib
 
 from arkane.statmech import Log
-import rmgpy.constants as constants
 
 from arc import plotter
 from arc.job.job import Job
 from arc.exceptions import SpeciesError, SchedulerError
 from arc.job.ssh import SSH_Client
-from arc.species import ARCSpecies, get_xyz_matrix, determine_occ
+from arc.species import ARCSpecies, get_xyz_matrix
 from arc.settings import rotor_scan_resolution, inconsistency_ab, inconsistency_az, maximum_barrier
 
 ##################################################################
@@ -128,7 +127,6 @@ class Scheduler(object):
                 if not self.species_dict[species.label].initial_xyz:
                     # generate a simple "Symb   0.0   0.0   0.0" xyz matrix
                     if self.species_dict[species.label].mol is not None:
-                        assert len(self.species_dict[species.label].mol.atoms) == 1
                         symbol = self.species_dict[species.label].mol.atoms[0].symbol
                     else:
                         symbol = species.label
@@ -274,10 +272,12 @@ class Scheduler(object):
                 logging.info('Currently running jobs:\n{0}'.format(self.running_jobs))
 
     def run_job(self, label, xyz, level_of_theory, job_type, fine=False, software=None, shift='', trsh='', memory=1500,
-                conformer=-1, ess_trsh_methods=list(), scan='', pivots=list(), occ=None):
+                conformer=-1, ess_trsh_methods=None, scan='', pivots=None, occ=None):
         """
         A helper function for running (all) jobs
         """
+        ess_trsh_methods = ess_trsh_methods if ess_trsh_methods is not None else list()
+        pivots = pivots if pivots is not None else list()
         if self.species_dict[label].t0 is None:
             self.species_dict[label].t0 = time.time()
         species = self.species_dict[label]
@@ -527,7 +527,7 @@ class Scheduler(object):
         if job.job_status[1] == 'done':
             log = Log(path='')
             log.determine_qm_software(fullpath=job.local_path_to_output_file)
-            coord, number, mass = log.software_log.loadGeometry()
+            coord, number, _ = log.software_log.loadGeometry()
             self.species_dict[label].final_xyz = get_xyz_matrix(xyz=coord, number=number)
             if not job.fine and self.fine:
                 # Run opt again using a finer grid.
@@ -804,7 +804,7 @@ class Scheduler(object):
         previous_job_num = -1
         latest_job_num = -1
         job = None
-        for job_name in self.job_dict[label]['opt'].iterkeys():  # get latest Job object for the species / TS
+        for job_name in self.job_dict[label]['opt'].keys():  # get latest Job object for the species / TS
             job_name_int = int(job_name[5:])
             if job_name_int > latest_job_num:
                 previous_job_num = latest_job_num
@@ -1072,8 +1072,8 @@ class Scheduler(object):
         Delete all jobs of species/TS represented by `label`
         """
         logging.debug('Deleting all jobs for species {0}'.format(label))
-        for job_type, job_dict in self.job_dict[label].iteritems():
-            for job_name, job in job_dict.iteritems():
+        for job_dict in self.job_dict[label].values():
+            for job_name, job in job_dict.items():
                 if job_name in self.running_jobs[label]:
                     logging.debug('Deleted job {0}'.format(job_name))
                     job.delete()
