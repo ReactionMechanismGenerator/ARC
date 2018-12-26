@@ -5,6 +5,7 @@
 This module contains unit tests of the arc.species module
 """
 
+from __future__ import (absolute_import, division, print_function, unicode_literals)
 import unittest
 
 from rmgpy.species import Species
