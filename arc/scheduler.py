@@ -440,7 +440,7 @@ class Scheduler(object):
             if 'scan' not in self.job_dict[label]:  # Check whether or not rotor scan jobs have been spawned yet
                 # we're spawning the first scan job for this species
                 self.job_dict[label]['scan'] = dict()
-            for i in xrange(self.species_dict[label].number_of_rotors):
+            for i in range(self.species_dict[label].number_of_rotors):
                 scan = self.species_dict[label].rotors_dict[i]['scan']
                 pivots = self.species_dict[label].rotors_dict[i]['pivots']
                 self.run_job(label=label, xyz=self.species_dict[label].final_xyz,
@@ -620,7 +620,7 @@ class Scheduler(object):
                           2: {}, ...
                          }
         """
-        for i in xrange(self.species_dict[label].number_of_rotors):
+        for i in range(self.species_dict[label].number_of_rotors):
             if self.species_dict[label].rotors_dict[i]['pivots'] == job.pivots:
                 invalidate = False
                 if job.job_status[1] == 'done':

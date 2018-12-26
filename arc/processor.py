@@ -60,7 +60,7 @@ class Processor(object):
                     freq_path = self.output[species.label]['freq']
                     opt_path = self.output[species.label]['freq']
                 rotors = ''
-                for i in xrange(species.number_of_rotors):
+                for i in range(species.number_of_rotors):
                     if species.rotors_dict[i]['success']:
                         if not rotors:
                             rotors = '\n\nrotors = ['

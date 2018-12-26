@@ -184,7 +184,7 @@ class ARCSpecies(object):
                 rd_index = rd_inds[atom]
                 indx_map[xyz_index] = rd_index
             conf = rd_mol.GetConformer(id=0)
-            for i in xrange(rd_mol.GetNumAtoms()):  # reset atom coordinates
+            for i in range(rd_mol.GetNumAtoms()):  # reset atom coordinates
                 conf.SetAtomPosition(indx_map[i], coordinates[i])
             self.find_conformers(mol, method='rdkit')
             for xyz in self.xyzs:
@@ -322,7 +322,7 @@ class ARCSpecies(object):
             logging.info('\nFound {0} rotors for {1}'.format(self.number_of_rotors, self.label))
         if self.number_of_rotors > 0:
             logging.info('Pivot list(s) for {0}: {1}\n'.format(self.label,
-                                                [self.rotors_dict[i]['pivots'] for i in xrange(self.number_of_rotors)]))
+                                                [self.rotors_dict[i]['pivots'] for i in range(self.number_of_rotors)]))
 
     def set_dihedral(self, scan, pivots, deg_increment):
         """
@@ -368,16 +368,16 @@ class ARCSpecies(object):
                 rd_index = rd_inds[atom]
                 indx_map[xyz_index] = rd_index
             conf = rd_mol.GetConformer(id=0)
-            for i in xrange(rd_mol.GetNumAtoms()):  # reset atom coordinates
+            for i in range(rd_mol.GetNumAtoms()):  # reset atom coordinates
                 conf.SetAtomPosition(indx_map[i], coordinates[i])
 
-            rd_scan = [indx_map[scan[i]] for i in xrange(4)]  # convert the atom indices in `scan` to RDkit indices
+            rd_scan = [indx_map[scan[i]] for i in range(4)]  # convert the atom indices in `scan` to RDkit indices
 
             deg0 = rdmt.GetDihedralDeg(conf, rd_scan[0], rd_scan[1], rd_scan[2], rd_scan[3])  # get the original dihedral
             deg = deg0 + deg_increment
             rdmt.SetDihedralDeg(conf, rd_scan[0], rd_scan[1], rd_scan[2], rd_scan[3], deg)
             new_xyz = list()
-            for i in xrange(rd_mol.GetNumAtoms()):
+            for i in range(rd_mol.GetNumAtoms()):
                 new_xyz.append([conf.GetAtomPosition(indx_map[i]).x, conf.GetAtomPosition(indx_map[i]).y,
                             conf.GetAtomPosition(indx_map[i]).z])
             self.initial_xyz = get_xyz_matrix(new_xyz, mol=mol)
