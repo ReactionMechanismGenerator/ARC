@@ -195,21 +195,21 @@ class ARCSpecies(object):
         Generates conformers for `mol` which is an ``RMG.Molecule`` object using the method/s
         specified in `method`: 'rdkit', 'openbabel', or 'all'. result/s saved to self.xyzs
         """
-        rdkit, ob = False, False
+        rdkit, opnbbl = False, False
         rd_xyzs, ob_xyzs = list(), list()
         if method == 'all':
             rdkit = True
-            ob = True
-        elif method.lower() == 'rdkit':
+            opnbbl = True
+        elif method.lower() in ['rdkit', 'rdk']:
             rdkit = True
-        elif method.lower() in ['ob', 'openbabel']:
-            ob = True
+        elif method.lower() in ['ob', 'openbabel', 'opnbbl']:
+            opnbbl = True
         if rdkit:
             rd_xyzs, rd_energies = self._get_possible_conformers_rdkit(mol)
             if rd_xyzs:
                 rd_xyz = self.get_min_energy_conformer(xyzs=rd_xyzs, energies=rd_energies)
                 self.xyzs.append(get_xyz_matrix(xyz=rd_xyz, mol=mol))
-        if ob:
+        if opnbbl:
             ob_xyzs, ob_energies = self._get_possible_conformers_openbabel(mol)
             ob_xyz = self.get_min_energy_conformer(xyzs=ob_xyzs, energies=ob_energies)
             self.xyzs.append(get_xyz_matrix(xyz=ob_xyz, mol=mol))
