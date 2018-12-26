@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # encoding: utf-8
 
+from __future__ import (absolute_import, division, print_function, unicode_literals)
 import logging
 import sys
 import os
@@ -57,7 +58,7 @@ class ARC(object):
     `level_of_theory` is a string representing either sp//geometry levels or a composite method, e.g. 'CBS-QB3',
                                                  'CCSD(T)-F12a/aug-cc-pVTZ//B3LYP/6-311++G(3df,3pd)'...
     """
-    def __init__(self, project, rmg_species_list=list(), arc_species_list=list(), rxn_list=list(),
+    def __init__(self, project, rmg_species_list=None, arc_species_list=None, rxn_list=None,
                  level_of_theory='', conformer_level='', composite_method='', opt_level='', freq_level='', sp_level='',
                  scan_level='', fine=True, generate_conformers=True, scan_rotors=True, use_bac=True,
                  model_chemistry='', ess_settings=None, verbose=logging.INFO):
@@ -192,9 +193,8 @@ class ARC(object):
         else:
             self.scan_level = ''
 
-        self.arc_species_list = []
-        self.arc_species_list.extend(arc_species_list)
-        self.rmg_species_list = rmg_species_list
+        self.arc_species_list = arc_species_list if arc_species_list is not None else list()
+        self.rmg_species_list = rmg_species_list if rmg_species_list is not None else list()
         if self.rmg_species_list:
             for rmg_spc in self.rmg_species_list:
                 if not isinstance(rmg_spc, Species):
@@ -205,7 +205,7 @@ class ARC(object):
                 arc_spc = ARCSpecies(is_ts=False, rmg_species=rmg_spc)  # assuming an RMG Species is not a TS
                 self.arc_species_list.append(arc_spc)
 
-        self.rxn_list = rxn_list
+        self.rxn_list = rxn_list if rxn_list is not None else list()
 
         self.scheduler = None
 
@@ -241,7 +241,7 @@ class ARC(object):
         Report status and data of all species / reactions
         """
         logging.info('\n\n\nAll jobs terminated. Project summary:\n')
-        for label, output in self.scheduler.output.iteritems():
+        for label, output in self.scheduler.output.items():
             if output['status'] == 'converged':
                 logging.info('Species {0} converged successfully'.format(label))
             else:
@@ -380,7 +380,7 @@ class ARC(object):
         """
         if self.ess_settings is not None:
             self.settings['ssh'] = True
-            for ess, server in self.ess_settings.iteritems():
+            for ess, server in self.ess_settings.items():
                 if ess.lower() not in ['gaussian', 'qchem', 'molpro']:
                     raise SettingsError('Recognized ESS software are Gaussian, QChem or Molpro. Got: {0}'.format(ess))
                 if server.lower() not in servers:
@@ -391,7 +391,7 @@ class ARC(object):
             return
         if diagnostics:
             logging.info('\n\n\n ***** Running ESS diagnostics: *****\n')
-        os.system('. ~/.bashrc')
+        # os.system('. ~/.bashrc')  # TODO This might be a security risk - rethink it
         if 'SSH_CONNECTION' in os.environ:
             # ARC is executed on a server, proceed
             logging.info('\n\nExecuting QM jobs locally.')
@@ -443,11 +443,11 @@ class ARC(object):
                     logging.info('Trying {0}'.format(server))
                 ssh = SSH_Client(server)
                 cmd = '. ~/.bashrc; which g03'
-                g03, stderr = ssh.send_command_to_server(cmd)
+                g03, _ = ssh.send_command_to_server(cmd)
                 cmd = '. ~/.bashrc; which g09'
-                g09, stderr = ssh.send_command_to_server(cmd)
+                g09, _ = ssh.send_command_to_server(cmd)
                 cmd = '. ~/.bashrc; which g16'
-                g16, stderr = ssh.send_command_to_server(cmd)
+                g16, _ = ssh.send_command_to_server(cmd)
                 if g03 or g09 or g16:
                     if diagnostics:
                         logging.info('Found Gaussian on {3}: g03={0}, g09={1}, g16={2}'.format(g03, g09, g16, server))
@@ -456,7 +456,7 @@ class ARC(object):
                 elif diagnostics:
                     logging.info('Did NOT find Gaussian on {3}: g03={0}, g09={1}, g16={2}'.format(g03, g09, g16, server))
                 cmd = '. ~/.bashrc; which qchem'
-                qchem, stderr = ssh.send_command_to_server(cmd)
+                qchem, _ = ssh.send_command_to_server(cmd)
                 if qchem:
                     if diagnostics:
                         logging.info('Found QChem on {0}'.format(server))
@@ -465,7 +465,7 @@ class ARC(object):
                 elif diagnostics:
                     logging.info('Did NOT find QChem on {0}'.format(server))
                 cmd = '. .bashrc; which molpro'
-                molpro, stderr = ssh.send_command_to_server(cmd)
+                molpro, _ = ssh.send_command_to_server(cmd)
                 if molpro:
                     if diagnostics:
                         logging.info('Found Molpro on {0}'.format(server))
@@ -503,7 +503,7 @@ def delete_all_arc_jobs(server_list):
         logging.info('Deleting all ARC jobs from {0}'.format(server))
         cmd = check_status_command[servers[server]['cluster_soft']] + ' -u ' + servers[server]['un']
         ssh = SSH_Client(server)
-        stdout, stderr = ssh.send_command_to_server(cmd)
+        stdout, _ = ssh.send_command_to_server(cmd)
         for status_line in stdout:
             s = re.search(' a\d+', status_line)
             if s is not None:

@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # encoding: utf-8
 
+from __future__ import (absolute_import, division, print_function, unicode_literals)
 import logging
 import numpy as np
 import math
@@ -56,7 +57,7 @@ def show_sticks(xyz):
         rd_index = rd_inds[atom]
         indx_map[xyz_index] = rd_index
     conf = rd_mol.GetConformer(id=0)
-    for i in xrange(rd_mol.GetNumAtoms()):  # reset atom coordinates
+    for i in range(rd_mol.GetNumAtoms()):  # reset atom coordinates
         conf.SetAtomPosition(indx_map[i], coordinates[i])
 
     mb = Chem.MolToMolBlock(rd_mol)

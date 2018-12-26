@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # encoding: utf-8
 
+from __future__ import (absolute_import, division, print_function, unicode_literals)
 import paramiko
 import logging
 import os
@@ -45,10 +46,10 @@ class SSH_Client(object):
         except:
             return '', 'paramiko failed to connect'
         if remote_path != '':
-            # execute command in remote_path directory. Since each `.exec_command()` is a single session,
-            # this must to be added to all commands.
+            # execute command in remote_path directory.
+            # Since each `.exec_command()` is a single session, `cd` has to be added to all commands.
             command = 'cd {0}'.format(remote_path) + '; ' + command
-        stdin, stdout, stderr = ssh.exec_command(command)
+        _, stdout, stderr = ssh.exec_command(command)
         stdout = stdout.readlines()
         stderr = stderr.readlines()
         ssh.close()
@@ -120,7 +121,7 @@ class SSH_Client(object):
         rmg: '14428     debug xq1371m2   user_name  R 50-04:04:46      1 node06'
         """
         cmd = check_status_command[servers[self.server]['cluster_soft']] + ' -u ' + servers[self.server]['un']
-        stdout, stderr = self.send_command_to_server(cmd)
+        stdout, _ = self.send_command_to_server(cmd)
         for status_line in stdout:
             if str(job_id) in status_line:
                 break
@@ -153,7 +154,7 @@ class SSH_Client(object):
         """
         running_jobs_ids = list()
         cmd = check_status_command[servers[self.server]['cluster_soft']] + ' -u ' + servers[self.server]['un']
-        stdout, stderr = self.send_command_to_server(cmd)
+        stdout, _ = self.send_command_to_server(cmd)
         for i, status_line in enumerate(stdout):
             if (self.server == 'rmg' and i > 0) or (self.server == 'pharos' and i > 1):
                 running_jobs_ids.append(int(status_line.split()[0]))
