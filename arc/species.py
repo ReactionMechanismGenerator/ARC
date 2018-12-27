@@ -48,6 +48,8 @@ class ARCSpecies(object):
     'adjlist'               ``str``      The Adjacency List structure.
     'mol'                   ``Molecule`` An RMG:Molecule object used for BAC determination.
                                            Does not correctly describe bond orders.
+    'xyz_mol'               ``Molecule`` An RMG:Molecule object derived from the given xyz coordinates, if available
+    'mol_list'              ``list``     A list of localized structures generated from 'mol', if possible
     'bond_corrections'      ``dict``     The bond additivity corrections (BAC) to be used. Determined from the structure
                                            if not directly given.
     't0'                    ``float``    Initial time when the first species job was spawned
@@ -77,6 +79,7 @@ class ARCSpecies(object):
             self.bond_corrections = bond_corrections
 
         self.mol = mol
+        self.xyz_mol = None
         self.mol_no_bond_info = None
         self.initial_xyz = xyz
 
@@ -142,6 +145,10 @@ class ARCSpecies(object):
             self.mol_list = [mol]
             self.number_of_atoms = len(mol.atoms)
         else:
+            if self.initial_xyz is not None:
+                # Both xyz and structure were given. Make sure the atom order is synced
+                # (important for identifying rotor indices)
+                self.xyz_mol, _ = mol_from_xyz(self.initial_xyz)
             self.mol_list = self.mol.generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
             if not bond_corrections:
                 self.determine_bond_corrections()
@@ -224,7 +231,11 @@ class ARCSpecies(object):
         The resulting rotors are saved in {'pivots': [1, 3], 'top': [3, 7], 'scan': [2, 1, 3, 7]} format
         in self.species_dict[species.label]['rotors_dict']. Also updates 'number_of_rotors'.
         """
-        for mol in self.mol_list:
+        if self.xyz_mol is not None:
+            mol_list = [self.xyz_mol]
+        else:
+            mol_list = self.mol_list
+        for mol in mol_list:
             rotors = find_internal_rotors(mol)
             for new_rotor in rotors:
                 for existing_rotor in self.rotors_dict.values():
@@ -248,7 +259,6 @@ class ARCSpecies(object):
         All bonded atoms are moved accordingly. The result is saved in self.initial_xyz.
         `pivots` is used to identify the rotor.
         """
-        # TODO: show 3D structure before and after the change
         if deg_increment == 0:
             logging.warning('set_dihedral was called with zero increment for {label} with pivots {pivots}'.format(
                 label=self.label, pivots=pivots))
@@ -273,7 +283,7 @@ class ARCSpecies(object):
             coordinates = list()
             for line in self.final_xyz.split('\n'):
                 if line:
-                    atom = Atom(element=line.split()[0])
+                    atom = Atom(element=str(line.split()[0]))
                     coordinates.append([float(line.split()[1]), float(line.split()[2]), float(line.split()[3])])
                     atom.coords = np.array(coordinates[-1], np.float64)
                     mol.addAtom(atom)
@@ -453,7 +463,6 @@ def find_internal_rotors(mol):
     Locates the sets of indices corresponding to every internal rotor.
     Returns for each rotors the gaussian scan coordinates, the pivots and the top.
     """
-    # TODO: find rotors for xyz input
     rotors = []
     for atom1 in mol.vertices:
         if atom1.isNonHydrogen():
@@ -585,7 +594,7 @@ def determine_occ(label, xyz, charge):
     electrons = 0
     for line in xyz.split('\n'):
         if line:
-            atom = Atom(element=line.split()[0])
+            atom = Atom(element=str(line.split()[0]))
             electrons += atom.number
     electrons -= charge
 
@@ -597,10 +606,11 @@ def mol_from_xyz(xyz):
     mol = Molecule()
     coordinates = list()
     for line in xyz.split('\n'):
-        atom = Atom(element=line.split()[0])
-        coordinates.append([float(line.split()[1]), float(line.split()[2]), float(line.split()[3])])
-        atom.coords = np.array(coordinates[-1], np.float64)
-        mol.addAtom(atom)
+        if line:
+            atom = Atom(element=str(line.split()[0]))
+            coordinates.append([float(line.split()[1]), float(line.split()[2]), float(line.split()[3])])
+            atom.coords = np.array(coordinates[-1], np.float64)
+            mol.addAtom(atom)
     mol.connectTheDots()  # only adds single bonds, but we don't care
     return mol, coordinates
 

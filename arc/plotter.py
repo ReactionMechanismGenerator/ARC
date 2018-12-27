@@ -42,7 +42,7 @@ def show_sticks(xyz):
     coordinates = list()
     for line in xyz.split('\n'):
         if line:
-            atom = Atom(element=line.split()[0])
+            atom = Atom(element=str(line.split()[0]))
             coordinates.append([float(line.split()[1]), float(line.split()[2]), float(line.split()[3])])
             atom.coords = np.array(coordinates[-1], np.float64)
             mol.addAtom(atom)
@@ -90,5 +90,3 @@ def log_thermo(label, path):
             line = f.readline()
     logging.info(thermo_block)
     logging.info('\n')
-
-
