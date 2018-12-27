@@ -259,7 +259,6 @@ class ARCSpecies(object):
         All bonded atoms are moved accordingly. The result is saved in self.initial_xyz.
         `pivots` is used to identify the rotor.
         """
-        # TODO: show 3D structure before and after the change
         if deg_increment == 0:
             logging.warning('set_dihedral was called with zero increment for {label} with pivots {pivots}'.format(
                 label=self.label, pivots=pivots))
@@ -284,7 +283,7 @@ class ARCSpecies(object):
             coordinates = list()
             for line in self.final_xyz.split('\n'):
                 if line:
-                    atom = Atom(element=line.split()[0])
+                    atom = Atom(element=str(line.split()[0]))
                     coordinates.append([float(line.split()[1]), float(line.split()[2]), float(line.split()[3])])
                     atom.coords = np.array(coordinates[-1], np.float64)
                     mol.addAtom(atom)
@@ -464,7 +463,6 @@ def find_internal_rotors(mol):
     Locates the sets of indices corresponding to every internal rotor.
     Returns for each rotors the gaussian scan coordinates, the pivots and the top.
     """
-    # TODO: find rotors for xyz input
     rotors = []
     for atom1 in mol.vertices:
         if atom1.isNonHydrogen():
@@ -596,7 +594,7 @@ def determine_occ(label, xyz, charge):
     electrons = 0
     for line in xyz.split('\n'):
         if line:
-            atom = Atom(element=line.split()[0])
+            atom = Atom(element=str(line.split()[0]))
             electrons += atom.number
     electrons -= charge
 
