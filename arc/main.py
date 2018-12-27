@@ -13,7 +13,7 @@ from rmgpy.species import Species
 from rmgpy.reaction import Reaction
 
 from arc.settings import arc_path, default_levels_of_theory, check_status_command, servers
-from arc.scheduler import Scheduler
+from arc.scheduler import Scheduler, time_lapse
 from arc.exceptions import InputError, SettingsError
 from arc.species import ARCSpecies
 from arc.processor import Processor
@@ -308,14 +308,7 @@ class ARC(object):
         Output a footer to the log.
         """
         logging.log(level, '')
-        t = time.time() - self.t0
-        m, s = divmod(t, 60)
-        h, m = divmod(m, 60)
-        d, h = divmod(h, 24)
-        if d > 0:
-            d = str(d) + ' days, '
-        else:
-            d = ''
+        d, h, m, s = time_lapse(t0=self.t0)
         logging.log(level, 'Total execution time: {0}{1:02.0f}:{2:02.0f}:{3:02.0f}'.format(d,h,m,s))
         logging.log(level, 'ARC execution terminated on {0}'.format(time.asctime()))
 

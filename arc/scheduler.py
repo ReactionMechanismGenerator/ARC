@@ -1052,14 +1052,7 @@ class Scheduler(object):
         status = self.output[label]['status']
         if 'error' not in status and ('composite converged' in status or ('sp converged' in status and
                 (self.species_dict[label].number_of_atoms == 1 or ('freq converged' in status and 'opt converged' in status)))):
-            t = time.time() - self.species_dict[label].t0
-            m, s = divmod(t, 60)
-            h, m = divmod(m, 60)
-            d, h = divmod(h, 24)
-            if d > 0:
-                d = str(d) + ' days, '
-            else:
-                d = ''
+            d, h, m, s = time_lapse(t0=self.species_dict[label].t0)
             logging.info('\nAll jobs for species {0} successfully converged.'
                          ' Elapsed time: {1}{2:02.0f}:{3:02.0f}:{4:02.0f}'.format(label,d,h,m,s))
             self.output[label]['status'] = 'converged'
@@ -1078,3 +1071,16 @@ class Scheduler(object):
                     logging.debug('Deleted job {0}'.format(job_name))
                     job.delete()
         self.running_jobs[label] = list()
+
+
+def time_lapse(t0):
+    """A helper function returning the elapsed time since t0"""
+    t = time.time() - t0
+    m, s = divmod(t, 60)
+    h, m = divmod(m, 60)
+    d, h = divmod(h, 24)
+    if d > 0:
+        d = str(d) + ' days, '
+    else:
+        d = ''
+    return d, h, m, s
