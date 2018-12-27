@@ -89,17 +89,20 @@ class ARCSpecies(object):
                 raise SpeciesError('label must be specified for an ARCSpecies object.')
             else:
                 self.label = label
+            if not self.is_ts and rmg_species is None and mol is None and xyz is None and not smiles and not adjlist:
+                raise SpeciesError('No structure (xyz, SMILES, adjList, RMG:Species, or RMG:Molecule) was given for'
+                                   ' species {0}'.format(self.label))
             if multiplicity is None:
                 raise SpeciesError('No multiplicity was specified for {0}.'.format(self.label))
             if charge is None:
                 raise SpeciesError('No charge was specified for {0}.'.format(self.label))
-            if adjlist and not mol:
+            if adjlist and mol is None:
                 self.mol = Molecule().fromAdjacencyList(adjlist=adjlist)
-            elif smiles and not mol:
+            elif smiles and mol is None:
                 self.mol = Molecule(SMILES=smiles)
             if not self.is_ts and not smiles and not adjlist and not mol:
-                logging.warn('No structure (SMILES, adjList, or an RMG:Species object) was given for species {0},'
-                             ' NOT using bond additivity corrections (BAC) for thermo computation'.format(label))
+                logging.warn('No structure (SMILES, adjList, RMG:Species, or RMG:Molecule) was given for species {0},'
+                             ' NOT using bond additivity corrections (BAC) for thermo computation'.format(self.label))
             if multiplicity < 1:
                 raise SpeciesError('Multiplicity for species {0} is lower than 1 (got {1})'.format(
                     self.label, multiplicity))
@@ -287,9 +290,10 @@ class ARCSpecies(object):
         """
         Determine external symmetry and optical isomers
         """
+        xyz = self.final_xyz if self.final_xyz is not None else self.initial_xyz
         atom_numbers = list()  # List of atomic numbers
         coordinates = list()
-        for line in self.final_xyz.split('\n'):
+        for line in xyz.split('\n'):
             if line:
                 atom_numbers.append(getElement(str(line.split()[0])).number)
                 coordinates.append([float(line.split()[1]), float(line.split()[2]), float(line.split()[3])])

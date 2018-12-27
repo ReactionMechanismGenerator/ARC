@@ -488,7 +488,7 @@ class Scheduler(object):
         if job.job_status[1] == 'done':
             log = Log(path='')
             log.determine_qm_software(fullpath=job.local_path_to_output_file)
-            coord, number, mass = log.software_log.loadGeometry()
+            coord, number, _ = log.software_log.loadGeometry()
             self.species_dict[label].final_xyz = get_xyz_matrix(xyz=coord, number=number)
             self.output[label]['status'] += 'composite converged; '
             self.output[label]['composite'] = os.path.join(job.local_path, 'output.out')

@@ -1,12 +1,10 @@
 #!/usr/bin/env python
 # encoding: utf-8
 
+import os
 
 ##################################################################
 
-# Modifications to this file aren't tracked by git
-
-arc_path = '/home/alongd/Code/ARC/'  # on local machine
 
 servers = {
     'server1': {
@@ -77,6 +75,8 @@ default_levels_of_theory = {'conformer': 'b97-d3/6-311+g(d,p)',
                             'gsm': 'b3lyp/6-31+g(d)',
                             'freq_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of the CBS-QB3 method
 }
+
+arc_path = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))  # absolute path to the ARC folder
 
 # A scan with better resolution (lower number here) takes more time to compute,
 # but the automatically-derived rotor symmetry number is more likely to be correct.
