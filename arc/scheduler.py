@@ -555,7 +555,7 @@ class Scheduler(object):
         if job.job_status[1] == 'done':
             if not os.path.isfile(job.local_path_to_output_file):
                 raise SchedulerError('Called check_freq_job with no output file')
-            parser = cclib.io.ccopen(job.local_path_to_output_file)
+            parser = cclib.io.ccopen(str(job.local_path_to_output_file))
             data = parser.parse()
             freq_ok = self.check_negative_freq(label=label, job=job, vibfreqs=data.vibfreqs)
             if not self.species_dict[label].is_ts and not freq_ok:
@@ -727,7 +727,7 @@ class Scheduler(object):
         We take  +/-1.1 displacements, generating several initial geometries, and running them as conformers
         """
         factor = 1.1
-        parser = cclib.io.ccopen(job.local_path_to_output_file)
+        parser = cclib.io.ccopen(str(job.local_path_to_output_file))
         data = parser.parse()
         vibfreqs = data.vibfreqs
         vibdisps = data.vibdisps

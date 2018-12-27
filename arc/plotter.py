@@ -43,7 +43,7 @@ def show_sticks(xyz):
         mol, coordinates = mol_from_xyz(xyz)
     except AtomTypeError:
         return
-    conf, rd_mol, indx_map = rdkit_conf_from_mol(mol, coordinates)
+    _, rd_mol, _ = rdkit_conf_from_mol(mol, coordinates)
     mb = Chem.MolToMolBlock(rd_mol)
     p = py3Dmol.view(width=400, height=400)
     p.addModel(mb, 'sdf')

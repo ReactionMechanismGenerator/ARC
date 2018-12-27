@@ -291,12 +291,12 @@ class ARCSpecies(object):
         coordinates = list()
         for line in self.final_xyz.split('\n'):
             if line:
-                atom_numbers.append(getElement(line.split()[0]).number)
+                atom_numbers.append(getElement(str(line.split()[0])).number)
                 coordinates.append([float(line.split()[1]), float(line.split()[2]), float(line.split()[3])])
         coordinates = np.array(coordinates, np.float64)  # N x 3 numpy.ndarray of atomic coordinates
         #  in the same order as `atom_numbers`
         unique_id = '0'  # Just some name that the SYMMETRY code gives to one of its jobs
-        scr_dir = os.path.join(arc_path, 'scratch')  # Scratch directory that the SYMMETRY code writes its files in
+        scr_dir = os.path.join(arc_path, str('scratch'))  # Scratch directory that the SYMMETRY code writes its files in
         if not os.path.exists(scr_dir):
             os.makedirs(scr_dir)
         symmetry = optical_isomers = 1
@@ -304,10 +304,10 @@ class ARCSpecies(object):
             groundStateDegeneracy=1,  # Only needed to check if valid QMData
             numberOfAtoms=len(atom_numbers),
             atomicNumbers=atom_numbers,
-            atomCoords=(coordinates, 'angstrom'),
-            energy=(0.0, 'kcal/mol')  # Only needed to avoid error
+            atomCoords=(coordinates, str('angstrom')),
+            energy=(0.0, str('kcal/mol'))  # Only needed to avoid error
         )
-        settings = type("", (), dict(symmetryPath='symmetry', scratchDirectory=scr_dir))()  # Creates anonymous class
+        settings = type(str(''), (), dict(symmetryPath=str('symmetry'), scratchDirectory=scr_dir))()  # Creates anonymous class
         pgc = PointGroupCalculator(settings, unique_id, qmdata)
         pg = pgc.calculate()
         if pg is not None:
@@ -326,11 +326,11 @@ class ARCSpecies(object):
                 if atom2 not in explored_atoms:
                     bac = atom1.symbol
                     if bond12.isSingle():
-                        bac += '-'
+                        bac += str('-')
                     elif bond12.isDouble():
-                        bac += '='
+                        bac += str('=')
                     elif bond12.isTriple():
-                        bac += '#'
+                        bac += str('#')
                     else:
                         break
                     bac += atom2.symbol
