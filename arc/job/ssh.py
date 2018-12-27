@@ -63,11 +63,7 @@ class SSH_Client(object):
         if local_file_path and not os.path.isfile(local_file_path):
             raise InputError('Cannot upload a non-existing file.'
                              ' Check why file in path {0} is missing.'.format(local_file_path))
-        ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.load_system_host_keys(filename=self.key)
-        ssh.connect(hostname=self.address, username=self.un)
-        sftp = ssh.open_sftp()
+        sftp, ssh = self.connect()
         with sftp.open(remote_file_path, "w") as f_remote:
             if file_string:
                 f_remote.write(file_string)
@@ -85,11 +81,7 @@ class SSH_Client(object):
         """
         Download a file from `remote_file_path` to `local_file_path`.
         """
-        ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.load_system_host_keys(filename=self.key)
-        ssh.connect(hostname=self.address, username=self.un)
-        sftp = ssh.open_sftp()
+        sftp, ssh = self.connect()
         sftp.get(remotepath=remote_file_path, localpath=local_file_path)
         sftp.close()
         ssh.close()
@@ -99,14 +91,8 @@ class SSH_Client(object):
         Read a remote file. `remote_path` is the remote path (required), a `filename` is also required.
         Returns the file's content.
         """
-        ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.load_system_host_keys(filename=self.key)
-        ssh.connect(hostname=self.address, username=self.un)
-        sftp = ssh.open_sftp()
-
+        sftp, ssh = self.connect()
         full_path = os.path.join(remote_path, filename)
-
         with sftp.open(full_path, "r") as f_remote:
             content = f_remote.readlines()
         sftp.close()
@@ -174,6 +160,16 @@ class SSH_Client(object):
         if len(stderr) > 0:
             job_status = 'errored'
         return job_status, job_id
+
+    def connect(self):
+        """A helper function for connecting via paramiko, returns the `sftp` and `ssh` objects"""
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        ssh.load_system_host_keys(filename=self.key)
+        ssh.connect(hostname=self.address, username=self.un)
+        sftp = ssh.open_sftp()
+        return sftp, ssh
+
 
 # TODO: troubleshoot for job stuck on pharos in bad node. Also, if rmgs says 'priority', change node until 8
 # TODO: delete scratch files of a failed job: ssh nodeXX; rm scratch/dhdhdhd/job_number
