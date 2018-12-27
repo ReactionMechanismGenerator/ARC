@@ -606,10 +606,11 @@ def mol_from_xyz(xyz):
     mol = Molecule()
     coordinates = list()
     for line in xyz.split('\n'):
-        atom = Atom(element=line.split()[0])
-        coordinates.append([float(line.split()[1]), float(line.split()[2]), float(line.split()[3])])
-        atom.coords = np.array(coordinates[-1], np.float64)
-        mol.addAtom(atom)
+        if line:
+            atom = Atom(element=str(line.split()[0]))
+            coordinates.append([float(line.split()[1]), float(line.split()[2]), float(line.split()[3])])
+            atom.coords = np.array(coordinates[-1], np.float64)
+            mol.addAtom(atom)
     mol.connectTheDots()  # only adds single bonds, but we don't care
     return mol, coordinates
 
