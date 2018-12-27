@@ -183,16 +183,7 @@ class ARCSpecies(object):
         else:
             logging.warn('Generating conformers for species {0}, without bond order information (using coordinates'
                          ' only).'.format(self.label))
-            mol, coordinates = mol_from_xyz(self.initial_xyz)
-            rd_mol, rd_inds = mol.toRDKitMol(removeHs=False, returnMapping=True)
-            Chem.AllChem.EmbedMolecule(rd_mol)  # unfortunately, this mandatory embedding changes the coordinates
-            indx_map = dict()
-            for xyz_index, atom in enumerate(mol.atoms):  # generate an atom index mapping dictionary
-                rd_index = rd_inds[atom]
-                indx_map[xyz_index] = rd_index
-            conf = rd_mol.GetConformer(id=0)
-            for i in range(rd_mol.GetNumAtoms()):  # reset atom coordinates
-                conf.SetAtomPosition(indx_map[i], coordinates[i])
+            mol, _ = mol_from_xyz(self.initial_xyz)
             self.find_conformers(mol, method='rdkit')
             for xyz in self.xyzs:
                 self.conformers.append(xyz)
@@ -280,16 +271,7 @@ class ARCSpecies(object):
             for i, _ in enumerate(scan):
                 scan[i] -= 1  # atom indices start from 0, but atom labels (as in scan) start from 1
             mol, coordinates = mol_from_xyz(self.final_xyz)
-            rd_mol, rd_inds = mol.toRDKitMol(removeHs=False, returnMapping=True)
-            Chem.AllChem.EmbedMolecule(rd_mol)  # unfortunately, this mandatory embedding changes the coordinates
-            indx_map = dict()
-            for xyz_index, atom in enumerate(mol.atoms):  # generate an atom index mapping dictionary
-                rd_index = rd_inds[atom]
-                indx_map[xyz_index] = rd_index
-            conf = rd_mol.GetConformer(id=0)
-            for i in range(rd_mol.GetNumAtoms()):  # reset atom coordinates
-                conf.SetAtomPosition(indx_map[i], coordinates[i])
-
+            conf, rd_mol, indx_map = rdkit_conf_from_mol(mol, coordinates)
             rd_scan = [indx_map[scan[i]] for i in range(4)]  # convert the atom indices in `scan` to RDkit indices
 
             deg0 = rdmt.GetDihedralDeg(conf, rd_scan[0], rd_scan[1], rd_scan[2], rd_scan[3])  # get the original dihedral
@@ -305,7 +287,6 @@ class ARCSpecies(object):
         """
         Determine external symmetry and optical isomers
         """
-        # TODO: test this on several benchmark species
         atom_numbers = list()  # List of atomic numbers
         coordinates = list()
         for line in self.final_xyz.split('\n'):
@@ -605,3 +586,17 @@ def mol_from_xyz(xyz):
             mol.addAtom(atom)
     mol.connectTheDots()  # only adds single bonds, but we don't care
     return mol, coordinates
+
+
+def rdkit_conf_from_mol(mol, coordinates):
+    """A helper function generating a RDKit:Conformer object from an RMG:Molecule object"""
+    rd_mol, rd_inds = mol.toRDKitMol(removeHs=False, returnMapping=True)
+    Chem.AllChem.EmbedMolecule(rd_mol)  # unfortunately, this mandatory embedding changes the coordinates
+    indx_map = dict()
+    for xyz_index, atom in enumerate(mol.atoms):  # generate an atom index mapping dictionary
+        rd_index = rd_inds[atom]
+        indx_map[xyz_index] = rd_index
+    conf = rd_mol.GetConformer(id=0)
+    for i in range(rd_mol.GetNumAtoms()):  # reset atom coordinates
+        conf.SetAtomPosition(indx_map[i], coordinates[i])
+    return conf, rd_mol, indx_map
