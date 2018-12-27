@@ -10,8 +10,9 @@ import matplotlib.pyplot as plt
 import py3Dmol
 from rdkit import Chem
 
-from rmgpy.molecule.molecule import Atom, Molecule
 from rmgpy.exceptions import AtomTypeError
+
+from arc.species import mol_from_xyz, rdkit_conf_from_mol
 
 
 ##################################################################
@@ -38,28 +39,11 @@ def show_sticks(xyz):
     """
     Draws the molecule in a "sticks" style according to supplied xyz coordinates
     """
-    mol = Molecule()
-    coordinates = list()
-    for line in xyz.split('\n'):
-        if line:
-            atom = Atom(element=str(line.split()[0]))
-            coordinates.append([float(line.split()[1]), float(line.split()[2]), float(line.split()[3])])
-            atom.coords = np.array(coordinates[-1], np.float64)
-            mol.addAtom(atom)
     try:
-        mol.connectTheDots()  # only adds single bonds, but we don't care
+        mol, coordinates = mol_from_xyz(xyz)
     except AtomTypeError:
         return
-    rd_mol, rd_inds = mol.toRDKitMol(removeHs=False, returnMapping=True)
-    Chem.AllChem.EmbedMolecule(rd_mol)  # unfortunately, this mandatory embedding changes the coordinates
-    indx_map = dict()
-    for xyz_index, atom in enumerate(mol.atoms):  # generate an atom index mapping dictionary
-        rd_index = rd_inds[atom]
-        indx_map[xyz_index] = rd_index
-    conf = rd_mol.GetConformer(id=0)
-    for i in range(rd_mol.GetNumAtoms()):  # reset atom coordinates
-        conf.SetAtomPosition(indx_map[i], coordinates[i])
-
+    _, rd_mol, _ = rdkit_conf_from_mol(mol, coordinates)
     mb = Chem.MolToMolBlock(rd_mol)
     p = py3Dmol.view(width=400, height=400)
     p.addModel(mb, 'sdf')
