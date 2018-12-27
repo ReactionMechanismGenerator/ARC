@@ -287,9 +287,10 @@ class ARCSpecies(object):
         """
         Determine external symmetry and optical isomers
         """
+        xyz = self.final_xyz if self.final_xyz is not None else self.initial_xyz
         atom_numbers = list()  # List of atomic numbers
         coordinates = list()
-        for line in self.final_xyz.split('\n'):
+        for line in xyz.split('\n'):
             if line:
                 atom_numbers.append(getElement(str(line.split()[0])).number)
                 coordinates.append([float(line.split()[1]), float(line.split()[2]), float(line.split()[3])])
