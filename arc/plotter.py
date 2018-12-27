@@ -13,6 +13,8 @@ from rdkit import Chem
 from rmgpy.molecule.molecule import Atom, Molecule
 from rmgpy.exceptions import AtomTypeError
 
+from arc.species import mol_from_xyz
+
 
 ##################################################################
 
@@ -38,16 +40,8 @@ def show_sticks(xyz):
     """
     Draws the molecule in a "sticks" style according to supplied xyz coordinates
     """
-    mol = Molecule()
-    coordinates = list()
-    for line in xyz.split('\n'):
-        if line:
-            atom = Atom(element=str(line.split()[0]))
-            coordinates.append([float(line.split()[1]), float(line.split()[2]), float(line.split()[3])])
-            atom.coords = np.array(coordinates[-1], np.float64)
-            mol.addAtom(atom)
     try:
-        mol.connectTheDots()  # only adds single bonds, but we don't care
+        mol, coordinates = mol_from_xyz(xyz)
     except AtomTypeError:
         return
     rd_mol, rd_inds = mol.toRDKitMol(removeHs=False, returnMapping=True)

@@ -279,15 +279,7 @@ class ARCSpecies(object):
                 raise RotorError('Rotors for {0} were set beyond the maximal number of times without converging')
             for i, _ in enumerate(scan):
                 scan[i] -= 1  # atom indices start from 0, but atom labels (as in scan) start from 1
-            mol = Molecule()
-            coordinates = list()
-            for line in self.final_xyz.split('\n'):
-                if line:
-                    atom = Atom(element=str(line.split()[0]))
-                    coordinates.append([float(line.split()[1]), float(line.split()[2]), float(line.split()[3])])
-                    atom.coords = np.array(coordinates[-1], np.float64)
-                    mol.addAtom(atom)
-            mol.connectTheDots()  # only adds single bonds, but we don't care
+            mol, coordinates = mol_from_xyz(self.final_xyz)
             rd_mol, rd_inds = mol.toRDKitMol(removeHs=False, returnMapping=True)
             Chem.AllChem.EmbedMolecule(rd_mol)  # unfortunately, this mandatory embedding changes the coordinates
             indx_map = dict()
@@ -613,13 +605,3 @@ def mol_from_xyz(xyz):
             mol.addAtom(atom)
     mol.connectTheDots()  # only adds single bonds, but we don't care
     return mol, coordinates
-
-
-# TODO: isomorphism check for final conformer
-# TODO: solve chirality issues? How can I get the N4 isomer?
-#  RDkit has 'FindMolChiralCenters'
-# and rdkit.Chem.rdmolops.AssignAtomChiralTagsFromStructure, rdkit.Chem.rdmolops.AssignStereochemistry
-# TODO: parse spin contamination and multireference characteristic from sp file in output dictionary
-# TODO: spin contamination (in molpro, this is in the **output.log** file(!) as
-#  "Spin contamination <S**2-Sz**2-Sz>     0.00000000")
-
