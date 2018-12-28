@@ -5,26 +5,14 @@ import os
 
 ##################################################################
 
-
-servers = {
-    'server1': {
-        'cluster_soft': 'OGE',  # Oracle Grid Engine
-        'adddress': 'server1.host.edu',
-        'un': 'username',
-        'key': 'rsa key path',
-    },
-    'server2': {
-        'cluster_soft': 'Slurm',  # Simple Linux Utility for Resource Management
-        'adddress': 'server2.host.edu',
-        'un': 'username',
-        'key': 'rsa key path',
-    }
-}
-
 # If ARC is run locally and communication with servers is desired,
 # complete the following server dictionary.
-# Note that the order matters, and that if two serers have the same ESS installed,
-# ARC will used the copy on the latest server it finds it on.
+# Instructions for RSA key generation can be found here:
+# https://www.digitalocean.com/community/tutorials/how-to-set-up-ssh-keys--2
+# The `precedence` key is optional, and will cause ARC to use the respective server
+# for the specified ESS even if it finds it first on a different server.
+# If this aut-ESS determination method doesn't work for you, you could also
+# just pass an `ess_settings` dictionary to ARC() with the desired software/server as keys/values.
 # servers = {
 #     'pharos': {
 #         'cluster_soft': 'OGE',  # Oracle Grid Engine (Sun Grin Engine)
@@ -39,7 +27,21 @@ servers = {
 #         'key': '/home/<username>/.ssh/id_rsa',
 #     }
 # }
-
+servers = {
+    'server1': {
+        'cluster_soft': 'OGE',  # Oracle Grid Engine
+        'adddress': 'server1.host.edu',
+        'un': '<username>',
+        'key': 'path_to_rsa_key',
+        'precedence': 'molpro',
+    },
+    'server2': {
+        'cluster_soft': 'Slurm',  # Simple Linux Utility for Resource Management
+        'adddress': 'server2.host.edu',
+        'un': '<username>',
+        'key': 'path_to_rsa_key',
+    }
+}
 
 check_status_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat',
                         'Slurm': '/usr/bin/squeue'}
