@@ -29,5 +29,5 @@ htmlcov/*
 # Scratch
 scratch/
 
-# scv database
+# csv database
 *.csv
