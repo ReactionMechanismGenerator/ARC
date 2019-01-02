@@ -87,4 +87,4 @@ rotor_scan_resolution = 5.0  # degrees. Default: 5.0
 # rotor validation parameters
 inconsistency_az = 5   # maximum allowed inconsistency (kJ/mol) between initial and final rotor scan points. Default: 5
 inconsistency_ab = 10  # maximum allowed inconsistency (kJ/mol) between consecutive points in the scan. Default: 10
-maximum_barrier = 100  # maximum allowed barrier (kJ/mol) for a hindered rotor. Default: 100
+maximum_barrier = 40  # maximum allowed barrier (kJ/mol) for a hindered rotor. Default: 40 (~10 kcal/mol)
