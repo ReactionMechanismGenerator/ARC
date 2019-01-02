@@ -40,7 +40,7 @@ class Processor(object):
 
     def process(self):
         for species in self.species_dict.values():
-            if self.output[species.label]['status'] == 'converged' and not species.is_ts:
+            if self.output[species.label]['status'] == 'converged' and species.thermo:
                 linear = False  # TODO
                 species.determine_symmetry()
                 multiplicity = species.multiplicity

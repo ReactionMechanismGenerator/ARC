@@ -54,6 +54,7 @@ class ARCSpecies(object):
                                            if not directly given.
     't0'                    ``float``    Initial time when the first species job was spawned
     `neg_freqs_trshed`      ``list``     A list of negative frequencies this species was troubleshooted for
+    `thermo`                ``bool``     Whether ot not to calculate thermodynamic properties for this species
     ====================== ============= ===============================================================================
 
     Dictionary structure:
@@ -68,8 +69,9 @@ class ARCSpecies(object):
                  }
     """
     def __init__(self, is_ts=False, rmg_species=None, mol=None, label=None, xyz=None, multiplicity=None, charge=None,
-                 smiles='', adjlist='', bond_corrections=None,):
+                 smiles='', adjlist='', bond_corrections=None, thermo=True):
         self.is_ts = is_ts
+        self.thermo = thermo if not self.is_ts else False
         self.t0 = None
 
         self.rmg_species = rmg_species
