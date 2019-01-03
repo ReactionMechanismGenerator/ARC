@@ -533,7 +533,7 @@ def find_internal_rotors(mol):
     return rotors
 
 
-def get_xyz_string(xyz, mol=None, number=None):
+def get_xyz_string(xyz, mol=None, number=None, symbol=None):
     """
     Convert list of lists xyz form:
     [[0.6616514836, 0.4027481525, -0.4847382281],
@@ -549,18 +549,25 @@ def get_xyz_string(xyz, mol=None, number=None):
     H   -0.4993010635    0.6531020442    1.0853092315
     H   -2.2115796924   -0.4529256762    0.4144516252
     H   -1.8113671395   -0.3268900681   -1.1468957003
-    The atom symbol is derived from either an RMG Molecule object (`mol`) or atom numbers ('number`).
+    The atom symbol is derived from either an RMG Molecule object (`mol`) or atom numbers ('number`)
+    or explicitly given (`symbol`).
     This function isn't defined as a method of ARCSpecies since it is also used when parsing opt geometry in Scheduler
     """
-    if mol is None and number is None:
-        raise ValueError("Must have either an RMG:Molecule object input as `mol`, or atomic numbers.")
     result = ''
+    if symbol is not None:
+        elements = symbol
+    elif number is not None:
+        elements = []
+        for num in number:
+            elements.append(getElement(int(num)).symbol)
+    elif mol is not None:
+        elements = []
+        for atom in mol.atoms:
+            elements.append(atom.element.symbol)
+    else:
+        raise ValueError("Must have either an RMG:Molecule object input as `mol`, or atomic numbers \ symbols.")
     for i, coord in enumerate(xyz):
-        if mol is not None:
-            element_label = mol.atoms[i].element.symbol
-        else:
-            element_label = getElement(int(number[i])).symbol
-        result += element_label + ' ' * (4 - len(element_label))
+        result += elements[i] + ' ' * (4 - len(elements[i]))
         for c in coord:
             result += '{0:14.8f}'.format(c)
         result += '\n'
