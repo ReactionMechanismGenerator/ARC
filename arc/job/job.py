@@ -421,10 +421,12 @@ $end
                 scan_string = ''.join([str(num) + ' ' for num in self.scan])
                 if not divmod(360, rotor_scan_resolution):
                     raise JobError('Scan job got an illegal rotor scan resolution of {0}'.format(rotor_scan_resolution))
-                self.scan = 'D ' + scan_string + 'S ' + str(int(360 / rotor_scan_resolution)) + ' ' +\
-                            '{0:10}'.format(float(rotor_scan_resolution))
+                scan_string = 'D ' + scan_string + 'S ' + str(int(360 / rotor_scan_resolution)) + ' ' +\
+                              '{0:10}'.format(float(rotor_scan_resolution))
             else:
                 raise ValueError('Currently rotor scan is only supported in gaussian')
+        else:
+            scan_string = ''
 
         if self.job_type == 'irc':  # TODO
             pass
@@ -450,7 +452,7 @@ $end
                 self.input = self.input.format(memory=self.memory, method=self.method, slash=slash,
                                                basis=self.basis_set, charge=self.charge, multiplicity=self.multiplicity,
                                                spin=self.spin, xyz=self.xyz, job_type_1=job_type_1,
-                                               job_type_2=job_type_2, scan=self.scan, restricted=restricted, fine=fine,
+                                               job_type_2=job_type_2, scan=scan_string, restricted=restricted, fine=fine,
                                                shift=self.shift, trsh=self.trsh)
             except KeyError as e:
                 logging.error('Could not interpret all input file keys in\n{0}'.format(self.input))
