@@ -287,7 +287,8 @@ class ARCSpecies(object):
             for i in range(rd_mol.GetNumAtoms()):
                 new_xyz.append([conf.GetAtomPosition(indx_map[i]).x, conf.GetAtomPosition(indx_map[i]).y,
                             conf.GetAtomPosition(indx_map[i]).z])
-            self.initial_xyz = get_xyz_string(new_xyz, mol=mol)
+            _, atoms, _, _, _ = get_xyz_matrix(self.final_xyz)
+            self.initial_xyz = get_xyz_string(new_xyz, symbol=atoms)
 
     def determine_symmetry(self):
         """
