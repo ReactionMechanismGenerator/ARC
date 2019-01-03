@@ -567,6 +567,39 @@ def get_xyz_string(xyz, mol=None, number=None):
     return result
 
 
+def get_xyz_matrix(xyz):
+    """
+    Convert a string xyz form:
+    C    0.6616514836    0.4027481525   -0.4847382281
+    N   -0.6039793084    0.6637270105    0.0671637135
+    H   -1.4226865648   -0.4973210697   -0.2238712255
+    H   -0.4993010635    0.6531020442    1.0853092315
+    H   -2.2115796924   -0.4529256762    0.4144516252
+    H   -1.8113671395   -0.3268900681   -1.1468957003
+    into a list of lists xyz form:
+    [[0.6616514836, 0.4027481525, -0.4847382281],
+    [-0.6039793084, 0.6637270105, 0.0671637135],
+    [-1.4226865648, -0.4973210697, -0.2238712255],
+    [-0.4993010635, 0.6531020442, 1.0853092315],
+    [-2.2115796924, -0.4529256762, 0.4144516252],
+    [-1.8113671395, -0.3268900681, -1.1468957003]]
+
+    Returns xyz as well as atoms, x, y, z seperately
+    """
+    x, y, z, atoms = [], [], [], []
+    for line in xyz.split('\n'):
+        if line:
+            atom, xx, yy, zz = line.split()
+            x.append(float(xx))
+            y.append(float(yy))
+            z.append(float(zz))
+            atoms.append(atom)
+    xyz = []
+    for i, _ in enumerate(x):
+        xyz.append([x[i], y[i], z[i]])
+    return xyz, atoms, x, y, z
+
+
 def determine_occ(label, xyz, charge):
     """
     Determines the number of occupied orbitals for an MRCI calculation
