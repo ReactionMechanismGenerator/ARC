@@ -38,12 +38,16 @@ def plot_rotor_scan(angle, v_list):
 def show_sticks(xyz):
     """
     Draws the molecule in a "sticks" style according to supplied xyz coordinates
+    Returns whether successful of not
     """
     try:
         mol, coordinates = mol_from_xyz(xyz)
     except AtomTypeError:
-        return
-    _, rd_mol, _ = rdkit_conf_from_mol(mol, coordinates)
+        return False
+    try:
+        _, rd_mol, _ = rdkit_conf_from_mol(mol, coordinates)
+    except ValueError:
+        return False
     mb = Chem.MolToMolBlock(rd_mol)
     p = py3Dmol.view(width=400, height=400)
     p.addModel(mb, 'sdf')
@@ -51,6 +55,7 @@ def show_sticks(xyz):
     # p.setBackgroundColor('0xeeeeee')
     p.zoomTo()
     p.show()
+    return True
 
 
 def log_thermo(label, path):
