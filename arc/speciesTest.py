@@ -11,7 +11,7 @@ import unittest
 from rmgpy.species import Species
 from rmgpy.molecule.molecule import Molecule
 
-from arc.species import ARCSpecies
+from arc.species import ARCSpecies, get_xyz_string, get_xyz_matrix, mol_from_xyz
 
 ################################################################################
 
@@ -177,6 +177,32 @@ class TestARCSpecies(unittest.TestCase):
         water.determine_symmetry()
         self.assertEqual(water.optical_isomers, 1)
         self.assertEqual(water.external_symmetry, 2)
+
+    def test_xyz_format_conversion(self):
+        """Test conversions from string to list xyz formats"""
+        xyz_str0 = """C       0.66165148    0.40274815   -0.48473823
+N      -0.60397931    0.66372701    0.06716371
+H      -1.42268656   -0.49732107   -0.22387123
+H      -0.49930106    0.65310204    1.08530923
+H      -2.21157969   -0.45292568    0.41445163
+H      -1.81136714   -0.32689007   -1.14689570
+"""
+
+        xyz_list, atoms, x, y, z = get_xyz_matrix(xyz_str0)
+
+        # test all forms of input into get_xyz_string():
+        xyz_str1 = get_xyz_string(xyz_list, symbol=atoms)
+        xyz_str2 = get_xyz_string(xyz_list, number=[6, 7, 1, 1, 1, 1])
+        mol, coordinates = mol_from_xyz(xyz_str0)
+        xyz_str3 = get_xyz_string(xyz_list, mol=mol)
+
+        self.assertEqual(xyz_str0, xyz_str1)
+        self.assertEqual(xyz_str1, xyz_str2)
+        self.assertEqual(xyz_str2, xyz_str3)
+        self.assertEqual(atoms, ['C', 'N', 'H', 'H', 'H', 'H'])
+        self.assertEqual(x, [0.66165148, -0.60397931, -1.42268656, -0.49930106, -2.21157969, -1.81136714])
+        self.assertEqual(y, [0.40274815, 0.66372701, -0.49732107, 0.65310204, -0.45292568, -0.32689007])
+        self.assertEqual(z, [-0.48473823, 0.06716371, -0.22387123, 1.08530923, 0.41445163, -1.1468957])
 
 ################################################################################
 
