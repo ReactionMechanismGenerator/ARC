@@ -48,7 +48,8 @@ class ARCSpecies(object):
     'adjlist'               ``str``      The Adjacency List structure.
     'mol'                   ``Molecule`` An RMG:`Molecule` object used for BAC determination.
                                            Does not necessarily describe bond orders.
-    'xyz_mol'               ``Molecule`` An RMG:Molecule object derived from the given xyz coordinates, if available
+    'xyz_mol'               ``Molecule`` An RMG:Molecule object derived from the given xyz coordinates, if available.
+                                           Used when a match between atom order in the molecule and in xyz is desired
     'mol_list'              ``list``     A list of localized structures generated from 'mol', if possible
     'bond_corrections'      ``dict``     The bond additivity corrections (BAC) to be used. Determined from the structure
                                            if not directly given.
@@ -180,20 +181,15 @@ class ARCSpecies(object):
         """
         Generate conformers using RDKit and OpenBabel for all representative localized structures of each species
         """
-        if self.mol:
-            for mol in self.mol_list:
-                self.find_conformers(mol)
-            for xyz in self.xyzs:
-                self.conformers.append(xyz)
-                self.conformer_energies.append(0.0)  # a placeholder (lists are synced)
+        if self.xyz_mol is not None:
+            mol_list = [self.xyz_mol]
         else:
-            logging.warn('Generating conformers for species {0}, without bond order information (using coordinates'
-                         ' only).'.format(self.label))
-            mol, _ = mol_from_xyz(self.initial_xyz)
-            self.find_conformers(mol, method='rdkit')
-            for xyz in self.xyzs:
-                self.conformers.append(xyz)
-                self.conformer_energies.append(0.0)  # a placeholder (lists are synced)
+            mol_list = self.mol_list
+        for mol in mol_list:
+            self.find_conformers(mol)
+        for xyz in self.xyzs:
+            self.conformers.append(xyz)
+            self.conformer_energies.append(0.0)  # a placeholder (lists are synced)
 
     def find_conformers(self, mol, method='all'):
         """
