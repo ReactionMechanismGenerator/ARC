@@ -46,8 +46,8 @@ class ARCSpecies(object):
     'number_of_atoms'       ``int``      The number of atoms in the species/TS
     'smiles'                ``str``      The SMILES structure. Either SMILES, adjList, or mol is required for BAC.
     'adjlist'               ``str``      The Adjacency List structure.
-    'mol'                   ``Molecule`` An RMG:Molecule object used for BAC determination.
-                                           Does not correctly describe bond orders.
+    'mol'                   ``Molecule`` An RMG:`Molecule` object used for BAC determination.
+                                           Does not necessarily describe bond orders.
     'xyz_mol'               ``Molecule`` An RMG:Molecule object derived from the given xyz coordinates, if available
     'mol_list'              ``list``     A list of localized structures generated from 'mol', if possible
     'bond_corrections'      ``dict``     The bond additivity corrections (BAC) to be used. Determined from the structure
@@ -55,6 +55,7 @@ class ARCSpecies(object):
     't0'                    ``float``    Initial time when the first species job was spawned
     `neg_freqs_trshed`      ``list``     A list of negative frequencies this species was troubleshooted for
     `thermo`                ``bool``     Whether ot not to calculate thermodynamic properties for this species
+    `rmg_species`           ``Species``  An RMG:`Species` object used for storing RMG's best estimation for thermo data
     ====================== ============= ===============================================================================
 
     Dictionary structure:
@@ -72,6 +73,7 @@ class ARCSpecies(object):
                  smiles='', adjlist='', bond_corrections=None, thermo=True):
         self.is_ts = is_ts
         self.thermo = thermo if not self.is_ts else False
+        self.rmg_species = None
         self.t0 = None
 
         self.rmg_species = rmg_species
@@ -82,7 +84,6 @@ class ARCSpecies(object):
 
         self.mol = mol
         self.xyz_mol = None
-        self.mol_no_bond_info = None
         self.initial_xyz = xyz
 
         if self.rmg_species is None:
