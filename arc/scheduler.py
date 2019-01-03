@@ -16,7 +16,7 @@ from arc import plotter
 from arc.job.job import Job
 from arc.exceptions import SpeciesError, SchedulerError
 from arc.job.ssh import SSH_Client
-from arc.species import ARCSpecies, get_xyz_matrix
+from arc.species import ARCSpecies, get_xyz_string
 from arc.settings import rotor_scan_resolution, inconsistency_ab, inconsistency_az, maximum_barrier
 
 ##################################################################
@@ -489,7 +489,7 @@ class Scheduler(object):
             log = Log(path='')
             log.determine_qm_software(fullpath=job.local_path_to_output_file)
             coord, number, _ = log.software_log.loadGeometry()
-            self.species_dict[label].final_xyz = get_xyz_matrix(xyz=coord, number=number)
+            self.species_dict[label].final_xyz = get_xyz_string(xyz=coord, number=number)
             self.output[label]['status'] += 'composite converged; '
             self.output[label]['composite'] = os.path.join(job.local_path, 'output.out')
             logging.info('\nOptimized geometry for {label} at {level}:\n{xyz}'.format(label=label,
@@ -528,7 +528,7 @@ class Scheduler(object):
             log = Log(path='')
             log.determine_qm_software(fullpath=job.local_path_to_output_file)
             coord, number, _ = log.software_log.loadGeometry()
-            self.species_dict[label].final_xyz = get_xyz_matrix(xyz=coord, number=number)
+            self.species_dict[label].final_xyz = get_xyz_string(xyz=coord, number=number)
             if not job.fine and self.fine:
                 # Run opt again using a finer grid.
                 xyz = self.species_dict[label].final_xyz
@@ -788,8 +788,8 @@ class Scheduler(object):
             displacement = vibdisps[neg_freq_idx]
             xyz1 = atomcoords + factor * displacement
             xyz2 = atomcoords - factor * displacement
-            self.species_dict[label].conformers.append(get_xyz_matrix(xyz=xyz1, number=atomnos))
-            self.species_dict[label].conformers.append(get_xyz_matrix(xyz=xyz2, number=atomnos))
+            self.species_dict[label].conformers.append(get_xyz_string(xyz=xyz1, number=atomnos))
+            self.species_dict[label].conformers.append(get_xyz_string(xyz=xyz2, number=atomnos))
             self.species_dict[label].conformer_energies.extend([0.0, 0.0])  # a placeholder (lists are synced)
         self.job_dict[label]['conformers'] = dict()  # initialize the conformer job dictionary
         for i, xyz in enumerate(self.species_dict[label].conformers):

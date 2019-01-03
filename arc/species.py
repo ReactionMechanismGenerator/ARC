@@ -213,11 +213,11 @@ class ARCSpecies(object):
             rd_xyzs, rd_energies = _get_possible_conformers_rdkit(mol)
             if rd_xyzs:
                 rd_xyz = get_min_energy_conformer(xyzs=rd_xyzs, energies=rd_energies)
-                self.xyzs.append(get_xyz_matrix(xyz=rd_xyz, mol=mol))
+                self.xyzs.append(get_xyz_string(xyz=rd_xyz, mol=mol))
         if opnbbl:
             ob_xyzs, ob_energies = _get_possible_conformers_openbabel(mol)
             ob_xyz = get_min_energy_conformer(xyzs=ob_xyzs, energies=ob_energies)
-            self.xyzs.append(get_xyz_matrix(xyz=ob_xyz, mol=mol))
+            self.xyzs.append(get_xyz_string(xyz=ob_xyz, mol=mol))
         logging.debug('Considering {actual} conformers for {label} out of {total} total ran using a force field'.format(
             actual=len(self.xyzs), total=len(rd_xyzs+ob_xyzs), label=self.label))
 
@@ -287,7 +287,7 @@ class ARCSpecies(object):
             for i in range(rd_mol.GetNumAtoms()):
                 new_xyz.append([conf.GetAtomPosition(indx_map[i]).x, conf.GetAtomPosition(indx_map[i]).y,
                             conf.GetAtomPosition(indx_map[i]).z])
-            self.initial_xyz = get_xyz_matrix(new_xyz, mol=mol)
+            self.initial_xyz = get_xyz_string(new_xyz, mol=mol)
 
     def determine_symmetry(self):
         """
@@ -533,7 +533,7 @@ def find_internal_rotors(mol):
     return rotors
 
 
-def get_xyz_matrix(xyz, mol=None, number=None):
+def get_xyz_string(xyz, mol=None, number=None):
     """
     Convert list of lists xyz form:
     [[0.6616514836, 0.4027481525, -0.4847382281],
