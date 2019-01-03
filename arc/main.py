@@ -493,7 +493,7 @@ def delete_all_arc_jobs(server_list):
     if isinstance(server_list, str):
         server_list = [server_list]
     for server in server_list:
-        logging.info('Deleting all ARC jobs from {0}'.format(server))
+        print('Deleting all ARC jobs from {0}...'.format(server))
         cmd = check_status_command[servers[server]['cluster_soft']] + ' -u ' + servers[server]['un']
         ssh = SSH_Client(server)
         stdout, _ = ssh.send_command_to_server(cmd)
