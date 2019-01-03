@@ -621,10 +621,12 @@ def determine_occ(label, xyz, charge):
 
 def mol_from_xyz(xyz):
     """
-    A helper function for creating an `RMG:Molecule` object from xyz
+    A helper function for creating an `RMG:Molecule` object from xyz in a string format
     """
     mol = Molecule()
     coordinates = list()
+    if not isinstance(xyz, (str, unicode)):
+        raise SpeciesError('xyz must be a string format, got: {0}'.format(type(xyz)))
     for line in xyz.split('\n'):
         if line:
             atom = Atom(element=str(line.split()[0]))
