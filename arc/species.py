@@ -454,13 +454,10 @@ class ARCSpecies(object):
                 else:
                     az = 0
                 if ax and ay and not nearly_equal(ax, ay):
-                    print(ax, ay)
                     break
                 if ax and az and not nearly_equal(ax, az):
-                    print(ax, az)
                     break
                 if ay and az and not nearly_equal(ay, az):
-                    print(ay, az)
                     break
             else:
                 return True
