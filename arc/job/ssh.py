@@ -117,12 +117,12 @@ class SSH_Client(object):
         if status.lower() == 'r':
             return 'running'
         else:
-            if servers[self.server]['cluster_soft'] == 'OGE':
+            if servers[self.server]['cluster_soft'].lower() == 'oge':
                 if '.cluster' in status_line:
                     return 'errored on node ' + status_line.split()[-1].split('@')[1].split('.')[0][-2:]
                 else:
                     return 'errored'
-            elif servers[self.server]['cluster_soft'] == 'Slurm':
+            elif servers[self.server]['cluster_soft'].lower() == 'slurm':
                 return 'errored on node ' + status_line.split()[-1][-2:]
             else:
                 raise ValueError('Unknown server {0}'.format(self.server))
@@ -142,7 +142,8 @@ class SSH_Client(object):
         cmd = check_status_command[servers[self.server]['cluster_soft']] + ' -u ' + servers[self.server]['un']
         stdout, _ = self.send_command_to_server(cmd)
         for i, status_line in enumerate(stdout):
-            if (self.server == 'rmg' and i > 0) or (self.server == 'pharos' and i > 1):
+            if (servers[self.server]['cluster_soft'].lower() == 'slurm' and i > 0)\
+                    or (servers[self.server]['cluster_soft'].lower() == 'oge' and i > 1):
                 running_jobs_ids.append(int(status_line.split()[0]))
         return running_jobs_ids
 
@@ -153,9 +154,9 @@ class SSH_Client(object):
         stdout, stderr = self.send_command_to_server(cmd, remote_path)
         if 'submitted' in stdout[0].lower():
             job_status = 'running'
-            if self.server == 'pharos':
+            if servers[self.server]['cluster_soft'].lower() == 'oge':
                 job_id = int(stdout[0].split()[2])
-            elif self.server == 'rmg':
+            elif servers[self.server]['cluster_soft'].lower() == 'slurm':
                 job_id = int(stdout[0].split()[3])
         if len(stderr) > 0:
             job_status = 'errored'
