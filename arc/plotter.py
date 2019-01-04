@@ -4,8 +4,10 @@
 from __future__ import (absolute_import, division, print_function, unicode_literals)
 import logging
 import numpy as np
+import os
 import math
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 
 import py3Dmol
 from rdkit import Chem
@@ -79,3 +81,64 @@ def log_thermo(label, path):
             line = f.readline()
     logging.info(thermo_block)
     logging.info('\n')
+
+
+def draw_thermo_parity_plot(species_list, path=None):
+    """
+    Plots a parity plot of calculated thermo and RMG's best values for species in species_list
+    """
+    logging.info('Thermo parity plots (labels can be dragged around if they overlap):')
+    if path is not None:
+        path = os.path.join(path, str('thermo_parity_plots.pdf'))
+        if os.path.exists(path):
+            os.remove(path)
+        pp = PdfPages(path)
+    labels, comments, h298_arc, h298_rmg, s298_arc, s298_rmg = [], [], [], [], [], []
+    for spc in species_list:
+        labels.append(spc.label)
+        h298_arc.append(spc.thermo.getEnthalpy(298) * 0.001)  # convered to kJ/mol
+        h298_rmg.append(spc.rmg_thermo.getEnthalpy(298) * 0.001)  # convered to kJ/mol
+        s298_arc.append(spc.thermo.getEntropy(298))  # in J/mol*K
+        s298_rmg.append(spc.rmg_thermo.getEntropy(298))  # in J/mol*K
+        comments.append(spc.rmg_thermo.comment)
+    min_h = min(h298_arc + h298_rmg)
+    max_h = max(h298_arc + h298_rmg)
+    min_s = min(s298_arc + s298_rmg)
+    max_s = max(s298_arc + s298_rmg)
+    plt.figure(figsize=(5, 4), dpi=120)
+    plt.title('H298 parity plot')
+    plt.plot(h298_arc, h298_rmg, 'go')
+    plt.plot([min_h, max_h], [min_h, max_h], 'b-', linewidth=0.5)
+    plt.xlabel('H298 calculated by ARC (kJ / mol)')
+    plt.ylabel('H298 determined by RMG (kJ / mol)')
+    plt.xlim = (min_h, max_h)
+    plt.ylim = (min_h, max_h)
+    for i, label in enumerate(labels):
+        a = plt.annotate(label, xy=(h298_arc[i], h298_rmg[i]), size=10)
+        a.draggable()
+    plt.tight_layout()
+    if path is not None:
+        plt.savefig(pp, format='pdf')
+    plt.show()
+
+    plt.figure(figsize=(5, 4), dpi=120)
+    plt.title('S298 parity plot')
+    plt.plot(s298_arc, s298_rmg, 'go')
+    plt.plot([min_s, max_s], [min_s, max_s], 'b-', linewidth=0.5)
+    plt.xlabel('S298 calculated by ARC (J / mol * K)')
+    plt.ylabel('S298 determined by RMG (J / mol * K)')
+    plt.xlim = (min_s, max_s)
+    plt.ylim = (min_s, max_s)
+    for i, label in enumerate(labels):
+        b = plt.annotate(label, xy=(h298_arc[i], h298_rmg[i]), size=10)
+        b.draggable()
+    plt.tight_layout()
+    if path is not None:
+        plt.savefig(pp, format='pdf')
+        pp.close()
+    plt.show()
+
+    logging.info('\nSources of thermoproperties determined by RMG for the parity plots:')
+    max_label_len = max([len(label) for label in labels])
+    for i, label in enumerate(labels):
+        logging.info('   {0}: {1}{2}'.format(label, ' '*(max_label_len - len(label)), comments[i]))
