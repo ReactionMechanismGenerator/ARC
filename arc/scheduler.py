@@ -29,28 +29,29 @@ class Scheduler(object):
 
     The attributes are:
 
-    ======================= ================== =========================================================================
+    ======================= ========= ==================================================================================
     Attribute               Type               Description
-    ======================= ================== =========================================================================
-    `project`               ``str``            The project's name. Used for naming the working directory.
-    'servers'               ''list''           A list of servers used for the present project
-    `species_list`          ``list``           Contains input ``ARCSpecies`` objects (both species and TSs).
-    `species_dict`          ``dict``           Keys are labels, values are ARCSpecies objects
-    'unique_species_labels' ``list``           A list of species labels (checked for duplicates)
-    `level_of_theory`       ``str``            *FULL* level of theory, e.g. 'CBS-QB3',
-                                                 'CCSD(T)-F12a/aug-cc-pVTZ//B3LYP/6-311++G(3df,3pd)'...
-    'composite'             ``bool``           Whether level_of_theory represents a composite method or not
-    `job_dict`              ``dict``           A dictionary of all scheduled jobs. Keys are species / TS labels,
-                                                 values are dictionaries where keys are job names (corresponding to
-                                                 'running_jobs' if job is running) and values are the Job objects.
-    'running_jobs'          ``dict``           A dictionary of currently running jobs (a subset of `job_dict`).
-                                                 Keys are species/TS label, values are lists of job names
-                                                 (e.g. 'conformer3', 'opt_a123').
-    'servers_jobs_ids'      ``list``           A list of relevant job IDs currently running on the server
-    'fine'                  ``bool``           Whether or not to use a fine grid for opt jobs (spawns an additional job)
-    'output'                ``dict``           Output dictionary with status and final QM files for all species
-    `settings`              ``dict``           A dictionary of available servers and software
-    ======================= ================== =========================================================================
+    ======================= ========= ==================================================================================
+    `project`               ``str``   The project's name. Used for naming the working directory.
+    'servers'               ''list''  A list of servers used for the present project
+    `species_list`          ``list``  Contains input ``ARCSpecies`` objects (both species and TSs).
+    `species_dict`          ``dict``  Keys are labels, values are ARCSpecies objects
+    'unique_species_labels' ``list``  A list of species labels (checked for duplicates)
+    `level_of_theory`       ``str``   *FULL* level of theory, e.g. 'CBS-QB3',
+                                        'CCSD(T)-F12a/aug-cc-pVTZ//B3LYP/6-311++G(3df,3pd)'...
+    'composite'             ``bool``    Whether level_of_theory represents a composite method or not
+    `job_dict`              ``dict``  A dictionary of all scheduled jobs. Keys are species / TS labels,
+                                        values are dictionaries where keys are job names (corresponding to
+                                        'running_jobs' if job is running) and values are the Job objects.
+    'running_jobs'          ``dict``  A dictionary of currently running jobs (a subset of `job_dict`).
+                                        Keys are species/TS label, values are lists of job names
+                                        (e.g. 'conformer3', 'opt_a123').
+    'servers_jobs_ids'      ``list``  A list of relevant job IDs currently running on the server
+    'fine'                  ``bool``  Whether or not to use a fine grid for opt jobs (spawns an additional job)
+    'output'                ``dict``  Output dictionary with status and final QM files for all species
+    `settings`              ``dict``  A dictionary of available servers and software
+    `initial_trsh`          ``dict``  Troubleshooting methods to try by default. Keys are server names, values are trshs
+    ======================= ========= ==================================================================================
 
     Dictionary structures:
 
@@ -89,7 +90,7 @@ class Scheduler(object):
              }
     """
     def __init__(self, project, settings, species_list, composite_method, conformer_level, opt_level, freq_level,
-                 sp_level, scan_level, fine=False, generate_conformers=True, scan_rotors=True):
+                 sp_level, scan_level, fine=False, generate_conformers=True, scan_rotors=True, initial_trsh=None):
         self.project = project
         self.settings=settings
         self.report_time = time.time()  # init time for reporting status every 1 hr
@@ -110,6 +111,7 @@ class Scheduler(object):
         self.species_dict = dict()
         self.unique_species_labels = list()
         self.output = dict()
+        self.initial_trsh = initial_trsh if initial_trsh is not None else dict()
         for species in self.species_list:
             if not isinstance(species, ARCSpecies):
                 raise SpeciesError('Each species in `species_list` must be a ARCSpecies object.')
@@ -284,7 +286,7 @@ class Scheduler(object):
         job = Job(project=self.project, settings=self.settings, species_name=label, xyz=xyz, job_type=job_type,
                   level_of_theory=level_of_theory, multiplicity=species.multiplicity, charge=species.charge, fine=fine,
                   shift=shift, software=software, is_ts=species.is_ts, memory=memory, trsh=trsh, conformer=conformer,
-                  ess_trsh_methods=ess_trsh_methods, scan=scan, pivots=pivots, occ=occ)
+                  ess_trsh_methods=ess_trsh_methods, scan=scan, pivots=pivots, occ=occ, initial_trsh=self.initial_trsh)
         if conformer < 0:
             # this is NOT a conformer job
             self.running_jobs[label].append(job.job_name)  # mark as a running job

@@ -29,9 +29,9 @@ class ARC(object):
 
     The attributes are:
 
-    ====================== ========== =========================================================================
+    ====================== ========== ==================================================================================
     Attribute              Type       Description
-    ====================== ========== =========================================================================
+    ====================== ========== ==================================================================================
     `project`              ``str``    The project's name. Used for naming the working directory.
     'rmg_species_list'     ''list''   A list RMG Species objects. Species must have a non-empty label attribute
                                         and are assumed to be stab;e wells (not TSs)
@@ -53,7 +53,8 @@ class ARC(object):
                                         This can be usually determined automatically.
     `settings`             ``dict``   A dictionary of available servers and software
     `ess_settings`         ``dict``   An optional input parameter: a dictionary relating ESS to servers
-    ====================== ========== =========================================================================
+    `initial_trsh`         ``dict``   Troubleshooting methods to try by default. Keys are server names, values are trshs
+    ====================== ========== ==================================================================================
 
     `level_of_theory` is a string representing either sp//geometry levels or a composite method, e.g. 'CBS-QB3',
                                                  'CCSD(T)-F12a/aug-cc-pVTZ//B3LYP/6-311++G(3df,3pd)'...
@@ -61,7 +62,7 @@ class ARC(object):
     def __init__(self, project, rmg_species_list=None, arc_species_list=None, rxn_list=None,
                  level_of_theory='', conformer_level='', composite_method='', opt_level='', freq_level='', sp_level='',
                  scan_level='', fine=True, generate_conformers=True, scan_rotors=True, use_bac=True,
-                 model_chemistry='', ess_settings=None, verbose=logging.INFO):
+                 model_chemistry='', ess_settings=None, initial_trsh=None, verbose=logging.INFO):
 
         self.project = project
         self.output_directory = os.path.join(arc_path, 'Projects', self.project)
@@ -72,6 +73,7 @@ class ARC(object):
         self.initialize_log(verbose=self.verbose, log_file=os.path.join(self.output_directory, 'arc.log'))
         self.settings = dict()
         self.ess_settings = ess_settings
+        self.initial_trsh = initial_trsh if initial_trsh is not None else dict()
         self.determine_remote()
         self.output = dict()
         if not os.path.exists(self.output_directory):
@@ -229,7 +231,8 @@ class ARC(object):
                                    composite_method=self.composite_method, conformer_level=self.conformer_level,
                                    opt_level=self.opt_level, freq_level=self.freq_level, sp_level=self.sp_level,
                                    scan_level=self.scan_level, fine=self.fine, settings=self.settings,
-                                   generate_conformers=self.generate_conformers, scan_rotors=self.scan_rotors)
+                                   generate_conformers=self.generate_conformers, scan_rotors=self.scan_rotors,
+                                   initial_trsh=self.initial_trsh)
         prc = Processor(project=self.project, species_dict=self.scheduler.species_dict, output=self.scheduler.output,
                         use_bac=self.use_bac, model_chemistry=self.model_chemistry)
         prc.process()
