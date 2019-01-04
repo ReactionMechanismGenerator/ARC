@@ -665,8 +665,8 @@ class Scheduler(object):
                                 if abs(v - v_list[0]) > maximum_barrier:
                                     # The barrier for the hinderd rotor is higher than `maximum_barrier` kJ/mol.
                                     # Invalidate
-                                    logging.error('Rotor scan of {label} between pivots {pivots} has a barrier larger'
-                                                  ' than {maximum_barrier} kJ/mol. Invalidating rotor.'.format(
+                                    logging.warn('Rotor scan of {label} between pivots {pivots} has a barrier larger'
+                                                 ' than {maximum_barrier} kJ/mol. Invalidating rotor.'.format(
                                                    label=label, pivots=job.pivots, maximum_barrier=maximum_barrier))
                                     invalidate = True
                                     break
