@@ -428,6 +428,9 @@ $end
         else:
             scan_string = ''
 
+        if self.software == 'gaussian' and not self.trsh:
+            self.trsh = 'scf=xqc'  # xqc will do qc (quadratic convergence) if the job fails w/o it, so use by default
+
         if self.job_type == 'irc':  # TODO
             pass
 
