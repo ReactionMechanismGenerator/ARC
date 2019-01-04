@@ -9,6 +9,7 @@ from arkane.input import species as arkane_species
 from arkane.statmech import StatMechJob, assign_frequency_scale_factor
 from arkane.thermo import ThermoJob
 
+from rmgpy.data.rmg import RMGDatabase
 from arc.settings import arc_path
 from arc.job.inputs import input_files
 from arc import plotter
@@ -38,6 +39,70 @@ class Processor(object):
         self.output = output
         self.use_bac = use_bac
         self.model_chemistry = model_chemistry
+        self.database = None
+        if any([species.generate_thermo for species in self.species_dict.values()]):
+            self.load_rmg_database()
+
+    def load_rmg_database(self, thermo_libraries=None, reaction_libraries=None, kinetics_families='default'):
+        """
+        A helper function for loading the RMG database
+        """
+        db_path = os.path.join(settings['database.directory'])
+        thermo_libraries = thermo_libraries or []
+        reaction_libraries = reaction_libraries or []
+        if isinstance(thermo_libraries, str):
+            thermo_libraries = [thermo_libraries]
+        if isinstance(reaction_libraries, str):
+            reaction_libraries = [reaction_libraries]
+        if kinetics_families not in ('default', 'all', 'none'):
+            if not isinstance(kinetics_families, list):
+                raise InputError(
+                    "kineticsFamilies should be either 'default', 'all', 'none', or a list of names eg."
+                    " ['H_Abstraction','R_Recombination'] or ['!Intra_Disproportionation'].")
+
+        if not thermo_libraries:
+            thermo_libraries = []
+            thermo_path = os.path.join(db_path, 'thermo', 'libraries')
+            for thermo_library_path in os.listdir(thermo_path):
+                thermo_library, _ = os.path.splitext(os.path.basename(thermo_library_path))
+                thermo_libraries.append(thermo_library)
+        # prioritize libraries
+        thermo_priority = ['BurkeH2O2', 'thermo_DFT_CCSDTF12_BAC', 'DFT_QCI_thermo', 'Klippenstein_Glarborg2016',
+                           'primaryThermoLibrary', 'primaryNS', 'NitrogenCurran', 'NOx2018', 'FFCM1(-)',
+                           'SulfurLibrary', 'SulfurGlarborgH2S']
+        indices_to_pop = []
+        for i, lib in enumerate(thermo_libraries):
+            if lib in thermo_priority:
+                indices_to_pop.append(i)
+        for i in reversed(range(len(thermo_libraries))):  # pop starting from the end, so other indices won't change
+            if i in indices_to_pop:
+                thermo_libraries.pop(i)
+        thermo_libraries = thermo_priority + thermo_libraries
+
+        # set library to be represented by a string rather than a unicode,
+        # this might not be needed after a full migration to Py3
+        old_thermo_libraries = thermo_libraries
+        thermo_libraries = []
+        for lib in old_thermo_libraries:
+            thermo_libraries.append(str(lib))
+
+        logging.info('\n\nLoading the RMG database...')
+        self.database = RMGDatabase()
+        self.database.load(
+            path=db_path,
+            thermoLibraries=thermo_libraries,
+            transportLibraries='none',
+            # reactionLibraries=reaction_libraries,
+            seedMechanisms=[],
+            kineticsFamilies='none',
+            # kineticsDepositories=['training'],
+            depository=False,
+        )
+        logging.info('\n\n')
+        # for family in database.kinetics.families.values():  # load training
+        #     family.addKineticsRulesFromTrainingSet(thermoDatabase=database.thermo)
+        # for family in database.kinetics.families.values():
+        #     family.fillKineticsRulesByAveragingUp(verbose=True)
 
     def process(self):
         for species in self.species_dict.values():
