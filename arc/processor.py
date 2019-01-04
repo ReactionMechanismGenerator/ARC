@@ -96,6 +96,7 @@ class Processor(object):
                 stat_mech_job = StatMechJob(spec, input_file_path)
                 stat_mech_job.applyBondEnergyCorrections = self.use_bac
                 if self.use_bac:
+                    logging.info('Using the following BAC for {0}: {1}'.format(species.label, species.bond_corrections))
                     stat_mech_job.bonds = species.bond_corrections
                 stat_mech_job.modelChemistry = self.model_chemistry
                 stat_mech_job.frequencyScaleFactor = assign_frequency_scale_factor(self.model_chemistry)
