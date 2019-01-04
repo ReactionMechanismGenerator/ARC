@@ -854,7 +854,43 @@ class Scheduler(object):
             job.ess_trsh_methods.append('change_node')
             job.troubleshoot_server()
         elif job.software == 'gaussian':
-            if 'cbs-qb3' not in job.ess_trsh_methods and self.composite_method != 'cbs-qb3':
+            if 'scf=(qc,nosymm)' not in job.ess_trsh_methods:
+                # try both qc and nosymm
+                logging.info('Troubleshooting {type} job in {software} using scf=(qc,nosymm)'.format(
+                    type=job_type, software=job.software))
+                job.ess_trsh_methods.append('scf=(qc,nosymm)')
+                trsh = 'scf=(qc,nosymm)'
+                self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
+                             job_type=job_type, fine=False, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
+                             conformer=conformer)
+            elif 'scf=(NDump=30)' not in job.ess_trsh_methods:
+                # Allows dynamic dumping for up to N SCF iterations (slower conversion)
+                logging.info('Troubleshooting {type} job in {software} using scf=(NDump=30)'.format(
+                    type=job_type, software=job.software))
+                job.ess_trsh_methods.append('scf=(NDump=30)')
+                trsh = 'scf=(NDump=30)'
+                self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
+                             job_type=job_type, fine=False, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
+                             conformer=conformer)
+            elif 'scf=NoDIIS' not in job.ess_trsh_methods:
+                # Switching off Pulay's Direct Inversion
+                logging.info('Troubleshooting {type} job in {software} using scf=NoDIIS'.format(
+                    type=job_type, software=job.software))
+                job.ess_trsh_methods.append('scf=NoDIIS')
+                trsh = 'scf=NoDIIS'
+                self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
+                             job_type=job_type, fine=False, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
+                             conformer=conformer)
+            elif 'int=(Acc2E=14)' not in job.ess_trsh_methods:  # does not work in g03
+                # Change integral accuracy (skip everything up to 1E-14 instead of 1E-12)
+                logging.info('Troubleshooting {type} job in {software} using int=(Acc2E=14)'.format(
+                    type=job_type, software=job.software))
+                job.ess_trsh_methods.append('int=(Acc2E=14)')
+                trsh = 'int=(Acc2E=14)'
+                self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
+                             job_type=job_type, fine=False, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
+                             conformer=conformer)
+            elif 'cbs-qb3' not in job.ess_trsh_methods and self.composite_method != 'cbs-qb3':
                 # try running CBS-QB3, which is relatively robust
                 logging.info('Troubleshooting {type} job in {software} using CBS-QB3'.format(
                     type=job_type, software=job.software))
@@ -862,15 +898,6 @@ class Scheduler(object):
                 level_of_theory = 'cbs-qb3'
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, job_type='composite',
                              fine=False, ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
-            elif 'scf=qc' not in job.ess_trsh_methods:
-                # calls a quadratically convergent SCF procedure
-                logging.info('Troubleshooting {type} job in {software} using scf=qc'.format(
-                    type=job_type, software=job.software))
-                job.ess_trsh_methods.append('scf=qc')
-                trsh = 'scf=qc'
-                self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
-                             job_type=job_type, fine=False, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
-                             conformer=conformer)
             elif 'scf=nosymm' not in job.ess_trsh_methods:
                 # calls a quadratically convergent SCF procedure
                 logging.info('Troubleshooting {type} job in {software} using scf=nosymm'.format(
@@ -887,15 +914,6 @@ class Scheduler(object):
                 job.ess_trsh_methods.append('memory')
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
                              job_type=job_type, fine=False, memory=3000, ess_trsh_methods=job.ess_trsh_methods,
-                             conformer=conformer)
-            elif 'scf=(qc,nosymm)' not in job.ess_trsh_methods:
-                # try both qc and nosymm
-                logging.info('Troubleshooting {type} job in {software} using scf=(qc,nosymm)'.format(
-                    type=job_type, software=job.software))
-                job.ess_trsh_methods.append('scf=(qc,nosymm)')
-                trsh = 'scf=(qc,nosymm)'
-                self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
-                             job_type=job_type, fine=False, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
                              conformer=conformer)
             elif self.composite_method != 'cbs-qb3' and 'scf=(qc,nosymm) & CBS-QB3' not in job.ess_trsh_methods:
                 # try both qc and nosymm with CBS-QB3
