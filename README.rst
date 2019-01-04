@@ -18,3 +18,8 @@ Installation instructions are in the Wiki pages of this project.
     :alt: arc logo
     :width: 500px
     :align: middle
+
+
+.. image:: https://api.codacy.com/project/badge/Grade/932aa16ac3f747d9b236bcd29e5dc9a9
+   :alt: Codacy Badge
+   :target: https://app.codacy.com/app/ReactionMechanismGenerator/ARC?utm_source=github.com&utm_medium=referral&utm_content=ReactionMechanismGenerator/ARC&utm_campaign=Badge_Grade_Dashboard
