@@ -105,8 +105,9 @@ class Processor(object):
         #     family.fillKineticsRulesByAveragingUp(verbose=True)
 
     def process(self):
+        species_list_for_plotting = []
         for species in self.species_dict.values():
-            if self.output[species.label]['status'] == 'converged' and species.thermo:
+            if self.output[species.label]['status'] == 'converged' and species.generate_thermo:
                 linear = species.is_linear()
                 if linear:
                     logging.info('Determined {0} to be a linear molecule'.format(species.label))
@@ -168,4 +169,18 @@ class Processor(object):
                 stat_mech_job.execute(outputFile=output_file_path, plot=False)
                 thermo_job = ThermoJob(spec, 'NASA')
                 thermo_job.execute(outputFile=output_file_path, plot=False)
+                species.thermo = spec.thermo  # copy the thermo from the Arkane species into the ARCSpecies
                 plotter.log_thermo(species.label, path=output_file_path)
+
+                species.rmg_species = Species(molecule=[species.mol])
+                # species.rmg_species.label = str(species.label)
+                try:
+                    species.rmg_species.generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
+                except AtomTypeError:
+                    pass
+                species.rmg_thermo = self.database.thermo.getThermoData(species.rmg_species)
+                species_list_for_plotting.append(species)
+        if species_list_for_plotting:
+            plotter.draw_thermo_parity_plot(species_list_for_plotting,
+                                            path=os.path.join(arc_path, 'Projects', self.project, 'output'))
+
