@@ -493,14 +493,20 @@ def delete_all_arc_jobs(server_list):
     if isinstance(server_list, str):
         server_list = [server_list]
     for server in server_list:
-        print('Deleting all ARC jobs from {0}...'.format(server))
+        print('\nDeleting all ARC jobs from {0}...'.format(server))
         cmd = check_status_command[servers[server]['cluster_soft']] + ' -u ' + servers[server]['un']
         ssh = SSH_Client(server)
         stdout, _ = ssh.send_command_to_server(cmd)
         for status_line in stdout:
             s = re.search(' a\d+', status_line)
             if s is not None:
-                job_id = s.group()[1:]
-                ssh.delete_job(job_id)
-                print('deleted job {0}'.format(job_id))
+                if servers[server]['cluster_soft'].lower() == 'slurm':
+                    job_id = s.group()[1:]
+                    server_job_id = status_line.split()[0]
+                    ssh.delete_job(server_job_id)
+                    print('deleted job {0} ({1} on server)'.format(job_id, server_job_id))
+                elif servers[server]['cluster_soft'].lower() == 'oge':
+                    job_id = s.group()[1:]
+                    ssh.delete_job(job_id)
+                    print('deleted job {0}'.format(job_id))
     print('\ndone.')
