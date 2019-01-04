@@ -158,8 +158,10 @@ class Scheduler(object):
         if self.generate_conformers:
             self.run_conformer_jobs()
         while self.running_jobs != {}:  # loop while jobs are still running
+            logging.debug('Currently running jobs:\n{0}'.format(self.running_jobs))
             self.timer = True
-            for label in self.unique_species_labels:  # look for completed jobs and decide what jobs to run next
+            for label in self.unique_species_labels:
+                # look for completed jobs and decide what jobs to run next
                 self.get_servers_jobs_ids()  # updates `self.servers_jobs_ids`
                 try:
                     job_list = self.running_jobs[label]
@@ -264,7 +266,9 @@ class Scheduler(object):
                     # TODO: GSM, IRC
                 if not job_list:  # if it's an empty dictionary
                     self.check_all_done(label)
-                    del self.running_jobs[label]
+                    if not self.running_jobs[label]:
+                        # delete the lable only if it represents an empty dictionary
+                        del self.running_jobs[label]
             if self.timer:
                 logging.debug('zzz... setting timer for 1 minute... zzz')
                 time.sleep(30)  # wait 30 sec before bugging the servers again.
@@ -579,12 +583,13 @@ class Scheduler(object):
         if self.species_dict[label].is_ts and neg_freq_counter != 1:
                 logging.error('TS {0} has {1} imaginary frequencies,'
                               ' should have exactly 1.'.format(label, neg_freq_counter))
-                self.output[label]['status'] += 'Error: {0} imaginary freq for TS; '.format(neg_freq_counter)
+                self.output[label]['status'] += 'Warning: {0} imaginary freq for TS; '.format(neg_freq_counter)
                 return False
         elif not self.species_dict[label].is_ts and neg_freq_counter != 0:
                 logging.error('species {0} has {1} imaginary frequencies,'
                               ' should have exactly 0.'.format(label, neg_freq_counter))
-                self.output[label]['status'] += 'Error: {0} imaginary freq for stable species; '.format(neg_freq_counter)
+                self.output[label]['status'] += 'Warning: {0} imaginary freq for stable species; '.format(
+                    neg_freq_counter)
                 return False
         else:
             if self.species_dict[label].is_ts:
