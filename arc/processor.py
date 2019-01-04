@@ -3,6 +3,7 @@
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
 import os
+import logging
 
 from arkane.input import species as arkane_species
 from arkane.statmech import StatMechJob, assign_frequency_scale_factor
@@ -41,7 +42,9 @@ class Processor(object):
     def process(self):
         for species in self.species_dict.values():
             if self.output[species.label]['status'] == 'converged' and species.thermo:
-                linear = False  # TODO
+                linear = species.is_linear()
+                if linear:
+                    logging.info('Determined {0} to be a linear molecule'.format(species.label))
                 species.determine_symmetry()
                 multiplicity = species.multiplicity
                 try:

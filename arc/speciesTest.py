@@ -204,6 +204,60 @@ H      -1.81136714   -0.32689007   -1.14689570
         self.assertEqual(y, [0.40274815, 0.66372701, -0.49732107, 0.65310204, -0.45292568, -0.32689007])
         self.assertEqual(z, [-0.48473823, 0.06716371, -0.22387123, 1.08530923, 0.41445163, -1.1468957])
 
+    def test_is_linear(self):
+        """Test determination of molecule linearity by xyz"""
+        xyz1 = """C  0.000000    0.000000    0.000000
+                  O  0.000000    0.000000    1.159076
+                  O  0.000000    0.000000   -1.159076"""  # a trivial case
+        xyz2 = """C  0.6616514836    0.4027481525   -0.4847382281
+                  N -0.6039793084    0.6637270105    0.0671637135
+                  H -1.4226865648   -0.4973210697   -0.2238712255
+                  H -0.4993010635    0.6531020442    1.0853092315
+                  H -2.2115796924   -0.4529256762    0.4144516252
+                  H -1.8113671395   -0.3268900681   -1.1468957003"""  # a non linear molecule
+        xyz3 = """N  0.0000000000     0.0000000000     0.3146069129
+                  O -1.0906813653     0.0000000000    -0.1376405244
+                  O  1.0906813653     0.0000000000    -0.1376405244"""  # a non linear 3-atom molecule
+        xyz4 = """N  0.0000000000     0.0000000000     0.1413439534
+                  H -0.8031792912     0.0000000000    -0.4947038368
+                  H  0.8031792912     0.0000000000    -0.4947038368"""  # a non linear 3-atom molecule
+        xyz5 = """S -0.5417345330        0.8208150346        0.0000000000
+                  O  0.9206183692        1.6432038228        0.0000000000
+                  H -1.2739176462        1.9692549926        0.0000000000"""  # a non linear 3-atom molecule
+        xyz6 = """N  1.18784533    0.98526702    0.00000000
+                  C  0.04124533    0.98526702    0.00000000
+                  H -1.02875467    0.98526702    0.00000000""" # linear
+        xyz7 = """C -4.02394116    0.56169428    0.00000000
+                  H -5.09394116    0.56169428    0.00000000
+                  C -2.82274116    0.56169428    0.00000000
+                  H -1.75274116    0.56169428    0.00000000""" # linear
+        xyz8 = """C -1.02600933    2.12845307    0.00000000
+                  C -0.77966935    0.95278385    0.00000000
+                  H -1.23666197    3.17751246    0.00000000
+                  H -0.56023545   -0.09447399    0.00000000""" # just 0.5 degree off from linearity, so NOT linear...
+        xyz9 = """C -1.1998 0.1610 0.0275
+                  C -1.4021 0.6223 -0.8489
+                  C -1.48302 0.80682 -1.19946"""  # just 3 points in space on a straight line (not a physical molecule)
+        spc1 = ARCSpecies(label=str('test_spc'), xyz=xyz1, multiplicity=1, charge=0, smiles=str('C'))
+        spc2 = ARCSpecies(label=str('test_spc'), xyz=xyz2, multiplicity=1, charge=0, smiles=str('C'))
+        spc3 = ARCSpecies(label=str('test_spc'), xyz=xyz3, multiplicity=1, charge=0, smiles=str('C'))
+        spc4 = ARCSpecies(label=str('test_spc'), xyz=xyz4, multiplicity=1, charge=0, smiles=str('C'))
+        spc5 = ARCSpecies(label=str('test_spc'), xyz=xyz5, multiplicity=1, charge=0, smiles=str('C'))
+        spc6 = ARCSpecies(label=str('test_spc'), xyz=xyz6, multiplicity=1, charge=0, smiles=str('C'))
+        spc7 = ARCSpecies(label=str('test_spc'), xyz=xyz7, multiplicity=1, charge=0, smiles=str('C'))
+        spc8 = ARCSpecies(label=str('test_spc'), xyz=xyz8, multiplicity=1, charge=0, smiles=str('C'))
+        spc9 = ARCSpecies(label=str('test_spc'), xyz=xyz9, multiplicity=1, charge=0, smiles=str('C'))
+
+        self.assertTrue(spc1.is_linear())
+        self.assertTrue(spc6.is_linear())
+        self.assertTrue(spc7.is_linear())
+        self.assertTrue(spc9.is_linear())
+        self.assertFalse(spc2.is_linear())
+        self.assertFalse(spc3.is_linear())
+        self.assertFalse(spc4.is_linear())
+        self.assertFalse(spc5.is_linear())
+        self.assertFalse(spc8.is_linear())
+
 ################################################################################
 
 if __name__ == '__main__':
