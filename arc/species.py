@@ -161,7 +161,8 @@ class ARCSpecies(object):
                 try:
                     self.bond_corrections = self.mol.enumerate_bonds()
                 except AttributeError:
-                    pass  # enumerate_bonds() is a new attribute of Molecule, still not present from rmg on Conda
+                    # enumerate_bonds() is a new attribute of Molecule, still not present from rmg on Conda
+                    self.determine_bond_corrections()
             self.number_of_atoms = len(self.mol.atoms)
 
         self.final_xyz = ''
@@ -322,6 +323,33 @@ class ARCSpecies(object):
             optical_isomers = 2 if pg.chiral else optical_isomers
         self.optical_isomers = optical_isomers
         self.external_symmetry = symmetry
+
+    def determine_bond_corrections(self):
+        """
+        A helper function to determine bond types for applying BAC
+        """
+        explored_atoms = []
+        for atom1 in self.mol.vertices:
+            for atom2, bond12 in atom1.edges.items():
+                if atom2 not in explored_atoms:
+                    bac = atom1.symbol
+                    if bond12.isSingle():
+                        bac += str('-')
+                    elif bond12.isDouble():
+                        bac += str('=')
+                    elif bond12.isTriple():
+                        bac += str('#')
+                    else:
+                        break
+                    bac += atom2.symbol
+                    if bac in self.bond_corrections:
+                        self.bond_corrections[bac] += 1
+                    elif bac[::-1] in self.bond_corrections:  # check in reverse
+                        self.bond_corrections[bac] += 1
+                    else:
+                        self.bond_corrections[bac] = 1
+            explored_atoms.append(atom1)
+        logging.debug('Using the following BAC for {0}: {1}'.format(self.label, self.bond_corrections))
 
     def is_linear(self):
         """
