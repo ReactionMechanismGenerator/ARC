@@ -64,6 +64,7 @@ class Job(object):
     'trsh'             ''str''           A troubleshooting handle to be appended to input files
     'ess_trsh_methods' ``list``          A list of troubleshooting methods already tried out for ESS convergence
     `occ`              ``int``           The number of occupied orbitals (core + val) from a molpro CCSD sp calc
+    `initial_trsh`     ``dict``          Troubleshooting methods to try by default. Keys are server names, values are trshs
     ================ =================== ===============================================================================
 
     self.job_status:
@@ -73,7 +74,7 @@ class Job(object):
     """
     def __init__(self, project, settings, species_name, xyz, job_type, level_of_theory, multiplicity, charge=0,
                  conformer=-1, fine=False, shift='', software=None, is_ts=False, scan='', pivots=None, memory=1500,
-                 comments='', trsh='', ess_trsh_methods=None, occ=None):
+                 comments='', trsh='', ess_trsh_methods=None, occ=None, initial_trsh=None):
         self.project = project
         self.settings=settings
         self.date_time = datetime.datetime.now()
@@ -88,6 +89,7 @@ class Job(object):
         self.is_ts = is_ts
         self.ess_trsh_methods = ess_trsh_methods if ess_trsh_methods is not None else list()
         self.trsh = trsh
+        self.initial_trsh = initial_trsh if initial_trsh is not None else dict()
         job_types = ['conformer', 'opt', 'freq', 'optfreq', 'sp', 'composite', 'scan', 'gsm', 'irc']
         # the 'conformer' job type is identical to 'opt', but we differentiate them to be identifiable in Scheduler
         if job_type not in job_types:
@@ -285,6 +287,11 @@ class Job(object):
         Write a software-specific job-specific input file.
         Saves the file locally and also uploads it to the server.
         """
+
+        if self.initial_trsh and not self.trsh:
+            # use the default trshs defined by the user in the initial_trsh dictionary
+            if self.software in self.initial_trsh:
+                self.trsh = self.initial_trsh[self.software]
 
         self.input = input_files[self.software]
 
