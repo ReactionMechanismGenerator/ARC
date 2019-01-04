@@ -6,14 +6,18 @@ import os
 import logging
 
 from arkane.input import species as arkane_species
-from arkane.statmech import StatMechJob, assign_frequency_scale_factor
+from arkane.statmech import StatMechJob, assign_frequency_scale_factor, Log
 from arkane.thermo import ThermoJob
 
+from rmgpy import settings
+from rmgpy.species import Species
 from rmgpy.data.rmg import RMGDatabase
+from rmgpy.exceptions import AtomTypeError
+
 from arc.settings import arc_path
 from arc.job.inputs import input_files
 from arc import plotter
-from arc.exceptions import SchedulerError
+from arc.exceptions import SchedulerError, InputError
 
 ##################################################################
 
@@ -137,7 +141,7 @@ class Processor(object):
                         rotor_path = species.rotors_dict[i]['scan_path']
                         pivots = str(species.rotors_dict[i]['pivots'])
                         top = str(species.rotors_dict[i]['top'])
-                        rotor_symmetry = 1  # TODO
+                        rotor_symmetry = determine_rotor_symmetry(rotor_path, species.label, pivots)
                         rotors += input_files['arkane_rotor'].format(rotor_path=rotor_path, pivots=pivots, top=top,
                                                                      symmetry=rotor_symmetry)
                         if i < species.number_of_rotors - 1:
@@ -184,3 +188,78 @@ class Processor(object):
             plotter.draw_thermo_parity_plot(species_list_for_plotting,
                                             path=os.path.join(arc_path, 'Projects', self.project, 'output'))
 
+
+def determine_rotor_symmetry(rotor_path, label, pivots):
+    """
+    **  This is a temporary function, will soon be incorporated in Arkane instead**
+    
+    Determine the rotor symmetry number from the potential scan given in :list:`energies` in J/mol units
+    Assumes the list represents a 360 degree scan
+    str:`label` is the species name, used for logging and error messages
+    list:`pivots` are the rotor's pivots, used for logging and error messages
+    The *worst* resolution for each peak and valley is determined.
+    The first criterion for a symmetric rotor is that the highest peak and the lowest peak must be within the
+    worst peak resolution (and the same is checked for valleys).
+    A second criterion for a symmetric rotor is that the highest and lowest peaks must be within 10% of
+    the highest peak value. This is only applied if the highest peak is above 2 kJ/mol.
+    """
+    log = Log(path='')
+    log.determine_qm_software(fullpath=rotor_path)
+    energies, angle = log.software_log.loadScanEnergies()
+
+    symmetry = None
+    max_e = max(energies)
+    if max_e > 2000:
+        tol = 0.10 * max_e  # tolerance for the second criterion
+    else:
+        tol = max_e
+    peaks, valleys = list(), [energies[0]]  # the peaks and valleys of the scan
+    worst_peak_resolution, worst_valley_resolution = 0, max(energies[1] - energies[0], energies[-2] - energies[-1])
+    for i, e in enumerate(energies):
+        # identify peaks and valleys, and determine worst resolutions in the scan
+        if i != 0 and i != len(energies) - 1:
+            # this is an intermediate point in the scan
+            if e > energies[i - 1] and e > energies[i + 1]:
+                # this is a local peak
+                if any([diff > worst_peak_resolution for diff in [e - energies[i - 1], e - energies[i + 1]]]):
+                    worst_peak_resolution = max(e - energies[i - 1], e - energies[i + 1])
+                peaks.append(e)
+            elif e < energies[i - 1] and e < energies[i + 1]:
+                # this is a local valley
+                if any([diff > worst_valley_resolution for diff in [energies[i - 1] - e, energies[i + 1] - e]]):
+                    worst_valley_resolution = max(energies[i - 1] - e, energies[i + 1] - e)
+                valleys.append(e)
+    # The number of peaks and valley must always be the same (what goes up must come down), if it isn't then there's
+    # something seriously wrong with the scan
+    if len(peaks) != len(valleys):
+        raise InputError('Rotor of species {0} between pivots {1} does not have the same number'
+                         ' of peaks and valleys.'.format(label, pivots))
+    min_peak = min(peaks)
+    max_peak = max(peaks)
+    min_valley = min(valleys)
+    max_valley = max(valleys)
+    # Criterion 1: worst resolution
+    if max_peak - min_peak > worst_peak_resolution:
+        # The rotor cannot be symmetric
+        symmetry = 1
+        reason = 'worst peak resolution criterion'
+    elif max_valley - min_valley > worst_valley_resolution:
+        # The rotor cannot be symmetric
+        symmetry = 1
+        reason = 'worst valley resolution criterion'
+    # Criterion 2: 10% * max_peak
+    elif max_peak - min_peak > tol:
+        # The rotor cannot be symmetric
+        symmetry = 1
+        reason = '10% of the maximum peak criterion'
+    else:
+        # We declare this rotor as symmetric and the symmetry number in the number of peaks (and valleys)
+        symmetry = len(peaks)
+        reason = 'number of peaks and valleys, all within the determined resolution criteria'
+    if symmetry not in [1, 2, 3]:
+        logging.info('Determined symmetry number {0} for rotor of species {1} between pivots {2};'
+                     ' you should make sure this makes sense'.format(symmetry, label, pivots))
+    else:
+        logging.info('Determined a symmetry number of {0} for rotor of species {1} between pivots {2}'
+                     ' based on the {3}.'.format(symmetry, label, pivots, reason))
+    return symmetry
