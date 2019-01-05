@@ -179,10 +179,10 @@ class Scheduler(object):
                                           'Terminating job and re-submitting'.format(name=job.job_name, label=label,
                                                                                      delta=max_time))
                             job.delete()
-                            self.end_job(job, label, job_name)
+                            self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
                             self.run_job(label=label, xyz=job.xyz, level_of_theory=self.conformer_level,
                                          job_type='conformer', conformer=job.conformer)
-                        if self.job_dict[label]['conformers'][i].job_id not in self.servers_jobs_ids:
+                        elif self.job_dict[label]['conformers'][i].job_id not in self.servers_jobs_ids:
                             # this is a completed conformer job
                             successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
                             if successful_server_termination:
@@ -1089,7 +1089,7 @@ class Scheduler(object):
                 (self.species_dict[label].number_of_atoms == 1 or ('freq converged' in status and 'opt converged' in status)))):
             d, h, m, s = time_lapse(t0=self.species_dict[label].t0)
             logging.info('\nAll jobs for species {0} successfully converged.'
-                         ' Elapsed time: {1}{2:02.0f}:{3:02.0f}:{4:02.0f}'.format(label,d,h,m,s))
+                         ' Elapsed time: {1}{2:02.0f}:{3:02.0f}:{4:02.0f}'.format(label, d, h, m, s))
             self.output[label]['status'] = 'converged'
         elif not self.output[label]['status']:
             self.output[label]['status'] = 'nothing converged'
