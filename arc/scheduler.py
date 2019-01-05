@@ -179,6 +179,7 @@ class Scheduler(object):
                                           'Terminating job and re-submitting'.format(name=job.job_name, label=label,
                                                                                      delta=max_time))
                             job.delete()
+                            self.end_job(job, label, job_name)
                             self.run_job(label=label, xyz=job.xyz, level_of_theory=self.conformer_level,
                                          job_type='conformer', conformer=job.conformer)
                         if self.job_dict[label]['conformers'][i].job_id not in self.servers_jobs_ids:
