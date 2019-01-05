@@ -18,6 +18,7 @@ from arc.exceptions import SpeciesError, SchedulerError
 from arc.job.ssh import SSH_Client
 from arc.species import ARCSpecies, get_xyz_string
 from arc.settings import rotor_scan_resolution, inconsistency_ab, inconsistency_az, maximum_barrier
+import arc.parser as parser
 
 ##################################################################
 
@@ -561,9 +562,17 @@ class Scheduler(object):
         if job.job_status[1] == 'done':
             if not os.path.isfile(job.local_path_to_output_file):
                 raise SchedulerError('Called check_freq_job with no output file')
-            parser = cclib.io.ccopen(str(job.local_path_to_output_file))
-            data = parser.parse()
-            freq_ok = self.check_negative_freq(label=label, job=job, vibfreqs=data.vibfreqs)
+            ccparser = cclib.io.ccopen(str(job.local_path_to_output_file))
+            try:
+                data = ccparser.parse()
+                vibfreqs = data.vibfreqs
+            except AssertionError:
+                """
+                In cclib/parser/qchemparser.py there's an assertion of `assert 'Beta MOs' in line`
+                which sometimes fails (CClib issue https://github.com/cclib/cclib/issues/678)
+                """
+                vibfreqs = parser.parse_frequencies(path=str(job.local_path_to_output_file), software=job.software)
+            freq_ok = self.check_negative_freq(label=label, job=job, vibfreqs=vibfreqs)
             if not self.species_dict[label].is_ts and not freq_ok:
                 self.troubleshoot_negative_freq(label=label, job=job)
         else:
@@ -734,8 +743,8 @@ class Scheduler(object):
         We take  +/-1.1 displacements, generating several initial geometries, and running them as conformers
         """
         factor = 1.1
-        parser = cclib.io.ccopen(str(job.local_path_to_output_file))
-        data = parser.parse()
+        ccparser = cclib.io.ccopen(str(job.local_path_to_output_file))
+        data = ccparser.parse()
         vibfreqs = data.vibfreqs
         vibdisps = data.vibdisps
         atomnos = data.atomnos
