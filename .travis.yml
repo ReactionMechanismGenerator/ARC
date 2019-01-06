@@ -22,6 +22,9 @@ install:
   - pip install -r requirements.txt
   - conda install -y -c rmg rmg
   - conda install -y -c rdkit rdkit
+  - conda install -y -c conda-forge codecov
+  - conda list
 
 script:
-  make test
+  - make test
+  - codecov --token=f259713a-7f1d-4e9c-b140-bb3bb371d3ef
