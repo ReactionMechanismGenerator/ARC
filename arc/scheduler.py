@@ -269,7 +269,7 @@ class Scheduler(object):
                 if not job_list:  # if it's an empty dictionary
                     self.check_all_done(label)
                     if not self.running_jobs[label]:
-                        # delete the lable only if it represents an empty dictionary
+                        # delete the label only if it represents an empty dictionary
                         del self.running_jobs[label]
             if self.timer:
                 logging.debug('zzz... setting timer for 1 minute... zzz')
@@ -520,6 +520,7 @@ class Scheduler(object):
                 return True  # run freq / scan jobs on this optimized geometry
             elif not self.species_dict[label].is_ts:
                 self.troubleshoot_negative_freq(label=label, job=job)
+            self.species_dict[label].opt_level = self.composite_method
         if job.job_status[1] != 'done' or not freq_ok:
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level_of_theory, job_type='composite')
         return False  # return ``False``, so no freq / scan jobs are initiated for this unoptimized geometry
@@ -543,14 +544,15 @@ class Scheduler(object):
                 self.species_dict[label].initial_xyz = xyz  # save for troubleshooting, since trsh goes by initial
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, job_type='opt', fine=True)
             else:
+                if 'optfreq' in job.job_name:
+                    self.check_freq_job(label, job)
                 self.output[label]['status'] += 'opt converged; '
                 logging.info('\nOptimized geometry for {label} at {level}:\n{xyz}'.format(label=label,
                             level=job.level_of_theory, xyz=self.species_dict[label].final_xyz))
                 if self.species_dict[label].number_of_atoms > 2:
                     success = plotter.show_sticks(xyz=self.species_dict[label].final_xyz)
+                self.species_dict[label].opt_level = self.opt_level
                 return True  # run freq / sp / scan jobs on this optimized geometry
-            if 'optfreq' in job.job_name:
-                self.check_freq_job(label, job)
         else:
             self.troubleshoot_opt_jobs(label=label)
         return False  # return ``False``, so no freq / sp / scan jobs are initiated for this unoptimized geometry
