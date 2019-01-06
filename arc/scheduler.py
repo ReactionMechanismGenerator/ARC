@@ -1090,8 +1090,9 @@ class Scheduler(object):
         if 'error' not in status and ('composite converged' in status or ('sp converged' in status and
                 (self.species_dict[label].number_of_atoms == 1 or ('freq converged' in status and 'opt converged' in status)))):
             d, h, m, s = time_lapse(t0=self.species_dict[label].t0)
+            self.species_dict[label].execution_time = '{0}{1:02.0f}:{2:02.0f}:{3:02.0f}'.format(d, h, m, s)
             logging.info('\nAll jobs for species {0} successfully converged.'
-                         ' Elapsed time: {1}{2:02.0f}:{3:02.0f}:{4:02.0f}'.format(label, d, h, m, s))
+                         ' Elapsed time: {1}'.format(label, self.species_dict[label].execution_time))
             self.output[label]['status'] = 'converged'
             plotter.save_geo(species=self.species_dict[label], project=self.project)
         elif not self.output[label]['status']:
