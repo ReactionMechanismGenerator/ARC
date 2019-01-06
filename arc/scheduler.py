@@ -13,12 +13,12 @@ import cclib
 from arkane.statmech import Log
 
 from arc import plotter
+from arc import parser
 from arc.job.job import Job
 from arc.exceptions import SpeciesError, SchedulerError
 from arc.job.ssh import SSH_Client
 from arc.species import ARCSpecies, get_xyz_string
 from arc.settings import rotor_scan_resolution, inconsistency_ab, inconsistency_az, maximum_barrier
-import arc.parser as parser
 
 ##################################################################
 
@@ -1091,6 +1091,7 @@ class Scheduler(object):
             logging.info('\nAll jobs for species {0} successfully converged.'
                          ' Elapsed time: {1}{2:02.0f}:{3:02.0f}:{4:02.0f}'.format(label, d, h, m, s))
             self.output[label]['status'] = 'converged'
+            plotter.save_geo(species=self.species_dict[label], project=self.project)
         elif not self.output[label]['status']:
             self.output[label]['status'] = 'nothing converged'
             logging.error('species {0} did not converge. Status is: {1}'.format(label, status))
