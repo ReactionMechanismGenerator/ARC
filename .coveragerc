@@ -1,0 +1,21 @@
+# .coveragerc to control coverage.py
+[run]
+branch = True
+source = ARC
+omit = *Test.py, *.out, *.log
+
+[report]
+show_missing = False
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    if self.debug:
+    if settings.DEBUG
+    raise AssertionError
+    raise NotImplementedError
+    if 0:
+    if __name__ == .__main__.:
+omit = *Test.py, *.out, *.log
+
+[html]
+directory = testing/coverage
