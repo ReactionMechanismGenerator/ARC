@@ -167,6 +167,8 @@ class Processor(object):
                 with open(input_file_path, 'wb') as f:
                     f.write(input_file)
                 arkane_spc = arkane_species(species.label, input_file_path)
+                if species.mol_list:
+                    arkane_spc.molecule = species.mol_list
                 stat_mech_job = StatMechJob(arkane_spc, input_file_path)
                 stat_mech_job.applyBondEnergyCorrections = self.use_bac
                 if self.use_bac:
