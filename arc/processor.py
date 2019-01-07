@@ -166,8 +166,10 @@ class Processor(object):
                                               freq_path=freq_path, rotors=rotors)
                 with open(input_file_path, 'wb') as f:
                     f.write(input_file)
-                spec = arkane_species(species.label, input_file_path)
-                stat_mech_job = StatMechJob(spec, input_file_path)
+                arkane_spc = arkane_species(species.label, input_file_path)
+                if species.mol_list:
+                    arkane_spc.molecule = species.mol_list
+                stat_mech_job = StatMechJob(arkane_spc, input_file_path)
                 stat_mech_job.applyBondEnergyCorrections = self.use_bac
                 if self.use_bac:
                     logging.info('Using the following BAC for {0}: {1}'.format(species.label, species.bond_corrections))
@@ -175,22 +177,25 @@ class Processor(object):
                 stat_mech_job.modelChemistry = self.model_chemistry
                 stat_mech_job.frequencyScaleFactor = assign_frequency_scale_factor(self.model_chemistry)
                 stat_mech_job.execute(outputFile=output_file_path, plot=False)
-                thermo_job = ThermoJob(spec, 'NASA')
+                thermo_job = ThermoJob(arkane_spc, 'NASA')
                 thermo_job.execute(outputFile=output_file_path, plot=False)
-                species.thermo = spec.thermo  # copy the thermo from the Arkane species into the ARCSpecies
+                species.thermo = arkane_spc.thermo  # copy the thermo from the Arkane species into the ARCSpecies
                 plotter.log_thermo(species.label, path=output_file_path)
 
                 species.rmg_species = Species(molecule=[species.mol])
-                # species.rmg_species.label = str(species.label)
+                species.rmg_species.reactive = True
+                if species.mol_list:
+                    species.rmg_species.molecule = species.mol_list  # add resonance structures for thermo determination
                 try:
-                    species.rmg_species.generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
-                except AtomTypeError:
-                    pass
-                species.rmg_thermo = self.database.thermo.getThermoData(species.rmg_species)
-                species_list_for_plotting.append(species)
+                    species.rmg_thermo = self.database.thermo.getThermoData(species.rmg_species)
+                except ValueError:
+                    logging.info('Could not retrieve RMG thermo for species {0}, possibly due to missing 2D structure '
+                                 '(bond orders). Not including this species in the parity plots.'.format(species.label))
+                else:
+                    species_list_for_plotting.append(species)
         if species_list_for_plotting:
-            plotter.draw_thermo_parity_plot(species_list_for_plotting,
-                                            path=os.path.join(arc_path, 'Projects', self.project, 'output'))
+            plotter.draw_thermo_parity_plots(species_list_for_plotting,
+                                             path=os.path.join(arc_path, 'Projects', self.project, 'output'))
 
 
 def determine_rotor_symmetry(rotor_path, label, pivots):

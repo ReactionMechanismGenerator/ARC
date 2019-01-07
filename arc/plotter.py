@@ -84,11 +84,11 @@ def log_thermo(label, path):
     logging.info('\n')
 
 
-def draw_thermo_parity_plot(species_list, path=None):
+def draw_thermo_parity_plots(species_list, path=None):
     """
     Plots a parity plot of calculated thermo and RMG's best values for species in species_list
     """
-    logging.info('Thermo parity plots (labels can be dragged around if they overlap):')
+    pp = None
     if path is not None:
         path = os.path.join(path, str('thermo_parity_plots.pdf'))
         if os.path.exists(path):
@@ -97,52 +97,79 @@ def draw_thermo_parity_plot(species_list, path=None):
     labels, comments, h298_arc, h298_rmg, s298_arc, s298_rmg = [], [], [], [], [], []
     for spc in species_list:
         labels.append(spc.label)
-        h298_arc.append(spc.thermo.getEnthalpy(298) * 0.001)  # convered to kJ/mol
-        h298_rmg.append(spc.rmg_thermo.getEnthalpy(298) * 0.001)  # convered to kJ/mol
+        h298_arc.append(spc.thermo.getEnthalpy(298) * 0.001)  # converted to kJ/mol
+        h298_rmg.append(spc.rmg_thermo.getEnthalpy(298) * 0.001)  # converted to kJ/mol
         s298_arc.append(spc.thermo.getEntropy(298))  # in J/mol*K
         s298_rmg.append(spc.rmg_thermo.getEntropy(298))  # in J/mol*K
         comments.append(spc.rmg_thermo.comment)
-    min_h = min(h298_arc + h298_rmg)
-    max_h = max(h298_arc + h298_rmg)
-    min_s = min(s298_arc + s298_rmg)
-    max_s = max(s298_arc + s298_rmg)
-    plt.figure(figsize=(5, 4), dpi=120)
-    plt.title('H298 parity plot')
-    plt.plot(h298_arc, h298_rmg, 'go')
-    plt.plot([min_h, max_h], [min_h, max_h], 'b-', linewidth=0.5)
-    plt.xlabel('H298 calculated by ARC (kJ / mol)')
-    plt.ylabel('H298 determined by RMG (kJ / mol)')
-    plt.xlim = (min_h, max_h)
-    plt.ylim = (min_h, max_h)
-    for i, label in enumerate(labels):
-        a = plt.annotate(label, xy=(h298_arc[i], h298_rmg[i]), size=10)
-        a.draggable()
-    plt.tight_layout()
-    if path is not None:
-        plt.savefig(pp, format='pdf')
-    plt.show()
-
-    plt.figure(figsize=(5, 4), dpi=120)
-    plt.title('S298 parity plot')
-    plt.plot(s298_arc, s298_rmg, 'go')
-    plt.plot([min_s, max_s], [min_s, max_s], 'b-', linewidth=0.5)
-    plt.xlabel('S298 calculated by ARC (J / mol * K)')
-    plt.ylabel('S298 determined by RMG (J / mol * K)')
-    plt.xlim = (min_s, max_s)
-    plt.ylim = (min_s, max_s)
-    for i, label in enumerate(labels):
-        b = plt.annotate(label, xy=(h298_arc[i], h298_rmg[i]), size=10)
-        b.draggable()
-    plt.tight_layout()
-    if path is not None:
-        plt.savefig(pp, format='pdf')
-        pp.close()
-    plt.show()
-
+    draw_parity_plot(var_arc=h298_arc, var_rmg=h298_rmg, var_label='H298', var_units='kJ / mol', labels=labels, pp=pp)
+    logging.info('Thermo parity plot for S:')
+    draw_parity_plot(var_arc=s298_arc, var_rmg=s298_rmg, var_label='S298', var_units='J / mol * K', labels=labels, pp=pp)
+    pp.close()
     logging.info('\nSources of thermoproperties determined by RMG for the parity plots:')
     max_label_len = max([len(label) for label in labels])
     for i, label in enumerate(labels):
         logging.info('   {0}: {1}{2}'.format(label, ' '*(max_label_len - len(label)), comments[i]))
+
+
+def draw_parity_plot(var_arc, var_rmg, var_label, var_units, labels, pp):
+    min_var = min(var_arc + var_rmg)
+    max_var = max(var_arc + var_rmg)
+    fig = plt.figure(figsize=(5, 4), dpi=120)
+    ax = fig.add_subplot(111)
+    plt.title('{0} parity plot'.format(var_label))
+    plt.plot(var_arc, var_rmg, 'go')
+    plt.plot([min_var, max_var], [min_var, max_var], 'b-', linewidth=0.5)
+    plt.xlabel('{0} calculated by ARC ({1})'.format(var_label, var_units))
+    plt.ylabel('{0} determined by RMG ({1})'.format(var_label, var_units))
+    plt.xlim = (min_var, max_var * 1.1)
+    plt.ylim = (min_var, max_var)
+    txt_height = 0.04 * (plt.ylim[1] - plt.ylim[0])  # plt.ylim and plt.xlim return a tuple
+    txt_width = 0.02 * (plt.xlim[1] - plt.xlim[0])
+    text_positions = get_text_positions(var_arc, var_rmg, txt_width, txt_height)
+    text_plotter(var_arc, var_rmg, labels, text_positions, ax, txt_width, txt_height)
+    plt.tight_layout()
+    if pp is not None:
+        plt.savefig(pp, format='pdf')
+    plt.show()
+
+
+def get_text_positions(x_data, y_data, txt_width, txt_height):
+    """
+    Get the positions of plot annotations to avoid overlapping
+    Source: https://stackoverflow.com/questions/8850142/matplotlib-overlapping-annotations
+    """
+    a = zip(y_data, x_data)
+    text_positions = y_data
+    for index, (y, x) in enumerate(a):
+        local_text_positions = [i for i in a if i[0] > (y - txt_height)
+                                and (abs(i[1] - x) < txt_width * 2) and i != (y,x)]
+        if local_text_positions:
+            sorted_ltp = sorted(local_text_positions)
+            if abs(sorted_ltp[0][0] - y) < txt_height:  # True means collision
+                differ = np.diff(sorted_ltp, axis=0)
+                a[index] = (sorted_ltp[-1][0] + txt_height, a[index][1])
+                text_positions[index] = sorted_ltp[-1][0] + txt_height
+                for k, (j, m) in enumerate(differ):
+                    # j is the vertical distance between words
+                    if j > txt_height * 1.5:  # if True then room to fit a word in
+                        a[index] = (sorted_ltp[k][0] + txt_height, a[index][1])
+                        text_positions[index] = sorted_ltp[k][0] + txt_height
+                        break
+    return text_positions
+
+
+def text_plotter(x_data, y_data, labels, text_positions, axis, txt_width, txt_height):
+    """
+    Annotate a plot and add an arrow
+    Source: https://stackoverflow.com/questions/8850142/matplotlib-overlapping-annotations
+    """
+    for x, y, l, t in zip(x_data, y_data, labels, text_positions):
+        axis.text(x - .03, 1.02 * t, '{0}'.format(l), rotation=0, color='black', fontsize=10)
+        if y != t:
+            axis.arrow(x, t + 20, 0, y-t, color='blue', alpha=0.2, width=txt_width*0.0,
+                       head_width=.02, head_length=txt_height*0.5,
+                       zorder=0, length_includes_head=True)
 
 
 def save_geo(species, project):
