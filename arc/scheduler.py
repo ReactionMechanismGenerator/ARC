@@ -872,6 +872,8 @@ class Scheduler(object):
         if 'Unknown reason' in job.job_status[1] and 'change_node' not in job.ess_trsh_methods:
             job.ess_trsh_methods.append('change_node')
             job.troubleshoot_server()
+            if job.job_name not in self.running_jobs[label]:
+                self.running_jobs[label].append(job.job_name)  # mark as a running job
         elif job.software == 'gaussian':
             if 'scf=(qc,nosymm)' not in job.ess_trsh_methods:
                 # try both qc and nosymm
