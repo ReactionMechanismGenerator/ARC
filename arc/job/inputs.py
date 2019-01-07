@@ -114,7 +114,7 @@ table,E_mrci,E_mrci_Davidson;
     'arkane_species': """#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-linear = {linear}
+linear = {linear}{bonds}
 
 externalSymmetry = {symmetry}
 
