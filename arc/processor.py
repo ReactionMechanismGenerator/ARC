@@ -166,8 +166,8 @@ class Processor(object):
                                               freq_path=freq_path, rotors=rotors)
                 with open(input_file_path, 'wb') as f:
                     f.write(input_file)
-                spec = arkane_species(species.label, input_file_path)
-                stat_mech_job = StatMechJob(spec, input_file_path)
+                arkane_spc = arkane_species(species.label, input_file_path)
+                stat_mech_job = StatMechJob(arkane_spc, input_file_path)
                 stat_mech_job.applyBondEnergyCorrections = self.use_bac
                 if self.use_bac:
                     logging.info('Using the following BAC for {0}: {1}'.format(species.label, species.bond_corrections))
@@ -175,9 +175,9 @@ class Processor(object):
                 stat_mech_job.modelChemistry = self.model_chemistry
                 stat_mech_job.frequencyScaleFactor = assign_frequency_scale_factor(self.model_chemistry)
                 stat_mech_job.execute(outputFile=output_file_path, plot=False)
-                thermo_job = ThermoJob(spec, 'NASA')
+                thermo_job = ThermoJob(arkane_spc, 'NASA')
                 thermo_job.execute(outputFile=output_file_path, plot=False)
-                species.thermo = spec.thermo  # copy the thermo from the Arkane species into the ARCSpecies
+                species.thermo = arkane_spc.thermo  # copy the thermo from the Arkane species into the ARCSpecies
                 plotter.log_thermo(species.label, path=output_file_path)
 
                 species.rmg_species = Species(molecule=[species.mol])
