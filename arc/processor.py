@@ -160,7 +160,13 @@ class Processor(object):
                     os.makedirs(output_dir)
                 output_file_path = os.path.join(output_dir, species.label + '_arkane_output.py')
                 input_file = input_files['arkane_species']
-                input_file= input_file.format(linear=linear, symmetry=species.external_symmetry,
+                if self.use_bac:
+                    logging.info('Using the following BAC for {0}: {1}'.format(species.label, species.bond_corrections))
+                    bonds = '\n\nbonds = {0}'.format(species.bond_corrections)
+                else:
+                    logging.debug('NOT using BAC for {0}'.format(species.label))
+                    bonds = ''
+                input_file= input_file.format(linear=linear, bonds=bonds, symmetry=species.external_symmetry,
                                               multiplicity=multiplicity, optical=species.optical_isomers,
                                               model_chemistry=self.model_chemistry, sp_path=sp_path, opt_path=opt_path,
                                               freq_path=freq_path, rotors=rotors)
@@ -171,9 +177,6 @@ class Processor(object):
                     arkane_spc.molecule = species.mol_list
                 stat_mech_job = StatMechJob(arkane_spc, input_file_path)
                 stat_mech_job.applyBondEnergyCorrections = self.use_bac
-                if self.use_bac:
-                    logging.info('Using the following BAC for {0}: {1}'.format(species.label, species.bond_corrections))
-                    stat_mech_job.bonds = species.bond_corrections
                 stat_mech_job.modelChemistry = self.model_chemistry
                 stat_mech_job.frequencyScaleFactor = assign_frequency_scale_factor(self.model_chemistry)
                 stat_mech_job.execute(outputFile=output_file_path, plot=False)
