@@ -882,7 +882,7 @@ class Scheduler(object):
                 job.ess_trsh_methods.append('scf=(qc,nosymm)')
                 trsh = 'scf=(qc,nosymm)'
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
-                             job_type=job_type, fine=False, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
+                             job_type=job_type, fine=job.fine, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
                              conformer=conformer)
             elif 'scf=(NDump=30)' not in job.ess_trsh_methods:
                 # Allows dynamic dumping for up to N SCF iterations (slower conversion)
@@ -891,7 +891,7 @@ class Scheduler(object):
                 job.ess_trsh_methods.append('scf=(NDump=30)')
                 trsh = 'scf=(NDump=30)'
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
-                             job_type=job_type, fine=False, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
+                             job_type=job_type, fine=job.fine, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
                              conformer=conformer)
             elif 'scf=NoDIIS' not in job.ess_trsh_methods:
                 # Switching off Pulay's Direct Inversion
@@ -900,7 +900,7 @@ class Scheduler(object):
                 job.ess_trsh_methods.append('scf=NoDIIS')
                 trsh = 'scf=NoDIIS'
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
-                             job_type=job_type, fine=False, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
+                             job_type=job_type, fine=job.fine, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
                              conformer=conformer)
             elif 'int=(Acc2E=14)' not in job.ess_trsh_methods:  # does not work in g03
                 # Change integral accuracy (skip everything up to 1E-14 instead of 1E-12)
@@ -909,7 +909,7 @@ class Scheduler(object):
                 job.ess_trsh_methods.append('int=(Acc2E=14)')
                 trsh = 'int=(Acc2E=14)'
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
-                             job_type=job_type, fine=False, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
+                             job_type=job_type, fine=job.fine, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
                              conformer=conformer)
             elif 'cbs-qb3' not in job.ess_trsh_methods and self.composite_method != 'cbs-qb3':
                 # try running CBS-QB3, which is relatively robust
@@ -918,7 +918,7 @@ class Scheduler(object):
                 job.ess_trsh_methods.append('cbs-qb3')
                 level_of_theory = 'cbs-qb3'
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, job_type='composite',
-                             fine=False, ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
+                             fine=job.fine, ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
             elif 'scf=nosymm' not in job.ess_trsh_methods:
                 # calls a quadratically convergent SCF procedure
                 logging.info('Troubleshooting {type} job in {software} using scf=nosymm'.format(
@@ -926,7 +926,7 @@ class Scheduler(object):
                 job.ess_trsh_methods.append('scf=nosymm')
                 trsh = 'scf=nosymm'
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
-                             job_type=job_type, fine=False, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
+                             job_type=job_type, fine=job.fine, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
                              conformer=conformer)
             elif 'memory' not in job.ess_trsh_methods:
                 # Increase memory allocation
@@ -934,7 +934,7 @@ class Scheduler(object):
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('memory')
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
-                             job_type=job_type, fine=False, memory=3000, ess_trsh_methods=job.ess_trsh_methods,
+                             job_type=job_type, fine=job.fine, memory=3000, ess_trsh_methods=job.ess_trsh_methods,
                              conformer=conformer)
             elif self.composite_method != 'cbs-qb3' and 'scf=(qc,nosymm) & CBS-QB3' not in job.ess_trsh_methods:
                 # try both qc and nosymm with CBS-QB3
@@ -944,21 +944,21 @@ class Scheduler(object):
                 level_of_theory = 'cbs-qb3'
                 trsh = 'scf=(qc,nosymm)'
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
-                             job_type=job_type, fine=False, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
+                             job_type=job_type, fine=job.fine, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
                              conformer=conformer)
             elif 'qchem' not in job.ess_trsh_methods:
                 # Try QChem
                 logging.info('Troubleshooting {type} job using qchem instead of {software}'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('qchem')
-                self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, job_type=job_type, fine=False,
+                self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, job_type=job_type, fine=job.fine,
                              software='qchem', ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
             elif 'molpro' not in job.ess_trsh_methods:
                 # Try molpro
                 logging.info('Troubleshooting {type} job using molpro instead of {software}'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('molpro')
-                self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, job_type=job_type, fine=False,
+                self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, job_type=job_type, fine=job.fine,
                              software='molpro', ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
             else:
                 logging.error('Could not troubleshoot geometry optimization for {label}! Tried'
@@ -975,7 +975,7 @@ class Scheduler(object):
                 job.ess_trsh_methods.append('max_cycles')
                 trsh = '\n   GEOM_OPT_MAX_CYCLES 250'  # default is 50
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
-                             job_type=job_type, fine=False, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
+                             job_type=job_type, fine=job.fine, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
                              conformer=conformer)
             elif 'SCF failed' in job.job_status[1] and 'DIIS_GDM' not in job.ess_trsh_methods:
                 # change the SCF algorithm and increase max SCF cycles
@@ -984,7 +984,7 @@ class Scheduler(object):
                 job.ess_trsh_methods.append('DIIS_GDM')
                 trsh = '\n   SCF_ALGORITHM DIIS_GDM\n   MAX_SCF_CYCLES 250'  # default is 50
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
-                             job_type=job_type, fine=False, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
+                             job_type=job_type, fine=job.fine, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
                              conformer=conformer)
             elif 'SYM_IGNORE' not in job.ess_trsh_methods:  # symmetry - look in manual, no symm if fails
                 # change the SCF algorithm and increase max SCF cycles
@@ -993,7 +993,7 @@ class Scheduler(object):
                 job.ess_trsh_methods.append('SYM_IGNORE')
                 trsh = '\n   SCF_ALGORITHM DIIS_GDM\n   MAX_SCF_CYCLES 250\n   SYM_IGNORE     True'
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
-                             job_type=job_type, fine=False, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
+                             job_type=job_type, fine=job.fine, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
                              conformer=conformer)
             elif 'b3lyp' not in job.ess_trsh_methods:
                 logging.info('Troubleshooting {type} job in {software} using b3lyp'.format(
@@ -1002,20 +1002,20 @@ class Scheduler(object):
                 # try converging with B3LYP
                 level_of_theory = 'b3lyp/6-311++g(d,p)'
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
-                             job_type=job_type, fine=False, ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
+                             job_type=job_type, fine=job.fine, ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
             elif 'gaussian' not in job.ess_trsh_methods:
                 # Try Gaussian
                 logging.info('Troubleshooting {type} job using gaussian instead of {software}'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('gaussian')
-                self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, job_type=job_type, fine=False,
+                self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, job_type=job_type, fine=job.fine,
                              software='gaussian', ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
             elif 'molpro' not in job.ess_trsh_methods:
                 # Try molpro
                 logging.info('Troubleshooting {type} job using molpro instead of {software}'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('molpro')
-                self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, job_type=job_type, fine=False,
+                self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, job_type=job_type, fine=job.fine,
                              software='molpro', ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
             else:
                 logging.error('Could not troubleshoot geometry optimization for {label}! Tried'
@@ -1032,7 +1032,7 @@ class Scheduler(object):
                 job.ess_trsh_methods.append('shift')
                 shift = 'shift,-1.0,-0.5;'
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
-                             job_type=job_type, fine=False, shift=shift, ess_trsh_methods=job.ess_trsh_methods,
+                             job_type=job_type, fine=job.fine, shift=shift, ess_trsh_methods=job.ess_trsh_methods,
                              conformer=conformer)
             elif 'vdz' not in job.ess_trsh_methods:
                 # try adding a level shift for alpha- and beta-spin orbitals
@@ -1041,7 +1041,7 @@ class Scheduler(object):
                 job.ess_trsh_methods.append('vdz')
                 trsh = 'vdz'
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
-                             job_type=job_type, fine=False, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
+                             job_type=job_type, fine=job.fine, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
                              conformer=conformer)
             elif 'vdz & shift' not in job.ess_trsh_methods:
                 # try adding a level shift for alpha- and beta-spin orbitals
@@ -1051,7 +1051,7 @@ class Scheduler(object):
                 shift = 'shift,-1.0,-0.5;'
                 trsh = 'vdz'
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
-                             job_type=job_type, fine=False, shift=shift, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
+                             job_type=job_type, fine=job.fine, shift=shift, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
                              conformer=conformer)
             elif 'memory' not in job.ess_trsh_methods:
                 # Increase memory allocation, also run with a shift
@@ -1060,21 +1060,21 @@ class Scheduler(object):
                 job.ess_trsh_methods.append('memory')
                 shift = 'shift,-1.0,-0.5;'
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
-                             job_type=job_type, fine=False, shift=shift, memory=5000,
+                             job_type=job_type, fine=job.fine, shift=shift, memory=5000,
                              ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
             elif 'gaussian' not in job.ess_trsh_methods:
                 # Try Gaussian
                 logging.info('Troubleshooting {type} job using gaussian instead of {software}'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('gaussian')
-                self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, job_type=job_type, fine=False,
+                self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, job_type=job_type, fine=job.fine,
                              software='gaussian', ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
             elif 'qchem' not in job.ess_trsh_methods:
                 # Try QChem
                 logging.info('Troubleshooting {type} job using qchem instead of {software}'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('qchem')
-                self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, job_type=job_type, fine=False,
+                self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, job_type=job_type, fine=job.fine,
                              software='qchem', ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
             else:
                 logging.error('Could not troubleshoot geometry optimization for {label}! Tried'
