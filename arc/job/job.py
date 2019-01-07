@@ -192,8 +192,12 @@ class Job(object):
         self.scan = scan
         self.pivots = list() if pivots is None else pivots
 
-        conformer_folder = '' if self.conformer < 0 else os.path.join('conformers',str(self.conformer))
-        self.local_path = os.path.join(arc_path, 'Projects', self.project,
+        conformer_folder = '' if self.conformer < 0 else os.path.join('conformers', str(self.conformer))
+        if self.is_ts:
+            folder_name = 'TSs'
+        else:
+            folder_name = 'Species'
+        self.local_path = os.path.join(arc_path, 'Projects', self.project, folder_name,
                                        self.species_name, conformer_folder, self.job_name)
         self.local_path_to_output_file = os.path.join(self.local_path, 'output.out')
         # parentheses don't play well in folder names:

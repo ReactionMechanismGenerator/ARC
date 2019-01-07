@@ -149,9 +149,13 @@ class Processor(object):
                 if rotors:
                     rotors += ']'
                 # write the Arkane species input file
-                input_file_path = os.path.join(arc_path, 'Projects', self.project, species.label,
+                if species.is_ts:
+                    folder_name = 'TSs'
+                else:
+                    folder_name = 'Species'
+                input_file_path = os.path.join(arc_path, 'Projects', self.project, folder_name, species.label,
                                                '{0}_arkane_input.py'.format(species.label))
-                output_dir = os.path.join(arc_path, 'Projects', self.project, 'output', species.label)
+                output_dir = os.path.join(arc_path, 'Projects', self.project, 'output', folder_name, species.label)
                 if not os.path.isdir(output_dir):
                     os.makedirs(output_dir)
                 output_file_path = os.path.join(output_dir, species.label + '_arkane_output.py')

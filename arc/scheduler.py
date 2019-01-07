@@ -13,12 +13,12 @@ import cclib
 from arkane.statmech import Log
 
 from arc import plotter
+from arc import parser
 from arc.job.job import Job
 from arc.exceptions import SpeciesError, SchedulerError
 from arc.job.ssh import SSH_Client
 from arc.species import ARCSpecies, get_xyz_string
 from arc.settings import rotor_scan_resolution, inconsistency_ab, inconsistency_az, maximum_barrier
-import arc.parser as parser
 
 ##################################################################
 
@@ -269,7 +269,7 @@ class Scheduler(object):
                 if not job_list:  # if it's an empty dictionary
                     self.check_all_done(label)
                     if not self.running_jobs[label]:
-                        # delete the lable only if it represents an empty dictionary
+                        # delete the label only if it represents an empty dictionary
                         del self.running_jobs[label]
             if self.timer:
                 logging.debug('zzz... setting timer for 1 minute... zzz')
@@ -520,6 +520,7 @@ class Scheduler(object):
                 return True  # run freq / scan jobs on this optimized geometry
             elif not self.species_dict[label].is_ts:
                 self.troubleshoot_negative_freq(label=label, job=job)
+            self.species_dict[label].opt_level = self.composite_method
         if job.job_status[1] != 'done' or not freq_ok:
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level_of_theory, job_type='composite')
         return False  # return ``False``, so no freq / scan jobs are initiated for this unoptimized geometry
@@ -543,14 +544,15 @@ class Scheduler(object):
                 self.species_dict[label].initial_xyz = xyz  # save for troubleshooting, since trsh goes by initial
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, job_type='opt', fine=True)
             else:
+                if 'optfreq' in job.job_name:
+                    self.check_freq_job(label, job)
                 self.output[label]['status'] += 'opt converged; '
                 logging.info('\nOptimized geometry for {label} at {level}:\n{xyz}'.format(label=label,
                             level=job.level_of_theory, xyz=self.species_dict[label].final_xyz))
                 if self.species_dict[label].number_of_atoms > 2:
                     success = plotter.show_sticks(xyz=self.species_dict[label].final_xyz)
+                self.species_dict[label].opt_level = self.opt_level
                 return True  # run freq / sp / scan jobs on this optimized geometry
-            if 'optfreq' in job.job_name:
-                self.check_freq_job(label, job)
         else:
             self.troubleshoot_opt_jobs(label=label)
         return False  # return ``False``, so no freq / sp / scan jobs are initiated for this unoptimized geometry
@@ -870,6 +872,8 @@ class Scheduler(object):
         if 'Unknown reason' in job.job_status[1] and 'change_node' not in job.ess_trsh_methods:
             job.ess_trsh_methods.append('change_node')
             job.troubleshoot_server()
+            if job.job_name not in self.running_jobs[label]:
+                self.running_jobs[label].append(job.job_name)  # mark as a running job
         elif job.software == 'gaussian':
             if 'scf=(qc,nosymm)' not in job.ess_trsh_methods:
                 # try both qc and nosymm
@@ -1088,9 +1092,11 @@ class Scheduler(object):
         if 'error' not in status and ('composite converged' in status or ('sp converged' in status and
                 (self.species_dict[label].number_of_atoms == 1 or ('freq converged' in status and 'opt converged' in status)))):
             d, h, m, s = time_lapse(t0=self.species_dict[label].t0)
+            self.species_dict[label].execution_time = '{0}{1:02.0f}:{2:02.0f}:{3:02.0f}'.format(d, h, m, s)
             logging.info('\nAll jobs for species {0} successfully converged.'
-                         ' Elapsed time: {1}{2:02.0f}:{3:02.0f}:{4:02.0f}'.format(label, d, h, m, s))
+                         ' Elapsed time: {1}'.format(label, self.species_dict[label].execution_time))
             self.output[label]['status'] = 'converged'
+            plotter.save_geo(species=self.species_dict[label], project=self.project)
         elif not self.output[label]['status']:
             self.output[label]['status'] = 'nothing converged'
             logging.error('species {0} did not converge. Status is: {1}'.format(label, status))

@@ -15,7 +15,7 @@ Various ESS parsing tools
 def parse_frequencies(path, software):
     freqs = np.array([], np.float64)
     if software.lower() == 'qchem':
-        with open(path, 'rw') as f:
+        with open(path, 'rb') as f:
             for line in f:
                 if ' Frequency:' in line:
                     items = line.split()

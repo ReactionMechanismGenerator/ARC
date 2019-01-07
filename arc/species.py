@@ -43,6 +43,7 @@ class ARCSpecies(object):
     `conformer_energies`    ``list``     A list of conformers E0 (Hartree)
     'initial_xyz'           ``string``   The initial geometry guess
     'final_xyz'             ``string``   The optimized species geometry
+    `opt_level`             ``string``   Level of theory for geometry optimization. Saved for archiving.
     'number_of_atoms'       ``int``      The number of atoms in the species/TS
     'smiles'                ``str``      The SMILES structure. Either SMILES, adjList, or mol is required for BAC.
     'adjlist'               ``str``      The Adjacency List structure.
@@ -54,6 +55,7 @@ class ARCSpecies(object):
     'bond_corrections'      ``dict``     The bond additivity corrections (BAC) to be used. Determined from the structure
                                            if not directly given.
     't0'                    ``float``    Initial time when the first species job was spawned
+    'execution_time'        ``str``      Overall execution time for species
     `neg_freqs_trshed`      ``list``     A list of negative frequencies this species was troubleshooted for
     `generate_thermo`       ``bool``     Whether ot not to calculate thermodynamic properties for this species
     `thermo`                ``HeatCapacityModel``  The heat capacity model with thermodata calculated by ARC
@@ -77,6 +79,8 @@ class ARCSpecies(object):
         self.generate_thermo = generate_thermo if not self.is_ts else False
         self.rmg_thermo = None
         self.t0 = None
+        self.execution_time = None
+        self.opt_level = ''
 
         self.rmg_species = rmg_species
         if bond_corrections is None:

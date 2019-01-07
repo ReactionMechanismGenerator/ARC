@@ -9,12 +9,13 @@ import math
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
-import py3Dmol
+import py3Dmol as p3d
 from rdkit import Chem
 
 from rmgpy.exceptions import AtomTypeError
 
 from arc.species import mol_from_xyz, rdkit_conf_from_mol
+from arc.settings import arc_path
 
 
 ##################################################################
@@ -51,7 +52,7 @@ def show_sticks(xyz):
     except ValueError:
         return False
     mb = Chem.MolToMolBlock(rd_mol)
-    p = py3Dmol.view(width=400, height=400)
+    p = p3d.view(width=400, height=400)
     p.addModel(mb, 'sdf')
     p.setStyle({'stick': {}})
     # p.setBackgroundColor('0xeeeeee')
@@ -142,3 +143,36 @@ def draw_thermo_parity_plot(species_list, path=None):
     max_label_len = max([len(label) for label in labels])
     for i, label in enumerate(labels):
         logging.info('   {0}: {1}{2}'.format(label, ' '*(max_label_len - len(label)), comments[i]))
+
+
+def save_geo(species, project):
+    """
+    Save the geometry in several forms for an ARC Species object in the project's output folder under the species name
+    """
+    if species.is_ts:
+        folder_name = 'TSs'
+    else:
+        folder_name = 'Species'
+    geo_path = os.path.join(arc_path, 'Projects', project, 'output', folder_name, species.label, 'geometry')
+    if os.path.exists(geo_path):
+        # clean working folder from all previous output
+        for file in os.listdir(geo_path):
+            file_path = os.path.join(geo_path, file)
+            os.remove(file_path)
+    else:
+        os.makedirs(geo_path)
+
+    # xyz
+    xyz = '{0}\n'.format(species.number_of_atoms)
+    xyz += '{0} optimized at {1}\n'.format(species.label, species.opt_level)
+    xyz += '{0}\n'.format(species.final_xyz)
+    with open(os.path.join(geo_path, '{0}.xyz'.format(species.label)), 'w') as f:
+        f.write(xyz)
+
+    # GaussView file
+    gv = '# hf/3-21g\n\n{0} optimized at {1}\n'.format(
+        species.label, species.opt_level)
+    gv += '{0} {1}\n'.format(species.charge, species.multiplicity)
+    gv += '{0}\n'.format(species.final_xyz)
+    with open(os.path.join(geo_path, '{0}.gjf'.format(species.label)), 'w') as f:
+        f.write(gv)
