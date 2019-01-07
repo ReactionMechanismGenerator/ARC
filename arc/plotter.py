@@ -7,6 +7,7 @@ import numpy as np
 import os
 import math
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.backends.backend_pdf import PdfPages
 
 import py3Dmol as p3d
@@ -14,7 +15,7 @@ from rdkit import Chem
 
 from rmgpy.exceptions import AtomTypeError
 
-from arc.species import mol_from_xyz, rdkit_conf_from_mol
+from arc.species import mol_from_xyz, get_xyz_matrix, rdkit_conf_from_mol
 from arc.settings import arc_path
 
 
@@ -59,6 +60,55 @@ def show_sticks(xyz):
     p.zoomTo()
     p.show()
     return True
+
+
+def plot_3d_mol_as_scatter(xyz, path=None, plot_h=True, show_plot=True):
+    """
+    Draws the molecule as scattered balls in space according to supplied xyz coordinates
+    `xyz` is in string form
+    `path` is the species output path to save the image
+    """
+    xyz, atoms, x, y, z = get_xyz_matrix(xyz)
+
+    x = np.array(x, dtype=float)
+    y = np.array(y, dtype=float)
+    z = np.array(z, dtype=float)
+
+    colors = []
+    sizes = []
+    for i, atom in enumerate(atoms):
+        size = 500
+        if atom == 'H':
+            if plot_h:
+                colors.append('gray')
+                size = 250
+            else:
+                colors.append('white')
+                atoms[i] = ''
+                x[i], y[i], z[i] = 0, 0, 0
+        elif atom == 'C':
+            colors.append('k')
+        elif atom == 'N':
+            colors.append('b')
+        elif atom == 'O':
+            colors.append('r')
+        elif atom == 'S':
+            colors.append('orange')
+        else:
+            colors.append('g')
+        sizes.append(size)
+
+    fig = plt.figure()
+    ax = Axes3D(fig)
+    ax.scatter(xs=x, ys=y, zs=z, s=sizes, c=colors, depthshade=True)
+    for i, atom in enumerate(atoms):
+        ax.text(x[i]+0.01, y[i]+0.01, z[i]+0.01, str(atom), size=7)
+    plt.axis('off')
+    if show_plot:
+        plt.show()
+    if path is not None:
+        image_path = os.path.join(path, "scattered_balls_structure.png")
+        plt.savefig(image_path, bbox_inches='tight')
 
 
 def log_thermo(label, path):

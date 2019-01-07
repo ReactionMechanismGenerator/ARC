@@ -504,6 +504,8 @@ class Scheduler(object):
                         level=job.level_of_theory, xyz=self.species_dict[label].final_xyz))
             if self.species_dict[label].number_of_atoms > 2:
                 success = plotter.show_sticks(xyz=self.species_dict[label].final_xyz)
+                if not success:
+                    plotter.plot_3d_mol_as_scatter(xyz=self.species_dict[label].final_xyz, path=None)
             # Check frequencies (using cclib crashed for CBS-QB3 output, using an explicit parser here)
             if not os.path.isfile(job.local_path_to_output_file):
                 raise SchedulerError('Called parse_composite_geo with no output file')
@@ -551,6 +553,8 @@ class Scheduler(object):
                             level=job.level_of_theory, xyz=self.species_dict[label].final_xyz))
                 if self.species_dict[label].number_of_atoms > 2:
                     success = plotter.show_sticks(xyz=self.species_dict[label].final_xyz)
+                    if not success:
+                        plotter.plot_3d_mol_as_scatter(xyz=self.species_dict[label].final_xyz, path=None)
                 self.species_dict[label].opt_level = self.opt_level
                 return True  # run freq / sp / scan jobs on this optimized geometry
         else:
