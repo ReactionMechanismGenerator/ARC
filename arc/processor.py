@@ -183,16 +183,19 @@ class Processor(object):
                 plotter.log_thermo(species.label, path=output_file_path)
 
                 species.rmg_species = Species(molecule=[species.mol])
-                # species.rmg_species.label = str(species.label)
+                species.rmg_species.reactive = True
+                if species.mol_list:
+                    species.rmg_species.molecule = species.mol_list  # add resonance structures for thermo determination
                 try:
-                    species.rmg_species.generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
-                except AtomTypeError:
-                    pass
-                species.rmg_thermo = self.database.thermo.getThermoData(species.rmg_species)
-                species_list_for_plotting.append(species)
+                    species.rmg_thermo = self.database.thermo.getThermoData(species.rmg_species)
+                except ValueError:
+                    logging.info('Could not retrieve RMG thermo for species {0}, possibly due to missing 2D structure '
+                                 '(bond orders). Not including this species in the parity plots.'.format(species.label))
+                else:
+                    species_list_for_plotting.append(species)
         if species_list_for_plotting:
-            plotter.draw_thermo_parity_plot(species_list_for_plotting,
-                                            path=os.path.join(arc_path, 'Projects', self.project, 'output'))
+            plotter.draw_thermo_parity_plots(species_list_for_plotting,
+                                             path=os.path.join(arc_path, 'Projects', self.project, 'output'))
 
 
 def determine_rotor_symmetry(rotor_path, label, pivots):
