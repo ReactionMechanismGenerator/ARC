@@ -635,38 +635,49 @@ $end
                 return 'errored: Unknown reason'
 
     def troubleshoot_server(self):
-        # TODO: troubleshoot node on RMG
-        # delete present server run
-        logging.error('Job {name} has server status {stat} on {server}. Troubleshooting by changing node.'.format(
-            name=self.job_name, stat=self.job_status[0], server=self.server))
         if self.settings['ssh']:
-            ssh = SSH_Client(self.server)
-            ssh.send_command_to_server(command=delete_command[servers[self.server]['cluster_soft']] +
-                                       ' ' + str(self.job_id))
-            # find available nodes
-            stdout, _ = ssh.send_command_to_server(
-                command=list_available_nodes_command[servers[self.server]['cluster_soft']])
-            for line in stdout:
-                node = line.split()[0].split('.')[0].split('node')[1]
-                if servers[self.server]['cluster_soft'] == 'OGE' and '0/0/8' in line and node not in self.server_nodes:
-                    self.server_nodes.append(node)
-                    break
-            else:
-                logging.error('Cold not find an available node on the server')  # TODO: continue troubleshooting; if all else fails, put job to sleep for x min and try again searching for a node
-                return
-            # modify submit file
-            content = ssh.read_remote_file(remote_path=self.remote_path,
-                                           filename=submit_filename[servers[self.server]['cluster_soft']])
-            for i, line in enumerate(content):
-                if '#$ -l h=node' in line:
-                    content[i] = '#$ -l h=node{0}.cluster'.format(node)
-                    break
-            else:
-                content.insert(7, '#$ -l h=node{0}.cluster'.format(node))
-            content = ''.join(content)  # convert list into a single string, not to upset paramico
-            # resubmit
-            ssh.upload_file(remote_file_path=os.path.join(self.remote_path,
-                            submit_filename[servers[self.server]['cluster_soft']]), file_string=content)
-            self.run()
+            if servers[self.server]['cluser_soft'].lower() == 'oge':
+                # delete present server run
+                logging.error('Job {name} has server status {stat} on {server}. Troubleshooting by changing node.'.format(
+                    name=self.job_name, stat=self.job_status[0], server=self.server))
+                ssh = SSH_Client(self.server)
+                ssh.send_command_to_server(command=delete_command[servers[self.server]['cluster_soft']] +
+                                           ' ' + str(self.job_id))
+                # find available nodes
+                stdout, _ = ssh.send_command_to_server(
+                    command=list_available_nodes_command[servers[self.server]['cluster_soft']])
+                for line in stdout:
+                    node = line.split()[0].split('.')[0].split('node')[1]
+                    if servers[self.server]['cluster_soft'] == 'OGE' and '0/0/8' in line and node not in self.server_nodes:
+                        self.server_nodes.append(node)
+                        break
+                else:
+                    logging.error('Cold not find an available node on the server')
+                    # TODO: continue troubleshooting; if all else fails, put job to sleep for x min and try again searching for a node
+                    return
+                # modify submit file
+                content = ssh.read_remote_file(remote_path=self.remote_path,
+                                               filename=submit_filename[servers[self.server]['cluster_soft']])
+                for i, line in enumerate(content):
+                    if '#$ -l h=node' in line:
+                        content[i] = '#$ -l h=node{0}.cluster'.format(node)
+                        break
+                else:
+                    content.insert(7, '#$ -l h=node{0}.cluster'.format(node))
+                content = ''.join(content)  # convert list into a single string, not to upset paramico
+                # resubmit
+                ssh.upload_file(remote_file_path=os.path.join(self.remote_path,
+                                submit_filename[servers[self.server]['cluster_soft']]), file_string=content)
+                self.run()
+            elif servers[self.server]['cluser_soft'].lower() == 'slurm':
+                # TODO: change node on Slurm
+                # delete present server run
+                logging.error('Job {name} has server status {stat} on {server}. Re-running job.'.format(
+                    name=self.job_name, stat=self.job_status[0], server=self.server))
+                ssh = SSH_Client(self.server)
+                ssh.send_command_to_server(command=delete_command[servers[self.server]['cluster_soft']] +
+                                           ' ' + str(self.job_id))
+                # resubmit
+                self.run()
 
 # TODO: irc, gsm input files
