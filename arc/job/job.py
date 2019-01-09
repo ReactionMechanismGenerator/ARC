@@ -636,7 +636,7 @@ $end
 
     def troubleshoot_server(self):
         if self.settings['ssh']:
-            if servers[self.server]['cluser_soft'].lower() == 'oge':
+            if servers[self.server]['cluster_soft'].lower() == 'oge':
                 # delete present server run
                 logging.error('Job {name} has server status {stat} on {server}. Troubleshooting by changing node.'.format(
                     name=self.job_name, stat=self.job_status[0], server=self.server))
@@ -669,7 +669,7 @@ $end
                 ssh.upload_file(remote_file_path=os.path.join(self.remote_path,
                                 submit_filename[servers[self.server]['cluster_soft']]), file_string=content)
                 self.run()
-            elif servers[self.server]['cluser_soft'].lower() == 'slurm':
+            elif servers[self.server]['cluster_soft'].lower() == 'slurm':
                 # TODO: change node on Slurm
                 # delete present server run
                 logging.error('Job {name} has server status {stat} on {server}. Re-running job.'.format(
