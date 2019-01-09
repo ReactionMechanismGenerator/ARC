@@ -119,7 +119,10 @@ class SSH_Client(object):
         else:
             if servers[self.server]['cluster_soft'].lower() == 'oge':
                 if '.cluster' in status_line:
-                    return 'errored on node ' + status_line.split()[-1].split('@')[1].split('.')[0][-2:]
+                    try:
+                        return 'errored on node ' + status_line.split()[-1].split('@')[1].split('.')[0][-2:]
+                    except IndexError:
+                        return 'errored'
                 else:
                     return 'errored'
             elif servers[self.server]['cluster_soft'].lower() == 'slurm':
@@ -158,6 +161,8 @@ class SSH_Client(object):
                 job_id = int(stdout[0].split()[2])
             elif servers[self.server]['cluster_soft'].lower() == 'slurm':
                 job_id = int(stdout[0].split()[3])
+            else:
+                raise ValueError('Unrecognized cluster software {0}'.format(servers[self.server]['cluster_soft']))
         if len(stderr) > 0:
             job_status = 'errored'
         return job_status, job_id
@@ -167,7 +172,12 @@ class SSH_Client(object):
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         ssh.load_system_host_keys(filename=self.key)
-        ssh.connect(hostname=self.address, username=self.un)
+        try:
+            ssh.connect(hostname=self.address, username=self.un)
+        except:
+            # This sometimes gives "SSHException: Error reading SSH protocol banner[Error 104] Connection reset by peer"
+            # Try again:
+            ssh.connect(hostname=self.address, username=self.un)
         sftp = ssh.open_sftp()
         return sftp, ssh
 
