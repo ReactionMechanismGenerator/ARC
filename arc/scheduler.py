@@ -636,6 +636,7 @@ class Scheduler(object):
                          }
         """
         for i in range(self.species_dict[label].number_of_rotors):
+            message = ''
             if self.species_dict[label].rotors_dict[i]['pivots'] == job.pivots:
                 invalidate = False
                 if job.job_status[1] == 'done':
@@ -657,11 +658,13 @@ class Scheduler(object):
                         if abs(v_list[-1] - v_list[0]) > inconsistency_az:
                             # initial and final points differ by more than `inconsistency_az` kJ/mol.
                             # seems like this rotor broke the conformer. Invalidate
-                            logging.error('Rotor scan of {label} between pivots {pivots} is inconsistent by more than'
-                                          ' {inconsistency} kJ/mol between initial and final positions.'
-                                          ' Invalidating rotor.'.format(label=label, pivots=job.pivots,
-                                                                        inconsistency=inconsistency_az))
-                            logging.error('v_list[0] = {0}, v_list[-1] = {1}'.format(v_list[0], v_list[1]))
+                            error_message = 'Rotor scan of {label} between pivots {pivots} is inconsistent by more' \
+                                            ' than {inconsistency} kJ/mol between initial and final positions.' \
+                                            ' Invalidating rotor.\nv_list[0] = {v0}, v_list[-1] = {vneg1}'.format(
+                                             label=label, pivots=job.pivots, inconsistency=inconsistency_az,
+                                             v0=v_list[0], vneg1=v_list[-1])
+                            logging.error(error_message)
+                            message += error_message + '; '
                             invalidate = True
                         if not invalidate:
                             v_last = v_list[-1]
@@ -669,18 +672,22 @@ class Scheduler(object):
                                 if abs(v - v_last) > inconsistency_ab:
                                     # Two consecutive points on the scan differ by more than `inconsistency_ab` kJ/mol.
                                     # This is a serious inconsistency. Invalidate
-                                    logging.error('Rotor scan of {label} between pivots {pivots} is inconsistent by'
-                                                  'more than {inconsistency} kJ/mol between two consecutive points.'
-                                                  ' Invalidating rotor.'.format(label=label, pivots=job.pivots,
-                                                                                inconsistency=inconsistency_ab))
+                                    error_message = 'Rotor scan of {label} between pivots {pivots} is inconsistent by' \
+                                                    'more than {inconsistency} kJ/mol between two consecutive points.' \
+                                                    ' Invalidating rotor.'.format(label=label, pivots=job.pivots,
+                                                                                  inconsistency=inconsistency_ab)
+                                    logging.error(error_message)
+                                    message += error_message + '; '
                                     invalidate = True
                                     break
                                 if abs(v - v_list[0]) > maximum_barrier:
                                     # The barrier for the hinderd rotor is higher than `maximum_barrier` kJ/mol.
                                     # Invalidate
-                                    logging.warn('Rotor scan of {label} between pivots {pivots} has a barrier larger'
-                                                 ' than {maximum_barrier} kJ/mol. Invalidating rotor.'.format(
-                                                   label=label, pivots=job.pivots, maximum_barrier=maximum_barrier))
+                                    warn_message = 'Rotor scan of {label} between pivots {pivots} has a barrier larger' \
+                                                   ' than {maximum_barrier} kJ/mol. Invalidating rotor.'.format(
+                                                    label=label, pivots=job.pivots, maximum_barrier=maximum_barrier)
+                                    logging.warn(warn_message)
+                                    message += warn_message + '; '
                                     invalidate = True
                                     break
                                 v_last = v
@@ -709,11 +716,14 @@ class Scheduler(object):
                             invalidated = ''
                             if invalidate:
                                 invalidated = '*INVALIDATED* '
-                            else:
-                                logging.info('{invalidated}Rotor scan between pivots {pivots} for {label} is:'.format(
-                                    invalidated=invalidated, pivots=self.species_dict[label].rotors_dict[i]['pivots'],
-                                    label=label))
-                            plotter.plot_rotor_scan(angle, v_list)
+                            message += invalidate
+                            logging.info('{invalidated}Rotor scan between pivots {pivots} for {label} is:'.format(
+                                invalidated=invalidated, pivots=self.species_dict[label].rotors_dict[i]['pivots'],
+                                label=label))
+                            folder_name = 'TSs' if job.is_ts else 'Species'
+                            rotor_path = os.path.join(arc_path, 'Projects', self.project, 'calcs', folder_name,
+                                                      job.species_name, 'rotors')
+                            plotter.plot_rotor_scan(angle, v_list, path=rotor_path, pivots=job.pivots, message=message)
                 else:
                     # scan job crashed
                     invalidate = True
