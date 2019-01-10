@@ -226,10 +226,7 @@ def save_geo(species, project):
     """
     Save the geometry in several forms for an ARC Species object in the project's output folder under the species name
     """
-    if species.is_ts:
-        folder_name = 'TSs'
-    else:
-        folder_name = 'Species'
+    folder_name = 'TSs' if species.is_ts else 'Species'
     geo_path = os.path.join(arc_path, 'Projects', project, 'output', folder_name, species.label, 'geometry')
     if os.path.exists(geo_path):
         # clean working folder from all previous output
