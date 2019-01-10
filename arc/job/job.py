@@ -627,8 +627,11 @@ $end
                     if 'molpro calculation terminated' in line.lower()\
                             or 'variable memory released' in line.lower():
                         return 'done'
-                    if 'No convergence' in line:
+                    elif 'No convergence' in line:
                         return 'unconverged'
+                    elif 'A further' in line and 'Mwords of memory are needed' in line and 'Increase memory to' in line:
+                        # e.g.: `A further 246.03 Mwords of memory are needed for the triples to run. Increase memory to 996.31 Mwords.`
+                        return 'errored: memory {0}'.format(line.split()[-2])
                 for line in lines[::-1]:
                     if 'the problem occurs' in line:
                         return 'errored: ' + line
@@ -652,7 +655,7 @@ $end
                         self.server_nodes.append(node)
                         break
                 else:
-                    logging.error('Cold not find an available node on the server')
+                    logging.error('Could not find an available node on the server')
                     # TODO: continue troubleshooting; if all else fails, put job to sleep for x min and try again searching for a node
                     return
                 # modify submit file
