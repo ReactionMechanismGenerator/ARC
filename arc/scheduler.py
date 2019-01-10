@@ -507,16 +507,7 @@ class Scheduler(object):
                 if not success:
                     plotter.plot_3d_mol_as_scatter(xyz=self.species_dict[label].final_xyz, path=None)
             # Check frequencies (using cclib crashed for CBS-QB3 output, using an explicit parser here)
-            if not os.path.isfile(job.local_path_to_output_file):
-                raise SchedulerError('Called parse_composite_geo with no output file')
-            frequencies = []
-            with open(job.local_path_to_output_file, 'r') as f:
-                line = f.readline()
-                while line != '':
-                    if 'Frequencies --' in line:
-                        frequencies.extend(line.split()[2:])
-                    line = f.readline()
-            frequencies = [float(freq) for freq in frequencies]
+            frequencies = parser.parse_frequencies(job.local_path_to_output_file, job.software)
             freq_ok = self.check_negative_freq(label=label, job=job, vibfreqs=frequencies)
             if freq_ok:
                 return True  # run freq / scan jobs on this optimized geometry
