@@ -7,6 +7,7 @@ import time
 import os
 import datetime
 import numpy as np
+import math
 
 import cclib
 
@@ -958,10 +959,10 @@ class Scheduler(object):
             else:
                 logging.error('Could not troubleshoot geometry optimization for {label}! Tried'
                               ' troubleshooting with the following methods: {methods}'.format(
-                    label=label, methods=job.ess_trsh_methods))
+                               label=label, methods=job.ess_trsh_methods))
                 raise SchedulerError('Could not troubleshoot geometry optimization for {label}! Tried'
                                      ' troubleshooting with the following methods: {methods}'.format(
-                    label=label, methods=job.ess_trsh_methods))
+                                      label=label, methods=job.ess_trsh_methods))
         elif job.software == 'qchem':
             if 'max opt cycles reached' in job.job_status[1] and 'max_cycles' not in job.ess_trsh_methods:
                 # this is a common error, increase max cycles and continue running from last geometry
@@ -1020,7 +1021,21 @@ class Scheduler(object):
                                      ' troubleshooting with the following methods: {methods}'.format(
                     label=label, methods=job.ess_trsh_methods))
         elif 'molpro' in job.software:
-            if 'shift' not in job.ess_trsh_methods:
+            if 'memory' in job.job_status[1]:
+                # Increase memory allocation.
+                # job.job_status[1] will be for example `'errored: memory 996.31'`. The number is in Mwords
+                logging.info('Troubleshooting {type} job in {software} using memory'.format(
+                    type=job_type, software=job.software))
+                job.ess_trsh_methods.append('memory')
+                memory = 5000
+                if len(job.job_status[1].split()) == 3:
+                    memory = float(job.job_status[1].split()[-1])  # parse Molpro's requirement
+                    memory = int(math.ceil(memory / 100.0)) * 100  # round up to the next hundred
+                    memory += 250
+                self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
+                             job_type=job_type, fine=job.fine, shift=job.shift, memory=memory,
+                             ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
+            elif 'shift' not in job.ess_trsh_methods:
                 # try adding a level shift for alpha- and beta-spin orbitals
                 logging.info('Troubleshooting {type} job in {software} using shift'.format(
                     type=job_type, software=job.software))
