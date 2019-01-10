@@ -22,7 +22,7 @@ from arc.settings import arc_path
 ##################################################################
 
 
-def plot_rotor_scan(angle, v_list):
+def plot_rotor_scan(angle, v_list, path=None, pivots=None, comment=''):
     """
     plots a 1D rotor PES for v_list vs. angle
     """
@@ -37,6 +37,18 @@ def plot_rotor_scan(angle, v_list):
     plt.ylabel('V (kJ/mol)')
     plt.tight_layout()
     plt.show()
+    if path is not None and pivots is not None:
+        fig_path = os.path.join(path, '{0}.jpg'.format(pivots))
+        plt.savefig(fig_path, dpi=120, facecolor='w', edgecolor='w', orientation='portrait', papertype=None,
+                    format='jpg', transparent=False, bbox_inches=None, pad_inches=0.1, frameon=False, metadata=None)
+        if comment:
+            txt_path = os.path.join(path, 'rotor comments.txt')
+            if os.path.isfile(txt_path):
+                with open(txt_path, 'a') as f:
+                    f.write('\n\nPivots: {0}\nComment: {1}'.format(pivots, comment))
+            else:
+                with open(txt_path, 'w') as f:
+                    f.write('Pivots: {0}\nComment: {1}'.format(pivots, comment))
 
 
 def show_sticks(xyz):
@@ -226,10 +238,7 @@ def save_geo(species, project):
     """
     Save the geometry in several forms for an ARC Species object in the project's output folder under the species name
     """
-    if species.is_ts:
-        folder_name = 'TSs'
-    else:
-        folder_name = 'Species'
+    folder_name = 'TSs' if species.is_ts else 'Species'
     geo_path = os.path.join(arc_path, 'Projects', project, 'output', folder_name, species.label, 'geometry')
     if os.path.exists(geo_path):
         # clean working folder from all previous output
