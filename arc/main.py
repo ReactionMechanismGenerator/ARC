@@ -310,8 +310,7 @@ class ARC(object):
         """
         # Create logger
         logger = logging.getLogger()
-        # logger.setLevel(verbose)
-        logger.setLevel(logging.DEBUG)
+        logger.setLevel(verbose)
 
         # Use custom level names for cleaner log output
         logging.addLevelName(logging.CRITICAL, 'Critical: ')
@@ -337,7 +336,7 @@ class ARC(object):
         # Create file handler
         if log_file:
             fh = logging.FileHandler(filename=log_file)
-            fh.setLevel(min(logging.DEBUG,verbose))
+            fh.setLevel(verbose)
             fh.setFormatter(formatter)
             logger.addHandler(fh)
             self.log_header()
