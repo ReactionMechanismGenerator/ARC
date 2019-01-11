@@ -307,7 +307,8 @@ class ARC(object):
         self.generate_conformers = input_dict['generate_conformers'] if 'generate_conformers' in input_dict else True
         self.scan_rotors = input_dict['scan_rotors'] if 'scan_rotors' in input_dict else True
         self.use_bac = input_dict['use_bac'] if 'use_bac' in input_dict else True
-        self.model_chemistry = input_dict['model_chemistry'] if 'use_bac' in input_dict else ''
+        self.model_chemistry = input_dict['model_chemistry'] if 'use_bac' in input_dict\
+                                                                and input_dict['use_bac'] else ''
         if self.model_chemistry:
             logging.info(
                 'Using {0} as model chemistry for energy corrections in Arkane'.format(self.model_chemistry))
