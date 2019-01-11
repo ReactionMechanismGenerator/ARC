@@ -716,14 +716,14 @@ class Scheduler(object):
                             invalidated = ''
                             if invalidate:
                                 invalidated = '*INVALIDATED* '
-                            message += invalidate
+                            message += invalidated
                             logging.info('{invalidated}Rotor scan between pivots {pivots} for {label} is:'.format(
                                 invalidated=invalidated, pivots=self.species_dict[label].rotors_dict[i]['pivots'],
                                 label=label))
                             folder_name = 'TSs' if job.is_ts else 'Species'
                             rotor_path = os.path.join(arc_path, 'Projects', self.project, 'calcs', folder_name,
                                                       job.species_name, 'rotors')
-                            plotter.plot_rotor_scan(angle, v_list, path=rotor_path, pivots=job.pivots, message=message)
+                            plotter.plot_rotor_scan(angle, v_list, path=rotor_path, pivots=job.pivots, comment=message)
                 else:
                     # scan job crashed
                     invalidate = True
