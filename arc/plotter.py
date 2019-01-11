@@ -38,9 +38,11 @@ def plot_rotor_scan(angle, v_list, path=None, pivots=None, comment=''):
     plt.tight_layout()
     plt.show()
     if path is not None and pivots is not None:
-        fig_path = os.path.join(path, '{0}.jpg'.format(pivots))
+        if not os.path.exists(path):
+            os.makedirs(path)
+        fig_path = os.path.join(path, '{0}.png'.format(pivots))
         plt.savefig(fig_path, dpi=120, facecolor='w', edgecolor='w', orientation='portrait', papertype=None,
-                    format='jpg', transparent=False, bbox_inches=None, pad_inches=0.1, frameon=False, metadata=None)
+                    format=str('png'), transparent=False, bbox_inches=None, pad_inches=0.1, frameon=False, metadata=None)
         if comment:
             txt_path = os.path.join(path, 'rotor comments.txt')
             if os.path.isfile(txt_path):
