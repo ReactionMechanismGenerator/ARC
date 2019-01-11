@@ -258,6 +258,57 @@ H      -1.81136714   -0.32689007   -1.14689570
         self.assertFalse(spc5.is_linear())
         self.assertFalse(spc8.is_linear())
 
+    def test_charge_and_multiplicity(self):
+        """Test determination of molecule charge and multiplicity"""
+        spc1 = ARCSpecies(label='spc1', mol=Molecule(SMILES=str('C[CH]C')), generate_thermo=False)  # 2
+        spc2 = ARCSpecies(label='spc2', mol=Molecule(SMILES=str('CCC')), generate_thermo=False)  # 1
+        spc3 = ARCSpecies(label='spc3', smiles=str('N[NH]'), generate_thermo=False)  # 2
+        spc4 = ARCSpecies(label='spc4', smiles=str('NNN'), generate_thermo=False)  # 1
+        adj1 = """multiplicity 2
+                  1 O u1 p2 c0 {2,S}
+                  2 H u0 p0 c0 {1,S}
+               """
+        adj2 = """1 C u0 p0 c0 {2,S} {4,S} {5,S} {6,S}
+                  2 N u0 p1 c0 {1,S} {3,S} {7,S}
+                  3 O u0 p2 c0 {2,S} {8,S}
+                  4 H u0 p0 c0 {1,S}
+                  5 H u0 p0 c0 {1,S}
+                  6 H u0 p0 c0 {1,S}
+                  7 H u0 p0 c0 {2,S}
+                  8 H u0 p0 c0 {3,S}
+               """
+        spc5 = ARCSpecies(label='spc5', adjlist=str(adj1), generate_thermo=False)  # 2
+        spc6 = ARCSpecies(label='spc6', adjlist=str(adj2), generate_thermo=False)  # 1
+        xyz1 = """O       0.00000000    0.00000000   -0.10796235
+                  H       0.00000000    0.00000000    0.86318839"""
+        xyz2 = """N      -0.74678912   -0.11808620    0.00000000
+                  C       0.70509190    0.01713703    0.00000000
+                  H       1.11547042   -0.48545356    0.87928385
+                  H       1.11547042   -0.48545356   -0.87928385
+                  H       1.07725194    1.05216961    0.00000000
+                  H      -1.15564250    0.32084669    0.81500594
+                  H      -1.15564250    0.32084669   -0.81500594"""
+        spc7 = ARCSpecies(label='spc7', xyz=xyz1, generate_thermo=False)  # 2
+        spc8 = ARCSpecies(label='spc8', xyz=xyz2, generate_thermo=False)  # 1
+
+        self.assertEqual(spc1.charge, 0)
+        self.assertEqual(spc2.charge, 0)
+        self.assertEqual(spc3.charge, 0)
+        self.assertEqual(spc4.charge, 0)
+        self.assertEqual(spc5.charge, 0)
+        self.assertEqual(spc6.charge, 0)
+        self.assertEqual(spc7.charge, 0)
+        self.assertEqual(spc8.charge, 0)
+
+        self.assertEqual(spc1.multiplicity, 2)
+        self.assertEqual(spc2.multiplicity, 1)
+        self.assertEqual(spc3.multiplicity, 2)
+        self.assertEqual(spc4.multiplicity, 1)
+        self.assertEqual(spc5.multiplicity, 2)
+        self.assertEqual(spc6.multiplicity, 1)
+        self.assertEqual(spc7.multiplicity, 2)
+        self.assertEqual(spc8.multiplicity, 1)
+
 ################################################################################
 
 if __name__ == '__main__':

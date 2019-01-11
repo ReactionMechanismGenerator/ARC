@@ -115,11 +115,11 @@ class ARCSpecies(object):
                     self.mol = Molecule().fromAdjacencyList(adjlist=adjlist)
                 elif smiles and mol is None:
                     self.mol = Molecule(SMILES=smiles)
-                if not self.is_ts and not smiles and not adjlist and not mol:
+                if not self.is_ts and not smiles and not adjlist and not mol and self.generate_thermo:
                     logging.warn('No structure (SMILES, adjList, RMG:Species, or RMG:Molecule) was given for species'
                                  ' {0}, NOT using bond additivity corrections (BAC) for thermo computation'.format(
                         self.label))
-                if multiplicity < 1:
+                if multiplicity is not None and multiplicity < 1:
                     raise SpeciesError('Multiplicity for species {0} is lower than 1 (got {1})'.format(
                         self.label, multiplicity))
                 if not isinstance(multiplicity, int) and multiplicity is not None:
@@ -477,6 +477,8 @@ class ARCSpecies(object):
         if adjlist:
             mol = Molecule().fromAdjacencyList(adjlist)
             self.multiplicity = mol.multiplicity
+        elif self.mol is not None and self.mol.multiplicity >= 1:
+            self.multiplicity = self.mol.multiplicity
         elif smiles:
             mol = Molecule(SMILES=smiles)
             self.multiplicity = mol.multiplicity
