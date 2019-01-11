@@ -335,6 +335,14 @@ class ARC(object):
 
         # Create file handler
         if log_file:
+            if os.path.isfile(log_file):
+                old_file = os.path.join(os.path.dirname(log_file), 'arc.old.log')
+                print(old_file)
+                if os.path.isfile(old_file):
+                    os.remove(old_file)
+                shutil.copy(log_file, old_file)
+                print('copied')
+                os.remove(log_file)
             fh = logging.FileHandler(filename=log_file)
             fh.setLevel(verbose)
             fh.setFormatter(formatter)
