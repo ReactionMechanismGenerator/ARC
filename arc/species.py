@@ -13,6 +13,7 @@ from rdkit.Chem.rdchem import EditableMol as RDMol
 import openbabel as ob
 import pybel as pyb
 
+from arkane.common import symbol_by_number
 from rmgpy.molecule.converter import toOBMol
 from rmgpy.molecule.element import getElement
 from rmgpy.species import Species
@@ -34,8 +35,9 @@ class ARCSpecies(object):
     Attribute              Type          Description
     ====================== ============= ===============================================================================
     `label`                 ``str``      The species' label
-    `multiplicity`          ``int``      The species' multiplicity
-    'charge'                ``int''      The species' net charge
+    `multiplicity`          ``int``      The species' multiplicity. Can be determined from adjlist/smiles/xyz
+                                           The algorithm assumes it's either a singlet or a doublet
+    'charge'                ``int''      The species' net charge. Assumed to be 0 be default.
     `is_ts`                 ``bool``     Whether or not the species represents a transition state
     'number_of_rotors'      ``int``      The number of potential rotors to scan
     'rotors_dict'           ``dict``     A dictionary of rotors. structure given below.
@@ -106,10 +108,9 @@ class ARCSpecies(object):
                 if not self.is_ts and rmg_species is None and mol is None and xyz is None and not smiles and not adjlist:
                     raise SpeciesError('No structure (xyz, SMILES, adjList, RMG:Species, or RMG:Molecule) was given for'
                                        ' species {0}'.format(self.label))
-                if multiplicity is None:
-                    raise SpeciesError('No multiplicity was specified for {0}.'.format(self.label))
                 if charge is None:
-                    raise SpeciesError('No charge was specified for {0}.'.format(self.label))
+                    logging.debug('No charge specified for {0}, assuming charge 0.'.format(self.label))
+                    charge = 0
                 if adjlist and mol is None:
                     self.mol = Molecule().fromAdjacencyList(adjlist=adjlist)
                 elif smiles and mol is None:
@@ -121,7 +122,7 @@ class ARCSpecies(object):
                 if multiplicity < 1:
                     raise SpeciesError('Multiplicity for species {0} is lower than 1 (got {1})'.format(
                         self.label, multiplicity))
-                if not isinstance(multiplicity, int):
+                if not isinstance(multiplicity, int) and multiplicity is not None:
                     raise SpeciesError('Multiplicity for species {0} is not an integer (got {1}, a {2})'.format(
                         self.label, multiplicity, type(multiplicity)))
                 if not isinstance(charge, int):
@@ -196,6 +197,10 @@ class ARCSpecies(object):
             self.optical_isomers = 1
             self.neg_freqs_trshed = list()
 
+        if self.multiplicity is None:
+            self.determine_multiplicity(smiles, adjlist)
+            logging.debug('No multiplicity specified for {0}, assuming {1}.'.format(self.label, self.multiplicity))
+
     def as_dict(self):
         """A helper function for dumping this object as a dictionary in a YAML file for restarting ARC"""
         species_dict = dict()
@@ -243,11 +248,12 @@ class ARCSpecies(object):
         try:
             self.multiplicity = species_dict['multiplicity']
         except KeyError:
-            raise SpeciesError('No multiplicity was specified for {0}.'.format(self.label))
+            self.multiplicity = None
         try:
             self.charge = species_dict['charge']
         except KeyError:
-            raise SpeciesError('No charge was specified for {0}.'.format(self.label))
+            logging.debug('No charge specified for {0}, assuming charge 0.'.format(self.label))
+            self.charge = 0
         self.generate_thermo = species_dict['generate_thermo'] if 'generate_thermo' in species_dict else True
         self.opt_level = species_dict['opt_level'] if 'opt_level' in species_dict else ''
         self.initial_xyz = species_dict['initial_xyz'] if 'initial_xyz' in species_dict else None
@@ -466,6 +472,30 @@ class ARCSpecies(object):
                         self.bond_corrections[bac] = 1
             explored_atoms.append(atom1)
         logging.debug('Using the following BAC for {0}: {1}'.format(self.label, self.bond_corrections))
+
+    def determine_multiplicity(self, smiles, adjlist):
+        if adjlist:
+            mol = Molecule().fromAdjacencyList(adjlist)
+            self.multiplicity = mol.multiplicity
+        elif smiles:
+            mol = Molecule(SMILES=smiles)
+            self.multiplicity = mol.multiplicity
+        elif self.initial_xyz:
+            xyz, atoms, x, y, z = get_xyz_matrix(self.initial_xyz)
+            electrons = 0
+            for atom in atoms:
+                for number, symbol in symbol_by_number.items():
+                    if symbol == atom:
+                        electrons += number
+                        break
+                else:
+                    raise SpeciesError('Could not identify atom symbol {0}'.format(atom))
+            if electrons % 2 == 1:
+                self.multiplicity = 2
+            else:
+                self.multiplicity = 1
+        if self.multiplicity is None:
+            raise SpeciesError('Could not determine multiplicity for species {0}'.format(self.label))
 
     def is_linear(self):
         """
