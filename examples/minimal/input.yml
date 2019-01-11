@@ -1,0 +1,5 @@
+project: minimal
+
+species:
+  - label: H2
+    smiles: '[H][H]'
