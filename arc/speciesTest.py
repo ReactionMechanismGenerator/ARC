@@ -193,7 +193,7 @@ H      -1.81136714   -0.32689007   -1.14689570
         # test all forms of input into get_xyz_string():
         xyz_str1 = get_xyz_string(xyz_list, symbol=atoms)
         xyz_str2 = get_xyz_string(xyz_list, number=[6, 7, 1, 1, 1, 1])
-        mol, coordinates = mol_from_xyz(xyz_str0)
+        mol, _ = mol_from_xyz(xyz_str0)
         xyz_str3 = get_xyz_string(xyz_list, mol=mol)
 
         self.assertEqual(xyz_str0, xyz_str1)

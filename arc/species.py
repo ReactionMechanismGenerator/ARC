@@ -20,7 +20,7 @@ from rmgpy.molecule.molecule import Atom, Molecule
 from rmgpy.qm.qmdata import QMData
 from rmgpy.qm.symmetry import PointGroupCalculator
 
-from arc.exceptions import SpeciesError, RotorError
+from arc.exceptions import SpeciesError, RotorError, InputError
 from arc.settings import arc_path
 
 ##################################################################
@@ -74,84 +74,206 @@ class ARCSpecies(object):
                  }
     """
     def __init__(self, is_ts=False, rmg_species=None, mol=None, label=None, xyz=None, multiplicity=None, charge=None,
-                 smiles='', adjlist='', bond_corrections=None, generate_thermo=True):
-        self.is_ts = is_ts
-        self.generate_thermo = generate_thermo if not self.is_ts else False
-        self.rmg_thermo = None
-        self.t0 = None
-        self.execution_time = None
-        self.opt_level = ''
+                 smiles='', adjlist='', bond_corrections=None, generate_thermo=True, species_dict=None):
 
-        self.rmg_species = rmg_species
-        if bond_corrections is None:
-            self.bond_corrections = dict()
-        else:
-            self.bond_corrections = bond_corrections
-
-        self.mol = mol
         self.xyz_mol = None
-        self.initial_xyz = xyz
 
-        if self.rmg_species is None:
-            # parameters were entered directly, not via an RMG:Species object
-            if label is None:
-                raise SpeciesError('label must be specified for an ARCSpecies object.')
-            else:
-                self.label = label
-            if not self.is_ts and rmg_species is None and mol is None and xyz is None and not smiles and not adjlist:
-                raise SpeciesError('No structure (xyz, SMILES, adjList, RMG:Species, or RMG:Molecule) was given for'
-                                   ' species {0}'.format(self.label))
-            if multiplicity is None:
-                raise SpeciesError('No multiplicity was specified for {0}.'.format(self.label))
-            if charge is None:
-                raise SpeciesError('No charge was specified for {0}.'.format(self.label))
-            if adjlist and mol is None:
-                self.mol = Molecule().fromAdjacencyList(adjlist=adjlist)
-            elif smiles and mol is None:
-                self.mol = Molecule(SMILES=smiles)
-            if not self.is_ts and not smiles and not adjlist and not mol:
-                logging.warn('No structure (SMILES, adjList, RMG:Species, or RMG:Molecule) was given for species {0},'
-                             ' NOT using bond additivity corrections (BAC) for thermo computation'.format(self.label))
-            if multiplicity < 1:
-                raise SpeciesError('Multiplicity for species {0} is lower than 1 (got {1})'.format(
-                    self.label, multiplicity))
-            if not isinstance(multiplicity, int):
-                raise SpeciesError('Multiplicity for species {0} is not an integer (got {1}, a {2})'.format(
-                    self.label, multiplicity, type(multiplicity)))
-            if not isinstance(charge, int):
-                raise SpeciesError('Charge for species {0} is not an integer (got {1}, a {2})'.format(
-                    self.label, charge, type(charge)))
-            self.multiplicity = multiplicity
-            self.charge = charge
+        if species_dict is not None:
+            self.from_dict(species_dict=species_dict)
         else:
-            # an RMG Species was given
-            if not isinstance(self.rmg_species, Species):
-                raise SpeciesError('The rmg_species parameter has to be a valid RMG Species object.'
-                                   ' Got: {0}'.format(type(self.rmg_species)))
-            if not self.rmg_species.molecule:
-                raise SpeciesError('If an RMG Species given, it must have a non-empty molecule list')
-            if not self.rmg_species.label and not label:
-                raise SpeciesError('If an RMG Species given, it must have a label or a label must be given separately')
+            self.is_ts = is_ts
+            self.generate_thermo = generate_thermo if not self.is_ts else False
+            self.rmg_thermo = None
+            self.t0 = None
+            self.execution_time = None
+            self.opt_level = ''
+
+            self.rmg_species = rmg_species
+            if bond_corrections is None:
+                self.bond_corrections = dict()
             else:
-                if self.rmg_species.label:
-                    self.label = self.rmg_species.label
+                self.bond_corrections = bond_corrections
+
+            self.mol = mol
+            self.initial_xyz = xyz
+
+            if self.rmg_species is None:
+                # parameters were entered directly, not via an RMG:Species object
+                if label is None:
+                    raise SpeciesError('label must be specified for an ARCSpecies object.')
                 else:
                     self.label = label
-            if not self.mol:
-                self.mol = self.rmg_species.molecule[0]
-            if len(self.rmg_species.molecule) > 1:
-                logging.info('Using localized structure {0} of species {1} for BAC determination. To use a different'
-                             ' structure, pass the RMG:Molecule object in the `mol` parameter'.format(
-                                self.mol.toSMILES(), self.label))
-            self.multiplicity = self.rmg_species.molecule[0].multiplicity
-            self.charge = self.rmg_species.molecule[0].getNetCharge()
+                if not self.is_ts and rmg_species is None and mol is None and xyz is None and not smiles and not adjlist:
+                    raise SpeciesError('No structure (xyz, SMILES, adjList, RMG:Species, or RMG:Molecule) was given for'
+                                       ' species {0}'.format(self.label))
+                if multiplicity is None:
+                    raise SpeciesError('No multiplicity was specified for {0}.'.format(self.label))
+                if charge is None:
+                    raise SpeciesError('No charge was specified for {0}.'.format(self.label))
+                if adjlist and mol is None:
+                    self.mol = Molecule().fromAdjacencyList(adjlist=adjlist)
+                elif smiles and mol is None:
+                    self.mol = Molecule(SMILES=smiles)
+                if not self.is_ts and not smiles and not adjlist and not mol:
+                    logging.warn('No structure (SMILES, adjList, RMG:Species, or RMG:Molecule) was given for species'
+                                 ' {0}, NOT using bond additivity corrections (BAC) for thermo computation'.format(
+                        self.label))
+                if multiplicity < 1:
+                    raise SpeciesError('Multiplicity for species {0} is lower than 1 (got {1})'.format(
+                        self.label, multiplicity))
+                if not isinstance(multiplicity, int):
+                    raise SpeciesError('Multiplicity for species {0} is not an integer (got {1}, a {2})'.format(
+                        self.label, multiplicity, type(multiplicity)))
+                if not isinstance(charge, int):
+                    raise SpeciesError('Charge for species {0} is not an integer (got {1}, a {2})'.format(
+                        self.label, charge, type(charge)))
+                self.multiplicity = multiplicity
+                self.charge = charge
+            else:
+                # an RMG Species was given
+                if not isinstance(self.rmg_species, Species):
+                    raise SpeciesError('The rmg_species parameter has to be a valid RMG Species object.'
+                                       ' Got: {0}'.format(type(self.rmg_species)))
+                if not self.rmg_species.molecule:
+                    raise SpeciesError('If an RMG Species given, it must have a non-empty molecule list')
+                if not self.rmg_species.label and not label:
+                    raise SpeciesError('If an RMG Species given, it must have a label or a label must be given'
+                                       ' separately')
+                else:
+                    if self.rmg_species.label:
+                        self.label = self.rmg_species.label
+                    else:
+                        self.label = label
+                if not self.mol:
+                    self.mol = self.rmg_species.molecule[0]
+                if len(self.rmg_species.molecule) > 1:
+                    logging.info('Using localized structure {0} of species {1} for BAC determination. To use a'
+                                 ' different  structure, pass the RMG:Molecule object in the `mol` parameter'.format(
+                                    self.mol.toSMILES(), self.label))
+                self.multiplicity = self.rmg_species.molecule[0].multiplicity
+                self.charge = self.rmg_species.molecule[0].getNetCharge()
 
-        # Check `label` is valid, since it is used for folder names
+            # Check `label` is valid, since it is used for folder names
+            valid_chars = "-_()<=>%s%s" % (string.ascii_letters, string.digits)
+            for char in self.label:
+                if char not in valid_chars:
+                    raise SpeciesError('Species label {0} contains an invalid character: "{1}"'.format(self.label, char))
+
+            if self.mol is None:
+                mol, _ = mol_from_xyz(self.initial_xyz)
+                self.mol_list = [mol]
+                if not self.bond_corrections and self.generate_thermo:
+                    logging.warn('Cannot determine bond additivity corrections (BAC) for species {0} based on xyz'
+                                 ' coordinates only. For better thermoproperties, provide bond corrections.')
+                self.number_of_atoms = len(mol.atoms)
+            else:
+                if self.initial_xyz is not None:
+                    # Both xyz and structure were given. Make sure the atom order is synced
+                    # (important for identifying rotor indices)
+                    self.xyz_mol, _ = mol_from_xyz(self.initial_xyz)
+                self.mol_list = self.mol.generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
+                if not self.bond_corrections:
+                    try:
+                        self.bond_corrections = self.mol.enumerate_bonds()
+                    except AttributeError:
+                        # enumerate_bonds() is a new attribute of Molecule, still not present from rmg on Conda
+                        self.determine_bond_corrections()
+                self.number_of_atoms = len(self.mol.atoms)
+
+            self.final_xyz = ''
+            self.number_of_rotors = 0
+            self.rotors_dict = dict()
+            self.conformers = list()
+            self.conformer_energies = list()
+            if self.initial_xyz is not None:
+                # consider the initial guess as one of the conformers if generating others.
+                # otherwise, just consider it as the conformer.
+                self.conformers.append(self.initial_xyz)
+                self.conformer_energies.append(0.0)  # dummy
+
+            self.xyzs = list()  # used for conformer search
+            self.external_symmetry = 1
+            self.optical_isomers = 1
+            self.neg_freqs_trshed = list()
+
+    def as_dict(self):
+        """A helper function for dumping this object as a dictionary in a YAML file for restarting ARC"""
+        species_dict = dict()
+        species_dict['is_ts'] = self.is_ts
+        species_dict['label'] = self.label
+        species_dict['multiplicity'] = self.multiplicity
+        species_dict['charge'] = self.charge
+        species_dict['generate_thermo'] = self.generate_thermo
+        species_dict['opt_level'] = self.opt_level
+        species_dict['final_xyz'] = self.final_xyz
+        species_dict['number_of_rotors'] = self.number_of_rotors
+        species_dict['rotors_dict'] = self.rotors_dict
+        species_dict['conformers'] = self.conformers
+        species_dict['conformer_energies'] = self.conformer_energies
+        species_dict['xyzs'] = self.xyzs
+        species_dict['external_symmetry'] = self.external_symmetry
+        species_dict['optical_isomers'] = self.optical_isomers
+        species_dict['neg_freqs_trshed'] = self.neg_freqs_trshed
+        if self.bond_corrections is not None:
+            species_dict['bond_corrections'] = self.bond_corrections
+        if self.rmg_thermo is not None:
+            species_dict['rmg_thermo'] = self.rmg_thermo
+        if self.execution_time is not None:
+            species_dict['execution_time'] = self.execution_time
+        if self.mol is not None:
+            species_dict['mol'] = self.mol.toAdjacencyList()
+        if self.initial_xyz is not None:
+            species_dict['initial_xyz'] = self.initial_xyz
+        return species_dict
+
+    def from_dict(self, species_dict):
+        """
+        A helper function for loading this object from a dictionary in a YAML file for restarting ARC
+        """
+        try:
+            self.label = species_dict['label']
+        except KeyError:
+            raise InputError('All species must have a label')
+        self.t0 = None
+        self.is_ts = species_dict['is_ts'] if 'is_ts' in species_dict else False
         valid_chars = "-_()<=>%s%s" % (string.ascii_letters, string.digits)
         for char in self.label:
             if char not in valid_chars:
                 raise SpeciesError('Species label {0} contains an invalid character: "{1}"'.format(self.label, char))
-
+        try:
+            self.multiplicity = species_dict['multiplicity']
+        except KeyError:
+            raise SpeciesError('No multiplicity was specified for {0}.'.format(self.label))
+        try:
+            self.charge = species_dict['charge']
+        except KeyError:
+            raise SpeciesError('No charge was specified for {0}.'.format(self.label))
+        self.generate_thermo = species_dict['generate_thermo'] if 'generate_thermo' in species_dict else True
+        self.opt_level = species_dict['opt_level'] if 'opt_level' in species_dict else ''
+        self.initial_xyz = species_dict['initial_xyz'] if 'initial_xyz' in species_dict else None
+        self.final_xyz = species_dict['final_xyz'] if 'final_xyz' in species_dict else ''
+        if 'xyz' in species_dict and self.initial_xyz is None and not self.final_xyz:
+            self.initial_xyz = species_dict['xyz']
+        self.number_of_rotors = species_dict['number_of_rotors'] if 'number_of_rotors' in species_dict else 0
+        self.rotors_dict = species_dict['rotors_dict'] if 'rotors_dict' in species_dict else dict()
+        self.conformers = species_dict['conformers'] if 'conformers' in species_dict else list()
+        self.conformer_energies = species_dict['conformer_energies'] if 'conformer_energies' in species_dict else list()
+        self.xyzs = species_dict['xyzs'] if 'xyzs' in species_dict else list()
+        self.external_symmetry = species_dict['external_symmetry'] if 'external_symmetry' in species_dict else 1
+        self.optical_isomers = species_dict['optical_isomers'] if 'optical_isomers' in species_dict else 1
+        self.neg_freqs_trshed = species_dict['neg_freqs_trshed'] if 'neg_freqs_trshed' in species_dict else list()
+        self.bond_corrections = species_dict['bond_corrections'] if 'bond_corrections' in species_dict else dict()
+        self.rmg_thermo = species_dict['rmg_thermo'] if 'rmg_thermo' in species_dict else None
+        self.execution_time = species_dict['execution_time'] if 'execution_time' in species_dict else None
+        self.mol = Molecule().fromAdjacencyList(species_dict['mol']) if 'mol' in species_dict else None
+        smiles = species_dict['smiles'] if 'smiles' in species_dict else None
+        adjlist = species_dict['adjlist'] if 'adjlist' in species_dict else None
+        if adjlist is not None and self.mol is None:
+            self.mol = Molecule().fromAdjacencyList(adjlist=adjlist)
+        elif smiles is not None and self.mol is None:
+            self.mol = Molecule(SMILES=smiles)
+        if self.mol is None and self.initial_xyz is None and not self.final_xyz:
+            raise SpeciesError('Must have either mol or initial_xyz for species {0}'.format(self.label))
         if self.mol is None:
             mol, _ = mol_from_xyz(self.initial_xyz)
             self.mol_list = [mol]
@@ -169,22 +291,11 @@ class ARCSpecies(object):
                     # enumerate_bonds() is a new attribute of Molecule, still not present from rmg on Conda
                     self.determine_bond_corrections()
             self.number_of_atoms = len(self.mol.atoms)
-
-        self.final_xyz = ''
-        self.number_of_rotors = 0
-        self.rotors_dict = dict()
-        self.conformers = list()
-        self.conformer_energies = list()
-        if self.initial_xyz is not None:
+        if self.initial_xyz is not None and not self.final_xyz:
             # consider the initial guess as one of the conformers if generating others.
             # otherwise, just consider it as the conformer.
             self.conformers.append(self.initial_xyz)
             self.conformer_energies.append(0.0)  # dummy
-
-        self.xyzs = list()  # used for conformer search
-        self.external_symmetry = 1
-        self.optical_isomers = 1
-        self.neg_freqs_trshed = list()
 
     def generate_conformers(self):
         """
@@ -466,6 +577,7 @@ class ARCSpecies(object):
             else:
                 return True
             return False
+
 
 def _get_possible_conformers_rdkit(mol):
     """

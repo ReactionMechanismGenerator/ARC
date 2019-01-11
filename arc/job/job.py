@@ -72,9 +72,9 @@ class Job(object):
     The job ess (electronic structure software calculation) status is in  job.job_status[0] and can be
     either `initializing` / `running` / `errored: {error type / message}` / `unconverged` / `done`
     """
-    def __init__(self, project, settings, species_name, xyz, job_type, level_of_theory, multiplicity, charge=0,
-                 conformer=-1, fine=False, shift='', software=None, is_ts=False, scan='', pivots=None, memory=1500,
-                 comments='', trsh='', ess_trsh_methods=None, occ=None, initial_trsh=None):
+    def __init__(self, project, settings, species_name, xyz, job_type, level_of_theory, multiplicity, project_directory,
+                 charge=0, conformer=-1, fine=False, shift='', software=None, is_ts=False, scan='', pivots=None,
+                 memory=1500, comments='', trsh='', ess_trsh_methods=None, occ=None, initial_trsh=None):
         self.project = project
         self.settings=settings
         self.date_time = datetime.datetime.now()
@@ -194,7 +194,7 @@ class Job(object):
 
         conformer_folder = '' if self.conformer < 0 else os.path.join('conformers', str(self.conformer))
         folder_name = 'TSs' if self.is_ts else 'Species'
-        self.local_path = os.path.join(arc_path, 'Projects', self.project, 'calcs', folder_name,
+        self.local_path = os.path.join(project_directory, 'calcs', folder_name,
                                        self.species_name, conformer_folder, self.job_name)
         self.local_path_to_output_file = os.path.join(self.local_path, 'output.out')
         # parentheses don't play well in folder names:

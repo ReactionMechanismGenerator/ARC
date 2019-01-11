@@ -14,7 +14,6 @@ from rmgpy.species import Species
 from rmgpy.data.rmg import RMGDatabase
 from rmgpy.exceptions import AtomTypeError
 
-from arc.settings import arc_path
 from arc.job.inputs import input_files
 from arc import plotter
 from arc.exceptions import SchedulerError, InputError
@@ -108,7 +107,7 @@ class Processor(object):
         # for family in database.kinetics.families.values():
         #     family.fillKineticsRulesByAveragingUp(verbose=True)
 
-    def process(self):
+    def process(self, project_directory):
         species_list_for_plotting = []
         for species in self.species_dict.values():
             if self.output[species.label]['status'] == 'converged' and species.generate_thermo:
@@ -150,9 +149,9 @@ class Processor(object):
                     rotors += ']'
                 # write the Arkane species input file
                 folder_name = 'TSs' if species.is_ts else 'Species'
-                input_file_path = os.path.join(arc_path, 'Projects', self.project, folder_name, species.label,
+                input_file_path = os.path.join(project_directory, 'calcs', folder_name, species.label,
                                                '{0}_arkane_input.py'.format(species.label))
-                output_dir = os.path.join(arc_path, 'Projects', self.project, 'output', folder_name, species.label)
+                output_dir = os.path.join(project_directory, 'output', folder_name, species.label)
                 if not os.path.isdir(output_dir):
                     os.makedirs(output_dir)
                 output_file_path = os.path.join(output_dir, species.label + '_arkane_output.py')
@@ -194,14 +193,13 @@ class Processor(object):
                 else:
                     species_list_for_plotting.append(species)
         if species_list_for_plotting:
-            plotter.draw_thermo_parity_plots(species_list_for_plotting,
-                                             path=os.path.join(arc_path, 'Projects', self.project, 'output'))
+            plotter.draw_thermo_parity_plots(species_list_for_plotting, path=os.path.join(project_directory, 'output'))
 
 
 def determine_rotor_symmetry(rotor_path, label, pivots):
     """
     **  This is a temporary function, will soon be incorporated in Arkane instead**
-    
+
     Determine the rotor symmetry number from the potential scan given in :list:`energies` in J/mol units
     Assumes the list represents a 360 degree scan
     str:`label` is the species name, used for logging and error messages
@@ -214,7 +212,7 @@ def determine_rotor_symmetry(rotor_path, label, pivots):
     """
     log = Log(path='')
     log.determine_qm_software(fullpath=rotor_path)
-    energies, angle = log.software_log.loadScanEnergies()
+    energies, _ = log.software_log.loadScanEnergies()
 
     symmetry = None
     max_e = max(energies)

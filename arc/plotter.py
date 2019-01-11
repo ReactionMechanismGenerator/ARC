@@ -16,7 +16,6 @@ from rdkit import Chem
 from rmgpy.exceptions import AtomTypeError
 
 from arc.species import mol_from_xyz, get_xyz_matrix, rdkit_conf_from_mol
-from arc.settings import arc_path
 
 
 ##################################################################
@@ -236,12 +235,12 @@ def text_plotter(x_data, y_data, labels, text_positions, axis, txt_width, txt_he
                        zorder=0, length_includes_head=True)
 
 
-def save_geo(species, project):
+def save_geo(species, project_directory):
     """
     Save the geometry in several forms for an ARC Species object in the project's output folder under the species name
     """
     folder_name = 'TSs' if species.is_ts else 'Species'
-    geo_path = os.path.join(arc_path, 'Projects', project, 'output', folder_name, species.label, 'geometry')
+    geo_path = os.path.join(project_directory, 'output', folder_name, species.label, 'geometry')
     if os.path.exists(geo_path):
         # clean working folder from all previous output
         for file in os.listdir(geo_path):
