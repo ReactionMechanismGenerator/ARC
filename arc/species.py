@@ -254,7 +254,10 @@ class ARCSpecies(object):
         except KeyError:
             logging.debug('No charge specified for {0}, assuming charge 0.'.format(self.label))
             self.charge = 0
-        self.generate_thermo = species_dict['generate_thermo'] if 'generate_thermo' in species_dict else True
+        if self.is_ts:
+            self.generate_thermo = False
+        else:
+            self.generate_thermo = species_dict['generate_thermo'] if 'generate_thermo' in species_dict else True
         self.opt_level = species_dict['opt_level'] if 'opt_level' in species_dict else ''
         self.initial_xyz = species_dict['initial_xyz'] if 'initial_xyz' in species_dict else None
         self.final_xyz = species_dict['final_xyz'] if 'final_xyz' in species_dict else ''
