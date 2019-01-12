@@ -889,7 +889,7 @@ class Scheduler(object):
                         # So use the xyz determined w/o the fine grid, and output an error message to alert users.
                         logging.error('Optimization job for {label} with a fine grid terminated successfully'
                                       ' on the server, but crashed during calculation. NOT running with fine'
-                                      ' grid again.')
+                                      ' grid again.'.format(label=label))
                         self.parse_opt_geo(label=label, job=previous_job)
                 else:
                     self.troubleshoot_ess(label=label, job=job, level_of_theory=self.opt_level, job_type='opt')
