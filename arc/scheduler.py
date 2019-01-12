@@ -965,11 +965,12 @@ class Scheduler(object):
                              conformer=conformer)
             elif 'memory' not in job.ess_trsh_methods:
                 # Increase memory allocation
-                logging.info('Troubleshooting {type} job in {software} using memory'.format(
-                    type=job_type, software=job.software))
+                memory = 3000
+                logging.info('Troubleshooting {type} job in {software} using memory: {mwm} MB'.format(
+                    type=job_type, software=job.software, mem=memory))
                 job.ess_trsh_methods.append('memory')
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
-                             job_type=job_type, fine=job.fine, memory=3000, ess_trsh_methods=job.ess_trsh_methods,
+                             job_type=job_type, fine=job.fine, memory=memory, ess_trsh_methods=job.ess_trsh_methods,
                              conformer=conformer)
             elif self.composite_method != 'cbs-qb3' and 'scf=(qc,nosymm) & CBS-QB3' not in job.ess_trsh_methods:
                 # try both qc and nosymm with CBS-QB3
@@ -1063,14 +1064,14 @@ class Scheduler(object):
             if 'memory' in job.job_status[1]:
                 # Increase memory allocation.
                 # job.job_status[1] will be for example `'errored: memory 996.31'`. The number is in Mwords
-                logging.info('Troubleshooting {type} job in {software} using memory'.format(
-                    type=job_type, software=job.software))
                 job.ess_trsh_methods.append('memory')
                 memory = 5000
                 if len(job.job_status[1].split()) == 3:
                     memory = float(job.job_status[1].split()[-1])  # parse Molpro's requirement
                     memory = int(math.ceil(memory / 100.0)) * 100  # round up to the next hundred
                     memory += 250
+                logging.info('Troubleshooting {type} job in {software} using memory: {mw} MW'.format(
+                    type=job_type, software=job.software, mw=memory))
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
                              job_type=job_type, fine=job.fine, shift=job.shift, memory=memory,
                              ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
@@ -1104,12 +1105,13 @@ class Scheduler(object):
                              conformer=conformer)
             elif 'memory' not in job.ess_trsh_methods:
                 # Increase memory allocation, also run with a shift
-                logging.info('Troubleshooting {type} job in {software} using memory'.format(
-                    type=job_type, software=job.software))
                 job.ess_trsh_methods.append('memory')
+                memory = 5000
+                logging.info('Troubleshooting {type} job in {software} using memory: {mw} MW'.format(
+                    type=job_type, software=job.software, mw=memory))
                 shift = 'shift,-1.0,-0.5;'
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
-                             job_type=job_type, fine=job.fine, shift=shift, memory=5000,
+                             job_type=job_type, fine=job.fine, shift=shift, memory=memory,
                              ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
             elif 'gaussian' not in job.ess_trsh_methods:
                 # Try Gaussian
