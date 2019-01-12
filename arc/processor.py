@@ -110,7 +110,7 @@ class Processor(object):
     def process(self, project_directory):
         species_list_for_plotting = []
         for species in self.species_dict.values():
-            if self.output[species.label]['status'] == 'converged' and species.generate_thermo:
+            if self.output[species.label]['status'] == 'converged' and species.generate_thermo and not species.is_ts:
                 linear = species.is_linear()
                 if linear:
                     logging.info('Determined {0} to be a linear molecule'.format(species.label))
