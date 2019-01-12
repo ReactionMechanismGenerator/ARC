@@ -750,7 +750,7 @@ class Scheduler(object):
                                 invalidated=invalidated, pivots=self.species_dict[label].rotors_dict[i]['pivots'],
                                 label=label))
                             folder_name = 'TSs' if job.is_ts else 'Species'
-                            rotor_path = os.path.join(self.project_directory, 'calcs', folder_name,
+                            rotor_path = os.path.join(self.project_directory, 'output', folder_name,
                                                       job.species_name, 'rotors')
                             plotter.plot_rotor_scan(angle, v_list, path=rotor_path, pivots=job.pivots, comment=message)
                 else:
