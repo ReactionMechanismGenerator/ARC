@@ -197,7 +197,7 @@ class Scheduler(object):
                         max_time = datetime.timedelta(seconds=max(1800, job.n_atoms ^ 4))
                         if datetime.datetime.now() - job.date_time > max_time:
                             # resubmit this conformer job
-                            logging.error('Conformer job {name} for {label} is taking too long (already {delta}).'
+                            logging.error('Conformer job {name} for {label} is taking too long (already {delta}). '
                                           'Terminating job and re-submitting'.format(name=job.job_name, label=label,
                                                                                      delta=max_time))
                             job.delete()
