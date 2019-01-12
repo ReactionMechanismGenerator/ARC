@@ -271,7 +271,7 @@ class ARCSpecies(object):
         self.bond_corrections = species_dict['bond_corrections'] if 'bond_corrections' in species_dict else dict()
         self.rmg_thermo = species_dict['rmg_thermo'] if 'rmg_thermo' in species_dict else None
         self.execution_time = species_dict['execution_time'] if 'execution_time' in species_dict else None
-        self.mol = Molecule().fromAdjacencyList(species_dict['mol']) if 'mol' in species_dict else None
+        self.mol = Molecule().fromAdjacencyList(str(species_dict['mol'])) if 'mol' in species_dict else None
         smiles = species_dict['smiles'] if 'smiles' in species_dict else None
         adjlist = species_dict['adjlist'] if 'adjlist' in species_dict else None
         if adjlist is not None and self.mol is None:
