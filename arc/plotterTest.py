@@ -67,7 +67,6 @@ H      -1.16115119    0.31478894   -0.81506145
             data = f.read()
         self.assertEqual(data, gjf_data)
 
-
     @classmethod
     def tearDownClass(cls):
         """A function that is run ONCE after all unit tests in this class."""
