@@ -34,10 +34,10 @@ H      -1.16115119    0.31478894    0.81506145
 H      -1.16115119    0.31478894   -0.81506145"""
         spc.opt_level = 'opt/level'
         project = 'arc_project_for_testing_delete_after_usage'
-        project_path = os.path.join(arc_path, 'Projects', project)
-        xyz_path = os.path.join(project_path, 'output', 'Species', spc.label, 'geometry', 'methylamine.xyz')
-        gjf_path = os.path.join(project_path, 'output', 'Species', spc.label, 'geometry', 'methylamine.gjf')
-        plotter.save_geo(species=spc, project=project)
+        project_directory = os.path.join(arc_path, 'Projects', project)
+        xyz_path = os.path.join(project_directory, 'output', 'Species', spc.label, 'geometry', 'methylamine.xyz')
+        gjf_path = os.path.join(project_directory, 'output', 'Species', spc.label, 'geometry', 'methylamine.gjf')
+        plotter.save_geo(species=spc, project_directory=project_directory)
         xyz_data = """7
 methylamine optimized at opt/level
 N      -0.74566988   -0.11773792    0.00000000
@@ -67,13 +67,12 @@ H      -1.16115119    0.31478894   -0.81506145
             data = f.read()
         self.assertEqual(data, gjf_data)
 
-
     @classmethod
     def tearDownClass(cls):
         """A function that is run ONCE after all unit tests in this class."""
         project = 'arc_project_for_testing_delete_after_usage'
-        project_path = os.path.join(arc_path, 'Projects', project)
-        shutil.rmtree(project_path)
+        project_directory = os.path.join(arc_path, 'Projects', project)
+        shutil.rmtree(project_directory)
 
 
 ################################################################################

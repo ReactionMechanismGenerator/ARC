@@ -82,7 +82,7 @@ arc_path = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))  # absolu
 
 # A scan with better resolution (lower number here) takes more time to compute,
 # but the automatically-derived rotor symmetry number is more likely to be correct.
-rotor_scan_resolution = 5.0  # degrees. Default: 5.0
+rotor_scan_resolution = 10.0  # degrees. Default: 10.0
 
 # rotor validation parameters
 inconsistency_az = 5   # maximum allowed inconsistency (kJ/mol) between initial and final rotor scan points. Default: 5

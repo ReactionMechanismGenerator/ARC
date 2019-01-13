@@ -16,7 +16,6 @@ from rdkit import Chem
 from rmgpy.exceptions import AtomTypeError
 
 from arc.species import mol_from_xyz, get_xyz_matrix, rdkit_conf_from_mol
-from arc.settings import arc_path
 
 
 ##################################################################
@@ -38,9 +37,11 @@ def plot_rotor_scan(angle, v_list, path=None, pivots=None, comment=''):
     plt.tight_layout()
     plt.show()
     if path is not None and pivots is not None:
-        fig_path = os.path.join(path, '{0}.jpg'.format(pivots))
+        if not os.path.exists(path):
+            os.makedirs(path)
+        fig_path = os.path.join(path, '{0}.png'.format(pivots))
         plt.savefig(fig_path, dpi=120, facecolor='w', edgecolor='w', orientation='portrait', papertype=None,
-                    format='jpg', transparent=False, bbox_inches=None, pad_inches=0.1, frameon=False, metadata=None)
+                    format=str('png'), transparent=False, bbox_inches=None, pad_inches=0.1, frameon=False, metadata=None)
         if comment:
             txt_path = os.path.join(path, 'rotor comments.txt')
             if os.path.isfile(txt_path):
@@ -234,12 +235,12 @@ def text_plotter(x_data, y_data, labels, text_positions, axis, txt_width, txt_he
                        zorder=0, length_includes_head=True)
 
 
-def save_geo(species, project):
+def save_geo(species, project_directory):
     """
     Save the geometry in several forms for an ARC Species object in the project's output folder under the species name
     """
     folder_name = 'TSs' if species.is_ts else 'Species'
-    geo_path = os.path.join(arc_path, 'Projects', project, 'output', folder_name, species.label, 'geometry')
+    geo_path = os.path.join(project_directory, 'output', folder_name, species.label, 'geometry')
     if os.path.exists(geo_path):
         # clean working folder from all previous output
         for file in os.listdir(geo_path):

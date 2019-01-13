@@ -11,6 +11,12 @@ import math
 
 import cclib
 
+import yaml
+try:
+    from yaml import CDumper as Dumper, CSafeDumper as SafeDumper, CLoader as Loader, CSafeLoader as SafeLoader
+except ImportError:
+    from yaml import Dumper, Loader, SafeLoader, SafeDumper
+
 from arkane.statmech import Log
 
 from arc import plotter
@@ -50,9 +56,11 @@ class Scheduler(object):
                                         (e.g. 'conformer3', 'opt_a123').
     'servers_jobs_ids'      ``list``  A list of relevant job IDs currently running on the server
     'fine'                  ``bool``  Whether or not to use a fine grid for opt jobs (spawns an additional job)
-    'output'                ``dict``  Output dictionary with status and final QM files for all species
+    'output'                ``dict``  Output dictionary with status and final QM file paths for all species
     `settings`              ``dict``  A dictionary of available servers and software
     `initial_trsh`          ``dict``  Troubleshooting methods to try by default. Keys are server names, values are trshs
+    `restart_dict`          ``dict``  A restart dictionary parsed from a YAML restart file
+    `project_directory`     ``str``   Folder path for the project: the input file path or ARC/Projects/projectname
     ======================= ========= ==================================================================================
 
     Dictionary structures:
@@ -92,9 +100,17 @@ class Scheduler(object):
              }
     """
     def __init__(self, project, settings, species_list, composite_method, conformer_level, opt_level, freq_level,
-                 sp_level, scan_level, fine=False, generate_conformers=True, scan_rotors=True, initial_trsh=None):
+                 sp_level, scan_level, project_directory, fine=False, generate_conformers=True, scan_rotors=True,
+                 initial_trsh=None, restart_dict=None):
+        self.restart_dict = restart_dict
+        if self.restart_dict is not None:
+            self.output = self.restart_dict['output']
+        else:
+            self.output = dict()
         self.project = project
-        self.settings=settings
+        self.settings = settings
+        self.project_directory = project_directory
+        self.yaml_path = os.path.join(self.project_directory, 'restart.yml')
         self.report_time = time.time()  # init time for reporting status every 1 hr
         self.servers = list()
         self.species_list = species_list
@@ -112,24 +128,29 @@ class Scheduler(object):
         self.servers_jobs_ids = list()
         self.species_dict = dict()
         self.unique_species_labels = list()
-        self.output = dict()
         self.initial_trsh = initial_trsh if initial_trsh is not None else dict()
         for species in self.species_list:
             if not isinstance(species, ARCSpecies):
-                raise SpeciesError('Each species in `species_list` must be a ARCSpecies object.')
+                raise SpeciesError('Each species in `species_list` must be an ARCSpecies object.'
+                                   ' Got type {0} for {1}'.format(type(species), species.label))
             if species.label in self.unique_species_labels:
-                raise SpeciesError('Each species in `species_list` has to have a unique label.')
+                raise SpeciesError('Each species in `species_list` has to have a unique label.'
+                                   ' Label of species {0} is not unique.'.format(species.label))
             self.unique_species_labels.append(species.label)
-            self.output[species.label] = dict()
-            self.output[species.label]['status'] = ''
+            if species.label not in self.output:
+                self.output[species.label] = dict()
+                self.output[species.label]['status'] = ''
+            else:
+                self.output[species.label]['status'] += 'Restarting ARC; '
             self.job_dict[species.label] = dict()
             self.species_dict[species.label] = species
-            if self.scan_rotors:
+            if self.scan_rotors and not self.species_dict[species.label].number_of_rotors:
                 self.species_dict[species.label].determine_rotors()
             self.running_jobs[species.label] = list()  # initialize before running the first job
             if self.species_dict[species.label].number_of_atoms == 1:
+                logging.debug('Species {0} is monoatomic'.format(species.label))
                 if not self.species_dict[species.label].initial_xyz:
-                    # generate a simple "Symb   0.0   0.0   0.0" xyz matrix
+                    # generate a simple "Symbol   0.0   0.0   0.0" xyz matrix
                     if self.species_dict[species.label].mol is not None:
                         symbol = self.species_dict[species.label].mol.atoms[0].symbol
                     else:
@@ -176,7 +197,7 @@ class Scheduler(object):
                         max_time = datetime.timedelta(seconds=max(1800, job.n_atoms ^ 4))
                         if datetime.datetime.now() - job.date_time > max_time:
                             # resubmit this conformer job
-                            logging.error('Conformer job {name} for {label} is taking too long (already {delta}).'
+                            logging.error('Conformer job {name} for {label} is taking too long (already {delta}). '
                                           'Terminating job and re-submitting'.format(name=job.job_name, label=label,
                                                                                      delta=max_time))
                             job.delete()
@@ -273,7 +294,6 @@ class Scheduler(object):
                         # delete the label only if it represents an empty dictionary
                         del self.running_jobs[label]
             if self.timer:
-                logging.debug('zzz... setting timer for 1 minute... zzz')
                 time.sleep(30)  # wait 30 sec before bugging the servers again.
             t = time.time() - self.report_time
             if t > 3600:
@@ -293,7 +313,8 @@ class Scheduler(object):
         job = Job(project=self.project, settings=self.settings, species_name=label, xyz=xyz, job_type=job_type,
                   level_of_theory=level_of_theory, multiplicity=species.multiplicity, charge=species.charge, fine=fine,
                   shift=shift, software=software, is_ts=species.is_ts, memory=memory, trsh=trsh, conformer=conformer,
-                  ess_trsh_methods=ess_trsh_methods, scan=scan, pivots=pivots, occ=occ, initial_trsh=self.initial_trsh)
+                  ess_trsh_methods=ess_trsh_methods, scan=scan, pivots=pivots, occ=occ, initial_trsh=self.initial_trsh,
+                  project_directory=self.project_directory)
         if conformer < 0:
             # this is NOT a conformer job
             self.running_jobs[label].append(job.job_name)  # mark as a running job
@@ -511,6 +532,8 @@ class Scheduler(object):
             frequencies = parser.parse_frequencies(job.local_path_to_output_file, job.software)
             freq_ok = self.check_negative_freq(label=label, job=job, vibfreqs=frequencies)
             if freq_ok:
+                # Update restart dictionary and save the yaml restart file:
+                self.save_restart_dict()
                 return True  # run freq / scan jobs on this optimized geometry
             elif not self.species_dict[label].is_ts:
                 self.troubleshoot_negative_freq(label=label, job=job)
@@ -548,6 +571,8 @@ class Scheduler(object):
                     if not success:
                         plotter.plot_3d_mol_as_scatter(xyz=self.species_dict[label].final_xyz, path=None)
                 self.species_dict[label].opt_level = self.opt_level
+                # Update restart dictionary and save the yaml restart file:
+                self.save_restart_dict()
                 return True  # run freq / sp / scan jobs on this optimized geometry
         else:
             self.troubleshoot_opt_jobs(label=label)
@@ -605,6 +630,8 @@ class Scheduler(object):
             self.output[label]['status'] += 'freq converged; '
             self.output[label]['geo'] = job.local_path_to_output_file
             self.output[label]['freq'] = job.local_path_to_output_file
+            # Update restart dictionary and save the yaml restart file:
+            self.save_restart_dict()
             return True
 
     def check_sp_job(self, label, job):
@@ -617,6 +644,8 @@ class Scheduler(object):
         elif job.job_status[1] == 'done':
             self.output[label]['status'] += 'sp converged; '
             self.output[label]['sp'] = os.path.join(job.local_path, 'output.out')
+            # Update restart dictionary and save the yaml restart file:
+            self.save_restart_dict()
         else:
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level_of_theory, job_type='sp')
 
@@ -716,14 +745,14 @@ class Scheduler(object):
                             invalidated = ''
                             if invalidate:
                                 invalidated = '*INVALIDATED* '
-                            message += invalidate
+                            message += invalidated
                             logging.info('{invalidated}Rotor scan between pivots {pivots} for {label} is:'.format(
                                 invalidated=invalidated, pivots=self.species_dict[label].rotors_dict[i]['pivots'],
                                 label=label))
                             folder_name = 'TSs' if job.is_ts else 'Species'
-                            rotor_path = os.path.join(arc_path, 'Projects', self.project, 'calcs', folder_name,
+                            rotor_path = os.path.join(self.project_directory, 'output', folder_name,
                                                       job.species_name, 'rotors')
-                            plotter.plot_rotor_scan(angle, v_list, path=rotor_path, pivots=job.pivots, message=message)
+                            plotter.plot_rotor_scan(angle, v_list, path=rotor_path, pivots=job.pivots, comment=message)
                 else:
                     # scan job crashed
                     invalidate = True
@@ -802,7 +831,7 @@ class Scheduler(object):
             # species has more than one negative frequency, and has been troubleshooted for it before
             logging.info('Species {0} has {1} negative frequencies. Perturbing its geometry using the vibrational'
                          ' displacements of ALL negative frequencies'.format(label, len(neg_freqs_idx)))
-        self.species_dict[label].neg_freqs_trshed.extend([vibfreqs[i] for i in neg_freqs_idx])  # record frequencies
+        self.species_dict[label].neg_freqs_trshed.extend([round(vibfreqs[i], 2) for i in neg_freqs_idx])  # record freqs
         logging.info('Deleting all currently running jobs for species {0} before troubleshooting for'
                      ' negative frequency...'.format(label))
         self.delete_all_species_jobs(label)
@@ -860,7 +889,7 @@ class Scheduler(object):
                         # So use the xyz determined w/o the fine grid, and output an error message to alert users.
                         logging.error('Optimization job for {label} with a fine grid terminated successfully'
                                       ' on the server, but crashed during calculation. NOT running with fine'
-                                      ' grid again.')
+                                      ' grid again.'.format(label=label))
                         self.parse_opt_geo(label=label, job=previous_job)
                 else:
                     self.troubleshoot_ess(label=label, job=job, level_of_theory=self.opt_level, job_type='opt')
@@ -936,11 +965,12 @@ class Scheduler(object):
                              conformer=conformer)
             elif 'memory' not in job.ess_trsh_methods:
                 # Increase memory allocation
-                logging.info('Troubleshooting {type} job in {software} using memory'.format(
-                    type=job_type, software=job.software))
+                memory = 3000
+                logging.info('Troubleshooting {type} job in {software} using memory: {mem} MB'.format(
+                    type=job_type, software=job.software, mem=memory))
                 job.ess_trsh_methods.append('memory')
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
-                             job_type=job_type, fine=job.fine, memory=3000, ess_trsh_methods=job.ess_trsh_methods,
+                             job_type=job_type, fine=job.fine, memory=memory, ess_trsh_methods=job.ess_trsh_methods,
                              conformer=conformer)
             elif self.composite_method != 'cbs-qb3' and 'scf=(qc,nosymm) & CBS-QB3' not in job.ess_trsh_methods:
                 # try both qc and nosymm with CBS-QB3
@@ -1031,17 +1061,19 @@ class Scheduler(object):
                                      ' troubleshooting with the following methods: {methods}'.format(
                     label=label, methods=job.ess_trsh_methods))
         elif 'molpro' in job.software:
-            if 'memory' in job.job_status[1]:
+            if 'additional memory (mW) required' in job.job_status[1]:
                 # Increase memory allocation.
-                # job.job_status[1] will be for example `'errored: memory 996.31'`. The number is in Mwords
-                logging.info('Troubleshooting {type} job in {software} using memory'.format(
-                    type=job_type, software=job.software))
+                # job.job_status[1] will be for example `'errored: additional memory (mW) required: 996.31'`.
+                # The number is the ADDITIONAL memory required
                 job.ess_trsh_methods.append('memory')
-                memory = 5000
-                if len(job.job_status[1].split()) == 3:
-                    memory = float(job.job_status[1].split()[-1])  # parse Molpro's requirement
-                    memory = int(math.ceil(memory / 100.0)) * 100  # round up to the next hundred
-                    memory += 250
+                add_mem = float(job.job_status[1].split()[-1])  # parse Molpro's requirement
+                add_mem = int(math.ceil(add_mem / 100.0)) * 100  # round up to the next hundred
+                add_mem += 250  # be conservative
+                memory = job.memory + add_mem
+                if memory < 5000:
+                    memory = 5000
+                logging.info('Troubleshooting {type} job in {software} using memory: {mw} MW'.format(
+                    type=job_type, software=job.software, mw=memory))
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
                              job_type=job_type, fine=job.fine, shift=job.shift, memory=memory,
                              ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
@@ -1075,12 +1107,13 @@ class Scheduler(object):
                              conformer=conformer)
             elif 'memory' not in job.ess_trsh_methods:
                 # Increase memory allocation, also run with a shift
-                logging.info('Troubleshooting {type} job in {software} using memory'.format(
-                    type=job_type, software=job.software))
                 job.ess_trsh_methods.append('memory')
+                memory = 5000
+                logging.info('Troubleshooting {type} job in {software} using memory: {mw} MW'.format(
+                    type=job_type, software=job.software, mw=memory))
                 shift = 'shift,-1.0,-0.5;'
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
-                             job_type=job_type, fine=job.fine, shift=shift, memory=5000,
+                             job_type=job_type, fine=job.fine, shift=shift, memory=memory,
                              ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
             elif 'gaussian' not in job.ess_trsh_methods:
                 # Try Gaussian
@@ -1116,10 +1149,12 @@ class Scheduler(object):
             logging.info('\nAll jobs for species {0} successfully converged.'
                          ' Elapsed time: {1}'.format(label, self.species_dict[label].execution_time))
             self.output[label]['status'] = 'converged'
-            plotter.save_geo(species=self.species_dict[label], project=self.project)
+            plotter.save_geo(species=self.species_dict[label], project_directory=self.project_directory)
         elif not self.output[label]['status']:
             self.output[label]['status'] = 'nothing converged'
             logging.error('species {0} did not converge. Status is: {1}'.format(label, status))
+            # Update restart dictionary and save the yaml restart file:
+            self.save_restart_dict()
 
     def delete_all_species_jobs(self, label):
         """
@@ -1132,6 +1167,43 @@ class Scheduler(object):
                     logging.debug('Deleted job {0}'.format(job_name))
                     job.delete()
         self.running_jobs[label] = list()
+
+    def save_restart_dict(self):
+        """
+        Update the restart_dict and save the restart.yml file
+        """
+        self.restart_dict['output'] = self.output
+        self.restart_dict['species'] = [spc.as_dict() for spc in self.species_dict.values()]
+        content = yaml.safe_dump(data=self.restart_dict, encoding='utf-8', allow_unicode=True)
+        # remove empty lines from the file (multi-line strings have excess new line brakes for some reason):
+        content = content.replace('\n\n', '\n')
+        # Fix multiline format of xyz and adjList into a pip format so line breaks are parsed correctly
+        key_words = ['initial_xyz', 'final_xyz', 'mol']
+        lines = content.splitlines()
+        new_list = list()
+        append_original = True
+        j = 0
+        for i, line in enumerate(lines):
+            if any([key_word + ': ' in line for key_word in key_words]):
+                for j in range(i, len(lines)):
+                    if len(lines[j].split()) == 1 and lines[j].split()[0] == "'":
+                        break
+                old_segment = lines[i: j]
+                leading_spaces = ' ' * (len(old_segment[1]) - len(old_segment[1].lstrip(' ')))
+                new_segment = [old_segment[0].split(':')[0] + ': |']
+                new_segment.append(leading_spaces + old_segment[0].split(": '")[1])  # extract data from first line
+                new_segment.extend(old_segment[1:])
+                new_list.extend(new_segment)
+                append_original = False
+            if append_original:
+                new_list.append(line)
+            if i == j:
+                append_original = True
+
+        content = '\n'.join([line for line in new_list])
+        with open(self.yaml_path, 'w') as f:
+            f.write(content)
+        logging.debug('Dumping restart dictionary:\n{0}'.format(self.restart_dict))
 
 
 def time_lapse(t0):

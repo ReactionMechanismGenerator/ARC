@@ -1,0 +1,29 @@
+project: demo
+
+species:
+  - label: vinoxy
+    smiles: C=C[O]
+    multiplicity: 2
+    charge: 0
+
+  - label: OH
+    xyz: |
+      O       0.00000000    0.00000000   -0.12002167
+      H       0.00000000    0.00000000    0.85098324
+    multiplicity: 2
+    charge: 0
+
+  - label: methylamine
+    smiles: CN
+    multiplicity: 1
+    charge: 0
+
+  - label: propene
+    smiles: C=CC
+    multiplicity: 1
+    charge: 0
+
+  - label: N2H4
+    smiles: NN
+    multiplicity: 1
+    charge: 0
