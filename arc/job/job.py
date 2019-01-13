@@ -43,7 +43,7 @@ class Job(object):
                                            methods, but used to identify the rotor.
     `software`         ``str``           The electronic structure software to be used
     `server_nodes`     ``list``          A list of nodes this job was submitted to (for troubleshooting)
-    `memory`           ``int``           The allocated memory (1000 mb by default)
+    `memory`           ``int``           The allocated memory (1500 mb by default)
     `method`           ``str``           The calculation method (e.g., 'B3LYP', 'CCSD(T)', 'CBS-QB3'...)
     `basis_set`        ``str``           The basis set (e.g., '6-311++G(d,p)', 'aug-cc-pVTZ'...)
     `fine`             ``bool``          Whether to use fine geometry optimization parameters
@@ -177,7 +177,7 @@ class Job(object):
             self.server = None
 
         if self.software == 'molpro':
-            # molpro's memory is in MW, 500 should be enough
+            # molpro's memory is in MW, 750 should be enough
             memory /= 2
         self.memory = memory
 
@@ -620,6 +620,7 @@ $end
                     else:
                         return 'errored: Unknown reason'
             elif self.software == 'molpro':
+                prev_line = ''
                 for line in lines[::-1]:
                     if 'molpro calculation terminated' in line.lower()\
                             or 'variable memory released' in line.lower():
@@ -628,7 +629,14 @@ $end
                         return 'unconverged'
                     elif 'A further' in line and 'Mwords of memory are needed' in line and 'Increase memory to' in line:
                         # e.g.: `A further 246.03 Mwords of memory are needed for the triples to run. Increase memory to 996.31 Mwords.`
-                        return 'errored: memory {0}'.format(line.split()[-2])
+                        return 'errored: additional memory (mW) required: {0}'.format(line.split()[2])
+                    elif 'insufficient memory available - require' in line:
+                        # e.g.: `insufficient memory available - require              228765625  have
+                        #        62928590
+                        #        the request was for real words`
+                        add_mem = (float(line.split()[-2]) - float(prev_line.split()[0])) / 1e6
+                        return 'errored: additional memory (mW) required: {0}'.format(float(line.split()[-2]) / 1e6)
+                    prev_line = line
                 for line in lines[::-1]:
                     if 'the problem occurs' in line:
                         return 'errored: ' + line

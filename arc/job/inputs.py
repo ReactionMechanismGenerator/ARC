@@ -8,7 +8,7 @@
 """
 parameters for input files:
 
-memory (in mb, gaussian and molpro only)
+memory (in mb for gaussian, mW for molpro)
 method
 basis set
 slash is '', unless this is gaussian NOT running a composite method, in which case it is '/'

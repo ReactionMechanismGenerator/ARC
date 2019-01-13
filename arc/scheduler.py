@@ -966,7 +966,7 @@ class Scheduler(object):
             elif 'memory' not in job.ess_trsh_methods:
                 # Increase memory allocation
                 memory = 3000
-                logging.info('Troubleshooting {type} job in {software} using memory: {mwm} MB'.format(
+                logging.info('Troubleshooting {type} job in {software} using memory: {mem} MB'.format(
                     type=job_type, software=job.software, mem=memory))
                 job.ess_trsh_methods.append('memory')
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
@@ -1061,15 +1061,17 @@ class Scheduler(object):
                                      ' troubleshooting with the following methods: {methods}'.format(
                     label=label, methods=job.ess_trsh_methods))
         elif 'molpro' in job.software:
-            if 'memory' in job.job_status[1]:
+            if 'additional memory (mW) required' in job.job_status[1]:
                 # Increase memory allocation.
-                # job.job_status[1] will be for example `'errored: memory 996.31'`. The number is in Mwords
+                # job.job_status[1] will be for example `'errored: additional memory (mW) required: 996.31'`.
+                # The number is the ADDITIONAL memory required
                 job.ess_trsh_methods.append('memory')
-                memory = 5000
-                if len(job.job_status[1].split()) == 3:
-                    memory = float(job.job_status[1].split()[-1])  # parse Molpro's requirement
-                    memory = int(math.ceil(memory / 100.0)) * 100  # round up to the next hundred
-                    memory += 250
+                add_mem = float(job.job_status[1].split()[-1])  # parse Molpro's requirement
+                add_mem = int(math.ceil(add_mem / 100.0)) * 100  # round up to the next hundred
+                add_mem += 250  # be conservative
+                memory = job.memory + add_mem
+                if memory < 5000:
+                    memory = 5000
                 logging.info('Troubleshooting {type} job in {software} using memory: {mw} MW'.format(
                     type=job_type, software=job.software, mw=memory))
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
