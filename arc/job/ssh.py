@@ -2,12 +2,14 @@
 # encoding: utf-8
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
-import paramiko
 import logging
 import os
+import time
+
+import paramiko
 
 from arc.settings import servers, check_status_command, submit_command, submit_filename, delete_command
-from arc.exceptions import InputError
+from arc.exceptions import InputError, ServerError
 
 ##################################################################
 
@@ -64,6 +66,20 @@ class SSH_Client(object):
             raise InputError('Cannot upload a non-existing file.'
                              ' Check why file in path {0} is missing.'.format(local_file_path))
         sftp, ssh = self.connect()
+        times_tried = 0
+        max_times_to_try = 10
+        while times_tried < max_times_to_try:
+            times_tried += 1
+            try:
+                self.write_file(sftp, ssh, remote_file_path, local_file_path, file_string)
+            except IOError:
+                pass
+        if times_tried == max_times_to_try:
+            raise ServerError('Could not write file {0} on {1}'.format(remote_file_path, self.server))
+        sftp.close()
+        ssh.close()
+
+    def write_file(self, sftp, ssh, remote_file_path, local_file_path='', file_string=''):
         with sftp.open(remote_file_path, "w") as f_remote:
             if file_string:
                 f_remote.write(file_string)
@@ -74,8 +90,6 @@ class SSH_Client(object):
             else:
                 raise ValueError('Could not upload file to server. Either `file_string` or `local_file_path`'
                                  ' must be specified')
-        sftp.close()
-        ssh.close()
 
     def download_file(self, remote_file_path, local_file_path):
         """
@@ -168,6 +182,29 @@ class SSH_Client(object):
         return job_status, job_id
 
     def connect(self):
+        """A helper function for calling self.try_connecting until successful"""
+        times_tried = 0
+        max_times_to_try = 1440  # continue trying for 24 hrs...
+        interval = 60  # wait 60 sec between trials
+        while times_tried < max_times_to_try:
+            times_tried += 1
+            try:
+                sftp, ssh = self.try_connecting()
+            except:
+                pass
+            else:
+                logging.debug('Successfully connected to {0} at the {1} trial.'.format(self.server, times_tried))
+                time.sleep(interval)
+                return sftp, ssh
+            if not times_tried % 10:
+                logging.info('Tried connecting to {0} {1} times with no success....'.format(self.server, times_tried))
+            else:
+                logging.debug('Tried connecting to {0} {1} times with no success....'.format(self.server, times_tried))
+            logging.info('****')
+            time.sleep(interval)
+        raise ServerError('Could not connect to server {0} even after {1} trials.'.format(self.server, times_tried))
+
+    def try_connecting(self):
         """A helper function for connecting via paramiko, returns the `sftp` and `ssh` objects"""
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
