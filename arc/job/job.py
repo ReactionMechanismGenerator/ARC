@@ -511,7 +511,13 @@ $end
             ssh = SSH_Client(self.server)
             logging.debug('submitting job...')
             # submit_job returns job server status and job server id
-            self.job_status[0], self.job_id = ssh.submit_job(remote_path=self.remote_path)
+            try:
+                self.job_status[0], self.job_id = ssh.submit_job(remote_path=self.remote_path)
+            except IndexError:
+                # if the connection broke, the files might not have been uploaded correctly
+                self.write_submit_script()
+                self.write_input_file()
+                self.job_status[0], self.job_id = ssh.submit_job(remote_path=self.remote_path)
 
     def delete(self):
         logging.debug('Deleting job {name} for {label}'.format(name=self.job_name, label=self.species_name))
