@@ -68,12 +68,15 @@ class SSH_Client(object):
         sftp, ssh = self.connect()
         times_tried = 0
         max_times_to_try = 10
-        while times_tried < max_times_to_try:
+        success = False
+        while not success and times_tried < max_times_to_try:
             times_tried += 1
             try:
                 self.write_file(sftp, ssh, remote_file_path, local_file_path, file_string)
             except IOError:
                 pass
+            else:
+                success = True
         if times_tried == max_times_to_try:
             raise ServerError('Could not write file {0} on {1}'.format(remote_file_path, self.server))
         sftp.close()
@@ -194,7 +197,6 @@ class SSH_Client(object):
                 pass
             else:
                 logging.debug('Successfully connected to {0} at the {1} trial.'.format(self.server, times_tried))
-                time.sleep(interval)
                 return sftp, ssh
             if not times_tried % 10:
                 logging.info('Tried connecting to {0} {1} times with no success....'.format(self.server, times_tried))
