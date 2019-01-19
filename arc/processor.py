@@ -34,15 +34,17 @@ class Processor(object):
     'use_bac'         ``bool``   Whether or not to use bond additivity corrections for thermo calculations
     'model_chemistry' ``list``   The model chemistry in Arkane for energy corrections (AE, BAC).
                                    This can be usually determined automatically.
+    `lib_long_desc`   ``str``    A multiline description of levels of theory for tthe outputted RMG libraries
     ================ =========== ===============================================================================
     """
-    def __init__(self, project, species_dict, output, use_bac, model_chemistry):
+    def __init__(self, project, species_dict, output, use_bac, model_chemistry, lib_long_desc):
         self.project = project
         self.species_dict = species_dict
         self.output = output
         self.use_bac = use_bac
         self.model_chemistry = model_chemistry
         self.database = None
+        self.lib_long_desc = lib_long_desc
         if any([species.generate_thermo for species in self.species_dict.values()]):
             self.load_rmg_database()
 
@@ -108,12 +110,13 @@ class Processor(object):
         #     family.fillKineticsRulesByAveragingUp(verbose=True)
 
     def process(self, project_directory):
-        species_list_for_plotting = []
+        species_list_for_thermo = []
         for species in self.species_dict.values():
             if self.output[species.label]['status'] == 'converged' and species.generate_thermo and not species.is_ts:
                 linear = species.is_linear()
                 if linear:
                     logging.info('Determined {0} to be a linear molecule'.format(species.label))
+                    species.long_thermo_description += 'Treated as a linear species\n'
                 species.determine_symmetry()
                 multiplicity = species.multiplicity
                 try:
@@ -131,6 +134,7 @@ class Processor(object):
                     freq_path = self.output[species.label]['freq']
                     opt_path = self.output[species.label]['freq']
                 rotors = ''
+                pivots_for_description = 'Pivots of considered rotors: '
                 for i in range(species.number_of_rotors):
                     if species.rotors_dict[i]['success']:
                         if not rotors:
@@ -139,6 +143,7 @@ class Processor(object):
                             rotors += '\n'
                         rotor_path = species.rotors_dict[i]['scan_path']
                         pivots = str(species.rotors_dict[i]['pivots'])
+                        pivots_for_description += str(species.rotors_dict[i]['pivots']) + ' ,'
                         top = str(species.rotors_dict[i]['top'])
                         rotor_symmetry = determine_rotor_symmetry(rotor_path, species.label, pivots)
                         rotors += input_files['arkane_rotor'].format(rotor_path=rotor_path, pivots=pivots, top=top,
@@ -147,6 +152,7 @@ class Processor(object):
                             rotors += ',\n          '
                 if rotors:
                     rotors += ']'
+                    species.long_thermo_description = pivots_for_description[:-2] + '\n'
                 # write the Arkane species input file
                 folder_name = 'TSs' if species.is_ts else 'Species'
                 input_file_path = os.path.join(project_directory, 'calcs', folder_name, species.label,
@@ -191,10 +197,6 @@ class Processor(object):
                     logging.info('Could not retrieve RMG thermo for species {0}, possibly due to missing 2D structure '
                                  '(bond orders). Not including this species in the parity plots.'.format(species.label))
                 else:
-                    species_list_for_plotting.append(species)
-        if species_list_for_plotting:
-            plotter.draw_thermo_parity_plots(species_list_for_plotting, path=os.path.join(project_directory, 'output'))
-
 
 def determine_rotor_symmetry(rotor_path, label, pivots):
     """
@@ -270,3 +272,10 @@ def determine_rotor_symmetry(rotor_path, label, pivots):
         logging.info('Determined a symmetry number of {0} for rotor of species {1} between pivots {2}'
                      ' based on the {3}.'.format(symmetry, label, pivots, reason))
     return symmetry
+                    species_list_for_thermo.append(species)
+        if species_list_for_thermo:
+            output_dir = os.path.join(project_directory, 'output')
+            plotter.draw_thermo_parity_plots(species_list_for_thermo, path=output_dir)
+            libraries_path = os.path.join(output_dir, 'RMG libraries')
+            plotter.save_thermo_lib(species_list_for_thermo, path=libraries_path,
+                                    name=self.project, lib_long_desc=self.lib_long_desc)

@@ -14,6 +14,7 @@ import py3Dmol as p3d
 from rdkit import Chem
 
 from rmgpy.exceptions import AtomTypeError
+from rmgpy.data.thermo import ThermoLibrary
 
 from arc.species import mol_from_xyz, get_xyz_matrix, rdkit_conf_from_mol
 
@@ -263,3 +264,28 @@ def save_geo(species, project_directory):
     gv += '{0}\n'.format(species.final_xyz)
     with open(os.path.join(geo_path, '{0}.gjf'.format(species.label)), 'w') as f:
         f.write(gv)
+
+
+def save_thermo_lib(species_list, path, name, lib_long_desc):
+    """
+    Save an RMG thermo library of all species in `species_list` in the supplied `path`
+    `name` is the library's name (or project's name)
+    `long_desc` is a multiline string with level of theory description
+    """
+    thermo_path = os.path.join(path, 'thermo', '{0}.py'.format(name))
+    thermo_library = ThermoLibrary(name=name, longDesc=lib_long_desc)
+    for i, spc in enumerate(species_list):
+        if spc.thermo:
+            thermo_library.loadEntry(index=i+1,
+                                     label=spc.label,
+                                     molecule=spc.mol_list[0].toAdjacencyList(),
+                                     thermo=spc.thermo,
+                                     shortDesc=spc.thermo.comment,
+                                     longDesc=spc.long_thermo_description,
+           )
+        else:
+            logging.warning('Species {0} did not contain any thermo data and was omitted from the thermo'
+                            ' library.'.format(str(spc)))
+
+    thermo_library.save(thermo_path)
+

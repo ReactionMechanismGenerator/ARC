@@ -56,8 +56,9 @@ class ARC(object):
     `settings`             ``dict``   A dictionary of available servers and software
     `ess_settings`         ``dict``   An optional input parameter: a dictionary relating ESS to servers
     `initial_trsh`         ``dict``   Troubleshooting methods to try by default. Keys are server names, values are trshs
-    't0'                   ``float``  Initial time when the fproject was spawned
+    't0'                   ``float``  Initial time when the project was spawned
     'execution_time'       ``str``    Overall execution time
+    `lib_long_desc`        ``str``    A multiline description of levels of theory for tthe outputted RMG libraries
     ====================== ========== ==================================================================================
 
     `level_of_theory` is a string representing either sp//geometry levels or a composite method, e.g. 'CBS-QB3',
@@ -72,6 +73,7 @@ class ARC(object):
         self.ess_settings = ess_settings
         self.settings = dict()
         self.output = dict()
+        self.lib_long_desc = ''
 
         self.rxn_list = rxn_list if rxn_list is not None else list()
 
@@ -405,15 +407,14 @@ class ARC(object):
                                    generate_conformers=self.generate_conformers, scan_rotors=self.scan_rotors,
                                    initial_trsh=self.initial_trsh, restart_dict=self.restart_dict,
                                    project_directory=self.project_directory)
+        self.save_project_info_file()
         prc = Processor(project=self.project, species_dict=self.scheduler.species_dict, output=self.scheduler.output,
-                        use_bac=self.use_bac, model_chemistry=self.model_chemistry)
+                        use_bac=self.use_bac, model_chemistry=self.model_chemistry, lib_long_desc=self.lib_long_desc)
         prc.process(project_directory=self.project_directory)
         self.summary()
-        self.save_project_info_file()
         self.log_footer()
 
     def save_project_info_file(self):
-
         d, h, m, s = time_lapse(t0=self.t0)
         self.execution_time = '{0}{1:02.0f}:{2:02.0f}:{3:02.0f}'.format(d, h, m, s)
         path = os.path.join(self.project_directory, '{0}.info'.format(self.project))
@@ -423,44 +424,49 @@ class ARC(object):
             fine_txt = '(using a fine grid)'
         else:
             fine_txt = '(NOT using a fine grid)'
-        with open(path, 'w') as f:
-            f.write('ARC project {0}\n\nLevels of theory used:\n\n'.format(self.project))
-            f.write('Conformers:       {0}\n'.format(self.conformer_level))
-            if self.composite_method:
-                f.write('Composite method: {0} {1}\n'.format(self.composite_method, fine_txt))
-                f.write('Frequencies:      {0}\n'.format(self.freq_level))
-            else:
-                f.write('Optimization:     {0} {1}\n'.format(self.opt_level, fine_txt))
-                f.write('Frequencies:      {0}\n'.format(self.freq_level))
-                f.write('Single point:     {0}\n'.format(self.sp_level))
-            if self.scan_rotors:
-                f.write('Rotor scans:      {0}\n'.format(self.scan_level))
-            else:
-                f.write('Not scanning rotors\n')
-            if self.use_bac:
-                f.write('Using bond additivity corrections for thermo\n')
-            else:
-                f.write('NOT using bond additivity corrections for thermo\n')
-            if self.initial_trsh:
-                f.write('Using an initial troubleshooting method "{0}"'.format(self.initial_trsh))
-            f.write('\nUsing the following settings: {0}\n'.format(self.settings))
-            f.write('\nConsidered the following species and TSs:\n')
-            for species in self.arc_species_list:
-                if species.is_ts:
-                    if species.execution_time is not None:
-                        f.write('TS {0} (execution time: {1})\n'.format(species.label, species.execution_time))
-                    else:
-                        f.write('TS {0} (Failed)\n'.format(species.label))
+
+        txt = ''
+        txt += 'ARC project {0}\n\nLevels of theory used:\n\n'.format(self.project)
+        txt += 'Conformers:       {0}\n'.format(self.conformer_level)
+        if self.composite_method:
+            txt += 'Composite method: {0} {1}\n'.format(self.composite_method, fine_txt)
+            txt += 'Frequencies:      {0}\n'.format(self.freq_level)
+        else:
+            txt += 'Optimization:     {0} {1}\n'.format(self.opt_level, fine_txt)
+            txt += 'Frequencies:      {0}\n'.format(self.freq_level)
+            txt += 'Single point:     {0}\n'.format(self.sp_level)
+        if self.scan_rotors:
+            txt += 'Rotor scans:      {0}\n'.format(self.scan_level)
+        else:
+            txt += 'Not scanning rotors\n'
+        if self.use_bac:
+            txt += 'Using bond additivity corrections for thermo\n'
+        else:
+            txt += 'NOT using bond additivity corrections for thermo\n'
+        if self.initial_trsh:
+            txt += 'Using an initial troubleshooting method "{0}"'.format(self.initial_trsh)
+        txt += '\nUsing the following settings: {0}\n'.format(self.settings)
+        txt += '\nConsidered the following species and TSs:\n'
+        for species in self.arc_species_list:
+            if species.is_ts:
+                if species.execution_time is not None:
+                    txt += 'TS {0} (execution time: {1})\n'.format(species.label, species.execution_time)
                 else:
-                    if species.execution_time is not None:
-                        f.write('Species {0} (execution time: {1})\n'.format(species.label, species.execution_time))
-                    else:
-                        f.write('Species {0} (Failed!)\n'.format(species.label))
-            if self.rxn_list:
-                for rxn in self.rxn_list:
-                    f.write('Considered reaction: {0}\n'.format(rxn.label))
-            f.write('\nOverall execution time: {0}'.format(self.execution_time))
-            f.write('\n')
+                    txt += 'TS {0} (Failed)\n'.format(species.label)
+            else:
+                if species.execution_time is not None:
+                    txt += 'Species {0} (execution time: {1})\n'.format(species.label, species.execution_time)
+                else:
+                    txt += 'Species {0} (Failed!)\n'.format(species.label)
+        if self.rxn_list:
+            for rxn in self.rxn_list:
+                txt += 'Considered reaction: {0}\n'.format(rxn.label)
+        txt += '\nOverall execution time: {0}'.format(self.execution_time)
+        txt += '\n'
+
+        with open(path, 'w') as f:
+            f.write(txt)
+        self.lib_long_desc = txt
 
     def summary(self):
         """
@@ -508,11 +514,9 @@ class ARC(object):
         if log_file:
             if os.path.isfile(log_file):
                 old_file = os.path.join(os.path.dirname(log_file), 'arc.old.log')
-                print(old_file)
                 if os.path.isfile(old_file):
                     os.remove(old_file)
                 shutil.copy(log_file, old_file)
-                print('copied')
                 os.remove(log_file)
             fh = logging.FileHandler(filename=log_file)
             fh.setLevel(verbose)
