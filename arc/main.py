@@ -188,11 +188,9 @@ class ARC(object):
                 if sp_level:
                     self.sp_level = sp_level.lower()
                     logging.info('Using {0} for single point calculations'.format(self.sp_level))
-                    self.check_model_chemistry()
                 elif not self.composite_method:
                     self.sp_level = default_levels_of_theory['sp'].lower()
                     logging.info('Using default level {0} for single point calculations'.format(self.sp_level))
-                    self.check_model_chemistry()
                 else:
                     # It's a composite method, no need in explicit sp
                     self.sp_level = ''
@@ -221,7 +219,7 @@ class ARC(object):
         else:
             # read the input_dict
             self.from_dict(input_dict=input_dict, project=project, project_directory=project_directory)
-
+        self.determine_model_chemistry()
         self.restart_dict = self.as_dict()
         self.scheduler = None
 
@@ -309,9 +307,6 @@ class ARC(object):
         self.use_bac = input_dict['use_bac'] if 'use_bac' in input_dict else True
         self.model_chemistry = input_dict['model_chemistry'] if 'use_bac' in input_dict\
                                                                 and input_dict['use_bac'] else ''
-        if self.model_chemistry:
-            logging.info(
-                'Using {0} as model chemistry for energy corrections in Arkane'.format(self.model_chemistry))
         if not self.fine:
             logging.info('\n')
             logging.warning('Not using a fine grid for geometry optimization jobs')
@@ -376,16 +371,15 @@ class ARC(object):
         if 'sp_level' in input_dict:
             self.sp_level = input_dict['sp_level'].lower()
             logging.info('Using {0} for single point calculations'.format(self.sp_level))
-            self.check_model_chemistry()
         elif not self.composite_method:
             self.sp_level = default_levels_of_theory['sp'].lower()
             logging.info('Using default level {0} for single point calculations'.format(self.sp_level))
-            self.check_model_chemistry()
         else:
             # It's a composite method, no need in explicit sp
             self.sp_level = ''
 
         self.arc_species_list = [ARCSpecies(species_dict=spc_dict) for spc_dict in input_dict['species']]
+        self.determine_model_chemistry()
         # self.rxn_list =  # TODO
 
     def execute(self):
@@ -550,7 +544,7 @@ class ARC(object):
         logging.log(level, 'Total execution time: {0}'.format(self.execution_time))
         logging.log(level, 'ARC execution terminated on {0}'.format(time.asctime()))
 
-    def check_model_chemistry(self):
+    def determine_model_chemistry(self):
         if self.model_chemistry:
             self.model_chemistry = self.model_chemistry.lower()
             logging.info('Using {0} as model chemistry for energy corrections in Arkane'.format(
@@ -602,6 +596,10 @@ class ARC(object):
             self.model_chemistry = model_chemistry
             logging.info('Using {0} as model chemistry for energy corrections in Arkane'.format(
                 self.model_chemistry))
+            if not self.model_chemistry:
+                logging.warn('Could not determine a Model Chemistry to be used in Arkane, NOT calculating thermodata')
+            for spc in self.arc_species_list:
+                spc.generate_thermo = False
 
     def determine_remote(self, diagnostics=False):
         """
