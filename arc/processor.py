@@ -12,7 +12,6 @@ from arkane.thermo import ThermoJob
 from rmgpy import settings
 from rmgpy.species import Species
 from rmgpy.data.rmg import RMGDatabase
-from rmgpy.exceptions import AtomTypeError
 
 from arc.job.inputs import input_files
 from arc import plotter
@@ -113,7 +112,8 @@ class Processor(object):
     def process(self, project_directory):
         species_list_for_thermo = []
         for species in self.species_dict.values():
-            if self.output[species.label]['status'] == 'converged' and species.generate_thermo and not species.is_ts:
+            if 'ALL converged' in self.output[species.label]['status']\
+                    and species.generate_thermo and not species.is_ts:
                 linear = species.is_linear()
                 if linear:
                     logging.info('Determined {0} to be a linear molecule'.format(species.label))
@@ -185,7 +185,7 @@ class Processor(object):
                 stat_mech_job.execute(outputFile=output_file_path, plot=False)
                 thermo_job = ThermoJob(arkane_spc, 'NASA')
                 thermo_job.execute(outputFile=output_file_path, plot=False)
-                species.thermo = arkane_spc.thermo  # copy the thermo from the Arkane species into the ARCSpecies
+                species.thermo = arkane_spc.getThermoData()
                 plotter.log_thermo(species.label, path=output_file_path)
 
                 species.rmg_species = Species(molecule=[species.mol])

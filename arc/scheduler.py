@@ -60,26 +60,25 @@ class Scheduler(object):
     `settings`              ``dict``  A dictionary of available servers and software
     `initial_trsh`          ``dict``  Troubleshooting methods to try by default. Keys are server names, values are trshs
     `restart_dict`          ``dict``  A restart dictionary parsed from a YAML restart file
-    `project_directory`     ``str``   Folder path for the project: the input file path or ARC/Projects/projectname
+    `project_directory`     ``str``   Folder path for the project: the input file path or ARC/Projects/project-name
+    `save_restart`          ``bool``  Whether to start saving a restart file. ``True`` only after all species are loaded
+                                        (otherwise saves a partial file and may cause loss of information)
     ======================= ========= ==================================================================================
 
     Dictionary structures:
 
-*   job_dict = {label_1: {'conformers':       {0: Job1,
-                                               1: Job2, ...},
-                          'opt':             {job_name1: Job1,
-                                              job_name2: Job2, ...},
-                          'sp':              {job_name1: Job1,
-                                              job_name2: Job2, ...},
-                          'freq':            {job_name1: Job1,
-                                              job_name2: Job2, ...},
-                          'composite':       {job_name1: Job1,
-                                              job_name2: Job2, ...},
-                          'scan': {pivot_1: {job_name1: Job1,
-                                             job_name2: Job2, ...},
-                                   pivot_2: {job_name1: Job1,
-                                             job_name2: Job2, ...},
-                                  }
+*   job_dict = {label_1: {'conformers': {0: Job1,
+                                         1: Job2, ...},
+                          'opt':        {job_name1: Job1,
+                                         job_name2: Job2, ...},
+                          'sp':         {job_name1: Job1,
+                                         job_name2: Job2, ...},
+                          'freq':       {job_name1: Job1,
+                                         job_name2: Job2, ...},
+                          'composite':  {job_name1: Job1,
+                                         job_name2: Job2, ...},
+                          'scan':       {job_name1: Job1,
+                                         job_name2: Job2, ...},
                           }
                 label_2: {...},
                 }
@@ -89,31 +88,30 @@ class Scheduler(object):
                         'freq': <path to freq output file>,
                         'sp': <path to sp output file>,
                         'composite': <path to composite output file>,
-                        'number_of_rotors': <number of rotors>,
-                        'rotors': {1: {'path': <path to scan output file>,
-                                       'pivots': pivots_list,
-                                       'top': top_list},
-                                   2:  {...}
-                                  }
-                        },
              label_2: {...},
              }
+    # Note that rotor scans are located under Species.rotors_dict
     """
     def __init__(self, project, settings, species_list, composite_method, conformer_level, opt_level, freq_level,
                  sp_level, scan_level, project_directory, fine=False, generate_conformers=True, scan_rotors=True,
                  initial_trsh=None, restart_dict=None):
         self.restart_dict = restart_dict
-        if self.restart_dict is not None:
-            self.output = self.restart_dict['output']
-        else:
-            self.output = dict()
+        self.species_list = species_list
         self.project = project
         self.settings = settings
         self.project_directory = project_directory
+        self.job_dict = dict()
+        self.servers_jobs_ids = list()
+        self.running_jobs = dict()
+        if self.restart_dict is not None:
+            self.output = self.restart_dict['output']
+            if 'running_jobs' in self.restart_dict:
+                self.restore_running_jobs()
+        else:
+            self.output = dict()
         self.yaml_path = os.path.join(self.project_directory, 'restart.yml')
         self.report_time = time.time()  # init time for reporting status every 1 hr
         self.servers = list()
-        self.species_list = species_list
         self.composite_method = composite_method
         self.conformer_level = conformer_level
         self.opt_level = opt_level
@@ -123,12 +121,10 @@ class Scheduler(object):
         self.fine = fine
         self.generate_conformers = generate_conformers
         self.scan_rotors = scan_rotors
-        self.job_dict = dict()
-        self.running_jobs = dict()
-        self.servers_jobs_ids = list()
         self.species_dict = dict()
         self.unique_species_labels = list()
         self.initial_trsh = initial_trsh if initial_trsh is not None else dict()
+        self.save_restart = False
         for species in self.species_list:
             if not isinstance(species, ARCSpecies):
                 raise SpeciesError('Each species in `species_list` must be an ARCSpecies object.'
@@ -141,13 +137,18 @@ class Scheduler(object):
                 self.output[species.label] = dict()
                 self.output[species.label]['status'] = ''
             else:
-                self.output[species.label]['status'] += 'Restarting ARC; '
-            self.job_dict[species.label] = dict()
+                self.output[species.label]['status'] += 'Restarted ARC at {0}; '.format(datetime.datetime.now())
+            if species.label not in self.job_dict:
+                self.job_dict[species.label] = dict()
             self.species_dict[species.label] = species
             if self.scan_rotors and not self.species_dict[species.label].number_of_rotors:
                 self.species_dict[species.label].determine_rotors()
-            self.running_jobs[species.label] = list()  # initialize before running the first job
-            if self.species_dict[species.label].number_of_atoms == 1:
+            if species.label not in self.running_jobs:
+                self.running_jobs[species.label] = list()  # initialize before running the first job
+            if self.species_dict[species.label].number_of_atoms == 1\
+                    and 'sp' not in self.output[species.label] \
+                    and 'composite' not in self.output[species.label]:
+                # don't bother checking for already ran jobs for monoatomic species if restarting
                 logging.debug('Species {0} is monoatomic'.format(species.label))
                 if not self.species_dict[species.label].initial_xyz:
                     # generate a simple "Symbol   0.0   0.0   0.0" xyz matrix
@@ -164,13 +165,34 @@ class Scheduler(object):
                     self.run_composite_job(species.label)
                 else:
                     self.run_sp_job(label=species.label)
-            elif self.species_dict[species.label].initial_xyz:
-                if self.composite_method:
+            elif self.species_dict[species.label].initial_xyz or self.species_dict[species.label].final_xyz:
+                # For restarting purposes: check before running jobs whether they were already terminated
+                # (check self.output) or whether they are currently running (check self.job_dict)
+                if self.composite_method and 'composite' not in self.output[species.label]\
+                        and 'composite' not in self.job_dict[species.label]:
                     self.run_composite_job(species.label)
-                else:
+                elif self.composite_method and 'freq' not in self.output[species.label]\
+                        and 'freq' not in self.job_dict[species.label]:
+                    self.run_freq_job(species.label)
+                elif 'opt converged' not in self.output[species.label]['status']\
+                        and 'opt' not in self.job_dict[species.label]:
                     self.run_opt_job(species.label)
-            elif not self.species_dict[species.label].is_ts and self.generate_conformers:
+                elif 'opt converged' in self.output[species.label]['status']:
+                    # opt is done
+                    if 'freq' not in self.output[species.label] and 'freq' not in self.job_dict[species.label]:
+                        if self.species_dict[species.label].number_of_atoms > 1:
+                            self.run_freq_job(species.label)
+                    if 'sp' not in self.output[species.label] and 'sp' not in self.job_dict[species.label]:
+                        self.run_sp_job(species.label)
+                    if self.scan_rotors:
+                        # restart-related check are performed in run_scan_jobs()
+                        self.run_scan_jobs(species.label)
+                if self.species_dict[species.label].t0 is None:
+                    self.species_dict[species.label].t0 = time.time()
+            elif not self.species_dict[species.label].is_ts and self.generate_conformers\
+                    and 'geo' not in self.output[species.label]:
                 self.species_dict[species.label].generate_conformers()
+        self.save_restart = True
         self.timer = True
         self.schedule_jobs()
 
@@ -325,6 +347,7 @@ class Scheduler(object):
                 self.job_dict[label][job_type] = dict()
             self.job_dict[label][job_type][job.job_name] = job
             self.job_dict[label][job_type][job.job_name].run()
+            self.save_restart_dict()
         else:
             # Running a conformer job. Append differently to job_dict.
             self.running_jobs[label].append('conformer{0}'.format(conformer))  # mark as a running job
@@ -347,15 +370,17 @@ class Scheduler(object):
                          fine=job.fine, software=job.software, shift=job.shift, trsh=job.trsh, memory=job.memory,
                          conformer=job.conformer, ess_trsh_methods=job.ess_trsh_methods, scan=job.scan,
                          pivots=job.pivots, occ=job.occ)
-        self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
-        self.timer = False
-        job.run_time = str(datetime.datetime.now() - job.date_time).split('.')[0]
-        job.write_completed_job_to_csv_file()
-        logging.info('  Ending job {name} for {label} ({time})'.format(name=job.job_name, label=label,
-                                                                       time=job.run_time))
-        if job.job_status[0] != 'done':
-            return False
-        return True
+        if job.job_status[0] != 'running' and job.job_status[1] != 'running':
+            self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
+            self.timer = False
+            job.run_time = str(datetime.datetime.now() - job.date_time).split('.')[0]
+            job.write_completed_job_to_csv_file()
+            logging.info('  Ending job {name} for {label} ({time})'.format(name=job.job_name, label=label,
+                                                                           time=job.run_time))
+            if job.job_status[0] != 'done':
+                return False
+            self.save_restart_dict()
+            return True
 
     def run_conformer_jobs(self):
         """
@@ -364,7 +389,8 @@ class Scheduler(object):
         in self.species_dict[species.label]['initial_xyz']
         """
         for label in self.unique_species_labels:
-            if not self.species_dict[label].is_ts:
+            if not self.species_dict[label].is_ts and 'opt converged' not in self.output[label]['status']\
+                        and 'opt' not in self.job_dict[label]:
                 if len(self.species_dict[label].conformers) > 1:
                     self.job_dict[label]['conformers'] = dict()
                     for i, xyz in enumerate(self.species_dict[label].conformers):
@@ -473,8 +499,15 @@ class Scheduler(object):
             for i in range(self.species_dict[label].number_of_rotors):
                 scan = self.species_dict[label].rotors_dict[i]['scan']
                 pivots = self.species_dict[label].rotors_dict[i]['pivots']
-                self.run_job(label=label, xyz=self.species_dict[label].final_xyz,
-                             level_of_theory=self.scan_level, job_type='scan', scan=scan, pivots=pivots)
+                if 'scan_path' not in self.species_dict[label].rotors_dict[i]\
+                        or not self.species_dict[label].rotors_dict[i]['scan_path']:
+                    # check this job isn't already running on the server (from a restarted project):
+                    for scan_job in self.job_dict[label]['scan'].values():
+                        if scan_job.pivots == pivots and scan_job.job_name in self.running_jobs[label]:
+                            break
+                    else:
+                        self.run_job(label=label, xyz=self.species_dict[label].final_xyz,
+                                     level_of_theory=self.scan_level, job_type='scan', scan=scan, pivots=pivots)
 
     def parse_conformer_energy(self, job, label, i):
         """
@@ -765,6 +798,7 @@ class Scheduler(object):
                 break  # `job` has only one pivot. Break if found, otherwise raise an error.
         else:
             raise SchedulerError('Could not match rotor with pivots {0} in species {1}'.format(job.pivots, label))
+        self.save_restart_dict()
 
     def get_servers_jobs_ids(self):
         """
@@ -1148,7 +1182,7 @@ class Scheduler(object):
             self.species_dict[label].execution_time = '{0}{1:02.0f}:{2:02.0f}:{3:02.0f}'.format(d, h, m, s)
             logging.info('\nAll jobs for species {0} successfully converged.'
                          ' Elapsed time: {1}'.format(label, self.species_dict[label].execution_time))
-            self.output[label]['status'] = 'converged'
+            self.output[label]['status'] += '; ALL converged'
             plotter.save_geo(species=self.species_dict[label], project_directory=self.project_directory)
         elif not self.output[label]['status']:
             self.output[label]['status'] = 'nothing converged'
@@ -1168,42 +1202,67 @@ class Scheduler(object):
                     job.delete()
         self.running_jobs[label] = list()
 
+    def restore_running_jobs(self):
+        """
+        Make Job objects for jobs which were running in the previous session.
+        Important for the restart feature so long jobs won't be ran twice.
+        """
+        jobs = self.restart_dict['running_jobs']
+        for spc_label in jobs.keys():
+            if spc_label not in self.running_jobs:
+                self.running_jobs[spc_label] = list()
+            for job_description in jobs[spc_label]:
+                self.running_jobs[spc_label].append(job_description['job_name'])
+                for species in self.species_list:
+                    if species.label == spc_label:
+                        break
+                else:
+                    raise SchedulerError('Could not find species {0} in the restart file'.format(spc_label))
+                job = Job(project=self.project, settings=self.settings, species_name=spc_label,
+                          xyz=job_description['xyz'], job_type=job_description['job_type'],
+                          level_of_theory=job_description['level_of_theory'], multiplicity=species.multiplicity,
+                          charge=species.charge, fine=job_description['fine'], shift=job_description['shift'],
+                          is_ts=species.is_ts, memory=job_description['memory'], trsh=job_description['trsh'],
+                          ess_trsh_methods=job_description['ess_trsh_methods'], scan=job_description['scan'],
+                          pivots=job_description['pivots'], occ=job_description['occ'],
+                          project_directory=job_description['project_directory'], job_num=job_description['job_num'],
+                          job_server_name=job_description['job_server_name'], job_name=job_description['job_name'],
+                          job_id=job_description['job_id'], server=job_description['server'],
+                          run_time=job_description['run_time'], date_time=job_description['date_time'])
+                if spc_label not in self.job_dict:
+                    self.job_dict[spc_label] = dict()
+                if job_description['job_type'] not in self.job_dict[spc_label]:
+                    self.job_dict[spc_label][job_description['job_type']] = dict()
+                self.job_dict[spc_label][job_description['job_type']][job_description['job_name']] = job
+                self.servers_jobs_ids.append(job.job_id)
+        if self.job_dict:
+            content = 'Restarting ARC, tracking the following jobs spawned in a previous session:'
+            for spc_label in self.job_dict.keys():
+                content += '\n' + spc_label + ': '
+                for tob_type in self.job_dict[spc_label].keys():
+                    for job_name in self.job_dict[spc_label][tob_type].keys():
+                        content += job_name + ', '
+            content += '\n\n'
+            logging.info(content)
+
     def save_restart_dict(self):
         """
         Update the restart_dict and save the restart.yml file
         """
-        self.restart_dict['output'] = self.output
-        self.restart_dict['species'] = [spc.as_dict() for spc in self.species_dict.values()]
-        content = yaml.safe_dump(data=self.restart_dict, encoding='utf-8', allow_unicode=True)
-        # remove empty lines from the file (multi-line strings have excess new line brakes for some reason):
-        content = content.replace('\n\n', '\n')
-        # Fix multiline format of xyz and adjList into a pip format so line breaks are parsed correctly
-        key_words = ['initial_xyz', 'final_xyz', 'mol']
-        lines = content.splitlines()
-        new_list = list()
-        append_original = True
-        j = 0
-        for i, line in enumerate(lines):
-            if any([key_word + ': ' in line for key_word in key_words]):
-                for j in range(i, len(lines)):
-                    if len(lines[j].split()) == 1 and lines[j].split()[0] == "'":
-                        break
-                old_segment = lines[i: j]
-                leading_spaces = ' ' * (len(old_segment[1]) - len(old_segment[1].lstrip(' ')))
-                new_segment = [old_segment[0].split(':')[0] + ': |']
-                new_segment.append(leading_spaces + old_segment[0].split(": '")[1])  # extract data from first line
-                new_segment.extend(old_segment[1:])
-                new_list.extend(new_segment)
-                append_original = False
-            if append_original:
-                new_list.append(line)
-            if i == j:
-                append_original = True
-
-        content = '\n'.join([line for line in new_list])
-        with open(self.yaml_path, 'w') as f:
-            f.write(content)
-        logging.debug('Dumping restart dictionary:\n{0}'.format(self.restart_dict))
+        if self.save_restart:
+            logging.debug('Creating a restart file...')
+            self.restart_dict['output'] = self.output
+            self.restart_dict['species'] = [spc.as_dict() for spc in self.species_dict.values()]
+            self.restart_dict['running_jobs'] = dict()
+            for spc in self.species_dict.values():
+                if spc.label in self.running_jobs:
+                    self.restart_dict['running_jobs'][spc.label] =\
+                        [self.job_dict[spc.label][job_name.split('_')[0]][job_name].as_dict()
+                         for job_name in self.running_jobs[spc.label] if 'conformer' not in job_name]
+            content = yaml.safe_dump(data=self.restart_dict, encoding='utf-8', allow_unicode=True)
+            with open(self.yaml_path, 'w') as f:
+                f.write(content)
+            logging.debug('Dumping restart dictionary:\n{0}'.format(self.restart_dict))
 
 
 def time_lapse(t0):

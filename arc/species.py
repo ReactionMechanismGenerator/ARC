@@ -81,6 +81,9 @@ class ARCSpecies(object):
                  smiles='', adjlist='', bond_corrections=None, generate_thermo=True, species_dict=None):
 
         self.xyz_mol = None
+        self.conformers = list()
+        self.conformer_energies = list()
+        self.xyzs = list()  # used for conformer search
 
         if species_dict is not None:
             self.from_dict(species_dict=species_dict)
@@ -188,15 +191,12 @@ class ARCSpecies(object):
             self.final_xyz = ''
             self.number_of_rotors = 0
             self.rotors_dict = dict()
-            self.conformers = list()
-            self.conformer_energies = list()
             if self.initial_xyz is not None:
                 # consider the initial guess as one of the conformers if generating others.
                 # otherwise, just consider it as the conformer.
                 self.conformers.append(self.initial_xyz)
                 self.conformer_energies.append(0.0)  # dummy
 
-            self.xyzs = list()  # used for conformer search
             self.external_symmetry = 1
             self.optical_isomers = 1
             self.neg_freqs_trshed = list()
@@ -209,7 +209,9 @@ class ARCSpecies(object):
         """A helper function for dumping this object as a dictionary in a YAML file for restarting ARC"""
         species_dict = dict()
         species_dict['is_ts'] = self.is_ts
+        species_dict['t0'] = self.t0
         species_dict['label'] = self.label
+        species_dict['long_thermo_description'] = self.long_thermo_description
         species_dict['multiplicity'] = self.multiplicity
         species_dict['charge'] = self.charge
         species_dict['generate_thermo'] = self.generate_thermo
@@ -217,9 +219,6 @@ class ARCSpecies(object):
         species_dict['final_xyz'] = self.final_xyz
         species_dict['number_of_rotors'] = self.number_of_rotors
         species_dict['rotors_dict'] = self.rotors_dict
-        species_dict['conformers'] = self.conformers
-        species_dict['conformer_energies'] = self.conformer_energies
-        species_dict['xyzs'] = self.xyzs
         species_dict['external_symmetry'] = self.external_symmetry
         species_dict['optical_isomers'] = self.optical_isomers
         species_dict['neg_freqs_trshed'] = self.neg_freqs_trshed
@@ -243,7 +242,9 @@ class ARCSpecies(object):
             self.label = species_dict['label']
         except KeyError:
             raise InputError('All species must have a label')
-        self.t0 = None
+        self.t0 = species_dict['t0'] if 't0' in species_dict else None
+        self.long_thermo_description = species_dict['long_thermo_description']\
+            if 'long_thermo_description' in species_dict else ''
         self.is_ts = species_dict['is_ts'] if 'is_ts' in species_dict else False
         valid_chars = "-_()<=>%s%s" % (string.ascii_letters, string.digits)
         for char in self.label:
@@ -269,9 +270,6 @@ class ARCSpecies(object):
             self.initial_xyz = species_dict['xyz']
         self.number_of_rotors = species_dict['number_of_rotors'] if 'number_of_rotors' in species_dict else 0
         self.rotors_dict = species_dict['rotors_dict'] if 'rotors_dict' in species_dict else dict()
-        self.conformers = species_dict['conformers'] if 'conformers' in species_dict else list()
-        self.conformer_energies = species_dict['conformer_energies'] if 'conformer_energies' in species_dict else list()
-        self.xyzs = species_dict['xyzs'] if 'xyzs' in species_dict else list()
         self.external_symmetry = species_dict['external_symmetry'] if 'external_symmetry' in species_dict else 1
         self.optical_isomers = species_dict['optical_isomers'] if 'optical_isomers' in species_dict else 1
         self.neg_freqs_trshed = species_dict['neg_freqs_trshed'] if 'neg_freqs_trshed' in species_dict else list()

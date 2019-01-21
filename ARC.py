@@ -73,7 +73,6 @@ def main():
         input_dict['verbose']
     except KeyError:
         input_dict['verbose'] = verbose
-    print('in ARC: ', project_directory)
     arc_object = ARC(input_dict=input_dict, project_directory=project_directory)
     arc_object.execute()
 

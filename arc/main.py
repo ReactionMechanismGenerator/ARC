@@ -58,7 +58,8 @@ class ARC(object):
     `initial_trsh`         ``dict``   Troubleshooting methods to try by default. Keys are server names, values are trshs
     't0'                   ``float``  Initial time when the project was spawned
     'execution_time'       ``str``    Overall execution time
-    `lib_long_desc`        ``str``    A multiline description of levels of theory for tthe outputted RMG libraries
+    `lib_long_desc`        ``str``    A multiline description of levels of theory for the outputted RMG libraries
+    `running_jobs`         ``dict``   A dictionary of jubs submitted in a precious ARC instance, used for restarting ARC
     ====================== ========== ==================================================================================
 
     `level_of_theory` is a string representing either sp//geometry levels or a composite method, e.g. 'CBS-QB3',
@@ -73,6 +74,7 @@ class ARC(object):
         self.ess_settings = ess_settings
         self.settings = dict()
         self.output = dict()
+        self.running_jobs = dict()
         self.lib_long_desc = ''
 
         self.rxn_list = rxn_list if rxn_list is not None else list()
@@ -219,12 +221,14 @@ class ARC(object):
                     self.arc_species_list.append(arc_spc)
 
         else:
-            # read the input_dict
+            # ARC is run from an input or a restart file.
+            # Read the input_dict
             self.from_dict(input_dict=input_dict, project=project, project_directory=project_directory)
-        self.determine_model_chemistry()
         self.restart_dict = self.as_dict()
+        self.determine_model_chemistry()
         self.scheduler = None
 
+        # make a backup copy of the restart file if it exists (but don't save an updated one yet)
         if os.path.isfile(os.path.join(self.project_directory, 'restart.yml')):
             shutil.copy(os.path.join(self.project_directory, 'restart.yml'),
                         os.path.join(self.project_directory, 'restart.old.yml'))
@@ -252,6 +256,7 @@ class ARC(object):
         restart_dict['species'] = [spc.as_dict() for spc in self.arc_species_list]
         restart_dict['rxn_list'] = [rxn.as_dict() for rxn in self.rxn_list]
         restart_dict['output'] = self.output  # if read from_dict then it has actual values
+        restart_dict['running_jobs'] = self.running_jobs  # if read from_dict then it has actual values
         return restart_dict
 
     def from_dict(self, input_dict, project=None, project_directory=None):
@@ -300,6 +305,7 @@ class ARC(object):
                             if not os.path.isfile(val['path']):
                                 raise SpeciesError('Could not find {0} output file for rotor {1} of species {2}'.format(
                                     key, rotor_num, label))
+        self.running_jobs = input_dict['running_jobs'] if 'running_jobs' in input_dict else dict()
         logging.debug('output dictionary successfully parsed:\n{0}'.format(self.output))
 
         self.initial_trsh = input_dict['initial_trsh'] if 'initial_trsh' in input_dict else dict()
@@ -379,9 +385,7 @@ class ARC(object):
         else:
             # It's a composite method, no need in explicit sp
             self.sp_level = ''
-
         self.arc_species_list = [ARCSpecies(species_dict=spc_dict) for spc_dict in input_dict['species']]
-        self.determine_model_chemistry()
         # self.rxn_list =  # TODO
 
     def execute(self):
@@ -474,10 +478,10 @@ class ARC(object):
         """
         logging.info('\n\n\nAll jobs terminated. Summary for project {0}:\n'.format(self.project))
         for label, output in self.scheduler.output.items():
-            if output['status'] == 'converged':
+            if 'ALL converged' in output['status']:
                 logging.info('Species {0} converged successfully'.format(label))
             else:
-                logging.info('Species {0} failed with message:\n  {1}'.format(label, output['status']))
+                logging.info('Species {0} failed with status:\n  {1}'.format(label, output['status']))
 
     def initialize_log(self, verbose=logging.INFO, log_file=None):
         """
@@ -551,8 +555,6 @@ class ARC(object):
     def determine_model_chemistry(self):
         if self.model_chemistry:
             self.model_chemistry = self.model_chemistry.lower()
-            logging.info('Using {0} as model chemistry for energy corrections in Arkane'.format(
-                self.model_chemistry))
             if self.model_chemistry not in ['cbs-qb3', 'cbs-qb3-paraskevas', 'ccsd(t)-f12/cc-pvdz-f12',
                                             'ccsd(t)-f12/cc-pvtz-f12', 'ccsd(t)-f12/cc-pvqz-f12',
                                             'b3lyp/cbsb7', 'b3lyp/6-311g(2d,d,p)', 'b3lyp/6-311+g(3df,2p)',
@@ -598,12 +600,15 @@ class ARC(object):
                                 'b3lyp/6-311+g(3df,2p)', 'MRCI+Davidson/aug-cc-pV(T+d)Z']:
                     model_chemistry = sp_level
             self.model_chemistry = model_chemistry
-            logging.info('Using {0} as model chemistry for energy corrections in Arkane'.format(
+            logging.debug('Using {0} as model chemistry for energy corrections in Arkane'.format(
                 self.model_chemistry))
             if not self.model_chemistry:
                 logging.warn('Could not determine a Model Chemistry to be used in Arkane, NOT calculating thermodata')
-            for spc in self.arc_species_list:
-                spc.generate_thermo = False
+                for spc in self.arc_species_list:
+                    spc.generate_thermo = False
+        if self.model_chemistry:
+            logging.info('Using {0} as model chemistry for energy corrections in Arkane'.format(
+                self.model_chemistry))
 
     def determine_remote(self, diagnostics=False):
         """
