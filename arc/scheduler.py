@@ -490,7 +490,7 @@ class Scheduler(object):
 
     def run_scan_jobs(self, label):
         """
-        Spawn rotor scan jobs using 'final_xyz' for species ot TS 'label'.
+        Spawn rotor scan jobs using 'final_xyz' for species or TS 'label'.
         """
         if self.scan_rotors:
             if 'scan' not in self.job_dict[label]:  # Check whether or not rotor scan jobs have been spawned yet

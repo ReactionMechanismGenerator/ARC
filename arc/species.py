@@ -637,11 +637,11 @@ def _get_possible_conformers_rdkit(mol):
             ind = rd_inds[atom]
             rd_indx_map[ind] = k
     if len(mol.atoms) > 50:
-        Chem.AllChem.EmbedMultipleConfs(rd_mol, numConfs=(len(mol.atoms)) * 3, randomSeed=1)
+        Chem.AllChem.EmbedMultipleConfs(rd_mol, numConfs=500, randomSeed=1)
     elif len(mol.atoms) > 5:
-        Chem.AllChem.EmbedMultipleConfs(rd_mol, numConfs=(len(mol.atoms) - 3) * 30, randomSeed=1)
+        Chem.AllChem.EmbedMultipleConfs(rd_mol, numConfs=len(mol.atoms) * 3, randomSeed=1)
     else:
-        Chem.AllChem.EmbedMultipleConfs(rd_mol, numConfs=120, randomSeed=1)
+        Chem.AllChem.EmbedMultipleConfs(rd_mol, numConfs=50, randomSeed=1)
     energies = []
     xyzs = []
     for i in range(rd_mol.GetNumConformers()):
@@ -681,10 +681,12 @@ def _get_possible_conformers_openbabel(mol):
 
     ff = ob.OBForceField.FindForceField("mmff94s")
     ff.Setup(obmol)
-    if len(mol.atoms) > 5:
+    if len(mol.atoms) > 50:
+        ff.WeightedRotorSearch(500, 2000)
+    elif len(mol.atoms) > 5:
         ff.WeightedRotorSearch(len(mol.atoms) * 10 - 3, 2000)
     else:
-        ff.WeightedRotorSearch(120, 2000)
+        ff.WeightedRotorSearch(50, 2000)
     ff.GetConformers(obmol)
     for n in range(obmol.NumConformers()):
         xyz = []
