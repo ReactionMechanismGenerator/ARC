@@ -65,6 +65,7 @@ class Job(object):
     'ess_trsh_methods' ``list``          A list of troubleshooting methods already tried out for ESS convergence
     `occ`              ``int``           The number of occupied orbitals (core + val) from a molpro CCSD sp calc
     `initial_trsh`     ``dict``          Troubleshooting methods to try by default. Keys are server names, values are trshs
+    `project_directory` ``str``          The path to the project directory
     ================ =================== ===============================================================================
 
     self.job_status:
@@ -74,12 +75,13 @@ class Job(object):
     """
     def __init__(self, project, settings, species_name, xyz, job_type, level_of_theory, multiplicity, project_directory,
                  charge=0, conformer=-1, fine=False, shift='', software=None, is_ts=False, scan='', pivots=None,
-                 memory=1500, comments='', trsh='', ess_trsh_methods=None, occ=None, initial_trsh=None):
+                 memory=1500, comments='', trsh='', ess_trsh_methods=None, occ=None, initial_trsh=None, job_num=None,
+                 job_server_name=None, job_name=None, job_id=None, server=None, date_time=None, run_time=None):
         self.project = project
         self.settings=settings
-        self.date_time = datetime.datetime.now()
+        self.date_time = date_time if date_time is not None else datetime.datetime.now()
         self.species_name = species_name
-        self.job_num = -1
+        self.job_num = job_num if job_num is not None else -1
         self.charge = charge
         self.multiplicity = multiplicity
         self.spin = self.multiplicity - 1
@@ -96,9 +98,10 @@ class Job(object):
             raise ValueError("Job type {0} not understood. Must be on of the following: {1}".format(
                 job_type, job_types))
         self.job_type = job_type
-        self._set_job_number()
-        self.job_server_name = 'a' + str(self.job_num)
-        self.job_name = self.job_type + '_' + self.job_server_name
+        if self.job_num < 0:
+            self._set_job_number()
+        self.job_server_name = job_server_name if job_server_name is not None else 'a' + str(self.job_num)
+        self.job_name = job_name if job_name is not None else self.job_type + '_' + self.job_server_name
 
         # determine level of theory and software to use:
         self.level_of_theory = level_of_theory.lower()
@@ -172,7 +175,7 @@ class Job(object):
                 self.software = 'molpro'
 
         if self.settings['ssh']:
-            self.server = self.settings[self.software]
+            self.server = server if server is not None else self.settings[self.software]
         else:
             self.server = None
 
@@ -184,9 +187,9 @@ class Job(object):
         self.fine = fine
         self.shift = shift
         self.occ = occ
-        self.run_time = ''
+        self.run_time = run_time if run_time is not None else ''
         self.job_status = ['initializing', 'initializing']
-        self.job_id = 0
+        self.job_id = job_id if job_id is not None else 0
         self.comments = comments
 
         self.scan = scan
@@ -194,7 +197,8 @@ class Job(object):
 
         conformer_folder = '' if self.conformer < 0 else os.path.join('conformers', str(self.conformer))
         folder_name = 'TSs' if self.is_ts else 'Species'
-        self.local_path = os.path.join(project_directory, 'calcs', folder_name,
+        self.project_directory = project_directory
+        self.local_path = os.path.join(self.project_directory, 'calcs', folder_name,
                                        self.species_name, conformer_folder, self.job_name)
         self.local_path_to_output_file = os.path.join(self.local_path, 'output.out')
         # parentheses don't play well in folder names:
@@ -205,6 +209,32 @@ class Job(object):
         self.input = ''
         self.server_nodes = list()
         self._write_initiated_job_to_csv_file()
+
+    def as_dict(self):
+        """A helper function for dumping this object as a dictionary in a YAML file for restarting ARC"""
+        job_dict = dict()
+        job_dict['date_time'] = self.date_time
+        job_dict['project_directory'] = self.project_directory
+        job_dict['run_time'] = self.run_time
+        job_dict['date_time'] = self.date_time
+        job_dict['job_num'] = self.job_num
+        job_dict['server'] = self.server
+        job_dict['ess_trsh_methods'] = self.ess_trsh_methods
+        job_dict['trsh'] = self.trsh
+        job_dict['job_type'] = self.job_type
+        job_dict['job_server_name'] = self.job_server_name
+        job_dict['job_name'] = self.job_name
+        job_dict['level_of_theory'] = self.level_of_theory
+        job_dict['xyz'] = self.xyz
+        job_dict['fine'] = self.fine
+        job_dict['shift'] = self.shift
+        job_dict['memory'] = self.memory
+        job_dict['occ'] = self.occ
+        job_dict['job_status'] = self.job_status
+        job_dict['job_id'] = self.job_id
+        job_dict['scan'] = self.scan
+        job_dict['pivots'] = self.pivots
+        return job_dict
 
     def _set_job_number(self):
         """
@@ -640,7 +670,7 @@ $end
                         # e.g.: `insufficient memory available - require              228765625  have
                         #        62928590
                         #        the request was for real words`
-                        add_mem = (float(line.split()[-2]) - float(prev_line.split()[0])) / 1e6
+                        # add_mem = (float(line.split()[-2]) - float(prev_line.split()[0])) / 1e6
                         return 'errored: additional memory (mW) required: {0}'.format(float(line.split()[-2]) / 1e6)
                     prev_line = line
                 for line in lines[::-1]:
