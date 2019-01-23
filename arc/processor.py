@@ -156,7 +156,7 @@ class Processor(object):
                     species.long_thermo_description = pivots_for_description[:-2] + '\n'
                 # write the Arkane species input file
                 folder_name = 'TSs' if species.is_ts else 'Species'
-                input_file_path = os.path.join(project_directory, 'calcs', folder_name, species.label,
+                input_file_path = os.path.join(project_directory, 'output', folder_name, species.label,
                                                '{0}_arkane_input.py'.format(species.label))
                 output_dir = os.path.join(project_directory, 'output', folder_name, species.label)
                 if not os.path.isdir(output_dir):

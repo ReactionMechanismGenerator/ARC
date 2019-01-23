@@ -58,6 +58,7 @@ class ARCSpecies(object):
     'bond_corrections'      ``dict``     The bond additivity corrections (BAC) to be used. Determined from the structure
                                            if not directly given.
     't0'                    ``float``    Initial time when the first species job was spawned
+    `t1`                    ``float``    The T1 diagnostic parameter from Molpro
     'execution_time'        ``str``      Overall execution time for species
     `neg_freqs_trshed`      ``list``     A list of negative frequencies this species was troubleshooted for
     `generate_thermo`       ``bool``     Whether ot not to calculate thermodynamic properties for this species
@@ -81,6 +82,7 @@ class ARCSpecies(object):
                  smiles='', adjlist='', bond_corrections=None, generate_thermo=True, species_dict=None):
 
         self.xyz_mol = None
+        self.t1 = None
         self.conformers = list()
         self.conformer_energies = list()
         self.xyzs = list()  # used for conformer search
@@ -210,6 +212,7 @@ class ARCSpecies(object):
         species_dict = dict()
         species_dict['is_ts'] = self.is_ts
         species_dict['t0'] = self.t0
+        species_dict['t1'] = self.t1
         species_dict['label'] = self.label
         species_dict['long_thermo_description'] = self.long_thermo_description
         species_dict['multiplicity'] = self.multiplicity
@@ -243,6 +246,7 @@ class ARCSpecies(object):
         except KeyError:
             raise InputError('All species must have a label')
         self.t0 = species_dict['t0'] if 't0' in species_dict else None
+        self.t1 = species_dict['t1'] if 't1' in species_dict else None
         self.long_thermo_description = species_dict['long_thermo_description']\
             if 'long_thermo_description' in species_dict else ''
         self.is_ts = species_dict['is_ts'] if 'is_ts' in species_dict else False

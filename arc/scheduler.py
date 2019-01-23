@@ -677,6 +677,7 @@ class Scheduler(object):
         elif job.job_status[1] == 'done':
             self.output[label]['status'] += 'sp converged; '
             self.output[label]['sp'] = os.path.join(job.local_path, 'output.out')
+            self.species_dict[label].t1 = parser.parse_t1(self.output[label]['sp'])
             # Update restart dictionary and save the yaml restart file:
             self.save_restart_dict()
         else:
