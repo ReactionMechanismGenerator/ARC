@@ -216,7 +216,7 @@ class Scheduler(object):
                     if 'conformer' in job_name:
                         i = int(job_name[9:])  # the conformer number. parsed from a string like 'conformer12'.
                         job = self.job_dict[label]['conformers'][i]
-                        max_time = datetime.timedelta(seconds=max(1800, job.n_atoms ^ 4))
+                        max_time = datetime.timedelta(seconds=max(1800, job.n_atoms ** 4))
                         if datetime.datetime.now() - job.date_time > max_time:
                             # resubmit this conformer job
                             logging.error('Conformer job {name} for {label} is taking too long (already {delta}). '
