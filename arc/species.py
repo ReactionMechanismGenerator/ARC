@@ -6,6 +6,7 @@ import os
 import logging
 import string
 import numpy as np
+import math
 
 from rdkit import Chem
 from rdkit.Chem import rdMolTransforms as rdmt
@@ -619,6 +620,57 @@ class ARCSpecies(object):
             else:
                 return True
             return False
+
+    def determine_steric_score(self, atom1, atom2, cone_angle=30, r_max=10):
+        """
+        Determine a steric score.
+        `atom1` and `atom2` are ``int`` numbers representing the atom number in the xyz matrix (counting from 0)
+        `atom3` represents an arbitrary atom in the molecule other than `atom1` and `atom2`.
+        The algorithm looks at the positions of all other atoms in the species
+        and calculated the atom1-atom2-atom3 angle. Usually, `atom1` is a hydrogen atom attached to `atom2`.
+        If the atoms are within the `cone_angle` in degrees and closer than r_max in Angstroms, they are
+        considered as potentially sterically masking atom1.
+        Returns a float between 0 and 1, where 0 correcponds to no steric effect, and 1 corresponds to
+        a "significant" steric effect.
+        """
+        xyz, atoms, x, y, z = get_xyz_matrix(self.final_xyz)
+        atom1_xyz = xyz[atom1]
+        atom2_xyz = xyz[atom2]
+        r_gamma = list()  # recors all atom2-atom3 distances and atom1-atom2-atom3 angles
+        for i, atom3_xyz in enumerate(xyz):
+            if i not in [atom1, atom2]:
+                # Use the law of cosine to calculate the angle (https://en.wikipedia.org/wiki/Law_of_cosines)
+                # Notations: A: atom1, C: atom2, B: atom3. a, b, c are the triangle sides acress A, B, C, respectively.
+                # Gamma is the angle at point C.
+                a = math.sqrt(abs((atom2_xyz[0] - atom3_xyz[0])**2 + (atom2_xyz[1] - atom3_xyz[1])**2
+                                  + (atom2_xyz[2] - atom3_xyz[2])**2))
+                b = math.sqrt(abs((atom1_xyz[0] - atom2_xyz[0])**2 + (atom1_xyz[1] - atom2_xyz[1])**2
+                                  + (atom1_xyz[2] - atom2_xyz[2])**2))
+                c = math.sqrt(abs((atom1_xyz[0] - atom3_xyz[0])**2 + (atom1_xyz[1] - atom3_xyz[1])**2
+                                  + (atom1_xyz[2] - atom3_xyz[2])**2))
+                argument = (a**2 + b**2 - c**2) / (2 * a * b)
+                if argument != 1:
+                    gamma = math.acos(argument) * 180 / math.pi
+                else:
+                    # all atoms are on the same straight line, cannot calculate arccos of 1
+                    if atom3_xyz[0] > (atom1_xyz[0] - atom2_xyz[0]) or atom3_xyz[1] > (atom1_xyz[1] - atom2_xyz[1])\
+                            or atom3_xyz[2] > (atom1_xyz[2] - atom2_xyz[2]):
+                        gamma = 0
+                    else:
+                        gamma = 1
+                if gamma < cone_angle and a < r_max:
+                    # calculate the distance between atom2 and atom3
+                    r_gamma.append((a, gamma))
+        score = 0
+        # calc the score by creating a 10*10 mesh within the cone, giving a higher steric score
+        # to point with smaller gamma and smaller distances.
+        dr = r_max / 10
+        dg = cone_angle / 10
+        for point in r_gamma:
+            score += (1 - point[0] / r_max) * (1 - point[1] / cone_angle)
+        if score > 1:
+            score = 1
+        return score
 
 
 def _get_possible_conformers_rdkit(mol):
