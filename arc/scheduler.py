@@ -678,6 +678,16 @@ class Scheduler(object):
             self.output[label]['status'] += 'sp converged; '
             self.output[label]['sp'] = os.path.join(job.local_path, 'output.out')
             self.species_dict[label].t1 = parser.parse_t1(self.output[label]['sp'])
+            if self.species_dict[label].t1 is not None:
+                txt = ''
+                if self.species_dict[label].t1 > 0.02:
+                    txt += ". Looks like it requires multireference treatment, I wouldn't trust it's calculated energy!"
+                    self.output[label]['status'] += 'T1 = {0}; '.format(self.species_dict[label].t1)
+                elif self.species_dict[label].t1 > 0.015:
+                    txt += ". It might have multireference characteristic."
+                    self.output[label]['status'] += 'T1 = {0}; '.format(self.species_dict[label].t1)
+                logging.info('Species {0} has a T1 diagnostic parameter of {1}{2}'.format(
+                    label, self.species_dict[label].t1, txt))
             # Update restart dictionary and save the yaml restart file:
             self.save_restart_dict()
         else:
