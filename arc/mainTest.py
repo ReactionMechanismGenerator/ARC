@@ -61,7 +61,8 @@ class TestARC(unittest.TestCase):
                                       'opt_level': '',
                                       'optical_isomers': 1,
                                       'rotors_dict': {},
-                                      't0': None}],
+                                      't0': None,
+                                      't1': None}],
                          'use_bac': True}
         self.assertEqual(restart_dict, expected_dict)
 

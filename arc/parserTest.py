@@ -39,6 +39,12 @@ class TestParser(unittest.TestCase):
                                        np.array([302.51, 468.1488, 469.024, 484.198, 641.0067, 658.6316,
                                                  902.2888, 1236.9268, 1419.0826], np.float64)))
 
+    def test_parse_t1(self):
+        """Test T1 diagnostic parsing"""
+        path = os.path.join(arc_path, 'arc', 'testing', 'mehylamine_CCSD(T).out')
+        t1 = parser.parse_t1(path)
+        self.assertEqual(t1, 0.0086766)
+
 ################################################################################
 
 if __name__ == '__main__':
