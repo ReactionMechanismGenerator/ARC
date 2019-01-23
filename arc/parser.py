@@ -37,3 +37,17 @@ def parse_frequencies(path, software):
                          ' got {0}'.format(software))
     logging.debug('Using parser.parse_frequencies. Determined frequencies are: {0}'.format(freqs))
     return freqs
+
+
+def parse_t1(path):
+    """
+    Parse the T1 parameter from a Molpro coupled cluster calculation
+    """
+    if not os.path.isfile(path):
+        raise ValueError('Could not find file {0}'.format(path))
+    t1 = None
+    with open(path, 'rb') as f:
+        for line in f:
+            if 'T1 diagnostic:' in line:
+                t1 = float(line.split()[-1])
+    return t1
