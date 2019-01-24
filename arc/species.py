@@ -657,7 +657,7 @@ class ARCSpecies(object):
                             or atom3_xyz[2] > (atom1_xyz[2] - atom2_xyz[2]):
                         gamma = 0
                     else:
-                        gamma = 1
+                        gamma = 180
                 if gamma < cone_angle and a < r_max:
                     # calculate the distance between atom2 and atom3
                     r_gamma.append((a, gamma))
@@ -668,8 +668,9 @@ class ARCSpecies(object):
         dg = cone_angle / 10
         for point in r_gamma:
             score += (1 - point[0] / r_max) * (1 - point[1] / cone_angle)
-        if score > 1:
-            score = 1
+            if score > 1:
+                score = 1
+                break
         return score
 
 
