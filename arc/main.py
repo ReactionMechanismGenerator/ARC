@@ -185,6 +185,7 @@ class ARC(object):
                         self.freq_level = default_levels_of_theory['freq'].lower()
                         logging.info('Using default level {0} for frequency calculations'.format(self.freq_level))
                 else:
+                    # This is a composite method
                     self.freq_level = default_levels_of_theory['freq_for_composite'].lower()
                     logging.info('Using default level {0} for frequency calculations after composite jobs'.format(
                         self.freq_level))
@@ -201,10 +202,17 @@ class ARC(object):
 
             if scan_level:
                 self.scan_level = scan_level.lower()
-                logging.info('Using {0} for rotor scans'.format(self.scan_level))
+                if self.scan_rotors:
+                    logging.info('Using {0} for rotor scans'.format(self.scan_level))
             elif self.scan_rotors:
-                self.scan_level = default_levels_of_theory['scan'].lower()
-                logging.info('Using default level {0} for rotor scans'.format(self.scan_level))
+                if not self.composite_method:
+                    self.scan_level = default_levels_of_theory['scan'].lower()
+                    logging.info('Using default level {0} for rotor scans'.format(self.scan_level))
+                else:
+                    # This is a composite method
+                    self.freq_level = default_levels_of_theory['scan_for_composite'].lower()
+                    logging.info('Using default level {0} for scan calculations after composite jobs'.format(
+                        self.freq_level))
             else:
                 self.scan_level = ''
 
@@ -338,10 +346,17 @@ class ARC(object):
             self.scan_level = input_dict['scan_level'].lower()
             if self.scan_rotors:
                 logging.info('Using {0} for rotor scans'.format(self.scan_level))
-        else:
-            self.scan_level = default_levels_of_theory['scan'].lower()
-            if self.scan_rotors:
+        elif self.scan_rotors:
+            if not self.composite_method:
+                self.scan_level = default_levels_of_theory['scan'].lower()
                 logging.info('Using default level {0} for rotor scans'.format(self.scan_level))
+            else:
+                # This is a composite method
+                self.freq_level = default_levels_of_theory['scan_for_composite'].lower()
+                logging.info('Using default level {0} for scan calculations after composite jobs'.format(
+                    self.freq_level))
+        else:
+            self.scan_level = ''
 
         self.composite_method = input_dict['composite_method'].lower() if 'composite_method' in input_dict else ''
         if self.composite_method:
@@ -372,6 +387,7 @@ class ARC(object):
                 self.freq_level = default_levels_of_theory['freq'].lower()
                 logging.info('Using default level {0} for frequency calculations'.format(self.freq_level))
         else:
+            # This is a composite method
             self.freq_level = default_levels_of_theory['freq_for_composite'].lower()
             logging.info('Using default level {0} for frequency calculations after composite jobs'.format(
                 self.freq_level))
