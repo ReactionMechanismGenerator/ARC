@@ -455,7 +455,10 @@ $end
 
         if self.job_type == 'scan':
             if self.software == 'gaussian':
-                job_type_1 = 'opt=modredundant'
+                if self.is_ts:
+                    job_type_1 = 'opt=(ts, modredundant, calcfc)'
+                else:
+                    job_type_1 = 'opt=(modredundant, calcfc)'
                 scan_string = ''.join([str(num) + ' ' for num in self.scan])
                 if not divmod(360, rotor_scan_resolution):
                     raise JobError('Scan job got an illegal rotor scan resolution of {0}'.format(rotor_scan_resolution))
