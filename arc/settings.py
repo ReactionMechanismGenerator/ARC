@@ -75,6 +75,7 @@ default_levels_of_theory = {'conformer': 'b97-d3/6-311+g(d,p)',
                             'scan': 'b3lyp/6-311+g(d,p)',
                             'irc': 'b3lyp/6-31+g(d)',
                             'gsm': 'b3lyp/6-31+g(d)',
+                            'scan_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of the CBS-QB3 method
                             'freq_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of the CBS-QB3 method
 }
 
