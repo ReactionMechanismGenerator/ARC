@@ -368,14 +368,14 @@ wf,spin={spin},charge={charge};}}
 {job_type_2}
 ---;"""
 
-        if self.job_type in ['conformer', 'opt', 'optfreq']:
+        if self.job_type in ['conformer', 'opt']:
             if self.software == 'gaussian':
                 if self.is_ts:
-                    job_type_1 = 'opt=(calcfc,ts,noeigen)'
+                    job_type_1 = 'opt=(ts, calcfc, noeigentest)'
                 else:
                     job_type_1 = 'opt=calcfc'
                 if self.fine:
-                    fine = 'scf=(tight,direct) int=finegrid'
+                    fine = 'scf=(tight, direct) int=finegrid'
             elif self.software == 'qchem':
                 if self.is_ts:
                     job_type_1 = 'ts'
@@ -400,10 +400,12 @@ wf,spin={spin},charge={charge};}}
         elif self.job_type == 'optfreq':
             if self.software == 'gaussian':
                 if self.is_ts:
-                    job_type_1 = 'opt=(calcfc,ts,noeigen)'
+                    job_type_1 = 'opt=(ts, calcfc, noeigentest)'
                 else:
                     job_type_1 = 'opt=calcfc'
                 job_type_2 = 'freq iop(7/33=1)'
+                if self.fine:
+                    fine = 'scf=(tight, direct) int=finegrid'
             elif self.software == 'qchem':
                 self.input += """@@@
 
@@ -445,20 +447,20 @@ $end
         if self.job_type == 'composite':
             if self.software == 'gaussian':
                 if self.fine:
-                    fine = 'scf=(tight,direct) int=finegrid'
+                    fine = 'scf=(tight, direct) int=finegrid'
                 if self.is_ts:
-                    job_type_1 = 'opt=(ts,noeigentest,calcfc)'
+                    job_type_1 = 'opt=(ts, noeigentest, calcfc)'
                 else:
-                    pass  # no need to specify anything else for a basic composite method run
+                    job_type_1 = 'opt=(noeigentest, calcfc)'
             else:
                 raise JobError('Currently composite methods are only supported in gaussian')
 
         if self.job_type == 'scan':
             if self.software == 'gaussian':
                 if self.is_ts:
-                    job_type_1 = 'opt=(ts, modredundant, calcfc)'
+                    job_type_1 = 'opt=(ts, modredundant, calcfc, noeigentest)'
                 else:
-                    job_type_1 = 'opt=(modredundant, calcfc)'
+                    job_type_1 = 'opt=(modredundant, calcfc, noeigentest)'
                 scan_string = ''.join([str(num) + ' ' for num in self.scan])
                 if not divmod(360, rotor_scan_resolution):
                     raise JobError('Scan job got an illegal rotor scan resolution of {0}'.format(rotor_scan_resolution))
