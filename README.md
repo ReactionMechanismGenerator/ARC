@@ -6,13 +6,6 @@
 
 <img src="https://github.com/ReactionMechanismGenerator/ARC/blob/master/logo/ARC-logo-small.jpg" alt="arc logo"/>
 
-This program automates quantum chemical calculations. Currently Gaussian, Molpro, and QChem are supported.
-The current version should be run locally; it communicates with servers (defined in settings.py) using an RSA key to
-spawn the calculations.
+ARC automates quantum chemical calculations and calculates thermodynamic properties and kinetic rates from 2D representations of species.
 
-Currently ARC can calculate Thermodynamic properties relying on Arkane (see
-<a href="http://reactionmechanismgenerator.github.io/RMG-Py/users/arkane/index.html">Arkane's user guide</a>).
-We plan to elaborate ARC to automatically identify and compute transition states and eventually calculate kinetic rates
-and pressure-dependent networks using Arkane.
-
-Installation instructions are in the Wiki pages of this project.
+Documentation and instructions are in the <a href="https://github.com/ReactionMechanismGenerator/ARC/wiki">Wiki pages</a> of this project.
