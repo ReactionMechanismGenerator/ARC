@@ -201,8 +201,7 @@ class SSH_Client(object):
             if not times_tried % 10:
                 logging.info('Tried connecting to {0} {1} times with no success....'.format(self.server, times_tried))
             else:
-                logging.debug('Tried connecting to {0} {1} times with no success....'.format(self.server, times_tried))
-            logging.info('****')
+                print('Tried connecting to {0} {1} times with no success....'.format(self.server, times_tried))
             time.sleep(interval)
         raise ServerError('Could not connect to server {0} even after {1} trials.'.format(self.server, times_tried))
 
