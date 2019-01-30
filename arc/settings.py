@@ -80,6 +80,9 @@ default_levels_of_theory = {'conformer': 'b97-d3/6-311+g(d,p)',
                             'freq_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of the CBS-QB3 method
 }
 
+# default_ts_methods = ['QST2', 'DEGSM', 'NEB', 'Kinbot', 'AutoTST']
+default_ts_methods = ['AutoTST']
+
 arc_path = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))  # absolute path to the ARC folder
 
 # A scan with better resolution (lower number here) takes more time to compute,
