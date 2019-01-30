@@ -5,6 +5,7 @@ from __future__ import (absolute_import, division, print_function, unicode_liter
 import logging
 import numpy as np
 import os
+import shutil
 import math
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
@@ -15,6 +16,10 @@ from rdkit import Chem
 
 from rmgpy.exceptions import AtomTypeError
 from rmgpy.data.thermo import ThermoLibrary
+from rmgpy.data.kinetics.library import KineticsLibrary, LibraryReaction
+from rmgpy.data.base import Database, Entry
+from rmgpy.quantity import ScalarQuantity
+from rmgpy.species import Species
 
 from arc.species import mol_from_xyz, get_xyz_matrix, rdkit_conf_from_mol
 
@@ -148,16 +153,39 @@ def log_thermo(label, path):
     logging.info('\n')
 
 
+def log_kinetics(label, path):
+    """
+    Logging kinetics from an Arkane output file
+    """
+    logging.info('\n\n')
+    logging.debug('Kinetics for species {0}'.format(label))
+    kinetics_block = ''
+    log = False
+    with open(path, 'r') as f:
+        line = f.readline()
+        while line != '':
+            if 'kinetics(' in line:
+                kinetics_block = ''
+                log = True
+            elif 'thermo(' in line:
+                log = False
+            if log:
+                kinetics_block += line
+            line = f.readline()
+    logging.info(kinetics_block)
+    logging.info('\n')
+
+
 def draw_thermo_parity_plots(species_list, path=None):
     """
-    Plots a parity plot of calculated thermo and RMG's best values for species in species_list
+    Draws parity plots of calculated thermo and RMG's best values for species in species_list
     """
     pp = None
     if path is not None:
-        path = os.path.join(path, str('thermo_parity_plots.pdf'))
-        if os.path.exists(path):
-            os.remove(path)
-        pp = PdfPages(path)
+        thermo_path = os.path.join(path, str('thermo_parity_plots.pdf'))
+        if os.path.exists(thermo_path):
+            os.remove(thermo_path)
+        pp = PdfPages(thermo_path)
     labels, comments, h298_arc, h298_rmg, s298_arc, s298_rmg = [], [], [], [], [], []
     for spc in species_list:
         labels.append(spc.label)
@@ -167,13 +195,16 @@ def draw_thermo_parity_plots(species_list, path=None):
         s298_rmg.append(spc.rmg_thermo.getEntropy(298))  # in J/mol*K
         comments.append(spc.rmg_thermo.comment)
     draw_parity_plot(var_arc=h298_arc, var_rmg=h298_rmg, var_label='H298', var_units='kJ / mol', labels=labels, pp=pp)
-    logging.info('Thermo parity plot for S:')
     draw_parity_plot(var_arc=s298_arc, var_rmg=s298_rmg, var_label='S298', var_units='J / mol * K', labels=labels, pp=pp)
     pp.close()
-    logging.info('\nSources of thermoproperties determined by RMG for the parity plots:')
+    thermo_sources = '\nSources of thermoproperties determined by RMG for the parity plots:\n'
     max_label_len = max([len(label) for label in labels])
     for i, label in enumerate(labels):
-        logging.info('   {0}: {1}{2}'.format(label, ' '*(max_label_len - len(label)), comments[i]))
+        thermo_sources += '   {0}: {1}{2}\n'.format(label, ' '*(max_label_len - len(label)), comments[i])
+    logging.info(thermo_sources)
+    if path is not None:
+        with open(os.path.join(path, str('thermo.info')), 'w') as f:
+            f.write(thermo_sources)
 
 
 def draw_parity_plot(var_arc, var_rmg, var_label, var_units, labels, pp):
@@ -182,16 +213,108 @@ def draw_parity_plot(var_arc, var_rmg, var_label, var_units, labels, pp):
     fig = plt.figure(figsize=(5, 4), dpi=120)
     ax = fig.add_subplot(111)
     plt.title('{0} parity plot'.format(var_label))
-    plt.plot(var_arc, var_rmg, 'go')
+    for i in range(len(labels)):
+        plt.plot(var_arc[i], var_rmg[i], 'o', label=labels[i])
     plt.plot([min_var, max_var], [min_var, max_var], 'b-', linewidth=0.5)
     plt.xlabel('{0} calculated by ARC ({1})'.format(var_label, var_units))
     plt.ylabel('{0} determined by RMG ({1})'.format(var_label, var_units))
     plt.xlim = (min_var, max_var * 1.1)
     plt.ylim = (min_var, max_var)
-    txt_height = 0.04 * (plt.ylim[1] - plt.ylim[0])  # plt.ylim and plt.xlim return a tuple
-    txt_width = 0.02 * (plt.xlim[1] - plt.xlim[0])
-    text_positions = get_text_positions(var_arc, var_rmg, txt_width, txt_height)
-    text_plotter(var_arc, var_rmg, labels, text_positions, ax, txt_width, txt_height)
+    plt.legend(shadow=False, frameon=False)
+    # txt_height = 0.04 * (plt.ylim[1] - plt.ylim[0])  # plt.ylim and plt.xlim return a tuple
+    # txt_width = 0.02 * (plt.xlim[1] - plt.xlim[0])
+    # text_positions = get_text_positions(var_arc, var_rmg, txt_width, txt_height)
+    # text_plotter(var_arc, var_rmg, labels, text_positions, ax, txt_width, txt_height)
+    plt.tight_layout()
+    if pp is not None:
+        plt.savefig(pp, format='pdf')
+    plt.show()
+
+
+def draw_kinetics_plots(rxn_list, path=None, t_min=(300, 'K'), t_max=(3000, 'K'), t_count=50):
+    """
+    Draws plots of calculated rates and RMG's best values for reaction rates in rxn_list
+    `rxn_list` has a .kinetics attribute calculated by ARC and an .rmg_reactions list with RMG rates
+    """
+    plt.style.use(str('seaborn-talk'))
+    t_min = ScalarQuantity(value=t_min[0], units=str(t_min[1]))
+    t_max = ScalarQuantity(value=t_max[0], units=str(t_max[1]))
+    temperature = np.linspace(t_min.value_si, t_max.value_si, t_count)
+    pressure = 1e7  # Pa  (=100 bar)
+
+    pp = None
+    if path is not None:
+        path = os.path.join(path, str('rate_plots.pdf'))
+        if os.path.exists(path):
+            os.remove(path)
+        pp = PdfPages(path)
+
+    for rxn in rxn_list:
+        reaction_order = len(rxn.reactants)
+        units = ''
+        conversion_factor = {1: 1, 2: 1e6, 3: 1e12}
+        if reaction_order == 1:
+            units = r' (s$^-1$)'
+        elif reaction_order == 2:
+            units = r' (cm$^3$/(mol s))'
+        elif reaction_order == 3:
+            units = r' (cm$^6$/(mol$^2$ s))'
+        arc_k = list()
+        for t in temperature:
+            arc_k.append(rxn.kinetics.getRateCoefficient(t, pressure) * conversion_factor[reaction_order])
+        rmg_rxns = list()
+        for rmg_rxn in rxn.rmg_reactions:
+            rmg_rxn_dict = dict()
+            rmg_rxn_dict['rmg_rxn'] = rmg_rxn
+            rmg_rxn_dict['t_min'] = rmg_rxn.kinetics.Tmin if rmg_rxn.kinetics.Tmin is not None else t_min
+            rmg_rxn_dict['t_max'] = rmg_rxn.kinetics.Tmax if rmg_rxn.kinetics.Tmax is not None else t_max
+            k = list()
+            temp = np.linspace(rmg_rxn_dict['t_min'].value_si, rmg_rxn_dict['t_max'].value_si, t_count)
+            for t in temp:
+                k.append(rmg_rxn.kinetics.getRateCoefficient(t, pressure) * conversion_factor[reaction_order])
+            rmg_rxn_dict['k'] = k
+            rmg_rxn_dict['T'] = temp
+            if rmg_rxn.kinetics.isPressureDependent():
+                rmg_rxn.comment += str(' (at {0} bar)'.format(int(pressure / 1e5)))
+            rmg_rxn_dict['label'] = rmg_rxn.comment
+            rmg_rxns.append(rmg_rxn_dict)
+        _draw_kinetics_plots(rxn.label, arc_k, temperature, rmg_rxns, units, pp)
+    pp.close()
+
+
+def _draw_kinetics_plots(rxn_label, arc_k, temperature, rmg_rxns, units, pp, max_rmg_rxns=5):
+    kinetics_library_priority = ['BurkeH2O2inN2', 'Klippenstein_Glarborg2016', 'primaryNitrogenLibrary',
+                                 'primarySulfurLibrary', 'N-S_interactions', 'NOx2018',
+                                 'Nitrogen_Dean_and_Bozzelli', 'FFCM1(-)', 'JetSurF2.0']
+    fig = plt.figure(figsize=(8, 6), dpi=120)
+    # plt.rcParams.update({'font.size': 12})
+    ax = fig.add_subplot(111)
+    plt.title(rxn_label)
+    inverse_temperature = [1000 / t for t in temperature]
+    ax.semilogy(inverse_temperature, arc_k, 'k--', linewidth=2.5, label='ARC')
+    plotted_rmg_rxns = 0
+    remaining_rmg_rxns = list()
+    for rmg_rxn in rmg_rxns:
+        if 'family' in rmg_rxn['label'].lower():
+            inverse_temp = [1000 / t for t in rmg_rxn['T']]
+            ax.semilogy(inverse_temp, rmg_rxn['k'], label=rmg_rxn['label'])
+            plotted_rmg_rxns += 1
+        else:
+            remaining_rmg_rxns.append(rmg_rxn)
+    for priority_lib in kinetics_library_priority:
+        for rmg_rxn in remaining_rmg_rxns:
+            if priority_lib.lower() in rmg_rxn['label'].lower() and plotted_rmg_rxns <= max_rmg_rxns:
+                inverse_temp = [1000 / t for t in rmg_rxn['T']]
+                ax.semilogy(inverse_temp, rmg_rxn['k'], label=rmg_rxn['label'])
+                plotted_rmg_rxns += 1
+    for i, rmg_rxn in enumerate(rmg_rxns):
+        if plotted_rmg_rxns <= max_rmg_rxns:
+            inverse_temp = [1000 / t for t in rmg_rxn['T']]
+            ax.semilogy(inverse_temp, rmg_rxn['k'], label=rmg_rxn['label'])
+            plotted_rmg_rxns += 1
+    plt.xlabel(r'1000 / T (K$^-$$^1$)')
+    plt.ylabel('Rate coefficient{0}'.format(units))
+    plt.legend()
     plt.tight_layout()
     if pp is not None:
         plt.savefig(pp, format='pdf')
@@ -240,7 +363,7 @@ def save_geo(species, project_directory):
     """
     Save the geometry in several forms for an ARC Species object in the project's output folder under the species name
     """
-    folder_name = 'TSs' if species.is_ts else 'Species'
+    folder_name = 'rxns' if species.is_ts else 'Species'
     geo_path = os.path.join(project_directory, 'output', folder_name, species.label, 'geometry')
     if os.path.exists(geo_path):
         # clean working folder from all previous output
@@ -258,8 +381,7 @@ def save_geo(species, project_directory):
         f.write(xyz)
 
     # GaussView file
-    gv = '# hf/3-21g\n\n{0} optimized at {1}\n'.format(
-        species.label, species.opt_level)
+    gv = '# hf/3-21g\n\n{0} optimized at {1}\n\n'.format(species.label, species.opt_level)
     gv += '{0} {1}\n'.format(species.charge, species.multiplicity)
     gv += '{0}\n'.format(species.final_xyz)
     with open(os.path.join(geo_path, '{0}.gjf'.format(species.label)), 'w') as f:
@@ -272,20 +394,75 @@ def save_thermo_lib(species_list, path, name, lib_long_desc):
     `name` is the library's name (or project's name)
     `long_desc` is a multiline string with level of theory description
     """
-    thermo_path = os.path.join(path, 'thermo', '{0}.py'.format(name))
-    thermo_library = ThermoLibrary(name=name, longDesc=lib_long_desc)
-    for i, spc in enumerate(species_list):
-        if spc.thermo:
-            thermo_library.loadEntry(index=i+1,
-                                     label=spc.label,
-                                     molecule=spc.mol_list[0].toAdjacencyList(),
-                                     thermo=spc.thermo,
-                                     shortDesc=spc.thermo.comment,
-                                     longDesc=spc.long_thermo_description,
-           )
-        else:
-            logging.warning('Species {0} did not contain any thermo data and was omitted from the thermo'
-                            ' library.'.format(str(spc)))
+    if species_list:
+        lib_path = os.path.join(path, 'thermo', '{0}.py'.format(name))
+        thermo_library = ThermoLibrary(name=name, longDesc=lib_long_desc)
+        for i, spc in enumerate(species_list):
+            if spc.thermo is not None:
+                spc.long_thermo_description += '\n\nGeometry:\n{0}'.format(spc.final_xyz)
+                thermo_library.loadEntry(index=i+1,
+                                         label=spc.label,
+                                         molecule=spc.mol_list[0].toAdjacencyList(),
+                                         thermo=spc.thermo,
+                                         shortDesc=spc.thermo.comment,
+                                         longDesc=spc.long_thermo_description)
+            else:
+                logging.warning('Species {0} did not contain any thermo data and was omitted from the thermo'
+                                ' library.'.format(str(spc)))
 
-    thermo_library.save(thermo_path)
+        thermo_library.save(lib_path)
 
+
+def save_kinetics_lib(rxn_list, path, name, lib_long_desc):
+    """
+    Save an RMG kinetics library of all reactions in `rxn_list` in the supplied `path`
+    `rxn_list` is a list of ARCReaction objects
+    `name` is the library's name (or project's name)
+    `long_desc` is a multiline string with level of theory description
+    """
+    entries = dict()
+    if rxn_list:
+        for i, rxn in enumerate(rxn_list):
+            if rxn.kinetics is not None:
+                if len(rxn.rmg_reaction.reactants):
+                    reactants = rxn.rmg_reaction.reactants
+                    products = rxn.rmg_reaction.products
+                elif rxn.r_species.mol_list is not None:
+                    reactants = [Species(molecule=arc_spc.mol_list) for arc_spc in rxn.r_species]
+                    products = [Species(molecule=arc_spc.mol_list) for arc_spc in rxn.p_species]
+                elif rxn.r_species.mol is not None:
+                    reactants = [Species(molecule=[arc_spc.mol]) for arc_spc in rxn.r_species]
+                    products = [Species(molecule=[arc_spc.mol]) for arc_spc in rxn.p_species]
+                else:
+                    reactants = [Species(molecule=[arc_spc.xyz_mol]) for arc_spc in rxn.r_species]
+                    products = [Species(molecule=[arc_spc.xyz_mol]) for arc_spc in rxn.p_species]
+                rxn.rmg_reaction.reactants = reactants
+                rxn.rmg_reaction.products = products
+                try:
+                    degeneracy = rxn.kinetics.degeneracy
+                except AttributeError:
+                    degeneracy = 1  # the default value in RMG
+                entry = Entry(
+                    index = i+1,
+                    item = rxn.rmg_reaction,
+                    data = rxn.kinetics,
+                    label = rxn.label)
+                rxn.ts_species.make_ts_report()
+                entry.longDesc = rxn.ts_species.ts_report + '\n\nOptimized TS geometry:\n' + rxn.ts_species.final_xyz
+                rxn.rmg_reaction.kinetics = rxn.kinetics
+                rxn.rmg_reaction.kinetics.comment = str('')
+                entries[i+1] = entry
+            else:
+                logging.warning('Reaction {0} did not contain any kinetic data and was omitted from the kinetics'
+                                ' library.'.format(rxn.label))
+        kinetics_library = KineticsLibrary(name=name, longDesc=lib_long_desc, autoGenerated=True)
+        kinetics_library.entries = entries
+        lib_path = os.path.join(path, 'kinetics', '')
+        if os.path.exists(lib_path):
+            shutil.rmtree(lib_path)
+        try:
+            os.makedirs(lib_path)
+        except:
+            pass
+        kinetics_library.save(os.path.join(lib_path, 'reactions.py'))
+        kinetics_library.saveDictionary(os.path.join(lib_path, 'dictionary.txt'))
