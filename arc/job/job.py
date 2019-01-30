@@ -92,10 +92,10 @@ class Job(object):
         self.ess_trsh_methods = ess_trsh_methods if ess_trsh_methods is not None else list()
         self.trsh = trsh
         self.initial_trsh = initial_trsh if initial_trsh is not None else dict()
-        job_types = ['conformer', 'opt', 'freq', 'optfreq', 'sp', 'composite', 'scan', 'gsm', 'irc']
+        job_types = ['conformer', 'opt', 'freq', 'optfreq', 'sp', 'composite', 'scan', 'gsm', 'irc', 'ts_guess']
         # the 'conformer' job type is identical to 'opt', but we differentiate them to be identifiable in Scheduler
         if job_type not in job_types:
-            raise ValueError("Job type {0} not understood. Must be on of the following: {1}".format(
+            raise ValueError("Job type {0} not understood. Must be one of the following:\n{1}".format(
                 job_type, job_types))
         self.job_type = job_type
         if self.job_num < 0:
@@ -318,7 +318,6 @@ class Job(object):
         Write a software-specific job-specific input file.
         Saves the file locally and also uploads it to the server.
         """
-
         if self.initial_trsh and not self.trsh:
             # use the default trshs defined by the user in the initial_trsh dictionary
             if self.software in self.initial_trsh:
@@ -484,7 +483,7 @@ $end
             if self.software != 'molpro':
                 raise JobError('Can only run MRCI on Molpro, not {0}'.format(self.software))
             if self.occ > 16:
-                raise JobError('Will not excecute an MRCI calculation with more than 16 occupied orbitals.'
+                raise JobError('Will not execute an MRCI calculation with more than 16 occupied orbitals.'
                                'Selective occ, closed, core, frozen keyword still not implemented.')
             else:
                 try:
