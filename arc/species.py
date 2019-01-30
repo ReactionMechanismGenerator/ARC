@@ -41,7 +41,7 @@ class ARCSpecies(object):
     `multiplicity`          ``int``      The species' multiplicity. Can be determined from adjlist/smiles/xyz
                                            The algorithm assumes it's either a singlet or a doublet
     'charge'                ``int''      The species' net charge. Assumed to be 0 be default.
-    `e0`                    ``float``    The total electronic energy E0 of the species at the chosen sp level (Hartree)
+    `e0`                    ``float``    The total electronic energy E0 of the species at the chosen sp level (kJ/mol)
     `is_ts`                 ``bool``     Whether or not the species represents a transition state
     'number_of_rotors'      ``int``      The number of potential rotors to scan
     'rotors_dict'           ``dict``     A dictionary of rotors. structure given below.
@@ -435,6 +435,8 @@ class ARCSpecies(object):
         if self.initial_xyz is not None:
             # Make sure the atom order is synced (important for identifying rotor indices)
             self.xyz_mol, _ = mol_from_xyz(self.final_xyz)
+        if self.e0 is None:
+            self.e0 = arkane_spc.conformer.E0.value_si * 0.001  # convert to kJ/mol
 
     def generate_conformers(self):
         """
