@@ -2,6 +2,7 @@
 # encoding: utf-8
 
 import os
+import string
 
 ##################################################################
 
@@ -84,6 +85,8 @@ default_levels_of_theory = {'conformer': 'b97-d3/6-311+g(d,p)',
 default_ts_methods = ['AutoTST']
 
 arc_path = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))  # absolute path to the ARC folder
+
+valid_chars = "-_()[]=., %s%s" % (string.ascii_letters, string.digits)
 
 # A scan with better resolution (lower number here) takes more time to compute,
 # but the automatically-derived rotor symmetry number is more likely to be correct.
