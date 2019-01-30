@@ -639,11 +639,6 @@ $end
                 for line in lines[::-1]:
                     if 'Thank you very much for using Q-Chem' in line:
                         done = True
-                    elif 'opt' in self.job_type or 'conformer' in self.job_type or 'ts' in self.job_type:
-                            if 'MAXIMUM OPTIMIZATION CYCLES REACHED' in line:
-                                return 'errored: unconverged, max opt cycles reached'
-                            elif 'OPTIMIZATION CONVERGED' in line and done:  # `done` should already be assigned
-                                return 'done'
                     elif 'SCF failed' in line:
                         return 'errored: {0}'.format(line)
                     elif 'error' in line and 'DIIS' not in line:
@@ -653,6 +648,11 @@ $end
                     elif 'Invalid charge/multiplicity combination' in line:
                         raise SpeciesError('The multiplicity and charge combination for species {0} are wrong.'.format(
                             self.species_name))
+                    if 'opt' in self.job_type or 'conformer' in self.job_type or 'ts' in self.job_type:
+                        if 'MAXIMUM OPTIMIZATION CYCLES REACHED' in line:
+                            return 'errored: unconverged, max opt cycles reached'
+                        elif 'OPTIMIZATION CONVERGED' in line and done:  # `done` should already be assigned
+                            return 'done'
                 if done:
                     return 'done'
                 else:
