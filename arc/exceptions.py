@@ -7,61 +7,60 @@ This module contains classes which extend Exception for usage in the RMG module
 
 class InputError(Exception):
     """
-    An exception raised when parsing an input file for any module.
-    Pass a string describing the error.
+    An exception raised when parsing an input file for any module
     """
     pass
 
 class OutputError(Exception):
     """
-    This exception is raised whenever an error occurs while saving output
-    information. Pass a string describing the circumstances of the exceptional
-    behavior.
+    This exception is raised whenever an error occurs while saving output information
     """
     pass
 
 class SettingsError(Exception):
     """
-    An exception raised when dealing with settings.
+    An exception raised when dealing with settings
     """
     pass
 
 class SpeciesError(Exception):
     """
-    An exception class for exceptional behavior that occurs while working with
-    chemical species. Pass a string describing the circumstances that caused the
-    exceptional behavior.
+    An exception class for exceptional behavior that occurs while working with chemical species
+    """
+    pass
+
+class TSError(Exception):
+    """
+    An exception class for exceptional behavior that occurs while working with transition states
+    """
+    pass
+
+class ReactionError(Exception):
+    """
+    An exception class for exceptional behavior that occurs while working with reactions
     """
     pass
 
 class RotorError(Exception):
     """
-    An exception class for exceptional behavior that occurs while working with
-    chemical species. Pass a string describing the circumstances that caused the
-    exceptional behavior.
+    An exception class for exceptional behavior that occurs while working with rotors
     """
     pass
 
 class SchedulerError(Exception):
     """
-    An exception class for exceptional behavior that occurs while working with
-    chemical species. Pass a string describing the circumstances that caused the
-    exceptional behavior.
+    An exception class for exceptional behavior that occurs while working with the scheduler
     """
     pass
 
 class JobError(Exception):
     """
-    An exception class for exceptional behavior that occurs while working with
-    chemical species. Pass a string describing the circumstances that caused the
-    exceptional behavior.
+    An exception class for exceptional behavior that occurs while working with jobs
     """
     pass
 
 class ServerError(Exception):
     """
-    An exception class for exceptional behavior that occurs while working with
-    chemical species. Pass a string describing the circumstances that caused the
-    exceptional behavior.
+    An exception class for exceptional behavior that occurs while working with servers
     """
     pass
