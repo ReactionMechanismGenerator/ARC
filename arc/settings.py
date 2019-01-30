@@ -69,6 +69,7 @@ output_filename = {'gaussian': 'input.log',
 }
 
 default_levels_of_theory = {'conformer': 'b97-d3/6-311+g(d,p)',
+                            'ts_guesses': 'b97-d3/6-311+g(d,p)',
                             'opt': 'wb97x-d3/6-311+g(d,p)',
                             'freq': 'wb97x-d3/6-311+g(d,p)',
                             'sp': 'ccsd(t)-f12/cc-pvtz-f12',  # This should be a level for which BAC is available
