@@ -660,7 +660,6 @@ $end
                     else:
                         return 'errored: Unknown reason'
             elif self.software == 'molpro':
-                prev_line = ''
                 for line in lines[::-1]:
                     if 'molpro calculation terminated' in line.lower()\
                             or 'variable memory released' in line.lower():
@@ -676,7 +675,6 @@ $end
                         #        the request was for real words`
                         # add_mem = (float(line.split()[-2]) - float(prev_line.split()[0])) / 1e6
                         return 'errored: additional memory (mW) required: {0}'.format(float(line.split()[-2]) / 1e6)
-                    prev_line = line
                 for line in lines[::-1]:
                     if 'the problem occurs' in line:
                         return 'errored: ' + line
