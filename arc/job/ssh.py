@@ -72,7 +72,7 @@ class SSH_Client(object):
         while not success and times_tried < max_times_to_try:
             times_tried += 1
             try:
-                self.write_file(sftp, ssh, remote_file_path, local_file_path, file_string)
+                write_file(sftp, ssh, remote_file_path, local_file_path, file_string)
             except IOError:
                 pass
             else:
@@ -81,18 +81,6 @@ class SSH_Client(object):
             raise ServerError('Could not write file {0} on {1}'.format(remote_file_path, self.server))
         sftp.close()
         ssh.close()
-
-    def write_file(self, sftp, ssh, remote_file_path, local_file_path='', file_string=''):
-        with sftp.open(remote_file_path, "w") as f_remote:
-            if file_string:
-                f_remote.write(file_string)
-            elif local_file_path:
-                # with open(local_file_path, 'r') as f_local:
-                #     f_remote.write(f_local.readlines())
-                sftp.put(localpath=local_file_path, remotepath=remote_file_path)
-            else:
-                raise ValueError('Could not upload file to server. Either `file_string` or `local_file_path`'
-                                 ' must be specified')
 
     def download_file(self, remote_file_path, local_file_path):
         """
@@ -220,5 +208,16 @@ class SSH_Client(object):
         return sftp, ssh
 
 
-# TODO: troubleshoot for job stuck on pharos in bad node. Also, if rmgs says 'priority', change node until 8
+def write_file(sftp, ssh, remote_file_path, local_file_path='', file_string=''):
+    with sftp.open(remote_file_path, "w") as f_remote:
+        if file_string:
+            f_remote.write(file_string)
+        elif local_file_path:
+            # with open(local_file_path, 'r') as f_local:
+            #     f_remote.write(f_local.readlines())
+            sftp.put(localpath=local_file_path, remotepath=remote_file_path)
+        else:
+            raise ValueError('Could not upload file to server. Either `file_string` or `local_file_path`'
+                             ' must be specified')
+
 # TODO: delete scratch files of a failed job: ssh nodeXX; rm scratch/dhdhdhd/job_number
