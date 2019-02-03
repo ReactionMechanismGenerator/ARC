@@ -13,18 +13,131 @@ from matplotlib.backends.backend_pdf import PdfPages
 
 import py3Dmol as p3d
 from rdkit import Chem
+from IPython.display import display
+from ase.visualize import view
+from ase import Atom, Atoms
+from ase.io import write as ase_write
 
 from rmgpy.exceptions import AtomTypeError
 from rmgpy.data.thermo import ThermoLibrary
-from rmgpy.data.kinetics.library import KineticsLibrary, LibraryReaction
-from rmgpy.data.base import Database, Entry
+from rmgpy.data.kinetics.library import KineticsLibrary
+from rmgpy.data.base import Entry
 from rmgpy.quantity import ScalarQuantity
 from rmgpy.species import Species
 
-from arc.species import mol_from_xyz, get_xyz_matrix, rdkit_conf_from_mol
+from arc.species import ARCSpecies, mol_from_xyz, get_xyz_matrix, rdkit_conf_from_mol
+from arc.exceptions import InputError
 
 
 ##################################################################
+
+
+def draw_3d(xyz=None, species=None, project_directory=None, save_only=False):
+    """
+    Draws the molecule in a "3D-balls" style
+    If xyz ig given, it will be used, otherwise the function looks for species.final_xyz
+    Input coordinates are in string format
+    Saves an image if a species and `project_directory` are provided
+    If `save_only` is ``True``, then don't plot, only save the image
+    """
+    xyz = check_xyz_species_for_drawing(xyz, species)
+    _, atoms, x, y, z = get_xyz_matrix(xyz)
+    atoms = [str(a) for a in atoms]
+    ase_atoms = list()
+    for i, atom in enumerate(atoms):
+        ase_atoms.append(Atom(symbol=atom, position=(x[i], y[i], z[i])))
+    ase_mol = Atoms(ase_atoms)
+    if not save_only:
+        display(view(ase_mol, viewer='x3d'))
+    if project_directory is not None and species is not None:
+        folder_name = 'rxns' if species.is_ts else 'Species'
+        geo_path = os.path.join(project_directory, 'output', folder_name, species.label, 'geometry')
+        if not os.path.exists(geo_path):
+            os.makedirs(geo_path)
+        ase_write(filename=os.path.join(geo_path, 'geometry.png'), images=ase_mol, scale=100)
+
+
+def show_sticks(xyz=None, species=None, project_directory=None):
+    """
+    Draws the molecule in a "sticks" style according to the supplied xyz coordinates
+    Returns whether successful of not
+    If successful, save an image using draw_3d
+    """
+    xyz = check_xyz_species_for_drawing(xyz, species)
+    try:
+        mol, coordinates = mol_from_xyz(xyz)
+    except AtomTypeError:
+        return False
+    try:
+        _, rd_mol, _ = rdkit_conf_from_mol(mol, coordinates)
+    except ValueError:
+        return False
+    mb = Chem.MolToMolBlock(rd_mol)
+    p = p3d.view(width=400, height=400)
+    p.addModel(mb, 'sdf')
+    p.setStyle({'stick': {}})
+    # p.setBackgroundColor('0xeeeeee')
+    p.zoomTo()
+    p.show()
+    draw_3d(xyz=xyz, species=species, project_directory=project_directory, save_only=True)
+    return True
+
+
+def check_xyz_species_for_drawing(xyz, species):
+    """A helper function to avoid repetative code"""
+    if species is not None and xyz is None:
+        xyz = xyz if xyz is not None else species.final_xyz
+    if species is not None and not isinstance(species, ARCSpecies):
+        raise InputError('Species must be an ARCSpecies instance. Got {0}.'.format(type(species)))
+    if species is not None and not species.final_xyz:
+        raise InputError('Species {0} has an empty final_xyz attribute.'.format(species.label))
+    return xyz
+
+
+def plot_3d_mol_as_scatter(xyz, path=None, plot_h=True, show_plot=True):
+    """
+    Draws the molecule as scattered balls in space according to the supplied xyz coordinates
+    `xyz` is in string form
+    `path` is the species output path to save the image
+    """
+    xyz, atoms, x, y, z = get_xyz_matrix(xyz)
+    x = np.array(x, dtype=float)
+    y = np.array(y, dtype=float)
+    z = np.array(z, dtype=float)
+    colors = []
+    sizes = []
+    for i, atom in enumerate(atoms):
+        size = 500
+        if atom == 'H':
+            if plot_h:
+                colors.append('gray')
+                size = 250
+            else:
+                colors.append('white')
+                atoms[i] = ''
+                x[i], y[i], z[i] = 0, 0, 0
+        elif atom == 'C':
+            colors.append('k')
+        elif atom == 'N':
+            colors.append('b')
+        elif atom == 'O':
+            colors.append('r')
+        elif atom == 'S':
+            colors.append('orange')
+        else:
+            colors.append('g')
+        sizes.append(size)
+    fig = plt.figure()
+    ax = Axes3D(fig)
+    ax.scatter(xs=x, ys=y, zs=z, s=sizes, c=colors, depthshade=True)
+    for i, atom in enumerate(atoms):
+        ax.text(x[i]+0.01, y[i]+0.01, z[i]+0.01, str(atom), size=7)
+    plt.axis('off')
+    if show_plot:
+        plt.show()
+    if path is not None:
+        image_path = os.path.join(path, "scattered_balls_structure.png")
+        plt.savefig(image_path, bbox_inches='tight')
 
 
 def plot_rotor_scan(angle, v_list, path=None, pivots=None, comment=''):
@@ -56,78 +169,6 @@ def plot_rotor_scan(angle, v_list, path=None, pivots=None, comment=''):
             else:
                 with open(txt_path, 'w') as f:
                     f.write('Pivots: {0}\nComment: {1}'.format(pivots, comment))
-
-
-def show_sticks(xyz):
-    """
-    Draws the molecule in a "sticks" style according to supplied xyz coordinates
-    Returns whether successful of not
-    """
-    try:
-        mol, coordinates = mol_from_xyz(xyz)
-    except AtomTypeError:
-        return False
-    try:
-        _, rd_mol, _ = rdkit_conf_from_mol(mol, coordinates)
-    except ValueError:
-        return False
-    mb = Chem.MolToMolBlock(rd_mol)
-    p = p3d.view(width=400, height=400)
-    p.addModel(mb, 'sdf')
-    p.setStyle({'stick': {}})
-    # p.setBackgroundColor('0xeeeeee')
-    p.zoomTo()
-    p.show()
-    return True
-
-
-def plot_3d_mol_as_scatter(xyz, path=None, plot_h=True, show_plot=True):
-    """
-    Draws the molecule as scattered balls in space according to supplied xyz coordinates
-    `xyz` is in string form
-    `path` is the species output path to save the image
-    """
-    xyz, atoms, x, y, z = get_xyz_matrix(xyz)
-
-    x = np.array(x, dtype=float)
-    y = np.array(y, dtype=float)
-    z = np.array(z, dtype=float)
-
-    colors = []
-    sizes = []
-    for i, atom in enumerate(atoms):
-        size = 500
-        if atom == 'H':
-            if plot_h:
-                colors.append('gray')
-                size = 250
-            else:
-                colors.append('white')
-                atoms[i] = ''
-                x[i], y[i], z[i] = 0, 0, 0
-        elif atom == 'C':
-            colors.append('k')
-        elif atom == 'N':
-            colors.append('b')
-        elif atom == 'O':
-            colors.append('r')
-        elif atom == 'S':
-            colors.append('orange')
-        else:
-            colors.append('g')
-        sizes.append(size)
-
-    fig = plt.figure()
-    ax = Axes3D(fig)
-    ax.scatter(xs=x, ys=y, zs=z, s=sizes, c=colors, depthshade=True)
-    for i, atom in enumerate(atoms):
-        ax.text(x[i]+0.01, y[i]+0.01, z[i]+0.01, str(atom), size=7)
-    plt.axis('off')
-    if show_plot:
-        plt.show()
-    if path is not None:
-        image_path = os.path.join(path, "scattered_balls_structure.png")
-        plt.savefig(image_path, bbox_inches='tight')
 
 
 def log_thermo(label, path):
@@ -213,8 +254,8 @@ def draw_parity_plot(var_arc, var_rmg, var_label, var_units, labels, pp):
     fig = plt.figure(figsize=(5, 4), dpi=120)
     ax = fig.add_subplot(111)
     plt.title('{0} parity plot'.format(var_label))
-    for i in range(len(labels)):
-        plt.plot(var_arc[i], var_rmg[i], 'o', label=labels[i])
+    for i, label in enumerate(labels):
+        plt.plot(var_arc[i], var_rmg[i], 'o', label=label)
     plt.plot([min_var, max_var], [min_var, max_var], 'b-', linewidth=0.5)
     plt.xlabel('{0} calculated by ARC ({1})'.format(var_label, var_units))
     plt.ylabel('{0} determined by RMG ({1})'.format(var_label, var_units))
@@ -307,7 +348,7 @@ def _draw_kinetics_plots(rxn_label, arc_k, temperature, rmg_rxns, units, pp, max
                 inverse_temp = [1000 / t for t in rmg_rxn['T']]
                 ax.semilogy(inverse_temp, rmg_rxn['k'], label=rmg_rxn['label'])
                 plotted_rmg_rxns += 1
-    for i, rmg_rxn in enumerate(rmg_rxns):
+    for rmg_rxn in rmg_rxns:
         if plotted_rmg_rxns <= max_rmg_rxns:
             inverse_temp = [1000 / t for t in rmg_rxn['T']]
             ax.semilogy(inverse_temp, rmg_rxn['k'], label=rmg_rxn['label'])
@@ -438,10 +479,6 @@ def save_kinetics_lib(rxn_list, path, name, lib_long_desc):
                     products = [Species(molecule=[arc_spc.xyz_mol]) for arc_spc in rxn.p_species]
                 rxn.rmg_reaction.reactants = reactants
                 rxn.rmg_reaction.products = products
-                try:
-                    degeneracy = rxn.kinetics.degeneracy
-                except AttributeError:
-                    degeneracy = 1  # the default value in RMG
                 entry = Entry(
                     index = i+1,
                     item = rxn.rmg_reaction,
@@ -462,7 +499,7 @@ def save_kinetics_lib(rxn_list, path, name, lib_long_desc):
             shutil.rmtree(lib_path)
         try:
             os.makedirs(lib_path)
-        except:
+        except OSError:
             pass
         kinetics_library.save(os.path.join(lib_path, 'reactions.py'))
         kinetics_library.saveDictionary(os.path.join(lib_path, 'dictionary.txt'))
