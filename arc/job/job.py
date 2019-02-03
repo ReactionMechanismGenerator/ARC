@@ -387,6 +387,11 @@ wf,spin={spin},charge={charge};}}
                     job_type_1 = 'opt'
                 if self.fine:
                     fine = '\n   GEOM_OPT_TOL_GRADIENT 15\n   GEOM_OPT_TOL_DISPLACEMENT 60\n   GEOM_OPT_TOL_ENERGY 5'
+                    if 'b' in self.level_of_theory:
+                        # Try to capture DFT levels (containing the letter 'b'?), and det a fine DFT grid
+                        # See 4.4.5.2 Standard Quadrature Grids, S in
+                        # http://www.q-chem.com/qchem-website/manual/qchem50_manual/sect-DFT.html
+                        fine += '\n   XC_GRID 3'
             elif self.software == 'molpro':
                 if self.is_ts:
                     job_type_1 = "\noptg,root=2,method=qsd,readhess,savexyz='geometry.xyz'"
