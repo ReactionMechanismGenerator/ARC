@@ -134,6 +134,11 @@ class Job(object):
                         self.software = 'qchem'
                     elif self.settings['molpro']:
                         self.software = 'molpro'
+                elif 'wb97xd' in self.method:
+                    if not self.settings['gaussian']:
+                        raise JobError('Could not find the Gaussian software to run {0}/{1}'.format(
+                            self.method, self.basis_set))
+                    self.software = 'gaussian'
                 elif 'b97' in self.method or 'm06-2x' in self.method or 'def2' in self.basis_set:
                     if not self.settings['qchem']:
                         raise JobError('Could not find the QChem software to run {0}/{1}'.format(
