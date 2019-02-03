@@ -18,20 +18,23 @@ before_install:
 
 cache: pip
 install:
+  - cd ARC
+  - conda env create -q -f environment.yml
+  - source activate arc_env
+  - cd ..
   - git clone https://github.com/ReactionMechanismGenerator/RMG-Py
   - cd RMG-Py
   - export PYTHONPATH=$PYTHONPATH:$(pwd)
+  - make
   - cd ..
-  -
   - git clone https://github.com/ReactionMechanismGenerator/RMG-database
   - git clone https://github.com/alongd/AutoTST
   - cd AutoTST
   - export PYTHONPATH=$PYTHONPATH:$(pwd)
-  - cd ../ARC
-  - pip install -r requirements.txt
-  - conda install -y -c rdkit rdkit
+  - cd ..
   - conda install -y -c conda-forge codecov
   - conda list
+  - cd ARC
 
 script:
   - make test
