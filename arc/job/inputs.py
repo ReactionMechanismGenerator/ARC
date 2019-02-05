@@ -36,7 +36,7 @@ input_files = {
 %mem={memory}mb
 %nproc=8
 
-# {job_type_1} {restricted}{method}{slash}{basis} {job_type_2} {fine} {trsh}
+#P {job_type_1} {restricted}{method}{slash}{basis} {job_type_2} {fine} {trsh}
 
 name
 
