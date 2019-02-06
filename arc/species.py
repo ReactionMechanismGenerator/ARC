@@ -156,7 +156,7 @@ class ARCSpecies(object):
             self.number_of_rotors = 0
             self.rotors_dict = dict()
             self.rmg_species = rmg_species
-            self.initial_xyz = xyz
+            self.initial_xyz = check_xyz(xyz)
             if bond_corrections is None:
                 self.bond_corrections = dict()
             else:
@@ -822,7 +822,7 @@ class TSGuess(object):
             self.t0 = None
             self.index = None
             self.execution_time = None
-            self.xyz = xyz
+            self.xyz = check_xyz(xyz)
             self.success = None
             self.energy = None
             self.method = method.lower() if method is not None else 'user guess'
@@ -1371,3 +1371,12 @@ def determine_rotor_symmetry(rotor_path, label, pivots):
         logging.info('Determined a symmetry number of {0} for rotor of species {1} between pivots {2}'
                      ' based on the {3}.'.format(symmetry, label, pivots, reason))
     return symmetry
+
+
+def check_xyz(xyz):
+    """
+    A helper function to correct xyz string format input
+    Usually empty lines are added by the user either in the begining or the end, and we'd like to remove them
+    """
+    if xyz is not None:
+        return os.linesep.join(line for line in xyz.splitlines() if (line and any([char != ' ' for char in line])))
