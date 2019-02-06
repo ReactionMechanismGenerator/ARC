@@ -12,7 +12,7 @@ from rmgpy.molecule.molecule import Molecule
 from rmgpy.species import Species
 from rmgpy.reaction import Reaction
 
-from arc.species import ARCSpecies, TSGuess, get_xyz_string, get_xyz_matrix, mol_from_xyz
+from arc.species import ARCSpecies, TSGuess, get_xyz_string, get_xyz_matrix, mol_from_xyz, check_xyz
 
 ################################################################################
 
@@ -350,6 +350,41 @@ H      -1.81136714   -0.32689007   -1.14689570
         self.assertEqual(spc.label, 'OH')
         self.assertEqual(spc.mol.toSMILES(), '[OH]')
         self.assertFalse(spc.is_ts)
+
+    def test_check_xyz(self):
+        """Test the check_xyz() function"""
+        xyz = """
+        
+        
+ C                 -0.67567701    1.18507660    0.04672449
+ H                 -0.25592948    1.62415961    0.92757746
+ H                 -2.26870864    1.38030564    0.05865317
+ O                 -0.36671999   -0.21081064    0.01630374
+ H                 -0.73553821   -0.63718986    0.79332805
+ C                 -0.08400571    1.86907236   -1.19973252
+ 
+ H                 -0.50375517    1.42998100   -2.08057962
+ H                 -0.31518819    2.91354759   -1.17697025
+ H                  0.97802159    1.73893214   -1.20769117
+ O                 -3.69788377    1.55609096    0.07050345
+ O                 -4.28667752    0.37487691    0.04916102
+ H                 -4.01978712   -0.12970163    0.82103635
+ 
+ """
+        expected_xyz = """ C                 -0.67567701    1.18507660    0.04672449
+ H                 -0.25592948    1.62415961    0.92757746
+ H                 -2.26870864    1.38030564    0.05865317
+ O                 -0.36671999   -0.21081064    0.01630374
+ H                 -0.73553821   -0.63718986    0.79332805
+ C                 -0.08400571    1.86907236   -1.19973252
+ H                 -0.50375517    1.42998100   -2.08057962
+ H                 -0.31518819    2.91354759   -1.17697025
+ H                  0.97802159    1.73893214   -1.20769117
+ O                 -3.69788377    1.55609096    0.07050345
+ O                 -4.28667752    0.37487691    0.04916102
+ H                 -4.01978712   -0.12970163    0.82103635"""
+        new_xyz = check_xyz(xyz)
+        self.assertEqual(new_xyz, expected_xyz)
 
 
 class TestTSGuess(unittest.TestCase):
