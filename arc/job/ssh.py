@@ -51,7 +51,13 @@ class SSH_Client(object):
             # execute command in remote_path directory.
             # Since each `.exec_command()` is a single session, `cd` has to be added to all commands.
             command = 'cd {0}'.format(remote_path) + '; ' + command
-        _, stdout, stderr = ssh.exec_command(command)
+        try:
+            _, stdout, stderr = ssh.exec_command(command)
+        except:  # SSHException: Timeout opening channel.
+            try:  # try again
+                _, stdout, stderr = ssh.exec_command(command)
+            except:
+                return '', 'ssh timed-out after two trials'
         stdout = stdout.readlines()
         stderr = stderr.readlines()
         ssh.close()
@@ -86,6 +92,24 @@ class SSH_Client(object):
         """
         Download a file from `remote_file_path` to `local_file_path`.
         """
+        i = 1
+        sleep_time = 10  # seconds
+        while i < 30:
+            self._download_file(remote_file_path, local_file_path)
+            if os.path.isfile(local_file_path):
+                i = 1000
+            else:
+                logging.error('Could not download file {0} from {1}!'.format(remote_file_path, self.server))
+                logging.error('ARC is sleeping for {0} seconds before re-trying,'
+                              ' please check your connectivity.'.format(sleep_time * i))
+                logging.info('ZZZZZ..... ZZZZZ.....')
+                time.sleep(sleep_time * i)  # in seconds
+            i += 1
+
+    def _download_file(self, remote_file_path, local_file_path):
+        """
+        Download a file from `remote_file_path` to `local_file_path`.
+        """
         sftp, ssh = self.connect()
         sftp.get(remotepath=remote_file_path, localpath=local_file_path)
         sftp.close()
@@ -106,13 +130,35 @@ class SSH_Client(object):
 
     def check_job_status(self, job_id):
         """
+        A modulator method of _check_job_status()
+        """
+        i = 1
+        sleep_time = 1  # minutes
+        while i < 30:
+            result = self._check_job_status(job_id)
+            if result == 'connection error':
+                logging.error('ARC is sleeping for {0} min before re-trying,'
+                              ' please check your connectivity.'.format(sleep_time * i))
+                logging.info('ZZZZZ..... ZZZZZ.....')
+                time.sleep(sleep_time * i * 60)  # in seconds
+            else:
+                i = 1000
+            i += 1
+        return result
+
+    def _check_job_status(self, job_id):
+        """
         Possible statuses: `before_submission`, `running`, `errored on node xx`, `done`
         Status line formats:
         pharos: '540420 0.45326 xq1340b    user_name       r     10/26/2018 11:08:30 long1@node18.cluster'
         rmg: '14428     debug xq1371m2   user_name  R 50-04:04:46      1 node06'
         """
         cmd = check_status_command[servers[self.server]['cluster_soft']] + ' -u ' + servers[self.server]['un']
-        stdout, _ = self.send_command_to_server(cmd)
+        stdout, stderr = self.send_command_to_server(cmd)
+        if stderr:
+            logging.info('\n\n')
+            logging.error('Could not check status of job {0} due to {1}'.format(job_id, stderr))
+            return 'connection error'
         for status_line in stdout:
             if str(job_id) in status_line:
                 break
