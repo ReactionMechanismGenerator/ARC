@@ -3,6 +3,7 @@
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
 import os
+import shutil
 import logging
 
 from arkane.input import species as arkane_species, transitionState as arkane_transition_state,\
@@ -265,3 +266,41 @@ class Processor(object):
             libraries_path = os.path.join(output_dir, 'RMG libraries')
             plotter.save_kinetics_lib(rxn_list=rxn_list_for_kinetics_lib, path=libraries_path,
                                       name=self.project, lib_long_desc=self.lib_long_desc)
+
+        self.clean_output_directory()
+
+    def clean_output_directory(self):
+        """
+        A helper function to orginize the output directory
+        - remove redundant rotor.txt files (from kinetics jobs)
+        - move remaining rotor files to the rotor directory
+        - move the Arkane YAML file from the `species` directory to the base directory, and delete `species`
+        """
+        for base_folder in ['Species', 'rxns']:
+            base_path = os.path.join(self.project_directory, 'output', base_folder)
+            dir_names = list()
+            for (_, dirs, _) in os.walk(base_path):
+                dir_names.extend(dirs)
+                break  # don't continue to explore subdirectories
+            for species_label in dir_names:
+                species_path = os.path.join(base_path, species_label)
+                file_names = list()
+                for (_, _, files) in os.walk(species_path):
+                    file_names.extend(files)
+                    break  # don't continue to explore subdirectories
+                if any(['rotor' in file_name for file_name in file_names])\
+                        and not os.path.exists(os.path.join(species_path, 'rotors')):
+                    os.makedirs(os.path.join(species_path, 'rotors'))
+                for file_name in file_names:
+                    if '__rotor' in file_name:  # this is a duplicate `species__rotor.txt` file (with two underscores)
+                        os.remove(os.path.join(species_path, file_name))
+                    elif '_rotor' in file_name:  # move to the rotor directory
+                        shutil.move(src=os.path.join(species_path, file_name),
+                                    dst=os.path.join(species_path, 'rotors', file_name))
+                if os.path.exists(os.path.join(species_path, 'species')):  # This is where Arkane saves the YAML file
+                    species_yaml_files = os.listdir(os.path.join(species_path, 'species'))
+                    if species_yaml_files:
+                        species_yaml_file = species_yaml_files[0]
+                        shutil.move(src=os.path.join(species_path, 'species', species_yaml_file),
+                                    dst=os.path.join(species_path, species_yaml_file))
+                    shutil.rmtree(os.path.join(species_path, 'species'))
