@@ -81,6 +81,7 @@ class ARC(object):
                  generate_conformers=True, scan_rotors=True, use_bac=True, model_chemistry='', ess_settings=None,
                  initial_trsh=None, t_min=None, t_max=None, t_count=None, verbose=logging.INFO, project_directory=None):
 
+        self.__version__ = '0.1'
         self.verbose = verbose
         self.ess_settings = ess_settings
         self.settings = dict()
@@ -652,9 +653,11 @@ class ARC(object):
         logging.log(level, '')
         logging.log(level, '###############################################################')
         logging.log(level, '#                                                             #')
+        logging.log(level, '#                 Automatic Rate Calculator                   #')
         logging.log(level, '#                            ARC                              #')
         logging.log(level, '#                                                             #')
-        logging.log(level, '#   Version: 0.1                                              #')
+        logging.log(level, '#   Version: {0}{1}                                       #'.format(
+            self.__version__, ' ' * (10 - len(self.__version__))))
         logging.log(level, '#                                                             #')
         logging.log(level, '###############################################################')
         logging.log(level, '')
