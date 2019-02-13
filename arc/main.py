@@ -524,13 +524,13 @@ class ARC(object):
                                    settings=self.settings, generate_conformers=self.generate_conformers,
                                    scan_rotors=self.scan_rotors, initial_trsh=self.initial_trsh, rmgdatabase=self.rmgdb,
                                    restart_dict=self.restart_dict, project_directory=self.project_directory)
-        self.save_project_info_file()
         prc = Processor(project=self.project, project_directory=self.project_directory,
                         species_dict=self.scheduler.species_dict, rxn_list=self.scheduler.rxn_list,
                         output=self.scheduler.output, use_bac=self.use_bac, model_chemistry=self.model_chemistry,
                         lib_long_desc=self.lib_long_desc, rmgdatabase=self.rmgdb, t_min=self.t_min, t_max=self.t_max,
                         t_count=self.t_count)
         prc.process()
+        self.save_project_info_file()
         self.summary()
         self.log_footer()
 
