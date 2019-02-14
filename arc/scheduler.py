@@ -8,6 +8,8 @@ import os
 import datetime
 import numpy as np
 import math
+import shutil
+from IPython.display import display
 
 import cclib
 
@@ -18,13 +20,17 @@ except ImportError:
     from yaml import Dumper, Loader, SafeLoader, SafeDumper
 
 from arkane.statmech import Log
+from rmgpy.reaction import Reaction
 
+import arc.rmgdb as rmgdb
 from arc import plotter
 from arc import parser
+from arc.species import determine_rotor_symmetry
 from arc.job.job import Job
 from arc.exceptions import SpeciesError, SchedulerError
 from arc.job.ssh import SSH_Client
-from arc.species import ARCSpecies, get_xyz_string
+from arc.species import ARCSpecies, TSGuess, get_xyz_string
+from arc.ts.atst import autotst
 from arc.settings import rotor_scan_resolution, inconsistency_ab, inconsistency_az, maximum_barrier
 
 ##################################################################
@@ -42,8 +48,9 @@ class Scheduler(object):
     ======================= ========= ==================================================================================
     `project`               ``str``   The project's name. Used for naming the working directory.
     'servers'               ''list''  A list of servers used for the present project
-    `species_list`          ``list``  Contains input ``ARCSpecies`` objects (both species and TSs).
+    `species_list`          ``list``  Contains input ``ARCSpecies`` objects (both species and TSs)
     `species_dict`          ``dict``  Keys are labels, values are ARCSpecies objects
+    `rxn_list`              ``list``  Contains input ``ARCReaction`` objects
     'unique_species_labels' ``list``  A list of species labels (checked for duplicates)
     `level_of_theory`       ``str``   *FULL* level of theory, e.g. 'CBS-QB3',
                                         'CCSD(T)-F12a/aug-cc-pVTZ//B3LYP/6-311++G(3df,3pd)'...
@@ -63,12 +70,15 @@ class Scheduler(object):
     `project_directory`     ``str``   Folder path for the project: the input file path or ARC/Projects/project-name
     `save_restart`          ``bool``  Whether to start saving a restart file. ``True`` only after all species are loaded
                                         (otherwise saves a partial file and may cause loss of information)
+    `restart_path`          ``str``   Path to the `restart.yml` file to be saved
+    `testing`               ``bool``  Used for internal ARC testing (generating the object w/o executing it)
+    `rmgdb`                 ``RMGDatabase``  The RMG database object
     ======================= ========= ==================================================================================
 
     Dictionary structures:
 
 *   job_dict = {label_1: {'conformers': {0: Job1,
-                                         1: Job2, ...},
+                                         1: Job2, ...},  # TS guesses are considered `conformers` as well
                           'opt':        {job_name1: Job1,
                                          job_name2: Job2, ...},
                           'sp':         {job_name1: Job1,
@@ -93,27 +103,32 @@ class Scheduler(object):
     # Note that rotor scans are located under Species.rotors_dict
     """
     def __init__(self, project, settings, species_list, composite_method, conformer_level, opt_level, freq_level,
-                 sp_level, scan_level, project_directory, fine=False, generate_conformers=True, scan_rotors=True,
-                 initial_trsh=None, restart_dict=None):
+                 sp_level, scan_level, ts_guess_level, project_directory, rmgdatabase, fine=False, scan_rotors=True,
+                 generate_conformers=True, initial_trsh=None, rxn_list=None, restart_dict=None,
+                 testing=False):
+        self.rmgdb = rmgdatabase
         self.restart_dict = restart_dict
         self.species_list = species_list
+        self.rxn_list = rxn_list if rxn_list is not None else list()
         self.project = project
         self.settings = settings
         self.project_directory = project_directory
         self.job_dict = dict()
         self.servers_jobs_ids = list()
         self.running_jobs = dict()
+        self.testing = testing
         if self.restart_dict is not None:
             self.output = self.restart_dict['output']
             if 'running_jobs' in self.restart_dict:
                 self.restore_running_jobs()
         else:
             self.output = dict()
-        self.yaml_path = os.path.join(self.project_directory, 'restart.yml')
+        self.restart_path = os.path.join(self.project_directory, 'restart.yml')
         self.report_time = time.time()  # init time for reporting status every 1 hr
         self.servers = list()
         self.composite_method = composite_method
         self.conformer_level = conformer_level
+        self.ts_guess_level = ts_guess_level
         self.opt_level = opt_level
         self.freq_level = freq_level
         self.sp_level = sp_level
@@ -121,10 +136,102 @@ class Scheduler(object):
         self.fine = fine
         self.generate_conformers = generate_conformers
         self.scan_rotors = scan_rotors
-        self.species_dict = dict()
         self.unique_species_labels = list()
         self.initial_trsh = initial_trsh if initial_trsh is not None else dict()
         self.save_restart = False
+
+        if len(self.rxn_list):
+            rxn_info_path = self.make_reaction_labels_info_file()
+            logging.info("\nLoading RMG's families...")
+            rmgdb.load_families_only(self.rmgdb)
+            for rxn in self.rxn_list:
+                logging.info('\n\n')
+                # update the ARCReaction object and generate an ARCSpecies object for its TS
+                rxn.r_species, rxn.p_species = list(), list()
+                for spc in self.species_list:
+                    if spc.label in rxn.reactants:
+                        rxn.r_species.append(spc)
+                    elif spc.label in rxn.products:
+                        rxn.p_species.append(spc)
+                rxn.rmg_reaction_from_arc_species()
+                rxn.check_attributes()
+                rxn.determine_family(self.rmgdb)
+                family_text = ''
+                if rxn.family is not None:
+                    family_text = 'identified as belonging to RMG family {0}'.format(rxn.family.label)
+                    if rxn.family_own_reverse:
+                        family_text += ", which is its own reverse"
+                logging.info('Considering reaction: {0}'.format(rxn.label))
+                if family_text:
+                    logging.info('({0})'.format(family_text))
+                if rxn.rmg_reaction is not None:
+                    display(rxn.rmg_reaction)
+                rxn.determine_rxn_charge()
+                rxn.determine_rxn_multiplicity()
+                rxn.ts_label = rxn.ts_label if rxn.ts_label is not None else 'TS{0}'.format(rxn.index)
+                with open(rxn_info_path, 'a') as f:
+                    f.write('{0}: {1}'.format(rxn.ts_label, rxn.label))
+                    if family_text:
+                        family_text = '\n(' + family_text + ')'
+                        f.write(family_text)
+                    f.write('\n\n')
+                if len(rxn.ts_xyz_guess) == 1 and 'user guess' not in rxn.ts_methods:
+                    rxn.ts_methods.append('user guess')
+                elif len(rxn.ts_xyz_guess) > 1 and all(['user guess' not in method for method in rxn.ts_methods]):
+                    rxn.ts_methods.append('{0} user guesses'.format(len(rxn.ts_xyz_guess)))
+                auto_tst = False
+                reverse_auto_tst = False
+                for method in rxn.ts_methods:
+                    if method == 'autotst':
+                        auto_tst = True
+                    elif method == 'reverse_autotst':
+                        reverse_auto_tst = True
+                if rxn.family_own_reverse and auto_tst and not reverse_auto_tst:
+                    rxn.ts_methods.append('reverse_autotst')
+                if not any([spc.label == rxn.ts_label for spc in self.species_list]):
+                    ts_species = ARCSpecies(is_ts=True, label=rxn.ts_label, rxn_label=rxn.label,
+                                            multiplicity=rxn.multiplicity, charge=rxn.charge, generate_thermo=False,
+                                            ts_methods=rxn.ts_methods, ts_number=rxn.index)
+                    ts_species.number_of_atoms = sum(reactant.number_of_atoms for reactant in rxn.r_species)
+                    self.species_list.append(ts_species)
+                else:
+                    # The TS species was already loaded from a restart dict or an Arkane YAML file
+                    for spc in self.species_list:
+                        if spc.label == rxn.ts_label:
+                            ts_species = spc
+                            break
+                    if ts_species.rxn_label is None:
+                        ts_species.rxn_label = rxn.label
+                rxn.ts_species = ts_species
+                # Generate TSGuess objects for all methods, start with the user guesses
+                for i, user_guess in enumerate(rxn.ts_xyz_guess):  # this is a list of guesses, could be empty
+                    ts_species.ts_guesses.append(TSGuess(method='user guess {0}'.format(i), xyz=user_guess,
+                                                         rmg_reaction=rxn.rmg_reaction))
+                for tsm in rxn.ts_methods:
+                    # loop through all ts methods of this reaction, generate a TSGuess object if not a user guess
+                    if 'user guess' not in tsm:
+                        rmg_reaction = rxn.rmg_reaction
+                        if tsm == 'reverse_autotst':
+                            rmg_reaction = Reaction(reactants=rxn.rmg_reaction.products,
+                                                    products=rxn.rmg_reaction.reactants)
+                        family = rxn.family.label if rxn.family is not None else None
+                        ts_species.ts_guesses.append(TSGuess(method=tsm, family=family, rmg_reaction=rmg_reaction))
+                for ts_guess in ts_species.ts_guesses:
+                    # Execute the TS guess methods that don't require optimized reactants and products
+                    if 'autotst' in ts_guess.method and ts_guess.xyz is None:
+                        reverse = ' in the reverse direction' if 'reverse' in ts_guess.method else ''
+                        logging.info('Trying to generating a TS guess for {0} reaction {1} using AutoTST{2}...'.format(
+                            ts_guess.family, rxn.label, reverse))
+                        ts_guess.t0 = datetime.datetime.now()
+                        ts_guess.xyz = autotst(rmg_reaction=ts_guess.rmg_reaction, reaction_family=ts_guess.family)
+                        ts_guess.success = True if ts_guess.xyz is not None else False
+                        ts_guess.execution_time = str(datetime.datetime.now() - ts_guess.t0).split('.')[0]
+                    else:
+                        # spawn other methods as needed when they are implemented (job_type = 'ts_guess');
+                        # add to job_dict only spawn if `ts_guess.xyz is None` (restart)
+                        pass
+
+        self.species_dict = dict()
         for species in self.species_list:
             if not isinstance(species, ARCSpecies):
                 raise SpeciesError('Each species in `species_list` must be an ARCSpecies object.'
@@ -133,6 +240,7 @@ class Scheduler(object):
                 raise SpeciesError('Each species in `species_list` has to have a unique label.'
                                    ' Label of species {0} is not unique.'.format(species.label))
             self.unique_species_labels.append(species.label)
+            self.species_dict[species.label] = species
             if species.label not in self.output:
                 self.output[species.label] = dict()
                 self.output[species.label]['status'] = ''
@@ -140,61 +248,71 @@ class Scheduler(object):
                 self.output[species.label]['status'] += 'Restarted ARC at {0}; '.format(datetime.datetime.now())
             if species.label not in self.job_dict:
                 self.job_dict[species.label] = dict()
-            self.species_dict[species.label] = species
-            if self.scan_rotors and not self.species_dict[species.label].number_of_rotors:
-                self.species_dict[species.label].determine_rotors()
-            if species.label not in self.running_jobs:
-                self.running_jobs[species.label] = list()  # initialize before running the first job
-            if self.species_dict[species.label].number_of_atoms == 1\
-                    and 'sp' not in self.output[species.label] \
-                    and 'composite' not in self.output[species.label]:
-                # don't bother checking for already ran jobs for monoatomic species if restarting
-                logging.debug('Species {0} is monoatomic'.format(species.label))
-                if not self.species_dict[species.label].initial_xyz:
-                    # generate a simple "Symbol   0.0   0.0   0.0" xyz matrix
-                    if self.species_dict[species.label].mol is not None:
-                        symbol = self.species_dict[species.label].mol.atoms[0].symbol
+            if species.yml_path is None:
+                if self.scan_rotors and not self.species_dict[species.label].number_of_rotors:
+                    self.species_dict[species.label].determine_rotors()
+                if species.label not in self.running_jobs:
+                    self.running_jobs[species.label] = list()  # initialize before running the first job
+                if not species.is_ts and species.number_of_atoms == 1\
+                        and 'sp' not in self.output[species.label] and 'composite' not in self.output[species.label]:
+                    # don't bother checking for already ran jobs for monoatomic species if restarting
+                    logging.debug('Species {0} is monoatomic'.format(species.label))
+                    if not self.species_dict[species.label].initial_xyz:
+                        # generate a simple "Symbol   0.0   0.0   0.0" xyz matrix
+                        if self.species_dict[species.label].mol is not None:
+                            symbol = self.species_dict[species.label].mol.atoms[0].symbol
+                        else:
+                            symbol = species.label
+                            logging.warning('Could not determine element of monoatomic species {0}.'
+                                            ' Assuming element is {1}'.format(species.label, symbol))
+                        self.species_dict[species.label].initial_xyz = symbol + '   0.0   0.0   0.0'
+                        self.species_dict[species.label].final_xyz = symbol + '   0.0   0.0   0.0'
+                    # No need to run any job for a monoatomic species other than sp (or composite if relevant)
+                    if self.composite_method:
+                        self.run_composite_job(species.label)
                     else:
-                        symbol = species.label
-                        logging.warning('Could not determine element of monoatomic species {0}.'
-                                        ' Assuming element is {1}'.format(species.label, symbol))
-                    self.species_dict[species.label].initial_xyz = symbol + '   0.0   0.0   0.0'
-                    self.species_dict[species.label].final_xyz = symbol + '   0.0   0.0   0.0'
-                # No need to run any job for a monoatomic species other than sp (or composite if relevant)
-                if self.composite_method:
-                    self.run_composite_job(species.label)
-                else:
-                    self.run_sp_job(label=species.label)
-            elif self.species_dict[species.label].initial_xyz or self.species_dict[species.label].final_xyz:
-                # For restarting purposes: check before running jobs whether they were already terminated
-                # (check self.output) or whether they are currently running (check self.job_dict)
-                if self.composite_method and 'composite' not in self.output[species.label]\
-                        and 'composite' not in self.job_dict[species.label]:
-                    self.run_composite_job(species.label)
-                elif self.composite_method and 'freq' not in self.output[species.label]\
-                        and 'freq' not in self.job_dict[species.label]:
-                    self.run_freq_job(species.label)
-                elif 'opt converged' not in self.output[species.label]['status']\
-                        and 'opt' not in self.job_dict[species.label]:
-                    self.run_opt_job(species.label)
-                elif 'opt converged' in self.output[species.label]['status']:
-                    # opt is done
-                    if 'freq' not in self.output[species.label] and 'freq' not in self.job_dict[species.label]:
-                        if self.species_dict[species.label].number_of_atoms > 1:
-                            self.run_freq_job(species.label)
-                    if 'sp' not in self.output[species.label] and 'sp' not in self.job_dict[species.label]:
-                        self.run_sp_job(species.label)
-                    if self.scan_rotors:
-                        # restart-related check are performed in run_scan_jobs()
-                        self.run_scan_jobs(species.label)
-                if self.species_dict[species.label].t0 is None:
-                    self.species_dict[species.label].t0 = time.time()
-            elif not self.species_dict[species.label].is_ts and self.generate_conformers\
-                    and 'geo' not in self.output[species.label]:
-                self.species_dict[species.label].generate_conformers()
+                        self.run_sp_job(label=species.label)
+                elif self.species_dict[species.label].initial_xyz or self.species_dict[species.label].final_xyz:
+                    # For restarting purposes: check before running jobs whether they were already terminated
+                    # (check self.output) or whether they are "currently running" (check self.job_dict)
+                    # This section takes care of restarting a Species (including a TS), but does not
+                    # deal with conformers nor with ts_guesses
+                    if self.composite_method and 'composite' not in self.output[species.label]\
+                            and 'composite' not in self.job_dict[species.label]:
+                        self.run_composite_job(species.label)
+                    elif self.composite_method and 'freq' not in self.output[species.label]\
+                            and 'freq' not in self.job_dict[species.label]\
+                            and 'composite' not in self.job_dict[species.label]:
+                        self.run_freq_job(species.label)
+                    elif 'opt converged' not in self.output[species.label]['status']\
+                            and 'opt' not in self.job_dict[species.label] and not self.composite_method:
+                        self.run_opt_job(species.label)
+                    elif 'opt converged' in self.output[species.label]['status']:
+                        # opt is done
+                        if 'freq' not in self.output[species.label] and 'freq' not in self.job_dict[species.label]:
+                            if self.species_dict[species.label].is_ts\
+                                    or self.species_dict[species.label].number_of_atoms > 1:
+                                self.run_freq_job(species.label)
+                        if 'sp' not in self.output[species.label] and 'sp' not in self.job_dict[species.label]:
+                            self.run_sp_job(species.label)
+                        if self.scan_rotors:
+                            # restart-related check are performed in run_scan_jobs()
+                            self.run_scan_jobs(species.label)
+                    if self.species_dict[species.label].t0 is None:
+                        self.species_dict[species.label].t0 = time.time()
+                elif not self.species_dict[species.label].is_ts and self.generate_conformers\
+                        and 'geo' not in self.output[species.label]:
+                    self.species_dict[species.label].generate_conformers()
+            else:
+                # Species is loaded from a YAML file
+                self.output[species.label]['status'] = 'ALL converged'
+                if species.is_ts:
+                    # This is a TS loaded from a YAML file
+                    species.ts_conf_spawned = True
         self.save_restart = True
         self.timer = True
-        self.schedule_jobs()
+        if not self.testing:
+            self.schedule_jobs()
 
     def schedule_jobs(self):
         """
@@ -216,17 +334,7 @@ class Scheduler(object):
                     if 'conformer' in job_name:
                         i = int(job_name[9:])  # the conformer number. parsed from a string like 'conformer12'.
                         job = self.job_dict[label]['conformers'][i]
-                        max_time = datetime.timedelta(seconds=max(1800, job.n_atoms ** 4))
-                        if datetime.datetime.now() - job.date_time > max_time:
-                            # resubmit this conformer job
-                            logging.error('Conformer job {name} for {label} is taking too long (already {delta}). '
-                                          'Terminating job and re-submitting'.format(name=job.job_name, label=label,
-                                                                                     delta=max_time))
-                            job.delete()
-                            self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
-                            self.run_job(label=label, xyz=job.xyz, level_of_theory=self.conformer_level,
-                                         job_type='conformer', conformer=job.conformer)
-                        elif self.job_dict[label]['conformers'][i].job_id not in self.servers_jobs_ids:
+                        if self.job_dict[label]['conformers'][i].job_id not in self.servers_jobs_ids:
                             # this is a completed conformer job
                             successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
                             if successful_server_termination:
@@ -247,6 +355,10 @@ class Scheduler(object):
                                     self.run_composite_job(label)
                             self.timer = False
                             break
+                    elif 'ts_guess' in job_name:
+                        i = int(job_name[8:])  # the ts_guess number. parsed from a string like 'ts_guess3'.
+                        job = self.job_dict[label]['conformers'][i]
+
                     elif 'opt' in job_name\
                             and not self.job_dict[label]['opt'][job_name].job_id in self.servers_jobs_ids:
                         # val is 'opt1', 'opt2', etc., or 'optfreq1', optfreq2', etc.
@@ -259,7 +371,8 @@ class Scheduler(object):
                                     # This was originally a composite method, probably troubleshooted as 'opt'
                                     self.run_composite_job(label)
                                 else:
-                                    if self.species_dict[label].number_of_atoms > 1:
+                                    if self.species_dict[label].is_ts\
+                                            or self.species_dict[label].number_of_atoms > 1:
                                         if 'freq' not in job_name:
                                             self.run_freq_job(label)
                                         else:  # this is an 'optfreq' job type
@@ -296,7 +409,8 @@ class Scheduler(object):
                                     # This wasn't originally a composite method, probably troubleshooted as such
                                     self.run_opt_job(label)
                                 else:
-                                    if self.species_dict[label].number_of_atoms > 1:
+                                    if self.species_dict[label].is_ts\
+                                            or self.species_dict[label].number_of_atoms > 1:
                                         self.run_freq_job(label)
                                     self.run_scan_jobs(label)
                         self.timer = False
@@ -309,18 +423,33 @@ class Scheduler(object):
                             self.check_scan_job(label=label, job=job)
                         self.timer = False
                         break
-                    # TODO: GSM, IRC
-                if not job_list:  # if it's an empty dictionary
+
+                if self.species_dict[label].is_ts and not self.species_dict[label].ts_conf_spawned\
+                        and not any([tsg.success is None for tsg in self.species_dict[label].ts_guesses]):
+                    # This is a TS Species for which conformers haven't been spawned, and all .success flags
+                    # contain a values (whether ``True`` or ``False``)
+                    # We're ready to spawn conformers for this TS Species
+                    self.species_dict[label].generate_conformers()
+                    self.run_ts_conformer_jobs(label=label)
+                    self.species_dict[label].ts_conf_spawned = True
+
+                if not job_list and not(self.species_dict[label].is_ts and not self.species_dict[label].ts_conf_spawned):
                     self.check_all_done(label)
                     if not self.running_jobs[label]:
                         # delete the label only if it represents an empty dictionary
                         del self.running_jobs[label]
+
             if self.timer:
                 time.sleep(30)  # wait 30 sec before bugging the servers again.
             t = time.time() - self.report_time
             if t > 3600:
                 self.report_time = time.time()
                 logging.info('Currently running jobs:\n{0}'.format(self.running_jobs))
+
+        # After exiting the Scheduler while loop, append all YAML species not directly calculated to the species_dict:
+        for spc in self.species_list:
+            if spc.yml_path is not None:
+                self.species_dict[spc.label] = spc
 
     def run_job(self, label, xyz, level_of_theory, job_type, fine=False, software=None, shift='', trsh='', memory=1500,
                 conformer=-1, ess_trsh_methods=None, scan='', pivots=None, occ=None):
@@ -370,6 +499,7 @@ class Scheduler(object):
                          fine=job.fine, software=job.software, shift=job.shift, trsh=job.trsh, memory=job.memory,
                          conformer=job.conformer, ess_trsh_methods=job.ess_trsh_methods, scan=job.scan,
                          pivots=job.pivots, occ=job.occ)
+            self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
         if job.job_status[0] != 'running' and job.job_status[1] != 'running':
             self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
             self.timer = False
@@ -384,7 +514,7 @@ class Scheduler(object):
 
     def run_conformer_jobs(self):
         """
-        Select the most stable conformer for each species by spawning opt jobs at a selected low level DFT.
+        Select the most stable conformer for each species by spawning opt jobs at the conformer level of theory.
         The resulting conformer is saved in a <xyz matrix with element labels> format
         in self.species_dict[species.label]['initial_xyz']
         """
@@ -398,7 +528,8 @@ class Scheduler(object):
                                      conformer=i)
                 else:
                     if 'opt' not in self.job_dict[label] and 'composite' not in self.job_dict[label]\
-                            and self.species_dict[label].number_of_atoms > 1:
+                            and self.species_dict[label].number_of_atoms > 1\
+                            and len(self.species_dict[label].conformers):
                         # proceed only if opt (/composite) not already spawned
                         logging.info('Only one conformer is available for species {0},'
                                      ' using it for geometry optimization'.format(label))
@@ -407,6 +538,29 @@ class Scheduler(object):
                             self.run_opt_job(label)
                         else:
                             self.run_composite_job(label)
+
+    def run_ts_conformer_jobs(self, label):
+        """
+        Select the most stable conformer (TS guess) by spawning opt jobs at the ts_guesses level of theory.
+        """
+        if len(self.species_dict[label].conformers) > 1:
+            self.job_dict[label]['conformers'] = dict()
+            for i, xyz in enumerate(self.species_dict[label].conformers):
+                self.run_job(label=label, xyz=xyz, level_of_theory=self.ts_guess_level, job_type='conformer',
+                             conformer=i)
+        elif len(self.species_dict[label].conformers) == 1:
+            if 'opt' not in self.job_dict[label] and 'composite' not in self.job_dict[label]:
+                # proceed only if opt (/composite) not already spawned
+                rxn = ' ' if not self.species_dict[label].is_ts else\
+                    ' of reaction ' + self.species_dict[label].rxn_label
+                logging.info('Only one TS guess is available for species {0}{1},'
+                             ' using it for geometry optimization'.format(label, rxn))
+                self.species_dict[label].initial_xyz = self.species_dict[label].conformers[0]
+                if not self.composite_method:
+                    self.run_opt_job(label)
+                else:
+                    self.run_composite_job(label)
+                self.species_dict[label].chosen_ts_method = self.species_dict[label].ts_guesses[0].method
 
     def run_opt_job(self, label):
         """
@@ -417,6 +571,8 @@ class Scheduler(object):
             self.job_dict[label]['opt'] = dict()
         self.run_job(label=label, xyz=self.species_dict[label].initial_xyz, level_of_theory=self.opt_level,
                      job_type='opt', fine=False)
+        if self.species_dict[label].is_ts and self.species_dict[label].number_of_atoms is None:
+            self.species_dict[label].determine_number_of_atoms_from_xyz()
 
     def run_composite_job(self, label):
         """
@@ -511,11 +667,9 @@ class Scheduler(object):
 
     def parse_conformer_energy(self, job, label, i):
         """
-        Parse E0 (Hartree) from the conformer opt output file, saves it in the 'conformer_energies' attribute.
-        Troubleshoot if job crashed by running CBS-QB3 which is often more robust (but more time-consuming).
+        Parse E0 (Hartree) from the conformer opt output file, and save it in the 'conformer_energies' attribute.
         """
         if job.job_status[1] == 'done':
-            job = self.job_dict[label]['conformers'][i]
             log = Log(path='')
             log.determine_qm_software(fullpath=job.local_path_to_output_file)
             e0 = log.software_log.loadEnergy()
@@ -537,7 +691,29 @@ class Scheduler(object):
             if ei < e_min:
                 e_min = ei
                 i_min = i
-        self.species_dict[label].initial_xyz = self.species_dict[label].conformers[i_min]
+        log = Log(path='')
+        job = self.job_dict[label]['conformers'][i_min]
+        log.determine_qm_software(fullpath=job.local_path_to_output_file)
+        coord, number, _ = log.software_log.loadGeometry()
+        self.species_dict[label].initial_xyz = get_xyz_string(xyz=coord, number=number)
+        if self.species_dict[label].is_ts:
+            self.species_dict[label].chosen_ts = None
+            logging.info('\n\nShowing geometry *guesses* of successful TS guess methods for {0} of {1}:'.format(
+                label, self.species_dict[label].rxn_label))
+            for tsg in self.species_dict[label].ts_guesses:
+                if tsg.index == i_min:
+                    self.species_dict[label].chosen_ts = i_min  # change this if selecting a better TS later
+                    self.species_dict[label].chosen_ts_method = tsg.method  # change this if selecting a better TS later
+                if tsg.success:
+                    # 0.000239006 is the conversion factor from J/mol to kcal/mol
+                    tsg.energy = (self.species_dict[label].conformer_energies[tsg.index] - e_min) * 0.000239006
+                    logging.info('{0}. Method: {1}, relative energy: {2} kcal/mol, execution time: {3}'.format(
+                        tsg.index, tsg.method, tsg.energy, tsg.execution_time))
+                    # for TSs, only use `draw_3d()`, not `show_sticks()` which gets connectivity wrong:
+                    plotter.draw_3d(xyz=tsg.xyz)
+            if self.species_dict[label].chosen_ts is None:
+                raise SpeciesError('Could not attribute most stable conformer {0} of {1} with a respective '
+                                   'TS guess'.format(i_min, label))
 
     def parse_composite_geo(self, label, job):
         """
@@ -555,13 +731,19 @@ class Scheduler(object):
             self.species_dict[label].final_xyz = get_xyz_string(xyz=coord, number=number)
             self.output[label]['status'] += 'composite converged; '
             self.output[label]['composite'] = os.path.join(job.local_path, 'output.out')
-            logging.info('\nOptimized geometry for {label} at {level}:\n{xyz}'.format(label=label,
-                        level=job.level_of_theory, xyz=self.species_dict[label].final_xyz))
-            if self.species_dict[label].number_of_atoms > 2:
-                success = plotter.show_sticks(xyz=self.species_dict[label].final_xyz)
-                if not success:
-                    plotter.plot_3d_mol_as_scatter(xyz=self.species_dict[label].final_xyz, path=None)
-            # Check frequencies (using cclib crashed for CBS-QB3 output, using an explicit parser here)
+            rxn_str = ''
+            if self.species_dict[label].is_ts:
+                rxn_str = ' of reaction {0}'.format(self.species_dict[label].rxn_label)
+            logging.info('\nOptimized geometry for {label}{rxn} at {level}:\n{xyz}'.format(label=label,
+                         rxn=rxn_str, level=job.level_of_theory, xyz=self.species_dict[label].final_xyz))
+            successful_drawing_sticks = False
+            if not job.is_ts:
+                successful_drawing_sticks = plotter.show_sticks(species=self.species_dict[label],
+                                                                project_directory=self.project_directory)
+            if job.is_ts or not successful_drawing_sticks:
+                # for TSs, only use `draw_3d()`, not `show_sticks()` which gets connectivity wrong:
+                plotter.draw_3d(species=self.species_dict[label], project_directory=self.project_directory)
+            # Check frequencies (using cclib crashes for CBS-QB3 output, so using an explicit parser here)
             frequencies = parser.parse_frequencies(job.local_path_to_output_file, job.software)
             freq_ok = self.check_negative_freq(label=label, job=job, vibfreqs=frequencies)
             if freq_ok:
@@ -597,14 +779,40 @@ class Scheduler(object):
                 if 'optfreq' in job.job_name:
                     self.check_freq_job(label, job)
                 self.output[label]['status'] += 'opt converged; '
-                logging.info('\nOptimized geometry for {label} at {level}:\n{xyz}'.format(label=label,
-                            level=job.level_of_theory, xyz=self.species_dict[label].final_xyz))
-                if self.species_dict[label].number_of_atoms > 2:
-                    success = plotter.show_sticks(xyz=self.species_dict[label].final_xyz)
-                    if not success:
-                        plotter.plot_3d_mol_as_scatter(xyz=self.species_dict[label].final_xyz, path=None)
+                rxn_str = ''
+                if self.species_dict[label].is_ts:
+                    rxn_str = ' of reaction {0}'.format(self.species_dict[label].rxn_label)
+                logging.info('\nOptimized geometry for {label}{rxn} at {level}:\n{xyz}'.format(label=label,
+                             rxn=rxn_str, level=job.level_of_theory, xyz=self.species_dict[label].final_xyz))
+                successful_drawing_sticks = False
+                if not job.is_ts:
+                    successful_drawing_sticks = plotter.show_sticks(species=self.species_dict[label],
+                                                     project_directory=self.project_directory)
+                if job.is_ts or not successful_drawing_sticks:
+                    # for TSs, only use `draw_3d()`, not `show_sticks()` which gets connectivity wrong:
+                    plotter.draw_3d(species=self.species_dict[label], project_directory=self.project_directory)
                 self.species_dict[label].opt_level = self.opt_level
                 # Update restart dictionary and save the yaml restart file:
+                if not self.species_dict[label].is_ts:
+                    # This is the final geometry of a stable species. Determine whether the species participate in
+                    # a reaction (or several), if so update its geometry in the respective Species representing the
+                    # reaction's TS
+                    for rxn in self.rxn_list:
+                        reactant = True if label in rxn.reactants else False
+                        product = True if label in rxn.products else False
+                        if reactant or product:
+                            ts = self.species_dict[rxn.ts_label]
+                            for tsg in ts.ts_guesses:
+                                if reactant and\
+                                        not any([reactant_xyz[0] == label for reactant_xyz in tsg.reactants_xyz]):
+                                    # This species is a reactant of rxn,
+                                    # and its geometry wasn't saved in the TSGuess objects
+                                    tsg.reactants_xyz.append((label, self.species_dict[label].final_xyz))
+                                if product and\
+                                        not any([product_xyz[0] == label for product_xyz in tsg.products_xyz]):
+                                    # This species is a product of rxn,
+                                    # and its geometry wasn't saved in the TSGuess objects
+                                    tsg.products_xyz.append((label, self.species_dict[label].final_xyz))
                 self.save_restart_dict()
                 return True  # run freq / sp / scan jobs on this optimized geometry
         else:
@@ -659,12 +867,13 @@ class Scheduler(object):
                 return False
         else:
             if self.species_dict[label].is_ts:
-                logging.info('TS {0} has exactly one imaginary frequency: {1}'.format(label, neg_fre))
+                logging.info('{0} has exactly one imaginary frequency: {1}'.format(label, neg_fre))
             self.output[label]['status'] += 'freq converged; '
             self.output[label]['geo'] = job.local_path_to_output_file
             self.output[label]['freq'] = job.local_path_to_output_file
-            # Update restart dictionary and save the yaml restart file:
-            self.save_restart_dict()
+            if not self.testing:
+                # Update restart dictionary and save the yaml restart file:
+                self.save_restart_dict()
             return True
 
     def check_sp_job(self, label, job):
@@ -678,6 +887,7 @@ class Scheduler(object):
             self.output[label]['status'] += 'sp converged; '
             self.output[label]['sp'] = os.path.join(job.local_path, 'output.out')
             self.species_dict[label].t1 = parser.parse_t1(self.output[label]['sp'])
+            self.species_dict[label].e0 = parser.parse_e0(self.output[label]['sp'])
             if self.species_dict[label].t1 is not None:
                 txt = ''
                 if self.species_dict[label].t1 > 0.02:
@@ -785,15 +995,22 @@ class Scheduler(object):
                                 self.run_opt_job(label)  # run opt on newly generated initial_xyz with the desired dihedral
                             else:
                                 self.species_dict[label].rotors_dict[i]['success'] = True
+                        symmetry = ''
+                        if self.species_dict[label].rotors_dict[i]['success']:
+                            self.species_dict[label].rotors_dict[i]['symmetry'] = determine_rotor_symmetry(
+                                rotor_path=job.local_path_to_output_file, label=label,
+                                pivots=self.species_dict[label].rotors_dict[i]['pivots'])
+                            symmetry = ' (with symmetry {0})'.format(self.species_dict[label].rotors_dict[i]['symmetry'])
                         if plot_scan:
                             invalidated = ''
                             if invalidate:
                                 invalidated = '*INVALIDATED* '
                             message += invalidated
-                            logging.info('{invalidated}Rotor scan between pivots {pivots} for {label} is:'.format(
-                                invalidated=invalidated, pivots=self.species_dict[label].rotors_dict[i]['pivots'],
-                                label=label))
-                            folder_name = 'TSs' if job.is_ts else 'Species'
+                            logging.info('{invalidated}Rotor scan between pivots {pivots} for {label}{symmetry}'
+                                         ' is:'.format(invalidated=invalidated,
+                                                       pivots=self.species_dict[label].rotors_dict[i]['pivots'],
+                                                       label=label, symmetry=symmetry))
+                            folder_name = 'rxns' if job.is_ts else 'Species'
                             rotor_path = os.path.join(self.project_directory, 'output', folder_name,
                                                       job.species_name, 'rotors')
                             plotter.plot_rotor_scan(angle, v_list, path=rotor_path, pivots=job.pivots, comment=message)
@@ -1019,7 +1236,7 @@ class Scheduler(object):
                              conformer=conformer)
             elif self.composite_method != 'cbs-qb3' and 'scf=(qc,nosymm) & CBS-QB3' not in job.ess_trsh_methods:
                 # try both qc and nosymm with CBS-QB3
-                logging.info('Troubleshooting {type} job in {software} using oth qc and nosymm with CBS-QB3'.format(
+                logging.info('Troubleshooting {type} job in {software} using scf=(qc,nosymm) with CBS-QB3'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('scf=(qc,nosymm) & CBS-QB3')
                 level_of_theory = 'cbs-qb3'
@@ -1027,14 +1244,14 @@ class Scheduler(object):
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
                              job_type=job_type, fine=job.fine, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
                              conformer=conformer)
-            elif 'qchem' not in job.ess_trsh_methods:
+            elif 'qchem' not in job.ess_trsh_methods and not job.job_type == 'composite':
                 # Try QChem
                 logging.info('Troubleshooting {type} job using qchem instead of {software}'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('qchem')
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, job_type=job_type, fine=job.fine,
                              software='qchem', ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
-            elif 'molpro' not in job.ess_trsh_methods:
+            elif 'molpro' not in job.ess_trsh_methods and not job.job_type == 'composite':
                 # Try molpro
                 logging.info('Troubleshooting {type} job using molpro instead of {software}'.format(
                     type=job_type, software=job.software))
@@ -1063,7 +1280,7 @@ class Scheduler(object):
                 logging.info('Troubleshooting {type} job in {software} using the DIIS_GDM SCF algorithm'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('DIIS_GDM')
-                trsh = '\n   SCF_ALGORITHM DIIS_GDM\n   MAX_SCF_CYCLES 250'  # default is 50
+                trsh = '\n   SCF_ALGORITHM DIIS_GDM\n   MAX_SCF_CYCLES 1000'  # default is 50
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
                              job_type=job_type, fine=job.fine, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
                              conformer=conformer)
@@ -1177,10 +1394,10 @@ class Scheduler(object):
             else:
                 logging.error('Could not troubleshoot geometry optimization for {label}! Tried'
                               ' troubleshooting with the following methods: {methods}'.format(
-                    label=label, methods=job.ess_trsh_methods))
+                               label=label, methods=job.ess_trsh_methods))
                 raise SchedulerError('Could not troubleshoot geometry optimization for {label}! Tried'
                                      ' troubleshooting with the following methods: {methods}'.format(
-                    label=label, methods=job.ess_trsh_methods))
+                                      label=label, methods=job.ess_trsh_methods))
 
     def check_all_done(self, label):
         """
@@ -1188,18 +1405,22 @@ class Scheduler(object):
         """
         status = self.output[label]['status']
         if 'error' not in status and ('composite converged' in status or ('sp converged' in status and
-                (self.species_dict[label].number_of_atoms == 1 or ('freq converged' in status and 'opt converged' in status)))):
+                     (self.species_dict[label].is_ts or self.species_dict[label].number_of_atoms == 1 or
+                     ('freq converged' in status and 'opt converged' in status)))):
             d, h, m, s = time_lapse(t0=self.species_dict[label].t0)
             self.species_dict[label].execution_time = '{0}{1:02.0f}:{2:02.0f}:{3:02.0f}'.format(d, h, m, s)
             logging.info('\nAll jobs for species {0} successfully converged.'
                          ' Elapsed time: {1}'.format(label, self.species_dict[label].execution_time))
             self.output[label]['status'] += '; ALL converged'
             plotter.save_geo(species=self.species_dict[label], project_directory=self.project_directory)
+            if self.species_dict[label].is_ts:
+                self.species_dict[label].make_ts_report()
+                logging.info(self.species_dict[label].ts_report + '\n')
         elif not self.output[label]['status']:
             self.output[label]['status'] = 'nothing converged'
             logging.error('species {0} did not converge. Status is: {1}'.format(label, status))
-            # Update restart dictionary and save the yaml restart file:
-            self.save_restart_dict()
+        # Update restart dictionary and save the yaml restart file:
+        self.save_restart_dict()
 
     def delete_all_species_jobs(self, label):
         """
@@ -1271,9 +1492,24 @@ class Scheduler(object):
                         [self.job_dict[spc.label][job_name.split('_')[0]][job_name].as_dict()
                          for job_name in self.running_jobs[spc.label] if 'conformer' not in job_name]
             content = yaml.safe_dump(data=self.restart_dict, encoding='utf-8', allow_unicode=True)
-            with open(self.yaml_path, 'w') as f:
+            with open(self.restart_path, 'w') as f:
                 f.write(content)
             logging.debug('Dumping restart dictionary:\n{0}'.format(self.restart_dict))
+
+    def make_reaction_labels_info_file(self):
+        """A helper function for creating the `reactions labels.info` file"""
+        rxn_info_path = os.path.join(self.project_directory, 'output', 'rxns', 'reaction labels.info')
+        old_file_path = os.path.join(os.path.join(self.project_directory, 'output', 'rxns', 'reaction labels.old.info'))
+        if os.path.isfile(rxn_info_path):
+            if os.path.isfile(old_file_path):
+                os.remove(old_file_path)
+            shutil.copy(rxn_info_path, old_file_path)
+            os.remove(rxn_info_path)
+        if not os.path.exists(os.path.dirname(rxn_info_path)):
+            os.makedirs(os.path.dirname(rxn_info_path))
+        with open(rxn_info_path, 'w') as f:
+            f.write('Reaction labels and respective TS labels:\n\n')
+        return rxn_info_path
 
 
 def time_lapse(t0):

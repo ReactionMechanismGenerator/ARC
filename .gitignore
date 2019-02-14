@@ -31,3 +31,6 @@ scratch/
 
 # csv database
 *.csv
+
+# iPython files
+*.ipynb_*

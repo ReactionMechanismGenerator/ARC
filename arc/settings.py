@@ -2,6 +2,7 @@
 # encoding: utf-8
 
 import os
+import string
 
 ##################################################################
 
@@ -69,9 +70,11 @@ output_filename = {'gaussian': 'input.log',
 }
 
 default_levels_of_theory = {'conformer': 'b97-d3/6-311+g(d,p)',
-                            'opt': 'wb97x-d3/6-311+g(d,p)',
-                            'freq': 'wb97x-d3/6-311+g(d,p)',
+                            'ts_guesses': 'b3lyp/6-311+g(d,p)',
+                            'opt': 'wb97xd/6-311++g(d,p)',
+                            'freq': 'wb97xd/6-311++g(d,p)',
                             'sp': 'ccsd(t)-f12/cc-pvtz-f12',  # This should be a level for which BAC is available
+                            # 'sp': 'b3lyp/6-311+g(3df,2p)',
                             'scan': 'b3lyp/6-311+g(d,p)',
                             'irc': 'b3lyp/6-31+g(d)',
                             'gsm': 'b3lyp/6-31+g(d)',
@@ -79,7 +82,12 @@ default_levels_of_theory = {'conformer': 'b97-d3/6-311+g(d,p)',
                             'freq_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of the CBS-QB3 method
 }
 
+# default_ts_methods = ['QST2', 'DEGSM', 'NEB', 'Kinbot', 'AutoTST']
+default_ts_methods = ['AutoTST']
+
 arc_path = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))  # absolute path to the ARC folder
+
+valid_chars = "-_()[]=., %s%s" % (string.ascii_letters, string.digits)
 
 # A scan with better resolution (lower number here) takes more time to compute,
 # but the automatically-derived rotor symmetry number is more likely to be correct.

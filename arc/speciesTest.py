@@ -8,10 +8,11 @@ This module contains unit tests of the arc.species module
 from __future__ import (absolute_import, division, print_function, unicode_literals)
 import unittest
 
-from rmgpy.species import Species
 from rmgpy.molecule.molecule import Molecule
+from rmgpy.species import Species
+from rmgpy.reaction import Reaction
 
-from arc.species import ARCSpecies, get_xyz_string, get_xyz_matrix, mol_from_xyz
+from arc.species import ARCSpecies, TSGuess, get_xyz_string, get_xyz_matrix, mol_from_xyz, check_xyz
 
 ################################################################################
 
@@ -20,12 +21,12 @@ class TestARCSpecies(unittest.TestCase):
     """
     Contains unit tests for the ARCSpecies class
     """
-
     @classmethod
     def setUpClass(cls):
         """
         A method that is run before all unit tests in this class.
         """
+        cls.maxDiff = None
         # Method 1: RMG Species object (here by SMILES)
         cls.spc1_rmg = Species(molecule=[Molecule().fromSMILES(str('C=C[O]'))])  # delocalized radical + amine
         cls.spc1_rmg.label = str('vinoxy')
@@ -308,6 +309,132 @@ H      -1.81136714   -0.32689007   -1.14689570
         self.assertEqual(spc6.multiplicity, 1)
         self.assertEqual(spc7.multiplicity, 2)
         self.assertEqual(spc8.multiplicity, 1)
+
+    def test_as_dict(self):
+        """Test Species.as_dict()"""
+        spc_dict = self.spc3.as_dict()
+        expected_dict = {'optical_isomers': None,
+                         'number_of_rotors': 0,
+                         'neg_freqs_trshed': [],
+                         'external_symmetry': None,
+                         'multiplicity': 1,
+                         'arkane_file': None,
+                         'E0': None,
+                         'mol': """1 N u0 p1 c0 {2,S} {6,S} {7,S}
+2 C u0 p0 c0 {1,S} {3,S} {4,S} {5,S}
+3 H u0 p0 c0 {2,S}
+4 H u0 p0 c0 {2,S}
+5 H u0 p0 c0 {2,S}
+6 H u0 p0 c0 {1,S}
+7 H u0 p0 c0 {1,S}
+""",
+                         'generate_thermo': True,
+                         't0': None,
+                         'label': 'methylamine',
+                         'long_thermo_description': spc_dict['long_thermo_description'],
+                         'charge': 0,
+                         'is_ts': False,
+                         'final_xyz': '',
+                         'opt_level': '',
+                         't1': None,
+                         'bond_corrections': {'C-H': 3, 'C-N': 1, 'H-N': 2},
+                         'rotors_dict': {}}
+        self.assertEqual(spc_dict, expected_dict)
+
+    def test_from_dict(self):
+        """Test Species.from_dict()"""
+        species_dict = self.spc2.as_dict()
+        spc = ARCSpecies(species_dict=species_dict)
+        self.assertEqual(spc.multiplicity, 2)
+        self.assertEqual(spc.charge, 0)
+        self.assertEqual(spc.label, 'OH')
+        self.assertEqual(spc.mol.toSMILES(), '[OH]')
+        self.assertFalse(spc.is_ts)
+
+    def test_check_xyz(self):
+        """Test the check_xyz() function"""
+        xyz = """
+        
+        
+ C                 -0.67567701    1.18507660    0.04672449
+ H                 -0.25592948    1.62415961    0.92757746
+ H                 -2.26870864    1.38030564    0.05865317
+ O                 -0.36671999   -0.21081064    0.01630374
+ H                 -0.73553821   -0.63718986    0.79332805
+ C                 -0.08400571    1.86907236   -1.19973252
+ 
+ H                 -0.50375517    1.42998100   -2.08057962
+ H                 -0.31518819    2.91354759   -1.17697025
+ H                  0.97802159    1.73893214   -1.20769117
+ O                 -3.69788377    1.55609096    0.07050345
+ O                 -4.28667752    0.37487691    0.04916102
+ H                 -4.01978712   -0.12970163    0.82103635
+ 
+ """
+        expected_xyz = """ C                 -0.67567701    1.18507660    0.04672449
+ H                 -0.25592948    1.62415961    0.92757746
+ H                 -2.26870864    1.38030564    0.05865317
+ O                 -0.36671999   -0.21081064    0.01630374
+ H                 -0.73553821   -0.63718986    0.79332805
+ C                 -0.08400571    1.86907236   -1.19973252
+ H                 -0.50375517    1.42998100   -2.08057962
+ H                 -0.31518819    2.91354759   -1.17697025
+ H                  0.97802159    1.73893214   -1.20769117
+ O                 -3.69788377    1.55609096    0.07050345
+ O                 -4.28667752    0.37487691    0.04916102
+ H                 -4.01978712   -0.12970163    0.82103635"""
+        new_xyz = check_xyz(xyz)
+        self.assertEqual(new_xyz, expected_xyz)
+
+
+class TestTSGuess(unittest.TestCase):
+    """
+    Contains unit tests for the TSGuess class
+    """
+    @classmethod
+    def setUpClass(cls):
+        """
+        A method that is run before all unit tests in this class.
+        """
+        cls.maxDiff = None
+        spc1 = Species().fromSMILES(str('CON=O'))
+        spc1.label = str('CONO')
+        spc2 = Species().fromSMILES(str('C[N+](=O)[O-]'))
+        spc2.label = str('CNO2')
+        rmg_reaction = Reaction(reactants=[spc1], products=[spc2])
+        cls.tsg1 = TSGuess(rmg_reaction=rmg_reaction, method='AutoTST', family='H_Abstraction')
+        xyz = """N       0.9177905887     0.5194617797     0.0000000000
+                 H       1.8140204898     1.0381941417     0.0000000000
+                 H      -0.4763167868     0.7509348722     0.0000000000
+                 N       0.9992350860    -0.7048575683     0.0000000000
+                 N      -1.4430010939     0.0274543367     0.0000000000
+                 H      -0.6371484821    -0.7497769134     0.0000000000
+                 H      -2.0093636431     0.0331190314    -0.8327683174
+                 H      -2.0093636431     0.0331190314     0.8327683174"""
+        cls.tsg2 = TSGuess(xyz=xyz)
+
+    def test_as_dict(self):
+        """Test TSGuess.as_dict()"""
+        tsg_dict = self.tsg1.as_dict()
+        expected_dict = {'method': u'autotst',
+                         'energy': None,
+                         'family': 'H_Abstraction',
+                         'index': None,
+                         'rmg_reaction': u'CON=O <=> [O-][N+](=O)C',
+                         'success': None,
+                         't0': None}
+        self.assertEqual(tsg_dict, expected_dict)
+
+    def test_from_dict(self):
+        """Test TSGuess.from_dict()
+        Also tests that the round trip to and from a dictionary ended in an RMG Reaction object"""
+        ts_dict = self.tsg1.as_dict()
+        tsg = TSGuess(ts_dict=ts_dict)
+        self.assertEqual(tsg.method, 'autotst')
+        self.assertTrue(isinstance(tsg.rmg_reaction, Reaction))
+
+
+
 
 ################################################################################
 

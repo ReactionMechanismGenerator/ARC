@@ -92,10 +92,10 @@ class Job(object):
         self.ess_trsh_methods = ess_trsh_methods if ess_trsh_methods is not None else list()
         self.trsh = trsh
         self.initial_trsh = initial_trsh if initial_trsh is not None else dict()
-        job_types = ['conformer', 'opt', 'freq', 'optfreq', 'sp', 'composite', 'scan', 'gsm', 'irc']
+        job_types = ['conformer', 'opt', 'freq', 'optfreq', 'sp', 'composite', 'scan', 'gsm', 'irc', 'ts_guess']
         # the 'conformer' job type is identical to 'opt', but we differentiate them to be identifiable in Scheduler
         if job_type not in job_types:
-            raise ValueError("Job type {0} not understood. Must be on of the following: {1}".format(
+            raise ValueError("Job type {0} not understood. Must be one of the following:\n{1}".format(
                 job_type, job_types))
         self.job_type = job_type
         if self.job_num < 0:
@@ -134,6 +134,11 @@ class Job(object):
                         self.software = 'qchem'
                     elif self.settings['molpro']:
                         self.software = 'molpro'
+                elif 'wb97xd' in self.method:
+                    if not self.settings['gaussian']:
+                        raise JobError('Could not find the Gaussian software to run {0}/{1}'.format(
+                            self.method, self.basis_set))
+                    self.software = 'gaussian'
                 elif 'b97' in self.method or 'm06-2x' in self.method or 'def2' in self.basis_set:
                     if not self.settings['qchem']:
                         raise JobError('Could not find the QChem software to run {0}/{1}'.format(
@@ -318,7 +323,6 @@ class Job(object):
         Write a software-specific job-specific input file.
         Saves the file locally and also uploads it to the server.
         """
-
         if self.initial_trsh and not self.trsh:
             # use the default trshs defined by the user in the initial_trsh dictionary
             if self.software in self.initial_trsh:
@@ -383,6 +387,11 @@ wf,spin={spin},charge={charge};}}
                     job_type_1 = 'opt'
                 if self.fine:
                     fine = '\n   GEOM_OPT_TOL_GRADIENT 15\n   GEOM_OPT_TOL_DISPLACEMENT 60\n   GEOM_OPT_TOL_ENERGY 5'
+                    if 'b' in self.level_of_theory:
+                        # Try to capture DFT levels (containing the letter 'b'?), and det a fine DFT grid
+                        # See 4.4.5.2 Standard Quadrature Grids, S in
+                        # http://www.q-chem.com/qchem-website/manual/qchem50_manual/sect-DFT.html
+                        fine += '\n   XC_GRID 3'
             elif self.software == 'molpro':
                 if self.is_ts:
                     job_type_1 = "\noptg,root=2,method=qsd,readhess,savexyz='geometry.xyz'"
@@ -484,7 +493,7 @@ $end
             if self.software != 'molpro':
                 raise JobError('Can only run MRCI on Molpro, not {0}'.format(self.software))
             if self.occ > 16:
-                raise JobError('Will not excecute an MRCI calculation with more than 16 occupied orbitals.'
+                raise JobError('Will not execute an MRCI calculation with more than 16 occupied orbitals.'
                                'Selective occ, closed, core, frozen keyword still not implemented.')
             else:
                 try:
@@ -639,11 +648,6 @@ $end
                 for line in lines[::-1]:
                     if 'Thank you very much for using Q-Chem' in line:
                         done = True
-                    elif 'opt' in self.job_type or 'conformer' in self.job_type or 'ts' in self.job_type:
-                            if 'MAXIMUM OPTIMIZATION CYCLES REACHED' in line:
-                                return 'errored: unconverged, max opt cycles reached'
-                            elif 'OPTIMIZATION CONVERGED' in line and done:  # `done` should already be assigned
-                                return 'done'
                     elif 'SCF failed' in line:
                         return 'errored: {0}'.format(line)
                     elif 'error' in line and 'DIIS' not in line:
@@ -653,6 +657,11 @@ $end
                     elif 'Invalid charge/multiplicity combination' in line:
                         raise SpeciesError('The multiplicity and charge combination for species {0} are wrong.'.format(
                             self.species_name))
+                    if 'opt' in self.job_type or 'conformer' in self.job_type or 'ts' in self.job_type:
+                        if 'MAXIMUM OPTIMIZATION CYCLES REACHED' in line:
+                            return 'errored: unconverged, max opt cycles reached'
+                        elif 'OPTIMIZATION CONVERGED' in line and done:  # `done` should already be assigned
+                            return 'done'
                 if done:
                     return 'done'
                 else:
@@ -661,7 +670,6 @@ $end
                     else:
                         return 'errored: Unknown reason'
             elif self.software == 'molpro':
-                prev_line = ''
                 for line in lines[::-1]:
                     if 'molpro calculation terminated' in line.lower()\
                             or 'variable memory released' in line.lower():
@@ -677,7 +685,6 @@ $end
                         #        the request was for real words`
                         # add_mem = (float(line.split()[-2]) - float(prev_line.split()[0])) / 1e6
                         return 'errored: additional memory (mW) required: {0}'.format(float(line.split()[-2]) / 1e6)
-                    prev_line = line
                 for line in lines[::-1]:
                     if 'the problem occurs' in line:
                         return 'errored: ' + line

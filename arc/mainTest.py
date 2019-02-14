@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-This module contains unit tests for the ARC class
+This module contains unit tests for the arc.main module
 """
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
@@ -32,23 +32,31 @@ class TestARC(unittest.TestCase):
         restart_dict = arc0.as_dict()
         expected_dict = {'composite_method': '',
                          'conformer_level': 'b97-d3/6-311+g(d,p)',
+                         'ts_guess_level': 'b3lyp/6-311+g(d,p)',
                          'ess_settings': {'ssh': True},
                          'fine': True,
-                         'freq_level': 'wb97x-d3/6-311+g(d,p)',
+                         'opt_level': 'wb97xd/6-311++g(d,p)',
+                         'freq_level': 'wb97xd/6-311++g(d,p)',
                          'generate_conformers': True,
                          'initial_trsh': 'scf=(NDump=30)',
                          'model_chemistry': 'ccsd(t)-f12/cc-pvtz-f12',
-                         'opt_level': 'wb97x-d3/6-311+g(d,p)',
                          'output': {},
                          'project': 'arc_test',
                          'running_jobs': {},
-                         'rxn_list': [],
+                         'reactions': [],
                          'scan_level': '',
                          'scan_rotors': False,
                          'sp_level': 'ccsd(t)-f12/cc-pvtz-f12',
+                         't_min': None,
+                         't_max': None,
+                         't_count': None,
+                         'use_bac': True,
                          'species': [{'bond_corrections': {'C-C': 1, 'C-H': 6},
+                                      'arkane_file': None,
+                                      'E0': None,
                                       'charge': 0,
-                                      'external_symmetry': 1,
+                                      'external_symmetry': None,
+                                      'optical_isomers': None,
                                       'final_xyz': '',
                                       'generate_thermo': False,
                                       'is_ts': False,
@@ -59,11 +67,10 @@ class TestARC(unittest.TestCase):
                                       'neg_freqs_trshed': [],
                                       'number_of_rotors': 0,
                                       'opt_level': '',
-                                      'optical_isomers': 1,
                                       'rotors_dict': {},
                                       't0': None,
                                       't1': None}],
-                         'use_bac': True}
+                         }
         self.assertEqual(restart_dict, expected_dict)
 
     def test_from_dict(self):

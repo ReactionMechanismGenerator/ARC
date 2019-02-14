@@ -22,13 +22,13 @@ gaussian:
                 'scf=(tight,direct) int=finegrid irc=(rcfc,forward,maxpoints=100,stepsize=10) geom=check' for irc f
                 'scf=(tight,direct) int=finegrid irc=(rcfc,reverse,maxpoints=100,stepsize=10) geom=check' for irc r
     scan: '\nD 3 1 5 8 S 36 10.000000' (with the line break)
-    restricted: '' or 'u' or restricted / unrestricted
+    restricted: '' or 'u' for restricted / unrestricted
 
 qchem:
     job_type_1: 'opt', 'ts', 'sp'
     job_type_2: 'freq'.
-    fine: '\n   GEOM_OPT_TOL_GRADIENT 15\n   GEOM_OPT_TOL_DISPLACEMENT 60\n   GEOM_OPT_TOL_ENERGY 5'
-    restricted: 'false' or 'true' or restricted / unrestricted
+    fine: '\n   GEOM_OPT_TOL_GRADIENT 15\n   GEOM_OPT_TOL_DISPLACEMENT 60\n   GEOM_OPT_TOL_ENERGY 5\n   XC_GRID SG-3'
+    restricted: 'false' or 'true' for restricted / unrestricted
 """
 
 input_files = {
@@ -36,7 +36,7 @@ input_files = {
 %mem={memory}mb
 %nproc=8
 
-# {job_type_1} {restricted}{method}{slash}{basis} {job_type_2} {fine} {trsh}
+#P {job_type_1} {restricted}{method}{slash}{basis} {job_type_2} {fine} {trsh}
 
 name
 
