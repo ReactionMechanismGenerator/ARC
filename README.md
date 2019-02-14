@@ -8,4 +8,4 @@
 
 ARC automates quantum chemical calculations and calculates thermodynamic properties and kinetic rates from 2D representations of species.
 
-Documentation and instructions are in the <a href="https://github.com/ReactionMechanismGenerator/ARC/wiki">Wiki pages</a> of this project.
+Documentation and instructions are on the <a href="https://github.com/ReactionMechanismGenerator/ARC/wiki">Wiki pages</a> of this project.
