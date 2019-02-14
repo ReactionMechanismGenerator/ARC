@@ -40,27 +40,28 @@ class ARCSpecies(object):
     `label`                 ``str``      The species' label
     `multiplicity`          ``int``      The species' multiplicity. Can be determined from adjlist/smiles/xyz
                                            The algorithm assumes it's either a singlet or a doublet
-    'charge'                ``int''      The species' net charge. Assumed to be 0 be default.
+    `charge`                ``int''      The species' net charge. Assumed to be 0 be default.
     `e0`                    ``float``    The total electronic energy E0 of the species at the chosen sp level (kJ/mol)
     `is_ts`                 ``bool``     Whether or not the species represents a transition state
-    'number_of_rotors'      ``int``      The number of potential rotors to scan
-    'rotors_dict'           ``dict``     A dictionary of rotors. structure given below.
+    `number_of_rotors`      ``int``      The number of potential rotors to scan
+    `rotors_dict`           ``dict``     A dictionary of rotors. structure given below.
     `conformers`            ``list``     A list of selected conformers XYZs
     `conformer_energies`    ``list``     A list of conformers E0 (Hartree)
-    'initial_xyz'           ``string``   The initial geometry guess
-    'final_xyz'             ``string``   The optimized species geometry
+    `initial_xyz`           ``string``   The initial geometry guess
+    `final_xyz`             ``string``   The optimized species geometry
     `opt_level`             ``string``   Level of theory for geometry optimization. Saved for archiving.
-    'number_of_atoms'       ``int``      The number of atoms in the species/TS
-    'mol'                   ``Molecule`` An RMG:`Molecule` object used for BAC determination.
+    `number_of_atoms`       ``int``      The number of atoms in the species/TS
+    `mol`                   ``Molecule`` An RMG:`Molecule` object used for BAC determination.
                                            Does not necessarily describe bond orders.
-    'xyz_mol'               ``Molecule`` An RMG:Molecule object derived from the given xyz coordinates, if available.
+    `xyz_mol`               ``Molecule`` An RMG:Molecule object derived from the given xyz coordinates, if available.
                                            Used when a match between atom order in the molecule and in xyz is desired
-    'mol_list'              ``list``     A list of localized structures generated from 'mol', if possible
-    'bond_corrections'      ``dict``     The bond additivity corrections (BAC) to be used. Determined from the structure
+    `mol_list`              ``list``     A list of localized structures generated from 'mol', if possible
+    `rmg_species`           ``Species``  An RMG Species object to be converted to an ARCSpecies object
+    `bond_corrections`      ``dict``     The bond additivity corrections (BAC) to be used. Determined from the structure
                                            if not directly given.
-    't0'                    ``float``    Initial time when the first species job was spawned
+    `t0`                    ``float``    Initial time when the first species job was spawned
     `t1`                    ``float``    The T1 diagnostic parameter from Molpro
-    'execution_time'        ``str``      Overall execution time for species
+    `execution_time`        ``str``      Overall execution time for species
     `neg_freqs_trshed`      ``list``     A list of negative frequencies this species was troubleshooted for
     `generate_thermo`       ``bool``     Whether ot not to calculate thermodynamic properties for this species
     `thermo`                ``HeatCapacityModel``  The thermodata calculated by ARC
@@ -83,7 +84,7 @@ class ARCSpecies(object):
     `arkane_file`           ``str``      Path to the Arkane Species file generated in Processor
     `yml_path`              ``str``      Path to an Arkane YAML file representing a species (for loading the object)
     `external_symmetry`     ``int``      The external symmetry of the species (not including rotor symmetries)
-    `optical_isomers`       ``int``      Whether (=2) or not (=1) the species has chiral site/s
+    `optical_isomers`       ``int``      Whether (=2) or not (=1) the species has chiral center/s
     ====================== ============= ===============================================================================
 
     Dictionary structure:
@@ -100,7 +101,7 @@ class ARCSpecies(object):
     """
     def __init__(self, is_ts=False, rmg_species=None, mol=None, label=None, xyz=None, multiplicity=None, charge=None,
                  smiles='', adjlist='', bond_corrections=None, generate_thermo=True, species_dict=None, yml_path=None,
-                 ts_methods=None, ts_number=None, rxn_label=None):
+                 ts_methods=None, ts_number=None, rxn_label=None, external_symmetry=None, optical_isomers=None):
 
         self.xyz_mol = None
         self.t1 = None
@@ -115,8 +116,8 @@ class ARCSpecies(object):
         self.mol = mol
         self.mol_list = None
         self.multiplicity = multiplicity
-        self.external_symmetry = 1
-        self.optical_isomers = 1
+        self.external_symmetry = external_symmetry
+        self.optical_isomers = optical_isomers
         self.charge = charge
 
         if species_dict is not None:
@@ -364,8 +365,8 @@ class ARCSpecies(object):
             self.initial_xyz = species_dict['xyz']
         self.number_of_rotors = species_dict['number_of_rotors'] if 'number_of_rotors' in species_dict else 0
         self.rotors_dict = species_dict['rotors_dict'] if 'rotors_dict' in species_dict else dict()
-        self.external_symmetry = species_dict['external_symmetry'] if 'external_symmetry' in species_dict else 1
-        self.optical_isomers = species_dict['optical_isomers'] if 'optical_isomers' in species_dict else 1
+        self.external_symmetry = species_dict['external_symmetry'] if 'external_symmetry' in species_dict else None
+        self.optical_isomers = species_dict['optical_isomers'] if 'optical_isomers' in species_dict else None
         self.neg_freqs_trshed = species_dict['neg_freqs_trshed'] if 'neg_freqs_trshed' in species_dict else list()
         self.bond_corrections = species_dict['bond_corrections'] if 'bond_corrections' in species_dict else dict()
         self.execution_time = species_dict['execution_time'] if 'execution_time' in species_dict else None
@@ -611,8 +612,16 @@ class ARCSpecies(object):
         if pg is not None:
             symmetry = pg.symmetryNumber
             optical_isomers = 2 if pg.chiral else optical_isomers
-        self.optical_isomers = optical_isomers
-        self.external_symmetry = symmetry
+        self.optical_isomers = self.optical_isomers if self.optical_isomers is not None else optical_isomers
+        if self.optical_isomers != optical_isomers:
+            logging.warn("User input of optical isomers for {0} and ARC's calculation differ: {1} and {2},"
+                         " respectively. Using the user input of {1}".format(
+                self.label, self.optical_isomers, optical_isomers))
+        self.external_symmetry = self.external_symmetry if self.external_symmetry is not None else symmetry
+        if self.external_symmetry != symmetry:
+            logging.warn("User input of external symmetry for {0} and ARC's calculation differ: {1} and {2},"
+                         " respectively. Using the user input of {1}".format(
+                self.label, self.external_symmetry, symmetry))
 
     def determine_multiplicity(self, smiles, adjlist, mol):
         if mol:
@@ -795,17 +804,17 @@ class TSGuess(object):
     Attribute              Type          Description
     ====================== ============= ===============================================================================
     `xyz`                   ``str``      The 3D guess
-    'method'                ``str''      The method/source used for the xyz guess
-    'reactants_xyz'         ``list``     A list of tuples, each containing:
+    `method`                ``str''      The method/source used for the xyz guess
+    `reactants_xyz`         ``list``     A list of tuples, each containing:
                                            (reactant label, reactant geometry in string format)
-    'products_xyz'          ``list``     A list of tuples, each containing:
+    `products_xyz`          ``list``     A list of tuples, each containing:
                                            (product label, product geometry in string format)
     `family`                ``str``      The RMG family that corresponds to the reaction, if applicable
-    'rmg_reaction`          ``Reaction`` The RMG Reaction
-    't0'                    ``float``    Initial time of spawning the guess job
-    'execution_time'        ``str``      Overall execution time for species
+    `rmg_reaction`          ``Reaction`` The RMG Reaction
+    '`t0'                    ``float``    Initial time of spawning the guess job
+    `execution_time`        ``str``      Overall execution time for species
     `success`               ``bool``     Whether the TS guess method succeeded in generating an XYZ guess or not
-    'energy'                ``float``    Relative energy of all TS conformers
+    `energy`                ``float``    Relative energy of all TS conformers
     `index`                 ``int``      An index corresponding to the conformer jobs spawned for each TSGuess object
                                            Assigned only if self.success is ``True``
     ====================== ============= ===============================================================================
