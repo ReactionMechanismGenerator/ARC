@@ -78,7 +78,7 @@ class ARC(object):
                  model_chemistry='', ess_settings=None, initial_trsh=None, t_min=None, t_max=None, t_count=None,
                  verbose=logging.INFO, project_directory=None):
 
-        self.__version__ = '0.1'
+        self.__version__ = '1.0.0'
         self.verbose = verbose
         self.ess_settings = ess_settings
         self.settings = dict()
@@ -556,6 +556,7 @@ class ARC(object):
             fine_txt = '(NOT using a fine grid)'
 
         txt = ''
+        txt += 'ARC v{0}\n'.format(self.__version__)
         txt += 'ARC project {0}\n\nLevels of theory used:\n\n'.format(self.project)
         txt += 'Conformers:       {0}\n'.format(self.conformer_level)
         txt += 'TS guesses:       {0}\n'.format(self.ts_guess_level)
