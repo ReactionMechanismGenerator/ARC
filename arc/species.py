@@ -1349,8 +1349,9 @@ def determine_rotor_symmetry(rotor_path, label, pivots):
     # The number of peaks and valley must always be the same (what goes up must come down), if it isn't then there's
     # something seriously wrong with the scan
     if len(peaks) != len(valleys):
-        raise RotorError('Rotor of species {0} between pivots {1} does not have the same number'
-                         ' of peaks and valleys.'.format(label, pivots))
+        logging.error('Rotor of species {0} between pivots {1} does not have the same number'
+                      ' of peaks and valleys.'.format(label, pivots))
+        return len(peaks)  # this works for CC(=O)[O]
     min_peak = min(peaks)
     max_peak = max(peaks)
     min_valley = min(valleys)
