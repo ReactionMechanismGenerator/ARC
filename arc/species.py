@@ -24,7 +24,7 @@ from rmgpy.species import Species
 from rmgpy.statmech import NonlinearRotor, LinearRotor
 
 from arc.exceptions import SpeciesError, RotorError, InputError, TSError
-from arc.settings import arc_path, default_ts_methods, valid_chars
+from arc.settings import arc_path, default_ts_methods, valid_chars, minimum_barrier
 from arc.ts import atst
 
 ##################################################################
@@ -1380,6 +1380,18 @@ def determine_rotor_symmetry(rotor_path, label, pivots):
         logging.info('Determined a symmetry number of {0} for rotor of species {1} between pivots {2}'
                      ' based on the {3}.'.format(symmetry, label, pivots, reason))
     return symmetry
+
+
+def determine_rotor_type(rotor_path):
+    """
+    Determine whether this rotor should be treated as a HinderedRotor of a FreeRotor
+    according to it's maximum peak
+    """
+    log = Log(path='')
+    log.determine_qm_software(fullpath=rotor_path)
+    energies, _ = log.software_log.loadScanEnergies()
+    max_val = max(energies)
+    return 'FreeRotor' if max_val < minimum_barrier else 'HinderedRotor'
 
 
 def check_xyz(xyz):
