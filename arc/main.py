@@ -239,7 +239,7 @@ class ARC(object):
                     logging.info('Using default level {0} for rotor scans'.format(self.scan_level))
                 else:
                     # This is a composite method
-                    self.freq_level = default_levels_of_theory['scan_for_composite'].lower()
+                    self.scan_level = default_levels_of_theory['scan_for_composite'].lower()
                     logging.info('Using default level {0} for scan calculations after composite jobs'.format(
                         self.freq_level))
             else:
