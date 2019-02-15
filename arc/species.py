@@ -1391,7 +1391,7 @@ def determine_rotor_type(rotor_path):
     log = Log(path='')
     log.determine_qm_software(fullpath=rotor_path)
     energies, _ = log.software_log.loadScanEnergies()
-    max_val = max(energies)
+    max_val = max(energies) * 0.001  # convert to kJ/mol (Arkane used SI)
     return 'FreeRotor' if max_val < minimum_barrier else 'HinderedRotor'
 
 
