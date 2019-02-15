@@ -143,6 +143,10 @@ class TestARC(unittest.TestCase):
         project = 'arc_project_for_testing_delete_after_usage'
         project_directory = os.path.join(arc_path, 'Projects', project)
         shutil.rmtree(project_directory)
+        projects = ['ar c', 'ar:c', 'ar<c', 'ar%c']
+        for project in projects:
+            project_directory = os.path.join(arc_path, 'Projects', project)
+            shutil.rmtree(project_directory)
 
 ################################################################################
 
