@@ -15,7 +15,7 @@ from rmgpy.species import Species
 from rmgpy.reaction import Reaction
 
 import arc.rmgdb as rmgdb
-from arc.settings import arc_path, default_levels_of_theory, check_status_command, servers
+from arc.settings import arc_path, default_levels_of_theory, check_status_command, servers, valid_chars
 from arc.scheduler import Scheduler, time_lapse
 from arc.exceptions import InputError, SettingsError, SpeciesError
 from arc.species import ARCSpecies
@@ -312,6 +312,14 @@ class ARC(object):
         self.restart_dict = self.as_dict()
         self.determine_model_chemistry()
         self.scheduler = None
+
+        for char in self.project:
+            if char not in valid_chars:
+                raise InputError('A project name (used to naming folders) must contain only valid characters.'
+                                 ' Got {0} in {1}.'.format(char, self.project))
+            if char == ' ':  # space IS a valid character for other purposes, but isn't valid in project names
+                raise InputError('A project name (used to naming folders) must not contain spaces.'
+                                 ' Got {0}.'.format(self.project))
 
         # make a backup copy of the restart file if it exists (but don't save an updated one just yet)
         if os.path.isfile(os.path.join(self.project_directory, 'restart.yml')):
