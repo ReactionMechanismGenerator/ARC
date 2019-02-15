@@ -7,12 +7,15 @@ This module contains unit tests of the arc.species module
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
 import unittest
+import os
 
 from rmgpy.molecule.molecule import Molecule
 from rmgpy.species import Species
 from rmgpy.reaction import Reaction
 
-from arc.species import ARCSpecies, TSGuess, get_xyz_string, get_xyz_matrix, mol_from_xyz, check_xyz
+from arc.species import ARCSpecies, TSGuess, get_xyz_string, get_xyz_matrix, mol_from_xyz, check_xyz,\
+    determine_rotor_type
+from arc.settings import arc_path
 
 ################################################################################
 
@@ -386,6 +389,13 @@ H      -1.81136714   -0.32689007   -1.14689570
         new_xyz = check_xyz(xyz)
         self.assertEqual(new_xyz, expected_xyz)
 
+    def test_determine_rotor_type(self):
+        """Tst that we correctly determine whether a rotor is FreeRotor or HinderedRotor"""
+        free_path = os.path.join(arc_path, 'arc', 'testing', 'CH3C(O)O_rotor_scan(FreeRotor).out')
+        hindered_path = os.path.join(arc_path, 'arc', 'testing', 'H2O2_rotor(HinderedRotor).out')
+        self.assertEqual(determine_rotor_type(free_path), 'FreeRotor')
+        self.assertEqual(determine_rotor_type(hindered_path), 'HinderedRotor')
+
 
 class TestTSGuess(unittest.TestCase):
     """
@@ -432,8 +442,6 @@ class TestTSGuess(unittest.TestCase):
         tsg = TSGuess(ts_dict=ts_dict)
         self.assertEqual(tsg.method, 'autotst')
         self.assertTrue(isinstance(tsg.rmg_reaction, Reaction))
-
-
 
 
 ################################################################################
