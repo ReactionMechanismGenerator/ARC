@@ -91,9 +91,10 @@ valid_chars = "-_()[]=., %s%s" % (string.ascii_letters, string.digits)
 
 # A scan with better resolution (lower number here) takes more time to compute,
 # but the automatically-derived rotor symmetry number is more likely to be correct.
-rotor_scan_resolution = 10.0  # degrees. Default: 10.0
+rotor_scan_resolution = 8.0  # degrees. Default: 8.0
 
 # rotor validation parameters
 inconsistency_az = 5   # maximum allowed inconsistency (kJ/mol) between initial and final rotor scan points. Default: 5
 inconsistency_ab = 10  # maximum allowed inconsistency (kJ/mol) between consecutive points in the scan. Default: 10
-maximum_barrier = 40  # maximum allowed barrier (kJ/mol) for a hindered rotor. Default: 40 (~10 kcal/mol)
+maximum_barrier = 40   # a rotor threshold (kJ/mol) above which the rotor is not considered. Default: 40 (~10 kcal/mol)
+minimum_barrier = 0.5  # a rotor threshold (kJ/mol) below which it is considered a FreeRotor. Default: 0.5 kJ/mol

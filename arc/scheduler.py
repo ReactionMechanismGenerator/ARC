@@ -977,10 +977,11 @@ class Scheduler(object):
                         # 2. Check conformation:
                         if not invalidate:
                             v_diff = (v_list[0] - np.min(v_list))
-                            if v_diff >= 2:
+                            if v_diff >= 2 or v_diff > 0.5 * (max(v_list) - min(v_list)):
                                 self.species_dict[label].rotors_dict[i]['success'] = False
-                                logging.info('Species {label} is not oriented correctly around pivots {pivots}, searching'
-                                             ' for a better conformation...'.format(label=label, pivots=job.pivots))
+                                logging.info('Species {label} is not oriented correctly around pivots {pivots},'
+                                             ' searching for a better conformation...'.format(label=label,
+                                                                                              pivots=job.pivots))
                                 # Find the rotation dihedral in degrees to the closest minimum:
                                 min_v = v_list[0]
                                 min_index = 0
@@ -992,7 +993,7 @@ class Scheduler(object):
                                                                       pivots=self.species_dict[label].rotors_dict[i]['pivots'],
                                                                       deg_increment=min_index*rotor_scan_resolution)
                                 self.delete_all_species_jobs(label)
-                                self.run_opt_job(label)  # run opt on newly generated initial_xyz with the desired dihedral
+                                self.run_opt_job(label)  # run opt on new initial_xyz with the desired dihedral
                             else:
                                 self.species_dict[label].rotors_dict[i]['success'] = True
                         symmetry = ''

@@ -312,14 +312,7 @@ class ARC(object):
         self.restart_dict = self.as_dict()
         self.determine_model_chemistry()
         self.scheduler = None
-
-        for char in self.project:
-            if char not in valid_chars:
-                raise InputError('A project name (used to naming folders) must contain only valid characters.'
-                                 ' Got {0} in {1}.'.format(char, self.project))
-            if char == ' ':  # space IS a valid character for other purposes, but isn't valid in project names
-                raise InputError('A project name (used to naming folders) must not contain spaces.'
-                                 ' Got {0}.'.format(self.project))
+        self.check_project_name()
 
         # make a backup copy of the restart file if it exists (but don't save an updated one just yet)
         if os.path.isfile(os.path.join(self.project_directory, 'restart.yml')):
@@ -869,6 +862,16 @@ class ARC(object):
                                 'Alternatively, you could pass a software-server dictionary to arc as `ess_settings`')
         elif diagnostics:
             logging.info('ESS diagnostics completed')
+
+    def check_project_name(self):
+        """Check the validity of the project name"""
+        for char in self.project:
+            if char not in valid_chars:
+                raise InputError('A project name (used to naming folders) must contain only valid characters.'
+                                 ' Got {0} in {1}.'.format(char, self.project))
+            if char == ' ':  # space IS a valid character for other purposes, but isn't valid in project names
+                raise InputError('A project name (used to naming folders) must not contain spaces.'
+                                 ' Got {0}.'.format(self.project))
 
 
 def delete_all_arc_jobs(server_list):
