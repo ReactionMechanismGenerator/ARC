@@ -13,6 +13,7 @@ import shutil
 from arc.main import ARC
 from arc.species import ARCSpecies
 from arc.settings import arc_path
+from arc.exceptions import InputError
 
 ################################################################################
 
@@ -123,6 +124,18 @@ class TestARC(unittest.TestCase):
         self.assertEqual(arc1.arc_species_list[0].label, 'testing_spc1')
         self.assertFalse(arc1.arc_species_list[0].is_ts)
         self.assertEqual(arc1.arc_species_list[0].charge, 1)
+
+    def test_check_project_name(self):
+        """Test project name validity"""
+        ess_settings = {}
+        with self.assertRaises(InputError):
+            ARC(project='ar c', ess_settings=ess_settings)
+        with self.assertRaises(InputError):
+            ARC(project='ar:c', ess_settings=ess_settings)
+        with self.assertRaises(InputError):
+            ARC(project='ar<c', ess_settings=ess_settings)
+        with self.assertRaises(InputError):
+            ARC(project='ar%c', ess_settings=ess_settings)
 
     @classmethod
     def tearDownClass(cls):
