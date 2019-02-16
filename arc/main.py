@@ -11,6 +11,11 @@ import shutil
 import subprocess
 from distutils.spawn import find_executable
 from IPython.display import display
+import yaml
+try:
+    from yaml import CDumper as Dumper, CLoader as Loader, CSafeLoader as SafeLoader
+except ImportError:
+    from yaml import Dumper, Loader, SafeLoader
 
 from rmgpy.species import Species
 from rmgpy.reaction import Reaction
@@ -359,6 +364,8 @@ class ARC(object):
         If `project` name and `ess_settings` are given as well to __init__, they will override the respective values
         in the restart dictionary.
         """
+        if isinstance(input_dict, (str, unicode)):
+            input_dict = read_file(input_dict)
         if project is None and 'project' not in input_dict:
             raise InputError('A project name must be given')
         self.project = project if project is not None else input_dict['project']
@@ -882,6 +889,17 @@ class ARC(object):
             if char == ' ':  # space IS a valid character for other purposes, but isn't valid in project names
                 raise InputError('A project name (used to naming folders) must not contain spaces.'
                                  ' Got {0}.'.format(self.project))
+
+
+def read_file(path):
+    """
+    Read the ARC YAML input file and return the parameters in a dictionary
+    """
+    if not os.path.isfile(path):
+        raise ValueError('Could not find the input file {0}'.format(path))
+    with open(path, 'r') as f:
+        input_dict = yaml.load(stream=f)
+    return input_dict
 
 
 def get_git_commit():

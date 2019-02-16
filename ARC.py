@@ -10,13 +10,7 @@ import argparse
 import os
 import logging
 
-import yaml
-try:
-    from yaml import CDumper as Dumper, CLoader as Loader, CSafeLoader as SafeLoader
-except ImportError:
-    from yaml import Dumper, Loader, SafeLoader
-
-from arc.main import ARC
+from arc.main import ARC, read_file
 
 ################################################################################
 
@@ -75,17 +69,6 @@ def main():
         input_dict['verbose'] = verbose
     arc_object = ARC(input_dict=input_dict, project_directory=project_directory)
     arc_object.execute()
-
-
-def read_file(path):
-    """
-    Read the ARC YAML input file and return the parameters in a dictionary
-    """
-    if not os.path.isfile(path):
-        raise ValueError('Could not find the input file {0}'.format(path))
-    with open(path, 'r') as f:
-        input_dict = yaml.load(stream=f)
-    return input_dict
 
 
 ################################################################################
