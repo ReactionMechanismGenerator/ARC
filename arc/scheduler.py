@@ -253,9 +253,7 @@ class Scheduler(object):
                     self.species_dict[species.label].determine_rotors()
                 if species.label not in self.running_jobs:
                     self.running_jobs[species.label] = list()  # initialize before running the first job
-                if not species.is_ts and species.number_of_atoms == 1\
-                        and 'sp' not in self.output[species.label] and 'composite' not in self.output[species.label]:
-                    # don't bother checking for already ran jobs for monoatomic species if restarting
+                if not species.is_ts and species.number_of_atoms == 1:
                     logging.debug('Species {0} is monoatomic'.format(species.label))
                     if not self.species_dict[species.label].initial_xyz:
                         # generate a simple "Symbol   0.0   0.0   0.0" xyz matrix
@@ -267,11 +265,14 @@ class Scheduler(object):
                                             ' Assuming element is {1}'.format(species.label, symbol))
                         self.species_dict[species.label].initial_xyz = symbol + '   0.0   0.0   0.0'
                         self.species_dict[species.label].final_xyz = symbol + '   0.0   0.0   0.0'
-                    # No need to run any job for a monoatomic species other than sp (or composite if relevant)
-                    if self.composite_method:
-                        self.run_composite_job(species.label)
-                    else:
-                        self.run_sp_job(label=species.label)
+                    if 'sp' not in self.output[species.label] and 'composite' not in self.output[species.label] \
+                            and 'sp' not in self.job_dict[species.label]\
+                            and 'composite' not in self.job_dict[species.label]:
+                        # No need to run any job for a monoatomic species other than sp (or composite if relevant)
+                        if self.composite_method:
+                            self.run_composite_job(species.label)
+                        else:
+                            self.run_sp_job(label=species.label)
                 elif self.species_dict[species.label].initial_xyz or self.species_dict[species.label].final_xyz:
                     # For restarting purposes: check before running jobs whether they were already terminated
                     # (check self.output) or whether they are "currently running" (check self.job_dict)
