@@ -8,6 +8,7 @@ import os
 import time
 import re
 import shutil
+import subprocess
 from distutils.spawn import find_executable
 from IPython.display import display
 
@@ -308,6 +309,8 @@ class ARC(object):
         else:
             # ARC is run from an input or a restart file.
             # Read the input_dict
+            project_directory = project_directory if project_directory is not None\
+                else os.path.abspath(os.path.dirname(input_dict))
             self.from_dict(input_dict=input_dict, project=project, project_directory=project_directory)
         self.restart_dict = self.as_dict()
         self.determine_model_chemistry()
@@ -672,6 +675,12 @@ class ARC(object):
         logging.log(level, '#                                                             #')
         logging.log(level, '###############################################################')
         logging.log(level, '')
+
+        # Extract HEAD git commit from ARC
+        head, date = get_git_commit()
+        if head != '' and date != '':
+            logging.log(level, 'The current git HEAD for ARC is:')
+            logging.log(level, '    {0}\n    {1}\n'.format(head, date))
         logging.info('Starting project {0}'.format(self.project))
 
     def log_footer(self, level=logging.INFO):
@@ -873,6 +882,16 @@ class ARC(object):
             if char == ' ':  # space IS a valid character for other purposes, but isn't valid in project names
                 raise InputError('A project name (used to naming folders) must not contain spaces.'
                                  ' Got {0}.'.format(self.project))
+
+
+def get_git_commit():
+    if os.path.exists(os.path.join(arc_path,'.git')):
+        try:
+            return subprocess.check_output(['git', 'log', '--format=%H%n%cd', '-1'], cwd=arc_path).splitlines()
+        except subprocess.CalledProcessError:
+            return '', ''
+    else:
+        return '', ''
 
 
 def delete_all_arc_jobs(server_list):
