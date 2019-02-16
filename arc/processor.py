@@ -193,14 +193,13 @@ class Processor(object):
 
         # Kinetics:
         rxn_list_for_kinetics_plots = list()
-        rxn_list_for_kinetics_lib = list()
         arkane_spc_dict = dict()  # a dictionary with all species and the TSs
         for rxn in self.rxn_list:
             logging.info('\n\n')
             species = self.species_dict[rxn.ts_label]  # The TS
             if 'ALL converged' in self.output[species.label]['status'] and rxn.check_ts():
                 success = True
-                rxn_list_for_kinetics_lib.append(rxn)
+                rxn_list_for_kinetics_plots.append(rxn)
                 output_file_path = self._generate_arkane_species_file(species)
                 arkane_ts = arkane_transition_state(str(species.label), species.arkane_file)
                 arkane_spc_dict[species.label] = arkane_ts
@@ -249,8 +248,6 @@ class Processor(object):
                     plotter.log_kinetics(species.label, path=output_file_path)
                     rxn.rmg_reactions = rmgdb.determine_rmg_kinetics(rmgdb=self.rmgdb, reaction=rxn.rmg_reaction,
                                                                      dh_rxn298=rxn.dh_rxn298)
-                    if rxn.rmg_reactions:
-                        rxn_list_for_kinetics_plots.append(rxn)
 
         logging.info('\n\n')
         output_dir = os.path.join(self.project_directory, 'output')
@@ -264,9 +261,8 @@ class Processor(object):
         if rxn_list_for_kinetics_plots:
             plotter.draw_kinetics_plots(rxn_list_for_kinetics_plots, path=output_dir,
                                         t_min=self.t_min, t_max=self.t_max, t_count=self.t_count)
-        if rxn_list_for_kinetics_lib:
             libraries_path = os.path.join(output_dir, 'RMG libraries')
-            plotter.save_kinetics_lib(rxn_list=rxn_list_for_kinetics_lib, path=libraries_path,
+            plotter.save_kinetics_lib(rxn_list=rxn_list_for_kinetics_plots, path=libraries_path,
                                       name=self.project, lib_long_desc=self.lib_long_desc)
 
         self.clean_output_directory()
