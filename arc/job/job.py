@@ -618,6 +618,8 @@ $end
                                 return 'unconverged'
                             if 'l502.exe' in line:
                                 return 'unconverged SCF'
+                            if 'l103.exe' in line:
+                                return 'l103 internal coordinate error'
                             if 'Erroneous write' in line or 'Write error in NtrExt1' in line:
                                 reason = 'Ran out of disk space.'
                             if 'l716.exe' in line:
