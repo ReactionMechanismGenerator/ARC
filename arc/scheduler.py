@@ -1173,6 +1173,16 @@ class Scheduler(object):
             if job.job_name not in self.running_jobs[label]:
                 self.running_jobs[label].append(job.job_name)  # mark as a running job
         elif job.software == 'gaussian':
+            if 'l103 internal coordinate error' in job.status[1]\
+                    and 'cartesian' not in job.ess_trsh_methods and job_type == 'opt':
+                # try both cartesian and nosymm
+                logging.info('Troubleshooting {type} job in {software} using opt=cartesian with nosyym'.format(
+                    type=job_type, software=job.software))
+                job.ess_trsh_methods.append('cartesian')
+                trsh = 'opt=(cartesian,nosymm)'
+                self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
+                             job_type=job_type, fine=job.fine, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
+                             conformer=conformer)
             if 'scf=(qc,nosymm)' not in job.ess_trsh_methods:
                 # try both qc and nosymm
                 logging.info('Troubleshooting {type} job in {software} using scf=(qc,nosymm)'.format(
