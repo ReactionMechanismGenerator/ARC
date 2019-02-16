@@ -245,7 +245,7 @@ class Scheduler(object):
                 self.output[species.label] = dict()
                 self.output[species.label]['status'] = ''
             else:
-                self.output[species.label]['status'] += 'Restarted ARC at {0}; '.format(datetime.datetime.now())
+                self.output[species.label]['status'] += '; Restarted ARC at {0}; '.format(datetime.datetime.now())
             if species.label not in self.job_dict:
                 self.job_dict[species.label] = dict()
             if species.yml_path is None:
@@ -658,7 +658,7 @@ class Scheduler(object):
                 pivots = self.species_dict[label].rotors_dict[i]['pivots']
                 if 'scan_path' not in self.species_dict[label].rotors_dict[i]\
                         or not self.species_dict[label].rotors_dict[i]['scan_path']:
-                    # check this job isn't already running on the server (from a restarted project):
+                    # check this job isn't already running on the server or completed (from a restarted project):
                     for scan_job in self.job_dict[label]['scan'].values():
                         if scan_job.pivots == pivots and scan_job.job_name in self.running_jobs[label]:
                             break
@@ -1021,10 +1021,9 @@ class Scheduler(object):
                     invalidate = True
                 if invalidate:
                     self.species_dict[label].rotors_dict[i]['success'] = False
-
                 else:
                     self.species_dict[label].rotors_dict[i]['success'] = True
-                    self.species_dict[label].rotors_dict[i]['scan_path'] = job.local_path_to_output_file
+                self.species_dict[label].rotors_dict[i]['scan_path'] = job.local_path_to_output_file
                 break  # `job` has only one pivot. Break if found, otherwise raise an error.
         else:
             raise SchedulerError('Could not match rotor with pivots {0} in species {1}'.format(job.pivots, label))
@@ -1423,7 +1422,7 @@ class Scheduler(object):
             self.species_dict[label].execution_time = '{0}{1:02.0f}:{2:02.0f}:{3:02.0f}'.format(d, h, m, s)
             logging.info('\nAll jobs for species {0} successfully converged.'
                          ' Elapsed time: {1}'.format(label, self.species_dict[label].execution_time))
-            self.output[label]['status'] += '; ALL converged'
+            self.output[label]['status'] += 'ALL converged'
             plotter.save_geo(species=self.species_dict[label], project_directory=self.project_directory)
             if self.species_dict[label].is_ts:
                 self.species_dict[label].make_ts_report()
