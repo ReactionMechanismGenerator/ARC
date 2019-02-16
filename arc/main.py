@@ -88,6 +88,7 @@ class ARC(object):
         self.lib_long_desc = ''
         self.unique_species_labels = list()
         self.rmgdb = rmgdb.make_rmg_database_object()
+        self.supported_ess = ['gaussian', 'molpro', 'qchem']
 
         if input_dict is None:
             if project is None:
@@ -377,8 +378,9 @@ class ARC(object):
                 if ess.lower() not in ['gaussian', 'qchem', 'molpro']:
                     raise SettingsError('Recognized ESS software are Gaussian, QChem or Molpro. Got: {0}'.format(ess))
                 if server.lower() not in servers:
-                    server_names = [name for name in servers]
-                    raise SettingsError('Recognized servers are {0}. Got: {1}'.format(server_names, servers))
+                    server_names = [name for name in servers] + ['local']
+                    raise SettingsError("Recognized servers are {0} (or 'local'). Got: {1}".format(server_names,
+                                                                                                   servers))
                 self.settings[ess.lower()] = server.lower()
         elif 'ess_settings' in input_dict:
             self.settings = input_dict['ess_settings']
@@ -883,6 +885,128 @@ class ARC(object):
                 raise InputError('A project name (used to naming folders) must not contain spaces.'
                                  ' Got {0}.'.format(self.project))
 
+    def organize_ess_settings_into_a_dict(self):
+        """
+        Take the tuple form and convert it into a dictionary form ARC can use.
+        Fill in all missing data.
+        The expected user input is partial:
+        ess_settings = [('scan', 'gaussian', 'c3ddb'), ('opt', 'gaussian', 'pharos'), ('sp', 'molpro'), ('qchem', 'pharos'),
+               ('orca', 'local')]
+        The desired format is complete:
+        ess_settings = {'scan': {'ess': 'gaussian', 'server': 'c3ddb'}, 'opt': {'ess': 'gaussian', 'server': 'pharos'},
+                        'sp': {'ess': 'molpro', 'server': 'rmg'}, 'conformer': {'ess': 'qchem', 'server': 'pharos'},
+                        'scan': {'ess': 'orca', 'server': 'local'}}
+        """
+        user_settings = self.ess_settings
+        # Check input validity:
+        if isinstance(user_settings, dict):
+            for entry in user_settings.values():
+                if not isinstance(entry, dict):
+                    raise InputError('The ess_settings argument is expected to be either a list of tuples or a '
+                                     'dictionary of dictionaries. Got {0}.'
+                                     '\nHere are two accepted formats:'
+                                     '\nA list of tuples (not all information has to be given, ARC will complete'
+                                     ' missing entries:\n{1}'
+                                     '\nA dictionary of dictionaries (ALL information must be included):\n{2}'.format(
+                        user_settings, """ess_settings = [('scan', 'gaussian', 'c3ddb'), ('opt', 'gaussian',
+                        'pharos'), ('sp', 'molpro'), ('qchem', 'pharos'), ('orca', 'local')]""", """ess_settings =
+                        {'scan': {'ess': 'gaussian', 'server': 'c3ddb'}, 'opt': {'ess': 'gaussian', 'server':
+                        'pharos'}, 'sp': {'ess': 'molpro', 'server': 'rmg'}, 'conformer': {'ess': 'qchem', 'server':
+                        'pharos'}, 'scan': {'ess': 'orca', 'server': 'local'}}"""))
+
+        # initialize the new ess_settings:
+        job_types = ['conformer', 'opt', 'freq', 'optfreq', 'sp', 'composite', 'scan', 'gsm', 'irc', 'ts_guess']
+        ess_settings = dict()
+        for job_type in job_types:
+            ess_settings[job_type] = dict()
+
+        # Fill in user info by looping through the tuples:
+        ess_servers = []
+        for settings in user_settings:
+            # Loop through tuples is user_settings
+            # We first process settings tuples that contain job types
+            for entry in settings:
+                if len(entry) < 2:
+                    raise InputError('Each entry in the ess_settings list must be a tuple containing at least two'
+                                     ' specifications of job type / software / server. Got {0} with only {1}'
+                                     ' specifications.'.format(entry, len(entry)))
+                if entry in job_types:
+                    # A job type is given. We assume this settings tuple is either of the format
+                    # ('job_type', 'ess', 'server'), ('job_type', 'ess'), or ('job_type', 'server')
+                    job_type = entry
+                    server = ''
+                    ess = ''
+                    for value in settings:
+                        if value in servers.keys():
+                            server = value
+                        else:
+                            if value not in self.supported_ess:
+                                raise InputError('Unidentified software or server.\nKnown servers are {0}.\n'
+                                                 'Known ESS software are {1}.\nGot: {2}'.format(
+                                                  servers.keys(), self.supported_ess, value))
+                            ess = value
+                    if not ess:
+                        # This tuple only contains job type and server. Determine ESS
+                        ess = self.determine_ess_by_job_type(job_type)
+                    break
+            else:
+                # We assume this settings tuple is of the format ('ess', 'server') with no job type
+                # If there's no job type, we'll save it and process it later
+                ess_servers.append(settings)
+
+    def determine_ess_by_job_type(self, job_type):
+        """A helper function for determining ESS from the level of theory for a job type"""
+        levels_dict = {'composite': self.composite_method,
+                       'opt': self.opt_level,
+                       'freq': self.freq_level,
+                       'sp': self.sp_level,
+                       'scan': self.scan_level,
+                       }
+        level_of_theory
+        if job_type == 'composite':
+            if not self.settings['gaussian']:
+                raise JobError('Could not find the Gaussian software to run the composite method {0}'.format(
+                    self.method))
+            self.software = 'gaussian'
+        elif job_type in ['conformer', 'opt', 'freq', 'optfreq', 'sp']:
+            if 'ccs' in self.method or 'cis' in self.method or 'pv' in self.basis_set:
+                if self.settings['molpro']:
+                    self.software = 'molpro'
+                elif self.settings['gaussian']:
+                    self.software = 'gaussian'
+                elif self.settings['qchem']:
+                    self.software = 'qchem'
+            elif 'b3lyp' in self.method:
+                if self.settings['gaussian']:
+                    self.software = 'gaussian'
+                elif self.settings['qchem']:
+                    self.software = 'qchem'
+                elif self.settings['molpro']:
+                    self.software = 'molpro'
+            elif 'wb97xd' in self.method:
+                if not self.settings['gaussian']:
+                    raise JobError('Could not find the Gaussian software to run {0}/{1}'.format(
+                        self.method, self.basis_set))
+                self.software = 'gaussian'
+            elif 'b97' in self.method or 'm06-2x' in self.method or 'def2' in self.basis_set:
+                if not self.settings['qchem']:
+                    raise JobError('Could not find the QChem software to run {0}/{1}'.format(
+                        self.method, self.basis_set))
+                self.software = 'qchem'
+        elif job_type == 'scan':
+            if 'b97' in self.method or 'm06-2x' in self.method or 'def2' in self.basis_set:
+                if not self.settings['qchem']:
+                    raise JobError('Could not find the QChem software to run {0}/{1}'.format(
+                        self.method, self.basis_set))
+                self.software = 'qchem'
+            else:
+                if self.settings['gaussian']:
+                    self.software = 'gaussian'
+                else:
+                    self.software = 'qchem'
+        elif job_type in ['gsm', 'irc']:
+            if not self.settings['gaussian']:
+                raise JobError('Could not find the Gaussian software to run {0}'.format(job_type))
 
 def get_git_commit():
     if os.path.exists(os.path.join(arc_path,'.git')):
