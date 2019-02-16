@@ -308,6 +308,8 @@ class ARC(object):
         else:
             # ARC is run from an input or a restart file.
             # Read the input_dict
+            project_directory = project_directory if project_directory is not None\
+                else os.path.abspath(os.path.dirname(input_dict))
             self.from_dict(input_dict=input_dict, project=project, project_directory=project_directory)
         self.restart_dict = self.as_dict()
         self.determine_model_chemistry()
