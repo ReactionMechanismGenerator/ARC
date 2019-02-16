@@ -249,9 +249,11 @@ def draw_thermo_parity_plots(species_list, path=None):
 
 
 def draw_parity_plot(var_arc, var_rmg, var_label, var_units, labels, pp):
+    height = max(len(var_arc) / 3.5, 4)
+    width = 8
     min_var = min(var_arc + var_rmg)
     max_var = max(var_arc + var_rmg)
-    fig = plt.figure(figsize=(5, 4), dpi=120)
+    fig = plt.figure(figsize=(width, height), dpi=120)
     ax = fig.add_subplot(111)
     plt.title('{0} parity plot'.format(var_label))
     for i, label in enumerate(labels):
@@ -261,7 +263,7 @@ def draw_parity_plot(var_arc, var_rmg, var_label, var_units, labels, pp):
     plt.ylabel('{0} determined by RMG ({1})'.format(var_label, var_units))
     plt.xlim = (min_var, max_var * 1.1)
     plt.ylim = (min_var, max_var)
-    plt.legend(shadow=False, frameon=False)
+    plt.legend(shadow=False, frameon=False, loc='best')
     # txt_height = 0.04 * (plt.ylim[1] - plt.ylim[0])  # plt.ylim and plt.xlim return a tuple
     # txt_width = 0.02 * (plt.xlim[1] - plt.xlim[0])
     # text_positions = get_text_positions(var_arc, var_rmg, txt_width, txt_height)
@@ -440,7 +442,9 @@ def save_thermo_lib(species_list, path, name, lib_long_desc):
         thermo_library = ThermoLibrary(name=name, longDesc=lib_long_desc)
         for i, spc in enumerate(species_list):
             if spc.thermo is not None:
-                spc.long_thermo_description += '\n\nGeometry:\n{0}'.format(spc.final_xyz)
+                spc.long_thermo_description += '\nExternal symmetry: {0}, optical isomers: {1}\n'.format(
+                    spc.external_symmetry, spc.optical_isomers)
+                spc.long_thermo_description += '\nGeometry:\n{0}'.format(spc.final_xyz)
                 thermo_library.loadEntry(index=i+1,
                                          label=spc.label,
                                          molecule=spc.mol_list[0].toAdjacencyList(),
