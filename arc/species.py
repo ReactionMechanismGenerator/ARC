@@ -1330,22 +1330,27 @@ def determine_rotor_symmetry(rotor_path, label, pivots):
         tol = 0.10 * max_e  # tolerance for the second criterion
     else:
         tol = max_e
-    peaks, valleys = list(), [energies[0]]  # the peaks and valleys of the scan
-    worst_peak_resolution, worst_valley_resolution = 0, max(energies[1] - energies[0], energies[-2] - energies[-1])
+    min_e = energies[0]
+    for i, e in enumerate(energies):
+        # sometimes the opt level and scan levels mismatch, causing the minimum to be close to 0 degrees, but not at 0
+        if e < min_e:
+            min_e = e
+    peaks, valleys = list(), list()  # the peaks and valleys of the scan
+    worst_peak_resolution, worst_valley_resolution = 0, 0
     for i, e in enumerate(energies):
         # identify peaks and valleys, and determine worst resolutions in the scan
-        if i != 0 and i != len(energies) - 1:
-            # this is an intermediate point in the scan
-            if e > energies[i - 1] and e > energies[i + 1]:
-                # this is a local peak
-                if any([diff > worst_peak_resolution for diff in [e - energies[i - 1], e - energies[i + 1]]]):
-                    worst_peak_resolution = max(e - energies[i - 1], e - energies[i + 1])
-                peaks.append(e)
-            elif e < energies[i - 1] and e < energies[i + 1]:
-                # this is a local valley
-                if any([diff > worst_valley_resolution for diff in [energies[i - 1] - e, energies[i + 1] - e]]):
-                    worst_valley_resolution = max(energies[i - 1] - e, energies[i + 1] - e)
-                valleys.append(e)
+        ip1 = cyclic_index_i_plus_1(i, len(energies))
+        im1 = cyclic_index_i_minus_1(i)
+        if e > energies[im1] and e > energies[ip1]:
+            # this is a local peak
+            if any([diff > worst_peak_resolution for diff in [e - energies[im1], e - energies[ip1]]]):
+                worst_peak_resolution = max(e - energies[im1], e - energies[ip1])
+            peaks.append(e)
+        elif e < energies[im1] and e < energies[ip1]:
+            # this is a local valley
+            if any([diff > worst_valley_resolution for diff in [energies[im1] - e, energies[ip1] - e]]):
+                worst_valley_resolution = max(energies[im1] - e, energies[ip1] - e)
+            valleys.append(e)
     # The number of peaks and valley must always be the same (what goes up must come down), if it isn't then there's
     # something seriously wrong with the scan
     if len(peaks) != len(valleys):
@@ -1381,6 +1386,14 @@ def determine_rotor_symmetry(rotor_path, label, pivots):
         logging.info('Determined a symmetry number of {0} for rotor of species {1} between pivots {2}'
                      ' based on the {3}.'.format(symmetry, label, pivots, reason))
     return symmetry
+
+
+def cyclic_index_i_plus_1(i, length):
+    return i + 1 if i + 1 < length else 0
+
+
+def cyclic_index_i_minus_1(i):
+    return i - 1 if i - 1 > 0 else -1
 
 
 def determine_rotor_type(rotor_path):
