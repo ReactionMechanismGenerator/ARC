@@ -14,7 +14,7 @@ from rmgpy.species import Species
 from rmgpy.reaction import Reaction
 
 from arc.species import ARCSpecies, TSGuess, get_xyz_string, get_xyz_matrix, mol_from_xyz, check_xyz,\
-    determine_rotor_type
+    determine_rotor_type, determine_rotor_symmetry
 from arc.settings import arc_path
 
 ################################################################################
@@ -390,12 +390,31 @@ H      -1.81136714   -0.32689007   -1.14689570
         self.assertEqual(new_xyz, expected_xyz)
 
     def test_determine_rotor_type(self):
-        """Tst that we correctly determine whether a rotor is FreeRotor or HinderedRotor"""
-        free_path = os.path.join(arc_path, 'arc', 'testing', 'CH3C(O)O_rotor_scan(FreeRotor).out')
-        hindered_path = os.path.join(arc_path, 'arc', 'testing', 'H2O2_rotor(HinderedRotor).out')
+        """Test that we correctly determine whether a rotor is FreeRotor or HinderedRotor"""
+        free_path = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'CH3C(O)O_FreeRotor.out')
+        hindered_path = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'H2O2.out')
         self.assertEqual(determine_rotor_type(free_path), 'FreeRotor')
         self.assertEqual(determine_rotor_type(hindered_path), 'HinderedRotor')
 
+    def test_rotor_symmetry(self):
+        """Test that ARC automatically determines a correct rotor symmetry"""
+        path1 = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'OOC1CCOCO1.out')  # symmetry = 1; min at -10 o
+        path2 = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'H2O2.out')  # symmetry = 1
+        path3 = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'N2O3.out')  # symmetry = 2
+        path4 = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'sBuOH.out')  # symmetry = 3
+        path5 = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'CH3C(O)O_FreeRotor.out')  # symmetry = 6
+
+        symmetry1 = determine_rotor_symmetry(rotor_path=path1, label='label', pivots=[3,4])
+        symmetry2 = determine_rotor_symmetry(rotor_path=path2, label='label', pivots=[3,4])
+        symmetry3 = determine_rotor_symmetry(rotor_path=path3, label='label', pivots=[3,4])
+        symmetry4 = determine_rotor_symmetry(rotor_path=path4, label='label', pivots=[3,4])
+        symmetry5 = determine_rotor_symmetry(rotor_path=path5, label='label', pivots=[3,4])
+
+        self.assertEqual(symmetry1, 1)
+        self.assertEqual(symmetry2, 1)
+        self.assertEqual(symmetry3, 2)
+        self.assertEqual(symmetry4, 3)
+        self.assertEqual(symmetry5, 6)
 
 class TestTSGuess(unittest.TestCase):
     """
