@@ -24,7 +24,7 @@ import arc.rmgdb as rmgdb
 from arc.settings import arc_path, default_levels_of_theory, check_status_command, servers, valid_chars
 from arc.scheduler import Scheduler, time_lapse
 from arc.exceptions import InputError, SettingsError, SpeciesError
-from arc.species import ARCSpecies
+from arc.species import ARCSpecies, get_Hbonds
 from arc.reaction import ARCReaction
 from arc.processor import Processor
 from arc.job.ssh import SSH_Client
@@ -272,6 +272,14 @@ class ARC(object):
                 if i in indices_to_pop:
                     self.arc_species_list.pop(i)
             self.arc_species_list.extend(converted_species_list)
+            for arc_spc in self.arc_species_list: #if it has hydrogen bonds we need to calculate the unbonded confomer too
+                if get_Hbonds(arc_spc.mol):
+                    arc_mol = arc_spc.mol.copy(deep=True)
+                    arc_mol.remove_H_bonds()
+                    spc = Species(molecule=[arc_mol])
+                    spc.label = str(arc_spc.label+'noHbonds')
+                    self.arc_species_list.append(ARCSpecies(is_ts=False,rmg_species=spc))
+                    logging.info("ARC Species {} is H-bonded so calculating un-H-bonded conformer {} as well".format(arc_spc.label,spc.label))
             for arc_spc in self.arc_species_list:
                 if arc_spc.label not in self.unique_species_labels:
                     self.unique_species_labels.append(arc_spc.label)
