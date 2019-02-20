@@ -70,3 +70,52 @@ def parse_e0(path):
     except Exception:
         e0 = None
     return e0
+
+def parse_lines(path,start,stop=None,time=1):
+    """
+    Return the list of lines from the time-th occurance of start
+    to the next occurance of stop
+    """
+    if not os.path.isfile(path):
+        raise InputError('Could not find file {0}'.format(path))
+    f = open(path)
+    line = f.readline()
+    lines = []
+    boo = False
+    c = 1
+    while line != '':
+        if start in line:
+            if time == c:
+                boo = True
+                line = f.readline()
+                continue
+            else:
+                c += 1
+
+        if boo and stop in line:
+            break
+        if boo:
+            lines.append(line)
+        line = f.readline()
+    return lines
+
+def parse_scan_coords(path,point_index,software):
+    """
+    Parse the coordinates of the point_index-th point
+    in a rotor scan
+    """
+    if software == 'gaussian':
+        start = 'Optimization completed'
+        stop = 'Distance matrix (angstroms):'
+        lines = parse_lines(path,start,stop=stop,time=point_index+1)
+        atoms = int(lines[-2].split()[0])
+        lines = lines[-atoms-1:-1]
+        coords = []
+        for line in lines:
+            vals = line.split()
+            coords.append([float(x) for x in vals[3:]])
+        coords = np.array(coords)
+        return coords
+    else:
+        raise ValueError('parse_scan_coords() can currently only parse gaussian files,'
+                         ' got {0}'.format(software))
