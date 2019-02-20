@@ -1423,3 +1423,25 @@ def check_xyz(xyz):
     """
     if xyz is not None:
         return os.linesep.join(line for line in xyz.splitlines() if (line and any([char != ' ' for char in line])))
+
+def get_Hbonds(mol):
+    """
+    returns a list of 2-tuples of 0-indexed indices for the atoms involved in each
+    hydrogen bond in the molecule
+    """
+    hbonds = []
+    for bd in mol.getAllEdges():
+        if bd.isHydrogenBond():
+            hbonds.append((mol.atoms.index(bd.atom1),mol.atoms.index(bd.atom2)))
+    return hbonds
+
+def is_Hbonded(xyz,hbonds,hbthresh=2.31):
+    """
+    Returns True if for the given xyz coordinates with the hydrogen bonds in the list of 2-tuples hbonds
+    the hydrogen bonds are all shorter than hbthresh (Angstorms)
+    """
+    for hb in hbonds:
+        if np.linalg.norm(xyz[hb[0],:]-xyz[hb[1],:]) > hbthresh:
+            return False
+
+    return True
