@@ -17,11 +17,14 @@ submit_scripts = {
 #$ -o out.txt
 #$ -e err.txt
 
+echo "Running on node:"
+hostname
+
 PATH=$PATH:/home/{un}
 export LD_LIBRARY_PATH=/opt/intel/Compiler/11.0/074/bin/intel64:$LD_LIBRARY_PATH
 export LD_LIBRARY_PATH=/opt/intel/Compiler/11.0/074/mkl/lib/em64t:$LD_LIBRARY_PATH
 g03root=/opt
-GAUSS_SCRDIR=/scratch/{un}
+GAUSS_SCRDIR=/scratch/{un}/{name}
 export g03root GAUSS_SCRDIR
 . $g03root/g03/bsd/g03.profile
 export LD_LIBRARY_PATH=$HOME'/gcc/gcc-4.7/lib64':$LD_LIBRARY_PATH
@@ -33,9 +36,12 @@ WorkDir=`pwd`
 cd
 source .bashrc
 mkdir -p /scratch/{un}
+mkdir -p /scratch/{un}/{name}
 cd $WorkDir
 
 g03 input.gjf
+
+rm -r /scratch/{un}/{name}
 
 """,
     'qchem': """#!/bin/bash
@@ -50,19 +56,25 @@ g03 input.gjf
 #$ -o out.txt
 #$ -e err.txt
 
+echo "Running on node:"
+hostname
+
 export QC=/opt/qchem
-export QCSCRATCH=/scratch/{un}
-export QCLOCALSCR=/scratch/{un}/qlscratch
+export QCSCRATCH=/scratch/{un}/{name}
+export QCLOCALSCR=/scratch/{un}/{name}/qlscratch
 . $QC/qcenv.sh
 
 WorkDir=`pwd`
 cd
 source .bashrc
 mkdir -p /scratch/{un}
-mkdir -p /scratch/{un}/qlscratch
+mkdir -p /scratch/{un}/{name}
+mkdir -p /scratch/{un}/{name}/qlscratch
 cd $WorkDir
 
 qchem -nt 6 input.in output.out
+
+rm -r /scratch/{un}/{name}
 
 """,
     'molpro': """#!/bin/bash
