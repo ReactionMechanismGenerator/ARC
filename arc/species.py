@@ -1308,8 +1308,6 @@ def nearly_equal(a, b, sig_fig=5):
 
 def determine_rotor_symmetry(rotor_path, label, pivots):
     """
-    **  This is a temporary function, will soon be incorporated in Arkane instead**
-
     Determine the rotor symmetry number from the potential scan given in :list:`energies` in J/mol units
     Assumes the list represents a 360 degree scan
     str:`label` is the species name, used for logging and error messages
@@ -1339,8 +1337,13 @@ def determine_rotor_symmetry(rotor_path, label, pivots):
     worst_peak_resolution, worst_valley_resolution = 0, 0
     for i, e in enumerate(energies):
         # identify peaks and valleys, and determine worst resolutions in the scan
-        ip1 = cyclic_index_i_plus_1(i, len(energies))
-        im1 = cyclic_index_i_minus_1(i)
+        ip1 = cyclic_index_i_plus_1(i, len(energies))  # i Plus 1
+        im1 = cyclic_index_i_minus_1(i)                # i Minus 1
+        if i == 0 and energies[im1] == e:
+            # If the first and last scan points have same energy, change im1
+            im1 -= 1
+            logging.debug('im1: {0}, ip1: {1}, em1: {2}, e: {3}, ep1: {4}'.format(
+                im1, ip1, energies[im1], e, energies[ip1]))
         if e > energies[im1] and e > energies[ip1]:
             # this is a local peak
             if any([diff > worst_peak_resolution for diff in [e - energies[im1], e - energies[ip1]]]):
@@ -1355,7 +1358,7 @@ def determine_rotor_symmetry(rotor_path, label, pivots):
     # something seriously wrong with the scan
     if len(peaks) != len(valleys):
         logging.error('Rotor of species {0} between pivots {1} does not have the same number'
-                      ' of peaks and valleys.'.format(label, pivots))
+                      ' of peaks ({2}) and valleys ({3}).'.format(label, pivots, len(peaks), len(valleys)))
         return len(peaks)  # this works for CC(=O)[O]
     min_peak = min(peaks)
     max_peak = max(peaks)
