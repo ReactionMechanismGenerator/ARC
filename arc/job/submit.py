@@ -39,7 +39,7 @@ mkdir -p /scratch/{un}
 mkdir -p /scratch/{un}/{name}
 cd $WorkDir
 
-g03 input.gjf
+g16 input.gjf
 
 rm -r /scratch/{un}/{name}
 
