@@ -529,6 +529,9 @@ class ARCSpecies(object):
             else:
                 mol_list = self.mol_list
             for mol in mol_list:
+                if get_Hbonds(mol): #We need the rotor scans of the H-bonded molecule later for determining when the H-bond breaks
+                    mol = mol.copy(deep=True)
+                    mol.remove_H_bonds()
                 rotors = find_internal_rotors(mol)
                 for new_rotor in rotors:
                     for existing_rotor in self.rotors_dict.values():
