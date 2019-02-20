@@ -503,14 +503,15 @@ class ARCSpecies(object):
             rdkit = True
         elif method.lower() in ['ob', 'openbabel', 'opnbbl']:
             opnbbl = True
+        hbonds = get_Hbonds(mol)
         if rdkit:
             rd_xyzs, rd_energies = _get_possible_conformers_rdkit(mol)
             if rd_xyzs:
-                rd_xyz = get_min_energy_conformer(xyzs=rd_xyzs, energies=rd_energies)
+                rd_xyz = get_min_energy_conformer(xyzs=rd_xyzs, energies=rd_energies,hbonds=hbonds)
                 self.xyzs.append(get_xyz_string(xyz=rd_xyz, mol=mol))
         if opnbbl:
             ob_xyzs, ob_energies = _get_possible_conformers_openbabel(mol)
-            ob_xyz = get_min_energy_conformer(xyzs=ob_xyzs, energies=ob_energies)
+            ob_xyz = get_min_energy_conformer(xyzs=ob_xyzs, energies=ob_energies,hbonds=hbonds)
             self.xyzs.append(get_xyz_string(xyz=ob_xyz, mol=mol))
         logging.debug('Considering {actual} conformers for {label} out of {total} total ran using a force field'.format(
             actual=len(self.xyzs), total=len(rd_xyzs+ob_xyzs), label=self.label))
@@ -1081,9 +1082,20 @@ def _get_possible_conformers_openbabel(mol):
     return xyzs, energies
 
 
-def get_min_energy_conformer(xyzs, energies):
-    minval = min(energies)
-    minind = energies.index(minval)
+def get_min_energy_conformer(xyzs, energies, hbonds=[]):
+    conformer_valid = False
+    while not conformer_valid:
+        conformer_valid = True
+        if energies == []:
+            return None
+        minval = min(energies)
+        minind = energies.index(minval)
+        xyz = xyzs[minind]
+        if not is_Hbonded(np.array(xyz),hbonds): #if no hbonds isHbonded returns True always
+            conformer_valid = False
+            del energies[minind]
+            del xyzs[minind]
+
     return xyzs[minind]
 
 
