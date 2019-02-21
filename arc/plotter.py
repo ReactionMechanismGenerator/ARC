@@ -410,8 +410,8 @@ def save_geo(species, project_directory):
     geo_path = os.path.join(project_directory, 'output', folder_name, species.label, 'geometry')
     if os.path.exists(geo_path):
         # clean working folder from all previous output
-        for file in os.listdir(geo_path):
-            file_path = os.path.join(geo_path, file)
+        for file0 in os.listdir(geo_path):
+            file_path = os.path.join(geo_path, file0)
             os.remove(file_path)
     else:
         os.makedirs(geo_path)
