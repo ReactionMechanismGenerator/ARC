@@ -92,9 +92,11 @@ class ARCSpecies(object):
 *   rotors_dict: {1: {'pivots': pivots_list,
                       'top': top_list,
                       'scan': scan_list,
-                      'success: ''bool''.
+                      'success': ``bool``.
+                      'invalidation_reason': ``str``,
                       'times_dihedral_set': ``int``,
                       'scan_path': <path to scan output file>},
+                      'max_e': ``float``,  # in kJ/mol
                       'symmetry': ``int``,
                   2: {}, ...
                  }
@@ -222,7 +224,8 @@ class ARCSpecies(object):
                     self.mol_list = self.mol.generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
                 if not self.bond_corrections:
                     self.bond_corrections = self.mol.enumerate_bonds()
-                    self.long_thermo_description += 'Bond corrections: {0}\n'.format(self.bond_corrections)
+                    if self.bond_corrections:
+                        self.long_thermo_description += 'Bond corrections: {0}\n'.format(self.bond_corrections)
 
             if self.mol is not None:
                 self.number_of_atoms = len(self.mol.atoms)
@@ -389,9 +392,10 @@ class ARCSpecies(object):
                 # (important for identifying rotor indices)
                 self.xyz_mol, _ = mol_from_xyz(self.initial_xyz)
             self.mol_list = self.mol.generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
-            if not self.bond_corrections:
+            if not 'bond_corrections' in species_dict:
                 self.bond_corrections = self.mol.enumerate_bonds()
-                self.long_thermo_description += 'Bond corrections: {0}\n'.format(self.bond_corrections)
+                if self.bond_corrections:
+                    self.long_thermo_description += 'Bond corrections: {0}\n'.format(self.bond_corrections)
             self.number_of_atoms = len(self.mol.atoms)
         if self.initial_xyz is not None and not self.final_xyz:
             # consider the initial guess as one of the conformers if generating others.
@@ -1172,6 +1176,7 @@ def find_internal_rotors(mol):
                                     smallest_index = i
                         rotor['scan'].append(smallest_index + 1)
                         rotor['success'] = None
+                        rotor['invalidation_reason'] = ''
                         rotor['times_dihedral_set'] = 0
                         rotor['scan_path'] = ''
                         rotors.append(rotor)
@@ -1359,7 +1364,7 @@ def determine_rotor_symmetry(rotor_path, label, pivots):
     if len(peaks) != len(valleys):
         logging.error('Rotor of species {0} between pivots {1} does not have the same number'
                       ' of peaks ({2}) and valleys ({3}).'.format(label, pivots, len(peaks), len(valleys)))
-        return len(peaks)  # this works for CC(=O)[O]
+        return len(peaks), max_e * 0.001  # this works for CC(=O)[O]
     min_peak = min(peaks)
     max_peak = max(peaks)
     min_valley = min(valleys)
@@ -1388,7 +1393,7 @@ def determine_rotor_symmetry(rotor_path, label, pivots):
     else:
         logging.info('Determined a symmetry number of {0} for rotor of species {1} between pivots {2}'
                      ' based on the {3}.'.format(symmetry, label, pivots, reason))
-    return symmetry
+    return symmetry, max_e * 0.001  # max_e in kJ/mol
 
 
 def cyclic_index_i_plus_1(i, length):

@@ -11,6 +11,11 @@ import shutil
 import subprocess
 from distutils.spawn import find_executable
 from IPython.display import display
+import yaml
+try:
+    from yaml import CDumper as Dumper, CLoader as Loader, CSafeLoader as SafeLoader
+except ImportError:
+    from yaml import Dumper, Loader, SafeLoader
 
 from rmgpy.species import Species
 from rmgpy.reaction import Reaction
@@ -359,6 +364,8 @@ class ARC(object):
         If `project` name and `ess_settings` are given as well to __init__, they will override the respective values
         in the restart dictionary.
         """
+        if isinstance(input_dict, (str, unicode)):
+            input_dict = read_file(input_dict)
         if project is None and 'project' not in input_dict:
             raise InputError('A project name must be given')
         self.project = project if project is not None else input_dict['project']
@@ -393,12 +400,13 @@ class ARC(object):
                 for key, val in spc_output.items():
                     if key in ['geo', 'freq', 'sp', 'composite']:
                         if not os.path.isfile(val):
-                            raise SpeciesError('Could not find {0} output file for species {1}'.format(key, label))
-                    elif key == 'rotors':
-                        for rotor_num, rotor_dict in val.items():
-                            if not os.path.isfile(val['path']):
-                                raise SpeciesError('Could not find {0} output file for rotor {1} of species {2}'.format(
-                                    key, rotor_num, label))
+                            dir_path = os.path.dirname(os.path.realpath(__file__))
+                            if os.path.isfile(os.path.join(dir_path, val)):
+                                # correct relative paths
+                                self.output[label][key] = os.path.join(dir_path, val)
+                            else:
+                                raise SpeciesError('Could not find {0} output file for species {1}: {2}'.format(
+                                    key, label, val))
         self.running_jobs = input_dict['running_jobs'] if 'running_jobs' in input_dict else dict()
         logging.debug('output dictionary successfully parsed:\n{0}'.format(self.output))
         self.t_min = input_dict['t_min'] if 't_min' in input_dict else None
@@ -503,6 +511,16 @@ class ARC(object):
             self.sp_level = ''
         if 'species' in input_dict:
             self.arc_species_list = [ARCSpecies(species_dict=spc_dict) for spc_dict in input_dict['species']]
+            for spc in self.arc_species_list:
+                for rotor_num, rotor_dict in spc.rotors_dict.items():
+                    if not os.path.isfile(rotor_dict['scan_path']):
+                        dir_path = os.path.dirname(os.path.realpath(__file__))
+                        if os.path.isfile(os.path.join(dir_path, rotor_dict['scan_path'])):
+                            # correct relative paths
+                            spc.rotors_dict[rotor_num]['scan_path'] = os.path.join(dir_path, rotor_dict['scan_path'])
+                        else:
+                            raise SpeciesError('Could not find rotor scan output file for rotor {0} of species {1}:'
+                                               ' {2}'.format(rotor_num, spc.label, rotor_dict['scan_path']))
         else:
             self.arc_species_list = list()
         if 'reactions' in input_dict:
@@ -537,13 +555,15 @@ class ARC(object):
                                    settings=self.settings, generate_conformers=self.generate_conformers,
                                    scan_rotors=self.scan_rotors, initial_trsh=self.initial_trsh, rmgdatabase=self.rmgdb,
                                    restart_dict=self.restart_dict, project_directory=self.project_directory)
+
+        self.save_project_info_file()
+
         prc = Processor(project=self.project, project_directory=self.project_directory,
                         species_dict=self.scheduler.species_dict, rxn_list=self.scheduler.rxn_list,
                         output=self.scheduler.output, use_bac=self.use_bac, model_chemistry=self.model_chemistry,
                         lib_long_desc=self.lib_long_desc, rmgdatabase=self.rmgdb, t_min=self.t_min, t_max=self.t_max,
                         t_count=self.t_count)
         prc.process()
-        self.save_project_info_file()
         self.summary()
         self.log_footer()
 
@@ -882,6 +902,17 @@ class ARC(object):
             if char == ' ':  # space IS a valid character for other purposes, but isn't valid in project names
                 raise InputError('A project name (used to naming folders) must not contain spaces.'
                                  ' Got {0}.'.format(self.project))
+
+
+def read_file(path):
+    """
+    Read the ARC YAML input file and return the parameters in a dictionary
+    """
+    if not os.path.isfile(path):
+        raise ValueError('Could not find the input file {0}'.format(path))
+    with open(path, 'r') as f:
+        input_dict = yaml.load(stream=f)
+    return input_dict
 
 
 def get_git_commit():

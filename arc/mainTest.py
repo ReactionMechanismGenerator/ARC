@@ -10,6 +10,11 @@ import unittest
 import os
 import shutil
 
+from rmgpy import settings
+from rmgpy.data.rmg import RMGDatabase
+from rmgpy.species import Species
+from rmgpy.molecule.molecule import Molecule
+
 from arc.main import ARC
 from arc.species import ARCSpecies
 from arc.settings import arc_path
@@ -113,7 +118,7 @@ class TestARC(unittest.TestCase):
                                       'xyzs': []}],
                          'use_bac': True}
         arc1 = ARC(project='wrong', ess_settings=dict())
-        project = 'arc_project_for_testing_delete_after_usage'
+        project = 'arc_project_for_testing_delete_after_usage1'
         project_directory = os.path.join(arc_path, 'Projects', project)
         arc1.from_dict(input_dict=restart_dict, project='testing_from_dict', project_directory=project_directory)
         self.assertEqual(arc1.project, 'testing_from_dict')
@@ -126,7 +131,7 @@ class TestARC(unittest.TestCase):
         self.assertEqual(arc1.arc_species_list[0].charge, 1)
 
     def test_check_project_name(self):
-        """Test project name validity"""
+        """Test project name invalidity"""
         ess_settings = {}
         with self.assertRaises(InputError):
             ARC(project='ar c', ess_settings=ess_settings)
@@ -137,13 +142,124 @@ class TestARC(unittest.TestCase):
         with self.assertRaises(InputError):
             ARC(project='ar%c', ess_settings=ess_settings)
 
+    def test_restart(self):
+        """
+        Test restarting ARC through the ARC class in main.py via the input_dict argument of the API
+        Rather than through ARC.py. Check that all files are in place and tst file content.
+        """
+        restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart(H,H2O2,N2H3,CH3CO2).yml')
+        project = 'arc_project_for_testing_delete_after_usage2'
+        project_directory = os.path.join(arc_path, 'Projects', project)
+        arc1 = ARC(project=project, ess_settings=dict(),
+                   input_dict=restart_path, project_directory=project_directory)
+        arc1.execute()
+
+        with open(os.path.join(project_directory, 'output', 'thermo.info'), 'r') as f:
+            thermo_sft_ccsdtf12_bac = False
+            for line in f.readlines():
+                if 'thermo_DFT_CCSDTF12_BAC' in line:
+                    thermo_sft_ccsdtf12_bac = True
+                    break
+        self.assertTrue(thermo_sft_ccsdtf12_bac)
+
+        with open(os.path.join(project_directory, 'arc_project_for_testing_delete_after_usage2.info'), 'r') as f:
+            sts, n2h3, oet, lot, ap = False, False, False, False, False
+            for line in f.readlines():
+                if 'Considered the following species and TSs:' in line:
+                    sts = True
+                elif 'Species N2H3' in line:
+                    n2h3 = True
+                elif 'Overall execution time:' in line:
+                    oet = True
+                elif 'Levels of theory used:' in line:
+                    lot = True
+                elif 'ARC project arc_project_for_testing_delete_after_usage2' in line:
+                    ap = True
+        self.assertTrue(sts)
+        self.assertTrue(n2h3)
+        self.assertTrue(oet)
+        self.assertTrue(lot)
+        self.assertTrue(ap)
+
+        with open(os.path.join(project_directory, 'arc.log'), 'r') as f:
+            aei, ver, git, spc, elt, ldb, therm, src, ter = False, False, False, False, False, False, False, False, False
+            for line in f.readlines():
+                if 'ARC execution initiated on' in line:
+                    aei = True
+                elif '#   Version:' in line:
+                    ver = True
+                elif 'The current git HEAD for ARC is:' in line:
+                    git = True
+                elif 'Considering species: CH3CO2_rad' in line:
+                    spc = True
+                elif 'All jobs for species N2H3 successfully converged. Elapsed time:' in line:
+                    elt = True
+                elif 'Loading the RMG database...' in line:
+                    ldb = True
+                elif 'Thermodynamics for H2O2:' in line:
+                    therm = True
+                elif 'Sources of thermoproperties determined by RMG for the parity plots:' in line:
+                    src = True
+                elif 'ARC execution terminated on' in line:
+                    ter = True
+        self.assertTrue(aei)
+        self.assertTrue(ver)
+        self.assertTrue(git)
+        self.assertTrue(spc)
+        self.assertTrue(elt)
+        self.assertTrue(ldb)
+        self.assertTrue(therm)
+        self.assertTrue(src)
+        self.assertTrue(ter)
+
+        self.assertTrue(os.path.isfile(os.path.join(project_directory, 'output', 'thermo_parity_plots.pdf')))
+
+        with open(os.path.join(project_directory, 'output', 'Species', 'H2O2', 'species_dictionary.txt'), 'r') as f:
+            lines = f.readlines()
+        adj_list = str(''.join([line for line in lines if (line and 'H2O2' not in line)]))
+        mol1 = Molecule().fromAdjacencyList(adj_list)
+        self.assertEqual(mol1.toSMILES(), str('OO'))
+
+        thermo_library_path = os.path.join(project_directory, 'output', 'RMG libraries', 'thermo',
+                                           'arc_project_for_testing_delete_after_usage2.py')
+        new_thermo_library_path = os.path.join(settings['database.directory'], 'thermo', 'libraries',
+                                               'arc_project_for_testing_delete_after_usage2.py')
+        # copy the generated library to RMG-database
+        shutil.copyfile(thermo_library_path, new_thermo_library_path)
+        db = RMGDatabase()
+        db.load(
+            path=settings['database.directory'],
+            thermoLibraries=[str('arc_project_for_testing_delete_after_usage2')],
+            transportLibraries=[],
+            reactionLibraries=[],
+            seedMechanisms=[],
+            kineticsFamilies='none',
+            kineticsDepositories=[],
+            statmechLibraries=None,
+            depository=False,
+            solvation=False,
+            testing=True,
+        )
+
+        spc2 = Species().fromSMILES(str('CC([O])=O'))
+        spc2.generate_resonance_structures()
+        spc2.thermo = db.thermo.getThermoData(spc2)
+        self.assertAlmostEqual(spc2.getEnthalpy(298), -178069.73493379, 1)
+        self.assertAlmostEqual(spc2.getEntropy(298), 283.67441868, 1)
+        self.assertAlmostEqual(spc2.getHeatCapacity(1000), 119.05358594, 1)
+        self.assertTrue('arc_project_for_testing_delete_after_usage2' in spc2.thermo.comment)
+
+        # delete the generated library from RMG-database
+        os.remove(new_thermo_library_path)
+
     @classmethod
     def tearDownClass(cls):
-        """A function that is run ONCE after all unit tests in this class."""
-        project = 'arc_project_for_testing_delete_after_usage'
-        project_directory = os.path.join(arc_path, 'Projects', project)
-        shutil.rmtree(project_directory)
-        projects = ['ar c', 'ar:c', 'ar<c', 'ar%c']
+        """
+        A function that is run ONCE after all unit tests in this class.
+        Delete all project directories created during these unit tests
+        """
+        projects = ['arc_project_for_testing_delete_after_usage1', 'arc_project_for_testing_delete_after_usage2',
+                    'ar c', 'ar:c', 'ar<c', 'ar%c']
         for project in projects:
             project_directory = os.path.join(arc_path, 'Projects', project)
             shutil.rmtree(project_directory)

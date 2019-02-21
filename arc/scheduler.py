@@ -47,23 +47,23 @@ class Scheduler(object):
     Attribute               Type               Description
     ======================= ========= ==================================================================================
     `project`               ``str``   The project's name. Used for naming the working directory.
-    'servers'               ''list''  A list of servers used for the present project
+    `servers`               ''list''  A list of servers used for the present project
     `species_list`          ``list``  Contains input ``ARCSpecies`` objects (both species and TSs)
     `species_dict`          ``dict``  Keys are labels, values are ARCSpecies objects
     `rxn_list`              ``list``  Contains input ``ARCReaction`` objects
-    'unique_species_labels' ``list``  A list of species labels (checked for duplicates)
+    `unique_species_labels` ``list``  A list of species labels (checked for duplicates)
     `level_of_theory`       ``str``   *FULL* level of theory, e.g. 'CBS-QB3',
                                         'CCSD(T)-F12a/aug-cc-pVTZ//B3LYP/6-311++G(3df,3pd)'...
-    'composite'             ``bool``    Whether level_of_theory represents a composite method or not
+    `composite`             ``bool``    Whether level_of_theory represents a composite method or not
     `job_dict`              ``dict``  A dictionary of all scheduled jobs. Keys are species / TS labels,
                                         values are dictionaries where keys are job names (corresponding to
                                         'running_jobs' if job is running) and values are the Job objects.
-    'running_jobs'          ``dict``  A dictionary of currently running jobs (a subset of `job_dict`).
+    `running_jobs`          ``dict``  A dictionary of currently running jobs (a subset of `job_dict`).
                                         Keys are species/TS label, values are lists of job names
                                         (e.g. 'conformer3', 'opt_a123').
-    'servers_jobs_ids'      ``list``  A list of relevant job IDs currently running on the server
-    'fine'                  ``bool``  Whether or not to use a fine grid for opt jobs (spawns an additional job)
-    'output'                ``dict``  Output dictionary with status and final QM file paths for all species
+    `servers_jobs_ids`      ``list``  A list of relevant job IDs currently running on the server
+    `fine`                  ``bool``  Whether or not to use a fine grid for opt jobs (spawns an additional job)
+    `output`                ``dict``  Output dictionary with status and final QM file paths for all species
     `settings`              ``dict``  A dictionary of available servers and software
     `initial_trsh`          ``dict``  Troubleshooting methods to try by default. Keys are server names, values are trshs
     `restart_dict`          ``dict``  A restart dictionary parsed from a YAML restart file
@@ -245,7 +245,7 @@ class Scheduler(object):
                 self.output[species.label] = dict()
                 self.output[species.label]['status'] = ''
             else:
-                self.output[species.label]['status'] += 'Restarted ARC at {0}; '.format(datetime.datetime.now())
+                self.output[species.label]['status'] += '; Restarted ARC at {0}; '.format(datetime.datetime.now())
             if species.label not in self.job_dict:
                 self.job_dict[species.label] = dict()
             if species.yml_path is None:
@@ -253,9 +253,7 @@ class Scheduler(object):
                     self.species_dict[species.label].determine_rotors()
                 if species.label not in self.running_jobs:
                     self.running_jobs[species.label] = list()  # initialize before running the first job
-                if not species.is_ts and species.number_of_atoms == 1\
-                        and 'sp' not in self.output[species.label] and 'composite' not in self.output[species.label]:
-                    # don't bother checking for already ran jobs for monoatomic species if restarting
+                if not species.is_ts and species.number_of_atoms == 1:
                     logging.debug('Species {0} is monoatomic'.format(species.label))
                     if not self.species_dict[species.label].initial_xyz:
                         # generate a simple "Symbol   0.0   0.0   0.0" xyz matrix
@@ -267,11 +265,14 @@ class Scheduler(object):
                                             ' Assuming element is {1}'.format(species.label, symbol))
                         self.species_dict[species.label].initial_xyz = symbol + '   0.0   0.0   0.0'
                         self.species_dict[species.label].final_xyz = symbol + '   0.0   0.0   0.0'
-                    # No need to run any job for a monoatomic species other than sp (or composite if relevant)
-                    if self.composite_method:
-                        self.run_composite_job(species.label)
-                    else:
-                        self.run_sp_job(label=species.label)
+                    if 'sp' not in self.output[species.label] and 'composite' not in self.output[species.label] \
+                            and 'sp' not in self.job_dict[species.label]\
+                            and 'composite' not in self.job_dict[species.label]:
+                        # No need to run any job for a monoatomic species other than sp (or composite if relevant)
+                        if self.composite_method:
+                            self.run_composite_job(species.label)
+                        else:
+                            self.run_sp_job(label=species.label)
                 elif self.species_dict[species.label].initial_xyz or self.species_dict[species.label].final_xyz:
                     # For restarting purposes: check before running jobs whether they were already terminated
                     # (check self.output) or whether they are "currently running" (check self.job_dict)
@@ -657,7 +658,7 @@ class Scheduler(object):
                 pivots = self.species_dict[label].rotors_dict[i]['pivots']
                 if 'scan_path' not in self.species_dict[label].rotors_dict[i]\
                         or not self.species_dict[label].rotors_dict[i]['scan_path']:
-                    # check this job isn't already running on the server (from a restarted project):
+                    # check this job isn't already running on the server or completed (from a restarted project):
                     for scan_job in self.job_dict[label]['scan'].values():
                         if scan_job.pivots == pivots and scan_job.job_name in self.running_jobs[label]:
                             break
@@ -912,14 +913,18 @@ class Scheduler(object):
             rotors_dict: {1: {'pivots': pivots_list,
                               'top': top_list,
                               'scan': scan_list,
-                              'success: ''bool'',
-                              'times_dihedral_set': ``int``
-                              'scan_path': <path to scan output file>},
+                              'success': ``bool``,
+                              'invalidation_reason': ``str``,
+                              'times_dihedral_set': ``int``,
+                              'scan_path': <path to scan output file>,
+                              'max_e': ``float``,  # in kJ/mol},
+                              'symmetry': ``int``}
                           2: {}, ...
                          }
         """
         for i in range(self.species_dict[label].number_of_rotors):
             message = ''
+            invalidation_reason = ''
             if self.species_dict[label].rotors_dict[i]['pivots'] == job.pivots:
                 invalidate = False
                 if job.job_status[1] == 'done':
@@ -933,6 +938,7 @@ class Scheduler(object):
                         logging.error('Energies from rotor scan of {label} between pivots {pivots} could not'
                                       'be read. Invalidating rotor.'.format(label=label, pivots=job.pivots))
                         invalidate = True
+                        invalidation_reason = 'could not read energies'
                         plot_scan = False
                     else:
                         v_list = np.array(v_list, np.float64)
@@ -949,6 +955,8 @@ class Scheduler(object):
                             logging.error(error_message)
                             message += error_message + '; '
                             invalidate = True
+                            invalidation_reason = 'initial and final points are inconsistent by more than {0}' \
+                                                  ' kJ/mol'.format(inconsistency_az)
                         if not invalidate:
                             v_last = v_list[-1]
                             for v in v_list:
@@ -962,6 +970,8 @@ class Scheduler(object):
                                     logging.error(error_message)
                                     message += error_message + '; '
                                     invalidate = True
+                                    invalidation_reason = 'two consecutive points are inconsistent by more than {0}' \
+                                                          ' kJ/mol'.format(inconsistency_ab)
                                     break
                                 if abs(v - v_list[0]) > maximum_barrier:
                                     # The barrier for the hinderd rotor is higher than `maximum_barrier` kJ/mol.
@@ -972,6 +982,8 @@ class Scheduler(object):
                                     logging.warn(warn_message)
                                     message += warn_message + '; '
                                     invalidate = True
+                                    invalidation_reason = 'scan has a barrier larger than {0}' \
+                                                          ' kJ/mol'.format(maximum_barrier)
                                     break
                                 v_last = v
                         # 2. Check conformation:
@@ -998,17 +1010,18 @@ class Scheduler(object):
                                 self.species_dict[label].rotors_dict[i]['success'] = True
                         symmetry = ''
                         if self.species_dict[label].rotors_dict[i]['success']:
-                            self.species_dict[label].rotors_dict[i]['symmetry'] = determine_rotor_symmetry(
+                            self.species_dict[label].rotors_dict[i]['symmetry'], _ = determine_rotor_symmetry(
                                 rotor_path=job.local_path_to_output_file, label=label,
                                 pivots=self.species_dict[label].rotors_dict[i]['pivots'])
-                            symmetry = ' (with symmetry {0})'.format(self.species_dict[label].rotors_dict[i]['symmetry'])
+                            symmetry = ' has symmetry {0}'.format(self.species_dict[label].rotors_dict[i]['symmetry'])
                         if plot_scan:
                             invalidated = ''
                             if invalidate:
                                 invalidated = '*INVALIDATED* '
                             message += invalidated
-                            logging.info('{invalidated}Rotor scan between pivots {pivots} for {label}{symmetry}'
-                                         ' is:'.format(invalidated=invalidated,
+                            logging.info('{invalidated}Rotor scan {scan} between pivots {pivots}'
+                                         ' for {label}{symmetry}'.format(invalidated=invalidated,
+                                                       scan=self.species_dict[label].rotors_dict[i]['scan'],
                                                        pivots=self.species_dict[label].rotors_dict[i]['pivots'],
                                                        label=label, symmetry=symmetry))
                             folder_name = 'rxns' if job.is_ts else 'Species'
@@ -1020,10 +1033,10 @@ class Scheduler(object):
                     invalidate = True
                 if invalidate:
                     self.species_dict[label].rotors_dict[i]['success'] = False
-
                 else:
                     self.species_dict[label].rotors_dict[i]['success'] = True
-                    self.species_dict[label].rotors_dict[i]['scan_path'] = job.local_path_to_output_file
+                self.species_dict[label].rotors_dict[i]['scan_path'] = job.local_path_to_output_file
+                self.species_dict[label].rotors_dict[i]['invalidation_reason'] = invalidation_reason
                 break  # `job` has only one pivot. Break if found, otherwise raise an error.
         else:
             raise SchedulerError('Could not match rotor with pivots {0} in species {1}'.format(job.pivots, label))
@@ -1173,7 +1186,7 @@ class Scheduler(object):
             if job.job_name not in self.running_jobs[label]:
                 self.running_jobs[label].append(job.job_name)  # mark as a running job
         elif job.software == 'gaussian':
-            if 'l103 internal coordinate error' in job.status[1]\
+            if 'l103 internal coordinate error' in job.job_status[1]\
                     and 'cartesian' not in job.ess_trsh_methods and job_type == 'opt':
                 # try both cartesian and nosymm
                 logging.info('Troubleshooting {type} job in {software} using opt=cartesian with nosyym'.format(
@@ -1422,7 +1435,7 @@ class Scheduler(object):
             self.species_dict[label].execution_time = '{0}{1:02.0f}:{2:02.0f}:{3:02.0f}'.format(d, h, m, s)
             logging.info('\nAll jobs for species {0} successfully converged.'
                          ' Elapsed time: {1}'.format(label, self.species_dict[label].execution_time))
-            self.output[label]['status'] += '; ALL converged'
+            self.output[label]['status'] += 'ALL converged'
             plotter.save_geo(species=self.species_dict[label], project_directory=self.project_directory)
             if self.species_dict[label].is_ts:
                 self.species_dict[label].make_ts_report()

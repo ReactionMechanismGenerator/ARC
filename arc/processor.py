@@ -34,8 +34,8 @@ class Processor(object):
     `species_dict`    ``dict``   Keys are labels, values are ARCSpecies objects
     `rxn_list`        ``list``   List of ARCReaction objects
     `output`          ``dict``   Keys are labels, values are output file paths
-    'use_bac'         ``bool``   Whether or not to use bond additivity corrections for thermo calculations
-    'model_chemistry' ``list``   The model chemistry in Arkane for energy corrections (AE, BAC).
+    `use_bac`         ``bool``   Whether or not to use bond additivity corrections for thermo calculations
+    `model_chemistry` ``list``   The model chemistry in Arkane for energy corrections (AE, BAC).
                                    This can be usually determined automatically.
     `lib_long_desc`   ``str``    A multiline description of levels of theory for the outputted RMG libraries
     `project_directory` ``str``  The path of the ARC project directory
@@ -82,6 +82,8 @@ class Processor(object):
         if not os.path.isdir(output_dir):
             os.makedirs(output_dir)
         output_file_path = os.path.join(output_dir, species.label + '_arkane_output.py')
+        if os.path.isfile(os.path.join(output_dir, 'species_dictionary.txt')):
+            os.remove(os.path.join(output_dir, 'species_dictionary.txt'))
 
         if species.yml_path is not None:
             species.arkane_file = species.yml_path
@@ -109,24 +111,29 @@ class Processor(object):
         else:
             freq_path = self.output[species.label]['freq']
             opt_path = self.output[species.label]['freq']
-        rotors = ''
-        if not species.is_ts:  # temporarily not using rotors for TSs
+        rotors, rotors_description = '', ''
+        if any([i_r_dict['success'] for i_r_dict in species.rotors_dict.values()]):
             rotors = '\n\nrotors = ['
-            pivots_for_description = 'Pivots of considered rotors: '
+            rotors_description = '1D rotors:\n'
             for i in range(species.number_of_rotors):
+                pivots = str(species.rotors_dict[i]['pivots'])
+                scan = str(species.rotors_dict[i]['scan'])
                 if species.rotors_dict[i]['success']:
                     rotor_path = species.rotors_dict[i]['scan_path']
                     rotor_type = determine_rotor_type(rotor_path)
-                    pivots = str(species.rotors_dict[i]['pivots'])
-                    pivots_for_description += str(species.rotors_dict[i]['pivots']) + ' ,'
                     top = str(species.rotors_dict[i]['top'])
                     try:
-                        rotor_symmetry = determine_rotor_symmetry(rotor_path, species.label, pivots)
+                        rotor_symmetry, max_e = determine_rotor_symmetry(rotor_path, species.label, pivots)
                     except RotorError:
                         logging.error('Could not determine rotor symmetry for species {0} between pivots {1}.'
                                       ' Setting the rotor symmetry to 1, which is probably WRONG.'.format(
                                        species.label, pivots))
                         rotor_symmetry = 1
+                        max_e = None
+                    max_e = ', max scan energy: {0:.2f} kJ/mol'.format(max_e) if max_e is not None else ''
+                    free = ' (set as a FreeRotor)' if rotor_type == 'FreeRotor' else ''
+                    rotors_description += 'pivots: ' + str(pivots) + ', dihedral: ' + str(scan) +\
+                        ', rotor symmetry: ' + str(rotor_symmetry) + max_e + free + '\n'
                     if rotor_type == 'HinderedRotor':
                         rotors += input_files['arkane_hindered_rotor'].format(rotor_path=rotor_path, pivots=pivots,
                                                                               top=top, symmetry=rotor_symmetry)
@@ -135,9 +142,13 @@ class Processor(object):
                                                                           top=top, symmetry=rotor_symmetry)
                     if i < species.number_of_rotors - 1:
                         rotors += ',\n          '
+                else:
+                    rotors_description += '* Invalidated! pivots: ' + str(pivots) + ', dihedral: ' + str(scan) +\
+                                          ', invalidation reason:' + species.rotors_dict[i]['invalidation_reason'] +\
+                                          '\n'
+
             rotors += ']'
-            if species.number_of_rotors:
-                species.long_thermo_description = pivots_for_description[:-2] + '\n'
+            species.long_thermo_description += rotors_description + '\n'
         # write the Arkane species input file
         input_file_path = os.path.join(self.project_directory, 'output', folder_name, species.label,
                                        '{0}_arkane_input.py'.format(species.label))
