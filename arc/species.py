@@ -508,11 +508,19 @@ class ARCSpecies(object):
             rd_xyzs, rd_energies = _get_possible_conformers_rdkit(mol)
             if rd_xyzs:
                 rd_xyz = get_min_energy_conformer(xyzs=rd_xyzs, energies=rd_energies,hbonds=hbonds)
-                self.xyzs.append(get_xyz_string(xyz=rd_xyz, mol=mol))
+                if rd_xyz:
+                    self.xyzs.append(get_xyz_string(xyz=rd_xyz, mol=mol))
+                else:
+                    logging.warn("did not find a hydrogen bonded conformer for {} from RDKit search".format(self.label))
         if opnbbl:
             ob_xyzs, ob_energies = _get_possible_conformers_openbabel(mol)
             ob_xyz = get_min_energy_conformer(xyzs=ob_xyzs, energies=ob_energies,hbonds=hbonds)
-            self.xyzs.append(get_xyz_string(xyz=ob_xyz, mol=mol))
+            if ob_xyz:
+                self.xyzs.append(get_xyz_string(xyz=ob_xyz, mol=mol))
+            else:
+                logging.warn("did not find a hydrogen bonded conformer for {} from OpenBabel search".format(self.label))
+        if self.xyzs == []:
+            raise ValueError("Did not find any hydrogen bonded conformers corresponding to {}".format(self.label))
         logging.debug('Considering {actual} conformers for {label} out of {total} total ran using a force field'.format(
             actual=len(self.xyzs), total=len(rd_xyzs+ob_xyzs), label=self.label))
 
