@@ -82,6 +82,8 @@ class Processor(object):
         if not os.path.isdir(output_dir):
             os.makedirs(output_dir)
         output_file_path = os.path.join(output_dir, species.label + '_arkane_output.py')
+        if os.path.isfile(os.path.join(output_dir, 'species_dictionary.txt')):
+            os.remove(os.path.join(output_dir, 'species_dictionary.txt'))
 
         if species.yml_path is not None:
             species.arkane_file = species.yml_path
