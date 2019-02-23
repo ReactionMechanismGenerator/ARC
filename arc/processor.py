@@ -5,20 +5,23 @@ from __future__ import (absolute_import, division, print_function, unicode_liter
 import os
 import shutil
 import logging
+import numpy as np
 
 from arkane.input import species as arkane_species, transitionState as arkane_transition_state,\
     reaction as arkane_reaction
 from arkane.statmech import StatMechJob, assign_frequency_scale_factor
 from arkane.thermo import ThermoJob
 from arkane.kinetics import KineticsJob
+from arkane.statmech import Log
 
 from rmgpy.species import Species
 
 import arc.rmgdb as rmgdb
 from arc.job.inputs import input_files
 from arc import plotter
+from arc.parser import parse_scan_coords
 from arc.exceptions import SchedulerError, RotorError
-from arc.species import determine_rotor_symmetry, determine_rotor_type
+from arc.species import determine_rotor_symmetry, determine_rotor_type, get_Hbonds, is_Hbonded
 
 ##################################################################
 
@@ -313,3 +316,96 @@ class Processor(object):
                         shutil.move(src=os.path.join(species_path, 'species', species_yaml_file),
                                     dst=os.path.join(species_path, species_yaml_file))
                     shutil.rmtree(os.path.join(species_path, 'species'))
+def get_Hbond_break_barrier(spc):
+    """
+    determine the energy barrier to breaking the hydrogen bond in spc
+    based on the barriers to rotations that result in non-hydrogen bonded conformers
+    """
+    barriers = []
+    for i in xrange(len(spc.rotors_dict.keys())):
+        rotor = spc.rotors_dict[i]
+        barriers.append(get_rotor_Hbond_barrier(rotor['scan_path'],spc.mol))
+    return min(barriers)
+
+def get_rotor_Hbond_barrier(path,mol):
+    """
+    determines the barrier to breaking any hydrogen bond in mol
+    through the rotation of the rotor defined by path
+    """
+    hbonds = get_Hbonds(mol)
+    log = Log(path='')
+    log.determine_qm_software(fullpath=path)
+    Elist, angle = log.software_log.loadScanEnergies()
+
+    zerow = 0 #index of the well of the choosen conformer
+    boo = True
+    while boo:
+        if Elist[zerow] > Elist[zerow+1]:
+            zerow = zerow+1
+        elif Elist[zerow] > Elist[zerow-1]:
+            zerow = zerow-1
+        else:
+            boo = False
+
+    if zerow < 0:
+        zerow = zerow +len(Elist)
+
+    Einds = [] #find the indices of all wells and peaks
+    for i in xrange(len(Elist)):
+        if i != len(Elist)-1:
+            if Elist[i] > Elist[i-1] and Elist[i] > Elist[i+1]:
+                Einds.append(i)
+            elif Elist[i] < Elist[i-1] and Elist[i] < Elist[i+1]:
+                Einds.append(i)
+        else:
+            if Elist[i] > Elist[i-1] and Elist[i] > Elist[0]:
+                Einds.append(i)
+            elif Elist[i] < Elist[i-1] and Elist[i] < Elist[0]:
+                Einds.append(i)
+    hbonded = []
+    well_inds = []
+    for ind in Einds: #determine well indices and which wells are H-bonded
+        if Elist[ind]<Elist[ind-1]:
+            well_inds.append(ind)
+            xyzs = parse_scan_coords(path,ind,'gaussian')
+            if is_Hbonded(xyzs,hbonds):
+                hbonded.append(True)
+            else:
+                hbonded.append(False)
+
+    barriers = []
+    for i in xrange(len(well_inds)): #determine barriers between hbonded and non-hbonded wells
+        if not hbonded[i]:
+            local_barriers = []
+            wind = Einds.index(well_inds[i])
+            while Einds[wind] != zerow: #+ angle direction path
+                if Einds[wind] in well_inds:
+                    wind += 1
+                else:
+                    if wind != len(Einds)-1:
+                        local_barriers.append(Elist[Einds[wind]]-Elist[Einds[wind+1]])
+                    else:
+                        local_barriers.append(Elist[Einds[wind]]-Elist[Einds[0]])
+                    wind += 1
+                if wind > len(Einds)-1:
+                    wind = wind - len(Einds)
+            if local_barriers:
+                barriers.append(max(local_barriers))
+
+            local_barriers = []
+            wind = Einds.index(well_inds[i])
+            while Einds[wind] != zerow: #- angle direction path
+                if Einds[wind] in well_inds:
+                    wind -= 1
+                else:
+                    local_barriers.append(Elist[Einds[wind]]-Elist[Einds[wind-1]])
+                    wind -= 1
+                if wind < 0:
+                    wind = wind + len(Einds)
+            if local_barriers:
+                barriers.append(max(local_barriers))
+
+    if barriers:
+        return min(barriers)
+    else:
+        return np.Inf
