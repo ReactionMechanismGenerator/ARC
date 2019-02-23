@@ -39,6 +39,32 @@ class TestParser(unittest.TestCase):
                                        np.array([302.51, 468.1488, 469.024, 484.198, 641.0067, 658.6316,
                                                  902.2888, 1236.9268, 1419.0826], np.float64)))
 
+    def test_parse_xyz_from_file(self):
+        """Test parsing xyz from a file"""
+        path1 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'CH3C(O)O.gjf')
+        path2 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'CH3C(O)O.xyz')
+        path3 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'AIBN.gjf')
+        path4 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'molpro.in')
+        path5 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'qchem.in')
+        path6 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'qchem_output.out')
+
+        xyz1 = parser.parse_xyz_from_file(path1)
+        xyz2 = parser.parse_xyz_from_file(path2)
+        xyz3 = parser.parse_xyz_from_file(path3)
+        xyz4 = parser.parse_xyz_from_file(path4)
+        xyz5 = parser.parse_xyz_from_file(path5)
+        xyz6 = parser.parse_xyz_from_file(path6)
+
+        self.assertEqual(xyz1.rstrip(), xyz2.rstrip())
+        self.assertTrue('C       1.40511900    0.21728200    0.07675200' in xyz1)
+        self.assertTrue('O      -0.79314200    1.04818800    0.18134200' in xyz1)
+        self.assertTrue('H      -0.43701200   -1.34990600    0.92900600' in xyz2)
+        self.assertTrue(' C                  2.12217963   -0.66843078    1.04808732' in xyz3)
+        self.assertTrue(' N                  2.41731872   -1.07916417    2.08039935' in xyz3)
+        self.assertTrue(' S         -0.4204682221       -0.3909949822        0.0245352116' in xyz4)
+        self.assertTrue(' N                 -1.99742564    0.38106573    0.09139807' in xyz5)
+        self.assertTrue('N      -1.17538406    0.34366165    0.03265021' in xyz6)
+
     def test_parse_t1(self):
         """Test T1 diagnostic parsing"""
         path = os.path.join(arc_path, 'arc', 'testing', 'mehylamine_CCSD(T).out')

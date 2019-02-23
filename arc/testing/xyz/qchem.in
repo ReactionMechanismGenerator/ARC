@@ -1,0 +1,36 @@
+$molecule
+0 1
+ N                 -0.69518720    0.84670230    0.00000000
+ H                 -0.76386542    1.84533561    0.16314551
+ H                 -3.12741068   -0.21909373    0.05475882
+ N                 -1.99742564    0.38106573    0.09139807
+ H                 -0.12905038    0.39758241    0.78910102
+ N                 -3.00046673    1.05595734    0.14169613
+$end
+
+!Optimize geometry
+$rem
+   JOBTYPE       ts
+   METHOD        wB97x-D3
+   UNRESTRICTED  false
+   BASIS         6-311++G(3df,3pd)
+   GEOM_OPT_TOL_GRADIENT 15
+   GEOM_OPT_TOL_DISPLACEMENT 60
+   GEOM_OPT_TOL_ENERGY 5
+$end
+
+@@@
+
+$molecule
+   read
+$end
+
+!Frequency
+$rem
+   JOBTYPE       freq
+   METHOD        wB97x-D3
+   UNRESTRICTED  false
+   BASIS         6-311++G(3df,3pd)
+   SCF_GUESS     read    Read the MOs from disk
+$end
+
