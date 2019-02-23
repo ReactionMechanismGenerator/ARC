@@ -538,9 +538,16 @@ class ARCSpecies(object):
                 mol_list = self.mol_list
             for mol in mol_list:
                 if get_Hbonds(mol): #We need the rotor scans of the H-bonded molecule later for determining when the H-bond breaks
-                    mol = mol.copy(deep=True)
-                    mol.remove_H_bonds()
-                rotors = find_internal_rotors(mol)
+                    mol2 = mol.copy(deep=True)
+                    mol2.remove_H_bonds()
+                    rotors_H = find_internal_rotors(mol)
+                    rotors = find_internal_rotors(mol2)
+                    for rot in rotors:
+                        for rotH in rotors_H:
+                            if rot['pivots'] == rotH['pivots']:
+                                rot['HBonded'] = True
+                else:
+                    rotors = find_internal_rotors(mol)
                 for new_rotor in rotors:
                     for existing_rotor in self.rotors_dict.values():
                         if existing_rotor['pivots'] == new_rotor['pivots']:
