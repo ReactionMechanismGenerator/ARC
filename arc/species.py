@@ -1100,7 +1100,9 @@ def _get_possible_conformers_openbabel(mol):
     return xyzs, energies
 
 
-def get_min_energy_conformer(xyzs, energies, hbonds=[]):
+def get_min_energy_conformer(xyzs, energies, hbonds=None):
+    if hbonds is None:
+        hbonds = []
     conformer_valid = False
     while not conformer_valid:
         conformer_valid = True
