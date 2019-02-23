@@ -182,6 +182,8 @@ class Processor(object):
         species_for_thermo_lib = list()
         for species in self.species_dict.values():
             if species.generate_thermo and not species.is_ts and 'ALL converged' in self.output[species.label]['status']:
+                if get_Hbonds(species.mol): #if H-bonded wait till all other jobs finish
+                    continue
                 species_for_thermo_lib.append(species)
                 output_file_path = self._generate_arkane_species_file(species)
                 arkane_spc = arkane_species(str(species.label), species.arkane_file)
@@ -195,6 +197,40 @@ class Processor(object):
                 thermo_job = ThermoJob(arkane_spc, 'NASA')
                 thermo_job.execute(outputFile=output_file_path, plot=False)
                 species.thermo = arkane_spc.getThermoData()
+                plotter.log_thermo(species.label, path=output_file_path)
+
+                species.rmg_species = Species(molecule=[species.mol])
+                species.rmg_species.reactive = True
+                if species.mol_list:
+                    species.rmg_species.molecule = species.mol_list  # add resonance structures for thermo determination
+                try:
+                    species.rmg_thermo = self.rmgdb.thermo.getThermoData(species.rmg_species)
+                except ValueError:
+                    logging.info('Could not retrieve RMG thermo for species {0}, possibly due to missing 2D structure '
+                                 '(bond orders). Not including this species in the parity plots.'.format(species.label))
+                else:
+                    species_list_for_thermo_parity.append(species)
+
+        for species in self.species_dict.values():
+            if get_Hbonds(species.mol) and species.generate_thermo and not species.is_ts and 'ALL converged' in self.output[species.label]['status']:
+                species_for_thermo_lib.append(species)
+                output_file_path = self._generate_arkane_species_file(species)
+                arkane_spc = arkane_species(str(species.label), species.arkane_file)
+                if species.mol_list:
+                    arkane_spc.molecule = species.mol_list
+                stat_mech_job = StatMechJob(arkane_spc, species.arkane_file)
+                stat_mech_job.applyBondEnergyCorrections = self.use_bac
+                stat_mech_job.modelChemistry = self.model_chemistry
+                stat_mech_job.frequencyScaleFactor = assign_frequency_scale_factor(self.model_chemistry)
+                stat_mech_job.execute(outputFile=output_file_path, plot=False)
+                thermo_job = ThermoJob(arkane_spc, 'NASA')
+                thermo_job.execute(outputFile=output_file_path, plot=False)
+                HBond_thermo = arkane_spc.getThermoData()
+                EHbreak = get_Hbond_break_barrier(species)
+                Tchar = EHbreak/8.314
+                logging.info("Determined Tchar={0} K for species {1} based on a minimum rotational barrier of {2} kJ/mol to breaking H-bonds".format(Tchar,species.label,EHbreak/1000.0))
+                no_HBond_thermo = self.species_dict[species.label+"noHbonds"].thermo
+                species.thermo = get_HBonded_NASA(species,HBond_thermo,no_HBond_thermo,Tchar)
                 plotter.log_thermo(species.label, path=output_file_path)
 
                 species.rmg_species = Species(molecule=[species.mol])
