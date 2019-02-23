@@ -15,6 +15,7 @@ from arkane.kinetics import KineticsJob
 from arkane.statmech import Log
 
 from rmgpy.species import Species
+from rmgpy.thermo.wilhoit import Wilhoit
 
 import arc.rmgdb as rmgdb
 from arc.job.inputs import input_files
@@ -316,6 +317,32 @@ class Processor(object):
                         shutil.move(src=os.path.join(species_path, 'species', species_yaml_file),
                                     dst=os.path.join(species_path, species_yaml_file))
                     shutil.rmtree(os.path.join(species_path, 'species'))
+
+def get_HBonded_NASA(spc,thermo_HB,thermo_noHB,Tchar):
+    """
+    Returns a NASA polynomial that uses thermo_HB for T<Tchar (intact H-bond)
+    and thermo_noHB for T>Tchar (broken H-bond)
+    """
+    Tlist = np.arange(10.0, 3001.0, 10.0, np.float64)
+    Cplist = np.zeros_like(Tlist)
+    H298 = 0.0
+    S298 = 0.0
+    for i in range(Tlist.shape[0]):
+        if Tchar > Tlist[i]:
+            Cplist[i] += thermo_HB.getHeatCapacity(Tlist[i])
+        else:
+            Cplist[i] += thermo_noHB.getHeatCapacity(Tlist[i])
+    H298 += thermo_HB.getEnthalpy(298.0)
+    S298 += thermo_HB.getEntropy(298.0)
+    #H-bonded molecule assumed to be non-linear, polyatomic
+    Nrotors = len(spc.rotors_dict) #all possible rotors (CpInf is high T)
+    Nfreq = 3*spc.number_of_atoms-6-Nrotors
+    Cp0 = 4.0*8.314
+    CpInf = Cp0+(Nfreq+0.5*Nrotors)*8.314
+    wilhoit = Wilhoit()
+    th = wilhoit.fitToData(Tlist, Cplist, Cp0, CpInf, H298, S298, B0=500.0)
+    return wilhoit.toNASA(Tmin=10.0, Tmax=3000.0, Tint=500.0)
+
 def get_Hbond_break_barrier(spc):
     """
     determine the energy barrier to breaking the hydrogen bond in spc
