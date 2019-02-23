@@ -120,6 +120,9 @@ class Processor(object):
             rotors = '\n\nrotors = ['
             rotors_description = '1D rotors:\n'
             for i in range(species.number_of_rotors):
+                if 'HBonded' in species.rotors_dict[i].keys() and species.rotors_dict[i]['HBonded']: #skip H-bonded rotors
+                    logging.info("skipping H-bonded rotor of species {0} between pivots {1}".format(species.label,species.rotors_dict[i]['pivots']))
+                    continue
                 pivots = str(species.rotors_dict[i]['pivots'])
                 scan = str(species.rotors_dict[i]['scan'])
                 if species.rotors_dict[i]['success']:
