@@ -26,6 +26,7 @@ from rmgpy.statmech import NonlinearRotor, LinearRotor
 from arc.exceptions import SpeciesError, RotorError, InputError, TSError
 from arc.settings import arc_path, default_ts_methods, valid_chars, minimum_barrier
 from arc.ts import atst
+from arc.parser import parse_xyz_from_file
 
 ##################################################################
 
@@ -1422,4 +1423,7 @@ def check_xyz(xyz):
     Usually empty lines are added by the user either in the begining or the end, and we'd like to remove them
     """
     if xyz is not None:
+        if os.path.isfile(xyz):
+            # check whether xyz is a file path
+            xyz = parse_xyz_from_file(xyz)
         return os.linesep.join(line for line in xyz.splitlines() if (line and any([char != ' ' for char in line])))

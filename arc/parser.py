@@ -70,3 +70,49 @@ def parse_e0(path):
     except Exception:
         e0 = None
     return e0
+
+
+def parse_xyz_from_file(path):
+    """
+    Parse xyz coordinated from:
+    .xyz - XYZ file
+    .gjf - Gaussian input file
+    .out or .log - ESS output file (Gaussian, QChem, Molpro)
+    other - Molpro or QChem input file
+    """
+    with open(path, 'r') as f:
+        lines = f.readlines()
+    _, file_extension = os.path.splitext(path)
+
+    xyz = None
+    relevant_lines = list()
+
+    if file_extension == '.xyz':
+        relevant_lines = lines[2:]
+    elif file_extension == '.gjf':
+        for line in lines[5:]:
+            if line and line != '\n' and line != '\r\n':
+                relevant_lines.append(line)
+            else:
+                break
+    elif 'out' in file_extension or 'log' in file_extension:
+        log = Log(path='')
+        log.determine_qm_software(fullpath=path)
+        coord, number, mass = log.software_log.loadGeometry()
+        xyz = get_xyz_string(xyz=coord, number=number)
+    else:
+        record = False
+        for line in lines:
+            if '$end' in line or '}' in line:
+                break
+            if record and len(line.split()) == 4:
+                relevant_lines.append(line)
+            elif '$molecule' in line:
+                record = True
+            elif 'geometry={' in line:
+                record = True
+        if not relevant_lines:
+            raise InputError('Could not parse xyz coordinates from file {0}'.format(path))
+    if xyz is None and relevant_lines:
+        xyz = ''.join([line for line in relevant_lines if line])
+    return xyz
