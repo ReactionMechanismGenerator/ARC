@@ -1,0 +1,25 @@
+***,name
+memory,2000,m;
+
+geometry={angstrom;
+ O          1.9946067476        0.5177659347        0.0623414434
+ H          1.3212511292        1.2109120918       -0.0880389301
+ O          1.1315280552       -0.7033746044       -0.0231117949
+ S         -0.4204682221       -0.3909949822        0.0245352116
+}
+
+basis=aug-cc-pVTZ
+
+{hf;
+maxit,1000;
+wf,33,1,1}
+
+uccsd(t)-F12a;
+
+optg,savexyz='geometry.xyz'
+
+{frequencies;
+thermo;
+print,HESSIAN,thermo;}
+
+---;

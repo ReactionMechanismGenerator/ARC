@@ -13,8 +13,9 @@ from rmgpy.molecule.molecule import Molecule
 from rmgpy.species import Species
 from rmgpy.reaction import Reaction
 
-from arc.species import ARCSpecies, TSGuess, get_xyz_string, get_xyz_matrix, mol_from_xyz, check_xyz,\
+from arc.species import ARCSpecies, TSGuess, mol_from_xyz, check_xyz,\
     determine_rotor_type, determine_rotor_symmetry
+from arc.parser import get_xyz_string, get_xyz_matrix
 from arc.settings import arc_path
 
 ################################################################################
@@ -65,6 +66,9 @@ class TestARCSpecies(unittest.TestCase):
         H       1.1294795781    -0.8708998550     0.7537444446
         H       1.4015274689    -0.6230592706    -0.8487058662""")
         cls.spc6 = ARCSpecies(label=str('N3'), xyz=n3_xyz, multiplicity=1, charge=0, smiles=str('NNN'))
+
+        xyz1 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'AIBN.gjf')
+        cls.spc7 = ARCSpecies(label='AIBN', smiles=str('N#CC(C)(C)N=NC(C)(C)C#N'), xyz=xyz1)
 
     def test_conformers(self):
         """Test conformer generation"""
@@ -415,6 +419,11 @@ H      -1.81136714   -0.32689007   -1.14689570
         self.assertEqual(symmetry3, 2)
         self.assertEqual(symmetry4, 3)
         self.assertEqual(symmetry5, 6)
+
+
+    def test_xyz_from_file(self):
+        """Test parsing xyz from a file and saving it in the .initial_xyz attribute"""
+        self.assertTrue(' N                 -2.36276900    2.14528400   -0.76917500' in self.spc7.initial_xyz)
 
 
 class TestTSGuess(unittest.TestCase):

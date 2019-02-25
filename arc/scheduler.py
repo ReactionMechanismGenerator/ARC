@@ -25,11 +25,12 @@ from rmgpy.reaction import Reaction
 import arc.rmgdb as rmgdb
 from arc import plotter
 from arc import parser
+from arc.parser import get_xyz_string
 from arc.species import determine_rotor_symmetry
 from arc.job.job import Job
 from arc.exceptions import SpeciesError, SchedulerError
 from arc.job.ssh import SSH_Client
-from arc.species import ARCSpecies, TSGuess, get_xyz_string
+from arc.species import ARCSpecies, TSGuess
 from arc.ts.atst import autotst
 from arc.settings import rotor_scan_resolution, inconsistency_ab, inconsistency_az, maximum_barrier
 
@@ -987,6 +988,7 @@ class Scheduler(object):
                                     break
                                 v_last = v
                         # 2. Check conformation:
+                        invalidated = ''
                         if not invalidate:
                             v_diff = (v_list[0] - np.min(v_list))
                             if v_diff >= 2 or v_diff > 0.5 * (max(v_list) - min(v_list)):
@@ -1008,6 +1010,8 @@ class Scheduler(object):
                                 self.run_opt_job(label)  # run opt on new initial_xyz with the desired dihedral
                             else:
                                 self.species_dict[label].rotors_dict[i]['success'] = True
+                        else:
+                            invalidated = '*INVALIDATED* '
                         symmetry = ''
                         if self.species_dict[label].rotors_dict[i]['success']:
                             self.species_dict[label].rotors_dict[i]['symmetry'], _ = determine_rotor_symmetry(
@@ -1015,10 +1019,6 @@ class Scheduler(object):
                                 pivots=self.species_dict[label].rotors_dict[i]['pivots'])
                             symmetry = ' has symmetry {0}'.format(self.species_dict[label].rotors_dict[i]['symmetry'])
                         if plot_scan:
-                            invalidated = ''
-                            if invalidate:
-                                invalidated = '*INVALIDATED* '
-                            message += invalidated
                             logging.info('{invalidated}Rotor scan {scan} between pivots {pivots}'
                                          ' for {label}{symmetry}'.format(invalidated=invalidated,
                                                        scan=self.species_dict[label].rotors_dict[i]['scan'],
@@ -1027,6 +1027,7 @@ class Scheduler(object):
                             folder_name = 'rxns' if job.is_ts else 'Species'
                             rotor_path = os.path.join(self.project_directory, 'output', folder_name,
                                                       job.species_name, 'rotors')
+                            message += invalidated
                             plotter.plot_rotor_scan(angle, v_list, path=rotor_path, pivots=job.pivots, comment=message)
                 else:
                     # scan job crashed
