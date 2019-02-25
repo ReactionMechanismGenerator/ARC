@@ -6,6 +6,7 @@ import logging
 import numpy as np
 import os
 
+from rmgpy.molecule.element import getElement
 from arkane.statmech import Log
 
 from arc.exceptions import InputError
@@ -70,6 +71,82 @@ def parse_e0(path):
     except Exception:
         e0 = None
     return e0
+
+
+def get_xyz_string(xyz, mol=None, number=None, symbol=None):
+    """
+    Convert list of lists xyz form:
+    [[0.6616514836, 0.4027481525, -0.4847382281],
+    [-0.6039793084, 0.6637270105, 0.0671637135],
+    [-1.4226865648, -0.4973210697, -0.2238712255],
+    [-0.4993010635, 0.6531020442, 1.0853092315],
+    [-2.2115796924, -0.4529256762, 0.4144516252],
+    [-1.8113671395, -0.3268900681, -1.1468957003]]
+    into a geometry form read by ESS:
+    C    0.6616514836    0.4027481525   -0.4847382281
+    N   -0.6039793084    0.6637270105    0.0671637135
+    H   -1.4226865648   -0.4973210697   -0.2238712255
+    H   -0.4993010635    0.6531020442    1.0853092315
+    H   -2.2115796924   -0.4529256762    0.4144516252
+    H   -1.8113671395   -0.3268900681   -1.1468957003
+    The atom symbol is derived from either an RMG Molecule object (`mol`) or atom numbers ('number`)
+    or explicitly given (`symbol`).
+    `number` and `symbol` are lists (optional parameters)
+    `xyz` is an array of arrays, as shown in the example above.
+    This function isn't defined as a method of ARCSpecies since it is also used when parsing opt geometry in Scheduler
+    """
+    result = ''
+    if symbol is not None:
+        elements = symbol
+    elif number is not None:
+        elements = []
+        for num in number:
+            elements.append(getElement(int(num)).symbol)
+    elif mol is not None:
+        elements = []
+        for atom in mol.atoms:
+            elements.append(atom.element.symbol)
+    else:
+        raise ValueError("Must have either an RMG:Molecule object input as `mol`, or atomic numbers \ symbols.")
+    for i, coord in enumerate(xyz):
+        result += elements[i] + ' ' * (4 - len(elements[i]))
+        for c in coord:
+            result += '{0:14.8f}'.format(c)
+        result += '\n'
+    return result
+
+
+def get_xyz_matrix(xyz):
+    """
+    Convert a string xyz form:
+    C    0.6616514836    0.4027481525   -0.4847382281
+    N   -0.6039793084    0.6637270105    0.0671637135
+    H   -1.4226865648   -0.4973210697   -0.2238712255
+    H   -0.4993010635    0.6531020442    1.0853092315
+    H   -2.2115796924   -0.4529256762    0.4144516252
+    H   -1.8113671395   -0.3268900681   -1.1468957003
+    into a list of lists xyz form:
+    [[0.6616514836, 0.4027481525, -0.4847382281],
+    [-0.6039793084, 0.6637270105, 0.0671637135],
+    [-1.4226865648, -0.4973210697, -0.2238712255],
+    [-0.4993010635, 0.6531020442, 1.0853092315],
+    [-2.2115796924, -0.4529256762, 0.4144516252],
+    [-1.8113671395, -0.3268900681, -1.1468957003]]
+
+    Returns xyz as well as atoms, x, y, z seperately
+    """
+    x, y, z, atoms = [], [], [], []
+    for line in xyz.split('\n'):
+        if line:
+            atom, xx, yy, zz = line.split()
+            x.append(float(xx))
+            y.append(float(yy))
+            z.append(float(zz))
+            atoms.append(atom)
+    xyz = []
+    for i, _ in enumerate(x):
+        xyz.append([x[i], y[i], z[i]])
+    return xyz, atoms, x, y, z
 
 
 def parse_xyz_from_file(path):

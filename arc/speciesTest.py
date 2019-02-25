@@ -13,8 +13,9 @@ from rmgpy.molecule.molecule import Molecule
 from rmgpy.species import Species
 from rmgpy.reaction import Reaction
 
-from arc.species import ARCSpecies, TSGuess, get_xyz_string, get_xyz_matrix, mol_from_xyz, check_xyz,\
+from arc.species import ARCSpecies, TSGuess, mol_from_xyz, check_xyz,\
     determine_rotor_type, determine_rotor_symmetry
+from arc.parser import get_xyz_string, get_xyz_matrix
 from arc.settings import arc_path
 
 ################################################################################
