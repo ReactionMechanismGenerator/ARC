@@ -213,11 +213,16 @@ class ARCSpecies(object):
                 self.multiplicity = multiplicity
                 self.charge = charge
 
-            if self.mol is None and not self.is_ts:
+            if self.mol is None:
                 xyz = self.final_xyz if self.final_xyz else self.initial_xyz
                 _, mol = molecules_from_xyz(xyz)
+                if self.mol_list is None:
+                    self.mol_list = [mol]
+                    if not self.bond_corrections and self.generate_thermo:
+                        logging.warn('Cannot determine bond additivity corrections (BAC) for species {0} based on xyz'
+                                     ' coordinates only. For better thermoproperties, provide bond corrections.')
                 self.number_of_atoms = len(mol.atoms)
-            elif not self.is_ts:
+            else:
                 if self.initial_xyz is not None:
                     self.mol_from_xyz()
                 if not self.bond_corrections:

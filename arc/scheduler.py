@@ -192,9 +192,14 @@ class Scheduler(object):
                 if rxn.family_own_reverse and auto_tst and not reverse_auto_tst:
                     rxn.ts_methods.append('reverse_autotst')
                 if not any([spc.label == rxn.ts_label for spc in self.species_list]):
-                    ts_species = ARCSpecies(is_ts=True, label=rxn.ts_label, rxn_label=rxn.label,
+                    if not rxn.ts_xyz_guess:
+                        ts_species = ARCSpecies(is_ts=True, label=rxn.ts_label, rxn_label=rxn.label,
                                             multiplicity=rxn.multiplicity, charge=rxn.charge, generate_thermo=False,
                                             ts_methods=rxn.ts_methods, ts_number=rxn.index)
+                    else:
+                        ts_species = ARCSpecies(is_ts=True, label=rxn.ts_label, rxn_label=rxn.label,
+                                            multiplicity=rxn.multiplicity, charge=rxn.charge, generate_thermo=False,
+                                            ts_methods=rxn.ts_methods, ts_number=rxn.index, xyz=rxn.ts_xyz_guess[0])
                     ts_species.number_of_atoms = sum(reactant.number_of_atoms for reactant in rxn.r_species)
                     self.species_list.append(ts_species)
                 else:
