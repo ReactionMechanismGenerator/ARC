@@ -585,9 +585,13 @@ class ARCSpecies(object):
                 scan[i] -= 1  # atom indices start from 0, but atom labels (as in scan) start from 1
             coordinates, atoms, _, _, _ = get_xyz_matrix(self.final_xyz)
             _, mol = molecules_from_xyz(self.final_xyz)
+            preatms = mol.atoms[:]
             conf, rd_mol, indx_map = rdkit_conf_from_mol(mol, coordinates)
+            postatms = mol.atoms[:]
+            indx_map = {preatms.index(atm):postatms.index(atm) for atm in preatms}
+            rev_indx_map = {postatms.index(atm):preatms.index(atm) for atm in preatms}
+            mol.atoms = preatms
             rd_scan = [indx_map[scan[i]] for i in range(4)]  # convert the atom indices in `scan` to RDkit indices
-
             deg0 = rdmt.GetDihedralDeg(conf, rd_scan[0], rd_scan[1], rd_scan[2], rd_scan[3])  # get the original dihedral
             deg = deg0 + deg_increment
             rdmt.SetDihedralDeg(conf, rd_scan[0], rd_scan[1], rd_scan[2], rd_scan[3], deg)
@@ -595,6 +599,8 @@ class ARCSpecies(object):
             for i in range(rd_mol.GetNumAtoms()):
                 new_xyz.append([conf.GetAtomPosition(indx_map[i]).x, conf.GetAtomPosition(indx_map[i]).y,
                             conf.GetAtomPosition(indx_map[i]).z])
+            new_xyz = [new_xyz[rev_indx_map[i]] for i in xrange(len(new_xyz))] #put in original order
+            _, atoms, _, _, _ = get_xyz_matrix(self.final_xyz)
             self.initial_xyz = get_xyz_string(new_xyz, symbol=atoms)
 
     def determine_symmetry(self):
