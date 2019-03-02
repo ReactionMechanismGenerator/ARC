@@ -238,7 +238,7 @@ class ARCSpecies(object):
             elif not self.bond_corrections and self.generate_thermo:
                 logging.warn('Cannot determine bond additivity corrections (BAC) for species {0} based on xyz'
                              ' coordinates only. For better thermoproperties, provide bond corrections.')
-            if self.initial_xyz is not None:
+            if self.initial_xyz is not None and not self.is_ts:
                 # consider the initial guess as one of the conformers if generating others.
                 # otherwise, just consider it as the conformer.
                 self.conformers.append(self.initial_xyz)
