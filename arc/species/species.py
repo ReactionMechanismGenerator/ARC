@@ -543,22 +543,21 @@ class ARCSpecies(object):
         The resulting rotors are saved in {'pivots': [1, 3], 'top': [3, 7], 'scan': [2, 1, 3, 7]} format
         in self.species_dict[species.label]['rotors_dict']. Also updates 'number_of_rotors'.
         """
-        if not self.is_ts:
-            for mol in self.mol_list:
-                rotors = find_internal_rotors(mol)
-                for new_rotor in rotors:
-                    for existing_rotor in self.rotors_dict.values():
-                        if existing_rotor['pivots'] == new_rotor['pivots']:
-                            break
-                    else:
-                        self.rotors_dict[self.number_of_rotors] = new_rotor
-                        self.number_of_rotors += 1
-            if self.number_of_rotors == 1:
-                logging.info('\nFound 1 rotor for {0}'.format(self.label))
-            elif self.number_of_rotors > 1:
-                logging.info('\nFound {0} rotors for {1}'.format(self.number_of_rotors, self.label))
-            if self.number_of_rotors > 0:
-                logging.info('Pivot list(s) for {0}: {1}\n'.format(self.label,
+        for mol in self.mol_list:
+            rotors = find_internal_rotors(mol)
+            for new_rotor in rotors:
+                for existing_rotor in self.rotors_dict.values():
+                    if existing_rotor['pivots'] == new_rotor['pivots']:
+                        break
+                else:
+                    self.rotors_dict[self.number_of_rotors] = new_rotor
+                    self.number_of_rotors += 1
+        if self.number_of_rotors == 1:
+            logging.info('\nFound 1 rotor for {0}'.format(self.label))
+        elif self.number_of_rotors > 1:
+            logging.info('\nFound {0} rotors for {1}'.format(self.number_of_rotors, self.label))
+        if self.number_of_rotors > 0:
+            logging.info('Pivot list(s) for {0}: {1}\n'.format(self.label,
                                                     [self.rotors_dict[i]['pivots'] for i in range(self.number_of_rotors)]))
 
     def set_dihedral(self, scan, pivots, deg_increment):
