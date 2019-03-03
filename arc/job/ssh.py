@@ -27,7 +27,7 @@ class SSH_Client(object):
         if server not in servers.keys():
             raise ValueError('Server name invalid. Currently defined servers are: {0}'.format(servers.keys()))
         self.server = server
-        self.address = servers[server]['adddress']
+        self.address = servers[server]['address']
         self.un = servers[server]['un']
         self.key = servers[server]['key']
         # logger = paramiko.util.logging.getLogger()

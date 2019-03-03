@@ -17,13 +17,13 @@ import string
 # servers = {
 #     'pharos': {
 #         'cluster_soft': 'OGE',  # Oracle Grid Engine (Sun Grin Engine)
-#         'adddress': 'pharos.mit.edu',
+#         'address': 'pharos.mit.edu',
 #         'un': '<username>',
 #         'key': '/home/<username>/.ssh/known_hosts',
 #     },
 #     'rmg': {
 #         'cluster_soft': 'Slurm',  # Simple Linux Utility for Resource Management
-#         'adddress': 'rmg.mit.edu',
+#         'address': 'rmg.mit.edu',
 #         'un': '<username>',
 #         'key': '/home/<username>/.ssh/id_rsa',
 #     }
@@ -31,14 +31,14 @@ import string
 servers = {
     'server1': {
         'cluster_soft': 'OGE',  # Oracle Grid Engine
-        'adddress': 'server1.host.edu',
+        'address': 'server1.host.edu',
         'un': '<username>',
         'key': 'path_to_rsa_key',
         'precedence': 'molpro',
     },
     'server2': {
         'cluster_soft': 'Slurm',  # Simple Linux Utility for Resource Management
-        'adddress': 'server2.host.edu',
+        'address': 'server2.host.edu',
         'un': '<username>',
         'key': 'path_to_rsa_key',
     }
