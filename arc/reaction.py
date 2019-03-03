@@ -45,6 +45,7 @@ class ARCReaction(object):
     `index`                 ``int``      An auto-generated index associating the ARCReaction object with the
                                          corresponding TS ARCSpecies object
     `ts_label`              ``str``      The ARCSpecies label of the respective TS. Determined automatically
+    `atom_length_constraints` ``list``   A list of lists of indices coresponding to pairs of atoms in the ts guess that should be close together in the ts
     ====================== ============= ===============================================================================
 
     Either give reactants and products (just list of labels), a reaction label, or an RMG Reaction object.
@@ -54,7 +55,7 @@ class ARCReaction(object):
     as self.reactants, self.products, and self.ts_label, respectively.
     """
     def __init__(self, label='', reactants=None, products=None, ts_label=None, rmg_reaction=None,
-                 ts_methods=None, ts_xyz_guess=None, multiplicity=None, charge=0, reaction_dict=None):
+                 ts_methods=None, ts_xyz_guess=None, multiplicity=None, charge=0, reaction_dict=None, atom_length_constraints=None):
         self.arrow = ' <=> '
         self.plus = ' + '
         self.r_species = list()
@@ -67,6 +68,10 @@ class ARCReaction(object):
         self.ts_label = ts_label
         self.dh_rxn298 = None
         self.rmg_reactions = None
+        if atom_length_constraints is None:
+            self.atom_length_constraints = []
+        else:
+            self.atom_length_constraints = atom_length_constraints
         if reaction_dict is not None:
             # Reading from a dictionary
             self.from_dict(reaction_dict=reaction_dict)
@@ -117,6 +122,7 @@ class ARCReaction(object):
         reaction_dict['ts_methods'] = self.ts_methods
         reaction_dict['ts_xyz_guess'] = self.ts_xyz_guess
         reaction_dict['ts_label'] = self.ts_label
+        reaction_dict['atom_length_constraints'] = self.atom_length_constraints
         return reaction_dict
 
     def from_dict(self, reaction_dict):
@@ -160,6 +166,7 @@ class ARCReaction(object):
         self.ts_methods = reaction_dict['ts_methods'] if 'ts_methods' in reaction_dict else default_ts_methods
         self.ts_methods = [tsm.lower() for tsm in self.ts_methods]
         self.ts_xyz_guess = reaction_dict['ts_xyz_guess'] if 'ts_xyz_guess' in reaction_dict else list()
+        self.atom_length_constraints = reaction_dict['atom_length_constraints'] if 'atom_length_constraints' in reaction_dict else list()
 
     def set_label_reactants_products(self):
         """A helper function for settings the label, reactants, and products attributes for a Reaction"""

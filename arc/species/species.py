@@ -86,6 +86,7 @@ class ARCSpecies(object):
     `yml_path`              ``str``      Path to an Arkane YAML file representing a species (for loading the object)
     `external_symmetry`     ``int``      The external symmetry of the species (not including rotor symmetries)
     `optical_isomers`       ``int``      Whether (=2) or not (=1) the species has chiral center/s
+    `atom_length_constraints` ``list``   A list of lists of indices coresponding to pairs of atoms in the ts guess that should be close together in the ts
     ====================== ============= ===============================================================================
 
     Dictionary structure:
@@ -103,9 +104,10 @@ class ARCSpecies(object):
                  }
     """
     def __init__(self, is_ts=False, rmg_species=None, mol=None, label=None, xyz=None, multiplicity=None, charge=None,
-                 smiles='', adjlist='', inchi='', bond_corrections=None, generate_thermo=True, species_dict=None,
-                 yml_path=None, ts_methods=None, ts_number=None, rxn_label=None, external_symmetry=None,
-                 optical_isomers=None):
+                 smiles='', adjlist='', bond_corrections=None, generate_thermo=True, species_dict=None, yml_path=None,
+                 ts_methods=None, ts_number=None, rxn_label=None, external_symmetry=None, optical_isomers=None, atom_length_constraints=None):
+
+        self.xyz_mol = None
         self.t1 = None
         self.ts_number = ts_number
         self.conformers = list()
@@ -121,7 +123,10 @@ class ARCSpecies(object):
         self.external_symmetry = external_symmetry
         self.optical_isomers = optical_isomers
         self.charge = charge
-
+        if atom_length_constraints is None:
+            self.atom_length_constraints = []
+        else:
+            self.atom_length_constraints = atom_length_constraints
         if species_dict is not None:
             # Reading from a dictionary
             self.from_dict(species_dict=species_dict)
@@ -312,6 +317,8 @@ class ARCSpecies(object):
             species_dict['mol'] = self.mol.toAdjacencyList()
         if self.initial_xyz is not None:
             species_dict['initial_xyz'] = self.initial_xyz
+        if self.atom_length_constraints:
+            species_dict['atom_length_constraints'] = self.atom_length_constraints
         return species_dict
 
     def from_dict(self, species_dict):
@@ -335,6 +342,7 @@ class ARCSpecies(object):
         if 'xyz' in species_dict and self.initial_xyz is None and not self.final_xyz:
             self.initial_xyz = check_species_xyz(species_dict['xyz'])
         self.is_ts = species_dict['is_ts'] if 'is_ts' in species_dict else False
+        self.atom_length_constraints = species_dict['atom_length_constraints'] if 'atom_length_constraints' in species_dict else []
         if self.is_ts:
             self.ts_conf_spawned = species_dict['ts_conf_spawned'] if 'ts_conf_spawned' in species_dict else False
             self.ts_number = species_dict['ts_number'] if 'ts_number' in species_dict else None
@@ -462,6 +470,7 @@ class ARCSpecies(object):
             self.mol_from_xyz()
         if self.e0 is None:
             self.e0 = arkane_spc.conformer.E0.value_si * 0.001  # convert to kJ/mol
+
 
     def generate_conformers(self):
         """
