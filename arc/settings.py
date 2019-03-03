@@ -95,8 +95,9 @@ valid_chars = "-_()[]=., %s%s" % (string.ascii_letters, string.digits)
 rotor_scan_resolution = 8.0  # degrees. Default: 8.0
 
 # rotor validation parameters
-inconsistency_az = 5    # maximum allowed inconsistency (kJ/mol) between initial and final rotor scan points. Default: 5
-inconsistency_ab = 0.5  # maximum allowed inconsistency between consecutive points in the scan given as a fraction
+inconsistency_az = 5   # maximum allowed inconsistency (kJ/mol) between initial and final rotor scan points. Default: 5
+inconsistency_ab = 0.5  # maximum allowed inconsistency (kJ/mol) between consecutive points in the scan. Default: 10
 #  of the maximum scan energy. Default: 50%
-maximum_barrier = 40    # a rotor threshold (kJ/mol) above which the rotor is not considered. Default: 40 (~10 kcal/mol)
-minimum_barrier = 0.5   # a rotor threshold (kJ/mol) below which it is considered a FreeRotor. Default: 0.5 kJ/mol
+maximum_barrier = 40   # a rotor threshold (kJ/mol) above which the rotor is not considered. Default: 40 (~10 kcal/mol)
+minimum_barrier = 0.5  # a rotor threshold (kJ/mol) below which it is considered a FreeRotor. Default: 0.5 kJ/mol
+ts_length_change = 0.15 # a threshold for the relative change in the distance between key atoms before invalidating a ts Default:  0.15
