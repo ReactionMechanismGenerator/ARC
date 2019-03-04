@@ -1095,21 +1095,29 @@ class Scheduler(object):
                             v_diff = (v_list[0] - np.min(v_list))
                             if v_diff >= 2 or v_diff > 0.5 * (max(v_list) - min(v_list)):
                                 self.species_dict[label].rotors_dict[i]['success'] = False
-                                logging.info('Species {label} is not oriented correctly around pivots {pivots},'
-                                             ' searching for a better conformation...'.format(label=label,
-                                                                                              pivots=job.pivots))
-                                # Find the rotation dihedral in degrees to the closest minimum:
-                                min_v = v_list[0]
-                                min_index = 0
-                                for j, v in enumerate(v_list):
-                                    if v < min_v - 2:
-                                        min_v = v
-                                        min_index = j
-                                self.species_dict[label].set_dihedral(scan=self.species_dict[label].rotors_dict[i]['scan'],
-                                                                      pivots=self.species_dict[label].rotors_dict[i]['pivots'],
-                                                                      deg_increment=min_index*rotor_scan_resolution)
-                                self.delete_all_species_jobs(label)
-                                self.run_opt_job(label)  # run opt on new initial_xyz with the desired dihedral
+
+                                if self.species_dict[label].is_ts:
+                                    invalidate = True
+                                    logging.info("""Species {label} has rotor scan for {pivots} that does not start near a minimum
+                                                 implying that this rotor likely interferes with the TS""".format(label=label,pivots=job.pivots))
+                                    invalidation_reason = 'rotor does not start at a minimum suggesting it interferes with the TS'
+                                    invalidated = '*INVALIDATED* '
+                                else:
+                                    logging.info('Species {label} is not oriented correctly around pivots {pivots},'
+                                                 ' searching for a better conformation...'.format(label=label,
+                                                                                                  pivots=job.pivots))
+                                    # Find the rotation dihedral in degrees to the closest minimum:
+                                    min_v = v_list[0]
+                                    min_index = 0
+                                    for j, v in enumerate(v_list):
+                                        if v < min_v - 2:
+                                            min_v = v
+                                            min_index = j
+                                    self.species_dict[label].set_dihedral(scan=self.species_dict[label].rotors_dict[i]['scan'],
+                                                                          pivots=self.species_dict[label].rotors_dict[i]['pivots'],
+                                                                          deg_increment=min_index*rotor_scan_resolution)
+                                    self.delete_all_species_jobs(label)
+                                    self.run_opt_job(label)  # run opt on new initial_xyz with the desired dihedral
                             else:
                                 self.species_dict[label].rotors_dict[i]['success'] = True
                         elif invalidate:
