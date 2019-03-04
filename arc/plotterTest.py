@@ -12,7 +12,7 @@ import shutil
 
 from arc.settings import arc_path
 from arc import plotter
-from arc.species import ARCSpecies
+from arc.species.species import ARCSpecies
 
 ################################################################################
 

@@ -12,7 +12,7 @@ import os
 import arc.rmgdb as rmgdb
 from arc.scheduler import Scheduler
 from arc.job.job import Job
-from arc.species import ARCSpecies
+from arc.species.species import ARCSpecies
 import arc.parser as parser
 from arc.settings import arc_path, default_levels_of_theory
 
