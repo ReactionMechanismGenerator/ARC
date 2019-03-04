@@ -917,7 +917,7 @@ class Scheduler(object):
             try:
                 data = ccparser.parse()
                 vibfreqs = data.vibfreqs
-            except AssertionError:
+            except (AssertionError, AttributeError):
                 """
                 In cclib/parser/qchemparser.py there's an assertion of `assert 'Beta MOs' in line`
                 which sometimes fails (CClib issue https://github.com/cclib/cclib/issues/678)
