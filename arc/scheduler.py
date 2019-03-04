@@ -27,12 +27,14 @@ import arc.rmgdb as rmgdb
 from arc import plotter
 from arc import parser
 from arc.species.converter import get_xyz_string, molecules_from_xyz
+from arc.parser import parse_scan_coords, parse_scan_input_geo
+from arc.species.species import determine_rotor_symmetry
 from arc.job.job import Job
 from arc.arc_exceptions import SpeciesError, SchedulerError
 from arc.job.ssh import SSH_Client
 from arc.species.species import ARCSpecies, TSGuess, determine_rotor_symmetry
 from arc.ts.atst import autotst
-from arc.settings import rotor_scan_resolution, inconsistency_ab, inconsistency_az, maximum_barrier
+from arc.settings import rotor_scan_resolution, inconsistency_ab, inconsistency_az, maximum_barrier, ts_length_change, ts_opt_length_change
 
 ##################################################################
 
@@ -1005,6 +1007,7 @@ class Scheduler(object):
                           2: {}, ...
                          }
         """
+        spc = self.species_dict[label]
         for i in range(self.species_dict[label].number_of_rotors):
             message = ''
             invalidation_reason = ''
@@ -1077,7 +1080,16 @@ class Scheduler(object):
                                                           ' kJ/mol'.format(maximum_barrier)
                                     break
                                 v_last = v
-                        # 2. Check conformation:
+                        # 2. If TS check TS satisfies atom constraints
+                        if not invalidate and spc.is_ts:
+                            spc.rotors_dict[i]['scan_path'] = job.local_path_to_output_file
+                            cons_valid,con = check_rotor_spc_atom_length_constraints(spc,spc.rotors_dict[i],job.software)
+                            if not cons_valid:
+                                invalidate = True
+                                logging.info("""Species {label} rotor {pivots} violates length constraint between atoms with indices {con},
+                                             this rotor scan is breaking the TS""".format(label=label,pivots=job.pivots,con=con))
+                                invalidation_reason = 'rotor violates length constraint between atoms with indices {con}'.format(con=con)
+                        # 3. Check conformation:
                         invalidated = ''
                         if not invalidate and not trsh:
                             v_diff = (v_list[0] - np.min(v_list))
@@ -1663,3 +1675,21 @@ def time_lapse(t0):
     else:
         d = ''
     return d, h, m, s
+
+def check_rotor_spc_atom_length_constraints(spc,rotor_dict,software):
+    log = Log(path='')
+    log.determine_qm_software(fullpath=rotor_dict['scan_path'])
+    v_list, angle = log.software_log.loadScanEnergies()
+    input_xyzs = parse_scan_input_geo(rotor_dict['scan_path'],software)
+    errors = []
+    for con in spc.atom_length_constraints:
+        input_dist = np.linalg.norm(input_xyzs[con[0]-1,:]-input_xyzs[con[1]-1,:])
+        basexyzs = parse_scan_coords(rotor_dict['scan_path'],0,software)
+        baselength = np.linalg.norm(basexyzs[con[0]-1,:]-basexyzs[con[1]-1,:])
+        scan_thresh = baselength * (1.0+ts_length_change)
+        opt_thresh = input_dist * (1.0+ts_opt_length_change)
+        for i in xrange(len(v_list)):
+            xyzs = parse_scan_coords(rotor_dict['scan_path'],i,software)
+            if np.linalg.norm(xyzs[con[0]-1,:]-xyzs[con[1]-1,:]) > scan_thresh or np.linalg.norm(xyzs[con[0]-1,:]-xyzs[con[1]-1,:]) > opt_thresh:
+                return False, con
+    return True, None
