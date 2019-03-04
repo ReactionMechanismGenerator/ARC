@@ -8,8 +8,8 @@ from rmgpy.species import Species
 from rmgpy.reaction import Reaction
 
 import arc.rmgdb as rmgdb
-from arc.exceptions import ReactionError, InputError
 from arc.species.species import ARCSpecies
+from arc.arc_exceptions import ReactionError, InputError
 from arc.settings import default_ts_methods
 
 ##################################################################

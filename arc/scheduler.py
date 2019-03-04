@@ -27,7 +27,7 @@ from arc import plotter
 from arc import parser
 from arc.parser import get_xyz_string
 from arc.job.job import Job
-from arc.exceptions import SpeciesError, SchedulerError
+from arc.arc_exceptions import SpeciesError, SchedulerError
 from arc.job.ssh import SSH_Client
 from arc.species.species import ARCSpecies, TSGuess, determine_rotor_symmetry
 from arc.ts.atst import autotst

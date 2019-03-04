@@ -10,7 +10,7 @@ from rmgpy.data.rmg import RMGDatabase
 from rmgpy.reaction import isomorphic_species_lists
 from rmgpy.data.kinetics.common import find_degenerate_reactions
 
-from arc.exceptions import InputError
+from arc.arc_exceptions import InputError
 
 ##################################################################
 
