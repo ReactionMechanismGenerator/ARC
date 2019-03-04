@@ -104,7 +104,7 @@ class ARCSpecies(object):
                  }
     """
     def __init__(self, is_ts=False, rmg_species=None, mol=None, label=None, xyz=None, multiplicity=None, charge=None,
-                 smiles='', adjlist='', bond_corrections=None, generate_thermo=True, species_dict=None, yml_path=None,
+                 smiles='', adjlist='', inchi='', bond_corrections=None, generate_thermo=True, species_dict=None, yml_path=None,
                  ts_methods=None, ts_number=None, rxn_label=None, external_symmetry=None, optical_isomers=None, atom_length_constraints=None):
 
         self.xyz_mol = None
