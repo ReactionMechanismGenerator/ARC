@@ -174,7 +174,7 @@ class Processor(object):
         species_list_for_thermo_parity = list()
         species_for_thermo_lib = list()
         for species in self.species_dict.values():
-            if species.generate_thermo and not species.is_ts and 'ALL converged' in self.output[species.label]['status']:
+            if not species.is_ts and 'ALL converged' in self.output[species.label]['status']:
                 species_for_thermo_lib.append(species)
                 output_file_path = self._generate_arkane_species_file(species)
                 arkane_spc = arkane_species(str(species.label), species.arkane_file)
@@ -185,10 +185,11 @@ class Processor(object):
                 stat_mech_job.modelChemistry = self.model_chemistry
                 stat_mech_job.frequencyScaleFactor = assign_frequency_scale_factor(self.model_chemistry)
                 stat_mech_job.execute(outputFile=output_file_path, plot=False)
-                thermo_job = ThermoJob(arkane_spc, 'NASA')
-                thermo_job.execute(outputFile=output_file_path, plot=False)
-                species.thermo = arkane_spc.getThermoData()
-                plotter.log_thermo(species.label, path=output_file_path)
+                if species.generate_thermo:
+                    thermo_job = ThermoJob(arkane_spc, 'NASA')
+                    thermo_job.execute(outputFile=output_file_path, plot=False)
+                    species.thermo = arkane_spc.getThermoData()
+                    plotter.log_thermo(species.label, path=output_file_path)
 
                 species.rmg_species = Species(molecule=[species.mol])
                 species.rmg_species.reactive = True
@@ -200,8 +201,8 @@ class Processor(object):
                     logging.info('Could not retrieve RMG thermo for species {0}, possibly due to missing 2D structure '
                                  '(bond orders). Not including this species in the parity plots.'.format(species.label))
                 else:
-                    species_list_for_thermo_parity.append(species)
-
+                    if species.generate_thermo:
+                        species_list_for_thermo_parity.append(species)
         # Kinetics:
         rxn_list_for_kinetics_plots = list()
         arkane_spc_dict = dict()  # a dictionary with all species and the TSs
