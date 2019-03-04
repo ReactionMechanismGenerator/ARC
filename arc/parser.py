@@ -166,3 +166,20 @@ def parse_scan_coords(path,point_index,software):
     else:
         raise ValueError('parse_scan_coords() can currently only parse gaussian files,'
                          ' got {0}'.format(software))
+
+def parse_scan_input_geo(path,software):
+    if software == 'gaussian':
+        start = 'Input orientation:'
+        stop = 'Distance matrix (angstroms):'
+        lines = parse_lines(path,start,stop=stop)
+        atoms = int(lines[-2].split()[0])
+        lines = lines[-atoms-1:-1]
+        coords = []
+        for line in lines:
+            vals = line.split()
+            coords.append([float(x) for x in vals[3:]])
+        coords = np.array(coords)
+        return coords
+    else:
+        raise ValueError('parse_scan_coords() can currently only parse gaussian files,'
+                         ' got {0}'.format(software))
