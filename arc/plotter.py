@@ -25,8 +25,8 @@ from rmgpy.data.base import Entry
 from rmgpy.quantity import ScalarQuantity
 from rmgpy.species import Species
 
-from arc.parser import get_xyz_matrix
 from arc.species.species import ARCSpecies
+from arc.species.converter import get_xyz_matrix, rdkit_conf_from_mol, molecules_from_xyz
 from arc.arc_exceptions import InputError
 
 

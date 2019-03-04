@@ -25,7 +25,7 @@ from rmgpy.reaction import Reaction
 import arc.rmgdb as rmgdb
 from arc import plotter
 from arc import parser
-from arc.parser import get_xyz_string
+from arc.species.converter import get_xyz_string
 from arc.job.job import Job
 from arc.arc_exceptions import SpeciesError, SchedulerError
 from arc.job.ssh import SSH_Client
