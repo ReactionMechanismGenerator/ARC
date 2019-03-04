@@ -195,11 +195,12 @@ class Scheduler(object):
                     if not rxn.ts_xyz_guess:
                         ts_species = ARCSpecies(is_ts=True, label=rxn.ts_label, rxn_label=rxn.label,
                                             multiplicity=rxn.multiplicity, charge=rxn.charge, generate_thermo=False,
-                                            ts_methods=rxn.ts_methods, ts_number=rxn.index)
+                                            ts_methods=rxn.ts_methods, ts_number=rxn.index, atom_length_constraints=rxn.atom_length_constraints)
                     else:
                         ts_species = ARCSpecies(is_ts=True, label=rxn.ts_label, rxn_label=rxn.label,
                                             multiplicity=rxn.multiplicity, charge=rxn.charge, generate_thermo=False,
-                                            ts_methods=rxn.ts_methods, ts_number=rxn.index, xyz=rxn.ts_xyz_guess[0])
+                                            ts_methods=rxn.ts_methods, ts_number=rxn.index, atom_length_constraints=rxn.atom_length_constraints,
+                                            xyz=rxn.ts_xyz_guess[0])
                     ts_species.number_of_atoms = sum(reactant.number_of_atoms for reactant in rxn.r_species)
                     self.species_list.append(ts_species)
                 else:
