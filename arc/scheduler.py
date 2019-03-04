@@ -26,11 +26,10 @@ import arc.rmgdb as rmgdb
 from arc import plotter
 from arc import parser
 from arc.parser import get_xyz_string
-from arc.species import determine_rotor_symmetry
 from arc.job.job import Job
 from arc.exceptions import SpeciesError, SchedulerError
 from arc.job.ssh import SSH_Client
-from arc.species import ARCSpecies, TSGuess
+from arc.species.species import ARCSpecies, TSGuess, determine_rotor_symmetry
 from arc.ts.atst import autotst
 from arc.settings import rotor_scan_resolution, inconsistency_ab, inconsistency_az, maximum_barrier
 

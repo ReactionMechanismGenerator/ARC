@@ -16,7 +16,7 @@ from rmgpy.species import Species
 from rmgpy.molecule.molecule import Molecule
 
 from arc.main import ARC
-from arc.species import ARCSpecies
+from arc.species.species import ARCSpecies
 from arc.settings import arc_path
 from arc.exceptions import InputError
 
