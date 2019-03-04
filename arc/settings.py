@@ -100,4 +100,5 @@ inconsistency_ab = 0.5  # maximum allowed inconsistency (kJ/mol) between consecu
 #  of the maximum scan energy. Default: 50%
 maximum_barrier = 40   # a rotor threshold (kJ/mol) above which the rotor is not considered. Default: 40 (~10 kcal/mol)
 minimum_barrier = 0.5  # a rotor threshold (kJ/mol) below which it is considered a FreeRotor. Default: 0.5 kJ/mol
-ts_length_change = 0.15 # a threshold for the relative change in the distance between key atoms before invalidating a ts Default:  0.15
+ts_length_change = 0.15 # a threshold for the relative change in the distance between key atoms before invalidating a ts at same level of theory Default:  0.15
+ts_opt_length_change = 0.15 # a threshold for the relative change in the distance between key atoms before invalidating a ts between opt and scan theory levels Default:  0.15
