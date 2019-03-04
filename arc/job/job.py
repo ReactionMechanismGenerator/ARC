@@ -12,7 +12,7 @@ from arc.settings import arc_path, servers, submit_filename, delete_command,\
 from arc.job.submit import submit_scripts
 from arc.job.inputs import input_files
 from arc.job.ssh import SSH_Client
-from arc.exceptions import JobError, SpeciesError
+from arc.arc_exceptions import JobError, SpeciesError
 
 ##################################################################
 

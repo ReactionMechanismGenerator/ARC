@@ -5,11 +5,13 @@
 This module contains classes which extend Exception for usage in the RMG module
 """
 
+
 class InputError(Exception):
     """
     An exception raised when parsing an input file for any module
     """
     pass
+
 
 class OutputError(Exception):
     """
@@ -17,11 +19,13 @@ class OutputError(Exception):
     """
     pass
 
+
 class SettingsError(Exception):
     """
     An exception raised when dealing with settings
     """
     pass
+
 
 class SpeciesError(Exception):
     """
@@ -29,11 +33,13 @@ class SpeciesError(Exception):
     """
     pass
 
+
 class TSError(Exception):
     """
     An exception class for exceptional behavior that occurs while working with transition states
     """
     pass
+
 
 class ReactionError(Exception):
     """
@@ -41,11 +47,13 @@ class ReactionError(Exception):
     """
     pass
 
+
 class RotorError(Exception):
     """
     An exception class for exceptional behavior that occurs while working with rotors
     """
     pass
+
 
 class SchedulerError(Exception):
     """
@@ -53,14 +61,23 @@ class SchedulerError(Exception):
     """
     pass
 
+
 class JobError(Exception):
     """
     An exception class for exceptional behavior that occurs while working with jobs
     """
     pass
 
+
 class ServerError(Exception):
     """
     An exception class for exceptional behavior that occurs while working with servers
+    """
+    pass
+
+
+class SanitizationError(Exception):
+    """
+    Exception class to handle errors during SMILES perception.
     """
     pass

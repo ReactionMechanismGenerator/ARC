@@ -23,7 +23,7 @@ from rmgpy.reaction import Reaction
 import arc.rmgdb as rmgdb
 from arc.settings import arc_path, default_levels_of_theory, check_status_command, servers, valid_chars
 from arc.scheduler import Scheduler, time_lapse
-from arc.exceptions import InputError, SettingsError, SpeciesError
+from arc.arc_exceptions import InputError, SettingsError, SpeciesError
 from arc.species.species import ARCSpecies
 from arc.reaction import ARCReaction
 from arc.processor import Processor

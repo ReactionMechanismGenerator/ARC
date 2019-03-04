@@ -9,7 +9,7 @@ import os
 from rmgpy.molecule.element import getElement
 from arkane.statmech import Log
 
-from arc.exceptions import InputError
+from arc.arc_exceptions import InputError
 
 """
 Various ESS parsing tools

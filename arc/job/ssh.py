@@ -9,7 +9,7 @@ import time
 import paramiko
 
 from arc.settings import servers, check_status_command, submit_command, submit_filename, delete_command
-from arc.exceptions import InputError, ServerError
+from arc.arc_exceptions import InputError, ServerError
 
 ##################################################################
 
