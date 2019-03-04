@@ -18,7 +18,6 @@ from ase.visualize import view
 from ase import Atom, Atoms
 from ase.io import write as ase_write
 
-from rmgpy.exceptions import AtomTypeError
 from rmgpy.data.thermo import ThermoLibrary
 from rmgpy.data.kinetics.library import KineticsLibrary
 from rmgpy.data.base import Entry
@@ -65,10 +64,9 @@ def show_sticks(xyz=None, species=None, project_directory=None):
     If successful, save an image using draw_3d
     """
     xyz = check_xyz_species_for_drawing(xyz, species)
-    try:
-        mol, coordinates = mol_from_xyz(xyz)
-    except AtomTypeError:
-        return False
+    coordinates, _, _, _, _ = get_xyz_matrix(xyz)
+    s_mol, b_mol = molecules_from_xyz(xyz)
+    mol = b_mol if b_mol is not None else s_mol
     try:
         _, rd_mol, _ = rdkit_conf_from_mol(mol, coordinates)
     except ValueError:
