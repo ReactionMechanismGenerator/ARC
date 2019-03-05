@@ -953,9 +953,9 @@ class Scheduler(object):
                             # initial and final points differ by more than `inconsistency_az` kJ/mol.
                             # seems like this rotor broke the conformer. Invalidate
                             error_message = 'Rotor scan of {label} between pivots {pivots} is inconsistent by more' \
-                                            ' than {inconsistency} kJ/mol between initial and final positions.' \
+                                            ' than {incons_az} kJ/mol between initial and final positions.' \
                                             ' Invalidating rotor.\nv_list[0] = {v0}, v_list[-1] = {vneg1}'.format(
-                                             label=label, pivots=job.pivots, inconsistency=inconsistency_az,
+                                             label=label, pivots=job.pivots, incons_az=inconsistency_az,
                                              v0=v_list[0], vneg1=v_list[-1])
                             logging.error(error_message)
                             message += error_message + '; '
@@ -965,13 +965,13 @@ class Scheduler(object):
                         if not invalidate:
                             v_last = v_list[-1]
                             for v in v_list:
-                                if abs(v - v_last) > inconsistency_ab:
+                                if abs(v - v_last) > inconsistency_ab * max(v_list):
                                     # Two consecutive points on the scan differ by more than `inconsistency_ab` kJ/mol.
                                     # This is a serious inconsistency. Invalidate
                                     error_message = 'Rotor scan of {label} between pivots {pivots} is inconsistent by' \
-                                                    'more than {inconsistency} kJ/mol between two consecutive points.' \
+                                                    'more than {incons_ab} kJ/mol between two consecutive points.' \
                                                     ' Invalidating rotor.'.format(label=label, pivots=job.pivots,
-                                                                                  inconsistency=inconsistency_ab)
+                                                                                  incons_ab=inconsistency_ab * max(v_list))
                                     logging.error(error_message)
                                     message += error_message + '; '
                                     invalidate = True
