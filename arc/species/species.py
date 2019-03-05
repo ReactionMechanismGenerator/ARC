@@ -424,7 +424,11 @@ class ARCSpecies(object):
         self.final_xyz = get_xyz_string(xyz=arkane_spc.conformer.coordinates.value,
                                         number=arkane_spc.conformer.number.value)
         if arkane_spc.adjacency_list is not None:
-            self.mol = Molecule().fromAdjacencyList(adjlist=arkane_spc.adjacency_list)
+            try:
+                self.mol = Molecule().fromAdjacencyList(adjlist=arkane_spc.adjacency_list)
+            except ValueError as e:
+                print('Could not read adjlist:\n{0}'.format(arkane_spc.adjacency_list))
+                raise e
         elif arkane_spc.inchi is not None:
             self.mol = Molecule().fromInChI(inchistr=arkane_spc.inchi)
         elif arkane_spc.smiles is not None:
