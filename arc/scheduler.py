@@ -350,10 +350,12 @@ class Scheduler(object):
                                 logging.info('\nConformer jobs for {0} successfully terminated.\n'.format(
                                     label))
                                 self.determine_most_stable_conformer(label)
-                                if not self.composite_method:
-                                    self.run_opt_job(label)
-                                else:
-                                    self.run_composite_job(label)
+                                if self.species_dict[label].initial_xyz is not None:
+                                    # if initial_xyz is None, then we're probably troubleshooting conformers, don't opt
+                                    if not self.composite_method:
+                                        self.run_opt_job(label)
+                                    else:
+                                        self.run_composite_job(label)
                             self.timer = False
                             break
                     elif 'ts_guess' in job_name:
@@ -683,38 +685,41 @@ class Scheduler(object):
         Determine the most stable conformer of species. Save the resulting xyz as `initial_xyz`
         """
         if all(e == 0.0 for e in self.species_dict[label].conformer_energies):
-            logging.error('No conformer converged for species {0}. Will try to optimize the first conformer'
-                          ' anyway'.format(label))
-            self.output[label]['status'] += 'No conformers; '
-        e_min = self.species_dict[label].conformer_energies[0]
-        i_min = 0
-        for i, ei in enumerate(self.species_dict[label].conformer_energies):
-            if ei < e_min:
-                e_min = ei
-                i_min = i
-        log = Log(path='')
-        job = self.job_dict[label]['conformers'][i_min]
-        log.determine_qm_software(fullpath=job.local_path_to_output_file)
-        coord, number, _ = log.software_log.loadGeometry()
-        self.species_dict[label].initial_xyz = get_xyz_string(xyz=coord, number=number)
-        if self.species_dict[label].is_ts:
-            self.species_dict[label].chosen_ts = None
-            logging.info('\n\nShowing geometry *guesses* of successful TS guess methods for {0} of {1}:'.format(
-                label, self.species_dict[label].rxn_label))
-            for tsg in self.species_dict[label].ts_guesses:
-                if tsg.index == i_min:
-                    self.species_dict[label].chosen_ts = i_min  # change this if selecting a better TS later
-                    self.species_dict[label].chosen_ts_method = tsg.method  # change this if selecting a better TS later
-                if tsg.success:
-                    # 0.000239006 is the conversion factor from J/mol to kcal/mol
-                    tsg.energy = (self.species_dict[label].conformer_energies[tsg.index] - e_min) * 0.000239006
-                    logging.info('{0}. Method: {1}, relative energy: {2} kcal/mol, execution time: {3}'.format(
-                        tsg.index, tsg.method, tsg.energy, tsg.execution_time))
-                    # for TSs, only use `draw_3d()`, not `show_sticks()` which gets connectivity wrong:
-                    plotter.draw_3d(xyz=tsg.xyz)
-            if self.species_dict[label].chosen_ts is None:
-                raise SpeciesError('Could not attribute most stable conformer {0} of {1} with a respective '
-                                   'TS guess'.format(i_min, label))
+            logging.error('No conformer converged for species {0}! Trying to troubleshoot conformer jobs...'.format(
+                label))
+            for i, job in self.job_dict[label]['conformers'].items():
+                self.troubleshoot_ess(label, job, level_of_theory=job.level_of_theory, job_type='conformer',
+                                      conformer=job.conformer)
+        else:
+            e_min = self.species_dict[label].conformer_energies[0]
+            i_min = 0
+            for i, ei in enumerate(self.species_dict[label].conformer_energies):
+                if ei < e_min:
+                    e_min = ei
+                    i_min = i
+            log = Log(path='')
+            job = self.job_dict[label]['conformers'][i_min]
+            log.determine_qm_software(fullpath=job.local_path_to_output_file)
+            coord, number, _ = log.software_log.loadGeometry()
+            self.species_dict[label].initial_xyz = get_xyz_string(xyz=coord, number=number)
+            if self.species_dict[label].is_ts:
+                self.species_dict[label].chosen_ts = None
+                logging.info('\n\nShowing geometry *guesses* of successful TS guess methods for {0} of {1}:'.format(
+                    label, self.species_dict[label].rxn_label))
+                for tsg in self.species_dict[label].ts_guesses:
+                    if tsg.index == i_min:
+                        self.species_dict[label].chosen_ts = i_min  # change this if selecting a better TS later
+                        self.species_dict[label].chosen_ts_method = tsg.method  # change if selecting a better TS later
+                    if tsg.success:
+                        # 0.000239006 is the conversion factor from J/mol to kcal/mol
+                        tsg.energy = (self.species_dict[label].conformer_energies[tsg.index] - e_min) * 0.000239006
+                        logging.info('{0}. Method: {1}, relative energy: {2} kcal/mol, execution time: {3}'.format(
+                            tsg.index, tsg.method, tsg.energy, tsg.execution_time))
+                        # for TSs, only use `draw_3d()`, not `show_sticks()` which gets connectivity wrong:
+                        plotter.draw_3d(xyz=tsg.xyz)
+                if self.species_dict[label].chosen_ts is None:
+                    raise SpeciesError('Could not attribute most stable conformer {0} of {1} with a respective '
+                                       'TS guess'.format(i_min, label))
 
     def parse_composite_geo(self, label, job):
         """
@@ -1179,7 +1184,10 @@ class Scheduler(object):
         logging.info('\n')
         logging.warn('Troubleshooting {label} job {job_name} which failed with status "{stat}" in {soft}.'.format(
             job_name=job.job_name, label=label, stat=job.job_status[1], soft=job.software))
-        xyz = self.species_dict[label].initial_xyz
+        if conformer != -1:
+            xyz = self.species_dict[label].conformers[conformer]
+        else:
+            xyz = self.species_dict[label].initial_xyz
         if 'Unknown reason' in job.job_status[1] and 'change_node' not in job.ess_trsh_methods:
             job.ess_trsh_methods.append('change_node')
             job.troubleshoot_server()
