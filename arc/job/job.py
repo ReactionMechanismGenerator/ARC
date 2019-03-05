@@ -542,6 +542,8 @@ $end
         remote_file_path = os.path.join(self.remote_path, output_filename[self.software])
         local_file_path = os.path.join(self.local_path, 'output.out')
         ssh.download_file(remote_file_path=remote_file_path, local_file_path=local_file_path)
+        if not os.path.isfile(local_file_path):
+            raise JobError('output file for {0} was not downloaded properly'.format(self.job_name))
 
     def run(self):
         if self.fine:
