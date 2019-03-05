@@ -1294,9 +1294,9 @@ class Scheduler(object):
                 logging.error('Could not troubleshoot geometry optimization for {label}! Tried'
                               ' troubleshooting with the following methods: {methods}'.format(
                                label=label, methods=job.ess_trsh_methods))
-                raise SchedulerError('Could not troubleshoot geometry optimization for {label}! Tried'
-                                     ' troubleshooting with the following methods: {methods}'.format(
-                                      label=label, methods=job.ess_trsh_methods))
+                self.output[label]['status'] += '; Error: Could not troubleshoot geometry optimization for {label}! ' \
+                                                ' Tried troubleshooting with the following methods: {methods}'.format(
+                                                 label=label, methods=job.ess_trsh_methods)
         elif job.software == 'qchem':
             if 'max opt cycles reached' in job.job_status[1] and 'max_cycles' not in job.ess_trsh_methods:
                 # this is a common error, increase max cycles and continue running from last geometry
@@ -1350,10 +1350,10 @@ class Scheduler(object):
             else:
                 logging.error('Could not troubleshoot geometry optimization for {label}! Tried'
                               ' troubleshooting with the following methods: {methods}'.format(
-                    label=label, methods=job.ess_trsh_methods))
-                raise SchedulerError('Could not troubleshoot geometry optimization for {label}! Tried'
-                                     ' troubleshooting with the following methods: {methods}'.format(
-                    label=label, methods=job.ess_trsh_methods))
+                                label=label, methods=job.ess_trsh_methods))
+                self.output[label]['status'] += '; Error: Could not troubleshoot geometry optimization for {label}! ' \
+                                                ' Tried troubleshooting with the following methods: {methods}'.format(
+                                                 label=label, methods=job.ess_trsh_methods)
         elif 'molpro' in job.software:
             if 'additional memory (mW) required' in job.job_status[1]:
                 # Increase memory allocation.
@@ -1427,9 +1427,9 @@ class Scheduler(object):
                 logging.error('Could not troubleshoot geometry optimization for {label}! Tried'
                               ' troubleshooting with the following methods: {methods}'.format(
                                label=label, methods=job.ess_trsh_methods))
-                raise SchedulerError('Could not troubleshoot geometry optimization for {label}! Tried'
-                                     ' troubleshooting with the following methods: {methods}'.format(
-                                      label=label, methods=job.ess_trsh_methods))
+                self.output[label]['status'] += '; Error: Could not troubleshoot geometry optimization for {label}! ' \
+                                                ' Tried troubleshooting with the following methods: {methods}'.format(
+                                                 label=label, methods=job.ess_trsh_methods)
 
     def check_all_done(self, label):
         """
