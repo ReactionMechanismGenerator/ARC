@@ -325,13 +325,10 @@ class ARCSpecies(object):
         self.rxn_label = species_dict['rxn_label'] if 'rxn_label' in species_dict else None
         self.long_thermo_description = species_dict['long_thermo_description']\
             if 'long_thermo_description' in species_dict else ''
-        self.initial_xyz = species_dict['initial_xyz'] if 'initial_xyz' in species_dict else None
-        self.final_xyz = species_dict['final_xyz'] if 'final_xyz' in species_dict else ''
+        self.initial_xyz = check_species_xyz(species_dict['initial_xyz']) if 'initial_xyz' in species_dict else None
+        self.final_xyz = check_species_xyz(species_dict['final_xyz']) if 'final_xyz' in species_dict else ''
         if 'xyz' in species_dict and self.initial_xyz is None and not self.final_xyz:
-            self.initial_xyz = species_dict['xyz']
-        self.initial_xyz = check_species_xyz(self.initial_xyz)
-        if self.final_xyz:
-            self.final_xyz = check_species_xyz(self.final_xyz)
+            self.initial_xyz = check_species_xyz(species_dict['xyz'])
         self.is_ts = species_dict['is_ts'] if 'is_ts' in species_dict else False
         if self.is_ts:
             self.ts_conf_spawned = species_dict['ts_conf_spawned'] if 'ts_conf_spawned' in species_dict else False

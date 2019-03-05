@@ -144,7 +144,7 @@ class Processor(object):
                         rotors += ',\n          '
                 else:
                     rotors_description += '* Invalidated! pivots: ' + str(pivots) + ', dihedral: ' + str(scan) +\
-                                          ', invalidation reason:' + species.rotors_dict[i]['invalidation_reason'] +\
+                                          ', invalidation reason: ' + species.rotors_dict[i]['invalidation_reason'] +\
                                           '\n'
 
             rotors += ']'
