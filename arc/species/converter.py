@@ -3,6 +3,8 @@
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
 import os
+import numpy as np
+import logging
 
 from rdkit import Chem
 import pybel
@@ -117,7 +119,10 @@ def xyz_to_pybel_mol(xyz):
     """
     if not isinstance(xyz, (str, unicode)):
         raise SpeciesError('xyz must be a string format, got: {0}'.format(type(xyz)))
-    pybel_mol = pybel.readstring('xyz', xyz_string_to_xyz_file_format(xyz))
+    try:
+        pybel_mol = pybel.readstring('xyz', xyz_string_to_xyz_file_format(xyz))
+    except IOError:
+        return None
     return pybel_mol
 
 
@@ -163,14 +168,23 @@ def molecules_from_xyz(xyz):
     if not isinstance(xyz, (str, unicode)):
         raise SpeciesError('xyz must be a string format, got: {0}'.format(type(xyz)))
     xyz = check_xyz(xyz)
-    pybel_mol = xyz_to_pybel_mol(xyz)
     coords, symbols, _, _, _ = get_xyz_matrix(xyz)
     mol_graph = MolGraph(symbols=symbols, coords=coords)
-    mol_graph.infer_connections()
-    mol_s1 = mol_graph.to_rmg_mol()  # An RMG Molecule with single bonds, atom order corresponds to xyz
+    infered_connections = mol_graph.infer_connections()
+    if infered_connections:
+        mol_s1 = mol_graph.to_rmg_mol()  # An RMG Molecule with single bonds, atom order corresponds to xyz
+    else:
+        mol_s1, _ = s_bonds_mol_from_xyz(xyz)
+    if mol_s1 is None:
+        logging.error('Could not create a 2D graph representation from xyz:\n{0}'.format(xyz))
+        return None, None
     mol_s1_updated = update_molecule(mol_s1, to_single_bonds=True)
-    inchi = pybel_to_inchi(pybel_mol)
-    mol_bo = rmg_mol_from_inchi(inchi)  # An RMG Molecule with bond orders, but without preserved atom order
+    pybel_mol = xyz_to_pybel_mol(xyz)
+    if pybel_mol is not None:
+        inchi = pybel_to_inchi(pybel_mol)
+        mol_bo = rmg_mol_from_inchi(inchi)  # An RMG Molecule with bond orders, but without preserved atom order
+    else:
+        mol_bo = None
     order_atoms(ref_mol=mol_s1_updated, mol=mol_bo)
     s_mol, b_mol = mol_s1_updated, mol_bo
     return s_mol, b_mol
@@ -218,7 +232,10 @@ def update_molecule(mol, to_single_bonds=False):
     This is useful for isomorphism comparison
     """
     new_mol = Molecule()
-    atoms = mol.atoms
+    try:
+        atoms = mol.atoms
+    except AttributeError:
+        return None
     atom_mapping = dict()
     for atom1 in atoms:
         new_atom = new_mol.addAtom(Atom(atom1.element))
@@ -232,20 +249,20 @@ def update_molecule(mol, to_single_bonds=False):
     return new_mol
 
 
-# def s_bonds_mol_from_xyz(xyz):
-#     """DEPRECATED"""
-#     mol = Molecule()
-#     coordinates = list()
-#     if not isinstance(xyz, (str, unicode)):
-#         raise SpeciesError('xyz must be a string format, got: {0}'.format(type(xyz)))
-#     for line in xyz.split('\n'):
-#         if line:
-#             atom = Atom(element=str(line.split()[0]))
-#             coordinates.append([float(line.split()[1]), float(line.split()[2]), float(line.split()[3])])
-#             atom.coords = np.array(coordinates[-1], np.float64)
-#             mol.addAtom(atom)
-#     mol.connectTheDots()  # only adds single bonds, but we don't care
-#     return mol, coordinates
+def s_bonds_mol_from_xyz(xyz):
+    """Create a single bonded molecule from xyz using RMG's connectTheDots()"""
+    mol = Molecule()
+    coordinates = list()
+    if not isinstance(xyz, (str, unicode)):
+        raise SpeciesError('xyz must be a string format, got: {0}'.format(type(xyz)))
+    for line in xyz.split('\n'):
+        if line:
+            atom = Atom(element=str(line.split()[0]))
+            coordinates.append([float(line.split()[1]), float(line.split()[2]), float(line.split()[3])])
+            atom.coords = np.array(coordinates[-1], np.float64)
+            mol.addAtom(atom)
+    mol.connectTheDots()  # only adds single bonds, but we don't care
+    return mol, coordinates
 
 
 def rdkit_conf_from_mol(mol, coordinates):

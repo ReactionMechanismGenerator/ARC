@@ -202,7 +202,10 @@ class MolGraph(object):
         """
         if from_coords:
             xyz = self.to_xyz()
-            mol = pybel.readstring('xyz', xyz)
+            try:
+                mol = pybel.readstring('xyz', xyz)
+            except IOError:
+                return None
             return mol
         else:
             raise NotImplementedError('Can only create Pybel molecules from 3D structure')
@@ -481,6 +484,8 @@ class MolGraph(object):
 
         if use_ob:
             pybel_mol = self.to_pybel_mol()  # Should be sorted by atom indices
+            if pybel_mol is None:
+                return False
             assert all(ap.idx == a.idx for ap, a in zip(pybel_mol, self))  # Check to be sure
             mapping = {ap.idx: a for ap, a in zip(pybel_mol, self)}
             for bond in pybel.ob.OBMolBondIter(pybel_mol.OBMol):
@@ -502,6 +507,7 @@ class MolGraph(object):
                     else:
                         connection = Connection(atom1, atom2)
                         self.add_connection(connection)
+        return True
 
     def is_atom_in_cycle(self, atom):
         return self._is_chain_in_cycle([atom])
