@@ -71,6 +71,7 @@ class Scheduler(object):
     `save_restart`          ``bool``  Whether to start saving a restart file. ``True`` only after all species are loaded
                                         (otherwise saves a partial file and may cause loss of information)
     `restart_path`          ``str``   Path to the `restart.yml` file to be saved
+    `max_job_time`          ``int``   The maximal allowed job time on the server in hours
     `testing`               ``bool``  Used for internal ARC testing (generating the object w/o executing it)
     `rmgdb`                 ``RMGDatabase``  The RMG database object
     ======================= ========= ==================================================================================
@@ -104,13 +105,14 @@ class Scheduler(object):
     """
     def __init__(self, project, settings, species_list, composite_method, conformer_level, opt_level, freq_level,
                  sp_level, scan_level, ts_guess_level, project_directory, rmgdatabase, fine=False, scan_rotors=True,
-                 generate_conformers=True, initial_trsh=None, rxn_list=None, restart_dict=None,
+                 generate_conformers=True, initial_trsh=None, rxn_list=None, restart_dict=None, max_job_time=5,
                  testing=False):
         self.rmgdb = rmgdatabase
         self.restart_dict = restart_dict
         self.species_list = species_list
         self.rxn_list = rxn_list if rxn_list is not None else list()
         self.project = project
+        self.max_job_time = max_job_time
         self.settings = settings
         self.project_directory = project_directory
         self.job_dict = dict()
@@ -468,7 +470,7 @@ class Scheduler(object):
                   level_of_theory=level_of_theory, multiplicity=species.multiplicity, charge=species.charge, fine=fine,
                   shift=shift, software=software, is_ts=species.is_ts, memory=memory, trsh=trsh, conformer=conformer,
                   ess_trsh_methods=ess_trsh_methods, scan=scan, pivots=pivots, occ=occ, initial_trsh=self.initial_trsh,
-                  project_directory=self.project_directory)
+                  project_directory=self.project_directory, max_job_time=self.max_job_time)
         if conformer < 0:
             # this is NOT a conformer job
             self.running_jobs[label].append(job.job_name)  # mark as a running job
