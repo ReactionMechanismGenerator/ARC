@@ -62,18 +62,18 @@ class TestScheduler(unittest.TestCase):
         self.sched1.job_dict[label]['conformers'][0] = self.job1
         self.sched1.job_dict[label]['conformers'][1] = self.job2
         self.sched1.parse_conformer_energy(job=self.job1, label=label, i=0)
-        self.sched1.parse_conformer_energy(job=self.job1, label=label, i=1)
-        expecting = [-251596443.5088726, -251596443.5088726]
+        self.sched1.parse_conformer_energy(job=self.job2, label=label, i=1)
+        expecting = [-251596443.5088726, -254221943.3698632]
         self.assertEqual(self.sched1.species_dict[label].conformer_energies, expecting)
 
         self.sched1.determine_most_stable_conformer(label=label)
-        expecting = """N      -0.75556320   -0.12937340    0.00000000
-C       0.70855047    0.03886715    0.00000000
-H       1.12733096   -0.45978028   -0.88432893
-H       1.12733096   -0.45978028    0.88432893
-H       1.06394036    1.08710265    0.00000000
-H      -1.16566523    0.32024044    0.81630398
-H      -1.16566523    0.32024044   -0.81630398
+        expecting = """N      -0.75555952   -0.12937106    0.00000000
+C       0.70855440    0.03887206    0.00000000
+H       1.06395135    1.08711266    0.00000000
+H       1.12732348   -0.45978507    0.88433277
+H       1.12732348   -0.45978507   -0.88433277
+H      -1.16566701    0.32023496    0.81630508
+H      -1.16566701    0.32023496   -0.81630508
 """
         self.assertEqual(self.sched1.species_dict[label].initial_xyz, expecting)
 

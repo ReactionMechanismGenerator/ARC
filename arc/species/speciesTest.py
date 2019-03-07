@@ -13,7 +13,7 @@ from rmgpy.molecule.molecule import Molecule
 from rmgpy.species import Species
 from rmgpy.reaction import Reaction
 
-from arc.species.species import ARCSpecies, TSGuess,\
+from arc.species.species import ARCSpecies, TSGuess, get_min_energy_conformer,\
     determine_rotor_type, determine_rotor_symmetry, check_species_xyz
 from arc.species.converter import get_xyz_string, get_xyz_matrix, molecules_from_xyz
 from arc.settings import arc_path
@@ -447,6 +447,13 @@ H      -0.43701200   -1.34990600    0.92900600
 H      -1.69944700    0.93441600   -0.11271200"""
         new_xyz2 = check_species_xyz(xyz_path)
         self.assertEqual(new_xyz2, expected_xyz2)
+
+    def test_get_min_energy_conformer(self):
+        """Test that the xyz with the minimum specified energy is returned from get_min_energy_conformer()"""
+        xyzs = ['xyz1', 'xyz2', 'xyz3']
+        energies = [-5, -30, -1.5]
+        min_xyz = get_min_energy_conformer(xyzs, energies)
+        self.assertEqual(min_xyz, 'xyz2')
 
 
 class TestTSGuess(unittest.TestCase):
