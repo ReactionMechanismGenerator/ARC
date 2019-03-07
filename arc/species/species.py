@@ -389,10 +389,9 @@ class ARCSpecies(object):
             elif smiles is not None:
                 self.mol = Molecule(SMILES=smiles)
         if self.mol is None and not self.is_ts:
-            if self.final_xyz:
-                _, self.mol = molecules_from_xyz(self.final_xyz)
-            elif self.initial_xyz is not None:
-                _, self.mol = molecules_from_xyz(self.initial_xyz)
+            xyz = self.final_xyz or self.initial_xyz
+            if xyz:
+                _, self.mol = molecules_from_xyz(xyz)
         if self.mol is not None:
             if self.final_xyz:
                 self.mol_from_xyz(self.final_xyz)
@@ -403,6 +402,11 @@ class ARCSpecies(object):
                 if self.bond_corrections:
                     self.long_thermo_description += 'Bond corrections: {0}\n'.format(self.bond_corrections)
             self.number_of_atoms = len(self.mol.atoms)
+            if self.multiplicity is None:
+                self.multiplicity = self.mol.multiplicity
+            if self.charge is None:
+                self.charge = self.mol.getNetCharge()
+            self.mol_list = self.mol.generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
         if self.mol is None and self.initial_xyz is None and not self.final_xyz:
             raise SpeciesError('Must have either mol or xyz for species {0}'.format(self.label))
         if self.initial_xyz is not None and not self.final_xyz:
