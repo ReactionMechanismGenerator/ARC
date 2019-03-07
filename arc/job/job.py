@@ -7,7 +7,7 @@ import datetime
 import csv
 import logging
 
-from arc.settings import arc_path, servers, submit_filename, delete_command,\
+from arc.settings import arc_path, servers, submit_filename, delete_command, t_max_format,\
     input_filename, output_filename, rotor_scan_resolution, list_available_nodes_command
 from arc.job.submit import submit_scripts
 from arc.job.inputs import input_files
@@ -66,6 +66,7 @@ class Job(object):
     `occ`              ``int``           The number of occupied orbitals (core + val) from a molpro CCSD sp calc
     `initial_trsh`     ``dict``          Troubleshooting methods to try by default. Keys are server names, values are trshs
     `project_directory` ``str``          The path to the project directory
+    `max_job_time`     ``int``           The maximal allowed job time on the server in hours
     ================ =================== ===============================================================================
 
     self.job_status:
@@ -76,7 +77,8 @@ class Job(object):
     def __init__(self, project, settings, species_name, xyz, job_type, level_of_theory, multiplicity, project_directory,
                  charge=0, conformer=-1, fine=False, shift='', software=None, is_ts=False, scan='', pivots=None,
                  memory=1500, comments='', trsh='', ess_trsh_methods=None, occ=None, initial_trsh=None, job_num=None,
-                 job_server_name=None, job_name=None, job_id=None, server=None, date_time=None, run_time=None):
+                 job_server_name=None, job_name=None, job_id=None, server=None, date_time=None, run_time=None,
+                 max_job_time=5):
         self.project = project
         self.settings=settings
         self.date_time = date_time if date_time is not None else datetime.datetime.now()
@@ -92,6 +94,7 @@ class Job(object):
         self.ess_trsh_methods = ess_trsh_methods if ess_trsh_methods is not None else list()
         self.trsh = trsh
         self.initial_trsh = initial_trsh if initial_trsh is not None else dict()
+        self.max_job_time = max_job_time
         job_types = ['conformer', 'opt', 'freq', 'optfreq', 'sp', 'composite', 'scan', 'gsm', 'irc', 'ts_guess']
         # the 'conformer' job type is identical to 'opt', but we differentiate them to be identifiable in Scheduler
         if job_type not in job_types:
@@ -315,7 +318,20 @@ class Job(object):
 
     def write_submit_script(self):
         un = servers[self.server]['un']  # user name
-        self.submit = submit_scripts[self.software].format(name=self.job_server_name, un=un)
+        if self.max_job_time > 9999 or self.max_job_time == 0:
+            self.max_job_time = 9999
+        if t_max_format[servers[self.server]['cluster_soft']] == 'days':
+            # e.g., 5-0:00:00
+            d, h = divmod(self.max_job_time, 24)
+            t_max = '{0}-{1}:00:00'.format(d, h)
+        elif t_max_format[servers[self.server]['cluster_soft']] == 'hours':
+            # e.g., 120:00:00
+            t_max = '{0}:00:00'.format(self.max_job_time)
+        else:
+            raise JobError('Could not determine format for maximal job time')
+        self.submit = submit_scripts[servers[self.server]['cluster_soft']][self.software.lower()].format(
+            name=self.job_server_name, un=un, t_max=t_max, mem_cpu=self.memory * 150)
+        # Memory convertion: multiply MW value by 1200 to conservatively get it in MB, then divide by 8 to get per cup
         if not os.path.exists(self.local_path):
             os.makedirs(self.local_path)
         with open(os.path.join(self.local_path, submit_filename[servers[self.server]['cluster_soft']]), 'wb') as f:

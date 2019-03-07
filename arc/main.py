@@ -72,6 +72,7 @@ class ARC(object):
     `t_min`                ``tuple``  The minimum temperature for kinetics computations, e.g., (500, str('K'))
     `t_max`                ``tuple``  The maximum temperature for kinetics computations, e.g., (3000, str('K'))
     `t_count`              ``int``    The number of temperature points between t_min and t_max for kinetics computations
+    `max_job_time`         ``int``    The maximal allowed job time on the server in hours
     `rmgdb`                ``RMGDatabase``  The RMG database object
     ====================== ========== ==================================================================================
 
@@ -82,7 +83,7 @@ class ARC(object):
                  conformer_level='', composite_method='', opt_level='', freq_level='', sp_level='', scan_level='',
                  ts_guess_level='', fine=True, generate_conformers=True, scan_rotors=True, use_bac=True,
                  model_chemistry='', ess_settings=None, initial_trsh=None, t_min=None, t_max=None, t_count=None,
-                 verbose=logging.INFO, project_directory=None):
+                 verbose=logging.INFO, project_directory=None, max_job_time=120):
 
         self.__version__ = '1.0.0'
         self.verbose = verbose
@@ -93,6 +94,7 @@ class ARC(object):
         self.lib_long_desc = ''
         self.unique_species_labels = list()
         self.rmgdb = rmgdb.make_rmg_database_object()
+        self.max_job_time = max_job_time
 
         if input_dict is None:
             if project is None:
@@ -356,6 +358,7 @@ class ARC(object):
         restart_dict['t_min'] = self.t_min
         restart_dict['t_max'] = self.t_max
         restart_dict['t_count'] = self.t_count
+        restart_dict['max_job_time'] = self.max_job_time
         return restart_dict
 
     def from_dict(self, input_dict, project=None, project_directory=None):
@@ -377,6 +380,7 @@ class ARC(object):
         self.t0 = time.time()  # init time
         self.execution_time = None
         self.verbose = input_dict['verbose'] if 'verbose' in input_dict else self.verbose
+        self.max_job_time = input_dict['max_job_time'] if 'max_job_time' in input_dict else 5
 
         if self.ess_settings is not None:
             self.settings['ssh'] = True
@@ -554,7 +558,8 @@ class ARC(object):
                                    scan_level=self.scan_level, ts_guess_level=self.ts_guess_level ,fine=self.fine,
                                    settings=self.settings, generate_conformers=self.generate_conformers,
                                    scan_rotors=self.scan_rotors, initial_trsh=self.initial_trsh, rmgdatabase=self.rmgdb,
-                                   restart_dict=self.restart_dict, project_directory=self.project_directory)
+                                   restart_dict=self.restart_dict, project_directory=self.project_directory,
+                                   max_job_time=self.max_job_time)
 
         self.save_project_info_file()
 

@@ -45,6 +45,7 @@ class TestARC(unittest.TestCase):
                          'freq_level': 'wb97xd/6-311++g(d,p)',
                          'generate_conformers': True,
                          'initial_trsh': 'scf=(NDump=30)',
+                         'max_job_time': 120,
                          'model_chemistry': 'ccsd(t)-f12/cc-pvtz-f12',
                          'output': {},
                          'project': 'arc_test',

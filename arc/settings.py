@@ -59,6 +59,9 @@ list_available_nodes_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/l
 submit_filename = {'OGE': 'submit.sh',
                    'Slurm': 'submit.sl'}
 
+t_max_format = {'OGE': 'hours',
+                'Slurm': 'days'}
+
 input_filename = {'gaussian': 'input.gjf',
                    'qchem': 'input.in',
                    'molpro': 'input.in',
