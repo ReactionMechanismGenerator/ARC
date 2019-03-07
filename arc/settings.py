@@ -72,7 +72,7 @@ output_filename = {'gaussian': 'input.log',
 default_levels_of_theory = {'conformer': 'b97-d3/6-311+g(d,p)',
                             'ts_guesses': 'b3lyp/6-31+g(d,p)',  # used for IRC as well
                             'opt': 'wb97xd/6-311++g(d,p)',
-                            'freq': 'wb97xd/6-311++g(d,p)',
+                            'freq': 'wb97xd/6-311++g(d,p)',  # should be the same level as opt
                             'sp': 'ccsd(t)-f12/cc-pvtz-f12',  # This should be a level for which BAC is available
                             # 'sp': 'b3lyp/6-311+g(3df,2p)',
                             'scan': 'b3lyp/6-311+g(d,p)',
