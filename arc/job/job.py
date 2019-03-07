@@ -382,9 +382,13 @@ wf,spin={spin},charge={charge};}}
                 if self.is_ts:
                     job_type_1 = 'opt=(ts, calcfc, noeigentest)'
                 else:
-                    job_type_1 = 'opt=calcfc'
+                    job_type_1 = 'opt=(calcfc, noeigentest)'
                 if self.fine:
-                    fine = 'scf=(tight, direct) int=finegrid'
+                    fine = 'scf=(tight, direct) int=(ultrafine, Acc2E=12)'
+                    if self.is_ts:
+                        job_type_1 = 'opt=(ts, calcfc, noeigentest, tight)'
+                    else:
+                        job_type_1 = 'opt=(calcfc, noeigentest, tight)'
             elif self.software == 'qchem':
                 if self.is_ts:
                     job_type_1 = 'ts'
@@ -405,7 +409,7 @@ wf,spin={spin},charge={charge};}}
 
         elif self.job_type == 'freq':
             if self.software == 'gaussian':
-                job_type_2 = 'freq iop(7/33=1)'
+                job_type_2 = 'freq iop(7/33=1) scf=(tight, direct) int=(ultrafine, Acc2E=12)'
             elif self.software == 'qchem':
                 job_type_1 = 'freq'
             elif self.software == 'molpro':
@@ -416,10 +420,14 @@ wf,spin={spin},charge={charge};}}
                 if self.is_ts:
                     job_type_1 = 'opt=(ts, calcfc, noeigentest)'
                 else:
-                    job_type_1 = 'opt=calcfc'
+                    job_type_1 = 'opt=(calcfc, noeigentest)'
                 job_type_2 = 'freq iop(7/33=1)'
                 if self.fine:
-                    fine = 'scf=(tight, direct) int=finegrid'
+                    fine = 'scf=(tight, direct) int=(ultrafine, Acc2E=12)'
+                    if self.is_ts:
+                        job_type_1 = 'opt=(ts, calcfc, noeigentest, tight)'
+                    else:
+                        job_type_1 = 'opt=(calcfc, noeigentest, tight)'
             elif self.software == 'qchem':
                 self.input += """@@@
 
@@ -452,7 +460,7 @@ $end
 
         if self.job_type == 'sp':
             if self.software == 'gaussian':
-                pass
+                job_type_1 = 'scf=(tight, direct) int=(ultrafine, Acc2E=12)'
             elif self.software == 'qchem':
                 job_type_1 = 'sp'
             elif self.software == 'molpro':
@@ -461,11 +469,11 @@ $end
         if self.job_type == 'composite':
             if self.software == 'gaussian':
                 if self.fine:
-                    fine = 'scf=(tight, direct) int=finegrid'
+                    fine = 'scf=(tight, direct) int=(ultrafine, Acc2E=12)'
                 if self.is_ts:
-                    job_type_1 = 'opt=(ts, noeigentest, calcfc)'
+                    job_type_1 = 'opt=(ts, calcfc, noeigentest, tight)'
                 else:
-                    job_type_1 = 'opt=(noeigentest, calcfc)'
+                    job_type_1 = 'opt=(calcfc, noeigentest, tight)'
             else:
                 raise JobError('Currently composite methods are only supported in gaussian')
 
