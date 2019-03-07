@@ -21,6 +21,7 @@ except ImportError:
 
 from arkane.statmech import Log
 from rmgpy.reaction import Reaction
+from rmgpy.exceptions import InputError as RMGInputError
 
 import arc.rmgdb as rmgdb
 from arc import plotter
@@ -703,8 +704,12 @@ class Scheduler(object):
             log = Log(path='')
             for job in self.job_dict[label]['conformers'].values():
                 log.determine_qm_software(fullpath=job.local_path_to_output_file)
-                coord, number, _ = log.software_log.loadGeometry()
-                xyzs.append(get_xyz_string(xyz=coord, number=number))
+                try:
+                    coord, number, _ = log.software_log.loadGeometry()
+                except RMGInputError:
+                    xyzs.append(None)
+                else:
+                    xyzs.append(get_xyz_string(xyz=coord, number=number))
             energies, xyzs = (list(t) for t in zip(*sorted(zip(self.species_dict[label].conformer_energies, xyzs))))
             # Run isomorphism checks if a 2D representation is available
             if self.species_dict[label].mol is not None:
