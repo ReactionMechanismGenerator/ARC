@@ -25,7 +25,7 @@ from rmgpy.reaction import Reaction
 import arc.rmgdb as rmgdb
 from arc import plotter
 from arc import parser
-from arc.species.converter import get_xyz_string
+from arc.species.converter import get_xyz_string, molecules_from_xyz
 from arc.job.job import Job
 from arc.arc_exceptions import SpeciesError, SchedulerError
 from arc.job.ssh import SSH_Client
@@ -346,10 +346,14 @@ class Scheduler(object):
                                 if 'conformer' in spec_jobs:
                                     break
                             else:
-                                # All conformer jobs terminated. Run opt on most stable conformer geometry.
+                                # All conformer jobs terminated.
+                                # Check isomorphism and run opt on most stable conformer geometry.
                                 logging.info('\nConformer jobs for {0} successfully terminated.\n'.format(
                                     label))
-                                self.determine_most_stable_conformer(label)
+                                if self.species_dict[label].is_ts:
+                                    self.determine_most_likely_ts_conformer(label)
+                                else:
+                                    self.determine_most_stable_conformer(label)  # also checks isomorphism
                                 if self.species_dict[label].initial_xyz is not None:
                                     # if initial_xyz is None, then we're probably troubleshooting conformers, don't opt
                                     if not self.composite_method:
@@ -358,10 +362,6 @@ class Scheduler(object):
                                         self.run_composite_job(label)
                             self.timer = False
                             break
-                    elif 'ts_guess' in job_name:
-                        i = int(job_name[8:])  # the ts_guess number. parsed from a string like 'ts_guess3'.
-                        job = self.job_dict[label]['conformers'][i]
-
                     elif 'opt' in job_name\
                             and not self.job_dict[label]['opt'][job_name].job_id in self.servers_jobs_ids:
                         # val is 'opt1', 'opt2', etc., or 'optfreq1', optfreq2', etc.
@@ -544,7 +544,7 @@ class Scheduler(object):
 
     def run_ts_conformer_jobs(self, label):
         """
-        Select the most stable conformer (TS guess) by spawning opt jobs at the ts_guesses level of theory.
+        Spawn opt jobs at the ts_guesses level of theory for the TS guesses
         """
         if len(self.species_dict[label].conformers) > 1:
             self.job_dict[label]['conformers'] = dict()
@@ -682,8 +682,13 @@ class Scheduler(object):
 
     def determine_most_stable_conformer(self, label):
         """
-        Determine the most stable conformer of species. Save the resulting xyz as `initial_xyz`
+        Determine the most stable conformer for a species (which is not a TS).
+        Also run an isomorphism check.
+        Save the resulting xyz as `initial_xyz`
         """
+        if self.species_dict[label].is_ts:
+            raise SchedulerError('The determine_most_stable_conformer() method does not deal with transition'
+                                 ' state guesses.')
         if all(e == 0.0 for e in self.species_dict[label].conformer_energies):
             logging.error('No conformer converged for species {0}! Trying to troubleshoot conformer jobs...'.format(
                 label))
@@ -691,35 +696,94 @@ class Scheduler(object):
                 self.troubleshoot_ess(label, job, level_of_theory=job.level_of_theory, job_type='conformer',
                                       conformer=job.conformer)
         else:
-            e_min = self.species_dict[label].conformer_energies[0]
-            i_min = 0
-            for i, ei in enumerate(self.species_dict[label].conformer_energies):
-                if ei < e_min:
-                    e_min = ei
-                    i_min = i
+            conformer_xyz = None
+            xyzs = list()
             log = Log(path='')
-            job = self.job_dict[label]['conformers'][i_min]
-            log.determine_qm_software(fullpath=job.local_path_to_output_file)
-            coord, number, _ = log.software_log.loadGeometry()
-            self.species_dict[label].initial_xyz = get_xyz_string(xyz=coord, number=number)
-            if self.species_dict[label].is_ts:
-                self.species_dict[label].chosen_ts = None
-                logging.info('\n\nShowing geometry *guesses* of successful TS guess methods for {0} of {1}:'.format(
-                    label, self.species_dict[label].rxn_label))
-                for tsg in self.species_dict[label].ts_guesses:
-                    if tsg.index == i_min:
-                        self.species_dict[label].chosen_ts = i_min  # change this if selecting a better TS later
-                        self.species_dict[label].chosen_ts_method = tsg.method  # change if selecting a better TS later
-                    if tsg.success:
-                        # 0.000239006 is the conversion factor from J/mol to kcal/mol
-                        tsg.energy = (self.species_dict[label].conformer_energies[tsg.index] - e_min) * 0.000239006
-                        logging.info('{0}. Method: {1}, relative energy: {2} kcal/mol, execution time: {3}'.format(
-                            tsg.index, tsg.method, tsg.energy, tsg.execution_time))
-                        # for TSs, only use `draw_3d()`, not `show_sticks()` which gets connectivity wrong:
-                        plotter.draw_3d(xyz=tsg.xyz)
-                if self.species_dict[label].chosen_ts is None:
-                    raise SpeciesError('Could not attribute most stable conformer {0} of {1} with a respective '
-                                       'TS guess'.format(i_min, label))
+            for job in self.job_dict[label]['conformers'].values():
+                log.determine_qm_software(fullpath=job.local_path_to_output_file)
+                coord, number, _ = log.software_log.loadGeometry()
+                xyzs.append(get_xyz_string(xyz=coord, number=number))
+            energies, xyzs = (list(t) for t in zip(*sorted(zip(self.species_dict[label].conformer_energies, xyzs))))
+            # Run isomorphism checks if a 2D representation is available
+            if self.species_dict[label].mol is not None:
+                for i, xyz in enumerate(xyzs):
+                    _, b_mol = molecules_from_xyz(xyz)
+                    if b_mol is not None:
+                        # make copies of the molecules, since isIsomorphic() changes atom orders
+                        b_mol_copy, mol_copy = b_mol.copy(deep=True), self.species_dict[label].mol.copy(deep=True)
+                        match = mol_copy.isIsomorphic(b_mol_copy)
+                        if match:
+                            if i == 0:
+                                logging.info('Most stable conformer for species {0} was found to be isomorphic '
+                                             'with the 2D graph representation {1}\n'.format(label, b_mol.toSMILES()))
+                                conformer_xyz = xyz
+                                self.output[label]['status'] += 'passed isomorphism check; '
+                            else:
+                                # 2625.50 is the conversion factor from Hartree to kJ/mol
+                                logging.info('A conformer for species {0} was found to be isomorphic '
+                                             'with the 2D graph representation {1}. This conformer is {2} kJ/mol '
+                                             'above the most stable one (which is not isomorphic). Using the '
+                                             'isomorphic conformer for further geometry optimization.'.format(
+                                              label, mol_copy.toSMILES(), (energies[i] - energies[0]) * 2625.50))
+                                conformer_xyz = xyz
+                                self.output[label]['status'] += 'passed isomorphism check but not for the most stable conformer; '
+                            break
+                        else:
+                            if i == 0:
+                                logging.warn('Most stable conformer for species {0} was found to be NON-isomorphic '
+                                             'with the 2D graph representation {1}. Searching for a different '
+                                             'conformer that is isomorphic'.format(label, b_mol.toSMILES()))
+                else:
+                    logging.error('No conformer for {0} was found to be isomorphic with the 2D graph representation'
+                                  ' {1}. NOT optimizing this species.'.format(
+                                   label, self.species_dict[label].mol.toSMILES()))
+                    self.output[label]['status'] += 'Error: No conformer was found to be isomorphic with the 2D graph' \
+                                                    ' representation! '
+            else:
+                logging.warn('Could not run isomorphism check for species {0} due to missing 2D graph '
+                             'representation. Using the most stable conformer for further geometry'
+                             ' optimization.'.format(label))
+                conformer_xyz = xyzs[0]
+            self.species_dict[label].initial_xyz = conformer_xyz
+
+    def determine_most_likely_ts_conformer(self, label):
+        """
+        Determine the most likely TS conformer.
+        Save the resulting xyz as `initial_xyz`
+        """
+        if not self.species_dict[label].is_ts:
+            raise SchedulerError('The determine_most_likely_ts_conformer() method only deals with transition'
+                                 ' state guesses.')
+        if all(e == 0.0 for e in self.species_dict[label].conformer_energies):
+            logging.error('No guess converged for TS {0}!')
+            # for i, job in self.job_dict[label]['conformers'].items():
+            #     self.troubleshoot_ess(label, job, level_of_theory=job.level_of_theory, job_type='conformer',
+            #                           conformer=job.conformer)
+        else:
+            energies = self.species_dict[label].conformer_energies
+            # currently we take the most stable guess. We'll need to implement additional checks here:
+            # - normal displacement mode of the imaginary frequency
+            # - IRC
+            e_min = min(energies)
+            i_min = energies.index(e_min)
+            self.species_dict[label].chosen_ts = None
+            logging.info('\n\nShowing geometry *guesses* of successful TS guess methods for {0} of {1}:'.format(
+                label, self.species_dict[label].rxn_label))
+            for tsg in self.species_dict[label].ts_guesses:
+                if tsg.index == i_min:
+                    self.species_dict[label].chosen_ts = i_min  # change this if selecting a better TS later
+                    self.species_dict[label].chosen_ts_method = tsg.method  # change if selecting a better TS later
+                    self.species_dict[label].initial_xyz = tsg.xyz
+                if tsg.success:
+                    # 0.000239006 is the conversion factor from J/mol to kcal/mol
+                    tsg.energy = (self.species_dict[label].conformer_energies[tsg.index] - e_min) * 0.000239006
+                    logging.info('{0}. Method: {1}, relative energy: {2} kcal/mol, execution time: {3}'.format(
+                        tsg.index, tsg.method, tsg.energy, tsg.execution_time))
+                    # for TSs, only use `draw_3d()`, not `show_sticks()` which gets connectivity wrong:
+                    plotter.draw_3d(xyz=tsg.xyz)
+            if self.species_dict[label].chosen_ts is None:
+                raise SpeciesError('Could not attribute most stable conformer {0} of {1} with a respective '
+                                   'TS guess'.format(i_min, label))
 
     def parse_composite_geo(self, label, job):
         """
