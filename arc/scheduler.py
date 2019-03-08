@@ -305,7 +305,7 @@ class Scheduler(object):
                             if self.species_dict[species.label].is_ts\
                                     or self.species_dict[species.label].number_of_atoms > 1:
                                 self.run_freq_job(species.label)
-                        if 'sp' not in self.output[species.label] and 'sp' not in self.job_dict[species.label]:
+                        if not self.composite_method and 'sp' not in self.output[species.label] and 'sp' not in self.job_dict[species.label]:
                             self.run_sp_job(species.label)
                         if self.scan_rotors:
                             # restart-related check are performed in run_scan_jobs()
