@@ -52,6 +52,7 @@ class ARCSpecies(object):
     `conformer_energies`    ``list``     A list of conformers E0 (Hartree)
     `initial_xyz`           ``string``   The initial geometry guess
     `final_xyz`             ``string``   The optimized species geometry
+    `zmat`                  ``
     `opt_level`             ``string``   Level of theory for geometry optimization. Saved for archiving.
     `number_of_atoms`       ``int``      The number of atoms in the species/TS
     `mol`                   ``Molecule`` An RMG:`Molecule` object used for BAC determination.
