@@ -71,6 +71,19 @@ class TestParser(unittest.TestCase):
         t1 = parser.parse_t1(path)
         self.assertEqual(t1, 0.0086766)
 
+    def test_parse_scan(self):
+        """Test parsing of rotor scans"""
+        path = os.path.join(arc_path,'arc','testing','rotor_scans','OOC1CCOCO1.out')
+        log = parser.Log(path='')
+        log.determine_qm_software(fullpath=path)
+        v_list, angle = log.software_log.loadScanEnergies()
+        input_xyzs = parser.parse_scan_input_geo(path,'gaussian')
+        base_xyzs = parser.parse_scan_coords(path,0,'gaussian')
+        self.assertTupleEqual(base_xyzs.shape,input_xyzs.shape)
+        errors = []
+        for i in xrange(len(v_list)):
+            base_xyzs = parser.parse_scan_coords(path,i,'gaussian')
+            self.assertTrue(np.round(base_xyzs-input_xyzs,3).any().any())
 ################################################################################
 
 if __name__ == '__main__':
