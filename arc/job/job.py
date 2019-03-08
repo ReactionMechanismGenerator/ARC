@@ -400,7 +400,8 @@ wf,spin={spin},charge={charge};}}
                 else:
                     job_type_1 = 'opt=(calcfc, noeigentest)'
                 if self.fine:
-                    fine = 'scf=(tight, direct) int=(ultrafine, Acc2E=12)'
+                    # Note that the Acc2E argument is not available in Gaussian03
+                    fine = 'scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
                     if self.is_ts:
                         job_type_1 = 'opt=(ts, calcfc, noeigentest, tight)'
                     else:
@@ -425,7 +426,7 @@ wf,spin={spin},charge={charge};}}
 
         elif self.job_type == 'freq':
             if self.software == 'gaussian':
-                job_type_2 = 'freq iop(7/33=1) scf=(tight, direct) int=(ultrafine, Acc2E=12)'
+                job_type_2 = 'freq iop(7/33=1) scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
             elif self.software == 'qchem':
                 job_type_1 = 'freq'
             elif self.software == 'molpro':
@@ -439,7 +440,7 @@ wf,spin={spin},charge={charge};}}
                     job_type_1 = 'opt=(calcfc, noeigentest)'
                 job_type_2 = 'freq iop(7/33=1)'
                 if self.fine:
-                    fine = 'scf=(tight, direct) int=(ultrafine, Acc2E=12)'
+                    fine = 'scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
                     if self.is_ts:
                         job_type_1 = 'opt=(ts, calcfc, noeigentest, tight)'
                     else:
@@ -476,7 +477,7 @@ $end
 
         if self.job_type == 'sp':
             if self.software == 'gaussian':
-                job_type_1 = 'scf=(tight, direct) int=(ultrafine, Acc2E=12)'
+                job_type_1 = 'scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
             elif self.software == 'qchem':
                 job_type_1 = 'sp'
             elif self.software == 'molpro':
@@ -485,7 +486,7 @@ $end
         if self.job_type == 'composite':
             if self.software == 'gaussian':
                 if self.fine:
-                    fine = 'scf=(tight, direct) int=(ultrafine, Acc2E=12)'
+                    fine = 'scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
                 if self.is_ts:
                     job_type_1 = 'opt=(ts, calcfc, noeigentest, tight)'
                 else:
@@ -496,9 +497,11 @@ $end
         if self.job_type == 'scan':
             if self.software == 'gaussian':
                 if self.is_ts:
-                    job_type_1 = 'opt=(ts, modredundant, calcfc, noeigentest)'
+                    job_type_1 = 'opt=(ts, modredundant, calcfc, noeigentest, maxStep=5) scf=(tight, direct)' \
+                                 ' integral=(grid=ultrafine, Acc2E=12)'
                 else:
-                    job_type_1 = 'opt=(modredundant, calcfc, noeigentest)'
+                    job_type_1 = 'opt=(modredundant, calcfc, noeigentest, maxStep=5) scf=(tight, direct)' \
+                                 ' integral=(grid=ultrafine, Acc2E=12)'
                 scan_string = ''.join([str(num) + ' ' for num in self.scan])
                 if not divmod(360, rotor_scan_resolution):
                     raise JobError('Scan job got an illegal rotor scan resolution of {0}'.format(rotor_scan_resolution))
