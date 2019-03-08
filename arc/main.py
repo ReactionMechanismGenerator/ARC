@@ -518,13 +518,14 @@ class ARC(object):
             for spc in self.arc_species_list:
                 for rotor_num, rotor_dict in spc.rotors_dict.items():
                     if not os.path.isfile(rotor_dict['scan_path']):
-                        dir_path = os.path.dirname(os.path.realpath(__file__))
-                        if os.path.isfile(os.path.join(dir_path, rotor_dict['scan_path'])):
-                            # correct relative paths
-                            spc.rotors_dict[rotor_num]['scan_path'] = os.path.join(dir_path, rotor_dict['scan_path'])
-                        else:
-                            raise SpeciesError('Could not find rotor scan output file for rotor {0} of species {1}:'
-                                               ' {2}'.format(rotor_num, spc.label, rotor_dict['scan_path']))
+                        if rotor_dict['scan_path'] != '':
+                            dir_path = os.path.dirname(os.path.realpath(__file__))
+                            if os.path.isfile(os.path.join(dir_path, rotor_dict['scan_path'])):
+                                # correct relative paths
+                                spc.rotors_dict[rotor_num]['scan_path'] = os.path.join(dir_path, rotor_dict['scan_path'])
+                            else:
+                                raise SpeciesError('Could not find rotor scan output file for rotor {0} of species {1}:'
+                                                   ' {2}'.format(rotor_num, spc.label, rotor_dict['scan_path']))
         else:
             self.arc_species_list = list()
         if 'reactions' in input_dict:
