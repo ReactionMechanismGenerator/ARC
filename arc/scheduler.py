@@ -106,7 +106,7 @@ class Scheduler(object):
     """
     def __init__(self, project, settings, species_list, composite_method, conformer_level, opt_level, freq_level,
                  sp_level, scan_level, ts_guess_level, project_directory, rmgdatabase, fine=False, scan_rotors=True,
-                 generate_conformers=True, initial_trsh=None, rxn_list=None, restart_dict=None, max_job_time=5,
+                 generate_conformers=True, initial_trsh=None, rxn_list=None, restart_dict=None, max_job_time=120,
                  testing=False):
         self.rmgdb = rmgdatabase
         self.restart_dict = restart_dict
@@ -458,7 +458,7 @@ class Scheduler(object):
                 self.species_dict[spc.label] = spc
 
     def run_job(self, label, xyz, level_of_theory, job_type, fine=False, software=None, shift='', trsh='', memory=1500,
-                conformer=-1, ess_trsh_methods=None, scan='', pivots=None, occ=None):
+                conformer=-1, ess_trsh_methods=None, scan='', pivots=None, occ=None, scan_trsh='', scan_res=None):
         """
         A helper function for running (all) jobs
         """
@@ -471,7 +471,8 @@ class Scheduler(object):
                   level_of_theory=level_of_theory, multiplicity=species.multiplicity, charge=species.charge, fine=fine,
                   shift=shift, software=software, is_ts=species.is_ts, memory=memory, trsh=trsh, conformer=conformer,
                   ess_trsh_methods=ess_trsh_methods, scan=scan, pivots=pivots, occ=occ, initial_trsh=self.initial_trsh,
-                  project_directory=self.project_directory, max_job_time=self.max_job_time)
+                  project_directory=self.project_directory, max_job_time=self.max_job_time, scan_trsh=scan_trsh,
+                  scan_res=scan_res)
         if conformer < 0:
             # this is NOT a conformer job
             self.running_jobs[label].append(job.job_name)  # mark as a running job
@@ -1001,13 +1002,13 @@ class Scheduler(object):
         for i in range(self.species_dict[label].number_of_rotors):
             message = ''
             invalidation_reason = ''
+            trsh = False
             if self.species_dict[label].rotors_dict[i]['pivots'] == job.pivots:
                 invalidate = False
                 if job.job_status[1] == 'done':
-                    # ESS converged. Get PES using Arkane:
+                    # ESS converged. Get PES scan using Arkane:
                     log = Log(path='')
                     log.determine_qm_software(fullpath=job.local_path_to_output_file)
-                    plot_scan = True
                     try:
                         v_list, angle = log.software_log.loadScanEnergies()
                     except ZeroDivisionError:
@@ -1015,7 +1016,6 @@ class Scheduler(object):
                                       'be read. Invalidating rotor.'.format(label=label, pivots=job.pivots))
                         invalidate = True
                         invalidation_reason = 'could not read energies'
-                        plot_scan = False
                     else:
                         v_list = np.array(v_list, np.float64)
                         v_list = v_list * 0.001  # convert to kJ/mol
@@ -1033,6 +1033,10 @@ class Scheduler(object):
                             invalidate = True
                             invalidation_reason = 'initial and final points are inconsistent by more than {0}' \
                                                   ' kJ/mol'.format(inconsistency_az)
+                            if not job.scan_trsh:
+                                logging.info('Trying to troubleshoot rotor {0} of {1}...'.format(job.pivots, label))
+                                trsh = True
+                                self.troubleshoot_scan_job(job=job)
                         if not invalidate:
                             v_last = v_list[-1]
                             for v in v_list:
@@ -1048,6 +1052,11 @@ class Scheduler(object):
                                     invalidate = True
                                     invalidation_reason = 'two consecutive points are inconsistent by more than {0}' \
                                                           ' kJ/mol'.format(inconsistency_ab)
+                                    if not job.scan_trsh:
+                                        logging.info('Trying to troubleshoot rotor {0} of {1}...'.format(
+                                            job.pivots, label))
+                                        trsh = True
+                                        self.troubleshoot_scan_job(job=job)
                                     break
                                 if abs(v - v_list[0]) > maximum_barrier:
                                     # The barrier for the hinderd rotor is higher than `maximum_barrier` kJ/mol.
@@ -1064,7 +1073,7 @@ class Scheduler(object):
                                 v_last = v
                         # 2. Check conformation:
                         invalidated = ''
-                        if not invalidate:
+                        if not invalidate and not trsh:
                             v_diff = (v_list[0] - np.min(v_list))
                             if v_diff >= 2 or v_diff > 0.5 * (max(v_list) - min(v_list)):
                                 self.species_dict[label].rotors_dict[i]['success'] = False
@@ -1085,15 +1094,14 @@ class Scheduler(object):
                                 self.run_opt_job(label)  # run opt on new initial_xyz with the desired dihedral
                             else:
                                 self.species_dict[label].rotors_dict[i]['success'] = True
-                        else:
+                        elif invalidate:
                             invalidated = '*INVALIDATED* '
-                        symmetry = ''
                         if self.species_dict[label].rotors_dict[i]['success']:
                             self.species_dict[label].rotors_dict[i]['symmetry'], _ = determine_rotor_symmetry(
                                 rotor_path=job.local_path_to_output_file, label=label,
                                 pivots=self.species_dict[label].rotors_dict[i]['pivots'])
                             symmetry = ' has symmetry {0}'.format(self.species_dict[label].rotors_dict[i]['symmetry'])
-                        if plot_scan:
+
                             logging.info('{invalidated}Rotor scan {scan} between pivots {pivots}'
                                          ' for {label}{symmetry}'.format(invalidated=invalidated,
                                                        scan=self.species_dict[label].rotors_dict[i]['scan'],
@@ -1107,13 +1115,15 @@ class Scheduler(object):
                 else:
                     # scan job crashed
                     invalidate = True
-                if invalidate:
-                    self.species_dict[label].rotors_dict[i]['success'] = False
-                else:
-                    self.species_dict[label].rotors_dict[i]['success'] = True
-                self.species_dict[label].rotors_dict[i]['scan_path'] = job.local_path_to_output_file
-                self.species_dict[label].rotors_dict[i]['invalidation_reason'] = invalidation_reason
-                break  # `job` has only one pivot. Break if found, otherwise raise an error.
+                    invalidation_reason = 'scan job crashed'
+                if not trsh:
+                    if invalidate:
+                        self.species_dict[label].rotors_dict[i]['success'] = False
+                    else:
+                        self.species_dict[label].rotors_dict[i]['success'] = True
+                    self.species_dict[label].rotors_dict[i]['scan_path'] = job.local_path_to_output_file
+                    self.species_dict[label].rotors_dict[i]['invalidation_reason'] = invalidation_reason
+                break  # A job object has only one pivot. Break if found, otherwise raise an error.
         else:
             raise SchedulerError('Could not match rotor with pivots {0} in species {1}'.format(job.pivots, label))
         self.save_restart_dict()
@@ -1201,9 +1211,30 @@ class Scheduler(object):
         for i, xyz in enumerate(self.species_dict[label].conformers):
             self.run_job(label=label, xyz=xyz, level_of_theory=self.conformer_level, job_type='conformer', conformer=i)
 
+    def troubleshoot_scan_job(self, job):
+        """
+        Try freezing all dihedrals other than the scan's pivots for this job
+        """
+        label = job.species_name
+        species_scan_lists = [rotor_dict['scan'] for rotor_dict in self.species_dict[label].rotors_dict.values()]
+        if job.scan not in species_scan_lists:
+            raise SchedulerError('Could not find the dihedral to troubleshoot for in the dcan list of species'
+                                 ' {0}'.format(label))
+        species_scan_lists.pop(species_scan_lists.index(job.scan))
+        if len(species_scan_lists):
+            scan_trsh = '\n'
+            for scan in species_scan_lists:
+                scan_trsh += 'D ' + ''.join([str(num) + ' ' for num in scan]) + 'F\n'
+            scan_res = min(4, int(job.scan_res / 2))
+            # make sure mod(360, scan res) is 0:
+            if scan_res not in [4, 2, 1]:
+                scan_res = min([4, 2, 1], key=lambda x:abs(x - scan_res))
+            self.run_job(label=label, xyz=job.xyz, level_of_theory=job.level_of_theory, job_type='scan',
+                         scan=job.scan, pivots=job.pivots, scan_trsh=scan_trsh, scan_res=4)
+
     def troubleshoot_opt_jobs(self, label):
         """
-        we're troubleshooting for opt jobs.
+        We're troubleshooting for opt jobs.
         First check for server status and troubleshoot if needed. Then check for ESS status and troubleshoot
         if needed. Finally, check whether or not the last job had fine=True, add if it didn't run with fine.
         """
