@@ -126,7 +126,10 @@ class ARCSpecies(object):
         if atom_length_constraints is None:
             self.atom_length_constraints = []
         else:
-            self.atom_length_constraints = atom_length_constraints
+            if isinstance(atom_length_constraints[0],list):
+                self.atom_length_constraints = atom_length_constraints
+            else:
+                raise TSError("atom_length_constraints should be a list of length 2 lists")
         if species_dict is not None:
             # Reading from a dictionary
             self.from_dict(species_dict=species_dict)
