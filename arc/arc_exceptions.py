@@ -81,3 +81,10 @@ class SanitizationError(Exception):
     Exception class to handle errors during SMILES perception.
     """
     pass
+
+
+class ZMatrixError(Exception):
+    """
+    Exception class to handle errors during Zmatirx processing.
+    """
+    pass
