@@ -41,6 +41,7 @@ class Job(object):
                                            (e.g., "2 1 3 5" as a string or [2, 1, 3, 5] as a list of integers)
     `pivots`           ``list``          The rotor scan pivots, if the job type is scan. Not used directly in these
                                            methods, but used to identify the rotor.
+    `scan_res`         ``int``           The rotor scan resolution in degrees
     `software`         ``str``           The electronic structure software to be used
     `server_nodes`     ``list``          A list of nodes this job was submitted to (for troubleshooting)
     `memory`           ``int``           The allocated memory (1500 mb by default)
@@ -63,8 +64,9 @@ class Job(object):
     `server`           ``str``           Server's name. Determined automatically
     'trsh'             ''str''           A troubleshooting handle to be appended to input files
     'ess_trsh_methods' ``list``          A list of troubleshooting methods already tried out for ESS convergence
-    `occ`              ``int``           The number of occupied orbitals (core + val) from a molpro CCSD sp calc
     `initial_trsh`     ``dict``          Troubleshooting methods to try by default. Keys are server names, values are trshs
+    `scan_trsh`        ``str``           A troubleshooting method for rotor scans
+    `occ`              ``int``           The number of occupied orbitals (core + val) from a molpro CCSD sp calc
     `project_directory` ``str``          The path to the project directory
     `max_job_time`     ``int``           The maximal allowed job time on the server in hours
     ================ =================== ===============================================================================
@@ -76,9 +78,9 @@ class Job(object):
     """
     def __init__(self, project, settings, species_name, xyz, job_type, level_of_theory, multiplicity, project_directory,
                  charge=0, conformer=-1, fine=False, shift='', software=None, is_ts=False, scan='', pivots=None,
-                 memory=1500, comments='', trsh='', ess_trsh_methods=None, occ=None, initial_trsh=None, job_num=None,
-                 job_server_name=None, job_name=None, job_id=None, server=None, date_time=None, run_time=None,
-                 max_job_time=5):
+                 memory=1500, comments='', trsh='', scan_trsh='', ess_trsh_methods=None, initial_trsh=None, job_num=None,
+                 job_server_name=None, job_name=None, job_id=None, server=None, date_time=None, run_time=None, occ=None,
+                 max_job_time=120, scan_res=None):
         self.project = project
         self.settings=settings
         self.date_time = date_time if date_time is not None else datetime.datetime.now()
@@ -94,6 +96,8 @@ class Job(object):
         self.ess_trsh_methods = ess_trsh_methods if ess_trsh_methods is not None else list()
         self.trsh = trsh
         self.initial_trsh = initial_trsh if initial_trsh is not None else dict()
+        self.scan_trsh = scan_trsh
+        self.scan_res = scan_res if scan_res is not None else rotor_scan_resolution
         self.max_job_time = max_job_time
         job_types = ['conformer', 'opt', 'freq', 'optfreq', 'sp', 'composite', 'scan', 'gsm', 'irc', 'ts_guess']
         # the 'conformer' job type is identical to 'opt', but we differentiate them to be identifiable in Scheduler
@@ -319,7 +323,7 @@ class Job(object):
     def write_submit_script(self):
         un = servers[self.server]['un']  # user name
         if self.max_job_time > 9999 or self.max_job_time == 0:
-            self.max_job_time = 9999
+            self.max_job_time = 120
         if t_max_format[servers[self.server]['cluster_soft']] == 'days':
             # e.g., 5-0:00:00
             d, h = divmod(self.max_job_time, 24)
@@ -400,7 +404,8 @@ wf,spin={spin},charge={charge};}}
                 else:
                     job_type_1 = 'opt=(calcfc, noeigentest)'
                 if self.fine:
-                    fine = 'scf=(tight, direct) int=(ultrafine, Acc2E=12)'
+                    # Note that the Acc2E argument is not available in Gaussian03
+                    fine = 'scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
                     if self.is_ts:
                         job_type_1 = 'opt=(ts, calcfc, noeigentest, tight)'
                     else:
@@ -425,7 +430,7 @@ wf,spin={spin},charge={charge};}}
 
         elif self.job_type == 'freq':
             if self.software == 'gaussian':
-                job_type_2 = 'freq iop(7/33=1) scf=(tight, direct) int=(ultrafine, Acc2E=12)'
+                job_type_2 = 'freq iop(7/33=1) scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
             elif self.software == 'qchem':
                 job_type_1 = 'freq'
             elif self.software == 'molpro':
@@ -439,7 +444,7 @@ wf,spin={spin},charge={charge};}}
                     job_type_1 = 'opt=(calcfc, noeigentest)'
                 job_type_2 = 'freq iop(7/33=1)'
                 if self.fine:
-                    fine = 'scf=(tight, direct) int=(ultrafine, Acc2E=12)'
+                    fine = 'scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
                     if self.is_ts:
                         job_type_1 = 'opt=(ts, calcfc, noeigentest, tight)'
                     else:
@@ -476,7 +481,7 @@ $end
 
         if self.job_type == 'sp':
             if self.software == 'gaussian':
-                job_type_1 = 'scf=(tight, direct) int=(ultrafine, Acc2E=12)'
+                job_type_1 = 'scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
             elif self.software == 'qchem':
                 job_type_1 = 'sp'
             elif self.software == 'molpro':
@@ -485,7 +490,7 @@ $end
         if self.job_type == 'composite':
             if self.software == 'gaussian':
                 if self.fine:
-                    fine = 'scf=(tight, direct) int=(ultrafine, Acc2E=12)'
+                    fine = 'scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
                 if self.is_ts:
                     job_type_1 = 'opt=(ts, calcfc, noeigentest, tight)'
                 else:
@@ -496,14 +501,16 @@ $end
         if self.job_type == 'scan':
             if self.software == 'gaussian':
                 if self.is_ts:
-                    job_type_1 = 'opt=(ts, modredundant, calcfc, noeigentest)'
+                    job_type_1 = 'opt=(ts, modredundant, calcfc, noeigentest, maxStep=5) scf=(tight, direct)' \
+                                 ' integral=(grid=ultrafine, Acc2E=12)'
                 else:
-                    job_type_1 = 'opt=(modredundant, calcfc, noeigentest)'
+                    job_type_1 = 'opt=(modredundant, calcfc, noeigentest, maxStep=5) scf=(tight, direct)' \
+                                 ' integral=(grid=ultrafine, Acc2E=12)'
                 scan_string = ''.join([str(num) + ' ' for num in self.scan])
-                if not divmod(360, rotor_scan_resolution):
-                    raise JobError('Scan job got an illegal rotor scan resolution of {0}'.format(rotor_scan_resolution))
-                scan_string = 'D ' + scan_string + 'S ' + str(int(360 / rotor_scan_resolution)) + ' ' +\
-                              '{0:10}'.format(float(rotor_scan_resolution))
+                if not divmod(360, self.scan_res):
+                    raise JobError('Scan job got an illegal rotor scan resolution of {0}'.format(self.scan_res))
+                scan_string = 'D ' + scan_string + 'S ' + str(int(360 / self.scan_res)) + ' ' +\
+                              '{0:10}'.format(float(self.scan_res))
             else:
                 raise ValueError('Currently rotor scan is only supported in gaussian. Got: {0} using the {1} level of'
                                  ' theory'.format(self.software, self.method + '/' + self.basis_set))
@@ -538,7 +545,7 @@ $end
                                                basis=self.basis_set, charge=self.charge, multiplicity=self.multiplicity,
                                                spin=self.spin, xyz=self.xyz, job_type_1=job_type_1,
                                                job_type_2=job_type_2, scan=scan_string, restricted=restricted, fine=fine,
-                                               shift=self.shift, trsh=self.trsh)
+                                               shift=self.shift, trsh=self.trsh, scan_trsh=self.scan_trsh)
             except KeyError as e:
                 logging.error('Could not interpret all input file keys in\n{0}'.format(self.input))
                 raise e
