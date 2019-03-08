@@ -56,7 +56,8 @@ class TestARCReaction(unittest.TestCase):
                          'reactants': [u'CH4', u'OH'],
                          'ts_label': None,
                          'ts_xyz_guess': [],
-                         'ts_methods': [tsm.lower() for tsm in default_ts_methods]}
+                         'ts_methods': [tsm.lower() for tsm in default_ts_methods],
+                         'atom_length_constraints':[]}
         self.assertEqual(rxn_dict, expected_dict)
 
     def test_from_dict(self):
