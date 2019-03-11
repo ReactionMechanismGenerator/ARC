@@ -170,7 +170,7 @@ export g03root GAUSS_SCRDIR
 . $g03root/g03/bsd/g03.profile
 mkdir -p /scratch/{un}/{name}
 
-g16 input.gjf
+g03 input.gjf
 
 rm -r /scratch/{un}/{name}
 
