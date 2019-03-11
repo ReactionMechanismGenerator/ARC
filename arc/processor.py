@@ -210,6 +210,7 @@ class Processor(object):
             logging.info('\n\n')
             species = self.species_dict[rxn.ts_label]  # The TS
             if 'ALL converged' in self.output[species.label]['status'] and rxn.check_ts():
+                self.copy_freq_output_for_ts(species.label)
                 success = True
                 rxn_list_for_kinetics_plots.append(rxn)
                 output_file_path = self._generate_arkane_species_file(species)
@@ -281,7 +282,7 @@ class Processor(object):
 
     def clean_output_directory(self):
         """
-        A helper function to orginize the output directory
+        A helper function to organize the output directory
         - remove redundant rotor.txt files (from kinetics jobs)
         - move remaining rotor files to the rotor directory
         - move the Arkane YAML file from the `species` directory to the base directory, and delete `species`
@@ -314,3 +315,11 @@ class Processor(object):
                         shutil.move(src=os.path.join(species_path, 'species', species_yaml_file),
                                     dst=os.path.join(species_path, species_yaml_file))
                     shutil.rmtree(os.path.join(species_path, 'species'))
+
+    def copy_freq_output_for_ts(self, label):
+        """
+        Copy the frequency job output file into the TS geometry folder
+        """
+        calc_path = os.path.join(self.output[label]['freq'])
+        output_path = os.path.join(self.project_directory, 'output', 'rxns', label, 'geometry', 'frequency.out')
+        shutil.copyfile(calc_path, output_path)
