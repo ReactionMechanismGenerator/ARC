@@ -42,7 +42,7 @@ name
 
 {charge} {multiplicity}
 {xyz}
-{scan}(scan_trsh}
+{scan}{scan_trsh}
 
 
 """,

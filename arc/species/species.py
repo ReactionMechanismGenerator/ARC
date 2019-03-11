@@ -27,7 +27,7 @@ from arc.arc_exceptions import SpeciesError, RotorError, InputError, TSError
 from arc.settings import arc_path, default_ts_methods, valid_chars, minimum_barrier
 from arc.parser import parse_xyz_from_file
 from arc.species.converter import get_xyz_string, get_xyz_matrix, rdkit_conf_from_mol, check_xyz,\
-    molecules_from_xyz, rmg_mol_from_inchi, order_atoms_in_mol_list
+    molecules_from_xyz, rmg_mol_from_inchi, order_atoms_in_mol_list, check_isomorphism
 from arc.ts import atst
 
 ##################################################################
@@ -391,13 +391,9 @@ class ARCSpecies(object):
         if self.mol is None and not self.is_ts:
             xyz = self.final_xyz or self.initial_xyz
             if xyz:
-                _, self.mol = molecules_from_xyz(xyz)
+                self.mol_from_xyz(xyz)
         if self.mol is not None:
-            if self.final_xyz:
-                self.mol_from_xyz(self.final_xyz)
-            elif self.initial_xyz is not None:
-                self.mol_from_xyz()
-            if not 'bond_corrections' in species_dict:
+            if 'bond_corrections' not in species_dict:
                 self.bond_corrections = self.mol.enumerate_bonds()
                 if self.bond_corrections:
                     self.long_thermo_description += 'Bond corrections: {0}\n'.format(self.bond_corrections)
@@ -406,7 +402,8 @@ class ARCSpecies(object):
                 self.multiplicity = self.mol.multiplicity
             if self.charge is None:
                 self.charge = self.mol.getNetCharge()
-            self.mol_list = self.mol.generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
+            if self.mol_list is None:
+                self.mol_list = self.mol.generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
         if self.mol is None and self.initial_xyz is None and not self.final_xyz:
             raise SpeciesError('Must have either mol or xyz for species {0}'.format(self.label))
         if self.initial_xyz is not None and not self.final_xyz:
@@ -811,7 +808,7 @@ class ARCSpecies(object):
             xyz = self.initial_xyz
         original_mol = self.mol.copy(deep=True)
         _, self.mol = molecules_from_xyz(xyz)
-        if not original_mol.isIsomorphic(self.mol):
+        if self.mol is not None and not check_isomorphism(original_mol, self.mol):
             raise InputError('XYZ and the 2D graph representation of the Molecule are not isomorphic.\n'
                              'Got xyz:\n{0}\n\nwhich corresponds to {1}\n{2}\n\nand: {3}\n{4}'.format(
                                xyz, self.mol.toSMILES(), self.mol.toAdjacencyList(),
@@ -819,11 +816,11 @@ class ARCSpecies(object):
         if self.mol_list is None:
             self.mol.assignAtomIDs()
             self.mol_list = self.mol.generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
-        # The isIsomorphic and generate_resonance_structures methods changes atom order, reorder atoms in self.mol:
-        id_mol = self.mol.copy(deep=True)
-        _, self.mol = molecules_from_xyz(xyz)
-        for i, atom in enumerate(self.mol.atoms):
-            atom.id = id_mol.atoms[i].id
+            # The generate_resonance_structures methods changes atom order, reorder atoms in self.mol:
+            id_mol = self.mol.copy(deep=True)
+            _, self.mol = molecules_from_xyz(xyz)
+            for i, atom in enumerate(self.mol.atoms):
+                atom.id = id_mol.atoms[i].id
         order_atoms_in_mol_list(ref_mol=self.mol, mol_list=self.mol_list)
 
 

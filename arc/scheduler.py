@@ -26,11 +26,11 @@ from rmgpy.exceptions import InputError as RMGInputError
 import arc.rmgdb as rmgdb
 from arc import plotter
 from arc import parser
-from arc.species.converter import get_xyz_string, molecules_from_xyz
 from arc.job.job import Job
 from arc.arc_exceptions import SpeciesError, SchedulerError
 from arc.job.ssh import SSH_Client
 from arc.species.species import ARCSpecies, TSGuess, determine_rotor_symmetry
+from arc.species.converter import get_xyz_string, molecules_from_xyz, check_isomorphism
 from arc.ts.atst import autotst
 from arc.settings import rotor_scan_resolution, inconsistency_ab, inconsistency_az, maximum_barrier
 
@@ -717,10 +717,7 @@ class Scheduler(object):
                 for i, xyz in enumerate(xyzs):
                     _, b_mol = molecules_from_xyz(xyz)
                     if b_mol is not None:
-                        # make copies of the molecules, since isIsomorphic() changes atom orders
-                        b_mol_copy, mol_copy = b_mol.copy(deep=True), self.species_dict[label].mol.copy(deep=True)
-                        match = mol_copy.isIsomorphic(b_mol_copy)
-                        if match:
+                        if check_isomorphism(self.species_dict[label].mol, b_mol):
                             if i == 0:
                                 logging.info('Most stable conformer for species {0} was found to be isomorphic '
                                              'with the 2D graph representation {1}\n'.format(label, b_mol.toSMILES()))
@@ -732,7 +729,8 @@ class Scheduler(object):
                                              'with the 2D graph representation {1}. This conformer is {2} kJ/mol '
                                              'above the most stable one (which is not isomorphic). Using the '
                                              'isomorphic conformer for further geometry optimization.'.format(
-                                              label, mol_copy.toSMILES(), (energies[i] - energies[0]) * 2625.50))
+                                              label, self.species_dict[label].mol.toSMILES(),
+                                              (energies[i] - energies[0]) * 2625.50))
                                 conformer_xyz = xyz
                                 self.output[label]['status'] += 'passed isomorphism check but not for the most stable conformer; '
                             break

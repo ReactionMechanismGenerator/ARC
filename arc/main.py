@@ -555,7 +555,7 @@ class ARC(object):
         self.scheduler = Scheduler(project=self.project, species_list=self.arc_species_list, rxn_list=self.arc_rxn_list,
                                    composite_method=self.composite_method, conformer_level=self.conformer_level,
                                    opt_level=self.opt_level, freq_level=self.freq_level, sp_level=self.sp_level,
-                                   scan_level=self.scan_level, ts_guess_level=self.ts_guess_level ,fine=self.fine,
+                                   scan_level=self.scan_level, ts_guess_level=self.ts_guess_level, fine=self.fine,
                                    settings=self.settings, generate_conformers=self.generate_conformers,
                                    scan_rotors=self.scan_rotors, initial_trsh=self.initial_trsh, rmgdatabase=self.rmgdb,
                                    restart_dict=self.restart_dict, project_directory=self.project_directory,
@@ -763,7 +763,7 @@ class ARC(object):
                                 'b-ccsd(t)-f12/aug-cc-pvtz', 'b-ccsd(t)-f12/aug-cc-pvqz', 'mp2_rmp2_pvdz',
                                 'mp2_rmp2_pvtz', 'mp2_rmp2_pvqz', 'ccsd-f12/cc-pvdz-f12',
                                 'ccsd(t)-f12/cc-pvdz-f12_noscale', 'g03_pbepbe_6-311++g_d_p', 'fci/cc-pvdz',
-                                'fci/cc-pvtz', 'fci/cc-pvqz','bmk/cbsb7', 'bmk/6-311g(2d,d,p)', 'b3lyp/6-31g**',
+                                'fci/cc-pvtz', 'fci/cc-pvqz', 'bmk/cbsb7', 'bmk/6-311g(2d,d,p)', 'b3lyp/6-31g**',
                                 'b3lyp/6-311+g(3df,2p)', 'MRCI+Davidson/aug-cc-pV(T+d)Z']:
                     model_chemistry = sp_level
             self.model_chemistry = model_chemistry
@@ -921,7 +921,7 @@ def read_file(path):
 
 
 def get_git_commit():
-    if os.path.exists(os.path.join(arc_path,'.git')):
+    if os.path.exists(os.path.join(arc_path, '.git')):
         try:
             return subprocess.check_output(['git', 'log', '--format=%H%n%cd', '-1'], cwd=arc_path).splitlines()
         except subprocess.CalledProcessError:

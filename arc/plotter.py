@@ -372,7 +372,7 @@ def get_text_positions(x_data, y_data, txt_width, txt_height):
     text_positions = y_data
     for index, (y, x) in enumerate(a):
         local_text_positions = [i for i in a if i[0] > (y - txt_height)
-                                and (abs(i[1] - x) < txt_width * 2) and i != (y,x)]
+                                and (abs(i[1] - x) < txt_width * 2) and i != (y, x)]
         if local_text_positions:
             sorted_ltp = sorted(local_text_positions)
             if abs(sorted_ltp[0][0] - y) < txt_height:  # True means collision
@@ -483,10 +483,10 @@ def save_kinetics_lib(rxn_list, path, name, lib_long_desc):
                 rxn.rmg_reaction.reactants = reactants
                 rxn.rmg_reaction.products = products
                 entry = Entry(
-                    index = i+1,
-                    item = rxn.rmg_reaction,
-                    data = rxn.kinetics,
-                    label = rxn.label)
+                    index=i+1,
+                    item=rxn.rmg_reaction,
+                    data=rxn.kinetics,
+                    label=rxn.label)
                 rxn.ts_species.make_ts_report()
                 entry.longDesc = rxn.ts_species.ts_report + '\n\nOptimized TS geometry:\n' + rxn.ts_species.final_xyz
                 rxn.rmg_reaction.kinetics = rxn.kinetics

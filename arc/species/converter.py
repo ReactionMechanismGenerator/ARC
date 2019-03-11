@@ -9,6 +9,7 @@ import logging
 from rdkit import Chem
 import pybel
 
+from rmgpy.species import Species
 from rmgpy.molecule.molecule import Atom, Bond, Molecule
 from rmgpy.molecule.element import getElement
 from rmgpy.exceptions import AtomTypeError
@@ -277,3 +278,21 @@ def rdkit_conf_from_mol(mol, coordinates):
     for i in range(rd_mol.GetNumAtoms()):  # reset atom coordinates
         conf.SetAtomPosition(indx_map[i], coordinates[i])
     return conf, rd_mol, indx_map
+
+
+def check_isomorphism(mol1, mol2, filter_structures=True):
+    """
+    Converts `mol1` and `mol2` which are RMG:Molecule objects into RMG:Species object
+    and generate resonance structures. Then check Species isomorphism.
+    Return True if one of the molecules in the Species derived from `mol1`
+    is isomorphic to  one of the molecules in the Species derived from `mol2`.
+    `filter_structures` is being passes to Species.generate_resonance_structures().
+    make copies of the molecules, since isIsomorphic() changes atom orders
+    """
+    mol1_copy = mol1.copy(deep=True)
+    mol2_copy = mol2.copy(deep=True)
+    spc1 = Species(molecule=[mol1_copy])
+    spc1.generate_resonance_structures(keep_isomorphic=False, filter_structures=filter_structures)
+    spc2 = Species(molecule=[mol2_copy])
+    spc2.generate_resonance_structures(keep_isomorphic=False, filter_structures=filter_structures)
+    return spc1.isIsomorphic(spc2)
