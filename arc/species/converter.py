@@ -13,6 +13,7 @@ from rmgpy.species import Species
 from rmgpy.molecule.molecule import Atom, Bond, Molecule
 from rmgpy.molecule.element import getElement
 from rmgpy.exceptions import AtomTypeError
+from arkane.common import symbol_by_number
 
 from arc.arc_exceptions import SpeciesError, SanitizationError
 from arc.species.xyz_to_2d import MolGraph
@@ -82,7 +83,7 @@ def get_xyz_matrix(xyz):
 
     Returns xyz as well as atom symbols, x, y, and z seperately
     """
-    xyz = check_xyz(xyz)
+    xyz = standardize_xyz_string(xyz)
     x, y, z, symbols = [], [], [], []
     for line in xyz.split('\n'):
         if line:
@@ -101,17 +102,27 @@ def xyz_string_to_xyz_file_format(xyz, comment=''):
     """
     Convert the ARC xyz string format into the XYZ file format: https://en.wikipedia.org/wiki/XYZ_file_format
     """
-    xyz = check_xyz(xyz)
+    xyz = standardize_xyz_string(xyz)
     num = int(len(xyz.split()) / 4)
     return str(num) + '\n' + comment + '\n' + xyz + '\n'
 
 
-def check_xyz(xyz):
+def standardize_xyz_string(xyz):
     """
     A helper function to correct xyz string format input
     Usually empty lines are added by the user either in the beginning or the end, and we'd like to remove them
     """
-    return os.linesep.join(line for line in xyz.splitlines() if (line and any([char != ' ' for char in line])))
+    xyz = os.linesep.join([s for s in xyz.splitlines() if s and any(c != ' ' for c in s)])
+    lines = xyz.splitlines()
+    if all([len(line.split()) == 6 for line in lines if len(line)]):
+        # Convert Gaussian output format, e.g., "      1          8           0        3.132319    0.769111   -0.080869"
+        new_lines = list()
+        for line in lines:
+            if line:
+                split = line.split()
+                new_lines.append(' '.join([symbol_by_number[int(split[1])], split[3], split[4], split[5]]))
+        lines = new_lines
+    return os.linesep.join(line for line in lines if (line and any([char != ' ' for char in line])))
 
 
 def xyz_to_pybel_mol(xyz):
@@ -168,7 +179,7 @@ def molecules_from_xyz(xyz):
     """
     if not isinstance(xyz, (str, unicode)):
         raise SpeciesError('xyz must be a string format, got: {0}'.format(type(xyz)))
-    xyz = check_xyz(xyz)
+    xyz = standardize_xyz_string(xyz)
     coords, symbols, _, _, _ = get_xyz_matrix(xyz)
     mol_graph = MolGraph(symbols=symbols, coords=coords)
     infered_connections = mol_graph.infer_connections()
