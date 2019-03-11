@@ -192,8 +192,8 @@ H      -1.34135876    1.49608206    0.53295071
 """
         self.assertEqual(xyzf, expected_xyzf)
 
-    def test_check_species_xyz(self):
-        """Test the check_xyz function"""
+    def test_standardize_xyz_string(self):
+        """Test the standardize_xyz_string function"""
         xyz = """
         
         
@@ -224,7 +224,7 @@ H      -1.34135876    1.49608206    0.53295071
  O                 -3.69788377    1.55609096    0.07050345
  O                 -4.28667752    0.37487691    0.04916102
  H                 -4.01978712   -0.12970163    0.82103635"""
-        new_xyz = converter.check_xyz(xyz)
+        new_xyz = converter.standardize_xyz_string(xyz)
         self.assertEqual(new_xyz, expected_xyz)
 
     def test_xyz_to_pybel_mol(self):

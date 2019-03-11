@@ -26,7 +26,7 @@ from rmgpy.statmech import NonlinearRotor, LinearRotor
 from arc.arc_exceptions import SpeciesError, RotorError, InputError, TSError
 from arc.settings import arc_path, default_ts_methods, valid_chars, minimum_barrier
 from arc.parser import parse_xyz_from_file
-from arc.species.converter import get_xyz_string, get_xyz_matrix, rdkit_conf_from_mol, check_xyz,\
+from arc.species.converter import get_xyz_string, get_xyz_matrix, rdkit_conf_from_mol, standardize_xyz_string,\
     molecules_from_xyz, rmg_mol_from_inchi, order_atoms_in_mol_list, check_isomorphism
 from arc.ts import atst
 
@@ -1334,11 +1334,11 @@ def determine_rotor_type(rotor_path):
 def check_species_xyz(xyz):
     """
     First check whether xyz represents a file path or not. If so, parse it first.
-    Then, check the xyz format using converter.check_xyz
+    Then, standardize the xyz format using converter.standardize_xyz_string
     """
     if xyz is not None:
         if os.path.isfile(xyz):
             # check whether xyz is a file path
             xyz = parse_xyz_from_file(xyz)
-        return check_xyz(xyz)
+        return standardize_xyz_string(xyz)
     return None
