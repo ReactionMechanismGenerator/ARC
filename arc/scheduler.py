@@ -692,7 +692,7 @@ class Scheduler(object):
             log = Log(path='')
             log.determine_qm_software(fullpath=job.local_path_to_output_file)
             e0 = log.software_log.loadEnergy()
-            self.species_dict[label].conformer_energies[i] = e0
+            self.species_dict[label].conformer_energies[i] = e0  # in J/mol
         else:
             logging.warn('Conformer {i} for {label} did not converge!'.format(i=i, label=label))
 
@@ -736,9 +736,12 @@ class Scheduler(object):
             with open(conf_path, 'w') as f:
                 for i, xyz in enumerate(xyzs):
                     f.write('conformer {0}:\n'.format(i))
-                    f.write(xyz + '\n')
-                    f.write('SMILES: ' + smiles_list[i] + '\n')
-                    f.write('Relative Energy: {0} kJ/mol\n\n\n'.format((energies[i] - min(energies)) * 2625.50))
+                    if xyz is not None:
+                        f.write(xyz + '\n')
+                        f.write('SMILES: ' + smiles_list[i] + '\n')
+                        f.write('Relative Energy: {0} kJ/mol\n\n\n'.format((energies[i] - min(energies)) * 0.001))
+                    else:
+                        f.write('Failed to converge')
             # Run isomorphism checks if a 2D representation is available
             if self.species_dict[label].mol is not None:
                 for i, xyz in enumerate(xyzs):
@@ -751,13 +754,12 @@ class Scheduler(object):
                                 conformer_xyz = xyz
                                 self.output[label]['status'] += 'passed isomorphism check; '
                             else:
-                                # 2625.50 is the conversion factor from Hartree to kJ/mol
                                 logging.info('A conformer for species {0} was found to be isomorphic '
                                              'with the 2D graph representation {1}. This conformer is {2} kJ/mol '
                                              'above the most stable one (which is not isomorphic). Using the '
                                              'isomorphic conformer for further geometry optimization.'.format(
                                               label, self.species_dict[label].mol.toSMILES(),
-                                              (energies[i] - energies[0]) * 2625.50))
+                                              (energies[i] - energies[0]) * 0.001))
                                 conformer_xyz = xyz
                                 self.output[label]['status'] += 'passed isomorphism check but not for the most stable' \
                                                                 ' conformer; '
