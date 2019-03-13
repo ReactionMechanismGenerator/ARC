@@ -528,23 +528,32 @@ class Scheduler(object):
         for label in self.unique_species_labels:
             if not self.species_dict[label].is_ts and 'opt converged' not in self.output[label]['status']\
                         and 'opt' not in self.job_dict[label]:
-                if len(self.species_dict[label].conformers) > 1:
-                    self.job_dict[label]['conformers'] = dict()
-                    for i, xyz in enumerate(self.species_dict[label].conformers):
-                        self.run_job(label=label, xyz=xyz, level_of_theory=self.conformer_level, job_type='conformer',
-                                     conformer=i)
-                else:
-                    if 'opt' not in self.job_dict[label] and 'composite' not in self.job_dict[label]\
-                            and self.species_dict[label].number_of_atoms > 1\
-                            and len(self.species_dict[label].conformers):
-                        # proceed only if opt (/composite) not already spawned
-                        logging.info('Only one conformer is available for species {0},'
-                                     ' using it for geometry optimization'.format(label))
-                        self.species_dict[label].initial_xyz = self.species_dict[label].conformers[0]
-                        if not self.composite_method:
-                            self.run_opt_job(label)
-                        else:
-                            self.run_composite_job(label)
+                geo_dir = os.path.join(self.project_directory, 'output', 'Species', label, 'geometry')
+                if not os.path.exists(geo_dir):
+                    os.makedirs(geo_dir)
+                conf_path = os.path.join(geo_dir, 'conformers_before_optimization.txt')
+                with open(conf_path, 'w') as f:
+                    for conf in self.species_dict[label].conformers:
+                        f.write(conf)
+                        f.write('\n\n')
+                if not self.testing:
+                    if len(self.species_dict[label].conformers) > 1:
+                        self.job_dict[label]['conformers'] = dict()
+                        for i, xyz in enumerate(self.species_dict[label].conformers):
+                            self.run_job(label=label, xyz=xyz, level_of_theory=self.conformer_level, job_type='conformer',
+                                         conformer=i)
+                    else:
+                        if 'opt' not in self.job_dict[label] and 'composite' not in self.job_dict[label]\
+                                and self.species_dict[label].number_of_atoms > 1\
+                                and len(self.species_dict[label].conformers):
+                            # proceed only if opt (/composite) not already spawned
+                            logging.info('Only one conformer is available for species {0},'
+                                         ' using it for geometry optimization'.format(label))
+                            self.species_dict[label].initial_xyz = self.species_dict[label].conformers[0]
+                            if not self.composite_method:
+                                self.run_opt_job(label)
+                            else:
+                                self.run_composite_job(label)
 
     def run_ts_conformer_jobs(self, label):
         """
@@ -712,6 +721,21 @@ class Scheduler(object):
                 else:
                     xyzs.append(get_xyz_string(xyz=coord, number=number))
             energies, xyzs = (list(t) for t in zip(*sorted(zip(self.species_dict[label].conformer_energies, xyzs))))
+            smiles_list = list()
+            for xyz in xyzs:
+                _, b_mol = molecules_from_xyz(xyz)
+                smiles = b_mol.toSMILES() if b_mol is not None else 'no 2D structure'
+                smiles_list.append(smiles)
+            geo_dir = os.path.join(self.project_directory, 'output', 'Species', label, 'geometry')
+            if not os.path.exists(geo_dir):
+                os.makedirs(geo_dir)
+            conf_path = os.path.join(geo_dir, 'conformers_after_optimization.txt')
+            with open(conf_path, 'w') as f:
+                for i, xyz in enumerate(xyzs):
+                    f.write('conformer {0}:\n'.format(i))
+                    f.write(xyz + '\n')
+                    f.write('SMILES: ' + smiles_list[i] + '\n')
+                    f.write('Relative Energy: {0} kJ/mol\n\n\n'.format((energies[i] - min(energies)) * 2625.50))
             # Run isomorphism checks if a 2D representation is available
             if self.species_dict[label].mol is not None:
                 for i, xyz in enumerate(xyzs):
