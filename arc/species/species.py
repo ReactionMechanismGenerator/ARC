@@ -546,9 +546,9 @@ class ARCSpecies(object):
                         self.rotors_dict[self.number_of_rotors] = new_rotor
                         self.number_of_rotors += 1
             if self.number_of_rotors == 1:
-                logging.info('\nFound 1 rotor for {0}'.format(self.label))
+                logging.info('\nFound one possible rotor for {0}'.format(self.label))
             elif self.number_of_rotors > 1:
-                logging.info('\nFound {0} rotors for {1}'.format(self.number_of_rotors, self.label))
+                logging.info('\nFound {0} possible rotors for {1}'.format(self.number_of_rotors, self.label))
             if self.number_of_rotors > 0:
                 logging.info('Pivot list(s) for {0}: {1}\n'.format(self.label,
                                                     [self.rotors_dict[i]['pivots'] for i in range(self.number_of_rotors)]))

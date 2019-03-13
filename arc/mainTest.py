@@ -58,6 +58,7 @@ class TestARC(unittest.TestCase):
                          't_max': None,
                          't_count': None,
                          'use_bac': True,
+                         'allow_nonisomorphic_2d': False,
                          'species': [{'bond_corrections': {'C-C': 1, 'C-H': 6},
                                       'arkane_file': None,
                                       'E0': None,

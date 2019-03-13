@@ -75,6 +75,8 @@ class Scheduler(object):
     `max_job_time`          ``int``   The maximal allowed job time on the server in hours
     `testing`               ``bool``  Used for internal ARC testing (generating the object w/o executing it)
     `rmgdb`                 ``RMGDatabase``  The RMG database object
+    `allow_nonisomorphic_2d` ``bool`` Whether to optimize species even if they do not have a 3D conformer that is
+                                        isomorphic to the 2D graph representation
     ======================= ========= ==================================================================================
 
     Dictionary structures:
@@ -107,7 +109,7 @@ class Scheduler(object):
     def __init__(self, project, settings, species_list, composite_method, conformer_level, opt_level, freq_level,
                  sp_level, scan_level, ts_guess_level, project_directory, rmgdatabase, fine=False, scan_rotors=True,
                  generate_conformers=True, initial_trsh=None, rxn_list=None, restart_dict=None, max_job_time=120,
-                 testing=False):
+                 allow_nonisomorphic_2d=False, testing=False):
         self.rmgdb = rmgdatabase
         self.restart_dict = restart_dict
         self.species_list = species_list
@@ -119,6 +121,7 @@ class Scheduler(object):
         self.job_dict = dict()
         self.servers_jobs_ids = list()
         self.running_jobs = dict()
+        self.allow_nonisomorphic_2d = allow_nonisomorphic_2d
         self.testing = testing
         if self.restart_dict is not None:
             self.output = self.restart_dict['output']
@@ -689,7 +692,7 @@ class Scheduler(object):
             log = Log(path='')
             log.determine_qm_software(fullpath=job.local_path_to_output_file)
             e0 = log.software_log.loadEnergy()
-            self.species_dict[label].conformer_energies[i] = e0
+            self.species_dict[label].conformer_energies[i] = e0  # in J/mol
         else:
             logging.warn('Conformer {i} for {label} did not converge!'.format(i=i, label=label))
 
@@ -733,9 +736,12 @@ class Scheduler(object):
             with open(conf_path, 'w') as f:
                 for i, xyz in enumerate(xyzs):
                     f.write('conformer {0}:\n'.format(i))
-                    f.write(xyz + '\n')
-                    f.write('SMILES: ' + smiles_list[i] + '\n')
-                    f.write('Relative Energy: {0} kJ/mol\n\n\n'.format((energies[i] - min(energies)) * 2625.50))
+                    if xyz is not None:
+                        f.write(xyz + '\n')
+                        f.write('SMILES: ' + smiles_list[i] + '\n')
+                        f.write('Relative Energy: {0} kJ/mol\n\n\n'.format((energies[i] - min(energies)) * 0.001))
+                    else:
+                        f.write('Failed to converge')
             # Run isomorphism checks if a 2D representation is available
             if self.species_dict[label].mol is not None:
                 for i, xyz in enumerate(xyzs):
@@ -748,15 +754,15 @@ class Scheduler(object):
                                 conformer_xyz = xyz
                                 self.output[label]['status'] += 'passed isomorphism check; '
                             else:
-                                # 2625.50 is the conversion factor from Hartree to kJ/mol
                                 logging.info('A conformer for species {0} was found to be isomorphic '
                                              'with the 2D graph representation {1}. This conformer is {2} kJ/mol '
                                              'above the most stable one (which is not isomorphic). Using the '
                                              'isomorphic conformer for further geometry optimization.'.format(
                                               label, self.species_dict[label].mol.toSMILES(),
-                                              (energies[i] - energies[0]) * 2625.50))
+                                              (energies[i] - energies[0]) * 0.001))
                                 conformer_xyz = xyz
-                                self.output[label]['status'] += 'passed isomorphism check but not for the most stable conformer; '
+                                self.output[label]['status'] += 'passed isomorphism check but not for the most stable' \
+                                                                ' conformer; '
                             break
                         else:
                             if i == 0:
@@ -764,11 +770,18 @@ class Scheduler(object):
                                              'with the 2D graph representation {1}. Searching for a different '
                                              'conformer that is isomorphic'.format(label, b_mol.toSMILES()))
                 else:
-                    logging.error('No conformer for {0} was found to be isomorphic with the 2D graph representation'
-                                  ' {1}. NOT optimizing this species.'.format(
-                                   label, self.species_dict[label].mol.toSMILES()))
-                    self.output[label]['status'] += 'Error: No conformer was found to be isomorphic with the 2D graph' \
-                                                    ' representation! '
+                    if self.allow_nonisomorphic_2d:
+                        # we'll optimize the most stable conformer even if it not isomorphic to the 2D graph
+                        logging.error('No conformer for {0} was found to be isomorphic with the 2D graph representation'
+                                      ' {1}. Optimizing the most stable conformer anyway.'.format(
+                                       label, self.species_dict[label].mol.toSMILES()))
+                        conformer_xyz = xyzs[0]
+                    else:
+                        logging.error('No conformer for {0} was found to be isomorphic with the 2D graph representation'
+                                      ' {1}. NOT optimizing this species.'.format(
+                                       label, self.species_dict[label].mol.toSMILES()))
+                        self.output[label]['status'] += 'Error: No conformer was found to be isomorphic with the 2D' \
+                                                        ' graph representation! '
             else:
                 logging.warn('Could not run isomorphism check for species {0} due to missing 2D graph '
                              'representation. Using the most stable conformer for further geometry'

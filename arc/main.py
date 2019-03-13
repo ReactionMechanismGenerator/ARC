@@ -74,6 +74,8 @@ class ARC(object):
     `t_count`              ``int``    The number of temperature points between t_min and t_max for kinetics computations
     `max_job_time`         ``int``    The maximal allowed job time on the server in hours
     `rmgdb`                ``RMGDatabase``  The RMG database object
+    `allow_nonisomorphic_2d` ``bool`` Whether to optimize species even if they do not have a 3D conformer that is
+                                        isomorphic to the 2D graph representation
     ====================== ========== ==================================================================================
 
     `level_of_theory` is a string representing either sp//geometry levels or a composite method, e.g. 'CBS-QB3',
@@ -83,7 +85,7 @@ class ARC(object):
                  conformer_level='', composite_method='', opt_level='', freq_level='', sp_level='', scan_level='',
                  ts_guess_level='', fine=True, generate_conformers=True, scan_rotors=True, use_bac=True,
                  model_chemistry='', ess_settings=None, initial_trsh=None, t_min=None, t_max=None, t_count=None,
-                 verbose=logging.INFO, project_directory=None, max_job_time=120):
+                 verbose=logging.INFO, project_directory=None, max_job_time=120, allow_nonisomorphic_2d=False):
 
         self.__version__ = '1.0.0'
         self.verbose = verbose
@@ -95,6 +97,7 @@ class ARC(object):
         self.unique_species_labels = list()
         self.rmgdb = rmgdb.make_rmg_database_object()
         self.max_job_time = max_job_time
+        self.allow_nonisomorphic_2d = allow_nonisomorphic_2d
 
         if input_dict is None:
             if project is None:
@@ -359,6 +362,7 @@ class ARC(object):
         restart_dict['t_max'] = self.t_max
         restart_dict['t_count'] = self.t_count
         restart_dict['max_job_time'] = self.max_job_time
+        restart_dict['allow_nonisomorphic_2d'] = self.allow_nonisomorphic_2d
         return restart_dict
 
     def from_dict(self, input_dict, project=None, project_directory=None):
@@ -381,6 +385,8 @@ class ARC(object):
         self.execution_time = None
         self.verbose = input_dict['verbose'] if 'verbose' in input_dict else self.verbose
         self.max_job_time = input_dict['max_job_time'] if 'max_job_time' in input_dict else 5
+        self.allow_nonisomorphic_2d = input_dict['allow_nonisomorphic_2d']\
+            if 'allow_nonisomorphic_2d' in input_dict else False
 
         if self.ess_settings is not None:
             self.settings['ssh'] = True
@@ -559,7 +565,7 @@ class ARC(object):
                                    settings=self.settings, generate_conformers=self.generate_conformers,
                                    scan_rotors=self.scan_rotors, initial_trsh=self.initial_trsh, rmgdatabase=self.rmgdb,
                                    restart_dict=self.restart_dict, project_directory=self.project_directory,
-                                   max_job_time=self.max_job_time)
+                                   max_job_time=self.max_job_time, allow_nonisomorphic_2d=self.allow_nonisomorphic_2d)
 
         self.save_project_info_file()
 

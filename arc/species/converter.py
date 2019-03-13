@@ -177,6 +177,8 @@ def molecules_from_xyz(xyz):
     This function is based on the MolGraph.perceive_smiles method
     Returns None for b_mol is unsuccessful to infer bond orders
     """
+    if xyz is None:
+        return None, None
     if not isinstance(xyz, (str, unicode)):
         raise SpeciesError('xyz must be a string format, got: {0}'.format(type(xyz)))
     xyz = standardize_xyz_string(xyz)
