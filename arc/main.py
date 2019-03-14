@@ -82,7 +82,7 @@ class ARC(object):
                  conformer_level='', composite_method='', opt_level='', freq_level='', sp_level='', scan_level='',
                  ts_guess_level='', fine=True, generate_conformers=True, scan_rotors=True, use_bac=True,
                  model_chemistry='', ess_settings=None, initial_trsh=None, t_min=None, t_max=None, t_count=None,
-                 verbose=logging.INFO, project_directory=None, max_job_time=120, allow_nonisomorphic_2d=False,
+                 verbose=logging.INFO, project_directory=None, max_job_time=9999, allow_nonisomorphic_2d=False,
                  job_memory=1500):
 
         self.__version__ = '1.0.0'
@@ -749,7 +749,7 @@ class ARC(object):
             elif not model_chemistry and sp_level in ['cbs-qb3', 'cbs-qb3-paraskevas', 'ccsd(t)-f12/cc-pvdz-f12',
                                                       'ccsd(t)-f12/cc-pvtz-f12', 'ccsd(t)-f12/cc-pvqz-f12',
                                                       'b3lyp/cbsb7', 'b3lyp/6-311g(2d,d,p)', 'b3lyp/6-311+g(3df,2p)',
-                                                      'b3lyp/6-31g**']:
+                                                      'b3lyp/6-31g**','wb97x-d3/6-311+g(d,p)']:
                 model_chemistry = sp_level
             elif self.use_bac:
                 raise InputError('Could not determine appropriate model chemistry to be used in Arkane for'
