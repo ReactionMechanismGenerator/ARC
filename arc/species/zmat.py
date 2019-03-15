@@ -15,7 +15,7 @@ import pybel as pyb
 from arc.arc_exceptions import ZMatrixError
 from arc.settings import arc_path, default_ts_methods, valid_chars, minimum_barrier
 from arc.parser import parse_xyz_from_file
-from arc.species.converter import get_xyz_matrix, check_xyz
+from arc.species.converter import get_xyz_matrix, standardize_xyz_string
 from arc.ts import atst
 
 ##################################################################
@@ -28,14 +28,37 @@ class ZMatrix(object):
     ====================== ============= ===============================================================================
     Attribute              Type          Description
     ====================== ============= ===============================================================================
-    `label`                 ``str``      The species' label
-    `multiplicity`          ``int``      The species' multiplicity. Can be determined from adjlist/smiles/xyz
+    `xyz`                   ``str``      Species xyz representation
+    `zmat_str`              ``str``      Species zmat representation
+    `zmat`                  ``list``      List of zmat atom items
     ====================== ============= ===============================================================================
 
     """
-    def __init__(self, xyz):
-        self.xyz = check_xyz(xyz)
-        self.xyz_matrix, self.symbols, self.x, self.y, self.z = get_xyz_matrix(xyz)
+    def __init__(self, xyz=None, zmat_str=None):
+        self.xyz = standardize_xyz_string(xyz)
+        self.zmat_str = zmat_str
+        self.zmat = []
+        if self.xyz is None and self.zmat_str is None:
+            raise ZMatrixError('The ZMatrix object must have at least xyz or zmat_str as input')
+        if self.zmat_str is not None:
+            self.from_zmat_str()
+        else:
+            self.from_xyz()
+
+    def from_xyz(self):
+        """
+        Construct self.zmat from input self.xyz
+        """
+        xyz_matrix, symbols, x, y, z = get_xyz_matrix(self.xyz)
+
+    def from_zmat_str(self):
+        """
+        Construct self.zmat from input self.zmat_str
+        """
+        for line in self.zmat_str.splitlines():
+            distance, angle, dihedral = None, None, None
+
+
 
 
 
@@ -60,16 +83,17 @@ class ZMatrixAtom(object):
     ====================== ============= ===============================================================================
 
     """
-    def __init__(self, symbol, distance, angle, dihedral, indices_list, index=None):
-        self.index = index if index is not None else indices_list[0]
+    def __init__(self, symbol, indices_list, distance=None, angle=None, dihedral=None):
         self.symbol = symbol
         self.distance = distance
         self.angle = angle
         self.dihedral = dihedral
         self.indices_list = indices_list
-
-        if self.index != self.indices_list[0]:
-            raise ZMatrixError('Index and first entry of indices_list must be identical.')
+        if not len(indices_list):
+            raise ZMatrixError('Length of indices_list has to be at least 1')
+        if len(indices_list) > 4:
+            raise ZMatrixError('Length of indices_list has to be at most 4')
+        self.index = indices_list[0]
 
 
 

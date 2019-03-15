@@ -52,7 +52,7 @@ class ARCSpecies(object):
     `conformer_energies`    ``list``     A list of conformers E0 (Hartree)
     `initial_xyz`           ``string``   The initial geometry guess
     `final_xyz`             ``string``   The optimized species geometry
-    `zmat`                  ``
+    `zmat`                  ``string``   The Z-Matrix representation of the Species
     `opt_level`             ``string``   Level of theory for geometry optimization. Saved for archiving.
     `number_of_atoms`       ``int``      The number of atoms in the species/TS
     `mol`                   ``Molecule`` An RMG:`Molecule` object used for BAC determination.
@@ -122,6 +122,7 @@ class ARCSpecies(object):
         self.external_symmetry = external_symmetry
         self.optical_isomers = optical_isomers
         self.charge = charge
+        self.zmat = None
 
         if species_dict is not None:
             # Reading from a dictionary
@@ -295,6 +296,8 @@ class ARCSpecies(object):
         species_dict['generate_thermo'] = self.generate_thermo
         species_dict['opt_level'] = self.opt_level
         species_dict['final_xyz'] = self.final_xyz
+        if self.zmat is not None:
+            species_dict['zmat'] = self.zmat
         species_dict['number_of_rotors'] = self.number_of_rotors
         species_dict['rotors_dict'] = self.rotors_dict
         species_dict['external_symmetry'] = self.external_symmetry
@@ -328,6 +331,7 @@ class ARCSpecies(object):
             if 'long_thermo_description' in species_dict else ''
         self.initial_xyz = check_species_xyz(species_dict['initial_xyz']) if 'initial_xyz' in species_dict else None
         self.final_xyz = check_species_xyz(species_dict['final_xyz']) if 'final_xyz' in species_dict else ''
+        self.zmat = species_dict['zmat'] if 'zmat' in species_dict else None
         if 'xyz' in species_dict and self.initial_xyz is None and not self.final_xyz:
             self.initial_xyz = check_species_xyz(species_dict['xyz'])
         self.is_ts = species_dict['is_ts'] if 'is_ts' in species_dict else False
