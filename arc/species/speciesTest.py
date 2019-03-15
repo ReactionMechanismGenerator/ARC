@@ -70,6 +70,13 @@ class TestARCSpecies(unittest.TestCase):
         xyz1 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'AIBN.gjf')
         cls.spc7 = ARCSpecies(label='AIBN', smiles=str('N#CC(C)(C)N=NC(C)(C)C#N'), xyz=xyz1)
 
+        hso3_xyz = str("""S      -0.12383700    0.10918200   -0.21334200
+        O       0.97332200   -0.98800100    0.31790100
+        O      -1.41608500   -0.43976300    0.14487300
+        O       0.32370100    1.42850400    0.21585900
+        H       1.84477700   -0.57224200    0.35517700""")
+        cls.spc8 = ARCSpecies(label=str('HSO3'), xyz=hso3_xyz, multiplicity=2, charge=0, smiles=str('O[S](=O)=O'))
+
     def test_conformers(self):
         """Test conformer generation"""
         self.spc1.generate_conformers()  # vinoxy has two res. structures, each is assigned two conformers (RDkit/ob)
@@ -453,6 +460,42 @@ H      -1.69944700    0.93441600   -0.11271200"""
         energies = [-5, -30, -1.5]
         min_xyz = get_min_energy_conformer(xyzs, energies)
         self.assertEqual(min_xyz, 'xyz2')
+
+    def test_mol_from_xyz_atom_id_1(self):
+        """Test that atom ids are saved properly when loading both xyz and smiles."""
+        mol = self.spc6.mol
+        mol_list = self.spc6.mol_list
+
+        self.assertEqual(len(mol_list), 1)
+        res = mol_list[0]
+
+        self.assertTrue(mol.atomIDValid())
+        self.assertTrue(res.atomIDValid())
+
+        self.assertTrue(mol.isIsomorphic(res))
+        self.assertTrue(mol.isIdentical(res))
+
+    def test_mol_from_xyz_atom_id_2(self):
+        """Test that atom ids are saved properly when loading both xyz and smiles."""
+        mol = self.spc8.mol
+        mol_list = self.spc8.mol_list
+
+        self.assertEqual(len(mol_list), 2)
+        res1, res2 = mol_list
+
+        self.assertTrue(mol.atomIDValid())
+        self.assertTrue(res1.atomIDValid())
+        self.assertTrue(res2.atomIDValid())
+
+        self.assertTrue(mol.isIsomorphic(res1))
+        self.assertTrue(mol.isIdentical(res1))
+
+        # Check that atom ordering is consistent, ignoring specific oxygen ordering
+        mol_ids = [(a.element.symbol, a.id) if a.element.symbol != 'O' else (a.element.symbol,) for a in mol.atoms]
+        res1_ids = [(a.element.symbol, a.id) if a.element.symbol != 'O' else (a.element.symbol,) for a in res1.atoms]
+        res2_ids = [(a.element.symbol, a.id) if a.element.symbol != 'O' else (a.element.symbol,) for a in res2.atoms]
+        self.assertEqual(mol_ids, res1_ids)
+        self.assertEqual(mol_ids, res2_ids)
 
 
 class TestTSGuess(unittest.TestCase):

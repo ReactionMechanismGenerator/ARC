@@ -212,13 +212,12 @@ class ARCSpecies(object):
                 self.multiplicity = multiplicity
                 self.charge = charge
 
-            if self.mol is None and not self.is_ts:
-                xyz = self.final_xyz if self.final_xyz else self.initial_xyz
-                _, mol = molecules_from_xyz(xyz)
-                self.number_of_atoms = len(mol.atoms)
-            elif not self.is_ts:
-                if self.initial_xyz is not None:
+            if not self.is_ts:
+                # Perceive molecule from xyz coordinates
+                # This also populates mol_list
+                if self.final_xyz or self.initial_xyz:
                     self.mol_from_xyz()
+                # Generate bond list for applying bond corrections
                 if not self.bond_corrections:
                     self.bond_corrections = self.mol.enumerate_bonds()
                     if self.bond_corrections:
@@ -232,6 +231,7 @@ class ARCSpecies(object):
             elif not self.bond_corrections and self.generate_thermo:
                 logging.warn('Cannot determine bond additivity corrections (BAC) for species {0} based on xyz'
                              ' coordinates only. For better thermoproperties, provide bond corrections.')
+
             if self.initial_xyz is not None:
                 # consider the initial guess as one of the conformers if generating others.
                 # otherwise, just consider it as the conformer.
@@ -800,24 +800,33 @@ class ARCSpecies(object):
         """
         Make sure atom order in self.mol corresponds to xyz
         Important for TS discovery and for identifying rotor indices
+
+        This works by generating a molecule from the xyz and using the
+        2D structure to confirm that the perceived molecule is correct.
+        Resonance structures are generated and saved to ``self.mol_list``.
         """
         if xyz is None:
-            xyz = self.initial_xyz
-        original_mol = self.mol.copy(deep=True)
-        _, self.mol = molecules_from_xyz(xyz)
-        if self.mol is not None and not check_isomorphism(original_mol, self.mol):
-            raise InputError('XYZ and the 2D graph representation of the Molecule are not isomorphic.\n'
-                             'Got xyz:\n{0}\n\nwhich corresponds to {1}\n{2}\n\nand: {3}\n{4}'.format(
-                               xyz, self.mol.toSMILES(), self.mol.toAdjacencyList(),
-                               original_mol.toSMILES(), original_mol.toAdjacencyList()))
+            xyz = self.final_xyz or self.initial_xyz
+
+        if self.mol is not None:
+            # self.mol should have come from another source, e.g. SMILES or yml
+            original_mol = self.mol
+            self.mol = molecules_from_xyz(xyz)[1]
+
+            if self.mol is not None and not check_isomorphism(original_mol, self.mol):
+                raise InputError('XYZ and the 2D graph representation of the Molecule are not isomorphic.\n'
+                                 'Got xyz:\n{0}\n\nwhich corresponds to {1}\n{2}\n\nand: {3}\n{4}'.format(
+                                   xyz, self.mol.toSMILES(), self.mol.toAdjacencyList(),
+                                   original_mol.toSMILES(), original_mol.toAdjacencyList()))
+        else:
+            self.mol = molecules_from_xyz(xyz)[1]
+
         if self.mol_list is None:
+            # Assign atom ids first, so they carry through to the resonance structures
             self.mol.assignAtomIDs()
-            self.mol_list = self.mol.generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
-            # The generate_resonance_structures methods changes atom order, reorder atoms in self.mol:
-            id_mol = self.mol.copy(deep=True)
-            _, self.mol = molecules_from_xyz(xyz)
-            for i, atom in enumerate(self.mol.atoms):
-                atom.id = id_mol.atoms[i].id
+            # The generate_resonance_structures method changes atom order
+            # Make a copy so we don't disturb the original order from xyz
+            self.mol_list = self.mol.copy(deep=True).generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
         order_atoms_in_mol_list(ref_mol=self.mol, mol_list=self.mol_list)
 
 
