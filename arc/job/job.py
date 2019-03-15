@@ -269,10 +269,10 @@ class Job(object):
         with open(csv_path, 'rb') as f:
             reader = csv.reader(f, dialect='excel')
             job_num = 0
-            for row in reader:
+            for _ in reader:
                 job_num += 1
-            if job_num == 100000:
-                job_num = 0
+                if job_num == 100000:
+                    job_num = 0
             self.job_num = job_num
 
     def _write_initiated_job_to_csv_file(self):
