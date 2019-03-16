@@ -12,10 +12,6 @@ import subprocess
 from distutils.spawn import find_executable
 from IPython.display import display
 import yaml
-try:
-    from yaml import CDumper as Dumper, CLoader as Loader, CSafeLoader as SafeLoader
-except ImportError:
-    from yaml import Dumper, Loader, SafeLoader
 
 from rmgpy.species import Species
 from rmgpy.reaction import Reaction
@@ -64,7 +60,7 @@ class ARC(object):
                                         This can be usually determined automatically.
     `settings`             ``dict``   A dictionary of available servers and software
     `ess_settings`         ``dict``   An optional input parameter: a dictionary relating ESS to servers
-    `initial_trsh`         ``dict``   Troubleshooting methods to try by default. Keys are server names, values are trshs
+    `initial_trsh`         ``dict``   Troubleshooting methods to try by default. Keys are ESS software, values are trshs
     't0'                   ``float``  Initial time when the project was spawned
     `execution_time`       ``str``    Overall execution time
     `lib_long_desc`        ``str``    A multiline description of levels of theory for the outputted RMG libraries
@@ -76,6 +72,7 @@ class ARC(object):
     `rmgdb`                ``RMGDatabase``  The RMG database object
     `allow_nonisomorphic_2d` ``bool`` Whether to optimize species even if they do not have a 3D conformer that is
                                         isomorphic to the 2D graph representation
+    `memory`               ``int``    The allocated job memory (1500 MB by default)
     ====================== ========== ==================================================================================
 
     `level_of_theory` is a string representing either sp//geometry levels or a composite method, e.g. 'CBS-QB3',
@@ -85,7 +82,8 @@ class ARC(object):
                  conformer_level='', composite_method='', opt_level='', freq_level='', sp_level='', scan_level='',
                  ts_guess_level='', fine=True, generate_conformers=True, scan_rotors=True, use_bac=True,
                  model_chemistry='', ess_settings=None, initial_trsh=None, t_min=None, t_max=None, t_count=None,
-                 verbose=logging.INFO, project_directory=None, max_job_time=120, allow_nonisomorphic_2d=False):
+                 verbose=logging.INFO, project_directory=None, max_job_time=120, allow_nonisomorphic_2d=False,
+                 job_memory=1500):
 
         self.__version__ = '1.0.0'
         self.verbose = verbose
@@ -98,6 +96,7 @@ class ARC(object):
         self.rmgdb = rmgdb.make_rmg_database_object()
         self.max_job_time = max_job_time
         self.allow_nonisomorphic_2d = allow_nonisomorphic_2d
+        self.memory = job_memory
 
         if input_dict is None:
             if project is None:
@@ -385,18 +384,20 @@ class ARC(object):
         self.execution_time = None
         self.verbose = input_dict['verbose'] if 'verbose' in input_dict else self.verbose
         self.max_job_time = input_dict['max_job_time'] if 'max_job_time' in input_dict else 5
+        self.ess_settings = input_dict['ess_settings'] if 'ess_settings' in input_dict else None
         self.allow_nonisomorphic_2d = input_dict['allow_nonisomorphic_2d']\
             if 'allow_nonisomorphic_2d' in input_dict else False
-
         if self.ess_settings is not None:
             self.settings['ssh'] = True
             for ess, server in self.ess_settings.items():
-                if ess.lower() not in ['gaussian', 'qchem', 'molpro']:
-                    raise SettingsError('Recognized ESS software are Gaussian, QChem or Molpro. Got: {0}'.format(ess))
-                if server.lower() not in servers:
-                    server_names = [name for name in servers]
-                    raise SettingsError('Recognized servers are {0}. Got: {1}'.format(server_names, servers))
-                self.settings[ess.lower()] = server.lower()
+                if ess.lower() != 'ssh':
+                    if ess.lower() not in ['gaussian', 'qchem', 'molpro']:
+                        raise SettingsError('Recognized ESS software are Gaussian, QChem or Molpro.'
+                                            ' Got: {0}'.format(ess))
+                    if server.lower() not in servers:
+                        server_names = [name for name in servers]
+                        raise SettingsError('Recognized servers are {0}. Got: {1}'.format(server_names, server))
+                    self.settings[ess.lower()] = server.lower()
         elif 'ess_settings' in input_dict:
             self.settings = input_dict['ess_settings']
             self.settings['ssh'] = True
@@ -523,11 +524,11 @@ class ARC(object):
             self.arc_species_list = [ARCSpecies(species_dict=spc_dict) for spc_dict in input_dict['species']]
             for spc in self.arc_species_list:
                 for rotor_num, rotor_dict in spc.rotors_dict.items():
-                    if not os.path.isfile(rotor_dict['scan_path']):
-                        dir_path = os.path.dirname(os.path.realpath(__file__))
-                        if os.path.isfile(os.path.join(dir_path, rotor_dict['scan_path'])):
+                    if not os.path.isfile(rotor_dict['scan_path']) and rotor_dict['success']:
+                        rotor_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), rotor_dict['scan_path'])
+                        if os.path.isfile(rotor_path):
                             # correct relative paths
-                            spc.rotors_dict[rotor_num]['scan_path'] = os.path.join(dir_path, rotor_dict['scan_path'])
+                            spc.rotors_dict[rotor_num]['scan_path'] = os.path.join(rotor_path)
                         else:
                             raise SpeciesError('Could not find rotor scan output file for rotor {0} of species {1}:'
                                                ' {2}'.format(rotor_num, spc.label, rotor_dict['scan_path']))
@@ -557,7 +558,6 @@ class ARC(object):
             if not isinstance(rxn, ARCReaction):
                 raise ValueError('All reactions in arc_rxn_list must be ARCReaction objects.'
                                  ' Got {0}'.format(type(rxn)))
-
         self.scheduler = Scheduler(project=self.project, species_list=self.arc_species_list, rxn_list=self.arc_rxn_list,
                                    composite_method=self.composite_method, conformer_level=self.conformer_level,
                                    opt_level=self.opt_level, freq_level=self.freq_level, sp_level=self.sp_level,
@@ -565,7 +565,8 @@ class ARC(object):
                                    settings=self.settings, generate_conformers=self.generate_conformers,
                                    scan_rotors=self.scan_rotors, initial_trsh=self.initial_trsh, rmgdatabase=self.rmgdb,
                                    restart_dict=self.restart_dict, project_directory=self.project_directory,
-                                   max_job_time=self.max_job_time, allow_nonisomorphic_2d=self.allow_nonisomorphic_2d)
+                                   max_job_time=self.max_job_time, allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
+                                   memory=self.memory)
 
         self.save_project_info_file()
 
@@ -615,19 +616,19 @@ class ARC(object):
         txt += '\nConsidered the following species and TSs:\n'
         for species in self.arc_species_list:
             if species.is_ts:
-                if species.execution_time is not None:
-                    txt += 'TS {0} (execution time: {1})\n'.format(species.label, species.execution_time)
+                if species.run_time is not None:
+                    txt += 'TS {0} (run time: {1})\n'.format(species.label, species.run_time)
                 else:
                     txt += 'TS {0} (Failed)\n'.format(species.label)
             else:
-                if species.execution_time is not None:
-                    txt += 'Species {0} (execution time: {1})\n'.format(species.label, species.execution_time)
+                if species.run_time is not None:
+                    txt += 'Species {0} (run time: {1})\n'.format(species.label, species.run_time)
                 else:
                     txt += 'Species {0} (Failed!)\n'.format(species.label)
         if self.arc_rxn_list:
             for rxn in self.arc_rxn_list:
                 txt += 'Considered reaction: {0}\n'.format(rxn.label)
-        txt += '\nOverall execution time: {0}'.format(self.execution_time)
+        txt += '\nOverall time since project initiation: {0}'.format(self.execution_time)
         txt += '\n'
 
         with open(path, 'w') as f:

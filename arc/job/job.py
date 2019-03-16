@@ -3,7 +3,6 @@
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
 import os
-import datetime
 import csv
 import logging
 
@@ -44,14 +43,15 @@ class Job(object):
     `scan_res`         ``int``           The rotor scan resolution in degrees
     `software`         ``str``           The electronic structure software to be used
     `server_nodes`     ``list``          A list of nodes this job was submitted to (for troubleshooting)
-    `memory`           ``int``           The allocated memory (1500 mb by default)
+    `memory`           ``int``           The allocated memory (1500 MB by default)
     `method`           ``str``           The calculation method (e.g., 'B3LYP', 'CCSD(T)', 'CBS-QB3'...)
     `basis_set`        ``str``           The basis set (e.g., '6-311++G(d,p)', 'aug-cc-pVTZ'...)
     `fine`             ``bool``          Whether to use fine geometry optimization parameters
     `shift`            ``str``           A string representation alpha- and beta-spin orbitals shifts (molpro only)
     `comments`         ``str``           Job comments (archived, not used)
-    `date_time`        ``datetime``      The date-time this job was initiated. Determined automatically
-    `run_time`         ``str``           Runtime. Determined automatically
+    `initial_time`     ``datetime``      The date-time this job was initiated. Determined automatically
+    `final_time`       ``datetime``      The date-time this job was initiated. Determined automatically
+    `run_time`         ``timedelta``     Job execution time. Determined automatically
     `job_status`       ``list``          The job's server and ESS statuses. Determined automatically
     `job_server_name`  ``str``           Job's name on the server (e.g., 'a103'). Determined automatically
     `job_name`         ``str``           Job's name for interal usage (e.g., 'opt_a103'). Determined automatically
@@ -64,7 +64,7 @@ class Job(object):
     `server`           ``str``           Server's name. Determined automatically
     'trsh'             ''str''           A troubleshooting handle to be appended to input files
     'ess_trsh_methods' ``list``          A list of troubleshooting methods already tried out for ESS convergence
-    `initial_trsh`     ``dict``          Troubleshooting methods to try by default. Keys are server names, values are trshs
+    `initial_trsh`     ``dict``          Troubleshooting methods to try by default. Keys are ESS software, values are trshs
     `scan_trsh`        ``str``           A troubleshooting method for rotor scans
     `occ`              ``int``           The number of occupied orbitals (core + val) from a molpro CCSD sp calc
     `project_directory` ``str``          The path to the project directory
@@ -79,11 +79,13 @@ class Job(object):
     def __init__(self, project, settings, species_name, xyz, job_type, level_of_theory, multiplicity, project_directory,
                  charge=0, conformer=-1, fine=False, shift='', software=None, is_ts=False, scan='', pivots=None,
                  memory=1500, comments='', trsh='', scan_trsh='', ess_trsh_methods=None, initial_trsh=None, job_num=None,
-                 job_server_name=None, job_name=None, job_id=None, server=None, date_time=None, run_time=None, occ=None,
+                 job_server_name=None, job_name=None, job_id=None, server=None, initial_time=None, occ=None,
                  max_job_time=120, scan_res=None):
         self.project = project
         self.settings=settings
-        self.date_time = date_time if date_time is not None else datetime.datetime.now()
+        self.initial_time = initial_time
+        self.final_time = None
+        self.run_time = None
         self.species_name = species_name
         self.job_num = job_num if job_num is not None else -1
         self.charge = charge
@@ -204,7 +206,6 @@ class Job(object):
         self.fine = fine
         self.shift = shift
         self.occ = occ
-        self.run_time = run_time if run_time is not None else ''
         self.job_status = ['initializing', 'initializing']
         self.job_id = job_id if job_id is not None else 0
         self.comments = comments
@@ -230,14 +231,17 @@ class Job(object):
     def as_dict(self):
         """A helper function for dumping this object as a dictionary in a YAML file for restarting ARC"""
         job_dict = dict()
-        job_dict['date_time'] = self.date_time
+        job_dict['initial_time'] = self.initial_time
+        job_dict['final_time'] = self.final_time
+        if self.run_time is not None:
+            job_dict['run_time'] = self.run_time.total_seconds()
+        job_dict['max_job_time'] = self.max_job_time
         job_dict['project_directory'] = self.project_directory
-        job_dict['run_time'] = self.run_time
-        job_dict['date_time'] = self.date_time
         job_dict['job_num'] = self.job_num
         job_dict['server'] = self.server
         job_dict['ess_trsh_methods'] = self.ess_trsh_methods
         job_dict['trsh'] = self.trsh
+        job_dict['initial_trsh'] = self.initial_trsh
         job_dict['job_type'] = self.job_type
         job_dict['job_server_name'] = self.job_server_name
         job_dict['job_name'] = self.job_name
@@ -246,11 +250,17 @@ class Job(object):
         job_dict['fine'] = self.fine
         job_dict['shift'] = self.shift
         job_dict['memory'] = self.memory
+        job_dict['software'] = self.software
         job_dict['occ'] = self.occ
         job_dict['job_status'] = self.job_status
+        if self.conformer >= 0:
+            job_dict['conformer'] = self.conformer
         job_dict['job_id'] = self.job_id
+        job_dict['comments'] = self.comments
         job_dict['scan'] = self.scan
         job_dict['pivots'] = self.pivots
+        job_dict['scan_res'] = self.scan_res
+        job_dict['scan_trsh'] = self.scan_trsh
         return job_dict
 
     def _set_job_number(self):
@@ -263,16 +273,15 @@ class Job(object):
             with open(csv_path, 'wb') as f:
                 writer = csv.writer(f, dialect='excel')
                 row = ['job_num', 'project', 'species_name', 'conformer', 'is_ts', 'charge', 'multiplicity', 'job_type',
-                       'job_name', 'job_id', 'server', 'software', 'memory', 'method', 'basis_set', 'date_time',
-                       'comments']
+                       'job_name', 'job_id', 'server', 'software', 'memory', 'method', 'basis_set', 'comments']
                 writer.writerow(row)
         with open(csv_path, 'rb') as f:
             reader = csv.reader(f, dialect='excel')
             job_num = 0
-            for row in reader:
+            for _ in reader:
                 job_num += 1
-            if job_num == 100000:
-                job_num = 0
+                if job_num == 100000:
+                    job_num = 0
             self.job_num = job_num
 
     def _write_initiated_job_to_csv_file(self):
@@ -287,7 +296,7 @@ class Job(object):
             writer = csv.writer(f, dialect='excel')
             row = [self.job_num, self.project, self.species_name, conformer, self.is_ts, self.charge,
                    self.multiplicity, self.job_type, self.job_name, self.job_id, self.server, self.software,
-                   self.memory, self.method, self.basis_set, self.date_time, self.comments]
+                   self.memory, self.method, self.basis_set, self.comments]
             writer.writerow(row)
 
     def write_completed_job_to_csv_file(self):
@@ -301,9 +310,9 @@ class Job(object):
             with open(csv_path, 'wb') as f:
                 writer = csv.writer(f, dialect='excel')
                 row = ['job_num', 'project', 'species_name', 'conformer', 'is_ts', 'charge', 'multiplicity', 'job_type',
-                       'job_name', 'job_id', 'server', 'software', 'memory', 'method', 'basis_set', 'date_time',
-                       'run_time', 'job_status_(server)', 'job_status_(ESS)', 'ESS troubleshooting methods used',
-                       'comments']
+                       'job_name', 'job_id', 'server', 'software', 'memory', 'method', 'basis_set', 'initial_time',
+                       'final_time', 'run_time', 'job_status_(server)', 'job_status_(ESS)',
+                       'ESS troubleshooting methods used', 'comments']
                 writer.writerow(row)
         csv_path = os.path.join(arc_path, 'completed_jobs.csv')
         if self.conformer < 0:  # this is not a conformer search job
@@ -316,8 +325,8 @@ class Job(object):
                 job_type += ' (fine)'
             row = [self.job_num, self.project, self.species_name, conformer, self.is_ts, self.charge,
                    self.multiplicity, job_type, self.job_name, self.job_id, self.server, self.software,
-                   self.memory, self.method, self.basis_set, self.date_time, self.run_time, self.job_status[0],
-                   self.job_status[1], self.ess_trsh_methods, self.comments]
+                   self.memory, self.method, self.basis_set, self.initial_time, self.final_time, self.run_time,
+                   self.job_status[0], self.job_status[1], self.ess_trsh_methods, self.comments]
             writer.writerow(row)
 
     def write_submit_script(self):
@@ -334,7 +343,7 @@ class Job(object):
         else:
             raise JobError('Could not determine format for maximal job time')
         self.submit = submit_scripts[servers[self.server]['cluster_soft']][self.software.lower()].format(
-            name=self.job_server_name, un=un, t_max=t_max, mem_cpu=self.memory * 150)
+            name=self.job_server_name, un=un, t_max=t_max, mem_cpu=min(int(self.memory * 150), 16000))
         # Memory convertion: multiply MW value by 1200 to conservatively get it in MB, then divide by 8 to get per cup
         if not os.path.exists(self.local_path):
             os.makedirs(self.local_path)
@@ -567,12 +576,15 @@ $end
         ssh.send_command_to_server(command='mkdir -p {0}'.format(self.remote_path))
         remote_file_path = os.path.join(self.remote_path, input_filename[self.software])
         ssh.upload_file(remote_file_path=remote_file_path, file_string=self.input)
+        self.initial_time = ssh.get_last_modified_time(remote_file_path=remote_file_path)
 
     def _download_output_file(self):
         ssh = SSH_Client(self.server)
         remote_file_path = os.path.join(self.remote_path, output_filename[self.software])
         local_file_path = os.path.join(self.local_path, 'output.out')
         ssh.download_file(remote_file_path=remote_file_path, local_file_path=local_file_path)
+        self.final_time = ssh.get_last_modified_time(remote_file_path=remote_file_path)
+        self.determine_run_time()
         if not os.path.isfile(local_file_path):
             raise JobError('output file for {0} was not downloaded properly'.format(self.job_name))
 
@@ -777,4 +789,6 @@ $end
                 # resubmit
                 self.run()
 
-# TODO: irc, gsm input files
+    def determine_run_time(self):
+        """Determine the run time"""
+        self.run_time = self.final_time - self.initial_time

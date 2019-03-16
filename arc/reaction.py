@@ -150,7 +150,6 @@ class ARCReaction(object):
         self.set_label_reactants_products()
         if self.ts_label is None:
             self.ts_label = reaction_dict['ts_label'] if 'ts_label' in reaction_dict else None
-        print(self.ts_label)
         self.r_species = [r.from_dict() for r in reaction_dict['r_species']] if 'r_species' in reaction_dict else list()
         self.p_species = [p.from_dict() for p in reaction_dict['p_species']] if 'p_species' in reaction_dict else list()
         self.ts_species = reaction_dict['ts_species'].from_dict() if 'ts_species' in reaction_dict else None

@@ -30,7 +30,6 @@ def autotst(reaction_label=None, rmg_reaction=None, reaction_family=None):
         reaction_label = get_reaction_label(rmg_reaction)
     elif reaction_label is None:
         raise TSError('Must get either reaction_label or rmg_reaction')
-    # print(reaction_label)
     os.system('python {run_autotst_path} {reaction_label} {reaction_family}'.format(
         run_autotst_path=run_autotst_path, reaction_label=reaction_label, reaction_family=reaction_family))
 

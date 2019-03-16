@@ -76,7 +76,6 @@ class TestARC(unittest.TestCase):
                                       'number_of_rotors': 0,
                                       'opt_level': '',
                                       'rotors_dict': {},
-                                      't0': None,
                                       't1': None}],
                          }
         self.assertEqual(restart_dict, expected_dict)
@@ -85,9 +84,9 @@ class TestARC(unittest.TestCase):
         """Test the from_dict() method of ARC"""
         restart_dict = {'composite_method': '',
                          'conformer_level': 'b97-d3/6-311+g(d,p)',
-                         'ess_settings': {'gaussian': 'pharos',
-                                          'molpro': 'pharos',
-                                          'qchem': u'pharos',
+                         'ess_settings': {'gaussian': 'server1',
+                                          'molpro': 'server1',
+                                          'qchem': u'server1',
                                           'ssh': True},
                          'fine': True,
                          'freq_level': 'wb97x-d3/6-311+g(d,p)',
@@ -171,7 +170,7 @@ class TestARC(unittest.TestCase):
                     sts = True
                 elif 'Species N2H3' in line:
                     n2h3 = True
-                elif 'Overall execution time:' in line:
+                elif 'Overall time since project initiation:' in line:
                     oet = True
                 elif 'Levels of theory used:' in line:
                     lot = True
@@ -184,7 +183,7 @@ class TestARC(unittest.TestCase):
         self.assertTrue(ap)
 
         with open(os.path.join(project_directory, 'arc.log'), 'r') as f:
-            aei, ver, git, spc, elt, ldb, therm, src, ter = False, False, False, False, False, False, False, False, False
+            aei, ver, git, spc, rtm, ldb, therm, src, ter = False, False, False, False, False, False, False, False, False
             for line in f.readlines():
                 if 'ARC execution initiated on' in line:
                     aei = True
@@ -194,8 +193,8 @@ class TestARC(unittest.TestCase):
                     git = True
                 elif 'Considering species: CH3CO2_rad' in line:
                     spc = True
-                elif 'All jobs for species N2H3 successfully converged. Elapsed time:' in line:
-                    elt = True
+                elif 'All jobs for species N2H3 successfully converged. Run time: 1:16:03' in line:
+                    rtm = True
                 elif 'Loading the RMG database...' in line:
                     ldb = True
                 elif 'Thermodynamics for H2O2:' in line:
@@ -208,7 +207,7 @@ class TestARC(unittest.TestCase):
         self.assertTrue(ver)
         self.assertTrue(git)
         self.assertTrue(spc)
-        self.assertTrue(elt)
+        self.assertTrue(rtm)
         self.assertTrue(ldb)
         self.assertTrue(therm)
         self.assertTrue(src)
@@ -246,9 +245,9 @@ class TestARC(unittest.TestCase):
         spc2 = Species().fromSMILES(str('CC([O])=O'))
         spc2.generate_resonance_structures()
         spc2.thermo = db.thermo.getThermoData(spc2)
-        self.assertAlmostEqual(spc2.getEnthalpy(298), -178069.73493379, 1)
-        self.assertAlmostEqual(spc2.getEntropy(298), 283.67441868, 1)
-        self.assertAlmostEqual(spc2.getHeatCapacity(1000), 119.05358594, 1)
+        self.assertAlmostEqual(spc2.getEnthalpy(298), -178003.44650359568, 1)
+        self.assertAlmostEqual(spc2.getEntropy(298), 283.5983103176096, 1)
+        self.assertAlmostEqual(spc2.getHeatCapacity(1000), 118.99753808225603, 1)
         self.assertTrue('arc_project_for_testing_delete_after_usage2' in spc2.thermo.comment)
 
         # delete the generated library from RMG-database

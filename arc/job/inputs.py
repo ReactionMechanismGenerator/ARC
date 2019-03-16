@@ -8,7 +8,7 @@
 """
 parameters for input files:
 
-memory (in mb for gaussian, mW for molpro)
+memory (in MB for gaussian, MW for molpro)
 method
 basis set
 slash is '', unless this is gaussian NOT running a composite method, in which case it is '/'
@@ -23,6 +23,8 @@ gaussian:
                 'scf=(tight,direct) int=finegrid irc=(rcfc,reverse,maxpoints=100,stepsize=10) geom=check' for irc r
     scan: '\nD 3 1 5 8 S 36 10.000000' (with the line break)
     restricted: '' or 'u' for restricted / unrestricted
+    `iop(2/9=2000)` makes Gaussian print the geometry nn eee input orientation even for molecules with more
+      than 50 atoms (important so it matches the hessian, and so that Arkane can parse the geometry)
 
 qchem:
     job_type_1: 'opt', 'ts', 'sp'
@@ -36,7 +38,7 @@ input_files = {
 %mem={memory}mb
 %nproc=8
 
-#P {job_type_1} {restricted}{method}{slash}{basis} {job_type_2} {fine} {trsh}
+#P {job_type_1} {restricted}{method}{slash}{basis} {job_type_2} {fine} {trsh} iop(2/9=2000)
 
 name
 
