@@ -296,7 +296,6 @@ O -3.433048 0.461721 -1.530756
 O -2.894879 1.761778 -1.591557
 H -2.124573 1.652495 -2.176005"""
         new_xyz = converter.standardize_xyz_string(gaussian_format)
-        print(new_xyz)
         self.assertEqual(new_xyz, expected_xyz)
 
     def test_xyz_to_pybel_mol(self):
