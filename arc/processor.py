@@ -218,7 +218,10 @@ class Processor(object):
                 arkane_spc_dict[species.label] = arkane_ts
                 stat_mech_job = StatMechJob(arkane_ts, species.arkane_file)
                 stat_mech_job.applyBondEnergyCorrections = False
-                stat_mech_job.modelChemistry = self.model_chemistry
+                if not self.model_chemistry:
+                    stat_mech_job.modelChemistry = self.model_chemistry
+                else:
+                    stat_mech_job.applyAtomEnergyCorrections = False
                 stat_mech_job.frequencyScaleFactor = assign_frequency_scale_factor(self.model_chemistry)
                 stat_mech_job.execute(outputFile=None, plot=False)
                 for spc in rxn.r_species + rxn.p_species:
@@ -229,7 +232,10 @@ class Processor(object):
                         stat_mech_job = StatMechJob(arkane_spc, spc.arkane_file)
                         arkane_spc_dict[spc.label] = arkane_spc
                         stat_mech_job.applyBondEnergyCorrections = False
-                        stat_mech_job.modelChemistry = self.model_chemistry
+                        if not self.model_chemistry:
+                            stat_mech_job.modelChemistry = self.model_chemistry
+                        else:
+                            stat_mech_job.applyAtomEnergyCorrections = False
                         stat_mech_job.frequencyScaleFactor = assign_frequency_scale_factor(self.model_chemistry)
                         stat_mech_job.execute(outputFile=None, plot=False)
                         # thermo_job = ThermoJob(arkane_spc, 'NASA')
