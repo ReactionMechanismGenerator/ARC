@@ -72,6 +72,7 @@ class ARC(object):
     `rmgdb`                ``RMGDatabase``  The RMG database object
     `allow_nonisomorphic_2d` ``bool`` Whether to optimize species even if they do not have a 3D conformer that is
                                         isomorphic to the 2D graph representation
+    `memory`               ``int``    The allocated job memory (1500 MB by default)
     ====================== ========== ==================================================================================
 
     `level_of_theory` is a string representing either sp//geometry levels or a composite method, e.g. 'CBS-QB3',
@@ -81,7 +82,8 @@ class ARC(object):
                  conformer_level='', composite_method='', opt_level='', freq_level='', sp_level='', scan_level='',
                  ts_guess_level='', fine=True, generate_conformers=True, scan_rotors=True, use_bac=True,
                  model_chemistry='', ess_settings=None, initial_trsh=None, t_min=None, t_max=None, t_count=None,
-                 verbose=logging.INFO, project_directory=None, max_job_time=120, allow_nonisomorphic_2d=False):
+                 verbose=logging.INFO, project_directory=None, max_job_time=120, allow_nonisomorphic_2d=False,
+                 job_memory=1500):
 
         self.__version__ = '1.0.0'
         self.verbose = verbose
@@ -94,6 +96,7 @@ class ARC(object):
         self.rmgdb = rmgdb.make_rmg_database_object()
         self.max_job_time = max_job_time
         self.allow_nonisomorphic_2d = allow_nonisomorphic_2d
+        self.memory = job_memory
 
         if input_dict is None:
             if project is None:
@@ -561,7 +564,8 @@ class ARC(object):
                                    settings=self.settings, generate_conformers=self.generate_conformers,
                                    scan_rotors=self.scan_rotors, initial_trsh=self.initial_trsh, rmgdatabase=self.rmgdb,
                                    restart_dict=self.restart_dict, project_directory=self.project_directory,
-                                   max_job_time=self.max_job_time, allow_nonisomorphic_2d=self.allow_nonisomorphic_2d)
+                                   max_job_time=self.max_job_time, allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
+                                   memory=self.memory)
 
         self.save_project_info_file()
 

@@ -72,6 +72,7 @@ class Scheduler(object):
     `rmgdb`                 ``RMGDatabase``  The RMG database object
     `allow_nonisomorphic_2d` ``bool`` Whether to optimize species even if they do not have a 3D conformer that is
                                         isomorphic to the 2D graph representation
+    `memory`                 ``int``  The allocated job memory (1500 MB by default)
     ======================= ========= ==================================================================================
 
     Dictionary structures:
@@ -104,7 +105,7 @@ class Scheduler(object):
     def __init__(self, project, settings, species_list, composite_method, conformer_level, opt_level, freq_level,
                  sp_level, scan_level, ts_guess_level, project_directory, rmgdatabase, fine=False, scan_rotors=True,
                  generate_conformers=True, initial_trsh=None, rxn_list=None, restart_dict=None, max_job_time=120,
-                 allow_nonisomorphic_2d=False, testing=False):
+                 allow_nonisomorphic_2d=False, memory=1500, testing=False):
         self.rmgdb = rmgdatabase
         self.restart_dict = restart_dict
         self.species_list = species_list
@@ -118,6 +119,7 @@ class Scheduler(object):
         self.running_jobs = dict()
         self.allow_nonisomorphic_2d = allow_nonisomorphic_2d
         self.testing = testing
+        self.memory = memory
         if self.restart_dict is not None:
             self.output = self.restart_dict['output']
             if 'running_jobs' in self.restart_dict:
@@ -455,7 +457,7 @@ class Scheduler(object):
             if spc.yml_path is not None:
                 self.species_dict[spc.label] = spc
 
-    def run_job(self, label, xyz, level_of_theory, job_type, fine=False, software=None, shift='', trsh='', memory=1500,
+    def run_job(self, label, xyz, level_of_theory, job_type, fine=False, software=None, shift='', trsh='', memory=None,
                 conformer=-1, ess_trsh_methods=None, scan='', pivots=None, occ=None, scan_trsh='', scan_res=None):
         """
         A helper function for running (all) jobs
@@ -465,12 +467,13 @@ class Scheduler(object):
         if self.species_dict[label].t0 is None:
             self.species_dict[label].t0 = time.time()
         species = self.species_dict[label]
+        memory = memory if memory is not None else self.memory
         job = Job(project=self.project, settings=self.settings, species_name=label, xyz=xyz, job_type=job_type,
                   level_of_theory=level_of_theory, multiplicity=species.multiplicity, charge=species.charge, fine=fine,
-                  shift=shift, software=software, is_ts=species.is_ts, memory=memory, trsh=trsh, conformer=conformer,
+                  shift=shift, software=software, is_ts=species.is_ts, memory=memory, trsh=trsh,
                   ess_trsh_methods=ess_trsh_methods, scan=scan, pivots=pivots, occ=occ, initial_trsh=self.initial_trsh,
                   project_directory=self.project_directory, max_job_time=self.max_job_time, scan_trsh=scan_trsh,
-                  scan_res=scan_res)
+                  scan_res=scan_res, conformer=conformer)
         if conformer < 0:
             # this is NOT a conformer job
             self.running_jobs[label].append(job.job_name)  # mark as a running job
@@ -503,7 +506,7 @@ class Scheduler(object):
             self.run_job(label=label, xyz=job.xyz, level_of_theory=job.level_of_theory, job_type=job.job_type,
                          fine=job.fine, software=job.software, shift=job.shift, trsh=job.trsh, memory=job.memory,
                          conformer=job.conformer, ess_trsh_methods=job.ess_trsh_methods, scan=job.scan,
-                         pivots=job.pivots, occ=job.occ)
+                         pivots=job.pivots, occ=job.occ, scan_trsh=job.scan_trsh, scan_res=job.scan_res)
             self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
         if job.job_status[0] != 'running' and job.job_status[1] != 'running':
             self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
@@ -538,8 +541,8 @@ class Scheduler(object):
                     if len(self.species_dict[label].conformers) > 1:
                         self.job_dict[label]['conformers'] = dict()
                         for i, xyz in enumerate(self.species_dict[label].conformers):
-                            self.run_job(label=label, xyz=xyz, level_of_theory=self.conformer_level, job_type='conformer',
-                                         conformer=i)
+                            self.run_job(label=label, xyz=xyz, level_of_theory=self.conformer_level,
+                                         job_type='conformer', conformer=i)
                     else:
                         if 'opt' not in self.job_dict[label] and 'composite' not in self.job_dict[label]\
                                 and self.species_dict[label].number_of_atoms > 1\
@@ -940,10 +943,8 @@ class Scheduler(object):
                 data = ccparser.parse()
                 vibfreqs = data.vibfreqs
             except AssertionError:
-                """
-                In cclib/parser/qchemparser.py there's an assertion of `assert 'Beta MOs' in line`
-                which sometimes fails (CClib issue https://github.com/cclib/cclib/issues/678)
-                """
+                # In cclib/parser/qchemparser.py there's an assertion of `assert 'Beta MOs' in line`
+                # which sometimes fails (CClib issue https://github.com/cclib/cclib/issues/678)
                 vibfreqs = parser.parse_frequencies(path=str(job.local_path_to_output_file), software=job.software)
             freq_ok = self.check_negative_freq(label=label, job=job, vibfreqs=vibfreqs)
             if not self.species_dict[label].is_ts and not freq_ok:
