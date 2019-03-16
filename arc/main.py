@@ -12,10 +12,6 @@ import subprocess
 from distutils.spawn import find_executable
 from IPython.display import display
 import yaml
-try:
-    from yaml import CDumper as Dumper, CLoader as Loader, CSafeLoader as SafeLoader
-except ImportError:
-    from yaml import Dumper, Loader, SafeLoader
 
 from rmgpy.species import Species
 from rmgpy.reaction import Reaction

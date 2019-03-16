@@ -9,15 +9,10 @@ import datetime
 import numpy as np
 import math
 import shutil
+import yaml
 from IPython.display import display
 
 import cclib
-
-import yaml
-try:
-    from yaml import CDumper as Dumper, CSafeDumper as SafeDumper, CLoader as Loader, CSafeLoader as SafeLoader
-except ImportError:
-    from yaml import Dumper, Loader, SafeLoader, SafeDumper
 
 from arkane.statmech import Log
 from rmgpy.reaction import Reaction
@@ -1163,6 +1158,27 @@ class Scheduler(object):
             raise SchedulerError('Could not match rotor with pivots {0} in species {1}'.format(job.pivots, label))
         self.save_restart_dict()
 
+    def check_all_done(self, label):
+        """
+        Check that we have all required data for the species/TS in ``label``
+        """
+        status = self.output[label]['status']
+        if 'error' not in status and ('composite converged' in status or ('sp converged' in status and
+                     (self.species_dict[label].is_ts or self.species_dict[label].number_of_atoms == 1 or
+                     ('freq converged' in status and 'opt converged' in status)))):
+            logging.info('\nAll jobs for species {0} successfully converged.'
+                         ' Run time: {1}'.format(label, self.species_dict[label].run_time))
+            self.output[label]['status'] += 'ALL converged'
+            plotter.save_geo(species=self.species_dict[label], project_directory=self.project_directory)
+            if self.species_dict[label].is_ts:
+                self.species_dict[label].make_ts_report()
+                logging.info(self.species_dict[label].ts_report + '\n')
+        elif not self.output[label]['status']:
+            self.output[label]['status'] = 'nothing converged'
+            logging.error('species {0} did not converge. Status is: {1}'.format(label, status))
+        # Update restart dictionary and save the yaml restart file:
+        self.save_restart_dict()
+
     def get_servers_jobs_ids(self):
         """
         Check status on all active servers, return a list of relevant running job IDs
@@ -1568,29 +1584,6 @@ class Scheduler(object):
                                                 ' Tried troubleshooting with the following methods: {methods}'.format(
                                                  label=label, methods=job.ess_trsh_methods)
 
-    def check_all_done(self, label):
-        """
-        Check that we have all required data for the species/TS in ``label``
-        """
-        status = self.output[label]['status']
-        if 'error' not in status and ('composite converged' in status or ('sp converged' in status and
-                     (self.species_dict[label].is_ts or self.species_dict[label].number_of_atoms == 1 or
-                     ('freq converged' in status and 'opt converged' in status)))):
-            d, h, m, s = time_lapse(t0=self.species_dict[label].t0)
-            self.species_dict[label].execution_time = '{0}{1:02.0f}:{2:02.0f}:{3:02.0f}'.format(d, h, m, s)
-            logging.info('\nAll jobs for species {0} successfully converged.'
-                         ' Elapsed time: {1}'.format(label, self.species_dict[label].execution_time))
-            self.output[label]['status'] += 'ALL converged'
-            plotter.save_geo(species=self.species_dict[label], project_directory=self.project_directory)
-            if self.species_dict[label].is_ts:
-                self.species_dict[label].make_ts_report()
-                logging.info(self.species_dict[label].ts_report + '\n')
-        elif not self.output[label]['status']:
-            self.output[label]['status'] = 'nothing converged'
-            logging.error('species {0} did not converge. Status is: {1}'.format(label, status))
-        # Update restart dictionary and save the yaml restart file:
-        self.save_restart_dict()
-
     def delete_all_species_jobs(self, label):
         """
         Delete all jobs of species/TS represented by `label`
@@ -1651,6 +1644,8 @@ class Scheduler(object):
         Update the restart_dict and save the restart.yml file
         """
         if self.save_restart:
+            yaml.add_representer(str, string_representer)
+            yaml.add_representer(unicode, unicode_representer)
             logging.debug('Creating a restart file...')
             self.restart_dict['output'] = self.output
             self.restart_dict['species'] = [spc.as_dict() for spc in self.species_dict.values()]
@@ -1660,7 +1655,7 @@ class Scheduler(object):
                     self.restart_dict['running_jobs'][spc.label] =\
                         [self.job_dict[spc.label][job_name.split('_')[0]][job_name].as_dict()
                          for job_name in self.running_jobs[spc.label] if 'conformer' not in job_name]
-            content = yaml.safe_dump(data=self.restart_dict, encoding='utf-8', allow_unicode=True)
+            content = yaml.dump(data=self.restart_dict, encoding='utf-8', allow_unicode=True)
             with open(self.restart_path, 'w') as f:
                 f.write(content)
             logging.debug('Dumping restart dictionary:\n{0}'.format(self.restart_dict))
@@ -1692,3 +1687,17 @@ def time_lapse(t0):
     else:
         d = ''
     return d, h, m, s
+
+
+# Add a custom string representer to use block literals for multiline strings
+def string_representer(dumper, data):
+    if len(data.splitlines()) > 1:
+        return dumper.represent_scalar(tag='tag:yaml.org,2002:str', value=data, style='|')
+    return dumper.represent_scalar(tag='tag:yaml.org,2002:str', value=data)
+
+
+# Add a custom unicode representer to use block literals for multiline strings
+def unicode_representer(dumper, data):
+    if len(data.splitlines()) > 1:
+        return yaml.ScalarNode(tag='tag:yaml.org,2002:str', value=data, style='|')
+    return yaml.ScalarNode(tag='tag:yaml.org,2002:str', value=data)
