@@ -60,9 +60,6 @@ class TestAutoTST(unittest.TestCase):
         xyz1a = atst.autotst(reaction_label=reaction_label1, reaction_family='H_Abstraction')
         xyz1b = atst.autotst(rmg_reaction=self.reaction1, reaction_family='H_Abstraction')
         xyz2 = atst.autotst(rmg_reaction=self.reaction2, reaction_family='H_Abstraction')
-        # print(xyz1)
-        # print(xyz2)
-        # print(xyz3)
         self.assertEqual(xyz1a, xyz1b)
         expected_xyz1 = """O       1.66720000   -0.47960000   -0.01490000
 C      -0.82600000    0.05910000    0.00060000
