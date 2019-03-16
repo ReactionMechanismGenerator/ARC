@@ -5,6 +5,7 @@ from __future__ import (absolute_import, division, print_function, unicode_liter
 import os
 import logging
 import numpy as np
+import datetime
 
 from rdkit import Chem
 from rdkit.Chem import rdMolTransforms as rdmt
@@ -60,9 +61,8 @@ class ARCSpecies(object):
     `rmg_species`           ``Species``  An RMG Species object to be converted to an ARCSpecies object
     `bond_corrections`      ``dict``     The bond additivity corrections (BAC) to be used. Determined from the structure
                                            if not directly given.
-    `t0`                    ``float``    Initial time when the first species job was spawned
+    `run_time`              ``timedelta`` Overall species execution time
     `t1`                    ``float``    The T1 diagnostic parameter from Molpro
-    `execution_time`        ``str``      Overall execution time for species
     `neg_freqs_trshed`      ``list``     A list of negative frequencies this species was troubleshooted for
     `generate_thermo`       ``bool``     Whether ot not to calculate thermodynamic properties for this species
     `thermo`                ``HeatCapacityModel``  The thermodata calculated by ARC
@@ -105,7 +105,7 @@ class ARCSpecies(object):
     def __init__(self, is_ts=False, rmg_species=None, mol=None, label=None, xyz=None, multiplicity=None, charge=None,
                  smiles='', adjlist='', inchi='', bond_corrections=None, generate_thermo=True, species_dict=None,
                  yml_path=None, ts_methods=None, ts_number=None, rxn_label=None, external_symmetry=None,
-                 optical_isomers=None):
+                 optical_isomers=None, run_time=None):
         self.t1 = None
         self.ts_number = ts_number
         self.conformers = list()
@@ -121,6 +121,7 @@ class ARCSpecies(object):
         self.external_symmetry = external_symmetry
         self.optical_isomers = optical_isomers
         self.charge = charge
+        self.run_time = run_time
 
         if species_dict is not None:
             # Reading from a dictionary
@@ -150,8 +151,6 @@ class ARCSpecies(object):
             self.chosen_ts = None
             self.generate_thermo = generate_thermo if not self.is_ts else False
             self.long_thermo_description = ''
-            self.t0 = None
-            self.execution_time = None
             self.opt_level = ''
             self.ts_report = ''
             self.yml_path = yml_path
@@ -285,7 +284,8 @@ class ARCSpecies(object):
             species_dict['unsuccessful_methods'] = self.unsuccessful_methods
             species_dict['chosen_ts_method'] = self.chosen_ts_method
             species_dict['chosen_ts'] = self.chosen_ts
-        species_dict['t0'] = self.t0
+        if self.run_time is not None:
+            species_dict['run_time'] = self.run_time.total_seconds()
         species_dict['t1'] = self.t1
         species_dict['label'] = self.label
         species_dict['long_thermo_description'] = self.long_thermo_description
@@ -301,8 +301,6 @@ class ARCSpecies(object):
         species_dict['neg_freqs_trshed'] = self.neg_freqs_trshed
         if self.bond_corrections is not None:
             species_dict['bond_corrections'] = self.bond_corrections
-        if self.execution_time is not None:
-            species_dict['execution_time'] = self.execution_time
         if self.mol is not None:
             species_dict['mol'] = self.mol.toAdjacencyList()
         if self.initial_xyz is not None:
@@ -317,7 +315,7 @@ class ARCSpecies(object):
             self.label = species_dict['label']
         except KeyError:
             raise InputError('All species must have a label')
-        self.t0 = species_dict['t0'] if 't0' in species_dict else None
+        self.run_time = datetime.timedelta(seconds=species_dict['run_time']) if 'run_time' in species_dict else None
         self.t1 = species_dict['t1'] if 't1' in species_dict else None
         self.e0 = species_dict['E0'] if 'E0' in species_dict else None
         self.arkane_file = species_dict['arkane_file'] if 'arkane_file' in species_dict else None
@@ -376,7 +374,6 @@ class ARCSpecies(object):
         self.optical_isomers = species_dict['optical_isomers'] if 'optical_isomers' in species_dict else None
         self.neg_freqs_trshed = species_dict['neg_freqs_trshed'] if 'neg_freqs_trshed' in species_dict else list()
         self.bond_corrections = species_dict['bond_corrections'] if 'bond_corrections' in species_dict else dict()
-        self.execution_time = species_dict['execution_time'] if 'execution_time' in species_dict else None
         self.mol = Molecule().fromAdjacencyList(str(species_dict['mol'])) if 'mol' in species_dict else None
         smiles = species_dict['smiles'] if 'smiles' in species_dict else None
         inchi = species_dict['inchi'] if 'inchi' in species_dict else None
@@ -428,7 +425,7 @@ class ARCSpecies(object):
             try:
                 self.mol = Molecule().fromAdjacencyList(adjlist=arkane_spc.adjacency_list)
             except ValueError as e:
-                print('Could not read adjlist:\n{0}'.format(arkane_spc.adjacency_list))
+                print('Could not read adjlist:\n{0}'.format(arkane_spc.adjacency_list))  # should *not* be logging
                 raise e
         elif arkane_spc.inchi is not None:
             self.mol = Molecule().fromInChI(inchistr=arkane_spc.inchi)
@@ -848,7 +845,7 @@ class TSGuess(object):
                                            (product label, product geometry in string format)
     `family`                ``str``      The RMG family that corresponds to the reaction, if applicable
     `rmg_reaction`          ``Reaction`` The RMG Reaction
-    '`t0'                    ``float``    Initial time of spawning the guess job
+    `t0'                    ``float``    Initial time of spawning the guess job
     `execution_time`        ``str``      Overall execution time for species
     `success`               ``bool``     Whether the TS guess method succeeded in generating an XYZ guess or not
     `energy`                ``float``    Relative energy of all TS conformers
@@ -896,6 +893,7 @@ class TSGuess(object):
         ts_dict['success'] = self.success
         ts_dict['energy'] = self.energy
         ts_dict['index'] = self.index
+        ts_dict['execution_time'] = self.execution_time
         if self.xyz:
             ts_dict['xyz'] = self.xyz
         if self.reactants_xyz:
@@ -919,12 +917,13 @@ class TSGuess(object):
         self.xyz = ts_dict['xyz'] if 'xyz' in ts_dict else None
         self.success = ts_dict['success'] if 'success' in ts_dict else None
         self.energy = ts_dict['energy'] if 'energy' in ts_dict else None
+        self.execution_time = ts_dict['execution_time'] if 'execution_time' in ts_dict else None
         self.method = ts_dict['method'].lower() if 'method' in ts_dict else 'user guess'
         if 'user guess' in self.method:
             if self.xyz is None:
                 raise TSError('If no method is specified, an xyz guess must be given')
             self.success = self.success if self.success is not None else True
-            self.execution_time = 0
+            self.execution_time = '0'
         if 'user guess' not in self.method\
                 and self.method not in ['user guess'] + [tsm.lower() for tsm in default_ts_methods]:
             raise TSError('Unrecognized method. Should be either {0}. Got: {1}'.format(

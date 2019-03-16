@@ -61,7 +61,7 @@ class Scheduler(object):
     `fine`                  ``bool``  Whether or not to use a fine grid for opt jobs (spawns an additional job)
     `output`                ``dict``  Output dictionary with status and final QM file paths for all species
     `settings`              ``dict``  A dictionary of available servers and software
-    `initial_trsh`          ``dict``  Troubleshooting methods to try by default. Keys are server names, values are trshs
+    `initial_trsh`          ``dict``  Troubleshooting methods to try by default. Keys are ESS software, values are trshs
     `restart_dict`          ``dict``  A restart dictionary parsed from a YAML restart file
     `project_directory`     ``str``   Folder path for the project: the input file path or ARC/Projects/project-name
     `save_restart`          ``bool``  Whether to start saving a restart file. ``True`` only after all species are loaded
@@ -302,8 +302,6 @@ class Scheduler(object):
                         if self.scan_rotors:
                             # restart-related check are performed in run_scan_jobs()
                             self.run_scan_jobs(species.label)
-                    if self.species_dict[species.label].t0 is None:
-                        self.species_dict[species.label].t0 = time.time()
                 elif not self.species_dict[species.label].is_ts and self.generate_conformers\
                         and 'geo' not in self.output[species.label]:
                     self.species_dict[species.label].generate_conformers()
@@ -464,8 +462,6 @@ class Scheduler(object):
         """
         ess_trsh_methods = ess_trsh_methods if ess_trsh_methods is not None else list()
         pivots = pivots if pivots is not None else list()
-        if self.species_dict[label].t0 is None:
-            self.species_dict[label].t0 = time.time()
         species = self.species_dict[label]
         memory = memory if memory is not None else self.memory
         job = Job(project=self.project, settings=self.settings, species_name=label, xyz=xyz, job_type=job_type,
@@ -511,12 +507,16 @@ class Scheduler(object):
         if job.job_status[0] != 'running' and job.job_status[1] != 'running':
             self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
             self.timer = False
-            job.run_time = str(datetime.datetime.now() - job.date_time).split('.')[0]
             job.write_completed_job_to_csv_file()
-            logging.info('  Ending job {name} for {label} ({time})'.format(name=job.job_name, label=label,
-                                                                           time=job.run_time))
+            logging.info('  Ending job {name} for {label} (run time: {time})'.format(name=job.job_name, label=label,
+                                                                                     time=job.run_time))
             if job.job_status[0] != 'done':
                 return False
+            if job.job_status[0] == 'done' and job.job_status[1] == 'done':
+                if self.species_dict[label].run_time is None:
+                    self.species_dict[label].run_time = job.run_time
+                else:
+                    self.species_dict[label].run_time += job.run_time
             self.save_restart_dict()
             return True
 
@@ -1613,6 +1613,7 @@ class Scheduler(object):
                         break
                 else:
                     raise SchedulerError('Could not find species {0} in the restart file'.format(spc_label))
+                conformer = job_description['conformer'] if 'conformer' in job_description else -1
                 job = Job(project=self.project, settings=self.settings, species_name=spc_label,
                           xyz=job_description['xyz'], job_type=job_description['job_type'],
                           level_of_theory=job_description['level_of_theory'], multiplicity=species.multiplicity,
@@ -1623,7 +1624,10 @@ class Scheduler(object):
                           project_directory=job_description['project_directory'], job_num=job_description['job_num'],
                           job_server_name=job_description['job_server_name'], job_name=job_description['job_name'],
                           job_id=job_description['job_id'], server=job_description['server'],
-                          run_time=job_description['run_time'], date_time=job_description['date_time'])
+                          initial_time=job_description['initial_time'], conformer=conformer,
+                          software=job_description['software'], comments=job_description['comments'],
+                          scan_trsh=job_description['scan_trsh'], initial_trsh=job_description['initial_trsh'],
+                          max_job_time=job_description['max_job_time'], scan_res=job_description['scan_res'])
                 if spc_label not in self.job_dict:
                     self.job_dict[spc_label] = dict()
                 if job_description['job_type'] not in self.job_dict[spc_label]:
