@@ -1,21 +1,24 @@
 
- Primary working directories    : /scratch/alongd/3299
- Secondary working directories  : /scratch/alongd/3299
+ Primary working directories    : /scratch/alongd
+ Secondary working directories  : /scratch/alongd
  Wavefunction directory         : /home/alongd/wfu/
- Main file repository           : /scratch/alongd/3299/
+ Main file repository           : /scratch/alongd/
 
- SHA1      : 5e3d8ac6839c721e2824de82269b4736200146bd
- NAME      : 2015.1.37
- ARCHNAME  : linux/x86_64
- FC        : /opt/intel/composer_xe_2015.1.133/bin/intel64/ifort
- BLASLIB   : -Wl,-_start-group /opt/intel/mkl/lib/intel64/libmkl_intel_ilp64.a /opt/intel/mkl/lib/intel64/libmkl_intel_thread.a /opt/intel/mkl/lib/intel64/libmkl_core.a -Wl,-_end-group
- id        : phalgunlolur
+ SHA1      : 960ce83de8be0427555cf121dea4debc26c720b5
+ NAME      : 2012.1.960ce83
+ ARCHNAME  : Linux/x86_64
+ FC        : /opt/intel/composer_xe_2013_sp1.2.144/bin/intel64/ifort
+ FCVERSION : 14.0.2
+ BLASLIB   : -Wl,-_start-group /opt/intel/mkl/lib/intel64/libmkl_intel_ilp64.a /opt/intel/mkl/lib/intel64/libmkl_sequential.a /opt/intel/mkl/lib/intel64/libmkl_core.a -Wl,-_end-group
+ id        : mitsand
 
  Nodes     nprocs
- node08       1
+ node48       6
+ ga_uses_ma=false, calling ma_init with nominal heap.
+ GA-space will be limited to   8.0 MW (determined by -G option)
 
- Using customized tuning parameters: mindgm=1; mindgv=20; mindgc=4; mindgr=1; noblas=0; minvec=7
- default implementation of scratch files=df  
+ Using customized tuning parameters: mindgm=7; mindgv=24; mindgc=1; mindgr=1; noblas=0; minvec=7
+ default implementation of scratch files=sf  
 
  ***,name
  memory,750.0,m;
@@ -34,9 +37,9 @@
  
  
 
- Variables initialized (889), CPU time= 0.01 sec
- Commands  initialized (702), CPU time= 0.00 sec, 572 directives.
- Default parameters read. Elapsed time= 0.07 sec
+ Variables initialized (778), CPU time= 0.00 sec
+ Commands  initialized (547), CPU time= 0.01 sec, 516 directives.
+ Default parameters read. Elapsed time= 0.31 sec
 
  Checking input...
  Passed
@@ -44,16 +47,17 @@
 
 
                                          ***  PROGRAM SYSTEM MOLPRO  ***
-                                       Copyright, TTI GmbH Stuttgart, 2015
-                                    Version 2015.1 linked Aug 10 2018 15:00:15
+                         Copyright, University College Cardiff Consultants Limited, 2008
+
+                                    Version 2012.1 linked Apr  1 2014 15:33:03
 
 
  **********************************************************************************************************************************
  LABEL *   name                                                                          
-  64 bit serial version                                                                  DATE: 19-Feb-19          TIME: 10:28:03  
+ Linux-3.2.0-72-generic/node48(x86_64) 64 bit mpp version                                DATE: 15-Mar-19          TIME: 15:08:56  
  **********************************************************************************************************************************
 
- SHA1:             5e3d8ac6839c721e2824de82269b4736200146bd
+ SHA1:             960ce83de8be0427555cf121dea4debc26c720b5
  **********************************************************************************************************************************
 
 Geometry recognized as XYZ
@@ -70,8 +74,7 @@ Geometry recognized as XYZ
  Library entry H      P cc-pVTZ-F12          selected for orbital group  1
  Library entry H      D cc-pVTZ-F12          selected for orbital group  1
 
-
- PROGRAM * SEWARD (Integral evaluation for generally contracted gaussian basis sets)     Author: Roland Lindh, 1990
+1PROGRAM * SEWARD (Integral evaluation for generally contracted gaussian basis sets)     Author: Roland Lindh, 1990
 
  Geometry written to block  1 of record 700
 
@@ -116,37 +119,39 @@ Geometry recognized as XYZ
  Contracted 2-electron integrals neglected if value below      1.0D-11
  AO integral compression algorithm  1   Integral accuracy      1.0D-11
 
-     0.262 MB (compressed) written to integral file (100.0%)
+     1.573 MB (compressed) written to integral file (100.0%)
+
+     Node minimum: 0.262 MB, node maximum: 0.262 MB
 
 
- NUMBER OF SORTED TWO-ELECTRON INTEGRALS:       2700.     BUFFER LENGTH:  32768
- NUMBER OF SEGMENTS:   1  SEGMENT LENGTH:       2700      RECORD LENGTH: 524288
+ NUMBER OF SORTED TWO-ELECTRON INTEGRALS:        525.     BUFFER LENGTH:  32768
+ NUMBER OF SEGMENTS:   1  SEGMENT LENGTH:        525      RECORD LENGTH: 524288
 
  Memory used in sort:       0.56 MW
 
- SORT1 READ        5348. AND WROTE        2465. INTEGRALS IN      1 RECORDS. CPU TIME:     0.00 SEC, REAL TIME:     0.00 SEC
- SORT2 READ        2465. AND WROTE        2700. INTEGRALS IN      1 RECORDS. CPU TIME:     0.00 SEC, REAL TIME:     0.01 SEC
+ SORT1 READ        5348. AND WROTE         481. INTEGRALS IN      1 RECORDS. CPU TIME:     0.08 SEC, REAL TIME:     0.67 SEC
+ SORT2 READ        2465. AND WROTE        2700. INTEGRALS IN      6 RECORDS. CPU TIME:     0.00 SEC, REAL TIME:     0.02 SEC
 
- FILE SIZES:   FILE 1:    20.1 MBYTE,  FILE 4:     4.2 MBYTE,   TOTAL:     24.4 MBYTE
+ Node minimum:         288.  Node maximum:         814. integrals
 
  OPERATOR DM      FOR CENTER  0  COORDINATES:    0.000000    0.000000    0.000000
 
 
  **********************************************************************************************************************************
  DATASETS  * FILE   NREC   LENGTH (MB)   RECORD NAMES
-              1      19       19.88       500      610      700      900      950      970     1000      129      960     1100   
+              1      18        7.50       500      610      700      900      950      970     1000      129      960     1100   
                                           VAR    BASINP    GEOM    SYMINP    ZMAT    AOBASIS   BASIS     P2S    ABASIS      S 
-                                         1400     1410     1200     1210     1080     1600     1650     1300     1700   
-                                           T        V       H0       H01     AOSYM     SMH    MOLCAS    ERIS     OPER   
+                                         1400     1410     1200     1210     1080     1600     1650     1700   
+                                           T        V       H0       H01     AOSYM     SMH    MOLCAS    OPER   
 
  PROGRAMS   *        TOTAL       INT
- CPU TIMES  *         0.39      0.30
- REAL TIME  *         1.30 SEC
- DISK USED  *        24.61 MB      
+ CPU TIMES  *         0.36      0.25
+ REAL TIME  *         1.83 SEC
+ DISK USED  *        25.23 MB      
+ GA USED    *         0.00 MB       (max)       0.00 MB       (current)
  **********************************************************************************************************************************
 
-
- PROGRAM * RHF-SCF (OPEN SHELL)       Authors: W. Meyer, H.-J. Werner
+1PROGRAM * RHF-SCF (OPEN SHELL)       Authors: W. Meyer, H.-J. Werner
 
 
  NUMBER OF ELECTRONS:       1+    0-
@@ -154,7 +159,7 @@ Geometry recognized as XYZ
  MAX. NUMBER OF ITERATIONS:     1000
  INTERPOLATION TYPE:            DIIS
  INTERPOLATION STEPS:              2 (START)      1 (STEP)
- LEVEL SHIFTS:                 -0.60 (CLOSED) -0.30 (OPEN) 
+ LEVEL SHIFTS:                 -0.30 (CLOSED)  0.00 (OPEN) 
 
 
 
@@ -168,14 +173,13 @@ Geometry recognized as XYZ
  Wave function symmetry:    1
 
  ITERATION    DDIFF          GRAD             ENERGY        2-EL.EN.            DIPOLE MOMENTS         DIIS   ORB.
-    1      0.000D+00      0.000D+00        -0.48970768     -0.000000    0.00000    0.00000    0.00000    0    start
-    2      0.000D+00      0.169D-01        -0.49679957      0.000000    0.00000    0.00000    0.00000    1    diag,B
-    3      0.284D-01      0.904D-02        -0.49991434     -0.000000    0.00000    0.00000    0.00000    2    diag,B
-    4      0.303D-01      0.950D-03        -0.49994531      0.000000    0.00000    0.00000    0.00000    3    diag,B
-    5      0.286D-02      0.112D-03        -0.49994557      0.000000    0.00000    0.00000    0.00000    4    diag,B
-    6      0.322D-03      0.305D-05        -0.49994557      0.000000    0.00000    0.00000    0.00000    5    diag,B
-    7      0.135D-04      0.690D-08        -0.49994557      0.000000    0.00000    0.00000    0.00000    6    fixocc
-    8      0.108D-07      0.158D-11        -0.49994557     -0.000000    0.00000    0.00000    0.00000    0    orth
+    1      0.000D+00      0.000D+00        -0.48970768      0.000000    0.00000    0.00000    0.00000    0    start
+    2      0.000D+00      0.169D-01        -0.49837177     -0.000000    0.00000    0.00000    0.00000    1    diag,B
+    3      0.378D-01      0.656D-02        -0.49994505      0.000000    0.00000    0.00000    0.00000    2    diag,B
+    4      0.230D-01      0.138D-03        -0.49994557     -0.000000    0.00000    0.00000    0.00000    3    diag,B
+    5      0.291D-03      0.476D-05        -0.49994557     -0.000000    0.00000    0.00000    0.00000    4    diag,B
+    6      0.117D-04      0.796D-06        -0.49994557     -0.000000    0.00000    0.00000    0.00000    5    diag,B
+    7      0.231D-05      0.828D-09        -0.49994557      0.000000    0.00000    0.00000    0.00000    0    orth
 
  Final alpha occupancy:   1   0   0   0   0   0   0
  Final beta  occupancy:   0   0   0   0   0   0   0
@@ -183,7 +187,7 @@ Geometry recognized as XYZ
  !RHF STATE 1.1 Energy                 -0.499945568583
  Nuclear energy                         0.00000000
  One-electron energy                   -0.49994557
- Two-electron energy                   -0.00000000
+ Two-electron energy                    0.00000000
  Virial quotient                       -1.00000156
  !RHF STATE 1.1 Dipole moment           0.00000000     0.00000000     0.00000000
  Dipole moment /Debye                   0.00000000     0.00000000     0.00000000
@@ -218,22 +222,24 @@ Geometry recognized as XYZ
 
  **********************************************************************************************************************************
  DATASETS  * FILE   NREC   LENGTH (MB)   RECORD NAMES
-              1      19       19.88       500      610      700      900      950      970     1000      129      960     1100   
+              1      18        7.50       500      610      700      900      950      970     1000      129      960     1100   
                                           VAR    BASINP    GEOM    SYMINP    ZMAT    AOBASIS   BASIS     P2S    ABASIS      S 
-                                         1400     1410     1200     1210     1080     1600     1650     1300     1700   
-                                           T        V       H0       H01     AOSYM     SMH    MOLCAS    ERIS     OPER   
+                                         1400     1410     1200     1210     1080     1600     1650     1700   
+                                           T        V       H0       H01     AOSYM     SMH    MOLCAS    OPER   
 
-              2       4        2.75       700     1000      520     2100   
+              2       4        0.29       700     1000      520     2100   
                                          GEOM     BASIS   MCVARS     RHF  
 
  PROGRAMS   *        TOTAL        HF       INT
- CPU TIMES  *         0.42      0.03      0.30
- REAL TIME  *         1.38 SEC
- DISK USED  *        24.61 MB      
+ CPU TIMES  *         0.37      0.01      0.25
+ REAL TIME  *         1.87 SEC
+ DISK USED  *        72.26 MB      
+ SF USED    *         0.00 MB      
+ GA USED    *         0.00 MB       (max)       0.00 MB       (current)
  **********************************************************************************************************************************
 
 
- PROGRAM * CCSD (Unrestricted open-shell coupled cluster)     Authors: C. Hampel, H.-J. Werner, 1991, M. Deegan, P.J. Knowles, 1992
+1PROGRAM * CCSD (Unrestricted open-shell coupled cluster)     Authors: C. Hampel, H.-J. Werner, 1991, M. Deegan, P.J. Knowles, 1992
 
                            UCCSD-F12 implementation by G. Knizia and H.-J. Werner, 2008
 
@@ -271,7 +277,7 @@ Geometry recognized as XYZ
  Weight function:   m=0, omega= 1.4646
 
  Augmented Hessian optimization of geminal fit. Trust ratio= 0.40000
- Convergence reached after   2 iterations. Final gradient= 8.41D-16, Step= 4.29D-06, Delta= 1.28D-09
+ Convergence reached after   2 iterations. Final gradient= 8.56D-16, Step= 4.32D-06, Delta= 1.28D-09
  
  Alpha:                 0.19532     0.81920     2.85917     9.50073    35.69989   197.79328
  Coeff:                 0.27070     0.30552     0.18297     0.10986     0.06810     0.04224
@@ -284,23 +290,23 @@ Geometry recognized as XYZ
  DF-basis AUG-CC-PVTZ/JKFIT    loaded. Number of functions:      46
 
  Screening thresholds:   THRAO=  1.00D-10  THRMO=  1.00D-09  THRPROD=  1.00D-09
-                         THRSW=  1.00D-05  THROV=  1.00D-12  THRAOF12=   1.00D-08
+                         THRSW=  1.00D-05  THROV=  1.00D-12  THRF12=   1.00D-08
 
- CPU time for one-electron matrices               0.05 sec
+ CPU time for one-electron matrices               0.06 sec
  
  Construction of ABS:
- Pseudo-inverse stability          1.03E-14
+ Pseudo-inverse stability          4.54E-14
  Smallest eigenvalue of S          1.25E-01  (threshold= 1.00E-08)
- Ratio eigmin/eigmax               5.66E-02  (threshold= 1.00E-09)
+ Ratio eigmin/eigmax               5.12E-03  (threshold= 1.00E-09)
  Smallest eigenvalue of S kept     1.25E-01  (threshold= 1.25E-01, 0 functions deleted, 41 kept)
  
  Construction of CABS:
- Pseudo-inverse stability          7.41E-13
+ Pseudo-inverse stability          1.07E-12
  Smallest eigenvalue of S          2.16E-04  (threshold= 1.00E-08)
  Ratio eigmin/eigmax               2.16E-04  (threshold= 1.00E-09)
  Smallest eigenvalue of S kept     2.16E-04  (threshold= 2.16E-04, 0 functions deleted, 41 kept)
  
- CPU time for basis constructions                 0.01 sec
+ CPU time for basis constructions                 0.00 sec
  Fock operators(MO) rebuilt from dump record.
  CPU time for fock operators                      0.00 sec
  
@@ -309,16 +315,16 @@ Geometry recognized as XYZ
   Singles Contributions CABS      -0.000000645   -0.000000645    0.000000000
   Pure DF-RHF relaxation          -0.000000645
  
- CPU time for singles                             0.00 sec
+ CPU time for singles                             0.01 sec
  
  AO(A)-basis ORBITAL           loaded. Number of functions:      18
  RI(R)-basis CC-PVTZ-F12/OPTRI loaded. Number of functions:      41
  DF-basis AUG-CC-PVTZ/MP2FIT   loaded. Number of functions:      46
 
  Screening thresholds:   THRAO=  1.00D-10  THRMO=  1.00D-09  THRPROD=  1.00D-09
-                         THRSW=  1.00D-05  THROV=  1.00D-12  THRAOF12=   1.00D-08
+                         THRSW=  1.00D-05  THROV=  1.00D-12  THRF12=   1.00D-08
 
- CPU time for transformed integrals               0.05 sec
+ CPU time for transformed integrals               0.03 sec
  CPU time for F12 matrices                        0.00 sec
 
  Diagonal F12 ansatz with fixed amplitudes:   TS= 0.5000  TT= 0.2500  TN= 0.3750
@@ -359,12 +365,12 @@ Geometry recognized as XYZ
   RMP2-F12 pair energy                  0.000000000000
   RMP2-F12 correlation energy           0.000000000000
  
- !RMP2-F12/3C(FIX) energy              -0.499946213253
+  RMP2-F12/3C(FIX) energy              -0.499946213253
 
  Starting RMP2 calculation
 
  ITER.      SQ.NORM     CORR.ENERGY   TOTAL ENERGY   ENERGY CHANGE        DEN1      VAR(S)    VAR(P)  DIIS     TIME
-   1      1.00000000    -0.00000000    -0.49994557     0.00000000    -0.00000000  0.12D-25  0.00D+00  1  1     0.15
+   1      1.00000000    -0.00000000    -0.49994557     0.00000000    -0.00000000  0.91D-21  0.00D+00  1  1     0.15
 
  Norm of t1 vector:      0.00000000      S-energy:    -0.00000000      T1 diagnostic:  0.00000000
  Norm of t2 vector:      0.00000000      P-energy:     0.00000000
@@ -380,7 +386,7 @@ Geometry recognized as XYZ
  Starting UCCSD calculation
 
  ITER.      SQ.NORM     CORR.ENERGY   TOTAL ENERGY   ENERGY CHANGE        DEN1      VAR(S)    VAR(P)  DIIS     TIME
-   1      1.00000000    -0.00000000    -0.49994557     0.00000000    -0.00000000  0.14D-23  0.00D+00  1  1     0.15
+   1      1.00000000    -0.00000000    -0.49994557     0.00000000    -0.00000000  0.16D-18  0.00D+00  1  1     0.15
 
  Norm of t1 vector:      0.00000000      S-energy:    -0.00000000      T1 diagnostic:  0.00000000
                                                                        D1 diagnostic:  0.00000000
@@ -430,33 +436,32 @@ Geometry recognized as XYZ
  Program statistics:
 
  Available memory in ccsd:               749999882
- Min. memory needed in ccsd:                  1912
- Max. memory used in ccsd:                    1912
- Max. memory used in cckext:                 33999 ( 2 integral passes)
- Max. memory used in cckint:                 66394 ( 1 integral passes)
+ Min. memory needed in ccsd:                  2068
+ Max. memory used in ccsd:                    2068
+ Max. memory used in cckext:                 34077 ( 2 integral passes)
+ Max. memory used in cckint:                 66510 ( 1 integral passes)
 
 
 
  **********************************************************************************************************************************
  DATASETS  * FILE   NREC   LENGTH (MB)   RECORD NAMES
-              1      19       19.88       500      610      700      900      950      970     1000      129      960     1100   
+              1      18        7.50       500      610      700      900      950      970     1000      129      960     1100   
                                           VAR    BASINP    GEOM    SYMINP    ZMAT    AOBASIS   BASIS     P2S    ABASIS      S 
-                                         1400     1410     1200     1210     1080     1600     1650     1300     1700   
-                                           T        V       H0       H01     AOSYM     SMH    MOLCAS    ERIS     OPER   
+                                         1400     1410     1200     1210     1080     1600     1650     1700   
+                                           T        V       H0       H01     AOSYM     SMH    MOLCAS    OPER   
 
-              2       5        2.75       700     1000      520     2100     7360   
+              2       5        0.29       700     1000      520     2100     7360   
                                          GEOM     BASIS   MCVARS     RHF    F12ABS    
 
  PROGRAMS   *        TOTALUCCSD(T)-F        HF       INT
- CPU TIMES  *         0.61      0.19      0.03      0.30
- REAL TIME  *         1.67 SEC
- DISK USED  *        24.61 MB      
+ CPU TIMES  *         0.54      0.17      0.01      0.25
+ REAL TIME  *         2.30 SEC
+ DISK USED  *        72.26 MB      
+ SF USED    *         0.85 MB      
+ GA USED    *         2.40 MB       (max)       0.00 MB       (current)
  **********************************************************************************************************************************
-
- UCCSD(T)-F12/cc-pVTZ-F12 energy=     -0.499946213253
 
     UCCSD(T)-F12        HF-SCF  
      -0.49994621     -0.49994557
  **********************************************************************************************************************************
- Molpro calculation terminated
  Variable memory released

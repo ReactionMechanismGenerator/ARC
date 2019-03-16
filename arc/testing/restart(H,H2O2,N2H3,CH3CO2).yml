@@ -1,27 +1,31 @@
+allow_nonisomorphic_2d: false
 composite_method: ''
 conformer_level: b97-d3/6-311+g(d,p)
-ess_settings: {gaussian: c3ddb, molpro: rmg, qchem: pharos, ssh: true}
+ess_settings: {gaussian: server1, molpro: server2, qchem: server1, ssh: true}
 fine: true
 freq_level: wb97xd/6-311++g(d,p)
 generate_conformers: true
+max_job_time: 120
 model_chemistry: ''
 opt_level: wb97xd/6-311++g(d,p)
 output:
-  CH3CO2_rad: {freq: testing/restart/freq_a16787.out,
-    geo: testing/restart/freq_a16787.out,
-    sp: testing/restart/sp_a16788.out,
-    status: 'opt converged; Warning: 1 imaginary freq for stable species; opt converged;
-      freq converged; sp converged; T1 = 0.01907121; ALL converged'}
-  H: {sp: testing/restart/sp_a16759.out,
+  CH3CO2_rad: {freq: testing/restart/freq_a275.out,
+    geo: testing/restart/freq_a275.out,
+    sp: testing/restart/sp_a276.out,
+    status: passed isomorphism check; opt converged; freq converged; sp converged;
+      T1 = 0.01907854; ALL converged}
+  H: {sp: testing/restart/sp_a254.out,
     status: sp converged; ALL converged}
-  H2O2: {freq: testing/restart/freq_a16772.out,
-    geo: testing/restart/freq_a16772.out,
-    sp: testing/restart/sp_a16773.out,
-    status: opt converged; sp converged; freq converged; ALL converged}
-  N2H3: {freq: testing/restart/freq_a16776.out,
-    geo: testing/restart/freq_a16776.out,
-    sp: testing/restart/sp_a16777.out,
-    status: opt converged; freq converged; sp converged; T1 = 0.02475341; ALL converged}
+  H2O2: {freq: testing/restart/freq_a268.out,
+    geo: testing/restart/freq_a268.out,
+    sp: testing/restart/sp_a269.out,
+    status: passed isomorphism check; opt converged; freq converged; sp converged;
+      ALL converged}
+  N2H3: {freq: testing/restart/freq_a271.out,
+    geo: testing/restart/freq_a271.out,
+    sp: testing/restart/sp_a272.out,
+    status: passed isomorphism check; opt converged; freq converged; sp converged;
+      T1 = 0.02475574; ALL converged}
 project: restart_test
 reactions: []
 running_jobs:
@@ -34,7 +38,6 @@ species:
   arkane_file: null
   bond_corrections: {}
   charge: 0
-  execution_time: 00:00:52
   external_symmetry: null
   final_xyz: H   0.0   0.0   0.0
   generate_thermo: true
@@ -53,43 +56,42 @@ species:
   opt_level: ''
   optical_isomers: null
   rotors_dict: {}
-  t0: 1550590062.37941
+  run_time: 9.0
   t1: 0.0
 - E0: null
   arkane_file: null
   bond_corrections: {C-C: 1, C-H: 3, C-O: 1, C=O: 1}
   charge: 0
-  execution_time: 02:00:51
   external_symmetry: null
-  final_xyz: 'O      -0.80317400   -1.03768400   -0.05310000
+  final_xyz: 'O       0.81006200   -1.03131200    0.00163800
 
-    O      -0.81646600    1.02219800    0.05343100
+    O       0.81005800    1.03131400    0.00163800
 
-    C       1.38663000    0.00653200   -0.00179500
+    C      -1.38654100   -0.00000200   -0.00285000
 
-    C      -0.10178000   -0.00359800    0.00838600
+    C       0.10192600   -0.00000100   -0.00862000
 
-    H       1.77040600   -0.91209800    0.44322300
+    H      -1.72826900    0.00008300    1.03519400
 
-    H       1.72488800    0.06231300   -1.03953100
+    H      -1.76250100    0.89686100   -0.49636100
 
-    H       1.75884600    0.87929500    0.53574300
+    H      -1.76250100   -0.89694400   -0.49621900
 
     '
   generate_thermo: true
-  initial_xyz: 'O      -0.80317400   -1.03768400   -0.05310000
+  initial_xyz: 'O       1.05676400    0.77383100    0.00000000
 
-    O      -0.81646600    1.02219800    0.05343100
+    O      -1.00486400    0.84573700    0.00000000
 
-    C       1.38663000    0.00653200   -0.00179500
+    C      -0.04636000   -1.38592400    0.00000000
 
-    C      -0.10178000   -0.00359800    0.00838600
+    C       0.00000000    0.10205000    0.00000000
 
-    H       1.77040600   -0.91209800    0.44322300
+    H       0.47176000   -1.76125900    0.88472200
 
-    H       1.72488800    0.06231300   -1.03953100
+    H      -1.08055400   -1.73078500    0.00000000
 
-    H       1.75884600    0.87929500    0.53574300
+    H       0.47176000   -1.76125900   -0.88472200
 
     '
   is_ts: false
@@ -116,7 +118,7 @@ species:
 
     '
   multiplicity: 2
-  neg_freqs_trshed: [-59.38]
+  neg_freqs_trshed: []
   number_of_rotors: 1
   opt_level: wb97xd/6-311++g(d,p)
   optical_isomers: null
@@ -125,36 +127,35 @@ species:
       invalidation_reason: ''
       pivots: [3, 4]
       scan: [5, 3, 4, 1]
-      scan_path: testing/restart/scan_a16789.out
+      scan_path: testing/restart/scan_a277.out
       success: true
       symmetry: 6
       times_dihedral_set: 0
-      top: [3, 5, 6, 7]
-  t0: 1550590098.043947
-  t1: 0.01907121
+      top: [3, 7, 5, 6]
+  run_time: 14742.0
+  t1: 0.01907854
 - E0: null
   arkane_file: null
   bond_corrections: {H-O: 2, O-O: 1}
   charge: 0
-  execution_time: 00:18:31
   external_symmetry: null
-  final_xyz: 'O      -0.70860400   -0.08438000   -0.07743000
+  final_xyz: 'O       0.00000000    0.71356100   -0.05309600
 
-    O       0.70860400    0.08438000   -0.07743000
+    O       0.00000000   -0.71356100   -0.05309600
 
-    H      -0.98969500    0.70278200    0.39979700
+    H       0.81446200    0.89968600    0.42476500
 
-    H       0.98969500   -0.70278200    0.39979700
+    H      -0.81446200   -0.89968600    0.42476500
 
     '
   generate_thermo: true
-  initial_xyz: 'O      -0.70860400   -0.08438000   -0.07743000
+  initial_xyz: 'O       0.00000000    0.71361000   -0.05302500
 
-    O       0.70860400    0.08438000   -0.07743000
+    O       0.00000000   -0.71361000   -0.05302500
 
-    H      -0.98969500    0.70278200    0.39979700
+    H       0.81487700    0.89965300    0.42420100
 
-    H       0.98969500   -0.70278200    0.39979700
+    H      -0.81487700   -0.89965300    0.42420100
 
     '
   is_ts: false
@@ -181,40 +182,39 @@ species:
       invalidation_reason: ''
       pivots: [1, 2]
       scan: [3, 1, 2, 4]
-      scan_path: testing/restart/scan_a16774.out
+      scan_path: testing/restart/scan_a270.out
       success: true
-      symmetry: 2
+      symmetry: 1
       times_dihedral_set: 0
       top: [1, 3]
-  t0: 1550590068.773129
-  t1: 0.01115959
+  run_time: 1543.0
+  t1: 0.0111584
 - E0: null
   arkane_file: null
   bond_corrections: {H-N: 3, N-N: 1}
   charge: 0
-  execution_time: 01:04:59
   external_symmetry: null
-  final_xyz: 'N      -0.57411500   -0.00739300   -0.00383200
+  final_xyz: 'N       0.59238700    0.02451100   -0.06614200
 
-    N       0.74727200    0.20696200   -0.11977500
+    N      -0.73673900   -0.15096900    0.02282300
 
-    H      -1.11520800    0.82619200    0.16335700
+    H       1.13354300   -0.79974500    0.14203600
 
-    H      -0.93404100   -0.84975900    0.42656500
+    H       1.02532300    0.90229100    0.19141700
 
-    H       1.18504600   -0.71608100   -0.10236900
+    H      -1.14840400    0.78265900   -0.03022300
 
     '
   generate_thermo: true
-  initial_xyz: 'N      -0.57411500   -0.00739300   -0.00383200
+  initial_xyz: 'N       0.59243600    0.02453100   -0.06634500
 
-    N       0.74727200    0.20696200   -0.11977500
+    N      -0.73673000   -0.15097300    0.02292200
 
-    H      -1.11520800    0.82619200    0.16335700
+    H       1.13336800   -0.79975000    0.14234700
 
-    H      -0.93404100   -0.84975900    0.42656500
+    H       1.02511700    0.90222300    0.19213500
 
-    H       1.18504600   -0.71608100   -0.10236900
+    H      -1.14842700    0.78262600   -0.03052500
 
     '
   is_ts: false
@@ -242,18 +242,17 @@ species:
   optical_isomers: null
   rotors_dict:
     0:
-      invalidation_reason: two consecutive points are inconsistent by more than 10
-        kJ/mol
+      invalidation_reason: scan has a barrier larger than 40 kJ/mol
       pivots: [1, 2]
       scan: [3, 1, 2, 5]
-      scan_path: testing/restart/scan_a16778.out
+      scan_path: testing/restart/scan_a273.out
       success: false
       times_dihedral_set: 0
       top: [2, 5]
-  t0: 1550590079.221735
-  t1: 0.02475341
+  run_time: 4563.0
+  t1: 0.02475574
 t_count: null
 t_max: null
 t_min: null
-ts_guess_level: b3lyp/6-311+g(d,p)
+ts_guess_level: b3lyp/6-31+g(d,p)
 use_bac: true
