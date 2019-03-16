@@ -346,7 +346,6 @@ H      -1.67091600   -1.35164600   -0.93286400
 7 H u0 p0 c0 {2,S}
 """,
                          'generate_thermo': True,
-                         't0': None,
                          'label': 'methylamine',
                          'long_thermo_description': spc_dict['long_thermo_description'],
                          'charge': 0,
@@ -491,7 +490,8 @@ class TestTSGuess(unittest.TestCase):
                          'index': None,
                          'rmg_reaction': u'CON=O <=> [O-][N+](=O)C',
                          'success': None,
-                         't0': None}
+                         't0': None,
+                         'execution_time': None}
         self.assertEqual(tsg_dict, expected_dict)
 
     def test_from_dict(self):
