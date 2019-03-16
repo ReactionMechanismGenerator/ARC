@@ -396,7 +396,7 @@ class ARC(object):
                                             ' Got: {0}'.format(ess))
                     if server.lower() not in servers:
                         server_names = [name for name in servers]
-                        raise SettingsError('Recognized servers are {0}. Got: {1}'.format(server_names, servers))
+                        raise SettingsError('Recognized servers are {0}. Got: {1}'.format(server_names, server))
                     self.settings[ess.lower()] = server.lower()
         elif 'ess_settings' in input_dict:
             self.settings = input_dict['ess_settings']
