@@ -6,12 +6,14 @@ import logging
 import sys
 import os
 import time
+import datetime
 import re
 import shutil
 import subprocess
 from distutils.spawn import find_executable
 from IPython.display import display
 import yaml
+
 
 from rmgpy.species import Species
 from rmgpy.reaction import Reaction
@@ -682,6 +684,11 @@ class ARC(object):
             if os.path.isfile(log_file):
                 old_file = os.path.join(os.path.dirname(log_file), 'arc.old.log')
                 if os.path.isfile(old_file):
+                    if not os.path.isdir(os.path.join(self.project_directory, 'log')):
+                        os.mkdir(os.path.join(self.project_directory, 'log'))
+                    local_time = datetime.datetime.now().strftime("%H%M%S_%b%d_%Y")
+                    log_backup_name = 'arc.old.' + local_time + '.log'
+                    shutil.copy(old_file, os.path.join(self.project_directory, 'log', log_backup_name))
                     os.remove(old_file)
                 shutil.copy(log_file, old_file)
                 os.remove(log_file)
