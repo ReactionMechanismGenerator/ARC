@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 # encoding: utf-8
 
+"""
+Processor module for outputting thermoproperties and rates
+"""
+
 from __future__ import (absolute_import, division, print_function, unicode_literals)
 import os
 import shutil
@@ -175,6 +179,7 @@ class Processor(object):
         # Thermo:
         species_list_for_thermo_parity = list()
         species_for_thermo_lib = list()
+        unconverged_species = list()
         for species in self.species_dict.values():
             if not species.is_ts and 'ALL converged' in self.output[species.label]['status']:
                 output_file_path = self._generate_arkane_species_file(species)
@@ -220,6 +225,8 @@ class Processor(object):
                 else:
                     if species.generate_thermo:
                         species_list_for_thermo_parity.append(species)
+            elif 'ALL converged' not in self.output[species.label]['status']:
+                unconverged_species.append(species)
         # Kinetics:
         rxn_list_for_kinetics_plots = list()
         arkane_spc_dict = dict()  # a dictionary with all species and the TSs
@@ -284,6 +291,15 @@ class Processor(object):
                                       name=self.project, lib_long_desc=self.lib_long_desc)
 
         self._clean_output_directory()
+        if unconverged_species:
+            with open(os.path.join(output_dir, 'unconverged_species.log'), 'w') as f:
+                for spc in unconverged_species:
+                    f.write(spc.label)
+                    if spc.is_ts:
+                        f.write(' rxn: {0}'.format(spc.rxn_label))
+                    elif spc.mol is not None:
+                        f.write(' SMILES: {0}'.format(spc.mol.toSMILES()))
+                    f.write('\n')
 
     def _run_statmech(self, arkane_spc, arkane_file, output_file_path=None, use_bac=False, kinetics=False, plot=False):
         """
