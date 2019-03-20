@@ -9,6 +9,7 @@ from rmgpy import settings
 from rmgpy.data.rmg import RMGDatabase
 from rmgpy.reaction import isomorphic_species_lists
 from rmgpy.data.kinetics.common import find_degenerate_reactions
+from rmgpy.exceptions import KineticsError
 
 from arc.arc_exceptions import InputError
 
@@ -118,8 +119,12 @@ def load_rmg_database(rmgdb, thermo_libraries=None, reaction_libraries=None, kin
         depository=False,
     )
     for family in rmgdb.kinetics.families.values():
-        family.addKineticsRulesFromTrainingSet(thermoDatabase=rmgdb.thermo)
-        family.fillKineticsRulesByAveragingUp(verbose=False)
+        try:
+            family.addKineticsRulesFromTrainingSet(thermoDatabase=rmgdb.thermo)
+        except KineticsError:
+            logging.info('Could not train family {0}'.format(family))
+        else:
+            family.fillKineticsRulesByAveragingUp(verbose=False)
     logging.info('\n\n')
 
 
