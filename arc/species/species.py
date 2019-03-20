@@ -811,7 +811,7 @@ class ARCSpecies(object):
         if self.mol is not None:
             # self.mol should have come from another source, e.g. SMILES or yml
             original_mol = self.mol
-            self.mol = molecules_from_xyz(xyz)[1]
+            self.mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity)[1]
 
             if self.mol is not None and not check_isomorphism(original_mol, self.mol):
                 raise InputError('XYZ and the 2D graph representation of the Molecule are not isomorphic.\n'
@@ -819,14 +819,15 @@ class ARCSpecies(object):
                                    xyz, self.mol.toSMILES(), self.mol.toAdjacencyList(),
                                    original_mol.toSMILES(), original_mol.toAdjacencyList()))
         else:
-            self.mol = molecules_from_xyz(xyz)[1]
+            self.mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity)[1]
 
         if self.mol_list is None:
             # Assign atom ids first, so they carry through to the resonance structures
             self.mol.assignAtomIDs()
             # The generate_resonance_structures method changes atom order
             # Make a copy so we don't disturb the original order from xyz
-            self.mol_list = self.mol.copy(deep=True).generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
+            self.mol_list = self.mol.copy(deep=True).generate_resonance_structures(keep_isomorphic=False,
+                                                                                   filter_structures=True)
         order_atoms_in_mol_list(ref_mol=self.mol, mol_list=self.mol_list)
 
 
