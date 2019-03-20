@@ -503,9 +503,11 @@ class Scheduler(object):
                          fine=job.fine, software=job.software, shift=job.shift, trsh=job.trsh, memory=job.memory,
                          conformer=job.conformer, ess_trsh_methods=job.ess_trsh_methods, scan=job.scan,
                          pivots=job.pivots, occ=job.occ, scan_trsh=job.scan_trsh, scan_res=job.scan_res)
-            self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
+            if job_name in self.running_jobs[label]:
+                self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
         if job.job_status[0] != 'running' and job.job_status[1] != 'running':
-            self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
+            if job_name in self.running_jobs[label]:
+                self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
             self.timer = False
             job.write_completed_job_to_csv_file()
             logging.info('  Ending job {name} for {label} (run time: {time})'.format(name=job.job_name, label=label,
