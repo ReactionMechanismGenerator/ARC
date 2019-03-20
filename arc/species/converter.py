@@ -169,13 +169,14 @@ def elementize(atom):
         atom.atomType = atom_type[0]
 
 
-def molecules_from_xyz(xyz):
+def molecules_from_xyz(xyz, multiplicity=None):
     """
     Creating RMG:Molecule objects from xyz with correct atom labeling
     `xyz` is in a string format
     returns `s_mol` (with only single bonds) and `b_mol` (with best guesses for bond orders)
     This function is based on the MolGraph.perceive_smiles method
     Returns None for b_mol is unsuccessful to infer bond orders
+    If `multiplicity` is given, the returned species multiplicity will be set to it.
     """
     if xyz is None:
         return None, None
@@ -197,11 +198,83 @@ def molecules_from_xyz(xyz):
     if pybel_mol is not None:
         inchi = pybel_to_inchi(pybel_mol)
         mol_bo = rmg_mol_from_inchi(inchi)  # An RMG Molecule with bond orders, but without preserved atom order
+        if mol_bo is not None:
+            if multiplicity is not None:
+                set_multiplicity(mol_bo, multiplicity)
+            mol_s1_updated.multiplicity = mol_bo.multiplicity
+            order_atoms(ref_mol=mol_s1_updated, mol=mol_bo)
+            set_multiplicity(mol_s1_updated, mol_bo.multiplicity, radical_map=mol_bo)
     else:
         mol_bo = None
-    order_atoms(ref_mol=mol_s1_updated, mol=mol_bo)
     s_mol, b_mol = mol_s1_updated, mol_bo
     return s_mol, b_mol
+
+
+def set_multiplicity(mol, multiplicity, radical_map=None):
+    """
+    Set the multiplicity of `mol` to `multiplicity` and change radicals as needed
+    if a `radical_map`, which is an RMG Molecule object with the same atom order, is given,
+    it'll be used to set radicals (useful if bond orders aren't known for a molecule)
+    """
+    mol.multiplicity = multiplicity
+    if radical_map is not None:
+        if not isinstance(radical_map, Molecule):
+            raise TypeError('radical_map sent to set_multiplicity() has to be a Molecule object. Got {0}'.format(
+                type(radical_map)))
+        set_radicals_by_map(mol, radical_map)
+    radicals = mol.getRadicalCount()
+    if mol.multiplicity != radicals + 1:
+        # this is not the trivial "multiplicity = number of radicals + 1" case
+        # either the number of radicals was not identified correctly from the 3D structure (i.e., should be lone pairs),
+        # or their spin isn't determined correctly
+        if mol.multiplicity > radicals + 1:
+            # there are sites that should have radicals, but were'nt identified as such.
+            # try adding radicals according to missing valances
+            add_rads_by_atom_valance(mol)
+            if mol.multiplicity > radicals + 1:
+                # still problematic, currently there's no automated solution to this case, raise an error
+                raise SpeciesError('A multiplicity of {0} was given, but only {1} radicals were identified. '
+                                   'Cannot infer 2D graph representation for this species.\nMore info:{2}\n{3}'.format(
+                                    mol.multiplicity, radicals, mol.toSMILES(), mol.toAdjacencyList()))
+        if len(mol.atoms) == 1 and mol.multiplicity == 1 and mol.atoms[0].radicalElectrons == 4:
+            # This is a singlet atomic C or Si
+            mol.atoms[0].radicalElectrons = 0
+            mol.atoms[0].lonePairs = 2
+        if mol.multiplicity < radicals + 1:
+            # make sure all cabene and nitrene sites, if exist, have lone pairs rather than two unpaired electrons
+            for atom in mol.atoms:
+                if atom.radicalElectrons == 2:
+                    atom.radicalElectrons = 0
+                    atom.lonePairs += 1
+    # final check: an even number of radicals results in an odd multiplicity, and vice versa
+    if divmod(mol.multiplicity, 2)[1] == divmod(radicals, 2)[1]:
+        raise SpeciesError('Number of radicals ({0}) and multiplicity ({1}) for {2} do not match.\n{3}'.format(
+            radicals, mol.multiplicity, mol.toSMILES(), mol.toAdjacencyList()))
+
+
+def add_rads_by_atom_valance(mol):
+    """
+    A helper function for assigning radicals if not identified automatically
+    and missing according to the given multiplicity
+    We assume here that all partial charges are already set, but this assumption could be wrong
+    This implementation might also be problematic for aromatic species with undefined bond orders
+    """
+    for atom in mol.atoms:
+        if atom.isNonHydrogen():
+            atomic_orbitals = atom.lonePairs + atom.radicalElectrons + atom.getBondOrdersForAtom()
+            missing_electrons = 4 - atomic_orbitals
+            if missing_electrons:
+                atom.radicalElectrons = missing_electrons
+            # print(mol.toAdjacencyList())
+
+
+def set_radicals_by_map(mol, radical_map):
+    """Set radicals in `mol` by `radical_map`, bot are RMG Molecule objects with the same atom order"""
+    for i, atom in enumerate(mol.atoms):
+        if atom.element.number != radical_map.atoms[i].element.number:
+            raise ValueError('Atom order in mol and radical_map in set_radicals_by_map() do not match. '
+                             '{0} is not {1}.'.format(atom.element.symbol, radical_map.atoms[i].symbol))
+        atom.radicalElectrons = radical_map.atoms[i].radicalElectrons
 
 
 def order_atoms_in_mol_list(ref_mol, mol_list):
@@ -260,6 +333,7 @@ def update_molecule(mol, to_single_bonds=False):
             bond = Bond(atom_mapping[atom1], atom_mapping[atom2], bond_order)
             new_mol.addBond(bond)
     new_mol.updateAtomTypes()
+    new_mol.multiplicity = mol.multiplicity
     return new_mol
 
 

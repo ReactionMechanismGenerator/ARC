@@ -77,6 +77,12 @@ class TestARCSpecies(unittest.TestCase):
         H       1.84477700   -0.57224200    0.35517700""")
         cls.spc8 = ARCSpecies(label=str('HSO3'), xyz=hso3_xyz, multiplicity=2, charge=0, smiles=str('O[S](=O)=O'))
 
+        nh_s_adj = str("""1 N u0 p2 c0 {2,S}
+                          2 H u0 p0 c0 {1,S}""")
+        nh_s_xyz = str("""N       0.50949998    0.00000000    0.00000000
+                          H      -0.50949998    0.00000000    0.00000000""")
+        cls.spc9 = ARCSpecies(label=str('NH2(S)'), adjlist=nh_s_adj, xyz=nh_s_xyz, multiplicity=1, charge=0)
+
     def test_conformers(self):
         """Test conformer generation"""
         self.spc1.generate_conformers()  # vinoxy has two res. structures, each is assigned two conformers (RDkit/ob)
@@ -260,18 +266,18 @@ H      -1.67091600   -1.35164600   -0.93286400
                   C -0.77966935    0.95278385    0.00000000
                   H -1.23666197    3.17751246    0.00000000
                   H -0.56023545   -0.09447399    0.00000000""" # just 0.5 degree off from linearity, so NOT linear...
-        xyz9 = """C -1.1998 0.1610 0.0275
-                  C -1.4021 0.6223 -0.8489
-                  C -1.48302 0.80682 -1.19946"""  # just 3 points in space on a straight line (not a physical molecule)
+        xyz9 = """O -1.1998 0.1610 0.0275
+                  O -1.4021 0.6223 -0.8489
+                  O -1.48302 0.80682 -1.19946"""  # just 3 points in space on a straight line (not a physical molecule)
         spc1 = ARCSpecies(label=str('test_spc'), xyz=xyz1, multiplicity=1, charge=0, smiles=str('O=C=O'))
         spc2 = ARCSpecies(label=str('test_spc'), xyz=xyz2, multiplicity=1, charge=0, smiles=str('[NH-][S+](=O)(O)C'))
-        spc3 = ARCSpecies(label=str('test_spc'), xyz=xyz3, multiplicity=1, charge=0, smiles=str('[O]N=O'))
-        spc4 = ARCSpecies(label=str('test_spc'), xyz=xyz4, multiplicity=1, charge=0, smiles=str('[NH2]'))
-        spc5 = ARCSpecies(label=str('test_spc'), xyz=xyz5, multiplicity=1, charge=0, smiles=str('[O]S'))
+        spc3 = ARCSpecies(label=str('test_spc'), xyz=xyz3, multiplicity=2, charge=0, smiles=str('[O]N=O'))
+        spc4 = ARCSpecies(label=str('test_spc'), xyz=xyz4, multiplicity=2, charge=0, smiles=str('[NH2]'))
+        spc5 = ARCSpecies(label=str('test_spc'), xyz=xyz5, multiplicity=2, charge=0, smiles=str('[O]S'))
         spc6 = ARCSpecies(label=str('test_spc'), xyz=xyz6, multiplicity=1, charge=0, smiles=str('C#N'))
         spc7 = ARCSpecies(label=str('test_spc'), xyz=xyz7, multiplicity=1, charge=0, smiles=str('C#C'))
         spc8 = ARCSpecies(label=str('test_spc'), xyz=xyz8, multiplicity=1, charge=0, smiles=str('C#C'))
-        spc9 = ARCSpecies(label=str('test_spc'), xyz=xyz9, multiplicity=1, charge=0, smiles=str('[C+]C#[C-]'))
+        spc9 = ARCSpecies(label=str('test_spc'), xyz=xyz9, multiplicity=1, charge=0, smiles=str('[O-][O+]=O'))
 
         self.assertTrue(spc1.is_linear())
         self.assertTrue(spc6.is_linear())
@@ -496,6 +502,15 @@ H      -1.69944700    0.93441600   -0.11271200"""
         res2_ids = [(a.element.symbol, a.id) if a.element.symbol != 'O' else (a.element.symbol,) for a in res2.atoms]
         self.assertEqual(mol_ids, res1_ids)
         self.assertEqual(mol_ids, res2_ids)
+
+    def test_preserving_multiplicity(self):
+        """Test that multiplicity is being preserved, especially when it is guessed differently from xyz"""
+        multiplicity_list = [2, 2, 1, 1, 1, 1, 1, 2, 1]
+        for i, spc in enumerate([self.spc1, self.spc2, self.spc3, self.spc4, self.spc5, self.spc6, self.spc7,
+                                 self.spc8, self.spc9]):
+            self.assertEqual(spc.multiplicity, multiplicity_list[i])
+            self.assertEqual(spc.mol.multiplicity, multiplicity_list[i])
+            self.assertTrue(all([structure.multiplicity == spc.multiplicity for structure in spc.mol_list]))
 
 
 class TestTSGuess(unittest.TestCase):

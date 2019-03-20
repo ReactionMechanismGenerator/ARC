@@ -9,6 +9,7 @@ from __future__ import (absolute_import, division, print_function, unicode_liter
 import unittest
 
 from rmgpy.molecule.molecule import Molecule
+from rmgpy.species import Species
 
 import arc.species.converter as converter
 from arc.species.species import ARCSpecies
@@ -96,6 +97,18 @@ H       3.16280800    1.25020800   -0.70346900
         N       1.1997613019    -0.1609980472     0.0274604887
         H       1.1294795781    -0.8708998550     0.7537444446
         H       1.4015274689    -0.6230592706    -0.8487058662"""
+
+        nh_s_adj = str("""1 N u0 p2 c0 {2,S}
+                          2 H u0 p0 c0 {1,S}""")
+        nh_s_xyz = str("""N       0.50949998    0.00000000    0.00000000
+                          H      -0.50949998    0.00000000    0.00000000""")
+        cls.spc1 = ARCSpecies(label=str('NH2(S)'), adjlist=nh_s_adj, xyz=nh_s_xyz, multiplicity=1, charge=0)
+        spc = Species().fromAdjacencyList(nh_s_adj)
+        cls.spc2 = ARCSpecies(label=str('NH2(S)'), rmg_species=spc, xyz=nh_s_xyz)
+
+        cls.spc3 = ARCSpecies(label=str('NCN(S)'), smiles=str('[N]=C=[N]'), multiplicity=1, charge=0)
+
+        cls.spc4 = ARCSpecies(label=str('NCN(T)'), smiles=str('[N]=C=[N]'), multiplicity=3, charge=0)
 
     def test_get_xyz_string(self):
         """Test conversion of xyz array to string format"""
@@ -800,6 +813,17 @@ O       2.17315400   -0.03069900   -0.09349100"""
         self.assertEqual(len(mol3.atoms), 11)
         self.assertEqual(len(mol4.atoms), 24)
         self.assertEqual(len(mol5.atoms), 3)
+
+    def set_radicals_correctly_from_xyz(self):
+        """Test that we determine the number of radicals correctly from given xyz and multiplicity"""
+        self.assertEqual(self.spc1.multiplicity, 1)  # NH(S), a nitrene
+        self.assertTrue(all([atom.radicalElectrons == 0 for atom in self.spc1.mol.atoms]))
+        self.assertEqual(self.spc2.multiplicity, 1)  # NH(S), a nitrene
+        self.assertTrue(all([atom.radicalElectrons == 0 for atom in self.spc2.mol.atoms]))
+        self.assertEqual(self.spc3.multiplicity, 1)  # NCN(S), a singlet birad
+        self.assertTrue(all([atom.radicalElectrons == 1 for atom in self.spc3.mol.atoms if atom.isNitrogen()]))
+        self.assertEqual(self.spc3.multiplicity, 3)  # NCN(T)
+        self.assertTrue(all([atom.radicalElectrons == 1 for atom in self.spc3.mol.atoms if atom.isNitrogen()]))
 
 
 ################################################################################

@@ -5,6 +5,7 @@ from __future__ import (absolute_import, division, print_function, unicode_liter
 import os
 import shutil
 import logging
+from random import randint
 
 from arkane.input import species as arkane_species, transitionState as arkane_transition_state,\
     reaction as arkane_reaction
@@ -177,7 +178,14 @@ class Processor(object):
             if not species.is_ts and 'ALL converged' in self.output[species.label]['status']:
                 species_for_thermo_lib.append(species)
                 output_file_path = self._generate_arkane_species_file(species)
-                arkane_spc = arkane_species(str(species.label), species.arkane_file)
+                unique_arkane_species_label = False
+                while not unique_arkane_species_label:
+                    try:
+                        arkane_spc = arkane_species(str(species.label), species.arkane_file)
+                    except ValueError:
+                        species.label += '_(' + str(randint(0, 999)) + ')'
+                    else:
+                        unique_arkane_species_label = True
                 if species.mol_list:
                     arkane_spc.molecule = species.mol_list
                 stat_mech_job = StatMechJob(arkane_spc, species.arkane_file)
