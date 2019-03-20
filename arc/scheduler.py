@@ -724,7 +724,7 @@ class Scheduler(object):
             energies, xyzs = (list(t) for t in zip(*sorted(zip(self.species_dict[label].conformer_energies, xyzs))))
             smiles_list = list()
             for xyz in xyzs:
-                _, b_mol = molecules_from_xyz(xyz)
+                b_mol = molecules_from_xyz(xyz, multiplicity=self.species_dict[label].multiplicity)[1]
                 smiles = b_mol.toSMILES() if b_mol is not None else 'no 2D structure'
                 smiles_list.append(smiles)
             geo_dir = os.path.join(self.project_directory, 'output', 'Species', label, 'geometry')
@@ -743,7 +743,7 @@ class Scheduler(object):
             # Run isomorphism checks if a 2D representation is available
             if self.species_dict[label].mol is not None:
                 for i, xyz in enumerate(xyzs):
-                    _, b_mol = molecules_from_xyz(xyz)
+                    b_mol = molecules_from_xyz(xyz, multiplicity=self.species_dict[label].multiplicity)[1]
                     if b_mol is not None:
                         if check_isomorphism(self.species_dict[label].mol, b_mol):
                             if i == 0:
@@ -754,30 +754,35 @@ class Scheduler(object):
                             else:
                                 logging.info('A conformer for species {0} was found to be isomorphic '
                                              'with the 2D graph representation {1}. This conformer is {2} kJ/mol '
-                                             'above the most stable one (which is not isomorphic). Using the '
-                                             'isomorphic conformer for further geometry optimization.'.format(
-                                              label, self.species_dict[label].mol.toSMILES(),
-                                              (energies[i] - energies[0]) * 0.001))
+                                             'above the most stable one which correspods to  {3} (and is not'
+                                             ' isomorphic). Using the isomorphic conformer for further geometry '
+                                             'optimization.'.format(label, self.species_dict[label].mol.toSMILES(),
+                                                                    (energies[i] - energies[0]) * 0.001,
+                                 molecules_from_xyz(xyzs[0], multiplicity=self.species_dict[label].multiplicity)[1]))
                                 conformer_xyz = xyz
                                 self.output[label]['status'] += 'passed isomorphism check but not for the most stable' \
                                                                 ' conformer; '
                             break
                         else:
                             if i == 0:
-                                logging.warn('Most stable conformer for species {0} was found to be NON-isomorphic '
-                                             'with the 2D graph representation {1}. Searching for a different '
-                                             'conformer that is isomorphic'.format(label, b_mol.toSMILES()))
+                                logging.warn('Most stable conformer for species {0} with structure {1} was found to '
+                                             'be NON-isomorphic with the 2D graph representation {2}. Searching for a '
+                                             'different conformer that is isomorphic...'.format(label, b_mol.toSMILES(),
+                                                                            self.species_dict[label].mol.toSMILES()))
                 else:
+                    smiles_list = list()
+                    for xyz in xyzs:
+                        smiles_list.append(molecules_from_xyz(xyz, multiplicity=self.species_dict[label].multiplicity)[1])
                     if self.allow_nonisomorphic_2d:
                         # we'll optimize the most stable conformer even if it not isomorphic to the 2D graph
                         logging.error('No conformer for {0} was found to be isomorphic with the 2D graph representation'
-                                      ' {1}. Optimizing the most stable conformer anyway.'.format(
-                                       label, self.species_dict[label].mol.toSMILES()))
+                                      ' {1} (got: {2}). Optimizing the most stable conformer anyway.'.format(
+                                       label, self.species_dict[label].mol.toSMILES(), smiles_list))
                         conformer_xyz = xyzs[0]
                     else:
                         logging.error('No conformer for {0} was found to be isomorphic with the 2D graph representation'
-                                      ' {1}. NOT optimizing this species.'.format(
-                                       label, self.species_dict[label].mol.toSMILES()))
+                                      ' {1} (got: {2}). NOT optimizing this species.'.format(
+                                       label, self.species_dict[label].mol.toSMILES(), smiles_list))
                         self.output[label]['status'] += 'Error: No conformer was found to be isomorphic with the 2D' \
                                                         ' graph representation! '
             else:
