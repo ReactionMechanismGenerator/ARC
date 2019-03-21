@@ -226,7 +226,7 @@ class Processor(object):
                 arkane_spc_dict[species.label] = arkane_ts
                 stat_mech_job = StatMechJob(arkane_ts, species.arkane_file)
                 stat_mech_job.applyBondEnergyCorrections = False
-                if not self.model_chemistry:
+                if self.model_chemistry:
                     stat_mech_job.modelChemistry = self.model_chemistry
                 else:
                     stat_mech_job.applyAtomEnergyCorrections = False
@@ -240,7 +240,7 @@ class Processor(object):
                         stat_mech_job = StatMechJob(arkane_spc, spc.arkane_file)
                         arkane_spc_dict[spc.label] = arkane_spc
                         stat_mech_job.applyBondEnergyCorrections = False
-                        if not self.model_chemistry:
+                        if self.model_chemistry:
                             stat_mech_job.modelChemistry = self.model_chemistry
                         else:
                             stat_mech_job.applyAtomEnergyCorrections = False
