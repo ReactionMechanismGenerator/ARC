@@ -6,6 +6,7 @@ import logging
 import sys
 import os
 import time
+import datetime
 import re
 import shutil
 import subprocess
@@ -328,8 +329,12 @@ class ARC(object):
 
         # make a backup copy of the restart file if it exists (but don't save an updated one just yet)
         if os.path.isfile(os.path.join(self.project_directory, 'restart.yml')):
+            if not os.path.isdir(os.path.join(self.project_directory, 'log_and_restart_archive')):
+                os.mkdir(os.path.join(self.project_directory, 'log_and_restart_archive'))
+            local_time = datetime.datetime.now().strftime("%H%M%S_%b%d_%Y")
+            restart_backup_name = 'restart.old.' + local_time + '.yml'
             shutil.copy(os.path.join(self.project_directory, 'restart.yml'),
-                        os.path.join(self.project_directory, 'restart.old.yml'))
+                        os.path.join(self.project_directory, 'log_and_restart_archive', restart_backup_name))
 
     def as_dict(self):
         """
@@ -680,10 +685,11 @@ class ARC(object):
         # Create file handler
         if log_file:
             if os.path.isfile(log_file):
-                old_file = os.path.join(os.path.dirname(log_file), 'arc.old.log')
-                if os.path.isfile(old_file):
-                    os.remove(old_file)
-                shutil.copy(log_file, old_file)
+                if not os.path.isdir(os.path.join(self.project_directory, 'log_and_restart_archive')):
+                    os.mkdir(os.path.join(self.project_directory, 'log_and_restart_archive'))
+                local_time = datetime.datetime.now().strftime("%H%M%S_%b%d_%Y")
+                log_backup_name = 'arc.old.' + local_time + '.log'
+                shutil.copy(log_file, os.path.join(self.project_directory, 'log_and_restart_archive', log_backup_name))
                 os.remove(log_file)
             fh = logging.FileHandler(filename=log_file)
             fh.setLevel(verbose)
