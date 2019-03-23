@@ -56,6 +56,7 @@ class ARC(object):
     `fine`                 ``bool``   Whether or not to use a fine grid for opt jobs (spawns an additional job)
     `generate_conformers`  ``bool``   Whether or not to generate conformers when an initial geometry is given
     `scan_rotors`          ``bool``   Whether or not to perform rotor scans
+    `visualize_orbitals`   ``bool``   Whether or not to save the molecular orbitals for visualization (default: True)
     `use_bac`              ``bool``   Whether or not to use bond additivity corrections for thermo calculations
     `model_chemistry`      ``list``   The model chemistry in Arkane for energy corrections (AE, BAC).
                                         This can be usually determined automatically.
@@ -84,7 +85,7 @@ class ARC(object):
                  ts_guess_level='', fine=True, generate_conformers=True, scan_rotors=True, use_bac=True,
                  model_chemistry='', ess_settings=None, initial_trsh=None, t_min=None, t_max=None, t_count=None,
                  verbose=logging.INFO, project_directory=None, max_job_time=120, allow_nonisomorphic_2d=False,
-                 job_memory=1500):
+                 job_memory=1500, visualize_orbitals=True):
 
         self.__version__ = '1.0.0'
         self.verbose = verbose
@@ -98,6 +99,7 @@ class ARC(object):
         self.max_job_time = max_job_time
         self.allow_nonisomorphic_2d = allow_nonisomorphic_2d
         self.memory = job_memory
+        self.orbitals_level = default_levels_of_theory['orbitals'].lower()
 
         if input_dict is None:
             if project is None:
@@ -118,6 +120,7 @@ class ARC(object):
             self.fine = fine
             self.generate_conformers = generate_conformers
             self.scan_rotors = scan_rotors
+            self.visualize_orbitals = visualize_orbitals
             self.use_bac = use_bac
             self.model_chemistry = model_chemistry
             if self.model_chemistry:
@@ -346,6 +349,7 @@ class ARC(object):
         restart_dict['fine'] = self.fine
         restart_dict['generate_conformers'] = self.generate_conformers
         restart_dict['scan_rotors'] = self.scan_rotors
+        restart_dict['visualize_orbitals'] = self.visualize_orbitals
         restart_dict['use_bac'] = self.use_bac
         restart_dict['model_chemistry'] = self.model_chemistry
         restart_dict['composite_method'] = self.composite_method
@@ -433,6 +437,7 @@ class ARC(object):
         self.fine = input_dict['fine'] if 'fine' in input_dict else True
         self.generate_conformers = input_dict['generate_conformers'] if 'generate_conformers' in input_dict else True
         self.scan_rotors = input_dict['scan_rotors'] if 'scan_rotors' in input_dict else True
+        self.visualize_orbitals = input_dict['visualize_orbitals'] if 'visualize_orbitals' in input_dict else True
         self.use_bac = input_dict['use_bac'] if 'use_bac' in input_dict else True
         self.model_chemistry = input_dict['model_chemistry'] if 'use_bac' in input_dict\
                                                                 and input_dict['use_bac'] else ''
@@ -571,7 +576,8 @@ class ARC(object):
                                    scan_rotors=self.scan_rotors, initial_trsh=self.initial_trsh, rmgdatabase=self.rmgdb,
                                    restart_dict=self.restart_dict, project_directory=self.project_directory,
                                    max_job_time=self.max_job_time, allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
-                                   memory=self.memory)
+                                   memory=self.memory, visualize_orbitals=self.visualize_orbitals,
+                                   orbitals_level=self.orbitals_level)
 
         self.save_project_info_file()
 

@@ -49,7 +49,8 @@ class TestScheduler(unittest.TestCase):
                                opt_level=default_levels_of_theory['opt'], freq_level=default_levels_of_theory['freq'],
                                sp_level=default_levels_of_theory['sp'], scan_level=default_levels_of_theory['scan'],
                                ts_guess_level=default_levels_of_theory['ts_guesses'], rmgdatabase=cls.rmgdb,
-                               project_directory=project_directory, generate_conformers=True, testing=True)
+                               project_directory=project_directory, generate_conformers=True, testing=True,
+                               orbitals_level=default_levels_of_theory['orbitals'])
 
     def test_conformers(self):
         """Test the parse_conformer_energy() and determine_most_stable_conformer() methods"""
