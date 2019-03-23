@@ -803,11 +803,13 @@ class Scheduler(object):
                     smiles_list = list()
                     for xyz in xyzs:
                         smiles_list.append(molecules_from_xyz(xyz, multiplicity=self.species_dict[label].multiplicity)[1])
-                    if self.allow_nonisomorphic_2d:
+                    if self.allow_nonisomorphic_2d or self.species_dict[label].charge:
                         # we'll optimize the most stable conformer even if it not isomorphic to the 2D graph
                         logging.error('No conformer for {0} was found to be isomorphic with the 2D graph representation'
                                       ' {1} (got: {2}). Optimizing the most stable conformer anyway.'.format(
                                        label, self.species_dict[label].mol.toSMILES(), smiles_list))
+                        if self.species_dict[label].charge:
+                            logging.warning('Isomorphism check cannot be done for charged species {0}'.format(label))
                         conformer_xyz = xyzs[0]
                     else:
                         logging.error('No conformer for {0} was found to be isomorphic with the 2D graph representation'

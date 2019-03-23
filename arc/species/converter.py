@@ -152,7 +152,9 @@ def rmg_mol_from_inchi(inchi):
     """
     try:
         rmg_mol = Molecule().fromInChI(str(inchi))
-    except AtomTypeError:
+    except (AtomTypeError, ValueError) as e:
+        logging.warning('Got the following Error when trying to create an RMG Molecule object from '
+                        'InChI:\n{0}'.format(e.message))
         return None
     return rmg_mol
 
@@ -332,7 +334,10 @@ def update_molecule(mol, to_single_bonds=False):
             bond_order = 1.0 if to_single_bonds else atom1.bonds[atom2].getOrderNum()
             bond = Bond(atom_mapping[atom1], atom_mapping[atom2], bond_order)
             new_mol.addBond(bond)
-    new_mol.updateAtomTypes()
+    try:
+        new_mol.updateAtomTypes()
+    except AtomTypeError:
+        pass
     new_mol.multiplicity = mol.multiplicity
     return new_mol
 

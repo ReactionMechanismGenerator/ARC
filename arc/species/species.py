@@ -400,7 +400,9 @@ class ARCSpecies(object):
             if self.charge is None:
                 self.charge = self.mol.getNetCharge()
             if self.mol_list is None:
-                self.mol_list = self.mol.generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
+                if not self.charge:
+                    self.mol_list = self.mol.generate_resonance_structures(keep_isomorphic=False,
+                                                                           filter_structures=True)
         if self.mol is None and self.initial_xyz is None and not self.final_xyz:
             raise SpeciesError('Must have either mol or xyz for species {0}'.format(self.label))
         if self.initial_xyz is not None and not self.final_xyz:
@@ -457,8 +459,11 @@ class ARCSpecies(object):
         Generate conformers using RDKit and OpenBabel for all representative localized structures of each species
         """
         if not self.is_ts:
-            for mol in self.mol_list:
-                self.find_conformers(mol)
+            if not self.charge:
+                for mol in self.mol_list:
+                    self.find_conformers(mol)
+            else:
+                self.find_conformers(self.mol)
             for xyz in self.xyzs:
                 self.conformers.append(xyz)
                 self.conformer_energies.append(0.0)  # a placeholder (lists are synced)
