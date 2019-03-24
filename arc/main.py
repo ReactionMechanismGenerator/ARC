@@ -815,11 +815,11 @@ class ARC(object):
                                                       'b3lyp/6-31g**']:
                 model_chemistry = sp_level
             elif self.use_bac:
-                raise InputError('Could not determine appropriate model chemistry to be used in Arkane for'
-                                 ' thermochemical parameter calculations. Either turn off the "use_bac" flag'
-                                 ' (and BAC will not be used), or specify a correct model chemistry. For a'
-                                 ' comprehensive model chemistry list allowed in Arkane, see the Arkane documentation'
-                                 ' on the RMG website, rmg.mit.edu.')
+                logging.info('\n\n')
+                logging.warning('Could not determine appropriate Model Chemistry to be used in Arkane for'
+                                ' thermochemical parameter calculations. Not using atom energy corrections and '
+                                'bond additivity corrections!\n\n')
+                self.use_bac = False
             else:
                 # use_bac is False, and no model chemistry was specified
                 if sp_level in ['m06-2x/cc-pvtz', 'g3', 'm08so/mg3s*', 'klip_1', 'klip_2', 'klip_3', 'klip_2_cc',
