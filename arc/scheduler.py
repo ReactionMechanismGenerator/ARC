@@ -59,6 +59,9 @@ class Scheduler(object):
                                         (e.g. 'conformer3', 'opt_a123').
     `servers_jobs_ids`      ``list``  A list of relevant job IDs currently running on the server
     `fine`                  ``bool``  Whether or not to use a fine grid for opt jobs (spawns an additional job)
+    `generate_conformers`   ``bool``  Whether or not to generate conformers when an initial geometry is given
+    `scan_rotors`           ``bool``  Whether or not to perform rotor scans
+    `visualize_orbitals`    ``bool``  Whether or not to save the molecular orbitals for visualization (default: Tru
     `output`                ``dict``  Output dictionary with status and final QM file paths for all species
     `settings`              ``dict``  A dictionary of available servers and software
     `initial_trsh`          ``dict``  Troubleshooting methods to try by default. Keys are ESS software, values are trshs
@@ -103,9 +106,9 @@ class Scheduler(object):
     # Note that rotor scans are located under Species.rotors_dict
     """
     def __init__(self, project, settings, species_list, composite_method, conformer_level, opt_level, freq_level,
-                 sp_level, scan_level, ts_guess_level, project_directory, rmgdatabase, fine=False, scan_rotors=True,
-                 generate_conformers=True, initial_trsh=None, rxn_list=None, restart_dict=None, max_job_time=120,
-                 allow_nonisomorphic_2d=False, memory=1500, testing=False):
+                 sp_level, scan_level, ts_guess_level, orbitals_level, project_directory, rmgdatabase, fine=False,
+                 scan_rotors=True, generate_conformers=True, initial_trsh=None, rxn_list=None, restart_dict=None,
+                 max_job_time=120, allow_nonisomorphic_2d=False, memory=1500, testing=False, visualize_orbitals=True):
         self.rmgdb = rmgdatabase
         self.restart_dict = restart_dict
         self.species_list = species_list
@@ -136,9 +139,11 @@ class Scheduler(object):
         self.freq_level = freq_level
         self.sp_level = sp_level
         self.scan_level = scan_level
+        self.orbitals_level = orbitals_level
         self.fine = fine
         self.generate_conformers = generate_conformers
         self.scan_rotors = scan_rotors
+        self.visualize_orbitals = visualize_orbitals
         self.unique_species_labels = list()
         self.initial_trsh = initial_trsh if initial_trsh is not None else dict()
         self.save_restart = False
@@ -383,6 +388,7 @@ class Scheduler(object):
                                             self.check_freq_job(label=label, job=job)
                                     self.run_sp_job(label)
                                     self.run_scan_jobs(label)
+                                    self.run_orbitals_job(label)
                         self.timer = False
                         break
                     elif 'freq' in job_name\
@@ -425,6 +431,18 @@ class Scheduler(object):
                         successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
                         if successful_server_termination:
                             self.check_scan_job(label=label, job=job)
+                        self.timer = False
+                        break
+                    elif 'orbitals' in job_name\
+                            and not self.job_dict[label]['orbitals'][job_name].job_id in self.servers_jobs_ids:
+                        job = self.job_dict[label]['orbitals'][job_name]
+                        successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
+                        if successful_server_termination:
+                            # copy the orbitals file to the species / TS output folder
+                            folder_name = 'rxns' if self.species_dict[label].is_ts else 'Species'
+                            orbitals_path = os.path.join(self.project_directory, 'output', folder_name, label, 'geometry',
+                                                         'orbitals.fchk')
+                            shutil.copyfile(job.local_path_to_orbitals_file, orbitals_path)
                         self.timer = False
                         break
 
@@ -470,24 +488,25 @@ class Scheduler(object):
                   ess_trsh_methods=ess_trsh_methods, scan=scan, pivots=pivots, occ=occ, initial_trsh=self.initial_trsh,
                   project_directory=self.project_directory, max_job_time=self.max_job_time, scan_trsh=scan_trsh,
                   scan_res=scan_res, conformer=conformer)
-        if conformer < 0:
-            # this is NOT a conformer job
-            self.running_jobs[label].append(job.job_name)  # mark as a running job
-            try:
-                self.job_dict[label][job_type]
-            except KeyError:
-                # Jobs of this type haven't been spawned for label, this could be a troubleshooting job
-                self.job_dict[label][job_type] = dict()
-            self.job_dict[label][job_type][job.job_name] = job
-            self.job_dict[label][job_type][job.job_name].run()
-            self.save_restart_dict()
-        else:
-            # Running a conformer job. Append differently to job_dict.
-            self.running_jobs[label].append('conformer{0}'.format(conformer))  # mark as a running job
-            self.job_dict[label]['conformers'][conformer] = job  # save job object
-            self.job_dict[label]['conformers'][conformer].run()  # run the job
-        if job.server not in self.servers:
-            self.servers.append(job.server)
+        if job.software is not None:
+            if conformer < 0:
+                # this is NOT a conformer job
+                self.running_jobs[label].append(job.job_name)  # mark as a running job
+                try:
+                    self.job_dict[label][job_type]
+                except KeyError:
+                    # Jobs of this type haven't been spawned for label, this could be a troubleshooting job
+                    self.job_dict[label][job_type] = dict()
+                self.job_dict[label][job_type][job.job_name] = job
+                self.job_dict[label][job_type][job.job_name].run()
+                self.save_restart_dict()
+            else:
+                # Running a conformer job. Append differently to job_dict.
+                self.running_jobs[label].append('conformer{0}'.format(conformer))  # mark as a running job
+                self.job_dict[label]['conformers'][conformer] = job  # save job object
+                self.job_dict[label]['conformers'][conformer].run()  # run the job
+            if job.server not in self.servers:
+                self.servers.append(job.server)
 
     def end_job(self, job, label, job_name):
         """
@@ -684,6 +703,15 @@ class Scheduler(object):
                         self.run_job(label=label, xyz=self.species_dict[label].final_xyz,
                                      level_of_theory=self.scan_level, job_type='scan', scan=scan, pivots=pivots)
 
+    def run_orbitals_job(self, label):
+        """
+        Spawn orbitals job used for molecular orbital visualization
+        Currently supporting QChem for printing the orbitals, the output could be visualized using IQMol
+        """
+        if self.visualize_orbitals and 'orbitals' not in self.job_dict[label]:
+            self.run_job(label=label, xyz=self.species_dict[label].final_xyz, level_of_theory=self.orbitals_level,
+                         job_type='orbitals')
+
     def parse_conformer_energy(self, job, label, i):
         """
         Parse E0 (Hartree) from the conformer opt output file, and save it in the 'conformer_energies' attribute.
@@ -726,7 +754,8 @@ class Scheduler(object):
             energies, xyzs = (list(t) for t in zip(*sorted(zip(self.species_dict[label].conformer_energies, xyzs))))
             smiles_list = list()
             for xyz in xyzs:
-                b_mol = molecules_from_xyz(xyz, multiplicity=self.species_dict[label].multiplicity)[1]
+                b_mol = molecules_from_xyz(xyz, multiplicity=self.species_dict[label].multiplicity,
+                                           charge=self.species_dict[label].charge)[1]
                 smiles = b_mol.toSMILES() if b_mol is not None else 'no 2D structure'
                 smiles_list.append(smiles)
             geo_dir = os.path.join(self.project_directory, 'output', 'Species', label, 'geometry')
@@ -745,9 +774,20 @@ class Scheduler(object):
             # Run isomorphism checks if a 2D representation is available
             if self.species_dict[label].mol is not None:
                 for i, xyz in enumerate(xyzs):
-                    b_mol = molecules_from_xyz(xyz, multiplicity=self.species_dict[label].multiplicity)[1]
+                    b_mol = molecules_from_xyz(xyz, multiplicity=self.species_dict[label].multiplicity,
+                                               charge=self.species_dict[label].charge)[1]
                     if b_mol is not None:
-                        if check_isomorphism(self.species_dict[label].mol, b_mol):
+                        try:
+                            is_isomorphic = check_isomorphism(self.species_dict[label].mol, b_mol)
+                        except ValueError as e:
+                            if self.species_dict[label].charge:
+                                logging.error('Could not determine isomorphism for charged species. Got the '
+                                              'following error:\n{0}'.format(e.message))
+                            else:
+                                logging.error('Could not determine isomorphism for (non-charged) species. Got the '
+                                              'following error:\n{0}'.format(e.message))
+                            break
+                        if is_isomorphic:
                             if i == 0:
                                 logging.info('Most stable conformer for species {0} was found to be isomorphic '
                                              'with the 2D graph representation {1}\n'.format(label, b_mol.toSMILES()))
@@ -760,7 +800,8 @@ class Scheduler(object):
                                              ' isomorphic). Using the isomorphic conformer for further geometry '
                                              'optimization.'.format(label, self.species_dict[label].mol.toSMILES(),
                                                                     (energies[i] - energies[0]) * 0.001,
-                                 molecules_from_xyz(xyzs[0], multiplicity=self.species_dict[label].multiplicity)[1]))
+                                 molecules_from_xyz(xyzs[0], multiplicity=self.species_dict[label].multiplicity,
+                                                    charge=self.species_dict[label].charge)[1]))
                                 conformer_xyz = xyz
                                 self.output[label]['status'] += 'passed isomorphism check but not for the most stable' \
                                                                 ' conformer; '
@@ -774,12 +815,15 @@ class Scheduler(object):
                 else:
                     smiles_list = list()
                     for xyz in xyzs:
-                        smiles_list.append(molecules_from_xyz(xyz, multiplicity=self.species_dict[label].multiplicity)[1])
-                    if self.allow_nonisomorphic_2d:
+                        smiles_list.append(molecules_from_xyz(xyz, multiplicity=self.species_dict[label].multiplicity,
+                                                              charge=self.species_dict[label].charge)[1])
+                    if self.allow_nonisomorphic_2d or self.species_dict[label].charge:
                         # we'll optimize the most stable conformer even if it not isomorphic to the 2D graph
                         logging.error('No conformer for {0} was found to be isomorphic with the 2D graph representation'
                                       ' {1} (got: {2}). Optimizing the most stable conformer anyway.'.format(
                                        label, self.species_dict[label].mol.toSMILES(), smiles_list))
+                        if self.species_dict[label].charge:
+                            logging.warning('Isomorphism check cannot be done for charged species {0}'.format(label))
                         conformer_xyz = xyzs[0]
                     else:
                         logging.error('No conformer for {0} was found to be isomorphic with the 2D graph representation'
@@ -956,6 +1000,11 @@ class Scheduler(object):
             freq_ok = self.check_negative_freq(label=label, job=job, vibfreqs=vibfreqs)
             if not self.species_dict[label].is_ts and not freq_ok:
                 self.troubleshoot_negative_freq(label=label, job=job)
+            if freq_ok:
+                # copy the frequency file to the species / TS output folder
+                folder_name = 'rxns' if self.species_dict[label].is_ts else 'Species'
+                freq_path = os.path.join(self.project_directory, 'output', folder_name, label, 'geometry', 'freq.out')
+                shutil.copyfile(job.local_path_to_output_file, freq_path)
         else:
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level_of_theory, job_type='freq')
 
@@ -1686,19 +1735,6 @@ class Scheduler(object):
         with open(rxn_info_path, 'w') as f:
             f.write('Reaction labels and respective TS labels:\n\n')
         return rxn_info_path
-
-
-def time_lapse(t0):
-    """A helper function returning the elapsed time since t0"""
-    t = time.time() - t0
-    m, s = divmod(t, 60)
-    h, m = divmod(m, 60)
-    d, h = divmod(h, 24)
-    if d > 0:
-        d = str(d) + ' days, '
-    else:
-        d = ''
-    return d, h, m, s
 
 
 # Add a custom string representer to use block literals for multiline strings

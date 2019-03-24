@@ -78,6 +78,7 @@ default_levels_of_theory = {'conformer': 'b97-d3/6-311+g(d,p)',
                             'freq': 'wb97xd/6-311++g(d,p)',  # should be the same level as opt
                             'sp': 'ccsd(t)-f12/cc-pvtz-f12',  # This should be a level for which BAC is available
                             # 'sp': 'b3lyp/6-311+g(3df,2p)',
+                            'orbitals': 'b3lyp/6-311++g(3df,3pd)',  # save orbitals for visualization
                             'scan': 'b3lyp/6-311+g(d,p)',
                             'scan_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of the CBS-QB3 method
                             'freq_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of the CBS-QB3 method

@@ -152,7 +152,9 @@ def rmg_mol_from_inchi(inchi):
     """
     try:
         rmg_mol = Molecule().fromInChI(str(inchi))
-    except AtomTypeError:
+    except (AtomTypeError, ValueError) as e:
+        logging.warning('Got the following Error when trying to create an RMG Molecule object from '
+                        'InChI:\n{0}'.format(e.message))
         return None
     return rmg_mol
 
@@ -169,7 +171,7 @@ def elementize(atom):
         atom.atomType = atom_type[0]
 
 
-def molecules_from_xyz(xyz, multiplicity=None):
+def molecules_from_xyz(xyz, multiplicity=None, charge=0):
     """
     Creating RMG:Molecule objects from xyz with correct atom labeling
     `xyz` is in a string format
@@ -200,17 +202,27 @@ def molecules_from_xyz(xyz, multiplicity=None):
         mol_bo = rmg_mol_from_inchi(inchi)  # An RMG Molecule with bond orders, but without preserved atom order
         if mol_bo is not None:
             if multiplicity is not None:
-                set_multiplicity(mol_bo, multiplicity)
+                try:
+                    set_multiplicity(mol_bo, multiplicity, charge)
+                except SpeciesError as e:
+                    logging.warning('Cannot infer 2D graph connectivity, failed to set species multiplicity with the '
+                                    'following error:\n{0}'.format(e.message))
+                    return None, None
             mol_s1_updated.multiplicity = mol_bo.multiplicity
             order_atoms(ref_mol=mol_s1_updated, mol=mol_bo)
-            set_multiplicity(mol_s1_updated, mol_bo.multiplicity, radical_map=mol_bo)
+            try:
+                set_multiplicity(mol_s1_updated, mol_bo.multiplicity, charge, radical_map=mol_bo)
+            except SpeciesError as e:
+                logging.warning('Cannot infer 2D graph connectivity, failed to set species multiplicity with the '
+                                'following error:\n{0}'.format(e.message))
+                return mol_s1_updated, None
     else:
         mol_bo = None
     s_mol, b_mol = mol_s1_updated, mol_bo
     return s_mol, b_mol
 
 
-def set_multiplicity(mol, multiplicity, radical_map=None):
+def set_multiplicity(mol, multiplicity, charge, radical_map=None):
     """
     Set the multiplicity of `mol` to `multiplicity` and change radicals as needed
     if a `radical_map`, which is an RMG Molecule object with the same atom order, is given,
@@ -248,8 +260,13 @@ def set_multiplicity(mol, multiplicity, radical_map=None):
                     atom.lonePairs += 1
     # final check: an even number of radicals results in an odd multiplicity, and vice versa
     if divmod(mol.multiplicity, 2)[1] == divmod(radicals, 2)[1]:
-        raise SpeciesError('Number of radicals ({0}) and multiplicity ({1}) for {2} do not match.\n{3}'.format(
-            radicals, mol.multiplicity, mol.toSMILES(), mol.toAdjacencyList()))
+        if not charge:
+            raise SpeciesError('Number of radicals ({0}) and multiplicity ({1}) for {2} do not match.\n{3}'.format(
+                radicals, mol.multiplicity, mol.toSMILES(), mol.toAdjacencyList()))
+        else:
+            logging.warning('Number of radicals ({0}) and multiplicity ({1}) for {2} do not match. It might be OK since '
+                            'this species is charged and charged molecules are currently not percieved well in ARC.'
+                            '\n{3}'.format(radicals, mol.multiplicity, mol.toSMILES(), mol.toAdjacencyList()))
 
 
 def add_rads_by_atom_valance(mol):
@@ -279,8 +296,9 @@ def set_radicals_by_map(mol, radical_map):
 
 def order_atoms_in_mol_list(ref_mol, mol_list):
     """Order the atoms in all molecules of mol_list by the atom order in ref_mol"""
-    for mol in mol_list:
-        order_atoms(ref_mol, mol)
+    if mol_list is not None:
+        for mol in mol_list:
+            order_atoms(ref_mol, mol)
 
 
 def order_atoms(ref_mol, mol):
@@ -332,7 +350,10 @@ def update_molecule(mol, to_single_bonds=False):
             bond_order = 1.0 if to_single_bonds else atom1.bonds[atom2].getOrderNum()
             bond = Bond(atom_mapping[atom1], atom_mapping[atom2], bond_order)
             new_mol.addBond(bond)
-    new_mol.updateAtomTypes()
+    try:
+        new_mol.updateAtomTypes()
+    except AtomTypeError:
+        pass
     new_mol.multiplicity = mol.multiplicity
     return new_mol
 
@@ -376,6 +397,7 @@ def check_isomorphism(mol1, mol2, filter_structures=True):
     `filter_structures` is being passes to Species.generate_resonance_structures().
     make copies of the molecules, since isIsomorphic() changes atom orders
     """
+    mol1.reactive, mol2.reactive = True, True
     mol1_copy = mol1.copy(deep=True)
     mol2_copy = mol2.copy(deep=True)
     spc1 = Species(molecule=[mol1_copy])

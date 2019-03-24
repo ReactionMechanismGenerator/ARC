@@ -58,6 +58,7 @@ class Job(object):
     `job_id`           ``int``           The job's ID determined by the server.
     `local_path`       ``str``           Local path to job's folder. Determined automatically
     'local_path_to_output_file' ``str``  The local path to the output.out file
+    'local_path_to_orbitals_file' ``str``  The local path to the orbitals.fchk file (only for orbitals jobs)
     `remote_path`      ``str``           Remote path to job's folder. Determined automatically
     `submit`           ``str``           The submit script. Created automatically
     `input`            ``str``           The input file. Created automatically
@@ -101,7 +102,8 @@ class Job(object):
         self.scan_trsh = scan_trsh
         self.scan_res = scan_res if scan_res is not None else rotor_scan_resolution
         self.max_job_time = max_job_time
-        job_types = ['conformer', 'opt', 'freq', 'optfreq', 'sp', 'composite', 'scan', 'gsm', 'irc', 'ts_guess']
+        job_types = ['conformer', 'opt', 'freq', 'optfreq', 'sp', 'composite', 'scan', 'gsm', 'irc', 'ts_guess',
+                     'orbitals']
         # the 'conformer' job type is identical to 'opt', but we differentiate them to be identifiable in Scheduler
         if job_type not in job_types:
             raise ValueError("Job type {0} not understood. Must be one of the following:\n{1}".format(
@@ -123,6 +125,11 @@ class Job(object):
         if self.software is not None:
             self.software = self.software.lower()
         else:
+            if job_type == 'orbitals':
+                if not 'qchem' in self.settings:
+                    logging.debug('Could not find the QChem software to compute molecular orbitals')
+                    self.software = None
+                self.software = 'qchem'
             if job_type == 'composite':
                 if not self.settings['gaussian']:
                     raise JobError('Could not find the Gaussian software to run the composite method {0}'.format(
@@ -219,6 +226,7 @@ class Job(object):
         self.local_path = os.path.join(self.project_directory, 'calcs', folder_name,
                                        self.species_name, conformer_folder, self.job_name)
         self.local_path_to_output_file = os.path.join(self.local_path, 'output.out')
+        self.local_path_to_orbitals_file = os.path.join(self.local_path, 'orbitals.fchk')
         # parentheses don't play well in folder names:
         species_name_for_remote_path = self.species_name.replace('(', '_').replace(')','_')
         self.remote_path = os.path.join('runs', 'ARC_Projects', self.project,
@@ -437,6 +445,14 @@ wf,spin={spin},charge={charge};}}
                 else:
                     job_type_1 = "\noptg,savexyz='geometry.xyz'"
 
+        elif self.job_type == 'orbitals' and self.software == 'qchem':
+            if self.is_ts:
+                job_type_1 = 'ts'
+            else:
+                job_type_1 = 'opt'
+            if 'PRINT_ORBITALS' not in self.trsh:
+                self.trsh += '\n   PRINT_ORBITALS  TRUE\n   GUI           2'
+
         elif self.job_type == 'freq':
             if self.software == 'gaussian':
                 job_type_2 = 'freq iop(7/33=1) scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
@@ -503,7 +519,11 @@ $end
                 if self.is_ts:
                     job_type_1 = 'opt=(ts, calcfc, noeigentest, tight)'
                 else:
-                    job_type_1 = 'opt=(calcfc, noeigentest, tight)'
+                    if self.level_of_theory in ['rocbs-qb3']:
+                        # No analytic 2nd derivatives (FC) for these methods
+                        job_type_1 = 'opt=(noeigentest, tight)'
+                    else:
+                        job_type_1 = 'opt=(calcfc, noeigentest, tight)'
             else:
                 raise JobError('Currently composite methods are only supported in gaussian')
 
@@ -527,7 +547,11 @@ $end
             scan_string = ''
 
         if self.software == 'gaussian' and not self.trsh:
-            self.trsh = 'scf=xqc'  # xqc will do qc (quadratic convergence) if the job fails w/o it, so use by default
+            if self.level_of_theory[:2] == 'ro':
+                self.trsh = 'use=L506'
+            else:
+                # xqc will do qc (quadratic convergence) if the job fails w/o it, so use by default
+                self.trsh = 'scf=xqc'
 
         if self.job_type == 'irc':  # TODO
             pass
@@ -583,6 +607,10 @@ $end
         remote_file_path = os.path.join(self.remote_path, output_filename[self.software])
         local_file_path = os.path.join(self.local_path, 'output.out')
         ssh.download_file(remote_file_path=remote_file_path, local_file_path=local_file_path)
+        if self.job_type == 'orbitals':
+            remote_file_path = os.path.join(self.remote_path, 'input.FChk')
+            local_file_path = os.path.join(self.local_path_to_orbitals_file)
+            ssh.download_file(remote_file_path=remote_file_path, local_file_path=local_file_path)
         self.final_time = ssh.get_last_modified_time(remote_file_path=remote_file_path)
         self.determine_run_time()
         if not os.path.isfile(local_file_path):
@@ -649,12 +677,13 @@ $end
         Check the status of the job ran by the electronic structure software (ESS)
         Possible statuses: `initializing`, `running`, `errored: {error type / message}`, `unconverged`, `done`
         """
-        output_path = os.path.join(self.local_path, 'output.out')
-        if os.path.exists(output_path):
-            os.remove(output_path)
+        if os.path.exists(self.local_path_to_output_file):
+            os.remove(self.local_path_to_output_file)
+        if os.path.exists(self.local_path_to_orbitals_file):
+            os.remove(self.local_path_to_orbitals_file)
         if self.settings['ssh']:
             self._download_output_file()
-        with open(output_path, 'rb') as f:
+        with open(self.local_path_to_output_file, 'rb') as f:
             lines = f.readlines()
             if self.software == 'gaussian':
                 for line in lines[-1:-20:-1]:

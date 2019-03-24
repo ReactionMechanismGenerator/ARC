@@ -400,7 +400,9 @@ class ARCSpecies(object):
             if self.charge is None:
                 self.charge = self.mol.getNetCharge()
             if self.mol_list is None:
-                self.mol_list = self.mol.generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
+                if not self.charge:
+                    self.mol_list = self.mol.generate_resonance_structures(keep_isomorphic=False,
+                                                                           filter_structures=True)
         if self.mol is None and self.initial_xyz is None and not self.final_xyz:
             raise SpeciesError('Must have either mol or xyz for species {0}'.format(self.label))
         if self.initial_xyz is not None and not self.final_xyz:
@@ -457,8 +459,11 @@ class ARCSpecies(object):
         Generate conformers using RDKit and OpenBabel for all representative localized structures of each species
         """
         if not self.is_ts:
-            for mol in self.mol_list:
-                self.find_conformers(mol)
+            if not self.charge:
+                for mol in self.mol_list:
+                    self.find_conformers(mol)
+            else:
+                self.find_conformers(self.mol)
             for xyz in self.xyzs:
                 self.conformers.append(xyz)
                 self.conformer_energies.append(0.0)  # a placeholder (lists are synced)
@@ -533,7 +538,11 @@ class ARCSpecies(object):
         in self.species_dict[species.label]['rotors_dict']. Also updates 'number_of_rotors'.
         """
         if not self.is_ts:
-            for mol in self.mol_list:
+            if not self.charge:
+                mol_list = self.mol_list
+            else:
+                mol_list = [self.mol]
+            for mol in mol_list:
                 rotors = find_internal_rotors(mol)
                 for new_rotor in rotors:
                     for existing_rotor in self.rotors_dict.values():
@@ -578,7 +587,7 @@ class ARCSpecies(object):
             for i, _ in enumerate(scan):
                 scan[i] -= 1  # atom indices start from 0, but atom labels (as in scan) start from 1
             coordinates, atoms, _, _, _ = get_xyz_matrix(self.final_xyz)
-            _, mol = molecules_from_xyz(self.final_xyz)
+            mol = molecules_from_xyz(self.final_xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
             conf, rd_mol, indx_map = rdkit_conf_from_mol(mol, coordinates)
             rd_scan = [indx_map[scan[i]] for i in range(4)]  # convert the atom indices in `scan` to RDkit indices
 
@@ -811,7 +820,7 @@ class ARCSpecies(object):
         if self.mol is not None:
             # self.mol should have come from another source, e.g. SMILES or yml
             original_mol = self.mol
-            self.mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity)[1]
+            self.mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
 
             if self.mol is not None and not check_isomorphism(original_mol, self.mol):
                 raise InputError('XYZ and the 2D graph representation of the Molecule are not isomorphic.\n'
@@ -819,9 +828,9 @@ class ARCSpecies(object):
                                    xyz, self.mol.toSMILES(), self.mol.toAdjacencyList(),
                                    original_mol.toSMILES(), original_mol.toAdjacencyList()))
         else:
-            self.mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity)[1]
+            self.mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
 
-        if self.mol_list is None:
+        if self.mol_list is None and self.mol is not None:
             # Assign atom ids first, so they carry through to the resonance structures
             self.mol.assignAtomIDs()
             # The generate_resonance_structures method changes atom order
