@@ -396,6 +396,7 @@ def check_isomorphism(mol1, mol2, filter_structures=True):
     `filter_structures` is being passes to Species.generate_resonance_structures().
     make copies of the molecules, since isIsomorphic() changes atom orders
     """
+    mol1.reactive, mol2.reactive = True, True
     mol1_copy = mol1.copy(deep=True)
     mol2_copy = mol2.copy(deep=True)
     spc1 = Species(molecule=[mol1_copy])
