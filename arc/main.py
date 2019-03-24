@@ -19,7 +19,7 @@ from rmgpy.reaction import Reaction
 
 import arc.rmgdb as rmgdb
 from arc.settings import arc_path, default_levels_of_theory, check_status_command, servers, valid_chars
-from arc.scheduler import Scheduler, time_lapse
+from arc.scheduler import Scheduler
 from arc.arc_exceptions import InputError, SettingsError, SpeciesError
 from arc.species.species import ARCSpecies
 from arc.reaction import ARCReaction
@@ -642,8 +642,7 @@ class ARC(object):
         self.log_footer()
 
     def save_project_info_file(self):
-        d, h, m, s = time_lapse(t0=self.t0)
-        self.execution_time = '{0}{1:02.0f}:{2:02.0f}:{3:02.0f}'.format(d, h, m, s)
+        self.execution_time = time_lapse(t0=self.t0)
         path = os.path.join(self.project_directory, '{0}.info'.format(self.project))
         if os.path.exists(path):
             os.remove(path)
@@ -1027,3 +1026,16 @@ def delete_all_arc_jobs(server_list):
                     ssh.delete_job(job_id)
                     print('deleted job {0}'.format(job_id))
     print('\ndone.')
+
+
+def time_lapse(t0):
+    """A helper function returning the elapsed time since t0"""
+    t = time.time() - t0
+    m, s = divmod(t, 60)
+    h, m = divmod(m, 60)
+    d, h = divmod(h, 24)
+    if d > 0:
+        d = str(d) + ' days, '
+    else:
+        d = ''
+    return '{0}{1:02.0f}:{2:02.0f}:{3:02.0f}'.format(d, h, m, s)

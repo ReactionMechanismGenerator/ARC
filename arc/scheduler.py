@@ -1737,19 +1737,6 @@ class Scheduler(object):
         return rxn_info_path
 
 
-def time_lapse(t0):
-    """A helper function returning the elapsed time since t0"""
-    t = time.time() - t0
-    m, s = divmod(t, 60)
-    h, m = divmod(m, 60)
-    d, h = divmod(h, 24)
-    if d > 0:
-        d = str(d) + ' days, '
-    else:
-        d = ''
-    return d, h, m, s
-
-
 # Add a custom string representer to use block literals for multiline strings
 def string_representer(dumper, data):
     if len(data.splitlines()) > 1:
