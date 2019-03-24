@@ -171,7 +171,7 @@ def elementize(atom):
         atom.atomType = atom_type[0]
 
 
-def molecules_from_xyz(xyz, multiplicity=None):
+def molecules_from_xyz(xyz, multiplicity=None, charge=0):
     """
     Creating RMG:Molecule objects from xyz with correct atom labeling
     `xyz` is in a string format
@@ -202,17 +202,27 @@ def molecules_from_xyz(xyz, multiplicity=None):
         mol_bo = rmg_mol_from_inchi(inchi)  # An RMG Molecule with bond orders, but without preserved atom order
         if mol_bo is not None:
             if multiplicity is not None:
-                set_multiplicity(mol_bo, multiplicity)
+                try:
+                    set_multiplicity(mol_bo, multiplicity, charge)
+                except SpeciesError as e:
+                    logging.warning('Cannot infer 2D graph connectivity, failed to set species multiplicity with the '
+                                    'following error:\n{0}'.format(e.message))
+                    return None, None
             mol_s1_updated.multiplicity = mol_bo.multiplicity
             order_atoms(ref_mol=mol_s1_updated, mol=mol_bo)
-            set_multiplicity(mol_s1_updated, mol_bo.multiplicity, radical_map=mol_bo)
+            try:
+                set_multiplicity(mol_s1_updated, mol_bo.multiplicity, charge, radical_map=mol_bo)
+            except SpeciesError as e:
+                logging.warning('Cannot infer 2D graph connectivity, failed to set species multiplicity with the '
+                                'following error:\n{0}'.format(e.message))
+                return mol_s1_updated, None
     else:
         mol_bo = None
     s_mol, b_mol = mol_s1_updated, mol_bo
     return s_mol, b_mol
 
 
-def set_multiplicity(mol, multiplicity, radical_map=None):
+def set_multiplicity(mol, multiplicity, charge, radical_map=None):
     """
     Set the multiplicity of `mol` to `multiplicity` and change radicals as needed
     if a `radical_map`, which is an RMG Molecule object with the same atom order, is given,
@@ -250,8 +260,13 @@ def set_multiplicity(mol, multiplicity, radical_map=None):
                     atom.lonePairs += 1
     # final check: an even number of radicals results in an odd multiplicity, and vice versa
     if divmod(mol.multiplicity, 2)[1] == divmod(radicals, 2)[1]:
-        raise SpeciesError('Number of radicals ({0}) and multiplicity ({1}) for {2} do not match.\n{3}'.format(
-            radicals, mol.multiplicity, mol.toSMILES(), mol.toAdjacencyList()))
+        if not charge:
+            raise SpeciesError('Number of radicals ({0}) and multiplicity ({1}) for {2} do not match.\n{3}'.format(
+                radicals, mol.multiplicity, mol.toSMILES(), mol.toAdjacencyList()))
+        else:
+            logging.warning('Number of radicals ({0}) and multiplicity ({1}) for {2} do not match. It might be OK since '
+                            'this species is charged and charged molecules are currently not percieved well in ARC.'
+                            '\n{3}'.format(radicals, mol.multiplicity, mol.toSMILES(), mol.toAdjacencyList()))
 
 
 def add_rads_by_atom_valance(mol):

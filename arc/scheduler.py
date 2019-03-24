@@ -754,7 +754,8 @@ class Scheduler(object):
             energies, xyzs = (list(t) for t in zip(*sorted(zip(self.species_dict[label].conformer_energies, xyzs))))
             smiles_list = list()
             for xyz in xyzs:
-                b_mol = molecules_from_xyz(xyz, multiplicity=self.species_dict[label].multiplicity)[1]
+                b_mol = molecules_from_xyz(xyz, multiplicity=self.species_dict[label].multiplicity,
+                                           charge=self.species_dict[label].charge)[1]
                 smiles = b_mol.toSMILES() if b_mol is not None else 'no 2D structure'
                 smiles_list.append(smiles)
             geo_dir = os.path.join(self.project_directory, 'output', 'Species', label, 'geometry')
@@ -773,9 +774,20 @@ class Scheduler(object):
             # Run isomorphism checks if a 2D representation is available
             if self.species_dict[label].mol is not None:
                 for i, xyz in enumerate(xyzs):
-                    b_mol = molecules_from_xyz(xyz, multiplicity=self.species_dict[label].multiplicity)[1]
+                    b_mol = molecules_from_xyz(xyz, multiplicity=self.species_dict[label].multiplicity,
+                                               charge=self.species_dict[label].charge)[1]
                     if b_mol is not None:
-                        if check_isomorphism(self.species_dict[label].mol, b_mol):
+                        try:
+                            is_isomorphic = check_isomorphism(self.species_dict[label].mol, b_mol)
+                        except ValueError as e:
+                            if self.species_dict[label].charge:
+                                logging.error('Could not determine isomorphism for charged species. Got the '
+                                              'following error:\n{0}'.format(e.message))
+                            else:
+                                logging.error('Could not determine isomorphism for (non-charged) species. Got the '
+                                              'following error:\n{0}'.format(e.message))
+                            break
+                        if is_isomorphic:
                             if i == 0:
                                 logging.info('Most stable conformer for species {0} was found to be isomorphic '
                                              'with the 2D graph representation {1}\n'.format(label, b_mol.toSMILES()))
@@ -788,7 +800,8 @@ class Scheduler(object):
                                              ' isomorphic). Using the isomorphic conformer for further geometry '
                                              'optimization.'.format(label, self.species_dict[label].mol.toSMILES(),
                                                                     (energies[i] - energies[0]) * 0.001,
-                                 molecules_from_xyz(xyzs[0], multiplicity=self.species_dict[label].multiplicity)[1]))
+                                 molecules_from_xyz(xyzs[0], multiplicity=self.species_dict[label].multiplicity,
+                                                    charge=self.species_dict[label].charge)[1]))
                                 conformer_xyz = xyz
                                 self.output[label]['status'] += 'passed isomorphism check but not for the most stable' \
                                                                 ' conformer; '
@@ -802,7 +815,8 @@ class Scheduler(object):
                 else:
                     smiles_list = list()
                     for xyz in xyzs:
-                        smiles_list.append(molecules_from_xyz(xyz, multiplicity=self.species_dict[label].multiplicity)[1])
+                        smiles_list.append(molecules_from_xyz(xyz, multiplicity=self.species_dict[label].multiplicity,
+                                                              charge=self.species_dict[label].charge)[1])
                     if self.allow_nonisomorphic_2d or self.species_dict[label].charge:
                         # we'll optimize the most stable conformer even if it not isomorphic to the 2D graph
                         logging.error('No conformer for {0} was found to be isomorphic with the 2D graph representation'
