@@ -710,7 +710,7 @@ class ARC(object):
 
     def initialize_log(self, verbose=logging.INFO, log_file=None):
         """
-        Set up a logger for ARC to use to print output to stdout.
+        Set up a logger for ARC.
         The `verbose` parameter is an integer specifying the amount of log text seen
         at the console; the levels correspond to those of the :data:`logging` module.
         """
@@ -740,7 +740,7 @@ class ARC(object):
         logger.addHandler(ch)
 
         # Create file handler
-        if log_file:
+        if log_file is not None:
             if os.path.isfile(log_file):
                 if not os.path.isdir(os.path.join(self.project_directory, 'log_and_restart_archive')):
                     os.mkdir(os.path.join(self.project_directory, 'log_and_restart_archive'))
@@ -756,7 +756,7 @@ class ARC(object):
 
     def log_header(self, level=logging.INFO):
         """
-        Output a header containing identifying information about CanTherm to the log.
+        Output a header containing identifying information about ARC to the log.
         """
         logging.log(level, 'ARC execution initiated on {0}'.format(time.asctime()))
         logging.log(level, '')
