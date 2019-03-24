@@ -163,14 +163,22 @@ class ARC(object):
                 if '/' not in level_of_theory:  # assume this is a composite method
                     self.composite_method = level_of_theory.lower()
                     logging.info('Using composite method {0}'.format(self.composite_method))
+                    self.opt_level = ''
+                    self.sp_level = ''
                     if freq_level:
                         self.freq_level = freq_level.lower()
                         logging.info('Using {0} for frequency calculations'.format(self.freq_level))
                     else:
-                        # This is a composite method
                         self.freq_level = default_levels_of_theory['freq_for_composite'].lower()
                         logging.info('Using default level {0} for frequency calculations after composite jobs'.format(
                             self.freq_level))
+                    if scan_level:
+                        self.scan_level = scan_level.lower()
+                        logging.info('Using {0} for rotor scans'.format(self.scan_level))
+                    else:
+                        self.scan_level = default_levels_of_theory['scan_for_composite'].lower()
+                        logging.info('Using default level {0} for rotor scans after composite jobs'.format(
+                            self.scan_level))
                 elif '//' in level_of_theory:
                     self.composite_method = ''
                     self.opt_level = level_of_theory.lower().split('//')[1]
@@ -460,6 +468,8 @@ class ARC(object):
             self.conformer_level = default_levels_of_theory['conformer'].lower()
             logging.info('Using default level {0} for refined conformer searches (after filtering via force'
                          ' fields)'.format(default_levels_of_theory['conformer']))
+        else:
+            self.conformer_level = ''
 
         if 'ts_guess_level' in input_dict:
             self.ts_guess_level = input_dict['ts_guess_level'].lower()
@@ -469,16 +479,91 @@ class ARC(object):
             logging.info('Using default level {0} for TS guesses comparison of different methods'.format(
                 default_levels_of_theory['ts_guesses']))
 
-        self.composite_method = input_dict['composite_method'].lower() if 'composite_method' in input_dict else ''
-        if self.composite_method:
-            logging.info('Using composite method {0}'.format(self.composite_method))
-            if self.composite_method == 'cbs-qb3':
-                self.model_chemistry = self.composite_method
-                logging.info('Using {0} as model chemistry for energy corrections in Arkane'.format(
-                    self.model_chemistry))
-            elif self.use_bac:
-                raise InputError('Could not determine model chemistry to use for composite method {0}'.format(
-                    self.composite_method))
+        if 'level_of_theory' in input_dict:
+            if '/' not in input_dict['level_of_theory']:  # assume this is a composite method
+                self.composite_method = input_dict['level_of_theory'].lower()
+                logging.info('Using composite method {0}'.format(self.composite_method))
+                self.opt_level = ''
+                self.sp_level = ''
+                if 'freq_level' in input_dict:
+                    self.freq_level = input_dict['freq_level'].lower()
+                    logging.info('Using {0} for frequency calculations'.format(self.freq_level))
+                else:
+                    self.freq_level = default_levels_of_theory['freq_for_composite'].lower()
+                    logging.info('Using default level {0} for frequency calculations after composite jobs'.format(
+                        self.freq_level))
+                if 'scan_level' in input_dict:
+                    self.scan_level = input_dict['scan_level'].lower()
+                    logging.info('Using {0} for rotor scans'.format(self.scan_level))
+                else:
+                    self.scan_level = default_levels_of_theory['scan_for_composite'].lower()
+                    logging.info('Using default level {0} for rotor scans after composite jobs'.format(
+                        self.scan_level))
+            elif '//' in input_dict['level_of_theory']:
+                self.composite_method = ''
+                self.opt_level = input_dict['level_of_theory'].lower().split('//')[1]
+                self.freq_level = input_dict['level_of_theory'].lower().split('//')[1]
+                self.sp_level = input_dict['level_of_theory'].lower().split('//')[0]
+                logging.info('Using {0} for geometry optimizations'.format(input_dict['level_of_theory'].split('//')[1]))
+                logging.info('Using {0} for frequency calculations'.format(input_dict['level_of_theory'].split('//')[1]))
+                logging.info('Using {0} for single point calculations'.format(input_dict['level_of_theory'].split('//')[0]))
+            elif '/' in input_dict['level_of_theory'] and '//' not in input_dict['level_of_theory']:
+                # assume this is not a composite method, and the user meant to run opt, freq and sp at this level.
+                # running an sp after opt at the same level is meaningless, but doesn't matter much also...
+                self.composite_method = ''
+                self.opt_level = input_dict['level_of_theory'].lower()
+                self.freq_level = input_dict['level_of_theory'].lower()
+                self.sp_level = input_dict['level_of_theory'].lower()
+                logging.info('Using {0} for geometry optimizations'.format(input_dict['level_of_theory']))
+                logging.info('Using {0} for frequency calculations'.format(input_dict['level_of_theory']))
+                logging.info('Using {0} for single point calculations'.format(input_dict['level_of_theory']))
+
+        else:
+            self.composite_method = input_dict['composite_method'].lower() if 'composite_method' in input_dict else ''
+            if self.composite_method:
+                logging.info('Using composite method {0}'.format(self.composite_method))
+                if self.composite_method == 'cbs-qb3':
+                    self.model_chemistry = self.composite_method
+                    logging.info('Using {0} as model chemistry for energy corrections in Arkane'.format(
+                        self.model_chemistry))
+                elif self.use_bac:
+                    raise InputError('Could not determine model chemistry to use for composite method {0}'.format(
+                        self.composite_method))
+
+            if 'opt_level' in input_dict:
+                self.opt_level = input_dict['opt_level'].lower()
+                logging.info('Using {0} for geometry optimizations'.format(self.opt_level))
+            elif not self.composite_method:
+                self.opt_level = default_levels_of_theory['opt'].lower()
+                logging.info('Using default level {0} for geometry optimizations'.format(self.opt_level))
+            else:
+                self.opt_level = ''
+
+            if 'freq_level' in input_dict:
+                self.freq_level = input_dict['freq_level'].lower()
+            elif not self.composite_method:
+                if 'opt_level' in input_dict:
+                    self.freq_level = input_dict['opt_level'].lower()
+                    logging.info('Using user-defined opt level {0} for frequency calculations as well'.format(
+                        self.freq_level))
+                else:
+                    self.freq_level = default_levels_of_theory['freq'].lower()
+                    logging.info('Using default level {0} for frequency calculations'.format(self.freq_level))
+            else:
+                # This is a composite method
+                self.freq_level = default_levels_of_theory['freq_for_composite'].lower()
+                logging.info('Using default level {0} for frequency calculations after composite jobs'.format(
+                    self.freq_level))
+
+            if 'sp_level' in input_dict:
+                self.sp_level = input_dict['sp_level'].lower()
+                logging.info('Using {0} for single point calculations'.format(self.sp_level))
+            elif not self.composite_method:
+                self.sp_level = default_levels_of_theory['sp'].lower()
+                logging.info('Using default level {0} for single point calculations'.format(self.sp_level))
+            else:
+                # It's a composite method, no need in explicit sp
+                self.sp_level = ''
 
         if 'scan_level' in input_dict:
             self.scan_level = input_dict['scan_level'].lower()
@@ -496,40 +581,6 @@ class ARC(object):
         else:
             self.scan_level = ''
 
-        if 'opt_level' in input_dict:
-            self.opt_level = input_dict['opt_level'].lower()
-            logging.info('Using {0} for geometry optimizations'.format(self.opt_level))
-        elif not self.composite_method:
-            self.opt_level = default_levels_of_theory['opt'].lower()
-            logging.info('Using default level {0} for geometry optimizations'.format(self.opt_level))
-        else:
-            self.opt_level = ''
-
-        if 'freq_level' in input_dict:
-            self.freq_level = input_dict['freq_level'].lower()
-        elif not self.composite_method:
-            if 'opt_level' in input_dict:
-                self.freq_level = input_dict['opt_level'].lower()
-                logging.info('Using user-defined opt level {0} for frequency calculations as well'.format(
-                    self.freq_level))
-            else:
-                self.freq_level = default_levels_of_theory['freq'].lower()
-                logging.info('Using default level {0} for frequency calculations'.format(self.freq_level))
-        else:
-            # This is a composite method
-            self.freq_level = default_levels_of_theory['freq_for_composite'].lower()
-            logging.info('Using default level {0} for frequency calculations after composite jobs'.format(
-                self.freq_level))
-
-        if 'sp_level' in input_dict:
-            self.sp_level = input_dict['sp_level'].lower()
-            logging.info('Using {0} for single point calculations'.format(self.sp_level))
-        elif not self.composite_method:
-            self.sp_level = default_levels_of_theory['sp'].lower()
-            logging.info('Using default level {0} for single point calculations'.format(self.sp_level))
-        else:
-            # It's a composite method, no need in explicit sp
-            self.sp_level = ''
         if 'species' in input_dict:
             self.arc_species_list = [ARCSpecies(species_dict=spc_dict) for spc_dict in input_dict['species']]
             for spc in self.arc_species_list:
