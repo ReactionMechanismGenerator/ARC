@@ -296,8 +296,9 @@ def set_radicals_by_map(mol, radical_map):
 
 def order_atoms_in_mol_list(ref_mol, mol_list):
     """Order the atoms in all molecules of mol_list by the atom order in ref_mol"""
-    for mol in mol_list:
-        order_atoms(ref_mol, mol)
+    if mol_list is not None:
+        for mol in mol_list:
+            order_atoms(ref_mol, mol)
 
 
 def order_atoms(ref_mol, mol):
