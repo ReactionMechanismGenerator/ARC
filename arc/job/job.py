@@ -519,7 +519,11 @@ $end
                 if self.is_ts:
                     job_type_1 = 'opt=(ts, calcfc, noeigentest, tight)'
                 else:
-                    job_type_1 = 'opt=(calcfc, noeigentest, tight)'
+                    if self.level_of_theory in ['rocbs-qb3']:
+                        # No analytic 2nd derivatives (FC) for these methods
+                        job_type_1 = 'opt=(noeigentest, tight)'
+                    else:
+                        job_type_1 = 'opt=(calcfc, noeigentest, tight)'
             else:
                 raise JobError('Currently composite methods are only supported in gaussian')
 
@@ -543,7 +547,11 @@ $end
             scan_string = ''
 
         if self.software == 'gaussian' and not self.trsh:
-            self.trsh = 'scf=xqc'  # xqc will do qc (quadratic convergence) if the job fails w/o it, so use by default
+            if self.level_of_theory[:2] == 'ro':
+                self.trsh = 'use=L506'
+            else:
+                # xqc will do qc (quadratic convergence) if the job fails w/o it, so use by default
+                self.trsh = 'scf=xqc'
 
         if self.job_type == 'irc':  # TODO
             pass
