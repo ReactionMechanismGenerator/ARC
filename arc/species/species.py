@@ -538,7 +538,11 @@ class ARCSpecies(object):
         in self.species_dict[species.label]['rotors_dict']. Also updates 'number_of_rotors'.
         """
         if not self.is_ts:
-            for mol in self.mol_list:
+            if not self.charge:
+                mol_list = self.mol_list
+            else:
+                mol_list = [self.mol]
+            for mol in mol_list:
                 rotors = find_internal_rotors(mol)
                 for new_rotor in rotors:
                     for existing_rotor in self.rotors_dict.values():
@@ -826,7 +830,7 @@ class ARCSpecies(object):
         else:
             self.mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
 
-        if self.mol_list is None:
+        if self.mol_list is None and self.mol is not None:
             # Assign atom ids first, so they carry through to the resonance structures
             self.mol.assignAtomIDs()
             # The generate_resonance_structures method changes atom order
