@@ -166,7 +166,7 @@ class SSH_Client(object):
         else:
             return 'done'
         status = status_line.split()[4]
-        if status.lower() == 'r':
+        if status.lower() in ['r', 'qw']:
             return 'running'
         else:
             if servers[self.server]['cluster_soft'].lower() == 'oge':
