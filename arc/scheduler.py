@@ -882,6 +882,7 @@ class Scheduler(object):
             self.species_dict[label].final_xyz = get_xyz_string(xyz=coord, number=number)
             self.output[label]['status'] += 'composite converged; '
             self.output[label]['composite'] = os.path.join(job.local_path, 'output.out')
+            self.species_dict[label].opt_level = self.composite_method
             rxn_str = ''
             if self.species_dict[label].is_ts:
                 rxn_str = ' of reaction {0}'.format(self.species_dict[label].rxn_label)
@@ -903,7 +904,6 @@ class Scheduler(object):
                 return True  # run freq / scan jobs on this optimized geometry
             elif not self.species_dict[label].is_ts:
                 self.troubleshoot_negative_freq(label=label, job=job)
-            self.species_dict[label].opt_level = self.composite_method
         if job.job_status[1] != 'done' or not freq_ok:
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level_of_theory, job_type='composite')
         return False  # return ``False``, so no freq / scan jobs are initiated for this unoptimized geometry
