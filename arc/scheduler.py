@@ -308,7 +308,7 @@ class Scheduler(object):
                             # restart-related check are performed in run_scan_jobs()
                             self.run_scan_jobs(species.label)
                 elif not self.species_dict[species.label].is_ts and self.generate_conformers\
-                        and 'geo' not in self.output[species.label]:
+                        and 'geo' not in self.output[species.label] and not species.conformers:
                     self.species_dict[species.label].generate_conformers()
             else:
                 # Species is loaded from a YAML file
@@ -557,7 +557,7 @@ class Scheduler(object):
         """
         for label in self.unique_species_labels:
             if not self.species_dict[label].is_ts and 'opt converged' not in self.output[label]['status']\
-                        and 'opt' not in self.job_dict[label]:
+                        and 'opt' not in self.job_dict[label] and not self.species_dict[label].conformer_energies:
                 self.save_conformers_file(label)
                 if not self.testing:
                     if len(self.species_dict[label].conformers) > 1:
