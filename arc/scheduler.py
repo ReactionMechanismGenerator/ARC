@@ -734,7 +734,7 @@ class Scheduler(object):
         if self.species_dict[label].is_ts:
             raise SchedulerError('The determine_most_stable_conformer() method does not deal with transition'
                                  ' state guesses.')
-        if all(e == 0.0 for e in self.species_dict[label].conformer_energies):
+        if 'conformers' in self.job_dict[label] and all(e is None for e in self.species_dict[label].conformer_energies):
             logging.error('No conformer converged for species {0}! Trying to troubleshoot conformer jobs...'.format(
                 label))
             for i, job in self.job_dict[label]['conformers'].items():
@@ -835,7 +835,7 @@ class Scheduler(object):
         if not self.species_dict[label].is_ts:
             raise SchedulerError('The determine_most_likely_ts_conformer() method only deals with transition'
                                  ' state guesses.')
-        if all(e == 0.0 for e in self.species_dict[label].conformer_energies):
+        if all(e is None for e in self.species_dict[label].conformer_energies):
             logging.error('No guess converged for TS {0}!')
             # for i, job in self.job_dict[label]['conformers'].items():
             #     self.troubleshoot_ess(label, job, level_of_theory=job.level_of_theory, job_type='conformer',
@@ -1303,7 +1303,7 @@ class Scheduler(object):
             xyz2 = atomcoords - factor * displacement
             self.species_dict[label].conformers.append(get_xyz_string(xyz=xyz1, number=atomnos))
             self.species_dict[label].conformers.append(get_xyz_string(xyz=xyz2, number=atomnos))
-            self.species_dict[label].conformer_energies.extend([0.0, 0.0])  # a placeholder (lists are synced)
+            self.species_dict[label].conformer_energies.extend([None, None])  # a placeholder (lists are synced)
         self.job_dict[label]['conformers'] = dict()  # initialize the conformer job dictionary
         for i, xyz in enumerate(self.species_dict[label].conformers):
             self.run_job(label=label, xyz=xyz, level_of_theory=self.conformer_level, job_type='conformer', conformer=i)

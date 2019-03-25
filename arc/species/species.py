@@ -154,7 +154,7 @@ class ARCSpecies(object):
             self.chosen_ts = None
             self.generate_thermo = generate_thermo if not self.is_ts else False
             self.long_thermo_description = ''
-            self.opt_level = ''
+            self.opt_level = None
             self.ts_report = ''
             self.yml_path = yml_path
             self.final_xyz = ''
@@ -242,7 +242,7 @@ class ARCSpecies(object):
                 # consider the initial guess as one of the conformers if generating others.
                 # otherwise, just consider it as the conformer.
                 self.conformers.append(self.initial_xyz)
-                self.conformer_energies.append(0.0)  # dummy
+                self.conformer_energies.append(None)  # dummy
 
             self.neg_freqs_trshed = list()
 
@@ -298,7 +298,8 @@ class ARCSpecies(object):
         species_dict['multiplicity'] = self.multiplicity
         species_dict['charge'] = self.charge
         species_dict['generate_thermo'] = self.generate_thermo
-        species_dict['opt_level'] = self.opt_level
+        if self.opt_level is not None:
+            species_dict['opt_level'] = self.opt_level
         species_dict['final_xyz'] = self.final_xyz
         species_dict['number_of_rotors'] = self.number_of_rotors
         species_dict['rotors_dict'] = self.rotors_dict
@@ -373,7 +374,7 @@ class ARCSpecies(object):
             self.generate_thermo = False
         else:
             self.generate_thermo = species_dict['generate_thermo'] if 'generate_thermo' in species_dict else True
-        self.opt_level = species_dict['opt_level'] if 'opt_level' in species_dict else ''
+        self.opt_level = species_dict['opt_level'] if 'opt_level' in species_dict else None
         self.number_of_rotors = species_dict['number_of_rotors'] if 'number_of_rotors' in species_dict else 0
         self.rotors_dict = species_dict['rotors_dict'] if 'rotors_dict' in species_dict else dict()
         self.external_symmetry = species_dict['external_symmetry'] if 'external_symmetry' in species_dict else None
@@ -417,7 +418,7 @@ class ARCSpecies(object):
             # consider the initial guess as one of the conformers if generating others.
             # otherwise, just consider it as the conformer.
             self.conformers.append(self.initial_xyz)
-            self.conformer_energies.append(0.0)  # dummy
+            self.conformer_energies.append(None)  # dummy
 
     def from_yml_file(self, label=None):
         """
@@ -474,7 +475,7 @@ class ARCSpecies(object):
                 self.find_conformers(self.mol)
             for xyz in self.xyzs:
                 self.conformers.append(xyz)
-                self.conformer_energies.append(0.0)  # a placeholder (lists are synced)
+                self.conformer_energies.append(None)  # a placeholder (lists are synced)
         else:
             # generate "conformers" from the results of the different TS guess methods, if successful
             tsg_index = 0
@@ -483,7 +484,7 @@ class ARCSpecies(object):
             for tsg in self.ts_guesses:
                 if tsg.success:
                     self.conformers.append(tsg.xyz)
-                    self.conformer_energies.append(0.0)  # a placeholder (lists are synced)
+                    self.conformer_energies.append(None)  # a placeholder (lists are synced)
                     tsg.index = tsg_index
                     tsg_index += 1
                     self.successful_methods.append(tsg.method)
