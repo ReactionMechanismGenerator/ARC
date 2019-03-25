@@ -325,6 +325,13 @@ class Scheduler(object):
         """
         The main job scheduling block
         """
+        for species in self.species_dict.values():
+            if not species.initial_xyz and not species.final_xyz and species.conformers and species.conformer_energies:
+                self.determine_most_stable_conformer(species.label)
+                if self.composite_method:
+                    self.run_composite_job(species.label)
+                else:
+                    self.run_opt_job(species.label)
         if self.generate_conformers:
             self.run_conformer_jobs()
         while self.running_jobs != {}:  # loop while jobs are still running
@@ -551,14 +558,7 @@ class Scheduler(object):
         for label in self.unique_species_labels:
             if not self.species_dict[label].is_ts and 'opt converged' not in self.output[label]['status']\
                         and 'opt' not in self.job_dict[label]:
-                geo_dir = os.path.join(self.project_directory, 'output', 'Species', label, 'geometry')
-                if not os.path.exists(geo_dir):
-                    os.makedirs(geo_dir)
-                conf_path = os.path.join(geo_dir, 'conformers_before_optimization.txt')
-                with open(conf_path, 'w') as f:
-                    for conf in self.species_dict[label].conformers:
-                        f.write(conf)
-                        f.write('\n\n')
+                self.save_conformers_file(label)
                 if not self.testing:
                     if len(self.species_dict[label].conformers) > 1:
                         self.job_dict[label]['conformers'] = dict()
@@ -744,34 +744,19 @@ class Scheduler(object):
             conformer_xyz = None
             xyzs = list()
             log = Log(path='')
-            for job in self.job_dict[label]['conformers'].values():
-                log.determine_qm_software(fullpath=job.local_path_to_output_file)
-                try:
-                    coord, number, _ = log.software_log.loadGeometry()
-                except RMGInputError:
-                    xyzs.append(None)
-                else:
-                    xyzs.append(get_xyz_string(xyz=coord, number=number))
-            energies, xyzs = (list(t) for t in zip(*sorted(zip(self.species_dict[label].conformer_energies, xyzs))))
-            smiles_list = list()
-            for xyz in xyzs:
-                b_mol = molecules_from_xyz(xyz, multiplicity=self.species_dict[label].multiplicity,
-                                           charge=self.species_dict[label].charge)[1]
-                smiles = b_mol.toSMILES() if b_mol is not None else 'no 2D structure'
-                smiles_list.append(smiles)
-            geo_dir = os.path.join(self.project_directory, 'output', 'Species', label, 'geometry')
-            if not os.path.exists(geo_dir):
-                os.makedirs(geo_dir)
-            conf_path = os.path.join(geo_dir, 'conformers_after_optimization.txt')
-            with open(conf_path, 'w') as f:
-                for i, xyz in enumerate(xyzs):
-                    f.write('conformer {0}:\n'.format(i))
-                    if xyz is not None:
-                        f.write(xyz + '\n')
-                        f.write('SMILES: ' + smiles_list[i] + '\n')
-                        f.write('Relative Energy: {0} kJ/mol\n\n\n'.format((energies[i] - min(energies)) * 0.001))
+            if self.species_dict[label].conformer_energies:
+                xyzs = self.species_dict[label].conformers
+            else:
+                for job in self.job_dict[label]['conformers'].values():
+                    log.determine_qm_software(fullpath=job.local_path_to_output_file)
+                    try:
+                        coord, number, _ = log.software_log.loadGeometry()
+                    except RMGInputError:
+                        xyzs.append(None)
                     else:
-                        f.write('Failed to converge')
+                        xyzs.append(get_xyz_string(xyz=coord, number=number))
+            energies, xyzs = (list(t) for t in zip(*sorted(zip(self.species_dict[label].conformer_energies, xyzs))))
+            self.save_conformers_file(label, xyzs=xyzs, energies=energies)
             # Run isomorphism checks if a 2D representation is available
             if self.species_dict[label].mol is not None:
                 for i, xyz in enumerate(xyzs):
@@ -782,11 +767,14 @@ class Scheduler(object):
                             is_isomorphic = check_isomorphism(self.species_dict[label].mol, b_mol)
                         except ValueError as e:
                             if self.species_dict[label].charge:
-                                logging.error('Could not determine isomorphism for charged species. Got the '
-                                              'following error:\n{0}'.format(e.message))
+                                logging.error('Could not determine isomorphism for charged species {0}. '
+                                              'Optimizing the most stable conformer anyway. Got the '
+                                              'following error:\n{1}'.format(label, e))
                             else:
-                                logging.error('Could not determine isomorphism for (non-charged) species. Got the '
-                                              'following error:\n{0}'.format(e.message))
+                                logging.error('Could not determine isomorphism for (non-charged) species {0}. '
+                                              'Optimizing the most stable conformer anyway. Got the '
+                                              'following error:\n{1}'.format(label, e))
+                            conformer_xyz = xyzs[0]
                             break
                         if is_isomorphic:
                             if i == 0:
@@ -819,7 +807,7 @@ class Scheduler(object):
                         smiles_list.append(molecules_from_xyz(xyz, multiplicity=self.species_dict[label].multiplicity,
                                                               charge=self.species_dict[label].charge)[1])
                     if self.allow_nonisomorphic_2d or self.species_dict[label].charge:
-                        # we'll optimize the most stable conformer even if it not isomorphic to the 2D graph
+                        # we'll optimize the most stable conformer even if it is not isomorphic to the 2D graph
                         logging.error('No conformer for {0} was found to be isomorphic with the 2D graph representation'
                                       ' {1} (got: {2}). Optimizing the most stable conformer anyway.'.format(
                                        label, self.species_dict[label].mol.toSMILES(), smiles_list))
@@ -1737,16 +1725,53 @@ class Scheduler(object):
             f.write('Reaction labels and respective TS labels:\n\n')
         return rxn_info_path
 
+    def save_conformers_file(self, label, xyzs=None, energies=None):
+        """
+        A helper function for saving the conformers for species `label` before and after optimization
+        If `xyzs` is given, then it is used as the conformers xyz list, otherwise it is taken from the species.conformer
+        attribute. If `energies`, a list of respective conformer energies in J/mol, is given, it will also be reported.
+        """
+        geo_dir = os.path.join(self.project_directory, 'output', 'Species', label, 'geometry')
+        if not os.path.exists(geo_dir):
+            os.makedirs(geo_dir)
+        smiles_list = list()
+        xyzs = xyzs or self.species_dict[label].conformers
+        for xyz in xyzs:
+            b_mol = molecules_from_xyz(xyz, multiplicity=self.species_dict[label].multiplicity,
+                                       charge=self.species_dict[label].charge)[1]
+            smiles = b_mol.toSMILES() if b_mol is not None else 'no 2D structure'
+            smiles_list.append(smiles)
+        if energies is not None:
+            conf_path = os.path.join(geo_dir, 'conformers_after_optimization.txt')
+        else:
+            conf_path = os.path.join(geo_dir, 'conformers_before_optimization.txt')
+        with open(conf_path, 'w') as f:
+            if energies is not None:
+                f.write('conformers optimized at {0}\n\n'.format(self.conformer_level))
+            for i, conf in enumerate(xyzs):
+                f.write('conformer {0}:\n'.format(i))
+                if conf is not None:
+                    f.write(conf + '\n')
+                    f.write('SMILES: ' + smiles_list[i] + '\n')
+                    if energies is not None:
+                        if energies[i] == min(energies):
+                            f.write('Relative Energy: 0 kJ/mol (lowest)')
+                        else:
+                            f.write('Relative Energy: {0:.3f} kJ/mol'.format((energies[i] - min(energies)) * 0.001))
+                else:
+                    f.write('Failed to converge')
+                f.write('\n\n\n')
 
-# Add a custom string representer to use block literals for multiline strings
+
 def string_representer(dumper, data):
+    """Add a custom string representer to use block literals for multiline strings"""
     if len(data.splitlines()) > 1:
         return dumper.represent_scalar(tag='tag:yaml.org,2002:str', value=data, style='|')
     return dumper.represent_scalar(tag='tag:yaml.org,2002:str', value=data)
 
 
-# Add a custom unicode representer to use block literals for multiline strings
 def unicode_representer(dumper, data):
+    """Add a custom unicode representer to use block literals for multiline strings"""
     if len(data.splitlines()) > 1:
         return yaml.ScalarNode(tag='tag:yaml.org,2002:str', value=data, style='|')
     return yaml.ScalarNode(tag='tag:yaml.org,2002:str', value=data)
