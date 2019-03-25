@@ -75,7 +75,6 @@ class TestARC(unittest.TestCase):
                                       'multiplicity': 1,
                                       'neg_freqs_trshed': [],
                                       'number_of_rotors': 0,
-                                      'opt_level': '',
                                       'rotors_dict': {},
                                       't1': None}],
                          }
