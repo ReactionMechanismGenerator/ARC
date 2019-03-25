@@ -442,7 +442,8 @@ class Scheduler(object):
                             folder_name = 'rxns' if self.species_dict[label].is_ts else 'Species'
                             orbitals_path = os.path.join(self.project_directory, 'output', folder_name, label, 'geometry',
                                                          'orbitals.fchk')
-                            shutil.copyfile(job.local_path_to_orbitals_file, orbitals_path)
+                            if os.path.isfile(job.local_path_to_orbitals_file):
+                                shutil.copyfile(job.local_path_to_orbitals_file, orbitals_path)
                         self.timer = False
                         break
 
