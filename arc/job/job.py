@@ -234,7 +234,10 @@ class Job(object):
         self.submit = ''
         self.input = ''
         self.server_nodes = list()
-        self._write_initiated_job_to_csv_file()
+        if job_num is None:
+            # this checks jon_num and not self.job_num on purpose
+            # if job_num was given, then don't save as initiated jobs, this is a restarted job
+            self._write_initiated_job_to_csv_file()
 
     def as_dict(self):
         """A helper function for dumping this object as a dictionary in a YAML file for restarting ARC"""
