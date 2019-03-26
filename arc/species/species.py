@@ -195,22 +195,24 @@ class ARCSpecies(object):
                                     self.mol.toSMILES(), self.label))
                 self.multiplicity = self.rmg_species.molecule[0].multiplicity
                 self.charge = self.rmg_species.molecule[0].getNetCharge()
-            else:
-                # parameters were entered directly, not via an RMG:Species object
+
+            if label is not None:
                 self.label = label
-                if self.mol is None:
-                    if adjlist:
-                        self.mol = Molecule().fromAdjacencyList(adjlist=adjlist)
-                    elif inchi:
-                        self.mol = rmg_mol_from_inchi(inchi)
-                    elif smiles:
-                        self.mol = Molecule(SMILES=smiles)
-                if not self.is_ts and self.mol is None and self.generate_thermo:
-                    logging.warn('No structure (SMILES, adjList, RMG:Species, or RMG:Molecule) was given for species'
-                                 ' {0}, NOT using bond additivity corrections (BAC) for thermo computation.'.format(
-                        self.label))
+            if multiplicity is not None:
                 self.multiplicity = multiplicity
+            if charge is not None:
                 self.charge = charge
+            if self.mol is None:
+                if adjlist:
+                    self.mol = Molecule().fromAdjacencyList(adjlist=adjlist)
+                elif inchi:
+                    self.mol = rmg_mol_from_inchi(inchi)
+                elif smiles:
+                    self.mol = Molecule(SMILES=smiles)
+            if not self.is_ts and self.mol is None and self.generate_thermo:
+                logging.warn('No structure (SMILES, adjList, RMG:Species, or RMG:Molecule) was given for species'
+                             ' {0}, NOT using bond additivity corrections (BAC) for thermo computation.'.format(
+                    self.label))
 
             if not self.is_ts:
                 # Perceive molecule from xyz coordinates
@@ -827,6 +829,8 @@ class ARCSpecies(object):
                                  'Got xyz:\n{0}\n\nwhich corresponds to {1}\n{2}\n\nand: {3}\n{4}'.format(
                                    xyz, self.mol.toSMILES(), self.mol.toAdjacencyList(),
                                    original_mol.toSMILES(), original_mol.toAdjacencyList()))
+            if self.mol is None:
+                self.mol = original_mol  # todo: Atom order will not be correct, need fix
         else:
             self.mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
 
