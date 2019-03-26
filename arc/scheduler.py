@@ -715,13 +715,13 @@ class Scheduler(object):
 
     def parse_conformer_energy(self, job, label, i):
         """
-        Parse E0 (Hartree) from the conformer opt output file, and save it in the 'conformer_energies' attribute.
+        Parse E0 (J/mol) from the conformer opt output file, and save it in the 'conformer_energies' attribute.
         """
         if job.job_status[1] == 'done':
             log = Log(path='')
             log.determine_qm_software(fullpath=job.local_path_to_output_file)
-            e0 = log.software_log.loadEnergy()
-            self.species_dict[label].conformer_energies[i] = e0  # in J/mol
+            self.species_dict[label].conformer_energies[i] = log.software_log.loadEnergy()  # in J/mol
+            logging.debug('energy for {0} is {1}'.format(i, self.species_dict[label].conformer_energies[i]))
         else:
             logging.warn('Conformer {i} for {label} did not converge!'.format(i=i, label=label))
 
