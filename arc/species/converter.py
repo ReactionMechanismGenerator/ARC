@@ -303,7 +303,7 @@ def order_atoms_in_mol_list(ref_mol, mol_list):
 
 def order_atoms(ref_mol, mol):
     """Order the atoms in `mol` by the atom order in ref_mol"""
-    if mol is not None:
+    if ref_mol is not None and mol is not None:
         ref_mol_is_iso_copy = ref_mol.copy(deep=True)
         mol_is_iso_copy = mol.copy(deep=True)
         ref_mol_find_iso_copy = ref_mol.copy(deep=True)
