@@ -112,7 +112,11 @@ class SSH_Client(object):
         Download a file from `remote_file_path` to `local_file_path`.
         """
         sftp, ssh = self.connect()
-        sftp.get(remotepath=remote_file_path, localpath=local_file_path)
+        try:
+            sftp.get(remotepath=remote_file_path, localpath=local_file_path)
+        except IOError:
+            logging.warning('Got an IOError when trying to download file {0} from {1}'.format(remote_file_path,
+                                                                                              self.server))
         sftp.close()
         ssh.close()
 
@@ -257,7 +261,10 @@ class SSH_Client(object):
     def get_last_modified_time(self, remote_file_path):
         """returns the last modified time of `remote_file` in a datetime format"""
         sftp, ssh = self.connect()
-        timestamp = sftp.stat(remote_file_path).st_mtime
+        try:
+            timestamp = sftp.stat(remote_file_path).st_mtime
+        except IOError:
+            return None
         sftp.close()
         ssh.close()
         return datetime.datetime.fromtimestamp(timestamp)
