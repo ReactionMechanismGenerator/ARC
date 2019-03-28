@@ -61,7 +61,7 @@ class Scheduler(object):
     `fine`                  ``bool``  Whether or not to use a fine grid for opt jobs (spawns an additional job)
     `generate_conformers`   ``bool``  Whether or not to generate conformers when an initial geometry is given
     `scan_rotors`           ``bool``  Whether or not to perform rotor scans
-    `visualize_orbitals`    ``bool``  Whether or not to save the molecular orbitals for visualization (default: Tru
+    `run_orbitals`          ``bool``  Whether or not to save the molecular orbitals for visualization (default: Tru
     `output`                ``dict``  Output dictionary with status and final QM file paths for all species
     `settings`              ``dict``  A dictionary of available servers and software
     `initial_trsh`          ``dict``  Troubleshooting methods to try by default. Keys are ESS software, values are trshs
@@ -108,7 +108,7 @@ class Scheduler(object):
     def __init__(self, project, settings, species_list, composite_method, conformer_level, opt_level, freq_level,
                  sp_level, scan_level, ts_guess_level, orbitals_level, project_directory, rmgdatabase, fine=False,
                  scan_rotors=True, generate_conformers=True, initial_trsh=None, rxn_list=None, restart_dict=None,
-                 max_job_time=120, allow_nonisomorphic_2d=False, memory=1500, testing=False, visualize_orbitals=True):
+                 max_job_time=120, allow_nonisomorphic_2d=False, memory=1500, testing=False, run_orbitals=False):
         self.rmgdb = rmgdatabase
         self.restart_dict = restart_dict
         self.species_list = species_list
@@ -143,7 +143,7 @@ class Scheduler(object):
         self.fine = fine
         self.generate_conformers = generate_conformers
         self.scan_rotors = scan_rotors
-        self.visualize_orbitals = visualize_orbitals
+        self.run_orbitals = run_orbitals
         self.unique_species_labels = list()
         self.initial_trsh = initial_trsh if initial_trsh is not None else dict()
         self.save_restart = False
@@ -709,7 +709,7 @@ class Scheduler(object):
         Spawn orbitals job used for molecular orbital visualization
         Currently supporting QChem for printing the orbitals, the output could be visualized using IQMol
         """
-        if self.visualize_orbitals and 'orbitals' not in self.job_dict[label]:
+        if self.run_orbitals and 'orbitals' not in self.job_dict[label]:
             self.run_job(label=label, xyz=self.species_dict[label].final_xyz, level_of_theory=self.orbitals_level,
                          job_type='orbitals')
 
