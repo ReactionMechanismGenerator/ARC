@@ -45,6 +45,15 @@ servers = {
     }
 }
 
+# List here (complete or partial) phrases of methods or basis sets you'd like to associate to specific ESS
+# Avoid ascribing the same phrase to more than one server, this may cause undeterministic assignment of software
+# Format is levels_ess = {ess: ['phrase1', 'phrase2'], ess2: ['phrase3', 'phrase3']}
+levels_ess = {
+    'gaussian': ['b3lyp', 'm062x', '3df,3pd'],
+    'molpro': ['ccsd', 'cisd', 'vpz'],
+    'qchem': ['m06-2x', 'def2']
+}
+
 check_status_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat',
                         'Slurm': '/usr/bin/squeue'}
 
