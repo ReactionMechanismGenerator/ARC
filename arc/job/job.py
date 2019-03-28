@@ -420,14 +420,14 @@ wf,spin={spin},charge={charge};}}
         if self.job_type in ['conformer', 'opt']:
             if self.software == 'gaussian':
                 if self.is_ts:
-                    job_type_1 = 'opt=(ts, calcfc, noeigentest)'
+                    job_type_1 = 'opt=(ts, calcfc, noeigentest, maxstep=5)'
                 else:
                     job_type_1 = 'opt=(calcfc, noeigentest)'
                 if self.fine:
                     # Note that the Acc2E argument is not available in Gaussian03
                     fine = 'scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
                     if self.is_ts:
-                        job_type_1 = 'opt=(ts, calcfc, noeigentest, tight)'
+                        job_type_1 = 'opt=(ts, calcfc, noeigentest, tight, maxstep=5)'
                     else:
                         job_type_1 = 'opt=(calcfc, noeigentest, tight)'
             elif self.software == 'qchem':
@@ -467,14 +467,14 @@ wf,spin={spin},charge={charge};}}
         elif self.job_type == 'optfreq':
             if self.software == 'gaussian':
                 if self.is_ts:
-                    job_type_1 = 'opt=(ts, calcfc, noeigentest)'
+                    job_type_1 = 'opt=(ts, calcfc, noeigentest, maxstep=5)'
                 else:
                     job_type_1 = 'opt=(calcfc, noeigentest)'
                 job_type_2 = 'freq iop(7/33=1)'
                 if self.fine:
                     fine = 'scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
                     if self.is_ts:
-                        job_type_1 = 'opt=(ts, calcfc, noeigentest, tight)'
+                        job_type_1 = 'opt=(ts, calcfc, noeigentest, tight, maxstep=5)'
                     else:
                         job_type_1 = 'opt=(calcfc, noeigentest, tight)'
             elif self.software == 'qchem':
@@ -520,7 +520,7 @@ $end
                 if self.fine:
                     fine = 'scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
                 if self.is_ts:
-                    job_type_1 = 'opt=(ts, calcfc, noeigentest, tight)'
+                    job_type_1 = 'opt=(ts, calcfc, noeigentest, tight, maxstep=5)'
                 else:
                     if self.level_of_theory in ['rocbs-qb3']:
                         # No analytic 2nd derivatives (FC) for these methods
