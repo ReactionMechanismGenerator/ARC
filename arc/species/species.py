@@ -435,9 +435,9 @@ class ARCSpecies(object):
         if arkane_spc.adjacency_list is not None:
             try:
                 self.mol = Molecule().fromAdjacencyList(adjlist=arkane_spc.adjacency_list)
-            except ValueError as e:
+            except ValueError:
                 print('Could not read adjlist:\n{0}'.format(arkane_spc.adjacency_list))  # should *not* be logging
-                raise e
+                raise
         elif arkane_spc.inchi is not None:
             self.mol = Molecule().fromInChI(inchistr=arkane_spc.inchi)
         elif arkane_spc.smiles is not None:

@@ -582,9 +582,9 @@ $end
                 try:
                     self.input = input_files['mrci'].format(memory=self.memory, xyz=self.xyz, basis=self.basis_set,
                                                             spin=self.spin, charge=self.charge, trsh=self.trsh)
-                except KeyError as e:
+                except KeyError:
                     logging.error('Could not interpret all input file keys in\n{0}'.format(self.input))
-                    raise e
+                    raise
         else:
             try:
                 cpus = servers[self.server]['cpus'] if 'cpus' in servers[self.server] else 8
@@ -593,9 +593,9 @@ $end
                                                spin=self.spin, xyz=self.xyz, job_type_1=job_type_1, cpus=cpus,
                                                job_type_2=job_type_2, scan=scan_string, restricted=restricted, fine=fine,
                                                shift=self.shift, trsh=self.trsh, scan_trsh=self.scan_trsh)
-            except KeyError as e:
+            except KeyError:
                 logging.error('Could not interpret all input file keys in\n{0}'.format(self.input))
-                raise e
+                raise
         if not os.path.exists(self.local_path):
             os.makedirs(self.local_path)
         with open(os.path.join(self.local_path, input_filename[self.software]), 'wb') as f:
