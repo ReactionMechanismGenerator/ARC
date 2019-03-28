@@ -15,11 +15,11 @@
 # PyCharm project files
 .idea/*
 
-# settings file
-arc/settings.py
-
 # Projects
 Projects/
+
+# Examples
+examples/
 
 # Unit test files
 .coverage
