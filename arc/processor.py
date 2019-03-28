@@ -183,7 +183,7 @@ class Processor(object):
                     try:
                         arkane_spc = arkane_species(str(species.label), species.arkane_file)
                     except ValueError:
-                        species.label += '_(' + str(randint(0, 999)) + ')'
+                        species.label += '_' + str(randint(0, 999))
                     else:
                         unique_arkane_species_label = True
                 if species.mol_list:
