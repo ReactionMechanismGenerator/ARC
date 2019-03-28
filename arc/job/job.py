@@ -903,4 +903,7 @@ $end
 
     def determine_run_time(self):
         """Determine the run time"""
-        self.run_time = self.final_time - self.initial_time
+        if self.initial_time is not None and self.final_time is not None:
+            self.run_time = self.final_time - self.initial_time
+        else:
+            self.run_time = None
