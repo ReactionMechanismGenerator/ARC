@@ -483,10 +483,12 @@ class Scheduler(object):
                 self.species_dict[spc.label] = spc
 
     def run_job(self, label, xyz, level_of_theory, job_type, fine=False, software=None, shift='', trsh='', memory=None,
-                conformer=-1, ess_trsh_methods=None, scan='', pivots=None, occ=None, scan_trsh='', scan_res=None):
+                conformer=-1, ess_trsh_methods=None, scan='', pivots=None, occ=None, scan_trsh='', scan_res=None,
+                max_job_time=None):
         """
         A helper function for running (all) jobs
         """
+        max_job_time = max_job_time or self.max_job_time  # if it's None, set to default
         ess_trsh_methods = ess_trsh_methods if ess_trsh_methods is not None else list()
         pivots = pivots if pivots is not None else list()
         species = self.species_dict[label]
@@ -495,7 +497,7 @@ class Scheduler(object):
                   level_of_theory=level_of_theory, multiplicity=species.multiplicity, charge=species.charge, fine=fine,
                   shift=shift, software=software, is_ts=species.is_ts, memory=memory, trsh=trsh,
                   ess_trsh_methods=ess_trsh_methods, scan=scan, pivots=pivots, occ=occ, initial_trsh=self.initial_trsh,
-                  project_directory=self.project_directory, max_job_time=self.max_job_time, scan_trsh=scan_trsh,
+                  project_directory=self.project_directory, max_job_time=max_job_time, scan_trsh=scan_trsh,
                   scan_res=scan_res, conformer=conformer)
         if job.software is not None:
             if conformer < 0:
@@ -525,12 +527,14 @@ class Scheduler(object):
         try:
             job.determine_job_status()  # also downloads output file
         except IOError:
-            logging.warn('Tried to determine status of job {0}, but it seems like the job never ran.'
-                         ' Re-running job.'.format(job.job_name))
-            self.run_job(label=label, xyz=job.xyz, level_of_theory=job.level_of_theory, job_type=job.job_type,
-                         fine=job.fine, software=job.software, shift=job.shift, trsh=job.trsh, memory=job.memory,
-                         conformer=job.conformer, ess_trsh_methods=job.ess_trsh_methods, scan=job.scan,
-                         pivots=job.pivots, occ=job.occ, scan_trsh=job.scan_trsh, scan_res=job.scan_res)
+            if not job.job_type in ['orbitals']:
+                logging.warn('Tried to determine status of job {0}, but it seems like the job never ran.'
+                             ' Re-running job.'.format(job.job_name))
+                self.run_job(label=label, xyz=job.xyz, level_of_theory=job.level_of_theory, job_type=job.job_type,
+                             fine=job.fine, software=job.software, shift=job.shift, trsh=job.trsh, memory=job.memory,
+                             conformer=job.conformer, ess_trsh_methods=job.ess_trsh_methods, scan=job.scan,
+                             pivots=job.pivots, occ=job.occ, scan_trsh=job.scan_trsh, scan_res=job.scan_res,
+                             max_job_time=job.max_job_time)
             if job_name in self.running_jobs[label]:
                 self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
         if job.job_status[0] != 'running' and job.job_status[1] != 'running':
@@ -1393,6 +1397,13 @@ class Scheduler(object):
             job.troubleshoot_server()
             if job.job_name not in self.running_jobs[label]:
                 self.running_jobs[label].append(job.job_name)  # mark as a running job
+        elif 'Ran out of disk space' in job.job_status[1]:
+            self.output[label]['status'] += '; Error: Could not troubleshoot {job_type} for {label}! ' \
+                                            ' The job ran out of disc space on {server}'.format(
+                job_type=job_type, label=label, methods=job.ess_trsh_methods, server=job.server)
+            logging.error('Could not troubleshoot {job_type} for {label}! The job ran out of disc space on '
+                          '{server}'.format(job_type=job_type, label=label, methods=job.ess_trsh_methods,
+                                            server=job.server))
         elif job.software == 'gaussian':
             if 'l103 internal coordinate error' in job.job_status[1]\
                     and 'cartesian' not in job.ess_trsh_methods and job_type == 'opt':
@@ -1494,9 +1505,9 @@ class Scheduler(object):
                 logging.error('Could not troubleshoot geometry optimization for {label}! Tried'
                               ' troubleshooting with the following methods: {methods}'.format(
                                label=label, methods=job.ess_trsh_methods))
-                self.output[label]['status'] += '; Error: Could not troubleshoot geometry optimization for {label}! ' \
+                self.output[label]['status'] += '; Error: Could not troubleshoot {job_type} for {label}! ' \
                                                 ' Tried troubleshooting with the following methods: {methods}'.format(
-                                                 label=label, methods=job.ess_trsh_methods)
+                                                job_type=job_type, label=label, methods=job.ess_trsh_methods)
         elif job.software == 'qchem':
             if 'max opt cycles reached' in job.job_status[1] and 'max_cycles' not in job.ess_trsh_methods:
                 # this is a common error, increase max cycles and continue running from last geometry
@@ -1551,9 +1562,9 @@ class Scheduler(object):
                 logging.error('Could not troubleshoot geometry optimization for {label}! Tried'
                               ' troubleshooting with the following methods: {methods}'.format(
                                 label=label, methods=job.ess_trsh_methods))
-                self.output[label]['status'] += '; Error: Could not troubleshoot geometry optimization for {label}! ' \
+                self.output[label]['status'] += '; Error: Could not troubleshoot {job_type} for {label}! ' \
                                                 ' Tried troubleshooting with the following methods: {methods}'.format(
-                                                 label=label, methods=job.ess_trsh_methods)
+                                                job_type=job_type, label=label, methods=job.ess_trsh_methods)
         elif 'molpro' in job.software:
             if 'additional memory (mW) required' in job.job_status[1]:
                 # Increase memory allocation.
@@ -1627,9 +1638,9 @@ class Scheduler(object):
                 logging.error('Could not troubleshoot geometry optimization for {label}! Tried'
                               ' troubleshooting with the following methods: {methods}'.format(
                                label=label, methods=job.ess_trsh_methods))
-                self.output[label]['status'] += '; Error: Could not troubleshoot geometry optimization for {label}! ' \
+                self.output[label]['status'] += '; Error: Could not troubleshoot {job_type} for {label}! ' \
                                                 ' Tried troubleshooting with the following methods: {methods}'.format(
-                                                 label=label, methods=job.ess_trsh_methods)
+                                                job_type=job_type, label=label, methods=job.ess_trsh_methods)
 
     def delete_all_species_jobs(self, label):
         """
