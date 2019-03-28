@@ -176,7 +176,6 @@ class Processor(object):
         species_for_thermo_lib = list()
         for species in self.species_dict.values():
             if not species.is_ts and 'ALL converged' in self.output[species.label]['status']:
-                species_for_thermo_lib.append(species)
                 output_file_path = self._generate_arkane_species_file(species)
                 unique_arkane_species_label = False
                 while not unique_arkane_species_label:
@@ -201,6 +200,7 @@ class Processor(object):
                     thermo_job.execute(outputFile=output_file_path, plot=False)
                     species.thermo = arkane_spc.getThermoData()
                     plotter.log_thermo(species.label, path=output_file_path)
+                    species_for_thermo_lib.append(species)
 
                 species.rmg_species = Species(molecule=[species.mol])
                 species.rmg_species.reactive = True
