@@ -859,7 +859,7 @@ $end
         if self.settings['ssh']:
             if servers[self.server]['cluster_soft'].lower() == 'oge':
                 # delete present server run
-                logging.error('Job {name} has server status {stat} on {server}. Troubleshooting by changing node.'.format(
+                logging.error('Job {name} has server status "{stat}" on {server}. Troubleshooting by changing node.'.format(
                     name=self.job_name, stat=self.job_status[0], server=self.server))
                 ssh = SSH_Client(self.server)
                 ssh.send_command_to_server(command=delete_command[servers[self.server]['cluster_soft']] +
@@ -893,7 +893,7 @@ $end
             elif servers[self.server]['cluster_soft'].lower() == 'slurm':
                 # TODO: change node on Slurm
                 # delete present server run
-                logging.error('Job {name} has server status {stat} on {server}. Re-running job.'.format(
+                logging.error('Job {name} has server status "{stat}" on {server}. Re-running job.'.format(
                     name=self.job_name, stat=self.job_status[0], server=self.server))
                 ssh = SSH_Client(self.server)
                 ssh.send_command_to_server(command=delete_command[servers[self.server]['cluster_soft']] +
