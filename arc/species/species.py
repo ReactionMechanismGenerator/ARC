@@ -194,7 +194,7 @@ class ARCSpecies(object):
                             keep_isomorphic=False, filter_structures=True)
                     self.mol_list = self.rmg_species.molecule
                     logging.info('Using localized structure {0} of species {1} for BAC determination. To use a'
-                                 ' different  structure, pass the RMG:Molecule object in the `mol` parameter'.format(
+                                 ' different structure, pass the RMG:Molecule object in the `mol` parameter'.format(
                                     self.mol.toSMILES(), self.label))
                 self.multiplicity = self.rmg_species.molecule[0].multiplicity
                 self.charge = self.rmg_species.molecule[0].getNetCharge()
@@ -381,7 +381,12 @@ class ARCSpecies(object):
         self.optical_isomers = species_dict['optical_isomers'] if 'optical_isomers' in species_dict else None
         self.neg_freqs_trshed = species_dict['neg_freqs_trshed'] if 'neg_freqs_trshed' in species_dict else list()
         self.bond_corrections = species_dict['bond_corrections'] if 'bond_corrections' in species_dict else dict()
-        self.mol = Molecule().fromAdjacencyList(str(species_dict['mol'])) if 'mol' in species_dict else None
+        try:
+            self.mol = Molecule().fromAdjacencyList(str(species_dict['mol'])) if 'mol' in species_dict else None
+        except ValueError:
+            logging.error('Could not read RMG adjacency list {0}'.format(species_dict['mol'] if 'mol'
+                                                                         in species_dict else None))
+            self.mol = None
         smiles = species_dict['smiles'] if 'smiles' in species_dict else None
         inchi = species_dict['inchi'] if 'inchi' in species_dict else None
         adjlist = species_dict['adjlist'] if 'adjlist' in species_dict else None
@@ -613,7 +618,7 @@ class ARCSpecies(object):
         """
         Determine external symmetry and optical isomers
         """
-        xyz = self.final_xyz if self.final_xyz is not None else self.initial_xyz
+        xyz = self.final_xyz or self.initial_xyz
         atom_numbers = list()  # List of atomic numbers
         coordinates = list()
         for line in xyz.split('\n'):
@@ -662,7 +667,7 @@ class ARCSpecies(object):
         elif smiles:
             mol = Molecule(SMILES=smiles)
             self.multiplicity = mol.multiplicity
-        elif self.initial_xyz:
+        elif self.initial_xyz is not None:
             _, atoms, _, _, _ = get_xyz_matrix(self.initial_xyz)
             electrons = 0
             for atom in atoms:
