@@ -779,30 +779,30 @@ $end
                             reason = ''
                             if 'l9999.exe' in line or 'l103.exe' in line:
                                 return 'unconverged'
-                            if 'l502.exe' in line:
+                            elif 'l502.exe' in line:
                                 return 'unconverged SCF'
-                            if 'l103.exe' in line:
+                            elif 'l103.exe' in line:
                                 return 'l103 internal coordinate error'
-                            if 'Erroneous write' in line or 'Write error in NtrExt1' in line:
+                            elif 'Erroneous write' in line or 'Write error in NtrExt1' in line:
                                 reason = 'Ran out of disk space.'
-                            if 'l716.exe' in line:
+                            elif 'l716.exe' in line:
                                 reason = 'Angle in z-matrix outside the allowed range 0 < x < 180.'
-                            if 'l301.exe' in line:
+                            elif 'l301.exe' in line:
                                 reason = 'Input Error. Either charge, multiplicity, or basis set was not specified ' \
                                          'correctly. Or, an atom specified does not match any standard atomic symbol.'
-                            if 'NtrErr Called from FileIO' in line:
+                            elif 'NtrErr Called from FileIO' in line:
                                 reason = 'Operation on .chk file was specified, but .chk was not found.'
-                            if 'l101.exe' in line:
+                            elif 'l101.exe' in line:
                                 reason = 'Input Error. The blank line after the coordinate section is missing, ' \
                                          'or charge/multiplicity was not specified correctly.'
-                            if 'l202.exe' in line:
+                            elif 'l202.exe' in line:
                                 reason = 'During the optimization process, either the standard orientation ' \
                                          'or the point group of the molecule has changed.'
-                            if 'l401.exe' in line:
+                            elif 'l401.exe' in line:
                                 reason = 'The projection from the old to the new basis set has failed.'
-                            if 'malloc failed' in line or 'galloc' in line:
+                            elif 'malloc failed' in line or 'galloc' in line:
                                 reason = 'Memory allocation failed (did you ask for too much?)'
-                            if 'A SYNTAX ERROR WAS DETECTED' in line:
+                            elif 'A SYNTAX ERROR WAS DETECTED' in line:
                                 reason = 'Check .inp carefully for syntax errors in keywords.'
                             return 'errored: {0}; {1}'.format(line, reason)
                     return 'errored: Unknown reason'
