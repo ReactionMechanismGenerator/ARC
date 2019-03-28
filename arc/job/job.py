@@ -673,10 +673,79 @@ $end
                 ess_status = self._check_job_ess_status()
             except IOError:
                 logging.error('Got an IOError when trying to download output file for job {0}.'.format(self.job_name))
+                content = self._get_additional_job_info()
+                if content:
+                    logging.info('Got the following information from the server:')
+                    logging.info(content)
+                    for line in content.splitlines():
+                        # example:
+                        # slurmstepd: *** JOB 7752164 CANCELLED AT 2019-03-27T00:30:50 DUE TO TIME LIMIT on node096 ***
+                        if 'cancelled' in line.lower() and 'due to time limit' in line.lower():
+                            logging.warning('Looks like the job was cancelled on {0} due to time limit. '
+                                            'Got: {1}'.format(self.server, line))
+                            new_max_job_time = self.max_job_time - 24 if self.max_job_time > 25 else 1
+                            logging.warning('Setting max job time to {0} (was {1})'.format(new_max_job_time,
+                                                                                           self.max_job_time))
+                            self.max_job_time = new_max_job_time
                 raise
         elif server_status == 'running':
             ess_status = 'running'
         self.job_status = [server_status, ess_status]
+
+    def _get_additional_job_info(self):
+        """
+        Download the additional information of stdout and stderr from the server
+        """
+        lines1, lines2 = list(), list()
+        content = ''
+        ssh = SSH_Client(self.server)
+        cluster_soft = servers[self.server]['cluster_soft'].lower()
+        if cluster_soft in ['oge', 'sge']:
+            remote_file_path = os.path.join(self.remote_path, 'out.txt')
+            local_file_path1 = os.path.join(self.local_path, 'out.txt')
+            try:
+                ssh.download_file(remote_file_path=remote_file_path, local_file_path=local_file_path1)
+            except (TypeError, IOError) as e:
+                logging.warning('Got the following error when trying to download out.txt for {0}:'.format(self.job_name))
+                logging.warning(e.message)
+            remote_file_path = os.path.join(self.remote_path, 'err.txt')
+            local_file_path2 = os.path.join(self.local_path, 'err.txt')
+            try:
+                ssh.download_file(remote_file_path=remote_file_path, local_file_path=local_file_path2)
+            except (TypeError, IOError) as e:
+                logging.warning('Got the following error when trying to download err.txt for {0}:'.format(self.job_name))
+                logging.warning(e.message)
+            if os.path.isfile(local_file_path1):
+                with open(local_file_path1, 'r') as f:
+                    lines1 = f.readlines()
+            if os.path.isfile(local_file_path2):
+                with open(local_file_path2, 'r') as f:
+                    lines2 = f.readlines()
+            content += ''.join([line for line in lines1])
+            content += '\n'
+            content += ''.join([line for line in lines2])
+        elif cluster_soft == 'slurm':
+            respond = ssh.send_command_to_server(command='ls -alF', remote_path=self.remote_path)
+            files = list()
+            for line in respond[0][0].splitlines():
+                files.append(line.split()[-1])
+            for file in files:
+                if 'slurm' in file and '.out' in file:
+                    remote_file_path = os.path.join(self.remote_path, file)
+                    local_file_path = os.path.join(self.local_path, file)
+                    try:
+                        ssh.download_file(remote_file_path=remote_file_path, local_file_path=local_file_path)
+                    except (TypeError, IOError) as e:
+                        logging.warning('Got the following error when trying to download {0} for {1}:'.format(
+                            file, self.job_name))
+                        logging.warning(e.message)
+                    if os.path.isfile(local_file_path):
+                        with open(local_file_path, 'r') as f:
+                            lines1 = f.readlines()
+                    content += ''.join([line for line in lines1])
+                    content += '\n'
+        return content
+
 
     def _check_job_server_status(self):
         """
