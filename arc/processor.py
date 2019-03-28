@@ -192,7 +192,10 @@ class Processor(object):
                 stat_mech_job.applyBondEnergyCorrections = self.use_bac
                 stat_mech_job.modelChemistry = self.model_chemistry
                 stat_mech_job.frequencyScaleFactor = assign_frequency_scale_factor(self.model_chemistry)
-                stat_mech_job.execute(outputFile=output_file_path, plot=False)
+                try:
+                    stat_mech_job.execute(outputFile=output_file_path, plot=False)
+                except Exception:
+                    continue
                 if species.generate_thermo:
                     thermo_job = ThermoJob(arkane_spc, 'NASA')
                     thermo_job.execute(outputFile=output_file_path, plot=False)
