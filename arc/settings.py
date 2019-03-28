@@ -41,6 +41,7 @@ servers = {
         'address': 'server2.host.edu',
         'un': '<username>',
         'key': 'path_to_rsa_key',
+        'cpus': 48,  # optional (default: 8)
     }
 }
 

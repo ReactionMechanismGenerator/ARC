@@ -353,8 +353,18 @@ class Job(object):
             t_max = '{0}:00:00'.format(self.max_job_time)
         else:
             raise JobError('Could not determine format for maximal job time')
+        cpus = servers[self.server]['cpus'] if 'cpus' in servers[self.server] else 8
+        architecture = ''
+        if self.server.lower() == 'pharos':
+            # here we're hard-coding ARC for Pharos, a Green Group server
+            # If your server has different node architectures, implement something similar
+            if cpus <= 8:
+                architecture = '\n#$ -l harpertown'
+            else:
+                architecture = '\n#$ -l magnycours'
         self.submit = submit_scripts[servers[self.server]['cluster_soft']][self.software.lower()].format(
-            name=self.job_server_name, un=un, t_max=t_max, mem_cpu=min(int(self.memory * 150), 16000))
+            name=self.job_server_name, un=un, t_max=t_max, mem_cpu=min(int(self.memory * 150), 16000), cpus=cpus,
+            architecture=architecture)
         # Memory convertion: multiply MW value by 1200 to conservatively get it in MB, then divide by 8 to get per cup
         if not os.path.exists(self.local_path):
             os.makedirs(self.local_path)
@@ -577,9 +587,10 @@ $end
                     raise e
         else:
             try:
+                cpus = servers[self.server]['cpus'] if 'cpus' in servers[self.server] else 8
                 self.input = self.input.format(memory=self.memory, method=self.method, slash=slash,
                                                basis=self.basis_set, charge=self.charge, multiplicity=self.multiplicity,
-                                               spin=self.spin, xyz=self.xyz, job_type_1=job_type_1,
+                                               spin=self.spin, xyz=self.xyz, job_type_1=job_type_1, cpus=cpus,
                                                job_type_2=job_type_2, scan=scan_string, restricted=restricted, fine=fine,
                                                shift=self.shift, trsh=self.trsh, scan_trsh=self.scan_trsh)
             except KeyError as e:
