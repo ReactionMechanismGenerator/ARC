@@ -31,12 +31,12 @@ WorkDir=/scratch/users/{un}/$SLURM_JOB_NAME-$SLURM_JOB_ID
 SubmitDir=`pwd`
 
 GAUSS_SCRDIR=/scratch/users/{un}/g09/$SLURM_JOB_NAME-$SLURM_JOB_ID
-export  GAUSS_SCRDIR
+export GAUSS_SCRDIR
 
 mkdir -p $GAUSS_SCRDIR
 mkdir -p $WorkDir
 
-cd  $WorkDir
+cd $WorkDir
 . $g09root/g09/bsd/g09.profile
 
 cp $SubmitDir/input.gjf .
@@ -79,7 +79,7 @@ WorkDir=/scratch/users/{un}/$SLURM_JOB_NAME-$SLURM_JOB_ID
 SubmitDir=`pwd`
 
 mkdir -p $WorkDir
-cd  $WorkDir
+cd $WorkDir
 
 cp $SubmitDir/input.inp .
 

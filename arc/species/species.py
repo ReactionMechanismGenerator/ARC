@@ -50,7 +50,7 @@ class ARCSpecies(object):
     `number_of_rotors`      ``int``      The number of potential rotors to scan
     `rotors_dict`           ``dict``     A dictionary of rotors. structure given below.
     `conformers`            ``list``     A list of selected conformers XYZs
-    `conformer_energies`    ``list``     A list of conformers E0 (Hartree)
+    `conformer_energies`    ``list``     A list of conformers E0 (in J/mol)
     `initial_xyz`           ``string``   The initial geometry guess
     `final_xyz`             ``string``   The optimized species geometry
     `opt_level`             ``string``   Level of theory for geometry optimization. Saved for archiving.
@@ -106,11 +106,13 @@ class ARCSpecies(object):
     def __init__(self, is_ts=False, rmg_species=None, mol=None, label=None, xyz=None, multiplicity=None, charge=None,
                  smiles='', adjlist='', inchi='', bond_corrections=None, generate_thermo=True, species_dict=None,
                  yml_path=None, ts_methods=None, ts_number=None, rxn_label=None, external_symmetry=None,
-                 optical_isomers=None, run_time=None):
+                 optical_isomers=None, run_time=None, conformers_path=None):
         self.t1 = None
         self.ts_number = ts_number
         self.conformers = list()
         self.conformer_energies = list()
+        if conformers_path is not None:
+            self.append_conformers(conformers_path)
         self.xyzs = list()  # used for conformer search
         self.thermo = None
         self.rmg_thermo = None
@@ -152,7 +154,7 @@ class ARCSpecies(object):
             self.chosen_ts = None
             self.generate_thermo = generate_thermo if not self.is_ts else False
             self.long_thermo_description = ''
-            self.opt_level = ''
+            self.opt_level = None
             self.ts_report = ''
             self.yml_path = yml_path
             self.final_xyz = ''
@@ -240,7 +242,7 @@ class ARCSpecies(object):
                 # consider the initial guess as one of the conformers if generating others.
                 # otherwise, just consider it as the conformer.
                 self.conformers.append(self.initial_xyz)
-                self.conformer_energies.append(0.0)  # dummy
+                self.conformer_energies.append(None)  # dummy
 
             self.neg_freqs_trshed = list()
 
@@ -259,7 +261,7 @@ class ARCSpecies(object):
         if not isinstance(self.charge, int):
             raise SpeciesError('Charge for species {0} is not an integer (got {1}, a {2})'.format(
                 self.label, self.charge, type(self.charge)))
-        if not self.is_ts and self.initial_xyz is None and self.mol is None:
+        if not self.is_ts and self.initial_xyz is None and self.mol is None and not self.conformers:
             raise SpeciesError('No structure (xyz, SMILES, adjList, RMG:Species, or RMG:Molecule) was given for'
                                ' species {0}'.format(self.label))
         if self.label is None:
@@ -296,7 +298,8 @@ class ARCSpecies(object):
         species_dict['multiplicity'] = self.multiplicity
         species_dict['charge'] = self.charge
         species_dict['generate_thermo'] = self.generate_thermo
-        species_dict['opt_level'] = self.opt_level
+        if self.opt_level is not None:
+            species_dict['opt_level'] = self.opt_level
         species_dict['final_xyz'] = self.final_xyz
         species_dict['number_of_rotors'] = self.number_of_rotors
         species_dict['rotors_dict'] = self.rotors_dict
@@ -371,7 +374,7 @@ class ARCSpecies(object):
             self.generate_thermo = False
         else:
             self.generate_thermo = species_dict['generate_thermo'] if 'generate_thermo' in species_dict else True
-        self.opt_level = species_dict['opt_level'] if 'opt_level' in species_dict else ''
+        self.opt_level = species_dict['opt_level'] if 'opt_level' in species_dict else None
         self.number_of_rotors = species_dict['number_of_rotors'] if 'number_of_rotors' in species_dict else 0
         self.rotors_dict = species_dict['rotors_dict'] if 'rotors_dict' in species_dict else dict()
         self.external_symmetry = species_dict['external_symmetry'] if 'external_symmetry' in species_dict else None
@@ -407,13 +410,15 @@ class ARCSpecies(object):
                 if not self.charge:
                     self.mol_list = self.mol.generate_resonance_structures(keep_isomorphic=False,
                                                                            filter_structures=True)
-        if self.mol is None and self.initial_xyz is None and not self.final_xyz:
+        if 'conformers_path' in species_dict:
+            self.append_conformers(species_dict['conformers_path'])
+        if self.mol is None and self.initial_xyz is None and not self.final_xyz and not self.conformers:
             raise SpeciesError('Must have either mol or xyz for species {0}'.format(self.label))
         if self.initial_xyz is not None and not self.final_xyz:
             # consider the initial guess as one of the conformers if generating others.
             # otherwise, just consider it as the conformer.
             self.conformers.append(self.initial_xyz)
-            self.conformer_energies.append(0.0)  # dummy
+            self.conformer_energies.append(None)  # dummy
 
     def from_yml_file(self, label=None):
         """
@@ -470,7 +475,7 @@ class ARCSpecies(object):
                 self.find_conformers(self.mol)
             for xyz in self.xyzs:
                 self.conformers.append(xyz)
-                self.conformer_energies.append(0.0)  # a placeholder (lists are synced)
+                self.conformer_energies.append(None)  # a placeholder (lists are synced)
         else:
             # generate "conformers" from the results of the different TS guess methods, if successful
             tsg_index = 0
@@ -479,7 +484,7 @@ class ARCSpecies(object):
             for tsg in self.ts_guesses:
                 if tsg.success:
                     self.conformers.append(tsg.xyz)
-                    self.conformer_energies.append(0.0)  # a placeholder (lists are synced)
+                    self.conformer_energies.append(None)  # a placeholder (lists are synced)
                     tsg.index = tsg_index
                     tsg_index += 1
                     self.successful_methods.append(tsg.method)
@@ -844,6 +849,30 @@ class ARCSpecies(object):
             self.mol_list = self.mol.copy(deep=True).generate_resonance_structures(keep_isomorphic=False,
                                                                                    filter_structures=True)
         order_atoms_in_mol_list(ref_mol=self.mol, mol_list=self.mol_list)
+
+    def append_conformers(self, conformers_path):
+        """
+        Populate the conformers and conformer energies lists with data from an ARC's conformers file.
+        The `conformers_path` should direct to either a "conformers_before_optimization" or
+        a "conformers_after_optimization" ARC file.
+        """
+        if not os.path.isfile(conformers_path):
+            raise ValueError('Conformers file {0} could not be opened'.format(conformers_path))
+        with open(conformers_path, 'r') as f:
+            lines = f.readlines()
+        conformer = ''
+        for line in lines:
+            if 'conformer' in line or 'SMILES' in line or 'Failed to converge' in line or line in ['\r', '\n', '\r\n']:
+                continue_reading_conformer = False
+            elif 'Relative Energy' in line:
+                self.conformer_energies.append(float(line.split()[2]) * 1000)  # convert kJ/mol to J/mol
+                continue_reading_conformer = False
+            else:
+                conformer += line
+                continue_reading_conformer = True
+            if not continue_reading_conformer and conformer:
+                self.conformers.append(conformer)
+                conformer = ''
 
 
 class TSGuess(object):

@@ -3,6 +3,7 @@
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
 import logging
+import warnings
 import sys
 import os
 import time
@@ -776,6 +777,8 @@ class ARC(object):
             logging.log(level, 'The current git HEAD for ARC is:')
             logging.log(level, '    {0}\n    {1}\n'.format(head, date))
         logging.info('Starting project {0}'.format(self.project))
+        # ignore Paramiko warnings:
+        warnings.filterwarnings(action='ignore', module='.*paramiko.*')
 
     def log_footer(self, level=logging.INFO):
         """

@@ -63,10 +63,14 @@ class TestScheduler(unittest.TestCase):
         self.sched1.job_dict[label]['conformers'] = dict()
         self.sched1.job_dict[label]['conformers'][0] = self.job1
         self.sched1.job_dict[label]['conformers'][1] = self.job2
+        self.sched1.species_dict[label].conformer_energies = [None, None]
+        self.sched1.species_dict[label].conformers = [None, None]
         self.sched1.parse_conformer_energy(job=self.job1, label=label, i=0)
         self.sched1.parse_conformer_energy(job=self.job2, label=label, i=1)
         expecting = [-251596443.5088726, -254221943.3698632]
         self.assertEqual(self.sched1.species_dict[label].conformer_energies, expecting)
+        self.sched1.species_dict[label].conformers[0] = parser.parse_xyz_from_file(self.job1.local_path_to_output_file)
+        self.sched1.species_dict[label].conformers[1] = parser.parse_xyz_from_file(self.job2.local_path_to_output_file)
 
         self.sched1.determine_most_stable_conformer(label=label)
         expecting = """N      -0.75555952   -0.12937106    0.00000000
@@ -83,20 +87,21 @@ H      -1.16566701    0.32023496   -0.81630508
         self.assertTrue(os.path.isfile(methylamine_conf_path))
         with open(methylamine_conf_path, 'r') as f:
             lines = f.readlines()
-        self.assertEqual(lines[0], 'conformer 0:\n')
-        self.assertEqual(lines[9], 'SMILES: CN\n')
-        self.assertTrue('Relative Energy:' in lines[10])
-        self.assertEqual(lines[14][0], 'N')
+        self.assertTrue('conformers optimized at' in lines[0])
+        self.assertEqual(lines[11], 'SMILES: CN\n')
+        self.assertTrue('Relative Energy:' in lines[12])
+        self.assertEqual(lines[16][0], 'N')
 
         self.sched1.run_conformer_jobs()
+        self.sched1.save_conformers_file(label='C2H6')
         c2h6_conf_path = os.path.join(self.sched1.project_directory, 'output', 'Species', 'C2H6', 'geometry',
                                       'conformers_before_optimization.txt')
         self.assertTrue(os.path.isfile(c2h6_conf_path))
         with open(c2h6_conf_path, 'r') as f:
             lines = f.readlines()
-        self.assertEqual(lines[0][0], 'C')
+        self.assertEqual(lines[1][0], 'C')
         self.assertEqual(lines[9], '\n')
-        self.assertEqual(lines[12][0], 'H')
+        self.assertEqual(lines[17][0], 'H')
 
     def test_check_negative_freq(self):
         """Test the check_negative_freq() method"""

@@ -8,6 +8,7 @@ This module contains unit tests of the arc.species.species module
 from __future__ import (absolute_import, division, print_function, unicode_literals)
 import unittest
 import os
+import shutil
 
 from rmgpy.molecule.molecule import Molecule
 from rmgpy.species import Species
@@ -16,7 +17,9 @@ from rmgpy.reaction import Reaction
 from arc.species.species import ARCSpecies, TSGuess, get_min_energy_conformer,\
     determine_rotor_type, determine_rotor_symmetry, check_species_xyz
 from arc.species.converter import get_xyz_string, get_xyz_matrix, molecules_from_xyz
-from arc.settings import arc_path
+from arc.settings import arc_path, default_levels_of_theory
+from arc.rmgdb import make_rmg_database_object
+from arc.scheduler import Scheduler
 
 ################################################################################
 
@@ -364,7 +367,6 @@ H      -1.67091600   -1.35164600   -0.93286400
                          'charge': 0,
                          'is_ts': False,
                          'final_xyz': '',
-                         'opt_level': '',
                          't1': None,
                          'bond_corrections': {'C-H': 3, 'C-N': 1, 'H-N': 2},
                          'rotors_dict': {}}
@@ -511,6 +513,77 @@ H      -1.69944700    0.93441600   -0.11271200"""
             self.assertEqual(spc.multiplicity, multiplicity_list[i])
             self.assertEqual(spc.mol.multiplicity, multiplicity_list[i])
             self.assertTrue(all([structure.multiplicity == spc.multiplicity for structure in spc.mol_list]))
+
+    def test_append_conformers(self):
+        """Test that ARC correctly parses its own conformer files"""
+        settings = {'gaussian': 'server1', 'molpro': 'server2', 'qchem': 'server1', 'ssh': False}
+        project_directory = os.path.join(arc_path, 'Projects', 'arc_project_for_testing_delete_after_usage4')
+        spc1 = ARCSpecies(label=str('vinoxy'), smiles=str('C=C[O]'))
+        rmgdb = make_rmg_database_object()
+        sched1 = Scheduler(project='project_test', settings=settings, species_list=[spc1],
+                           composite_method='', conformer_level=default_levels_of_theory['conformer'],
+                           opt_level=default_levels_of_theory['opt'], freq_level=default_levels_of_theory['freq'],
+                           sp_level=default_levels_of_theory['sp'], scan_level=default_levels_of_theory['scan'],
+                           ts_guess_level=default_levels_of_theory['ts_guesses'], rmgdatabase=rmgdb,
+                           project_directory=project_directory, generate_conformers=True, testing=True,
+                           orbitals_level=default_levels_of_theory['orbitals'])
+        xyzs = ["""O       1.09068700    0.26516800   -0.16706300
+C       2.92204100   -1.18335700   -0.38884900
+C       2.27655500   -0.00373900    0.08543500
+H       2.36544800   -1.88781000   -0.99914600
+H       3.96112000   -1.38854500   -0.14958800
+H       2.87813500    0.68828400    0.70399400
+""",
+                """O       1.19396100   -0.06003700    0.03890100
+C       3.18797000    0.77061300   -0.87352700
+C       2.43591200   -0.04439300    0.02171600
+H       4.27370000    0.76090200   -0.86286100
+H       2.66641700    1.41155700   -1.57757300
+H       3.00398000   -0.68336800    0.72359800
+""",
+                """O       1.35241100   -1.02956000   -0.24056200
+C      -0.72084300    0.01308200    0.09573000
+C       0.69217700    0.01185100   -0.09044300
+H      -1.25803800   -0.93018100    0.10926800
+H      -1.26861200    0.94177100    0.22420100
+H       1.20290400    0.99303700   -0.09819400
+""",
+                """O      -1.40102900   -0.98575100   -0.11588500
+C       0.72457000   -0.01076700    0.06448800
+C      -0.69494600    0.03450000   -0.06206300
+H       1.22539000   -0.97248000    0.11741200
+H       1.31277400    0.90087100    0.10878400
+H      -1.16675800    1.03362600   -0.11273700"""]
+        energies = [0, 5, 5, 5]  # J/mol
+
+        sched1.save_conformers_file(label='vinoxy', xyzs=xyzs)
+        self.assertTrue(os.path.isfile(os.path.join(project_directory, 'output', 'Species', 'vinoxy', 'geometry',
+                                                    'conformers_before_optimization.txt')))
+
+        sched1.save_conformers_file(label='vinoxy', xyzs=xyzs, energies=energies)
+        self.assertTrue(os.path.isfile(os.path.join(project_directory, 'output', 'Species', 'vinoxy', 'geometry',
+                                                    'conformers_after_optimization.txt')))
+
+        spc2 = ARCSpecies(label=str('vinoxy'), smiles=str('C=C[O]'), conformers_path=os.path.join(project_directory,
+                                'output', 'Species', 'vinoxy', 'geometry', 'conformers_before_optimization.txt'))
+
+        spc3 = ARCSpecies(label=str('vinoxy'), smiles=str('C=C[O]'), conformers_path=os.path.join(project_directory,
+                                'output', 'Species', 'vinoxy', 'geometry', 'conformers_after_optimization.txt'))
+
+        self.assertEqual(spc2.conformers[2], xyzs[2])
+        self.assertEqual(spc3.conformers[2], xyzs[2])
+        self.assertEqual(spc3.conformer_energies[2], energies[2])
+
+    @classmethod
+    def tearDownClass(cls):
+        """
+        A function that is run ONCE after all unit tests in this class.
+        Delete all project directories created during these unit tests
+        """
+        projects = ['arc_project_for_testing_delete_after_usage4']
+        for project in projects:
+            project_directory = os.path.join(arc_path, 'Projects', project)
+            shutil.rmtree(project_directory)
 
 
 class TestTSGuess(unittest.TestCase):
