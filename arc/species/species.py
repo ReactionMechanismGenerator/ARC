@@ -74,7 +74,8 @@ class ARCSpecies(object):
     `ts_guesses`            ``list``     A list of TSGuess objects for each of the specified methods
     `successful_methods`    ``list``     Methods used to generate a TS guess that successfully generated an XYZ guess
     `unsuccessful_methods`  ``list``     Methods used to generate a TS guess that were unsuccessfully
-    `chosen_ts`             ``int``      The TSGuess index corresponding to the chosen TS conformer used for optimization
+    `chosen_ts`             ``int``      The TSGuess index corresponding to the chosen TS conformer used for
+                                            optimization
     `chosen_ts_method`      ``str``      The TS method that was actually used for optimization
     `ts_conf_spawned`       ``bool``     Whether conformers were already spawned for the Species (representing a TS)
                                            based on its TSGuess objects
@@ -195,22 +196,24 @@ class ARCSpecies(object):
                                     self.mol.toSMILES(), self.label))
                 self.multiplicity = self.rmg_species.molecule[0].multiplicity
                 self.charge = self.rmg_species.molecule[0].getNetCharge()
-            else:
-                # parameters were entered directly, not via an RMG:Species object
+
+            if label is not None:
                 self.label = label
-                if self.mol is None:
-                    if adjlist:
-                        self.mol = Molecule().fromAdjacencyList(adjlist=adjlist)
-                    elif inchi:
-                        self.mol = rmg_mol_from_inchi(inchi)
-                    elif smiles:
-                        self.mol = Molecule(SMILES=smiles)
-                if not self.is_ts and self.mol is None and self.generate_thermo:
-                    logging.warn('No structure (SMILES, adjList, RMG:Species, or RMG:Molecule) was given for species'
-                                 ' {0}, NOT using bond additivity corrections (BAC) for thermo computation.'.format(
-                        self.label))
+            if multiplicity is not None:
                 self.multiplicity = multiplicity
+            if charge is not None:
                 self.charge = charge
+            if self.mol is None:
+                if adjlist:
+                    self.mol = Molecule().fromAdjacencyList(adjlist=adjlist)
+                elif inchi:
+                    self.mol = rmg_mol_from_inchi(inchi)
+                elif smiles:
+                    self.mol = Molecule(SMILES=smiles)
+            if not self.is_ts and self.mol is None and self.generate_thermo:
+                logging.warning('No structure (SMILES, adjList, RMG:Species, or RMG:Molecule) was given for species'
+                                ' {0}, NOT using bond additivity corrections (BAC) for thermo computation.'
+                                .format(self.label))
 
             if not self.is_ts:
                 # Perceive molecule from xyz coordinates
@@ -227,10 +230,11 @@ class ARCSpecies(object):
                 self.number_of_atoms = len(self.mol.atoms)
                 if self.mol_list is None:
                     mol_copy = self.mol.copy(deep=True)
-                    self.mol_list = mol_copy.generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
+                    self.mol_list = mol_copy.generate_resonance_structures(keep_isomorphic=False,
+                                                                           filter_structures=True)
             elif not self.bond_corrections and self.generate_thermo:
-                logging.warn('Cannot determine bond additivity corrections (BAC) for species {0} based on xyz'
-                             ' coordinates only. For better thermoproperties, provide bond corrections.')
+                logging.warning('Cannot determine bond additivity corrections (BAC) for species {0} based on xyz'
+                                ' coordinates only. For better thermoproperties, provide bond corrections.')
 
             if self.initial_xyz is not None:
                 # consider the initial guess as one of the conformers if generating others.
@@ -258,7 +262,7 @@ class ARCSpecies(object):
         if not self.is_ts and self.initial_xyz is None and self.mol is None:
             raise SpeciesError('No structure (xyz, SMILES, adjList, RMG:Species, or RMG:Molecule) was given for'
                                ' species {0}'.format(self.label))
-        if self.label is None :
+        if self.label is None:
             raise SpeciesError('A label must be specified for an ARCSpecies object.')
         # Check that `label` is valid, since it is used for folder names
         for char in self.label:
@@ -518,7 +522,7 @@ class ARCSpecies(object):
             try:
                 rd_xyzs, rd_energies = _get_possible_conformers_rdkit(mol)
             except ValueError as e:
-                logging.warn('Could not generate RDkit conformers for {0}, failed with: {1}'.format(
+                logging.warning('Could not generate RDkit conformers for {0}, failed with: {1}'.format(
                     self.label, e.message))
             if rd_xyzs:
                 rd_xyz = get_min_energy_conformer(xyzs=rd_xyzs, energies=rd_energies)
@@ -567,8 +571,8 @@ class ARCSpecies(object):
         `pivots` is used to identify the rotor.
         """
         if deg_increment == 0:
-            logging.warning('set_dihedral was called with zero increment for {label} with pivots {pivots}'.format(
-                label=self.label, pivots=pivots))
+            logging.warning('set_dihedral was called with zero increment for {label} with pivots {pivots}'
+                            .format(label=self.label, pivots=pivots))
             for rotor in self.rotors_dict.values():  # penalize this rotor to avoid inf. looping
                 if rotor['pivots'] == pivots:
                     rotor['times_dihedral_set'] += 1
@@ -633,14 +637,14 @@ class ARCSpecies(object):
             optical_isomers = 2 if pg.chiral else optical_isomers
         self.optical_isomers = self.optical_isomers if self.optical_isomers is not None else optical_isomers
         if self.optical_isomers != optical_isomers:
-            logging.warn("User input of optical isomers for {0} and ARC's calculation differ: {1} and {2},"
-                         " respectively. Using the user input of {1}".format(
-                self.label, self.optical_isomers, optical_isomers))
+            logging.warning("User input of optical isomers for {0} and ARC's calculation differ: {1} and {2},"
+                            " respectively. Using the user input of {1}"
+                            .format(self.label, self.optical_isomers, optical_isomers))
         self.external_symmetry = self.external_symmetry if self.external_symmetry is not None else symmetry
         if self.external_symmetry != symmetry:
-            logging.warn("User input of external symmetry for {0} and ARC's calculation differ: {1} and {2},"
-                         " respectively. Using the user input of {1}".format(
-                self.label, self.external_symmetry, symmetry))
+            logging.warning("User input of external symmetry for {0} and ARC's calculation differ: {1} and {2},"
+                            " respectively. Using the user input of {1}"
+                            .format(self.label, self.external_symmetry, symmetry))
 
     def determine_multiplicity(self, smiles, adjlist, mol):
         if mol:
@@ -827,6 +831,8 @@ class ARCSpecies(object):
                                  'Got xyz:\n{0}\n\nwhich corresponds to {1}\n{2}\n\nand: {3}\n{4}'.format(
                                    xyz, self.mol.toSMILES(), self.mol.toAdjacencyList(),
                                    original_mol.toSMILES(), original_mol.toAdjacencyList()))
+            if self.mol is None:
+                self.mol = original_mol  # todo: Atom order will not be correct, need fix
         else:
             self.mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
 
@@ -952,12 +958,12 @@ class TSGuess(object):
         self.family = ts_dict['family'] if 'family' in ts_dict else None
         if self.family is None and self.method.lower() in ['kinbot', 'autotst']:
             # raise TSError('No family specified for method {0}'.format(self.method))
-            logging.warn('No family specified for method {0}'.format(self.method))
+            logging.warning('No family specified for method {0}'.format(self.method))
         self.rmg_reaction = ts_dict['rmg_reaction'] if 'rmg_reaction' in ts_dict else None
         if self.rmg_reaction is not None:
             plus = ' + '
             arrow = ' <=> '
-            if not arrow in self.rmg_reaction:
+            if arrow not in self.rmg_reaction:
                 raise TSError('Could not read the reaction string. Expected to find " <=> ". '
                               'Got: {0}'.format(self.rmg_reaction))
             sides = self.rmg_reaction.split(arrow)
