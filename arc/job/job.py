@@ -7,7 +7,7 @@ import csv
 import logging
 
 from arc.settings import arc_path, servers, submit_filename, delete_command, t_max_format,\
-    input_filename, output_filename, rotor_scan_resolution, list_available_nodes_command
+    input_filename, output_filename, rotor_scan_resolution, list_available_nodes_command, levels_ess
 from arc.job.submit import submit_scripts
 from arc.job.inputs import input_files
 from arc.job.ssh import SSH_Client
@@ -24,7 +24,7 @@ class Job(object):
     Attribute        Type                Description
     ================ =================== ===============================================================================
     `project`         ``str``            The project's name. Used for naming the directory.
-    `settings`        ``dict``           A dictionary of available servers and software
+    `ess_settings`    ``dict``           A dictionary of available ESS and a corresponding server list
     `species_name`    ``str``            The species/TS name. Used for naming the directory.
     `charge`          ``int``            The species net charge. Default is 0
     `multiplicity`    ``int``            The species multiplicity.
@@ -77,13 +77,13 @@ class Job(object):
     The job ess (electronic structure software calculation) status is in  job.job_status[0] and can be
     either `initializing` / `running` / `errored: {error type / message}` / `unconverged` / `done`
     """
-    def __init__(self, project, settings, species_name, xyz, job_type, level_of_theory, multiplicity, project_directory,
+    def __init__(self, project, ess_settings, species_name, xyz, job_type, level_of_theory, multiplicity, project_directory,
                  charge=0, conformer=-1, fine=False, shift='', software=None, is_ts=False, scan='', pivots=None,
                  memory=1500, comments='', trsh='', scan_trsh='', ess_trsh_methods=None, initial_trsh=None, job_num=None,
                  job_server_name=None, job_name=None, job_id=None, server=None, initial_time=None, occ=None,
                  max_job_time=120, scan_res=None):
         self.project = project
-        self.settings=settings
+        self.ess_settings = ess_settings
         self.initial_time = initial_time
         self.final_time = None
         self.run_time = None
@@ -126,60 +126,72 @@ class Job(object):
             self.software = self.software.lower()
         else:
             if job_type == 'orbitals':
-                if not 'qchem' in self.settings:
+                # currently we only have a script to print orbitals on QChem,
+                # could/should definately be elaborated to additional ESS
+                if 'qchem' not in self.ess_settings.keys():
                     logging.debug('Could not find the QChem software to compute molecular orbitals')
                     self.software = None
-                self.software = 'qchem'
-            if job_type == 'composite':
-                if not self.settings['gaussian']:
+                else:
+                    self.software = 'qchem'
+            elif job_type == 'composite':
+                if 'gaussian' not in self.ess_settings.keys():
                     raise JobError('Could not find the Gaussian software to run the composite method {0}'.format(
                         self.method))
                 self.software = 'gaussian'
-            elif job_type in ['conformer', 'opt', 'freq', 'optfreq', 'sp']:
-                if 'ccs' in self.method or 'cis' in self.method or 'pv' in self.basis_set:
-                    if self.settings['molpro']:
-                        self.software = 'molpro'
-                    elif self.settings['gaussian']:
+            else:
+                # use the levels_ess dictionary from settings.py:
+                for ess, phrase_list in levels_ess.items():
+                    for phrase in phrase_list:
+                        if phrase in self.level_of_theory:
+                            self.software = ess.lower()
+            if self.software is None:
+                # otherwise, deduce which software to use base on hard coded heuristics
+                if job_type in ['conformer', 'opt', 'freq', 'optfreq', 'sp']:
+                    if 'ccs' in self.method or 'cis' in self.method or 'pv' in self.basis_set:
+                        if 'molpro' in self.ess_settings.keys():
+                            self.software = 'molpro'
+                        elif 'gaussian' in self.ess_settings.keys():
+                            self.software = 'gaussian'
+                        elif 'qchem' in self.ess_settings.keys():
+                            self.software = 'qchem'
+                    elif 'b3lyp' in self.method:
+                        if 'gaussian' in self.ess_settings.keys():
+                            self.software = 'gaussian'
+                        elif 'qchem' in self.ess_settings.keys():
+                            self.software = 'qchem'
+                        elif 'molpro' in self.ess_settings.keys():
+                            self.software = 'molpro'
+                    elif 'wb97xd' in self.method:
+                        if 'gaussian' not in self.ess_settings.keys():
+                            raise JobError('Could not find the Gaussian software to run {0}/{1}'.format(
+                                self.method, self.basis_set))
                         self.software = 'gaussian'
-                    elif self.settings['qchem']:
+                    elif 'b97' in self.method or 'm06-2x' in self.method or 'def2' in self.basis_set:
+                        if 'qchem' not in self.ess_settings.keys():
+                            raise JobError('Could not find the QChem software to run {0}/{1}'.format(
+                                self.method, self.basis_set))
                         self.software = 'qchem'
-                elif 'b3lyp' in self.method:
-                    if self.settings['gaussian']:
+                elif job_type == 'scan':
+                    if 'wb97xd' in self.method:
+                        if 'gaussian' not in self.ess_settings.keys():
+                            raise JobError('Could not find the Gaussian software to run {0}/{1}'.format(
+                                self.method, self.basis_set))
                         self.software = 'gaussian'
-                    elif self.settings['qchem']:
+                    elif 'b97' in self.method or 'm06-2x' in self.method or 'def2' in self.basis_set:
+                        if 'qchem' not in self.ess_settings.keys():
+                            raise JobError('Could not find the QChem software to run {0}/{1}'.format(
+                                self.method, self.basis_set))
                         self.software = 'qchem'
-                    elif self.settings['molpro']:
-                        self.software = 'molpro'
-                elif 'wb97xd' in self.method:
-                    if not self.settings['gaussian']:
-                        raise JobError('Could not find the Gaussian software to run {0}/{1}'.format(
-                            self.method, self.basis_set))
-                    self.software = 'gaussian'
-                elif 'b97' in self.method or 'm06-2x' in self.method or 'def2' in self.basis_set:
-                    if not self.settings['qchem']:
-                        raise JobError('Could not find the QChem software to run {0}/{1}'.format(
-                            self.method, self.basis_set))
-                    self.software = 'qchem'
-            elif job_type == 'scan':
-                if 'wb97xd' in self.method:
-                    if not self.settings['gaussian']:
-                        raise JobError('Could not find the Gaussian software to run {0}/{1}'.format(
-                            self.method, self.basis_set))
-                    self.software = 'gaussian'
-                elif 'b97' in self.method or 'm06-2x' in self.method or 'def2' in self.basis_set:
-                    if not self.settings['qchem']:
-                        raise JobError('Could not find the QChem software to run {0}/{1}'.format(
-                            self.method, self.basis_set))
-                    self.software = 'qchem'
-                else:
-                    if self.settings['gaussian']:
-                        self.software = 'gaussian'
                     else:
-                        self.software = 'qchem'
-            elif job_type in ['gsm', 'irc']:
-                if not self.settings['gaussian']:
-                    raise JobError('Could not find the Gaussian software to run {0}'.format(job_type))
+                        if 'gaussian' in self.ess_settings.keys():
+                            self.software = 'gaussian'
+                        else:
+                            self.software = 'qchem'
+                elif job_type in ['gsm', 'irc']:
+                    if 'gaussian' not in self.ess_settings.keys():
+                        raise JobError('Could not find the Gaussian software to run {0}'.format(job_type))
         if self.software is None:
+            # if still no software was determined, just try by order, if exists: Gaussian > QChem > Molpro
             logging.error('job_num: {0}'.format(self.job_num))
             logging.error('ess_trsh_methods: {0}'.format(self.ess_trsh_methods))
             logging.error('trsh: {0}'.format(self.trsh))
@@ -190,18 +202,18 @@ class Job(object):
             logging.error('method: {0}'.format(self.method))
             logging.error('basis_set: {0}'.format(self.basis_set))
             logging.error('Could not determine software for job {0}'.format(self.job_name))
-            if self.settings['gaussian']:
+            if 'gaussian' in self.ess_settings.keys():
                 logging.error('Setting it to gaussian')
                 self.software = 'gaussian'
-            elif self.settings['qchem']:
+            elif 'qchem' in self.ess_settings.keys():
                 logging.error('Setting it to qchem')
                 self.software = 'qchem'
-            elif self.settings['molpro']:
+            elif 'molpro' in self.ess_settings.keys():
                 logging.error('Setting it to molpro')
                 self.software = 'molpro'
 
-        if self.settings['ssh']:
-            self.server = server if server is not None else self.settings[self.software]
+        if self.ess_settings['ssh']:
+            self.server = server if server is not None else self.ess_settings[self.software][0]
         else:
             self.server = None
 
@@ -370,7 +382,7 @@ class Job(object):
             os.makedirs(self.local_path)
         with open(os.path.join(self.local_path, submit_filename[servers[self.server]['cluster_soft']]), 'wb') as f:
             f.write(self.submit)
-        if self.settings['ssh']:
+        if self.ess_settings['ssh']:
             self._upload_submit_file()
 
     def write_input_file(self):
@@ -464,7 +476,8 @@ wf,spin={spin},charge={charge};}}
             else:
                 job_type_1 = 'opt'
             if 'PRINT_ORBITALS' not in self.trsh:
-                self.trsh += '\n   PRINT_ORBITALS  TRUE\n   GUI           2'
+                self.trsh += '\n   NBO           TRUE\n   RUN_NBO6      TRUE\n   ' \
+                             'PRINT_ORBITALS  TRUE\n   GUI           2'
 
         elif self.job_type == 'freq':
             if self.software == 'gaussian':
@@ -600,7 +613,7 @@ $end
             os.makedirs(self.local_path)
         with open(os.path.join(self.local_path, input_filename[self.software]), 'wb') as f:
             f.write(self.input)
-        if self.settings['ssh']:
+        if self.ess_settings['ssh']:
             self._upload_input_file()
 
     def _upload_submit_file(self):
@@ -644,7 +657,7 @@ $end
         self.write_submit_script()
         logging.debug('writing input file...')
         self.write_input_file()
-        if self.settings['ssh']:
+        if self.ess_settings['ssh']:
             ssh = SSH_Client(self.server)
             logging.debug('submitting job...')
             # submit_job returns job server status and job server id
@@ -658,7 +671,7 @@ $end
 
     def delete(self):
         logging.debug('Deleting job {name} for {label}'.format(name=self.job_name, label=self.species_name))
-        if self.settings['ssh']:
+        if self.ess_settings['ssh']:
             ssh = SSH_Client(self.server)
             logging.debug('deleting job...')
             ssh.delete_job(self.job_id)
@@ -751,7 +764,7 @@ $end
         """
         Possible statuses: `initializing`, `running`, `errored on node xx`, `done`
         """
-        if self.settings['ssh']:
+        if self.ess_settings['ssh']:
             ssh = SSH_Client(self.server)
             return ssh.check_job_status(self.job_id)
 
@@ -764,7 +777,7 @@ $end
             os.remove(self.local_path_to_output_file)
         if os.path.exists(self.local_path_to_orbitals_file):
             os.remove(self.local_path_to_orbitals_file)
-        if self.settings['ssh']:
+        if self.ess_settings['ssh']:
             self._download_output_file()
         with open(self.local_path_to_output_file, 'rb') as f:
             lines = f.readlines()
@@ -856,7 +869,7 @@ $end
                 return 'errored: Unknown reason'
 
     def troubleshoot_server(self):
-        if self.settings['ssh']:
+        if self.ess_settings['ssh']:
             if servers[self.server]['cluster_soft'].lower() == 'oge':
                 # delete present server run
                 logging.error('Job {name} has server status "{stat}" on {server}. Troubleshooting by changing node.'.format(

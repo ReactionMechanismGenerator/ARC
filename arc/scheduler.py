@@ -63,7 +63,7 @@ class Scheduler(object):
     `scan_rotors`           ``bool``  Whether or not to perform rotor scans
     `run_orbitals`          ``bool``  Whether or not to save the molecular orbitals for visualization (default: Tru
     `output`                ``dict``  Output dictionary with status and final QM file paths for all species
-    `settings`              ``dict``  A dictionary of available servers and software
+    `ess_settings`          ``dict``  A dictionary of available ESS and a correcponding server list
     `initial_trsh`          ``dict``  Troubleshooting methods to try by default. Keys are ESS software, values are trshs
     `restart_dict`          ``dict``  A restart dictionary parsed from a YAML restart file
     `project_directory`     ``str``   Folder path for the project: the input file path or ARC/Projects/project-name
@@ -105,7 +105,7 @@ class Scheduler(object):
              }
     # Note that rotor scans are located under Species.rotors_dict
     """
-    def __init__(self, project, settings, species_list, composite_method, conformer_level, opt_level, freq_level,
+    def __init__(self, project, ess_settings, species_list, composite_method, conformer_level, opt_level, freq_level,
                  sp_level, scan_level, ts_guess_level, orbitals_level, project_directory, rmgdatabase, fine=False,
                  scan_rotors=True, generate_conformers=True, initial_trsh=None, rxn_list=None, restart_dict=None,
                  max_job_time=120, allow_nonisomorphic_2d=False, memory=1500, testing=False, run_orbitals=False):
@@ -115,7 +115,7 @@ class Scheduler(object):
         self.rxn_list = rxn_list if rxn_list is not None else list()
         self.project = project
         self.max_job_time = max_job_time
-        self.settings = settings
+        self.ess_settings = ess_settings
         self.project_directory = project_directory
         self.job_dict = dict()
         self.servers_jobs_ids = list()
@@ -493,7 +493,7 @@ class Scheduler(object):
         pivots = pivots if pivots is not None else list()
         species = self.species_dict[label]
         memory = memory if memory is not None else self.memory
-        job = Job(project=self.project, settings=self.settings, species_name=label, xyz=xyz, job_type=job_type,
+        job = Job(project=self.project, ess_settings=self.ess_settings, species_name=label, xyz=xyz, job_type=job_type,
                   level_of_theory=level_of_theory, multiplicity=species.multiplicity, charge=species.charge, fine=fine,
                   shift=shift, software=software, is_ts=species.is_ts, memory=memory, trsh=trsh,
                   ess_trsh_methods=ess_trsh_methods, scan=scan, pivots=pivots, occ=occ, initial_trsh=self.initial_trsh,
@@ -1487,14 +1487,16 @@ class Scheduler(object):
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
                              job_type=job_type, fine=job.fine, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
                              conformer=conformer)
-            elif 'qchem' not in job.ess_trsh_methods and not job.job_type == 'composite':
+            elif 'qchem' not in job.ess_trsh_methods and not job.job_type == 'composite' and\
+                            'qchem' in [ess.lower() for ess in self.ess_settings.keys()]:
                 # Try QChem
                 logging.info('Troubleshooting {type} job using qchem instead of {software}'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('qchem')
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, job_type=job_type, fine=job.fine,
                              software='qchem', ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
-            elif 'molpro' not in job.ess_trsh_methods and not job.job_type == 'composite':
+            elif 'molpro' not in job.ess_trsh_methods and not job.job_type == 'composite' \
+                    and 'molpro' in [ess.lower() for ess in self.ess_settings.keys()]:
                 # Try molpro
                 logging.info('Troubleshooting {type} job using molpro instead of {software}'.format(
                     type=job_type, software=job.software))
@@ -1544,14 +1546,16 @@ class Scheduler(object):
                 level_of_theory = 'b3lyp/6-311++g(d,p)'
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
                              job_type=job_type, fine=job.fine, ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
-            elif 'gaussian' not in job.ess_trsh_methods:
+            elif 'gaussian' not in job.ess_trsh_methods\
+                    and 'gaussian' in [ess.lower() for ess in self.ess_settings.keys()]:
                 # Try Gaussian
                 logging.info('Troubleshooting {type} job using gaussian instead of {software}'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('gaussian')
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, job_type=job_type, fine=job.fine,
                              software='gaussian', ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
-            elif 'molpro' not in job.ess_trsh_methods:
+            elif 'molpro' not in job.ess_trsh_methods \
+                    and 'molpro' in [ess.lower() for ess in self.ess_settings.keys()]:
                 # Try molpro
                 logging.info('Troubleshooting {type} job using molpro instead of {software}'.format(
                     type=job_type, software=job.software))
@@ -1620,14 +1624,15 @@ class Scheduler(object):
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
                              job_type=job_type, fine=job.fine, shift=shift, memory=memory,
                              ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
-            elif 'gaussian' not in job.ess_trsh_methods:
+            elif 'gaussian' not in job.ess_trsh_methods\
+                    and 'gaussian' in [ess.lower() for ess in self.ess_settings.keys()]:
                 # Try Gaussian
                 logging.info('Troubleshooting {type} job using gaussian instead of {software}'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('gaussian')
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, job_type=job_type, fine=job.fine,
                              software='gaussian', ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
-            elif 'qchem' not in job.ess_trsh_methods:
+            elif 'qchem' not in job.ess_trsh_methods and 'qchem' in [ess.lower() for ess in self.ess_settings.keys()]:
                 # Try QChem
                 logging.info('Troubleshooting {type} job using qchem instead of {software}'.format(
                     type=job_type, software=job.software))
@@ -1671,7 +1676,7 @@ class Scheduler(object):
                 else:
                     raise SchedulerError('Could not find species {0} in the restart file'.format(spc_label))
                 conformer = job_description['conformer'] if 'conformer' in job_description else -1
-                job = Job(project=self.project, settings=self.settings, species_name=spc_label,
+                job = Job(project=self.project, ess_settings=self.ess_settings, species_name=spc_label,
                           xyz=job_description['xyz'], job_type=job_description['job_type'],
                           level_of_theory=job_description['level_of_theory'], multiplicity=species.multiplicity,
                           charge=species.charge, fine=job_description['fine'], shift=job_description['shift'],
