@@ -328,10 +328,11 @@ class Scheduler(object):
         for species in self.species_dict.values():
             if not species.initial_xyz and not species.final_xyz and species.conformers and species.conformer_energies:
                 self.determine_most_stable_conformer(species.label)
-                if self.composite_method:
-                    self.run_composite_job(species.label)
-                else:
-                    self.run_opt_job(species.label)
+                if species.initial_xyz is not None:
+                    if self.composite_method:
+                        self.run_composite_job(species.label)
+                    else:
+                        self.run_opt_job(species.label)
         if self.generate_conformers:
             self.run_conformer_jobs()
         while self.running_jobs != {}:  # loop while jobs are still running
