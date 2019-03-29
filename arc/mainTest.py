@@ -36,7 +36,7 @@ class TestARC(unittest.TestCase):
                    arc_species_list=[spc1])
         restart_dict = arc0.as_dict()
         expected_dict = {'composite_method': '',
-                         'conformer_level': 'b97-d3/6-311+g(d,p)',
+                         'conformer_level': 'b3lyp/6-31+g(d,p)',
                          'ts_guess_level': 'b3lyp/6-31+g(d,p)',
                          'fine': True,
                          'opt_level': 'wb97xd/6-311++g(d,p)',
@@ -56,7 +56,7 @@ class TestARC(unittest.TestCase):
                          't_max': None,
                          't_count': None,
                          'use_bac': True,
-                         'visualize_orbitals': True,
+                         'run_orbitals': False,
                          'allow_nonisomorphic_2d': False,
                          'ess_settings': global_ess_settings,
                          'species': [{'bond_corrections': {'C-C': 1, 'C-H': 6},
