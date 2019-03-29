@@ -30,21 +30,21 @@ class TestScheduler(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        settings = {'gaussian': 'server1', 'molpro': 'server2', 'qchem': 'server1', 'ssh': False}
+        ess_settings = {'gaussian': ['server1'], 'molpro': ['server2','server1'], 'qchem': ['server1'], 'ssh': False}
         project_directory = os.path.join(arc_path, 'Projects', 'arc_project_for_testing_delete_after_usage3')
         cls.spc1 = ARCSpecies(label=str('methylamine'), smiles=str('CN'))
         cls.spc2 = ARCSpecies(label=str('C2H6'), smiles=str('CC'))
-        cls.job1 = Job(project='project_test', settings=settings, species_name='methylamine', xyz='C 0.0 0.0 0.0',
-                       job_type='conformer', conformer=0, level_of_theory='b97-d3/6-311+g(d,p)', multiplicity=1,
-                       project_directory=project_directory, job_num=101)
-        cls.job2 = Job(project='project_test', settings=settings, species_name='methylamine', xyz='C 0.0 0.0 0.0',
-                       job_type='conformer', conformer=1, level_of_theory='b97-d3/6-311+g(d,p)', multiplicity=1,
-                       project_directory=project_directory, job_num=102)
-        cls.job3 = Job(project='project_test', settings=settings, species_name='C2H6', xyz='C 0.0 0.0 0.0',
+        cls.job1 = Job(project='project_test', ess_settings=ess_settings, species_name='methylamine',
+                       xyz='C 0.0 0.0 0.0', job_type='conformer', conformer=0, level_of_theory='b97-d3/6-311+g(d,p)',
+                       multiplicity=1, project_directory=project_directory, job_num=101)
+        cls.job2 = Job(project='project_test', ess_settings=ess_settings, species_name='methylamine',
+                       xyz='C 0.0 0.0 0.0', job_type='conformer', conformer=1, level_of_theory='b97-d3/6-311+g(d,p)',
+                       multiplicity=1, project_directory=project_directory, job_num=102)
+        cls.job3 = Job(project='project_test', ess_settings=ess_settings, species_name='C2H6', xyz='C 0.0 0.0 0.0',
                        job_type='freq', level_of_theory='wb97x-d3/6-311+g(d,p)', multiplicity=1,
                        project_directory=project_directory, software='qchem', job_num=103)
         cls.rmgdb = rmgdb.make_rmg_database_object()
-        cls.sched1 = Scheduler(project='project_test', settings=settings, species_list=[cls.spc1, cls.spc2],
+        cls.sched1 = Scheduler(project='project_test', ess_settings=ess_settings, species_list=[cls.spc1, cls.spc2],
                                composite_method='', conformer_level=default_levels_of_theory['conformer'],
                                opt_level=default_levels_of_theory['opt'], freq_level=default_levels_of_theory['freq'],
                                sp_level=default_levels_of_theory['sp'], scan_level=default_levels_of_theory['scan'],

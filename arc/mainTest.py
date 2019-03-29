@@ -17,7 +17,7 @@ from rmgpy.molecule.molecule import Molecule
 
 from arc.main import ARC
 from arc.species.species import ARCSpecies
-from arc.settings import arc_path
+from arc.settings import arc_path, global_ess_settings
 from arc.arc_exceptions import InputError
 
 ################################################################################
@@ -31,15 +31,13 @@ class TestARC(unittest.TestCase):
     def test_as_dict(self):
         """Test the as_dict() method of ARC"""
         self.maxDiff = None
-        ess_settings = {}
         spc1 = ARCSpecies(label='spc1', smiles=str('CC'), generate_thermo=False)
-        arc0 = ARC(project='arc_test', ess_settings=ess_settings, scan_rotors=False, initial_trsh='scf=(NDump=30)',
+        arc0 = ARC(project='arc_test', scan_rotors=False, initial_trsh='scf=(NDump=30)',
                    arc_species_list=[spc1])
         restart_dict = arc0.as_dict()
         expected_dict = {'composite_method': '',
                          'conformer_level': 'b97-d3/6-311+g(d,p)',
                          'ts_guess_level': 'b3lyp/6-31+g(d,p)',
-                         'ess_settings': {'ssh': True},
                          'fine': True,
                          'opt_level': 'wb97xd/6-311++g(d,p)',
                          'freq_level': 'wb97xd/6-311++g(d,p)',
@@ -60,6 +58,7 @@ class TestARC(unittest.TestCase):
                          'use_bac': True,
                          'visualize_orbitals': True,
                          'allow_nonisomorphic_2d': False,
+                         'ess_settings': global_ess_settings,
                          'species': [{'bond_corrections': {'C-C': 1, 'C-H': 6},
                                       'arkane_file': None,
                                       'E0': None,
@@ -118,7 +117,7 @@ class TestARC(unittest.TestCase):
                                       'rotors_dict': {},
                                       'xyzs': []}],
                          'use_bac': True}
-        arc1 = ARC(project='wrong', ess_settings=dict())
+        arc1 = ARC(project='wrong')
         project = 'arc_project_for_testing_delete_after_usage1'
         project_directory = os.path.join(arc_path, 'Projects', project)
         arc1.from_dict(input_dict=restart_dict, project='testing_from_dict', project_directory=project_directory)
@@ -133,15 +132,14 @@ class TestARC(unittest.TestCase):
 
     def test_check_project_name(self):
         """Test project name invalidity"""
-        ess_settings = {}
         with self.assertRaises(InputError):
-            ARC(project='ar c', ess_settings=ess_settings)
+            ARC(project='ar c')
         with self.assertRaises(InputError):
-            ARC(project='ar:c', ess_settings=ess_settings)
+            ARC(project='ar:c')
         with self.assertRaises(InputError):
-            ARC(project='ar<c', ess_settings=ess_settings)
+            ARC(project='ar<c')
         with self.assertRaises(InputError):
-            ARC(project='ar%c', ess_settings=ess_settings)
+            ARC(project='ar%c')
 
     def test_restart(self):
         """
@@ -151,8 +149,7 @@ class TestARC(unittest.TestCase):
         restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart(H,H2O2,N2H3,CH3CO2).yml')
         project = 'arc_project_for_testing_delete_after_usage2'
         project_directory = os.path.join(arc_path, 'Projects', project)
-        arc1 = ARC(project=project, ess_settings=dict(),
-                   input_dict=restart_path, project_directory=project_directory)
+        arc1 = ARC(project=project, input_dict=restart_path, project_directory=project_directory)
         arc1.execute()
 
         with open(os.path.join(project_directory, 'output', 'thermo.info'), 'r') as f:
