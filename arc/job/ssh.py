@@ -143,13 +143,16 @@ class SSH_Client(object):
                 logging.info('ZZZZZ..... ZZZZZ.....')
                 time.sleep(sleep_time * i * 60)  # in seconds
             else:
-                i = 1000
+                break
             i += 1
+        else:
+            logging.error('connection with server has lost')
+            result = 'connection error'
         return result
 
     def _check_job_status(self, job_id):
         """
-        Possible statuses: `before_submission`, `running`, `errored on node xx`, `done`
+        Possible statuses: `before_submission`, `pending`, `running`, `errored`, `done`
         Status line formats:
         pharos: '540420 0.45326 xq1340b    user_name       r     10/26/2018 11:08:30 long1@node18.cluster'
         rmg: '14428     debug xq1371m2   user_name  R 50-04:04:46      1 node06'
@@ -166,21 +169,17 @@ class SSH_Client(object):
         else:
             return 'done'
         status = status_line.split()[4]
-        if status.lower() in ['r', 'qw']:
-            return 'running'
-        else:
-            if servers[self.server]['cluster_soft'].lower() == 'oge':
-                if '.cluster' in status_line:
-                    try:
-                        return 'errored on node ' + status_line.split()[-1].split('@')[1].split('.')[0][-2:]
-                    except IndexError:
-                        return 'errored'
-                else:
-                    return 'errored'
-            elif servers[self.server]['cluster_soft'].lower() == 'slurm':
-                return 'errored on node ' + status_line.split()[-1][-2:]
+        if servers[self.server]['cluster_soft'].lower() == 'oge':  # Pharos uses OGE
+            if status in ['r', 't', 'Rr', 'Rt']:
+                return 'running'
+            elif status in ['qw', 'hqw', 'hRwq']:
+                return 'pending'
             else:
-                raise ValueError('Unknown server {0}'.format(self.server))
+                return 'errored'
+        elif servers[self.server]['cluster_soft'].lower() == 'slurm':
+                return 'errored on node ' + status_line.split()[-1][-2:]
+        else:
+            raise ValueError('Unknown server {0}'.format(self.server))
 
     def delete_job(self, job_id):
         """
