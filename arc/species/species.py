@@ -117,7 +117,7 @@ class ARCSpecies(object):
         self.thermo = None
         self.rmg_thermo = None
         self.rmg_kinetics = None
-        self.number_of_atoms = None
+        self._number_of_atoms = None
         self.mol = mol
         self.mol_list = None
         self.multiplicity = multiplicity
@@ -223,17 +223,14 @@ class ARCSpecies(object):
                 if self.final_xyz or self.initial_xyz:
                     self.mol_from_xyz()
                 # Generate bond list for applying bond corrections
-                if not self.bond_corrections:
+                if not self.bond_corrections and self.mol is not None:
                     self.bond_corrections = self.mol.enumerate_bonds()
                     if self.bond_corrections:
                         self.long_thermo_description += 'Bond corrections: {0}\n'.format(self.bond_corrections)
 
-            if self.mol is not None:
-                self.number_of_atoms = len(self.mol.atoms)
-                if self.mol_list is None:
-                    mol_copy = self.mol.copy(deep=True)
-                    self.mol_list = mol_copy.generate_resonance_structures(keep_isomorphic=False,
-                                                                           filter_structures=True)
+            if self.mol is not None and self.mol_list is None:
+                mol_copy = self.mol.copy(deep=True)
+                self.mol_list = mol_copy.generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
             elif not self.bond_corrections and self.generate_thermo:
                 logging.warning('Cannot determine bond additivity corrections (BAC) for species {0} based on xyz'
                                 ' coordinates only. For better thermoproperties, provide bond corrections.')
@@ -254,7 +251,7 @@ class ARCSpecies(object):
             self.charge = 0
         if self.multiplicity is not None and self.multiplicity < 1:
             raise SpeciesError('Multiplicity for species {0} is lower than 1. Got: {1}'.format(
-                self.label, multiplicity))
+                self.label, self.multiplicity))
         if not isinstance(self.multiplicity, int) and self.multiplicity is not None:
             raise SpeciesError('Multiplicity for species {0} is not an integer. Got: {1}, a {2}'.format(
                 self.label, self.multiplicity, type(self.multiplicity)))
@@ -270,6 +267,26 @@ class ARCSpecies(object):
         for char in self.label:
             if char not in valid_chars:
                 raise SpeciesError('Species label {0} contains an invalid character: "{1}"'.format(self.label, char))
+
+    @property
+    def number_of_atoms(self):
+        """The number of atoms in the species"""
+        if self._number_of_atoms is None:
+            if self.mol is not None:
+                self._number_of_atoms = len(self.mol.atoms)
+            elif self.final_xyz or self.initial_xyz:
+                xyz = self.final_xyz or self.initial_xyz
+                self._number_of_atoms = len(xyz.splitlines())
+            elif self.is_ts:
+                for ts_guess in self.ts_guesses:
+                    if ts_guess.xyz is not None:
+                        self._number_of_atoms = len(ts_guess.xyz.splitlines())
+        return self._number_of_atoms
+
+    @number_of_atoms.setter
+    def number_of_atoms(self, value):
+        """Allow setting number of atoms, e.g. a TS might not have Molecule or xyz when initialized"""
+        self._number_of_atoms = value
 
     def as_dict(self):
         """A helper function for dumping this object as a dictionary in a YAML file for restarting ARC"""
@@ -406,7 +423,6 @@ class ARCSpecies(object):
                 self.bond_corrections = self.mol.enumerate_bonds()
                 if self.bond_corrections:
                     self.long_thermo_description += 'Bond corrections: {0}\n'.format(self.bond_corrections)
-            self.number_of_atoms = len(self.mol.atoms)
             if self.multiplicity is None:
                 self.multiplicity = self.mol.multiplicity
             if self.charge is None:
@@ -657,15 +673,15 @@ class ARCSpecies(object):
                             .format(self.label, self.external_symmetry, symmetry))
 
     def determine_multiplicity(self, smiles, adjlist, mol):
-        if mol:
+        if mol is not None and mol.multiplicity >= 1:
             self.multiplicity = mol.multiplicity
         elif adjlist:
-            mol = Molecule().fromAdjacencyList(adjlist)
+            mol = Molecule().fromAdjacencyList(str(adjlist))
             self.multiplicity = mol.multiplicity
         elif self.mol is not None and self.mol.multiplicity >= 1:
             self.multiplicity = self.mol.multiplicity
         elif smiles:
-            mol = Molecule(SMILES=smiles)
+            mol = Molecule(SMILES=str(smiles))
             self.multiplicity = mol.multiplicity
         elif self.initial_xyz is not None:
             _, atoms, _, _, _ = get_xyz_matrix(self.initial_xyz)
@@ -679,8 +695,10 @@ class ARCSpecies(object):
                     raise SpeciesError('Could not identify atom symbol {0}'.format(atom))
             if electrons % 2 == 1:
                 self.multiplicity = 2
+                logging.warning('Assuming a multiplicity of 2 for species {0}'.format(self.label))
             else:
                 self.multiplicity = 1
+                logging.warning('Assuming a multiplicity of 1 for species {0}'.format(self.label))
         if self.multiplicity is None:
             raise SpeciesError('Could not determine multiplicity for species {0}'.format(self.label))
 
@@ -693,10 +711,7 @@ class ARCSpecies(object):
             return False
         if self.number_of_atoms == 2:
             return True
-        if self.final_xyz:
-            xyz = self.final_xyz
-        else:
-            xyz = self.initial_xyz
+        xyz = self.final_xyz or self.initial_xyz
         if not xyz:
             raise SpeciesError('Cannot determine linearity for {0} without the initial/final xyz coordinates'.format(
                 self.label))
@@ -794,14 +809,6 @@ class ARCSpecies(object):
             else:
                 return True
             return False
-
-    def determine_number_of_atoms_from_xyz(self):
-        """
-        A helper function for determining the number of atoms from the XYZ geometry
-        Useful for TSs where a 2D geometry isn't known
-        """
-        _, atoms, _, _, _ = get_xyz_matrix(self.initial_xyz)
-        self.number_of_atoms = len(atoms)
 
     def make_ts_report(self):
         """A helper function to write content into the .ts_report attribute"""
