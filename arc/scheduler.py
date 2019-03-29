@@ -76,6 +76,7 @@ class Scheduler(object):
     `allow_nonisomorphic_2d` ``bool`` Whether to optimize species even if they do not have a 3D conformer that is
                                         isomorphic to the 2D graph representation
     `memory`                 ``int``  The allocated job memory (1500 MB by default)
+    `check_server_nodes`     ``bool`` Whether to check nodes availability at start (default: False)
     ======================= ========= ==================================================================================
 
     Dictionary structures:
@@ -108,7 +109,8 @@ class Scheduler(object):
     def __init__(self, project, settings, species_list, composite_method, conformer_level, opt_level, freq_level,
                  sp_level, scan_level, ts_guess_level, orbitals_level, project_directory, rmgdatabase, fine=False,
                  scan_rotors=True, generate_conformers=True, initial_trsh=None, rxn_list=None, restart_dict=None,
-                 max_job_time=120, allow_nonisomorphic_2d=False, memory=1500, testing=False, visualize_orbitals=True):
+                 max_job_time=120, allow_nonisomorphic_2d=False, memory=1500, testing=False, visualize_orbitals=True,
+                 check_server_nodes=False):
         self.rmgdb = rmgdatabase
         self.restart_dict = restart_dict
         self.species_list = species_list
@@ -147,6 +149,7 @@ class Scheduler(object):
         self.unique_species_labels = list()
         self.initial_trsh = initial_trsh if initial_trsh is not None else dict()
         self.save_restart = False
+        self.check_server_nodes = check_server_nodes
 
         if len(self.rxn_list):
             rxn_info_path = self.make_reaction_labels_info_file()
@@ -532,7 +535,7 @@ class Scheduler(object):
                          pivots=job.pivots, occ=job.occ, scan_trsh=job.scan_trsh, scan_res=job.scan_res)
             if job_name in self.running_jobs[label]:
                 self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
-        if job.job_status[0] != 'running' and job.job_status[1] != 'running':
+        if job.job_status[0] not in ['running', 'pending'] and job.job_status[1] != 'running':
             if job_name in self.running_jobs[label]:
                 self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
             self.timer = False
