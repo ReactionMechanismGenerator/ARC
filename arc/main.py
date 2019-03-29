@@ -19,7 +19,8 @@ from rmgpy.species import Species
 from rmgpy.reaction import Reaction
 
 import arc.rmgdb as rmgdb
-from arc.settings import arc_path, default_levels_of_theory, check_status_command, servers, valid_chars
+from arc.settings import arc_path, default_levels_of_theory, check_status_command, servers, valid_chars,\
+    global_ess_settings
 from arc.scheduler import Scheduler
 from arc.arc_exceptions import InputError, SettingsError, SpeciesError
 from arc.species.species import ARCSpecies
@@ -83,13 +84,12 @@ class ARC(object):
     def __init__(self, input_dict=None, project=None, arc_species_list=None, arc_rxn_list=None, level_of_theory='',
                  conformer_level='', composite_method='', opt_level='', freq_level='', sp_level='', scan_level='',
                  ts_guess_level='', fine=True, generate_conformers=True, scan_rotors=True, use_bac=True,
-                 model_chemistry='', ess_settings=None, initial_trsh=None, t_min=None, t_max=None, t_count=None,
+                 model_chemistry='', initial_trsh=None, t_min=None, t_max=None, t_count=None, run_orbitals=False,
                  verbose=logging.INFO, project_directory=None, max_job_time=120, allow_nonisomorphic_2d=False,
-                 job_memory=1500, run_orbitals=False):
+                 job_memory=1500, ess_settings=None):
 
         self.__version__ = '1.0.0'
         self.verbose = verbose
-        self.ess_settings = check_ess_settings(ess_settings)
         self.output = dict()
         self.running_jobs = dict()
         self.lib_long_desc = ''
@@ -324,7 +324,8 @@ class ARC(object):
             project_directory = project_directory if project_directory is not None\
                 else os.path.abspath(os.path.dirname(input_dict))
             self.from_dict(input_dict=input_dict, project=project, project_directory=project_directory)
-        if self.ess_settings is None:
+        self.ess_settings = check_ess_settings(ess_settings or global_ess_settings)
+        if self.ess_settings is None or not self.ess_settings:
             self.determine_ess_settings()
         self.restart_dict = self.as_dict()
         self.determine_model_chemistry()
@@ -346,7 +347,6 @@ class ARC(object):
         """
         restart_dict = dict()
         restart_dict['project'] = self.project
-        restart_dict['ess_settings'] = self.ess_settings
         restart_dict['fine'] = self.fine
         restart_dict['generate_conformers'] = self.generate_conformers
         restart_dict['scan_rotors'] = self.scan_rotors
@@ -372,6 +372,7 @@ class ARC(object):
         restart_dict['t_count'] = self.t_count
         restart_dict['max_job_time'] = self.max_job_time
         restart_dict['allow_nonisomorphic_2d'] = self.allow_nonisomorphic_2d
+        restart_dict['ess_settings'] = self.ess_settings
         return restart_dict
 
     def from_dict(self, input_dict, project=None, project_directory=None):
@@ -394,7 +395,6 @@ class ARC(object):
         self.execution_time = None
         self.verbose = input_dict['verbose'] if 'verbose' in input_dict else self.verbose
         self.max_job_time = input_dict['max_job_time'] if 'max_job_time' in input_dict else 5
-        self.ess_settings = check_ess_settings(input_dict['ess_settings']) if 'ess_settings' in input_dict else None
         self.allow_nonisomorphic_2d = input_dict['allow_nonisomorphic_2d']\
             if 'allow_nonisomorphic_2d' in input_dict else False
         self.output = input_dict['output'] if 'output' in input_dict else dict()
@@ -424,6 +424,8 @@ class ARC(object):
         self.use_bac = input_dict['use_bac'] if 'use_bac' in input_dict else True
         self.model_chemistry = input_dict['model_chemistry'] if 'use_bac' in input_dict\
                                                                 and input_dict['use_bac'] else ''
+        ess_settings = input_dict['ess_settings'] if 'ess_settings' in input_dict else global_ess_settings
+        self.ess_settings = check_ess_settings(ess_settings)
         if not self.fine:
             logging.info('\n')
             logging.warning('Not using a fine grid for geometry optimization jobs')
@@ -822,7 +824,7 @@ class ARC(object):
         and if so the available ESS software and the cluster software of the server
         if `diagnostics` is True, this method will not raise errors, and will print its findings
         """
-        if self.ess_settings is not None:
+        if self.ess_settings is not None and not diagnostics:
             self.ess_settings = check_ess_settings(self.ess_settings)
             self.ess_settings['ssh'] = True
             return
@@ -876,9 +878,10 @@ class ARC(object):
                 logging.info('ARC is being excecuted on a PC'
                              ' (did not find "SSH_CONNECTION" in the os.environ dictionary')
             self.ess_settings['ssh'] = True
-            logging.info('\n\nExecuting QM jobs remotely. Mapping servers...')
+            logging.info('\n\nMapping servers...\n\n')
             # map servers
-            self.ess_settings['gaussian'], self.ess_settings['qchem'], self.ess_settings['molpro'] = None, None, None
+            self.ess_settings['gaussian'], self.ess_settings['qchem'],\
+                self.ess_settings['molpro'] = list(), list(), list()
             for server in servers.keys():
                 if diagnostics:
                     logging.info('Trying {0}'.format(server))
@@ -891,43 +894,46 @@ class ARC(object):
                 g16, _ = ssh.send_command_to_server(cmd)
                 if g03 or g09 or g16:
                     if diagnostics:
-                        logging.info('Found Gaussian on {3}: g03={0}, g09={1}, g16={2}'.format(g03, g09, g16, server))
-                    if self.ess_settings['gaussian'] is None or 'precedence' in servers[server]\
-                            and servers[server]['precedence'] == 'gaussian':
-                        self.ess_settings['gaussian'] = server
+                        logging.info('  Found Gaussian on {3}: g03={0}, g09={1}, g16={2}'.format(g03, g09, g16, server))
+                    if not self.ess_settings['gaussian']:
+                        self.ess_settings['gaussian'] = [server]
+                    else:
+                        self.ess_settings['gaussian'].append(server)
                 elif diagnostics:
-                    logging.info('Did NOT find Gaussian on {3}: g03={0}, g09={1}, g16={2}'.format(g03, g09, g16, server))
+                    logging.info('  Did NOT find Gaussian on {3}: g03={0}, g09={1}, g16={2}'.format(g03, g09, g16, server))
                 cmd = '. ~/.bashrc; which qchem'
                 qchem, _ = ssh.send_command_to_server(cmd)
                 if qchem:
                     if diagnostics:
-                        logging.info('Found QChem on {0}'.format(server))
-                    if self.ess_settings['qchem'] is None or 'precedence' in servers[server]\
-                            and servers[server]['precedence'] == 'qchem':
-                        self.ess_settings['qchem'] = server
+                        logging.info('  Found QChem on {0}'.format(server))
+                    if not self.ess_settings['qchem']:
+                        self.ess_settings['qchem'] = [server]
+                    else:
+                        self.ess_settings['qchem'].append(server)
                 elif diagnostics:
-                    logging.info('Did NOT find QChem on {0}'.format(server))
+                    logging.info('  Did NOT find QChem on {0}'.format(server))
                 cmd = '. .bashrc; which molpro'
                 molpro, _ = ssh.send_command_to_server(cmd)
                 if molpro:
                     if diagnostics:
-                        logging.info('Found Molpro on {0}'.format(server))
-                    if self.ess_settings['molpro'] is None or 'precedence' in servers[server]\
-                            and servers[server]['precedence'] == 'molpro':
-                        self.ess_settings['molpro'] = server
+                        logging.info('  Found Molpro on {0}'.format(server))
+                    if not self.ess_settings['molpro']:
+                        self.ess_settings['molpro'] = [server]
+                    else:
+                        self.ess_settings['molpro'].append(server)
                 elif diagnostics:
-                    logging.info('Did NOT find Molpro on {0}'.format(server))
+                    logging.info('  Did NOT find Molpro on {0}'.format(server))
             if diagnostics:
                 logging.info('\n')
-            if self.ess_settings['gaussian']:
+            if 'gaussian' in self.ess_settings.keys():
                 logging.info('Using Gaussian on {0}'.format(self.ess_settings['gaussian']))
-            if self.ess_settings['qchem']:
+            if 'qchem' in self.ess_settings.keys():
                 logging.info('Using QChem on {0}'.format(self.ess_settings['qchem']))
-            if self.ess_settings['molpro']:
+            if 'molpro' in self.ess_settings.keys():
                 logging.info('Using Molpro on {0}'.format(self.ess_settings['molpro']))
             logging.info('\n')
-        if not self.ess_settings['gaussian'] and not self.ess_settings['qchem'] and not self.ess_settings['molpro']\
-                and not diagnostics:
+        if 'gaussian' not in self.ess_settings.keys() and 'qchem' not in self.ess_settings.keys()\
+                and 'molpro' not in self.ess_settings.keys() and not diagnostics:
             raise SettingsError('Could not find any ESS. Check your .bashrc definitions on the server.\n'
                                 'Alternatively, you could pass a software-server dictionary to arc as `ess_settings`')
         elif diagnostics:
@@ -1014,7 +1020,7 @@ def check_ess_settings(ess_settings):
     Also check ESS and servers
     """
     if ess_settings is None:
-        return None
+        return dict()
     settings = dict()
     for software, server_list in ess_settings.items():
         if software != 'ssh':

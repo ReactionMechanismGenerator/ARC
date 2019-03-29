@@ -34,7 +34,6 @@ servers = {
         'address': 'server1.host.edu',
         'un': '<username>',
         'key': 'path_to_rsa_key',
-        'precedence': 'molpro',
     },
     'server2': {
         'cluster_soft': 'Slurm',  # Simple Linux Utility for Resource Management
@@ -43,6 +42,15 @@ servers = {
         'key': 'path_to_rsa_key',
         'cpus': 48,  # optional (default: 8)
     }
+}
+
+# List here servers you'd like to associate with specific ESS.
+# An ordered list of servers indicates priority
+# Keeping this dictionary empty will cause ARC to scan for software on the servers defined above
+global_ess_settings = {
+    'gaussian': ['server1', 'server2'],
+    'molpro': 'server2',
+    'qchem': 'server1',
 }
 
 # List here (complete or partial) phrases of methods or basis sets you'd like to associate to specific ESS
