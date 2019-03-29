@@ -90,13 +90,13 @@ output_filename = {'gaussian': 'input.log',
                    'molpro': 'input.out',
 }
 
-default_levels_of_theory = {'conformer': 'b97-d3/6-311+g(d,p)',
+default_levels_of_theory = {'conformer': 'b3lyp/6-31+g(d,p)',
                             'ts_guesses': 'b3lyp/6-31+g(d,p)',  # used for IRC as well
                             'opt': 'wb97xd/6-311++g(d,p)',
                             'freq': 'wb97xd/6-311++g(d,p)',  # should be the same level as opt
                             'sp': 'ccsd(t)-f12/cc-pvtz-f12',  # This should be a level for which BAC is available
                             # 'sp': 'b3lyp/6-311+g(3df,2p)',
-                            'orbitals': 'b3lyp/6-311++g(3df,3pd)',  # save orbitals for visualization
+                            'orbitals': 'b3lyp/6-311+g(d,p)',  # save orbitals for visualization
                             'scan': 'b3lyp/6-311+g(d,p)',
                             'scan_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of the CBS-QB3 method
                             'freq_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of the CBS-QB3 method
@@ -114,8 +114,8 @@ valid_chars = "-_()[]=., %s%s" % (string.ascii_letters, string.digits)
 rotor_scan_resolution = 8.0  # degrees. Default: 8.0
 
 # rotor validation parameters
+maximum_barrier = 40    # a rotor threshold (kJ/mol) above which the rotor is not considered. Default: 40 (~10 kcal/mol)
+minimum_barrier = 0.5   # a rotor threshold (kJ/mol) below which it is considered a FreeRotor. Default: 0.5 kJ/mol
 inconsistency_az = 5    # maximum allowed inconsistency (kJ/mol) between initial and final rotor scan points. Default: 5
 inconsistency_ab = 0.5  # maximum allowed inconsistency between consecutive points in the scan given as a fraction
 #  of the maximum scan energy. Default: 50%
-maximum_barrier = 40    # a rotor threshold (kJ/mol) above which the rotor is not considered. Default: 40 (~10 kcal/mol)
-minimum_barrier = 0.5   # a rotor threshold (kJ/mol) below which it is considered a FreeRotor. Default: 0.5 kJ/mol
