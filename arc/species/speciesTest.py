@@ -574,6 +574,30 @@ H      -1.16675800    1.03362600   -0.11273700"""]
         self.assertEqual(spc3.conformers[2], xyzs[2])
         self.assertEqual(spc3.conformer_energies[2], energies[2])
 
+    def test_the_number_of_atoms_property(self):
+        """Test that the number_of_atoms property functions correctly"""
+        self.assertEqual(self.spc1.number_of_atoms, 6)
+        self.assertEqual(self.spc2.number_of_atoms, 2)
+        self.assertEqual(self.spc3.number_of_atoms, 7)
+        self.assertEqual(self.spc4.number_of_atoms, 9)
+        self.assertEqual(self.spc5.number_of_atoms, 6)
+        self.assertEqual(self.spc6.number_of_atoms, 8)
+        self.assertEqual(self.spc7.number_of_atoms, 24)
+        self.assertEqual(self.spc8.number_of_atoms, 5)
+        self.assertEqual(self.spc9.number_of_atoms, 2)
+
+        xyz10 = """N       0.82269400    0.19834500   -0.33588000
+C      -0.57469800   -0.02442800    0.04618900
+H      -1.08412400   -0.56416500   -0.75831900
+H      -0.72300600   -0.58965300    0.98098100
+H      -1.07482500    0.94314300    0.15455500
+H       1.31266200   -0.68161600   -0.46770200
+H       1.32129900    0.71837500    0.38017700
+
+"""
+        spc10 = ARCSpecies(label='spc10', xyz=xyz10)
+        self.assertEqual(spc10.number_of_atoms, 7)
+
     @classmethod
     def tearDownClass(cls):
         """
