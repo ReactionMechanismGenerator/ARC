@@ -63,10 +63,7 @@ def main():
         verbose = logging.DEBUG
     elif args.quiet:
         verbose = logging.WARNING
-    try:
-        input_dict['verbose']
-    except KeyError:
-        input_dict['verbose'] = verbose
+    input_dict['verbose'] = input_dict['verbose'] if 'verbose' in input_dict else verbose
     arc_object = ARC(input_dict=input_dict, project_directory=project_directory)
     arc_object.execute()
 
