@@ -23,6 +23,7 @@ from rmgpy.qm.symmetry import PointGroupCalculator
 from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 from rmgpy.statmech import NonlinearRotor, LinearRotor
+from rmgpy.molecule.resonance import generate_kekule_structure
 
 from arc.arc_exceptions import SpeciesError, RotorError, InputError, TSError
 from arc.settings import arc_path, default_ts_methods, valid_chars, minimum_barrier
@@ -224,7 +225,7 @@ class ARCSpecies(object):
                     self.mol_from_xyz()
                 # Generate bond list for applying bond corrections
                 if not self.bond_corrections and self.mol is not None:
-                    self.bond_corrections = self.mol.enumerate_bonds()
+                    self.bond_corrections = enumerate_bonds(self.mol)
                     if self.bond_corrections:
                         self.long_thermo_description += 'Bond corrections: {0}\n'.format(self.bond_corrections)
 
@@ -420,7 +421,7 @@ class ARCSpecies(object):
                 self.mol_from_xyz(xyz)
         if self.mol is not None:
             if 'bond_corrections' not in species_dict:
-                self.bond_corrections = self.mol.enumerate_bonds()
+                self.bond_corrections = enumerate_bonds(self.mol)
                 if self.bond_corrections:
                     self.long_thermo_description += 'Bond corrections: {0}\n'.format(self.bond_corrections)
             if self.multiplicity is None:
@@ -1407,3 +1408,15 @@ def check_species_xyz(xyz):
             xyz = parse_xyz_from_file(xyz)
         return standardize_xyz_string(xyz)
     return None
+
+def enumerate_bonds(mol):
+    """
+    A helper function for calling Molecule.enumerate_bonds
+    First, get the Kekulized molecule (get the Kekule version with alternating single and double bonds if the molecule
+    is aromatic), since we don't have implementation for aromatic bond additivity corrections
+    """
+    mol_list = generate_kekule_structure(mol)
+    if mol_list:
+        return mol_list[0].enumerate_bonds()
+    else:
+        return mol.enumerate_bonds()
