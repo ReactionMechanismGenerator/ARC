@@ -298,7 +298,11 @@ def order_atoms_in_mol_list(ref_mol, mol_list):
     """Order the atoms in all molecules of mol_list by the atom order in ref_mol"""
     if mol_list is not None:
         for mol in mol_list:
-            order_atoms(ref_mol, mol)
+            try:  # TODO: flag as unordered (or solve)
+                order_atoms(ref_mol, mol)
+            except SanitizationError as e:
+                logging.warning('Could not order atoms in\n{0}\nGot the following error:'
+                                '\n{1}'.format(mol.toAdjacencyList, e))
 
 
 def order_atoms(ref_mol, mol):
