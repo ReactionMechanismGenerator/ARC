@@ -294,7 +294,8 @@ class Scheduler(object):
                             and 'composite' not in self.job_dict[species.label]:
                         self.run_freq_job(species.label)
                     elif 'opt converged' not in self.output[species.label]['status']\
-                            and 'opt' not in self.job_dict[species.label] and not self.composite_method:
+                            and 'opt' not in self.job_dict[species.label] and not self.composite_method \
+                            and 'geo' not in self.output[species.label]:
                         self.run_opt_job(species.label)
                     elif 'opt converged' in self.output[species.label]['status']:
                         # opt is done
@@ -863,7 +864,7 @@ class Scheduler(object):
                 if tsg.success:
                     # 0.000239006 is the conversion factor from J/mol to kcal/mol
                     tsg.energy = (self.species_dict[label].conformer_energies[tsg.index] - e_min) * 0.000239006
-                    logging.info('{0}. Method: {1}, relative energy: {2} kcal/mol, execution time: {3}'.format(
+                    logging.info('{0}. Method: {1}, relative energy: {2} kcal/mol, guess execution time: {3}'.format(
                         tsg.index, tsg.method, tsg.energy, tsg.execution_time))
                     # for TSs, only use `draw_3d()`, not `show_sticks()` which gets connectivity wrong:
                     plotter.draw_3d(xyz=tsg.xyz)
