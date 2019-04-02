@@ -113,7 +113,7 @@ table,E_mrci,E_mrci_Davidson;
 
 """,
 
-    'arkane_species': """#!/usr/bin/env python
+    'arkane_input_species': """#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 linear = {linear}{bonds}
