@@ -645,7 +645,7 @@ class ARC(object):
             txt += 'NOT using bond additivity corrections for thermo\n'
         if self.initial_trsh:
             txt += 'Using an initial troubleshooting method "{0}"'.format(self.initial_trsh)
-        txt += '\nUsing the following settings: {0}\n'.format(self.ess_settings)
+        txt += '\nUsing the following ESS settings: {0}\n'.format(self.ess_settings)
         txt += '\nConsidered the following species and TSs:\n'
         for species in self.arc_species_list:
             if species.is_ts:
