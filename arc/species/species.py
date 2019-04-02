@@ -259,7 +259,8 @@ class ARCSpecies(object):
         if not isinstance(self.charge, int):
             raise SpeciesError('Charge for species {0} is not an integer (got {1}, a {2})'.format(
                 self.label, self.charge, type(self.charge)))
-        if not self.is_ts and self.initial_xyz is None and self.mol is None and not self.conformers:
+        if not self.is_ts and self.initial_xyz is None and not self.final_xyz and self.mol is None\
+                and not self.conformers:
             raise SpeciesError('No structure (xyz, SMILES, adjList, RMG:Species, or RMG:Molecule) was given for'
                                ' species {0}'.format(self.label))
         if self.label is None:
