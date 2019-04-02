@@ -130,14 +130,15 @@ class Job(object):
                 # currently we only have a script to print orbitals on QChem,
                 # could/should definately be elaborated to additional ESS
                 if 'qchem' not in self.ess_settings.keys():
-                    logging.debug('Could not find the QChem software to compute molecular orbitals')
+                    logging.debug('Could not find the QChem software to compute molecular orbitals.\n'
+                                  'ess_settings is:\n{0}'.format(self.ess_settings))
                     self.software = None
                 else:
                     self.software = 'qchem'
             elif job_type == 'composite':
                 if 'gaussian' not in self.ess_settings.keys():
-                    raise JobError('Could not find the Gaussian software to run the composite method {0}'.format(
-                        self.method))
+                    raise JobError('Could not find the Gaussian software to run the composite method {0}.\n'
+                                   'ess_settings is:\n{1}'.format(self.ess_settings, self.method))
                 self.software = 'gaussian'
             else:
                 # use the levels_ess dictionary from settings.py:
@@ -355,7 +356,8 @@ class Job(object):
 
     def write_submit_script(self):
         un = servers[self.server]['un']  # user name
-        if self.max_job_time > 9999 or self.max_job_time == 0:
+        if self.max_job_time > 9999 or self.max_job_time <= 0:
+            logging.debug('Setting max_job_time to 120 hours')
             self.max_job_time = 120
         if t_max_format[servers[self.server]['cluster_soft']] == 'days':
             # e.g., 5-0:00:00
@@ -365,7 +367,8 @@ class Job(object):
             # e.g., 120:00:00
             t_max = '{0}:00:00'.format(self.max_job_time)
         else:
-            raise JobError('Could not determine format for maximal job time')
+            raise JobError('Could not determine format for maximal job time.\n Format is determined by {0}, but '
+                           'got {1} for {2}'.format(t_max_format, servers[self.server]['cluster_soft'], self.server))
         cpus = servers[self.server]['cpus'] if 'cpus' in servers[self.server] else 8
         architecture = ''
         if self.server.lower() == 'pharos':
