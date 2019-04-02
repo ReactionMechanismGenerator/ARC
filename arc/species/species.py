@@ -434,7 +434,9 @@ class ARCSpecies(object):
                                                                            filter_structures=True)
         if 'conformers_path' in species_dict:
             self.append_conformers(species_dict['conformers_path'])
-        if self.mol is None and self.initial_xyz is None and not self.final_xyz and not self.conformers:
+        if self.mol is None and self.initial_xyz is None and not self.final_xyz and not self.conformers\
+                and not any([tsg.xyz for tsg in self.ts_guesses]):
+            # TS species are allowed to be loaded w/o a structure
             raise SpeciesError('Must have either mol or xyz for species {0}'.format(self.label))
         if self.initial_xyz is not None and not self.final_xyz:
             # consider the initial guess as one of the conformers if generating others.
