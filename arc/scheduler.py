@@ -331,7 +331,9 @@ class Scheduler(object):
         The main job scheduling block
         """
         for species in self.species_dict.values():
-            if not species.initial_xyz and not species.final_xyz and species.conformers and species.conformer_energies:
+            if not species.initial_xyz and not species.final_xyz and species.conformers\
+                    and any([e is not None for e in species.conformer_energies]):
+                # the species has no xyz, but has conformers and at least one of the conformers has energy
                 self.determine_most_stable_conformer(species.label)
                 if species.initial_xyz is not None:
                     if self.composite_method:
@@ -567,7 +569,9 @@ class Scheduler(object):
         """
         for label in self.unique_species_labels:
             if not self.species_dict[label].is_ts and 'opt converged' not in self.output[label]['status']\
-                        and 'opt' not in self.job_dict[label] and not self.species_dict[label].conformer_energies:
+                    and 'opt' not in self.job_dict[label]\
+                    and all([e is None for e in self.species_dict[label].conformer_energies]):
+                # This is not a TS, opt did not converged nor running, and conformer energies were not set
                 self.save_conformers_file(label)
                 if not self.testing:
                     if len(self.species_dict[label].conformers) > 1:
@@ -846,7 +850,7 @@ class Scheduler(object):
             raise SchedulerError('The determine_most_likely_ts_conformer() method only deals with transition'
                                  ' state guesses.')
         if all(e is None for e in self.species_dict[label].conformer_energies):
-            logging.error('No guess converged for TS {0}!')
+            logging.error('No guess converged for TS {0}!'.format(label))
             # for i, job in self.job_dict[label]['conformers'].items():
             #     self.troubleshoot_ess(label, job, level_of_theory=job.level_of_theory, job_type='conformer',
             #                           conformer=job.conformer)
