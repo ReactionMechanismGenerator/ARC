@@ -22,7 +22,7 @@ import arc.rmgdb as rmgdb
 from arc import plotter
 from arc import parser
 from arc.job.job import Job
-from arc.arc_exceptions import SpeciesError, SchedulerError
+from arc.arc_exceptions import SpeciesError, SchedulerError, TSError
 from arc.job.ssh import SSH_Client
 from arc.species.species import ARCSpecies, TSGuess, determine_rotor_symmetry
 from arc.species.converter import get_xyz_string, molecules_from_xyz, check_isomorphism
@@ -231,7 +231,11 @@ class Scheduler(object):
                         logging.info('Trying to generating a TS guess for {0} reaction {1} using AutoTST{2}...'.format(
                             ts_guess.family, rxn.label, reverse))
                         ts_guess.t0 = datetime.datetime.now()
-                        ts_guess.xyz = autotst(rmg_reaction=ts_guess.rmg_reaction, reaction_family=ts_guess.family)
+                        try:
+                            ts_guess.xyz = autotst(rmg_reaction=ts_guess.rmg_reaction, reaction_family=ts_guess.family)
+                        except TSError as e:
+                            logging.error('Could not generate an AutoTST guess for reaction {0}.\nGot: {1}'.format(
+                                rxn.label, e.message))
                         ts_guess.success = True if ts_guess.xyz is not None else False
                         ts_guess.execution_time = str(datetime.datetime.now() - ts_guess.t0).split('.')[0]
                     else:
