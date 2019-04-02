@@ -943,16 +943,16 @@ class TSGuess(object):
                     raise TSError('If no method is specified, an xyz guess must be given')
                 self.success = True
                 self.execution_time = 0
-            if not ('user guess' in self.method or 'autotst' in self.method
-                    or self.method in ['user guess'] + [tsm.lower() for tsm in default_ts_methods]):
-                raise TSError('Unrecognized method. Should be either {0}. Got: {1}'.format(
-                              ['User guess'] + default_ts_methods, self.method))
             self.reactants_xyz = reactants_xyz if reactants_xyz is not None else list()
             self.products_xyz = products_xyz if products_xyz is not None else list()
             self.rmg_reaction = rmg_reaction
             self.family = family
             # if self.family is None and self.method.lower() in ['kinbot', 'autotst']:
             #     raise TSError('No family specified for method {0}'.format(self.method))
+        if not ('user guess' in self.method or 'autotst' in self.method
+                or self.method in ['user guess'] + [tsm.lower() for tsm in default_ts_methods]):
+            raise TSError('Unrecognized method. Should be either {0}. Got: {1}'.format(
+                          ['User guess'] + default_ts_methods, self.method))
 
     def as_dict(self):
         """A helper function for dumping this object as a dictionary in a YAML file for restarting ARC"""
@@ -993,10 +993,6 @@ class TSGuess(object):
                 raise TSError('If no method is specified, an xyz guess must be given')
             self.success = self.success if self.success is not None else True
             self.execution_time = '0'
-        if 'user guess' not in self.method\
-                and self.method not in ['user guess'] + [tsm.lower() for tsm in default_ts_methods]:
-            raise TSError('Unrecognized method. Should be either {0}. Got: {1}'.format(
-                          ['User guess'] + default_ts_methods, self.method))
         self.reactants_xyz = ts_dict['reactants_xyz'] if 'reactants_xyz' in ts_dict else list()
         self.products_xyz = ts_dict['products_xyz'] if 'products_xyz' in ts_dict else list()
         self.family = ts_dict['family'] if 'family' in ts_dict else None
