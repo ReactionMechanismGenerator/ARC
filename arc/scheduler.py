@@ -855,7 +855,7 @@ class Scheduler(object):
             # currently we take the most stable guess. We'll need to implement additional checks here:
             # - normal displacement mode of the imaginary frequency
             # - IRC
-            e_min = min(energies)
+            e_min = min([e for e in energies if e is not None])
             i_min = energies.index(e_min)
             self.species_dict[label].chosen_ts = None
             logging.info('\n\nShowing geometry *guesses* of successful TS guess methods for {0} of {1}:'.format(
