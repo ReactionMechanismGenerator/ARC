@@ -373,6 +373,7 @@ class ARC(object):
         restart_dict['max_job_time'] = self.max_job_time
         restart_dict['allow_nonisomorphic_2d'] = self.allow_nonisomorphic_2d
         restart_dict['ess_settings'] = self.ess_settings
+        restart_dict['job_memory'] = self.memory
         return restart_dict
 
     def from_dict(self, input_dict, project=None, project_directory=None):
@@ -394,7 +395,8 @@ class ARC(object):
         self.t0 = time.time()  # init time
         self.execution_time = None
         self.verbose = input_dict['verbose'] if 'verbose' in input_dict else self.verbose
-        self.max_job_time = input_dict['max_job_time'] if 'max_job_time' in input_dict else 5
+        self.max_job_time = input_dict['max_job_time'] if 'max_job_time' in input_dict else self.max_job_time
+        self.memory = input_dict['job_memory'] if 'job_memory' in input_dict else self.memory
         self.allow_nonisomorphic_2d = input_dict['allow_nonisomorphic_2d']\
             if 'allow_nonisomorphic_2d' in input_dict else False
         self.output = input_dict['output'] if 'output' in input_dict else dict()
