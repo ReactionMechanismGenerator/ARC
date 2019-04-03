@@ -534,7 +534,7 @@ class Scheduler(object):
         try:
             job.determine_job_status()  # also downloads output file
         except IOError:
-            if not job.job_type in ['orbitals']:
+            if job.job_type not in ['orbitals']:
                 logging.warn('Tried to determine status of job {0}, but it seems like the job never ran.'
                              ' Re-running job.'.format(job.job_name))
                 self.run_job(label=label, xyz=job.xyz, level_of_theory=job.level_of_theory, job_type=job.job_type,
