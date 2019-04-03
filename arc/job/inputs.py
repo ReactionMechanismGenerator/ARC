@@ -36,7 +36,7 @@ qchem:
 input_files = {
     'gaussian': """%chk=check.chk
 %mem={memory}mb
-%nproc=8
+%nproc={cpus}
 
 #P {job_type_1} {restricted}{method}{slash}{basis} {job_type_2} {fine} {trsh} iop(2/9=2000)
 
@@ -113,7 +113,7 @@ table,E_mrci,E_mrci_Davidson;
 
 """,
 
-    'arkane_species': """#!/usr/bin/env python
+    'arkane_input_species': """#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 linear = {linear}{bonds}

@@ -23,6 +23,7 @@ from rmgpy.qm.symmetry import PointGroupCalculator
 from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 from rmgpy.statmech import NonlinearRotor, LinearRotor
+from rmgpy.molecule.resonance import generate_kekule_structure
 
 from arc.arc_exceptions import SpeciesError, RotorError, InputError, TSError
 from arc.settings import arc_path, default_ts_methods, valid_chars, minimum_barrier
@@ -117,7 +118,7 @@ class ARCSpecies(object):
         self.thermo = None
         self.rmg_thermo = None
         self.rmg_kinetics = None
-        self.number_of_atoms = None
+        self._number_of_atoms = None
         self.mol = mol
         self.mol_list = None
         self.multiplicity = multiplicity
@@ -194,7 +195,7 @@ class ARCSpecies(object):
                             keep_isomorphic=False, filter_structures=True)
                     self.mol_list = self.rmg_species.molecule
                     logging.info('Using localized structure {0} of species {1} for BAC determination. To use a'
-                                 ' different  structure, pass the RMG:Molecule object in the `mol` parameter'.format(
+                                 ' different structure, pass the RMG:Molecule object in the `mol` parameter'.format(
                                     self.mol.toSMILES(), self.label))
                 self.multiplicity = self.rmg_species.molecule[0].multiplicity
                 self.charge = self.rmg_species.molecule[0].getNetCharge()
@@ -223,17 +224,14 @@ class ARCSpecies(object):
                 if self.final_xyz or self.initial_xyz:
                     self.mol_from_xyz()
                 # Generate bond list for applying bond corrections
-                if not self.bond_corrections:
-                    self.bond_corrections = self.mol.enumerate_bonds()
+                if not self.bond_corrections and self.mol is not None:
+                    self.bond_corrections = enumerate_bonds(self.mol)
                     if self.bond_corrections:
                         self.long_thermo_description += 'Bond corrections: {0}\n'.format(self.bond_corrections)
 
-            if self.mol is not None:
-                self.number_of_atoms = len(self.mol.atoms)
-                if self.mol_list is None:
-                    mol_copy = self.mol.copy(deep=True)
-                    self.mol_list = mol_copy.generate_resonance_structures(keep_isomorphic=False,
-                                                                           filter_structures=True)
+            if self.mol is not None and self.mol_list is None:
+                mol_copy = self.mol.copy(deep=True)
+                self.mol_list = mol_copy.generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
             elif not self.bond_corrections and self.generate_thermo:
                 logging.warning('Cannot determine bond additivity corrections (BAC) for species {0} based on xyz'
                                 ' coordinates only. For better thermoproperties, provide bond corrections.')
@@ -254,14 +252,15 @@ class ARCSpecies(object):
             self.charge = 0
         if self.multiplicity is not None and self.multiplicity < 1:
             raise SpeciesError('Multiplicity for species {0} is lower than 1. Got: {1}'.format(
-                self.label, multiplicity))
+                self.label, self.multiplicity))
         if not isinstance(self.multiplicity, int) and self.multiplicity is not None:
             raise SpeciesError('Multiplicity for species {0} is not an integer. Got: {1}, a {2}'.format(
                 self.label, self.multiplicity, type(self.multiplicity)))
         if not isinstance(self.charge, int):
             raise SpeciesError('Charge for species {0} is not an integer (got {1}, a {2})'.format(
                 self.label, self.charge, type(self.charge)))
-        if not self.is_ts and self.initial_xyz is None and self.mol is None and not self.conformers:
+        if not self.is_ts and self.initial_xyz is None and not self.final_xyz and self.mol is None\
+                and not self.conformers:
             raise SpeciesError('No structure (xyz, SMILES, adjList, RMG:Species, or RMG:Molecule) was given for'
                                ' species {0}'.format(self.label))
         if self.label is None:
@@ -270,6 +269,26 @@ class ARCSpecies(object):
         for char in self.label:
             if char not in valid_chars:
                 raise SpeciesError('Species label {0} contains an invalid character: "{1}"'.format(self.label, char))
+
+    @property
+    def number_of_atoms(self):
+        """The number of atoms in the species"""
+        if self._number_of_atoms is None:
+            if self.mol is not None:
+                self._number_of_atoms = len(self.mol.atoms)
+            elif self.final_xyz or self.initial_xyz:
+                xyz = self.final_xyz or self.initial_xyz
+                self._number_of_atoms = len(xyz.splitlines())
+            elif self.is_ts:
+                for ts_guess in self.ts_guesses:
+                    if ts_guess.xyz is not None:
+                        self._number_of_atoms = len(ts_guess.xyz.splitlines())
+        return self._number_of_atoms
+
+    @number_of_atoms.setter
+    def number_of_atoms(self, value):
+        """Allow setting number of atoms, e.g. a TS might not have Molecule or xyz when initialized"""
+        self._number_of_atoms = value
 
     def as_dict(self):
         """A helper function for dumping this object as a dictionary in a YAML file for restarting ARC"""
@@ -381,7 +400,12 @@ class ARCSpecies(object):
         self.optical_isomers = species_dict['optical_isomers'] if 'optical_isomers' in species_dict else None
         self.neg_freqs_trshed = species_dict['neg_freqs_trshed'] if 'neg_freqs_trshed' in species_dict else list()
         self.bond_corrections = species_dict['bond_corrections'] if 'bond_corrections' in species_dict else dict()
-        self.mol = Molecule().fromAdjacencyList(str(species_dict['mol'])) if 'mol' in species_dict else None
+        try:
+            self.mol = Molecule().fromAdjacencyList(str(species_dict['mol'])) if 'mol' in species_dict else None
+        except ValueError:
+            logging.error('Could not read RMG adjacency list {0}'.format(species_dict['mol'] if 'mol'
+                                                                         in species_dict else None))
+            self.mol = None
         smiles = species_dict['smiles'] if 'smiles' in species_dict else None
         inchi = species_dict['inchi'] if 'inchi' in species_dict else None
         adjlist = species_dict['adjlist'] if 'adjlist' in species_dict else None
@@ -398,10 +422,9 @@ class ARCSpecies(object):
                 self.mol_from_xyz(xyz)
         if self.mol is not None:
             if 'bond_corrections' not in species_dict:
-                self.bond_corrections = self.mol.enumerate_bonds()
+                self.bond_corrections = enumerate_bonds(self.mol)
                 if self.bond_corrections:
                     self.long_thermo_description += 'Bond corrections: {0}\n'.format(self.bond_corrections)
-            self.number_of_atoms = len(self.mol.atoms)
             if self.multiplicity is None:
                 self.multiplicity = self.mol.multiplicity
             if self.charge is None:
@@ -412,7 +435,9 @@ class ARCSpecies(object):
                                                                            filter_structures=True)
         if 'conformers_path' in species_dict:
             self.append_conformers(species_dict['conformers_path'])
-        if self.mol is None and self.initial_xyz is None and not self.final_xyz and not self.conformers:
+        if self.mol is None and self.initial_xyz is None and not self.final_xyz and not self.conformers\
+                and not any([tsg.xyz for tsg in self.ts_guesses]):
+            # TS species are allowed to be loaded w/o a structure
             raise SpeciesError('Must have either mol or xyz for species {0}'.format(self.label))
         if self.initial_xyz is not None and not self.final_xyz:
             # consider the initial guess as one of the conformers if generating others.
@@ -435,9 +460,9 @@ class ARCSpecies(object):
         if arkane_spc.adjacency_list is not None:
             try:
                 self.mol = Molecule().fromAdjacencyList(adjlist=arkane_spc.adjacency_list)
-            except ValueError as e:
+            except ValueError:
                 print('Could not read adjlist:\n{0}'.format(arkane_spc.adjacency_list))  # should *not* be logging
-                raise e
+                raise
         elif arkane_spc.inchi is not None:
             self.mol = Molecule().fromInChI(inchistr=arkane_spc.inchi)
         elif arkane_spc.smiles is not None:
@@ -613,7 +638,7 @@ class ARCSpecies(object):
         """
         Determine external symmetry and optical isomers
         """
-        xyz = self.final_xyz if self.final_xyz is not None else self.initial_xyz
+        xyz = self.final_xyz or self.initial_xyz
         atom_numbers = list()  # List of atomic numbers
         coordinates = list()
         for line in xyz.split('\n'):
@@ -652,17 +677,17 @@ class ARCSpecies(object):
                             .format(self.label, self.external_symmetry, symmetry))
 
     def determine_multiplicity(self, smiles, adjlist, mol):
-        if mol:
+        if mol is not None and mol.multiplicity >= 1:
             self.multiplicity = mol.multiplicity
         elif adjlist:
-            mol = Molecule().fromAdjacencyList(adjlist)
+            mol = Molecule().fromAdjacencyList(str(adjlist))
             self.multiplicity = mol.multiplicity
         elif self.mol is not None and self.mol.multiplicity >= 1:
             self.multiplicity = self.mol.multiplicity
         elif smiles:
-            mol = Molecule(SMILES=smiles)
+            mol = Molecule(SMILES=str(smiles))
             self.multiplicity = mol.multiplicity
-        elif self.initial_xyz:
+        elif self.initial_xyz is not None:
             _, atoms, _, _, _ = get_xyz_matrix(self.initial_xyz)
             electrons = 0
             for atom in atoms:
@@ -674,8 +699,10 @@ class ARCSpecies(object):
                     raise SpeciesError('Could not identify atom symbol {0}'.format(atom))
             if electrons % 2 == 1:
                 self.multiplicity = 2
+                logging.warning('Assuming a multiplicity of 2 for species {0}'.format(self.label))
             else:
                 self.multiplicity = 1
+                logging.warning('Assuming a multiplicity of 1 for species {0}'.format(self.label))
         if self.multiplicity is None:
             raise SpeciesError('Could not determine multiplicity for species {0}'.format(self.label))
 
@@ -688,10 +715,7 @@ class ARCSpecies(object):
             return False
         if self.number_of_atoms == 2:
             return True
-        if self.final_xyz:
-            xyz = self.final_xyz
-        else:
-            xyz = self.initial_xyz
+        xyz = self.final_xyz or self.initial_xyz
         if not xyz:
             raise SpeciesError('Cannot determine linearity for {0} without the initial/final xyz coordinates'.format(
                 self.label))
@@ -789,14 +813,6 @@ class ARCSpecies(object):
             else:
                 return True
             return False
-
-    def determine_number_of_atoms_from_xyz(self):
-        """
-        A helper function for determining the number of atoms from the XYZ geometry
-        Useful for TSs where a 2D geometry isn't known
-        """
-        _, atoms, _, _, _ = get_xyz_matrix(self.initial_xyz)
-        self.number_of_atoms = len(atoms)
 
     def make_ts_report(self):
         """A helper function to write content into the .ts_report attribute"""
@@ -928,16 +944,16 @@ class TSGuess(object):
                     raise TSError('If no method is specified, an xyz guess must be given')
                 self.success = True
                 self.execution_time = 0
-            if not ('user guess' in self.method or 'autotst' in self.method
-                    or self.method in ['user guess'] + [tsm.lower() for tsm in default_ts_methods]):
-                raise TSError('Unrecognized method. Should be either {0}. Got: {1}'.format(
-                              ['User guess'] + default_ts_methods, self.method))
             self.reactants_xyz = reactants_xyz if reactants_xyz is not None else list()
             self.products_xyz = products_xyz if products_xyz is not None else list()
             self.rmg_reaction = rmg_reaction
             self.family = family
             # if self.family is None and self.method.lower() in ['kinbot', 'autotst']:
             #     raise TSError('No family specified for method {0}'.format(self.method))
+        if not ('user guess' in self.method or 'autotst' in self.method
+                or self.method in ['user guess'] + [tsm.lower() for tsm in default_ts_methods]):
+            raise TSError('Unrecognized method. Should be either {0}. Got: {1}'.format(
+                          ['User guess'] + default_ts_methods, self.method))
 
     def as_dict(self):
         """A helper function for dumping this object as a dictionary in a YAML file for restarting ARC"""
@@ -978,10 +994,6 @@ class TSGuess(object):
                 raise TSError('If no method is specified, an xyz guess must be given')
             self.success = self.success if self.success is not None else True
             self.execution_time = '0'
-        if 'user guess' not in self.method\
-                and self.method not in ['user guess'] + [tsm.lower() for tsm in default_ts_methods]:
-            raise TSError('Unrecognized method. Should be either {0}. Got: {1}'.format(
-                          ['User guess'] + default_ts_methods, self.method))
         self.reactants_xyz = ts_dict['reactants_xyz'] if 'reactants_xyz' in ts_dict else list()
         self.products_xyz = ts_dict['products_xyz'] if 'products_xyz' in ts_dict else list()
         self.family = ts_dict['family'] if 'family' in ts_dict else None
@@ -1395,3 +1407,15 @@ def check_species_xyz(xyz):
             xyz = parse_xyz_from_file(xyz)
         return standardize_xyz_string(xyz)
     return None
+
+def enumerate_bonds(mol):
+    """
+    A helper function for calling Molecule.enumerate_bonds
+    First, get the Kekulized molecule (get the Kekule version with alternating single and double bonds if the molecule
+    is aromatic), since we don't have implementation for aromatic bond additivity corrections
+    """
+    mol_list = generate_kekule_structure(mol)
+    if mol_list:
+        return mol_list[0].enumerate_bonds()
+    else:
+        return mol.enumerate_bonds()

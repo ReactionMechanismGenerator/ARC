@@ -9,16 +9,17 @@ from __future__ import (absolute_import, division, print_function, unicode_liter
 import unittest
 import os
 import shutil
+import time
 
 from rmgpy import settings
 from rmgpy.data.rmg import RMGDatabase
 from rmgpy.species import Species
 from rmgpy.molecule.molecule import Molecule
 
-from arc.main import ARC
+from arc.main import ARC, read_file, get_git_commit, time_lapse, check_ess_settings
 from arc.species.species import ARCSpecies
-from arc.settings import arc_path
-from arc.arc_exceptions import InputError
+from arc.settings import arc_path, servers
+from arc.arc_exceptions import InputError, SettingsError
 
 ################################################################################
 
@@ -28,18 +29,23 @@ class TestARC(unittest.TestCase):
     Contains unit tests for the ARC class
     """
 
+    @classmethod
+    def setUpClass(cls):
+        """
+        A method that is run before all unit tests in this class.
+        """
+        cls.maxDiff = None
+        cls.servers = [server for server in servers.keys()]
+
     def test_as_dict(self):
         """Test the as_dict() method of ARC"""
-        self.maxDiff = None
-        ess_settings = {}
         spc1 = ARCSpecies(label='spc1', smiles=str('CC'), generate_thermo=False)
-        arc0 = ARC(project='arc_test', ess_settings=ess_settings, scan_rotors=False, initial_trsh='scf=(NDump=30)',
+        arc0 = ARC(project='arc_test', scan_rotors=False, initial_trsh='scf=(NDump=30)',
                    arc_species_list=[spc1])
         restart_dict = arc0.as_dict()
         expected_dict = {'composite_method': '',
-                         'conformer_level': 'b97-d3/6-311+g(d,p)',
+                         'conformer_level': 'b3lyp/6-31+g(d,p)',
                          'ts_guess_level': 'b3lyp/6-31+g(d,p)',
-                         'ess_settings': {'ssh': True},
                          'fine': True,
                          'opt_level': 'wb97xd/6-311++g(d,p)',
                          'freq_level': 'wb97xd/6-311++g(d,p)',
@@ -54,12 +60,15 @@ class TestARC(unittest.TestCase):
                          'scan_level': '',
                          'scan_rotors': False,
                          'sp_level': 'ccsd(t)-f12/cc-pvtz-f12',
+                         'job_memory': 1500,
                          't_min': None,
                          't_max': None,
                          't_count': None,
                          'use_bac': True,
-                         'visualize_orbitals': True,
+                         'run_orbitals': False,
                          'allow_nonisomorphic_2d': False,
+                         'ess_settings': {'gaussian': ['server1', 'server2'],
+                                          'molpro': ['server2'], 'qchem': ['server1'], 'ssh': True},
                          'species': [{'bond_corrections': {'C-C': 1, 'C-H': 6},
                                       'arkane_file': None,
                                       'E0': None,
@@ -83,42 +92,38 @@ class TestARC(unittest.TestCase):
     def test_from_dict(self):
         """Test the from_dict() method of ARC"""
         restart_dict = {'composite_method': '',
-                         'conformer_level': 'b97-d3/6-311+g(d,p)',
-                         'ess_settings': {'gaussian': 'server1',
-                                          'molpro': 'server1',
-                                          'qchem': u'server1',
-                                          'ssh': True},
-                         'fine': True,
-                         'freq_level': 'wb97x-d3/6-311+g(d,p)',
-                         'generate_conformers': True,
-                         'initial_trsh': 'scf=(NDump=30)',
-                         'model_chemistry': 'ccsd(t)-f12/cc-pvtz-f12',
-                         'opt_level': 'wb97x-d3/6-311+g(d,p)',
-                         'output': {},
-                         'project': 'arc_test',
-                         'rxn_list': [],
-                         'scan_level': '',
-                         'scan_rotors': False,
-                         'sp_level': 'ccsdt-f12/cc-pvqz-f12',
-                         'species': [{'bond_corrections': {'C-C': 1, 'C-H': 6},
-                                      'charge': 1,
-                                      'conformer_energies': [],
-                                      'conformers': [],
-                                      'external_symmetry': 1,
-                                      'final_xyz': '',
-                                      'generate_thermo': False,
-                                      'is_ts': False,
-                                      'label': 'testing_spc1',
-                                      'mol': '1 C u0 p0 c0 {2,S} {3,S} {4,S} {5,S}\n2 C u0 p0 c0 {1,S} {6,S} {7,S} {8,S}\n3 H u0 p0 c0 {1,S}\n4 H u0 p0 c0 {1,S}\n5 H u0 p0 c0 {1,S}\n6 H u0 p0 c0 {2,S}\n7 H u0 p0 c0 {2,S}\n8 H u0 p0 c0 {2,S}\n',
-                                      'multiplicity': 1,
-                                      'neg_freqs_trshed': [],
-                                      'number_of_rotors': 0,
-                                      'opt_level': '',
-                                      'optical_isomers': 1,
-                                      'rotors_dict': {},
-                                      'xyzs': []}],
-                         'use_bac': True}
-        arc1 = ARC(project='wrong', ess_settings=dict())
+                        'conformer_level': 'b97-d3/6-311+g(d,p)',
+                        'fine': True,
+                        'freq_level': 'wb97x-d3/6-311+g(d,p)',
+                        'generate_conformers': True,
+                        'initial_trsh': 'scf=(NDump=30)',
+                        'model_chemistry': 'ccsd(t)-f12/cc-pvtz-f12',
+                        'opt_level': 'wb97x-d3/6-311+g(d,p)',
+                        'output': {},
+                        'project': 'arc_test',
+                        'rxn_list': [],
+                        'scan_level': '',
+                        'scan_rotors': False,
+                        'sp_level': 'ccsdt-f12/cc-pvqz-f12',
+                        'species': [{'bond_corrections': {'C-C': 1, 'C-H': 6},
+                                     'charge': 1,
+                                     'conformer_energies': [],
+                                     'conformers': [],
+                                     'external_symmetry': 1,
+                                     'final_xyz': '',
+                                     'generate_thermo': False,
+                                     'is_ts': False,
+                                     'label': 'testing_spc1',
+                                     'mol': '1 C u0 p0 c0 {2,S} {3,S} {4,S} {5,S}\n2 C u0 p0 c0 {1,S} {6,S} {7,S} {8,S}\n3 H u0 p0 c0 {1,S}\n4 H u0 p0 c0 {1,S}\n5 H u0 p0 c0 {1,S}\n6 H u0 p0 c0 {2,S}\n7 H u0 p0 c0 {2,S}\n8 H u0 p0 c0 {2,S}\n',
+                                     'multiplicity': 1,
+                                     'neg_freqs_trshed': [],
+                                     'number_of_rotors': 0,
+                                     'opt_level': '',
+                                     'optical_isomers': 1,
+                                     'rotors_dict': {},
+                                     'xyzs': []}],
+                        'use_bac': True}
+        arc1 = ARC(project='wrong')
         project = 'arc_project_for_testing_delete_after_usage1'
         project_directory = os.path.join(arc_path, 'Projects', project)
         arc1.from_dict(input_dict=restart_dict, project='testing_from_dict', project_directory=project_directory)
@@ -133,15 +138,14 @@ class TestARC(unittest.TestCase):
 
     def test_check_project_name(self):
         """Test project name invalidity"""
-        ess_settings = {}
         with self.assertRaises(InputError):
-            ARC(project='ar c', ess_settings=ess_settings)
+            ARC(project='ar c')
         with self.assertRaises(InputError):
-            ARC(project='ar:c', ess_settings=ess_settings)
+            ARC(project='ar:c')
         with self.assertRaises(InputError):
-            ARC(project='ar<c', ess_settings=ess_settings)
+            ARC(project='ar<c')
         with self.assertRaises(InputError):
-            ARC(project='ar%c', ess_settings=ess_settings)
+            ARC(project='ar%c')
 
     def test_restart(self):
         """
@@ -151,8 +155,7 @@ class TestARC(unittest.TestCase):
         restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart(H,H2O2,N2H3,CH3CO2).yml')
         project = 'arc_project_for_testing_delete_after_usage2'
         project_directory = os.path.join(arc_path, 'Projects', project)
-        arc1 = ARC(project=project, ess_settings=dict(),
-                   input_dict=restart_path, project_directory=project_directory)
+        arc1 = ARC(project=project, input_dict=restart_path, project_directory=project_directory)
         arc1.execute()
 
         with open(os.path.join(project_directory, 'output', 'thermo.info'), 'r') as f:
@@ -197,7 +200,7 @@ class TestARC(unittest.TestCase):
                     rtm = True
                 elif 'Loading the RMG database...' in line:
                     ldb = True
-                elif 'Thermodynamics for H2O2:' in line:
+                elif 'Thermodynamics for H2O2' in line:
                     therm = True
                 elif 'Sources of thermoproperties determined by RMG for the parity plots:' in line:
                     src = True
@@ -217,8 +220,13 @@ class TestARC(unittest.TestCase):
 
         with open(os.path.join(project_directory, 'output', 'Species', 'H2O2', 'species_dictionary.txt'), 'r') as f:
             lines = f.readlines()
-        adj_list = str(''.join([line for line in lines if (line and 'H2O2' not in line)]))
-        mol1 = Molecule().fromAdjacencyList(adj_list)
+        adj_list = ''
+        for line in lines:
+            if 'H2O2' not in line:
+                adj_list += line
+            if line == '\n':
+                break
+        mol1 = Molecule().fromAdjacencyList(str(adj_list))
         self.assertEqual(mol1.toSMILES(), str('OO'))
 
         thermo_library_path = os.path.join(project_directory, 'output', 'RMG libraries', 'thermo',
@@ -252,6 +260,62 @@ class TestARC(unittest.TestCase):
 
         # delete the generated library from RMG-database
         os.remove(new_thermo_library_path)
+
+    def test_check_ess_settings(self):
+        """Test the check_ess_settings function"""
+        ess_settings1 = {'gaussian': [self.servers[0]], 'molpro': [self.servers[1], self.servers[0]],
+                         'qchem': [self.servers[0]], 'ssh': False}
+        ess_settings2 = {'gaussian': self.servers[0], 'molpro': self.servers[1], 'qchem': self.servers[0]}
+        ess_settings3 = {'gaussian': self.servers[0], 'molpro': [self.servers[1], self.servers[0]],
+                         'qchem': self.servers[0]}
+        ess_settings4 = {'gaussian': self.servers[0], 'molpro': self.servers[1], 'qchem': self.servers[0], 'ssh': False}
+
+        ess_settings1 = check_ess_settings(ess_settings1)
+        ess_settings2 = check_ess_settings(ess_settings2)
+        ess_settings3 = check_ess_settings(ess_settings3)
+        ess_settings4 = check_ess_settings(ess_settings4)
+
+        ess_list = [ess_settings1, ess_settings2, ess_settings3, ess_settings4]
+
+        for ess in ess_list:
+            for soft, server_list in ess.items():
+                self.assertTrue(soft in ['gaussian', 'molpro', 'qchem', 'ssh'])
+                self.assertIsInstance(server_list, (list, bool))
+
+        with self.assertRaises(SettingsError):
+            ess_settings5 = {'nosoft': ['server1']}
+            check_ess_settings(ess_settings5)
+        with self.assertRaises(SettingsError):
+            ess_settings6 = {'gaussian': ['noserver']}
+            check_ess_settings(ess_settings6)
+
+    def test_time_lapse(self):
+        """Test the time_lapse() function"""
+        t0 = time.time()
+        time.sleep(2)
+        lap = time_lapse(t0)
+        self.assertEqual(lap, '00:00:02')
+
+    def test_get_git_commit(self):
+        """Test the get_git_commit() function"""
+        git_commit = get_git_commit()
+        # output format: ['fafdb957049917ede565cebc58b29899f597fb5a', 'Fri Mar 29 11:09:50 2019 -0400']
+        self.assertEqual(len(git_commit[0]), 40)
+        self.assertEqual(len(git_commit[1].split()), 6)
+
+    def test_read_file(self):
+        """Test the read_file() function"""
+        restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart(H,H2O2,N2H3,CH3CO2).yml')
+        input_dict = read_file(restart_path)
+        self.assertIsInstance(input_dict, dict)
+        self.assertTrue('reactions' in input_dict)
+        self.assertTrue('freq_level' in input_dict)
+        self.assertTrue('use_bac' in input_dict)
+        self.assertTrue('ts_guess_level' in input_dict)
+        self.assertTrue('running_jobs' in input_dict)
+
+        with self.assertRaises(InputError):
+            read_file('nopath')
 
     @classmethod
     def tearDownClass(cls):

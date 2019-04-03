@@ -12,7 +12,7 @@ submit_scripts = {
 #SBATCH -p defq
 #SBATCH -J {name}
 #SBATCH -N 1
-#SBATCH -n 8
+#SBATCH -n {cpus}
 #SBATCH --time={t_max}
 #SBATCH --mem-per-cpu 4500
 
@@ -49,13 +49,54 @@ rm -rf $GAUSS_SCRDIR
 rm -rf $WorkDir
 
 """,
+        # Gaussian16 on RMG
+        'gaussian16': """#!/bin/bash -l
+#SBATCH -p long
+#SBATCH -J {name}
+#SBATCH -N 1
+#SBATCH -n {cpus}
+#SBATCH --time={t_max}
+#SBATCH --mem-per-cpu={mem_cpu}
+
+which 16
+
+echo "============================================================"
+echo "Job ID : $SLURM_JOB_ID"
+echo "Job Name : $SLURM_JOB_NAME"
+echo "Starting on : $(date)"
+echo "Running on node : $SLURMD_NODENAME"
+echo "Current directory : $(pwd)"
+echo "============================================================"
+
+WorkDir=/scratch/users/{un}/$SLURM_JOB_NAME-$SLURM_JOB_ID
+SubmitDir=`pwd`
+
+GAUSS_SCRDIR=/scratch/users/{un}/g16/$SLURM_JOB_NAME-$SLURM_JOB_ID
+export GAUSS_SCRDIR
+
+mkdir -p $GAUSS_SCRDIR
+mkdir -p $WorkDir
+
+cd $WorkDir
+. $g16root/g16/bsd/g16.profile
+
+cp $SubmitDir/input.gjf .
+
+g16 < input.gjf > input.log
+formchk  check.chk check.fchk
+cp * $SubmitDir/
+
+rm -rf $GAUSS_SCRDIR
+rm -rf $WorkDir
+
+""",
 
         # Orca on C3DDB:
         'orca': """#!/bin/bash -l
 #SBATCH -p defq
 #SBATCH -J {name}
 #SBATCH -N 1
-#SBATCH -n 8
+#SBATCH -n {cpus}
 #SBATCH --time={t_max}
 #SBATCH --mem-per-cpu 4500
 
@@ -95,7 +136,7 @@ rm -rf $WorkDir
 #SBATCH -p long
 #SBATCH -J {name}
 #SBATCH -N 1
-#SBATCH -n 8
+#SBATCH -n {cpus}
 #SBATCH --time={t_max}
 #SBATCH --mem-per-cpu={mem_cpu}
 
@@ -112,7 +153,7 @@ echo "============================================================"
 sdir=/scratch/{un}/$SLURM_JOB_NAME-$SLURM_JOB_ID
 mkdir -p $sdir
 
-molpro -n 8 -d $sdir input.in
+molpro -n {cpus} -d $sdir input.in
 
 rm -rf $sdir
 
@@ -125,10 +166,9 @@ rm -rf $sdir
         'gaussian': """#!/bin/bash -l
 
 #$ -N {name}
-#$ -l long
-#$ -l harpertown
+#$ -l long{architecture}
 #$ -l h_rt={t_max}
-#$ -pe singlenode 6
+#$ -pe singlenode {cpus}
 #$ -l h=!node60.cluster
 #$ -cwd
 #$ -o out.txt
@@ -152,10 +192,9 @@ rm -r /scratch/{un}/{name}
         'gaussian03_pharos': """#!/bin/bash -l
 
 #$ -N {name}
-#$ -l long
-#$ -l harpertown
+#$ -l long{architecture}
 #$ -l h_rt={t_max}
-#$ -pe singlenode 6
+#$ -pe singlenode {cpus}
 #$ -l h=!node60.cluster
 #$ -cwd
 #$ -o out.txt
@@ -179,10 +218,9 @@ rm -r /scratch/{un}/{name}
         'qchem': """#!/bin/bash -l
 
 #$ -N {name}
-#$ -l long
-#$ -l harpertown
+#$ -l long{architecture}
 #$ -l h_rt={t_max}
-#$ -pe singlenode 6
+#$ -pe singlenode {cpus}
 #$ -l h=!node60.cluster
 #$ -cwd
 #$ -o out.txt
@@ -207,10 +245,9 @@ rm -r /scratch/{un}/{name}
         'molpro': """#! /bin/bash -l
 
 #$ -N {name}
-#$ -l long
-#$ -l harpertown
+#$ -l long{architecture}
 #$ -l h_rt={t_max}
-#$ -pe singlenode 6
+#$ -pe singlenode {cpus}
 #$ -l h=!node60.cluster
 #$ -cwd
 #$ -o out.txt

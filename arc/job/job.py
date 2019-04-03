@@ -7,7 +7,7 @@ import csv
 import logging
 
 from arc.settings import arc_path, servers, submit_filename, delete_command, t_max_format,\
-    input_filename, output_filename, rotor_scan_resolution, list_available_nodes_command
+    input_filename, output_filename, rotor_scan_resolution, list_available_nodes_command, levels_ess
 from arc.job.submit import submit_scripts
 from arc.job.inputs import input_files
 from arc.job.ssh import SSH_Client
@@ -24,7 +24,7 @@ class Job(object):
     Attribute        Type                Description
     ================ =================== ===============================================================================
     `project`         ``str``            The project's name. Used for naming the directory.
-    `settings`        ``dict``           A dictionary of available servers and software
+    `ess_settings`    ``dict``           A dictionary of available ESS and a corresponding server list
     `species_name`    ``str``            The species/TS name. Used for naming the directory.
     `charge`          ``int``            The species net charge. Default is 0
     `multiplicity`    ``int``            The species multiplicity.
@@ -77,13 +77,13 @@ class Job(object):
     The job ess (electronic structure software calculation) status is in  job.job_status[0] and can be
     either `initializing` / `running` / `errored: {error type / message}` / `unconverged` / `done`
     """
-    def __init__(self, project, settings, species_name, xyz, job_type, level_of_theory, multiplicity, project_directory,
+    def __init__(self, project, ess_settings, species_name, xyz, job_type, level_of_theory, multiplicity, project_directory,
                  charge=0, conformer=-1, fine=False, shift='', software=None, is_ts=False, scan='', pivots=None,
                  memory=1500, comments='', trsh='', scan_trsh='', ess_trsh_methods=None, initial_trsh=None, job_num=None,
                  job_server_name=None, job_name=None, job_id=None, server=None, initial_time=None, occ=None,
-                 max_job_time=120, scan_res=None):
+                 max_job_time=120, scan_res=None, testing=False):
         self.project = project
-        self.settings=settings
+        self.ess_settings = ess_settings
         self.initial_time = initial_time
         self.final_time = None
         self.run_time = None
@@ -102,6 +102,7 @@ class Job(object):
         self.scan_trsh = scan_trsh
         self.scan_res = scan_res if scan_res is not None else rotor_scan_resolution
         self.max_job_time = max_job_time
+        self.testing = testing
         job_types = ['conformer', 'opt', 'freq', 'optfreq', 'sp', 'composite', 'scan', 'gsm', 'irc', 'ts_guess',
                      'orbitals']
         # the 'conformer' job type is identical to 'opt', but we differentiate them to be identifiable in Scheduler
@@ -126,60 +127,73 @@ class Job(object):
             self.software = self.software.lower()
         else:
             if job_type == 'orbitals':
-                if not 'qchem' in self.settings:
-                    logging.debug('Could not find the QChem software to compute molecular orbitals')
+                # currently we only have a script to print orbitals on QChem,
+                # could/should definately be elaborated to additional ESS
+                if 'qchem' not in self.ess_settings.keys():
+                    logging.debug('Could not find the QChem software to compute molecular orbitals.\n'
+                                  'ess_settings is:\n{0}'.format(self.ess_settings))
                     self.software = None
-                self.software = 'qchem'
-            if job_type == 'composite':
-                if not self.settings['gaussian']:
-                    raise JobError('Could not find the Gaussian software to run the composite method {0}'.format(
-                        self.method))
-                self.software = 'gaussian'
-            elif job_type in ['conformer', 'opt', 'freq', 'optfreq', 'sp']:
-                if 'ccs' in self.method or 'cis' in self.method or 'pv' in self.basis_set:
-                    if self.settings['molpro']:
-                        self.software = 'molpro'
-                    elif self.settings['gaussian']:
-                        self.software = 'gaussian'
-                    elif self.settings['qchem']:
-                        self.software = 'qchem'
-                elif 'b3lyp' in self.method:
-                    if self.settings['gaussian']:
-                        self.software = 'gaussian'
-                    elif self.settings['qchem']:
-                        self.software = 'qchem'
-                    elif self.settings['molpro']:
-                        self.software = 'molpro'
-                elif 'wb97xd' in self.method:
-                    if not self.settings['gaussian']:
-                        raise JobError('Could not find the Gaussian software to run {0}/{1}'.format(
-                            self.method, self.basis_set))
-                    self.software = 'gaussian'
-                elif 'b97' in self.method or 'm06-2x' in self.method or 'def2' in self.basis_set:
-                    if not self.settings['qchem']:
-                        raise JobError('Could not find the QChem software to run {0}/{1}'.format(
-                            self.method, self.basis_set))
-                    self.software = 'qchem'
-            elif job_type == 'scan':
-                if 'wb97xd' in self.method:
-                    if not self.settings['gaussian']:
-                        raise JobError('Could not find the Gaussian software to run {0}/{1}'.format(
-                            self.method, self.basis_set))
-                    self.software = 'gaussian'
-                elif 'b97' in self.method or 'm06-2x' in self.method or 'def2' in self.basis_set:
-                    if not self.settings['qchem']:
-                        raise JobError('Could not find the QChem software to run {0}/{1}'.format(
-                            self.method, self.basis_set))
-                    self.software = 'qchem'
                 else:
-                    if self.settings['gaussian']:
+                    self.software = 'qchem'
+            elif job_type == 'composite':
+                if 'gaussian' not in self.ess_settings.keys():
+                    raise JobError('Could not find the Gaussian software to run the composite method {0}.\n'
+                                   'ess_settings is:\n{1}'.format(self.ess_settings, self.method))
+                self.software = 'gaussian'
+            else:
+                # use the levels_ess dictionary from settings.py:
+                for ess, phrase_list in levels_ess.items():
+                    for phrase in phrase_list:
+                        if phrase in self.level_of_theory:
+                            self.software = ess.lower()
+            if self.software is None:
+                # otherwise, deduce which software to use base on hard coded heuristics
+                if job_type in ['conformer', 'opt', 'freq', 'optfreq', 'sp']:
+                    if 'ccs' in self.method or 'cis' in self.method or 'pv' in self.basis_set:
+                        if 'molpro' in self.ess_settings.keys():
+                            self.software = 'molpro'
+                        elif 'gaussian' in self.ess_settings.keys():
+                            self.software = 'gaussian'
+                        elif 'qchem' in self.ess_settings.keys():
+                            self.software = 'qchem'
+                    elif 'b3lyp' in self.method:
+                        if 'gaussian' in self.ess_settings.keys():
+                            self.software = 'gaussian'
+                        elif 'qchem' in self.ess_settings.keys():
+                            self.software = 'qchem'
+                        elif 'molpro' in self.ess_settings.keys():
+                            self.software = 'molpro'
+                    elif 'wb97xd' in self.method:
+                        if 'gaussian' not in self.ess_settings.keys():
+                            raise JobError('Could not find the Gaussian software to run {0}/{1}'.format(
+                                self.method, self.basis_set))
                         self.software = 'gaussian'
-                    else:
+                    elif 'b97' in self.method or 'm06-2x' in self.method or 'def2' in self.basis_set:
+                        if 'qchem' not in self.ess_settings.keys():
+                            raise JobError('Could not find the QChem software to run {0}/{1}'.format(
+                                self.method, self.basis_set))
                         self.software = 'qchem'
-            elif job_type in ['gsm', 'irc']:
-                if not self.settings['gaussian']:
-                    raise JobError('Could not find the Gaussian software to run {0}'.format(job_type))
+                elif job_type == 'scan':
+                    if 'wb97xd' in self.method:
+                        if 'gaussian' not in self.ess_settings.keys():
+                            raise JobError('Could not find the Gaussian software to run {0}/{1}'.format(
+                                self.method, self.basis_set))
+                        self.software = 'gaussian'
+                    elif 'b97' in self.method or 'm06-2x' in self.method or 'def2' in self.basis_set:
+                        if 'qchem' not in self.ess_settings.keys():
+                            raise JobError('Could not find the QChem software to run {0}/{1}'.format(
+                                self.method, self.basis_set))
+                        self.software = 'qchem'
+                    else:
+                        if 'gaussian' in self.ess_settings.keys():
+                            self.software = 'gaussian'
+                        else:
+                            self.software = 'qchem'
+                elif job_type in ['gsm', 'irc']:
+                    if 'gaussian' not in self.ess_settings.keys():
+                        raise JobError('Could not find the Gaussian software to run {0}'.format(job_type))
         if self.software is None:
+            # if still no software was determined, just try by order, if exists: Gaussian > QChem > Molpro
             logging.error('job_num: {0}'.format(self.job_num))
             logging.error('ess_trsh_methods: {0}'.format(self.ess_trsh_methods))
             logging.error('trsh: {0}'.format(self.trsh))
@@ -190,18 +204,18 @@ class Job(object):
             logging.error('method: {0}'.format(self.method))
             logging.error('basis_set: {0}'.format(self.basis_set))
             logging.error('Could not determine software for job {0}'.format(self.job_name))
-            if self.settings['gaussian']:
+            if 'gaussian' in self.ess_settings.keys():
                 logging.error('Setting it to gaussian')
                 self.software = 'gaussian'
-            elif self.settings['qchem']:
+            elif 'qchem' in self.ess_settings.keys():
                 logging.error('Setting it to qchem')
                 self.software = 'qchem'
-            elif self.settings['molpro']:
+            elif 'molpro' in self.ess_settings.keys():
                 logging.error('Setting it to molpro')
                 self.software = 'molpro'
 
-        if self.settings['ssh']:
-            self.server = server if server is not None else self.settings[self.software]
+        if self.ess_settings['ssh']:
+            self.server = server if server is not None else self.ess_settings[self.software][0]
         else:
             self.server = None
 
@@ -342,7 +356,8 @@ class Job(object):
 
     def write_submit_script(self):
         un = servers[self.server]['un']  # user name
-        if self.max_job_time > 9999 or self.max_job_time == 0:
+        if self.max_job_time > 9999 or self.max_job_time <= 0:
+            logging.debug('Setting max_job_time to 120 hours')
             self.max_job_time = 120
         if t_max_format[servers[self.server]['cluster_soft']] == 'days':
             # e.g., 5-0:00:00
@@ -352,15 +367,26 @@ class Job(object):
             # e.g., 120:00:00
             t_max = '{0}:00:00'.format(self.max_job_time)
         else:
-            raise JobError('Could not determine format for maximal job time')
+            raise JobError('Could not determine format for maximal job time.\n Format is determined by {0}, but '
+                           'got {1} for {2}'.format(t_max_format, servers[self.server]['cluster_soft'], self.server))
+        cpus = servers[self.server]['cpus'] if 'cpus' in servers[self.server] else 8
+        architecture = ''
+        if self.server.lower() == 'pharos':
+            # here we're hard-coding ARC for Pharos, a Green Group server
+            # If your server has different node architectures, implement something similar
+            if cpus <= 8:
+                architecture = '\n#$ -l harpertown'
+            else:
+                architecture = '\n#$ -l magnycours'
         self.submit = submit_scripts[servers[self.server]['cluster_soft']][self.software.lower()].format(
-            name=self.job_server_name, un=un, t_max=t_max, mem_cpu=min(int(self.memory * 150), 16000))
+            name=self.job_server_name, un=un, t_max=t_max, mem_cpu=min(int(self.memory * 150), 16000), cpus=cpus,
+            architecture=architecture)
         # Memory convertion: multiply MW value by 1200 to conservatively get it in MB, then divide by 8 to get per cup
         if not os.path.exists(self.local_path):
             os.makedirs(self.local_path)
         with open(os.path.join(self.local_path, submit_filename[servers[self.server]['cluster_soft']]), 'wb') as f:
             f.write(self.submit)
-        if self.settings['ssh']:
+        if self.ess_settings['ssh'] and not self.testing:
             self._upload_submit_file()
 
     def write_input_file(self):
@@ -454,7 +480,8 @@ wf,spin={spin},charge={charge};}}
             else:
                 job_type_1 = 'opt'
             if 'PRINT_ORBITALS' not in self.trsh:
-                self.trsh += '\n   PRINT_ORBITALS  TRUE\n   GUI           2'
+                self.trsh += '\n   NBO           TRUE\n   RUN_NBO6      TRUE\n   ' \
+                             'PRINT_ORBITALS  TRUE\n   GUI           2'
 
         elif self.job_type == 'freq':
             if self.software == 'gaussian':
@@ -572,25 +599,27 @@ $end
                 try:
                     self.input = input_files['mrci'].format(memory=self.memory, xyz=self.xyz, basis=self.basis_set,
                                                             spin=self.spin, charge=self.charge, trsh=self.trsh)
-                except KeyError as e:
+                except KeyError:
                     logging.error('Could not interpret all input file keys in\n{0}'.format(self.input))
-                    raise e
+                    raise
         else:
             try:
+                cpus = servers[self.server]['cpus'] if 'cpus' in servers[self.server] else 8
                 self.input = self.input.format(memory=self.memory, method=self.method, slash=slash,
                                                basis=self.basis_set, charge=self.charge, multiplicity=self.multiplicity,
-                                               spin=self.spin, xyz=self.xyz, job_type_1=job_type_1,
+                                               spin=self.spin, xyz=self.xyz, job_type_1=job_type_1, cpus=cpus,
                                                job_type_2=job_type_2, scan=scan_string, restricted=restricted, fine=fine,
                                                shift=self.shift, trsh=self.trsh, scan_trsh=self.scan_trsh)
-            except KeyError as e:
+            except KeyError:
                 logging.error('Could not interpret all input file keys in\n{0}'.format(self.input))
-                raise e
-        if not os.path.exists(self.local_path):
-            os.makedirs(self.local_path)
-        with open(os.path.join(self.local_path, input_filename[self.software]), 'wb') as f:
-            f.write(self.input)
-        if self.settings['ssh']:
-            self._upload_input_file()
+                raise
+        if not self.testing:
+            if not os.path.exists(self.local_path):
+                os.makedirs(self.local_path)
+            with open(os.path.join(self.local_path, input_filename[self.software]), 'wb') as f:
+                f.write(self.input)
+            if self.ess_settings['ssh']:
+                self._upload_input_file()
 
     def _upload_submit_file(self):
         ssh = SSH_Client(self.server)
@@ -633,7 +662,7 @@ $end
         self.write_submit_script()
         logging.debug('writing input file...')
         self.write_input_file()
-        if self.settings['ssh']:
+        if self.ess_settings['ssh']:
             ssh = SSH_Client(self.server)
             logging.debug('submitting job...')
             # submit_job returns job server status and job server id
@@ -647,7 +676,7 @@ $end
 
     def delete(self):
         logging.debug('Deleting job {name} for {label}'.format(name=self.job_name, label=self.species_name))
-        if self.settings['ssh']:
+        if self.ess_settings['ssh']:
             ssh = SSH_Client(self.server)
             logging.debug('deleting job...')
             ssh.delete_job(self.job_id)
@@ -662,16 +691,85 @@ $end
                 ess_status = self._check_job_ess_status()
             except IOError:
                 logging.error('Got an IOError when trying to download output file for job {0}.'.format(self.job_name))
+                content = self._get_additional_job_info()
+                if content:
+                    logging.info('Got the following information from the server:')
+                    logging.info(content)
+                    for line in content.splitlines():
+                        # example:
+                        # slurmstepd: *** JOB 7752164 CANCELLED AT 2019-03-27T00:30:50 DUE TO TIME LIMIT on node096 ***
+                        if 'cancelled' in line.lower() and 'due to time limit' in line.lower():
+                            logging.warning('Looks like the job was cancelled on {0} due to time limit. '
+                                            'Got: {1}'.format(self.server, line))
+                            new_max_job_time = self.max_job_time - 24 if self.max_job_time > 25 else 1
+                            logging.warning('Setting max job time to {0} (was {1})'.format(new_max_job_time,
+                                                                                           self.max_job_time))
+                            self.max_job_time = new_max_job_time
                 raise
         elif server_status == 'running':
             ess_status = 'running'
         self.job_status = [server_status, ess_status]
 
+    def _get_additional_job_info(self):
+        """
+        Download the additional information of stdout and stderr from the server
+        """
+        lines1, lines2 = list(), list()
+        content = ''
+        ssh = SSH_Client(self.server)
+        cluster_soft = servers[self.server]['cluster_soft'].lower()
+        if cluster_soft in ['oge', 'sge']:
+            remote_file_path = os.path.join(self.remote_path, 'out.txt')
+            local_file_path1 = os.path.join(self.local_path, 'out.txt')
+            try:
+                ssh.download_file(remote_file_path=remote_file_path, local_file_path=local_file_path1)
+            except (TypeError, IOError) as e:
+                logging.warning('Got the following error when trying to download out.txt for {0}:'.format(self.job_name))
+                logging.warning(e.message)
+            remote_file_path = os.path.join(self.remote_path, 'err.txt')
+            local_file_path2 = os.path.join(self.local_path, 'err.txt')
+            try:
+                ssh.download_file(remote_file_path=remote_file_path, local_file_path=local_file_path2)
+            except (TypeError, IOError) as e:
+                logging.warning('Got the following error when trying to download err.txt for {0}:'.format(self.job_name))
+                logging.warning(e.message)
+            if os.path.isfile(local_file_path1):
+                with open(local_file_path1, 'r') as f:
+                    lines1 = f.readlines()
+            if os.path.isfile(local_file_path2):
+                with open(local_file_path2, 'r') as f:
+                    lines2 = f.readlines()
+            content += ''.join([line for line in lines1])
+            content += '\n'
+            content += ''.join([line for line in lines2])
+        elif cluster_soft == 'slurm':
+            respond = ssh.send_command_to_server(command='ls -alF', remote_path=self.remote_path)
+            files = list()
+            for line in respond[0][0].splitlines():
+                files.append(line.split()[-1])
+            for file in files:
+                if 'slurm' in file and '.out' in file:
+                    remote_file_path = os.path.join(self.remote_path, file)
+                    local_file_path = os.path.join(self.local_path, file)
+                    try:
+                        ssh.download_file(remote_file_path=remote_file_path, local_file_path=local_file_path)
+                    except (TypeError, IOError) as e:
+                        logging.warning('Got the following error when trying to download {0} for {1}:'.format(
+                            file, self.job_name))
+                        logging.warning(e.message)
+                    if os.path.isfile(local_file_path):
+                        with open(local_file_path, 'r') as f:
+                            lines1 = f.readlines()
+                    content += ''.join([line for line in lines1])
+                    content += '\n'
+        return content
+
+
     def _check_job_server_status(self):
         """
         Possible statuses: `initializing`, `running`, `errored on node xx`, `done`
         """
-        if self.settings['ssh']:
+        if self.ess_settings['ssh']:
             ssh = SSH_Client(self.server)
             return ssh.check_job_status(self.job_id)
 
@@ -684,7 +782,7 @@ $end
             os.remove(self.local_path_to_output_file)
         if os.path.exists(self.local_path_to_orbitals_file):
             os.remove(self.local_path_to_orbitals_file)
-        if self.settings['ssh']:
+        if self.ess_settings['ssh']:
             self._download_output_file()
         with open(self.local_path_to_output_file, 'rb') as f:
             lines = f.readlines()
@@ -699,30 +797,30 @@ $end
                             reason = ''
                             if 'l9999.exe' in line or 'l103.exe' in line:
                                 return 'unconverged'
-                            if 'l502.exe' in line:
+                            elif 'l502.exe' in line:
                                 return 'unconverged SCF'
-                            if 'l103.exe' in line:
+                            elif 'l103.exe' in line:
                                 return 'l103 internal coordinate error'
-                            if 'Erroneous write' in line or 'Write error in NtrExt1' in line:
+                            elif 'Erroneous write' in line or 'Write error in NtrExt1' in line:
                                 reason = 'Ran out of disk space.'
-                            if 'l716.exe' in line:
+                            elif 'l716.exe' in line:
                                 reason = 'Angle in z-matrix outside the allowed range 0 < x < 180.'
-                            if 'l301.exe' in line:
+                            elif 'l301.exe' in line:
                                 reason = 'Input Error. Either charge, multiplicity, or basis set was not specified ' \
                                          'correctly. Or, an atom specified does not match any standard atomic symbol.'
-                            if 'NtrErr Called from FileIO' in line:
+                            elif 'NtrErr Called from FileIO' in line:
                                 reason = 'Operation on .chk file was specified, but .chk was not found.'
-                            if 'l101.exe' in line:
+                            elif 'l101.exe' in line:
                                 reason = 'Input Error. The blank line after the coordinate section is missing, ' \
                                          'or charge/multiplicity was not specified correctly.'
-                            if 'l202.exe' in line:
+                            elif 'l202.exe' in line:
                                 reason = 'During the optimization process, either the standard orientation ' \
                                          'or the point group of the molecule has changed.'
-                            if 'l401.exe' in line:
+                            elif 'l401.exe' in line:
                                 reason = 'The projection from the old to the new basis set has failed.'
-                            if 'malloc failed' in line or 'galloc' in line:
+                            elif 'malloc failed' in line or 'galloc' in line:
                                 reason = 'Memory allocation failed (did you ask for too much?)'
-                            if 'A SYNTAX ERROR WAS DETECTED' in line:
+                            elif 'A SYNTAX ERROR WAS DETECTED' in line:
                                 reason = 'Check .inp carefully for syntax errors in keywords.'
                             return 'errored: {0}; {1}'.format(line, reason)
                     return 'errored: Unknown reason'
@@ -776,10 +874,10 @@ $end
                 return 'errored: Unknown reason'
 
     def troubleshoot_server(self):
-        if self.settings['ssh']:
+        if self.ess_settings['ssh']:
             if servers[self.server]['cluster_soft'].lower() == 'oge':
                 # delete present server run
-                logging.error('Job {name} has server status {stat} on {server}. Troubleshooting by changing node.'.format(
+                logging.error('Job {name} has server status "{stat}" on {server}. Troubleshooting by changing node.'.format(
                     name=self.job_name, stat=self.job_status[0], server=self.server))
                 ssh = SSH_Client(self.server)
                 ssh.send_command_to_server(command=delete_command[servers[self.server]['cluster_soft']] +
@@ -813,7 +911,7 @@ $end
             elif servers[self.server]['cluster_soft'].lower() == 'slurm':
                 # TODO: change node on Slurm
                 # delete present server run
-                logging.error('Job {name} has server status {stat} on {server}. Re-running job.'.format(
+                logging.error('Job {name} has server status "{stat}" on {server}. Re-running job.'.format(
                     name=self.job_name, stat=self.job_status[0], server=self.server))
                 ssh = SSH_Client(self.server)
                 ssh.send_command_to_server(command=delete_command[servers[self.server]['cluster_soft']] +
@@ -823,4 +921,7 @@ $end
 
     def determine_run_time(self):
         """Determine the run time"""
-        self.run_time = self.final_time - self.initial_time
+        if self.initial_time is not None and self.final_time is not None:
+            self.run_time = self.final_time - self.initial_time
+        else:
+            self.run_time = None

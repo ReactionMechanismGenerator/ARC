@@ -27,9 +27,9 @@ class TestJob(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        settings = {'gaussian': 'server1', 'molpro': 'server2', 'qchem': 'server1', 'ssh': False}
-        cls.job1 = Job(project='project_test', settings=settings, species_name='tst_spc', xyz='C 0.0 0.0 0.0',
-                       job_type='opt', level_of_theory='b3lyp/6-31+g(d)', multiplicity=1,
+        ess_settings = {'gaussian': ['server1','server2'], 'molpro': ['server2'], 'qchem': ['server1'], 'ssh': False}
+        cls.job1 = Job(project='project_test', ess_settings=ess_settings, species_name='tst_spc', xyz='C 0.0 0.0 0.0',
+                       job_type='opt', level_of_theory='b3lyp/6-31+g(d)', multiplicity=1, testing=True,
                        project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
         cls.job1.initial_time = datetime.datetime(2019, 3, 15, 19, 53, 7, 0)
         cls.job1.final_time = datetime.datetime(2019, 3, 15, 19, 53, 8, 0)
