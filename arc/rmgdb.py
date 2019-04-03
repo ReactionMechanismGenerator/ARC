@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 # encoding: utf-8
 
+"""
+A module for working with the RMG database
+"""
+
 from __future__ import (absolute_import, division, print_function, unicode_literals)
 import os
 import logging
@@ -21,6 +25,7 @@ db_path = settings['database.directory']
 
 
 def make_rmg_database_object():
+    """Make a clean RMGDatabase object"""
     rmgdb = RMGDatabase()
     return rmgdb
 
@@ -90,7 +95,7 @@ def load_rmg_database(rmgdb, thermo_libraries=None, reaction_libraries=None, kin
         for i, library in enumerate(reaction_libraries):
             if not os.path.isfile(os.path.join(kinetics_path, library, 'reactions.py')):
                 indices_to_pop.append(i)
-                second_level_libraries.extend([library + '/' + second_level\
+                second_level_libraries.extend([library + '/' + second_level
                                                for second_level in os.listdir(os.path.join(kinetics_path, library))])
         for i in reversed(range(len(reaction_libraries))):  # pop starting from the end, so other indices won't change
             if i in indices_to_pop:
