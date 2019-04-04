@@ -6,7 +6,7 @@ import logging
 import numpy as np
 import os
 
-from arkane.statmech import Log
+from arkane.statmech import determine_qm_software
 
 from arc.species.converter import get_xyz_string, standardize_xyz_string
 from arc.arc_exceptions import InputError
@@ -97,9 +97,8 @@ def parse_xyz_from_file(path):
             else:
                 break
     elif 'out' in file_extension or 'log' in file_extension:
-        log = Log(path='')
-        log.determine_qm_software(fullpath=path)
-        coord, number, _ = log.software_log.loadGeometry()
+        log = determine_qm_software(fullpath=path)
+        coord, number, _ = log.loadGeometry()
         xyz = get_xyz_string(coord=coord, number=number)
     else:
         record = False

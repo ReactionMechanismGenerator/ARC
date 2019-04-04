@@ -14,7 +14,7 @@ from IPython.display import display
 
 import cclib
 
-from arkane.statmech import Log
+from arkane.statmech import determine_qm_software
 from rmgpy.reaction import Reaction
 from rmgpy.exceptions import InputError as RMGInputError
 
@@ -742,9 +742,8 @@ class Scheduler(object):
         Parse E0 (J/mol) from the conformer opt output file, and save it in the 'conformer_energies' attribute.
         """
         if job.job_status[1] == 'done':
-            log = Log(path='')
-            log.determine_qm_software(fullpath=job.local_path_to_output_file)
-            self.species_dict[label].conformer_energies[i] = log.software_log.loadEnergy()  # in J/mol
+            log = determine_qm_software(fullpath=job.local_path_to_output_file)
+            self.species_dict[label].conformer_energies[i] = log.loadEnergy()  # in J/mol
             logging.debug('energy for {0} is {1}'.format(i, self.species_dict[label].conformer_energies[i]))
         else:
             logging.warn('Conformer {i} for {label} did not converge!'.format(i=i, label=label))
@@ -767,14 +766,13 @@ class Scheduler(object):
         else:
             conformer_xyz = None
             xyzs = list()
-            log = Log(path='')
             if self.species_dict[label].conformer_energies:
                 xyzs = self.species_dict[label].conformers
             else:
                 for job in self.job_dict[label]['conformers'].values():
-                    log.determine_qm_software(fullpath=job.local_path_to_output_file)
+                    log = determine_qm_software(fullpath=job.local_path_to_output_file)
                     try:
-                        coord, number, _ = log.software_log.loadGeometry()
+                        coord, number, _ = log.loadGeometry()
                     except RMGInputError:
                         xyzs.append(None)
                     else:
@@ -903,9 +901,8 @@ class Scheduler(object):
         logging.debug('parsing composite geo for {0}'.format(job.job_name))
         freq_ok = False
         if job.job_status[1] == 'done':
-            log = Log(path='')
-            log.determine_qm_software(fullpath=job.local_path_to_output_file)
-            coord, number, _ = log.software_log.loadGeometry()
+            log = determine_qm_software(fullpath=job.local_path_to_output_file)
+            coord, number, _ = log.loadGeometry()
             self.species_dict[label].final_xyz = get_xyz_string(coord=coord, number=number)
             self.output[label]['status'] += 'composite converged; '
             self.output[label]['composite'] = os.path.join(job.local_path, 'output.out')
@@ -944,9 +941,8 @@ class Scheduler(object):
         """
         logging.debug('parsing opt geo for {0}'.format(job.job_name))
         if job.job_status[1] == 'done':
-            log = Log(path='')
-            log.determine_qm_software(fullpath=job.local_path_to_output_file)
-            coord, number, _ = log.software_log.loadGeometry()
+            log = determine_qm_software(fullpath=job.local_path_to_output_file)
+            coord, number, _ = log.loadGeometry()
             self.species_dict[label].final_xyz = get_xyz_string(coord=coord, number=number)
             if not job.fine and self.fine:
                 # Run opt again using a finer grid.
@@ -1110,10 +1106,9 @@ class Scheduler(object):
                 invalidate = False
                 if job.job_status[1] == 'done':
                     # ESS converged. Get PES scan using Arkane:
-                    log = Log(path='')
-                    log.determine_qm_software(fullpath=job.local_path_to_output_file)
+                    log = determine_qm_software(fullpath=job.local_path_to_output_file)
                     try:
-                        v_list, angle = log.software_log.loadScanEnergies()
+                        v_list, angle = log.loadScanEnergies()
                     except ZeroDivisionError:
                         logging.error('Energies from rotor scan of {label} between pivots {pivots} could not'
                                       'be read. Invalidating rotor.'.format(label=label, pivots=job.pivots))
