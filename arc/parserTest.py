@@ -59,10 +59,10 @@ class TestParser(unittest.TestCase):
         self.assertTrue('C       1.40511900    0.21728200    0.07675200' in xyz1)
         self.assertTrue('O      -0.79314200    1.04818800    0.18134200' in xyz1)
         self.assertTrue('H      -0.43701200   -1.34990600    0.92900600' in xyz2)
-        self.assertTrue(' C                  2.12217963   -0.66843078    1.04808732' in xyz3)
-        self.assertTrue(' N                  2.41731872   -1.07916417    2.08039935' in xyz3)
-        self.assertTrue(' S         -0.4204682221       -0.3909949822        0.0245352116' in xyz4)
-        self.assertTrue(' N                 -1.99742564    0.38106573    0.09139807' in xyz5)
+        self.assertTrue('C                  2.12217963   -0.66843078    1.04808732' in xyz3)
+        self.assertTrue('N                  2.41731872   -1.07916417    2.08039935' in xyz3)
+        self.assertTrue('S         -0.4204682221       -0.3909949822        0.0245352116' in xyz4)
+        self.assertTrue('N                 -1.99742564    0.38106573    0.09139807' in xyz5)
         self.assertTrue('N      -1.17538406    0.34366165    0.03265021' in xyz6)
 
     def test_parse_t1(self):

@@ -90,13 +90,13 @@ H       3.16280800    1.25020800   -0.70346900
 """
 
         cls.xyz6 = """N      -1.1997440839    -0.1610052059     0.0274738287
-        H      -1.4016624407    -0.6229695533    -0.8487034080
-        H      -0.0000018759     1.2861082773     0.5926077870
-        N       0.0000008520     0.5651072858    -0.1124621525
-        H      -1.1294692206    -0.8709078271     0.7537518889
-        N       1.1997613019    -0.1609980472     0.0274604887
-        H       1.1294795781    -0.8708998550     0.7537444446
-        H       1.4015274689    -0.6230592706    -0.8487058662"""
+H      -1.4016624407    -0.6229695533    -0.8487034080
+H      -0.0000018759     1.2861082773     0.5926077870
+N       0.0000008520     0.5651072858    -0.1124621525
+H      -1.1294692206    -0.8709078271     0.7537518889
+N       1.1997613019    -0.1609980472     0.0274604887
+H       1.1294795781    -0.8708998550     0.7537444446
+H       1.4015274689    -0.6230592706    -0.8487058662"""
 
         nh_s_adj = str("""1 N u0 p2 c0 {2,S}
                           2 H u0 p0 c0 {1,S}""")
@@ -134,10 +134,10 @@ H       1.59252246    1.51178950   -0.33908352
 H      -0.87856890   -2.02453514    0.38494433
 H      -1.34135876    1.49608206    0.53295071
 """
-        xyz1 = converter.get_xyz_string(xyz=xyz_array, symbol=symbols)
+        xyz1 = converter.get_xyz_string(coord=xyz_array, symbol=symbols)
         self.assertEqual(xyz1, xyz_expected)
         number = [16, 8, 8, 7, 6, 1, 1, 1, 1, 1]
-        xyz2 = converter.get_xyz_string(xyz=xyz_array, number=number)
+        xyz2 = converter.get_xyz_string(coord=xyz_array, number=number)
         self.assertEqual(xyz2, xyz_expected)
         mol = Molecule().fromAdjacencyList(str("""1  S u0 p0 c0 {2,D} {3,S} {4,D} {5,S}
 2  O u0 p2 c0 {1,D}
@@ -149,7 +149,7 @@ H      -1.34135876    1.49608206    0.53295071
 8  H u0 p0 c0 {5,S}
 9  H u0 p0 c0 {5,S}
 10 H u0 p0 c0 {5,S}"""))
-        xyz3 = converter.get_xyz_string(xyz=xyz_array, mol=mol)
+        xyz3 = converter.get_xyz_string(coord=xyz_array, mol=mol)
         self.assertEqual(xyz3, xyz_expected)
 
     def test_get_xyz_matrix(self):
@@ -225,18 +225,18 @@ H      -1.34135876    1.49608206    0.53295071
  H                 -4.01978712   -0.12970163    0.82103635
  
  """
-        expected_xyz = """ C                 -0.67567701    1.18507660    0.04672449
- H                 -0.25592948    1.62415961    0.92757746
- H                 -2.26870864    1.38030564    0.05865317
- O                 -0.36671999   -0.21081064    0.01630374
- H                 -0.73553821   -0.63718986    0.79332805
- C                 -0.08400571    1.86907236   -1.19973252
- H                 -0.50375517    1.42998100   -2.08057962
- H                 -0.31518819    2.91354759   -1.17697025
- H                  0.97802159    1.73893214   -1.20769117
- O                 -3.69788377    1.55609096    0.07050345
- O                 -4.28667752    0.37487691    0.04916102
- H                 -4.01978712   -0.12970163    0.82103635"""
+        expected_xyz = """C                 -0.67567701    1.18507660    0.04672449
+H                 -0.25592948    1.62415961    0.92757746
+H                 -2.26870864    1.38030564    0.05865317
+O                 -0.36671999   -0.21081064    0.01630374
+H                 -0.73553821   -0.63718986    0.79332805
+C                 -0.08400571    1.86907236   -1.19973252
+H                 -0.50375517    1.42998100   -2.08057962
+H                 -0.31518819    2.91354759   -1.17697025
+H                  0.97802159    1.73893214   -1.20769117
+O                 -3.69788377    1.55609096    0.07050345
+O                 -4.28667752    0.37487691    0.04916102
+H                 -4.01978712   -0.12970163    0.82103635"""
         new_xyz = converter.standardize_xyz_string(xyz)
         self.assertEqual(new_xyz, expected_xyz)
 
@@ -474,7 +474,7 @@ H -2.124573 1.652495 -2.176005"""
 8 H u0 p0 c0 {6,S}
 """
         self.assertEqual(n3h5.mol.toAdjacencyList(), expected_adjlist)
-        self.assertEqual(n3h5.initial_xyz, self.xyz6)
+        self.assertEqual(n3h5.conformers[0], self.xyz6)
 
     def test_xyz_to_smiles(self):
         """Test xyz to SMILES conversion and inferring correct bond orders"""
@@ -659,26 +659,26 @@ H       0.61489300   -1.33808300    0.00002500
 H      -3.35410300    1.18597200   -0.00001700
 H      -4.07566100   -0.52115800    0.00003300"""
 
-        _, mol1 = converter.molecules_from_xyz(xyz1)
-        _, mol2 = converter.molecules_from_xyz(xyz2)
-        _, mol3 = converter.molecules_from_xyz(xyz3)
-        _, mol4 = converter.molecules_from_xyz(xyz4)
-        _, mol5 = converter.molecules_from_xyz(xyz5)
-        # _, mol6 = converter.molecules_from_xyz(xyz6)
-        # _, mol7 = converter.molecules_from_xyz(xyz7)
-        _, mol8 = converter.molecules_from_xyz(xyz8)
-        # _, mol9 = converter.molecules_from_xyz(xyz9)
-        # _, mol10 = converter.molecules_from_xyz(xyz10)
-        # _, mol11 = converter.molecules_from_xyz(xyz11)
-        _, mol12 = converter.molecules_from_xyz(xyz12)
-        # _, mol13 = converter.molecules_from_xyz(xyz13)
-        _, mol14 = converter.molecules_from_xyz(xyz14)
-        _, mol15 = converter.molecules_from_xyz(xyz15)
-        _, mol16 = converter.molecules_from_xyz(xyz16)
-        _, mol17 = converter.molecules_from_xyz(xyz17)
-        _, mol18 = converter.molecules_from_xyz(xyz18)
-        _, mol19 = converter.molecules_from_xyz(xyz19)
-        _, mol20 = converter.molecules_from_xyz(xyz20)
+        mol1 = converter.molecules_from_xyz(xyz1)[1]
+        mol2 = converter.molecules_from_xyz(xyz2)[1]
+        mol3 = converter.molecules_from_xyz(xyz3)[1]
+        mol4 = converter.molecules_from_xyz(xyz4)[1]
+        mol5 = converter.molecules_from_xyz(xyz5)[1]
+        # mol6 = converter.molecules_from_xyz(xyz6)[1]
+        # mol7 = converter.molecules_from_xyz(xyz7)[1]
+        mol8 = converter.molecules_from_xyz(xyz8)[1]
+        # mol9 = converter.molecules_from_xyz(xyz9)[1]
+        # mol10 = converter.molecules_from_xyz(xyz10)[1]
+        # mol11 = converter.molecules_from_xyz(xyz11)[1]
+        mol12 = converter.molecules_from_xyz(xyz12)[1]
+        # mol13 = converter.molecules_from_xyz(xyz13)[1]
+        mol14 = converter.molecules_from_xyz(xyz14)[1]
+        mol15 = converter.molecules_from_xyz(xyz15)[1]
+        mol16 = converter.molecules_from_xyz(xyz16)[1]
+        mol17 = converter.molecules_from_xyz(xyz17)[1]
+        mol18 = converter.molecules_from_xyz(xyz18)[1]
+        mol19 = converter.molecules_from_xyz(xyz19)[1]
+        mol20 = converter.molecules_from_xyz(xyz20)[1]
 
         self.assertEqual(mol1.toSMILES(), '[NH-][S+](=O)(O)C')
         self.assertEqual(mol2.toSMILES(), 'COC1C=CC(=CC=1CO)[C](C)C')
@@ -802,11 +802,11 @@ H      -1.29263300   -1.83308300   -1.80892900"""
 O       0.31656600   -0.00477100   -1.21127600
 O       2.17315400   -0.03069900   -0.09349100"""
 
-        mol1, _ = converter.s_bonds_mol_from_xyz(xyz1)
-        mol2, _ = converter.s_bonds_mol_from_xyz(xyz2)
-        mol3, _ = converter.s_bonds_mol_from_xyz(xyz3)
-        mol4, _ = converter.s_bonds_mol_from_xyz(xyz4)
-        mol5, _ = converter.s_bonds_mol_from_xyz(xyz5)
+        mol1 = converter.s_bonds_mol_from_xyz(xyz1)[0]
+        mol2 = converter.s_bonds_mol_from_xyz(xyz2)[0]
+        mol3 = converter.s_bonds_mol_from_xyz(xyz3)[0]
+        mol4 = converter.s_bonds_mol_from_xyz(xyz4)[0]
+        mol5 = converter.s_bonds_mol_from_xyz(xyz5)[0]
 
         self.assertEqual(len(mol1.atoms), 10)
         self.assertEqual(len(mol2.atoms), 28)
