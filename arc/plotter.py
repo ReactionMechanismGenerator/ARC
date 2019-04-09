@@ -88,7 +88,7 @@ def check_xyz_species_for_drawing(xyz, species):
         xyz = xyz if xyz is not None else species.final_xyz
     if species is not None and not isinstance(species, ARCSpecies):
         raise InputError('Species must be an ARCSpecies instance. Got {0}.'.format(type(species)))
-    if species is not None and not species.final_xyz:
+    if species is not None and species.final_xyz is None:
         raise InputError('Species {0} has an empty final_xyz attribute.'.format(species.label))
     return xyz
 

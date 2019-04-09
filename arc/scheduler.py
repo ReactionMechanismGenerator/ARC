@@ -285,7 +285,8 @@ class Scheduler(object):
                             self.run_composite_job(species.label)
                         else:
                             self.run_sp_job(label=species.label)
-                elif self.species_dict[species.label].initial_xyz or self.species_dict[species.label].final_xyz:
+                elif self.species_dict[species.label].initial_xyz is not None\
+                        or self.species_dict[species.label].final_xyz is not None:
                     # For restarting purposes: check before running jobs whether they were already terminated
                     # (check self.output) or whether they are "currently running" (check self.job_dict)
                     # This section takes care of restarting a Species (including a TS), but does not
@@ -331,7 +332,7 @@ class Scheduler(object):
         The main job scheduling block
         """
         for species in self.species_dict.values():
-            if not species.initial_xyz and not species.final_xyz and species.conformers\
+            if species.initial_xyz is None and species.final_xyz is None and species.conformers\
                     and any([e is not None for e in species.conformer_energies]):
                 # the species has no xyz, but has conformers and at least one of the conformers has energy
                 self.determine_most_stable_conformer(species.label)
@@ -636,7 +637,7 @@ class Scheduler(object):
         if 'composite' not in self.job_dict[label]:  # Check whether or not composite jobs have been spawned yet
             # we're spawning the first composite job for this species
             self.job_dict[label]['composite'] = dict()
-        if self.species_dict[label].final_xyz != '':
+        if self.species_dict[label].final_xyz is not None:
             xyz = self.species_dict[label].final_xyz
         else:
             xyz = self.species_dict[label].initial_xyz
