@@ -261,11 +261,17 @@ class Processor(object):
                 logging.info('Calculating rate for reaction {0}'.format(rxn.label))
                 try:
                     kinetics_job.execute(outputFile=output_file_path, plot=False)
-                except ValueError as e:
-                    """
-                    ValueError: One or both of the barrier heights of -9.35259 and 62.6834 kJ/mol encountered in Eckart
-                    method are invalid.
-                    """
+                except (ValueError, OverflowError) as e:
+                    # ValueError: One or both of the barrier heights of -9.35259 and 62.6834 kJ/mol encountered in Eckart
+                    # method are invalid.
+                    #
+                    #   File "/home/alongd/Code/RMG-Py/arkane/kinetics.py", line 136, in execute
+                    #     self.generateKinetics(self.Tlist.value_si)
+                    #   File "/home/alongd/Code/RMG-Py/arkane/kinetics.py", line 179, in generateKinetics
+                    #     klist[i] = self.reaction.calculateTSTRateCoefficient(Tlist[i])
+                    #   File "rmgpy/reaction.py", line 818, in rmgpy.reaction.Reaction.calculateTSTRateCoefficient
+                    #   File "rmgpy/reaction.py", line 844, in rmgpy.reaction.Reaction.calculateTSTRateCoefficient
+                    # OverflowError: math range error
                     logging.error('Failed to generate kinetics for {0} with message:\n{1}'.format(rxn.label, e))
                     success = False
                 if success:
