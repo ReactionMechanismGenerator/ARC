@@ -314,7 +314,7 @@ class Scheduler(object):
                             # restart-related check are performed in run_scan_jobs()
                             self.run_scan_jobs(species.label)
                 elif not self.species_dict[species.label].is_ts and self.generate_conformers\
-                        and 'geo' not in self.output[species.label] and not species.conformers:
+                        and 'geo' not in self.output[species.label]:
                     self.species_dict[species.label].generate_conformers()
             else:
                 # Species is loaded from a YAML file
@@ -568,25 +568,20 @@ class Scheduler(object):
         in self.species_dict[species.label]['initial_xyz']
         """
         for label in self.unique_species_labels:
-            if (not self.species_dict[label].is_ts and 'opt converged' not in self.output[label]['status']
-                    and 'opt' not in self.job_dict[label]
-                    and all([e is None for e in self.species_dict[label].conformer_energies]))\
-                    and self.generate_conformers or (len(self.species_dict[label].conformers) > 1
-                                                     and (self.species_dict[label].initial_xyz is None
-                                                          and self.species_dict[label].final_xyz is None)):
-                # This is not a TS, opt did not converged nor running, and conformer energies were not set
+            if not self.species_dict[label].is_ts and 'opt converged' not in self.output[label]['status'] \
+                    and 'opt' not in self.job_dict[label] and 'composite' not in self.job_dict[label] \
+                    and all([e is None for e in self.species_dict[label].conformer_energies]) \
+                    and self.species_dict[label].number_of_atoms > 1:
+                # This is not a TS, opt (/composite) did not converged nor running, and conformer energies were not set
                 self.save_conformers_file(label)
-                if not self.testing:
+                if self.species_dict[label].initial_xyz is None and self.species_dict[label].final_xyz is None \
+                        and not self.testing:
                     if len(self.species_dict[label].conformers) > 1:
                         self.job_dict[label]['conformers'] = dict()
                         for i, xyz in enumerate(self.species_dict[label].conformers):
                             self.run_job(label=label, xyz=xyz, level_of_theory=self.conformer_level,
                                          job_type='conformer', conformer=i)
-                    else:
-                        if 'opt' not in self.job_dict[label] and 'composite' not in self.job_dict[label]\
-                                and self.species_dict[label].number_of_atoms > 1\
-                                and len(self.species_dict[label].conformers):
-                            # proceed only if opt (/composite) not already spawned
+                    elif len(self.species_dict[label].conformers) == 1:
                             logging.info('Only one conformer is available for species {0},'
                                          ' using it for geometry optimization'.format(label))
                             self.species_dict[label].initial_xyz = self.species_dict[label].conformers[0]
@@ -771,7 +766,7 @@ class Scheduler(object):
                     except RMGInputError:
                         xyzs.append(None)
                     else:
-                        xyzs.append(get_xyz_string(xyz=coord, number=number))
+                        xyzs.append(get_xyz_string(coord=coord, number=number))
             energies, xyzs = (list(t) for t in zip(*sorted(zip(self.species_dict[label].conformer_energies, xyzs))))
             self.save_conformers_file(label, xyzs=xyzs, energies=energies)
             # Run isomorphism checks if a 2D representation is available
@@ -896,7 +891,7 @@ class Scheduler(object):
             log = Log(path='')
             log.determine_qm_software(fullpath=job.local_path_to_output_file)
             coord, number, _ = log.software_log.loadGeometry()
-            self.species_dict[label].final_xyz = get_xyz_string(xyz=coord, number=number)
+            self.species_dict[label].final_xyz = get_xyz_string(coord=coord, number=number)
             self.output[label]['status'] += 'composite converged; '
             self.output[label]['composite'] = os.path.join(job.local_path, 'output.out')
             self.species_dict[label].opt_level = self.composite_method
@@ -937,7 +932,7 @@ class Scheduler(object):
             log = Log(path='')
             log.determine_qm_software(fullpath=job.local_path_to_output_file)
             coord, number, _ = log.software_log.loadGeometry()
-            self.species_dict[label].final_xyz = get_xyz_string(xyz=coord, number=number)
+            self.species_dict[label].final_xyz = get_xyz_string(coord=coord, number=number)
             if not job.fine and self.fine:
                 # Run opt again using a finer grid.
                 xyz = self.species_dict[label].final_xyz
@@ -1318,8 +1313,8 @@ class Scheduler(object):
             displacement = vibdisps[neg_freq_idx]
             xyz1 = atomcoords + factor * displacement
             xyz2 = atomcoords - factor * displacement
-            self.species_dict[label].conformers.append(get_xyz_string(xyz=xyz1, number=atomnos))
-            self.species_dict[label].conformers.append(get_xyz_string(xyz=xyz2, number=atomnos))
+            self.species_dict[label].conformers.append(get_xyz_string(coord=xyz1, number=atomnos))
+            self.species_dict[label].conformers.append(get_xyz_string(coord=xyz2, number=atomnos))
             self.species_dict[label].conformer_energies.extend([None, None])  # a placeholder (lists are synced)
         self.job_dict[label]['conformers'] = dict()  # initialize the conformer job dictionary
         for i, xyz in enumerate(self.species_dict[label].conformers):
@@ -1776,20 +1771,21 @@ class Scheduler(object):
             conf_path = os.path.join(geo_dir, 'conformers_before_optimization.txt')
         with open(conf_path, 'w') as f:
             if energies is not None:
-                f.write('conformers optimized at {0}\n\n'.format(self.conformer_level))
+                f.write(str('conformers optimized at {0}\n\n'.format(self.conformer_level)))
             for i, conf in enumerate(xyzs):
-                f.write('conformer {0}:\n'.format(i))
+                f.write(str('conformer {0}:\n'.format(i)))
                 if conf is not None:
-                    f.write(conf + '\n')
-                    f.write('SMILES: ' + smiles_list[i] + '\n')
+                    f.write(str(conf + '\n'))
+                    f.write(str('SMILES: ' + smiles_list[i] + '\n'))
                     if energies is not None:
                         if energies[i] == min_list(energies):
-                            f.write('Relative Energy: 0 kJ/mol (lowest)')
+                            f.write(str('Relative Energy: 0 kJ/mol (lowest)'))
                         elif energies[i] is not None:
-                            f.write('Relative Energy: {0:.3f} kJ/mol'.format((energies[i] - min_list(energies)) * 0.001))
+                            f.write(str('Relative Energy: {0:.3f} kJ/mol'.format(
+                                (energies[i] - min_list(energies)) * 0.001)))
                 else:
-                    f.write('Failed to converge')
-                f.write('\n\n\n')
+                    f.write(str('Failed to converge'))
+                f.write(str('\n\n\n'))
 
 
 def min_list(lst):
