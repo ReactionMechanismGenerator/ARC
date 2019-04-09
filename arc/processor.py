@@ -209,11 +209,13 @@ class Processor(object):
                     species.thermo = arkane_spc.getThermoData()
                     plotter.log_thermo(species.label, path=output_file_path[0])
                     species_for_thermo_lib.append(species)
-                if self.use_bac and self.model_chemistry:
+                if self.use_bac:
+                    # use a fake model chemistry for getting a species YAML file self.model_chemistry isn't defined
+                    model_chemistry = self.model_chemistry or 'cbs-qb3'
                     # If BAC was used, save another Arkane YAML file of this species with no BAC, so it can be used
                     # for further rate calculations if needed (where the conformer.E0 has no BAC)
                     statmech_success = self._run_statmech(arkane_spc, species.arkane_file, output_file_path[1],
-                                                          use_bac=False)
+                                                          use_bac=False, model_chemistry=model_chemistry)
                     if statmech_success:
                         arkane_spc.label += str('_no_BAC')
                         arkane_spc.thermo = None  # otherwise thermo won't be calculated, although we don't really care
@@ -311,7 +313,8 @@ class Processor(object):
                         f.write(' SMILES: {0}'.format(spc.mol.toSMILES()))
                     f.write('\n')
 
-    def _run_statmech(self, arkane_spc, arkane_file, output_file_path=None, use_bac=False, kinetics=False, plot=False):
+    def _run_statmech(self, arkane_spc, arkane_file, output_file_path=None, use_bac=False, kinetics=False,
+                      plot=False, model_chemistry=None):
         """
         A helper function for running an Arkane statmech job
         `arkane_spc` is the species() function from Arkane's input.py
@@ -321,16 +324,18 @@ class Processor(object):
         `kinetics` is a bool flag indicating whether this specie sis part of a kinetics job, in which case..??
         `plot` is a bool flag indicating whether or not to plot a PDF of the calculated thermo properties
         """
+        model_chemistry = self.model_chemistry or model_chemistry
         success = True
         stat_mech_job = StatMechJob(arkane_spc, arkane_file)
-        stat_mech_job.applyBondEnergyCorrections = use_bac and not kinetics and self.model_chemistry
-        if not kinetics or kinetics and self.model_chemistry:
+        stat_mech_job.applyBondEnergyCorrections = use_bac and not kinetics and model_chemistry
+        if not kinetics or kinetics and model_chemistry:
             # currently we have to use a model chemistry for thermo
-            stat_mech_job.modelChemistry = self.model_chemistry
+            stat_mech_job.modelChemistry = model_chemistry
         else:
-            # if this is a klinetics computation and we don't have a valid model chemistry, don't bother about it
+            # if this is a kinetics computation and we don't have a valid model chemistry,
+            # don't bother to apply atom energy corrections
             stat_mech_job.applyAtomEnergyCorrections = False
-        stat_mech_job.frequencyScaleFactor = assign_frequency_scale_factor(self.model_chemistry)
+        stat_mech_job.frequencyScaleFactor = assign_frequency_scale_factor(model_chemistry)
         try:
             stat_mech_job.execute(outputFile=output_file_path, plot=plot)
         except Exception:
@@ -367,10 +372,9 @@ class Processor(object):
                                     dst=os.path.join(species_path, 'rotors', file_name))
                 if os.path.exists(os.path.join(species_path, 'species')):  # This is where Arkane saves the YAML file
                     species_yaml_files = os.listdir(os.path.join(species_path, 'species'))
-                    if species_yaml_files:
-                        for yml_file in species_yaml_files:
-                            shutil.move(src=os.path.join(species_path, 'species', yml_file),
-                                        dst=os.path.join(species_path, yml_file))
+                    for yml_file in species_yaml_files:
+                        shutil.move(src=os.path.join(species_path, 'species', yml_file),
+                                    dst=os.path.join(species_path, yml_file))
                     shutil.rmtree(os.path.join(species_path, 'species'))
 
     def copy_freq_output_for_ts(self, label):
