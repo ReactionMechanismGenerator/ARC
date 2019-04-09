@@ -335,7 +335,8 @@ class Processor(object):
             # if this is a kinetics computation and we don't have a valid model chemistry,
             # don't bother to apply atom energy corrections
             stat_mech_job.applyAtomEnergyCorrections = False
-        stat_mech_job.frequencyScaleFactor = assign_frequency_scale_factor(model_chemistry)
+        stat_mech_job.frequencyScaleFactor = assign_frequency_scale_factor(model_chemistry)\
+            if model_chemistry is not None else 1
         try:
             stat_mech_job.execute(outputFile=output_file_path, plot=plot)
         except Exception:
