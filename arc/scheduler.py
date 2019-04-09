@@ -859,7 +859,7 @@ class Scheduler(object):
             # currently we take the most stable guess. We'll need to implement additional checks here:
             # - normal displacement mode of the imaginary frequency
             # - IRC
-            e_min = min([e for e in energies if e is not None])
+            e_min = min_list(energies)
             i_min = energies.index(e_min)
             self.species_dict[label].chosen_ts = None
             logging.info('\n\nShowing geometry *guesses* of successful TS guess methods for {0} of {1}:'.format(
@@ -1780,13 +1780,18 @@ class Scheduler(object):
                     f.write(conf + '\n')
                     f.write('SMILES: ' + smiles_list[i] + '\n')
                     if energies is not None:
-                        if energies[i] == min(energies):
+                        if energies[i] == min_list(energies):
                             f.write('Relative Energy: 0 kJ/mol (lowest)')
-                        else:
-                            f.write('Relative Energy: {0:.3f} kJ/mol'.format((energies[i] - min(energies)) * 0.001))
+                        elif energies[i] is not None:
+                            f.write('Relative Energy: {0:.3f} kJ/mol'.format((energies[i] - min_list(energies)) * 0.001))
                 else:
                     f.write('Failed to converge')
                 f.write('\n\n\n')
+
+
+def min_list(lst):
+    """A helper function for finding the minimum of a list of integers where some of the entries might be None"""
+    return min([entry for entry in lst if entry is not None])
 
 
 def string_representer(dumper, data):
