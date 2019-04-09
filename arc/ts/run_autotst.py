@@ -63,7 +63,7 @@ def main():
     else:
         positions = reaction.ts.ase_ts.get_positions()
         numbers = reaction.ts.ase_ts.get_atomic_numbers()
-        xyz_guess = get_xyz_string(xyz=positions, number=numbers)
+        xyz_guess = get_xyz_string(coord=positions, number=numbers)
 
         xyz_path = os.path.join(arc_path, 'arc', 'ts', 'auto_tst.xyz')
 

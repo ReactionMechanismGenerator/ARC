@@ -108,13 +108,11 @@ class ARCSpecies(object):
     def __init__(self, is_ts=False, rmg_species=None, mol=None, label=None, xyz=None, multiplicity=None, charge=None,
                  smiles='', adjlist='', inchi='', bond_corrections=None, generate_thermo=True, species_dict=None,
                  yml_path=None, ts_methods=None, ts_number=None, rxn_label=None, external_symmetry=None,
-                 optical_isomers=None, run_time=None, conformers_path=None):
+                 optical_isomers=None, run_time=None):
         self.t1 = None
         self.ts_number = ts_number
         self.conformers = list()
         self.conformer_energies = list()
-        if conformers_path is not None:
-            self.append_conformers(conformers_path)
         self.xyzs = list()  # used for conformer search
         self.initial_xyz = None
         self.thermo = None
@@ -164,7 +162,7 @@ class ARCSpecies(object):
             self.number_of_rotors = 0
             self.rotors_dict = dict()
             self.rmg_species = rmg_species
-            self.check_species_xyz(xyz)
+            self.process_xyz(xyz)
             if bond_corrections is None:
                 self.bond_corrections = dict()
             else:
@@ -224,7 +222,7 @@ class ARCSpecies(object):
             if not self.is_ts:
                 # Perceive molecule from xyz coordinates
                 # This also populates mol_list
-                if self.final_xyz or self.initial_xyz:
+                if self.final_xyz or self.initial_xyz or self.conformers:
                     self.mol_from_xyz()
                 # Generate bond list for applying bond corrections
                 if not self.bond_corrections and self.mol is not None:
@@ -240,12 +238,6 @@ class ARCSpecies(object):
                                 ' coordinates only. For better thermoproperties, provide bond corrections.')
 
             self.neg_freqs_trshed = list()
-
-        if self.initial_xyz is not None:
-            # consider the initial guess as one of the conformers if generating others.
-            # otherwise, just consider it as the conformer.
-            self.conformers.append(self.initial_xyz)
-            self.conformer_energies.append(None)  # dummy
 
         if self.multiplicity is None:
             self.determine_multiplicity(smiles, adjlist, self.mol)
@@ -354,10 +346,10 @@ class ARCSpecies(object):
         self.long_thermo_description = species_dict['long_thermo_description']\
             if 'long_thermo_description' in species_dict else ''
         if 'initial_xyz' in species_dict:
-            self.check_species_xyz(species_dict['initial_xyz'])
+            self.process_xyz(species_dict['initial_xyz'])
         self.final_xyz = standardize_xyz_string(species_dict['final_xyz']) if 'final_xyz' in species_dict else None
         if 'xyz' in species_dict and self.initial_xyz is None and self.final_xyz is None:
-            self.check_species_xyz(species_dict['xyz'])
+            self.process_xyz(species_dict['xyz'])
         self.is_ts = species_dict['is_ts'] if 'is_ts' in species_dict else False
         if self.is_ts:
             self.ts_conf_spawned = species_dict['ts_conf_spawned'] if 'ts_conf_spawned' in species_dict else False
@@ -439,8 +431,6 @@ class ARCSpecies(object):
                 if not self.charge:
                     self.mol_list = self.mol.generate_resonance_structures(keep_isomorphic=False,
                                                                            filter_structures=True)
-        if 'conformers_path' in species_dict:
-            self.append_conformers(species_dict['conformers_path'])
         if self.mol is None and self.initial_xyz is None and self.final_xyz is None and not self.conformers\
                 and not any([tsg.xyz for tsg in self.ts_guesses]):
             # TS species are allowed to be loaded w/o a structure
@@ -456,7 +446,7 @@ class ARCSpecies(object):
         # The data from the YAML file is loaded into the `species` argument of the `load_yaml` method in Arkane
         arkane_spc.load_yaml(path=self.yml_path, species=rmg_spc, pdep=False)
         self.label = label if label is not None else arkane_spc.label
-        self.final_xyz = get_xyz_string(xyz=arkane_spc.conformer.coordinates.value,
+        self.final_xyz = get_xyz_string(coord=arkane_spc.conformer.coordinates.value,
                                         number=arkane_spc.conformer.number.value)
         if arkane_spc.adjacency_list is not None:
             try:
@@ -557,11 +547,11 @@ class ARCSpecies(object):
                     self.label, e.message))
             if rd_xyzs:
                 rd_xyz = get_min_energy_conformer(xyzs=rd_xyzs, energies=rd_energies)
-                self.xyzs.append(get_xyz_string(xyz=rd_xyz, mol=mol))
+                self.xyzs.append(get_xyz_string(coord=rd_xyz, mol=mol))
         if opnbbl:
             ob_xyzs, ob_energies = _get_possible_conformers_openbabel(mol)
             ob_xyz = get_min_energy_conformer(xyzs=ob_xyzs, energies=ob_energies)
-            self.xyzs.append(get_xyz_string(xyz=ob_xyz, mol=mol))
+            self.xyzs.append(get_xyz_string(coord=ob_xyz, mol=mol))
         logging.debug('Considering {actual} conformers for {label} out of {total} total ran using a force field'.format(
             actual=len(self.xyzs), total=len(rd_xyzs+ob_xyzs), label=self.label))
 
@@ -721,7 +711,7 @@ class ARCSpecies(object):
             return False
         if self.number_of_atoms == 2:
             return True
-        xyz = self.final_xyz or self.initial_xyz
+        xyz = self.final_xyz or self.initial_xyz or self.conformers[0]
         if not xyz:
             raise SpeciesError('Cannot determine linearity for {0} without the initial/final xyz coordinates'.format(
                 self.label))
@@ -846,7 +836,7 @@ class ARCSpecies(object):
         Resonance structures are generated and saved to ``self.mol_list``.
         """
         if xyz is None:
-            xyz = self.final_xyz or self.initial_xyz
+            xyz = self.final_xyz or self.initial_xyz or self.conformers[0]
 
         if self.mol is not None:
             # self.mol should have come from another source, e.g. SMILES or yml
@@ -872,50 +862,67 @@ class ARCSpecies(object):
                                                                                    filter_structures=True)
         order_atoms_in_mol_list(ref_mol=self.mol, mol_list=self.mol_list)
 
-    def append_conformers(self, conformers_path):
+    def process_conformers_file(self, conformers_path):
         """
         Populate the conformers and conformer energies lists with data from an ARC's conformers file.
         The `conformers_path` should direct to either a "conformers_before_optimization" or
         a "conformers_after_optimization" ARC file.
         """
         if not os.path.isfile(conformers_path):
-            raise ValueError('Conformers file {0} could not be opened'.format(conformers_path))
+            raise ValueError('Conformers file {0} could not be found'.format(conformers_path))
         with open(conformers_path, 'r') as f:
             lines = f.readlines()
         conformer = ''
+        first_conformer = True  # to keep conformers and conformer_energies lists the same length we need to
+        # differentiate between starting the first conformer and the starting other conformers
+        # if energy wasn't read and this isn't the first conformer, append None to conformer_energies
+        read_energy = False
         for line in lines:
             if 'conformer' in line or 'SMILES' in line or 'Failed to converge' in line or line in ['\r', '\n', '\r\n']:
                 continue_reading_conformer = False
             elif 'Relative Energy' in line:
                 self.conformer_energies.append(float(line.split()[2]) * 1000)  # convert kJ/mol to J/mol
                 continue_reading_conformer = False
+                read_energy = True
             else:
+                if not first_conformer and conformer == '':
+                    if not read_energy:
+                        self.conformer_energies.append(None)  # dummy (lists should be the same length)
+                first_conformer = False
+                read_energy = False
                 conformer += line
                 continue_reading_conformer = True
             if not continue_reading_conformer and conformer:
-                self.conformers.append(conformer)
+                self.conformers.append(standardize_xyz_string(conformer))
                 conformer = ''
 
-    def check_species_xyz(self, xyz):
+    def process_xyz(self, xyz_list):
         """
-        If xyz is a list, populate self.conformers; else populate self.initial_xyz
-        If xyz represents a file path, parse it.
-        Eventually, standardize the xyz format using converter.standardize_xyz_string
+        Treat `xyz_list` as a list if it is not already one.
+        `xyz_list` list entries could be any mixture of a multiline xyz string format, xyz file,
+        a path to an ARC conformers file (either with or without energies), or a path to an ESS log/input file.
+        Populate self.conformers
         """
-        if xyz is not None:
-            if isinstance(xyz, list) and len(xyz) > 1:
-                for entry in xyz:
-                    if os.path.isfile(entry):
-                        self.conformers.append(standardize_xyz_string(parse_xyz_from_file(entry)))
-                    else:
-                        self.conformers.append(standardize_xyz_string(entry))
-                    self.conformer_energies.append(None)
-            else:
-                if isinstance(xyz, list) and len(xyz) == 1:
-                    xyz = xyz[0]
+        if xyz_list is not None:
+            if not isinstance(xyz_list, list):
+                xyz_list = [xyz_list]
+            for xyz in xyz_list:
+                if not isinstance(xyz, (str, unicode)):
+                    raise InputError('each xyz entry in xyz_list must be a string. Got:\n{0}\nwhich is a {1}'.format(
+                        xyz, type(xyz)))
                 if os.path.isfile(xyz):
-                    xyz = parse_xyz_from_file(xyz)
-                self.initial_xyz = standardize_xyz_string(xyz)
+                    file_extension = os.path.splitext(xyz)[1]
+                    if 'txt' in file_extension:
+                        # assume his is an ARC conformer file
+                        self.process_conformers_file(conformers_path=xyz)
+                    else:
+                        # assume this is an ESS log file
+                        self.conformers.append(parse_xyz_from_file(xyz))  # also calls standardize_xyz_string()
+                        self.conformer_energies.append(None)  # dummy (lists should be the same length)
+                else:
+                    # assume this is a string format xyz
+                    self.conformers.append(standardize_xyz_string(xyz))
+                    self.conformer_energies.append(None)  # dummy (lists should be the same length)
 
 
 class TSGuess(object):
@@ -963,7 +970,7 @@ class TSGuess(object):
             self.index = None
             self.execution_time = None
             self.xyz = None
-            self.check_species_xyz(xyz)  # populates self.xyz
+            self.process_xyz(xyz)  # populates self.xyz
             self.success = None
             self.energy = None
             self.method = method.lower() if method is not None else 'user guess'
@@ -1013,7 +1020,7 @@ class TSGuess(object):
         self.t0 = ts_dict['t0'] if 't0' in ts_dict else None
         self.index = ts_dict['index'] if 'index' in ts_dict else None
         self.xyz = ts_dict['xyz'] if 'xyz' in ts_dict else None
-        self.check_species_xyz(self.xyz)  # re-populates self.xyz
+        self.process_xyz(self.xyz)  # re-populates self.xyz
         self.success = ts_dict['success'] if 'success' in ts_dict else None
         self.energy = ts_dict['energy'] if 'energy' in ts_dict else None
         self.execution_time = ts_dict['execution_time'] if 'execution_time' in ts_dict else None
@@ -1114,7 +1121,7 @@ class TSGuess(object):
         """
         self.success = False
 
-    def check_species_xyz(self, xyz):
+    def process_xyz(self, xyz):
         """
         If xyz represents a file path, parse it.
         Standardize the xyz format using converter.standardize_xyz_string
