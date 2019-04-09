@@ -651,16 +651,10 @@ class ARC(object):
         txt += '\nUsing the following ESS settings: {0}\n'.format(self.ess_settings)
         txt += '\nConsidered the following species and TSs:\n'
         for species in self.arc_species_list:
-            if species.is_ts:
-                if species.run_time is not None:
-                    txt += 'TS {0} (run time: {1})\n'.format(species.label, species.run_time)
-                else:
-                    txt += 'TS {0} (Failed)\n'.format(species.label)
-            else:
-                if species.run_time is not None:
-                    txt += 'Species {0} (run time: {1})\n'.format(species.label, species.run_time)
-                else:
-                    txt += 'Species {0} (Failed!)\n'.format(species.label)
+            descriptor = 'TS' if species.is_ts else 'Species'
+            failed = '' if 'ALL converged' in self.scheduler.output[species.label]['status'] else ' (Failed!)'
+            txt += '{descriptor} {label}{failed} (run time: {time})\n'.format(
+                descriptor=descriptor, label=species.label, failed=failed, time=species.run_time)
         if self.arc_rxn_list:
             for rxn in self.arc_rxn_list:
                 txt += 'Considered reaction: {0}\n'.format(rxn.label)
