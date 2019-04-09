@@ -102,17 +102,21 @@ def xyz_string_to_xyz_file_format(xyz, comment=''):
     """
     Convert the ARC xyz string format into the XYZ file format: https://en.wikipedia.org/wiki/XYZ_file_format
     """
-    xyz = standardize_xyz_string(xyz)
-    num = int(len(xyz.split()) / 4)
-    return str(num) + '\n' + comment + '\n' + xyz + '\n'
+    if xyz is not None:
+        xyz = standardize_xyz_string(xyz)
+        num = int(len(xyz.split()) / 4)
+        return str(num) + '\n' + comment + '\n' + xyz + '\n'
+    else:
+        return None
 
 
 def standardize_xyz_string(xyz):
     """
     A helper function to correct xyz string format input
-    Usually empty lines are added by the user either in the beginning or the end, and we'd like to remove them
+    Usually empty lines are added by the user either in the beginning or the end,
+    here we remove them along with other common issues
     """
-    xyz = os.linesep.join([s for s in xyz.splitlines() if s and any(c != ' ' for c in s)])
+    xyz = os.linesep.join([s.lstrip() for s in xyz.splitlines() if s and any(c != ' ' for c in s)])
     lines = xyz.splitlines()
     if all([len(line.split()) == 6 for line in lines if len(line)]):
         # Convert Gaussian output format, e.g., "      1          8           0        3.132319    0.769111   -0.080869"
