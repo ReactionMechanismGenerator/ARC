@@ -121,8 +121,12 @@ class ARC(object):
             self.scan_rotors = scan_rotors
             self.run_orbitals = run_orbitals
             self.use_bac = use_bac
-            self.model_chemistry = model_chemistry
-            if self.model_chemistry:
+            if model_chemistry.lower() == 'fake':
+                self.model_chemistry = 'cbs-qb3'
+                logging.warning('user specified model_chemistry is fake, ARC is using cbs-qb3 model_chemistry to '
+                                'generate YAML files for species. Warning: Do NOT use YAML for thermo calculation')
+            else:
+                self.model_chemistry = model_chemistry
                 logging.info('Using {0} as model chemistry for energy corrections in Arkane'.format(self.model_chemistry))
             if not self.fine:
                 logging.info('\n')
