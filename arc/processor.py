@@ -61,9 +61,11 @@ class Processor(object):
         self.model_chemistry = model_chemistry
         self.lib_long_desc = lib_long_desc
         load_thermo_libs, load_kinetic_libs = True, True
-        if not any([species.is_ts and species.final_xyz for species in self.species_dict.values()]):
+        if not any([species.is_ts and species.final_xyz for species in self.species_dict.values()])\
+                and not any(['ALL converged' in out['status'] for out in output.values()]):
             load_kinetic_libs = False  # don't load reaction libraries, not TS has converged
-        if not any([species.generate_thermo for species in self.species_dict.values()]):
+        if not any([species.generate_thermo for species in self.species_dict.values()])\
+                and not any(['ALL converged' in out['status'] for out in output.values()]):
             load_thermo_libs = False  # don't load thermo libraries, not thermo requested
         rmgdb.load_rmg_database(rmgdb=self.rmgdb, load_thermo_libs=load_thermo_libs,
                                 load_kinetic_libs=load_kinetic_libs)
@@ -261,11 +263,17 @@ class Processor(object):
                 logging.info('Calculating rate for reaction {0}'.format(rxn.label))
                 try:
                     kinetics_job.execute(outputFile=output_file_path, plot=False)
-                except ValueError as e:
-                    """
-                    ValueError: One or both of the barrier heights of -9.35259 and 62.6834 kJ/mol encountered in Eckart
-                    method are invalid.
-                    """
+                except (ValueError, OverflowError) as e:
+                    # ValueError: One or both of the barrier heights of -9.35259 and 62.6834 kJ/mol encountered in Eckart
+                    # method are invalid.
+                    #
+                    #   File "/home/alongd/Code/RMG-Py/arkane/kinetics.py", line 136, in execute
+                    #     self.generateKinetics(self.Tlist.value_si)
+                    #   File "/home/alongd/Code/RMG-Py/arkane/kinetics.py", line 179, in generateKinetics
+                    #     klist[i] = self.reaction.calculateTSTRateCoefficient(Tlist[i])
+                    #   File "rmgpy/reaction.py", line 818, in rmgpy.reaction.Reaction.calculateTSTRateCoefficient
+                    #   File "rmgpy/reaction.py", line 844, in rmgpy.reaction.Reaction.calculateTSTRateCoefficient
+                    # OverflowError: math range error
                     logging.error('Failed to generate kinetics for {0} with message:\n{1}'.format(rxn.label, e))
                     success = False
                 if success:
@@ -292,6 +300,8 @@ class Processor(object):
 
         self._clean_output_directory()
         if unconverged_species:
+            if not os.path.isdir(output_dir):
+                os.makedirs(output_dir)
             with open(os.path.join(output_dir, 'unconverged_species.log'), 'w') as f:
                 for spc in unconverged_species:
                     f.write(spc.label)

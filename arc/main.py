@@ -99,6 +99,7 @@ class ARC(object):
         self.allow_nonisomorphic_2d = allow_nonisomorphic_2d
         self.memory = job_memory
         self.orbitals_level = default_levels_of_theory['orbitals'].lower()
+        self.ess_settings = dict()
 
         if input_dict is None:
             if project is None:
@@ -143,12 +144,10 @@ class ARC(object):
                 logging.info('Using {0} for refined conformer searches (after filtering via force fields)'.format(
                     conformer_level))
                 self.conformer_level = conformer_level.lower()
-            elif self.generate_conformers:
+            else:
                 self.conformer_level = default_levels_of_theory['conformer'].lower()
                 logging.info('Using default level {0} for refined conformer searches (after filtering via force'
                              ' fields)'.format(default_levels_of_theory['conformer']))
-            else:
-                self.conformer_level = ''
             if ts_guess_level:
                 logging.info('Using {0} for TS guesses comparison of different methods'.format(ts_guess_level))
                 self.ts_guess_level = ts_guess_level.lower()
@@ -324,7 +323,9 @@ class ARC(object):
             project_directory = project_directory if project_directory is not None\
                 else os.path.abspath(os.path.dirname(input_dict))
             self.from_dict(input_dict=input_dict, project=project, project_directory=project_directory)
-        self.ess_settings = check_ess_settings(ess_settings or global_ess_settings)
+        if not self.ess_settings:
+            # don't override self.ess_settings if determined from an input dictionary
+            self.ess_settings = check_ess_settings(ess_settings or global_ess_settings)
         if self.ess_settings is None or not self.ess_settings:
             self.determine_ess_settings()
         self.restart_dict = self.as_dict()
@@ -443,12 +444,10 @@ class ARC(object):
             self.conformer_level = input_dict['conformer_level'].lower()
             logging.info('Using {0} for refined conformer searches (after filtering via force fields)'.format(
                 self.conformer_level))
-        elif self.generate_conformers:
+        else:
             self.conformer_level = default_levels_of_theory['conformer'].lower()
             logging.info('Using default level {0} for refined conformer searches (after filtering via force'
                          ' fields)'.format(default_levels_of_theory['conformer']))
-        else:
-            self.conformer_level = ''
 
         if 'ts_guess_level' in input_dict:
             self.ts_guess_level = input_dict['ts_guess_level'].lower()
@@ -648,16 +647,10 @@ class ARC(object):
         txt += '\nUsing the following ESS settings: {0}\n'.format(self.ess_settings)
         txt += '\nConsidered the following species and TSs:\n'
         for species in self.arc_species_list:
-            if species.is_ts:
-                if species.run_time is not None:
-                    txt += 'TS {0} (run time: {1})\n'.format(species.label, species.run_time)
-                else:
-                    txt += 'TS {0} (Failed)\n'.format(species.label)
-            else:
-                if species.run_time is not None:
-                    txt += 'Species {0} (run time: {1})\n'.format(species.label, species.run_time)
-                else:
-                    txt += 'Species {0} (Failed!)\n'.format(species.label)
+            descriptor = 'TS' if species.is_ts else 'Species'
+            failed = '' if 'ALL converged' in self.scheduler.output[species.label]['status'] else ' (Failed!)'
+            txt += '{descriptor} {label}{failed} (run time: {time})\n'.format(
+                descriptor=descriptor, label=species.label, failed=failed, time=species.run_time)
         if self.arc_rxn_list:
             for rxn in self.arc_rxn_list:
                 txt += 'Considered reaction: {0}\n'.format(rxn.label)
@@ -748,8 +741,9 @@ class ARC(object):
             logging.log(level, 'The current git HEAD for ARC is:')
             logging.log(level, '    {0}\n    {1}\n'.format(head, date))
         logging.info('Starting project {0}'.format(self.project))
-        # ignore Paramiko warnings:
+        # ignore Paramiko and cclib warnings:
         warnings.filterwarnings(action='ignore', module='.*paramiko.*')
+        warnings.filterwarnings(action='ignore', module='.*cclib.*')
 
     def log_footer(self, level=logging.INFO):
         """
@@ -1021,7 +1015,7 @@ def check_ess_settings(ess_settings):
     Assists in troubleshooting job and trying a different server
     Also check ESS and servers
     """
-    if ess_settings is None:
+    if ess_settings is None or not ess_settings:
         return dict()
     settings = dict()
     for software, server_list in ess_settings.items():

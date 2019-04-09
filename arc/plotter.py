@@ -83,12 +83,12 @@ def show_sticks(xyz=None, species=None, project_directory=None):
 
 
 def check_xyz_species_for_drawing(xyz, species):
-    """A helper function to avoid repetative code"""
+    """A helper function to avoid repetitive code"""
     if species is not None and xyz is None:
         xyz = xyz if xyz is not None else species.final_xyz
     if species is not None and not isinstance(species, ARCSpecies):
         raise InputError('Species must be an ARCSpecies instance. Got {0}.'.format(type(species)))
-    if species is not None and not species.final_xyz:
+    if species is not None and species.final_xyz is None:
         raise InputError('Species {0} has an empty final_xyz attribute.'.format(species.label))
     return xyz
 
@@ -292,35 +292,36 @@ def draw_kinetics_plots(rxn_list, path=None, t_min=(300, 'K'), t_max=(3000, 'K')
         pp = PdfPages(path)
 
     for rxn in rxn_list:
-        reaction_order = len(rxn.reactants)
-        units = ''
-        conversion_factor = {1: 1, 2: 1e6, 3: 1e12}
-        if reaction_order == 1:
-            units = r' (s$^-1$)'
-        elif reaction_order == 2:
-            units = r' (cm$^3$/(mol s))'
-        elif reaction_order == 3:
-            units = r' (cm$^6$/(mol$^2$ s))'
-        arc_k = list()
-        for t in temperature:
-            arc_k.append(rxn.kinetics.getRateCoefficient(t, pressure) * conversion_factor[reaction_order])
-        rmg_rxns = list()
-        for rmg_rxn in rxn.rmg_reactions:
-            rmg_rxn_dict = dict()
-            rmg_rxn_dict['rmg_rxn'] = rmg_rxn
-            rmg_rxn_dict['t_min'] = rmg_rxn.kinetics.Tmin if rmg_rxn.kinetics.Tmin is not None else t_min
-            rmg_rxn_dict['t_max'] = rmg_rxn.kinetics.Tmax if rmg_rxn.kinetics.Tmax is not None else t_max
-            k = list()
-            temp = np.linspace(rmg_rxn_dict['t_min'].value_si, rmg_rxn_dict['t_max'].value_si, t_count)
-            for t in temp:
-                k.append(rmg_rxn.kinetics.getRateCoefficient(t, pressure) * conversion_factor[reaction_order])
-            rmg_rxn_dict['k'] = k
-            rmg_rxn_dict['T'] = temp
-            if rmg_rxn.kinetics.isPressureDependent():
-                rmg_rxn.comment += str(' (at {0} bar)'.format(int(pressure / 1e5)))
-            rmg_rxn_dict['label'] = rmg_rxn.comment
-            rmg_rxns.append(rmg_rxn_dict)
-        _draw_kinetics_plots(rxn.label, arc_k, temperature, rmg_rxns, units, pp)
+        if rxn.kinetics is not None:
+            reaction_order = len(rxn.reactants)
+            units = ''
+            conversion_factor = {1: 1, 2: 1e6, 3: 1e12}
+            if reaction_order == 1:
+                units = r' (s$^-1$)'
+            elif reaction_order == 2:
+                units = r' (cm$^3$/(mol s))'
+            elif reaction_order == 3:
+                units = r' (cm$^6$/(mol$^2$ s))'
+            arc_k = list()
+            for t in temperature:
+                arc_k.append(rxn.kinetics.getRateCoefficient(t, pressure) * conversion_factor[reaction_order])
+            rmg_rxns = list()
+            for rmg_rxn in rxn.rmg_reactions:
+                rmg_rxn_dict = dict()
+                rmg_rxn_dict['rmg_rxn'] = rmg_rxn
+                rmg_rxn_dict['t_min'] = rmg_rxn.kinetics.Tmin if rmg_rxn.kinetics.Tmin is not None else t_min
+                rmg_rxn_dict['t_max'] = rmg_rxn.kinetics.Tmax if rmg_rxn.kinetics.Tmax is not None else t_max
+                k = list()
+                temp = np.linspace(rmg_rxn_dict['t_min'].value_si, rmg_rxn_dict['t_max'].value_si, t_count)
+                for t in temp:
+                    k.append(rmg_rxn.kinetics.getRateCoefficient(t, pressure) * conversion_factor[reaction_order])
+                rmg_rxn_dict['k'] = k
+                rmg_rxn_dict['T'] = temp
+                if rmg_rxn.kinetics.isPressureDependent():
+                    rmg_rxn.comment += str(' (at {0} bar)'.format(int(pressure / 1e5)))
+                rmg_rxn_dict['label'] = rmg_rxn.comment
+                rmg_rxns.append(rmg_rxn_dict)
+            _draw_kinetics_plots(rxn.label, arc_k, temperature, rmg_rxns, units, pp)
     pp.close()
 
 
@@ -407,12 +408,7 @@ def save_geo(species, project_directory):
     """
     folder_name = 'rxns' if species.is_ts else 'Species'
     geo_path = os.path.join(project_directory, 'output', folder_name, species.label, 'geometry')
-    if os.path.exists(geo_path):
-        # clean working folder from all previous output
-        for file0 in os.listdir(geo_path):
-            file_path = os.path.join(geo_path, file0)
-            os.remove(file_path)
-    else:
+    if not os.path.exists(geo_path):
         os.makedirs(geo_path)
 
     # xyz

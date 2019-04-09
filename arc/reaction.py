@@ -310,6 +310,10 @@ class ARCReaction(object):
         if any([spc.e0 is None for spc in self.r_species + self.p_species + [self.ts_species]]):
             logging.error("Could not get E0's of all species participating in reaction {0}. Cannot check TS E0.".format(
                 self.label))
+            r_e0 = None if any([spc.e0 is None for spc in self.r_species]) else sum(spc.e0 for spc in self.r_species)
+            p_e0 = None if any([spc.e0 is None for spc in self.p_species]) else sum(spc.e0 for spc in self.p_species)
+            ts_e0 = self.ts_species.e0
+            logging.error('Reactants E0: {0}\nProducts E0: {1}\nTS E0: {2}'.format(r_e0, p_e0, ts_e0))
             return True
         r_e0 = sum([spc.e0 for spc in self.r_species])
         p_e0 = sum([spc.e0 for spc in self.p_species])

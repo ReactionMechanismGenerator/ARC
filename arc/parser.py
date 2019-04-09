@@ -8,7 +8,7 @@ import os
 
 from arkane.statmech import Log
 
-from arc.species.converter import get_xyz_string
+from arc.species.converter import get_xyz_string, standardize_xyz_string
 from arc.arc_exceptions import InputError
 
 """
@@ -83,7 +83,7 @@ def parse_xyz_from_file(path):
     """
     with open(path, 'r') as f:
         lines = f.readlines()
-    _, file_extension = os.path.splitext(path)
+    file_extension = os.path.splitext(path)[1]
 
     xyz = None
     relevant_lines = list()
@@ -99,8 +99,8 @@ def parse_xyz_from_file(path):
     elif 'out' in file_extension or 'log' in file_extension:
         log = Log(path='')
         log.determine_qm_software(fullpath=path)
-        coord, number, mass = log.software_log.loadGeometry()
-        xyz = get_xyz_string(xyz=coord, number=number)
+        coord, number, _ = log.software_log.loadGeometry()
+        xyz = get_xyz_string(coord=coord, number=number)
     else:
         record = False
         for line in lines:
@@ -116,4 +116,4 @@ def parse_xyz_from_file(path):
             raise InputError('Could not parse xyz coordinates from file {0}'.format(path))
     if xyz is None and relevant_lines:
         xyz = ''.join([line for line in relevant_lines if line])
-    return xyz
+    return standardize_xyz_string(xyz)

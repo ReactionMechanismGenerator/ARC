@@ -15,7 +15,7 @@ from rmgpy.species import Species
 from rmgpy.reaction import Reaction
 
 from arc.species.species import ARCSpecies, TSGuess, get_min_energy_conformer,\
-    determine_rotor_type, determine_rotor_symmetry, check_species_xyz
+    determine_rotor_type, determine_rotor_symmetry
 from arc.species.converter import get_xyz_string, get_xyz_matrix, molecules_from_xyz
 from arc.settings import arc_path, default_levels_of_theory
 from arc.rmgdb import make_rmg_database_object
@@ -68,7 +68,7 @@ class TestARCSpecies(unittest.TestCase):
         N       1.1997613019    -0.1609980472     0.0274604887
         H       1.1294795781    -0.8708998550     0.7537444446
         H       1.4015274689    -0.6230592706    -0.8487058662""")
-        cls.spc6 = ARCSpecies(label=str('N3'), xyz=n3_xyz, multiplicity=1, charge=0, smiles=str('NNN'))
+        cls.spc6 = ARCSpecies(label=str('N3'), xyz=n3_xyz, multiplicity=1, smiles=str('NNN'))
 
         xyz1 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'AIBN.gjf')
         cls.spc7 = ARCSpecies(label='AIBN', smiles=str('N#CC(C)(C)N=NC(C)(C)C#N'), xyz=xyz1)
@@ -366,7 +366,6 @@ H      -1.67091600   -1.35164600   -0.93286400
                          'long_thermo_description': spc_dict['long_thermo_description'],
                          'charge': 0,
                          'is_ts': False,
-                         'final_xyz': '',
                          't1': None,
                          'bond_corrections': {'C-H': 3, 'C-N': 1, 'H-N': 2},
                          'rotors_dict': {}}
@@ -411,45 +410,97 @@ H      -1.67091600   -1.35164600   -0.93286400
 
     def test_xyz_from_file(self):
         """Test parsing xyz from a file and saving it in the .initial_xyz attribute"""
-        self.assertTrue(' N                 -2.36276900    2.14528400   -0.76917500' in self.spc7.initial_xyz)
+        self.assertTrue('N                 -2.36276900    2.14528400   -0.76917500' in self.spc7.conformers[0])
 
-    def test_check_species_xyz(self):
-        """Test the check_xyz() function"""
+    def test_process_xyz(self):
+        """Test the process_xyz() function"""
+        # the last four H's in xyz hve a leading TAB character which is removed when processing
         xyz = """
         
         
- C                 -0.67567701    1.18507660    0.04672449
- H                 -0.25592948    1.62415961    0.92757746
- H                 -2.26870864    1.38030564    0.05865317
- O                 -0.36671999   -0.21081064    0.01630374
- H                 -0.73553821   -0.63718986    0.79332805
- C                 -0.08400571    1.86907236   -1.19973252
+        
+   O    3.1024    0.1216    1.0455
+   O    1.4602   -3.3145   -0.2099
+C   -2.2924    0.2555   -0.8205
+   C   -2.3929   -0.1455   -2.3013
+   C   -3.2177   -0.6103    0.0500
+                    C    3.7529    1.2995    1.5066
+   C   -0.8566    0.2292   -0.3220
+      C    1.2086   -0.9791    0.1635
+       C    1.8156    0.2120    0.6120
+       C   -0.1097   -0.9444   -0.2920
+   C   -0.2294    1.3920    0.1279
+   C    1.0837    1.3976    0.5896
+   
+
+   C    1.9403   -2.2644    0.1662
+    H   -2.6363    1.2898   -0.7367
+H   -2.0724   -1.1772   -2.4533
+   H   -1.7687    0.4927   -2.9270
+   H   -3.4228   -0.0630   -2.6520
+   H   -4.2511   -0.5298   -0.2908
+   H   -3.1797   -0.3025    1.0951
+   H   -2.9338   -1.6626    0.0021
+H    3.8200    2.0502    0.7167
+   H    4.7525    0.9900    1.7960
+                                                                           H    3.2393    1.7229    2.3720
+	H   -0.5302   -1.8837   -0.6253
+	H   -0.7777    2.3260    0.1202
+	H    1.5203    2.3247    0.9261
+	H    2.9757   -2.2266    0.5368
  
- H                 -0.50375517    1.42998100   -2.08057962
- H                 -0.31518819    2.91354759   -1.17697025
- H                  0.97802159    1.73893214   -1.20769117
- O                 -3.69788377    1.55609096    0.07050345
- O                 -4.28667752    0.37487691    0.04916102
- H                 -4.01978712   -0.12970163    0.82103635
+     
+   
+   
+ 
  
  """
-        expected_xyz1 = """ C                 -0.67567701    1.18507660    0.04672449
- H                 -0.25592948    1.62415961    0.92757746
- H                 -2.26870864    1.38030564    0.05865317
- O                 -0.36671999   -0.21081064    0.01630374
- H                 -0.73553821   -0.63718986    0.79332805
- C                 -0.08400571    1.86907236   -1.19973252
- H                 -0.50375517    1.42998100   -2.08057962
- H                 -0.31518819    2.91354759   -1.17697025
- H                  0.97802159    1.73893214   -1.20769117
- O                 -3.69788377    1.55609096    0.07050345
- O                 -4.28667752    0.37487691    0.04916102
- H                 -4.01978712   -0.12970163    0.82103635"""
-        new_xyz1 = check_species_xyz(xyz)
-        self.assertEqual(new_xyz1, expected_xyz1)
+        expected_xyz2 = """O    3.1024    0.1216    1.0455
+O    1.4602   -3.3145   -0.2099
+C   -2.2924    0.2555   -0.8205
+C   -2.3929   -0.1455   -2.3013
+C   -3.2177   -0.6103    0.0500
+C    3.7529    1.2995    1.5066
+C   -0.8566    0.2292   -0.3220
+C    1.2086   -0.9791    0.1635
+C    1.8156    0.2120    0.6120
+C   -0.1097   -0.9444   -0.2920
+C   -0.2294    1.3920    0.1279
+C    1.0837    1.3976    0.5896
+C    1.9403   -2.2644    0.1662
+H   -2.6363    1.2898   -0.7367
+H   -2.0724   -1.1772   -2.4533
+H   -1.7687    0.4927   -2.9270
+H   -3.4228   -0.0630   -2.6520
+H   -4.2511   -0.5298   -0.2908
+H   -3.1797   -0.3025    1.0951
+H   -2.9338   -1.6626    0.0021
+H    3.8200    2.0502    0.7167
+H    4.7525    0.9900    1.7960
+H    3.2393    1.7229    2.3720
+H   -0.5302   -1.8837   -0.6253
+H   -0.7777    2.3260    0.1202
+H    1.5203    2.3247    0.9261
+H    2.9757   -2.2266    0.5368"""
+
+        spc1 = ARCSpecies(label='test_spc1', xyz=[xyz, xyz])
+        self.assertIsNone(spc1.initial_xyz)
+        self.assertIsNone(spc1.final_xyz)
+        self.assertEqual(len(spc1.conformers), 2)
+        self.assertEqual(len(spc1.conformer_energies), 2)
+        self.assertEqual(spc1.multiplicity, 1)
+
+        spc2 = ARCSpecies(label='test_spc2', xyz=xyz)
+        self.assertIsNone(spc1.initial_xyz)
+        self.assertIsNone(spc1.final_xyz)
+        self.assertEqual(spc2.conformers[0], expected_xyz2)
+        self.assertIsNone(spc2.final_xyz)
+        self.assertEqual(len(spc2.conformers), 1)
+        self.assertEqual(len(spc2.conformer_energies), 1)
+        self.assertEqual(spc2.multiplicity, 1)
 
         xyz_path = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'CH3C(O)O.xyz')
-        expected_xyz2 = """O      -0.53466300   -1.24850800   -0.02156300
+        expected_xyz3 = """O      -0.53466300   -1.24850800   -0.02156300
 O      -0.79314200    1.04818800    0.18134200
 C      -0.02397300    0.01171700   -0.37827400
 C       1.40511900    0.21728200    0.07675200
@@ -459,8 +510,26 @@ H       1.45535600    0.19295200    1.16972300
 H       1.77484100    1.18704300   -0.25986700
 H      -0.43701200   -1.34990600    0.92900600
 H      -1.69944700    0.93441600   -0.11271200"""
-        new_xyz2 = check_species_xyz(xyz_path)
-        self.assertEqual(new_xyz2, expected_xyz2)
+
+        spc3 = ARCSpecies(label='test_spc3', xyz=xyz_path)
+        self.assertIsNone(spc1.initial_xyz)
+        self.assertIsNone(spc1.final_xyz)
+        self.assertEqual(spc3.conformers[0], expected_xyz3)
+        self.assertEqual(len(spc3.conformers), 1)
+        self.assertEqual(len(spc3.conformer_energies), 1)
+        self.assertEqual(spc3.multiplicity, 1)
+
+        conformers_path = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'conformers_file.txt')
+        spc4 = ARCSpecies(label='test_spc3', xyz=conformers_path)
+        self.assertEqual(len(spc4.conformers), 4)
+        self.assertEqual(len(spc4.conformer_energies), 4)
+        self.assertIsNotNone(spc4.conformer_energies[0])
+        self.assertIsNotNone(spc4.conformer_energies[1])
+        self.assertIsNone(spc4.conformer_energies[2])
+        self.assertIsNotNone(spc4.conformer_energies[3])
+        self.assertEqual(spc4.multiplicity, 2)
+
+
 
     def test_get_min_energy_conformer(self):
         """Test that the xyz with the minimum specified energy is returned from get_min_energy_conformer()"""
@@ -532,22 +601,19 @@ C       2.92204100   -1.18335700   -0.38884900
 C       2.27655500   -0.00373900    0.08543500
 H       2.36544800   -1.88781000   -0.99914600
 H       3.96112000   -1.38854500   -0.14958800
-H       2.87813500    0.68828400    0.70399400
-""",
+H       2.87813500    0.68828400    0.70399400""",
                 """O       1.19396100   -0.06003700    0.03890100
 C       3.18797000    0.77061300   -0.87352700
 C       2.43591200   -0.04439300    0.02171600
 H       4.27370000    0.76090200   -0.86286100
 H       2.66641700    1.41155700   -1.57757300
-H       3.00398000   -0.68336800    0.72359800
-""",
+H       3.00398000   -0.68336800    0.72359800""",
                 """O       1.35241100   -1.02956000   -0.24056200
 C      -0.72084300    0.01308200    0.09573000
 C       0.69217700    0.01185100   -0.09044300
 H      -1.25803800   -0.93018100    0.10926800
 H      -1.26861200    0.94177100    0.22420100
-H       1.20290400    0.99303700   -0.09819400
-""",
+H       1.20290400    0.99303700   -0.09819400""",
                 """O      -1.40102900   -0.98575100   -0.11588500
 C       0.72457000   -0.01076700    0.06448800
 C      -0.69494600    0.03450000   -0.06206300
@@ -564,11 +630,11 @@ H      -1.16675800    1.03362600   -0.11273700"""]
         self.assertTrue(os.path.isfile(os.path.join(project_directory, 'output', 'Species', 'vinoxy', 'geometry',
                                                     'conformers_after_optimization.txt')))
 
-        spc2 = ARCSpecies(label=str('vinoxy'), smiles=str('C=C[O]'), conformers_path=os.path.join(project_directory,
-                                'output', 'Species', 'vinoxy', 'geometry', 'conformers_before_optimization.txt'))
+        spc2 = ARCSpecies(label=str('vinoxy'), smiles=str('C=C[O]'), xyz=os.path.join(
+            project_directory, 'output', 'Species', 'vinoxy', 'geometry', 'conformers_before_optimization.txt'))
 
-        spc3 = ARCSpecies(label=str('vinoxy'), smiles=str('C=C[O]'), conformers_path=os.path.join(project_directory,
-                                'output', 'Species', 'vinoxy', 'geometry', 'conformers_after_optimization.txt'))
+        spc3 = ARCSpecies(label=str('vinoxy'), smiles=str('C=C[O]'), xyz=os.path.join(
+            project_directory, 'output', 'Species', 'vinoxy', 'geometry', 'conformers_after_optimization.txt'))
 
         self.assertEqual(spc2.conformers[2], xyzs[2])
         self.assertEqual(spc3.conformers[2], xyzs[2])

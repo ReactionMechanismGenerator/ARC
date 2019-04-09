@@ -79,8 +79,7 @@ H       1.06395135    1.08711266    0.00000000
 H       1.12732348   -0.45978507    0.88433277
 H       1.12732348   -0.45978507   -0.88433277
 H      -1.16566701    0.32023496    0.81630508
-H      -1.16566701    0.32023496   -0.81630508
-"""
+H      -1.16566701    0.32023496   -0.81630508"""
         self.assertEqual(self.sched1.species_dict[label].initial_xyz, expecting)
         methylamine_conf_path = os.path.join(self.sched1.project_directory, 'output', 'Species', 'methylamine',
                                              'geometry', 'conformers_after_optimization.txt')
@@ -88,9 +87,9 @@ H      -1.16566701    0.32023496   -0.81630508
         with open(methylamine_conf_path, 'r') as f:
             lines = f.readlines()
         self.assertTrue('conformers optimized at' in lines[0])
-        self.assertEqual(lines[11], 'SMILES: CN\n')
-        self.assertTrue('Relative Energy:' in lines[12])
-        self.assertEqual(lines[16][0], 'N')
+        self.assertEqual(lines[10], 'SMILES: CN\n')
+        self.assertTrue('Relative Energy:' in lines[11])
+        self.assertEqual(lines[15][0], 'N')
 
         self.sched1.run_conformer_jobs()
         self.sched1.save_conformers_file(label='C2H6')
