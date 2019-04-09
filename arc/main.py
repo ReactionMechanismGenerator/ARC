@@ -144,12 +144,10 @@ class ARC(object):
                 logging.info('Using {0} for refined conformer searches (after filtering via force fields)'.format(
                     conformer_level))
                 self.conformer_level = conformer_level.lower()
-            elif self.generate_conformers:
+            else:
                 self.conformer_level = default_levels_of_theory['conformer'].lower()
                 logging.info('Using default level {0} for refined conformer searches (after filtering via force'
                              ' fields)'.format(default_levels_of_theory['conformer']))
-            else:
-                self.conformer_level = ''
             if ts_guess_level:
                 logging.info('Using {0} for TS guesses comparison of different methods'.format(ts_guess_level))
                 self.ts_guess_level = ts_guess_level.lower()
@@ -446,12 +444,10 @@ class ARC(object):
             self.conformer_level = input_dict['conformer_level'].lower()
             logging.info('Using {0} for refined conformer searches (after filtering via force fields)'.format(
                 self.conformer_level))
-        elif self.generate_conformers:
+        else:
             self.conformer_level = default_levels_of_theory['conformer'].lower()
             logging.info('Using default level {0} for refined conformer searches (after filtering via force'
                          ' fields)'.format(default_levels_of_theory['conformer']))
-        else:
-            self.conformer_level = ''
 
         if 'ts_guess_level' in input_dict:
             self.ts_guess_level = input_dict['ts_guess_level'].lower()
