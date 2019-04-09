@@ -15,13 +15,13 @@ from rmgpy.molecule.element import getElement
 from rmgpy.exceptions import AtomTypeError
 from arkane.common import symbol_by_number
 
-from arc.arc_exceptions import SpeciesError, SanitizationError
+from arc.arc_exceptions import SpeciesError, SanitizationError, InputError
 from arc.species.xyz_to_2d import MolGraph
 
 ##################################################################
 
 
-def get_xyz_string(xyz, mol=None, number=None, symbol=None):
+def get_xyz_string(coord, mol=None, number=None, symbol=None):
     """
     Convert list of lists xyz form:
     [[0.6616514836, 0.4027481525, -0.4847382281],
@@ -56,9 +56,9 @@ def get_xyz_string(xyz, mol=None, number=None, symbol=None):
             elements.append(atom.element.symbol)
     else:
         raise ValueError("Must have either an RMG:Molecule object input as `mol`, or atomic numbers \ symbols.")
-    for i, coord in enumerate(xyz):
+    for i, coordinate in enumerate(coord):
         result += elements[i] + ' ' * (4 - len(elements[i]))
-        for c in coord:
+        for c in coordinate:
             result += '{0:14.8f}'.format(c)
         result += '\n'
     return result
@@ -87,6 +87,11 @@ def get_xyz_matrix(xyz):
     x, y, z, symbols = [], [], [], []
     for line in xyz.split('\n'):
         if line:
+            line_split = line.split()
+            if len(line_split) != 4:
+                raise InputError('Expecting each line in an xyz string to have 4 elements, e.g.:\n'
+                                 'C    0.1000    0.2000   -0.3000\nbut got {0} elements:\n{1}'.format(
+                    len(line_split), line))
             atom, xx, yy, zz = line.split()
             x.append(float(xx))
             y.append(float(yy))
