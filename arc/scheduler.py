@@ -341,8 +341,7 @@ class Scheduler(object):
                         self.run_composite_job(species.label)
                     else:
                         self.run_opt_job(species.label)
-        if self.generate_conformers:
-            self.run_conformer_jobs()
+        self.run_conformer_jobs()
         while self.running_jobs != {}:  # loop while jobs are still running
             logging.debug('Currently running jobs:\n{0}'.format(self.running_jobs))
             self.timer = True
@@ -569,9 +568,12 @@ class Scheduler(object):
         in self.species_dict[species.label]['initial_xyz']
         """
         for label in self.unique_species_labels:
-            if not self.species_dict[label].is_ts and 'opt converged' not in self.output[label]['status']\
-                    and 'opt' not in self.job_dict[label]\
-                    and all([e is None for e in self.species_dict[label].conformer_energies]):
+            if (not self.species_dict[label].is_ts and 'opt converged' not in self.output[label]['status']
+                    and 'opt' not in self.job_dict[label]
+                    and all([e is None for e in self.species_dict[label].conformer_energies]))\
+                    and self.generate_conformers or (len(self.species_dict[label].conformers) > 1
+                                                     and (self.species_dict[label].initial_xyz is None
+                                                          and self.species_dict[label].final_xyz is None)):
                 # This is not a TS, opt did not converged nor running, and conformer energies were not set
                 self.save_conformers_file(label)
                 if not self.testing:
