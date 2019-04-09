@@ -378,5 +378,8 @@ class Processor(object):
         Copy the frequency job output file into the TS geometry folder
         """
         calc_path = os.path.join(self.output[label]['freq'])
-        output_path = os.path.join(self.project_directory, 'output', 'rxns', label, 'geometry', 'frequency.out')
+        out_path = os.path.join(self.project_directory, 'output', 'rxns', label, 'geometry')
+        if not os.path.exists(out_path):
+            os.makedirs(out_path)
+        output_path = os.path.join(out_path, 'frequency.out')
         shutil.copyfile(calc_path, output_path)
