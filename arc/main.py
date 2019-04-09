@@ -99,6 +99,7 @@ class ARC(object):
         self.allow_nonisomorphic_2d = allow_nonisomorphic_2d
         self.memory = job_memory
         self.orbitals_level = default_levels_of_theory['orbitals'].lower()
+        self.ess_settings = dict()
 
         if input_dict is None:
             if project is None:
@@ -324,7 +325,9 @@ class ARC(object):
             project_directory = project_directory if project_directory is not None\
                 else os.path.abspath(os.path.dirname(input_dict))
             self.from_dict(input_dict=input_dict, project=project, project_directory=project_directory)
-        self.ess_settings = check_ess_settings(ess_settings or global_ess_settings)
+        if not self.ess_settings:
+            # don't override self.ess_settings if determined from an input dictionary
+            self.ess_settings = check_ess_settings(ess_settings or global_ess_settings)
         if self.ess_settings is None or not self.ess_settings:
             self.determine_ess_settings()
         self.restart_dict = self.as_dict()
@@ -1021,7 +1024,7 @@ def check_ess_settings(ess_settings):
     Assists in troubleshooting job and trying a different server
     Also check ESS and servers
     """
-    if ess_settings is None:
+    if ess_settings is None or not ess_settings:
         return dict()
     settings = dict()
     for software, server_list in ess_settings.items():
