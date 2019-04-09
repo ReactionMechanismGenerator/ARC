@@ -408,12 +408,7 @@ def save_geo(species, project_directory):
     """
     folder_name = 'rxns' if species.is_ts else 'Species'
     geo_path = os.path.join(project_directory, 'output', folder_name, species.label, 'geometry')
-    if os.path.exists(geo_path):
-        # clean working folder from all previous output
-        for file0 in os.listdir(geo_path):
-            file_path = os.path.join(geo_path, file0)
-            os.remove(file_path)
-    else:
+    if not os.path.exists(geo_path):
         os.makedirs(geo_path)
 
     # xyz
