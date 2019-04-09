@@ -61,9 +61,11 @@ class Processor(object):
         self.model_chemistry = model_chemistry
         self.lib_long_desc = lib_long_desc
         load_thermo_libs, load_kinetic_libs = True, True
-        if not any([species.is_ts and species.final_xyz for species in self.species_dict.values()]):
+        if not any([species.is_ts and species.final_xyz for species in self.species_dict.values()])\
+                and not any(['ALL converged' in out['status'] for out in output.values()]):
             load_kinetic_libs = False  # don't load reaction libraries, not TS has converged
-        if not any([species.generate_thermo for species in self.species_dict.values()]):
+        if not any([species.generate_thermo for species in self.species_dict.values()])\
+                and not any(['ALL converged' in out['status'] for out in output.values()]):
             load_thermo_libs = False  # don't load thermo libraries, not thermo requested
         rmgdb.load_rmg_database(rmgdb=self.rmgdb, load_thermo_libs=load_thermo_libs,
                                 load_kinetic_libs=load_kinetic_libs)
@@ -298,6 +300,8 @@ class Processor(object):
 
         self._clean_output_directory()
         if unconverged_species:
+            if not os.path.isdir(output_dir):
+                os.makedirs(output_dir)
             with open(os.path.join(output_dir, 'unconverged_species.log'), 'w') as f:
                 for spc in unconverged_species:
                     f.write(spc.label)
