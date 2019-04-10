@@ -32,6 +32,10 @@ class Job(object):
     `species_name`    ``str``            The species/TS name. Used for naming the directory.
     `charge`          ``int``            The species net charge. Default is 0
     `multiplicity`    ``int``            The species multiplicity.
+    `number_of_radicals` ``int``         The number of radicals (inputted by the user, ARC won't attempt to determine
+                                           it). Defaults to None. Important, e.g., if a Species is a bi-rad singlet,
+                                           in which case the job should be unrestricted, but the multiplicity does not
+                                           have the required information to make that descision (r vs. u)
     `spin`            ``int``            The spin. automatically derived from the multiplicity
     `xyz`             ``str``            The xyz geometry. Used for the calculation
     `n_atoms`         ``int``            The number of atoms in self.xyz
@@ -88,7 +92,7 @@ class Job(object):
                  project_directory, charge=0, conformer=-1, fine=False, shift='', software=None, is_ts=False, scan='',
                  pivots=None, memory=15000, comments='', trsh='', scan_trsh='', ess_trsh_methods=None, initial_trsh=None,
                  job_num=None, job_server_name=None, job_name=None, job_id=None, server=None, initial_time=None,
-                 occ=None, max_job_time=120, scan_res=None, checkfile=None, testing=False):
+                 occ=None, max_job_time=120, scan_res=None, checkfile=None, number_of_radicals=None, testing=False):
         self.project = project
         self.ess_settings = ess_settings
         self.initial_time = initial_time
@@ -99,6 +103,7 @@ class Job(object):
         self.charge = charge
         self.multiplicity = multiplicity
         self.spin = self.multiplicity - 1
+        self.number_of_radicals = number_of_radicals
         self.xyz = xyz
         self.n_atoms = self.xyz.count('\n')
         self.conformer = conformer
@@ -452,7 +457,8 @@ class Job(object):
         if self.software == 'gaussian' and not self.job_type == 'composite':
             slash = '/'
 
-        if self.multiplicity > 1 and '/' in self.level_of_theory:  # only applies for non-composite jobs
+        if (self.multiplicity > 1 and '/' in self.level_of_theory) or self.number_of_radicals > 1:
+            # don't add 'u' to composite jobs. Do add 'u' for bi-rad singlets if `number_of_radicals` > 1
             if self.software == 'qchem':
                 restricted = 'True'  # In QChem this attribute is "unrestricted"
             else:
