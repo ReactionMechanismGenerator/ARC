@@ -508,7 +508,8 @@ class Scheduler(object):
                   shift=shift, software=software, is_ts=species.is_ts, memory=memory, trsh=trsh,
                   ess_trsh_methods=ess_trsh_methods, scan=scan, pivots=pivots, occ=occ, initial_trsh=self.initial_trsh,
                   project_directory=self.project_directory, max_job_time=max_job_time, scan_trsh=scan_trsh,
-                  scan_res=scan_res, conformer=conformer, checkfile=checkfile)
+                  scan_res=scan_res, conformer=conformer, checkfile=checkfile,
+                  number_of_radicals=species.number_of_radicals)
         if job.software is not None:
             if conformer < 0:
                 # this is NOT a conformer job
@@ -1710,7 +1711,8 @@ class Scheduler(object):
                           initial_time=job_description['initial_time'], conformer=conformer,
                           software=job_description['software'], comments=job_description['comments'],
                           scan_trsh=job_description['scan_trsh'], initial_trsh=job_description['initial_trsh'],
-                          max_job_time=job_description['max_job_time'], scan_res=job_description['scan_res'])
+                          max_job_time=job_description['max_job_time'], scan_res=job_description['scan_res'],
+                          number_of_radicals=species.number_of_radicals)
                 if spc_label not in self.job_dict:
                     self.job_dict[spc_label] = dict()
                 if job_description['job_type'] not in self.job_dict[spc_label]:
