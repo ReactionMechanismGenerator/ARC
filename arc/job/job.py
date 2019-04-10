@@ -732,14 +732,16 @@ $end
         if self.job_type == 'orbitals':
             remote_file_path = os.path.join(self.remote_path, 'input.FChk')
             ssh.download_file(remote_file_path=remote_file_path, local_file_path=self.local_path_to_orbitals_file)
-        if not os.path.isfile(self.local_path_to_orbitals_file):
-            logging.warning('Orbitals FChk file {0} was not downloaded properly'.format(self.job_name))
+            if not os.path.isfile(self.local_path_to_orbitals_file):
+                logging.warning('Orbitals FChk file {0} was not downloaded properly '
+                                '(this is not the Gaussian formatted check file...)'.format(self.job_name))
 
         # download Gaussian check file
         if self.software.lower() == 'gaussian':
             remote_check_file_path = os.path.join(self.remote_path, 'check.chk')
-            local_check_file_path = os.path.join(self.local_path, 'check.chk')
-            ssh.download_file(remote_file_path=remote_check_file_path, local_file_path=local_check_file_path)
+            ssh.download_file(remote_file_path=remote_check_file_path, local_file_path=self.local_path_to_check_file)
+            if not os.path.isfile(self.local_path_to_check_file):
+                logging.warning('Gaussian check file {0} was not downloaded properly'.format(self.job_name))
 
     def run(self):
         """Execute the Job"""
