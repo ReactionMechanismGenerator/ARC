@@ -54,7 +54,7 @@ class TestJob(unittest.TestCase):
                          'job_status': ['initializing', 'initializing'],
                          'job_type': 'opt',
                          'level_of_theory': 'b3lyp/6-31+g(d)',
-                         'memory': 1500,
+                         'memory': 15000,
                          'occ': None,
                          'pivots': [],
                          'project_directory': os.path.join(arc_path, 'Projects', 'project_test'),
