@@ -47,6 +47,10 @@ class ARCSpecies(object):
     `multiplicity`          ``int``      The species' multiplicity. Can be determined from adjlist/smiles/xyz
                                            The algorithm assumes it's either a singlet or a doublet
     `charge`                ``int''      The species' net charge. Assumed to be 0 be default.
+    `number_of_radicals`    ``int``      The number of radicals (inputted by the user, ARC won't attempt to determine
+                                           it). Defaults to None. Important, e.g., if a Species is a bi-rad singlet,
+                                           in which case the job should be unrestricted, but the multiplicity does not
+                                           have the required information to make that descision (r vs. u)
     `e0`                    ``float``    The total electronic energy E0 of the species at the chosen sp level (kJ/mol)
     `is_ts`                 ``bool``     Whether or not the species represents a transition state
     `number_of_rotors`      ``int``      The number of potential rotors to scan
@@ -111,7 +115,7 @@ class ARCSpecies(object):
     def __init__(self, is_ts=False, rmg_species=None, mol=None, label=None, xyz=None, multiplicity=None, charge=None,
                  smiles='', adjlist='', inchi='', bond_corrections=None, generate_thermo=True, species_dict=None,
                  yml_path=None, ts_methods=None, ts_number=None, rxn_label=None, external_symmetry=None,
-                 optical_isomers=None, run_time=None, checkfile=None):
+                 optical_isomers=None, run_time=None, checkfile=None, number_of_radicals=None):
         self.t1 = None
         self.ts_number = ts_number
         self.conformers = list()
@@ -125,6 +129,7 @@ class ARCSpecies(object):
         self.mol = mol
         self.mol_list = None
         self.multiplicity = multiplicity
+        self.number_of_radicals = number_of_radicals
         self.external_symmetry = external_symmetry
         self.optical_isomers = optical_isomers
         self.charge = charge
@@ -316,6 +321,8 @@ class ARCSpecies(object):
         species_dict['label'] = self.label
         species_dict['long_thermo_description'] = self.long_thermo_description
         species_dict['multiplicity'] = self.multiplicity
+        if self.number_of_radicals is not None:
+            species_dict['number_of_radicals'] = self.number_of_radicals
         species_dict['charge'] = self.charge
         species_dict['generate_thermo'] = self.generate_thermo
         if self.opt_level is not None:
@@ -407,6 +414,7 @@ class ARCSpecies(object):
             self.generate_thermo = False
         else:
             self.generate_thermo = species_dict['generate_thermo'] if 'generate_thermo' in species_dict else True
+        self.number_of_radicals = species_dict['number_of_radicals'] if 'number_of_radicals' in species_dict else None
         self.opt_level = species_dict['opt_level'] if 'opt_level' in species_dict else None
         self.number_of_rotors = species_dict['number_of_rotors'] if 'number_of_rotors' in species_dict else 0
         self.rotors_dict = species_dict['rotors_dict'] if 'rotors_dict' in species_dict else dict()
