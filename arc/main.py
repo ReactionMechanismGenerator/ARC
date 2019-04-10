@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 # encoding: utf-8
+"""
+ARC's main module
+"""
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
 import logging
@@ -86,8 +89,7 @@ class ARC(object):
                  ts_guess_level='', fine=True, generate_conformers=True, scan_rotors=True, use_bac=True,
                  model_chemistry='', initial_trsh=None, t_min=None, t_max=None, t_count=None, run_orbitals=False,
                  verbose=logging.INFO, project_directory=None, max_job_time=120, allow_nonisomorphic_2d=False,
-                 job_memory=1500, ess_settings=None):
-
+                 job_memory=15000, ess_settings=None):
         self.__version__ = '1.0.0'
         self.verbose = verbose
         self.output = dict()
@@ -123,7 +125,8 @@ class ARC(object):
             self.use_bac = use_bac
             self.model_chemistry = model_chemistry
             if self.model_chemistry:
-                logging.info('Using {0} as model chemistry for energy corrections in Arkane'.format(self.model_chemistry))
+                logging.info('Using {0} as model chemistry for energy corrections in Arkane'.format(
+                    self.model_chemistry))
             if not self.fine:
                 logging.info('\n')
                 logging.warning('Not using a fine grid for geometry optimization jobs')
@@ -475,9 +478,12 @@ class ARC(object):
                 self.opt_level = input_dict['level_of_theory'].lower().split('//')[1]
                 self.freq_level = input_dict['level_of_theory'].lower().split('//')[1]
                 self.sp_level = input_dict['level_of_theory'].lower().split('//')[0]
-                logging.info('Using {0} for geometry optimizations'.format(input_dict['level_of_theory'].split('//')[1]))
-                logging.info('Using {0} for frequency calculations'.format(input_dict['level_of_theory'].split('//')[1]))
-                logging.info('Using {0} for single point calculations'.format(input_dict['level_of_theory'].split('//')[0]))
+                logging.info('Using {0} for geometry optimizations'.format(
+                    input_dict['level_of_theory'].split('//')[1]))
+                logging.info('Using {0} for frequency calculations'.format(
+                    input_dict['level_of_theory'].split('//')[1]))
+                logging.info('Using {0} for single point calculations'.format(
+                    input_dict['level_of_theory'].split('//')[0]))
             elif '/' in input_dict['level_of_theory'] and '//' not in input_dict['level_of_theory']:
                 # assume this is not a composite method, and the user meant to run opt, freq and sp at this level.
                 # running an sp after opt at the same level is meaningless, but doesn't matter much also...
@@ -574,6 +580,7 @@ class ARC(object):
             self.arc_rxn_list = list()
 
     def execute(self):
+        """Execute ARC"""
         logging.info('\n')
         for species in self.arc_species_list:
             if not isinstance(species, ARCSpecies):
@@ -613,6 +620,7 @@ class ARC(object):
         self.log_footer()
 
     def save_project_info_file(self):
+        """Save a project info file"""
         self.execution_time = time_lapse(t0=self.t0)
         path = os.path.join(self.project_directory, '{0}.info'.format(self.project))
         if os.path.exists(path):
@@ -658,7 +666,7 @@ class ARC(object):
         txt += '\n'
 
         with open(path, 'w') as f:
-            f.write(txt)
+            f.write(str(txt))
         self.lib_long_desc = txt
 
     def summary(self):
@@ -754,6 +762,7 @@ class ARC(object):
         logging.log(level, 'ARC execution terminated on {0}'.format(time.asctime()))
 
     def determine_model_chemistry(self):
+        """Determine the model_chemistry used in Arkane"""
         if self.model_chemistry:
             self.model_chemistry = self.model_chemistry.lower()
             if self.model_chemistry not in ['cbs-qb3', 'cbs-qb3-paraskevas', 'ccsd(t)-f12/cc-pvdz-f12',
@@ -834,7 +843,7 @@ class ARC(object):
             # ARC is executed on a server, proceed
             logging.info('\n\nExecuting QM jobs locally.')
             if diagnostics:
-                logging.info('ARC is being excecuted on a server (found "SSH_CONNECTION" in the os.environ dictionary')
+                logging.info('ARC is being executed on a server (found "SSH_CONNECTION" in the os.environ dictionary')
                 logging.info('Using distutils.spawn.find_executable() to find ESS')
             self.ess_settings['ssh'] = False
             g03 = find_executable('g03')
@@ -871,7 +880,7 @@ class ARC(object):
         else:
             # ARC is executed locally, communication with a server needs to be established
             if diagnostics:
-                logging.info('ARC is being excecuted on a PC'
+                logging.info('ARC is being executed on a PC'
                              ' (did not find "SSH_CONNECTION" in the os.environ dictionary')
             self.ess_settings['ssh'] = True
             logging.info('\n\nMapping servers...\n\n')
@@ -896,7 +905,8 @@ class ARC(object):
                     else:
                         self.ess_settings['gaussian'].append(server)
                 elif diagnostics:
-                    logging.info('  Did NOT find Gaussian on {3}: g03={0}, g09={1}, g16={2}'.format(g03, g09, g16, server))
+                    logging.info('  Did NOT find Gaussian on {3}: g03={0}, g09={1}, g16={2}'.format(
+                        g03, g09, g16, server))
                 cmd = '. ~/.bashrc; which qchem'
                 qchem, _ = ssh.send_command_to_server(cmd)
                 if qchem:
@@ -958,6 +968,7 @@ def read_file(path):
 
 
 def get_git_commit():
+    """Get the recent git commit to be logged"""
     if os.path.exists(os.path.join(arc_path, '.git')):
         try:
             return subprocess.check_output(['git', 'log', '--format=%H%n%cd', '-1'], cwd=arc_path).splitlines()

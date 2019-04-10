@@ -1,5 +1,9 @@
 #!/usr/bin/env python
 # encoding: utf-8
+"""
+The ARC Job module
+"""
+
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
 import os
@@ -54,18 +58,21 @@ class Job(object):
     `run_time`         ``timedelta``     Job execution time. Determined automatically
     `job_status`       ``list``          The job's server and ESS statuses. Determined automatically
     `job_server_name`  ``str``           Job's name on the server (e.g., 'a103'). Determined automatically
-    `job_name`         ``str``           Job's name for interal usage (e.g., 'opt_a103'). Determined automatically
+    `job_name`         ``str``           Job's name for internal usage (e.g., 'opt_a103'). Determined automatically
     `job_id`           ``int``           The job's ID determined by the server.
     `local_path`       ``str``           Local path to job's folder. Determined automatically
-    'local_path_to_output_file' ``str``  The local path to the output.out file
-    'local_path_to_orbitals_file' ``str``  The local path to the orbitals.fchk file (only for orbitals jobs)
+    `local_path_to_output_file` ``str``  The local path to the output.out file
+    `local_path_to_orbitals_file` ``str``  The local path to the orbitals.fchk file (only for orbitals jobs)
+    `local_path_to_check_file` ``str``   The local path to the Gaussian check file of the current job (downloaded)
+    `checkfile`        ``str``           The path to a previous Gaussian checkfile to be used in the current job
     `remote_path`      ``str``           Remote path to job's folder. Determined automatically
     `submit`           ``str``           The submit script. Created automatically
     `input`            ``str``           The input file. Created automatically
     `server`           ``str``           Server's name. Determined automatically
     'trsh'             ''str''           A troubleshooting handle to be appended to input files
     'ess_trsh_methods' ``list``          A list of troubleshooting methods already tried out for ESS convergence
-    `initial_trsh`     ``dict``          Troubleshooting methods to try by default. Keys are ESS software, values are trshs
+    `initial_trsh`     ``dict``          Troubleshooting methods to try by default. Keys are ESS software,
+                                           values are trshs
     `scan_trsh`        ``str``           A troubleshooting method for rotor scans
     `occ`              ``int``           The number of occupied orbitals (core + val) from a molpro CCSD sp calc
     `project_directory` ``str``          The path to the project directory
@@ -77,11 +84,11 @@ class Job(object):
     The job ess (electronic structure software calculation) status is in  job.job_status[0] and can be
     either `initializing` / `running` / `errored: {error type / message}` / `unconverged` / `done`
     """
-    def __init__(self, project, ess_settings, species_name, xyz, job_type, level_of_theory, multiplicity, project_directory,
-                 charge=0, conformer=-1, fine=False, shift='', software=None, is_ts=False, scan='', pivots=None,
-                 memory=1500, comments='', trsh='', scan_trsh='', ess_trsh_methods=None, initial_trsh=None, job_num=None,
-                 job_server_name=None, job_name=None, job_id=None, server=None, initial_time=None, occ=None,
-                 max_job_time=120, scan_res=None, testing=False):
+    def __init__(self, project, ess_settings, species_name, xyz, job_type, level_of_theory, multiplicity,
+                 project_directory, charge=0, conformer=-1, fine=False, shift='', software=None, is_ts=False, scan='',
+                 pivots=None, memory=15000, comments='', trsh='', scan_trsh='', ess_trsh_methods=None, initial_trsh=None,
+                 job_num=None, job_server_name=None, job_name=None, job_id=None, server=None, initial_time=None,
+                 occ=None, max_job_time=120, scan_res=None, checkfile=None, testing=False):
         self.project = project
         self.ess_settings = ess_settings
         self.initial_time = initial_time
@@ -128,7 +135,7 @@ class Job(object):
         else:
             if job_type == 'orbitals':
                 # currently we only have a script to print orbitals on QChem,
-                # could/should definately be elaborated to additional ESS
+                # could/should definitely be elaborated to additional ESS
                 if 'qchem' not in self.ess_settings.keys():
                     logging.debug('Could not find the QChem software to compute molecular orbitals.\n'
                                   'ess_settings is:\n{0}'.format(self.ess_settings))
@@ -168,7 +175,22 @@ class Job(object):
                             raise JobError('Could not find the Gaussian software to run {0}/{1}'.format(
                                 self.method, self.basis_set))
                         self.software = 'gaussian'
-                    elif 'b97' in self.method or 'm06-2x' in self.method or 'def2' in self.basis_set:
+                    elif 'wb97x-d3' in self.method:
+                        if 'qchem' not in self.ess_settings.keys():
+                            raise JobError('Could not find the QChem software to run {0}/{1}'.format(
+                                self.method, self.basis_set))
+                        self.software = 'qchem'
+                    elif 'b97' in self.method or 'def2' in self.basis_set:
+                        if 'gaussian' in self.ess_settings.keys():
+                            self.software = 'gaussian'
+                        elif 'qchem' in self.ess_settings.keys():
+                            self.software = 'qchem'
+                    elif 'm062x' in self.method:  # without dash
+                        if 'gaussian' not in self.ess_settings.keys():
+                            raise JobError('Could not find the Gaussian software to run {0}/{1}'.format(
+                                self.method, self.basis_set))
+                        self.software = 'gaussian'
+                    elif 'm06-2x' in self.method:  # with dash
                         if 'qchem' not in self.ess_settings.keys():
                             raise JobError('Could not find the QChem software to run {0}/{1}'.format(
                                 self.method, self.basis_set))
@@ -179,11 +201,31 @@ class Job(object):
                             raise JobError('Could not find the Gaussian software to run {0}/{1}'.format(
                                 self.method, self.basis_set))
                         self.software = 'gaussian'
-                    elif 'b97' in self.method or 'm06-2x' in self.method or 'def2' in self.basis_set:
+                    elif 'wb97x-d3' in self.method:
                         if 'qchem' not in self.ess_settings.keys():
                             raise JobError('Could not find the QChem software to run {0}/{1}'.format(
                                 self.method, self.basis_set))
                         self.software = 'qchem'
+                    elif 'b3lyp' in self.method:
+                        if 'gaussian' in self.ess_settings.keys():
+                            self.software = 'gaussian'
+                        elif 'qchem' in self.ess_settings.keys():
+                            self.software = 'qchem'
+                    elif 'b97' in self.method or 'def2' in self.basis_set:
+                        if 'gaussian' in self.ess_settings.keys():
+                            self.software = 'gaussian'
+                        elif 'qchem' in self.ess_settings.keys():
+                            self.software = 'qchem'
+                    elif 'm06-2x' in self.method:  # with dash
+                        if 'qchem' not in self.ess_settings.keys():
+                            raise JobError('Could not find the QChem software to run {0}/{1}'.format(
+                                self.method, self.basis_set))
+                        self.software = 'qchem'
+                    elif 'm062x' in self.method:  # without dash
+                        if 'gaussian' not in self.ess_settings.keys():
+                            raise JobError('Could not find the Gaussian software to run {0}/{1}'.format(
+                                self.method, self.basis_set))
+                        self.software = 'gaussian'
                     else:
                         if 'gaussian' in self.ess_settings.keys():
                             self.software = 'gaussian'
@@ -220,8 +262,8 @@ class Job(object):
             self.server = None
 
         if self.software == 'molpro':
-            # molpro's memory is in MW, 750 should be enough
-            memory /= 2
+            # molpro's memory is in MW, 1500 MW should be enough as an initial general memory requirement assessment
+            memory /= 10
         self.memory = memory
 
         self.fine = fine
@@ -241,8 +283,10 @@ class Job(object):
                                        self.species_name, conformer_folder, self.job_name)
         self.local_path_to_output_file = os.path.join(self.local_path, 'output.out')
         self.local_path_to_orbitals_file = os.path.join(self.local_path, 'orbitals.fchk')
+        self.local_path_to_check_file = os.path.join(self.local_path, 'check.chk')
+        self.checkfile = checkfile
         # parentheses don't play well in folder names:
-        species_name_for_remote_path = self.species_name.replace('(', '_').replace(')','_')
+        species_name_for_remote_path = self.species_name.replace('(', '_').replace(')', '_')
         self.remote_path = os.path.join('runs', 'ARC_Projects', self.project,
                                         species_name_for_remote_path, conformer_folder, self.job_name)
         self.submit = ''
@@ -316,7 +360,8 @@ class Job(object):
         csv_path = os.path.join(arc_path, 'initiated_jobs.csv')
         if self.conformer < 0:  # this is not a conformer search job
             conformer = '-'
-        else: conformer = str(self.conformer)
+        else:
+            conformer = str(self.conformer)
         with open(csv_path, 'ab') as f:
             writer = csv.writer(f, dialect='excel')
             row = [self.job_num, self.project, self.species_name, conformer, self.is_ts, self.charge,
@@ -342,7 +387,8 @@ class Job(object):
         csv_path = os.path.join(arc_path, 'completed_jobs.csv')
         if self.conformer < 0:  # this is not a conformer search job
             conformer = '-'
-        else: conformer = str(self.conformer)
+        else:
+            conformer = str(self.conformer)
         with open(csv_path, 'ab') as f:
             writer = csv.writer(f, dialect='excel')
             job_type = self.job_type
@@ -355,6 +401,7 @@ class Job(object):
             writer.writerow(row)
 
     def write_submit_script(self):
+        """Write the Job's submit script"""
         un = servers[self.server]['un']  # user name
         if self.max_job_time > 9999 or self.max_job_time <= 0:
             logging.debug('Setting max_job_time to 120 hours')
@@ -381,7 +428,7 @@ class Job(object):
         self.submit = submit_scripts[servers[self.server]['cluster_soft']][self.software.lower()].format(
             name=self.job_server_name, un=un, t_max=t_max, mem_cpu=min(int(self.memory * 150), 16000), cpus=cpus,
             architecture=architecture)
-        # Memory convertion: multiply MW value by 1200 to conservatively get it in MB, then divide by 8 to get per cup
+        # Memory conversion: multiply MW value by 1200 to conservatively get it in MB, then divide by 8 to get per cup
         if not os.path.exists(self.local_path):
             os.makedirs(self.local_path)
         with open(os.path.join(self.local_path, submit_filename[servers[self.server]['cluster_soft']]), 'wb') as f:
@@ -446,9 +493,13 @@ wf,spin={spin},charge={charge};}}
         if self.job_type in ['conformer', 'opt']:
             if self.software == 'gaussian':
                 if self.is_ts:
-                    job_type_1 = 'opt=(ts, calcfc, noeigentest, maxstep=5)'
+                    job_type_1 = 'opt=(ts, calcfc, noeigentest, maxstep=5))'
                 else:
                     job_type_1 = 'opt=(calcfc, noeigentest)'
+                if self.checkfile is not None:
+                    job_type_1 += 'guess=read'
+                else:
+                    job_type_1 += 'guess=mix'
                 if self.fine:
                     # Note that the Acc2E argument is not available in Gaussian03
                     fine = 'scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
@@ -470,9 +521,9 @@ wf,spin={spin},charge={charge};}}
                         fine += '\n   XC_GRID 3'
             elif self.software == 'molpro':
                 if self.is_ts:
-                    job_type_1 = "\noptg,root=2,method=qsd,readhess,savexyz='geometry.xyz'"
+                    job_type_1 = "\noptg, root=2, method=qsd, readhess, savexyz='geometry.xyz'"
                 else:
-                    job_type_1 = "\noptg,savexyz='geometry.xyz'"
+                    job_type_1 = "\noptg, savexyz='geometry.xyz'"
 
         elif self.job_type == 'orbitals' and self.software == 'qchem':
             if self.is_ts:
@@ -486,6 +537,10 @@ wf,spin={spin},charge={charge};}}
         elif self.job_type == 'freq':
             if self.software == 'gaussian':
                 job_type_2 = 'freq iop(7/33=1) scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
+                if self.checkfile is not None:
+                    job_type_1 += 'guess=read'
+                else:
+                    job_type_1 += 'guess=mix'
             elif self.software == 'qchem':
                 job_type_1 = 'freq'
             elif self.software == 'molpro':
@@ -504,6 +559,10 @@ wf,spin={spin},charge={charge};}}
                         job_type_1 = 'opt=(ts, calcfc, noeigentest, tight, maxstep=5)'
                     else:
                         job_type_1 = 'opt=(calcfc, noeigentest, tight)'
+                if self.checkfile is not None:
+                    job_type_1 += 'guess=read'
+                else:
+                    job_type_1 += 'guess=mix'
             elif self.software == 'qchem':
                 self.input += """@@@
 
@@ -537,6 +596,10 @@ $end
         if self.job_type == 'sp':
             if self.software == 'gaussian':
                 job_type_1 = 'scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
+                if self.checkfile is not None:
+                    job_type_1 += 'guess=read'
+                else:
+                    job_type_1 += 'guess=mix'
             elif self.software == 'qchem':
                 job_type_1 = 'sp'
             elif self.software == 'molpro':
@@ -554,6 +617,10 @@ $end
                         job_type_1 = 'opt=(noeigentest, tight)'
                     else:
                         job_type_1 = 'opt=(calcfc, noeigentest, tight)'
+                if self.checkfile is not None:
+                    job_type_1 += 'guess=read'
+                else:
+                    job_type_1 += 'guess=mix'
             else:
                 raise JobError('Currently composite methods are only supported in gaussian')
 
@@ -565,6 +632,10 @@ $end
                 else:
                     job_type_1 = 'opt=(modredundant, calcfc, noeigentest, maxStep=5) scf=(tight, direct)' \
                                  ' integral=(grid=ultrafine, Acc2E=12)'
+                if self.checkfile is not None:
+                    job_type_1 += 'guess=read'
+                else:
+                    job_type_1 += 'guess=mix'
                 scan_string = ''.join([str(num) + ' ' for num in self.scan])
                 if not divmod(360, self.scan_res):
                     raise JobError('Scan job got an illegal rotor scan resolution of {0}'.format(self.scan_res))
@@ -608,18 +679,20 @@ $end
                 self.input = self.input.format(memory=self.memory, method=self.method, slash=slash,
                                                basis=self.basis_set, charge=self.charge, multiplicity=self.multiplicity,
                                                spin=self.spin, xyz=self.xyz, job_type_1=job_type_1, cpus=cpus,
-                                               job_type_2=job_type_2, scan=scan_string, restricted=restricted, fine=fine,
-                                               shift=self.shift, trsh=self.trsh, scan_trsh=self.scan_trsh)
+                                               job_type_2=job_type_2, scan=scan_string, restricted=restricted,
+                                               fine=fine, shift=self.shift, trsh=self.trsh, scan_trsh=self.scan_trsh)
             except KeyError:
                 logging.error('Could not interpret all input file keys in\n{0}'.format(self.input))
                 raise
         if not self.testing:
             if not os.path.exists(self.local_path):
                 os.makedirs(self.local_path)
-            with open(os.path.join(self.local_path, input_filename[self.software]), 'wb') as f:
+            with open(os.path.join(self.local_path, input_filename[self.software]), 'w') as f:
                 f.write(self.input)
             if self.ess_settings['ssh']:
                 self._upload_input_file()
+                if self.checkfile is not None and os.path.isfile(self.checkfile):
+                    self._upload_check_file(local_check_file_path=self.checkfile)
 
     def _upload_submit_file(self):
         ssh = SSH_Client(self.server)
@@ -634,28 +707,49 @@ $end
         ssh.upload_file(remote_file_path=remote_file_path, file_string=self.input)
         self.initial_time = ssh.get_last_modified_time(remote_file_path=remote_file_path)
 
-    def _download_output_file(self):
+    def _upload_check_file(self, local_check_file_path=None):
         ssh = SSH_Client(self.server)
+        remote_check_file_path = os.path.join(self.remote_path, 'check.chk')
+        local_check_file_path = os.path.join(self.local_path, 'check.chk') if remote_check_file_path is None\
+            else local_check_file_path
+        if os.path.isfile(local_check_file_path) and self.software.lower() == 'gaussian':
+            ssh.upload_file(remote_file_path=remote_check_file_path, local_file_path=local_check_file_path)
+            logging.debug('uploading checkpoint file for {0}'.format(self.job_name))
+
+    def _download_output_file(self):
+        """Download ESS output, orbitals check file, and the Gaussian check file, if relevant"""
+        ssh = SSH_Client(self.server)
+
+        # download output file
         remote_file_path = os.path.join(self.remote_path, output_filename[self.software])
-        local_file_path = os.path.join(self.local_path, 'output.out')
-        ssh.download_file(remote_file_path=remote_file_path, local_file_path=local_file_path)
-        if self.job_type == 'orbitals':
-            remote_file_path = os.path.join(self.remote_path, 'input.FChk')
-            local_file_path = os.path.join(self.local_path_to_orbitals_file)
-            ssh.download_file(remote_file_path=remote_file_path, local_file_path=local_file_path)
+        ssh.download_file(remote_file_path=remote_file_path, local_file_path=self.local_path_to_output_file)
+        if not os.path.isfile(self.local_path_to_output_file):
+            raise JobError('output file for {0} was not downloaded properly'.format(self.job_name))
         self.final_time = ssh.get_last_modified_time(remote_file_path=remote_file_path)
         self.determine_run_time()
-        if not os.path.isfile(local_file_path):
-            raise JobError('output file for {0} was not downloaded properly'.format(self.job_name))
+
+        # download orbitals FChk file
+        if self.job_type == 'orbitals':
+            remote_file_path = os.path.join(self.remote_path, 'input.FChk')
+            ssh.download_file(remote_file_path=remote_file_path, local_file_path=self.local_path_to_orbitals_file)
+        if not os.path.isfile(self.local_path_to_orbitals_file):
+            logging.warning('Orbitals FChk file {0} was not downloaded properly'.format(self.job_name))
+
+        # download Gaussian check file
+        if self.software.lower() == 'gaussian':
+            remote_check_file_path = os.path.join(self.remote_path, 'check.chk')
+            local_check_file_path = os.path.join(self.local_path, 'check.chk')
+            ssh.download_file(remote_file_path=remote_check_file_path, local_file_path=local_check_file_path)
 
     def run(self):
+        """Execute the Job"""
         if self.fine:
             logging.info('Running job {name} for {label} (fine opt)'.format(name=self.job_name,
-                                                                              label=self.species_name))
+                                                                            label=self.species_name))
         elif self.pivots:
             logging.info('Running job {name} for {label} (pivots: {pivots})'.format(name=self.job_name,
-                                                                              label=self.species_name,
-                                                                              pivots=self.pivots))
+                                                                                    label=self.species_name,
+                                                                                    pivots=self.pivots))
         else:
             logging.info('Running job {name} for {label}'.format(name=self.job_name, label=self.species_name))
         logging.debug('writing submit script...')
@@ -675,6 +769,7 @@ $end
                 self.job_status[0], self.job_id = ssh.submit_job(remote_path=self.remote_path)
 
     def delete(self):
+        """Delete a running Job"""
         logging.debug('Deleting job {name} for {label}'.format(name=self.job_name, label=self.species_name))
         if self.ess_settings['ssh']:
             ssh = SSH_Client(self.server)
@@ -682,13 +777,14 @@ $end
             ssh.delete_job(self.job_id)
 
     def determine_job_status(self):
+        """Determine the Job's status"""
         if self.job_status[0] == 'errored':
             return
         server_status = self._check_job_server_status()
         ess_status = ''
         if server_status == 'done':
             try:
-                ess_status = self._check_job_ess_status()
+                ess_status = self._check_job_ess_status()  # also downloads output file
             except IOError:
                 logging.error('Got an IOError when trying to download output file for job {0}.'.format(self.job_name))
                 content = self._get_additional_job_info()
@@ -724,14 +820,16 @@ $end
             try:
                 ssh.download_file(remote_file_path=remote_file_path, local_file_path=local_file_path1)
             except (TypeError, IOError) as e:
-                logging.warning('Got the following error when trying to download out.txt for {0}:'.format(self.job_name))
+                logging.warning('Got the following error when trying to download out.txt for {0}:'.format(
+                    self.job_name))
                 logging.warning(e.message)
             remote_file_path = os.path.join(self.remote_path, 'err.txt')
             local_file_path2 = os.path.join(self.local_path, 'err.txt')
             try:
                 ssh.download_file(remote_file_path=remote_file_path, local_file_path=local_file_path2)
             except (TypeError, IOError) as e:
-                logging.warning('Got the following error when trying to download err.txt for {0}:'.format(self.job_name))
+                logging.warning('Got the following error when trying to download err.txt for {0}:'.format(
+                    self.job_name))
                 logging.warning(e.message)
             if os.path.isfile(local_file_path1):
                 with open(local_file_path1, 'r') as f:
@@ -747,15 +845,15 @@ $end
             files = list()
             for line in respond[0][0].splitlines():
                 files.append(line.split()[-1])
-            for file in files:
-                if 'slurm' in file and '.out' in file:
-                    remote_file_path = os.path.join(self.remote_path, file)
-                    local_file_path = os.path.join(self.local_path, file)
+            for file_name in files:
+                if 'slurm' in file_name and '.out' in file_name:
+                    remote_file_path = os.path.join(self.remote_path, file_name)
+                    local_file_path = os.path.join(self.local_path, file_name)
                     try:
                         ssh.download_file(remote_file_path=remote_file_path, local_file_path=local_file_path)
                     except (TypeError, IOError) as e:
                         logging.warning('Got the following error when trying to download {0} for {1}:'.format(
-                            file, self.job_name))
+                            file_name, self.job_name))
                         logging.warning(e.message)
                     if os.path.isfile(local_file_path):
                         with open(local_file_path, 'r') as f:
@@ -763,7 +861,6 @@ $end
                     content += ''.join([line for line in lines1])
                     content += '\n'
         return content
-
 
     def _check_job_server_status(self):
         """
@@ -782,9 +879,11 @@ $end
             os.remove(self.local_path_to_output_file)
         if os.path.exists(self.local_path_to_orbitals_file):
             os.remove(self.local_path_to_orbitals_file)
+        if os.path.exists(self.local_path_to_check_file):
+            os.remove(self.local_path_to_check_file)
         if self.ess_settings['ssh']:
-            self._download_output_file()
-        with open(self.local_path_to_output_file, 'rb') as f:
+            self._download_output_file()  # also downloads the Gaussian check file if exists
+        with open(self.local_path_to_output_file, 'r') as f:
             lines = f.readlines()
             if self.software == 'gaussian':
                 for line in lines[-1:-20:-1]:
@@ -860,7 +959,8 @@ $end
                     elif 'No convergence' in line:
                         return 'unconverged'
                     elif 'A further' in line and 'Mwords of memory are needed' in line and 'Increase memory to' in line:
-                        # e.g.: `A further 246.03 Mwords of memory are needed for the triples to run. Increase memory to 996.31 Mwords.`
+                        # e.g.: `A further 246.03 Mwords of memory are needed for the triples to run.
+                        # Increase memory to 996.31 Mwords.` (w/o the line break)
                         return 'errored: additional memory (mW) required: {0}'.format(line.split()[2])
                     elif 'insufficient memory available - require' in line:
                         # e.g.: `insufficient memory available - require              228765625  have
@@ -874,11 +974,12 @@ $end
                 return 'errored: Unknown reason'
 
     def troubleshoot_server(self):
+        """Troubleshoot server errors"""
         if self.ess_settings['ssh']:
             if servers[self.server]['cluster_soft'].lower() == 'oge':
                 # delete present server run
-                logging.error('Job {name} has server status "{stat}" on {server}. Troubleshooting by changing node.'.format(
-                    name=self.job_name, stat=self.job_status[0], server=self.server))
+                logging.error('Job {name} has server status "{stat}" on {server}. Troubleshooting by changing node.'.
+                              format(name=self.job_name, stat=self.job_status[0], server=self.server))
                 ssh = SSH_Client(self.server)
                 ssh.send_command_to_server(command=delete_command[servers[self.server]['cluster_soft']] +
                                            ' ' + str(self.job_id))
@@ -887,12 +988,14 @@ $end
                     command=list_available_nodes_command[servers[self.server]['cluster_soft']])
                 for line in stdout:
                     node = line.split()[0].split('.')[0].split('node')[1]
-                    if servers[self.server]['cluster_soft'] == 'OGE' and '0/0/8' in line and node not in self.server_nodes:
+                    if servers[self.server]['cluster_soft'] == 'OGE' and '0/0/8' in line \
+                            and node not in self.server_nodes:
                         self.server_nodes.append(node)
                         break
                 else:
                     logging.error('Could not find an available node on the server')
-                    # TODO: continue troubleshooting; if all else fails, put job to sleep for x min and try again searching for a node
+                    # TODO: continue troubleshooting; if all else fails, put job to sleep
+                    #  and try again searching for a node
                     return
                 # modify submit file
                 content = ssh.read_remote_file(remote_path=self.remote_path,
@@ -903,7 +1006,7 @@ $end
                         break
                 else:
                     content.insert(7, '#$ -l h=node{0}.cluster'.format(node))
-                content = ''.join(content)  # convert list into a single string, not to upset paramico
+                content = ''.join(content)  # convert list into a single string, not to upset paramiko
                 # resubmit
                 ssh.upload_file(remote_file_path=os.path.join(self.remote_path,
                                 submit_filename[servers[self.server]['cluster_soft']]), file_string=content)

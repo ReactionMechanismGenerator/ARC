@@ -87,6 +87,9 @@ class ARCSpecies(object):
     `rxn_label`             ``str``      The reaction string (relevant for TSs)
     `arkane_file`           ``str``      Path to the Arkane Species file generated in Processor
     `yml_path`              ``str``      Path to an Arkane YAML file representing a species (for loading the object)
+    `checkfile`             ``str``      The local path to the latest checkfile by Gaussian for the species
+    `conformer_checkfiles`  ``dict``     A dictionary of conformer checkfiles. Keys are conformer indices,
+                                           Values are local paths to check files
     `external_symmetry`     ``int``      The external symmetry of the species (not including rotor symmetries)
     `optical_isomers`       ``int``      Whether (=2) or not (=1) the species has chiral center/s
     ====================== ============= ===============================================================================
@@ -108,7 +111,7 @@ class ARCSpecies(object):
     def __init__(self, is_ts=False, rmg_species=None, mol=None, label=None, xyz=None, multiplicity=None, charge=None,
                  smiles='', adjlist='', inchi='', bond_corrections=None, generate_thermo=True, species_dict=None,
                  yml_path=None, ts_methods=None, ts_number=None, rxn_label=None, external_symmetry=None,
-                 optical_isomers=None, run_time=None):
+                 optical_isomers=None, run_time=None, checkfile=None):
         self.t1 = None
         self.ts_number = ts_number
         self.conformers = list()
@@ -126,6 +129,9 @@ class ARCSpecies(object):
         self.optical_isomers = optical_isomers
         self.charge = charge
         self.run_time = run_time
+        self.checkfile = checkfile
+        self.conformer_checkfiles = dict()
+        self.most_stable_conformer = None
 
         if species_dict is not None:
             # Reading from a dictionary
@@ -327,6 +333,12 @@ class ARCSpecies(object):
             species_dict['mol'] = self.mol.toAdjacencyList()
         if self.initial_xyz is not None:
             species_dict['initial_xyz'] = self.initial_xyz
+        if self.checkfile is not None:
+            species_dict['checkfile'] = self.checkfile
+        if self.conformer_checkfiles:
+            species_dict['conformer_checkfiles'] = self.conformer_checkfiles
+        if self.most_stable_conformer is not None:
+            species_dict['most_stable_conformer'] = self.most_stable_conformer
         return species_dict
 
     def from_dict(self, species_dict):
@@ -372,6 +384,11 @@ class ARCSpecies(object):
                 if 'unsuccessful_methods' in species_dict else list()
             self.chosen_ts_method = species_dict['chosen_ts_method'] if 'chosen_ts_method' in species_dict else None
             self.chosen_ts = species_dict['chosen_ts'] if 'chosen_ts' in species_dict else None
+            self.checkfile = species_dict['checkfile'] if 'checkfile' in species_dict else None
+            self.conformer_checkfiles = species_dict['conformer_checkfiles'] if 'conformer_checkfiles' in species_dict\
+                else list()
+            self.most_stable_conformer = species_dict['most_stable_conformer'] if 'most_stable_conformer'\
+                                                                                  in species_dict else None
         else:
             self.ts_methods = None
         for char in self.label:

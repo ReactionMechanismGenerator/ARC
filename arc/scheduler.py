@@ -108,7 +108,7 @@ class Scheduler(object):
     def __init__(self, project, ess_settings, species_list, composite_method, conformer_level, opt_level, freq_level,
                  sp_level, scan_level, ts_guess_level, orbitals_level, project_directory, rmgdatabase, fine=False,
                  scan_rotors=True, generate_conformers=True, initial_trsh=None, rxn_list=None, restart_dict=None,
-                 max_job_time=120, allow_nonisomorphic_2d=False, memory=1500, testing=False, run_orbitals=False):
+                 max_job_time=120, allow_nonisomorphic_2d=False, memory=15000, testing=False, run_orbitals=False):
         self.rmgdb = rmgdatabase
         self.restart_dict = restart_dict
         self.species_list = species_list
@@ -500,12 +500,15 @@ class Scheduler(object):
         pivots = pivots if pivots is not None else list()
         species = self.species_dict[label]
         memory = memory if memory is not None else self.memory
+        checkfile = self.species_dict[label].checkfile  # defaults to None
+        if self.species_dict[label].most_stable_conformer is not None and job_type in ['opt', 'composite', 'optfreq']:
+            checkfile = self.species_dict[label].conformer_checkfiles[self.species_dict[label].most_stable_conformer]
         job = Job(project=self.project, ess_settings=self.ess_settings, species_name=label, xyz=xyz, job_type=job_type,
                   level_of_theory=level_of_theory, multiplicity=species.multiplicity, charge=species.charge, fine=fine,
                   shift=shift, software=software, is_ts=species.is_ts, memory=memory, trsh=trsh,
                   ess_trsh_methods=ess_trsh_methods, scan=scan, pivots=pivots, occ=occ, initial_trsh=self.initial_trsh,
                   project_directory=self.project_directory, max_job_time=max_job_time, scan_trsh=scan_trsh,
-                  scan_res=scan_res, conformer=conformer)
+                  scan_res=scan_res, conformer=conformer, checkfile=checkfile)
         if job.software is not None:
             if conformer < 0:
                 # this is NOT a conformer job
@@ -559,6 +562,14 @@ class Scheduler(object):
                 else:
                     self.species_dict[label].run_time += job.run_time
             self.save_restart_dict()
+            if job.software.lower() == 'gaussian' and os.path.isfile(os.path.join(job.local_path, 'check.chk'))\
+                    and job.job_type in ['conformer', 'opt', 'optfreq', 'composite']:
+                check_path = os.path.join(job.local_path, 'check.chk')
+                if os.path.isfile(check_path):
+                    if job.job_type == 'conformer':
+                        self.species_dict[label].conformer_checkfiles[job.conformer] = check_path
+                    else:
+                        self.species_dict[label].checkfile = check_path
             return True
 
     def run_conformer_jobs(self):
@@ -767,6 +778,7 @@ class Scheduler(object):
                         xyzs.append(None)
                     else:
                         xyzs.append(get_xyz_string(coord=coord, number=number))
+            xyzs_in_original_order = xyzs
             energies, xyzs = (list(t) for t in zip(*sorted(zip(self.species_dict[label].conformer_energies, xyzs))))
             self.save_conformers_file(label, xyzs=xyzs, energies=energies)
             # Run isomorphism checks if a 2D representation is available
@@ -837,7 +849,9 @@ class Scheduler(object):
                              'representation. Using the most stable conformer for further geometry'
                              ' optimization.'.format(label))
                 conformer_xyz = xyzs[0]
-            self.species_dict[label].initial_xyz = conformer_xyz
+            if conformer_xyz is not None:
+                self.species_dict[label].initial_xyz = conformer_xyz
+                self.species_dict[label].most_stable_conformer = xyzs_in_original_order.index(conformer_xyz)
 
     def determine_most_likely_ts_conformer(self, label):
         """
@@ -1477,9 +1491,9 @@ class Scheduler(object):
                              conformer=conformer)
             elif 'memory' not in job.ess_trsh_methods:
                 # Increase memory allocation
-                memory = 3000
-                logging.info('Troubleshooting {type} job in {software} using memory: {mem} MB'.format(
-                    type=job_type, software=job.software, mem=memory))
+                memory = job.memory * 2
+                logging.info('Troubleshooting {type} job in {software} using memory: {mem} MB instead of {old} MB'.
+                    format(type=job_type, software=job.software, mem=memory, old=job.memory))
                 job.ess_trsh_methods.append('memory')
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
                              job_type=job_type, fine=job.fine, memory=memory, ess_trsh_methods=job.ess_trsh_methods,

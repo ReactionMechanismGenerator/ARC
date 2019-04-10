@@ -40,6 +40,7 @@ cd $WorkDir
 . $g09root/g09/bsd/g09.profile
 
 cp $SubmitDir/input.gjf .
+cp $SubmitDir/check.chk .
 
 g09 < input.gjf > input.log
 formchk  check.chk check.fchk

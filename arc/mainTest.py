@@ -60,7 +60,7 @@ class TestARC(unittest.TestCase):
                          'scan_level': '',
                          'scan_rotors': False,
                          'sp_level': 'ccsd(t)-f12/cc-pvtz-f12',
-                         'job_memory': 1500,
+                         'job_memory': 15000,
                          't_min': None,
                          't_max': None,
                          't_count': None,
