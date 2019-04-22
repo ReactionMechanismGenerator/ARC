@@ -147,8 +147,11 @@ class SSH_Client(object):
                 logging.info('ZZZZZ..... ZZZZZ.....')
                 time.sleep(sleep_time * i * 60)  # in seconds
             else:
-                i = 1000
+                break
             i += 1
+        else:
+            logging.error('Connection with server has lost.')
+            result = 'connection error'
         return result
 
     def _check_job_status(self, job_id):
@@ -170,21 +173,23 @@ class SSH_Client(object):
         else:
             return 'done'
         status = status_line.split()[4]
-        if status.lower() in ['r', 'qw']:
-            return 'running'
-        else:
-            if servers[self.server]['cluster_soft'].lower() == 'oge':
-                if '.cluster' in status_line:
-                    try:
-                        return 'errored on node ' + status_line.split()[-1].split('@')[1].split('.')[0][-2:]
-                    except IndexError:
-                        return 'errored'
-                else:
-                    return 'errored'
-            elif servers[self.server]['cluster_soft'].lower() == 'slurm':
-                return 'errored on node ' + status_line.split()[-1][-2:]
+        if servers[self.server]['cluster_soft'].lower() == 'slurm':
+            if status.lower() in ['r', 'pd', 'cg']:
+                return 'running'
             else:
-                raise ValueError('Unknown server {0}'.format(self.server))
+                return 'errored on node ' + status_line.split()[-1][-2:]
+        elif servers[self.server]['cluster_soft'].lower() == 'oge':
+            if status.lower() in ['r', 'qw', 't']:
+                return 'running'
+            elif '.cluster' in status_line:
+                try:
+                    return 'errored on node ' + status_line.split()[-1].split('@')[1].split('.')[0][-2:]
+                except IndexError:
+                    return 'errored'
+            else:
+                return 'errored'
+        else:
+            raise ValueError('Unknown server {0}'.format(self.server))
 
     def delete_job(self, job_id):
         """
