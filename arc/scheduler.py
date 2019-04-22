@@ -539,7 +539,7 @@ class Scheduler(object):
             job.determine_job_status()  # also downloads output file
         except IOError:
             if job.job_type not in ['orbitals']:
-                logging.warn('Tried to determine status of job {0}, but it seems like the job never ran.'
+                logging.warning('Tried to determine status of job {0}, but it seems like the job never ran.'
                              ' Re-running job.'.format(job.job_name))
                 self.run_job(label=label, xyz=job.xyz, level_of_theory=job.level_of_theory, job_type=job.job_type,
                              fine=job.fine, software=job.software, shift=job.shift, trsh=job.trsh, memory=job.memory,
@@ -747,7 +747,7 @@ class Scheduler(object):
             self.species_dict[label].conformer_energies[i] = log.software_log.loadEnergy()  # in J/mol
             logging.debug('energy for {0} is {1}'.format(i, self.species_dict[label].conformer_energies[i]))
         else:
-            logging.warn('Conformer {i} for {label} did not converge!'.format(i=i, label=label))
+            logging.warning('Conformer {i} for {label} did not converge!'.format(i=i, label=label))
 
     def determine_most_stable_conformer(self, label):
         """
@@ -822,7 +822,7 @@ class Scheduler(object):
                             break
                         else:
                             if i == 0:
-                                logging.warn('Most stable conformer for species {0} with structure {1} was found to '
+                                logging.warning('Most stable conformer for species {0} with structure {1} was found to '
                                              'be NON-isomorphic with the 2D graph representation {2}. Searching for a '
                                              'different conformer that is isomorphic...'.format(label, b_mol.toSMILES(),
                                                                             self.species_dict[label].mol.toSMILES()))
@@ -846,7 +846,7 @@ class Scheduler(object):
                         self.output[label]['status'] += 'Error: No conformer was found to be isomorphic with the 2D' \
                                                         ' graph representation! '
             else:
-                logging.warn('Could not run isomorphism check for species {0} due to missing 2D graph '
+                logging.warning('Could not run isomorphism check for species {0} due to missing 2D graph '
                              'representation. Using the most stable conformer for further geometry'
                              ' optimization.'.format(label))
                 conformer_xyz = xyzs[0]
@@ -1167,7 +1167,7 @@ class Scheduler(object):
                                     warn_message = 'Rotor scan of {label} between pivots {pivots} has a barrier larger' \
                                                    ' than {maximum_barrier} kJ/mol. Invalidating rotor.'.format(
                                                     label=label, pivots=job.pivots, maximum_barrier=maximum_barrier)
-                                    logging.warn(warn_message)
+                                    logging.warning(warn_message)
                                     message += warn_message + '; '
                                     invalidate = True
                                     invalidation_reason = 'scan has a barrier larger than {0}' \
@@ -1408,7 +1408,7 @@ class Scheduler(object):
         Troubleshoot issues related to the electronic structure software, such as conversion
         """
         logging.info('\n')
-        logging.warn('Troubleshooting {label} job {job_name} which failed with status "{stat}" in {soft}.'.format(
+        logging.warning('Troubleshooting {label} job {job_name} which failed with status "{stat}" in {soft}.'.format(
             job_name=job.job_name, label=label, stat=job.job_status[1], soft=job.software))
         if conformer != -1:
             xyz = self.species_dict[label].conformers[conformer]

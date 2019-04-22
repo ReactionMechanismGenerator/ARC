@@ -261,15 +261,15 @@ class ARCReaction(object):
                     self.multiplicity = 2  # S + D = D
                 elif ordered_multiplicity_list == [2, 2]:
                     self.multiplicity = 1  # D + D = S or T
-                    logging.warn('ASSUMING a multiplicity of 1 (singlet) for reaction {0}'.format(self.label))
+                    logging.warning('ASSUMING a multiplicity of 1 (singlet) for reaction {0}'.format(self.label))
                 elif ordered_multiplicity_list == [1, 3]:
                     self.multiplicity = 3  # S + T = T
                 elif ordered_multiplicity_list == [2, 3]:
                     self.multiplicity = 2  # D + T = D or Q
-                    logging.warn('ASSUMING a multiplicity of 2 (doublet) for reaction {0}'.format(self.label))
+                    logging.warning('ASSUMING a multiplicity of 2 (doublet) for reaction {0}'.format(self.label))
                 elif ordered_multiplicity_list == [3, 3]:
                     self.multiplicity = 3  # T + T = S or T or quintet
-                    logging.warn('ASSUMING a multiplicity of 3 (triplet) for reaction {0}'.format(self.label))
+                    logging.warning('ASSUMING a multiplicity of 3 (triplet) for reaction {0}'.format(self.label))
                 elif ordered_multiplicity_list == [1, 1, 1]:
                     self.multiplicity = 1  # S + S + S = S
                 elif ordered_multiplicity_list == [1, 1, 2]:
@@ -278,13 +278,13 @@ class ARCReaction(object):
                     self.multiplicity = 3  # S + S + T = T
                 elif ordered_multiplicity_list == [1, 2, 2]:
                     self.multiplicity = 1  # S + D + D = S or T
-                    logging.warn('ASSUMING a multiplicity of 1 (singlet) for reaction {0}'.format(self.label))
+                    logging.warning('ASSUMING a multiplicity of 1 (singlet) for reaction {0}'.format(self.label))
                 elif ordered_multiplicity_list == [2, 2, 2]:
                     self.multiplicity = 2  # D + D + D = D or T or Q
-                    logging.warn('ASSUMING a multiplicity of 2 (doublet) for reaction {0}'.format(self.label))
+                    logging.warning('ASSUMING a multiplicity of 2 (doublet) for reaction {0}'.format(self.label))
                 elif ordered_multiplicity_list == [1, 2, 3]:
                     self.multiplicity = 2  # S + D + T = D or T
-                    logging.warn('ASSUMING a multiplicity of 2 (doublet) for reaction {0}'.format(self.label))
+                    logging.warning('ASSUMING a multiplicity of 2 (doublet) for reaction {0}'.format(self.label))
                 else:
                     raise ReactionError('Could not determine multiplicity for reaction {0}, please input it.'.format(
                         self.multiplicity))

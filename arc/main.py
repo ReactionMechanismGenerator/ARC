@@ -769,7 +769,7 @@ class ARC(object):
                                             'ccsd(t)-f12/cc-pvtz-f12', 'ccsd(t)-f12/cc-pvqz-f12',
                                             'b3lyp/cbsb7', 'b3lyp/6-311g(2d,d,p)', 'b3lyp/6-311+g(3df,2p)',
                                             'b3lyp/6-31g**']:
-                logging.warn('No bond additivity corrections (BAC) are available in Arkane for "model chemistry"'
+                logging.warning('No bond additivity corrections (BAC) are available in Arkane for "model chemistry"'
                              ' {0}. As a result, thermodynamic parameters are expected to be inaccurate. Make sure that'
                              ' atom energy corrections (AEC) were supplied or are available in Arkane to avoid'
                              ' error.'.format(self.model_chemistry))
@@ -816,7 +816,7 @@ class ARC(object):
             logging.debug('Using {0} as model chemistry for energy corrections in Arkane'.format(
                 self.model_chemistry))
             if not self.model_chemistry:
-                logging.warn('Could not determine a Model Chemistry to be used in Arkane, NOT calculating thermodata')
+                logging.warning('Could not determine a Model Chemistry to be used in Arkane, NOT calculating thermodata')
                 for spc in self.arc_species_list:
                     spc.generate_thermo = False
         if self.model_chemistry:
