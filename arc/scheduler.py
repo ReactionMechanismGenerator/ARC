@@ -1437,7 +1437,7 @@ class Scheduler(object):
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
                              job_type=job_type, fine=job.fine, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
                              conformer=conformer)
-            if 'scf=(qc,nosymm)' not in job.ess_trsh_methods:
+            elif 'scf=(qc,nosymm)' not in job.ess_trsh_methods:
                 # try both qc and nosymm
                 logging.info('Troubleshooting {type} job in {software} using scf=(qc,nosymm)'.format(
                     type=job_type, software=job.software))
