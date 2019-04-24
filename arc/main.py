@@ -834,6 +834,7 @@ class ARC(object):
             self.ess_settings['ssh'] = True
             return
 
+        t0 = time.time()
         if diagnostics:
             logging.info('\n\n\n ***** Running ESS diagnostics: *****\n')
 
@@ -843,7 +844,7 @@ class ARC(object):
             # ARC is executed on a server, proceed
             logging.info('\n\nExecuting QM jobs locally.')
             if diagnostics:
-                logging.info('ARC is being executed on a server (found "SSH_CONNECTION" in the os.environ dictionary')
+                logging.info('ARC is being executed on a server (found "SSH_CONNECTION" in the os.environ dictionary)')
                 logging.info('Using distutils.spawn.find_executable() to find ESS')
             self.ess_settings['ssh'] = False
             g03 = find_executable('g03')
@@ -881,15 +882,15 @@ class ARC(object):
             # ARC is executed locally, communication with a server needs to be established
             if diagnostics:
                 logging.info('ARC is being executed on a PC'
-                             ' (did not find "SSH_CONNECTION" in the os.environ dictionary')
+                             ' (did not find "SSH_CONNECTION" in the os.environ dictionary)')
             self.ess_settings['ssh'] = True
-            logging.info('\n\nMapping servers...\n\n')
+            logging.info('\n\nMapping servers...\n')
             # map servers
             self.ess_settings['gaussian'], self.ess_settings['qchem'],\
                 self.ess_settings['molpro'] = list(), list(), list()
             for server in servers.keys():
                 if diagnostics:
-                    logging.info('Trying {0}'.format(server))
+                    logging.info('\nTrying {0}'.format(server))
                 ssh = SSH_Client(server)
                 cmd = '. ~/.bashrc; which g03'
                 g03, _ = ssh.send_command_to_server(cmd)
@@ -943,7 +944,7 @@ class ARC(object):
             raise SettingsError('Could not find any ESS. Check your .bashrc definitions on the server.\n'
                                 'Alternatively, you could pass a software-server dictionary to arc as `ess_settings`')
         elif diagnostics:
-            logging.info('ESS diagnostics completed')
+            logging.info('ESS diagnostics completed (elapsed time: {0})'.format(time_lapse(t0)))
 
     def check_project_name(self):
         """Check the validity of the project name"""
