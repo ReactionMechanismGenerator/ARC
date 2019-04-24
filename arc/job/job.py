@@ -459,6 +459,9 @@ class Job(object):
 
         if (self.multiplicity > 1 and '/' in self.level_of_theory) or self.number_of_radicals > 1:
             # don't add 'u' to composite jobs. Do add 'u' for bi-rad singlets if `number_of_radicals` > 1
+            if self.number_of_radicals > 1:
+                logging.info('Using an unrestricted method for species {0} which has {1} radicals and '
+                             'multiplicity {2}'.format(self.species_name, self.number_of_radicals, self.multiplicity))
             if self.software == 'qchem':
                 restricted = 'True'  # In QChem this attribute is "unrestricted"
             else:
