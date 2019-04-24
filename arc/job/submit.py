@@ -6,8 +6,8 @@
 
 
 submit_scripts = {
-    'Slurm': {
-        # Gaussian09 on C3DDB
+    'c3ddb': {
+        # Gaussian09
         'gaussian': """#!/bin/bash -l
 #SBATCH -p defq
 #SBATCH -J {name}
@@ -50,7 +50,50 @@ rm -rf $GAUSS_SCRDIR
 rm -rf $WorkDir
 
 """,
-        # Gaussian16 on RMG
+
+        # Orca
+        'orca': """#!/bin/bash -l
+#SBATCH -p defq
+#SBATCH -J {name}
+#SBATCH -N 1
+#SBATCH -n {cpus}
+#SBATCH --time={t_max}
+#SBATCH --mem-per-cpu 4500
+
+module add c3ddb/orca/4.0.0
+module add c3ddb/openmpi/2.0.2
+which orca
+
+export ORCA_DIR=/cm/shared/c3ddb/orca/4.0.0/
+export PATH=$PATH:$ORCA_DIR
+
+echo "============================================================"
+echo "Job ID : $SLURM_JOB_ID"
+echo "Job Name : $SLURM_JOB_NAME"
+echo "Starting on : $(date)"
+echo "Running on node : $SLURMD_NODENAME"
+echo "Current directory : $(pwd)"
+echo "============================================================"
+
+
+WorkDir=/scratch/users/{un}/$SLURM_JOB_NAME-$SLURM_JOB_ID
+SubmitDir=`pwd`
+
+mkdir -p $WorkDir
+cd $WorkDir
+
+cp $SubmitDir/input.inp .
+
+${ORCA_DIR}/orca input.inp > input.log
+cp * $SubmitDir/
+
+rm -rf $WorkDir
+
+""",
+    },
+
+    'rmg': {
+        # Gaussian16
         'gaussian16': """#!/bin/bash -l
 #SBATCH -p long
 #SBATCH -J {name}
@@ -91,48 +134,7 @@ rm -rf $GAUSS_SCRDIR
 rm -rf $WorkDir
 
 """,
-
-        # Orca on C3DDB:
-        'orca': """#!/bin/bash -l
-#SBATCH -p defq
-#SBATCH -J {name}
-#SBATCH -N 1
-#SBATCH -n {cpus}
-#SBATCH --time={t_max}
-#SBATCH --mem-per-cpu 4500
-
-module add c3ddb/orca/4.0.0
-module add c3ddb/openmpi/2.0.2
-which orca
-
-export ORCA_DIR=/cm/shared/c3ddb/orca/4.0.0/
-export PATH=$PATH:$ORCA_DIR
-
-echo "============================================================"
-echo "Job ID : $SLURM_JOB_ID"
-echo "Job Name : $SLURM_JOB_NAME"
-echo "Starting on : $(date)"
-echo "Running on node : $SLURMD_NODENAME"
-echo "Current directory : $(pwd)"
-echo "============================================================"
-
-
-WorkDir=/scratch/users/{un}/$SLURM_JOB_NAME-$SLURM_JOB_ID
-SubmitDir=`pwd`
-
-mkdir -p $WorkDir
-cd $WorkDir
-
-cp $SubmitDir/input.inp .
-
-${ORCA_DIR}/orca input.inp > input.log
-cp * $SubmitDir/
-
-rm -rf $WorkDir
-
-""",
-
-        # Molpro 2015 on RMG
+        # Molpro 2015
         'molpro': """#!/bin/bash -l
 #SBATCH -p long
 #SBATCH -J {name}
@@ -161,9 +163,8 @@ rm -rf $sdir
 """,
     },
 
-
-    'OGE': {
-        # Gaussian16 on Pharos
+    'pharos': {
+        # Gaussian16
         'gaussian': """#!/bin/bash -l
 
 #$ -N {name}
@@ -189,7 +190,7 @@ g16 input.gjf
 rm -r /scratch/{un}/{name}
 
 """,
-        # Gaussian03 on Pharos
+        # Gaussian03
         'gaussian03_pharos': """#!/bin/bash -l
 
 #$ -N {name}
@@ -215,7 +216,7 @@ g03 input.gjf
 rm -r /scratch/{un}/{name}
 
 """,
-        # QChem 4.4 on Pharos:
+        # QChem 4.4
         'qchem': """#!/bin/bash -l
 
 #$ -N {name}
@@ -242,7 +243,7 @@ qchem -nt 6 input.in output.out
 rm -r /scratch/{un}/{name}
 
 """,
-        # Molpro 2012 on Pharos
+        # Molpro 2012
         'molpro': """#! /bin/bash -l
 
 #$ -N {name}
