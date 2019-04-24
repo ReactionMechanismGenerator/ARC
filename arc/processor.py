@@ -60,13 +60,13 @@ class Processor(object):
         self.use_bac = use_bac
         self.model_chemistry = model_chemistry
         self.lib_long_desc = lib_long_desc
-        load_thermo_libs, load_kinetic_libs = True, True
-        if not any([species.is_ts and species.final_xyz for species in self.species_dict.values()])\
-                and not any(['ALL converged' in out['status'] for out in output.values()]):
-            load_kinetic_libs = False  # don't load reaction libraries, not TS has converged
-        if not any([species.generate_thermo for species in self.species_dict.values()])\
-                and not any(['ALL converged' in out['status'] for out in output.values()]):
-            load_thermo_libs = False  # don't load thermo libraries, not thermo requested
+        load_thermo_libs, load_kinetic_libs = False, False
+        if any([species.is_ts and species.final_xyz for species in self.species_dict.values()])\
+                and any(['ALL converged' in out['status'] for out in output.values()]):
+            load_kinetic_libs = True
+        if any([species.generate_thermo for species in self.species_dict.values()])\
+                and any(['ALL converged' in out['status'] for out in output.values()]):
+            load_thermo_libs = True
         rmgdb.load_rmg_database(rmgdb=self.rmgdb, load_thermo_libs=load_thermo_libs,
                                 load_kinetic_libs=load_kinetic_libs)
         t_min = t_min if t_min is not None else (300, 'K')
