@@ -84,6 +84,9 @@ class Job(object):
     `occ`              ``int``           The number of occupied orbitals (core + val) from a molpro CCSD sp calc
     `project_directory` ``str``          The path to the project directory
     `max_job_time`     ``int``           The maximal allowed job time on the server in hours
+    `available_nodes_dict`  ``dict``     Dictionary of list of available nodes on severs.
+                                         {server1: [list of working nodes], server2: [list of working nodes]}
+    `server_test`      ``bool``          Whether to run a server test, default = False
     ================ =================== ===============================================================================
 
     self.job_status:
@@ -95,7 +98,8 @@ class Job(object):
                  project_directory, charge=0, conformer=-1, fine=False, shift='', software=None, is_ts=False, scan='',
                  pivots=None, memory=15000, comments='', trsh='', scan_trsh='', ess_trsh_methods=None, initial_trsh=None,
                  job_num=None, job_server_name=None, job_name=None, job_id=None, server=None, initial_time=None,
-                 occ=None, max_job_time=120, scan_res=None, checkfile=None, number_of_radicals=None, testing=False):
+                 occ=None, max_job_time=120, scan_res=None, checkfile=None, number_of_radicals=None, testing=False,
+                 available_nodes_dict=None, server_test=0):
         self.project = project
         self.ess_settings = ess_settings
         self.initial_time = initial_time
@@ -118,6 +122,8 @@ class Job(object):
         self.scan_res = scan_res if scan_res is not None else rotor_scan_resolution
         self.max_job_time = max_job_time
         self.testing = testing
+        self.available_nodes_dict = available_nodes_dict if available_nodes_dict is not None else dict()
+        self.server_test = server_test
         job_types = ['conformer', 'opt', 'freq', 'optfreq', 'sp', 'composite', 'scan', 'gsm', 'irc', 'ts_guess',
                      'orbitals']
         # the 'conformer' job type is identical to 'opt', but we differentiate them to be identifiable in Scheduler
