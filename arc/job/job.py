@@ -9,6 +9,8 @@ from __future__ import (absolute_import, division, print_function, unicode_liter
 import os
 import csv
 import logging
+import time
+import random
 
 from arc.settings import arc_path, servers, submit_filename, delete_command, t_max_format,\
     input_filename, output_filename, rotor_scan_resolution, list_available_nodes_command, levels_ess
@@ -16,6 +18,7 @@ from arc.job.submit import submit_scripts
 from arc.job.inputs import input_files
 from arc.job.ssh import SSH_Client
 from arc.arc_exceptions import JobError, SpeciesError
+from arc.job.scripts import server_test_script
 
 ##################################################################
 
@@ -1029,6 +1032,60 @@ $end
                                            ' ' + str(self.job_id))
                 # resubmit
                 self.run()
+
+    def server_node_test(self):
+        """
+        Test node availability on server based on cluster software.
+        """
+        # Test for OGE servers (pharos for example)
+        if servers[self.server]['cluster_soft'].lower() == 'oge':
+
+            # Create node_test folder in the project directory
+            path = self.project_directory
+            if not os.path.exists(os.path.join(path, 'node_test')):
+                os.mkdir(os.path.join(path, 'node_test'))
+            if not os.path.exists(os.path.join(path, 'node_test', self.server)):
+                os.mkdir(os.path.join(path, 'node_test', self.server))
+
+            # Create node test script
+            with open(os.path.join(path, 'node_test', self.server, 'ctest.sh'), 'w') as f:
+                f.write(server_test_script[self.server]['core_test'])
+
+            # Create bash script to run test on each node of the server (like a submit script)
+            with open(os.path.join(path, 'node_test', self.server, 'subctest.sh'), 'w') as f:
+                f.write(server_test_script[self.server]['core_test_submit'])
+
+            # Upload node test script and bash script to the server
+            ssh = SSH_Client(self.server)
+            local_path = os.path.join(path, 'node_test', self.server)
+            remote_path = os.path.join('runs', 'ARC_Projects', self.project, 'node_test')
+            ssh.send_command_to_server(command='mkdir -p {0}'.format(remote_path), remote_path=remote_path)
+            ssh.upload_file(remote_file_path=os.path.join(remote_path, 'ctest.sh'),
+                            local_file_path=os.path.join(local_path, 'ctest.sh'))
+            ssh.upload_file(remote_file_path=os.path.join(remote_path, 'subctest.sh'),
+                            local_file_path=os.path.join(local_path, 'subctest.sh'))
+
+            # Run test on server
+            ssh.send_command_to_server(command='bash subctest.sh', remote_path=remote_path)
+
+            # Retrieve node test result
+            time.sleep(10)  # wait 10s for the test to finish
+            ssh.download_file(remote_file_path=os.path.join(remote_path, 'working_nodes_8core.txt'),
+                              local_file_path=os.path.join(local_path, 'working_nodes_8core.txt'))
+            ssh.download_file(remote_file_path=os.path.join(remote_path, 'working_nodes_48core.txt'),
+                              local_file_path=os.path.join(local_path, 'working_nodes_48core.txt'))
+
+            with open(os.path.join(path, 'node_test', self.server, 'working_nodes_8core.txt'), 'r') as f:
+                work_harpertown_node_list = f.readlines()
+                work_harpertown_node_list = [node.strip() for node in work_harpertown_node_list]
+                self.available_nodes_dict['pharos_8core'] = work_harpertown_node_list
+
+            with open(os.path.join(path, 'node_test', self.server, 'working_nodes_48core.txt'), 'r') as f:
+                work_magnycours_node_list = f.readlines()
+                work_magnycours_node_list = [node.strip() for node in work_magnycours_node_list]
+                self.available_nodes_dict['pharos_48core'] = work_magnycours_node_list
+        elif servers[self.server]['cluster_soft'].lower() == 'slurm':
+            pass  # TODO: implement node test for slurm servers
 
     def determine_run_time(self):
         """Determine the run time"""
