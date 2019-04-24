@@ -964,7 +964,7 @@ def read_file(path):
     if not os.path.isfile(path):
         raise InputError('Could not find the input file {0}'.format(path))
     with open(path, 'r') as f:
-        input_dict = yaml.load(stream=f)
+        input_dict = yaml.load(stream=f, Loader=yaml.FullLoader)
     return input_dict
 
 
