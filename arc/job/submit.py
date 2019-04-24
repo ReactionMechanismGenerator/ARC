@@ -14,7 +14,7 @@ submit_scripts = {
 #SBATCH -N 1
 #SBATCH -n {cpus}
 #SBATCH --time={t_max}
-#SBATCH --mem-per-cpu 4500
+#SBATCH --mem-per-cpu {mem_cpu}
 
 module add c3ddb/gaussian/09.d01
 which g09
@@ -58,7 +58,7 @@ rm -rf $WorkDir
 #SBATCH -N 1
 #SBATCH -n {cpus}
 #SBATCH --time={t_max}
-#SBATCH --mem-per-cpu 4500
+#SBATCH --mem-per-cpu {mem_cpu}
 
 module add c3ddb/orca/4.0.0
 module add c3ddb/openmpi/2.0.2
