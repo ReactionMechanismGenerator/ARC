@@ -23,7 +23,7 @@ from rmgpy.reaction import Reaction
 
 import arc.rmgdb as rmgdb
 from arc.settings import arc_path, default_levels_of_theory, check_status_command, servers, valid_chars,\
-    global_ess_settings
+    global_ess_settings, default_job_types
 from arc.scheduler import Scheduler
 from arc.arc_exceptions import InputError, SettingsError, SpeciesError
 from arc.species.species import ARCSpecies
@@ -58,10 +58,6 @@ class ARC(object):
     `scan_level`           ``str``    Level of theory for rotor scans
     `output`               ``dict``   Output dictionary with status and final QM file paths for all species
                                         Only used for restarting, the actual object used is in the Scheduler class
-    `fine`                 ``bool``   Whether or not to use a fine grid for opt jobs (spawns an additional job)
-    `generate_conformers`  ``bool``   Whether or not to generate conformers when an initial geometry is given
-    `scan_rotors`          ``bool``   Whether or not to perform rotor scans
-    `run_orbitals`         ``bool``   Whether or not to save the molecular orbitals for visualization (default: False)
     `use_bac`              ``bool``   Whether or not to use bond additivity corrections for thermo calculations
     `model_chemistry`      ``list``   The model chemistry in Arkane for energy corrections (AE, BAC).
                                         This can be usually determined automatically.
@@ -79,6 +75,9 @@ class ARC(object):
     `allow_nonisomorphic_2d` ``bool`` Whether to optimize species even if they do not have a 3D conformer that is
                                         isomorphic to the 2D graph representation
     `memory`               ``int``    The allocated job memory (1500 MB by default)
+    `job_types`            ``dict``   A dictionary of job types to execute. Keys are job types, values are boolean
+    `bath_gas`             ``str``    A bath gas. Currently used in OneDMin to calc L-J parameters.
+                                        Allowed values are He, Ne, Ar, Kr, H2, N2, O2
     ====================== ========== ==================================================================================
 
     `level_of_theory` is a string representing either sp//geometry levels or a composite method, e.g. 'CBS-QB3',
@@ -86,10 +85,9 @@ class ARC(object):
     """
     def __init__(self, input_dict=None, project=None, arc_species_list=None, arc_rxn_list=None, level_of_theory='',
                  conformer_level='', composite_method='', opt_level='', freq_level='', sp_level='', scan_level='',
-                 ts_guess_level='', fine=True, generate_conformers=True, scan_rotors=True, use_bac=True,
-                 model_chemistry='', initial_trsh=None, t_min=None, t_max=None, t_count=None, run_orbitals=False,
-                 verbose=logging.INFO, project_directory=None, max_job_time=120, allow_nonisomorphic_2d=False,
-                 job_memory=15000, ess_settings=None):
+                 ts_guess_level='', use_bac=True, job_types=None, model_chemistry='', initial_trsh=None, t_min=None,
+                 t_max=None, t_count=None, verbose=logging.INFO, project_directory=None, max_job_time=120,
+                 allow_nonisomorphic_2d=False, job_memory=15000, ess_settings=None, bath_gas=None):
         self.__version__ = '1.0.0'
         self.verbose = verbose
         self.output = dict()
@@ -110,6 +108,9 @@ class ARC(object):
             self.t_min = t_min
             self.t_max = t_max
             self.t_count = t_count
+            self.job_types = job_types
+            self.initialize_job_types()
+            self.bath_gas = bath_gas
             self.project_directory = project_directory if project_directory is not None\
                 else os.path.join(arc_path, 'Projects', self.project)
             if not os.path.exists(self.project_directory):
@@ -118,20 +119,16 @@ class ARC(object):
             self.t0 = time.time()  # init time
             self.execution_time = None
             self.initial_trsh = initial_trsh if initial_trsh is not None else dict()
-            self.fine = fine
-            self.generate_conformers = generate_conformers
-            self.scan_rotors = scan_rotors
-            self.run_orbitals = run_orbitals
             self.use_bac = use_bac
             self.model_chemistry = model_chemistry
             if self.model_chemistry:
                 logging.info('Using {0} as model chemistry for energy corrections in Arkane'.format(
                     self.model_chemistry))
-            if not self.fine:
+            if not self.job_types['fine']:
                 logging.info('\n')
                 logging.warning('Not using a fine grid for geometry optimization jobs')
                 logging.info('\n')
-            if not self.scan_rotors:
+            if not self.job_types['1d_rotors']:
                 logging.info('\n')
                 logging.warning("Not running rotor scans."
                                 " This might compromise finding the best conformer, as dihedral angles won't be"
@@ -246,9 +243,9 @@ class ARC(object):
 
             if scan_level:
                 self.scan_level = scan_level.lower()
-                if self.scan_rotors:
+                if self.job_types['1d_rotors']:
                     logging.info('Using {0} for rotor scans'.format(self.scan_level))
-            elif self.scan_rotors:
+            elif self.job_types['1d_rotors']:
                 if not self.composite_method:
                     self.scan_level = default_levels_of_theory['scan'].lower()
                     logging.info('Using default level {0} for rotor scans'.format(self.scan_level))
@@ -351,10 +348,9 @@ class ARC(object):
         """
         restart_dict = dict()
         restart_dict['project'] = self.project
-        restart_dict['fine'] = self.fine
-        restart_dict['generate_conformers'] = self.generate_conformers
-        restart_dict['scan_rotors'] = self.scan_rotors
-        restart_dict['run_orbitals'] = self.run_orbitals
+        if self.bath_gas is not None:
+            restart_dict['bath_gas'] = self.bath_gas
+        restart_dict['job_types'] = self.job_types
         restart_dict['use_bac'] = self.use_bac
         restart_dict['model_chemistry'] = self.model_chemistry
         restart_dict['composite_method'] = self.composite_method
@@ -401,6 +397,7 @@ class ARC(object):
         self.verbose = input_dict['verbose'] if 'verbose' in input_dict else self.verbose
         self.max_job_time = input_dict['max_job_time'] if 'max_job_time' in input_dict else self.max_job_time
         self.memory = input_dict['job_memory'] if 'job_memory' in input_dict else self.memory
+        self.bath_gas = input_dict['bath_gas'] if 'bath_gas' in input_dict else None
         self.allow_nonisomorphic_2d = input_dict['allow_nonisomorphic_2d']\
             if 'allow_nonisomorphic_2d' in input_dict else False
         self.output = input_dict['output'] if 'output' in input_dict else dict()
@@ -423,20 +420,18 @@ class ARC(object):
         self.t_count = input_dict['t_count'] if 't_count' in input_dict else None
 
         self.initial_trsh = input_dict['initial_trsh'] if 'initial_trsh' in input_dict else dict()
-        self.fine = input_dict['fine'] if 'fine' in input_dict else True
-        self.generate_conformers = input_dict['generate_conformers'] if 'generate_conformers' in input_dict else True
-        self.scan_rotors = input_dict['scan_rotors'] if 'scan_rotors' in input_dict else True
-        self.run_orbitals = input_dict['run_orbitals'] if 'run_orbitals' in input_dict else False
+        self.job_types = input_dict['job_types'] if 'job_types' in input_dict else default_job_types
+        self.initialize_job_types()
         self.use_bac = input_dict['use_bac'] if 'use_bac' in input_dict else True
         self.model_chemistry = input_dict['model_chemistry'] if 'use_bac' in input_dict\
                                                                 and input_dict['use_bac'] else ''
         ess_settings = input_dict['ess_settings'] if 'ess_settings' in input_dict else global_ess_settings
         self.ess_settings = check_ess_settings(ess_settings)
-        if not self.fine:
+        if not self.job_types['fine']:
             logging.info('\n')
             logging.warning('Not using a fine grid for geometry optimization jobs')
             logging.info('\n')
-        if not self.scan_rotors:
+        if not self.job_types['1d_rotors']:
             logging.info('\n')
             logging.warning("Not running rotor scans."
                             " This might compromise finding the best conformer, as dihedral angles won't be"
@@ -544,9 +539,9 @@ class ARC(object):
 
         if 'scan_level' in input_dict:
             self.scan_level = input_dict['scan_level'].lower()
-            if self.scan_rotors:
+            if '1d_rotors' in self.job_types:
                 logging.info('Using {0} for rotor scans'.format(self.scan_level))
-        elif self.scan_rotors:
+        elif '1d_rotors' in self.job_types:
             if not self.composite_method:
                 self.scan_level = default_levels_of_theory['scan'].lower()
                 logging.info('Using default level {0} for rotor scans'.format(self.scan_level))
@@ -600,13 +595,12 @@ class ARC(object):
         self.scheduler = Scheduler(project=self.project, species_list=self.arc_species_list, rxn_list=self.arc_rxn_list,
                                    composite_method=self.composite_method, conformer_level=self.conformer_level,
                                    opt_level=self.opt_level, freq_level=self.freq_level, sp_level=self.sp_level,
-                                   scan_level=self.scan_level, ts_guess_level=self.ts_guess_level, fine=self.fine,
-                                   ess_settings=self.ess_settings, generate_conformers=self.generate_conformers,
-                                   scan_rotors=self.scan_rotors, initial_trsh=self.initial_trsh, rmgdatabase=self.rmgdb,
+                                   scan_level=self.scan_level, ts_guess_level=self.ts_guess_level,
+                                   ess_settings=self.ess_settings, job_types=self.job_types, bath_gas=self.bath_gas,
+                                   initial_trsh=self.initial_trsh, rmgdatabase=self.rmgdb,
                                    restart_dict=self.restart_dict, project_directory=self.project_directory,
                                    max_job_time=self.max_job_time, allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
-                                   memory=self.memory, run_orbitals=self.run_orbitals,
-                                   orbitals_level=self.orbitals_level)
+                                   memory=self.memory, orbitals_level=self.orbitals_level)
 
         self.save_project_info_file()
 
@@ -625,7 +619,7 @@ class ARC(object):
         path = os.path.join(self.project_directory, '{0}.info'.format(self.project))
         if os.path.exists(path):
             os.remove(path)
-        if self.fine:
+        if self.job_types['fine']:
             fine_txt = '(using a fine grid)'
         else:
             fine_txt = '(NOT using a fine grid)'
@@ -642,7 +636,7 @@ class ARC(object):
             txt += 'Optimization:     {0} {1}\n'.format(self.opt_level, fine_txt)
             txt += 'Frequencies:      {0}\n'.format(self.freq_level)
             txt += 'Single point:     {0}\n'.format(self.sp_level)
-        if self.scan_rotors:
+        if '1d_rotors' in self.job_types:
             txt += 'Rotor scans:      {0}\n'.format(self.scan_level)
         else:
             txt += 'Not scanning rotors\n'
@@ -955,6 +949,29 @@ class ARC(object):
             if char == ' ':  # space IS a valid character for other purposes, but isn't valid in project names
                 raise InputError('A project name (used to naming folders) must not contain spaces.'
                                  ' Got {0}.'.format(self.project))
+
+    def initialize_job_types(self):
+        """
+        A helper function for initializing self.job_types
+        """
+        if self.job_types is None:
+            self.job_types = default_job_types
+        if 'lennard_jones' in self.job_types:
+            # rename lennard_jones to OneDMin
+            self.job_types['onedmin'] = self.job_types['lennard_jones']
+            del self.job_types['lennard_jones']
+        if 'fine_grid' in self.job_types:
+            # rename fine_grid to fine
+            self.job_types['fine'] = self.job_types['fine_grid']
+            del self.job_types['fine_grid']
+        for job_type in ['conformers', 'opt', 'fine', 'freq', 'sp', '1d_rotors']:
+            if job_type not in self.job_types:
+                # set default value to True if key is missing
+                self.job_types[job_type] = True
+        for job_type in ['onedmin', 'orbitals']:
+            if job_type not in self.job_types:
+                # set default value to False if key is missing
+                self.job_types[job_type] = False
 
 
 def read_file(path):

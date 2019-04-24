@@ -27,7 +27,7 @@ from arc.job.ssh import SSH_Client
 from arc.species.species import ARCSpecies, TSGuess, determine_rotor_symmetry
 from arc.species.converter import get_xyz_string, molecules_from_xyz, check_isomorphism
 from arc.ts.atst import autotst
-from arc.settings import rotor_scan_resolution, inconsistency_ab, inconsistency_az, maximum_barrier
+from arc.settings import rotor_scan_resolution, inconsistency_ab, inconsistency_az, maximum_barrier, default_job_types
 
 ##################################################################
 
@@ -58,10 +58,6 @@ class Scheduler(object):
                                         Keys are species/TS label, values are lists of job names
                                         (e.g. 'conformer3', 'opt_a123').
     `servers_jobs_ids`      ``list``  A list of relevant job IDs currently running on the server
-    `fine`                  ``bool``  Whether or not to use a fine grid for opt jobs (spawns an additional job)
-    `generate_conformers`   ``bool``  Whether or not to generate conformers when an initial geometry is given
-    `scan_rotors`           ``bool``  Whether or not to perform rotor scans
-    `run_orbitals`          ``bool``  Whether or not to save the molecular orbitals for visualization (default: Tru
     `output`                ``dict``  Output dictionary with status and final QM file paths for all species
     `ess_settings`          ``dict``  A dictionary of available ESS and a correcponding server list
     `initial_trsh`          ``dict``  Troubleshooting methods to try by default. Keys are ESS software, values are trshs
@@ -76,6 +72,9 @@ class Scheduler(object):
     `allow_nonisomorphic_2d` ``bool`` Whether to optimize species even if they do not have a 3D conformer that is
                                         isomorphic to the 2D graph representation
     `memory`                 ``int``  The allocated job memory (1500 MB by default)
+    `job_types`              ``dict`` A dictionary of job types to execute. Keys are job types, values are boolean
+    `bath_gas`               ``str``  A bath gas. Currently used in OneDMin to calc L-J parameters.
+                                        Allowed values are He, Ne, Ar, Kr, H2, N2, O2
     ======================= ========= ==================================================================================
 
     Dictionary structures:
@@ -106,9 +105,9 @@ class Scheduler(object):
     # Note that rotor scans are located under Species.rotors_dict
     """
     def __init__(self, project, ess_settings, species_list, composite_method, conformer_level, opt_level, freq_level,
-                 sp_level, scan_level, ts_guess_level, orbitals_level, project_directory, rmgdatabase, fine=False,
-                 scan_rotors=True, generate_conformers=True, initial_trsh=None, rxn_list=None, restart_dict=None,
-                 max_job_time=120, allow_nonisomorphic_2d=False, memory=15000, testing=False, run_orbitals=False):
+                 sp_level, scan_level, ts_guess_level, orbitals_level, project_directory, rmgdatabase, job_types=None,
+                 initial_trsh=None, rxn_list=None, restart_dict=None, max_job_time=120, allow_nonisomorphic_2d=False,
+                 memory=15000, testing=False, bath_gas=None):
         self.rmgdb = rmgdatabase
         self.restart_dict = restart_dict
         self.species_list = species_list
@@ -123,6 +122,7 @@ class Scheduler(object):
         self.allow_nonisomorphic_2d = allow_nonisomorphic_2d
         self.testing = testing
         self.memory = memory
+        self.bath_gas = bath_gas
         if self.restart_dict is not None:
             self.output = self.restart_dict['output']
             if 'running_jobs' in self.restart_dict:
@@ -140,10 +140,7 @@ class Scheduler(object):
         self.sp_level = sp_level
         self.scan_level = scan_level
         self.orbitals_level = orbitals_level
-        self.fine = fine
-        self.generate_conformers = generate_conformers
-        self.scan_rotors = scan_rotors
-        self.run_orbitals = run_orbitals
+        self.job_types = job_types if job_types is not None else default_job_types
         self.unique_species_labels = list()
         self.initial_trsh = initial_trsh if initial_trsh is not None else dict()
         self.save_restart = False
@@ -261,7 +258,7 @@ class Scheduler(object):
             if species.label not in self.job_dict:
                 self.job_dict[species.label] = dict()
             if species.yml_path is None:
-                if self.scan_rotors and not self.species_dict[species.label].number_of_rotors:
+                if self.job_types['1d_rotors'] and not self.species_dict[species.label].number_of_rotors:
                     self.species_dict[species.label].determine_rotors()
                 if species.label not in self.running_jobs:
                     self.running_jobs[species.label] = list()  # initialize before running the first job
@@ -310,10 +307,10 @@ class Scheduler(object):
                                 self.run_freq_job(species.label)
                         if 'sp' not in self.output[species.label] and 'sp' not in self.job_dict[species.label]:
                             self.run_sp_job(species.label)
-                        if self.scan_rotors:
+                        if self.job_types['1d_rotors']:
                             # restart-related check are performed in run_scan_jobs()
                             self.run_scan_jobs(species.label)
-                elif not self.species_dict[species.label].is_ts and self.generate_conformers\
+                elif not self.species_dict[species.label].is_ts and self.job_types['conformers']\
                         and 'geo' not in self.output[species.label]:
                     self.species_dict[species.label].generate_conformers()
             else:
@@ -508,7 +505,7 @@ class Scheduler(object):
                   shift=shift, software=software, is_ts=species.is_ts, memory=memory, trsh=trsh,
                   ess_trsh_methods=ess_trsh_methods, scan=scan, pivots=pivots, occ=occ, initial_trsh=self.initial_trsh,
                   project_directory=self.project_directory, max_job_time=max_job_time, scan_trsh=scan_trsh,
-                  scan_res=scan_res, conformer=conformer, checkfile=checkfile,
+                  scan_res=scan_res, conformer=conformer, checkfile=checkfile, bath_gas=self.bath_gas,
                   number_of_radicals=species.number_of_radicals)
         if job.software is not None:
             if conformer < 0:
@@ -711,7 +708,7 @@ class Scheduler(object):
         """
         Spawn rotor scan jobs using 'final_xyz' for species or TS 'label'.
         """
-        if self.scan_rotors:
+        if self.job_types['1d_rotors']:
             if 'scan' not in self.job_dict[label]:  # Check whether or not rotor scan jobs have been spawned yet
                 # we're spawning the first scan job for this species
                 self.job_dict[label]['scan'] = dict()
@@ -733,7 +730,7 @@ class Scheduler(object):
         Spawn orbitals job used for molecular orbital visualization
         Currently supporting QChem for printing the orbitals, the output could be visualized using IQMol
         """
-        if self.run_orbitals and 'orbitals' not in self.job_dict[label]:
+        if self.job_types['orbitals'] and 'orbitals' not in self.job_dict[label]:
             self.run_job(label=label, xyz=self.species_dict[label].final_xyz, level_of_theory=self.orbitals_level,
                          job_type='orbitals')
 
@@ -946,7 +943,7 @@ class Scheduler(object):
             log = determine_qm_software(fullpath=job.local_path_to_output_file)
             coord, number, _ = log.loadGeometry()
             self.species_dict[label].final_xyz = get_xyz_string(coord=coord, number=number)
-            if not job.fine and self.fine:
+            if not job.fine and self.job_types['fine']:
                 # Run opt again using a finer grid.
                 xyz = self.species_dict[label].final_xyz
                 self.species_dict[label].initial_xyz = xyz  # save for troubleshooting, since trsh goes by initial
@@ -1272,10 +1269,9 @@ class Scheduler(object):
         atomcoords = data.atomcoords
         if len(self.species_dict[label].neg_freqs_trshed) > 10:
             logging.error('Species {0} was troubleshooted for negative frequencies too many times.')
-            if not self.scan_rotors:
-                logging.error('The `scan_rotors` parameter is turned off, cannot troubleshoot geometry using'
-                              ' dihedral modifications.')
-                self.output[label]['status'] = 'scan_rotors = False; '
+            if not self.job_types['1d_rotors']:
+                logging.error('Rotor scan is turned off, cannot troubleshoot geometry using dihedral modifications.')
+                self.output[label]['status'] = '1d_rotors = False; '
             logging.error('Invalidating species.')
             self.output[label]['status'] = 'Error: Encountered negative frequencies too many times; '
             return
