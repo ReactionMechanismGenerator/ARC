@@ -449,9 +449,8 @@ class Job(object):
             else:
                 architecture = '\n#$ -l magnycours'
         self.submit = submit_scripts[self.server][self.software.lower()].format(
-            name=self.job_server_name, un=un, t_max=t_max, mem_cpu=min(int(self.memory * 150), 16000), cpus=cpus,
+            name=self.job_server_name, un=un, t_max=t_max, mem_cpu=int(self.memory / cpus), cpus=cpus,
             architecture=architecture)
-        # Memory conversion: multiply MW value by 1200 to conservatively get it in MB, then divide by 8 to get per cup
         if not os.path.exists(self.local_path):
             os.makedirs(self.local_path)
         with open(os.path.join(self.local_path, submit_filename[servers[self.server]['cluster_soft']]), 'wb') as f:
