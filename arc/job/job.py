@@ -454,7 +454,7 @@ class Job(object):
         self.input = input_files[self.software]
 
         slash = ''
-        if self.software == 'gaussian' and not self.job_type == 'composite':
+        if self.software == 'gaussian' and '/' in self.level_of_theory:
             slash = '/'
 
         if (self.multiplicity > 1 and '/' in self.level_of_theory) or self.number_of_radicals > 1:
