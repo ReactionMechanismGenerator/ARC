@@ -589,12 +589,21 @@ H      -1.69944700    0.93441600   -0.11271200"""
         project_directory = os.path.join(arc_path, 'Projects', 'arc_project_for_testing_delete_after_usage4')
         spc1 = ARCSpecies(label=str('vinoxy'), smiles=str('C=C[O]'))
         rmgdb = make_rmg_database_object()
+        job_types1 = {'conformers': True,
+                      'opt': True,
+                      'fine_grid': False,
+                      'freq': True,
+                      'sp': True,
+                      '1d_rotors': False,
+                      'orbitals': False,
+                      'lennard_jones': False,
+                      }
         sched1 = Scheduler(project='project_test', ess_settings=ess_settings, species_list=[spc1],
                            composite_method='', conformer_level=default_levels_of_theory['conformer'],
                            opt_level=default_levels_of_theory['opt'], freq_level=default_levels_of_theory['freq'],
                            sp_level=default_levels_of_theory['sp'], scan_level=default_levels_of_theory['scan'],
                            ts_guess_level=default_levels_of_theory['ts_guesses'], rmgdatabase=rmgdb,
-                           project_directory=project_directory, generate_conformers=True, testing=True,
+                           project_directory=project_directory, testing=True, job_types=job_types1,
                            orbitals_level=default_levels_of_theory['orbitals'])
         xyzs = ["""O       1.09068700    0.26516800   -0.16706300
 C       2.92204100   -1.18335700   -0.38884900

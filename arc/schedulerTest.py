@@ -44,12 +44,21 @@ class TestScheduler(unittest.TestCase):
                        job_type='freq', level_of_theory='wb97x-d3/6-311+g(d,p)', multiplicity=1,
                        project_directory=project_directory, software='qchem', job_num=103)
         cls.rmgdb = rmgdb.make_rmg_database_object()
+        cls.job_types1 = {'conformers': True,
+                          'opt': True,
+                          'fine_grid': False,
+                          'freq': True,
+                          'sp': True,
+                          '1d_rotors': False,
+                          'orbitals': False,
+                          'lennard_jones': False,
+                          }
         cls.sched1 = Scheduler(project='project_test', ess_settings=ess_settings, species_list=[cls.spc1, cls.spc2],
                                composite_method='', conformer_level=default_levels_of_theory['conformer'],
                                opt_level=default_levels_of_theory['opt'], freq_level=default_levels_of_theory['freq'],
                                sp_level=default_levels_of_theory['sp'], scan_level=default_levels_of_theory['scan'],
                                ts_guess_level=default_levels_of_theory['ts_guesses'], rmgdatabase=cls.rmgdb,
-                               project_directory=project_directory, generate_conformers=True, testing=True,
+                               project_directory=project_directory, testing=True, job_types=cls.job_types1,
                                orbitals_level=default_levels_of_theory['orbitals'])
 
     def test_conformers(self):
