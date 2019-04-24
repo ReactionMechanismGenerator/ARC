@@ -96,6 +96,8 @@ class ARCSpecies(object):
                                            Values are local paths to check files
     `external_symmetry`     ``int``      The external symmetry of the species (not including rotor symmetries)
     `optical_isomers`       ``int``      Whether (=2) or not (=1) the species has chiral center/s
+    `transport_data`        ``TransportData``  A placeholder for updating transport properties after Lennard-Jones
+                                                 calculation (using OneDMin)
     ====================== ============= ===============================================================================
 
     Dictionary structure:
@@ -137,6 +139,7 @@ class ARCSpecies(object):
         self.checkfile = checkfile
         self.conformer_checkfiles = dict()
         self.most_stable_conformer = None
+        self.transport_data = None
 
         if species_dict is not None:
             # Reading from a dictionary

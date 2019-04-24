@@ -20,6 +20,7 @@ from ase.io import write as ase_write
 
 from rmgpy.data.thermo import ThermoLibrary
 from rmgpy.data.kinetics.library import KineticsLibrary
+from rmgpy.data.transport import TransportLibrary
 from rmgpy.data.base import Entry
 from rmgpy.quantity import ScalarQuantity
 from rmgpy.species import Species
@@ -440,7 +441,7 @@ def save_thermo_lib(species_list, path, name, lib_long_desc):
                 spc.long_thermo_description += '\nExternal symmetry: {0}, optical isomers: {1}\n'.format(
                     spc.external_symmetry, spc.optical_isomers)
                 spc.long_thermo_description += '\nGeometry:\n{0}'.format(spc.final_xyz)
-                thermo_library.loadEntry(index=i+1,
+                thermo_library.loadEntry(index=i,
                                          label=spc.label,
                                          molecule=spc.mol_list[0].toAdjacencyList(),
                                          thermo=spc.thermo,
@@ -451,6 +452,31 @@ def save_thermo_lib(species_list, path, name, lib_long_desc):
                                 ' library.'.format(str(spc)))
 
         thermo_library.save(lib_path)
+
+
+def save_transport_lib(species_list, path, name, lib_long_desc=''):
+    """
+    Save an RMG transport library of all species in `species_list` in the supplied `path`
+    `name` is the library's name (or project's name)
+    `long_desc` is a multiline string with level of theory description
+    """
+    if species_list:
+        lib_path = os.path.join(path, 'transport', '{0}.py'.format(name))
+        transport_library = TransportLibrary(name=name, longDesc=lib_long_desc)
+        for i, spc in enumerate(species_list):
+            if spc.transport_data is not None:
+                description = str('\nGeometry:\n{0}'.format(spc.final_xyz))
+                transport_library.loadEntry(index=i,
+                                            label=spc.label,
+                                            molecule=spc.mol_list[0].toAdjacencyList(),
+                                            transport=spc.transport_data,
+                                            shortDesc=spc.thermo.comment,
+                                            longDesc=description)
+            else:
+                logging.warning('Species {0} did not contain any thermo data and was omitted from the thermo'
+                                ' library.'.format(str(spc)))
+
+        transport_library.save(lib_path)
 
 
 def save_kinetics_lib(rxn_list, path, name, lib_long_desc):
@@ -479,7 +505,7 @@ def save_kinetics_lib(rxn_list, path, name, lib_long_desc):
                 rxn.rmg_reaction.reactants = reactants
                 rxn.rmg_reaction.products = products
                 entry = Entry(
-                    index=i+1,
+                    index=i,
                     item=rxn.rmg_reaction,
                     data=rxn.kinetics,
                     label=rxn.label)

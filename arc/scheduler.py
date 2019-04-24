@@ -470,10 +470,13 @@ class Scheduler(object):
                         if successful_server_termination:
                             # copy the lennard_jones file to the species output folder (TS's don't have L-J data)
                             lj_output_path = os.path.join(self.project_directory, 'output', 'Species', label,
-                                                          'geometry', 'lennard_jones.dat')
+                                                          'lennard_jones.dat')
                             if os.path.isfile(job.local_path_to_lj_file):
                                 shutil.copyfile(job.local_path_to_lj_file, lj_output_path)
                                 self.output[label]['status'] += 'OneDMin converged; '
+                                self.species_dict[label].set_species_transport_data(
+                                    project_directory=self.project_directory, opt_path=self.output[label]['geo'],
+                                    bath_gas=job.bath_gas, opt_level=self.opt_level)
                         self.timer = False
                         break
 
@@ -1044,6 +1047,16 @@ class Scheduler(object):
                 folder_name = 'rxns' if self.species_dict[label].is_ts else 'Species'
                 freq_path = os.path.join(self.project_directory, 'output', folder_name, label, 'geometry', 'freq.out')
                 shutil.copyfile(job.local_path_to_output_file, freq_path)
+                # set species.polarizability
+                polarizability = parser.parse_polarizability(job.local_path_to_output_file)
+                if polarizability is not None:
+                    self.species_dict[label].transport_data.polarizability = (polarizability, str('angstroms^3'))
+                    if self.species_dict[label].transport_data.comment:
+                        self.species_dict[label].transport_data.comment +=\
+                            str('\nPolarizability calculated at the {0} level of theory'.format(self.freq_level))
+                    else:
+                        self.species_dict[label].transport_data.comment =\
+                            str('Polarizability calculated at the {0} level of theory'.format(self.freq_level))
         else:
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level_of_theory, job_type='freq')
 

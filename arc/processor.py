@@ -181,6 +181,7 @@ class Processor(object):
         # Thermo:
         species_list_for_thermo_parity = list()
         species_for_thermo_lib = list()
+        species_for_transport_lib = list()
         unconverged_species = list()
         for species in self.species_dict.values():
             if not species.is_ts and 'ALL converged' in self.output[species.label]['status']:
@@ -227,6 +228,8 @@ class Processor(object):
                 else:
                     if species.generate_thermo:
                         species_list_for_thermo_parity.append(species)
+                if 'onedmin converged' in self.output[species.label]['status'].lower():
+                    species_for_transport_lib.append(species)
             elif 'ALL converged' not in self.output[species.label]['status']:
                 unconverged_species.append(species)
         # Kinetics:
@@ -284,17 +287,19 @@ class Processor(object):
 
         logging.info('\n\n')
         output_dir = os.path.join(self.project_directory, 'output')
+        libraries_path = os.path.join(output_dir, 'RMG libraries')
 
         if species_list_for_thermo_parity:
             plotter.draw_thermo_parity_plots(species_list_for_thermo_parity, path=output_dir)
-            libraries_path = os.path.join(output_dir, 'RMG libraries')
-            # species_list = [spc for spc in self.species_dict.values()]
             plotter.save_thermo_lib(species_for_thermo_lib, path=libraries_path,
                                     name=self.project, lib_long_desc=self.lib_long_desc)
+
+        if species_for_transport_lib:
+            plotter.save_transport_lib(species_for_thermo_lib, path=libraries_path, name=self.project)
+
         if rxn_list_for_kinetics_plots:
             plotter.draw_kinetics_plots(rxn_list_for_kinetics_plots, path=output_dir,
                                         t_min=self.t_min, t_max=self.t_max, t_count=self.t_count)
-            libraries_path = os.path.join(output_dir, 'RMG libraries')
             plotter.save_kinetics_lib(rxn_list=rxn_list_for_kinetics_plots, path=libraries_path,
                                       name=self.project, lib_long_desc=self.lib_long_desc)
 
