@@ -834,6 +834,8 @@ class Scheduler(object):
                         logging.error('No conformer for {0} was found to be isomorphic with the 2D graph representation'
                                       ' {1} (got: {2}). Optimizing the most stable conformer anyway.'.format(
                                        label, self.species_dict[label].mol.toSMILES(), smiles_list))
+                        self.output[label]['status'] += 'No conformer was found to be isomorphic with the 2D' \
+                                                        ' graph representation; '
                         if self.species_dict[label].charge:
                             logging.warning('Isomorphism check cannot be done for charged species {0}'.format(label))
                         conformer_xyz = xyzs[0]
@@ -842,7 +844,7 @@ class Scheduler(object):
                                       ' {1} (got: {2}). NOT optimizing this species.'.format(
                                        label, self.species_dict[label].mol.toSMILES(), smiles_list))
                         self.output[label]['status'] += 'Error: No conformer was found to be isomorphic with the 2D' \
-                                                        ' graph representation! '
+                                                        ' graph representation!; '
             else:
                 logging.warn('Could not run isomorphism check for species {0} due to missing 2D graph '
                              'representation. Using the most stable conformer for further geometry'
@@ -1477,7 +1479,7 @@ class Scheduler(object):
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, job_type='composite',
                              fine=job.fine, ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
             elif 'scf=nosymm' not in job.ess_trsh_methods:
-                # calls a quadratically convergent SCF procedure
+                # try running w/o considering symmetry
                 logging.info('Troubleshooting {type} job in {software} using scf=nosymm'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('scf=nosymm')
@@ -1613,7 +1615,7 @@ class Scheduler(object):
                              job_type=job_type, fine=job.fine, shift=shift, ess_trsh_methods=job.ess_trsh_methods,
                              conformer=conformer)
             elif 'vdz' not in job.ess_trsh_methods:
-                # try adding a level shift for alpha- and beta-spin orbitals
+                # degrade the basis set
                 logging.info('Troubleshooting {type} job in {software} using vdz'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('vdz')
