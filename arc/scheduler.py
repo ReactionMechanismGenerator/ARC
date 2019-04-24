@@ -401,6 +401,8 @@ class Scheduler(object):
                                     self.run_sp_job(label)
                                     self.run_scan_jobs(label)
                                     self.run_orbitals_job(label)
+                                    if self.job_types['onedmin'] and not self.species_dict[label].is_ts:
+                                        self.run_onedmin_job(label)
                         self.timer = False
                         break
                     elif 'freq' in job_name\
@@ -435,6 +437,9 @@ class Scheduler(object):
                                             or self.species_dict[label].number_of_atoms > 1:
                                         self.run_freq_job(label)
                                     self.run_scan_jobs(label)
+                                    if self.job_types['onedmin'] and not self.species_dict[label].is_ts\
+                                            and self.composite_method:
+                                        self.run_onedmin_job(label)
                         self.timer = False
                         break
                     elif 'scan' in job_name\
@@ -456,6 +461,19 @@ class Scheduler(object):
                                                          'orbitals.fchk')
                             if os.path.isfile(job.local_path_to_orbitals_file):
                                 shutil.copyfile(job.local_path_to_orbitals_file, orbitals_path)
+                        self.timer = False
+                        break
+                    elif 'onedmin' in job_name\
+                            and not self.job_dict[label]['onedmin'][job_name].job_id in self.servers_jobs_ids:
+                        job = self.job_dict[label]['onedmin'][job_name]
+                        successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
+                        if successful_server_termination:
+                            # copy the lennard_jones file to the species output folder (TS's don't have L-J data)
+                            lj_output_path = os.path.join(self.project_directory, 'output', 'Species', label,
+                                                          'geometry', 'lennard_jones.dat')
+                            if os.path.isfile(job.local_path_to_lj_file):
+                                shutil.copyfile(job.local_path_to_lj_file, lj_output_path)
+                                self.output[label]['status'] += 'OneDMin converged; '
                         self.timer = False
                         break
 
@@ -733,6 +751,16 @@ class Scheduler(object):
         if self.job_types['orbitals'] and 'orbitals' not in self.job_dict[label]:
             self.run_job(label=label, xyz=self.species_dict[label].final_xyz, level_of_theory=self.orbitals_level,
                          job_type='orbitals')
+
+    def run_onedmin_job(self, label):
+        """
+        Spawn a lennard-jones calculation using OneDMin
+        """
+        if 'onedmin' not in self.ess_settings:
+            logging.error('Cannot execute a Lennard_jones job without the OneDMin software')
+        elif 'onedmin' not in self.job_dict[label]:
+            self.run_job(label=label, xyz=self.species_dict[label].final_xyz, job_type='onedmin',
+                         level_of_theory='')
 
     def parse_conformer_energy(self, job, label, i):
         """

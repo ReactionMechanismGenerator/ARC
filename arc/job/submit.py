@@ -262,5 +262,25 @@ mkdir -p /scratch/{un}/qlscratch
 
 molpro -d $sdir -n 6 input.in
 """,
+        # oneDMin
+        'onedmin': """#! /bin/bash -l
+
+#$ -N {name}
+#$ -l long{architecture}
+#$ -l h_rt={t_max}
+#$ -pe singlenode {cpus}
+#$ -l h=!node60.cluster
+#$ -cwd
+#$ -o out.txt
+#$ -e err.txt
+
+WorkDir=`pwd`
+cd
+sdir=/scratch/{un}
+mkdir -p /scratch/{un}/onedmin
+cd $WorkDir
+
+~/auto1dmin/exe/auto1dmin.x < input.in > output.out
+""",
     }
 }

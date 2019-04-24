@@ -934,7 +934,8 @@ class ARC(object):
                 logging.info('Using Molpro on {0}'.format(self.ess_settings['molpro']))
             logging.info('\n')
         if 'gaussian' not in self.ess_settings.keys() and 'qchem' not in self.ess_settings.keys()\
-                and 'molpro' not in self.ess_settings.keys() and not diagnostics:
+                and 'molpro' not in self.ess_settings.keys() and 'onedmin' not in self.ess_settings.keys()\
+                and not diagnostics:
             raise SettingsError('Could not find any ESS. Check your .bashrc definitions on the server.\n'
                                 'Alternatively, you could pass a software-server dictionary to arc as `ess_settings`')
         elif diagnostics:
@@ -1062,8 +1063,8 @@ def check_ess_settings(ess_settings):
                                     'strings. Got: {0} which is a {1}'.format(server_list, type(server_list)))
     # run checks:
     for ess, server_list in settings.items():
-        if ess.lower() not in ['gaussian', 'qchem', 'molpro'] and ess.lower() != 'ssh':
-            raise SettingsError('Recognized ESS software are Gaussian, QChem or Molpro. Got: {0}'.format(ess))
+        if ess.lower() not in ['gaussian', 'qchem', 'molpro', 'onedmin'] and ess.lower() != 'ssh':
+            raise SettingsError('Recognized ESS software are Gaussian, QChem, Molpro, or OneDMin. Got: {0}'.format(ess))
         for server in server_list:
             if not isinstance(server, bool) and server.lower() not in servers.keys():
                 server_names = [name for name in servers.keys()]

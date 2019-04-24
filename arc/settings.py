@@ -45,14 +45,14 @@ servers = {
 }
 
 # List here job types to execute by default
-default_job_types = {'conformers': True,     # defaults to True if not specified
-                     'opt': True,            # defaults to True if not specified
-                     'fine_grid': False,     # defaults to True if not specified
-                     'freq': True,           # defaults to True if not specified
-                     'sp': True,             # defaults to True if not specified
-                     '1d_rotors': False,     # defaults to True if not specified
-                     'orbitals': False,      # defaults to False if not specified
-                     'lennard_jones': True,  # defaults to False if not specified
+default_job_types = {'conformers': True,      # defaults to True if not specified
+                     'opt': True,             # defaults to True if not specified
+                     'fine_grid': True,      # defaults to True if not specified
+                     'freq': True,            # defaults to True if not specified
+                     'sp': True,              # defaults to True if not specified
+                     '1d_rotors': False,      # defaults to True if not specified
+                     'orbitals': False,       # defaults to False if not specified
+                     'lennard_jones': False,  # defaults to False if not specified
                      }
 
 # List here servers you'd like to associate with specific ESS.
@@ -62,6 +62,7 @@ global_ess_settings = {
     'gaussian': ['server1', 'server2'],
     'molpro': 'server2',
     'qchem': 'server1',
+    'onedmin': 'server1',
 }
 
 # List here (complete or partial) phrases of methods or basis sets you'd like to associate to specific ESS
@@ -94,11 +95,13 @@ t_max_format = {'OGE': 'hours',
 input_filename = {'gaussian': 'input.gjf',
                    'qchem': 'input.in',
                    'molpro': 'input.in',
+                   'onedmin': 'input.in',
 }
 
 output_filename = {'gaussian': 'input.log',
                    'qchem': 'output.out',
                    'molpro': 'input.out',
+                   'onedmin': 'output.out',
 }
 
 default_levels_of_theory = {'conformer': 'b3lyp/6-31+g(d,p)',
