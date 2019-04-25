@@ -14,7 +14,7 @@ import openbabel as ob
 import pybel as pyb
 
 from arkane.common import ArkaneSpecies, symbol_by_number
-from arkane.statmech import Log
+from arkane.statmech import determine_qm_software
 from rmgpy.molecule.converter import toOBMol
 from rmgpy.molecule.element import getElement
 from rmgpy.molecule.molecule import Atom, Molecule
@@ -1374,9 +1374,8 @@ def determine_rotor_symmetry(rotor_path, label, pivots):
     A second criterion for a symmetric rotor is that the highest and lowest peaks must be within 10% of
     the highest peak value. This is only applied if the highest peak is above 2 kJ/mol.
     """
-    log = Log(path='')
-    log.determine_qm_software(fullpath=rotor_path)
-    energies, _ = log.software_log.loadScanEnergies()
+    log = determine_qm_software(fullpath=rotor_path)
+    energies, _ = log.loadScanEnergies()
 
     symmetry = None
     max_e = max(energies)
@@ -1460,9 +1459,8 @@ def determine_rotor_type(rotor_path):
     Determine whether this rotor should be treated as a HinderedRotor of a FreeRotor
     according to it's maximum peak
     """
-    log = Log(path='')
-    log.determine_qm_software(fullpath=rotor_path)
-    energies, _ = log.software_log.loadScanEnergies()
+    log = determine_qm_software(fullpath=rotor_path)
+    energies, _ = log.loadScanEnergies()
     max_val = max(energies) * 0.001  # convert to kJ/mol (Arkane used SI)
     return 'FreeRotor' if max_val < minimum_barrier else 'HinderedRotor'
 
