@@ -71,6 +71,17 @@ class TestParser(unittest.TestCase):
         t1 = parser.parse_t1(path)
         self.assertEqual(t1, 0.0086766)
 
+    def test_parse_e0(self):
+        """Test parsing E0 from an sp job output file"""
+        path1 = os.path.join(arc_path, 'arc', 'testing', 'mehylamine_CCSD(T).out')
+        e0 = parser.parse_e0(path1)
+        self.assertEqual(e0, -251377.49160993524)
+
+        path2 = os.path.join(arc_path, 'arc', 'testing', 'SO2OO_CBS-QB3.log')
+        e0 = parser.parse_e0(path2)
+        self.assertEqual(e0, -1833127.0939478774)
+
+
 ################################################################################
 
 if __name__ == '__main__':
