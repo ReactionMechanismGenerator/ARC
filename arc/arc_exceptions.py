@@ -27,6 +27,13 @@ class OutputError(Exception):
     pass
 
 
+class ParserError(Exception):
+    """
+    This exception is raised whenever an error occurs while parsing files
+    """
+    pass
+
+
 class ReactionError(Exception):
     """
     An exception class for exceptional behavior that occurs while working with reactions
