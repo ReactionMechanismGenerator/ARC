@@ -110,9 +110,9 @@ class Scheduler(object):
     # Note that rotor scans are located under Species.rotors_dict
     """
     def __init__(self, project, ess_settings, species_list, composite_method, conformer_level, opt_level, freq_level,
-                 sp_level, scan_level, ts_guess_level, orbitals_level, project_directory, rmgdatabase, job_types=None,
-                 initial_trsh=None, rxn_list=None, restart_dict=None, max_job_time=120, allow_nonisomorphic_2d=False,
-                 memory=15000, testing=False, bath_gas=None):
+                 sp_level, scan_level, ts_guess_level, orbitals_level, project_directory, rmgdatabase,
+                 job_types=None, initial_trsh=None, rxn_list=None, restart_dict=None, max_job_time=120,
+                 allow_nonisomorphic_2d=False, memory=15000, testing=False, bath_gas=None):
         self.rmgdb = rmgdatabase
         self.restart_dict = restart_dict
         self.species_list = species_list
@@ -582,7 +582,7 @@ class Scheduler(object):
                                                                                      time=job.run_time))
             if job.job_status[0] != 'done':
                 return False
-            if job.job_status[0] == 'done' and job.job_status[1] == 'done':
+            if job.job_status == ['done', 'done']:
                 if self.species_dict[label].run_time is None:
                     self.species_dict[label].run_time = job.run_time
                 else:

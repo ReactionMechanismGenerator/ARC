@@ -144,7 +144,7 @@ class ARCSpecies(object):
         self.checkfile = checkfile
         self.conformer_checkfiles = dict()
         self.most_stable_conformer = None
-        self.transport_data = None
+        self.transport_data = TransportData()
 
         if species_dict is not None:
             # Reading from a dictionary
@@ -1000,7 +1000,7 @@ class ARCSpecies(object):
             epsilon=epsilon,
             sigma=sigma,
             dipoleMoment=(dipole_moment, str('De')),
-            polarizability=(0, str('angstroms^3')),
+            polarizability=polar,
             rotrelaxcollnum=0,  # rotational relaxation collision number at 298 K
             comment=str(comment)
         )
