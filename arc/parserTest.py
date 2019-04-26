@@ -81,6 +81,16 @@ class TestParser(unittest.TestCase):
         e0 = parser.parse_e0(path2)
         self.assertEqual(e0, -1833127.0939478774)
 
+    def test_parse_dipole_moment(self):
+        """Test parsing the dipole moment from an opt hob output file"""
+        path1 = os.path.join(arc_path, 'arc', 'testing', 'SO2OO_CBS-QB3.log')
+        dm1 = parser.parse_dipole_moment(path1)
+        self.assertEqual(dm1, 0.63)
+
+        path2 = os.path.join(arc_path, 'arc', 'testing', 'N2H4_opt_QChem.out')
+        dm2 = parser.parse_dipole_moment(path2)
+        self.assertEqual(dm2, 2.0664)
+
 
 ################################################################################
 
