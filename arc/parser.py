@@ -29,19 +29,17 @@ def parse_frequencies(path, software):
     """
     Parse the frequencies from a freq job output file
     """
-    if not os.path.isfile(path):
-        raise InputError('Could not find file {0}'.format(path))
+    lines = _get_lines_from_file(path)
     freqs = np.array([], np.float64)
     if software.lower() == 'qchem':
-        with open(path, 'rb') as f:
-            for line in f:
-                if ' Frequency:' in line:
-                    items = line.split()
-                    for i, item in enumerate(items):
-                        if i:
-                            freqs = np.append(freqs, [(float(item))])
+        for line in lines:
+            if ' Frequency:' in line:
+                items = line.split()
+                for i, item in enumerate(items):
+                    if i:
+                        freqs = np.append(freqs, [(float(item))])
     elif software.lower() == 'gaussian':
-        with open(path, 'rb') as f:
+        with open(path, 'r') as f:
             line = f.readline()
             while line != '':
                 if 'Frequencies --' in line:
@@ -58,13 +56,11 @@ def parse_t1(path):
     """
     Parse the T1 parameter from a Molpro coupled cluster calculation
     """
-    if not os.path.isfile(path):
-        raise InputError('Could not find file {0}'.format(path))
+    lines = _get_lines_from_file(path)
     t1 = None
-    with open(path, 'rb') as f:
-        for line in f:
-            if 'T1 diagnostic:' in line:
-                t1 = float(line.split()[-1])
+    for line in lines:
+        if 'T1 diagnostic:' in line:
+            t1 = float(line.split()[-1])
     return t1
 
 
@@ -91,11 +87,7 @@ def parse_xyz_from_file(path):
     .out or .log - ESS output file (Gaussian, QChem, Molpro)
     other - Molpro or QChem input file
     """
-    if os.path.isfile(path):
-        with open(path, 'r') as f:
-            lines = f.readlines()
-    else:
-        raise InputError('Could not find file {0}'.format(path))
+    lines = _get_lines_from_file(path)
     file_extension = os.path.splitext(path)[1]
 
     xyz = None
@@ -135,11 +127,7 @@ def parse_dipole_moment(path):
     """
     Parse the dipole moment in Debye from an opt job output file
     """
-    if os.path.isfile(path):
-        with open(path, 'r') as f:
-            lines = f.readlines()
-    else:
-        raise InputError('Could not find file {0}'.format(path))
+    lines = _get_lines_from_file(path)
     log = determine_qm_software(path)
     dipole_moment = None
     if isinstance(log, GaussianLog):
@@ -175,3 +163,27 @@ def parse_dipole_moment(path):
     if dipole_moment is None:
         raise ParserError('Could not parse the dipole moment')
     return dipole_moment
+
+
+def parse_polarizability(path):
+    """
+    Parse the polarizability from a freq job output file, returns the value in Angstrom^3
+    """
+    lines = _get_lines_from_file(path)
+    polarizability = None
+    for line in lines:
+        if 'Isotropic polarizability for W' in line:
+            # example:  Isotropic polarizability for W=    0.000000       11.49 Bohr**3.
+            # 1 Bohr = 0.529177 Angstrom
+            polarizability = float(line.split()[-2]) * 0.529177 ** 3
+    return polarizability
+
+
+def _get_lines_from_file(path):
+    """A helper function for getting a list of lines from the file at `path`"""
+    if os.path.isfile(path):
+        with open(path, 'r') as f:
+            lines = f.readlines()
+    else:
+        raise InputError('Could not find file {0}'.format(path))
+    return lines
