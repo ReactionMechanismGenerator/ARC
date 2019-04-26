@@ -24,11 +24,12 @@ from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 from rmgpy.statmech import NonlinearRotor, LinearRotor
 from rmgpy.molecule.resonance import generate_kekule_structure
+from rmgpy.transport import TransportData
 from rmgpy.exceptions import InvalidAdjacencyListError
 
 from arc.arc_exceptions import SpeciesError, RotorError, InputError, TSError
 from arc.settings import arc_path, default_ts_methods, valid_chars, minimum_barrier
-from arc.parser import parse_xyz_from_file
+from arc.parser import parse_xyz_from_file, parse_dipole_moment, parse_polarizability
 from arc.species.converter import get_xyz_string, get_xyz_matrix, rdkit_conf_from_mol, standardize_xyz_string,\
     molecules_from_xyz, rmg_mol_from_inchi, order_atoms_in_mol_list, check_isomorphism
 from arc.ts import atst
@@ -951,6 +952,54 @@ class ARCSpecies(object):
                     # assume this is a string format xyz
                     self.conformers.append(standardize_xyz_string(xyz))
                     self.conformer_energies.append(None)  # dummy (lists should be the same length)
+
+    def set_transport_data(self, lj_path, opt_path, bath_gas, opt_level, freq_path='', freq_level=None):
+        """
+        Set the species.transport_data attribute after a Lennard-Jones calculation (via OneDMin)
+        `lj_path` is the path to a oneDMin job output file
+        `opt_path` is the path to an opt job output file
+        `bath_gas` is the oneDMin job bath gas
+        `opt_level` is the optimization level of theory
+        """
+        original_comment = self.transport_data.comment
+        comment = 'L-J coefficients calculated by OneDMin using a DF-MP2/aug-cc-pVDZ potential energy surface ' \
+                  'with {0} as the collider'.format(bath_gas)
+        epsilon, sigma = None, None
+        with open(lj_path, 'r') as f:
+            lines = f.readlines()
+        for line in lines:
+            if 'Epsilons[1/cm]' in line:
+                # Conversion of cm^-1 to J/mol (see https://cccbdb.nist.gov/wavenumber.asp)
+                epsilon = (float(line.split()[-1]) * 11.96266, str('J/mol'))
+            elif 'Sigmas[angstrom]' in line:
+                # Convert Angstroms to meters
+                sigma = (float(line.split()[-1]) * 1e-10, str('m'))
+        if self.number_of_atoms == 1:
+            shape_index = 0
+            comment += '\nThe molecule is monoatomic'
+        elif self.is_linear():
+            shape_index = 1
+            comment += '\nThe molecule is linear'
+        else:
+            shape_index = 2
+        dipole_moment = parse_dipole_moment(opt_path) or 0
+        if dipole_moment:
+            comment += '\nThe dipole moment calculated at the {0} level of theory'.format(opt_level)
+        polar = self.transport_data.polarizability or (0, str('angstroms^3'))
+        if freq_path:
+            polar = (parse_polarizability(freq_path), str('angstroms^3'))
+            comment += '\nPolarizability calculated at the {0} level of theory'.format(freq_level)
+        if original_comment:
+            comment += '\n' + original_comment
+        self.transport_data = TransportData(
+            shapeIndex=shape_index,
+            epsilon=epsilon,
+            sigma=sigma,
+            dipoleMoment=(dipole_moment, str('De')),
+            polarizability=(0, str('angstroms^3')),
+            rotrelaxcollnum=0,  # rotational relaxation collision number at 298 K
+            comment=str(comment)
+        )
 
 
 class TSGuess(object):

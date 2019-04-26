@@ -474,9 +474,10 @@ class Scheduler(object):
                             if os.path.isfile(job.local_path_to_lj_file):
                                 shutil.copyfile(job.local_path_to_lj_file, lj_output_path)
                                 self.output[label]['status'] += 'OneDMin converged; '
-                                self.species_dict[label].set_species_transport_data(
-                                    project_directory=self.project_directory, opt_path=self.output[label]['geo'],
-                                    bath_gas=job.bath_gas, opt_level=self.opt_level)
+                                self.species_dict[label].set_transport_data(
+                                    lj_path=os.path.join(self.project_directory, 'output', 'Species', label,
+                                                         'lennard_jones.dat'),
+                                    opt_path=self.output[label]['geo'], bath_gas=job.bath_gas, opt_level=self.opt_level)
                         self.timer = False
                         break
 
