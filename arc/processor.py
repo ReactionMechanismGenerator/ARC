@@ -254,7 +254,7 @@ class Processor(object):
                         self._run_statmech(arkane_spc, spc.arkane_file, kinetics=True)
                 rxn.dh_rxn298 = sum([product.thermo.getEnthalpy(298) for product in arkane_spc_dict.values()
                                      if product.label in rxn.products])\
-                                - sum([reactant.thermo.getEnthalpy(298) for reactant in arkane_spc_dict.values()
+                    - sum([reactant.thermo.getEnthalpy(298) for reactant in arkane_spc_dict.values()
                                        if reactant.label in rxn.reactants])
                 arkane_rxn = arkane_reaction(label=str(rxn.label),
                                              reactants=[str(label + '_') for label in arkane_spc_dict.keys()
@@ -311,10 +311,10 @@ class Processor(object):
                 for spc in unconverged_species:
                     f.write(spc.label)
                     if spc.is_ts:
-                        f.write(' rxn: {0}'.format(spc.rxn_label))
+                        f.write(str(' rxn: {0}'.format(spc.rxn_label)))
                     elif spc.mol is not None:
-                        f.write(' SMILES: {0}'.format(spc.mol.toSMILES()))
-                    f.write('\n')
+                        f.write(str(' SMILES: {0}'.format(spc.mol.toSMILES())))
+                    f.write(str('\n'))
 
     def _run_statmech(self, arkane_spc, arkane_file, output_file_path=None, use_bac=False, kinetics=False, plot=False):
         """

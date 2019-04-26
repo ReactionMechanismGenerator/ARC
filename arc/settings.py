@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 # encoding: utf-8
 
+"""
+ARC's settings
+"""
+
 import os
 import string
 
@@ -93,16 +97,16 @@ t_max_format = {'OGE': 'hours',
                 'Slurm': 'days'}
 
 input_filename = {'gaussian': 'input.gjf',
-                   'qchem': 'input.in',
-                   'molpro': 'input.in',
-                   'onedmin': 'input.in',
-}
+                  'qchem': 'input.in',
+                  'molpro': 'input.in',
+                  'onedmin': 'input.in',
+                  }
 
 output_filename = {'gaussian': 'input.log',
                    'qchem': 'output.out',
                    'molpro': 'input.out',
                    'onedmin': 'output.out',
-}
+                   }
 
 default_levels_of_theory = {'conformer': 'b3lyp/6-31+g(d,p)',
                             'ts_guesses': 'b3lyp/6-31+g(d,p)',  # used for IRC as well
@@ -114,7 +118,7 @@ default_levels_of_theory = {'conformer': 'b3lyp/6-31+g(d,p)',
                             'scan': 'b3lyp/6-311+g(d,p)',
                             'scan_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of the CBS-QB3 method
                             'freq_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of the CBS-QB3 method
-}
+                            }
 
 # default_ts_methods = ['QST2', 'DEGSM', 'NEB', 'Kinbot', 'AutoTST']
 default_ts_methods = ['AutoTST']

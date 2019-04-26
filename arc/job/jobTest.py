@@ -27,7 +27,7 @@ class TestJob(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        cls.ess_settings = {'gaussian': ['server1','server2'], 'molpro': ['server2'],
+        cls.ess_settings = {'gaussian': ['server1', 'server2'], 'molpro': ['server2'],
                             'qchem': ['server1'], 'ssh': False}
         cls.job1 = Job(project='project_test', ess_settings=cls.ess_settings, species_name='tst_spc',
                        xyz='C 0.0 0.0 0.0', job_type='opt', level_of_theory='b3lyp/6-31+g(d)', multiplicity=1,

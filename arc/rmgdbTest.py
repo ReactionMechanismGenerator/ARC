@@ -56,7 +56,7 @@ class TestRMGDB(unittest.TestCase):
         p2.thermo = self.rmgdb.thermo.getThermoData(p2)
         rxn = Reaction(reactants=[r1, r2], products=[p1, p2])
         dh_rxn298 = sum([product.getEnthalpy(298) for product in rxn.products])\
-                    - sum([reactant.getEnthalpy(298) for reactant in rxn.reactants])
+            - sum([reactant.getEnthalpy(298) for reactant in rxn.reactants])
         rmg_reactions = rmgdb.determine_rmg_kinetics(rmgdb=self.rmgdb, reaction=rxn, dh_rxn298=dh_rxn298)
         self.assertFalse(rmg_reactions[0].kinetics.isPressureDependent())
         found_rxn = False
@@ -65,7 +65,6 @@ class TestRMGDB(unittest.TestCase):
                 self.assertAlmostEqual(rxn.kinetics.getRateCoefficient(1000, 1e5), 38.2514795642, 7)
                 found_rxn = True
         self.assertTrue(found_rxn)
-
 
 
 ################################################################################

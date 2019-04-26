@@ -5,7 +5,7 @@
 AutoTST could not be run directly from ARC since it cases a `Segmentation Fault (core dump)` error
 The error was traced to be related to a compiled C file of RDKit:
 in autotst.reaction.py L 356:      bm = rdkit.Chem.rdDistGeom.GetMoleculeBoundsMatrix(combined)
-This is likely caused by import orders and might be solved by orginizing import differently in both ARC and AutoTST
+This is likely caused by import orders and might be solved by organizing import differently in both ARC and AutoTST
 A different solution is to independently call AutoTST via os.system('python ...')
 or even running it on the server as an independent job.
 This file is meant to accept command line arguments of an AutoTST reaction string
@@ -69,6 +69,7 @@ def main():
 
         with open(xyz_path, 'wb') as f:
             f.write(xyz_guess)
+
 
 ################################################################################
 

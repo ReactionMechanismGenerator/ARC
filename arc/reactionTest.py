@@ -34,7 +34,8 @@ class TestARCReaction(unittest.TestCase):
         cls.rxn1.rmg_reaction = Reaction(reactants=[Species().fromSMILES(str('C')), Species().fromSMILES(str('[OH]'))],
                                          products=[Species().fromSMILES(str('[CH3]')), Species().fromSMILES(str('O'))])
         cls.rxn2 = ARCReaction(reactants=['C2H5', 'OH'], products=['C2H4', 'H2O'])
-        cls.rxn2.rmg_reaction = Reaction(reactants=[Species().fromSMILES(str('C[CH2]')), Species().fromSMILES(str('[OH]'))],
+        cls.rxn2.rmg_reaction = Reaction(reactants=[Species().fromSMILES(str('C[CH2]')),
+                                                    Species().fromSMILES(str('[OH]'))],
                                          products=[Species().fromSMILES(str('C=C')), Species().fromSMILES(str('O'))])
         cls.rxn3 = ARCReaction(reactants=['CH3CH2NH'], products=['CH2CH2NH2'])
         cls.rxn3.rmg_reaction = Reaction(reactants=[Species().fromSMILES(str('CC[NH]'))],
@@ -104,6 +105,7 @@ class TestARCReaction(unittest.TestCase):
         self.assertEqual(self.rxn2.multiplicity, 1)
         self.rxn3.determine_rxn_multiplicity()
         self.assertEqual(self.rxn1.multiplicity, 2)
+
 
 ################################################################################
 

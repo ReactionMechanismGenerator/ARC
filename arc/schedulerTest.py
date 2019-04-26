@@ -30,7 +30,7 @@ class TestScheduler(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        ess_settings = {'gaussian': ['server1'], 'molpro': ['server2','server1'], 'qchem': ['server1'], 'ssh': False}
+        ess_settings = {'gaussian': ['server1'], 'molpro': ['server2', 'server1'], 'qchem': ['server1'], 'ssh': False}
         project_directory = os.path.join(arc_path, 'Projects', 'arc_project_for_testing_delete_after_usage3')
         cls.spc1 = ARCSpecies(label=str('methylamine'), smiles=str('CN'))
         cls.spc2 = ARCSpecies(label=str('C2H6'), smiles=str('CC'))
@@ -113,7 +113,7 @@ H      -1.16566701    0.32023496   -0.81630508"""
 
     def test_check_negative_freq(self):
         """Test the check_negative_freq() method"""
-        label='C2H6'
+        label = 'C2H6'
         self.job3.local_path_to_output_file = os.path.join(arc_path, 'arc', 'testing', 'C2H6_freq_Qchem.out')
         self.job3.job_status = ['done', 'done']
         vibfreqs = parser.parse_frequencies(path=str(self.job3.local_path_to_output_file), software=self.job3.software)
@@ -129,6 +129,7 @@ H      -1.16566701    0.32023496   -0.81630508"""
         for project in projects:
             project_directory = os.path.join(arc_path, 'Projects', project)
             shutil.rmtree(project_directory)
+
 
 ################################################################################
 

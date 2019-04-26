@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 # encoding: utf-8
 
+"""
+A module for various conversions
+"""
+
 from __future__ import (absolute_import, division, print_function, unicode_literals)
 import os
 import numpy as np
@@ -55,7 +59,7 @@ def get_xyz_string(coord, mol=None, number=None, symbol=None):
         for atom in mol.atoms:
             elements.append(atom.element.symbol)
     else:
-        raise ValueError("Must have either an RMG:Molecule object input as `mol`, or atomic numbers \ symbols.")
+        raise ValueError("Must have either an RMG:Molecule object input as `mol`, or atomic numbers / symbols.")
     for i, coordinate in enumerate(coord):
         result += elements[i] + ' ' * (4 - len(elements[i]))
         for c in coordinate:
@@ -81,7 +85,7 @@ def get_xyz_matrix(xyz):
     [-2.2115796924, -0.4529256762, 0.4144516252],
     [-1.8113671395, -0.3268900681, -1.1468957003]]
 
-    Returns xyz as well as atom symbols, x, y, and z seperately
+    Returns xyz as well as atom symbols, x, y, and z separately
     """
     xyz = standardize_xyz_string(xyz)
     x, y, z, symbols = [], [], [], []
@@ -91,7 +95,7 @@ def get_xyz_matrix(xyz):
             if len(line_split) != 4:
                 raise InputError('Expecting each line in an xyz string to have 4 elements, e.g.:\n'
                                  'C    0.1000    0.2000   -0.3000\nbut got {0} elements:\n{1}'.format(
-                    len(line_split), line))
+                                  len(line_split), line))
             atom, xx, yy, zz = line.split()
             x.append(float(xx))
             y.append(float(yy))
@@ -175,7 +179,7 @@ def elementize(atom):
     Written by Matt Johnson
     """
     atom_type = atom.atomType
-    atom_type = [at for at in atom_type.generic if at.label != 'R' and at.label != 'R!H' and not 'Val' in at.label]
+    atom_type = [at for at in atom_type.generic if at.label != 'R' and at.label != 'R!H' and 'Val' not in at.label]
     if atom_type:
         atom.atomType = atom_type[0]
 
@@ -196,8 +200,8 @@ def molecules_from_xyz(xyz, multiplicity=None, charge=0):
     xyz = standardize_xyz_string(xyz)
     coords, symbols, _, _, _ = get_xyz_matrix(xyz)
     mol_graph = MolGraph(symbols=symbols, coords=coords)
-    infered_connections = mol_graph.infer_connections()
-    if infered_connections:
+    inferred_connections = mol_graph.infer_connections()
+    if inferred_connections:
         mol_s1 = mol_graph.to_rmg_mol()  # An RMG Molecule with single bonds, atom order corresponds to xyz
     else:
         mol_s1, _ = s_bonds_mol_from_xyz(xyz)
@@ -262,7 +266,7 @@ def set_multiplicity(mol, multiplicity, charge, radical_map=None):
             mol.atoms[0].radicalElectrons = 0
             mol.atoms[0].lonePairs = 2
         if mol.multiplicity < radicals + 1:
-            # make sure all cabene and nitrene sites, if exist, have lone pairs rather than two unpaired electrons
+            # make sure all carbene and nitrene sites, if exist, have lone pairs rather than two unpaired electrons
             for atom in mol.atoms:
                 if atom.radicalElectrons == 2:
                     atom.radicalElectrons = 0
@@ -273,8 +277,8 @@ def set_multiplicity(mol, multiplicity, charge, radical_map=None):
             raise SpeciesError('Number of radicals ({0}) and multiplicity ({1}) for {2} do not match.\n{3}'.format(
                 radicals, mol.multiplicity, mol.toSMILES(), mol.toAdjacencyList()))
         else:
-            logging.warning('Number of radicals ({0}) and multiplicity ({1}) for {2} do not match. It might be OK since '
-                            'this species is charged and charged molecules are currently not percieved well in ARC.'
+            logging.warning('Number of radicals ({0}) and multiplicity ({1}) for {2} do not match. It might be OK since'
+                            ' this species is charged and charged molecules are currently not perceived well in ARC.'
                             '\n{3}'.format(radicals, mol.multiplicity, mol.toSMILES(), mol.toAdjacencyList()))
 
 

@@ -14,7 +14,7 @@ from arc.settings import arc_path, servers, submit_filename, delete_command, t_m
     input_filename, output_filename, rotor_scan_resolution, list_available_nodes_command, levels_ess
 from arc.job.submit import submit_scripts
 from arc.job.inputs import input_files
-from arc.job.ssh import SSH_Client
+from arc.job.ssh import SSHClient
 from arc.arc_exceptions import JobError, SpeciesError
 
 ##################################################################
@@ -35,7 +35,7 @@ class Job(object):
     `number_of_radicals` ``int``         The number of radicals (inputted by the user, ARC won't attempt to determine
                                            it). Defaults to None. Important, e.g., if a Species is a bi-rad singlet,
                                            in which case the job should be unrestricted, but the multiplicity does not
-                                           have the required information to make that descision (r vs. u)
+                                           have the required information to make that decision (r vs. u)
     `spin`            ``int``            The spin. automatically derived from the multiplicity
     `xyz`             ``str``            The xyz geometry. Used for the calculation
     `n_atoms`         ``int``            The number of atoms in self.xyz
@@ -721,13 +721,13 @@ $end
                     self._upload_check_file(local_check_file_path=self.checkfile)
 
     def _upload_submit_file(self):
-        ssh = SSH_Client(self.server)
+        ssh = SSHClient(self.server)
         ssh.send_command_to_server(command='mkdir -p {0}'.format(self.remote_path))
         remote_file_path = os.path.join(self.remote_path, submit_filename[servers[self.server]['cluster_soft']])
         ssh.upload_file(remote_file_path=remote_file_path, file_string=self.submit)
 
     def _upload_input_file(self):
-        ssh = SSH_Client(self.server)
+        ssh = SSHClient(self.server)
         ssh.send_command_to_server(command='mkdir -p {0}'.format(self.remote_path))
         remote_file_path = os.path.join(self.remote_path, input_filename[self.software])
         ssh.upload_file(remote_file_path=remote_file_path, file_string=self.input)
@@ -748,7 +748,7 @@ $end
         self.initial_time = ssh.get_last_modified_time(remote_file_path=remote_file_path)
 
     def _upload_check_file(self, local_check_file_path=None):
-        ssh = SSH_Client(self.server)
+        ssh = SSHClient(self.server)
         remote_check_file_path = os.path.join(self.remote_path, 'check.chk')
         local_check_file_path = os.path.join(self.local_path, 'check.chk') if remote_check_file_path is None\
             else local_check_file_path
@@ -758,7 +758,7 @@ $end
 
     def _download_output_file(self):
         """Download ESS output, orbitals check file, and the Gaussian check file, if relevant"""
-        ssh = SSH_Client(self.server)
+        ssh = SSHClient(self.server)
 
         # download output file
         remote_file_path = os.path.join(self.remote_path, output_filename[self.software])
@@ -806,7 +806,7 @@ $end
         logging.debug('writing input file...')
         self.write_input_file()
         if self.ess_settings['ssh']:
-            ssh = SSH_Client(self.server)
+            ssh = SSHClient(self.server)
             logging.debug('submitting job...')
             # submit_job returns job server status and job server id
             try:
@@ -821,7 +821,7 @@ $end
         """Delete a running Job"""
         logging.debug('Deleting job {name} for {label}'.format(name=self.job_name, label=self.species_name))
         if self.ess_settings['ssh']:
-            ssh = SSH_Client(self.server)
+            ssh = SSHClient(self.server)
             logging.debug('deleting job...')
             ssh.delete_job(self.job_id)
 
@@ -861,7 +861,7 @@ $end
         """
         lines1, lines2 = list(), list()
         content = ''
-        ssh = SSH_Client(self.server)
+        ssh = SSHClient(self.server)
         cluster_soft = servers[self.server]['cluster_soft'].lower()
         if cluster_soft in ['oge', 'sge']:
             remote_file_path = os.path.join(self.remote_path, 'out.txt')
@@ -916,7 +916,7 @@ $end
         Possible statuses: `initializing`, `running`, `errored on node xx`, `done`
         """
         if self.ess_settings['ssh']:
-            ssh = SSH_Client(self.server)
+            ssh = SSHClient(self.server)
             return ssh.check_job_status(self.job_id)
 
     def _check_job_ess_status(self):
@@ -1046,7 +1046,7 @@ $end
                 # delete present server run
                 logging.error('Job {name} has server status "{stat}" on {server}. Troubleshooting by changing node.'.
                               format(name=self.job_name, stat=self.job_status[0], server=self.server))
-                ssh = SSH_Client(self.server)
+                ssh = SSHClient(self.server)
                 ssh.send_command_to_server(command=delete_command[servers[self.server]['cluster_soft']] +
                                            ' ' + str(self.job_id))
                 # find available nodes
@@ -1082,7 +1082,7 @@ $end
                 # delete present server run
                 logging.error('Job {name} has server status "{stat}" on {server}. Re-running job.'.format(
                     name=self.job_name, stat=self.job_status[0], server=self.server))
-                ssh = SSH_Client(self.server)
+                ssh = SSHClient(self.server)
                 ssh.send_command_to_server(command=delete_command[servers[self.server]['cluster_soft']] +
                                            ' ' + str(self.job_id))
                 # resubmit

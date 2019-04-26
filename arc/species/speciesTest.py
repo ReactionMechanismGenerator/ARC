@@ -260,15 +260,15 @@ H      -1.67091600   -1.35164600   -0.93286400
                   H -1.2739176462        1.9692549926        0.0000000000"""  # a non linear 3-atom molecule
         xyz6 = """N  1.18784533    0.98526702    0.00000000
                   C  0.04124533    0.98526702    0.00000000
-                  H -1.02875467    0.98526702    0.00000000""" # linear
+                  H -1.02875467    0.98526702    0.00000000"""  # linear
         xyz7 = """C -4.02394116    0.56169428    0.00000000
                   H -5.09394116    0.56169428    0.00000000
                   C -2.82274116    0.56169428    0.00000000
-                  H -1.75274116    0.56169428    0.00000000""" # linear
+                  H -1.75274116    0.56169428    0.00000000"""  # linear
         xyz8 = """C -1.02600933    2.12845307    0.00000000
                   C -0.77966935    0.95278385    0.00000000
                   H -1.23666197    3.17751246    0.00000000
-                  H -0.56023545   -0.09447399    0.00000000""" # just 0.5 degree off from linearity, so NOT linear...
+                  H -0.56023545   -0.09447399    0.00000000"""  # just 0.5 degree off from linearity, so NOT linear...
         xyz9 = """O -1.1998 0.1610 0.0275
                   O -1.4021 0.6223 -0.8489
                   O -1.48302 0.80682 -1.19946"""  # just 3 points in space on a straight line (not a physical molecule)
@@ -396,11 +396,11 @@ H      -1.67091600   -1.35164600   -0.93286400
         path4 = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'sBuOH.out')  # symmetry = 3
         path5 = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'CH3C(O)O_FreeRotor.out')  # symmetry = 6
 
-        symmetry1, _ = determine_rotor_symmetry(rotor_path=path1, label='label', pivots=[3,4])
-        symmetry2, _ = determine_rotor_symmetry(rotor_path=path2, label='label', pivots=[3,4])
-        symmetry3, _ = determine_rotor_symmetry(rotor_path=path3, label='label', pivots=[3,4])
-        symmetry4, _ = determine_rotor_symmetry(rotor_path=path4, label='label', pivots=[3,4])
-        symmetry5, _ = determine_rotor_symmetry(rotor_path=path5, label='label', pivots=[3,4])
+        symmetry1, _ = determine_rotor_symmetry(rotor_path=path1, label='label', pivots=[3, 4])
+        symmetry2, _ = determine_rotor_symmetry(rotor_path=path2, label='label', pivots=[3, 4])
+        symmetry3, _ = determine_rotor_symmetry(rotor_path=path3, label='label', pivots=[3, 4])
+        symmetry4, _ = determine_rotor_symmetry(rotor_path=path4, label='label', pivots=[3, 4])
+        symmetry5, _ = determine_rotor_symmetry(rotor_path=path5, label='label', pivots=[3, 4])
 
         self.assertEqual(symmetry1, 1)
         self.assertEqual(symmetry2, 1)
@@ -528,8 +528,6 @@ H      -1.69944700    0.93441600   -0.11271200"""
         self.assertIsNone(spc4.conformer_energies[2])
         self.assertIsNotNone(spc4.conformer_energies[3])
         self.assertEqual(spc4.multiplicity, 2)
-
-
 
     def test_get_min_energy_conformer(self):
         """Test that the xyz with the minimum specified energy is returned from get_min_energy_conformer()"""

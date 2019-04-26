@@ -49,7 +49,7 @@ def parse_frequencies(path, software):
                 line = f.readline()
     else:
         raise ParserError('parse_frequencies() can currently only parse QChem and gaussian files,'
-                         ' got {0}'.format(software))
+                          ' got {0}'.format(software))
     logging.debug('Using parser.parse_frequencies. Determined frequencies are: {0}'.format(freqs))
     return freqs
 

@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 # encoding: utf-8
 
+"""
+A module for representing species
+"""
+
 from __future__ import (absolute_import, division, print_function, unicode_literals)
 import os
 import logging
@@ -8,7 +12,7 @@ import numpy as np
 import datetime
 
 from rdkit import Chem
-from rdkit.Chem import rdMolTransforms as rdmt
+from rdkit.Chem import rdMolTransforms as rdMT
 from rdkit.Chem.rdchem import EditableMol as RDMol
 import openbabel as ob
 import pybel as pyb
@@ -51,7 +55,7 @@ class ARCSpecies(object):
     `number_of_radicals`    ``int``      The number of radicals (inputted by the user, ARC won't attempt to determine
                                            it). Defaults to None. Important, e.g., if a Species is a bi-rad singlet,
                                            in which case the job should be unrestricted, but the multiplicity does not
-                                           have the required information to make that descision (r vs. u)
+                                           have the required information to make that decision (r vs. u)
     `e0`                    ``float``    The total electronic energy E0 of the species at the chosen sp level (kJ/mol)
     `is_ts`                 ``bool``     Whether or not the species represents a transition state
     `number_of_rotors`      ``int``      The number of potential rotors to scan
@@ -611,7 +615,7 @@ class ARCSpecies(object):
                 logging.info('\nFound {0} possible rotors for {1}'.format(self.number_of_rotors, self.label))
             if self.number_of_rotors > 0:
                 logging.info('Pivot list(s) for {0}: {1}\n'.format(self.label,
-                                                    [self.rotors_dict[i]['pivots'] for i in range(self.number_of_rotors)]))
+                                            [self.rotors_dict[i]['pivots'] for i in range(self.number_of_rotors)]))
 
     def set_dihedral(self, scan, pivots, deg_increment):
         """
@@ -645,13 +649,13 @@ class ARCSpecies(object):
             conf, rd_mol, indx_map = rdkit_conf_from_mol(mol, coordinates)
             rd_scan = [indx_map[scan[i]] for i in range(4)]  # convert the atom indices in `scan` to RDkit indices
 
-            deg0 = rdmt.GetDihedralDeg(conf, rd_scan[0], rd_scan[1], rd_scan[2], rd_scan[3])  # get the original dihedral
+            deg0 = rdMT.GetDihedralDeg(conf, rd_scan[0], rd_scan[1], rd_scan[2], rd_scan[3])  # get original dihedral
             deg = deg0 + deg_increment
-            rdmt.SetDihedralDeg(conf, rd_scan[0], rd_scan[1], rd_scan[2], rd_scan[3], deg)
+            rdMT.SetDihedralDeg(conf, rd_scan[0], rd_scan[1], rd_scan[2], rd_scan[3], deg)
             new_xyz = list()
             for i in range(rd_mol.GetNumAtoms()):
                 new_xyz.append([conf.GetAtomPosition(indx_map[i]).x, conf.GetAtomPosition(indx_map[i]).y,
-                            conf.GetAtomPosition(indx_map[i]).z])
+                                conf.GetAtomPosition(indx_map[i]).z])
             self.initial_xyz = get_xyz_string(new_xyz, symbol=atoms)
 
     def determine_symmetry(self):
@@ -1140,6 +1144,9 @@ class TSGuess(object):
             self.rmg_reaction = Reaction(reactants=reactants, products=products)
 
     def execute_ts_guess_method(self):
+        """
+        Execute a TS guess method
+        """
         if self.method == 'user guess':
             pass
         elif self.method == 'qst2':
@@ -1240,7 +1247,7 @@ def _get_possible_conformers_rdkit(mol):
         v = 1
         while v == 1:
             v = Chem.AllChem.MMFFOptimizeMolecule(rd_mol, mmffVariant=str('MMFF94s'), confId=i,
-                                             maxIters=500, ignoreInterfragInteractions=False)
+                                                  maxIters=500, ignoreInterfragInteractions=False)
         mp = Chem.AllChem.MMFFGetMoleculeProperties(rd_mol, mmffVariant=str('MMFF94s'))
         if mp is not None:
             ff = Chem.AllChem.MMFFGetMoleculeForceField(rd_mol, mp, confId=i)
@@ -1293,6 +1300,7 @@ def _get_possible_conformers_openbabel(mol):
 
 
 def get_min_energy_conformer(xyzs, energies):
+    """Get the minimum energy for conformers"""
     minval = min(energies)
     minind = energies.index(minval)
     return xyzs[minind]
@@ -1499,10 +1507,12 @@ def determine_rotor_symmetry(rotor_path, label, pivots):
 
 
 def cyclic_index_i_plus_1(i, length):
+    """A helper function for cyclic indexing rotor scans"""
     return i + 1 if i + 1 < length else 0
 
 
 def cyclic_index_i_minus_1(i):
+    """A helper function for cyclic indexing rotor scans"""
     return i - 1 if i - 1 > 0 else -1
 
 

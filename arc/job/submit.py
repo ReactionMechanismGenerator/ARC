@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 # encoding: utf-8
 
+"""
+Submit scripts
+sorted in a dictionary with server names as keys
+"""
 
 ##################################################################
 

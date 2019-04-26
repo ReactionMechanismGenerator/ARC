@@ -198,7 +198,8 @@ class TestARC(unittest.TestCase):
         self.assertTrue(ap)
 
         with open(os.path.join(project_directory, 'arc.log'), 'r') as f:
-            aei, ver, git, spc, rtm, ldb, therm, src, ter = False, False, False, False, False, False, False, False, False
+            aei, ver, git, spc, rtm, ldb, therm, src, ter =\
+                False, False, False, False, False, False, False, False, False
             for line in f.readlines():
                 if 'ARC execution initiated on' in line:
                     aei = True
@@ -342,6 +343,7 @@ class TestARC(unittest.TestCase):
             shutil.rmtree(project_directory)
 
 ################################################################################
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

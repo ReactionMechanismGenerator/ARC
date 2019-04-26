@@ -29,7 +29,7 @@ from arc.arc_exceptions import InputError, SettingsError, SpeciesError
 from arc.species.species import ARCSpecies
 from arc.reaction import ARCReaction
 from arc.processor import Processor
-from arc.job.ssh import SSH_Client
+from arc.job.ssh import SSHClient
 
 ##################################################################
 
@@ -885,7 +885,7 @@ class ARC(object):
             for server in servers.keys():
                 if diagnostics:
                     logging.info('\nTrying {0}'.format(server))
-                ssh = SSH_Client(server)
+                ssh = SSHClient(server)
                 cmd = '. ~/.bashrc; which g03'
                 g03, _ = ssh.send_command_to_server(cmd)
                 cmd = '. ~/.bashrc; which g09'
@@ -1009,10 +1009,10 @@ def delete_all_arc_jobs(server_list):
     for server in server_list:
         print('\nDeleting all ARC jobs from {0}...'.format(server))
         cmd = check_status_command[servers[server]['cluster_soft']] + ' -u ' + servers[server]['un']
-        ssh = SSH_Client(server)
+        ssh = SSHClient(server)
         stdout, _ = ssh.send_command_to_server(cmd)
         for status_line in stdout:
-            s = re.search(' a\d+', status_line)
+            s = re.search(r' a\d+', status_line)
             if s is not None:
                 if servers[server]['cluster_soft'].lower() == 'slurm':
                     job_id = s.group()[1:]

@@ -430,7 +430,7 @@ class MolGraph(object):
         Set atom coordinates. Assumes coords are in same order as self.atoms.
         """
         try:
-            coords = np.reshape(coords, (-1,3))
+            coords = np.reshape(coords, (-1, 3))
         except ValueError:
             raise Exception('Coordinates cannot be reshaped into matrix of size Nx3')
         assert len(coords) == len(self.atoms)
