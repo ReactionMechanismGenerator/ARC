@@ -456,7 +456,7 @@ def save_thermo_lib(species_list, path, name, lib_long_desc):
                                          longDesc=spc.long_thermo_description)
             else:
                 logging.warning('Species {0} did not contain any thermo data and was omitted from the thermo'
-                                ' library.'.format(str(spc)))
+                                ' library.'.format(str(spc.label)))
 
         thermo_library.save(lib_path)
 
@@ -479,9 +479,17 @@ def save_transport_lib(species_list, path, name, lib_long_desc=''):
                                             transport=spc.transport_data,
                                             shortDesc=spc.thermo.comment,
                                             longDesc=description)
+                logging.info('\n\nTransport properties for {0}:'.format(spc.label))
+                logging.info('  Shape index: {0}'.format(spc.transport_data.shapeIndex))
+                logging.info('  Epsilon: {0}'.format(spc.transport_data.epsilon))
+                logging.info('  Sigma: {0}'.format(spc.transport_data.sigma))
+                logging.info('  Dipole moment: {0}'.format(spc.transport_data.dipoleMoment))
+                logging.info('  Polarizability: {0}'.format(spc.transport_data.polarizability))
+                logging.info('  Rotational relaxation collision number: {0}'.format(spc.transport_data.rotrelaxcollnum))
+                logging.info('  Comment: {0}'.format(spc.transport_data.comment))
             else:
                 logging.warning('Species {0} did not contain any thermo data and was omitted from the thermo'
-                                ' library.'.format(str(spc)))
+                                ' library.'.format(str(spc.label)))
 
         transport_library.save(lib_path)
 
