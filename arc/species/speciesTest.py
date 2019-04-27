@@ -13,6 +13,7 @@ import shutil
 from rmgpy.molecule.molecule import Molecule
 from rmgpy.species import Species
 from rmgpy.reaction import Reaction
+from rmgpy.transport import TransportData
 
 from arc.species.species import ARCSpecies, TSGuess, get_min_energy_conformer,\
     determine_rotor_type, determine_rotor_symmetry
@@ -670,6 +671,30 @@ H       1.32129900    0.71837500    0.38017700
 """
         spc10 = ARCSpecies(label='spc10', xyz=xyz10)
         self.assertEqual(spc10.number_of_atoms, 7)
+
+    def test_set_transport_data(self):
+        """Test the set_transport_data method"""
+        self.assertIsInstance(self.spc1.transport_data, TransportData)
+        lj_path = os.path.join(arc_path, 'arc', 'testing', 'NH3_oneDMin.dat')
+        opt_path = os.path.join(arc_path, 'arc', 'testing', 'SO2OO_CBS-QB3.log')
+        bath_gas = 'N2'
+        opt_level = 'CBS-QB3'
+        freq_path = os.path.join(arc_path, 'arc', 'testing', 'SO2OO_CBS-QB3.log')
+        freq_level = 'CBS-QB3'
+        self.spc1.set_transport_data(lj_path, opt_path, bath_gas, opt_level, freq_path, freq_level)
+        self.assertIsInstance(self.spc1.transport_data, TransportData)
+        self.assertEqual(self.spc1.transport_data.shapeIndex, 2)
+        self.assertAlmostEqual(self.spc1.transport_data.epsilon.value_si, 1420.75, 2)
+        self.assertAlmostEqual(self.spc1.transport_data.sigma.value_si, 3.57813e-10, 4)
+        self.assertAlmostEqual(self.spc1.transport_data.dipoleMoment.value_si, 2.10145e-30, 4)
+        self.assertAlmostEqual(self.spc1.transport_data.polarizability.value_si, 3.99506e-30, 4)
+        self.assertEqual(self.spc1.transport_data.rotrelaxcollnum, 2)
+        self.assertEqual(self.spc1.transport_data.comment, 'L-J coefficients calculated by OneDMin using a '
+                                                           'DF-MP2/aug-cc-pVDZ potential energy surface with N2 as '
+                                                           'the collider; Dipole moment was calculated at the CBS-QB3 '
+                                                           'level of theory; Polarizability was calculated at the '
+                                                           'CBS-QB3 level of theory; Rotational Relaxation Collision '
+                                                           'Number was not determined, default value is 2')
 
     @classmethod
     def tearDownClass(cls):
