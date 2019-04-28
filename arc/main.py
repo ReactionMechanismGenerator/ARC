@@ -56,6 +56,9 @@ class ARC(object):
     `freq_level`           ``str``    Level of theory for frequency calculations
     `sp_level`             ``str``    Level of theory for single point calculations
     `scan_level`           ``str``    Level of theory for rotor scans
+    `adaptive_levels`      ``dict``   A dictionary of levels of theory for ranges of the number of heavy atoms in the
+                                        molecule. Keys are tuples of (min_num_atoms, max_num_atoms), values are
+                                        dictionaries with 'optfreq' and 'sp' as keys and levels of theory as values.
     `output`               ``dict``   Output dictionary with status and final QM file paths for all species
                                         Only used for restarting, the actual object used is in the Scheduler class
     `use_bac`              ``bool``   Whether or not to use bond additivity corrections for thermo calculations
@@ -87,7 +90,8 @@ class ARC(object):
                  conformer_level='', composite_method='', opt_level='', freq_level='', sp_level='', scan_level='',
                  ts_guess_level='', use_bac=True, job_types=None, model_chemistry='', initial_trsh=None, t_min=None,
                  t_max=None, t_count=None, verbose=logging.INFO, project_directory=None, max_job_time=120,
-                 allow_nonisomorphic_2d=False, job_memory=15000, ess_settings=None, bath_gas=None):
+                 allow_nonisomorphic_2d=False, job_memory=15000, ess_settings=None, bath_gas=None,
+                 adaptive_levels=None):
         self.__version__ = '1.0.0'
         self.verbose = verbose
         self.output = dict()
@@ -111,6 +115,7 @@ class ARC(object):
             self.job_types = job_types
             self.initialize_job_types()
             self.bath_gas = bath_gas
+            self.adaptive_levels = adaptive_levels
             self.project_directory = project_directory if project_directory is not None\
                 else os.path.join(arc_path, 'Projects', self.project)
             if not os.path.exists(self.project_directory):
@@ -323,6 +328,8 @@ class ARC(object):
             project_directory = project_directory if project_directory is not None\
                 else os.path.abspath(os.path.dirname(input_dict))
             self.from_dict(input_dict=input_dict, project=project, project_directory=project_directory)
+        if self.adaptive_levels is not None:
+            logging.info('Using the following adaptive levels of theory:\n{0}'.format(self.adaptive_levels))
         if not self.ess_settings:
             # don't override self.ess_settings if determined from an input dictionary
             self.ess_settings = check_ess_settings(ess_settings or global_ess_settings)
@@ -350,6 +357,8 @@ class ARC(object):
         restart_dict['project'] = self.project
         if self.bath_gas is not None:
             restart_dict['bath_gas'] = self.bath_gas
+        if self.adaptive_levels is not None:
+            restart_dict['adaptive_levels'] = self.adaptive_levels
         restart_dict['job_types'] = self.job_types
         restart_dict['use_bac'] = self.use_bac
         restart_dict['model_chemistry'] = self.model_chemistry
@@ -398,6 +407,7 @@ class ARC(object):
         self.max_job_time = input_dict['max_job_time'] if 'max_job_time' in input_dict else self.max_job_time
         self.memory = input_dict['job_memory'] if 'job_memory' in input_dict else self.memory
         self.bath_gas = input_dict['bath_gas'] if 'bath_gas' in input_dict else None
+        self.adaptive_levels = input_dict['adaptive_levels'] if 'adaptive_levels' in input_dict else None
         self.allow_nonisomorphic_2d = input_dict['allow_nonisomorphic_2d']\
             if 'allow_nonisomorphic_2d' in input_dict else False
         self.output = input_dict['output'] if 'output' in input_dict else dict()
@@ -600,7 +610,8 @@ class ARC(object):
                                    initial_trsh=self.initial_trsh, rmgdatabase=self.rmgdb,
                                    restart_dict=self.restart_dict, project_directory=self.project_directory,
                                    max_job_time=self.max_job_time, allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
-                                   memory=self.memory, orbitals_level=self.orbitals_level)
+                                   memory=self.memory, orbitals_level=self.orbitals_level,
+                                   adaptive_levels=self.adaptive_levels)
 
         self.save_project_info_file()
 
