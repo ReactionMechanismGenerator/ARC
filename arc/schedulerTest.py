@@ -30,19 +30,20 @@ class TestScheduler(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        ess_settings = {'gaussian': ['server1'], 'molpro': ['server2', 'server1'], 'qchem': ['server1'], 'ssh': False}
-        project_directory = os.path.join(arc_path, 'Projects', 'arc_project_for_testing_delete_after_usage3')
+        cls.ess_settings = {'gaussian': ['server1'], 'molpro': ['server2', 'server1'], 'qchem': ['server1'],
+                            'ssh': False}
+        cls.project_directory = os.path.join(arc_path, 'Projects', 'arc_project_for_testing_delete_after_usage3')
         cls.spc1 = ARCSpecies(label=str('methylamine'), smiles=str('CN'))
         cls.spc2 = ARCSpecies(label=str('C2H6'), smiles=str('CC'))
-        cls.job1 = Job(project='project_test', ess_settings=ess_settings, species_name='methylamine',
+        cls.job1 = Job(project='project_test', ess_settings=cls.ess_settings, species_name='methylamine',
                        xyz='C 0.0 0.0 0.0', job_type='conformer', conformer=0, level_of_theory='b97-d3/6-311+g(d,p)',
-                       multiplicity=1, project_directory=project_directory, job_num=101)
-        cls.job2 = Job(project='project_test', ess_settings=ess_settings, species_name='methylamine',
+                       multiplicity=1, project_directory=cls.project_directory, job_num=101)
+        cls.job2 = Job(project='project_test', ess_settings=cls.ess_settings, species_name='methylamine',
                        xyz='C 0.0 0.0 0.0', job_type='conformer', conformer=1, level_of_theory='b97-d3/6-311+g(d,p)',
-                       multiplicity=1, project_directory=project_directory, job_num=102)
-        cls.job3 = Job(project='project_test', ess_settings=ess_settings, species_name='C2H6', xyz='C 0.0 0.0 0.0',
+                       multiplicity=1, project_directory=cls.project_directory, job_num=102)
+        cls.job3 = Job(project='project_test', ess_settings=cls.ess_settings, species_name='C2H6', xyz='C 0.0 0.0 0.0',
                        job_type='freq', level_of_theory='wb97x-d3/6-311+g(d,p)', multiplicity=1,
-                       project_directory=project_directory, software='qchem', job_num=103)
+                       project_directory=cls.project_directory, software='qchem', job_num=103)
         cls.rmgdb = rmgdb.make_rmg_database_object()
         cls.job_types1 = {'conformers': True,
                           'opt': True,
@@ -53,13 +54,13 @@ class TestScheduler(unittest.TestCase):
                           'orbitals': False,
                           'lennard_jones': False,
                           }
-        cls.sched1 = Scheduler(project='project_test', ess_settings=ess_settings, species_list=[cls.spc1, cls.spc2],
+        cls.sched1 = Scheduler(project='project_test', ess_settings=cls.ess_settings, species_list=[cls.spc1, cls.spc2],
                                composite_method='', conformer_level=default_levels_of_theory['conformer'],
                                opt_level=default_levels_of_theory['opt'], freq_level=default_levels_of_theory['freq'],
                                sp_level=default_levels_of_theory['sp'], scan_level=default_levels_of_theory['scan'],
                                ts_guess_level=default_levels_of_theory['ts_guesses'], rmgdatabase=cls.rmgdb,
-                               project_directory=project_directory, testing=True, job_types=cls.job_types1,
-                               orbitals_level=default_levels_of_theory['orbitals'])
+                               project_directory=cls.project_directory, testing=True, job_types=cls.job_types1,
+                               orbitals_level=default_levels_of_theory['orbitals'], adaptive_levels=None)
 
     def test_conformers(self):
         """Test the parse_conformer_energy() and determine_most_stable_conformer() methods"""
@@ -118,6 +119,46 @@ H      -1.16566701    0.32023496   -0.81630508"""
         self.job3.job_status = ['done', 'done']
         vibfreqs = parser.parse_frequencies(path=str(self.job3.local_path_to_output_file), software=self.job3.software)
         self.assertTrue(self.sched1.check_negative_freq(label=label, job=self.job3, vibfreqs=vibfreqs))
+
+    def test_determine_adaptive_level(self):
+        """Test the determine_adaptive_level() method"""
+        adaptive_levels = {(1, 5):      {'optfreq': 'wb97xd/6-311+g(2d,2p)',
+                                         'sp': 'ccsd(t)-f12/aug-cc-pvtz-f12'},
+                           (6, 15):     {'optfreq': 'b3lyp/cbsb7',
+                                         'sp': 'dlpno-ccsd(t)/def2-tzvp/c'},
+                           (16, 30):    {'optfreq': 'b3lyp/6-31g(d,p)',
+                                         'sp': 'wb97xd/6-311+g(2d,2p)'},
+                           (31, 'inf'): {'optfreq': 'b3lyp/6-31g(d,p)',
+                                         'sp': 'b3lyp/6-311+g(d,p)'}}
+
+        sched2 = Scheduler(project='project_test', ess_settings=self.ess_settings, species_list=[self.spc1, self.spc2],
+                           composite_method='', conformer_level=default_levels_of_theory['conformer'],
+                           opt_level=default_levels_of_theory['opt'], freq_level=default_levels_of_theory['freq'],
+                           sp_level=default_levels_of_theory['sp'], scan_level=default_levels_of_theory['scan'],
+                           ts_guess_level=default_levels_of_theory['ts_guesses'], rmgdatabase=self.rmgdb,
+                           project_directory=self.project_directory, testing=True, job_types=self.job_types1,
+                           orbitals_level=default_levels_of_theory['orbitals'], adaptive_levels=adaptive_levels)
+        level1 = sched2.determine_adaptive_level(original_level_of_theory='some_original_level',
+                                                 job_type='opt', heavy_atoms=5)
+        level2 = sched2.determine_adaptive_level(original_level_of_theory='some_original_level',
+                                                 job_type='freq', heavy_atoms=5)
+        level3 = sched2.determine_adaptive_level(original_level_of_theory='some_original_level',
+                                                 job_type='opt', heavy_atoms=20)
+        level4 = sched2.determine_adaptive_level(original_level_of_theory='some_original_level',
+                                                 job_type='composite', heavy_atoms=50)
+        level5 = sched2.determine_adaptive_level(original_level_of_theory='some_original_level',
+                                                 job_type='orbitals', heavy_atoms=5)
+        level6 = sched2.determine_adaptive_level(original_level_of_theory='some_original_level',
+                                                 job_type='sp', heavy_atoms=7)
+        level7 = sched2.determine_adaptive_level(original_level_of_theory='some_original_level',
+                                                 job_type='sp', heavy_atoms=25)
+        self.assertEqual(level1, 'wb97xd/6-311+g(2d,2p)')
+        self.assertEqual(level2, 'wb97xd/6-311+g(2d,2p)')
+        self.assertEqual(level3, 'b3lyp/6-31g(d,p)')
+        self.assertEqual(level4, 'b3lyp/6-31g(d,p)')
+        self.assertEqual(level5, 'some_original_level')
+        self.assertEqual(level6, 'dlpno-ccsd(t)/def2-tzvp/c')
+        self.assertEqual(level7, 'wb97xd/6-311+g(2d,2p)')
 
     @classmethod
     def tearDownClass(cls):

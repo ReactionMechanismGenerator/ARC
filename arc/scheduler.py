@@ -55,6 +55,9 @@ class Scheduler(object):
     `unique_species_labels` ``list``  A list of species labels (checked for duplicates)
     `level_of_theory`       ``str``   *FULL* level of theory, e.g. 'CBS-QB3',
                                         'CCSD(T)-F12a/aug-cc-pVTZ//B3LYP/6-311++G(3df,3pd)'...
+    `adaptive_levels`       ``dict``  A dictionary of levels of theory for ranges of the number of heavy atoms in the
+                                        molecule. Keys are tuples of (min_num_atoms, max_num_atoms), values are
+                                        dictionaries with 'optfreq' and 'sp' as keys and levels of theory as values.
     `composite`             ``bool``    Whether level_of_theory represents a composite method or not
     `job_dict`              ``dict``  A dictionary of all scheduled jobs. Keys are species / TS labels,
                                         values are dictionaries where keys are job names (corresponding to
@@ -111,7 +114,7 @@ class Scheduler(object):
     # Note that rotor scans are located under Species.rotors_dict
     """
     def __init__(self, project, ess_settings, species_list, composite_method, conformer_level, opt_level, freq_level,
-                 sp_level, scan_level, ts_guess_level, orbitals_level, project_directory, rmgdatabase,
+                 sp_level, scan_level, ts_guess_level, orbitals_level, adaptive_levels, project_directory, rmgdatabase,
                  job_types=None, initial_trsh=None, rxn_list=None, restart_dict=None, max_job_time=120,
                  allow_nonisomorphic_2d=False, memory=15000, testing=False, bath_gas=None):
         self.rmgdb = rmgdatabase
@@ -129,6 +132,7 @@ class Scheduler(object):
         self.testing = testing
         self.memory = memory
         self.bath_gas = bath_gas
+        self.adaptive_levels = adaptive_levels
         if self.restart_dict is not None:
             self.output = self.restart_dict['output']
             if 'running_jobs' in self.restart_dict:
@@ -288,8 +292,8 @@ class Scheduler(object):
                             self.run_composite_job(species.label)
                         else:
                             self.run_sp_job(label=species.label)
-                elif self.species_dict[species.label].initial_xyz is not None\
-                        or self.species_dict[species.label].final_xyz is not None:
+                elif (self.species_dict[species.label].initial_xyz is not None
+                        or self.species_dict[species.label].final_xyz is not None) and not self.testing:
                     # For restarting purposes: check before running jobs whether they were already terminated
                     # (check self.output) or whether they are "currently running" (check self.job_dict)
                     # This section takes care of restarting a Species (including a TS), but does not
@@ -529,6 +533,9 @@ class Scheduler(object):
         checkfile = self.species_dict[label].checkfile  # defaults to None
         if self.species_dict[label].most_stable_conformer is not None and job_type in ['opt', 'composite', 'optfreq']:
             checkfile = self.species_dict[label].conformer_checkfiles[self.species_dict[label].most_stable_conformer]
+        if self.adaptive_levels is not None:
+            level_of_theory = self.determine_adaptive_level(original_level_of_theory=level_of_theory, job_type=job_type,
+                                                            heavy_atoms=self.species_dict[label].number_of_heavy_atoms)
         job = Job(project=self.project, ess_settings=self.ess_settings, species_name=label, xyz=xyz, job_type=job_type,
                   level_of_theory=level_of_theory, multiplicity=species.multiplicity, charge=species.charge, fine=fine,
                   shift=shift, software=software, is_ts=species.is_ts, memory=memory, trsh=trsh,
@@ -1856,6 +1863,36 @@ class Scheduler(object):
                 else:
                     f.write(str('Failed to converge'))
                 f.write(str('\n\n\n'))
+
+    def determine_adaptive_level(self, original_level_of_theory, job_type, heavy_atoms):
+        """
+        Determine the level of theory to be used according to the job type and number of heavy atoms.
+        self.adaptive_levels is a dictionary of levels of theory for ranges of the number of heavy atoms in the
+        molecule. Keys are tuples of (min_num_atoms, max_num_atoms), values are dictionaries with 'optfreq' and 'sp'
+        as keys and levels of theory as values. 'inf' is accepted an max_num_atoms.
+        """
+        if self.adaptive_levels is not None:
+            for constraint, level_dict in self.adaptive_levels.items():
+                if constraint[1] == 'inf' and heavy_atoms >= constraint[0]:
+                    break
+                elif constraint[1] >= heavy_atoms >= constraint[0]:
+                    break
+            else:
+                raise SchedulerError('Could not determine adaptive level of theory for {0} heavy atoms using '
+                                     'the following adaptive levels:\n{1}'.format(heavy_atoms, self.adaptive_levels))
+            if job_type in ['opt', 'freq', 'optfreq', 'composite']:
+                if 'optfreq' not in level_dict:
+                    raise SchedulerError("Could not find the 'optfreq' key in the adaptive levels dictionary for "
+                                         "{0} heavy atoms. Got:\n{1}".format(heavy_atoms, self.adaptive_levels))
+                return level_dict['optfreq']
+            elif job_type == 'sp':
+                if 'sp' not in level_dict:
+                    raise SchedulerError("Could not find the 'sp' key in the adaptive levels dictionary for "
+                                         "{0} heavy atoms. Got:\n{1}".format(heavy_atoms, self.adaptive_levels))
+                return level_dict['sp']
+            else:
+                # for any other job type use the original level of theory regardless of the number of atoms
+                return original_level_of_theory
 
 
 def min_list(lst):

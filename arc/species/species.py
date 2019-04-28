@@ -133,6 +133,7 @@ class ARCSpecies(object):
         self.rmg_thermo = None
         self.rmg_kinetics = None
         self._number_of_atoms = None
+        self._number_of_heavy_atoms = None
         self.mol = mol
         self.mol_list = None
         self.multiplicity = multiplicity
@@ -303,6 +304,27 @@ class ARCSpecies(object):
     def number_of_atoms(self, value):
         """Allow setting number of atoms, e.g. a TS might not have Molecule or xyz when initialized"""
         self._number_of_atoms = value
+
+    @property
+    def number_of_heavy_atoms(self):
+        """The number of heavy (non hydrogen) atoms in the species"""
+        if self._number_of_heavy_atoms is None:
+            if self.mol is not None:
+                self._number_of_heavy_atoms = len([atom for atom in self.mol.atoms if atom.isNonHydrogen()])
+            elif self.final_xyz is not None or self.initial_xyz is not None:
+                xyz = self.final_xyz or self.initial_xyz
+                self._number_of_heavy_atoms = len([line for line in xyz.splitlines() if line.split()[0] != 'H'])
+            elif self.is_ts:
+                for ts_guess in self.ts_guesses:
+                    if ts_guess.xyz is not None:
+                        self._number_of_heavy_atoms =\
+                            len([line for line in ts_guess.xyz.splitlines() if line.split()[0] != 'H'])
+        return self._number_of_heavy_atoms
+
+    @number_of_heavy_atoms.setter
+    def number_of_heavy_atoms(self, value):
+        """Allow setting number of heavy atoms, e.g. a TS might not have Molecule or xyz when initialized"""
+        self._number_of_heavy_atoms = value
 
     def as_dict(self):
         """A helper function for dumping this object as a dictionary in a YAML file for restarting ARC"""
