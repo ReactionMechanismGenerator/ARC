@@ -980,28 +980,29 @@ class ARCSpecies(object):
                 sigma = (float(line.split()[-1]) * 1e-10, str('m'))
         if self.number_of_atoms == 1:
             shape_index = 0
-            comment += '\nThe molecule is monoatomic'
+            comment += '; The molecule is monoatomic'
         elif self.is_linear():
             shape_index = 1
-            comment += '\nThe molecule is linear'
+            comment += '; The molecule is linear'
         else:
             shape_index = 2
         dipole_moment = parse_dipole_moment(opt_path) or 0
         if dipole_moment:
-            comment += '\nThe dipole moment calculated at the {0} level of theory'.format(opt_level)
+            comment += '; Dipole moment was calculated at the {0} level of theory'.format(opt_level)
         polar = self.transport_data.polarizability or (0, str('angstroms^3'))
         if freq_path:
             polar = (parse_polarizability(freq_path), str('angstroms^3'))
-            comment += '\nPolarizability calculated at the {0} level of theory'.format(freq_level)
+            comment += '; Polarizability was calculated at the {0} level of theory'.format(freq_level)
+        comment += '; Rotational Relaxation Collision Number was not determined, default value is 2'
         if original_comment:
-            comment += '\n' + original_comment
+            comment += '; ' + original_comment
         self.transport_data = TransportData(
             shapeIndex=shape_index,
             epsilon=epsilon,
             sigma=sigma,
             dipoleMoment=(dipole_moment, str('De')),
             polarizability=polar,
-            rotrelaxcollnum=0,  # rotational relaxation collision number at 298 K
+            rotrelaxcollnum=2,  # rotational relaxation collision number at 298 K
             comment=str(comment)
         )
 
