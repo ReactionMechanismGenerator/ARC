@@ -96,6 +96,7 @@ class Scheduler(object):
                                          job_name2: Job2, ...},
                           'scan':       {job_name1: Job1,
                                          job_name2: Job2, ...},
+                          ...
                           }
                 label_2: {...},
                 }
@@ -582,11 +583,6 @@ class Scheduler(object):
                                                                                      time=job.run_time))
             if job.job_status[0] != 'done':
                 return False
-            if job.job_status == ['done', 'done']:
-                if self.species_dict[label].run_time is None:
-                    self.species_dict[label].run_time = job.run_time
-                else:
-                    self.species_dict[label].run_time += job.run_time
             self.save_restart_dict()
             if job.software.lower() == 'gaussian' and os.path.isfile(os.path.join(job.local_path, 'check.chk'))\
                     and job.job_type in ['conformer', 'opt', 'optfreq', 'composite']:
@@ -1282,13 +1278,25 @@ class Scheduler(object):
         if 'error' not in status and ('composite converged' in status or ('sp converged' in status and
                      (self.species_dict[label].is_ts or self.species_dict[label].number_of_atoms == 1 or
                      ('freq converged' in status and 'opt converged' in status)))):
-            logging.info('\nAll jobs for species {0} successfully converged.'
-                         ' Run time: {1}'.format(label, self.species_dict[label].run_time))
             self.output[label]['status'] += 'ALL converged'
             plotter.save_geo(species=self.species_dict[label], project_directory=self.project_directory)
             if self.species_dict[label].is_ts:
                 self.species_dict[label].make_ts_report()
                 logging.info(self.species_dict[label].ts_report + '\n')
+            conf_time = max([job.run_time for job in self.job_dict[label]['conformers'].values()])\
+                if 'conformers' in self.job_dict[label] else datetime.timedelta(0)
+            opt_time = sum_time_delta([job.run_time for job in self.job_dict[label]['opt'].values()])\
+                if 'opt' in self.job_dict[label] else datetime.timedelta(0)
+            comp_time = sum_time_delta([job.run_time for job in self.job_dict[label]['composite'].values()])\
+                if 'composite' in self.job_dict[label] else datetime.timedelta(0)
+            other_time = max([sum_time_delta([job.run_time for job in job_dictionary.values()])
+                              for job_type, job_dictionary in self.job_dict[label].items()
+                              if job_type not in ['conformers', 'opt', 'composite']])\
+                if any([job_type not in ['conformers', 'opt', 'composite']
+                        for job_type in self.job_dict[label].keys()]) else datetime.timedelta(0)
+            self.species_dict[label].run_time = conf_time + opt_time + comp_time + other_time
+            logging.info('\nAll jobs for species {0} successfully converged.'
+                         ' Run time: {1}'.format(label, self.species_dict[label].run_time))
         elif not self.output[label]['status']:
             self.output[label]['status'] = 'nothing converged'
             logging.error('species {0} did not converge. Status is: {1}'.format(label, status))
@@ -1867,3 +1875,11 @@ def unicode_representer(dumper, data):
     if len(data.splitlines()) > 1:
         return yaml.ScalarNode(tag='tag:yaml.org,2002:str', value=data, style='|')
     return yaml.ScalarNode(tag='tag:yaml.org,2002:str', value=data)
+
+
+def sum_time_delta(timedelta_list):
+    """A helper function for summing datetime.timedelta objects"""
+    result = datetime.timedelta(0)
+    for timedelta in timedelta_list:
+        result += timedelta
+    return result
