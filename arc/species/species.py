@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 # encoding: utf-8
 
+"""
+A module for representing species
+"""
+
 from __future__ import (absolute_import, division, print_function, unicode_literals)
 import os
 import logging
@@ -8,7 +12,7 @@ import numpy as np
 import datetime
 
 from rdkit import Chem
-from rdkit.Chem import rdMolTransforms as rdmt
+from rdkit.Chem import rdMolTransforms as rdMT
 from rdkit.Chem.rdchem import EditableMol as RDMol
 import openbabel as ob
 import pybel as pyb
@@ -24,11 +28,12 @@ from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 from rmgpy.statmech import NonlinearRotor, LinearRotor
 from rmgpy.molecule.resonance import generate_kekule_structure
+from rmgpy.transport import TransportData
 from rmgpy.exceptions import InvalidAdjacencyListError
 
 from arc.arc_exceptions import SpeciesError, RotorError, InputError, TSError
 from arc.settings import arc_path, default_ts_methods, valid_chars, minimum_barrier
-from arc.parser import parse_xyz_from_file
+from arc.parser import parse_xyz_from_file, parse_dipole_moment, parse_polarizability
 from arc.species.converter import get_xyz_string, get_xyz_matrix, rdkit_conf_from_mol, standardize_xyz_string,\
     molecules_from_xyz, rmg_mol_from_inchi, order_atoms_in_mol_list, check_isomorphism
 from arc.ts import atst
@@ -50,7 +55,7 @@ class ARCSpecies(object):
     `number_of_radicals`    ``int``      The number of radicals (inputted by the user, ARC won't attempt to determine
                                            it). Defaults to None. Important, e.g., if a Species is a bi-rad singlet,
                                            in which case the job should be unrestricted, but the multiplicity does not
-                                           have the required information to make that descision (r vs. u)
+                                           have the required information to make that decision (r vs. u)
     `e0`                    ``float``    The total electronic energy E0 of the species at the chosen sp level (kJ/mol)
     `is_ts`                 ``bool``     Whether or not the species represents a transition state
     `number_of_rotors`      ``int``      The number of potential rotors to scan
@@ -96,6 +101,8 @@ class ARCSpecies(object):
                                            Values are local paths to check files
     `external_symmetry`     ``int``      The external symmetry of the species (not including rotor symmetries)
     `optical_isomers`       ``int``      Whether (=2) or not (=1) the species has chiral center/s
+    `transport_data`        ``TransportData``  A placeholder for updating transport properties after Lennard-Jones
+                                                 calculation (using OneDMin)
     ====================== ============= ===============================================================================
 
     Dictionary structure:
@@ -137,6 +144,7 @@ class ARCSpecies(object):
         self.checkfile = checkfile
         self.conformer_checkfiles = dict()
         self.most_stable_conformer = None
+        self.transport_data = TransportData()
 
         if species_dict is not None:
             # Reading from a dictionary
@@ -607,7 +615,7 @@ class ARCSpecies(object):
                 logging.info('\nFound {0} possible rotors for {1}'.format(self.number_of_rotors, self.label))
             if self.number_of_rotors > 0:
                 logging.info('Pivot list(s) for {0}: {1}\n'.format(self.label,
-                                                    [self.rotors_dict[i]['pivots'] for i in range(self.number_of_rotors)]))
+                                            [self.rotors_dict[i]['pivots'] for i in range(self.number_of_rotors)]))
 
     def set_dihedral(self, scan, pivots, deg_increment):
         """
@@ -641,13 +649,13 @@ class ARCSpecies(object):
             conf, rd_mol, indx_map = rdkit_conf_from_mol(mol, coordinates)
             rd_scan = [indx_map[scan[i]] for i in range(4)]  # convert the atom indices in `scan` to RDkit indices
 
-            deg0 = rdmt.GetDihedralDeg(conf, rd_scan[0], rd_scan[1], rd_scan[2], rd_scan[3])  # get the original dihedral
+            deg0 = rdMT.GetDihedralDeg(conf, rd_scan[0], rd_scan[1], rd_scan[2], rd_scan[3])  # get original dihedral
             deg = deg0 + deg_increment
-            rdmt.SetDihedralDeg(conf, rd_scan[0], rd_scan[1], rd_scan[2], rd_scan[3], deg)
+            rdMT.SetDihedralDeg(conf, rd_scan[0], rd_scan[1], rd_scan[2], rd_scan[3], deg)
             new_xyz = list()
             for i in range(rd_mol.GetNumAtoms()):
                 new_xyz.append([conf.GetAtomPosition(indx_map[i]).x, conf.GetAtomPosition(indx_map[i]).y,
-                            conf.GetAtomPosition(indx_map[i]).z])
+                                conf.GetAtomPosition(indx_map[i]).z])
             self.initial_xyz = get_xyz_string(new_xyz, symbol=atoms)
 
     def determine_symmetry(self):
@@ -949,6 +957,55 @@ class ARCSpecies(object):
                     self.conformers.append(standardize_xyz_string(xyz))
                     self.conformer_energies.append(None)  # dummy (lists should be the same length)
 
+    def set_transport_data(self, lj_path, opt_path, bath_gas, opt_level, freq_path='', freq_level=None):
+        """
+        Set the species.transport_data attribute after a Lennard-Jones calculation (via OneDMin)
+        `lj_path` is the path to a oneDMin job output file
+        `opt_path` is the path to an opt job output file
+        `bath_gas` is the oneDMin job bath gas
+        `opt_level` is the optimization level of theory
+        """
+        original_comment = self.transport_data.comment
+        comment = 'L-J coefficients calculated by OneDMin using a DF-MP2/aug-cc-pVDZ potential energy surface ' \
+                  'with {0} as the collider'.format(bath_gas)
+        epsilon, sigma = None, None
+        with open(lj_path, 'r') as f:
+            lines = f.readlines()
+        for line in lines:
+            if 'Epsilons[1/cm]' in line:
+                # Conversion of cm^-1 to J/mol (see https://cccbdb.nist.gov/wavenumber.asp)
+                epsilon = (float(line.split()[-1]) * 11.96266, str('J/mol'))
+            elif 'Sigmas[angstrom]' in line:
+                # Convert Angstroms to meters
+                sigma = (float(line.split()[-1]) * 1e-10, str('m'))
+        if self.number_of_atoms == 1:
+            shape_index = 0
+            comment += '; The molecule is monoatomic'
+        elif self.is_linear():
+            shape_index = 1
+            comment += '; The molecule is linear'
+        else:
+            shape_index = 2
+        dipole_moment = parse_dipole_moment(opt_path) or 0
+        if dipole_moment:
+            comment += '; Dipole moment was calculated at the {0} level of theory'.format(opt_level)
+        polar = self.transport_data.polarizability or (0, str('angstroms^3'))
+        if freq_path:
+            polar = (parse_polarizability(freq_path), str('angstroms^3'))
+            comment += '; Polarizability was calculated at the {0} level of theory'.format(freq_level)
+        comment += '; Rotational Relaxation Collision Number was not determined, default value is 2'
+        if original_comment:
+            comment += '; ' + original_comment
+        self.transport_data = TransportData(
+            shapeIndex=shape_index,
+            epsilon=epsilon,
+            sigma=sigma,
+            dipoleMoment=(dipole_moment, str('De')),
+            polarizability=polar,
+            rotrelaxcollnum=2,  # rotational relaxation collision number at 298 K
+            comment=str(comment)
+        )
+
 
 class TSGuess(object):
     """
@@ -1088,6 +1145,9 @@ class TSGuess(object):
             self.rmg_reaction = Reaction(reactants=reactants, products=products)
 
     def execute_ts_guess_method(self):
+        """
+        Execute a TS guess method
+        """
         if self.method == 'user guess':
             pass
         elif self.method == 'qst2':
@@ -1188,7 +1248,7 @@ def _get_possible_conformers_rdkit(mol):
         v = 1
         while v == 1:
             v = Chem.AllChem.MMFFOptimizeMolecule(rd_mol, mmffVariant=str('MMFF94s'), confId=i,
-                                             maxIters=500, ignoreInterfragInteractions=False)
+                                                  maxIters=500, ignoreInterfragInteractions=False)
         mp = Chem.AllChem.MMFFGetMoleculeProperties(rd_mol, mmffVariant=str('MMFF94s'))
         if mp is not None:
             ff = Chem.AllChem.MMFFGetMoleculeForceField(rd_mol, mp, confId=i)
@@ -1241,6 +1301,7 @@ def _get_possible_conformers_openbabel(mol):
 
 
 def get_min_energy_conformer(xyzs, energies):
+    """Get the minimum energy for conformers"""
     minval = min(energies)
     minind = energies.index(minval)
     return xyzs[minind]
@@ -1447,10 +1508,12 @@ def determine_rotor_symmetry(rotor_path, label, pivots):
 
 
 def cyclic_index_i_plus_1(i, length):
+    """A helper function for cyclic indexing rotor scans"""
     return i + 1 if i + 1 < length else 0
 
 
 def cyclic_index_i_minus_1(i):
+    """A helper function for cyclic indexing rotor scans"""
     return i - 1 if i - 1 > 0 else -1
 
 

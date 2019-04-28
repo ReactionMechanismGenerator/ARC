@@ -14,7 +14,7 @@ from arc.settings import arc_path, servers, submit_filename, delete_command, t_m
     input_filename, output_filename, rotor_scan_resolution, list_available_nodes_command, levels_ess
 from arc.job.submit import submit_scripts
 from arc.job.inputs import input_files
-from arc.job.ssh import SSH_Client
+from arc.job.ssh import SSHClient
 from arc.arc_exceptions import JobError, SpeciesError
 
 ##################################################################
@@ -35,7 +35,7 @@ class Job(object):
     `number_of_radicals` ``int``         The number of radicals (inputted by the user, ARC won't attempt to determine
                                            it). Defaults to None. Important, e.g., if a Species is a bi-rad singlet,
                                            in which case the job should be unrestricted, but the multiplicity does not
-                                           have the required information to make that descision (r vs. u)
+                                           have the required information to make that decision (r vs. u)
     `spin`            ``int``            The spin. automatically derived from the multiplicity
     `xyz`             ``str``            The xyz geometry. Used for the calculation
     `n_atoms`         ``int``            The number of atoms in self.xyz
@@ -68,6 +68,7 @@ class Job(object):
     `local_path_to_output_file` ``str``  The local path to the output.out file
     `local_path_to_orbitals_file` ``str``  The local path to the orbitals.fchk file (only for orbitals jobs)
     `local_path_to_check_file` ``str``   The local path to the Gaussian check file of the current job (downloaded)
+    `local_path_to_lj_file`  ``str``     The local path to the lennard_jones data file (from OneDMin)
     `checkfile`        ``str``           The path to a previous Gaussian checkfile to be used in the current job
     `remote_path`      ``str``           Remote path to job's folder. Determined automatically
     `submit`           ``str``           The submit script. Created automatically
@@ -81,6 +82,8 @@ class Job(object):
     `occ`              ``int``           The number of occupied orbitals (core + val) from a molpro CCSD sp calc
     `project_directory` ``str``          The path to the project directory
     `max_job_time`     ``int``           The maximal allowed job time on the server in hours
+    `bath_gas`         ``str``           A bath gas. Currently used in OneDMin to calc L-J parameters.
+                                           Allowed values are He, Ne, Ar, Kr, H2, N2, O2
     ================ =================== ===============================================================================
 
     self.job_status:
@@ -90,9 +93,10 @@ class Job(object):
     """
     def __init__(self, project, ess_settings, species_name, xyz, job_type, level_of_theory, multiplicity,
                  project_directory, charge=0, conformer=-1, fine=False, shift='', software=None, is_ts=False, scan='',
-                 pivots=None, memory=15000, comments='', trsh='', scan_trsh='', ess_trsh_methods=None, initial_trsh=None,
-                 job_num=None, job_server_name=None, job_name=None, job_id=None, server=None, initial_time=None,
-                 occ=None, max_job_time=120, scan_res=None, checkfile=None, number_of_radicals=None, testing=False):
+                 pivots=None, memory=15000, comments='', trsh='', scan_trsh='', ess_trsh_methods=None, bath_gas=None,
+                 initial_trsh=None, job_num=None, job_server_name=None, job_name=None, job_id=None, server=None,
+                 initial_time=None, occ=None, max_job_time=120, scan_res=None, checkfile=None, number_of_radicals=None,
+                 testing=False):
         self.project = project
         self.ess_settings = ess_settings
         self.initial_time = initial_time
@@ -114,9 +118,10 @@ class Job(object):
         self.scan_trsh = scan_trsh
         self.scan_res = scan_res if scan_res is not None else rotor_scan_resolution
         self.max_job_time = max_job_time
+        self.bath_gas = bath_gas
         self.testing = testing
         job_types = ['conformer', 'opt', 'freq', 'optfreq', 'sp', 'composite', 'scan', 'gsm', 'irc', 'ts_guess',
-                     'orbitals']
+                     'orbitals', 'onedmin']
         # the 'conformer' job type is identical to 'opt', but we differentiate them to be identifiable in Scheduler
         if job_type not in job_types:
             raise ValueError("Job type {0} not understood. Must be one of the following:\n{1}".format(
@@ -138,7 +143,19 @@ class Job(object):
         if self.software is not None:
             self.software = self.software.lower()
         else:
-            if job_type == 'orbitals':
+            if job_type == 'onedmin':
+                if 'onedmin' not in self.ess_settings.keys():
+                    raise JobError('Could not find the OneDMin software to compute Lennard-Jones parameters.\n'
+                                   'ess_settings is:\n{0}'.format(self.ess_settings))
+                self.software = 'onedmin'
+                if self.bath_gas is None:
+                    logging.info('Setting bath gas for Lennard-Jones calculation to N2 for species {0}'.format(
+                        self.species_name))
+                    self.bath_gas = 'N2'
+                elif self.bath_gas not in ['He', 'Ne', 'Ar', 'Kr', 'H2', 'N2', 'O2']:
+                    raise JobError('Bath gas for OneDMin should be one of the following:\n'
+                                   'He, Ne, Ar, Kr, H2, N2, O2.\nGot: {0}'.format(self.bath_gas))
+            elif job_type == 'orbitals':
                 # currently we only have a script to print orbitals on QChem,
                 # could/should definitely be elaborated to additional ESS
                 if 'qchem' not in self.ess_settings.keys():
@@ -150,7 +167,7 @@ class Job(object):
             elif job_type == 'composite':
                 if 'gaussian' not in self.ess_settings.keys():
                     raise JobError('Could not find the Gaussian software to run the composite method {0}.\n'
-                                   'ess_settings is:\n{1}'.format(self.ess_settings, self.method))
+                                   'ess_settings is:\n{1}'.format(self.method, self.ess_settings))
                 self.software = 'gaussian'
             else:
                 # use the levels_ess dictionary from settings.py:
@@ -161,6 +178,12 @@ class Job(object):
             if self.software is None:
                 # otherwise, deduce which software to use base on hard coded heuristics
                 if job_type in ['conformer', 'opt', 'freq', 'optfreq', 'sp']:
+                    if 'b2' in self.method or 'dsd' in self.method or 'pw2' in self.method:
+                        # this is a double-hybrid (MP2) DFT method, use Gaussian
+                        if 'gaussian' not in self.ess_settings.keys():
+                            raise JobError('Could not find the Gaussian software to run the double-hybrid method {0}.\n'
+                                           'ess_settings is:\n{1}'.format(self.method, self.ess_settings))
+                        self.software = 'gaussian'
                     if 'ccs' in self.method or 'cis' in self.method or 'pv' in self.basis_set:
                         if 'molpro' in self.ess_settings.keys():
                             self.software = 'molpro'
@@ -288,6 +311,7 @@ class Job(object):
                                        self.species_name, conformer_folder, self.job_name)
         self.local_path_to_output_file = os.path.join(self.local_path, 'output.out')
         self.local_path_to_orbitals_file = os.path.join(self.local_path, 'orbitals.fchk')
+        self.local_path_to_lj_file = os.path.join(self.local_path, 'lj.dat')
         self.local_path_to_check_file = os.path.join(self.local_path, 'check.chk')
         self.checkfile = checkfile
         # parentheses don't play well in folder names:
@@ -430,10 +454,9 @@ class Job(object):
                 architecture = '\n#$ -l harpertown'
             else:
                 architecture = '\n#$ -l magnycours'
-        self.submit = submit_scripts[servers[self.server]['cluster_soft']][self.software.lower()].format(
-            name=self.job_server_name, un=un, t_max=t_max, mem_cpu=min(int(self.memory * 150), 16000), cpus=cpus,
+        self.submit = submit_scripts[self.server][self.software.lower()].format(
+            name=self.job_server_name, un=un, t_max=t_max, mem_cpu=int(self.memory / cpus), cpus=cpus,
             architecture=architecture)
-        # Memory conversion: multiply MW value by 1200 to conservatively get it in MB, then divide by 8 to get per cup
         if not os.path.exists(self.local_path):
             os.makedirs(self.local_path)
         with open(os.path.join(self.local_path, submit_filename[servers[self.server]['cluster_soft']]), 'wb') as f:
@@ -454,11 +477,14 @@ class Job(object):
         self.input = input_files[self.software]
 
         slash = ''
-        if self.software == 'gaussian' and not self.job_type == 'composite':
+        if self.software == 'gaussian' and '/' in self.level_of_theory:
             slash = '/'
 
         if (self.multiplicity > 1 and '/' in self.level_of_theory) or self.number_of_radicals > 1:
             # don't add 'u' to composite jobs. Do add 'u' for bi-rad singlets if `number_of_radicals` > 1
+            if self.number_of_radicals > 1:
+                logging.info('Using an unrestricted method for species {0} which has {1} radicals and '
+                             'multiplicity {2}'.format(self.species_name, self.number_of_radicals, self.multiplicity))
             if self.software == 'qchem':
                 restricted = 'True'  # In QChem this attribute is "unrestricted"
             else:
@@ -682,11 +708,11 @@ $end
         else:
             try:
                 cpus = servers[self.server]['cpus'] if 'cpus' in servers[self.server] else 8
-                self.input = self.input.format(memory=self.memory, method=self.method, slash=slash,
+                self.input = self.input.format(memory=self.memory, method=self.method, slash=slash, bath=self.bath_gas,
                                                basis=self.basis_set, charge=self.charge, multiplicity=self.multiplicity,
                                                spin=self.spin, xyz=self.xyz, job_type_1=job_type_1, cpus=cpus,
                                                job_type_2=job_type_2, scan=scan_string, restricted=restricted,
-                                               fine=fine, shift=self.shift, trsh=self.trsh, scan_trsh=self.scan_trsh)
+                                               fine=fine, shift=self.shift, trsh=self.trsh, scan_trsh=self.scan_trsh,)
             except KeyError:
                 logging.error('Could not interpret all input file keys in\n{0}'.format(self.input))
                 raise
@@ -701,20 +727,34 @@ $end
                     self._upload_check_file(local_check_file_path=self.checkfile)
 
     def _upload_submit_file(self):
-        ssh = SSH_Client(self.server)
+        ssh = SSHClient(self.server)
         ssh.send_command_to_server(command='mkdir -p {0}'.format(self.remote_path))
         remote_file_path = os.path.join(self.remote_path, submit_filename[servers[self.server]['cluster_soft']])
         ssh.upload_file(remote_file_path=remote_file_path, file_string=self.submit)
 
     def _upload_input_file(self):
-        ssh = SSH_Client(self.server)
+        ssh = SSHClient(self.server)
         ssh.send_command_to_server(command='mkdir -p {0}'.format(self.remote_path))
         remote_file_path = os.path.join(self.remote_path, input_filename[self.software])
         ssh.upload_file(remote_file_path=remote_file_path, file_string=self.input)
+        if self.software == 'onedmin':
+            # also create and upload a geometry file
+            local_geo_path = os.path.join(self.local_path, 'geo.xyz')
+            remote_geo_path = os.path.join(self.remote_path, 'geo.xyz')
+            with open(local_geo_path, 'w') as f:
+                f.write(self.xyz)
+            ssh.upload_file(remote_file_path=remote_geo_path, local_file_path=local_geo_path)
+            # also create and upload the molpro directives
+            remote_mx_path = os.path.join(self.remote_path, 'm.x')
+            ssh.upload_file(remote_file_path=remote_mx_path, file_string=input_files['onedmin.molpro.x'])
+            remote_qcmol_path = os.path.join(self.remote_path, 'qc.mol')
+            ssh.upload_file(remote_file_path=remote_qcmol_path, file_string=input_files['onedmin.qc.mol'])
+            # make the m.x file executable
+            ssh.send_command_to_server(command='chmod +x m.x', remote_path=self.remote_path)
         self.initial_time = ssh.get_last_modified_time(remote_file_path=remote_file_path)
 
     def _upload_check_file(self, local_check_file_path=None):
-        ssh = SSH_Client(self.server)
+        ssh = SSHClient(self.server)
         remote_check_file_path = os.path.join(self.remote_path, 'check.chk')
         local_check_file_path = os.path.join(self.local_path, 'check.chk') if remote_check_file_path is None\
             else local_check_file_path
@@ -724,7 +764,7 @@ $end
 
     def _download_output_file(self):
         """Download ESS output, orbitals check file, and the Gaussian check file, if relevant"""
-        ssh = SSH_Client(self.server)
+        ssh = SSHClient(self.server)
 
         # download output file
         remote_file_path = os.path.join(self.remote_path, output_filename[self.software])
@@ -739,7 +779,7 @@ $end
             remote_file_path = os.path.join(self.remote_path, 'input.FChk')
             ssh.download_file(remote_file_path=remote_file_path, local_file_path=self.local_path_to_orbitals_file)
             if not os.path.isfile(self.local_path_to_orbitals_file):
-                logging.warning('Orbitals FChk file {0} was not downloaded properly '
+                logging.warning('Orbitals FChk file for {0} was not downloaded properly '
                                 '(this is not the Gaussian formatted check file...)'.format(self.job_name))
 
         # download Gaussian check file
@@ -747,7 +787,14 @@ $end
             remote_check_file_path = os.path.join(self.remote_path, 'check.chk')
             ssh.download_file(remote_file_path=remote_check_file_path, local_file_path=self.local_path_to_check_file)
             if not os.path.isfile(self.local_path_to_check_file):
-                logging.warning('Gaussian check file {0} was not downloaded properly'.format(self.job_name))
+                logging.warning('Gaussian check file for {0} was not downloaded properly'.format(self.job_name))
+
+        # download Lennard_Jones data file
+        if self.software.lower() == 'onedmin':
+            remote_lj_file_path = os.path.join(self.remote_path, 'lj.dat')
+            ssh.download_file(remote_file_path=remote_lj_file_path, local_file_path=self.local_path_to_lj_file)
+            if not os.path.isfile(self.local_path_to_lj_file):
+                logging.warning('Lennard-Jones data file for {0} was not downloaded properly'.format(self.job_name))
 
     def run(self):
         """Execute the Job"""
@@ -765,7 +812,7 @@ $end
         logging.debug('writing input file...')
         self.write_input_file()
         if self.ess_settings['ssh']:
-            ssh = SSH_Client(self.server)
+            ssh = SSHClient(self.server)
             logging.debug('submitting job...')
             # submit_job returns job server status and job server id
             try:
@@ -780,7 +827,7 @@ $end
         """Delete a running Job"""
         logging.debug('Deleting job {name} for {label}'.format(name=self.job_name, label=self.species_name))
         if self.ess_settings['ssh']:
-            ssh = SSH_Client(self.server)
+            ssh = SSHClient(self.server)
             logging.debug('deleting job...')
             ssh.delete_job(self.job_id)
 
@@ -820,7 +867,7 @@ $end
         """
         lines1, lines2 = list(), list()
         content = ''
-        ssh = SSH_Client(self.server)
+        ssh = SSHClient(self.server)
         cluster_soft = servers[self.server]['cluster_soft'].lower()
         if cluster_soft in ['oge', 'sge']:
             remote_file_path = os.path.join(self.remote_path, 'out.txt')
@@ -875,7 +922,7 @@ $end
         Possible statuses: `initializing`, `running`, `errored on node xx`, `done`
         """
         if self.ess_settings['ssh']:
-            ssh = SSH_Client(self.server)
+            ssh = SSHClient(self.server)
             return ssh.check_job_status(self.job_id)
 
     def _check_job_ess_status(self):
@@ -980,6 +1027,23 @@ $end
                     if 'the problem occurs' in line:
                         return 'errored: ' + line
                 return 'errored: Unknown reason'
+        if self.software == 'onedmin':
+            with open(self.local_path_to_lj_file, 'r') as f:
+                lines = f.readlines()
+                score = 0
+                for line in lines:
+                    if 'LennardJones' in line and len(line.split()) == 1:
+                        score +=1
+                    elif 'Epsilons[1/cm]' in line and len(line.split()) == 3:
+                        score +=1
+                    elif 'Sigmas[angstrom]' in line and len(line.split()) == 3:
+                        score +=1
+                    elif 'End' in line and len(line.split()) == 1:
+                        score +=1
+                if score == 4:
+                    return 'done'
+                else:
+                    return 'errored: Unknown reason'
 
     def troubleshoot_server(self):
         """Troubleshoot server errors"""
@@ -988,7 +1052,7 @@ $end
                 # delete present server run
                 logging.error('Job {name} has server status "{stat}" on {server}. Troubleshooting by changing node.'.
                               format(name=self.job_name, stat=self.job_status[0], server=self.server))
-                ssh = SSH_Client(self.server)
+                ssh = SSHClient(self.server)
                 ssh.send_command_to_server(command=delete_command[servers[self.server]['cluster_soft']] +
                                            ' ' + str(self.job_id))
                 # find available nodes
@@ -1024,7 +1088,7 @@ $end
                 # delete present server run
                 logging.error('Job {name} has server status "{stat}" on {server}. Re-running job.'.format(
                     name=self.job_name, stat=self.job_status[0], server=self.server))
-                ssh = SSH_Client(self.server)
+                ssh = SSHClient(self.server)
                 ssh.send_command_to_server(command=delete_command[servers[self.server]['cluster_soft']] +
                                            ' ' + str(self.job_id))
                 # resubmit

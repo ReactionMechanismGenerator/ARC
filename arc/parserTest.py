@@ -71,6 +71,33 @@ class TestParser(unittest.TestCase):
         t1 = parser.parse_t1(path)
         self.assertEqual(t1, 0.0086766)
 
+    def test_parse_e0(self):
+        """Test parsing E0 from an sp job output file"""
+        path1 = os.path.join(arc_path, 'arc', 'testing', 'mehylamine_CCSD(T).out')
+        e0 = parser.parse_e0(path1)
+        self.assertEqual(e0, -251377.49160993524)
+
+        path2 = os.path.join(arc_path, 'arc', 'testing', 'SO2OO_CBS-QB3.log')
+        e0 = parser.parse_e0(path2)
+        self.assertEqual(e0, -1833127.0939478774)
+
+    def test_parse_dipole_moment(self):
+        """Test parsing the dipole moment from an opt job output file"""
+        path1 = os.path.join(arc_path, 'arc', 'testing', 'SO2OO_CBS-QB3.log')
+        dm1 = parser.parse_dipole_moment(path1)
+        self.assertEqual(dm1, 0.63)
+
+        path2 = os.path.join(arc_path, 'arc', 'testing', 'N2H4_opt_QChem.out')
+        dm2 = parser.parse_dipole_moment(path2)
+        self.assertEqual(dm2, 2.0664)
+
+    def test_parse_polarizability(self):
+        """Test parsing the polarizability moment from a freq job output file"""
+        path1 = os.path.join(arc_path, 'arc', 'testing', 'SO2OO_CBS-QB3.log')
+        polar1 = parser.parse_polarizability(path1)
+        self.assertAlmostEqual(polar1, 3.99506, 4)
+
+
 ################################################################################
 
 if __name__ == '__main__':

@@ -36,20 +36,27 @@ class TestARC(unittest.TestCase):
         """
         cls.maxDiff = None
         cls.servers = [server for server in servers.keys()]
+        cls.job_types1 = {'conformers': True,
+                          'opt': True,
+                          'fine_grid': False,
+                          'freq': True,
+                          'sp': True,
+                          '1d_rotors': False,
+                          'orbitals': False,
+                          'lennard_jones': False,
+                          }
 
     def test_as_dict(self):
         """Test the as_dict() method of ARC"""
         spc1 = ARCSpecies(label='spc1', smiles=str('CC'), generate_thermo=False)
-        arc0 = ARC(project='arc_test', scan_rotors=False, initial_trsh='scf=(NDump=30)',
+        arc0 = ARC(project='arc_test', job_types=self.job_types1, initial_trsh='scf=(NDump=30)',
                    arc_species_list=[spc1])
         restart_dict = arc0.as_dict()
         expected_dict = {'composite_method': '',
                          'conformer_level': 'b3lyp/6-31+g(d,p)',
                          'ts_guess_level': 'b3lyp/6-31+g(d,p)',
-                         'fine': True,
                          'opt_level': 'wb97xd/6-311++g(d,p)',
                          'freq_level': 'wb97xd/6-311++g(d,p)',
-                         'generate_conformers': True,
                          'initial_trsh': 'scf=(NDump=30)',
                          'max_job_time': 120,
                          'model_chemistry': 'ccsd(t)-f12/cc-pvtz-f12',
@@ -58,16 +65,23 @@ class TestARC(unittest.TestCase):
                          'running_jobs': {},
                          'reactions': [],
                          'scan_level': '',
-                         'scan_rotors': False,
                          'sp_level': 'ccsd(t)-f12/cc-pvtz-f12',
                          'job_memory': 15000,
+                         'job_types': {u'1d_rotors': False,
+                                       'conformers': True,
+                                       'fine': False,
+                                       'freq': True,
+                                       'onedmin': False,
+                                       'opt': True,
+                                       'orbitals': False,
+                                       'sp': True},
+
                          't_min': None,
                          't_max': None,
                          't_count': None,
                          'use_bac': True,
-                         'run_orbitals': False,
                          'allow_nonisomorphic_2d': False,
-                         'ess_settings': {'gaussian': ['server1', 'server2'],
+                         'ess_settings': {'gaussian': ['server1', 'server2'], 'onedmin': ['server1'],
                                           'molpro': ['server2'], 'qchem': ['server1'], 'ssh': True},
                          'species': [{'bond_corrections': {'C-C': 1, 'C-H': 6},
                                       'arkane_file': None,
@@ -127,8 +141,8 @@ class TestARC(unittest.TestCase):
         arc1.from_dict(input_dict=restart_dict, project='testing_from_dict', project_directory=project_directory)
         self.assertEqual(arc1.project, 'testing_from_dict')
         self.assertTrue('arc_project_for_testing_delete_after_usage' in arc1.project_directory)
-        self.assertTrue(arc1.fine)
-        self.assertFalse(arc1.scan_rotors)
+        self.assertTrue(arc1.job_types['fine'])
+        self.assertFalse(arc1.job_types['1d_rotors'])
         self.assertEqual(arc1.sp_level, 'ccsdt-f12/cc-pvqz-f12')
         self.assertEqual(arc1.arc_species_list[0].label, 'testing_spc1')
         self.assertFalse(arc1.arc_species_list[0].is_ts)
@@ -184,7 +198,8 @@ class TestARC(unittest.TestCase):
         self.assertTrue(ap)
 
         with open(os.path.join(project_directory, 'arc.log'), 'r') as f:
-            aei, ver, git, spc, rtm, ldb, therm, src, ter = False, False, False, False, False, False, False, False, False
+            aei, ver, git, spc, rtm, ldb, therm, src, ter =\
+                False, False, False, False, False, False, False, False, False
             for line in f.readlines():
                 if 'ARC execution initiated on' in line:
                     aei = True
@@ -194,7 +209,7 @@ class TestARC(unittest.TestCase):
                     git = True
                 elif 'Considering species: CH3CO2_rad' in line:
                     spc = True
-                elif 'All jobs for species N2H3 successfully converged. Run time: 1:16:03' in line:
+                elif 'All jobs for species N2H3 successfully converged. Run time' in line:
                     rtm = True
                 elif 'Loading the RMG database...' in line:
                     ldb = True
@@ -328,6 +343,7 @@ class TestARC(unittest.TestCase):
             shutil.rmtree(project_directory)
 
 ################################################################################
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

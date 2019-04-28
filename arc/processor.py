@@ -60,13 +60,13 @@ class Processor(object):
         self.use_bac = use_bac
         self.model_chemistry = model_chemistry
         self.lib_long_desc = lib_long_desc
-        load_thermo_libs, load_kinetic_libs = True, True
-        if not any([species.is_ts and species.final_xyz for species in self.species_dict.values()])\
-                and not any(['ALL converged' in out['status'] for out in output.values()]):
-            load_kinetic_libs = False  # don't load reaction libraries, not TS has converged
-        if not any([species.generate_thermo for species in self.species_dict.values()])\
-                and not any(['ALL converged' in out['status'] for out in output.values()]):
-            load_thermo_libs = False  # don't load thermo libraries, not thermo requested
+        load_thermo_libs, load_kinetic_libs = False, False
+        if any([species.is_ts and species.final_xyz for species in self.species_dict.values()])\
+                and any(['ALL converged' in out['status'] for out in output.values()]):
+            load_kinetic_libs = True
+        if any([species.generate_thermo for species in self.species_dict.values()])\
+                and any(['ALL converged' in out['status'] for out in output.values()]):
+            load_thermo_libs = True
         rmgdb.load_rmg_database(rmgdb=self.rmgdb, load_thermo_libs=load_thermo_libs,
                                 load_kinetic_libs=load_kinetic_libs)
         t_min = t_min if t_min is not None else (300, 'K')
@@ -181,6 +181,7 @@ class Processor(object):
         # Thermo:
         species_list_for_thermo_parity = list()
         species_for_thermo_lib = list()
+        species_for_transport_lib = list()
         unconverged_species = list()
         for species in self.species_dict.values():
             if not species.is_ts and 'ALL converged' in self.output[species.label]['status']:
@@ -227,6 +228,8 @@ class Processor(object):
                 else:
                     if species.generate_thermo:
                         species_list_for_thermo_parity.append(species)
+                if 'onedmin converged' in self.output[species.label]['status'].lower():
+                    species_for_transport_lib.append(species)
             elif 'ALL converged' not in self.output[species.label]['status']:
                 unconverged_species.append(species)
         # Kinetics:
@@ -251,7 +254,7 @@ class Processor(object):
                         self._run_statmech(arkane_spc, spc.arkane_file, kinetics=True)
                 rxn.dh_rxn298 = sum([product.thermo.getEnthalpy(298) for product in arkane_spc_dict.values()
                                      if product.label in rxn.products])\
-                                - sum([reactant.thermo.getEnthalpy(298) for reactant in arkane_spc_dict.values()
+                    - sum([reactant.thermo.getEnthalpy(298) for reactant in arkane_spc_dict.values()
                                        if reactant.label in rxn.reactants])
                 arkane_rxn = arkane_reaction(label=str(rxn.label),
                                              reactants=[str(label + '_') for label in arkane_spc_dict.keys()
@@ -284,17 +287,19 @@ class Processor(object):
 
         logging.info('\n\n')
         output_dir = os.path.join(self.project_directory, 'output')
+        libraries_path = os.path.join(output_dir, 'RMG libraries')
 
         if species_list_for_thermo_parity:
             plotter.draw_thermo_parity_plots(species_list_for_thermo_parity, path=output_dir)
-            libraries_path = os.path.join(output_dir, 'RMG libraries')
-            # species_list = [spc for spc in self.species_dict.values()]
             plotter.save_thermo_lib(species_for_thermo_lib, path=libraries_path,
                                     name=self.project, lib_long_desc=self.lib_long_desc)
+
+        if species_for_transport_lib:
+            plotter.save_transport_lib(species_for_thermo_lib, path=libraries_path, name=self.project)
+
         if rxn_list_for_kinetics_plots:
             plotter.draw_kinetics_plots(rxn_list_for_kinetics_plots, path=output_dir,
                                         t_min=self.t_min, t_max=self.t_max, t_count=self.t_count)
-            libraries_path = os.path.join(output_dir, 'RMG libraries')
             plotter.save_kinetics_lib(rxn_list=rxn_list_for_kinetics_plots, path=libraries_path,
                                       name=self.project, lib_long_desc=self.lib_long_desc)
 
@@ -306,10 +311,10 @@ class Processor(object):
                 for spc in unconverged_species:
                     f.write(spc.label)
                     if spc.is_ts:
-                        f.write(' rxn: {0}'.format(spc.rxn_label))
+                        f.write(str(' rxn: {0}'.format(spc.rxn_label)))
                     elif spc.mol is not None:
-                        f.write(' SMILES: {0}'.format(spc.mol.toSMILES()))
-                    f.write('\n')
+                        f.write(str(' SMILES: {0}'.format(spc.mol.toSMILES())))
+                    f.write(str('\n'))
 
     def _run_statmech(self, arkane_spc, arkane_file, output_file_path=None, use_bac=False, kinetics=False, plot=False):
         """

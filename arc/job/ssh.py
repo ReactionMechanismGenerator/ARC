@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 # encoding: utf-8
 
+"""
+A module for SSHing into servers
+"""
+
 from __future__ import (absolute_import, division, print_function, unicode_literals)
 import logging
 import os
@@ -15,7 +19,7 @@ from arc.arc_exceptions import InputError, ServerError
 ##################################################################
 
 
-class SSH_Client(object):
+class SSHClient(object):
     """
     This is a class for communicating with servers
     """
@@ -79,7 +83,7 @@ class SSH_Client(object):
         while not success and times_tried < max_times_to_try:
             times_tried += 1
             try:
-                write_file(sftp, ssh, remote_file_path, local_file_path, file_string)
+                write_file(sftp, remote_file_path, local_file_path, file_string)
             except IOError:
                 pass
             else:
@@ -195,7 +199,7 @@ class SSH_Client(object):
 
     def check_running_jobs_ids(self):
         """
-        Return a list of ``int`` representing job IDs of all jobs submited by the user on a server
+        Return a list of ``int`` representing job IDs of all jobs submitted by the user on a server
         """
         running_jobs_ids = list()
         cmd = check_status_command[servers[self.server]['cluster_soft']] + ' -u ' + servers[self.server]['un']
@@ -207,9 +211,11 @@ class SSH_Client(object):
         return running_jobs_ids
 
     def submit_job(self, remote_path):
+        """Submit a job"""
         job_status = ''
         job_id = 0
-        cmd = submit_command[servers[self.server]['cluster_soft']] + ' ' + submit_filename[servers[self.server]['cluster_soft']]
+        cmd = submit_command[servers[self.server]['cluster_soft']] + ' ' +\
+              submit_filename[servers[self.server]['cluster_soft']]
         stdout, stderr = self.send_command_to_server(cmd, remote_path)
         if len(stderr) > 0 or len(stdout) == 0:
             job_status = 'errored'
@@ -270,7 +276,8 @@ class SSH_Client(object):
         return datetime.datetime.fromtimestamp(timestamp)
 
 
-def write_file(sftp, ssh, remote_file_path, local_file_path='', file_string=''):
+def write_file(sftp, remote_file_path, local_file_path='', file_string=''):
+    """Write content into a remote file (either write content or upload)"""
     with sftp.open(remote_file_path, "w") as f_remote:
         if file_string:
             f_remote.write(file_string)

@@ -30,7 +30,7 @@ class TestScheduler(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        ess_settings = {'gaussian': ['server1'], 'molpro': ['server2','server1'], 'qchem': ['server1'], 'ssh': False}
+        ess_settings = {'gaussian': ['server1'], 'molpro': ['server2', 'server1'], 'qchem': ['server1'], 'ssh': False}
         project_directory = os.path.join(arc_path, 'Projects', 'arc_project_for_testing_delete_after_usage3')
         cls.spc1 = ARCSpecies(label=str('methylamine'), smiles=str('CN'))
         cls.spc2 = ARCSpecies(label=str('C2H6'), smiles=str('CC'))
@@ -44,12 +44,21 @@ class TestScheduler(unittest.TestCase):
                        job_type='freq', level_of_theory='wb97x-d3/6-311+g(d,p)', multiplicity=1,
                        project_directory=project_directory, software='qchem', job_num=103)
         cls.rmgdb = rmgdb.make_rmg_database_object()
+        cls.job_types1 = {'conformers': True,
+                          'opt': True,
+                          'fine_grid': False,
+                          'freq': True,
+                          'sp': True,
+                          '1d_rotors': False,
+                          'orbitals': False,
+                          'lennard_jones': False,
+                          }
         cls.sched1 = Scheduler(project='project_test', ess_settings=ess_settings, species_list=[cls.spc1, cls.spc2],
                                composite_method='', conformer_level=default_levels_of_theory['conformer'],
                                opt_level=default_levels_of_theory['opt'], freq_level=default_levels_of_theory['freq'],
                                sp_level=default_levels_of_theory['sp'], scan_level=default_levels_of_theory['scan'],
                                ts_guess_level=default_levels_of_theory['ts_guesses'], rmgdatabase=cls.rmgdb,
-                               project_directory=project_directory, generate_conformers=True, testing=True,
+                               project_directory=project_directory, testing=True, job_types=cls.job_types1,
                                orbitals_level=default_levels_of_theory['orbitals'])
 
     def test_conformers(self):
@@ -104,7 +113,7 @@ H      -1.16566701    0.32023496   -0.81630508"""
 
     def test_check_negative_freq(self):
         """Test the check_negative_freq() method"""
-        label='C2H6'
+        label = 'C2H6'
         self.job3.local_path_to_output_file = os.path.join(arc_path, 'arc', 'testing', 'C2H6_freq_Qchem.out')
         self.job3.job_status = ['done', 'done']
         vibfreqs = parser.parse_frequencies(path=str(self.job3.local_path_to_output_file), software=self.job3.software)
@@ -120,6 +129,7 @@ H      -1.16566701    0.32023496   -0.81630508"""
         for project in projects:
             project_directory = os.path.join(arc_path, 'Projects', project)
             shutil.rmtree(project_directory)
+
 
 ################################################################################
 

@@ -13,6 +13,7 @@ import shutil
 from rmgpy.molecule.molecule import Molecule
 from rmgpy.species import Species
 from rmgpy.reaction import Reaction
+from rmgpy.transport import TransportData
 
 from arc.species.species import ARCSpecies, TSGuess, get_min_energy_conformer,\
     determine_rotor_type, determine_rotor_symmetry
@@ -260,15 +261,15 @@ H      -1.67091600   -1.35164600   -0.93286400
                   H -1.2739176462        1.9692549926        0.0000000000"""  # a non linear 3-atom molecule
         xyz6 = """N  1.18784533    0.98526702    0.00000000
                   C  0.04124533    0.98526702    0.00000000
-                  H -1.02875467    0.98526702    0.00000000""" # linear
+                  H -1.02875467    0.98526702    0.00000000"""  # linear
         xyz7 = """C -4.02394116    0.56169428    0.00000000
                   H -5.09394116    0.56169428    0.00000000
                   C -2.82274116    0.56169428    0.00000000
-                  H -1.75274116    0.56169428    0.00000000""" # linear
+                  H -1.75274116    0.56169428    0.00000000"""  # linear
         xyz8 = """C -1.02600933    2.12845307    0.00000000
                   C -0.77966935    0.95278385    0.00000000
                   H -1.23666197    3.17751246    0.00000000
-                  H -0.56023545   -0.09447399    0.00000000""" # just 0.5 degree off from linearity, so NOT linear...
+                  H -0.56023545   -0.09447399    0.00000000"""  # just 0.5 degree off from linearity, so NOT linear...
         xyz9 = """O -1.1998 0.1610 0.0275
                   O -1.4021 0.6223 -0.8489
                   O -1.48302 0.80682 -1.19946"""  # just 3 points in space on a straight line (not a physical molecule)
@@ -396,11 +397,11 @@ H      -1.67091600   -1.35164600   -0.93286400
         path4 = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'sBuOH.out')  # symmetry = 3
         path5 = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'CH3C(O)O_FreeRotor.out')  # symmetry = 6
 
-        symmetry1, _ = determine_rotor_symmetry(rotor_path=path1, label='label', pivots=[3,4])
-        symmetry2, _ = determine_rotor_symmetry(rotor_path=path2, label='label', pivots=[3,4])
-        symmetry3, _ = determine_rotor_symmetry(rotor_path=path3, label='label', pivots=[3,4])
-        symmetry4, _ = determine_rotor_symmetry(rotor_path=path4, label='label', pivots=[3,4])
-        symmetry5, _ = determine_rotor_symmetry(rotor_path=path5, label='label', pivots=[3,4])
+        symmetry1, _ = determine_rotor_symmetry(rotor_path=path1, label='label', pivots=[3, 4])
+        symmetry2, _ = determine_rotor_symmetry(rotor_path=path2, label='label', pivots=[3, 4])
+        symmetry3, _ = determine_rotor_symmetry(rotor_path=path3, label='label', pivots=[3, 4])
+        symmetry4, _ = determine_rotor_symmetry(rotor_path=path4, label='label', pivots=[3, 4])
+        symmetry5, _ = determine_rotor_symmetry(rotor_path=path5, label='label', pivots=[3, 4])
 
         self.assertEqual(symmetry1, 1)
         self.assertEqual(symmetry2, 1)
@@ -529,8 +530,6 @@ H      -1.69944700    0.93441600   -0.11271200"""
         self.assertIsNotNone(spc4.conformer_energies[3])
         self.assertEqual(spc4.multiplicity, 2)
 
-
-
     def test_get_min_energy_conformer(self):
         """Test that the xyz with the minimum specified energy is returned from get_min_energy_conformer()"""
         xyzs = ['xyz1', 'xyz2', 'xyz3']
@@ -589,12 +588,21 @@ H      -1.69944700    0.93441600   -0.11271200"""
         project_directory = os.path.join(arc_path, 'Projects', 'arc_project_for_testing_delete_after_usage4')
         spc1 = ARCSpecies(label=str('vinoxy'), smiles=str('C=C[O]'))
         rmgdb = make_rmg_database_object()
+        job_types1 = {'conformers': True,
+                      'opt': True,
+                      'fine_grid': False,
+                      'freq': True,
+                      'sp': True,
+                      '1d_rotors': False,
+                      'orbitals': False,
+                      'lennard_jones': False,
+                      }
         sched1 = Scheduler(project='project_test', ess_settings=ess_settings, species_list=[spc1],
                            composite_method='', conformer_level=default_levels_of_theory['conformer'],
                            opt_level=default_levels_of_theory['opt'], freq_level=default_levels_of_theory['freq'],
                            sp_level=default_levels_of_theory['sp'], scan_level=default_levels_of_theory['scan'],
                            ts_guess_level=default_levels_of_theory['ts_guesses'], rmgdatabase=rmgdb,
-                           project_directory=project_directory, generate_conformers=True, testing=True,
+                           project_directory=project_directory, testing=True, job_types=job_types1,
                            orbitals_level=default_levels_of_theory['orbitals'])
         xyzs = ["""O       1.09068700    0.26516800   -0.16706300
 C       2.92204100   -1.18335700   -0.38884900
@@ -663,6 +671,30 @@ H       1.32129900    0.71837500    0.38017700
 """
         spc10 = ARCSpecies(label='spc10', xyz=xyz10)
         self.assertEqual(spc10.number_of_atoms, 7)
+
+    def test_set_transport_data(self):
+        """Test the set_transport_data method"""
+        self.assertIsInstance(self.spc1.transport_data, TransportData)
+        lj_path = os.path.join(arc_path, 'arc', 'testing', 'NH3_oneDMin.dat')
+        opt_path = os.path.join(arc_path, 'arc', 'testing', 'SO2OO_CBS-QB3.log')
+        bath_gas = 'N2'
+        opt_level = 'CBS-QB3'
+        freq_path = os.path.join(arc_path, 'arc', 'testing', 'SO2OO_CBS-QB3.log')
+        freq_level = 'CBS-QB3'
+        self.spc1.set_transport_data(lj_path, opt_path, bath_gas, opt_level, freq_path, freq_level)
+        self.assertIsInstance(self.spc1.transport_data, TransportData)
+        self.assertEqual(self.spc1.transport_data.shapeIndex, 2)
+        self.assertAlmostEqual(self.spc1.transport_data.epsilon.value_si, 1420.75, 2)
+        self.assertAlmostEqual(self.spc1.transport_data.sigma.value_si, 3.57813e-10, 4)
+        self.assertAlmostEqual(self.spc1.transport_data.dipoleMoment.value_si, 2.10145e-30, 4)
+        self.assertAlmostEqual(self.spc1.transport_data.polarizability.value_si, 3.99506e-30, 4)
+        self.assertEqual(self.spc1.transport_data.rotrelaxcollnum, 2)
+        self.assertEqual(self.spc1.transport_data.comment, 'L-J coefficients calculated by OneDMin using a '
+                                                           'DF-MP2/aug-cc-pVDZ potential energy surface with N2 as '
+                                                           'the collider; Dipole moment was calculated at the CBS-QB3 '
+                                                           'level of theory; Polarizability was calculated at the '
+                                                           'CBS-QB3 level of theory; Rotational Relaxation Collision '
+                                                           'Number was not determined, default value is 2')
 
     @classmethod
     def tearDownClass(cls):
