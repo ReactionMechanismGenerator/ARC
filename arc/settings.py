@@ -51,10 +51,10 @@ servers = {
 # List here job types to execute by default
 default_job_types = {'conformers': True,      # defaults to True if not specified
                      'opt': True,             # defaults to True if not specified
-                     'fine_grid': True,      # defaults to True if not specified
+                     'fine_grid': True,       # defaults to True if not specified
                      'freq': True,            # defaults to True if not specified
                      'sp': True,              # defaults to True if not specified
-                     '1d_rotors': False,      # defaults to True if not specified
+                     '1d_rotors': True,       # defaults to True if not specified
                      'orbitals': False,       # defaults to False if not specified
                      'lennard_jones': False,  # defaults to False if not specified
                      }
