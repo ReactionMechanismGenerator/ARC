@@ -984,7 +984,7 @@ class Scheduler(object):
             log = determine_qm_software(fullpath=job.local_path_to_output_file)
             coord, number, _ = log.loadGeometry()
             self.species_dict[label].final_xyz = get_xyz_string(coord=coord, number=number)
-            if not job.fine and self.job_types['fine']:
+            if not job.fine and self.job_types['fine'] and not job.software == 'molpro':
                 # Run opt again using a finer grid.
                 xyz = self.species_dict[label].final_xyz
                 self.species_dict[label].initial_xyz = xyz  # save for troubleshooting, since trsh goes by initial
