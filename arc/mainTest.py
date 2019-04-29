@@ -142,7 +142,7 @@ class TestARC(unittest.TestCase):
         self.assertEqual(arc1.project, 'testing_from_dict')
         self.assertTrue('arc_project_for_testing_delete_after_usage' in arc1.project_directory)
         self.assertTrue(arc1.job_types['fine'])
-        self.assertFalse(arc1.job_types['1d_rotors'])
+        self.assertTrue(arc1.job_types['1d_rotors'])
         self.assertEqual(arc1.sp_level, 'ccsdt-f12/cc-pvqz-f12')
         self.assertEqual(arc1.arc_species_list[0].label, 'testing_spc1')
         self.assertFalse(arc1.arc_species_list[0].is_ts)
