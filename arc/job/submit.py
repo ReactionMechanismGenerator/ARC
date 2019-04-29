@@ -105,6 +105,7 @@ rm -rf $WorkDir
 #SBATCH -n {cpus}
 #SBATCH --time={t_max}
 #SBATCH --mem-per-cpu={mem_cpu}
+#SBATCH -x node07, node05
 
 which 16
 
@@ -116,10 +117,10 @@ echo "Running on node : $SLURMD_NODENAME"
 echo "Current directory : $(pwd)"
 echo "============================================================"
 
-WorkDir=/scratch/users/{un}/$SLURM_JOB_NAME-$SLURM_JOB_ID
+WorkDir=/scratch/{un}/$SLURM_JOB_NAME-$SLURM_JOB_ID
 SubmitDir=`pwd`
 
-GAUSS_SCRDIR=/scratch/users/{un}/g16/$SLURM_JOB_NAME-$SLURM_JOB_ID
+GAUSS_SCRDIR=/scratch/{un}/g16/$SLURM_JOB_NAME-$SLURM_JOB_ID
 export GAUSS_SCRDIR
 
 mkdir -p $GAUSS_SCRDIR
@@ -131,7 +132,7 @@ cd $WorkDir
 cp $SubmitDir/input.gjf .
 
 g16 < input.gjf > input.log
-formchk  check.chk check.fchk
+formchk check.chk check.fchk
 cp * $SubmitDir/
 
 rm -rf $GAUSS_SCRDIR
@@ -146,6 +147,7 @@ rm -rf $WorkDir
 #SBATCH -n {cpus}
 #SBATCH --time={t_max}
 #SBATCH --mem-per-cpu={mem_cpu}
+#SBATCH -x node07, node05
 
 export PATH=/opt/molpro/molprop_2015_1_linux_x86_64_i8/bin:$PATH
 
@@ -158,9 +160,17 @@ echo "Current directory : $(pwd)"
 echo "============================================================"
 
 sdir=/scratch/{un}/$SLURM_JOB_NAME-$SLURM_JOB_ID
+SubmitDir=`pwd`
+
 mkdir -p $sdir
+cd $sdir
+
+cp $SubmitDir/input.in .
 
 molpro -n {cpus} -d $sdir input.in
+
+cp input.* $SubmitDir/
+cp geometry*.* $SubmitDir/
 
 rm -rf $sdir
 
