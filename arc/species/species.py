@@ -552,6 +552,16 @@ class ARCSpecies(object):
             tsg_index = 0
             self.successful_methods = list()
             self.unsuccessful_methods = list()
+            for i, xyz in enumerate(self.conformers):
+                # when defining a TS species with xyz, it is saved in self.conformers via self.process_xyz()
+                # make TSGuess objects out of them if don't already exist
+                for tsg in self.ts_guesses:
+                    if xyz == tsg.xyz:
+                        break
+                else:
+                    self.ts_guesses.append(TSGuess(method='user guess {0}'.format(i), xyz=xyz))
+                    self.ts_guesses[-1].success = True
+            self.conformers = list()
             for tsg in self.ts_guesses:
                 if tsg.success:
                     self.conformers.append(tsg.xyz)

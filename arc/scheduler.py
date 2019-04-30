@@ -642,10 +642,9 @@ class Scheduler(object):
         elif len(self.species_dict[label].conformers) == 1:
             if 'opt' not in self.job_dict[label] and 'composite' not in self.job_dict[label]:
                 # proceed only if opt (/composite) not already spawned
-                if self.species_dict[label].rxn_label is None:
-                    raise SchedulerError('TS {0} is missing a reaction label'.format(label))
-                rxn = ' ' if not self.species_dict[label].is_ts else\
-                    ' of reaction ' + self.species_dict[label].rxn_label
+                rxn = ''
+                if self.species_dict[label].rxn_label is not None:
+                    rxn = ' of reaction ' + self.species_dict[label].rxn_label
                 logging.info('Only one TS guess is available for species {0}{1},'
                              ' using it for geometry optimization'.format(label, rxn))
                 self.species_dict[label].initial_xyz = self.species_dict[label].conformers[0]
