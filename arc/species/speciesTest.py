@@ -715,7 +715,7 @@ H       1.32129900    0.71837500    0.38017700
         self.assertEqual(self.spc1.transport_data.rotrelaxcollnum, 2)
         self.assertEqual(self.spc1.transport_data.comment, 'L-J coefficients calculated by OneDMin using a '
                                                            'DF-MP2/aug-cc-pVDZ potential energy surface with N2 as '
-                                                           'the collider; Dipole moment was calculated at the CBS-QB3 '
+                                                           'the bath gas; Dipole moment was calculated at the CBS-QB3 '
                                                            'level of theory; Polarizability was calculated at the '
                                                            'CBS-QB3 level of theory; Rotational Relaxation Collision '
                                                            'Number was not determined, default value is 2')
