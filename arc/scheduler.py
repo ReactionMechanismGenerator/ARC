@@ -79,9 +79,11 @@ class Scheduler(object):
     `rmgdb`                 ``RMGDatabase``  The RMG database object
     `allow_nonisomorphic_2d` ``bool`` Whether to optimize species even if they do not have a 3D conformer that is
                                         isomorphic to the 2D graph representation
-    `memory`                 ``int``  The allocated job memory (1500 MB by default)
-    `job_types`              ``dict`` A dictionary of job types to execute. Keys are job types, values are boolean
-    `bath_gas`               ``str``  A bath gas. Currently used in OneDMin to calc L-J parameters.
+    `dont_gen_confs`        ``list``  A list of species labels for which conformer jobs were loaded from a restart file,
+                                        and additional conformer generation should be avoided
+    `memory`                ``int``   The allocated job memory (1500 MB by default)
+    `job_types`             ``dict``  A dictionary of job types to execute. Keys are job types, values are boolean
+    `bath_gas`              ``str``   A bath gas. Currently used in OneDMin to calc L-J parameters.
                                         Allowed values are He, Ne, Ar, Kr, H2, N2, O2
     ======================= ========= ==================================================================================
 
@@ -133,6 +135,7 @@ class Scheduler(object):
         self.memory = memory
         self.bath_gas = bath_gas
         self.adaptive_levels = adaptive_levels
+        self.dont_gen_confs = list()
         if self.restart_dict is not None:
             self.output = self.restart_dict['output']
             if 'running_jobs' in self.restart_dict:
@@ -554,18 +557,18 @@ class Scheduler(object):
                     self.job_dict[label][job_type] = dict()
                 self.job_dict[label][job_type][job.job_name] = job
                 self.job_dict[label][job_type][job.job_name].run()
-                self.save_restart_dict()
             else:
                 # Running a conformer job. Append differently to job_dict.
                 self.running_jobs[label].append('conformer{0}'.format(conformer))  # mark as a running job
                 self.job_dict[label]['conformers'][conformer] = job  # save job object
                 self.job_dict[label]['conformers'][conformer].run()  # run the job
+            self.save_restart_dict()
             if job.server not in self.servers:
                 self.servers.append(job.server)
 
     def end_job(self, job, label, job_name):
         """
-        A helper function for checking job status, saving in cvs file, and downloading output files.
+        A helper function for checking job status, saving in csv file, and downloading output files.
         Returns ``True`` if job terminated successfully on the server, ``False`` otherwise
         """
         try:
@@ -611,7 +614,7 @@ class Scheduler(object):
             if not self.species_dict[label].is_ts and 'opt converged' not in self.output[label]['status'] \
                     and 'opt' not in self.job_dict[label] and 'composite' not in self.job_dict[label] \
                     and all([e is None for e in self.species_dict[label].conformer_energies]) \
-                    and self.species_dict[label].number_of_atoms > 1:
+                    and self.species_dict[label].number_of_atoms > 1 and label not in self.dont_gen_confs:
                 # This is not a TS, opt (/composite) did not converged nor running, and conformer energies were not set
                 self.save_conformers_file(label)
                 if self.species_dict[label].initial_xyz is None and self.species_dict[label].final_xyz is None \
@@ -1744,7 +1747,10 @@ class Scheduler(object):
             if spc_label not in self.running_jobs:
                 self.running_jobs[spc_label] = list()
             for job_description in jobs[spc_label]:
-                self.running_jobs[spc_label].append(job_description['job_name'])
+                if 'conformer' not in job_description or job_description['conformer'] < 0:
+                    self.running_jobs[spc_label].append(job_description['job_name'])
+                else:
+                    self.running_jobs[spc_label].append('conformer{0}'.format(job_description['conformer']))
                 for species in self.species_list:
                     if species.label == spc_label:
                         break
@@ -1769,16 +1775,28 @@ class Scheduler(object):
                 if spc_label not in self.job_dict:
                     self.job_dict[spc_label] = dict()
                 if job_description['job_type'] not in self.job_dict[spc_label]:
-                    self.job_dict[spc_label][job_description['job_type']] = dict()
-                self.job_dict[spc_label][job_description['job_type']][job_description['job_name']] = job
+                    if 'conformer' not in job_description or job_description['conformer'] < 0:
+                        self.job_dict[spc_label][job_description['job_type']] = dict()
+                    elif 'conformers' not in self.job_dict[spc_label]:
+                        self.job_dict[spc_label]['conformers'] = dict()
+                if 'conformer' not in job_description or job_description['conformer'] < 0:
+                    self.job_dict[spc_label][job_description['job_type']][job_description['job_name']] = job
+                else:
+                    self.job_dict[spc_label]['conformers'][int(job_description['conformer'])] = job
+                    # don't generate additional conformers for this species
+                    self.dont_gen_confs.append(spc_label)
                 self.servers_jobs_ids.append(job.job_id)
         if self.job_dict:
             content = 'Restarting ARC, tracking the following jobs spawned in a previous session:'
             for spc_label in self.job_dict.keys():
                 content += '\n' + spc_label + ': '
-                for tob_type in self.job_dict[spc_label].keys():
-                    for job_name in self.job_dict[spc_label][tob_type].keys():
-                        content += job_name + ', '
+                for job_type in self.job_dict[spc_label].keys():
+                    for job_name in self.job_dict[spc_label][job_type].keys():
+                        if job_type != 'conformers':
+                            content += job_name + ', '
+                        else:
+                            content += self.job_dict[spc_label][job_type][job_name].job_name\
+                                       + ' (conformer' + str(job_name) + ')' + ', '
             content += '\n\n'
             logging.info(content)
 
@@ -1797,7 +1815,9 @@ class Scheduler(object):
                 if spc.label in self.running_jobs:
                     self.restart_dict['running_jobs'][spc.label] =\
                         [self.job_dict[spc.label][job_name.split('_')[0]][job_name].as_dict()
-                         for job_name in self.running_jobs[spc.label] if 'conformer' not in job_name]
+                         for job_name in self.running_jobs[spc.label] if 'conformer' not in job_name]\
+                        + [self.job_dict[spc.label]['conformers'][int(job_name.split('mer')[1])].as_dict()
+                           for job_name in self.running_jobs[spc.label] if 'conformer' in job_name]
             content = yaml.dump(data=self.restart_dict, encoding='utf-8', allow_unicode=True)
             with open(self.restart_path, 'w') as f:
                 f.write(content)
