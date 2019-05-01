@@ -999,7 +999,7 @@ class ARCSpecies(object):
         """
         original_comment = self.transport_data.comment
         comment = 'L-J coefficients calculated by OneDMin using a DF-MP2/aug-cc-pVDZ potential energy surface ' \
-                  'with {0} as the collider'.format(bath_gas)
+                  'with {0} as the bath gas'.format(bath_gas)
         epsilon, sigma = None, None
         with open(lj_path, 'r') as f:
             lines = f.readlines()
