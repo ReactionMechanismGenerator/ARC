@@ -1040,14 +1040,7 @@ class Scheduler(object):
         if job.job_status[1] == 'done':
             if not os.path.isfile(job.local_path_to_output_file):
                 raise SchedulerError('Called check_freq_job with no output file')
-            ccparser = cclib.io.ccopen(str(job.local_path_to_output_file))
-            try:
-                data = ccparser.parse()
-                vibfreqs = data.vibfreqs
-            except AssertionError:
-                # In cclib/parser/qchemparser.py there's an assertion of `assert 'Beta MOs' in line`
-                # which sometimes fails (CClib issue https://github.com/cclib/cclib/issues/678)
-                vibfreqs = parser.parse_frequencies(path=str(job.local_path_to_output_file), software=job.software)
+            vibfreqs = parser.parse_frequencies(path=str(job.local_path_to_output_file), software=job.software)
             freq_ok = self.check_negative_freq(label=label, job=job, vibfreqs=vibfreqs)
             if not self.species_dict[label].is_ts and not freq_ok:
                 self.troubleshoot_negative_freq(label=label, job=job)
