@@ -81,8 +81,8 @@ class TestARC(unittest.TestCase):
                          't_count': None,
                          'use_bac': True,
                          'allow_nonisomorphic_2d': False,
-                         'ess_settings': {'gaussian': ['server1', 'server2'], 'onedmin': ['server1'],
-                                          'molpro': ['server2'], 'qchem': ['server1'], 'ssh': True},
+                         'ess_settings': {'gaussian': ['local', 'server2'], 'onedmin': ['server1'],
+                                          'molpro': ['server2'], 'qchem': ['server1']},
                          'species': [{'bond_corrections': {'C-C': 1, 'C-H': 6},
                                       'arkane_file': None,
                                       'E0': None,
@@ -277,11 +277,11 @@ class TestARC(unittest.TestCase):
     def test_check_ess_settings(self):
         """Test the check_ess_settings function"""
         ess_settings1 = {'gaussian': [self.servers[0]], 'molpro': [self.servers[1], self.servers[0]],
-                         'qchem': [self.servers[0]], 'ssh': False}
+                         'qchem': [self.servers[0]]}
         ess_settings2 = {'gaussian': self.servers[0], 'molpro': self.servers[1], 'qchem': self.servers[0]}
         ess_settings3 = {'gaussian': self.servers[0], 'molpro': [self.servers[1], self.servers[0]],
                          'qchem': self.servers[0]}
-        ess_settings4 = {'gaussian': self.servers[0], 'molpro': self.servers[1], 'qchem': self.servers[0], 'ssh': False}
+        ess_settings4 = {'gaussian': self.servers[0], 'molpro': self.servers[1], 'qchem': self.servers[0]}
 
         ess_settings1 = check_ess_settings(ess_settings1)
         ess_settings2 = check_ess_settings(ess_settings2)
@@ -292,7 +292,7 @@ class TestARC(unittest.TestCase):
 
         for ess in ess_list:
             for soft, server_list in ess.items():
-                self.assertTrue(soft in ['gaussian', 'molpro', 'qchem', 'ssh'])
+                self.assertTrue(soft in ['gaussian', 'molpro', 'qchem'])
                 self.assertIsInstance(server_list, (list, bool))
 
         with self.assertRaises(SettingsError):

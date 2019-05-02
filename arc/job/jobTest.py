@@ -28,7 +28,7 @@ class TestJob(unittest.TestCase):
         """
         cls.maxDiff = None
         cls.ess_settings = {'gaussian': ['server1', 'server2'], 'molpro': ['server2'],
-                            'qchem': ['server1'], 'onedmin': ['server1'], 'ssh': False}
+                            'qchem': ['server1'], 'onedmin': ['server1']}
         cls.job1 = Job(project='project_test', ess_settings=cls.ess_settings, species_name='tst_spc',
                        xyz='C 0.0 0.0 0.0', job_type='opt', level_of_theory='b3lyp/6-31+g(d)', multiplicity=1,
                        testing=True, project_directory=os.path.join(arc_path, 'Projects', 'project_test'),
@@ -61,7 +61,7 @@ class TestJob(unittest.TestCase):
                          'pivots': [],
                          'project_directory': os.path.join(arc_path, 'Projects', 'project_test'),
                          'scan': '',
-                         'server': None,
+                         'server': 'server1',
                          'shift': '',
                          'max_job_time': 120,
                          'comments': '',

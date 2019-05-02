@@ -584,7 +584,7 @@ H      -1.69944700    0.93441600   -0.11271200"""
 
     def test_append_conformers(self):
         """Test that ARC correctly parses its own conformer files"""
-        ess_settings = {'gaussian': 'server1', 'molpro': 'server2', 'qchem': 'server1', 'ssh': False}
+        ess_settings = {'gaussian': 'server1', 'molpro': 'server2', 'qchem': 'server1'}
         project_directory = os.path.join(arc_path, 'Projects', 'arc_project_for_testing_delete_after_usage4')
         spc1 = ARCSpecies(label=str('vinoxy'), smiles=str('C=C[O]'))
         rmgdb = make_rmg_database_object()
