@@ -3,5 +3,6 @@
 
 import job
 import ssh
+import local
 import inputs
 import submit
