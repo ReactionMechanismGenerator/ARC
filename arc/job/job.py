@@ -1086,8 +1086,9 @@ $end
             elif servers[self.server]['cluster_soft'].lower() == 'slurm':
                 # TODO: change node on Slurm
                 # delete present server run
-                logging.error('Job {name} has server status "{stat}" on {server}. Re-running job.'.format(
-                    name=self.job_name, stat=self.job_status[0], server=self.server))
+                if self.job_status[0] != 'done':
+                    logging.error('Job {name} has server status "{stat}" on {server}. Re-running job.'.format(
+                        name=self.job_name, stat=self.job_status[0], server=self.server))
                 ssh = SSHClient(self.server)
                 ssh.send_command_to_server(command=delete_command[servers[self.server]['cluster_soft']] +
                                            ' ' + str(self.job_id))
