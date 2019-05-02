@@ -26,9 +26,11 @@ class TestParser(unittest.TestCase):
         no3_path = os.path.join(arc_path, 'arc', 'testing', 'NO3_freq_QChem_fails_on_cclib.out')
         c2h6_path = os.path.join(arc_path, 'arc', 'testing', 'C2H6_freq_Qchem.out')
         so2oo_path = os.path.join(arc_path, 'arc', 'testing', 'SO2OO_CBS-QB3.log')
+        ch2o_path = os.path.join(arc_path, 'arc', 'testing', 'CH2O_freq_molpro.out')
         no3_freqs = parser.parse_frequencies(path=no3_path, software='QChem')
         c2h6_freqs = parser.parse_frequencies(path=c2h6_path, software='QChem')
         so2oo_freqs = parser.parse_frequencies(path=so2oo_path, software='Gaussian')
+        ch2o_freqs = parser.parse_frequencies(path=ch2o_path, software='Molpro')
         self.assertTrue(np.array_equal(no3_freqs,
                                        np.array([-390.08, -389.96, 822.75, 1113.23, 1115.24, 1195.35], np.float64)))
         self.assertTrue(np.array_equal(c2h6_freqs,
@@ -38,6 +40,8 @@ class TestParser(unittest.TestCase):
         self.assertTrue(np.array_equal(so2oo_freqs,
                                        np.array([302.51, 468.1488, 469.024, 484.198, 641.0067, 658.6316,
                                                  902.2888, 1236.9268, 1419.0826], np.float64)))
+        self.assertTrue(np.array_equal(ch2o_freqs,
+                                       np.array([1181.01, 1261.34, 1529.25, 1764.47, 2932.15, 3000.10], np.float64)))
 
     def test_parse_xyz_from_file(self):
         """Test parsing xyz from a file"""

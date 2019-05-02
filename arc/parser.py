@@ -45,8 +45,20 @@ def parse_frequencies(path, software):
                 if 'Frequencies --' in line:
                     freqs = np.append(freqs, [float(frq) for frq in line.split()[2:]])
                 line = f.readline()
+    elif software.lower() == 'molpro':
+        read = False
+        for line in lines:
+            if 'Nr' in line and '[1/cm]' in line:
+                continue
+            if read:
+                if line == os.linesep:
+                    read = False
+                    continue
+                freqs = np.append(freqs, [float(line.split()[-1])])
+            if 'Low' not in line and 'Vibration' in line and 'Wavenumber' in line:
+                read = True
     else:
-        raise ParserError('parse_frequencies() can currently only parse QChem and gaussian files,'
+        raise ParserError('parse_frequencies() can currently only parse Molpro, QChem and Gaussian files,'
                           ' got {0}'.format(software))
     logging.debug('Using parser.parse_frequencies. Determined frequencies are: {0}'.format(freqs))
     return freqs

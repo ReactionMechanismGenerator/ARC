@@ -290,11 +290,13 @@ class Scheduler(object):
                     if 'sp' not in self.output[species.label] and 'composite' not in self.output[species.label] \
                             and 'sp' not in self.job_dict[species.label]\
                             and 'composite' not in self.job_dict[species.label]:
-                        # No need to run any job for a monoatomic species other than sp (or composite if relevant)
+                        # No need to run opt/freq jobs for a monoatomic species other than sp (or composite if relevant)
                         if self.composite_method:
                             self.run_composite_job(species.label)
                         else:
                             self.run_sp_job(label=species.label)
+                        if self.job_types['onedmin']:
+                            self.run_onedmin_job(species.label)
                 elif (self.species_dict[species.label].initial_xyz is not None
                         or self.species_dict[species.label].final_xyz is not None) and not self.testing:
                     # For restarting purposes: check before running jobs whether they were already terminated
@@ -772,7 +774,7 @@ class Scheduler(object):
         Spawn a lennard-jones calculation using OneDMin
         """
         if 'onedmin' not in self.ess_settings:
-            logging.error('Cannot execute a Lennard_jones job without the OneDMin software')
+            logging.error('Cannot execute a Lennard Jones job without the OneDMin software')
         elif 'onedmin' not in self.job_dict[label]:
             self.run_job(label=label, xyz=self.species_dict[label].final_xyz, job_type='onedmin',
                          level_of_theory='')
@@ -1030,6 +1032,7 @@ class Scheduler(object):
                                     # and its geometry wasn't saved in the TSGuess objects
                                     tsg.products_xyz.append((label, self.species_dict[label].final_xyz))
                 self.save_restart_dict()
+                self.output[label]['geo'] = job.local_path_to_output_file  # will be overwritten when freq is done
                 return True  # run freq / sp / scan jobs on this optimized geometry
         else:
             self.troubleshoot_opt_jobs(label=label)
