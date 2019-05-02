@@ -1302,7 +1302,8 @@ class Scheduler(object):
                               if job_type not in ['conformers', 'opt', 'composite']])\
                 if any([job_type not in ['conformers', 'opt', 'composite']
                         for job_type in self.job_dict[label].keys()]) else datetime.timedelta(0)
-            self.species_dict[label].run_time = conf_time + opt_time + comp_time + other_time
+            self.species_dict[label].run_time = self.species_dict[label].run_time\
+                                                or conf_time + opt_time + comp_time + other_time
             logging.info('\nAll jobs for species {0} successfully converged.'
                          ' Run time: {1}'.format(label, self.species_dict[label].run_time))
         elif not self.output[label]['status']:
