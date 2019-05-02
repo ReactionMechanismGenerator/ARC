@@ -796,6 +796,15 @@ $end
             if not os.path.isfile(self.local_path_to_lj_file):
                 logging.warning('Lennard-Jones data file for {0} was not downloaded properly'.format(self.job_name))
 
+        # download molpro log file (in addition to the output file)
+        if self.software.lower() == 'molpro':
+            remote_log_file_path = os.path.join(self.remote_path, 'input.log')
+            local_log_file_path = os.path.join(self.local_path, 'output.log')
+            ssh.download_file(remote_file_path=remote_log_file_path, local_file_path=local_log_file_path)
+            if not os.path.isfile(local_log_file_path):
+                logging.warning('Could not download Molpro log file for {0} '
+                                '(this is not the output file)'.format(self.job_name))
+
     def run(self):
         """Execute the Job"""
         if self.fine:
