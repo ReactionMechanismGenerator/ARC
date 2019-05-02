@@ -1064,9 +1064,9 @@ def check_ess_settings(ess_settings):
                     raise SettingsError('Server name could only be a string. '
                                         'Got {0} which is {1}'.format(server, type(server)))
                 settings[software.lower()] = server_list
-            else:
-                raise SettingsError('Servers in the ess_settings dictionary could either be a string or a list of '
-                                    'strings. Got: {0} which is a {1}'.format(server_list, type(server_list)))
+        else:
+            raise SettingsError('Servers in the ess_settings dictionary could either be a string or a list of '
+                                'strings. Got: {0} which is a {1}'.format(server_list, type(server_list)))
     # run checks:
     for ess, server_list in settings.items():
         if ess.lower() not in ['gaussian', 'qchem', 'molpro', 'onedmin', 'orca']:
