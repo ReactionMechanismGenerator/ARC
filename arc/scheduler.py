@@ -1125,6 +1125,9 @@ class Scheduler(object):
                     label, self.species_dict[label].t1, txt))
             # Update restart dictionary and save the yaml restart file:
             self.save_restart_dict()
+            if self.species_dict[label].number_of_atoms == 1:
+                # save the geometry from the sp job for monoatomic species for which no opt/freq jobs will be spawned
+                self.output[label]['geo'] = job.local_path_to_output_file
         else:
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level_of_theory, job_type='sp')
 
