@@ -9,12 +9,16 @@ from __future__ import (absolute_import, division, print_function, unicode_liter
 import os
 import csv
 import logging
+import shutil
+import datetime
 
 from arc.settings import arc_path, servers, submit_filename, delete_command, t_max_format,\
     input_filename, output_filename, rotor_scan_resolution, list_available_nodes_command, levels_ess
 from arc.job.submit import submit_scripts
 from arc.job.inputs import input_files
 from arc.job.ssh import SSHClient
+from arc.job.local import get_last_modified_time, submit_job, delete_job, execute_command, check_job_status,\
+    rename_output
 from arc.arc_exceptions import JobError, SpeciesError
 
 ##################################################################
@@ -275,19 +279,19 @@ class Job(object):
             logging.error('basis_set: {0}'.format(self.basis_set))
             logging.error('Could not determine software for job {0}'.format(self.job_name))
             if 'gaussian' in self.ess_settings.keys():
-                logging.error('Setting it to gaussian')
+                logging.error('Setting it to Gaussian')
                 self.software = 'gaussian'
+            elif 'orca' in self.ess_settings.keys():
+                logging.error('Setting it to Orca')
+                self.software = 'orca'
             elif 'qchem' in self.ess_settings.keys():
-                logging.error('Setting it to qchem')
+                logging.error('Setting it to QChem')
                 self.software = 'qchem'
             elif 'molpro' in self.ess_settings.keys():
-                logging.error('Setting it to molpro')
+                logging.error('Setting it to Molpro')
                 self.software = 'molpro'
 
-        if self.ess_settings['ssh']:
-            self.server = server if server is not None else self.ess_settings[self.software][0]
-        else:
-            self.server = None
+        self.server = server if server is not None else self.ess_settings[self.software][0]
 
         if self.software == 'molpro':
             # molpro's memory is in MW, 1500 MW should be enough as an initial general memory requirement assessment
@@ -402,7 +406,8 @@ class Job(object):
         """
         Write a completed ARCJob into the completed_jobs.csv file.
         """
-        self.determine_job_status()
+        if self.job_status != ['done', 'done']:
+            self.determine_job_status()
         csv_path = os.path.join(arc_path, 'completed_jobs.csv')
         if not os.path.isfile(csv_path):
             # check file, make index file and write headers if file doesn't exists
@@ -461,7 +466,7 @@ class Job(object):
             os.makedirs(self.local_path)
         with open(os.path.join(self.local_path, submit_filename[servers[self.server]['cluster_soft']]), 'wb') as f:
             f.write(self.submit)
-        if self.ess_settings['ssh'] and not self.testing:
+        if self.server != 'local' and not self.testing:
             self._upload_submit_file()
 
     def write_input_file(self):
@@ -529,9 +534,9 @@ wf,spin={spin},charge={charge};}}
                 else:
                     job_type_1 = 'opt=(calcfc, noeigentest)'
                 if self.checkfile is not None:
-                    job_type_1 += 'guess=read'
+                    job_type_1 += ' guess=read'
                 else:
-                    job_type_1 += 'guess=mix'
+                    job_type_1 += ' guess=mix'
                 if self.fine:
                     # Note that the Acc2E argument is not available in Gaussian03
                     fine = 'scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
@@ -570,9 +575,9 @@ wf,spin={spin},charge={charge};}}
             if self.software == 'gaussian':
                 job_type_2 = 'freq iop(7/33=1) scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
                 if self.checkfile is not None:
-                    job_type_1 += 'guess=read'
+                    job_type_1 += ' guess=read'
                 else:
-                    job_type_1 += 'guess=mix'
+                    job_type_1 += ' guess=mix'
             elif self.software == 'qchem':
                 job_type_1 = 'freq'
             elif self.software == 'molpro':
@@ -592,9 +597,9 @@ wf,spin={spin},charge={charge};}}
                     else:
                         job_type_1 = 'opt=(calcfc, noeigentest, tight)'
                 if self.checkfile is not None:
-                    job_type_1 += 'guess=read'
+                    job_type_1 += ' guess=read'
                 else:
-                    job_type_1 += 'guess=mix'
+                    job_type_1 += ' guess=mix'
             elif self.software == 'qchem':
                 self.input += """@@@
 
@@ -629,9 +634,9 @@ $end
             if self.software == 'gaussian':
                 job_type_1 = 'scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
                 if self.checkfile is not None:
-                    job_type_1 += 'guess=read'
+                    job_type_1 += ' guess=read'
                 else:
-                    job_type_1 += 'guess=mix'
+                    job_type_1 += ' guess=mix'
             elif self.software == 'qchem':
                 job_type_1 = 'sp'
             elif self.software == 'molpro':
@@ -650,9 +655,9 @@ $end
                     else:
                         job_type_1 = 'opt=(calcfc, noeigentest, tight)'
                 if self.checkfile is not None:
-                    job_type_1 += 'guess=read'
+                    job_type_1 += ' guess=read'
                 else:
-                    job_type_1 += 'guess=mix'
+                    job_type_1 += ' guess=mix'
             else:
                 raise JobError('Currently composite methods are only supported in gaussian')
 
@@ -665,9 +670,9 @@ $end
                     job_type_1 = 'opt=(modredundant, calcfc, noeigentest, maxStep=5) scf=(tight, direct)' \
                                  ' integral=(grid=ultrafine, Acc2E=12)'
                 if self.checkfile is not None:
-                    job_type_1 += 'guess=read'
+                    job_type_1 += ' guess=read'
                 else:
-                    job_type_1 += 'guess=mix'
+                    job_type_1 += ' guess=mix'
                 scan_string = ''.join([str(num) + ' ' for num in self.scan])
                 if not divmod(360, self.scan_res):
                     raise JobError('Scan job got an illegal rotor scan resolution of {0}'.format(self.scan_res))
@@ -721,10 +726,13 @@ $end
                 os.makedirs(self.local_path)
             with open(os.path.join(self.local_path, input_filename[self.software]), 'w') as f:
                 f.write(self.input)
-            if self.ess_settings['ssh']:
+            if self.server != 'local':
                 self._upload_input_file()
-                if self.checkfile is not None and os.path.isfile(self.checkfile):
-                    self._upload_check_file(local_check_file_path=self.checkfile)
+            else:
+                self.initial_time = get_last_modified_time(
+                    file_path=os.path.join(self.local_path, input_filename[self.software]))
+            if self.checkfile is not None and os.path.isfile(self.checkfile):
+                self._upload_check_file(local_check_file_path=self.checkfile)
 
     def _upload_submit_file(self):
         ssh = SSHClient(self.server)
@@ -754,13 +762,18 @@ $end
         self.initial_time = ssh.get_last_modified_time(remote_file_path=remote_file_path)
 
     def _upload_check_file(self, local_check_file_path=None):
-        ssh = SSHClient(self.server)
-        remote_check_file_path = os.path.join(self.remote_path, 'check.chk')
-        local_check_file_path = os.path.join(self.local_path, 'check.chk') if remote_check_file_path is None\
-            else local_check_file_path
-        if os.path.isfile(local_check_file_path) and self.software.lower() == 'gaussian':
-            ssh.upload_file(remote_file_path=remote_check_file_path, local_file_path=local_check_file_path)
-            logging.debug('uploading checkpoint file for {0}'.format(self.job_name))
+        if self.server != 'local':
+            ssh = SSHClient(self.server)
+            remote_check_file_path = os.path.join(self.remote_path, 'check.chk')
+            local_check_file_path = os.path.join(self.local_path, 'check.chk') if remote_check_file_path is None\
+                else local_check_file_path
+            if os.path.isfile(local_check_file_path) and self.software.lower() == 'gaussian':
+                ssh.upload_file(remote_file_path=remote_check_file_path, local_file_path=local_check_file_path)
+                logging.debug('uploading checkpoint file for {0}'.format(self.job_name))
+        else:
+            # running locally, just copy the check file to the job folder
+            new_check_file_path = os.path.join(self.local_path, 'check.chk')
+            shutil.copyfile(local_check_file_path, new_check_file_path)
 
     def _download_output_file(self):
         """Download ESS output, orbitals check file, and the Gaussian check file, if relevant"""
@@ -772,7 +785,6 @@ $end
         if not os.path.isfile(self.local_path_to_output_file):
             raise JobError('output file for {0} was not downloaded properly'.format(self.job_name))
         self.final_time = ssh.get_last_modified_time(remote_file_path=remote_file_path)
-        self.determine_run_time()
 
         # download orbitals FChk file
         if self.job_type == 'orbitals':
@@ -820,7 +832,7 @@ $end
         self.write_submit_script()
         logging.debug('writing input file...')
         self.write_input_file()
-        if self.ess_settings['ssh']:
+        if self.server != 'local':
             ssh = SSHClient(self.server)
             logging.debug('submitting job...')
             # submit_job returns job server status and job server id
@@ -831,14 +843,20 @@ $end
                 self.write_submit_script()
                 self.write_input_file()
                 self.job_status[0], self.job_id = ssh.submit_job(remote_path=self.remote_path)
+        else:
+            # running locally
+            self.job_status[0], self.job_id = submit_job(path=self.local_path)
 
     def delete(self):
         """Delete a running Job"""
         logging.debug('Deleting job {name} for {label}'.format(name=self.job_name, label=self.species_name))
-        if self.ess_settings['ssh']:
+        if self.server != 'local':
             ssh = SSHClient(self.server)
-            logging.debug('deleting job...')
+            logging.debug('deleting job on {0}...'.format(self.server))
             ssh.delete_job(self.job_id)
+        else:
+            logging.debug('deleting job locally...')
+            delete_job(job_id=self.job_id)
 
     def determine_job_status(self):
         """Determine the Job's status"""
@@ -876,25 +894,26 @@ $end
         """
         lines1, lines2 = list(), list()
         content = ''
-        ssh = SSHClient(self.server)
         cluster_soft = servers[self.server]['cluster_soft'].lower()
         if cluster_soft in ['oge', 'sge']:
-            remote_file_path = os.path.join(self.remote_path, 'out.txt')
             local_file_path1 = os.path.join(self.local_path, 'out.txt')
-            try:
-                ssh.download_file(remote_file_path=remote_file_path, local_file_path=local_file_path1)
-            except (TypeError, IOError) as e:
-                logging.warning('Got the following error when trying to download out.txt for {0}:'.format(
-                    self.job_name))
-                logging.warning(e.message)
-            remote_file_path = os.path.join(self.remote_path, 'err.txt')
             local_file_path2 = os.path.join(self.local_path, 'err.txt')
-            try:
-                ssh.download_file(remote_file_path=remote_file_path, local_file_path=local_file_path2)
-            except (TypeError, IOError) as e:
-                logging.warning('Got the following error when trying to download err.txt for {0}:'.format(
-                    self.job_name))
-                logging.warning(e.message)
+            if self.server != 'local':
+                ssh = SSHClient(self.server)
+                remote_file_path = os.path.join(self.remote_path, 'out.txt')
+                try:
+                    ssh.download_file(remote_file_path=remote_file_path, local_file_path=local_file_path1)
+                except (TypeError, IOError) as e:
+                    logging.warning('Got the following error when trying to download out.txt for {0}:'.format(
+                        self.job_name))
+                    logging.warning(e.message)
+                remote_file_path = os.path.join(self.remote_path, 'err.txt')
+                try:
+                    ssh.download_file(remote_file_path=remote_file_path, local_file_path=local_file_path2)
+                except (TypeError, IOError) as e:
+                    logging.warning('Got the following error when trying to download err.txt for {0}:'.format(
+                        self.job_name))
+                    logging.warning(e.message)
             if os.path.isfile(local_file_path1):
                 with open(local_file_path1, 'r') as f:
                     lines1 = f.readlines()
@@ -905,20 +924,25 @@ $end
             content += '\n'
             content += ''.join([line for line in lines2])
         elif cluster_soft == 'slurm':
-            respond = ssh.send_command_to_server(command='ls -alF', remote_path=self.remote_path)
+            if self.server != 'local':
+                ssh = SSHClient(self.server)
+                response = ssh.send_command_to_server(command='ls -alF', remote_path=self.remote_path)
+            else:
+                response = execute_command('ls -alF {0}'.format(self.local_path))
             files = list()
-            for line in respond[0][0].splitlines():
+            for line in response[0][0].splitlines():
                 files.append(line.split()[-1])
             for file_name in files:
                 if 'slurm' in file_name and '.out' in file_name:
-                    remote_file_path = os.path.join(self.remote_path, file_name)
                     local_file_path = os.path.join(self.local_path, file_name)
-                    try:
-                        ssh.download_file(remote_file_path=remote_file_path, local_file_path=local_file_path)
-                    except (TypeError, IOError) as e:
-                        logging.warning('Got the following error when trying to download {0} for {1}:'.format(
-                            file_name, self.job_name))
-                        logging.warning(e.message)
+                    if self.server != 'local':
+                        remote_file_path = os.path.join(self.remote_path, file_name)
+                        try:
+                            ssh.download_file(remote_file_path=remote_file_path, local_file_path=local_file_path)
+                        except (TypeError, IOError) as e:
+                            logging.warning('Got the following error when trying to download {0} for {1}:'.format(
+                                file_name, self.job_name))
+                            logging.warning(e.message)
                     if os.path.isfile(local_file_path):
                         with open(local_file_path, 'r') as f:
                             lines1 = f.readlines()
@@ -930,23 +954,32 @@ $end
         """
         Possible statuses: `initializing`, `running`, `errored on node xx`, `done`
         """
-        if self.ess_settings['ssh']:
+        if self.server != 'local':
             ssh = SSHClient(self.server)
             return ssh.check_job_status(self.job_id)
+        else:
+            return check_job_status(self.job_id)
 
     def _check_job_ess_status(self):
         """
         Check the status of the job ran by the electronic structure software (ESS)
         Possible statuses: `initializing`, `running`, `errored: {error type / message}`, `unconverged`, `done`
         """
-        if os.path.exists(self.local_path_to_output_file):
-            os.remove(self.local_path_to_output_file)
-        if os.path.exists(self.local_path_to_orbitals_file):
-            os.remove(self.local_path_to_orbitals_file)
-        if os.path.exists(self.local_path_to_check_file):
-            os.remove(self.local_path_to_check_file)
-        if self.ess_settings['ssh']:
-            self._download_output_file()  # also downloads the Gaussian check file if exists
+        if self.server != 'local':
+            if os.path.exists(self.local_path_to_output_file):
+                os.remove(self.local_path_to_output_file)
+            if os.path.exists(self.local_path_to_orbitals_file):
+                os.remove(self.local_path_to_orbitals_file)
+            if os.path.exists(self.local_path_to_check_file):
+                os.remove(self.local_path_to_check_file)
+            self._download_output_file()  # also downloads the Gaussian check file and orbital file if exist
+        else:
+            # If running locally, just rename the output file to "output.out" for consistency between software
+            if self.final_time is None:
+                self.final_time = get_last_modified_time(
+                    file_path=os.path.join(self.local_path, output_filename[self.software]))
+            rename_output(local_file_path=self.local_path_to_output_file, software=self.software)
+        self.determine_run_time()
         with open(self.local_path_to_output_file, 'r') as f:
             lines = f.readlines()
             if self.software == 'gaussian':
@@ -1042,13 +1075,13 @@ $end
                 score = 0
                 for line in lines:
                     if 'LennardJones' in line and len(line.split()) == 1:
-                        score +=1
+                        score += 1
                     elif 'Epsilons[1/cm]' in line and len(line.split()) == 3:
-                        score +=1
+                        score += 1
                     elif 'Sigmas[angstrom]' in line and len(line.split()) == 3:
-                        score +=1
+                        score += 1
                     elif 'End' in line and len(line.split()) == 1:
-                        score +=1
+                        score += 1
                 if score == 4:
                     return 'done'
                 else:
@@ -1056,57 +1089,59 @@ $end
 
     def troubleshoot_server(self):
         """Troubleshoot server errors"""
-        if self.ess_settings['ssh']:
-            if servers[self.server]['cluster_soft'].lower() == 'oge':
-                # delete present server run
-                logging.error('Job {name} has server status "{stat}" on {server}. Troubleshooting by changing node.'.
-                              format(name=self.job_name, stat=self.job_status[0], server=self.server))
-                ssh = SSHClient(self.server)
-                ssh.send_command_to_server(command=delete_command[servers[self.server]['cluster_soft']] +
-                                           ' ' + str(self.job_id))
-                # find available nodes
-                stdout, _ = ssh.send_command_to_server(
-                    command=list_available_nodes_command[servers[self.server]['cluster_soft']])
-                for line in stdout:
-                    node = line.split()[0].split('.')[0].split('node')[1]
-                    if servers[self.server]['cluster_soft'] == 'OGE' and '0/0/8' in line \
-                            and node not in self.server_nodes:
-                        self.server_nodes.append(node)
-                        break
-                else:
-                    logging.error('Could not find an available node on the server')
-                    # TODO: continue troubleshooting; if all else fails, put job to sleep
-                    #  and try again searching for a node
-                    return
-                # modify submit file
-                content = ssh.read_remote_file(remote_path=self.remote_path,
-                                               filename=submit_filename[servers[self.server]['cluster_soft']])
-                for i, line in enumerate(content):
-                    if '#$ -l h=node' in line:
-                        content[i] = '#$ -l h=node{0}.cluster'.format(node)
-                        break
-                else:
-                    content.insert(7, '#$ -l h=node{0}.cluster'.format(node))
-                content = ''.join(content)  # convert list into a single string, not to upset paramiko
-                # resubmit
-                ssh.upload_file(remote_file_path=os.path.join(self.remote_path,
-                                submit_filename[servers[self.server]['cluster_soft']]), file_string=content)
-                self.run()
-            elif servers[self.server]['cluster_soft'].lower() == 'slurm':
-                # TODO: change node on Slurm
-                # delete present server run
-                if self.job_status[0] != 'done':
-                    logging.error('Job {name} has server status "{stat}" on {server}. Re-running job.'.format(
-                        name=self.job_name, stat=self.job_status[0], server=self.server))
-                ssh = SSHClient(self.server)
-                ssh.send_command_to_server(command=delete_command[servers[self.server]['cluster_soft']] +
-                                           ' ' + str(self.job_id))
-                # resubmit
-                self.run()
+        if servers[self.server]['cluster_soft'].lower() == 'oge':
+            # delete present server run
+            logging.error('Job {name} has server status "{stat}" on {server}. Troubleshooting by changing node.'.
+                          format(name=self.job_name, stat=self.job_status[0], server=self.server))
+            ssh = SSHClient(self.server)
+            ssh.send_command_to_server(command=delete_command[servers[self.server]['cluster_soft']] +
+                                       ' ' + str(self.job_id))
+            # find available nodes
+            stdout, _ = ssh.send_command_to_server(
+                command=list_available_nodes_command[servers[self.server]['cluster_soft']])
+            for line in stdout:
+                node = line.split()[0].split('.')[0].split('node')[1]
+                if servers[self.server]['cluster_soft'] == 'OGE' and '0/0/8' in line \
+                        and node not in self.server_nodes:
+                    self.server_nodes.append(node)
+                    break
+            else:
+                logging.error('Could not find an available node on the server')
+                # TODO: continue troubleshooting; if all else fails, put job to sleep
+                #  and try again searching for a node
+                return
+            # modify submit file
+            content = ssh.read_remote_file(remote_path=self.remote_path,
+                                           filename=submit_filename[servers[self.server]['cluster_soft']])
+            for i, line in enumerate(content):
+                if '#$ -l h=node' in line:
+                    content[i] = '#$ -l h=node{0}.cluster'.format(node)
+                    break
+            else:
+                content.insert(7, '#$ -l h=node{0}.cluster'.format(node))
+            content = ''.join(content)  # convert list into a single string, not to upset paramiko
+            # resubmit
+            ssh.upload_file(remote_file_path=os.path.join(self.remote_path,
+                            submit_filename[servers[self.server]['cluster_soft']]), file_string=content)
+            self.run()
+        elif servers[self.server]['cluster_soft'].lower() == 'slurm':
+            # TODO: change node on Slurm
+            # delete present server run
+            if self.job_status[0] != 'done':
+                logging.error('Job {name} has server status "{stat}" on {server}. Re-running job.'.format(
+                    name=self.job_name, stat=self.job_status[0], server=self.server))
+            ssh = SSHClient(self.server)
+            ssh.send_command_to_server(command=delete_command[servers[self.server]['cluster_soft']] +
+                                       ' ' + str(self.job_id))
+            # resubmit
+            self.run()
 
     def determine_run_time(self):
-        """Determine the run time"""
+        """
+        Determine the run time
+        Round to seconds
+        """
         if self.initial_time is not None and self.final_time is not None:
-            self.run_time = self.final_time - self.initial_time
-        else:
-            self.run_time = None
+            time_delta = self.final_time - self.initial_time
+            remainder = time_delta.microseconds > 5e5
+            self.run_time = datetime.timedelta(seconds=time_delta.seconds + remainder)
