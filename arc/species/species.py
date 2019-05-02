@@ -1018,9 +1018,12 @@ class ARCSpecies(object):
             comment += '; The molecule is linear'
         else:
             shape_index = 2
-        dipole_moment = parse_dipole_moment(opt_path) or 0
-        if dipole_moment:
-            comment += '; Dipole moment was calculated at the {0} level of theory'.format(opt_level)
+        if self.number_of_atoms > 1:
+            dipole_moment = parse_dipole_moment(opt_path) or 0
+            if dipole_moment:
+                comment += '; Dipole moment was calculated at the {0} level of theory'.format(opt_level)
+        else:
+            dipole_moment = 0
         polar = self.transport_data.polarizability or (0, str('angstroms^3'))
         if freq_path:
             polar = (parse_polarizability(freq_path), str('angstroms^3'))
