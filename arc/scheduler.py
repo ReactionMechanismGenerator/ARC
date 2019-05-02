@@ -1032,6 +1032,7 @@ class Scheduler(object):
                                     # and its geometry wasn't saved in the TSGuess objects
                                     tsg.products_xyz.append((label, self.species_dict[label].final_xyz))
                 self.save_restart_dict()
+                self.output[label]['geo'] = job.local_path_to_output_file  # will be overwritten when freq is done
                 return True  # run freq / sp / scan jobs on this optimized geometry
         else:
             self.troubleshoot_opt_jobs(label=label)
