@@ -998,7 +998,7 @@ def get_git_commit():
     if os.path.exists(os.path.join(arc_path, '.git')):
         try:
             return subprocess.check_output(['git', 'log', '--format=%H%n%cd', '-1'], cwd=arc_path).splitlines()
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, OSError):
             return '', ''
     else:
         return '', ''
