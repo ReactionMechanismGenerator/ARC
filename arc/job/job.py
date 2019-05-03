@@ -113,6 +113,8 @@ class Job(object):
         self.spin = self.multiplicity - 1
         self.number_of_radicals = number_of_radicals
         self.xyz = xyz
+        if self.xyz is None:
+            raise ValueError('{0} Job of species {1} got None for xyz'.format(job_type, self.species_name))
         self.n_atoms = self.xyz.count('\n')
         self.conformer = conformer
         self.is_ts = is_ts
