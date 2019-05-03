@@ -35,13 +35,13 @@ import string
 # }
 servers = {
     'server1': {
-        'cluster_soft': 'OGE',  # Oracle Grid Engine
+        'cluster_soft': 'OGE',
         'address': 'server1.host.edu',
         'un': '<username>',
         'key': 'path_to_rsa_key',
     },
     'server2': {
-        'cluster_soft': 'Slurm',  # Simple Linux Utility for Resource Management
+        'cluster_soft': 'Slurm',
         'address': 'server2.host.edu',
         'un': '<username>',
         'key': 'path_to_rsa_key',
@@ -51,6 +51,16 @@ servers = {
         'cluster_soft': 'OGE',
         'un': '<username>',
     },
+}
+
+# List here servers you'd like to associate with specific ESS.
+# An ordered list of servers indicates priority
+# Keeping this dictionary empty will cause ARC to scan for software on the servers defined above
+global_ess_settings = {
+    'gaussian': ['local', 'server2'],
+    'molpro': 'server2',
+    'qchem': 'server1',
+    'onedmin': 'server1',
 }
 
 # List here job types to execute by default
@@ -63,16 +73,6 @@ default_job_types = {'conformers': True,      # defaults to True if not specifie
                      'orbitals': False,       # defaults to False if not specified
                      'lennard_jones': False,  # defaults to False if not specified
                      }
-
-# List here servers you'd like to associate with specific ESS.
-# An ordered list of servers indicates priority
-# Keeping this dictionary empty will cause ARC to scan for software on the servers defined above
-global_ess_settings = {
-    'gaussian': ['local', 'server2'],
-    'molpro': 'server2',
-    'qchem': 'server1',
-    'onedmin': 'server1',
-}
 
 # List here (complete or partial) phrases of methods or basis sets you'd like to associate to specific ESS
 # Avoid ascribing the same phrase to more than one server, this may cause undeterministic assignment of software
