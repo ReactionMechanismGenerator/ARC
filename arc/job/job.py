@@ -461,9 +461,14 @@ class Job(object):
                 architecture = '\n#$ -l harpertown'
             else:
                 architecture = '\n#$ -l magnycours'
-        self.submit = submit_scripts[self.server][self.software.lower()].format(
-            name=self.job_server_name, un=un, t_max=t_max, mem_cpu=int(self.memory / cpus), cpus=cpus,
-            architecture=architecture)
+        try:
+            self.submit = submit_scripts[self.server][self.software.lower()].format(
+                name=self.job_server_name, un=un, t_max=t_max, mem_cpu=int(self.memory / cpus), cpus=cpus,
+                architecture=architecture)
+        except KeyError:
+            logging.error('Could not find submit script for server {0}, make sure your submit scripts '
+                          '(under arc/job/submit.py) are updated with the servers defined.'.format(self.server))
+            raise
         if not os.path.exists(self.local_path):
             os.makedirs(self.local_path)
         with open(os.path.join(self.local_path, submit_filename[servers[self.server]['cluster_soft']]), 'wb') as f:
