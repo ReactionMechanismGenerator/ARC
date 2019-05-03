@@ -29,6 +29,7 @@ from arc import parser
 from arc.job.job import Job
 from arc.arc_exceptions import SpeciesError, SchedulerError, TSError
 from arc.job.ssh import SSHClient
+from arc.job.local import check_running_jobs_ids
 from arc.species.species import ARCSpecies, TSGuess, determine_rotor_symmetry
 from arc.species.converter import get_xyz_string, molecules_from_xyz, check_isomorphism
 from arc.ts.atst import autotst
@@ -1318,8 +1319,11 @@ class Scheduler(object):
         """
         self.servers_jobs_ids = list()
         for server in self.servers:
-            ssh = SSHClient(server)
-            self.servers_jobs_ids.extend(ssh.check_running_jobs_ids())
+            if server != 'local':
+                ssh = SSHClient(server)
+                self.servers_jobs_ids.extend(ssh.check_running_jobs_ids())
+            else:
+                self.servers_jobs_ids.extend(check_running_jobs_ids())
 
     def troubleshoot_negative_freq(self, label, job):
         """
