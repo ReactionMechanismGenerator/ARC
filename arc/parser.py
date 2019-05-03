@@ -14,6 +14,7 @@ import os
 from arkane.statmech import determine_qm_software
 from arkane.qchem import QChemLog
 from arkane.gaussian import GaussianLog
+from arkane.molpro import MolproLog
 
 from arc.species.converter import get_xyz_string, standardize_xyz_string
 from arc.arc_exceptions import InputError, ParserError
@@ -169,8 +170,16 @@ def parse_dipole_moment(path):
             elif read:
                 dipole_moment = float(line.split()[-1])
                 read = False
+    elif isinstance(log, MolproLog):
+        # example:
+        #  Dipole moment /Debye                   2.96069859     0.00000000     0.00000000
+        for line in lines:
+            if 'dipole moment' in line.lower() and '/debye' in line.lower():
+                splits = line.split()
+                dm_x, dm_y, dm_z = float(splits[-3]), float(splits[-2]), float(splits[-1])
+                dipole_moment = (dm_x ** 2 + dm_y ** 2 + dm_z ** 2) ** 0.5
     else:
-        raise ParserError('Currently dipole moments can only be parsed from either Gaussian or QChem '
+        raise ParserError('Currently dipole moments can only be parsed from either Gaussian, Molpro, or QChem '
                           'optimization output files')
     if dipole_moment is None:
         raise ParserError('Could not parse the dipole moment')
