@@ -1076,5 +1076,5 @@ def check_ess_settings(ess_settings):
             if not isinstance(server, bool) and server.lower() not in servers.keys():
                 server_names = [name for name in servers.keys()]
                 raise SettingsError('Recognized servers are {0}. Got: {1}'.format(server_names, server))
-    logging.info('\nUsing the following ESS settings:\n{0}'.format(settings))
+    logging.info('\nUsing the following ESS settings:\n{0}\n'.format(settings))
     return settings
