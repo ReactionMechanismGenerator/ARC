@@ -1810,6 +1810,8 @@ class Scheduler(object):
                                        + ' (conformer' + str(job_name) + ')' + ', '
             content += '\n\n'
             logging.info(content)
+        else:
+            logging.info('\nRestarting ARC. Did not identify any jobs spawned in previous sessions.\n')
 
     def save_restart_dict(self):
         """
