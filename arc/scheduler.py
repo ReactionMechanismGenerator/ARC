@@ -1476,7 +1476,7 @@ class Scheduler(object):
         if conformer != -1:
             xyz = self.species_dict[label].conformers[conformer]
         else:
-            xyz = self.species_dict[label].initial_xyz
+            xyz = self.species_dict[label].final_xyz or self.species_dict[label].initial_xyz
         if 'Unknown reason' in job.job_status[1] and 'change_node' not in job.ess_trsh_methods:
             job.ess_trsh_methods.append('change_node')
             job.troubleshoot_server()
