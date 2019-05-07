@@ -1193,11 +1193,10 @@ class Scheduler(object):
                                 if abs(v - v_last) > inconsistency_ab * max(v_list):
                                     # Two consecutive points on the scan differ by more than `inconsistency_ab` kJ/mol.
                                     # This is a serious inconsistency. Invalidate
-                                    error_message = 'Rotor scan of {label} between pivots {pivots} is inconsistent by' \
-                                                    'more than {incons_ab} kJ/mol between two consecutive points.' \
-                                                    ' Invalidating rotor.'.format(label=label, pivots=job.pivots,
-                                                                                  incons_ab=inconsistency_ab *
-                                                                                  max(v_list))
+                                    error_message = 'Rotor scan of {label} between pivots {pivots} is inconsistent ' \
+                                                    'by more than {incons_ab:.2f} kJ/mol between two consecutive ' \
+                                                    'points. Invalidating rotor.'.format(
+                                        label=label, pivots=job.pivots, incons_ab=inconsistency_ab * max(v_list))
                                     logging.error(error_message)
                                     message += error_message + '; '
                                     invalidate = True
