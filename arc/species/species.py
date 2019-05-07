@@ -646,8 +646,8 @@ class ARCSpecies(object):
             elif self.number_of_rotors > 1:
                 logging.info('\nFound {0} possible rotors for {1}'.format(self.number_of_rotors, self.label))
             if self.number_of_rotors > 0:
-                logging.info('Pivot list(s) for {0}: {1}\n'.format(self.label,
-                                            [self.rotors_dict[i]['pivots'] for i in range(self.number_of_rotors)]))
+                logging.info('Pivot list(s) for {0}: {1}\n'.format(
+                    self.label, [self.rotors_dict[i]['pivots'] for i in range(self.number_of_rotors)]))
 
     def set_dihedral(self, scan, pivots, deg_increment):
         """
@@ -713,7 +713,7 @@ class ARCSpecies(object):
             atomCoords=(coordinates, str('angstrom')),
             energy=(0.0, str('kcal/mol'))  # Only needed to avoid error
         )
-        settings = type(str(''), (), dict(symmetryPath=str('symmetry'), scratchDirectory=scr_dir))()  # Creates anonymous class
+        settings = type(str(''), (), dict(symmetryPath=str('symmetry'), scratchDirectory=scr_dir))()
         pgc = PointGroupCalculator(settings, unique_id, qmdata)
         pg = pgc.calculate()
         if pg is not None:
@@ -1160,7 +1160,7 @@ class TSGuess(object):
             if arrow not in self.rmg_reaction:
                 raise TSError('Could not read the reaction string. Expected to find " <=> ". '
                               'Got: {0}'.format(self.rmg_reaction))
-            sides = self.rmg_reaction.split(arrow)
+            sides = self.rmg_reaction.label.split(arrow)
             reac = sides[0]
             prod = sides[1]
             if plus in reac:
@@ -1287,8 +1287,7 @@ def _get_possible_conformers_rdkit(mol):
         mp = Chem.AllChem.MMFFGetMoleculeProperties(rd_mol, mmffVariant=str('MMFF94s'))
         if mp is not None:
             ff = Chem.AllChem.MMFFGetMoleculeForceField(rd_mol, mp, confId=i)
-            E = ff.CalcEnergy()
-            energies.append(E)
+            energies.append(ff.CalcEnergy())
             cf = rd_mol.GetConformer(i)
             xyz = []
             for j in range(cf.GetNumAtoms()):
