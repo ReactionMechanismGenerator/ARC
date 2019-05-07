@@ -1943,5 +1943,6 @@ def sum_time_delta(timedelta_list):
     """A helper function for summing datetime.timedelta objects"""
     result = datetime.timedelta(0)
     for timedelta in timedelta_list:
-        result += timedelta
+        if timedelta is not None:
+            result += timedelta
     return result
