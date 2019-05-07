@@ -865,8 +865,8 @@ class Scheduler(object):
                             if i == 0:
                                 logging.warn('Most stable conformer for species {0} with structure {1} was found to '
                                              'be NON-isomorphic with the 2D graph representation {2}. Searching for a '
-                                             'different conformer that is isomorphic...'.format(label, b_mol.toSMILES(),
-                                                                            self.species_dict[label].mol.toSMILES()))
+                                             'different conformer that is isomorphic...'.format(
+                                    label, b_mol.toSMILES(), self.species_dict[label].mol.toSMILES()))
                 else:
                     smiles_list = list()
                     for xyz in xyzs:
@@ -1211,8 +1211,8 @@ class Scheduler(object):
                                 if abs(v - v_list[0]) > maximum_barrier:
                                     # The barrier for the hinderd rotor is higher than `maximum_barrier` kJ/mol.
                                     # Invalidate
-                                    warn_message = 'Rotor scan of {label} between pivots {pivots} has a barrier larger' \
-                                                   ' than {maximum_barrier} kJ/mol. Invalidating rotor.'.format(
+                                    warn_message = 'Rotor scan of {label} between pivots {pivots} has a barrier ' \
+                                                   'larger than {maximum_barrier} kJ/mol. Invalidating rotor.'.format(
                                                     label=label, pivots=job.pivots, maximum_barrier=maximum_barrier)
                                     logging.warn(warn_message)
                                     message += warn_message + '; '
@@ -1237,9 +1237,10 @@ class Scheduler(object):
                                     if v < min_v - 2:
                                         min_v = v
                                         min_index = j
-                                self.species_dict[label].set_dihedral(scan=self.species_dict[label].rotors_dict[i]['scan'],
-                                                                      pivots=self.species_dict[label].rotors_dict[i]['pivots'],
-                                                                      deg_increment=min_index*rotor_scan_resolution)
+                                self.species_dict[label].set_dihedral(
+                                    scan=self.species_dict[label].rotors_dict[i]['scan'],
+                                    pivots=self.species_dict[label].rotors_dict[i]['pivots'],
+                                    deg_increment=min_index*rotor_scan_resolution)
                                 self.delete_all_species_jobs(label)
                                 self.run_opt_job(label)  # run opt on new initial_xyz with the desired dihedral
                             else:
