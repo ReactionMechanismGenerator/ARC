@@ -30,8 +30,7 @@ class TestScheduler(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        cls.ess_settings = {'gaussian': ['server1'], 'molpro': ['server2', 'server1'], 'qchem': ['server1'],
-                            'ssh': False}
+        cls.ess_settings = {'gaussian': ['server1'], 'molpro': ['server2', 'server1'], 'qchem': ['server1']}
         cls.project_directory = os.path.join(arc_path, 'Projects', 'arc_project_for_testing_delete_after_usage3')
         cls.spc1 = ARCSpecies(label=str('methylamine'), smiles=str('CN'))
         cls.spc2 = ARCSpecies(label=str('C2H6'), smiles=str('CC'))

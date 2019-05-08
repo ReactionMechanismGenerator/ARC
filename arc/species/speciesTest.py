@@ -584,7 +584,7 @@ H      -1.69944700    0.93441600   -0.11271200"""
 
     def test_append_conformers(self):
         """Test that ARC correctly parses its own conformer files"""
-        ess_settings = {'gaussian': 'server1', 'molpro': 'server2', 'qchem': 'server1', 'ssh': False}
+        ess_settings = {'gaussian': 'server1', 'molpro': 'server2', 'qchem': 'server1'}
         project_directory = os.path.join(arc_path, 'Projects', 'arc_project_for_testing_delete_after_usage4')
         spc1 = ARCSpecies(label=str('vinoxy'), smiles=str('C=C[O]'))
         rmgdb = make_rmg_database_object()
@@ -719,6 +719,38 @@ H       1.32129900    0.71837500    0.38017700
                                                            'level of theory; Polarizability was calculated at the '
                                                            'CBS-QB3 level of theory; Rotational Relaxation Collision '
                                                            'Number was not determined, default value is 2')
+
+    def test_xyz_from_dict(self):
+        """Test correctly assigning xyz from dictionary"""
+        species_dict1 = {'label': 'tst_spc_1', 'xyz': 'C 0.1 0.5 0.0'}
+        species_dict2 = {'label': 'tst_spc_2', 'initial_xyz': 'C 0.2 0.5 0.0'}
+        species_dict3 = {'label': 'tst_spc_3', 'final_xyz': 'C 0.3 0.5 0.0'}
+        species_dict4 = {'label': 'tst_spc_4', 'xyz': ['C 0.4 0.5 0.0', 'C 0.5 0.5 0.0']}
+
+        spc1 = ARCSpecies(species_dict=species_dict1)
+        spc2 = ARCSpecies(species_dict=species_dict2)
+        spc3 = ARCSpecies(species_dict=species_dict3)
+        spc4 = ARCSpecies(species_dict=species_dict4)
+
+        self.assertIsNone(spc1.initial_xyz)
+        self.assertIsNone(spc1.final_xyz)
+        self.assertEqual(spc1.conformers, ['C 0.1 0.5 0.0'])
+        self.assertEqual(spc1.conformer_energies, [None])
+
+        self.assertEqual(spc2.initial_xyz, 'C 0.2 0.5 0.0')
+        self.assertIsNone(spc2.final_xyz)
+        self.assertEqual(spc2.conformers, [])
+        self.assertEqual(spc2.conformer_energies, [])
+
+        self.assertIsNone(spc3.initial_xyz)
+        self.assertEqual(spc3.final_xyz, 'C 0.3 0.5 0.0')
+        self.assertEqual(spc3.conformers, [])
+        self.assertEqual(spc3.conformer_energies, [])
+
+        self.assertIsNone(spc4.initial_xyz)
+        self.assertIsNone(spc4.final_xyz)
+        self.assertEqual(spc4.conformers, ['C 0.4 0.5 0.0', 'C 0.5 0.5 0.0'])
+        self.assertEqual(spc4.conformer_energies, [None, None])
 
     @classmethod
     def tearDownClass(cls):

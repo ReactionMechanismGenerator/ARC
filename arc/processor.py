@@ -255,7 +255,7 @@ class Processor(object):
                 rxn.dh_rxn298 = sum([product.thermo.getEnthalpy(298) for product in arkane_spc_dict.values()
                                      if product.label in rxn.products])\
                     - sum([reactant.thermo.getEnthalpy(298) for reactant in arkane_spc_dict.values()
-                                       if reactant.label in rxn.reactants])
+                           if reactant.label in rxn.reactants])
                 arkane_rxn = arkane_reaction(label=str(rxn.label),
                                              reactants=[str(label + '_') for label in arkane_spc_dict.keys()
                                                         if label in rxn.reactants],
@@ -267,7 +267,7 @@ class Processor(object):
                 try:
                     kinetics_job.execute(outputFile=output_file_path, plot=False)
                 except (ValueError, OverflowError) as e:
-                    # ValueError: One or both of the barrier heights of -9.35259 and 62.6834 kJ/mol encountered in Eckart
+                    # ValueError: One or both of the barrier heights of -9.3526 and 62.683 kJ/mol encountered in Eckart
                     # method are invalid.
                     #
                     #   File "/home/alongd/Code/RMG-Py/arkane/kinetics.py", line 136, in execute

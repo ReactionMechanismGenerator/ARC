@@ -394,8 +394,8 @@ class ARCSpecies(object):
         self.rxn_label = species_dict['rxn_label'] if 'rxn_label' in species_dict else None
         self.long_thermo_description = species_dict['long_thermo_description']\
             if 'long_thermo_description' in species_dict else ''
-        if 'initial_xyz' in species_dict:
-            self.process_xyz(species_dict['initial_xyz'])
+        self.initial_xyz = standardize_xyz_string(species_dict['initial_xyz']) if 'initial_xyz' in species_dict\
+            else None
         self.final_xyz = standardize_xyz_string(species_dict['final_xyz']) if 'final_xyz' in species_dict else None
         if 'xyz' in species_dict and self.initial_xyz is None and self.final_xyz is None:
             self.process_xyz(species_dict['xyz'])
@@ -646,8 +646,8 @@ class ARCSpecies(object):
             elif self.number_of_rotors > 1:
                 logging.info('\nFound {0} possible rotors for {1}'.format(self.number_of_rotors, self.label))
             if self.number_of_rotors > 0:
-                logging.info('Pivot list(s) for {0}: {1}\n'.format(self.label,
-                                            [self.rotors_dict[i]['pivots'] for i in range(self.number_of_rotors)]))
+                logging.info('Pivot list(s) for {0}: {1}\n'.format(
+                    self.label, [self.rotors_dict[i]['pivots'] for i in range(self.number_of_rotors)]))
 
     def set_dihedral(self, scan, pivots, deg_increment):
         """
@@ -713,7 +713,7 @@ class ARCSpecies(object):
             atomCoords=(coordinates, str('angstrom')),
             energy=(0.0, str('kcal/mol'))  # Only needed to avoid error
         )
-        settings = type(str(''), (), dict(symmetryPath=str('symmetry'), scratchDirectory=scr_dir))()  # Creates anonymous class
+        settings = type(str(''), (), dict(symmetryPath=str('symmetry'), scratchDirectory=scr_dir))()
         pgc = PointGroupCalculator(settings, unique_id, qmdata)
         pg = pgc.calculate()
         if pg is not None:
@@ -1018,9 +1018,12 @@ class ARCSpecies(object):
             comment += '; The molecule is linear'
         else:
             shape_index = 2
-        dipole_moment = parse_dipole_moment(opt_path) or 0
-        if dipole_moment:
-            comment += '; Dipole moment was calculated at the {0} level of theory'.format(opt_level)
+        if self.number_of_atoms > 1:
+            dipole_moment = parse_dipole_moment(opt_path) or 0
+            if dipole_moment:
+                comment += '; Dipole moment was calculated at the {0} level of theory'.format(opt_level)
+        else:
+            dipole_moment = 0
         polar = self.transport_data.polarizability or (0, str('angstroms^3'))
         if freq_path:
             polar = (parse_polarizability(freq_path), str('angstroms^3'))
@@ -1122,9 +1125,9 @@ class TSGuess(object):
         if self.family is not None:
             ts_dict['family'] = self.family
         if self.rmg_reaction is not None:
-            rxn = ' <=> '.join([' + '.join([spc.molecule[0].toSMILES() for spc in self.rmg_reaction.reactants]),
-                               ' + '.join([spc.molecule[0].toSMILES() for spc in self.rmg_reaction.products])])
-            ts_dict['rmg_reaction'] = rxn
+            rxn_string = ' <=> '.join([' + '.join([spc.molecule[0].toSMILES() for spc in self.rmg_reaction.reactants]),
+                                      ' + '.join([spc.molecule[0].toSMILES() for spc in self.rmg_reaction.products])])
+            ts_dict['rmg_reaction'] = rxn_string
         return ts_dict
 
     def from_dict(self, ts_dict):
@@ -1150,14 +1153,16 @@ class TSGuess(object):
         if self.family is None and self.method.lower() in ['kinbot', 'autotst']:
             # raise TSError('No family specified for method {0}'.format(self.method))
             logging.warning('No family specified for method {0}'.format(self.method))
-        self.rmg_reaction = ts_dict['rmg_reaction'] if 'rmg_reaction' in ts_dict else None
-        if self.rmg_reaction is not None:
+        if 'rmg_reaction' not in ts_dict:
+            self.rmg_reaction = None
+        else:
+            rxn_string = ts_dict['rmg_reaction']
             plus = ' + '
             arrow = ' <=> '
-            if arrow not in self.rmg_reaction:
+            if arrow not in rxn_string:
                 raise TSError('Could not read the reaction string. Expected to find " <=> ". '
-                              'Got: {0}'.format(self.rmg_reaction))
-            sides = self.rmg_reaction.split(arrow)
+                              'Got: {0}'.format(rxn_string))
+            sides = rxn_string.split(arrow)
             reac = sides[0]
             prod = sides[1]
             if plus in reac:
@@ -1284,8 +1289,7 @@ def _get_possible_conformers_rdkit(mol):
         mp = Chem.AllChem.MMFFGetMoleculeProperties(rd_mol, mmffVariant=str('MMFF94s'))
         if mp is not None:
             ff = Chem.AllChem.MMFFGetMoleculeForceField(rd_mol, mp, confId=i)
-            E = ff.CalcEnergy()
-            energies.append(E)
+            energies.append(ff.CalcEnergy())
             cf = rd_mol.GetConformer(i)
             xyz = []
             for j in range(cf.GetNumAtoms()):

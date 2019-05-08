@@ -1,7 +1,7 @@
 allow_nonisomorphic_2d: false
 composite_method: ''
 conformer_level: b97-d3/6-311+g(d,p)
-ess_settings: {gaussian: server1, molpro: server2, qchem: server1, ssh: true}
+ess_settings: {gaussian: server1, molpro: server2, qchem: server1}
 fine: true
 freq_level: wb97xd/6-311++g(d,p)
 generate_conformers: true

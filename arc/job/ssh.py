@@ -41,7 +41,7 @@ class SSHClient(object):
 
     def send_command_to_server(self, command, remote_path=''):
         """
-        Send commands to server. `command` is an array of string commands to send.
+        Send commands to server. `command` is either a sting or an array of string commands to send.
         If remote_path is not an empty string, the command will be executed in the directory path it points to.
         Returns lists of stdin, stdout, stderr corresponding to the commands sent.
         """
@@ -52,6 +52,8 @@ class SSHClient(object):
             ssh.connect(hostname=self.address, username=self.un)
         except:
             return '', 'paramiko failed to connect'
+        if isinstance(command, list):
+            command = '; '.join(command)
         if remote_path != '':
             # execute command in remote_path directory.
             # Since each `.exec_command()` is a single session, `cd` has to be added to all commands.
@@ -119,8 +121,8 @@ class SSHClient(object):
         try:
             sftp.get(remotepath=remote_file_path, localpath=local_file_path)
         except IOError:
-            logging.warning('Got an IOError when trying to download file {0} from {1}'.format(remote_file_path,
-                                                                                              self.server))
+            logging.debug('Got an IOError when trying to download file {0} from {1}'.format(remote_file_path,
+                                                                                            self.server))
         sftp.close()
         ssh.close()
 
@@ -168,27 +170,7 @@ class SSHClient(object):
             logging.info('\n\n')
             logging.error('Could not check status of job {0} due to {1}'.format(job_id, stderr))
             return 'connection error'
-        for status_line in stdout:
-            if str(job_id) in status_line:
-                break
-        else:
-            return 'done'
-        status = status_line.split()[4]
-        if status.lower() in ['r', 'qw']:
-            return 'running'
-        else:
-            if servers[self.server]['cluster_soft'].lower() == 'oge':
-                if '.cluster' in status_line:
-                    try:
-                        return 'errored on node ' + status_line.split()[-1].split('@')[1].split('.')[0][-2:]
-                    except IndexError:
-                        return 'errored'
-                else:
-                    return 'errored'
-            elif servers[self.server]['cluster_soft'].lower() == 'slurm':
-                return 'errored on node ' + status_line.split()[-1][-2:]
-            else:
-                raise ValueError('Unknown server {0}'.format(self.server))
+        return check_job_status_in_stdout(job_id=job_id, stdout=stdout, server=self.server)
 
     def delete_job(self, job_id):
         """
@@ -203,7 +185,7 @@ class SSHClient(object):
         """
         running_jobs_ids = list()
         cmd = check_status_command[servers[self.server]['cluster_soft']] + ' -u ' + servers[self.server]['un']
-        stdout, _ = self.send_command_to_server(cmd)
+        stdout = self.send_command_to_server(cmd)[0]
         for i, status_line in enumerate(stdout):
             if (servers[self.server]['cluster_soft'].lower() == 'slurm' and i > 0)\
                     or (servers[self.server]['cluster_soft'].lower() == 'oge' and i > 1):
@@ -214,8 +196,8 @@ class SSHClient(object):
         """Submit a job"""
         job_status = ''
         job_id = 0
-        cmd = submit_command[servers[self.server]['cluster_soft']] + ' ' +\
-              submit_filename[servers[self.server]['cluster_soft']]
+        cmd = submit_command[servers[self.server]['cluster_soft']] + ' '\
+            + submit_filename[servers[self.server]['cluster_soft']]
         stdout, stderr = self.send_command_to_server(cmd, remote_path)
         if len(stderr) > 0 or len(stdout) == 0:
             job_status = 'errored'
@@ -265,7 +247,7 @@ class SSHClient(object):
         return sftp, ssh
 
     def get_last_modified_time(self, remote_file_path):
-        """returns the last modified time of `remote_file` in a datetime format"""
+        """returns the last modified time of `remote_file_path` in a datetime format"""
         sftp, ssh = self.connect()
         try:
             timestamp = sftp.stat(remote_file_path).st_mtime
@@ -277,8 +259,12 @@ class SSHClient(object):
 
 
 def write_file(sftp, remote_file_path, local_file_path='', file_string=''):
-    """Write content into a remote file (either write content or upload)"""
-    with sftp.open(remote_file_path, "w") as f_remote:
+    """
+    Write a file in `file_path`
+    If `file_string` is given, write it as the content of the file
+    Else, if `local_file_path` is given, copy it to `remote_file_path`
+    """
+    with sftp.open(remote_file_path, 'w') as f_remote:
         if file_string:
             f_remote.write(file_string)
         elif local_file_path:
@@ -288,5 +274,32 @@ def write_file(sftp, remote_file_path, local_file_path='', file_string=''):
         else:
             raise ValueError('Could not upload file to server. Either `file_string` or `local_file_path`'
                              ' must be specified')
+
+
+def check_job_status_in_stdout(job_id, stdout, server):
+    """A helper function for checking job status"""
+    if not isinstance(stdout, list):
+        stdout = stdout.splitlines()
+    for status_line in stdout:
+        if str(job_id) in status_line:
+            break
+    else:
+        return 'done'
+    status = status_line.split()[4]
+    if status.lower() in ['r', 'qw', 't']:
+        return 'running'
+    else:
+        if servers[server]['cluster_soft'].lower() == 'oge':
+            if '.cluster' in status_line:
+                try:
+                    return 'errored on node ' + status_line.split()[-1].split('@')[1].split('.')[0][-2:]
+                except IndexError:
+                    return 'errored'
+            else:
+                return 'errored'
+        elif servers[server]['cluster_soft'].lower() == 'slurm':
+            return 'errored on node ' + status_line.split()[-1][-2:]
+        else:
+            raise ValueError('Unknown cluster software {0}'.format(servers[server]['cluster_soft']))
 
 # TODO: delete scratch files of a failed job: ssh nodeXX; rm scratch/dhdhdhd/job_number

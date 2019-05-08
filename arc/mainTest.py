@@ -35,7 +35,7 @@ class TestARC(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        cls.servers = [server for server in servers.keys()]
+        cls.servers = servers.keys()
         cls.job_types1 = {'conformers': True,
                           'opt': True,
                           'fine_grid': False,
@@ -81,8 +81,8 @@ class TestARC(unittest.TestCase):
                          't_count': None,
                          'use_bac': True,
                          'allow_nonisomorphic_2d': False,
-                         'ess_settings': {'gaussian': ['server1', 'server2'], 'onedmin': ['server1'],
-                                          'molpro': ['server2'], 'qchem': ['server1'], 'ssh': True},
+                         'ess_settings': {'gaussian': ['local', 'server2'], 'onedmin': ['server1'],
+                                          'molpro': ['server2'], 'qchem': ['server1']},
                          'species': [{'bond_corrections': {'C-C': 1, 'C-H': 6},
                                       'arkane_file': None,
                                       'E0': None,
@@ -277,30 +277,32 @@ class TestARC(unittest.TestCase):
     def test_check_ess_settings(self):
         """Test the check_ess_settings function"""
         ess_settings1 = {'gaussian': [self.servers[0]], 'molpro': [self.servers[1], self.servers[0]],
-                         'qchem': [self.servers[0]], 'ssh': False}
+                         'qchem': [self.servers[0]]}
         ess_settings2 = {'gaussian': self.servers[0], 'molpro': self.servers[1], 'qchem': self.servers[0]}
         ess_settings3 = {'gaussian': self.servers[0], 'molpro': [self.servers[1], self.servers[0]],
                          'qchem': self.servers[0]}
-        ess_settings4 = {'gaussian': self.servers[0], 'molpro': self.servers[1], 'qchem': self.servers[0], 'ssh': False}
+        ess_settings4 = {'gaussian': self.servers[0], 'molpro': self.servers[1], 'qchem': self.servers[0]}
+        ess_settings5 = {'gaussian': 'local', 'molpro': self.servers[1], 'qchem': self.servers[0]}
 
         ess_settings1 = check_ess_settings(ess_settings1)
         ess_settings2 = check_ess_settings(ess_settings2)
         ess_settings3 = check_ess_settings(ess_settings3)
         ess_settings4 = check_ess_settings(ess_settings4)
+        ess_settings5 = check_ess_settings(ess_settings5)
 
-        ess_list = [ess_settings1, ess_settings2, ess_settings3, ess_settings4]
+        ess_list = [ess_settings1, ess_settings2, ess_settings3, ess_settings4, ess_settings5]
 
         for ess in ess_list:
             for soft, server_list in ess.items():
-                self.assertTrue(soft in ['gaussian', 'molpro', 'qchem', 'ssh'])
-                self.assertIsInstance(server_list, (list, bool))
+                self.assertTrue(soft in ['gaussian', 'molpro', 'qchem'])
+                self.assertIsInstance(server_list, list)
 
         with self.assertRaises(SettingsError):
-            ess_settings5 = {'nosoft': ['server1']}
-            check_ess_settings(ess_settings5)
-        with self.assertRaises(SettingsError):
-            ess_settings6 = {'gaussian': ['noserver']}
+            ess_settings6 = {'nosoft': ['server1']}
             check_ess_settings(ess_settings6)
+        with self.assertRaises(SettingsError):
+            ess_settings7 = {'gaussian': ['noserver']}
+            check_ess_settings(ess_settings7)
 
     def test_time_lapse(self):
         """Test the time_lapse() function"""

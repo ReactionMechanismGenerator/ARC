@@ -29,6 +29,7 @@ from arc import parser
 from arc.job.job import Job
 from arc.arc_exceptions import SpeciesError, SchedulerError, TSError
 from arc.job.ssh import SSHClient
+from arc.job.local import check_running_jobs_ids
 from arc.species.species import ARCSpecies, TSGuess, determine_rotor_symmetry
 from arc.species.converter import get_xyz_string, molecules_from_xyz, check_isomorphism
 from arc.ts.atst import autotst
@@ -864,8 +865,8 @@ class Scheduler(object):
                             if i == 0:
                                 logging.warn('Most stable conformer for species {0} with structure {1} was found to '
                                              'be NON-isomorphic with the 2D graph representation {2}. Searching for a '
-                                             'different conformer that is isomorphic...'.format(label, b_mol.toSMILES(),
-                                                                            self.species_dict[label].mol.toSMILES()))
+                                             'different conformer that is isomorphic...'.format(
+                                    label, b_mol.toSMILES(), self.species_dict[label].mol.toSMILES()))
                 else:
                     smiles_list = list()
                     for xyz in xyzs:
@@ -1125,6 +1126,9 @@ class Scheduler(object):
                     label, self.species_dict[label].t1, txt))
             # Update restart dictionary and save the yaml restart file:
             self.save_restart_dict()
+            if self.species_dict[label].number_of_atoms == 1:
+                # save the geometry from the sp job for monoatomic species for which no opt/freq jobs will be spawned
+                self.output[label]['geo'] = job.local_path_to_output_file
         else:
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level_of_theory, job_type='sp')
 
@@ -1189,11 +1193,10 @@ class Scheduler(object):
                                 if abs(v - v_last) > inconsistency_ab * max(v_list):
                                     # Two consecutive points on the scan differ by more than `inconsistency_ab` kJ/mol.
                                     # This is a serious inconsistency. Invalidate
-                                    error_message = 'Rotor scan of {label} between pivots {pivots} is inconsistent by' \
-                                                    'more than {incons_ab} kJ/mol between two consecutive points.' \
-                                                    ' Invalidating rotor.'.format(label=label, pivots=job.pivots,
-                                                                                  incons_ab=inconsistency_ab *
-                                                                                  max(v_list))
+                                    error_message = 'Rotor scan of {label} between pivots {pivots} is inconsistent ' \
+                                                    'by more than {incons_ab:.2f} kJ/mol between two consecutive ' \
+                                                    'points. Invalidating rotor.'.format(
+                                        label=label, pivots=job.pivots, incons_ab=inconsistency_ab * max(v_list))
                                     logging.error(error_message)
                                     message += error_message + '; '
                                     invalidate = True
@@ -1208,8 +1211,8 @@ class Scheduler(object):
                                 if abs(v - v_list[0]) > maximum_barrier:
                                     # The barrier for the hinderd rotor is higher than `maximum_barrier` kJ/mol.
                                     # Invalidate
-                                    warn_message = 'Rotor scan of {label} between pivots {pivots} has a barrier larger' \
-                                                   ' than {maximum_barrier} kJ/mol. Invalidating rotor.'.format(
+                                    warn_message = 'Rotor scan of {label} between pivots {pivots} has a barrier ' \
+                                                   'larger than {maximum_barrier} kJ/mol. Invalidating rotor.'.format(
                                                     label=label, pivots=job.pivots, maximum_barrier=maximum_barrier)
                                     logging.warn(warn_message)
                                     message += warn_message + '; '
@@ -1234,9 +1237,10 @@ class Scheduler(object):
                                     if v < min_v - 2:
                                         min_v = v
                                         min_index = j
-                                self.species_dict[label].set_dihedral(scan=self.species_dict[label].rotors_dict[i]['scan'],
-                                                                      pivots=self.species_dict[label].rotors_dict[i]['pivots'],
-                                                                      deg_increment=min_index*rotor_scan_resolution)
+                                self.species_dict[label].set_dihedral(
+                                    scan=self.species_dict[label].rotors_dict[i]['scan'],
+                                    pivots=self.species_dict[label].rotors_dict[i]['pivots'],
+                                    deg_increment=min_index*rotor_scan_resolution)
                                 self.delete_all_species_jobs(label)
                                 self.run_opt_job(label)  # run opt on new initial_xyz with the desired dihedral
                             else:
@@ -1288,18 +1292,21 @@ class Scheduler(object):
             if self.species_dict[label].is_ts:
                 self.species_dict[label].make_ts_report()
                 logging.info(self.species_dict[label].ts_report + '\n')
+            zero_delta = datetime.timedelta(0)
             conf_time = max([job.run_time for job in self.job_dict[label]['conformers'].values()])\
-                if 'conformers' in self.job_dict[label] else datetime.timedelta(0)
+                if 'conformers' in self.job_dict[label] else zero_delta
             opt_time = sum_time_delta([job.run_time for job in self.job_dict[label]['opt'].values()])\
-                if 'opt' in self.job_dict[label] else datetime.timedelta(0)
+                if 'opt' in self.job_dict[label] else zero_delta
             comp_time = sum_time_delta([job.run_time for job in self.job_dict[label]['composite'].values()])\
-                if 'composite' in self.job_dict[label] else datetime.timedelta(0)
+                if 'composite' in self.job_dict[label] else zero_delta
             other_time = max([sum_time_delta([job.run_time for job in job_dictionary.values()])
                               for job_type, job_dictionary in self.job_dict[label].items()
                               if job_type not in ['conformers', 'opt', 'composite']])\
                 if any([job_type not in ['conformers', 'opt', 'composite']
-                        for job_type in self.job_dict[label].keys()]) else datetime.timedelta(0)
-            self.species_dict[label].run_time = conf_time + opt_time + comp_time + other_time
+                        for job_type in self.job_dict[label].keys()]) else zero_delta
+            self.species_dict[label].run_time = self.species_dict[label].run_time\
+                                                or (conf_time or zero_delta) + (opt_time or zero_delta)\
+                                                + (comp_time or zero_delta) + (other_time or zero_delta)
             logging.info('\nAll jobs for species {0} successfully converged.'
                          ' Run time: {1}'.format(label, self.species_dict[label].run_time))
         elif not self.output[label]['status']:
@@ -1314,8 +1321,11 @@ class Scheduler(object):
         """
         self.servers_jobs_ids = list()
         for server in self.servers:
-            ssh = SSHClient(server)
-            self.servers_jobs_ids.extend(ssh.check_running_jobs_ids())
+            if server != 'local':
+                ssh = SSHClient(server)
+                self.servers_jobs_ids.extend(ssh.check_running_jobs_ids())
+            else:
+                self.servers_jobs_ids.extend(check_running_jobs_ids())
 
     def troubleshoot_negative_freq(self, label, job):
         """
@@ -1468,7 +1478,7 @@ class Scheduler(object):
         if conformer != -1:
             xyz = self.species_dict[label].conformers[conformer]
         else:
-            xyz = self.species_dict[label].initial_xyz
+            xyz = self.species_dict[label].final_xyz or self.species_dict[label].initial_xyz
         if 'Unknown reason' in job.job_status[1] and 'change_node' not in job.ess_trsh_methods:
             job.ess_trsh_methods.append('change_node')
             job.troubleshoot_server()
@@ -1802,6 +1812,8 @@ class Scheduler(object):
                                        + ' (conformer' + str(job_name) + ')' + ', '
             content += '\n\n'
             logging.info(content)
+        else:
+            logging.info('\nRestarting ARC. Did not identify any jobs spawned in previous sessions.\n')
 
     def save_restart_dict(self):
         """
@@ -1933,5 +1945,6 @@ def sum_time_delta(timedelta_list):
     """A helper function for summing datetime.timedelta objects"""
     result = datetime.timedelta(0)
     for timedelta in timedelta_list:
-        result += timedelta
+        if timedelta is not None:
+            result += timedelta
     return result

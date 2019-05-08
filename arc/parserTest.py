@@ -95,6 +95,10 @@ class TestParser(unittest.TestCase):
         dm2 = parser.parse_dipole_moment(path2)
         self.assertEqual(dm2, 2.0664)
 
+        path3 = os.path.join(arc_path, 'arc', 'testing', 'CH2O_freq_molpro.out')
+        dm3 = parser.parse_dipole_moment(path3)
+        self.assertAlmostEqual(dm3, 2.8840, 4)
+
     def test_parse_polarizability(self):
         """Test parsing the polarizability moment from a freq job output file"""
         path1 = os.path.join(arc_path, 'arc', 'testing', 'SO2OO_CBS-QB3.log')

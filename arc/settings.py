@@ -10,14 +10,11 @@ import string
 
 ##################################################################
 
-# If ARC is run locally and communication with servers is desired,
-# complete the following server dictionary.
+# If ARC communication with remote servers is desired, complete the following server dictionary.
 # Instructions for RSA key generation can be found here:
 # https://www.digitalocean.com/community/tutorials/how-to-set-up-ssh-keys--2
-# The `precedence` key is optional, and will cause ARC to use the respective server
-# for the specified ESS even if it finds it first on a different server.
-# If this aut-ESS determination method doesn't work for you, you could also
-# just pass an `ess_settings` dictionary to ARC() with the desired software/server as keys/values.
+# If ARC is being executed on a server, and ESS are available on that server, define a server named 'local',
+# for which only the cluster software and user name are required.
 # servers = {
 #     'pharos': {
 #         'cluster_soft': 'OGE',  # Oracle Grid Engine (Sun Grin Engine)
@@ -30,22 +27,40 @@ import string
 #         'address': 'rmg.mit.edu',
 #         'un': '<username>',
 #         'key': '/home/<username>/.ssh/id_rsa',
-#     }
+#     },
+#    'local': {
+#        'cluster_soft': 'OGE',
+#        'un': '<username>',
+#    },
 # }
 servers = {
     'server1': {
-        'cluster_soft': 'OGE',  # Oracle Grid Engine
+        'cluster_soft': 'OGE',
         'address': 'server1.host.edu',
         'un': '<username>',
         'key': 'path_to_rsa_key',
     },
     'server2': {
-        'cluster_soft': 'Slurm',  # Simple Linux Utility for Resource Management
+        'cluster_soft': 'Slurm',
         'address': 'server2.host.edu',
         'un': '<username>',
         'key': 'path_to_rsa_key',
         'cpus': 48,  # optional (default: 8)
-    }
+    },
+    'local': {
+        'cluster_soft': 'OGE',
+        'un': '<username>',
+    },
+}
+
+# List here servers you'd like to associate with specific ESS.
+# An ordered list of servers indicates priority
+# Keeping this dictionary empty will cause ARC to scan for software on the servers defined above
+global_ess_settings = {
+    'gaussian': ['local', 'server2'],
+    'molpro': 'server2',
+    'qchem': 'server1',
+    'onedmin': 'server1',
 }
 
 # List here job types to execute by default
@@ -58,16 +73,6 @@ default_job_types = {'conformers': True,      # defaults to True if not specifie
                      'orbitals': False,       # defaults to False if not specified
                      'lennard_jones': False,  # defaults to False if not specified
                      }
-
-# List here servers you'd like to associate with specific ESS.
-# An ordered list of servers indicates priority
-# Keeping this dictionary empty will cause ARC to scan for software on the servers defined above
-global_ess_settings = {
-    'gaussian': ['server1', 'server2'],
-    'molpro': 'server2',
-    'qchem': 'server1',
-    'onedmin': 'server1',
-}
 
 # List here (complete or partial) phrases of methods or basis sets you'd like to associate to specific ESS
 # Avoid ascribing the same phrase to more than one server, this may cause undeterministic assignment of software
@@ -135,5 +140,5 @@ rotor_scan_resolution = 8.0  # degrees. Default: 8.0
 maximum_barrier = 40    # a rotor threshold (kJ/mol) above which the rotor is not considered. Default: 40 (~10 kcal/mol)
 minimum_barrier = 0.5   # a rotor threshold (kJ/mol) below which it is considered a FreeRotor. Default: 0.5 kJ/mol
 inconsistency_az = 5    # maximum allowed inconsistency (kJ/mol) between initial and final rotor scan points. Default: 5
-inconsistency_ab = 0.5  # maximum allowed inconsistency between consecutive points in the scan given as a fraction
-#  of the maximum scan energy. Default: 50%
+inconsistency_ab = 0.3  # maximum allowed inconsistency between consecutive points in the scan given as a fraction
+#  of the maximum scan energy. Default: 30%

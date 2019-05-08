@@ -23,13 +23,18 @@ from rmgpy.reaction import Reaction
 
 import arc.rmgdb as rmgdb
 from arc.settings import arc_path, default_levels_of_theory, check_status_command, servers, valid_chars,\
-    global_ess_settings, default_job_types
+    default_job_types
 from arc.scheduler import Scheduler
 from arc.arc_exceptions import InputError, SettingsError, SpeciesError
 from arc.species.species import ARCSpecies
 from arc.reaction import ARCReaction
 from arc.processor import Processor
 from arc.job.ssh import SSHClient
+
+try:
+    from arc.settings import global_ess_settings
+except ImportError:
+    global_ess_settings = None
 
 ##################################################################
 
@@ -333,7 +338,7 @@ class ARC(object):
         if not self.ess_settings:
             # don't override self.ess_settings if determined from an input dictionary
             self.ess_settings = check_ess_settings(ess_settings or global_ess_settings)
-        if self.ess_settings is None or not self.ess_settings:
+        if not self.ess_settings:
             self.determine_ess_settings()
         self.restart_dict = self.as_dict()
         self.determine_model_chemistry()
@@ -830,123 +835,114 @@ class ARC(object):
 
     def determine_ess_settings(self, diagnostics=False):
         """
-        Determine whether ARC is executed remotely
-        and if so the available ESS software and the cluster software of the server
+        Determine where each ESS is available, locally (in running on a server) and/or on remote servers.
         if `diagnostics` is True, this method will not raise errors, and will print its findings
         """
         if self.ess_settings is not None and not diagnostics:
             self.ess_settings = check_ess_settings(self.ess_settings)
-            self.ess_settings['ssh'] = True
             return
 
-        t0 = time.time()
         if diagnostics:
+            t0 = time.time()
             logging.info('\n\n\n ***** Running ESS diagnostics: *****\n')
 
         # os.system('. ~/.bashrc')  # TODO This might be a security risk - rethink it
 
-        if 'SSH_CONNECTION' in os.environ:
-            # ARC is executed on a server, proceed
-            logging.info('\n\nExecuting QM jobs locally.')
-            if diagnostics:
-                logging.info('ARC is being executed on a server (found "SSH_CONNECTION" in the os.environ dictionary)')
-                logging.info('Using distutils.spawn.find_executable() to find ESS')
-            self.ess_settings['ssh'] = False
+        for software in ['gaussian', 'molpro', 'qchem', 'orca', 'onedmin']:
+            self.ess_settings[software] = list()
+
+        # first look for ESS locally (e.g., when running ARC itself on a server)
+        if 'SSH_CONNECTION' in os.environ and diagnostics:
+            logging.info('Found "SSH_CONNECTION" in the os.environ dictionary, '
+                         'using distutils.spawn.find_executable() to find ESS')
+        if 'local' in servers:
             g03 = find_executable('g03')
             g09 = find_executable('g09')
             g16 = find_executable('g16')
             if g03 or g09 or g16:
                 if diagnostics:
                     logging.info('Found Gaussian: g03={0}, g09={1}, g16={2}'.format(g03, g09, g16))
-                self.ess_settings['gaussian'] = True
-            else:
-                if diagnostics:
-                    logging.info('Did NOT find Gaussian: g03={0}, g09={1}, g16={2}'.format(g03, g09, g16))
-                self.ess_settings['gaussian'] = False
+                self.ess_settings['gaussian'] = ['local']
             qchem = find_executable('qchem')
             if qchem:
-                self.ess_settings['qchem'] = True
-            else:
-                if diagnostics:
-                    logging.info('Did not find QChem')
-                self.ess_settings['qchem'] = False
+                self.ess_settings['qchem'] = ['local']
+            qchem = find_executable('orca')
+            if qchem:
+                self.ess_settings['orca'] = ['local']
             molpro = find_executable('molpro')
             if molpro:
-                self.ess_settings['molpro'] = True
-            else:
+                self.ess_settings['molpro'] = ['local']
+            if any([val for val in self.ess_settings.values()]):
                 if diagnostics:
-                    logging.info('Did not find Molpro')
-                self.ess_settings['molpro'] = False
-            if self.ess_settings['gaussian']:
-                logging.info('Found Gaussian')
-            if self.ess_settings['qchem']:
-                logging.info('Found QChem')
-            if self.ess_settings['molpro']:
-                logging.info('Found Molpro')
+                    logging.info('Found the following ESS on the local machine:')
+                    logging.info([software for software, val in self.ess_settings.items() if val])
+                    logging.info('\n')
+                else:
+                    logging.info('Did not find ESS on the local machine\n\n')
         else:
-            # ARC is executed locally, communication with a server needs to be established
+            logging.info("\nNot searching for ESS locally ('local' wasn't specified in the servers dictionary)\n")
+
+        # look for ESS on remote servers ARC has access to
+        logging.info('\n\nMapping servers...\n')
+        for server in servers.keys():
             if diagnostics:
-                logging.info('ARC is being executed on a PC'
-                             ' (did not find "SSH_CONNECTION" in the os.environ dictionary)')
-            self.ess_settings['ssh'] = True
-            logging.info('\n\nMapping servers...\n')
-            # map servers
-            self.ess_settings['gaussian'], self.ess_settings['qchem'],\
-                self.ess_settings['molpro'] = list(), list(), list()
-            for server in servers.keys():
+                logging.info('\nTrying {0}'.format(server))
+            ssh = SSHClient(server)
+
+            cmd = '. ~/.bashrc; which g03'
+            g03 = ssh.send_command_to_server(cmd)[0]
+            cmd = '. ~/.bashrc; which g09'
+            g09 = ssh.send_command_to_server(cmd)[0]
+            cmd = '. ~/.bashrc; which g16'
+            g16 = ssh.send_command_to_server(cmd)[0]
+            if g03 or g09 or g16:
                 if diagnostics:
-                    logging.info('\nTrying {0}'.format(server))
-                ssh = SSHClient(server)
-                cmd = '. ~/.bashrc; which g03'
-                g03, _ = ssh.send_command_to_server(cmd)
-                cmd = '. ~/.bashrc; which g09'
-                g09, _ = ssh.send_command_to_server(cmd)
-                cmd = '. ~/.bashrc; which g16'
-                g16, _ = ssh.send_command_to_server(cmd)
-                if g03 or g09 or g16:
-                    if diagnostics:
-                        logging.info('  Found Gaussian on {3}: g03={0}, g09={1}, g16={2}'.format(g03, g09, g16, server))
-                    if not self.ess_settings['gaussian']:
-                        self.ess_settings['gaussian'] = [server]
-                    else:
-                        self.ess_settings['gaussian'].append(server)
-                elif diagnostics:
-                    logging.info('  Did NOT find Gaussian on {3}: g03={0}, g09={1}, g16={2}'.format(
-                        g03, g09, g16, server))
-                cmd = '. ~/.bashrc; which qchem'
-                qchem, _ = ssh.send_command_to_server(cmd)
-                if qchem:
-                    if diagnostics:
-                        logging.info('  Found QChem on {0}'.format(server))
-                    if not self.ess_settings['qchem']:
-                        self.ess_settings['qchem'] = [server]
-                    else:
-                        self.ess_settings['qchem'].append(server)
-                elif diagnostics:
-                    logging.info('  Did NOT find QChem on {0}'.format(server))
-                cmd = '. .bashrc; which molpro'
-                molpro, _ = ssh.send_command_to_server(cmd)
-                if molpro:
-                    if diagnostics:
-                        logging.info('  Found Molpro on {0}'.format(server))
-                    if not self.ess_settings['molpro']:
-                        self.ess_settings['molpro'] = [server]
-                    else:
-                        self.ess_settings['molpro'].append(server)
-                elif diagnostics:
-                    logging.info('  Did NOT find Molpro on {0}'.format(server))
-            if diagnostics:
-                logging.info('\n')
-            if 'gaussian' in self.ess_settings.keys():
-                logging.info('Using Gaussian on {0}'.format(self.ess_settings['gaussian']))
-            if 'qchem' in self.ess_settings.keys():
-                logging.info('Using QChem on {0}'.format(self.ess_settings['qchem']))
-            if 'molpro' in self.ess_settings.keys():
-                logging.info('Using Molpro on {0}'.format(self.ess_settings['molpro']))
-            logging.info('\n')
-        if 'gaussian' not in self.ess_settings.keys() and 'qchem' not in self.ess_settings.keys()\
-                and 'molpro' not in self.ess_settings.keys() and 'onedmin' not in self.ess_settings.keys()\
-                and not diagnostics:
+                    logging.info('  Found Gaussian on {3}: g03={0}, g09={1}, g16={2}'.format(g03, g09, g16, server))
+                self.ess_settings['gaussian'].append(server)
+            elif diagnostics:
+                logging.info('  Did NOT find Gaussian on {0}'.format(server))
+
+            cmd = '. ~/.bashrc; which qchem'
+            qchem = ssh.send_command_to_server(cmd)[0]
+            if qchem:
+                if diagnostics:
+                    logging.info('  Found QChem on {0}'.format(server))
+                self.ess_settings['qchem'].append(server)
+            elif diagnostics:
+                logging.info('  Did NOT find QChem on {0}'.format(server))
+
+            cmd = '. ~/.bashrc; which orca'
+            orca = ssh.send_command_to_server(cmd)[0]
+            if orca:
+                if diagnostics:
+                    logging.info('  Found Orca on {0}'.format(server))
+                self.ess_settings['orca'].append(server)
+            elif diagnostics:
+                logging.info('  Did NOT find Orca on {0}'.format(server))
+
+            cmd = '. .bashrc; which molpro'
+            molpro = ssh.send_command_to_server(cmd)[0]
+            if molpro:
+                if diagnostics:
+                    logging.info('  Found Molpro on {0}'.format(server))
+                self.ess_settings['molpro'].append(server)
+            elif diagnostics:
+                logging.info('  Did NOT find Molpro on {0}'.format(server))
+        if diagnostics:
+            logging.info('\n\n')
+        if 'gaussian' in self.ess_settings.keys():
+            logging.info('Using Gaussian on {0}'.format(self.ess_settings['gaussian']))
+        if 'qchem' in self.ess_settings.keys():
+            logging.info('Using QChem on {0}'.format(self.ess_settings['qchem']))
+        if 'orca' in self.ess_settings.keys():
+            logging.info('Using Orca on {0}'.format(self.ess_settings['orca']))
+        if 'molpro' in self.ess_settings.keys():
+            logging.info('Using Molpro on {0}'.format(self.ess_settings['molpro']))
+        logging.info('\n')
+
+        if 'gaussian' not in self.ess_settings.keys() and 'qchem' not in self.ess_settings.keys() \
+                and 'orca' not in self.ess_settings.keys() and 'molpro' not in self.ess_settings.keys()\
+                and 'onedmin' not in self.ess_settings.keys() and not diagnostics:
             raise SettingsError('Could not find any ESS. Check your .bashrc definitions on the server.\n'
                                 'Alternatively, you could pass a software-server dictionary to arc as `ess_settings`')
         elif diagnostics:
@@ -1002,7 +998,7 @@ def get_git_commit():
     if os.path.exists(os.path.join(arc_path, '.git')):
         try:
             return subprocess.check_output(['git', 'log', '--format=%H%n%cd', '-1'], cwd=arc_path).splitlines()
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, OSError):
             return '', ''
     else:
         return '', ''
@@ -1021,7 +1017,7 @@ def delete_all_arc_jobs(server_list):
         print('\nDeleting all ARC jobs from {0}...'.format(server))
         cmd = check_status_command[servers[server]['cluster_soft']] + ' -u ' + servers[server]['un']
         ssh = SSHClient(server)
-        stdout, _ = ssh.send_command_to_server(cmd)
+        stdout = ssh.send_command_to_server(cmd)[0]
         for status_line in stdout:
             s = re.search(r' a\d+', status_line)
             if s is not None:
@@ -1060,26 +1056,25 @@ def check_ess_settings(ess_settings):
         return dict()
     settings = dict()
     for software, server_list in ess_settings.items():
-        if software != 'ssh':
-            if isinstance(server_list, (str, unicode)):
-                settings[software] = [server_list]
-            elif isinstance(server_list, list):
-                for server in server_list:
-                    if not isinstance(server, (str, unicode)):
-                        raise SettingsError('Servers could only be strings. Got {0} which is {1}'.format(server,
-                                                                                                         type(server)))
+        if isinstance(server_list, (str, unicode)):
+            settings[software] = [server_list]
+        elif isinstance(server_list, list):
+            for server in server_list:
+                if not isinstance(server, (str, unicode)):
+                    raise SettingsError('Server name could only be a string. '
+                                        'Got {0} which is {1}'.format(server, type(server)))
                 settings[software.lower()] = server_list
-            else:
-                raise SettingsError('Servers in the ess_settings dictionary could either be a string or a list of '
-                                    'strings. Got: {0} which is a {1}'.format(server_list, type(server_list)))
+        else:
+            raise SettingsError('Servers in the ess_settings dictionary could either be a string or a list of '
+                                'strings. Got: {0} which is a {1}'.format(server_list, type(server_list)))
     # run checks:
     for ess, server_list in settings.items():
-        if ess.lower() not in ['gaussian', 'qchem', 'molpro', 'onedmin'] and ess.lower() != 'ssh':
-            raise SettingsError('Recognized ESS software are Gaussian, QChem, Molpro, or OneDMin. Got: {0}'.format(ess))
+        if ess.lower() not in ['gaussian', 'qchem', 'molpro', 'onedmin', 'orca']:
+            raise SettingsError('Recognized ESS software are Gaussian, QChem, Molpro, Orca or OneDMin. '
+                                'Got: {0}'.format(ess))
         for server in server_list:
             if not isinstance(server, bool) and server.lower() not in servers.keys():
                 server_names = [name for name in servers.keys()]
                 raise SettingsError('Recognized servers are {0}. Got: {1}'.format(server_names, server))
-    logging.info('\nUsing the following ESS settings:\n{0}'.format(settings))
-    settings['ssh'] = True  # default until local ESS is implemented
+    logging.info('\nUsing the following ESS settings:\n{0}\n'.format(settings))
     return settings
