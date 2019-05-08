@@ -1125,9 +1125,9 @@ class TSGuess(object):
         if self.family is not None:
             ts_dict['family'] = self.family
         if self.rmg_reaction is not None:
-            rxn = ' <=> '.join([' + '.join([spc.molecule[0].toSMILES() for spc in self.rmg_reaction.reactants]),
-                               ' + '.join([spc.molecule[0].toSMILES() for spc in self.rmg_reaction.products])])
-            ts_dict['rmg_reaction'] = rxn
+            rxn_string = ' <=> '.join([' + '.join([spc.molecule[0].toSMILES() for spc in self.rmg_reaction.reactants]),
+                                      ' + '.join([spc.molecule[0].toSMILES() for spc in self.rmg_reaction.products])])
+            ts_dict['rmg_reaction'] = rxn_string
         return ts_dict
 
     def from_dict(self, ts_dict):
@@ -1153,14 +1153,16 @@ class TSGuess(object):
         if self.family is None and self.method.lower() in ['kinbot', 'autotst']:
             # raise TSError('No family specified for method {0}'.format(self.method))
             logging.warning('No family specified for method {0}'.format(self.method))
-        self.rmg_reaction = ts_dict['rmg_reaction'] if 'rmg_reaction' in ts_dict else None
-        if self.rmg_reaction is not None:
+        if 'rmg_reaction' not in ts_dict:
+            self.rmg_reaction = None
+        else:
+            rxn_string = ts_dict['rmg_reaction']
             plus = ' + '
             arrow = ' <=> '
-            if arrow not in self.rmg_reaction:
+            if arrow not in rxn_string:
                 raise TSError('Could not read the reaction string. Expected to find " <=> ". '
-                              'Got: {0}'.format(self.rmg_reaction))
-            sides = self.rmg_reaction.label.split(arrow)
+                              'Got: {0}'.format(rxn_string))
+            sides = rxn_string.split(arrow)
             reac = sides[0]
             prod = sides[1]
             if plus in reac:
