@@ -547,13 +547,16 @@ class Scheduler(object):
         if self.adaptive_levels is not None:
             level_of_theory = self.determine_adaptive_level(original_level_of_theory=level_of_theory, job_type=job_type,
                                                             heavy_atoms=self.species_dict[label].number_of_heavy_atoms)
+        if job_type == 'onedmin':
+            self.species_dict[label].determine_onedmin_radii(bath_gas=self.bath_gas)
         job = Job(project=self.project, ess_settings=self.ess_settings, species_name=label, xyz=xyz, job_type=job_type,
                   level_of_theory=level_of_theory, multiplicity=species.multiplicity, charge=species.charge, fine=fine,
                   shift=shift, software=software, is_ts=species.is_ts, memory=memory, trsh=trsh,
                   ess_trsh_methods=ess_trsh_methods, scan=scan, pivots=pivots, occ=occ, initial_trsh=self.initial_trsh,
                   project_directory=self.project_directory, max_job_time=max_job_time, scan_trsh=scan_trsh,
                   scan_res=scan_res, conformer=conformer, checkfile=checkfile, bath_gas=self.bath_gas,
-                  number_of_radicals=species.number_of_radicals)
+                  number_of_radicals=species.number_of_radicals, r_min=self.species_dict[label].r_min,
+                  r_max=self.species_dict[label].r_max)
         if job.software is not None:
             if conformer < 0:
                 # this is NOT a conformer job
@@ -610,6 +613,9 @@ class Scheduler(object):
                         self.species_dict[label].conformer_checkfiles[job.conformer] = check_path
                     else:
                         self.species_dict[label].checkfile = check_path
+            if job.software.lower() == 'onedmin' and (label not in self.output or 'geo' not in self.output[label]):
+                # OneDMin can be run on a user specified geometry w/o running opt
+                self.output[label]['geo'] = None
             return True
 
     def run_conformer_jobs(self):
