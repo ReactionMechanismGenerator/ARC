@@ -90,6 +90,8 @@ class Job(object):
     `max_job_time`     ``int``           The maximal allowed job time on the server in hours
     `bath_gas`         ``str``           A bath gas. Currently used in OneDMin to calc L-J parameters.
                                            Allowed values are He, Ne, Ar, Kr, H2, N2, O2
+    `r_min`            ``int``           The minimum radius for OneDMin in Angstrom
+    `r_max`            ``int``           The maximum radius for OneDMin in Angstrom
     ================ =================== ===============================================================================
 
     self.job_status:
@@ -102,7 +104,7 @@ class Job(object):
                  pivots=None, memory=14, comments='', trsh='', scan_trsh='', ess_trsh_methods=None, bath_gas=None,
                  initial_trsh=None, job_num=None, job_server_name=None, job_name=None, job_id=None, server=None,
                  initial_time=None, occ=None, max_job_time=120, scan_res=None, checkfile=None, number_of_radicals=None,
-                 testing=False):
+                 testing=False, r_min=2, r_max=5):
         self.project = project
         self.ess_settings = ess_settings
         self.initial_time = initial_time
@@ -127,6 +129,8 @@ class Job(object):
         self.scan_res = scan_res if scan_res is not None else rotor_scan_resolution
         self.max_job_time = max_job_time
         self.bath_gas = bath_gas
+        self.r_min = r_min
+        self.r_max = r_max
         self.testing = testing
         job_types = ['conformer', 'opt', 'freq', 'optfreq', 'sp', 'composite', 'scan', 'gsm', 'irc', 'ts_guess',
                      'orbitals', 'onedmin']
@@ -317,8 +321,8 @@ class Job(object):
             # Molpro's memory is per cpu and in MW (mega word; 1 MW ~= 8 MB; 1 GB = 128 MW)
             self.memory = memory * 128 / self.cpus
         if self.software == 'terachem':
-            # TeraChem's memory is in MW (mega word; 1 MW ~= 8 MB; 1 GB = 128 MW)
-            self.memory = memory * 128
+            # TeraChem's memory is per cpu and in MW (mega word; 1 MW ~= 8 MB; 1 GB = 128 MW)
+            self.memory = memory * 128 / self.cpus
         elif self.software == 'gaussian':
             # Gaussian's memory is in MB, total for all cpus
             self.memory = memory * 1000
@@ -328,6 +332,9 @@ class Job(object):
         elif self.software == 'qchem':
             pass  # QChem manages its memory automatically, for now ARC will not intervene
             # see http://www.q-chem.com/qchem-website/manual/qchem44_manual/CCparallel.html
+        elif self.software == 'onedmin':
+            # Molpro's memory used for OneDmin is per cpu and in MW
+            self.memory = memory * 128 / self.cpus
 
         self.fine = fine
         self.shift = shift
@@ -430,7 +437,7 @@ class Job(object):
             writer = csv.writer(f, dialect='excel')
             row = [self.job_num, self.project, self.species_name, conformer, self.is_ts, self.charge,
                    self.multiplicity, self.job_type, self.job_name, self.job_id, self.server, self.software,
-                   self.memory, self.method, self.basis_set, self.comments]
+                   self.memory_gb, self.method, self.basis_set, self.comments]
             writer.writerow(row)
 
     def write_completed_job_to_csv_file(self):
@@ -445,7 +452,7 @@ class Job(object):
             with open(csv_path, 'wb') as f:
                 writer = csv.writer(f, dialect='excel')
                 row = ['job_num', 'project', 'species_name', 'conformer', 'is_ts', 'charge', 'multiplicity', 'job_type',
-                       'job_name', 'job_id', 'server', 'software', 'memory', 'method', 'basis_set', 'initial_time',
+                       'job_name', 'job_id', 'server', 'software', 'memory (GB)', 'method', 'basis_set', 'initial_time',
                        'final_time', 'run_time', 'job_status_(server)', 'job_status_(ESS)',
                        'ESS troubleshooting methods used', 'comments']
                 writer.writerow(row)
@@ -461,7 +468,7 @@ class Job(object):
                 job_type += ' (fine)'
             row = [self.job_num, self.project, self.species_name, conformer, self.is_ts, self.charge,
                    self.multiplicity, job_type, self.job_name, self.job_id, self.server, self.software,
-                   self.memory, self.method, self.basis_set, self.initial_time, self.final_time, self.run_time,
+                   self.memory_gb, self.method, self.basis_set, self.initial_time, self.final_time, self.run_time,
                    self.job_status[0], self.job_status[1], self.ess_trsh_methods, self.comments]
             writer.writerow(row)
 
@@ -752,7 +759,7 @@ $end
                                                spin=self.spin, xyz=self.xyz, job_type_1=job_type_1, cpus=self.cpus,
                                                job_type_2=job_type_2, scan=scan_string, restricted=restricted,
                                                fine=fine, shift=self.shift, trsh=self.trsh, scan_trsh=self.scan_trsh,
-                                               bath=self.bath_gas)
+                                               bath=self.bath_gas, r_min=self.r_min, r_max=self.r_max)
             except KeyError:
                 logger.error('Could not interpret all input file keys in\n{0}'.format(self.input))
                 raise
@@ -791,7 +798,8 @@ $end
             remote_mx_path = os.path.join(self.remote_path, 'm.x')
             ssh.upload_file(remote_file_path=remote_mx_path, file_string=input_files['onedmin.molpro.x'])
             remote_qcmol_path = os.path.join(self.remote_path, 'qc.mol')
-            ssh.upload_file(remote_file_path=remote_qcmol_path, file_string=input_files['onedmin.qc.mol'])
+            ssh.upload_file(remote_file_path=remote_qcmol_path, file_string=input_files['onedmin.qc.mol'].format(
+                memory=self.memory))
             # make the m.x file executable
             ssh.send_command_to_server(command='chmod +x m.x', remote_path=self.remote_path)
         self.initial_time = ssh.get_last_modified_time(remote_file_path=remote_file_path)
