@@ -127,6 +127,8 @@ def standardize_xyz_string(xyz):
     Usually empty lines are added by the user either in the beginning or the end,
     here we remove them along with other common issues
     """
+    if xyz is None:
+        raise SpeciesError('Could not standardize xyz with no input (got None)')
     xyz = os.linesep.join([s.lstrip() for s in xyz.splitlines() if s and any(c != ' ' for c in s)])
     lines = xyz.splitlines()
     if all([len(line.split()) == 6 for line in lines if len(line)]):
