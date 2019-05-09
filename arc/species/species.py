@@ -30,7 +30,7 @@ from rmgpy.molecule.resonance import generate_kekule_structure
 from rmgpy.transport import TransportData
 from rmgpy.exceptions import InvalidAdjacencyListError
 
-from arc.common import get_logger
+from arc.common import get_logger, get_atom_radius, get_center_of_mass
 from arc.arc_exceptions import SpeciesError, RotorError, InputError, TSError
 from arc.settings import arc_path, default_ts_methods, valid_chars, minimum_barrier
 from arc.parser import parse_xyz_from_file, parse_dipole_moment, parse_polarizability
@@ -106,6 +106,8 @@ class ARCSpecies(object):
     `optical_isomers`       ``int``      Whether (=2) or not (=1) the species has chiral center/s
     `transport_data`        ``TransportData``  A placeholder for updating transport properties after Lennard-Jones
                                                  calculation (using OneDMin)
+    `r_min`            ``int``           The minimum radius for OneDMin in Angstrom
+    `r_max`            ``int``           The maximum radius for OneDMin in Angstrom
     ====================== ============= ===============================================================================
 
     Dictionary structure:
@@ -125,7 +127,7 @@ class ARCSpecies(object):
     def __init__(self, is_ts=False, rmg_species=None, mol=None, label=None, xyz=None, multiplicity=None, charge=None,
                  smiles='', adjlist='', inchi='', bond_corrections=None, generate_thermo=True, species_dict=None,
                  yml_path=None, ts_methods=None, ts_number=None, rxn_label=None, external_symmetry=None,
-                 optical_isomers=None, run_time=None, checkfile=None, number_of_radicals=None):
+                 optical_isomers=None, run_time=None, checkfile=None, number_of_radicals=None, r_min=None, r_max=None):
         self.t1 = None
         self.ts_number = ts_number
         self.conformers = list()
@@ -149,6 +151,8 @@ class ARCSpecies(object):
         self.conformer_checkfiles = dict()
         self.most_stable_conformer = None
         self.transport_data = TransportData()
+        self.r_min = r_min
+        self.r_max = r_max
 
         if species_dict is not None:
             # Reading from a dictionary
@@ -335,6 +339,10 @@ class ARCSpecies(object):
         species_dict['is_ts'] = self.is_ts
         species_dict['E0'] = self.e_elect
         species_dict['arkane_file'] = self.arkane_file
+        if self.r_min is not None:
+            species_dict['r_min'] = self.r_min
+        if self.r_max is not None:
+            species_dict['r_max'] = self.r_max
         if self.yml_path is not None:
             species_dict['yml_path'] = self.yml_path
         if self.is_ts:
@@ -402,6 +410,8 @@ class ARCSpecies(object):
         self.final_xyz = standardize_xyz_string(species_dict['final_xyz']) if 'final_xyz' in species_dict else None
         if 'xyz' in species_dict and self.initial_xyz is None and self.final_xyz is None:
             self.process_xyz(species_dict['xyz'])
+        self.r_min = species_dict['r_min'] if 'r_min' in species_dict else None
+        self.r_max = species_dict['r_max'] if 'r_max' in species_dict else None
         self.is_ts = species_dict['is_ts'] if 'is_ts' in species_dict else False
         if self.is_ts:
             self.ts_conf_spawned = species_dict['ts_conf_spawned'] if 'ts_conf_spawned' in species_dict else False
@@ -806,8 +816,8 @@ class ARCSpecies(object):
             if self.mol is not None and not check_isomorphism(original_mol, self.mol):
                 raise InputError('XYZ and the 2D graph representation of the Molecule are not isomorphic.\n'
                                  'Got xyz:\n{0}\n\nwhich corresponds to {1}\n{2}\n\nand: {3}\n{4}'.format(
-                                   xyz, self.mol.toSMILES(), self.mol.toAdjacencyList(),
-                                   original_mol.toSMILES(), original_mol.toAdjacencyList()))
+                                  xyz, self.mol.toSMILES(), self.mol.toAdjacencyList(),
+                                  original_mol.toSMILES(), original_mol.toAdjacencyList()))
             if self.mol is None:
                 self.mol = original_mol  # todo: Atom order will not be correct, need fix
         else:
@@ -938,6 +948,60 @@ class ARCSpecies(object):
             rotrelaxcollnum=2,  # rotational relaxation collision number at 298 K
             comment=str(comment)
         )
+
+    def determine_radius(self):
+        """
+        Determine the largest distance from the coordinate system origin attributed to one of the molecule's
+        atoms in 3D space.
+
+        Returns:
+            float: The species radius.
+        """
+        conf = self.conformers[0] if self.conformers else None
+        xyz = self.final_xyz or self.initial_xyz or conf
+        if xyz is None:
+            raise SpeciesError('Could not determine species {0} radius without xyz'.format(self.label))
+        cm_x, cm_y, cm_z = get_center_of_mass(xyz)
+        _, symbols, x, y, z = get_xyz_matrix(xyz)
+        x = [xi - cm_x for xi in x]
+        y = [yi - cm_y for yi in y]
+        z = [zi - cm_z for zi in z]
+        border_elements = list()  # a list of the farthest element/s
+        r = 0
+        for si, xi, yi, zi in zip(symbols, x, y, z):
+            ri = xi ** 2 + yi ** 2 + zi ** 2
+            if ri == r:
+                border_elements.append(si)
+            elif ri > r:
+                r = ri
+                border_elements = [si]
+        atom_r = max([get_atom_radius(si) if get_atom_radius(si) is not None else 1.50 for si in border_elements])
+        radius = r ** 0.5 + atom_r
+        logger.debug('Using a radius of {0} to represent species {1} in a OneDMin calculation'.format(
+            radius, self.label))
+        return radius
+
+    def determine_onedmin_radii(self, bath_gas):
+        """
+        Determine r_min and r_max for the OneDMin scan. Assumes that the species' shape is close to a sphere.
+
+        Args:
+            bath_gas (str, unicode): The collider bath gas.
+        """
+        if self.r_min is None or self.r_max is None:
+            if bath_gas not in ['He', 'Ne', 'Ar', 'Kr', 'H2', 'N2', 'O2']:
+                raise SpeciesError('Unknown bath gas. Should be either He, Ne, Ar, Kr, H2, N2, or O2, '
+                                   'got {0}'.format(bath_gas))
+            bath_gas_radius_dict = {'He': get_atom_radius('He'), 'Ne': get_atom_radius('Ne'),
+                                    'Ar': get_atom_radius('Ar'), 'Kr': get_atom_radius('Kr'),
+                                    'H2': 0.743 * 0.5 + get_atom_radius('H'), 'N2': 1.1 * 0.5 + get_atom_radius('N'),
+                                    'O2': 1.208 * 0.5 + get_atom_radius('O')}  # Angstrom
+            bath_gas_r = bath_gas_radius_dict[bath_gas]
+            species_radius = self.determine_radius()
+            self.r_min = round(species_radius + bath_gas_r, 2)
+            self.r_max = self.r_min + 3.0
+            logger.info('Using r_min = {0} and r_max = {1} for the OneDMin calculation of species {2}'.format(
+                self.r_min, self.r_max, self.label))
 
 
 class TSGuess(object):
