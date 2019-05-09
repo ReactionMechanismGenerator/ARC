@@ -21,6 +21,7 @@ from arc.species.converter import get_xyz_string, get_xyz_matrix, molecules_from
 from arc.settings import arc_path, default_levels_of_theory
 from arc.rmgdb import make_rmg_database_object
 from arc.scheduler import Scheduler
+from arc.arc_exceptions import SpeciesError
 
 ################################################################################
 
@@ -693,6 +694,25 @@ H       1.32129900    0.71837500    0.38017700
         self.assertIsNone(spc4.final_xyz)
         self.assertEqual(spc4.conformers, ['C 0.4 0.5 0.0', 'C 0.5 0.5 0.0'])
         self.assertEqual(spc4.conformer_energies, [None, None])
+
+    def test_determine_radius(self):
+        """Test determining the species radius"""
+        expected_rs = [2.465073, 1.223449, 2.072023, 4.182624, 2.322168, 1.260585]
+        for i, spc in enumerate([self.spc1, self.spc2, self.spc6, self.spc7,
+                                 self.spc8, self.spc9]):
+            self.assertAlmostEqual(spc.determine_radius(), expected_rs[i], 5)
+        with self.assertRaises(SpeciesError):
+            self.spc3.determine_radius()
+
+    def test_determine_onedmin_radii(self):
+        """Test determining the OneDMin radii"""
+        bath_gases = ['H2', 'N2', 'Ar', 'H2']
+        expected_rs = [1.9, 3.33, 3.38, 1.94]
+        for i, spc in enumerate([self.spc2, self.spc6, self.spc8, self.spc9]):
+            spc.determine_onedmin_radii(bath_gas=bath_gases[i])
+            self.assertAlmostEqual(spc.r_min, expected_rs[i])
+            self.assertAlmostEqual(spc.r_max, expected_rs[i] + 3.0)
+
 
     @classmethod
     def tearDownClass(cls):
