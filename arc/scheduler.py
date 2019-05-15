@@ -698,8 +698,9 @@ class Scheduler(object):
         if 'freq' not in self.job_dict[label]:  # Check whether or not freq jobs have been spawned yet
             # we're spawning the first freq job for this species
             self.job_dict[label]['freq'] = dict()
-        self.run_job(label=label, xyz=self.species_dict[label].final_xyz,
-                     level_of_theory=self.freq_level, job_type='freq')
+        if self.job_types['freq']:
+            self.run_job(label=label, xyz=self.species_dict[label].final_xyz,
+                         level_of_theory=self.freq_level, job_type='freq')
 
     def run_sp_job(self, label):
         """
@@ -743,7 +744,9 @@ class Scheduler(object):
                 logging.info('running a CCSD job for {0} before MRCI'.format(label))
                 self.run_job(label=label, xyz=self.species_dict[label].final_xyz, level_of_theory='ccsd/vdz',
                              job_type='sp')
-        self.run_job(label=label, xyz=self.species_dict[label].final_xyz, level_of_theory=self.sp_level, job_type='sp')
+        if self.job_types['sp']:
+            self.run_job(label=label, xyz=self.species_dict[label].final_xyz,
+                         level_of_theory=self.sp_level, job_type='sp')
 
     def run_scan_jobs(self, label):
         """
