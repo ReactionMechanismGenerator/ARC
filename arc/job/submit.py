@@ -64,12 +64,14 @@ rm -rf $WorkDir
 #SBATCH --time={t_max}
 #SBATCH --mem-per-cpu {mem_cpu}
 
-module add c3ddb/orca/4.0.0
-module add c3ddb/openmpi/2.0.2
+module add c3ddb/orca/4.1.2
+module add c3ddb/openmpi/3.1.3
 which orca
 
-export ORCA_DIR=/cm/shared/c3ddb/orca/4.0.0/
+export ORCA_DIR=/cm/shared/modulefiles/c3ddb/orca/4.1.2/
+export OMPI_DIR=/cm/shared/modulefiles/c3ddb/openmpi/3.1.3/
 export PATH=$PATH:$ORCA_DIR
+export PATH=$PATH:$OMPI_DIR
 
 echo "============================================================"
 echo "Job ID : $SLURM_JOB_ID"
