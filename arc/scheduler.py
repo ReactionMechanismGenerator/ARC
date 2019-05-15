@@ -274,6 +274,8 @@ class Scheduler(object):
             if species.yml_path is None:
                 if self.job_types['1d_rotors'] and not self.species_dict[species.label].number_of_rotors:
                     self.species_dict[species.label].determine_rotors()
+                if not self.job_types['opt'] and self.species_dict[species.label].final_xyz is not None:
+                    self.output[species.label]['status'] += 'opt converged; '
                 if species.label not in self.running_jobs:
                     self.running_jobs[species.label] = list()  # initialize before running the first job
                 if not species.is_ts and species.number_of_atoms == 1:
