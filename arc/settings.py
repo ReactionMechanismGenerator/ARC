@@ -78,7 +78,7 @@ default_job_types = {'conformers': True,      # defaults to True if not specifie
 # Avoid ascribing the same phrase to more than one server, this may cause undeterministic assignment of software
 # Format is levels_ess = {ess: ['phrase1', 'phrase2'], ess2: ['phrase3', 'phrase3']}
 levels_ess = {
-    'gaussian': ['b3lyp', 'm062x', '3df,3pd'],
+    'gaussian': ['b3lyp', 'm062x'],
     'molpro': ['ccsd', 'cisd', 'vpz'],
     'qchem': ['m06-2x', 'def2']
 }
