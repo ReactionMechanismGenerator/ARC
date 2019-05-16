@@ -274,6 +274,8 @@ class Scheduler(object):
             if species.yml_path is None:
                 if self.job_types['1d_rotors'] and not self.species_dict[species.label].number_of_rotors:
                     self.species_dict[species.label].determine_rotors()
+                if not self.job_types['opt'] and self.species_dict[species.label].final_xyz is not None:
+                    self.output[species.label]['status'] += 'opt converged; '
                 if species.label not in self.running_jobs:
                     self.running_jobs[species.label] = list()  # initialize before running the first job
                 if not species.is_ts and species.number_of_atoms == 1:
@@ -324,7 +326,7 @@ class Scheduler(object):
                         if 'sp' not in self.output[species.label] and 'sp' not in self.job_dict[species.label]:
                             self.run_sp_job(species.label)
                         if self.job_types['1d_rotors']:
-                            # restart-related check are performed in run_scan_jobs()
+                            # restart-related checks are performed in run_scan_jobs()
                             self.run_scan_jobs(species.label)
                 elif not self.species_dict[species.label].is_ts and self.job_types['conformers']\
                         and 'geo' not in self.output[species.label]:
@@ -667,6 +669,9 @@ class Scheduler(object):
         if 'opt' not in self.job_dict[label]:  # Check whether or not opt jobs have been spawned yet
             # we're spawning the first opt job for this species
             self.job_dict[label]['opt'] = dict()
+        if self.species_dict[label].initial_xyz is None:
+            raise SpeciesError('Cannot execute opt job for {0} without xyz (got None for Species.initial_xyz)'.format(
+                label))
         self.run_job(label=label, xyz=self.species_dict[label].initial_xyz, level_of_theory=self.opt_level,
                      job_type='opt', fine=False)
 
@@ -693,8 +698,9 @@ class Scheduler(object):
         if 'freq' not in self.job_dict[label]:  # Check whether or not freq jobs have been spawned yet
             # we're spawning the first freq job for this species
             self.job_dict[label]['freq'] = dict()
-        self.run_job(label=label, xyz=self.species_dict[label].final_xyz,
-                     level_of_theory=self.freq_level, job_type='freq')
+        if self.job_types['freq']:
+            self.run_job(label=label, xyz=self.species_dict[label].final_xyz,
+                         level_of_theory=self.freq_level, job_type='freq')
 
     def run_sp_job(self, label):
         """
@@ -738,7 +744,9 @@ class Scheduler(object):
                 logging.info('running a CCSD job for {0} before MRCI'.format(label))
                 self.run_job(label=label, xyz=self.species_dict[label].final_xyz, level_of_theory='ccsd/vdz',
                              job_type='sp')
-        self.run_job(label=label, xyz=self.species_dict[label].final_xyz, level_of_theory=self.sp_level, job_type='sp')
+        if self.job_types['sp']:
+            self.run_job(label=label, xyz=self.species_dict[label].final_xyz,
+                         level_of_theory=self.sp_level, job_type='sp')
 
     def run_scan_jobs(self, label):
         """
@@ -1812,8 +1820,6 @@ class Scheduler(object):
                                        + ' (conformer' + str(job_name) + ')' + ', '
             content += '\n\n'
             logging.info(content)
-        else:
-            logging.info('\nRestarting ARC. Did not identify any jobs spawned in previous sessions.\n')
 
     def save_restart_dict(self):
         """
