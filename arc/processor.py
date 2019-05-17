@@ -97,13 +97,6 @@ class Processor(object):
             species.arkane_file = species.yml_path
             return output_file_path
 
-        if not species.is_ts:
-            linear = species.is_linear()
-            if linear:
-                logging.info('Determined {0} to be a linear molecule'.format(species.label))
-                species.long_thermo_description += 'Treated as a linear species\n'
-        else:
-            linear = False
         species.determine_symmetry()
         try:
             sp_path = self.output[species.label]['composite']
@@ -163,11 +156,11 @@ class Processor(object):
         input_file = input_files['arkane_input_species']
         if self.use_bac and not species.is_ts:
             logging.info('Using the following BAC for {0}: {1}'.format(species.label, species.bond_corrections))
-            bonds = '\n\nbonds = {0}'.format(species.bond_corrections)
+            bonds = 'bonds = {0}\n\n'.format(species.bond_corrections)
         else:
             logging.debug('NOT using BAC for {0}'.format(species.label))
             bonds = ''
-        input_file = input_file.format(linear=linear, bonds=bonds, symmetry=species.external_symmetry,
+        input_file = input_file.format(bonds=bonds, symmetry=species.external_symmetry,
                                        multiplicity=species.multiplicity, optical=species.optical_isomers,
                                        model_chemistry=self.model_chemistry, sp_path=sp_path, opt_path=opt_path,
                                        freq_path=freq_path, rotors=rotors)

@@ -116,9 +116,7 @@ table,E_mrci,E_mrci_Davidson;
     'arkane_input_species': """#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-linear = {linear}{bonds}
-
-externalSymmetry = {symmetry}
+{bonds}externalSymmetry = {symmetry}
 
 spinMultiplicity = {multiplicity}
 

@@ -235,64 +235,6 @@ H      -1.67091600   -1.35164600   -0.93286400
         self.assertEqual(y[1], 1.29155)
         self.assertEqual(z[-1], -0.932864)
 
-    def test_is_linear(self):
-        """Test determination of molecule linearity by xyz"""
-        xyz1 = """C  0.000000    0.000000    0.000000
-                  O  0.000000    0.000000    1.159076
-                  O  0.000000    0.000000   -1.159076"""  # a trivial case
-        xyz2 = """S      -0.06618943   -0.12360663   -0.07631983
-                  O      -0.79539707    0.86755487    1.02675668
-                  O      -0.68919931    0.25421823   -1.34830853
-                  N       0.01546439   -1.54297548    0.44580391
-                  C       1.59721519    0.47861334    0.00711000
-                  H       1.94428095    0.40772394    1.03719428
-                  H       2.20318015   -0.14715186   -0.64755729
-                  H       1.59252246    1.51178950   -0.33908352
-                  H      -0.87856890   -2.02453514    0.38494433
-                  H      -1.34135876    1.49608206    0.53295071"""  # a non linear molecule
-        xyz3 = """N  0.0000000000     0.0000000000     0.3146069129
-                  O -1.0906813653     0.0000000000    -0.1376405244
-                  O  1.0906813653     0.0000000000    -0.1376405244"""  # a non linear 3-atom molecule
-        xyz4 = """N  0.0000000000     0.0000000000     0.1413439534
-                  H -0.8031792912     0.0000000000    -0.4947038368
-                  H  0.8031792912     0.0000000000    -0.4947038368"""  # a non linear 3-atom molecule
-        xyz5 = """S -0.5417345330        0.8208150346        0.0000000000
-                  O  0.9206183692        1.6432038228        0.0000000000
-                  H -1.2739176462        1.9692549926        0.0000000000"""  # a non linear 3-atom molecule
-        xyz6 = """N  1.18784533    0.98526702    0.00000000
-                  C  0.04124533    0.98526702    0.00000000
-                  H -1.02875467    0.98526702    0.00000000"""  # linear
-        xyz7 = """C -4.02394116    0.56169428    0.00000000
-                  H -5.09394116    0.56169428    0.00000000
-                  C -2.82274116    0.56169428    0.00000000
-                  H -1.75274116    0.56169428    0.00000000"""  # linear
-        xyz8 = """C -1.02600933    2.12845307    0.00000000
-                  C -0.77966935    0.95278385    0.00000000
-                  H -1.23666197    3.17751246    0.00000000
-                  H -0.56023545   -0.09447399    0.00000000"""  # just 0.5 degree off from linearity, so NOT linear...
-        xyz9 = """O -1.1998 0.1610 0.0275
-                  O -1.4021 0.6223 -0.8489
-                  O -1.48302 0.80682 -1.19946"""  # just 3 points in space on a straight line (not a physical molecule)
-        spc1 = ARCSpecies(label=str('test_spc'), xyz=xyz1, multiplicity=1, charge=0, smiles=str('O=C=O'))
-        spc2 = ARCSpecies(label=str('test_spc'), xyz=xyz2, multiplicity=1, charge=0, smiles=str('[NH-][S+](=O)(O)C'))
-        spc3 = ARCSpecies(label=str('test_spc'), xyz=xyz3, multiplicity=2, charge=0, smiles=str('[O]N=O'))
-        spc4 = ARCSpecies(label=str('test_spc'), xyz=xyz4, multiplicity=2, charge=0, smiles=str('[NH2]'))
-        spc5 = ARCSpecies(label=str('test_spc'), xyz=xyz5, multiplicity=2, charge=0, smiles=str('[O]S'))
-        spc6 = ARCSpecies(label=str('test_spc'), xyz=xyz6, multiplicity=1, charge=0, smiles=str('C#N'))
-        spc7 = ARCSpecies(label=str('test_spc'), xyz=xyz7, multiplicity=1, charge=0, smiles=str('C#C'))
-        spc8 = ARCSpecies(label=str('test_spc'), xyz=xyz8, multiplicity=1, charge=0, smiles=str('C#C'))
-        spc9 = ARCSpecies(label=str('test_spc'), xyz=xyz9, multiplicity=1, charge=0, smiles=str('[O-][O+]=O'))
-
-        self.assertTrue(spc1.is_linear())
-        self.assertTrue(spc6.is_linear())
-        self.assertTrue(spc7.is_linear())
-        self.assertTrue(spc9.is_linear())
-        self.assertFalse(spc2.is_linear())
-        self.assertFalse(spc3.is_linear())
-        self.assertFalse(spc4.is_linear())
-        self.assertFalse(spc5.is_linear())
-        self.assertFalse(spc8.is_linear())
-
     def test_charge_and_multiplicity(self):
         """Test determination of molecule charge and multiplicity"""
         spc1 = ARCSpecies(label='spc1', mol=Molecule(SMILES=str('C[CH]C')), generate_thermo=False)
