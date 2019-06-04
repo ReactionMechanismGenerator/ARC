@@ -11,7 +11,7 @@ import logging
 
 from rmgpy import settings
 from rmgpy.data.rmg import RMGDatabase
-from rmgpy.reaction import isomorphic_species_lists
+from rmgpy.reaction import same_species_lists
 from rmgpy.data.kinetics.common import find_degenerate_reactions
 from rmgpy.exceptions import KineticsError
 
@@ -183,7 +183,7 @@ def loop_families(rmgdb, reaction):
         if len(reaction.products) == 1:
             for fam_rxn in family_reactions_by_r:
                 for product0 in reaction.products[0].molecule:
-                    if isomorphic_species_lists([product0], fam_rxn.products):
+                    if same_species_lists([product0], fam_rxn.products):
                         family_reactions_by_rnp.append(fam_rxn)
             degenerate_reactions = find_degenerate_reactions(rxn_list=family_reactions_by_rnp,
                                                              same_reactants=False,
@@ -192,7 +192,7 @@ def loop_families(rmgdb, reaction):
             for fam_rxn in family_reactions_by_r:
                 for product0 in reaction.products[0].molecule:
                     for product1 in reaction.products[1].molecule:
-                        if isomorphic_species_lists([product0, product1], fam_rxn.products):
+                        if same_species_lists([product0, product1], fam_rxn.products):
                             family_reactions_by_rnp.append(fam_rxn)
             degenerate_reactions = find_degenerate_reactions(rxn_list=family_reactions_by_rnp,
                                                              same_reactants=False,
@@ -202,7 +202,7 @@ def loop_families(rmgdb, reaction):
                 for product0 in reaction.products[0].molecule:
                     for product1 in reaction.products[1].molecule:
                         for product2 in reaction.products[2].molecule:
-                            if isomorphic_species_lists([product0, product1, product2], fam_rxn.products):
+                            if same_species_lists([product0, product1, product2], fam_rxn.products):
                                 family_reactions_by_rnp.append(fam_rxn)
             degenerate_reactions = find_degenerate_reactions(rxn_list=family_reactions_by_rnp,
                                                              same_reactants=False,
