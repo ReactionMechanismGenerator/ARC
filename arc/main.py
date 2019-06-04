@@ -885,6 +885,8 @@ class ARC(object):
         # look for ESS on remote servers ARC has access to
         logging.info('\n\nMapping servers...\n')
         for server in servers.keys():
+            if server == 'local':
+                continue
             if diagnostics:
                 logging.info('\nTrying {0}'.format(server))
             ssh = SSHClient(server)
