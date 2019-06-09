@@ -67,8 +67,8 @@ class ARC(object):
     `output`               ``dict``   Output dictionary with status and final QM file paths for all species
                                         Only used for restarting, the actual object used is in the Scheduler class
     `use_bac`              ``bool``   Whether or not to use bond additivity corrections for thermo calculations
-    `model_chemistry`      ``list``   The model chemistry in Arkane for energy corrections (AE, BAC).
-                                        This can be usually determined automatically.
+    `model_chemistry`      ``str``    The model chemistry in Arkane for energy corrections (AE, BAC)
+                                        and frequencies/ZPE scaling factor. Can usually be determined automatically.
     `ess_settings`         ``dict``   A dictionary of available ESS (keys) and a corresponding server list (values)
     `initial_trsh`         ``dict``   Troubleshooting methods to try by default. Keys are ESS software, values are trshs
     't0'                   ``float``  Initial time when the project was spawned
@@ -772,66 +772,61 @@ class ARC(object):
         logging.log(level, 'ARC execution terminated on {0}'.format(time.asctime()))
 
     def determine_model_chemistry(self):
-        """Determine the model_chemistry used in Arkane"""
+        """Determine the model_chemistry to be used in Arkane
+
+        Todo:
+            * Determine whether the model chemistry exists in Arkane automaticaly instead of hard coding
+        """
         if self.model_chemistry:
             self.model_chemistry = self.model_chemistry.lower()
-            if self.model_chemistry not in ['cbs-qb3', 'cbs-qb3-paraskevas', 'ccsd(t)-f12/cc-pvdz-f12',
-                                            'ccsd(t)-f12/cc-pvtz-f12', 'ccsd(t)-f12/cc-pvqz-f12',
-                                            'b3lyp/cbsb7', 'b3lyp/6-311g(2d,d,p)', 'b3lyp/6-311+g(3df,2p)',
-                                            'b3lyp/6-31g**']:
+            if self.model_chemistry.split('//')[0] not in [
+                    'cbs-qb3', 'cbs-qb3-paraskevas', 'ccsd(t)-f12/cc-pvdz-f12', 'ccsd(t)-f12/cc-pvtz-f12',
+                    'ccsd(t)-f12/cc-pvqz-f12', 'b3lyp/cbsb7', 'b3lyp/6-311g(2d,d,p)', 'b3lyp/6-311+g(3df,2p)',
+                    'b3lyp/6-31g**']:
                 logging.warn('No bond additivity corrections (BAC) are available in Arkane for "model chemistry"'
                              ' {0}. As a result, thermodynamic parameters are expected to be inaccurate. Make sure that'
                              ' atom energy corrections (AEC) were supplied or are available in Arkane to avoid'
                              ' error.'.format(self.model_chemistry))
         else:
-            # model chemistry was not given, try to determine it from the sp_level
+            # model chemistry was not given, try to determine it from the sp_level and freq_level
             model_chemistry = ''
-            if not self.composite_method:
-                sp_level = self.sp_level.lower()
+            if self.composite_method:
+                self.model_chemistry = self.composite_method.lower()
             else:
-                sp_level = self.composite_method
-            sp_level = sp_level.replace('f12a', 'f12').replace('f12b', 'f12')
-            if sp_level in ['ccsd(t)-f12/cc-pvdz', 'ccsd(t)-f12/cc-pvtz', 'ccsd(t)-f12/cc-pvqz']:
-                logging.warning('Using model chemistry {0} based on sp level {1}.'.format(
-                    sp_level + '-f12', sp_level))
-                model_chemistry = sp_level + '-f12'
-            elif not model_chemistry and sp_level in ['cbs-qb3', 'cbs-qb3-paraskevas', 'ccsd(t)-f12/cc-pvdz-f12',
-                                                      'ccsd(t)-f12/cc-pvtz-f12', 'ccsd(t)-f12/cc-pvqz-f12',
-                                                      'b3lyp/cbsb7', 'b3lyp/6-311g(2d,d,p)', 'b3lyp/6-311+g(3df,2p)',
-                                                      'b3lyp/6-31g**']:
-                model_chemistry = sp_level
-            elif self.use_bac:
-                logging.info('\n\n')
-                logging.warning('Could not determine appropriate Model Chemistry to be used in Arkane for'
-                                ' thermochemical parameter calculations. Not using atom energy corrections and '
-                                'bond additivity corrections!\n\n')
-                self.use_bac = False
-            else:
-                # use_bac is False, and no model chemistry was specified
-                if sp_level in ['m06-2x/cc-pvtz', 'g3', 'm08so/mg3s*', 'klip_1', 'klip_2', 'klip_3', 'klip_2_cc',
-                                'ccsd(t)-f12/cc-pvdz-f12_h-tz', 'ccsd(t)-f12/cc-pvdz-f12_h-qz',
-                                'ccsd(t)-f12/cc-pvdz-f12', 'ccsd(t)-f12/cc-pvtz-f12', 'ccsd(t)-f12/cc-pvqz-f12',
-                                'ccsd(t)-f12/cc-pcvdz-f12', 'ccsd(t)-f12/cc-pcvtz-f12', 'ccsd(t)-f12/cc-pcvqz-f12',
-                                'ccsd(t)-f12/cc-pvtz-f12(-pp)', 'ccsd(t)/aug-cc-pvtz(-pp)', 'ccsd(t)-f12/aug-cc-pvdz',
-                                'ccsd(t)-f12/aug-cc-pvtz', 'ccsd(t)-f12/aug-cc-pvqz', 'b-ccsd(t)-f12/cc-pvdz-f12',
-                                'b-ccsd(t)-f12/cc-pvtz-f12', 'b-ccsd(t)-f12/cc-pvqz-f12', 'b-ccsd(t)-f12/cc-pcvdz-f12',
-                                'b-ccsd(t)-f12/cc-pcvtz-f12', 'b-ccsd(t)-f12/cc-pcvqz-f12', 'b-ccsd(t)-f12/aug-cc-pvdz',
-                                'b-ccsd(t)-f12/aug-cc-pvtz', 'b-ccsd(t)-f12/aug-cc-pvqz', 'mp2_rmp2_pvdz',
-                                'mp2_rmp2_pvtz', 'mp2_rmp2_pvqz', 'ccsd-f12/cc-pvdz-f12',
-                                'ccsd(t)-f12/cc-pvdz-f12_noscale', 'g03_pbepbe_6-311++g_d_p', 'fci/cc-pvdz',
-                                'fci/cc-pvtz', 'fci/cc-pvqz', 'bmk/cbsb7', 'bmk/6-311g(2d,d,p)', 'b3lyp/6-31g**',
-                                'b3lyp/6-311+g(3df,2p)', 'MRCI+Davidson/aug-cc-pV(T+d)Z']:
-                    model_chemistry = sp_level
-            self.model_chemistry = model_chemistry
-            logging.debug('Using {0} as model chemistry for energy corrections in Arkane'.format(
-                self.model_chemistry))
-            if not self.model_chemistry:
-                logging.warn('Could not determine a Model Chemistry to be used in Arkane, NOT calculating thermodata')
-                for spc in self.arc_species_list:
-                    spc.generate_thermo = False
+                sp_level = self.sp_level.replace('f12a', 'f12').replace('f12b', 'f12').lower()
+                freq_level = self.freq_level.replace('f12a', 'f12').replace('f12b', 'f12').lower()
+                if sp_level in ['ccsd(t)-f12/cc-pvdz', 'ccsd(t)-f12/cc-pvtz', 'ccsd(t)-f12/cc-pvqz']:
+                    logging.warning('Using model chemistry {0} based on sp level {1}.'.format(
+                        sp_level + '-f12', sp_level))
+                    sp_level += '-f12'
+                if sp_level not in ['ccsd(t)-f12/cc-pvdz-f12', 'ccsd(t)-f12/cc-pvtz-f12', 'ccsd(t)-f12/cc-pvqz-f12',
+                                  'b3lyp/cbsb7', 'b3lyp/6-311g(2d,d,p)', 'b3lyp/6-311+g(3df,2p)', 'b3lyp/6-31g**']\
+                        and self.use_bac:
+                    logging.info('\n\n')
+                    logging.warning('Could not determine appropriate Model Chemistry to be used in Arkane for '
+                                    'thermochemical parameter calculations. Not using atom energy corrections and '
+                                    'bond additivity corrections!\n\n')
+                    self.use_bac = False
+                elif sp_level not in ['m06-2x/cc-pvtz', 'g3', 'm08so/mg3s*', 'klip_1', 'klip_2', 'klip_3', 'klip_2_cc',
+                                      'ccsd(t)-f12/cc-pvdz-f12_h-tz', 'ccsd(t)-f12/cc-pvdz-f12_h-qz',
+                                      'ccsd(t)-f12/cc-pvdz-f12', 'ccsd(t)-f12/cc-pvtz-f12', 'ccsd(t)-f12/cc-pvqz-f12',
+                                      'ccsd(t)-f12/cc-pcvdz-f12', 'ccsd(t)-f12/cc-pcvtz-f12', 'ccsd(t)-f12/cc-pcvqz-f12',
+                                      'ccsd(t)-f12/cc-pvtz-f12(-pp)', 'ccsd(t)/aug-cc-pvtz(-pp)', 'ccsd(t)-f12/aug-cc-pvdz',
+                                      'ccsd(t)-f12/aug-cc-pvtz', 'ccsd(t)-f12/aug-cc-pvqz', 'b-ccsd(t)-f12/cc-pvdz-f12',
+                                      'b-ccsd(t)-f12/cc-pvtz-f12', 'b-ccsd(t)-f12/cc-pvqz-f12', 'b-ccsd(t)-f12/cc-pcvdz-f12',
+                                      'b-ccsd(t)-f12/cc-pcvtz-f12', 'b-ccsd(t)-f12/cc-pcvqz-f12', 'b-ccsd(t)-f12/aug-cc-pvdz',
+                                      'b-ccsd(t)-f12/aug-cc-pvtz', 'b-ccsd(t)-f12/aug-cc-pvqz', 'mp2_rmp2_pvdz',
+                                      'mp2_rmp2_pvtz', 'mp2_rmp2_pvqz', 'ccsd-f12/cc-pvdz-f12',
+                                      'ccsd(t)-f12/cc-pvdz-f12_noscale', 'g03_pbepbe_6-311++g_d_p', 'fci/cc-pvdz',
+                                      'fci/cc-pvtz', 'fci/cc-pvqz', 'bmk/cbsb7', 'bmk/6-311g(2d,d,p)', 'b3lyp/6-31g**',
+                                      'b3lyp/6-311+g(3df,2p)', 'MRCI+Davidson/aug-cc-pV(T+d)Z']:
+                    logging.warn('Could not determine a Model Chemistry to be used in Arkane, '
+                                 'NOT calculating thermodata')
+                    for spc in self.arc_species_list:
+                        spc.generate_thermo = False
+                self.model_chemistry = sp_level + '//' + freq_level
         if self.model_chemistry:
-            logging.info('Using {0} as model chemistry for energy corrections in Arkane'.format(
-                self.model_chemistry))
+            logging.info('Using {0} as a model chemistry in Arkane'.format(self.model_chemistry))
 
     def determine_ess_settings(self, diagnostics=False):
         """
