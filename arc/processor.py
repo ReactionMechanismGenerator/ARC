@@ -12,7 +12,7 @@ import logging
 from random import randint
 
 from arkane.input import species as arkane_input_species, transitionState as arkane_transition_state,\
-    reaction as arkane_reaction
+    reaction as arkane_reaction, process_model_chemistry
 from arkane.statmech import StatMechJob, assign_frequency_scale_factor
 from arkane.thermo import ThermoJob
 from arkane.kinetics import KineticsJob
@@ -40,8 +40,8 @@ class Processor(object):
     `rxn_list`        ``list``   List of ARCReaction objects
     `output`          ``dict``   Keys are labels, values are output file paths
     `use_bac`         ``bool``   Whether or not to use bond additivity corrections for thermo calculations
-    `model_chemistry` ``list``   The model chemistry in Arkane for energy corrections (AE, BAC).
-                                   This can be usually determined automatically.
+    `sp_level`        ``str``    The single point level of theory, used for atom and bond corrections in Arkane
+    `freq_level`      ``str``    The frequency level of theory, used for the frequency scaling factor in Arkane
     `lib_long_desc`   ``str``    A multiline description of levels of theory for the outputted RMG libraries
     `project_directory` ``str``  The path of the ARC project directory
     `t_min`           ``tuple``  The minimum temperature for kinetics computations, e.g., (500, str('K'))
@@ -58,7 +58,7 @@ class Processor(object):
         self.rxn_list = rxn_list
         self.output = output
         self.use_bac = use_bac
-        self.model_chemistry = model_chemistry
+        self.sp_level, self.freq_level = process_model_chemistry(model_chemistry)
         self.lib_long_desc = lib_long_desc
         load_thermo_libs, load_kinetic_libs = False, False
         if any([species.is_ts and species.final_xyz for species in self.species_dict.values()])\
@@ -97,13 +97,6 @@ class Processor(object):
             species.arkane_file = species.yml_path
             return output_file_path
 
-        if not species.is_ts:
-            linear = species.is_linear()
-            if linear:
-                logging.info('Determined {0} to be a linear molecule'.format(species.label))
-                species.long_thermo_description += 'Treated as a linear species\n'
-        else:
-            linear = False
         species.determine_symmetry()
         try:
             sp_path = self.output[species.label]['composite']
@@ -163,13 +156,13 @@ class Processor(object):
         input_file = input_files['arkane_input_species']
         if self.use_bac and not species.is_ts:
             logging.info('Using the following BAC for {0}: {1}'.format(species.label, species.bond_corrections))
-            bonds = '\n\nbonds = {0}'.format(species.bond_corrections)
+            bonds = 'bonds = {0}\n\n'.format(species.bond_corrections)
         else:
             logging.debug('NOT using BAC for {0}'.format(species.label))
             bonds = ''
-        input_file = input_file.format(linear=linear, bonds=bonds, symmetry=species.external_symmetry,
+        input_file = input_file.format(bonds=bonds, symmetry=species.external_symmetry,
                                        multiplicity=species.multiplicity, optical=species.optical_isomers,
-                                       model_chemistry=self.model_chemistry, sp_path=sp_path, opt_path=opt_path,
+                                       sp_level=self.sp_level, sp_path=sp_path, opt_path=opt_path,
                                        freq_path=freq_path, rotors=rotors)
         with open(input_file_path, 'wb') as f:
             f.write(input_file)
@@ -210,7 +203,7 @@ class Processor(object):
                     species.thermo = arkane_spc.getThermoData()
                     plotter.log_thermo(species.label, path=output_file_path[0])
                     species_for_thermo_lib.append(species)
-                if self.use_bac and self.model_chemistry:
+                if self.use_bac and self.sp_level:
                     # If BAC was used, save another Arkane YAML file of this species with no BAC, so it can be used
                     # for further rate calculations if needed (where the conformer.E0 has no BAC)
                     statmech_success = self._run_statmech(arkane_spc, species.arkane_file, output_file_path[1],
@@ -317,25 +310,29 @@ class Processor(object):
                     f.write(str('\n'))
 
     def _run_statmech(self, arkane_spc, arkane_file, output_file_path=None, use_bac=False, kinetics=False, plot=False):
-        """
-        A helper function for running an Arkane statmech job
-        `arkane_spc` is the species() function from Arkane's input.py
-        `arkane_file` is the Arkane species file (either .py or YAML form)
-        `output_file_path` is a path to the Arkane output.py file
-        `use_bac` is a bool flag indicating whether or not to use bond additivity corrections
-        `kinetics` is a bool flag indicating whether this specie sis part of a kinetics job, in which case..??
-        `plot` is a bool flag indicating whether or not to plot a PDF of the calculated thermo properties
+        """A helper function for running an Arkane statmech job
+
+        Args:
+            arkane_spc (str, unicode): An Arkane species() function representor.
+            arkane_file (str, unicode): The path to the Arkane species file (either in .py or YAML form).
+            output_file_path (str, unicode): The path to the Arkane output.py file.
+            use_bac (bool): A flag indicating whether or not to use bond additivity corrections (True to use).
+            kinetics (bool) A flag indicating whether this specie is part of a kinetics job.
+            plot (bool): A flag indicating whether to plot a PDF of the calculated thermo properties (True to plot)
+
+        Returns:
+            bool: Whether the job was successful (True for successful).
         """
         success = True
         stat_mech_job = StatMechJob(arkane_spc, arkane_file)
-        stat_mech_job.applyBondEnergyCorrections = use_bac and not kinetics and self.model_chemistry
-        if not kinetics or kinetics and self.model_chemistry:
+        stat_mech_job.applyBondEnergyCorrections = use_bac and not kinetics and self.sp_level
+        if not kinetics or (kinetics and self.sp_level):
             # currently we have to use a model chemistry for thermo
-            stat_mech_job.modelChemistry = self.model_chemistry
+            stat_mech_job.modelChemistry = self.sp_level
         else:
-            # if this is a klinetics computation and we don't have a valid model chemistry, don't bother about it
+            # if this is a kinetics computation and we don't have a valid model chemistry, don't bother about it
             stat_mech_job.applyAtomEnergyCorrections = False
-        stat_mech_job.frequencyScaleFactor = assign_frequency_scale_factor(self.model_chemistry)
+        stat_mech_job.frequencyScaleFactor = assign_frequency_scale_factor(self.freq_level)
         try:
             stat_mech_job.execute(outputFile=output_file_path, plot=plot)
         except Exception:

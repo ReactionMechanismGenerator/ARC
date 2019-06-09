@@ -18,7 +18,7 @@ import openbabel as ob
 import pybel as pyb
 
 from arkane.common import ArkaneSpecies, symbol_by_number
-from arkane.statmech import determine_qm_software
+from arkane.statmech import determine_qm_software, is_linear
 from rmgpy.molecule.converter import toOBMol
 from rmgpy.molecule.element import getElement
 from rmgpy.molecule.molecule import Atom, Molecule
@@ -56,7 +56,8 @@ class ARCSpecies(object):
                                            it). Defaults to None. Important, e.g., if a Species is a bi-rad singlet,
                                            in which case the job should be unrestricted, but the multiplicity does not
                                            have the required information to make that decision (r vs. u)
-    `e0`                    ``float``    The total electronic energy E0 of the species at the chosen sp level (kJ/mol)
+    `e_elect`               ``float``    The total electronic energy (without ZPE) of the species
+                                            at the chosen sp level, in kJ/mol
     `is_ts`                 ``bool``     Whether or not the species represents a transition state
     `number_of_rotors`      ``int``      The number of potential rotors to scan
     `rotors_dict`           ``dict``     A dictionary of rotors. structure given below.
@@ -154,7 +155,7 @@ class ARCSpecies(object):
             # Not reading from a dictionary
             self.is_ts = is_ts
             self.ts_conf_spawned = False
-            self.e0 = None
+            self.e_elect = None
             self.arkane_file = None
             if self.is_ts:
                 if ts_methods is None:
@@ -330,7 +331,7 @@ class ARCSpecies(object):
         """A helper function for dumping this object as a dictionary in a YAML file for restarting ARC"""
         species_dict = dict()
         species_dict['is_ts'] = self.is_ts
-        species_dict['E0'] = self.e0
+        species_dict['E0'] = self.e_elect
         species_dict['arkane_file'] = self.arkane_file
         if self.yml_path is not None:
             species_dict['yml_path'] = self.yml_path
@@ -388,7 +389,7 @@ class ARCSpecies(object):
             raise InputError('All species must have a label')
         self.run_time = datetime.timedelta(seconds=species_dict['run_time']) if 'run_time' in species_dict else None
         self.t1 = species_dict['t1'] if 't1' in species_dict else None
-        self.e0 = species_dict['E0'] if 'E0' in species_dict else None
+        self.e_elect = species_dict['E electronic'] if 'E electronic' in species_dict else None
         self.arkane_file = species_dict['arkane_file'] if 'arkane_file' in species_dict else None
         self.yml_path = species_dict['yml_path'] if 'yml_path' in species_dict else None
         self.rxn_label = species_dict['rxn_label'] if 'rxn_label' in species_dict else None
@@ -531,8 +532,8 @@ class ARCSpecies(object):
                 self.external_symmetry = external_symmetry_mode.symmetry
         if self.initial_xyz is not None:
             self.mol_from_xyz()
-        if self.e0 is None:
-            self.e0 = arkane_spc.conformer.E0.value_si * 0.001  # convert to kJ/mol
+        if self.e_elect is None:  # TODO: this is actually the E0, not e_elect! be consistent!
+            self.e_elect = arkane_spc.conformer.E0.value_si * 0.001  # convert to kJ/mol
 
     def generate_conformers(self):
         """
@@ -767,114 +768,6 @@ class ARCSpecies(object):
         if self.multiplicity is None:
             raise SpeciesError('Could not determine multiplicity for species {0}'.format(self.label))
 
-    def is_linear(self):
-        """
-        A helper function for determination of the species linearity from the .final_xyz attribute
-        """
-        epsilon = 0.001
-        if self.number_of_atoms == 1:
-            return False
-        if self.number_of_atoms == 2:
-            return True
-        xyz = self.final_xyz or self.initial_xyz or self.conformers[0]
-        if not xyz:
-            raise SpeciesError('Cannot determine linearity for {0} without the initial/final xyz coordinates'.format(
-                self.label))
-        _, _, x, y, z = get_xyz_matrix(xyz)
-        # first check whether the problem can be reduced into two (or one) dimensions
-        reduced_coord = ''
-        if all([nearly_equal(element, x[0]) for element in x]):
-            reduced_coord += 'x'
-        if all([nearly_equal(element, y[0]) for element in y]):
-            reduced_coord += 'y'
-        if all([nearly_equal(element, z[0]) for element in z]):
-            reduced_coord += 'z'
-        if reduced_coord:
-            # The problem can (and should) be reduced to two dimensions.
-            # (might actually be buggy to deal with it in 3D due to divisions by zero)
-            # Use linear interpolation instead of a 3D line
-            # This is often the case for standard orientation of linear molecules
-            if len(reduced_coord) == 2:
-                # This is the trivial case where all atoms are on the same axis by definition
-                return True
-            if reduced_coord == 'x':
-                # don't use x
-                x = y
-                y = z
-            elif reduced_coord == 'y':
-                # keep x as it is, don't use y
-                y = z
-            elif reduced_coord == 'z':
-                # keep x, y as they are, don't use z
-                pass
-            else:
-                raise SpeciesError('Could not determine whether species {0} is linear, something must be wrong with its'
-                                   ' coordinates:\n{1}'.format(self.label, xyz))
-            for i, _ in enumerate(x):
-                # Use a linear interpolation/extrapolation method, and compare extrapolated value and actual value
-                if i > 1:  # only start the algorithm at the third atom (index 2)
-                    if x[0] != x[1]:
-                        y0 = y[0] + (x[i] - x[0]) * (y[1] - y[0]) / (x[1] - x[0])
-                        if y[i] != 0:
-                            if nearly_equal(a=y0, b=y[i]):
-                                return True
-                            else:
-                                return False
-                        else:
-                            # avoid dividing by 0, but check we do extrapolate to 0 within the tolerance
-                            if abs(y0) < epsilon:
-                                return True
-                            else:
-                                return False
-                    elif y[0] != y[1]:
-                        x0 = x[0] + (y[i] - y[0]) * (x[1] - x[0]) / (y[1] - y[0])
-                        if x[i] != 0:
-                            if nearly_equal(a=x0, b=x[i]):
-                                return True
-                            else:
-                                return False
-                        else:
-                            if abs(x0) < epsilon:
-                                return True
-                            else:
-                                return False
-                    else:
-                        raise SpeciesError(
-                            'Could not determine whether species {0} is linear, something must be wrong with its'
-                            ' coordinates:\n{1}'.format(self.label, xyz))
-        else:
-            # this problem cannot be reduced, and must have a 3D treatment
-            vector_list = []
-            for i, _ in enumerate(x):
-                # generate a vector list where each element in the list contains [v1, v2]
-                # which are vectors (subtracting two points in space) between atoms A-B and B-C (or i, i-1 and i-1, i-2)
-                if i > 1:  # so only start this at the third atom (index 2)
-                    v1 = [x[i] - x[i - 1], y[i] - y[i - 1], z[i] - z[i - 1]]  # between points A, B
-                    v2 = [x[i - 1] - x[i - 2], y[i - 1] - y[i - 2], z[i - 1] - z[i - 2]]  # between points B, C
-                    vector_list.append([v1, v2])
-            for v1, v2 in vector_list:
-                if v1[0] and v2[0]:
-                    ax = v1[0] / v2[0]  # This is how much the x coord of point C is stretched relative to the AB vector
-                else:
-                    ax = 0
-                if v1[1] and v2[1]:
-                    ay = v1[1] / v2[1]
-                else:
-                    ay = 0
-                if v1[2] and v2[2]:
-                    az = v1[2] / v2[2]
-                else:
-                    az = 0
-                if ax and ay and not nearly_equal(ax, ay):
-                    break
-                if ax and az and not nearly_equal(ax, az):
-                    break
-                if ay and az and not nearly_equal(ay, az):
-                    break
-            else:
-                return True
-            return False
-
     def make_ts_report(self):
         """A helper function to write content into the .ts_report attribute"""
         self.ts_report = ''
@@ -1013,11 +906,14 @@ class ARCSpecies(object):
         if self.number_of_atoms == 1:
             shape_index = 0
             comment += '; The molecule is monoatomic'
-        elif self.is_linear():
-            shape_index = 1
-            comment += '; The molecule is linear'
         else:
-            shape_index = 2
+            coordinates = get_xyz_matrix(self.final_xyz or self.initial_xyz or self.conformers[0])[0]
+            coordinates = np.array(coordinates)
+            if is_linear(coordinates):
+                shape_index = 1
+                comment += '; The molecule is linear'
+            else:
+                shape_index = 2
         if self.number_of_atoms > 1:
             dipole_moment = parse_dipole_moment(opt_path) or 0
             if dipole_moment:

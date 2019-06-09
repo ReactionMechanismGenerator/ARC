@@ -40,7 +40,7 @@ from arc.arc_exceptions import InputError
 def draw_3d(xyz=None, species=None, project_directory=None, save_only=False):
     """
     Draws the molecule in a "3D-balls" style
-    If xyz ig given, it will be used, otherwise the function looks for species.final_xyz
+    If xyz is given, it will be used, otherwise the function looks for species.final_xyz
     Input coordinates are in string format
     Saves an image if a species and `project_directory` are provided
     If `save_only` is ``True``, then don't plot, only save the image
