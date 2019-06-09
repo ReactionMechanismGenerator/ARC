@@ -332,6 +332,27 @@ class TestARC(unittest.TestCase):
         with self.assertRaises(InputError):
             read_file('nopath')
 
+    def test_determine_model_chemistry(self):
+        """Test determining the model chemistry"""
+        arc0 = ARC(project='arc_model_chemistry_test_0', level_of_theory='CBS-QB3')
+        # arc0.determine_model_chemistry()
+        self.assertEqual(arc0.model_chemistry, 'cbs-qb3')
+
+        arc1 = ARC(project='arc_model_chemistry_test_1', model_chemistry='CBS-QB3-Paraskevas')
+        # arc1.determine_model_chemistry()
+        self.assertEqual(arc1.model_chemistry, 'cbs-qb3-paraskevas')
+
+        arc2 = ARC(project='arc_model_chemistry_test_2',
+                   level_of_theory='ccsd(t)-f12/cc-pvtz-f12//wb97xd/6-311++g(d,p)')
+        # arc2.determine_model_chemistry()
+        self.assertEqual(arc2.model_chemistry, 'ccsd(t)-f12/cc-pvtz-f12//wb97xd/6-311++g(d,p)')
+
+        arc3 = ARC(project='arc_model_chemistry_test_2',
+                   sp_level='ccsd(t)-f12/cc-pvtz-f12', opt_level='wb97xd/6-311++g(d,p)')
+        # arc3.determine_model_chemistry()
+        self.assertEqual(arc3.model_chemistry, 'ccsd(t)-f12/cc-pvtz-f12//wb97xd/6-311++g(d,p)')
+
+
     @classmethod
     def tearDownClass(cls):
         """
