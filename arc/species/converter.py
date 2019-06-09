@@ -392,12 +392,27 @@ def s_bonds_mol_from_xyz(xyz):
 
 
 def rdkit_conf_from_mol(mol, coordinates):
-    """A helper function generating an RDKit:Conformer object from an RMG:Molecule object"""
-    rd_mol, rd_inds = mol.toRDKitMol(removeHs=False, returnMapping=True)
+    """A helper function generating an RDKit Conformer object from an RMG Molecule object
+
+    Args:
+        mol (Molecule): The RMG Molecule object
+        coordinates (list, str, unicode): Array of xyz coordinates for the conformer
+
+    Returns:
+        Conformer: An RDKit Conformer object
+        RDMol: An RDKit Molecule object
+        dict: Atom index map. Keys are atom indices in the RMG Molecule, values are atom indices in the RDKit Molecule
+    """
+    if isinstance(coordinates[0], (str, unicode)) and isinstance(coordinates, list):
+        raise InputError('The coordinates argument seem to be of wrong type. Got a list of strings:\n{0}'.format(
+            coordinates))
+    if isinstance(coordinates, (str, unicode)):
+        coordinates = get_xyz_matrix(xyz=coordinates)[0]
+    rd_mol, rd_indices = mol.toRDKitMol(removeHs=False, returnMapping=True)
     Chem.AllChem.EmbedMolecule(rd_mol)  # unfortunately, this mandatory embedding changes the coordinates
     indx_map = dict()
     for xyz_index, atom in enumerate(mol.atoms):  # generate an atom index mapping dictionary
-        rd_index = rd_inds[atom]
+        rd_index = rd_indices[atom]
         indx_map[xyz_index] = rd_index
     conf = rd_mol.GetConformer(id=0)
     for i in range(rd_mol.GetNumAtoms()):  # reset atom coordinates
