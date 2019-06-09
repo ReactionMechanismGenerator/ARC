@@ -53,13 +53,13 @@ class TestARC(unittest.TestCase):
                    arc_species_list=[spc1])
         restart_dict = arc0.as_dict()
         expected_dict = {'composite_method': '',
-                         'conformer_level': 'b3lyp/6-31+g(d,p)',
-                         'ts_guess_level': 'b3lyp/6-31+g(d,p)',
+                         'conformer_level': 'b97d3/6-31+g(d,p)',
+                         'ts_guess_level': 'b97d3/6-31+g(d,p)',
                          'opt_level': 'wb97xd/6-311++g(d,p)',
                          'freq_level': 'wb97xd/6-311++g(d,p)',
                          'initial_trsh': 'scf=(NDump=30)',
                          'max_job_time': 120,
-                         'model_chemistry': 'ccsd(t)-f12/cc-pvtz-f12',
+                         'model_chemistry': 'ccsd(t)-f12/cc-pvtz-f12//wb97xd/6-311++g(d,p)',
                          'output': {},
                          'project': 'arc_test',
                          'running_jobs': {},
@@ -266,9 +266,9 @@ class TestARC(unittest.TestCase):
         spc2 = Species().fromSMILES(str('CC([O])=O'))
         spc2.generate_resonance_structures()
         spc2.thermo = db.thermo.getThermoData(spc2)
-        self.assertAlmostEqual(spc2.getEnthalpy(298), -178003.44650359568, 1)
-        self.assertAlmostEqual(spc2.getEntropy(298), 283.5983103176096, 1)
-        self.assertAlmostEqual(spc2.getHeatCapacity(1000), 118.99753808225603, 1)
+        self.assertAlmostEqual(spc2.getEnthalpy(298), -176074.01886272896, 1)
+        self.assertAlmostEqual(spc2.getEntropy(298), 283.2225158405262, 1)
+        self.assertAlmostEqual(spc2.getHeatCapacity(1000), 118.28356605714401, 1)
         self.assertTrue('arc_project_for_testing_delete_after_usage2' in spc2.thermo.comment)
 
         # delete the generated library from RMG-database
