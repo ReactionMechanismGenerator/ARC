@@ -56,7 +56,8 @@ class ARCSpecies(object):
                                            it). Defaults to None. Important, e.g., if a Species is a bi-rad singlet,
                                            in which case the job should be unrestricted, but the multiplicity does not
                                            have the required information to make that decision (r vs. u)
-    `e0`                    ``float``    The total electronic energy E0 of the species at the chosen sp level (kJ/mol)
+    `e_elect`               ``float``    The total electronic energy (without ZPE) of the species
+                                            at the chosen sp level, in kJ/mol
     `is_ts`                 ``bool``     Whether or not the species represents a transition state
     `number_of_rotors`      ``int``      The number of potential rotors to scan
     `rotors_dict`           ``dict``     A dictionary of rotors. structure given below.
@@ -154,7 +155,7 @@ class ARCSpecies(object):
             # Not reading from a dictionary
             self.is_ts = is_ts
             self.ts_conf_spawned = False
-            self.e0 = None
+            self.e_elect = None
             self.arkane_file = None
             if self.is_ts:
                 if ts_methods is None:
@@ -330,7 +331,7 @@ class ARCSpecies(object):
         """A helper function for dumping this object as a dictionary in a YAML file for restarting ARC"""
         species_dict = dict()
         species_dict['is_ts'] = self.is_ts
-        species_dict['E0'] = self.e0
+        species_dict['E0'] = self.e_elect
         species_dict['arkane_file'] = self.arkane_file
         if self.yml_path is not None:
             species_dict['yml_path'] = self.yml_path
@@ -388,7 +389,7 @@ class ARCSpecies(object):
             raise InputError('All species must have a label')
         self.run_time = datetime.timedelta(seconds=species_dict['run_time']) if 'run_time' in species_dict else None
         self.t1 = species_dict['t1'] if 't1' in species_dict else None
-        self.e0 = species_dict['E0'] if 'E0' in species_dict else None
+        self.e_elect = species_dict['E electronic'] if 'E electronic' in species_dict else None
         self.arkane_file = species_dict['arkane_file'] if 'arkane_file' in species_dict else None
         self.yml_path = species_dict['yml_path'] if 'yml_path' in species_dict else None
         self.rxn_label = species_dict['rxn_label'] if 'rxn_label' in species_dict else None
@@ -531,8 +532,8 @@ class ARCSpecies(object):
                 self.external_symmetry = external_symmetry_mode.symmetry
         if self.initial_xyz is not None:
             self.mol_from_xyz()
-        if self.e0 is None:
-            self.e0 = arkane_spc.conformer.E0.value_si * 0.001  # convert to kJ/mol
+        if self.e_elect is None:  # TODO: this is actually the E0, not e_elect! be consistent!
+            self.e_elect = arkane_spc.conformer.E0.value_si * 0.001  # convert to kJ/mol
 
     def generate_conformers(self):
         """

@@ -77,7 +77,7 @@ def parse_t1(path):
     return t1
 
 
-def parse_e0(path):
+def parse_e_elect(path, zpe_scale_factor=1.):
     """
     Parse the zero K energy, E0, from an sp job output file
     """
@@ -85,11 +85,11 @@ def parse_e0(path):
         raise InputError('Could not find file {0}'.format(path))
     log = determine_qm_software(fullpath=path)
     try:
-        e0 = log.loadEnergy(frequencyScaleFactor=1.) * 0.001  # convert to kJ/mol
+        e_elect = log.loadEnergy(zpe_scale_factor) * 0.001  # convert to kJ/mol
     except Exception:
-        logging.warning('Could not read E0 from {0}'.format(path))
-        e0 = None
-    return e0
+        logging.warning('Could not read e_elect from {0}'.format(path))
+        e_elect = None
+    return e_elect
 
 
 def parse_xyz_from_file(path):

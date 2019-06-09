@@ -310,24 +310,28 @@ class ARCReaction(object):
         Check that the TS E0 is above both reactants and products wells
         Return ``False`` if this test fails, else ``True``
         """
-        if any([spc.e0 is None for spc in self.r_species + self.p_species + [self.ts_species]]):
+        if any([spc.e_elect is None for spc in self.r_species + self.p_species + [self.ts_species]]):
             logging.error("Could not get E0's of all species participating in reaction {0}. Cannot check TS E0.".format(
                 self.label))
-            r_e0 = None if any([spc.e0 is None for spc in self.r_species]) else sum(spc.e0 for spc in self.r_species)
-            p_e0 = None if any([spc.e0 is None for spc in self.p_species]) else sum(spc.e0 for spc in self.p_species)
-            ts_e0 = self.ts_species.e0
-            logging.error('Reactants E0: {0}\nProducts E0: {1}\nTS E0: {2}'.format(r_e0, p_e0, ts_e0))
+            r_e_elect = None if any([spc.e_elect is None for spc in self.r_species])\
+                else sum(spc.e_elect for spc in self.r_species)
+            p_e_elect = None if any([spc.e_elect is None for spc in self.p_species])\
+                else sum(spc.e_elect for spc in self.p_species)
+            ts_e_elect = self.ts_species.e_elect
+            logging.error('Reactants E0: {0}\nProducts E0: {1}\nTS E0: {2}'.format(r_e_elect, p_e_elect, ts_e_elect))
             return True
-        r_e0 = sum([spc.e0 for spc in self.r_species])
-        p_e0 = sum([spc.e0 for spc in self.p_species])
-        if self.ts_species.e0 < r_e0 or self.ts_species.e0 < p_e0:
+        r_e_elect = sum([spc.e_elect for spc in self.r_species])
+        p_e_elect = sum([spc.e_elect for spc in self.p_species])
+        if self.ts_species.e_elect < r_e_elect or self.ts_species.e_elect < p_e_elect:
             if log:
                 logging.error('TS of reaction {0} has a lower E0 value than expected:\nReactants: {1} kJ/mol\nTS:'
-                              ' {2} kJ/mol\nProducts: {3} kJ/mol'.format(self.label, r_e0, self.ts_species.e0, p_e0))
+                              ' {2} kJ/mol\nProducts: {3} kJ/mol'.format(self.label, r_e_elect,
+                                                                         self.ts_species.e_elect, p_e_elect))
             return False
         if log:
             logging.info('Reaction {0} has the following path energies:\nReactants: {1} kJ/mol'
-                         '\nTS: {2} kJ/mol\nProducts: {3} kJ/mol'.format(self.label, r_e0, self.ts_species.e0, p_e0))
+                         '\nTS: {2} kJ/mol\nProducts: {3} kJ/mol'.format(self.label, r_e_elect,
+                                                                         self.ts_species.e_elect, p_e_elect))
         return True
 
     def check_attributes(self):

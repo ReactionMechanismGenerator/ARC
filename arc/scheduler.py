@@ -1121,7 +1121,9 @@ class Scheduler(object):
             self.output[label]['status'] += 'sp converged; '
             self.output[label]['sp'] = os.path.join(job.local_path, 'output.out')
             self.species_dict[label].t1 = parser.parse_t1(self.output[label]['sp'])
-            self.species_dict[label].e0 = parser.parse_e0(self.output[label]['sp'])
+            zpe_scale_factor = 0.99 if self.composite_method.lower() == 'cbs-qb3' else 1.0
+            self.species_dict[label].e_elect = parser.parse_e_elect(self.output[label]['sp'],
+                                                                    zpe_scale_factor=zpe_scale_factor)
             if self.species_dict[label].t1 is not None:
                 txt = ''
                 if self.species_dict[label].t1 > 0.02:
