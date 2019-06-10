@@ -274,6 +274,9 @@ class Scheduler(object):
                 self.output[species.label]['status'] += '; Restarted ARC at {0}; '.format(datetime.datetime.now())
             if species.label not in self.job_dict:
                 self.job_dict[species.label] = dict()
+            if 'onedmin' in self.job_types and self.job_types['onedmin']\
+                    and not species.is_ts and species.final_xyz is not None:
+                self.run_onedmin_job(species.label)
             if species.yml_path is None:
                 if self.job_types['1d_rotors'] and not self.species_dict[species.label].number_of_rotors:
                     self.species_dict[species.label].determine_rotors()
@@ -301,8 +304,6 @@ class Scheduler(object):
                             self.run_composite_job(species.label)
                         else:
                             self.run_sp_job(label=species.label)
-                        if self.job_types['onedmin']:
-                            self.run_onedmin_job(species.label)
                 elif (self.species_dict[species.label].initial_xyz is not None
                         or self.species_dict[species.label].final_xyz is not None) and not self.testing:
                     # For restarting purposes: check before running jobs whether they were already terminated
@@ -560,6 +561,8 @@ class Scheduler(object):
         if job.software is not None:
             if conformer < 0:
                 # this is NOT a conformer job
+                if label not in self.running_jobs:
+                    self.running_jobs[label] = list()
                 self.running_jobs[label].append(job.job_name)  # mark as a running job
                 try:
                     self.job_dict[label][job_type]
