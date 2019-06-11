@@ -410,28 +410,63 @@ def text_plotter(x_data, y_data, labels, text_positions, axis, txt_width, txt_he
                        zorder=0, length_includes_head=True)
 
 
-def save_geo(species, project_directory):
+def save_geo(species=None, xyz_coordinates=None, project_directory=None, path=None, filename=None, format_='all'):
+    """Save a geometry file
+    final_xyz will be saved if it is not None, otherwise initial_xyz will be used.
+    Either project_directory or path must be specified.
+    Either species or xyz_coordinates must be specified.
+
+    Args:
+        species (ARCSpecies): The species with the geometry attributes.
+        xyz_coordinates (str, unicode, optional): The xyz coordinates to save in a string format.
+        project_directory (str, unicode, optional): The project directory where the species folder is located.
+        path (str, unicode, optional): A specific directory path for saving the files.
+        filename (str, unicode, optional): A name for the file to save (without suffix).
+        format_ (str, unicode, optional): THe format to save. Either 'xyz', 'gjf' or 'all' for both.
     """
-    Save the geometry in several forms for an ARC Species object in the project's output folder under the species name
-    """
-    folder_name = 'rxns' if species.is_ts else 'Species'
-    geo_path = os.path.join(project_directory, 'output', folder_name, species.label, 'geometry')
+    if project_directory is not None:
+        if species is None:
+            raise InputError('A species object must be specified when specifying the project directory')
+        folder_name = 'rxns' if species.is_ts else 'Species'
+        geo_path = os.path.join(project_directory, 'output', folder_name, species.label, 'geometry')
+    elif path is not None:
+        geo_path = path
+    else:
+        raise InputError('Either project_directory or path must be specified.')
     if not os.path.exists(geo_path):
         os.makedirs(geo_path)
 
-    # xyz
-    xyz = '{0}\n'.format(species.number_of_atoms)
-    xyz += '{0} optimized at {1}\n'.format(species.label, species.opt_level)
-    xyz += '{0}\n'.format(species.final_xyz)
-    with open(os.path.join(geo_path, '{0}.xyz'.format(species.label)), 'w') as f:
-        f.write(str(xyz))
+    if species is None and xyz_coordinates is None:
+        raise InputError('Either a species or xyz_coordinates must be given')
+    elif species is not None and species.final_xyz is None and species.initial_xyz is None:
+        raise InputError('Either initial_xyz or final_xyz of species {0} must be given'.format(species.label))
 
-    # GaussView file
-    gv = '# hf/3-21g\n\n{0} optimized at {1}\n\n'.format(species.label, species.opt_level)
-    gv += '{0} {1}\n'.format(species.charge, species.multiplicity)
-    gv += '{0}\n'.format(species.final_xyz)
-    with open(os.path.join(geo_path, '{0}.gjf'.format(species.label)), 'w') as f:
-        f.write(str(gv))
+    filename = filename if filename is not None else species.label
+    xyz_coordinates = xyz_coordinates or species.final_xyz or species.initial_xyz
+    number_of_atoms = species.number_of_atoms if species is not None\
+        else len([line for line in xyz_coordinates.splitlines() if line])
+
+    if format_ in ['xyz', 'all']:
+        # xyz format
+        xyz = '{0}\n'.format(number_of_atoms)
+        if species is not None:
+            xyz += '{0} optimized at {1}\n'.format(species.label, species.opt_level)
+        else:
+            xyz += 'coordinates\n'
+        xyz += '{0}\n'.format(xyz_coordinates)
+        with open(os.path.join(geo_path, '{0}.xyz'.format(filename)), 'w') as f:
+            f.write(str(xyz))
+
+    if format_ in ['gjf', 'gaussian', 'all']:
+        # GaussView file
+        gv = '# hf/3-21g\n\n{0} optimized at {1}\n\n'.format(species.label, species.opt_level)
+        if species is not None:
+            gv += '{0} {1}\n'.format(species.charge, species.multiplicity)
+        else:
+            gv += '0 1\n'
+        gv += '{0}\n'.format(xyz_coordinates)
+        with open(os.path.join(geo_path, '{0}.gjf'.format(filename)), 'w') as f:
+            f.write(str(gv))
 
 
 def save_thermo_lib(species_list, path, name, lib_long_desc):
