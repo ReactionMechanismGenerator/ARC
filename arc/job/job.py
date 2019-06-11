@@ -19,6 +19,7 @@ from arc.job.inputs import input_files
 from arc.job.ssh import SSHClient
 from arc.job.local import get_last_modified_time, submit_job, delete_job, execute_command, check_job_status,\
     rename_output
+from arc.plotter import save_geo
 from arc.arc_exceptions import JobError, SpeciesError
 
 ##################################################################
@@ -47,46 +48,46 @@ class Job(object):
     `is_ts`           ``bool``           Whether this species represents a transition structure
     `level_of_theory` ``str``            Level of theory, e.g. 'CBS-QB3', 'CCSD(T)-F12a/aug-cc-pVTZ',
                                            'B3LYP/6-311++G(3df,3pd)'...
-    `job_type`         ``str``           The job's type
-    `scan`             ``list``          A list representing atom labels for the dihedral scan
+    `job_type`        ``str``            The job's type
+    `scan`            ``list``           A list representing atom labels for the dihedral scan
                                            (e.g., "2 1 3 5" as a string or [2, 1, 3, 5] as a list of integers)
-    `pivots`           ``list``          The rotor scan pivots, if the job type is scan. Not used directly in these
+    `pivots`          ``list``           The rotor scan pivots, if the job type is scan. Not used directly in these
                                            methods, but used to identify the rotor.
-    `scan_res`         ``int``           The rotor scan resolution in degrees
-    `software`         ``str``           The electronic structure software to be used
-    `server_nodes`     ``list``          A list of nodes this job was submitted to (for troubleshooting)
-    `memory`           ``int``           The allocated memory (1500 MB by default)
-    `method`           ``str``           The calculation method (e.g., 'B3LYP', 'CCSD(T)', 'CBS-QB3'...)
-    `basis_set`        ``str``           The basis set (e.g., '6-311++G(d,p)', 'aug-cc-pVTZ'...)
-    `fine`             ``bool``          Whether to use fine geometry optimization parameters
-    `shift`            ``str``           A string representation alpha- and beta-spin orbitals shifts (molpro only)
-    `comments`         ``str``           Job comments (archived, not used)
-    `initial_time`     ``datetime``      The date-time this job was initiated. Determined automatically
-    `final_time`       ``datetime``      The date-time this job was initiated. Determined automatically
-    `run_time`         ``timedelta``     Job execution time. Determined automatically
-    `job_status`       ``list``          The job's server and ESS statuses. Determined automatically
-    `job_server_name`  ``str``           Job's name on the server (e.g., 'a103'). Determined automatically
-    `job_name`         ``str``           Job's name for internal usage (e.g., 'opt_a103'). Determined automatically
-    `job_id`           ``int``           The job's ID determined by the server.
-    `local_path`       ``str``           Local path to job's folder. Determined automatically
+    `scan_res`        ``int``            The rotor scan resolution in degrees
+    `software`        ``str``            The electronic structure software to be used
+    `server_nodes`    ``list``           A list of nodes this job was submitted to (for troubleshooting)
+    `memory`          ``int``            The allocated memory (1500 MB by default)
+    `method`          ``str``            The calculation method (e.g., 'B3LYP', 'CCSD(T)', 'CBS-QB3'...)
+    `basis_set`       ``str``            The basis set (e.g., '6-311++G(d,p)', 'aug-cc-pVTZ'...)
+    `fine`            ``bool``           Whether to use fine geometry optimization parameters
+    `shift`           ``str``            A string representation alpha- and beta-spin orbitals shifts (molpro only)
+    `comments`        ``str``            Job comments (archived, not used)
+    `initial_time`    ``datetime``       The date-time this job was initiated. Determined automatically
+    `final_time`      ``datetime``       The date-time this job was initiated. Determined automatically
+    `run_time`        ``timedelta``      Job execution time. Determined automatically
+    `job_status`      ``list``           The job's server and ESS statuses. Determined automatically
+    `job_server_name` ``str``            Job's name on the server (e.g., 'a103'). Determined automatically
+    `job_name`        ``str``            Job's name for internal usage (e.g., 'opt_a103'). Determined automatically
+    `job_id`          ``int``            The job's ID determined by the server.
+    `local_path`      ``str``            Local path to job's folder. Determined automatically
     `local_path_to_output_file` ``str``  The local path to the output.out file
     `local_path_to_orbitals_file` ``str``  The local path to the orbitals.fchk file (only for orbitals jobs)
     `local_path_to_check_file` ``str``   The local path to the Gaussian check file of the current job (downloaded)
     `local_path_to_lj_file`  ``str``     The local path to the lennard_jones data file (from OneDMin)
-    `checkfile`        ``str``           The path to a previous Gaussian checkfile to be used in the current job
-    `remote_path`      ``str``           Remote path to job's folder. Determined automatically
-    `submit`           ``str``           The submit script. Created automatically
-    `input`            ``str``           The input file. Created automatically
-    `server`           ``str``           Server's name. Determined automatically
-    'trsh'             ''str''           A troubleshooting handle to be appended to input files
+    `checkfile`       ``str``            The path to a previous Gaussian checkfile to be used in the current job
+    `remote_path`     ``str``            Remote path to job's folder. Determined automatically
+    `submit`          ``str``            The submit script. Created automatically
+    `input`           ``str``            The input file. Created automatically
+    `server`          ``str``            Server's name. Determined automatically
+    'trsh'            ''str''            A troubleshooting handle to be appended to input files
     'ess_trsh_methods' ``list``          A list of troubleshooting methods already tried out for ESS convergence
-    `initial_trsh`     ``dict``          Troubleshooting methods to try by default. Keys are ESS software,
+    `initial_trsh`    ``dict``           Troubleshooting methods to try by default. Keys are ESS software,
                                            values are trshs
-    `scan_trsh`        ``str``           A troubleshooting method for rotor scans
-    `occ`              ``int``           The number of occupied orbitals (core + val) from a molpro CCSD sp calc
+    `scan_trsh`       ``str``            A troubleshooting method for rotor scans
+    `occ`             ``int``            The number of occupied orbitals (core + val) from a molpro CCSD sp calc
     `project_directory` ``str``          The path to the project directory
-    `max_job_time`     ``int``           The maximal allowed job time on the server in hours
-    `bath_gas`         ``str``           A bath gas. Currently used in OneDMin to calc L-J parameters.
+    `max_job_time`    ``int``            The maximal allowed job time on the server in hours
+    `bath_gas`        ``str``            A bath gas. Currently used in OneDMin to calc L-J parameters.
                                            Allowed values are He, Ne, Ar, Kr, H2, N2, O2
     ================ =================== ===============================================================================
 
@@ -172,7 +173,7 @@ class Job(object):
                     self.software = 'qchem'
             elif job_type == 'composite':
                 if 'gaussian' not in self.ess_settings.keys():
-                    raise JobError('Could not find the Gaussian software to run the composite method {0}.\n'
+                    raise JobError('Could not find Gaussian to run the composite method {0}.\n'
                                    'ess_settings is:\n{1}'.format(self.method, self.ess_settings))
                 self.software = 'gaussian'
             else:
@@ -187,7 +188,7 @@ class Job(object):
                     if 'b2' in self.method or 'dsd' in self.method or 'pw2' in self.method:
                         # this is a double-hybrid (MP2) DFT method, use Gaussian
                         if 'gaussian' not in self.ess_settings.keys():
-                            raise JobError('Could not find the Gaussian software to run the double-hybrid method {0}.\n'
+                            raise JobError('Could not find Gaussian to run the double-hybrid method {0}.\n'
                                            'ess_settings is:\n{1}'.format(self.method, self.ess_settings))
                         self.software = 'gaussian'
                     if 'ccs' in self.method or 'cis' in self.method or 'pv' in self.basis_set:
@@ -202,18 +203,31 @@ class Job(object):
                             self.software = 'gaussian'
                         elif 'qchem' in self.ess_settings.keys():
                             self.software = 'qchem'
+                        elif 'terachem' in self.ess_settings.keys():
+                            self.software = 'terachem'
                         elif 'molpro' in self.ess_settings.keys():
                             self.software = 'molpro'
                     elif 'wb97xd' in self.method:
-                        if 'gaussian' not in self.ess_settings.keys():
-                            raise JobError('Could not find the Gaussian software to run {0}/{1}'.format(
-                                self.method, self.basis_set))
-                        self.software = 'gaussian'
+                        if 'gaussian' in self.ess_settings.keys():
+                            self.software = 'gaussian'
+                        elif 'terachem' in self.ess_settings.keys():
+                            self.software = 'terachem'
                     elif 'wb97x-d3' in self.method:
                         if 'qchem' not in self.ess_settings.keys():
-                            raise JobError('Could not find the QChem software to run {0}/{1}'.format(
-                                self.method, self.basis_set))
+                            raise JobError('Could not find QChem to run {0}/{1}'.format(self.method, self.basis_set))
                         self.software = 'qchem'
+                    elif 'wb97x' in self.method:
+                        if 'terachem' in self.ess_settings.keys():
+                            self.software = 'terachem'
+                        elif 'gaussian' in self.ess_settings.keys():
+                            self.software = 'gaussian'
+                        elif 'qchem' in self.ess_settings.keys():
+                            self.software = 'qchem'
+                    elif 'wb97' in self.method or 'def2' in self.basis_set:
+                        if 'terachem' in self.ess_settings.keys():
+                            self.software = 'terachem'
+                        elif 'qchem' in self.ess_settings.keys():
+                            self.software = 'qchem'
                     elif 'b97' in self.method or 'def2' in self.basis_set:
                         if 'gaussian' in self.ess_settings.keys():
                             self.software = 'gaussian'
@@ -221,24 +235,32 @@ class Job(object):
                             self.software = 'qchem'
                     elif 'm062x' in self.method:  # without dash
                         if 'gaussian' not in self.ess_settings.keys():
-                            raise JobError('Could not find the Gaussian software to run {0}/{1}'.format(
-                                self.method, self.basis_set))
+                            raise JobError('Could not find Gaussian to run {0}/{1}'.format(self.method, self.basis_set))
                         self.software = 'gaussian'
                     elif 'm06-2x' in self.method:  # with dash
                         if 'qchem' not in self.ess_settings.keys():
-                            raise JobError('Could not find the QChem software to run {0}/{1}'.format(
-                                self.method, self.basis_set))
+                            raise JobError('Could not find QChem to run {0}/{1}'.format(self.method, self.basis_set))
                         self.software = 'qchem'
+                    elif self.method in ['pbe', 'wpbe', 'pbe0']:
+                        if 'terachem' in self.ess_settings.keys():
+                            self.software = 'terachem'
+                        elif 'qchem' in self.ess_settings.keys():
+                            self.software = 'qchem'
+                    elif self.method in ['svwn', 'bhandhlyp', 'b3p86', 'b3p86', 'b3lyp5', 'b3pw91', 'pw91', 'revpbe',
+                                         'revpbe0', 'wpbeh', 'bop', 'mubop', 'camb3lyp', '', '', '']:
+                        if 'terachem' in self.ess_settings.keys():
+                            self.software = 'terachem'
+                    elif '1pbe' in self.method or '2pbe' in self.method or '2pbe' in self.method:
+                        if 'gaussian' in self.ess_settings.keys():
+                            self.software = 'gaussian'
                 elif job_type == 'scan':
                     if 'wb97xd' in self.method:
                         if 'gaussian' not in self.ess_settings.keys():
-                            raise JobError('Could not find the Gaussian software to run {0}/{1}'.format(
-                                self.method, self.basis_set))
+                            raise JobError('Could not find Gaussian to run {0}/{1}'.format(self.method, self.basis_set))
                         self.software = 'gaussian'
                     elif 'wb97x-d3' in self.method:
                         if 'qchem' not in self.ess_settings.keys():
-                            raise JobError('Could not find the QChem software to run {0}/{1}'.format(
-                                self.method, self.basis_set))
+                            raise JobError('Could not find QChem to run {0}/{1}'.format(self.method, self.basis_set))
                         self.software = 'qchem'
                     elif 'b3lyp' in self.method:
                         if 'gaussian' in self.ess_settings.keys():
@@ -252,22 +274,24 @@ class Job(object):
                             self.software = 'qchem'
                     elif 'm06-2x' in self.method:  # with dash
                         if 'qchem' not in self.ess_settings.keys():
-                            raise JobError('Could not find the QChem software to run {0}/{1}'.format(
-                                self.method, self.basis_set))
+                            raise JobError('Could not find QChem to run {0}/{1}'.format(self.method, self.basis_set))
                         self.software = 'qchem'
                     elif 'm062x' in self.method:  # without dash
                         if 'gaussian' not in self.ess_settings.keys():
-                            raise JobError('Could not find the Gaussian software to run {0}/{1}'.format(
-                                self.method, self.basis_set))
+                            raise JobError('Could not find Gaussian to run {0}/{1}'.format(self.method, self.basis_set))
                         self.software = 'gaussian'
                     else:
                         if 'gaussian' in self.ess_settings.keys():
                             self.software = 'gaussian'
-                        else:
+                        elif 'terachem' in self.ess_settings.keys():
+                            self.software = 'terachem'
+                        elif 'qchem' in self.ess_settings.keys():
                             self.software = 'qchem'
+                        elif 'molpro' in self.ess_settings.keys():
+                            self.software = 'molpro'
                 elif job_type in ['gsm', 'irc']:
                     if 'gaussian' not in self.ess_settings.keys():
-                        raise JobError('Could not find the Gaussian software to run {0}'.format(job_type))
+                        raise JobError('Could not find Gaussian to run {0}'.format(job_type))
         if self.software is None:
             # if still no software was determined, just try by order, if exists: Gaussian > QChem > Molpro
             logging.error('job_num: {0}'.format(self.job_num))
@@ -292,6 +316,9 @@ class Job(object):
             elif 'molpro' in self.ess_settings.keys():
                 logging.error('Setting it to Molpro')
                 self.software = 'molpro'
+            elif 'terachem' in self.ess_settings.keys():
+                logging.error('Setting it to TeraChem')
+                self.software = 'terachem'
 
         self.server = server if server is not None else self.ess_settings[self.software][0]
 
@@ -492,6 +519,20 @@ class Job(object):
         if self.software == 'gaussian' and '/' in self.level_of_theory:
             slash = '/'
 
+        dispersion = ''
+        if self.software == 'terachem':
+            if self.method[-2:] == 'd2':
+                dispersion = 'd2'
+                self.method = self.method[:-2]
+            elif self.method[-2:] == 'd3':
+                dispersion = 'd3'
+                self.method = self.method[:-2]
+            elif self.method[-1:] == 'd':
+                dispersion = 'yes'
+                self.method = self.method[:-2]
+            else:
+                dispersion = 'no'
+
         if (self.multiplicity > 1 and '/' in self.level_of_theory) or self.number_of_radicals > 1:
             # don't add 'u' to composite jobs. Do add 'u' for bi-rad singlets if `number_of_radicals` > 1
             if self.number_of_radicals > 1:
@@ -568,6 +609,15 @@ wf,spin={spin},charge={charge};}}
                     job_type_1 = "\noptg, root=2, method=qsd, readhess, savexyz='geometry.xyz'"
                 else:
                     job_type_1 = "\noptg, savexyz='geometry.xyz'"
+            elif self.software == 'terachem':
+                if self.is_ts:
+                    job_type_1 = 'ts'
+                else:
+                    job_type_1 = 'minimize'
+                if self.fine:
+                    fine = '4\ndynamicgrid yes'  # corresponds to ~60,000 grid points/atom
+                else:
+                    fine = '1'  # default, corresponds to ~800 grid points/atom
 
         elif self.job_type == 'orbitals' and self.software == 'qchem':
             if self.is_ts:
@@ -589,6 +639,8 @@ wf,spin={spin},charge={charge};}}
                 job_type_1 = 'freq'
             elif self.software == 'molpro':
                 job_type_1 = '\n{frequencies;\nthermo;\nprint,HESSIAN,thermo;}'
+            elif self.software == 'terachem':
+                job_type_1 = 'frequencies'
 
         elif self.job_type == 'optfreq':
             if self.software == 'gaussian':
@@ -648,6 +700,8 @@ $end
                 job_type_1 = 'sp'
             elif self.software == 'molpro':
                 pass
+            elif self.software == 'terachem':
+                job_type_1 = 'energy'
 
         if self.job_type == 'composite':
             if self.software == 'gaussian':
@@ -698,6 +752,11 @@ $end
                 # xqc will do qc (quadratic convergence) if the job fails w/o it, so use by default
                 self.trsh = 'scf=xqc'
 
+        if self.software == 'terachem':
+            # TeraChem requires an additional xyz file
+            # note: the xyz filename must correspond to the xyz filename specified in TeraChem's input file
+            save_geo(xyz_coordinates=self.xyz, path=self.local_path, filename='coord', format_='xyz')
+
         if self.job_type == 'irc':  # TODO
             pass
 
@@ -724,7 +783,8 @@ $end
                                                basis=self.basis_set, charge=self.charge, multiplicity=self.multiplicity,
                                                spin=self.spin, xyz=self.xyz, job_type_1=job_type_1, cpus=cpus,
                                                job_type_2=job_type_2, scan=scan_string, restricted=restricted,
-                                               fine=fine, shift=self.shift, trsh=self.trsh, scan_trsh=self.scan_trsh,)
+                                               fine=fine, shift=self.shift, trsh=self.trsh, scan_trsh=self.scan_trsh,
+                                               dispersion=dispersion)
             except KeyError:
                 logging.error('Could not interpret all input file keys in\n{0}'.format(self.input))
                 raise
@@ -766,6 +826,10 @@ $end
             ssh.upload_file(remote_file_path=remote_qcmol_path, file_string=input_files['onedmin.qc.mol'])
             # make the m.x file executable
             ssh.send_command_to_server(command='chmod +x m.x', remote_path=self.remote_path)
+        if self.software == 'terachem':
+            local_geo_path = os.path.join(self.local_path, 'coord.xyz')
+            remote_geo_path = os.path.join(self.remote_path, 'coord.xyz')
+            ssh.upload_file(remote_file_path=remote_geo_path, local_file_path=local_geo_path)
         self.initial_time = ssh.get_last_modified_time(remote_file_path=remote_file_path)
 
     def _upload_check_file(self, local_check_file_path=None):
@@ -989,6 +1053,7 @@ $end
         self.determine_run_time()
         with open(self.local_path_to_output_file, 'r') as f:
             lines = f.readlines()
+
             if self.software == 'gaussian':
                 for line in lines[-1:-20:-1]:
                     if 'Normal termination of Gaussian' in line:
@@ -1028,6 +1093,7 @@ $end
                             return 'errored: {0}; {1}'.format(line, reason)
                     return 'errored: Unknown reason'
                 return 'done'
+
             elif self.software == 'qchem':
                 done = False
                 error_message = ''
@@ -1055,6 +1121,7 @@ $end
                         return 'errored: ' + error_message
                     else:
                         return 'errored: Unknown reason'
+
             elif self.software == 'molpro':
                 for line in lines[::-1]:
                     if 'molpro calculation terminated' in line.lower()\
@@ -1076,6 +1143,25 @@ $end
                     if 'the problem occurs' in line:
                         return 'errored: ' + line
                 return 'errored: Unknown reason'
+
+            elif self.software == 'terachem':
+                for line in lines[::-1]:
+                    if 'Job finished:' in line:
+                        return 'done'
+                    elif 'incorrect method' in line.lower():
+                        return 'errored: incorrect method'
+                    elif 'error: ' in line.lower():
+                        # e.g.: "ERROR: Closed shell calculations can't have spin multiplicity 0."
+                        return 'errored: {0}'.format(line[7:])
+                    elif 'unable to open file: ' in line.lower():
+                        # e.g.: "Unable to open file /<..path..>/TeraChem/basis/6-311++g[d,p]"
+                        if 'basis' in line:
+                            return 'errored: Could not find basis set {0} in TeraChem'.format(
+                                line.split('/')[-1].replace('[', '(').replace(']', ')'))
+                        else:
+                            return 'errored: {0}'.format(line)
+                return 'errored: Unknown reason'
+
         if self.software == 'onedmin':
             with open(self.local_path_to_lj_file, 'r') as f:
                 lines = f.readlines()
@@ -1137,9 +1223,10 @@ $end
             if self.job_status[0] != 'done':
                 logging.error('Job {name} has server status "{stat}" on {server}. Re-running job.'.format(
                     name=self.job_name, stat=self.job_status[0], server=self.server))
-            ssh = SSHClient(self.server)
-            ssh.send_command_to_server(command=delete_command[servers[self.server]['cluster_soft']] +
-                                       ' ' + str(self.job_id))
+            if self.server != 'local':
+                ssh = SSHClient(self.server)
+                ssh.send_command_to_server(command=delete_command[servers[self.server]['cluster_soft']] +
+                                           ' ' + str(self.job_id))
             # resubmit
             self.run()
 
