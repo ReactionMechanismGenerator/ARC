@@ -3,11 +3,11 @@
 
 paramiko==2.4.2
 matplotlib==2.2.2
-numpy==1.11.3
+numpy==1.15.4
 cclib==1.6
 py3Dmol==0.8.0
 ase==3.15.0
-rdkit
+rdkit==2018.09.3
 openbabel
 pybel
 IPython
