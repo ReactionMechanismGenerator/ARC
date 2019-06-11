@@ -843,7 +843,7 @@ class ARC(object):
 
         # os.system('. ~/.bashrc')  # TODO This might be a security risk - rethink it
 
-        for software in ['gaussian', 'molpro', 'qchem', 'orca', 'onedmin']:
+        for software in ['gaussian', 'molpro', 'qchem', 'orca', 'terachem', 'onedmin']:
             self.ess_settings[software] = list()
 
         # first look for ESS locally (e.g., when running ARC itself on a server)
@@ -917,7 +917,16 @@ class ARC(object):
             elif diagnostics:
                 logging.info('  Did NOT find Orca on {0}'.format(server))
 
-            cmd = '. .bashrc; which molpro'
+            cmd = '. ~/.bashrc; which terachem'
+            terachem = ssh.send_command_to_server(cmd)[0]
+            if terachem:
+                if diagnostics:
+                    logging.info('  Found TeraChem on {0}'.format(server))
+                self.ess_settings['terachem'].append(server)
+            elif diagnostics:
+                logging.info('  Did NOT find Terachem on {0}'.format(server))
+
+            cmd = '. ~/.bashrc; which molpro'
             molpro = ssh.send_command_to_server(cmd)[0]
             if molpro:
                 if diagnostics:
@@ -1066,8 +1075,8 @@ def check_ess_settings(ess_settings):
                                 'strings. Got: {0} which is a {1}'.format(server_list, type(server_list)))
     # run checks:
     for ess, server_list in settings.items():
-        if ess.lower() not in ['gaussian', 'qchem', 'molpro', 'onedmin', 'orca']:
-            raise SettingsError('Recognized ESS software are Gaussian, QChem, Molpro, Orca or OneDMin. '
+        if ess.lower() not in ['gaussian', 'qchem', 'molpro', 'onedmin', 'orca', 'terachem']:
+            raise SettingsError('Recognized ESS software are Gaussian, QChem, Molpro, Orca, TeraChem or OneDMin. '
                                 'Got: {0}'.format(ess))
         for server in server_list:
             if not isinstance(server, bool) and server.lower() not in servers.keys():
