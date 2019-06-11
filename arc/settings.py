@@ -61,6 +61,7 @@ global_ess_settings = {
     'molpro': 'server2',
     'qchem': 'server1',
     'onedmin': 'server1',
+    'terachem': 'server1',
 }
 
 # List here job types to execute by default
@@ -78,9 +79,10 @@ default_job_types = {'conformers': True,      # defaults to True if not specifie
 # Avoid ascribing the same phrase to more than one server, this may cause undeterministic assignment of software
 # Format is levels_ess = {ess: ['phrase1', 'phrase2'], ess2: ['phrase3', 'phrase3']}
 levels_ess = {
-    'gaussian': ['b3lyp', 'm062x'],
+    'gaussian': ['m062x'],
     'molpro': ['ccsd', 'cisd', 'vpz'],
-    'qchem': ['m06-2x', 'def2']
+    'qchem': ['m06-2x', 'def2'],
+    'terachem': ['z'],
 }
 
 check_status_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat',
@@ -104,12 +106,14 @@ t_max_format = {'OGE': 'hours',
 input_filename = {'gaussian': 'input.gjf',
                   'qchem': 'input.in',
                   'molpro': 'input.in',
+                  'terachem': 'input.in',
                   'onedmin': 'input.in',
                   }
 
 output_filename = {'gaussian': 'input.log',
                    'qchem': 'output.out',
                    'molpro': 'input.out',
+                   'terachem': 'output.out',
                    'onedmin': 'output.out',
                    }
 
