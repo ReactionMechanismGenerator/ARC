@@ -1487,6 +1487,7 @@ class Scheduler(object):
             job_name=job.job_name, label=label, stat=job.job_status[1], soft=job.software))
         if conformer != -1:
             xyz = self.species_dict[label].conformers[conformer]
+            job.job_name = 'conformer' + str(conformer)
         else:
             xyz = self.species_dict[label].final_xyz or self.species_dict[label].initial_xyz
         if 'Unknown reason' in job.job_status[1] and 'change_node' not in job.ess_trsh_methods:
