@@ -82,7 +82,7 @@ class TestARC(unittest.TestCase):
                          'use_bac': True,
                          'allow_nonisomorphic_2d': False,
                          'ess_settings': {'gaussian': ['local', 'server2'], 'onedmin': ['server1'],
-                                          'molpro': ['server2'], 'qchem': ['server1']},
+                                          'molpro': ['server2'], 'qchem': ['server1'], 'terachem': ['server1']},
                          'species': [{'bond_corrections': {'C-C': 1, 'C-H': 6},
                                       'arkane_file': None,
                                       'E0': None,
