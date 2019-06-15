@@ -66,7 +66,7 @@ class TestARC(unittest.TestCase):
                          'reactions': [],
                          'scan_level': '',
                          'sp_level': 'ccsd(t)-f12/cc-pvtz-f12',
-                         'job_memory': 15000,
+                         'job_memory': 15,
                          'job_types': {u'1d_rotors': False,
                                        'conformers': True,
                                        'fine': False,
