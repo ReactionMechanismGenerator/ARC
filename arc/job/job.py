@@ -55,7 +55,7 @@ class Job(object):
     `scan_res`         ``int``           The rotor scan resolution in degrees
     `software`         ``str``           The electronic structure software to be used
     `server_nodes`     ``list``          A list of nodes this job was submitted to (for troubleshooting)
-    `memory`           ``int``           The allocated memory (1500 MB by default)
+    `memory`           ``int``           The total job allocated memory in GB (15 by default)
     `method`           ``str``           The calculation method (e.g., 'B3LYP', 'CCSD(T)', 'CBS-QB3'...)
     `basis_set`        ``str``           The basis set (e.g., '6-311++G(d,p)', 'aug-cc-pVTZ'...)
     `fine`             ``bool``          Whether to use fine geometry optimization parameters
@@ -97,7 +97,7 @@ class Job(object):
     """
     def __init__(self, project, ess_settings, species_name, xyz, job_type, level_of_theory, multiplicity,
                  project_directory, charge=0, conformer=-1, fine=False, shift='', software=None, is_ts=False, scan='',
-                 pivots=None, memory=15000, comments='', trsh='', scan_trsh='', ess_trsh_methods=None, bath_gas=None,
+                 pivots=None, memory=15, comments='', trsh='', scan_trsh='', ess_trsh_methods=None, bath_gas=None,
                  initial_trsh=None, job_num=None, job_server_name=None, job_name=None, job_id=None, server=None,
                  initial_time=None, occ=None, max_job_time=120, scan_res=None, checkfile=None, number_of_radicals=None,
                  testing=False):
@@ -295,10 +295,30 @@ class Job(object):
 
         self.server = server if server is not None else self.ess_settings[self.software][0]
 
+        self.cpus = servers[self.server].get('cpus', 8)  # set to 8 by default
+        self.mem_per_cpu = memory * 1000 / self.cpus  # The `#SBATCH --mem-per-cpu` directive is in MB
+        max_mem = servers[self.server].get('memory', None)  # max memory per node
+        if max_mem is not None and memory > max_mem * 0.9:
+            logging.warning('The memory for job {0} using {1} ({2} GB) exceeds 90% of the the maximum node memory on '
+                            '{3}. Setting it to 90% * {4} GB.'.format(self.job_name, self.software,
+                                                                      memory, self.server, max_mem))
+            memory = 0.9 * max_mem
+        self.memory_gb = memory  # store the memory in GB for troubleshooting (when re-running the job)
         if self.software == 'molpro':
-            # molpro's memory is in MW, 1500 MW should be enough as an initial general memory requirement assessment
-            memory /= 10
-        self.memory = memory
+            # Molpro's memory is per cpu and in MW (mega word; 1 MW ~= 8 MB; 1 GB = 128 MW)
+            self.memory = memory * 128 / self.cpus
+        if self.software == 'terachem':
+            # TeraChem's memory is in MW (mega word; 1 MW ~= 8 MB; 1 GB = 128 MW)
+            self.memory = memory * 128
+        elif self.software == 'gaussian':
+            # Gaussian's memory is in MB, total for all cpus
+            self.memory = memory * 1000
+        elif self.software == 'orca':
+            # Orca's memory is per cpu and in MB
+            self.memory = memory * 1000 / self.cpus
+        elif self.software == 'qchem':
+            pass  # QChem manages its memory automatically, for now ARC will not intervene
+            # see http://www.q-chem.com/qchem-website/manual/qchem44_manual/CCparallel.html
 
         self.fine = fine
         self.shift = shift
@@ -452,18 +472,17 @@ class Job(object):
         else:
             raise JobError('Could not determine format for maximal job time.\n Format is determined by {0}, but '
                            'got {1} for {2}'.format(t_max_format, servers[self.server]['cluster_soft'], self.server))
-        cpus = servers[self.server]['cpus'] if 'cpus' in servers[self.server] else 8
         architecture = ''
         if self.server.lower() == 'pharos':
             # here we're hard-coding ARC for Pharos, a Green Group server
             # If your server has different node architectures, implement something similar
-            if cpus <= 8:
+            if self.cpus <= 8:
                 architecture = '\n#$ -l harpertown'
             else:
                 architecture = '\n#$ -l magnycours'
         try:
             self.submit = submit_scripts[self.server][self.software.lower()].format(
-                name=self.job_server_name, un=un, t_max=t_max, mem_cpu=int(self.memory / cpus), cpus=cpus,
+                name=self.job_server_name, un=un, t_max=t_max, mem_per_cpu=int(self.mem_per_cpu), cpus=self.cpus,
                 architecture=architecture)
         except KeyError:
             logging.error('Could not find submit script for server {0}, make sure your submit scripts '
@@ -719,10 +738,9 @@ $end
                     raise
         else:
             try:
-                cpus = servers[self.server]['cpus'] if 'cpus' in servers[self.server] else 8
                 self.input = self.input.format(memory=self.memory, method=self.method, slash=slash, bath=self.bath_gas,
                                                basis=self.basis_set, charge=self.charge, multiplicity=self.multiplicity,
-                                               spin=self.spin, xyz=self.xyz, job_type_1=job_type_1, cpus=cpus,
+                                               spin=self.spin, xyz=self.xyz, job_type_1=job_type_1, cpus=self.cpus,
                                                job_type_2=job_type_2, scan=scan_string, restricted=restricted,
                                                fine=fine, shift=self.shift, trsh=self.trsh, scan_trsh=self.scan_trsh,)
             except KeyError:

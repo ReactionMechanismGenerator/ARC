@@ -18,7 +18,7 @@ submit_scripts = {
 #SBATCH -N 1
 #SBATCH -n {cpus}
 #SBATCH --time={t_max}
-#SBATCH --mem-per-cpu {mem_cpu}
+#SBATCH --mem-per-cpu {mem_per_cpu}
 
 module add c3ddb/gaussian/09.d01
 which g09
@@ -62,7 +62,7 @@ rm -rf $WorkDir
 #SBATCH -N 1
 #SBATCH -n {cpus}
 #SBATCH --time={t_max}
-#SBATCH --mem-per-cpu {mem_cpu}
+#SBATCH --mem-per-cpu {mem_per_cpu}
 
 module add c3ddb/orca/4.1.2
 module add c3ddb/openmpi/3.1.3
@@ -106,7 +106,7 @@ rm -rf $WorkDir
 #SBATCH -N 1
 #SBATCH -n {cpus}
 #SBATCH --time={t_max}
-#SBATCH --mem-per-cpu={mem_cpu}
+#SBATCH --mem-per-cpu={mem_per_cpu}
 #SBATCH -x node07, node05
 
 which 16
@@ -148,7 +148,7 @@ rm -rf $WorkDir
 #SBATCH -N 1
 #SBATCH -n {cpus}
 #SBATCH --time={t_max}
-#SBATCH --mem-per-cpu={mem_cpu}
+#SBATCH --mem-per-cpu={mem_per_cpu}
 #SBATCH -x node07, node05
 
 export PATH=/opt/molpro/molprop_2015_1_linux_x86_64_i8/bin:$PATH
@@ -187,7 +187,6 @@ rm -rf $sdir
 #$ -l long{architecture}
 #$ -l h_rt={t_max}
 #$ -pe singlenode {cpus}
-#$ -l h=!node60.cluster
 #$ -cwd
 #$ -o out.txt
 #$ -e err.txt
@@ -254,7 +253,7 @@ export QCLOCALSCR=/scratch/{un}/{name}/qlscratch
 
 mkdir -p /scratch/{un}/{name}/qlscratch
 
-qchem -nt 6 input.in output.out
+qchem -nt {cpus} input.in output.out
 
 rm -r /scratch/{un}/{name}
 
@@ -276,7 +275,7 @@ export PATH=/opt/molpro2012/molprop_2012_1_Linux_x86_64_i8/bin:$PATH
 sdir=/scratch/{un}
 mkdir -p /scratch/{un}/qlscratch
 
-molpro -d $sdir -n 6 input.in
+molpro -d $sdir -n {cpus} input.in
 """,
         # oneDMin
         'onedmin': """#! /bin/bash -l

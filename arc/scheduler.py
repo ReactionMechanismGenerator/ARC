@@ -33,7 +33,8 @@ from arc.job.local import check_running_jobs_ids
 from arc.species.species import ARCSpecies, TSGuess, determine_rotor_symmetry
 from arc.species.converter import get_xyz_string, molecules_from_xyz, check_isomorphism
 from arc.ts.atst import autotst
-from arc.settings import rotor_scan_resolution, inconsistency_ab, inconsistency_az, maximum_barrier, default_job_types
+from arc.settings import rotor_scan_resolution, inconsistency_ab, inconsistency_az, maximum_barrier, default_job_types,\
+    servers
 
 ##################################################################
 
@@ -82,7 +83,7 @@ class Scheduler(object):
                                         isomorphic to the 2D graph representation
     `dont_gen_confs`        ``list``  A list of species labels for which conformer jobs were loaded from a restart file,
                                         and additional conformer generation should be avoided
-    `memory`                ``int``   The allocated job memory (1500 MB by default)
+    `memory`                ``int``   The total allocated job memory in GB (15 by default)
     `job_types`             ``dict``  A dictionary of job types to execute. Keys are job types, values are boolean
     `bath_gas`              ``str``   A bath gas. Currently used in OneDMin to calc L-J parameters.
                                         Allowed values are He, Ne, Ar, Kr, H2, N2, O2
@@ -119,7 +120,7 @@ class Scheduler(object):
     def __init__(self, project, ess_settings, species_list, composite_method, conformer_level, opt_level, freq_level,
                  sp_level, scan_level, ts_guess_level, orbitals_level, adaptive_levels, project_directory, rmgdatabase,
                  job_types=None, initial_trsh=None, rxn_list=None, restart_dict=None, max_job_time=120,
-                 allow_nonisomorphic_2d=False, memory=15000, testing=False, bath_gas=None):
+                 allow_nonisomorphic_2d=False, memory=15, testing=False, bath_gas=None):
         self.rmgdb = rmgdatabase
         self.restart_dict = restart_dict
         self.species_list = species_list
@@ -1567,9 +1568,10 @@ class Scheduler(object):
                              conformer=conformer)
             elif 'memory' not in job.ess_trsh_methods:
                 # Increase memory allocation
-                memory = job.memory * 2
-                logging.info('Troubleshooting {type} job in {software} using memory: {mem} MB instead of {old} MB'.
-                             format(type=job_type, software=job.software, mem=memory, old=job.memory))
+                max_mem = servers[job.server].get('memory', 128)  # Node memory in GB, default to 128 if not specified
+                memory = job.memory_gb * 2 if job.memory_gb * 2 < max_mem * 0.9 else max_mem * 0.9
+                logging.info('Troubleshooting {type} job in {software} using memory: {mem} GB instead of {old} GB'.
+                             format(type=job_type, software=job.software, mem=memory, old=job.memory_gb))
                 job.ess_trsh_methods.append('memory')
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
                              job_type=job_type, fine=job.fine, memory=memory, ess_trsh_methods=job.ess_trsh_methods,
@@ -1678,11 +1680,9 @@ class Scheduler(object):
                 add_mem = float(job.job_status[1].split()[-1])  # parse Molpro's requirement
                 add_mem = int(math.ceil(add_mem / 100.0)) * 100  # round up to the next hundred
                 add_mem += 250  # be conservative
-                memory = job.memory + add_mem
-                if memory < 5000:
-                    memory = 5000
-                logging.info('Troubleshooting {type} job in {software} using memory: {mw} MW'.format(
-                    type=job_type, software=job.software, mw=memory))
+                memory = job.memory_gb + add_mem / 128.  # convert MW to GB
+                logging.info('Troubleshooting {type} job in {software} using memory: {mem} GB'.format(
+                    type=job_type, software=job.software, mem=memory))
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
                              job_type=job_type, fine=job.fine, shift=job.shift, memory=memory,
                              ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
@@ -1717,9 +1717,9 @@ class Scheduler(object):
             elif 'memory' not in job.ess_trsh_methods:
                 # Increase memory allocation, also run with a shift
                 job.ess_trsh_methods.append('memory')
-                memory = 5000
-                logging.info('Troubleshooting {type} job in {software} using memory: {mw} MW'.format(
-                    type=job_type, software=job.software, mw=memory))
+                memory = servers[job.server]['memory']  # set memory to the value of an entire node (in GB)
+                logging.info('Troubleshooting {type} job in {software} using memory: {mem} GB'.format(
+                    type=job_type, software=job.software, mem=memory))
                 shift = 'shift,-1.0,-0.5;'
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
                              job_type=job_type, fine=job.fine, shift=shift, memory=memory,
