@@ -25,6 +25,7 @@ import arc.rmgdb as rmgdb
 from arc.settings import arc_path, default_levels_of_theory, check_status_command, servers, valid_chars,\
     default_job_types
 from arc.scheduler import Scheduler
+from arc.common import VERSION, read_file, time_lapse, check_ess_settings, initialize_log, log_footer
 from arc.arc_exceptions import InputError, SettingsError, SpeciesError
 from arc.species.species import ARCSpecies
 from arc.reaction import ARCReaction
@@ -97,7 +98,7 @@ class ARC(object):
                  t_max=None, t_count=None, verbose=logging.INFO, project_directory=None, max_job_time=120,
                  allow_nonisomorphic_2d=False, job_memory=15, ess_settings=None, bath_gas=None,
                  adaptive_levels=None):
-        self.__version__ = '1.0.0'
+        self.__version__ = VERSION
         self.verbose = verbose
         self.output = dict()
         self.running_jobs = dict()
@@ -125,7 +126,8 @@ class ARC(object):
                 else os.path.join(arc_path, 'Projects', self.project)
             if not os.path.exists(self.project_directory):
                 os.makedirs(self.project_directory)
-            self.initialize_log(verbose=self.verbose, log_file=os.path.join(self.project_directory, 'arc.log'))
+            initialize_log(log_file=os.path.join(self.project_directory, 'arc.log'), project=self.project,
+                           project_directory=self.project_directory, verbose=self.verbose)
             self.t0 = time.time()  # init time
             self.execution_time = None
             self.initial_trsh = initial_trsh if initial_trsh is not None else dict()
@@ -405,7 +407,8 @@ class ARC(object):
             else os.path.join(arc_path, 'Projects', self.project)
         if not os.path.exists(self.project_directory):
             os.makedirs(self.project_directory)
-        self.initialize_log(verbose=self.verbose, log_file=os.path.join(self.project_directory, 'arc.log'))
+        initialize_log(log_file=os.path.join(self.project_directory, 'arc.log'), project=self.project,
+                       project_directory=self.project_directory, verbose=self.verbose)
         self.t0 = time.time()  # init time
         self.execution_time = None
         self.verbose = input_dict['verbose'] if 'verbose' in input_dict else self.verbose
@@ -627,7 +630,7 @@ class ARC(object):
                         t_count=self.t_count)
         prc.process()
         self.summary()
-        self.log_footer()
+        log_footer(execution_time=self.execution_time)
 
     def save_project_info_file(self):
         """Save a project info file"""
@@ -689,87 +692,6 @@ class ARC(object):
                 logging.info('Species {0} converged successfully'.format(label))
             else:
                 logging.info('Species {0} failed with status:\n  {1}'.format(label, output['status']))
-
-    def initialize_log(self, verbose=logging.INFO, log_file=None):
-        """
-        Set up a logger for ARC.
-        The `verbose` parameter is an integer specifying the amount of log text seen
-        at the console; the levels correspond to those of the :data:`logging` module.
-        """
-        # Create logger
-        logger = logging.getLogger()
-        logger.setLevel(verbose)
-
-        # Use custom level names for cleaner log output
-        logging.addLevelName(logging.CRITICAL, 'Critical: ')
-        logging.addLevelName(logging.ERROR, 'Error: ')
-        logging.addLevelName(logging.WARNING, 'Warning: ')
-        logging.addLevelName(logging.INFO, '')
-        logging.addLevelName(logging.DEBUG, '')
-        logging.addLevelName(0, '')
-
-        # Create formatter and add to handlers
-        formatter = logging.Formatter('%(levelname)s%(message)s')
-
-        # Remove old handlers before adding ours
-        while logger.handlers:
-            logger.removeHandler(logger.handlers[0])
-
-        # Create console handler; send everything to stdout rather than stderr
-        ch = logging.StreamHandler(sys.stdout)
-        ch.setLevel(verbose)
-        ch.setFormatter(formatter)
-        logger.addHandler(ch)
-
-        # Create file handler
-        if log_file is not None:
-            if os.path.isfile(log_file):
-                if not os.path.isdir(os.path.join(self.project_directory, 'log_and_restart_archive')):
-                    os.mkdir(os.path.join(self.project_directory, 'log_and_restart_archive'))
-                local_time = datetime.datetime.now().strftime("%H%M%S_%b%d_%Y")
-                log_backup_name = 'arc.old.' + local_time + '.log'
-                shutil.copy(log_file, os.path.join(self.project_directory, 'log_and_restart_archive', log_backup_name))
-                os.remove(log_file)
-            fh = logging.FileHandler(filename=log_file)
-            fh.setLevel(verbose)
-            fh.setFormatter(formatter)
-            logger.addHandler(fh)
-            self.log_header()
-
-    def log_header(self, level=logging.INFO):
-        """
-        Output a header containing identifying information about ARC to the log.
-        """
-        logging.log(level, 'ARC execution initiated on {0}'.format(time.asctime()))
-        logging.log(level, '')
-        logging.log(level, '###############################################################')
-        logging.log(level, '#                                                             #')
-        logging.log(level, '#                 Automatic Rate Calculator                   #')
-        logging.log(level, '#                            ARC                              #')
-        logging.log(level, '#                                                             #')
-        logging.log(level, '#   Version: {0}{1}                                       #'.format(
-            self.__version__, ' ' * (10 - len(self.__version__))))
-        logging.log(level, '#                                                             #')
-        logging.log(level, '###############################################################')
-        logging.log(level, '')
-
-        # Extract HEAD git commit from ARC
-        head, date = get_git_commit()
-        if head != '' and date != '':
-            logging.log(level, 'The current git HEAD for ARC is:')
-            logging.log(level, '    {0}\n    {1}\n'.format(head, date))
-        logging.info('Starting project {0}'.format(self.project))
-        # ignore Paramiko and cclib warnings:
-        warnings.filterwarnings(action='ignore', module='.*paramiko.*')
-        warnings.filterwarnings(action='ignore', module='.*cclib.*')
-
-    def log_footer(self, level=logging.INFO):
-        """
-        Output a footer to the log.
-        """
-        logging.log(level, '')
-        logging.log(level, 'Total execution time: {0}'.format(self.execution_time))
-        logging.log(level, 'ARC execution terminated on {0}'.format(time.asctime()))
 
     def determine_model_chemistry(self):
         """Determine the model_chemistry to be used in Arkane
@@ -978,100 +900,3 @@ class ARC(object):
                 # set default value to False if key is missing
                 self.job_types[job_type] = False
 
-
-def read_file(path):
-    """
-    Read the ARC YAML input file and return the parameters in a dictionary
-    """
-    if not os.path.isfile(path):
-        raise InputError('Could not find the input file {0}'.format(path))
-    with open(path, 'r') as f:
-        input_dict = yaml.load(stream=f, Loader=yaml.FullLoader)
-    return input_dict
-
-
-def get_git_commit():
-    """Get the recent git commit to be logged"""
-    if os.path.exists(os.path.join(arc_path, '.git')):
-        try:
-            return subprocess.check_output(['git', 'log', '--format=%H%n%cd', '-1'], cwd=arc_path).splitlines()
-        except (subprocess.CalledProcessError, OSError):
-            return '', ''
-    else:
-        return '', ''
-
-
-def delete_all_arc_jobs(server_list):
-    """
-    Delete all ARC-spawned jobs (with job name starting with `a` and a digit) from :list:servers
-    (`servers` could also be a string of one server name)
-    Make sure you know what you're doing, so unrelated jobs won't be deleted...
-    Useful when terminating ARC while some (ghost) jobs are still running.
-    """
-    if isinstance(server_list, str):
-        server_list = [server_list]
-    for server in server_list:
-        print('\nDeleting all ARC jobs from {0}...'.format(server))
-        cmd = check_status_command[servers[server]['cluster_soft']] + ' -u ' + servers[server]['un']
-        ssh = SSHClient(server)
-        stdout = ssh.send_command_to_server(cmd)[0]
-        for status_line in stdout:
-            s = re.search(r' a\d+', status_line)
-            if s is not None:
-                if servers[server]['cluster_soft'].lower() == 'slurm':
-                    job_id = s.group()[1:]
-                    server_job_id = status_line.split()[0]
-                    ssh.delete_job(server_job_id)
-                    print('deleted job {0} ({1} on server)'.format(job_id, server_job_id))
-                elif servers[server]['cluster_soft'].lower() == 'oge':
-                    job_id = s.group()[1:]
-                    ssh.delete_job(job_id)
-                    print('deleted job {0}'.format(job_id))
-    print('\ndone.')
-
-
-def time_lapse(t0):
-    """A helper function returning the elapsed time since t0"""
-    t = time.time() - t0
-    m, s = divmod(t, 60)
-    h, m = divmod(m, 60)
-    d, h = divmod(h, 24)
-    if d > 0:
-        d = str(d) + ' days, '
-    else:
-        d = ''
-    return '{0}{1:02.0f}:{2:02.0f}:{3:02.0f}'.format(d, h, m, s)
-
-
-def check_ess_settings(ess_settings):
-    """
-    A helper function to convert servers in the ess_settings dict to lists
-    Assists in troubleshooting job and trying a different server
-    Also check ESS and servers
-    """
-    if ess_settings is None or not ess_settings:
-        return dict()
-    settings = dict()
-    for software, server_list in ess_settings.items():
-        if isinstance(server_list, (str, unicode)):
-            settings[software] = [server_list]
-        elif isinstance(server_list, list):
-            for server in server_list:
-                if not isinstance(server, (str, unicode)):
-                    raise SettingsError('Server name could only be a string. '
-                                        'Got {0} which is {1}'.format(server, type(server)))
-                settings[software.lower()] = server_list
-        else:
-            raise SettingsError('Servers in the ess_settings dictionary could either be a string or a list of '
-                                'strings. Got: {0} which is a {1}'.format(server_list, type(server_list)))
-    # run checks:
-    for ess, server_list in settings.items():
-        if ess.lower() not in ['gaussian', 'qchem', 'molpro', 'onedmin', 'orca']:
-            raise SettingsError('Recognized ESS software are Gaussian, QChem, Molpro, Orca or OneDMin. '
-                                'Got: {0}'.format(ess))
-        for server in server_list:
-            if not isinstance(server, bool) and server.lower() not in servers.keys():
-                server_names = [name for name in servers.keys()]
-                raise SettingsError('Recognized servers are {0}. Got: {1}'.format(server_names, server))
-    logging.info('\nUsing the following ESS settings:\n{0}\n'.format(settings))
-    return settings
