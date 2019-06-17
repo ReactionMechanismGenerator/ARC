@@ -162,7 +162,7 @@ class TestARC(unittest.TestCase):
     def test_restart(self):
         """
         Test restarting ARC through the ARC class in main.py via the input_dict argument of the API
-        Rather than through ARC.py. Check that all files are in place and tst file content.
+        Rather than through ARC.py. Check that all files are in place and the log file content.
         """
         restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart(H,H2O2,N2H3,CH3CO2).yml')
         project = 'arc_project_for_testing_delete_after_usage2'
@@ -266,9 +266,9 @@ class TestARC(unittest.TestCase):
         spc2 = Species().fromSMILES(str('CC([O])=O'))
         spc2.generate_resonance_structures()
         spc2.thermo = db.thermo.getThermoData(spc2)
-        self.assertAlmostEqual(spc2.getEnthalpy(298), -176074.01886272896, 1)
-        self.assertAlmostEqual(spc2.getEntropy(298), 283.2225158405262, 1)
-        self.assertAlmostEqual(spc2.getHeatCapacity(1000), 118.28356605714401, 1)
+        self.assertAlmostEqual(spc2.getEnthalpy(298), -179231.05071240617, 1)
+        self.assertAlmostEqual(spc2.getEntropy(298), 283.50278467781203, 1)
+        self.assertAlmostEqual(spc2.getHeatCapacity(1000), 118.81862727376, 1)
         self.assertTrue('arc_project_for_testing_delete_after_usage2' in spc2.thermo.comment)
 
         # delete the generated library from RMG-database
