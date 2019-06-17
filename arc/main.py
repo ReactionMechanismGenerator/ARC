@@ -1,29 +1,25 @@
 #!/usr/bin/env python
 # encoding: utf-8
+
 """
 ARC's main module
 """
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
 import logging
-import warnings
-import sys
 import os
 import time
 import datetime
-import re
 import shutil
-import subprocess
 from distutils.spawn import find_executable
 from IPython.display import display
-import yaml
 
 from rmgpy.species import Species
 from rmgpy.reaction import Reaction
+from arkane.statmech import assign_frequency_scale_factor
 
 import arc.rmgdb as rmgdb
-from arc.settings import arc_path, default_levels_of_theory, check_status_command, servers, valid_chars,\
-    default_job_types
+from arc.settings import arc_path, default_levels_of_theory, servers, valid_chars, default_job_types
 from arc.scheduler import Scheduler
 from arc.common import VERSION, read_file, time_lapse, check_ess_settings, initialize_log, log_footer
 from arc.arc_exceptions import InputError, SettingsError, SpeciesError
@@ -31,6 +27,7 @@ from arc.species.species import ARCSpecies
 from arc.reaction import ARCReaction
 from arc.processor import Processor
 from arc.job.ssh import SSHClient
+from arc.utils.scale import determine_scaling_factors
 
 try:
     from arc.settings import global_ess_settings
@@ -70,6 +67,11 @@ class ARC(object):
     `use_bac`              ``bool``   Whether or not to use bond additivity corrections for thermo calculations
     `model_chemistry`      ``str``    The model chemistry in Arkane for energy corrections (AE, BAC)
                                         and frequencies/ZPE scaling factor. Can usually be determined automatically.
+    `freq_scale_factor`    ``float``  The harmonic frequencies scaling factor. Could be automatically determined
+                                        if not available in Arkane and not provided by the user.
+    `calc_freq_factor`     ``bool``   Whether to calculate the frequencies scaling factor using Truhlar's method
+                                        if it was not given by the user and could not be determined by Arkane.
+                                        True to calculate, False to use user input / Arkane's value / Arkane's default.
     `ess_settings`         ``dict``   A dictionary of available ESS (keys) and a corresponding server list (values)
     `initial_trsh`         ``dict``   Troubleshooting methods to try by default. Keys are ESS software, values are trshs
     't0'                   ``float``  Initial time when the project was spawned
@@ -97,7 +99,7 @@ class ARC(object):
                  ts_guess_level='', use_bac=True, job_types=None, model_chemistry='', initial_trsh=None, t_min=None,
                  t_max=None, t_count=None, verbose=logging.INFO, project_directory=None, max_job_time=120,
                  allow_nonisomorphic_2d=False, job_memory=15, ess_settings=None, bath_gas=None,
-                 adaptive_levels=None):
+                 adaptive_levels=None, freq_scale_factor=None, calc_freq_factor=True):
         self.__version__ = VERSION
         self.verbose = verbose
         self.output = dict()
@@ -110,6 +112,7 @@ class ARC(object):
         self.memory = job_memory
         self.orbitals_level = default_levels_of_theory['orbitals'].lower()
         self.ess_settings = dict()
+        self.calc_freq_factor = calc_freq_factor
 
         if input_dict is None:
             if project is None:
@@ -133,6 +136,7 @@ class ARC(object):
             self.initial_trsh = initial_trsh if initial_trsh is not None else dict()
             self.use_bac = use_bac
             self.model_chemistry = model_chemistry
+            self.freq_scale_factor = freq_scale_factor
             if self.model_chemistry:
                 logging.info('Using {0} as model chemistry for energy corrections in Arkane'.format(
                     self.model_chemistry))
@@ -342,10 +346,11 @@ class ARC(object):
             self.ess_settings = check_ess_settings(ess_settings or global_ess_settings)
         if not self.ess_settings:
             self.determine_ess_settings()
-        self.restart_dict = self.as_dict()
         self.determine_model_chemistry()
         self.scheduler = None
         self.check_project_name()
+        self.check_freq_scaling_factor()
+        self.restart_dict = self.as_dict()
 
         # make a backup copy of the restart file if it exists (but don't save an updated one just yet)
         if os.path.isfile(os.path.join(self.project_directory, 'restart.yml')):
@@ -379,6 +384,8 @@ class ARC(object):
             restart_dict['sp_level'] = self.sp_level
         if self.initial_trsh:
             restart_dict['initial_trsh'] = self.initial_trsh
+        if self.freq_scale_factor is not None:
+            restart_dict['freq_scale_factor'] = self.freq_scale_factor
         restart_dict['species'] = [spc.as_dict() for spc in self.arc_species_list]
         restart_dict['reactions'] = [rxn.as_dict() for rxn in self.arc_rxn_list]
         restart_dict['output'] = self.output  # if read from_dict then it has actual values
@@ -419,6 +426,7 @@ class ARC(object):
         self.allow_nonisomorphic_2d = input_dict['allow_nonisomorphic_2d']\
             if 'allow_nonisomorphic_2d' in input_dict else False
         self.output = input_dict['output'] if 'output' in input_dict else dict()
+        self.freq_scale_factor = input_dict['freq_scale_factor'] if 'freq_scale_factor' in input_dict else None
         if self.output:
             for label, spc_output in self.output.items():
                 for key, val in spc_output.items():
@@ -900,3 +908,24 @@ class ARC(object):
                 # set default value to False if key is missing
                 self.job_types[job_type] = False
 
+    def check_freq_scaling_factor(self):
+        """
+        Check that the harmonic frequencies scaling factor is known,
+        otherwise spawn a calculation for it if calc_freq_factor is set to True.
+        """
+        if self.freq_scale_factor is None:
+            level = self.freq_level if not self.composite_method else self.composite_method
+            if self.calc_freq_factor:
+                # the user did not specify a scaling factor, see if Arkane has it
+                freq_scale_factor = assign_frequency_scale_factor(level)
+                if freq_scale_factor != 1:
+                    # Arkane has this harmonic frequencies scaling factor (if not found, the factor is set to exactly 1)
+                    self.freq_scale_factor = freq_scale_factor
+                else:
+                    logger.info("Could not determine the harmonic frequencies scaling factor for {0} from Arkane.\n"
+                                "Calculating it using Truhlar's method:\n\n".format(level))
+                    self.freq_scale_factor = determine_scaling_factors(
+                        level, ess_settings=self.ess_settings, init_log=False)[0]
+            else:
+                # Try to get a value for Arkane, default to 1.0 if not found (don't calculate it)
+                freq_scale_factor = assign_frequency_scale_factor(level)

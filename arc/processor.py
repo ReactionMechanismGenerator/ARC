@@ -32,25 +32,28 @@ class Processor(object):
     """
     ARC Processor class. Post processes results in Arkane. The attributes are:
 
-    ================ =========== ===============================================================================
-    Attribute        Type        Description
-    ================ =========== ===============================================================================
-    `project`         ``str``    The project's name. Used for naming the directory.
-    `species_dict`    ``dict``   Keys are labels, values are ARCSpecies objects
-    `rxn_list`        ``list``   List of ARCReaction objects
-    `output`          ``dict``   Keys are labels, values are output file paths
-    `use_bac`         ``bool``   Whether or not to use bond additivity corrections for thermo calculations
-    `sp_level`        ``str``    The single point level of theory, used for atom and bond corrections in Arkane
-    `freq_level`      ``str``    The frequency level of theory, used for the frequency scaling factor in Arkane
-    `lib_long_desc`   ``str``    A multiline description of levels of theory for the outputted RMG libraries
-    `project_directory` ``str``  The path of the ARC project directory
-    `t_min`           ``tuple``  The minimum temperature for kinetics computations, e.g., (500, str('K'))
-    `t_max`           ``tuple``  The maximum temperature for kinetics computations, e.g., (3000, str('K'))
-    `t_count`         ``int``    The number of temperature points between t_min and t_max for kinetics computations
-    ================ =========== ===============================================================================
+    ================== =========== =====================================================================================
+    Attribute          Type        Description
+    ================== =========== =====================================================================================
+    `project`           ``str``    The project's name. Used for naming the directory.
+    `species_dict`      ``dict``   Keys are labels, values are ARCSpecies objects
+    `rxn_list`          ``list``   List of ARCReaction objects
+    `output`            ``dict``   Keys are labels, values are output file paths
+    `use_bac`           ``bool``   Whether or not to use bond additivity corrections for thermo calculations
+    `sp_level`          ``str``    The single point level of theory, used for atom and bond corrections in Arkane
+    `freq_level`        ``str``    The frequency level of theory, used for the frequency scaling factor in Arkane
+                                     if `freq_scale_factor` was not given.
+    `freq_scale_factor` ``float``  The harmonic frequencies scaling factor. Could be automatically determined
+                                     if not available in Arkane and not provided by the user.
+    `lib_long_desc`     ``str``    A multiline description of levels of theory for the outputted RMG libraries
+    `project_directory` ``str``    The path of the ARC project directory
+    `t_min`             ``tuple``  The minimum temperature for kinetics computations, e.g., (500, str('K'))
+    `t_max`             ``tuple``  The maximum temperature for kinetics computations, e.g., (3000, str('K'))
+    `t_count`           ``int``    The number of temperature points between t_min and t_max for kinetics computations
+    ================== =========== =====================================================================================
     """
     def __init__(self, project, project_directory, species_dict, rxn_list, output, use_bac, model_chemistry,
-                 lib_long_desc, rmgdatabase, t_min=None, t_max=None, t_count=None):
+                 lib_long_desc, rmgdatabase, t_min=None, t_max=None, t_count=None, freq_scale_factor=None):
         self.rmgdb = rmgdatabase
         self.project = project
         self.project_directory = project_directory
@@ -59,6 +62,7 @@ class Processor(object):
         self.output = output
         self.use_bac = use_bac
         self.sp_level, self.freq_level = process_model_chemistry(model_chemistry)
+        self.freq_scale_factor = freq_scale_factor
         self.lib_long_desc = lib_long_desc
         load_thermo_libs, load_kinetic_libs = False, False
         if any([species.is_ts and species.final_xyz for species in self.species_dict.values()])\
@@ -332,7 +336,9 @@ class Processor(object):
         else:
             # if this is a kinetics computation and we don't have a valid model chemistry, don't bother about it
             stat_mech_job.applyAtomEnergyCorrections = False
-        stat_mech_job.frequencyScaleFactor = assign_frequency_scale_factor(self.freq_level)
+        # Use the scaling factor if given, else try determining it from Arkane
+        # (defaults to 1 and prints a warning if not found)
+        stat_mech_job.frequencyScaleFactor = self.freq_scale_factor or assign_frequency_scale_factor(self.freq_level)
         try:
             stat_mech_job.execute(outputFile=output_file_path, plot=plot)
         except Exception:
