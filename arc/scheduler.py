@@ -1517,6 +1517,8 @@ class Scheduler(object):
                           '{server}'.format(job_type=job_type, label=label, methods=job.ess_trsh_methods,
                                             server=job.server))
         elif job.software == 'gaussian':
+            if self.species_dict[label].checkfile is None:
+                self.species_dict[label].checkfile = job.checkfile
             if 'l103 internal coordinate error' in job.job_status[1]\
                     and 'cartesian' not in job.ess_trsh_methods and job_type == 'opt':
                 # try both cartesian and nosymm
