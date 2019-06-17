@@ -118,7 +118,7 @@ class TestJob(unittest.TestCase):
                    project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'qchem')
 
-        self.assertEqual(job0.memory, 15000)
+        self.assertEqual(job0.memory_gb, 15)
         self.assertEqual(job0.max_job_time, 120)
 
     def test_bath_gas(self):

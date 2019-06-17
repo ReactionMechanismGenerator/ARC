@@ -45,7 +45,8 @@ servers = {
         'address': 'server2.host.edu',
         'un': '<username>',
         'key': 'path_to_rsa_key',
-        'cpus': 48,  # optional (default: 8)
+        'cpus': 48,  # number of cpu's per node, optional (default: 8)
+        'memory': 128,  # amount of memory per node in GB, optional (default: 16)
     },
     'local': {
         'cluster_soft': 'OGE',
