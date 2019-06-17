@@ -15,13 +15,17 @@ and save the TS guess output as auto_tst.xyz
 from __future__ import (absolute_import, division, print_function, unicode_literals)
 import argparse
 import os
-import logging
 
 from autotst.reaction import AutoTST_Reaction
 
+from arc.common import get_logger
 from arc.species.converter import get_xyz_string
 from arc.arc_exceptions import TSError
 from arc.settings import arc_path
+
+##################################################################
+
+logger = get_logger()
 
 
 def parse_command_line_arguments(command_line_args=None):
@@ -58,7 +62,7 @@ def main():
     try:
         reaction = AutoTST_Reaction(label=reaction_label, reaction_family=reaction_family)
     except AssertionError:
-        logging.error('Could not generate a TS guess using AutoTST for reaction {0}'.format(reaction_label))
+        logger.error('Could not generate a TS guess using AutoTST for reaction {0}'.format(reaction_label))
         raise TSError('Could not generate AutoTST guess')
     else:
         positions = reaction.ts.ase_ts.get_positions()

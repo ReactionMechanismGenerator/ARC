@@ -14,10 +14,13 @@ import re
 
 import paramiko
 
+from arc.common import get_logger
 from arc.settings import servers, check_status_command, submit_command, submit_filename, delete_command
 from arc.arc_exceptions import InputError, ServerError
 
 ##################################################################
+
+logger = get_logger()
 
 
 class SSHClient(object):
@@ -36,8 +39,6 @@ class SSHClient(object):
         self.address = servers[server]['address']
         self.un = servers[server]['un']
         self.key = servers[server]['key']
-        # logger = paramiko.util.logging.getLogger()
-        # logger.setLevel(50)
         logging.getLogger("paramiko").setLevel(logging.WARNING)
 
     def send_command_to_server(self, command, remote_path=''):
@@ -107,10 +108,10 @@ class SSHClient(object):
             if os.path.isfile(local_file_path):
                 i = 1000
             else:
-                logging.error('Could not download file {0} from {1}!'.format(remote_file_path, self.server))
-                logging.error('ARC is sleeping for {0} seconds before re-trying,'
-                              ' please check your connectivity.'.format(sleep_time * i))
-                logging.info('ZZZZZ..... ZZZZZ.....')
+                logger.error('Could not download file {0} from {1}!'.format(remote_file_path, self.server))
+                logger.error('ARC is sleeping for {0} seconds before re-trying,'
+                             ' please check your connectivity.'.format(sleep_time * i))
+                logger.info('ZZZZZ..... ZZZZZ.....')
                 time.sleep(sleep_time * i)  # in seconds
             i += 1
 
@@ -122,8 +123,8 @@ class SSHClient(object):
         try:
             sftp.get(remotepath=remote_file_path, localpath=local_file_path)
         except IOError:
-            logging.debug('Got an IOError when trying to download file {0} from {1}'.format(remote_file_path,
-                                                                                            self.server))
+            logger.debug('Got an IOError when trying to download file {0} from {1}'.format(remote_file_path,
+                                                                                           self.server))
         sftp.close()
         ssh.close()
 
@@ -149,9 +150,9 @@ class SSHClient(object):
         while i < 30:
             result = self._check_job_status(job_id)
             if result == 'connection error':
-                logging.error('ARC is sleeping for {0} min before re-trying,'
-                              ' please check your connectivity.'.format(sleep_time * i))
-                logging.info('ZZZZZ..... ZZZZZ.....')
+                logger.error('ARC is sleeping for {0} min before re-trying,'
+                             ' please check your connectivity.'.format(sleep_time * i))
+                logger.info('ZZZZZ..... ZZZZZ.....')
                 time.sleep(sleep_time * i * 60)  # in seconds
             else:
                 i = 1000
@@ -168,8 +169,8 @@ class SSHClient(object):
         cmd = check_status_command[servers[self.server]['cluster_soft']] + ' -u ' + servers[self.server]['un']
         stdout, stderr = self.send_command_to_server(cmd)
         if stderr:
-            logging.info('\n\n')
-            logging.error('Could not check status of job {0} due to {1}'.format(job_id, stderr))
+            logger.info('\n\n')
+            logger.error('Could not check status of job {0} due to {1}'.format(job_id, stderr))
             return 'connection error'
         return check_job_status_in_stdout(job_id=job_id, stdout=stdout, server=self.server)
 
@@ -224,10 +225,10 @@ class SSHClient(object):
             except:
                 pass
             else:
-                logging.debug('Successfully connected to {0} at the {1} trial.'.format(self.server, times_tried))
+                logger.debug('Successfully connected to {0} at the {1} trial.'.format(self.server, times_tried))
                 return sftp, ssh
             if not times_tried % 10:
-                logging.info('Tried connecting to {0} {1} times with no success....'.format(self.server, times_tried))
+                logger.info('Tried connecting to {0} {1} times with no success....'.format(self.server, times_tried))
             else:
                 print('Tried connecting to {0} {1} times with no success....'.format(self.server, times_tried))
             time.sleep(interval)

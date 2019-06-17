@@ -7,7 +7,6 @@ Includes spawning, terminating, checking, and troubleshooting various jobs
 """
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
-import logging
 import time
 import os
 import datetime
@@ -23,6 +22,7 @@ from arkane.statmech import determine_qm_software
 from rmgpy.reaction import Reaction
 from rmgpy.exceptions import InputError as RMGInputError
 
+from arc.common import get_logger
 import arc.rmgdb as rmgdb
 from arc import plotter
 from arc import parser
@@ -37,6 +37,8 @@ from arc.settings import rotor_scan_resolution, inconsistency_ab, inconsistency_
     servers
 
 ##################################################################
+
+logger = get_logger()
 
 
 class Scheduler(object):
@@ -162,10 +164,10 @@ class Scheduler(object):
 
         if len(self.rxn_list):
             rxn_info_path = self.make_reaction_labels_info_file()
-            logging.info("\nLoading RMG's families...")
+            logger.info("\nLoading RMG's families...")
             rmgdb.load_families_only(self.rmgdb)
             for rxn in self.rxn_list:
-                logging.info('\n\n')
+                logger.info('\n\n')
                 # update the ARCReaction object and generate an ARCSpecies object for its TS
                 rxn.r_species, rxn.p_species = list(), list()
                 for spc in self.species_list:
@@ -181,9 +183,9 @@ class Scheduler(object):
                     family_text = 'identified as belonging to RMG family {0}'.format(rxn.family.label)
                     if rxn.family_own_reverse:
                         family_text += ", which is its own reverse"
-                logging.info('Considering reaction: {0}'.format(rxn.label))
+                logger.info('Considering reaction: {0}'.format(rxn.label))
                 if family_text:
-                    logging.info('({0})'.format(family_text))
+                    logger.info('({0})'.format(family_text))
                 if rxn.rmg_reaction is not None:
                     display(rxn.rmg_reaction)
                 rxn.determine_rxn_charge()
@@ -240,13 +242,13 @@ class Scheduler(object):
                     # Execute the TS guess methods that don't require optimized reactants and products
                     if 'autotst' in ts_guess.method and ts_guess.xyz is None:
                         reverse = ' in the reverse direction' if 'reverse' in ts_guess.method else ''
-                        logging.info('Trying to generating a TS guess for {0} reaction {1} using AutoTST{2}...'.format(
+                        logger.info('Trying to generating a TS guess for {0} reaction {1} using AutoTST{2}...'.format(
                             ts_guess.family, rxn.label, reverse))
                         ts_guess.t0 = datetime.datetime.now()
                         try:
                             ts_guess.xyz = autotst(rmg_reaction=ts_guess.rmg_reaction, reaction_family=ts_guess.family)
                         except TSError as e:
-                            logging.error('Could not generate an AutoTST guess for reaction {0}.\nGot: {1}'.format(
+                            logger.error('Could not generate an AutoTST guess for reaction {0}.\nGot: {1}'.format(
                                 rxn.label, e.message))
                         ts_guess.success = True if ts_guess.xyz is not None else False
                         ts_guess.execution_time = str(datetime.datetime.now() - ts_guess.t0).split('.')[0]
@@ -280,15 +282,15 @@ class Scheduler(object):
                 if species.label not in self.running_jobs:
                     self.running_jobs[species.label] = list()  # initialize before running the first job
                 if not species.is_ts and species.number_of_atoms == 1:
-                    logging.debug('Species {0} is monoatomic'.format(species.label))
+                    logger.debug('Species {0} is monoatomic'.format(species.label))
                     if not self.species_dict[species.label].initial_xyz:
                         # generate a simple "Symbol   0.0   0.0   0.0" xyz matrix
                         if self.species_dict[species.label].mol is not None:
                             symbol = self.species_dict[species.label].mol.atoms[0].symbol
                         else:
                             symbol = species.label
-                            logging.warning('Could not determine element of monoatomic species {0}.'
-                                            ' Assuming element is {1}'.format(species.label, symbol))
+                            logger.warning('Could not determine element of monoatomic species {0}.'
+                                           ' Assuming element is {1}'.format(species.label, symbol))
                         self.species_dict[species.label].initial_xyz = symbol + '   0.0   0.0   0.0'
                         self.species_dict[species.label].final_xyz = symbol + '   0.0   0.0   0.0'
                     if 'sp' not in self.output[species.label] and 'composite' not in self.output[species.label] \
@@ -359,7 +361,7 @@ class Scheduler(object):
                         self.run_opt_job(species.label)
         self.run_conformer_jobs()
         while self.running_jobs != {}:  # loop while jobs are still running
-            logging.debug('Currently running jobs:\n{0}'.format(self.running_jobs))
+            logger.debug('Currently running jobs:\n{0}'.format(self.running_jobs))
             self.timer = True
             for label in self.unique_species_labels:
                 # look for completed jobs and decide what jobs to run next
@@ -385,7 +387,7 @@ class Scheduler(object):
                             else:
                                 # All conformer jobs terminated.
                                 # Check isomorphism and run opt on most stable conformer geometry.
-                                logging.info('\nConformer jobs for {0} successfully terminated.\n'.format(
+                                logger.info('\nConformer jobs for {0} successfully terminated.\n'.format(
                                     label))
                                 if self.species_dict[label].is_ts:
                                     self.determine_most_likely_ts_conformer(label)
@@ -521,7 +523,7 @@ class Scheduler(object):
             t = time.time() - self.report_time
             if t > 3600:
                 self.report_time = time.time()
-                logging.info('Currently running jobs:\n{0}'.format(self.running_jobs))
+                logger.info('Currently running jobs:\n{0}'.format(self.running_jobs))
 
         # After exiting the Scheduler while loop, append all YAML species not directly calculated to the species_dict:
         for spc in self.species_list:
@@ -581,8 +583,8 @@ class Scheduler(object):
             job.determine_job_status()  # also downloads output file
         except IOError:
             if job.job_type not in ['orbitals']:
-                logging.warn('Tried to determine status of job {0}, but it seems like the job never ran.'
-                             ' Re-running job.'.format(job.job_name))
+                logger.warning('Tried to determine status of job {0}, but it seems like the job never ran.'
+                               ' Re-running job.'.format(job.job_name))
                 self.run_job(label=label, xyz=job.xyz, level_of_theory=job.level_of_theory, job_type=job.job_type,
                              fine=job.fine, software=job.software, shift=job.shift, trsh=job.trsh, memory=job.memory,
                              conformer=job.conformer, ess_trsh_methods=job.ess_trsh_methods, scan=job.scan,
@@ -595,7 +597,7 @@ class Scheduler(object):
                 self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
             self.timer = False
             job.write_completed_job_to_csv_file()
-            logging.info('  Ending job {name} for {label} (run time: {time})'.format(name=job.job_name, label=label,
+            logger.info('  Ending job {name} for {label} (run time: {time})'.format(name=job.job_name, label=label,
                                                                                      time=job.run_time))
             if job.job_status[0] != 'done':
                 return False
@@ -631,8 +633,8 @@ class Scheduler(object):
                             self.run_job(label=label, xyz=xyz, level_of_theory=self.conformer_level,
                                          job_type='conformer', conformer=i)
                     elif len(self.species_dict[label].conformers) == 1:
-                        logging.info('Only one conformer is available for species {0}, '
-                                     'using it as initial xyz'.format(label))
+                        logger.info('Only one conformer is available for species {0}, '
+                                    'using it as initial xyz'.format(label))
                         self.species_dict[label].initial_xyz = self.species_dict[label].conformers[0]
                         if not self.composite_method:
                             if self.job_types['opt']:
@@ -666,8 +668,8 @@ class Scheduler(object):
                 rxn = ''
                 if self.species_dict[label].rxn_label is not None:
                     rxn = ' of reaction ' + self.species_dict[label].rxn_label
-                logging.info('Only one TS guess is available for species {0}{1},'
-                             ' using it for geometry optimization'.format(label, rxn))
+                logger.info('Only one TS guess is available for species {0}{1},'
+                            ' using it for geometry optimization'.format(label, rxn))
                 self.species_dict[label].initial_xyz = self.species_dict[label].conformers[0]
                 if not self.composite_method:
                     self.run_opt_job(label)
@@ -754,7 +756,7 @@ class Scheduler(object):
                              job_type='sp', occ=occ)
             else:
                 # MRCI was requested but no sp job ran for this species, run CCSD first
-                logging.info('running a CCSD job for {0} before MRCI'.format(label))
+                logger.info('running a CCSD job for {0} before MRCI'.format(label))
                 self.run_job(label=label, xyz=self.species_dict[label].final_xyz, level_of_theory='ccsd/vdz',
                              job_type='sp')
         if self.job_types['sp']:
@@ -798,7 +800,7 @@ class Scheduler(object):
         Spawn a lennard-jones calculation using OneDMin
         """
         if 'onedmin' not in self.ess_settings:
-            logging.error('Cannot execute a Lennard Jones job without the OneDMin software')
+            logger.error('Cannot execute a Lennard Jones job without the OneDMin software')
         elif 'onedmin' not in self.job_dict[label]:
             self.run_job(label=label, xyz=self.species_dict[label].final_xyz, job_type='onedmin',
                          level_of_theory='')
@@ -810,9 +812,9 @@ class Scheduler(object):
         if job.job_status[1] == 'done':
             log = determine_qm_software(fullpath=job.local_path_to_output_file)
             self.species_dict[label].conformer_energies[i] = log.loadEnergy()  # in J/mol
-            logging.debug('energy for {0} is {1}'.format(i, self.species_dict[label].conformer_energies[i]))
+            logger.debug('energy for {0} is {1}'.format(i, self.species_dict[label].conformer_energies[i]))
         else:
-            logging.warn('Conformer {i} for {label} did not converge!'.format(i=i, label=label))
+            logger.warning('Conformer {i} for {label} did not converge!'.format(i=i, label=label))
 
     def determine_most_stable_conformer(self, label):
         """
@@ -824,7 +826,7 @@ class Scheduler(object):
             raise SchedulerError('The determine_most_stable_conformer() method does not deal with transition'
                                  ' state guesses.')
         if 'conformers' in self.job_dict[label] and all(e is None for e in self.species_dict[label].conformer_energies):
-            logging.error('No conformer converged for species {0}! Trying to troubleshoot conformer jobs...'.format(
+            logger.error('No conformer converged for species {0}! Trying to troubleshoot conformer jobs...'.format(
                 label))
             for i, job in self.job_dict[label]['conformers'].items():
                 self.troubleshoot_ess(label, job, level_of_theory=job.level_of_theory, job_type='conformer',
@@ -856,39 +858,42 @@ class Scheduler(object):
                             is_isomorphic = check_isomorphism(self.species_dict[label].mol, b_mol)
                         except ValueError as e:
                             if self.species_dict[label].charge:
-                                logging.error('Could not determine isomorphism for charged species {0}. '
-                                              'Optimizing the most stable conformer anyway. Got the '
-                                              'following error:\n{1}'.format(label, e))
+                                logger.error('Could not determine isomorphism for charged species {0}. '
+                                             'Optimizing the most stable conformer anyway. Got the '
+                                             'following error:\n{1}'.format(label, e))
                             else:
-                                logging.error('Could not determine isomorphism for (non-charged) species {0}. '
-                                              'Optimizing the most stable conformer anyway. Got the '
-                                              'following error:\n{1}'.format(label, e))
+                                logger.error('Could not determine isomorphism for (non-charged) species {0}. '
+                                             'Optimizing the most stable conformer anyway. Got the '
+                                             'following error:\n{1}'.format(label, e))
                             conformer_xyz = xyzs[0]
                             break
                         if is_isomorphic:
                             if i == 0:
-                                logging.info('Most stable conformer for species {0} was found to be isomorphic '
-                                             'with the 2D graph representation {1}\n'.format(label, b_mol.toSMILES()))
+                                logger.info('Most stable conformer for species {0} was found to be isomorphic '
+                                            'with the 2D graph representation {1}\n'.format(label, b_mol.toSMILES()))
                                 conformer_xyz = xyz
                                 self.output[label]['status'] += 'passed isomorphism check; '
                             else:
-                                logging.info('A conformer for species {0} was found to be isomorphic '
-                                             'with the 2D graph representation {1}. This conformer is {2} kJ/mol '
-                                             'above the most stable one which corresponds to  {3} (and is not'
-                                             ' isomorphic). Using the isomorphic conformer for further geometry '
-                                             'optimization.'.format(label, self.species_dict[label].mol.toSMILES(),
-                                                                    (energies[i] - energies[0]) * 0.001,
-                                 molecules_from_xyz(xyzs[0], multiplicity=self.species_dict[label].multiplicity,
-                                                    charge=self.species_dict[label].charge)[1]))
+                                if energies[i] is not None:
+                                    logger.info('A conformer for species {0} was found to be isomorphic '
+                                                'with the 2D graph representation {1}. This conformer is {2} kJ/mol '
+                                                'above the most stable one which corresponds to  {3} (and is not '
+                                                'isomorphic). Using the isomorphic conformer for further geometry '
+                                                'optimization.'.format(
+                                                 label, self.species_dict[label].mol.toSMILES(),
+                                                 (energies[i] - energies[0]) * 0.001,
+                                                 molecules_from_xyz(xyzs[0],
+                                                 multiplicity=self.species_dict[label].multiplicity,
+                                                 charge=self.species_dict[label].charge)[1]))
                                 conformer_xyz = xyz
                                 self.output[label]['status'] += 'passed isomorphism check but not for the most stable' \
                                                                 ' conformer; '
                             break
                         else:
                             if i == 0:
-                                logging.warn('Most stable conformer for species {0} with structure {1} was found to '
-                                             'be NON-isomorphic with the 2D graph representation {2}. Searching for a '
-                                             'different conformer that is isomorphic...'.format(
+                                logger.warning('Most stable conformer for species {0} with structure {1} was found to '
+                                               'be NON-isomorphic with the 2D graph representation {2}. Searching for '
+                                               'a different conformer that is isomorphic...'.format(
                                     label, b_mol.toSMILES(), self.species_dict[label].mol.toSMILES()))
                 else:
                     smiles_list = list()
@@ -897,24 +902,24 @@ class Scheduler(object):
                                                               charge=self.species_dict[label].charge)[1])
                     if self.allow_nonisomorphic_2d or self.species_dict[label].charge:
                         # we'll optimize the most stable conformer even if it is not isomorphic to the 2D graph
-                        logging.error('No conformer for {0} was found to be isomorphic with the 2D graph representation'
-                                      ' {1} (got: {2}). Optimizing the most stable conformer anyway.'.format(
-                                       label, self.species_dict[label].mol.toSMILES(), smiles_list))
+                        logger.error('No conformer for {0} was found to be isomorphic with the 2D graph representation'
+                                     ' {1} (got: {2}). Optimizing the most stable conformer anyway.'.format(
+                                      label, self.species_dict[label].mol.toSMILES(), smiles_list))
                         self.output[label]['status'] += 'No conformer was found to be isomorphic with the 2D' \
                                                         ' graph representation; '
                         if self.species_dict[label].charge:
-                            logging.warning('Isomorphism check cannot be done for charged species {0}'.format(label))
+                            logger.warning('Isomorphism check cannot be done for charged species {0}'.format(label))
                         conformer_xyz = xyzs[0]
                     else:
-                        logging.error('No conformer for {0} was found to be isomorphic with the 2D graph representation'
-                                      ' {1} (got: {2}). NOT optimizing this species.'.format(
-                                       label, self.species_dict[label].mol.toSMILES(), smiles_list))
+                        logger.error('No conformer for {0} was found to be isomorphic with the 2D graph representation'
+                                     ' {1} (got: {2}). NOT optimizing this species.'.format(
+                                      label, self.species_dict[label].mol.toSMILES(), smiles_list))
                         self.output[label]['status'] += 'Error: No conformer was found to be isomorphic with the 2D' \
                                                         ' graph representation!; '
             else:
-                logging.warn('Could not run isomorphism check for species {0} due to missing 2D graph '
-                             'representation. Using the most stable conformer for further geometry'
-                             ' optimization.'.format(label))
+                logger.warning('Could not run isomorphism check for species {0} due to missing 2D graph '
+                               'representation. Using the most stable conformer for further geometry'
+                               ' optimization.'.format(label))
                 conformer_xyz = xyzs[0]
             if conformer_xyz is not None:
                 self.species_dict[label].initial_xyz = conformer_xyz
@@ -929,7 +934,7 @@ class Scheduler(object):
             raise SchedulerError('The determine_most_likely_ts_conformer() method only deals with transition'
                                  ' state guesses.')
         if all(e is None for e in self.species_dict[label].conformer_energies):
-            logging.error('No guess converged for TS {0}!'.format(label))
+            logger.error('No guess converged for TS {0}!'.format(label))
             # for i, job in self.job_dict[label]['conformers'].items():
             #     self.troubleshoot_ess(label, job, level_of_theory=job.level_of_theory, job_type='conformer',
             #                           conformer=job.conformer)
@@ -941,7 +946,7 @@ class Scheduler(object):
             e_min = min_list(energies)
             i_min = energies.index(e_min)
             self.species_dict[label].chosen_ts = None
-            logging.info('\n\nShowing geometry *guesses* of successful TS guess methods for {0} of {1}:'.format(
+            logger.info('\n\nShowing geometry *guesses* of successful TS guess methods for {0} of {1}:'.format(
                 label, self.species_dict[label].rxn_label))
             for tsg in self.species_dict[label].ts_guesses:
                 if tsg.index == i_min:
@@ -951,7 +956,7 @@ class Scheduler(object):
                 if tsg.success:
                     # 0.000239006 is the conversion factor from J/mol to kcal/mol
                     tsg.energy = (self.species_dict[label].conformer_energies[tsg.index] - e_min) * 0.000239006
-                    logging.info('{0}. Method: {1}, relative energy: {2} kcal/mol, guess execution time: {3}'.format(
+                    logger.info('{0}. Method: {1}, relative energy: {2} kcal/mol, guess execution time: {3}'.format(
                         tsg.index, tsg.method, tsg.energy, tsg.execution_time))
                     # for TSs, only use `draw_3d()`, not `show_sticks()` which gets connectivity wrong:
                     plotter.draw_3d(xyz=tsg.xyz)
@@ -966,7 +971,7 @@ class Scheduler(object):
         and that exactly one imaginary frequency was assigned for a TS.
         Returns ``True`` if the job converged successfully, ``False`` otherwise and troubleshoots.
         """
-        logging.debug('parsing composite geo for {0}'.format(job.job_name))
+        logger.debug('parsing composite geo for {0}'.format(job.job_name))
         freq_ok = False
         if job.job_status[1] == 'done':
             log = determine_qm_software(fullpath=job.local_path_to_output_file)
@@ -978,8 +983,8 @@ class Scheduler(object):
             rxn_str = ''
             if self.species_dict[label].is_ts:
                 rxn_str = ' of reaction {0}'.format(self.species_dict[label].rxn_label)
-            logging.info('\nOptimized geometry for {label}{rxn} at {level}:\n{xyz}'.format(label=label,
-                         rxn=rxn_str, level=job.level_of_theory, xyz=self.species_dict[label].final_xyz))
+            logger.info('\nOptimized geometry for {label}{rxn} at {level}:\n{xyz}'.format(
+                label=label, rxn=rxn_str, level=job.level_of_theory, xyz=self.species_dict[label].final_xyz))
             successful_drawing_sticks = False
             if not job.is_ts:
                 successful_drawing_sticks = plotter.show_sticks(species=self.species_dict[label],
@@ -1007,7 +1012,7 @@ class Scheduler(object):
         and that exactly one imaginary frequency was assigned for a TS.
         Returns ``True`` if the job (or both jobs) converged successfully, ``False`` otherwise and troubleshoots opt.
         """
-        logging.debug('parsing opt geo for {0}'.format(job.job_name))
+        logger.debug('parsing opt geo for {0}'.format(job.job_name))
         if job.job_status[1] == 'done':
             log = determine_qm_software(fullpath=job.local_path_to_output_file)
             coord, number, _ = log.loadGeometry()
@@ -1024,8 +1029,8 @@ class Scheduler(object):
                 rxn_str = ''
                 if self.species_dict[label].is_ts:
                     rxn_str = ' of reaction {0}'.format(self.species_dict[label].rxn_label)
-                logging.info('\nOptimized geometry for {label}{rxn} at {level}:\n{xyz}'.format(label=label,
-                             rxn=rxn_str, level=job.level_of_theory, xyz=self.species_dict[label].final_xyz))
+                logger.info('\nOptimized geometry for {label}{rxn} at {level}:\n{xyz}'.format(
+                    label=label, rxn=rxn_str, level=job.level_of_theory, xyz=self.species_dict[label].final_xyz))
                 successful_drawing_sticks = False
                 if not job.is_ts:
                     successful_drawing_sticks = plotter.show_sticks(species=self.species_dict[label],
@@ -1104,19 +1109,19 @@ class Scheduler(object):
                 neg_freq_counter += 1
                 neg_fre = freq
         if self.species_dict[label].is_ts and neg_freq_counter != 1:
-            logging.error('TS {0} has {1} imaginary frequencies,'
-                          ' should have exactly 1.'.format(label, neg_freq_counter))
+            logger.error('TS {0} has {1} imaginary frequencies,'
+                         ' should have exactly 1.'.format(label, neg_freq_counter))
             self.output[label]['status'] += 'Warning: {0} imaginary freq for TS; '.format(neg_freq_counter)
             return False
         elif not self.species_dict[label].is_ts and neg_freq_counter != 0:
-            logging.error('species {0} has {1} imaginary frequencies,'
-                          ' should have exactly 0.'.format(label, neg_freq_counter))
+            logger.error('species {0} has {1} imaginary frequencies,'
+                         ' should have exactly 0.'.format(label, neg_freq_counter))
             self.output[label]['status'] += 'Warning: {0} imaginary freq for stable species; '.format(
                 neg_freq_counter)
             return False
         else:
             if self.species_dict[label].is_ts:
-                logging.info('{0} has exactly one imaginary frequency: {1}'.format(label, neg_fre))
+                logger.info('{0} has exactly one imaginary frequency: {1}'.format(label, neg_fre))
             self.output[label]['status'] += 'freq converged; '
             self.output[label]['geo'] = job.local_path_to_output_file
             self.output[label]['freq'] = job.local_path_to_output_file
@@ -1147,7 +1152,7 @@ class Scheduler(object):
                 elif self.species_dict[label].t1 > 0.015:
                     txt += ". It might have multireference characteristic."
                     self.output[label]['status'] += 'T1 = {0}; '.format(self.species_dict[label].t1)
-                logging.info('Species {0} has a T1 diagnostic parameter of {1}{2}'.format(
+                logger.info('Species {0} has a T1 diagnostic parameter of {1}{2}'.format(
                     label, self.species_dict[label].t1, txt))
             # Update restart dictionary and save the yaml restart file:
             self.save_restart_dict()
@@ -1187,8 +1192,8 @@ class Scheduler(object):
                     try:
                         v_list, angle = log.loadScanEnergies()
                     except ZeroDivisionError:
-                        logging.error('Energies from rotor scan of {label} between pivots {pivots} could not'
-                                      'be read. Invalidating rotor.'.format(label=label, pivots=job.pivots))
+                        logger.error('Energies from rotor scan of {label} between pivots {pivots} could not'
+                                     'be read. Invalidating rotor.'.format(label=label, pivots=job.pivots))
                         invalidate = True
                         invalidation_reason = 'could not read energies'
                     else:
@@ -1203,13 +1208,13 @@ class Scheduler(object):
                                             ' Invalidating rotor.\nv_list[0] = {v0}, v_list[-1] = {vneg1}'.format(
                                              label=label, pivots=job.pivots, incons_az=inconsistency_az,
                                              v0=v_list[0], vneg1=v_list[-1])
-                            logging.error(error_message)
+                            logger.error(error_message)
                             message += error_message + '; '
                             invalidate = True
                             invalidation_reason = 'initial and final points are inconsistent by more than {0}' \
                                                   ' kJ/mol'.format(inconsistency_az)
                             if not job.scan_trsh:
-                                logging.info('Trying to troubleshoot rotor {0} of {1}...'.format(job.pivots, label))
+                                logger.info('Trying to troubleshoot rotor {0} of {1}...'.format(job.pivots, label))
                                 trsh = True
                                 self.troubleshoot_scan_job(job=job)
                         if not invalidate:
@@ -1222,13 +1227,13 @@ class Scheduler(object):
                                                     'by more than {incons_ab:.2f} kJ/mol between two consecutive ' \
                                                     'points. Invalidating rotor.'.format(
                                         label=label, pivots=job.pivots, incons_ab=inconsistency_ab * max(v_list))
-                                    logging.error(error_message)
+                                    logger.error(error_message)
                                     message += error_message + '; '
                                     invalidate = True
                                     invalidation_reason = 'two consecutive points are inconsistent by more than {0}' \
                                                           ' kJ/mol'.format(inconsistency_ab)
                                     if not job.scan_trsh:
-                                        logging.info('Trying to troubleshoot rotor {0} of {1}...'.format(
+                                        logger.info('Trying to troubleshoot rotor {0} of {1}...'.format(
                                             job.pivots, label))
                                         trsh = True
                                         self.troubleshoot_scan_job(job=job)
@@ -1239,7 +1244,7 @@ class Scheduler(object):
                                     warn_message = 'Rotor scan of {label} between pivots {pivots} has a barrier ' \
                                                    'larger than {maximum_barrier} kJ/mol. Invalidating rotor.'.format(
                                                     label=label, pivots=job.pivots, maximum_barrier=maximum_barrier)
-                                    logging.warn(warn_message)
+                                    logger.warning(warn_message)
                                     message += warn_message + '; '
                                     invalidate = True
                                     invalidation_reason = 'scan has a barrier larger than {0}' \
@@ -1252,8 +1257,8 @@ class Scheduler(object):
                             v_diff = (v_list[0] - np.min(v_list))
                             if v_diff >= 2 or v_diff > 0.5 * (max(v_list) - min(v_list)):
                                 self.species_dict[label].rotors_dict[i]['success'] = False
-                                logging.info('Species {label} is not oriented correctly around pivots {pivots},'
-                                             ' searching for a better conformation...'.format(label=label,
+                                logger.info('Species {label} is not oriented correctly around pivots {pivots},'
+                                            ' searching for a better conformation...'.format(label=label,
                                                                                               pivots=job.pivots))
                                 # Find the rotation dihedral in degrees to the closest minimum:
                                 min_v = v_list[0]
@@ -1278,8 +1283,8 @@ class Scheduler(object):
                                 pivots=self.species_dict[label].rotors_dict[i]['pivots'])
                             symmetry = ' has symmetry {0}'.format(self.species_dict[label].rotors_dict[i]['symmetry'])
 
-                            logging.info('{invalidated}Rotor scan {scan} between pivots {pivots}'
-                                         ' for {label}{symmetry}'.format(invalidated=invalidated,
+                            logger.info('{invalidated}Rotor scan {scan} between pivots {pivots}'
+                                        ' for {label}{symmetry}'.format(invalidated=invalidated,
                                                        scan=self.species_dict[label].rotors_dict[i]['scan'],
                                                        pivots=self.species_dict[label].rotors_dict[i]['pivots'],
                                                        label=label, symmetry=symmetry))
@@ -1316,7 +1321,7 @@ class Scheduler(object):
             plotter.save_geo(species=self.species_dict[label], project_directory=self.project_directory)
             if self.species_dict[label].is_ts:
                 self.species_dict[label].make_ts_report()
-                logging.info(self.species_dict[label].ts_report + '\n')
+                logger.info(self.species_dict[label].ts_report + '\n')
             zero_delta = datetime.timedelta(0)
             conf_time = max([job.run_time for job in self.job_dict[label]['conformers'].values()])\
                 if 'conformers' in self.job_dict[label] else zero_delta
@@ -1332,11 +1337,11 @@ class Scheduler(object):
             self.species_dict[label].run_time = self.species_dict[label].run_time\
                                                 or (conf_time or zero_delta) + (opt_time or zero_delta)\
                                                 + (comp_time or zero_delta) + (other_time or zero_delta)
-            logging.info('\nAll jobs for species {0} successfully converged.'
-                         ' Run time: {1}'.format(label, self.species_dict[label].run_time))
+            logger.info('\nAll jobs for species {0} successfully converged.'
+                        ' Run time: {1}'.format(label, self.species_dict[label].run_time))
         elif not self.output[label]['status']:
             self.output[label]['status'] = 'nothing converged'
-            logging.error('species {0} did not converge. Status is: {1}'.format(label, status))
+            logger.error('species {0} did not converge. Status is: {1}'.format(label, status))
         # Update restart dictionary and save the yaml restart file:
         self.save_restart_dict()
 
@@ -1365,11 +1370,12 @@ class Scheduler(object):
         atomnos = data.atomnos
         atomcoords = data.atomcoords
         if len(self.species_dict[label].neg_freqs_trshed) > 10:
-            logging.error('Species {0} was troubleshooted for negative frequencies too many times.')
+            logger.error('Species {0} was troubleshooted for negative frequencies too many times.'.format(label))
             if not self.job_types['1d_rotors']:
-                logging.error('Rotor scan is turned off, cannot troubleshoot geometry using dihedral modifications.')
+                logger.error('The rotor scans feature is turned off, '
+                             'cannot troubleshoot geometry using dihedral modifications.')
                 self.output[label]['status'] = '1d_rotors = False; '
-            logging.error('Invalidating species.')
+            logger.error('Invalidating species.')
             self.output[label]['status'] = 'Error: Encountered negative frequencies too many times; '
             return
         neg_freqs_idx = list()  # store indices w.r.t. vibfreqs
@@ -1387,29 +1393,29 @@ class Scheduler(object):
                                  ' negative frequencies'.format(label))
         if len(neg_freqs_idx) == 1 and len(self.species_dict[label].neg_freqs_trshed) == 0:
             # species has one negative frequency, and has not been troubleshooted for it before
-            logging.info('Species {0} has a negative frequencies ({1}). Perturbing its geometry using the respective '
-                         'vibrational displacements'.format(label, vibfreqs[largest_neg_freq_idx]))
+            logger.info('Species {0} has a negative frequencies ({1}). Perturbing its geometry using the respective '
+                        'vibrational displacements'.format(label, vibfreqs[largest_neg_freq_idx]))
             neg_freqs_idx = [largest_neg_freq_idx]  # indices of the negative frequencies to troubleshoot for
         elif len(neg_freqs_idx) == 1 and len(self.species_dict[label].neg_freqs_trshed) == 0:
             # species has one negative frequency, and has been troubleshooted for it before
             factor = 1.3
-            logging.info('Species {0} has a negative frequencies ({1}). Perturbing its geometry using the respective '
-                         'vibrational displacements, this time using a larger factor ({2})'.format(
-                          label, vibfreqs[largest_neg_freq_idx], factor))
+            logger.info('Species {0} has a negative frequencies ({1}). Perturbing its geometry using the respective '
+                        'vibrational displacements, this time using a larger factor ({2})'.format(
+                         label, vibfreqs[largest_neg_freq_idx], factor))
             neg_freqs_idx = [largest_neg_freq_idx]  # indices of the negative frequencies to troubleshoot for
         elif len(neg_freqs_idx) > 1 and len(self.species_dict[label].neg_freqs_trshed) == 0:
             # species has more than one negative frequency, and has not been troubleshooted for it before
-            logging.info('Species {0} has {1} negative frequencies. Perturbing its geometry using the vibrational '
-                         'displacements of its largest negative frequency, {2}'.format(label, len(neg_freqs_idx),
-                                                                                       vibfreqs[largest_neg_freq_idx]))
+            logger.info('Species {0} has {1} negative frequencies. Perturbing its geometry using the vibrational '
+                        'displacements of its largest negative frequency, {2}'.format(label, len(neg_freqs_idx),
+                                                                                      vibfreqs[largest_neg_freq_idx]))
             neg_freqs_idx = [largest_neg_freq_idx]  # indices of the negative frequencies to troubleshoot for
         elif len(neg_freqs_idx) > 1 and len(self.species_dict[label].neg_freqs_trshed) > 0:
             # species has more than one negative frequency, and has been troubleshooted for it before
-            logging.info('Species {0} has {1} negative frequencies. Perturbing its geometry using the vibrational'
-                         ' displacements of ALL negative frequencies'.format(label, len(neg_freqs_idx)))
+            logger.info('Species {0} has {1} negative frequencies. Perturbing its geometry using the vibrational'
+                        ' displacements of ALL negative frequencies'.format(label, len(neg_freqs_idx)))
         self.species_dict[label].neg_freqs_trshed.extend([round(vibfreqs[i], 2) for i in neg_freqs_idx])  # record freqs
-        logging.info('Deleting all currently running jobs for species {0} before troubleshooting for'
-                     ' negative frequency...'.format(label))
+        logger.info('Deleting all currently running jobs for species {0} before troubleshooting for'
+                    ' negative frequency...'.format(label))
         self.delete_all_species_jobs(label)
         self.species_dict[label].conformers = list()  # initialize the conformer list
         self.species_dict[label].conformer_energies = list()
@@ -1465,8 +1471,8 @@ class Scheduler(object):
             if job.job_status[1] == 'done':
                 if job.fine:
                     # run_opt_job should not be called if all looks good...
-                    logging.error('opt job for {label} seems right, yet "run_opt_job"'
-                                  ' was called.'.format(label=label))
+                    logger.error('opt job for {label} seems right, yet "run_opt_job"'
+                                 ' was called.'.format(label=label))
                     raise SchedulerError('opt job for {label} seems right, yet "run_opt_job"'
                                          ' was called.'.format(label=label))
                 else:
@@ -1484,9 +1490,9 @@ class Scheduler(object):
                         # The present job with a fine grid failed in the ESS calculation.
                         # A *previous* job without a fine grid terminated successfully on the server and ESS.
                         # So use the xyz determined w/o the fine grid, and output an error message to alert users.
-                        logging.error('Optimization job for {label} with a fine grid terminated successfully'
-                                      ' on the server, but crashed during calculation. NOT running with fine'
-                                      ' grid again.'.format(label=label))
+                        logger.error('Optimization job for {label} with a fine grid terminated successfully'
+                                     ' on the server, but crashed during calculation. NOT running with fine'
+                                     ' grid again.'.format(label=label))
                         self.parse_opt_geo(label=label, job=previous_job)
                 else:
                     self.troubleshoot_ess(label=label, job=job, level_of_theory=self.opt_level, job_type='opt')
@@ -1497,8 +1503,8 @@ class Scheduler(object):
         """
         Troubleshoot issues related to the electronic structure software, such as conversion
         """
-        logging.info('\n')
-        logging.warn('Troubleshooting {label} job {job_name} which failed with status "{stat}" in {soft}.'.format(
+        logger.info('\n')
+        logger.warning('Troubleshooting {label} job {job_name} which failed with status "{stat}" in {soft}.'.format(
             job_name=job.job_name, label=label, stat=job.job_status[1], soft=job.software))
         if conformer != -1:
             xyz = self.species_dict[label].conformers[conformer]
@@ -1513,16 +1519,16 @@ class Scheduler(object):
             self.output[label]['status'] += '; Error: Could not troubleshoot {job_type} for {label}! ' \
                                             ' The job ran out of disc space on {server}'.format(
                 job_type=job_type, label=label, methods=job.ess_trsh_methods, server=job.server)
-            logging.error('Could not troubleshoot {job_type} for {label}! The job ran out of disc space on '
-                          '{server}'.format(job_type=job_type, label=label, methods=job.ess_trsh_methods,
-                                            server=job.server))
+            logger.error('Could not troubleshoot {job_type} for {label}! The job ran out of disc space on '
+                         '{server}'.format(job_type=job_type, label=label, methods=job.ess_trsh_methods,
+                                           server=job.server))
         elif job.software == 'gaussian':
             if self.species_dict[label].checkfile is None:
                 self.species_dict[label].checkfile = job.checkfile
             if 'l103 internal coordinate error' in job.job_status[1]\
                     and 'cartesian' not in job.ess_trsh_methods and job_type == 'opt':
                 # try both cartesian and nosymm
-                logging.info('Troubleshooting {type} job in {software} using opt=cartesian with nosyym'.format(
+                logger.info('Troubleshooting {type} job in {software} using opt=cartesian with nosyym'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('cartesian')
                 trsh = 'opt=(cartesian,nosymm)'
@@ -1531,7 +1537,7 @@ class Scheduler(object):
                              conformer=conformer)
             if 'scf=(qc,nosymm)' not in job.ess_trsh_methods:
                 # try both qc and nosymm
-                logging.info('Troubleshooting {type} job in {software} using scf=(qc,nosymm)'.format(
+                logger.info('Troubleshooting {type} job in {software} using scf=(qc,nosymm)'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('scf=(qc,nosymm)')
                 trsh = 'scf=(qc,nosymm)'
@@ -1540,7 +1546,7 @@ class Scheduler(object):
                              conformer=conformer)
             elif 'scf=(NDump=30)' not in job.ess_trsh_methods:
                 # Allows dynamic dumping for up to N SCF iterations (slower conversion)
-                logging.info('Troubleshooting {type} job in {software} using scf=(NDump=30)'.format(
+                logger.info('Troubleshooting {type} job in {software} using scf=(NDump=30)'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('scf=(NDump=30)')
                 trsh = 'scf=(NDump=30)'
@@ -1549,7 +1555,7 @@ class Scheduler(object):
                              conformer=conformer)
             elif 'scf=NoDIIS' not in job.ess_trsh_methods:
                 # Switching off Pulay's Direct Inversion
-                logging.info('Troubleshooting {type} job in {software} using scf=NoDIIS'.format(
+                logger.info('Troubleshooting {type} job in {software} using scf=NoDIIS'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('scf=NoDIIS')
                 trsh = 'scf=NoDIIS'
@@ -1558,7 +1564,7 @@ class Scheduler(object):
                              conformer=conformer)
             elif 'int=(Acc2E=14)' not in job.ess_trsh_methods:  # does not work in g03
                 # Change integral accuracy (skip everything up to 1E-14 instead of 1E-12)
-                logging.info('Troubleshooting {type} job in {software} using int=(Acc2E=14)'.format(
+                logger.info('Troubleshooting {type} job in {software} using int=(Acc2E=14)'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('int=(Acc2E=14)')
                 trsh = 'int=(Acc2E=14)'
@@ -1567,7 +1573,7 @@ class Scheduler(object):
                              conformer=conformer)
             elif 'cbs-qb3' not in job.ess_trsh_methods and self.composite_method != 'cbs-qb3':
                 # try running CBS-QB3, which is relatively robust
-                logging.info('Troubleshooting {type} job in {software} using CBS-QB3'.format(
+                logger.info('Troubleshooting {type} job in {software} using CBS-QB3'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('cbs-qb3')
                 level_of_theory = 'cbs-qb3'
@@ -1575,7 +1581,7 @@ class Scheduler(object):
                              fine=job.fine, ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
             elif 'scf=nosymm' not in job.ess_trsh_methods:
                 # try running w/o considering symmetry
-                logging.info('Troubleshooting {type} job in {software} using scf=nosymm'.format(
+                logger.info('Troubleshooting {type} job in {software} using scf=nosymm'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('scf=nosymm')
                 trsh = 'scf=nosymm'
@@ -1586,15 +1592,15 @@ class Scheduler(object):
                 # Increase memory allocation
                 max_mem = servers[job.server].get('memory', 128)  # Node memory in GB, default to 128 if not specified
                 memory = job.memory_gb * 2 if job.memory_gb * 2 < max_mem * 0.9 else max_mem * 0.9
-                logging.info('Troubleshooting {type} job in {software} using memory: {mem} GB instead of {old} GB'.
-                             format(type=job_type, software=job.software, mem=memory, old=job.memory_gb))
+                logger.info('Troubleshooting {type} job in {software} using memory: {mem} GB instead of {old} GB'.
+                            format(type=job_type, software=job.software, mem=memory, old=job.memory_gb))
                 job.ess_trsh_methods.append('memory')
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
                              job_type=job_type, fine=job.fine, memory=memory, ess_trsh_methods=job.ess_trsh_methods,
                              conformer=conformer)
             elif self.composite_method != 'cbs-qb3' and 'scf=(qc,nosymm) & CBS-QB3' not in job.ess_trsh_methods:
                 # try both qc and nosymm with CBS-QB3
-                logging.info('Troubleshooting {type} job in {software} using scf=(qc,nosymm) with CBS-QB3'.format(
+                logger.info('Troubleshooting {type} job in {software} using scf=(qc,nosymm) with CBS-QB3'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('scf=(qc,nosymm) & CBS-QB3')
                 level_of_theory = 'cbs-qb3'
@@ -1605,7 +1611,7 @@ class Scheduler(object):
             elif 'qchem' not in job.ess_trsh_methods and not job.job_type == 'composite' and\
                     'qchem' in [ess.lower() for ess in self.ess_settings.keys()]:
                 # Try QChem
-                logging.info('Troubleshooting {type} job using qchem instead of {software}'.format(
+                logger.info('Troubleshooting {type} job using qchem instead of {software}'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('qchem')
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, job_type=job_type, fine=job.fine,
@@ -1613,22 +1619,22 @@ class Scheduler(object):
             elif 'molpro' not in job.ess_trsh_methods and not job.job_type == 'composite' \
                     and 'molpro' in [ess.lower() for ess in self.ess_settings.keys()]:
                 # Try molpro
-                logging.info('Troubleshooting {type} job using molpro instead of {software}'.format(
+                logger.info('Troubleshooting {type} job using molpro instead of {software}'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('molpro')
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, job_type=job_type, fine=job.fine,
                              software='molpro', ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
             else:
-                logging.error('Could not troubleshoot geometry optimization for {label}! Tried'
-                              ' troubleshooting with the following methods: {methods}'.format(
-                               label=label, methods=job.ess_trsh_methods))
+                logger.error('Could not troubleshoot geometry optimization for {label}! Tried'
+                             ' troubleshooting with the following methods: {methods}'.format(
+                              label=label, methods=job.ess_trsh_methods))
                 self.output[label]['status'] += '; Error: Could not troubleshoot {job_type} for {label}! ' \
                                                 ' Tried troubleshooting with the following methods: {methods}'.format(
                                                 job_type=job_type, label=label, methods=job.ess_trsh_methods)
         elif job.software == 'qchem':
             if 'max opt cycles reached' in job.job_status[1] and 'max_cycles' not in job.ess_trsh_methods:
                 # this is a common error, increase max cycles and continue running from last geometry
-                logging.info('Troubleshooting {type} job in {software} using max_cycles'.format(
+                logger.info('Troubleshooting {type} job in {software} using max_cycles'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('max_cycles')
                 trsh = '\n   GEOM_OPT_MAX_CYCLES 250'  # default is 50
@@ -1637,7 +1643,7 @@ class Scheduler(object):
                              conformer=conformer)
             elif 'SCF failed' in job.job_status[1] and 'DIIS_GDM' not in job.ess_trsh_methods:
                 # change the SCF algorithm and increase max SCF cycles
-                logging.info('Troubleshooting {type} job in {software} using the DIIS_GDM SCF algorithm'.format(
+                logger.info('Troubleshooting {type} job in {software} using the DIIS_GDM SCF algorithm'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('DIIS_GDM')
                 trsh = '\n   SCF_ALGORITHM DIIS_GDM\n   MAX_SCF_CYCLES 1000'  # default is 50
@@ -1646,15 +1652,15 @@ class Scheduler(object):
                              conformer=conformer)
             elif 'SYM_IGNORE' not in job.ess_trsh_methods:  # symmetry - look in manual, no symm if fails
                 # change the SCF algorithm and increase max SCF cycles
-                logging.info('Troubleshooting {type} job in {software} using SYM_IGNORE'
-                             ' as well as the DIIS_GDM SCF algorithm'.format(type=job_type, software=job.software))
+                logger.info('Troubleshooting {type} job in {software} using SYM_IGNORE'
+                            ' as well as the DIIS_GDM SCF algorithm'.format(type=job_type, software=job.software))
                 job.ess_trsh_methods.append('SYM_IGNORE')
                 trsh = '\n   SCF_ALGORITHM DIIS_GDM\n   MAX_SCF_CYCLES 250\n   SYM_IGNORE     True'
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
                              job_type=job_type, fine=job.fine, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
                              conformer=conformer)
             elif 'b3lyp' not in job.ess_trsh_methods:
-                logging.info('Troubleshooting {type} job in {software} using b3lyp'.format(
+                logger.info('Troubleshooting {type} job in {software} using b3lyp'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('b3lyp')
                 # try converging with B3LYP
@@ -1665,7 +1671,7 @@ class Scheduler(object):
             elif 'gaussian' not in job.ess_trsh_methods\
                     and 'gaussian' in [ess.lower() for ess in self.ess_settings.keys()]:
                 # Try Gaussian
-                logging.info('Troubleshooting {type} job using gaussian instead of {software}'.format(
+                logger.info('Troubleshooting {type} job using gaussian instead of {software}'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('gaussian')
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, job_type=job_type,
@@ -1674,16 +1680,16 @@ class Scheduler(object):
             elif 'molpro' not in job.ess_trsh_methods \
                     and 'molpro' in [ess.lower() for ess in self.ess_settings.keys()]:
                 # Try molpro
-                logging.info('Troubleshooting {type} job using molpro instead of {software}'.format(
+                logger.info('Troubleshooting {type} job using molpro instead of {software}'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('molpro')
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, job_type=job_type,
                              fine=job.fine, software='molpro', ess_trsh_methods=job.ess_trsh_methods,
                              conformer=conformer)
             else:
-                logging.error('Could not troubleshoot geometry optimization for {label}! Tried'
-                              ' troubleshooting with the following methods: {methods}'.format(
-                                label=label, methods=job.ess_trsh_methods))
+                logger.error('Could not troubleshoot geometry optimization for {label}! Tried'
+                             ' troubleshooting with the following methods: {methods}'.format(
+                              label=label, methods=job.ess_trsh_methods))
                 self.output[label]['status'] += '; Error: Could not troubleshoot {job_type} for {label}! ' \
                                                 ' Tried troubleshooting with the following methods: {methods}'.format(
                                                 job_type=job_type, label=label, methods=job.ess_trsh_methods)
@@ -1697,14 +1703,14 @@ class Scheduler(object):
                 add_mem = int(math.ceil(add_mem / 100.0)) * 100  # round up to the next hundred
                 add_mem += 250  # be conservative
                 memory = job.memory_gb + add_mem / 128.  # convert MW to GB
-                logging.info('Troubleshooting {type} job in {software} using memory: {mem} GB'.format(
+                logger.info('Troubleshooting {type} job in {software} using memory: {mem} GB'.format(
                     type=job_type, software=job.software, mem=memory))
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
                              job_type=job_type, fine=job.fine, shift=job.shift, memory=memory,
                              ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
             elif 'shift' not in job.ess_trsh_methods:
                 # try adding a level shift for alpha- and beta-spin orbitals
-                logging.info('Troubleshooting {type} job in {software} using shift'.format(
+                logger.info('Troubleshooting {type} job in {software} using shift'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('shift')
                 shift = 'shift,-1.0,-0.5;'
@@ -1713,7 +1719,7 @@ class Scheduler(object):
                              conformer=conformer)
             elif 'vdz' not in job.ess_trsh_methods:
                 # degrade the basis set
-                logging.info('Troubleshooting {type} job in {software} using vdz'.format(
+                logger.info('Troubleshooting {type} job in {software} using vdz'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('vdz')
                 trsh = 'vdz'
@@ -1722,7 +1728,7 @@ class Scheduler(object):
                              conformer=conformer)
             elif 'vdz & shift' not in job.ess_trsh_methods:
                 # try adding a level shift for alpha- and beta-spin orbitals
-                logging.info('Troubleshooting {type} job in {software} using vdz'.format(
+                logger.info('Troubleshooting {type} job in {software} using vdz'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('vdz & shift')
                 shift = 'shift,-1.0,-0.5;'
@@ -1734,7 +1740,7 @@ class Scheduler(object):
                 # Increase memory allocation, also run with a shift
                 job.ess_trsh_methods.append('memory')
                 memory = servers[job.server]['memory']  # set memory to the value of an entire node (in GB)
-                logging.info('Troubleshooting {type} job in {software} using memory: {mem} GB'.format(
+                logger.info('Troubleshooting {type} job in {software} using memory: {mem} GB'.format(
                     type=job_type, software=job.software, mem=memory))
                 shift = 'shift,-1.0,-0.5;'
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
@@ -1743,7 +1749,7 @@ class Scheduler(object):
             elif 'gaussian' not in job.ess_trsh_methods\
                     and 'gaussian' in [ess.lower() for ess in self.ess_settings.keys()]:
                 # Try Gaussian
-                logging.info('Troubleshooting {type} job using gaussian instead of {software}'.format(
+                logger.info('Troubleshooting {type} job using gaussian instead of {software}'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('gaussian')
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, job_type=job_type,
@@ -1751,15 +1757,15 @@ class Scheduler(object):
                              conformer=conformer)
             elif 'qchem' not in job.ess_trsh_methods and 'qchem' in [ess.lower() for ess in self.ess_settings.keys()]:
                 # Try QChem
-                logging.info('Troubleshooting {type} job using qchem instead of {software}'.format(
+                logger.info('Troubleshooting {type} job using qchem instead of {software}'.format(
                     type=job_type, software=job.software))
                 job.ess_trsh_methods.append('qchem')
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, job_type=job_type, fine=job.fine,
                              software='qchem', ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
             else:
-                logging.error('Could not troubleshoot geometry optimization for {label}! Tried'
-                              ' troubleshooting with the following methods: {methods}'.format(
-                               label=label, methods=job.ess_trsh_methods))
+                logger.error('Could not troubleshoot geometry optimization for {label}! Tried'
+                             ' troubleshooting with the following methods: {methods}'.format(
+                              label=label, methods=job.ess_trsh_methods))
                 self.output[label]['status'] += '; Error: Could not troubleshoot {job_type} for {label}! ' \
                                                 ' Tried troubleshooting with the following methods: {methods}'.format(
                                                 job_type=job_type, label=label, methods=job.ess_trsh_methods)
@@ -1768,11 +1774,11 @@ class Scheduler(object):
         """
         Delete all jobs of species/TS represented by `label`
         """
-        logging.debug('Deleting all jobs for species {0}'.format(label))
+        logger.debug('Deleting all jobs for species {0}'.format(label))
         for job_dict in self.job_dict[label].values():
             for job_name, job in job_dict.items():
                 if job_name in self.running_jobs[label]:
-                    logging.debug('Deleted job {0}'.format(job_name))
+                    logger.debug('Deleted job {0}'.format(job_name))
                     job.delete()
         self.running_jobs[label] = list()
 
@@ -1837,7 +1843,7 @@ class Scheduler(object):
                             content += self.job_dict[spc_label][job_type][job_name].job_name\
                                        + ' (conformer' + str(job_name) + ')' + ', '
             content += '\n\n'
-            logging.info(content)
+            logger.info(content)
 
     def save_restart_dict(self):
         """
@@ -1846,7 +1852,7 @@ class Scheduler(object):
         if self.save_restart and self.restart_dict is not None:
             yaml.add_representer(str, string_representer)
             yaml.add_representer(unicode, unicode_representer)
-            logging.debug('Creating a restart file...')
+            logger.debug('Creating a restart file...')
             self.restart_dict['output'] = self.output
             self.restart_dict['species'] = [spc.as_dict() for spc in self.species_dict.values()]
             self.restart_dict['running_jobs'] = dict()
@@ -1860,7 +1866,7 @@ class Scheduler(object):
             content = yaml.dump(data=self.restart_dict, encoding='utf-8', allow_unicode=True)
             with open(self.restart_path, 'w') as f:
                 f.write(content)
-            logging.debug('Dumping restart dictionary:\n{0}'.format(self.restart_dict))
+            logger.debug('Dumping restart dictionary:\n{0}'.format(self.restart_dict))
 
     def make_reaction_labels_info_file(self):
         """A helper function for creating the `reactions labels.info` file"""
@@ -1879,8 +1885,8 @@ class Scheduler(object):
 
     def save_conformers_file(self, label, xyzs=None, energies=None):
         """
-        A helper function for saving the conformers for species `label` before and after optimization
-        If `xyzs` is given, then it is used as the conformers xyz list, otherwise it is taken from the species.conformer
+        A helper function for saving the conformers for species `label` before and after optimization.
+        If `xyzs` is given, then it is used as the conformers xyz list, otherwise it is taken from the species.conformers
         attribute. If `energies`, a list of respective conformer energies in J/mol, is given, it will also be reported.
         """
         geo_dir = os.path.join(self.project_directory, 'output', 'Species', label, 'geometry')

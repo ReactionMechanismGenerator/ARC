@@ -21,7 +21,7 @@ from arkane.statmech import assign_frequency_scale_factor
 import arc.rmgdb as rmgdb
 from arc.settings import arc_path, default_levels_of_theory, servers, valid_chars, default_job_types
 from arc.scheduler import Scheduler
-from arc.common import VERSION, read_file, time_lapse, check_ess_settings, initialize_log, log_footer
+from arc.common import VERSION, read_file, time_lapse, check_ess_settings, initialize_log, log_footer, get_logger
 from arc.arc_exceptions import InputError, SettingsError, SpeciesError
 from arc.species.species import ARCSpecies
 from arc.reaction import ARCReaction
@@ -35,6 +35,8 @@ except ImportError:
     global_ess_settings = None
 
 ##################################################################
+
+logger = get_logger()
 
 
 class ARC(object):
@@ -94,6 +96,7 @@ class ARC(object):
     `level_of_theory` is a string representing either sp//geometry levels or a composite method, e.g. 'CBS-QB3',
                                                  'CCSD(T)-F12a/aug-cc-pVTZ//B3LYP/6-311++G(3df,3pd)'...
     """
+
     def __init__(self, input_dict=None, project=None, arc_species_list=None, arc_rxn_list=None, level_of_theory='',
                  conformer_level='', composite_method='', opt_level='', freq_level='', sp_level='', scan_level='',
                  ts_guess_level='', use_bac=True, job_types=None, model_chemistry='', initial_trsh=None, t_min=None,
@@ -138,18 +141,18 @@ class ARC(object):
             self.model_chemistry = model_chemistry
             self.freq_scale_factor = freq_scale_factor
             if self.model_chemistry:
-                logging.info('Using {0} as model chemistry for energy corrections in Arkane'.format(
+                logger.info('Using {0} as model chemistry for energy corrections in Arkane'.format(
                     self.model_chemistry))
             if not self.job_types['fine']:
-                logging.info('\n')
-                logging.warning('Not using a fine grid for geometry optimization jobs')
-                logging.info('\n')
+                logger.info('\n')
+                logger.warning('Not using a fine grid for geometry optimization jobs')
+                logger.info('\n')
             if not self.job_types['1d_rotors']:
-                logging.info('\n')
-                logging.warning("Not running rotor scans."
-                                " This might compromise finding the best conformer, as dihedral angles won't be"
-                                " corrected. Also, entropy won't be accurate.")
-                logging.info('\n')
+                logger.info('\n')
+                logger.warning("Not running rotor scans."
+                               " This might compromise finding the best conformer, as dihedral angles won't be"
+                               " corrected. Also, entropy won't be accurate.")
+                logger.info('\n')
 
             if level_of_theory.count('//') > 1:
                 raise InputError('Level of theory seems wrong. It should either be a composite method (like CBS-QB3)'
@@ -157,42 +160,42 @@ class ARC(object):
                                  ' Got: {0}'.format(level_of_theory))
 
             if conformer_level:
-                logging.info('Using {0} for refined conformer searches (after filtering via force fields)'.format(
+                logger.info('Using {0} for refined conformer searches (after filtering via force fields)'.format(
                     conformer_level))
                 self.conformer_level = conformer_level.lower()
             else:
                 self.conformer_level = default_levels_of_theory['conformer'].lower()
-                logging.info('Using default level {0} for refined conformer searches (after filtering via force'
-                             ' fields)'.format(default_levels_of_theory['conformer']))
+                logger.info('Using default level {0} for refined conformer searches (after filtering via force'
+                            ' fields)'.format(default_levels_of_theory['conformer']))
             if ts_guess_level:
-                logging.info('Using {0} for TS guesses comparison of different methods'.format(ts_guess_level))
+                logger.info('Using {0} for TS guesses comparison of different methods'.format(ts_guess_level))
                 self.ts_guess_level = ts_guess_level.lower()
             else:
                 self.ts_guess_level = default_levels_of_theory['ts_guesses'].lower()
-                logging.info('Using default level {0} for TS guesses comparison of different methods'.format(
+                logger.info('Using default level {0} for TS guesses comparison of different methods'.format(
                     default_levels_of_theory['ts_guesses']))
 
             if level_of_theory:
                 if '/' not in level_of_theory:  # assume this is a composite method
                     self.composite_method = level_of_theory.lower()
-                    logging.info('Using composite method {0}'.format(self.composite_method))
+                    logger.info('Using composite method {0}'.format(self.composite_method))
                     self.opt_level = ''
                     self.sp_level = ''
                     if freq_level:
                         self.freq_level = freq_level.lower()
-                        logging.info('Using {0} for frequency calculations'.format(self.freq_level))
+                        logger.info('Using {0} for frequency calculations'.format(self.freq_level))
                     else:
                         self.freq_level = default_levels_of_theory['freq_for_composite'].lower()
-                        logging.info('Using default level {0} for frequency calculations after composite jobs'.format(
+                        logger.info('Using default level {0} for frequency calculations after composite jobs'.format(
                             self.freq_level))
                 elif '//' in level_of_theory:
                     self.composite_method = ''
                     self.opt_level = level_of_theory.lower().split('//')[1]
                     self.freq_level = level_of_theory.lower().split('//')[1]
                     self.sp_level = level_of_theory.lower().split('//')[0]
-                    logging.info('Using {0} for geometry optimizations'.format(level_of_theory.split('//')[1]))
-                    logging.info('Using {0} for frequency calculations'.format(level_of_theory.split('//')[1]))
-                    logging.info('Using {0} for single point calculations'.format(level_of_theory.split('//')[0]))
+                    logger.info('Using {0} for geometry optimizations'.format(level_of_theory.split('//')[1]))
+                    logger.info('Using {0} for frequency calculations'.format(level_of_theory.split('//')[1]))
+                    logger.info('Using {0} for single point calculations'.format(level_of_theory.split('//')[0]))
                 elif '/' in level_of_theory and '//' not in level_of_theory:
                     # assume this is not a composite method, and the user meant to run opt, freq and sp at this level.
                     # running an sp after opt at the same level is meaningless, but doesn't matter much also...
@@ -200,18 +203,18 @@ class ARC(object):
                     self.opt_level = level_of_theory.lower()
                     self.freq_level = level_of_theory.lower()
                     self.sp_level = level_of_theory.lower()
-                    logging.info('Using {0} for geometry optimizations'.format(level_of_theory))
-                    logging.info('Using {0} for frequency calculations'.format(level_of_theory))
-                    logging.info('Using {0} for single point calculations'.format(level_of_theory))
+                    logger.info('Using {0} for geometry optimizations'.format(level_of_theory))
+                    logger.info('Using {0} for frequency calculations'.format(level_of_theory))
+                    logger.info('Using {0} for single point calculations'.format(level_of_theory))
             else:
                 self.composite_method = composite_method.lower()
                 if self.composite_method:
                     if level_of_theory and level_of_theory.lower != self.composite_method:
                         raise InputError('Specify either composite_method or level_of_theory')
-                    logging.info('Using composite method {0}'.format(composite_method))
+                    logger.info('Using composite method {0}'.format(composite_method))
                     if self.composite_method == 'cbs-qb3':
                         self.model_chemistry = self.composite_method
-                        logging.info('Using {0} as model chemistry for energy corrections in Arkane'.format(
+                        logger.info('Using {0} as model chemistry for energy corrections in Arkane'.format(
                             self.model_chemistry))
                     elif self.use_bac:
                         raise InputError('Could not determine model chemistry to use for composite method {0}'.format(
@@ -219,40 +222,38 @@ class ARC(object):
 
                 if opt_level:
                     self.opt_level = opt_level.lower()
-                    logging.info('Using {0} for geometry optimizations'.format(self.opt_level))
+                    logger.info('Using {0} for geometry optimizations'.format(self.opt_level))
                 elif not self.composite_method:
-                    # self.opt_level = 'wb97x-d3/def2-tzvpd'
-                    # logging.info('Using wB97x-D3/def2-TZVPD for geometry optimizations')
                     self.opt_level = default_levels_of_theory['opt'].lower()
-                    logging.info('Using default level {0} for geometry optimizations'.format(self.opt_level))
+                    logger.info('Using default level {0} for geometry optimizations'.format(self.opt_level))
                 else:
                     self.opt_level = ''
 
                 if freq_level:
                     self.freq_level = freq_level.lower()
-                    logging.info('Using {0} for frequency calculations'.format(self.freq_level))
+                    logger.info('Using {0} for frequency calculations'.format(self.freq_level))
                 elif not self.composite_method:
                     if opt_level:
                         self.freq_level = opt_level.lower()
-                        logging.info('Using user-defined opt level {0} for frequency calculations as well'.format(
+                        logger.info('Using user-defined opt level {0} for frequency calculations as well'.format(
                             self.freq_level))
                     else:
                         # self.freq_level = 'wb97x-d3/def2-tzvpd'
-                        # logging.info('Using wB97x-D3/def2-TZVPD for frequency calculations')
+                        # logger.info('Using wB97x-D3/def2-TZVPD for frequency calculations')
                         self.freq_level = default_levels_of_theory['freq'].lower()
-                        logging.info('Using default level {0} for frequency calculations'.format(self.freq_level))
+                        logger.info('Using default level {0} for frequency calculations'.format(self.freq_level))
                 else:
                     # This is a composite method
                     self.freq_level = default_levels_of_theory['freq_for_composite'].lower()
-                    logging.info('Using default level {0} for frequency calculations after composite jobs'.format(
+                    logger.info('Using default level {0} for frequency calculations after composite jobs'.format(
                         self.freq_level))
 
                 if sp_level:
                     self.sp_level = sp_level.lower()
-                    logging.info('Using {0} for single point calculations'.format(self.sp_level))
+                    logger.info('Using {0} for single point calculations'.format(self.sp_level))
                 elif not self.composite_method:
                     self.sp_level = default_levels_of_theory['sp'].lower()
-                    logging.info('Using default level {0} for single point calculations'.format(self.sp_level))
+                    logger.info('Using default level {0} for single point calculations'.format(self.sp_level))
                 else:
                     # It's a composite method, no need in explicit sp
                     self.sp_level = ''
@@ -260,15 +261,15 @@ class ARC(object):
             if scan_level:
                 self.scan_level = scan_level.lower()
                 if self.job_types['1d_rotors']:
-                    logging.info('Using {0} for rotor scans'.format(self.scan_level))
+                    logger.info('Using {0} for rotor scans'.format(self.scan_level))
             elif self.job_types['1d_rotors']:
                 if not self.composite_method:
                     self.scan_level = default_levels_of_theory['scan'].lower()
-                    logging.info('Using default level {0} for rotor scans'.format(self.scan_level))
+                    logger.info('Using default level {0} for rotor scans'.format(self.scan_level))
                 else:
                     # This is a composite method
                     self.scan_level = default_levels_of_theory['scan_for_composite'].lower()
-                    logging.info('Using default level {0} for rotor scans after composite jobs'.format(
+                    logger.info('Using default level {0} for rotor scans after composite jobs'.format(
                         self.scan_level))
             else:
                 self.scan_level = ''
@@ -340,7 +341,7 @@ class ARC(object):
                 else os.path.abspath(os.path.dirname(input_dict))
             self.from_dict(input_dict=input_dict, project=project, project_directory=project_directory)
         if self.adaptive_levels is not None:
-            logging.info('Using the following adaptive levels of theory:\n{0}'.format(self.adaptive_levels))
+            logger.info('Using the following adaptive levels of theory:\n{0}'.format(self.adaptive_levels))
         if not self.ess_settings:
             # don't override self.ess_settings if determined from an input dictionary
             self.ess_settings = check_ess_settings(ess_settings or global_ess_settings)
@@ -440,7 +441,7 @@ class ARC(object):
                                 raise SpeciesError('Could not find {0} output file for species {1}: {2}'.format(
                                     key, label, val))
         self.running_jobs = input_dict['running_jobs'] if 'running_jobs' in input_dict else dict()
-        logging.debug('output dictionary successfully parsed:\n{0}'.format(self.output))
+        logger.debug('output dictionary successfully parsed:\n{0}'.format(self.output))
         self.t_min = input_dict['t_min'] if 't_min' in input_dict else None
         self.t_max = input_dict['t_max'] if 't_max' in input_dict else None
         self.t_count = input_dict['t_count'] if 't_count' in input_dict else None
@@ -454,56 +455,56 @@ class ARC(object):
         ess_settings = input_dict['ess_settings'] if 'ess_settings' in input_dict else global_ess_settings
         self.ess_settings = check_ess_settings(ess_settings)
         if not self.job_types['fine']:
-            logging.info('\n')
-            logging.warning('Not using a fine grid for geometry optimization jobs')
-            logging.info('\n')
+            logger.info('\n')
+            logger.warning('Not using a fine grid for geometry optimization jobs')
+            logger.info('\n')
         if not self.job_types['1d_rotors']:
-            logging.info('\n')
-            logging.warning("Not running rotor scans."
-                            " This might compromise finding the best conformer, as dihedral angles won't be"
-                            " corrected. Also, entropy won't be accurate.")
-            logging.info('\n')
+            logger.info('\n')
+            logger.warning("Not running rotor scans."
+                           " This might compromise finding the best conformer, as dihedral angles won't be"
+                           " corrected. Also, entropy won't be accurate.")
+            logger.info('\n')
 
         if 'conformer_level' in input_dict:
             self.conformer_level = input_dict['conformer_level'].lower()
-            logging.info('Using {0} for refined conformer searches (after filtering via force fields)'.format(
+            logger.info('Using {0} for refined conformer searches (after filtering via force fields)'.format(
                 self.conformer_level))
         else:
             self.conformer_level = default_levels_of_theory['conformer'].lower()
-            logging.info('Using default level {0} for refined conformer searches (after filtering via force'
-                         ' fields)'.format(default_levels_of_theory['conformer']))
+            logger.info('Using default level {0} for refined conformer searches (after filtering via force'
+                        ' fields)'.format(default_levels_of_theory['conformer']))
 
         if 'ts_guess_level' in input_dict:
             self.ts_guess_level = input_dict['ts_guess_level'].lower()
-            logging.info('Using {0} for TS guesses comparison of different methods'.format(self.ts_guess_level))
+            logger.info('Using {0} for TS guesses comparison of different methods'.format(self.ts_guess_level))
         else:
             self.ts_guess_level = default_levels_of_theory['ts_guesses'].lower()
-            logging.info('Using default level {0} for TS guesses comparison of different methods'.format(
+            logger.info('Using default level {0} for TS guesses comparison of different methods'.format(
                 default_levels_of_theory['ts_guesses']))
 
         if 'level_of_theory' in input_dict:
             if '/' not in input_dict['level_of_theory']:  # assume this is a composite method
                 self.composite_method = input_dict['level_of_theory'].lower()
-                logging.info('Using composite method {0}'.format(self.composite_method))
+                logger.info('Using composite method {0}'.format(self.composite_method))
                 self.opt_level = ''
                 self.sp_level = ''
                 if 'freq_level' in input_dict:
                     self.freq_level = input_dict['freq_level'].lower()
-                    logging.info('Using {0} for frequency calculations'.format(self.freq_level))
+                    logger.info('Using {0} for frequency calculations'.format(self.freq_level))
                 else:
                     self.freq_level = default_levels_of_theory['freq_for_composite'].lower()
-                    logging.info('Using default level {0} for frequency calculations after composite jobs'.format(
+                    logger.info('Using default level {0} for frequency calculations after composite jobs'.format(
                         self.freq_level))
             elif '//' in input_dict['level_of_theory']:
                 self.composite_method = ''
                 self.opt_level = input_dict['level_of_theory'].lower().split('//')[1]
                 self.freq_level = input_dict['level_of_theory'].lower().split('//')[1]
                 self.sp_level = input_dict['level_of_theory'].lower().split('//')[0]
-                logging.info('Using {0} for geometry optimizations'.format(
+                logger.info('Using {0} for geometry optimizations'.format(
                     input_dict['level_of_theory'].split('//')[1]))
-                logging.info('Using {0} for frequency calculations'.format(
+                logger.info('Using {0} for frequency calculations'.format(
                     input_dict['level_of_theory'].split('//')[1]))
-                logging.info('Using {0} for single point calculations'.format(
+                logger.info('Using {0} for single point calculations'.format(
                     input_dict['level_of_theory'].split('//')[0]))
             elif '/' in input_dict['level_of_theory'] and '//' not in input_dict['level_of_theory']:
                 # assume this is not a composite method, and the user meant to run opt, freq and sp at this level.
@@ -512,17 +513,17 @@ class ARC(object):
                 self.opt_level = input_dict['level_of_theory'].lower()
                 self.freq_level = input_dict['level_of_theory'].lower()
                 self.sp_level = input_dict['level_of_theory'].lower()
-                logging.info('Using {0} for geometry optimizations'.format(input_dict['level_of_theory']))
-                logging.info('Using {0} for frequency calculations'.format(input_dict['level_of_theory']))
-                logging.info('Using {0} for single point calculations'.format(input_dict['level_of_theory']))
+                logger.info('Using {0} for geometry optimizations'.format(input_dict['level_of_theory']))
+                logger.info('Using {0} for frequency calculations'.format(input_dict['level_of_theory']))
+                logger.info('Using {0} for single point calculations'.format(input_dict['level_of_theory']))
 
         else:
             self.composite_method = input_dict['composite_method'].lower() if 'composite_method' in input_dict else ''
             if self.composite_method:
-                logging.info('Using composite method {0}'.format(self.composite_method))
+                logger.info('Using composite method {0}'.format(self.composite_method))
                 if self.composite_method == 'cbs-qb3':
                     self.model_chemistry = self.composite_method
-                    logging.info('Using {0} as model chemistry for energy corrections in Arkane'.format(
+                    logger.info('Using {0} as model chemistry for energy corrections in Arkane'.format(
                         self.model_chemistry))
                 elif self.use_bac:
                     raise InputError('Could not determine model chemistry to use for composite method {0}'.format(
@@ -530,10 +531,10 @@ class ARC(object):
 
             if 'opt_level' in input_dict:
                 self.opt_level = input_dict['opt_level'].lower()
-                logging.info('Using {0} for geometry optimizations'.format(self.opt_level))
+                logger.info('Using {0} for geometry optimizations'.format(self.opt_level))
             elif not self.composite_method:
                 self.opt_level = default_levels_of_theory['opt'].lower()
-                logging.info('Using default level {0} for geometry optimizations'.format(self.opt_level))
+                logger.info('Using default level {0} for geometry optimizations'.format(self.opt_level))
             else:
                 self.opt_level = ''
 
@@ -542,23 +543,23 @@ class ARC(object):
             elif not self.composite_method:
                 if 'opt_level' in input_dict:
                     self.freq_level = input_dict['opt_level'].lower()
-                    logging.info('Using user-defined opt level {0} for frequency calculations as well'.format(
+                    logger.info('Using user-defined opt level {0} for frequency calculations as well'.format(
                         self.freq_level))
                 else:
                     self.freq_level = default_levels_of_theory['freq'].lower()
-                    logging.info('Using default level {0} for frequency calculations'.format(self.freq_level))
+                    logger.info('Using default level {0} for frequency calculations'.format(self.freq_level))
             else:
                 # This is a composite method
                 self.freq_level = default_levels_of_theory['freq_for_composite'].lower()
-                logging.info('Using default level {0} for frequency calculations after composite jobs'.format(
+                logger.info('Using default level {0} for frequency calculations after composite jobs'.format(
                     self.freq_level))
 
             if 'sp_level' in input_dict:
                 self.sp_level = input_dict['sp_level'].lower()
-                logging.info('Using {0} for single point calculations'.format(self.sp_level))
+                logger.info('Using {0} for single point calculations'.format(self.sp_level))
             elif not self.composite_method:
                 self.sp_level = default_levels_of_theory['sp'].lower()
-                logging.info('Using default level {0} for single point calculations'.format(self.sp_level))
+                logger.info('Using default level {0} for single point calculations'.format(self.sp_level))
             else:
                 # It's a composite method, no need in explicit sp
                 self.sp_level = ''
@@ -566,15 +567,15 @@ class ARC(object):
         if 'scan_level' in input_dict:
             self.scan_level = input_dict['scan_level'].lower()
             if '1d_rotors' in self.job_types:
-                logging.info('Using {0} for rotor scans'.format(self.scan_level))
+                logger.info('Using {0} for rotor scans'.format(self.scan_level))
         elif '1d_rotors' in self.job_types:
             if not self.composite_method:
                 self.scan_level = default_levels_of_theory['scan'].lower()
-                logging.info('Using default level {0} for rotor scans'.format(self.scan_level))
+                logger.info('Using default level {0} for rotor scans'.format(self.scan_level))
             else:
                 # This is a composite method
                 self.scan_level = default_levels_of_theory['scan_for_composite'].lower()
-                logging.info('Using default level {0} for rotor scans after composite jobs'.format(
+                logger.info('Using default level {0} for rotor scans after composite jobs'.format(
                     self.scan_level))
         else:
             self.scan_level = ''
@@ -602,18 +603,18 @@ class ARC(object):
 
     def execute(self):
         """Execute ARC"""
-        logging.info('\n')
+        logger.info('\n')
         for species in self.arc_species_list:
             if not isinstance(species, ARCSpecies):
                 raise ValueError('All species in arc_species_list must be ARCSpecies objects.'
                                  ' Got {0}'.format(type(species)))
             if species.is_ts:
-                logging.info('Considering transition state: {0}'.format(species.label))
+                logger.info('Considering transition state: {0}'.format(species.label))
             else:
-                logging.info('Considering species: {0}'.format(species.label))
+                logger.info('Considering species: {0}'.format(species.label))
                 if species.mol is not None:
                     display(species.mol)
-        logging.info('\n')
+        logger.info('\n')
         for rxn in self.arc_rxn_list:
             if not isinstance(rxn, ARCReaction):
                 raise ValueError('All reactions in arc_rxn_list must be ARCReaction objects.'
@@ -635,7 +636,7 @@ class ARC(object):
                         species_dict=self.scheduler.species_dict, rxn_list=self.scheduler.rxn_list,
                         output=self.scheduler.output, use_bac=self.use_bac, model_chemistry=self.model_chemistry,
                         lib_long_desc=self.lib_long_desc, rmgdatabase=self.rmgdb, t_min=self.t_min, t_max=self.t_max,
-                        t_count=self.t_count)
+                        t_count=self.t_count, freq_scale_factor=self.freq_scale_factor)
         prc.process()
         self.summary()
         log_footer(execution_time=self.execution_time)
@@ -694,12 +695,12 @@ class ARC(object):
         """
         Report status and data of all species / reactions
         """
-        logging.info('\n\n\nAll jobs terminated. Summary for project {0}:\n'.format(self.project))
+        logger.info('\n\n\nAll jobs terminated. Summary for project {0}:\n'.format(self.project))
         for label, output in self.scheduler.output.items():
             if 'ALL converged' in output['status']:
-                logging.info('Species {0} converged successfully'.format(label))
+                logger.info('Species {0} converged successfully'.format(label))
             else:
-                logging.info('Species {0} failed with status:\n  {1}'.format(label, output['status']))
+                logger.info('Species {0} failed with status:\n  {1}'.format(label, output['status']))
 
     def determine_model_chemistry(self):
         """Determine the model_chemistry to be used in Arkane
@@ -713,10 +714,10 @@ class ARC(object):
                     'cbs-qb3', 'cbs-qb3-paraskevas', 'ccsd(t)-f12/cc-pvdz-f12', 'ccsd(t)-f12/cc-pvtz-f12',
                     'ccsd(t)-f12/cc-pvqz-f12', 'b3lyp/cbsb7', 'b3lyp/6-311g(2d,d,p)', 'b3lyp/6-311+g(3df,2p)',
                     'b3lyp/6-31g**']:
-                logging.warn('No bond additivity corrections (BAC) are available in Arkane for "model chemistry"'
-                             ' {0}. As a result, thermodynamic parameters are expected to be inaccurate. Make sure that'
-                             ' atom energy corrections (AEC) were supplied or are available in Arkane to avoid'
-                             ' error.'.format(self.model_chemistry))
+                logger.warning('No bond additivity corrections (BAC) are available in Arkane for "model chemistry"'
+                               ' {0}. As a result, thermodynamic parameters are expected to be inaccurate. Make sure'
+                               ' that atom energy corrections (AEC) were supplied or are available in Arkane to avoid'
+                               ' error.'.format(self.model_chemistry))
         else:
             # model chemistry was not given, try to determine it from the sp_level and freq_level
             model_chemistry = ''
@@ -726,16 +727,16 @@ class ARC(object):
                 sp_level = self.sp_level.replace('f12a', 'f12').replace('f12b', 'f12').lower()
                 freq_level = self.freq_level.replace('f12a', 'f12').replace('f12b', 'f12').lower()
                 if sp_level in ['ccsd(t)-f12/cc-pvdz', 'ccsd(t)-f12/cc-pvtz', 'ccsd(t)-f12/cc-pvqz']:
-                    logging.warning('Using model chemistry {0} based on sp level {1}.'.format(
+                    logger.warning('Using model chemistry {0} based on sp level {1}.'.format(
                         sp_level + '-f12', sp_level))
                     sp_level += '-f12'
                 if sp_level not in ['ccsd(t)-f12/cc-pvdz-f12', 'ccsd(t)-f12/cc-pvtz-f12', 'ccsd(t)-f12/cc-pvqz-f12',
                                   'b3lyp/cbsb7', 'b3lyp/6-311g(2d,d,p)', 'b3lyp/6-311+g(3df,2p)', 'b3lyp/6-31g**']\
                         and self.use_bac:
-                    logging.info('\n\n')
-                    logging.warning('Could not determine appropriate Model Chemistry to be used in Arkane for '
-                                    'thermochemical parameter calculations. Not using atom energy corrections and '
-                                    'bond additivity corrections!\n\n')
+                    logger.info('\n\n')
+                    logger.warning('Could not determine appropriate Model Chemistry to be used in Arkane for '
+                                   'thermochemical parameter calculations. Not using atom energy corrections and '
+                                   'bond additivity corrections!\n\n')
                     self.use_bac = False
                 elif sp_level not in ['m06-2x/cc-pvtz', 'g3', 'm08so/mg3s*', 'klip_1', 'klip_2', 'klip_3', 'klip_2_cc',
                                       'ccsd(t)-f12/cc-pvdz-f12_h-tz', 'ccsd(t)-f12/cc-pvdz-f12_h-qz',
@@ -750,13 +751,13 @@ class ARC(object):
                                       'ccsd(t)-f12/cc-pvdz-f12_noscale', 'g03_pbepbe_6-311++g_d_p', 'fci/cc-pvdz',
                                       'fci/cc-pvtz', 'fci/cc-pvqz', 'bmk/cbsb7', 'bmk/6-311g(2d,d,p)', 'b3lyp/6-31g**',
                                       'b3lyp/6-311+g(3df,2p)', 'MRCI+Davidson/aug-cc-pV(T+d)Z']:
-                    logging.warn('Could not determine a Model Chemistry to be used in Arkane, '
-                                 'NOT calculating thermodata')
+                    logger.warning('Could not determine a Model Chemistry to be used in Arkane, '
+                                   'NOT calculating thermodata')
                     for spc in self.arc_species_list:
                         spc.generate_thermo = False
                 self.model_chemistry = sp_level + '//' + freq_level
         if self.model_chemistry:
-            logging.info('Using {0} as a model chemistry in Arkane'.format(self.model_chemistry))
+            logger.info('Using {0} as a model chemistry in Arkane'.format(self.model_chemistry))
 
     def determine_ess_settings(self, diagnostics=False):
         """
@@ -769,7 +770,7 @@ class ARC(object):
 
         if diagnostics:
             t0 = time.time()
-            logging.info('\n\n\n ***** Running ESS diagnostics: *****\n')
+            logger.info('\n\n\n ***** Running ESS diagnostics: *****\n')
 
         # os.system('. ~/.bashrc')  # TODO This might be a security risk - rethink it
 
@@ -778,15 +779,15 @@ class ARC(object):
 
         # first look for ESS locally (e.g., when running ARC itself on a server)
         if 'SSH_CONNECTION' in os.environ and diagnostics:
-            logging.info('Found "SSH_CONNECTION" in the os.environ dictionary, '
-                         'using distutils.spawn.find_executable() to find ESS')
+            logger.info('Found "SSH_CONNECTION" in the os.environ dictionary, '
+                        'using distutils.spawn.find_executable() to find ESS')
         if 'local' in servers:
             g03 = find_executable('g03')
             g09 = find_executable('g09')
             g16 = find_executable('g16')
             if g03 or g09 or g16:
                 if diagnostics:
-                    logging.info('Found Gaussian: g03={0}, g09={1}, g16={2}'.format(g03, g09, g16))
+                    logger.info('Found Gaussian: g03={0}, g09={1}, g16={2}'.format(g03, g09, g16))
                 self.ess_settings['gaussian'] = ['local']
             qchem = find_executable('qchem')
             if qchem:
@@ -799,21 +800,21 @@ class ARC(object):
                 self.ess_settings['molpro'] = ['local']
             if any([val for val in self.ess_settings.values()]):
                 if diagnostics:
-                    logging.info('Found the following ESS on the local machine:')
-                    logging.info([software for software, val in self.ess_settings.items() if val])
-                    logging.info('\n')
+                    logger.info('Found the following ESS on the local machine:')
+                    logger.info([software for software, val in self.ess_settings.items() if val])
+                    logger.info('\n')
                 else:
-                    logging.info('Did not find ESS on the local machine\n\n')
+                    logger.info('Did not find ESS on the local machine\n\n')
         else:
-            logging.info("\nNot searching for ESS locally ('local' wasn't specified in the servers dictionary)\n")
+            logger.info("\nNot searching for ESS locally ('local' wasn't specified in the servers dictionary)\n")
 
         # look for ESS on remote servers ARC has access to
-        logging.info('\n\nMapping servers...\n')
+        logger.info('\n\nMapping servers...\n')
         for server in servers.keys():
             if server == 'local':
                 continue
             if diagnostics:
-                logging.info('\nTrying {0}'.format(server))
+                logger.info('\nTrying {0}'.format(server))
             ssh = SSHClient(server)
 
             cmd = '. ~/.bashrc; which g03'
@@ -824,48 +825,48 @@ class ARC(object):
             g16 = ssh.send_command_to_server(cmd)[0]
             if g03 or g09 or g16:
                 if diagnostics:
-                    logging.info('  Found Gaussian on {3}: g03={0}, g09={1}, g16={2}'.format(g03, g09, g16, server))
+                    logger.info('  Found Gaussian on {3}: g03={0}, g09={1}, g16={2}'.format(g03, g09, g16, server))
                 self.ess_settings['gaussian'].append(server)
             elif diagnostics:
-                logging.info('  Did NOT find Gaussian on {0}'.format(server))
+                logger.info('  Did NOT find Gaussian on {0}'.format(server))
 
             cmd = '. ~/.bashrc; which qchem'
             qchem = ssh.send_command_to_server(cmd)[0]
             if qchem:
                 if diagnostics:
-                    logging.info('  Found QChem on {0}'.format(server))
+                    logger.info('  Found QChem on {0}'.format(server))
                 self.ess_settings['qchem'].append(server)
             elif diagnostics:
-                logging.info('  Did NOT find QChem on {0}'.format(server))
+                logger.info('  Did NOT find QChem on {0}'.format(server))
 
             cmd = '. ~/.bashrc; which orca'
             orca = ssh.send_command_to_server(cmd)[0]
             if orca:
                 if diagnostics:
-                    logging.info('  Found Orca on {0}'.format(server))
+                    logger.info('  Found Orca on {0}'.format(server))
                 self.ess_settings['orca'].append(server)
             elif diagnostics:
-                logging.info('  Did NOT find Orca on {0}'.format(server))
+                logger.info('  Did NOT find Orca on {0}'.format(server))
 
             cmd = '. .bashrc; which molpro'
             molpro = ssh.send_command_to_server(cmd)[0]
             if molpro:
                 if diagnostics:
-                    logging.info('  Found Molpro on {0}'.format(server))
+                    logger.info('  Found Molpro on {0}'.format(server))
                 self.ess_settings['molpro'].append(server)
             elif diagnostics:
-                logging.info('  Did NOT find Molpro on {0}'.format(server))
+                logger.info('  Did NOT find Molpro on {0}'.format(server))
         if diagnostics:
-            logging.info('\n\n')
+            logger.info('\n\n')
         if 'gaussian' in self.ess_settings.keys():
-            logging.info('Using Gaussian on {0}'.format(self.ess_settings['gaussian']))
+            logger.info('Using Gaussian on {0}'.format(self.ess_settings['gaussian']))
         if 'qchem' in self.ess_settings.keys():
-            logging.info('Using QChem on {0}'.format(self.ess_settings['qchem']))
+            logger.info('Using QChem on {0}'.format(self.ess_settings['qchem']))
         if 'orca' in self.ess_settings.keys():
-            logging.info('Using Orca on {0}'.format(self.ess_settings['orca']))
+            logger.info('Using Orca on {0}'.format(self.ess_settings['orca']))
         if 'molpro' in self.ess_settings.keys():
-            logging.info('Using Molpro on {0}'.format(self.ess_settings['molpro']))
-        logging.info('\n')
+            logger.info('Using Molpro on {0}'.format(self.ess_settings['molpro']))
+        logger.info('\n')
 
         if 'gaussian' not in self.ess_settings.keys() and 'qchem' not in self.ess_settings.keys() \
                 and 'orca' not in self.ess_settings.keys() and 'molpro' not in self.ess_settings.keys()\
@@ -873,7 +874,7 @@ class ARC(object):
             raise SettingsError('Could not find any ESS. Check your .bashrc definitions on the server.\n'
                                 'Alternatively, you could pass a software-server dictionary to arc as `ess_settings`')
         elif diagnostics:
-            logging.info('ESS diagnostics completed (elapsed time: {0})'.format(time_lapse(t0)))
+            logger.info('ESS diagnostics completed (elapsed time: {0})'.format(time_lapse(t0)))
 
     def check_project_name(self):
         """Check the validity of the project name"""

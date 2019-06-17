@@ -11,10 +11,10 @@ Adapted by Duminda Ranasinghe and Alon Grinberg Dana
 from __future__ import (absolute_import, division, print_function, unicode_literals)
 import os
 import time
-import logging
 
 from arkane.statmech import determine_qm_software
 
+from arc.common import get_logger
 from arc.settings import arc_path
 from arc.scheduler import Scheduler
 from arc.arc_exceptions import InputError
@@ -28,7 +28,7 @@ except ImportError:
 
 ##################################################################
 
-logger = logging.getLogger('arc')
+logger = get_logger()
 
 
 HEADER = 'FREQ: A PROGRAM FOR OPTIMIZING SCALE FACTORS (Version 1)\n'\

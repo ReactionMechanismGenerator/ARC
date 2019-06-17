@@ -7,7 +7,6 @@ A module for working with the RMG database
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
 import os
-import logging
 
 from rmgpy import settings
 from rmgpy.data.rmg import RMGDatabase
@@ -15,9 +14,12 @@ from rmgpy.reaction import same_species_lists
 from rmgpy.data.kinetics.common import find_degenerate_reactions
 from rmgpy.exceptions import KineticsError
 
+from arc.common import get_logger
 from arc.arc_exceptions import InputError
 
 ##################################################################
+
+logger = get_logger()
 
 # A module for loading the RMG-database
 
@@ -38,7 +40,7 @@ def load_families_only(rmgdb, kinetics_families='default'):
         if not isinstance(kinetics_families, list):
             raise InputError("kineticsFamilies should be either 'default', 'all', 'none', or a list of names, e.g.,"
                              " ['H_Abstraction','R_Recombination'] or ['!Intra_Disproportionation'].")
-    logging.debug('\n\nLoading only kinetic families from the RMG database...')
+    logger.debug('\n\nLoading only kinetic families from the RMG database...')
     rmgdb.load(
         path=db_path,
         thermoLibraries=list(),
@@ -111,7 +113,7 @@ def load_rmg_database(rmgdb, thermo_libraries=None, reaction_libraries=None, kin
     if not load_thermo_libs:
         thermo_libraries = list()
     # reaction_libraries = list()  # empty library list for debugging
-    logging.info('\n\nLoading the RMG database...')
+    logger.info('\n\nLoading the RMG database...')
 
     rmgdb.load(
         path=db_path,
@@ -127,10 +129,10 @@ def load_rmg_database(rmgdb, thermo_libraries=None, reaction_libraries=None, kin
         try:
             family.addKineticsRulesFromTrainingSet(thermoDatabase=rmgdb.thermo)
         except KineticsError:
-            logging.info('Could not train family {0}'.format(family))
+            logger.info('Could not train family {0}'.format(family))
         else:
             family.fillKineticsRulesByAveragingUp(verbose=False)
-    logging.info('\n\n')
+    logger.info('\n\n')
 
 
 def determine_reaction_family(rmgdb, reaction):

@@ -8,7 +8,6 @@ A module for various conversions
 from __future__ import (absolute_import, division, print_function, unicode_literals)
 import os
 import numpy as np
-import logging
 
 from rdkit import Chem
 import pybel
@@ -19,10 +18,13 @@ from rmgpy.molecule.element import getElement
 from rmgpy.exceptions import AtomTypeError
 from arkane.common import symbol_by_number
 
+from arc.common import get_logger
 from arc.arc_exceptions import SpeciesError, SanitizationError, InputError
 from arc.species.xyz_to_2d import MolGraph
 
 ##################################################################
+
+logger = get_logger()
 
 
 def get_xyz_string(coord, mol=None, number=None, symbol=None):
@@ -166,8 +168,8 @@ def rmg_mol_from_inchi(inchi):
     try:
         rmg_mol = Molecule().fromInChI(str(inchi))
     except (AtomTypeError, ValueError) as e:
-        logging.warning('Got the following Error when trying to create an RMG Molecule object from '
-                        'InChI:\n{0}'.format(e.message))
+        logger.warning('Got the following Error when trying to create an RMG Molecule object from '
+                       'InChI:\n{0}'.format(e.message))
         return None
     return rmg_mol
 
@@ -206,7 +208,7 @@ def molecules_from_xyz(xyz, multiplicity=None, charge=0):
     else:
         mol_s1, _ = s_bonds_mol_from_xyz(xyz)
     if mol_s1 is None:
-        logging.error('Could not create a 2D graph representation from xyz:\n{0}'.format(xyz))
+        logger.error('Could not create a 2D graph representation from xyz:\n{0}'.format(xyz))
         return None, None
     mol_s1_updated = update_molecule(mol_s1, to_single_bonds=True)
     pybel_mol = xyz_to_pybel_mol(xyz)
@@ -218,16 +220,16 @@ def molecules_from_xyz(xyz, multiplicity=None, charge=0):
                 try:
                     set_multiplicity(mol_bo, multiplicity, charge)
                 except SpeciesError as e:
-                    logging.warning('Cannot infer 2D graph connectivity, failed to set species multiplicity with the '
-                                    'following error:\n{0}'.format(e.message))
+                    logger.warning('Cannot infer 2D graph connectivity, failed to set species multiplicity with the '
+                                   'following error:\n{0}'.format(e.message))
                     return None, None
             mol_s1_updated.multiplicity = mol_bo.multiplicity
             order_atoms(ref_mol=mol_s1_updated, mol=mol_bo)
             try:
                 set_multiplicity(mol_s1_updated, mol_bo.multiplicity, charge, radical_map=mol_bo)
             except SpeciesError as e:
-                logging.warning('Cannot infer 2D graph connectivity, failed to set species multiplicity with the '
-                                'following error:\n{0}'.format(e.message))
+                logger.warning('Cannot infer 2D graph connectivity, failed to set species multiplicity with the '
+                               'following error:\n{0}'.format(e.message))
                 return mol_s1_updated, None
     else:
         mol_bo = None
@@ -277,9 +279,9 @@ def set_multiplicity(mol, multiplicity, charge, radical_map=None):
             raise SpeciesError('Number of radicals ({0}) and multiplicity ({1}) for {2} do not match.\n{3}'.format(
                 radicals, mol.multiplicity, mol.toSMILES(), mol.toAdjacencyList()))
         else:
-            logging.warning('Number of radicals ({0}) and multiplicity ({1}) for {2} do not match. It might be OK since'
-                            ' this species is charged and charged molecules are currently not perceived well in ARC.'
-                            '\n{3}'.format(radicals, mol.multiplicity, mol.toSMILES(), mol.toAdjacencyList()))
+            logger.warning('Number of radicals ({0}) and multiplicity ({1}) for {2} do not match. It might be OK since'
+                           ' this species is charged and charged molecules are currently not perceived well in ARC.'
+                           '\n{3}'.format(radicals, mol.multiplicity, mol.toSMILES(), mol.toAdjacencyList()))
 
 
 def add_rads_by_atom_valance(mol):
@@ -314,7 +316,7 @@ def order_atoms_in_mol_list(ref_mol, mol_list):
             try:  # TODO: flag as unordered (or solve)
                 order_atoms(ref_mol, mol)
             except SanitizationError as e:
-                logging.warning('Could not order atoms in\n{0}\nGot the following error:'
+                logger.warning('Could not order atoms in\n{0}\nGot the following error:'
                                 '\n{1}'.format(mol.toAdjacencyList, e))
 
 

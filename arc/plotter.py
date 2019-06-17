@@ -6,7 +6,6 @@ A module for plotting and saving output files such as RMG libraries
 """
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
-import logging
 import numpy as np
 import os
 import shutil
@@ -29,12 +28,15 @@ from rmgpy.data.base import Entry
 from rmgpy.quantity import ScalarQuantity
 from rmgpy.species import Species
 
+from arc.common import get_logger
 from arc.species.species import ARCSpecies
 from arc.species.converter import get_xyz_matrix, rdkit_conf_from_mol, molecules_from_xyz
 from arc.arc_exceptions import InputError
 
 
 ##################################################################
+
+logger = get_logger()
 
 
 def draw_3d(xyz=None, species=None, project_directory=None, save_only=False):
@@ -180,8 +182,8 @@ def log_thermo(label, path):
     """
     Logging thermodata from an Arkane output file
     """
-    logging.info('\n\n')
-    logging.debug('Thermodata for species {0}'.format(label))
+    logger.info('\n\n')
+    logger.debug('Thermodata for species {0}'.format(label))
     thermo_block = ''
     log = False
     with open(path, 'r') as f:
@@ -195,16 +197,16 @@ def log_thermo(label, path):
             if log:
                 thermo_block += line[2:]
             line = f.readline()
-    logging.info(thermo_block)
-    logging.info('\n')
+    logger.info(thermo_block)
+    logger.info('\n')
 
 
 def log_kinetics(label, path):
     """
     Logging kinetics from an Arkane output file
     """
-    logging.info('\n\n')
-    logging.debug('Kinetics for species {0}'.format(label))
+    logger.info('\n\n')
+    logger.debug('Kinetics for species {0}'.format(label))
     kinetics_block = ''
     log = False
     with open(path, 'r') as f:
@@ -218,8 +220,8 @@ def log_kinetics(label, path):
             if log:
                 kinetics_block += line
             line = f.readline()
-    logging.info(kinetics_block)
-    logging.info('\n')
+    logger.info(kinetics_block)
+    logger.info('\n')
 
 
 def draw_thermo_parity_plots(species_list, path=None):
@@ -248,7 +250,7 @@ def draw_thermo_parity_plots(species_list, path=None):
     max_label_len = max([len(label) for label in labels])
     for i, label in enumerate(labels):
         thermo_sources += '   {0}: {1}{2}\n'.format(label, ' '*(max_label_len - len(label)), comments[i])
-    logging.info(thermo_sources)
+    logger.info(thermo_sources)
     if path is not None:
         with open(os.path.join(path, str('thermo.info')), 'w') as f:
             f.write(str(thermo_sources))
@@ -455,8 +457,8 @@ def save_thermo_lib(species_list, path, name, lib_long_desc):
                                          shortDesc=spc.thermo.comment,
                                          longDesc=spc.long_thermo_description)
             else:
-                logging.warning('Species {0} did not contain any thermo data and was omitted from the thermo'
-                                ' library.'.format(str(spc.label)))
+                logger.warning('Species {0} did not contain any thermo data and was omitted from the thermo'
+                               ' library.'.format(str(spc.label)))
 
         thermo_library.save(lib_path)
 
@@ -479,17 +481,17 @@ def save_transport_lib(species_list, path, name, lib_long_desc=''):
                                             transport=spc.transport_data,
                                             shortDesc=spc.thermo.comment,
                                             longDesc=description)
-                logging.info('\n\nTransport properties for {0}:'.format(spc.label))
-                logging.info('  Shape index: {0}'.format(spc.transport_data.shapeIndex))
-                logging.info('  Epsilon: {0}'.format(spc.transport_data.epsilon))
-                logging.info('  Sigma: {0}'.format(spc.transport_data.sigma))
-                logging.info('  Dipole moment: {0}'.format(spc.transport_data.dipoleMoment))
-                logging.info('  Polarizability: {0}'.format(spc.transport_data.polarizability))
-                logging.info('  Rotational relaxation collision number: {0}'.format(spc.transport_data.rotrelaxcollnum))
-                logging.info('  Comment: {0}'.format(spc.transport_data.comment))
+                logger.info('\n\nTransport properties for {0}:'.format(spc.label))
+                logger.info('  Shape index: {0}'.format(spc.transport_data.shapeIndex))
+                logger.info('  Epsilon: {0}'.format(spc.transport_data.epsilon))
+                logger.info('  Sigma: {0}'.format(spc.transport_data.sigma))
+                logger.info('  Dipole moment: {0}'.format(spc.transport_data.dipoleMoment))
+                logger.info('  Polarizability: {0}'.format(spc.transport_data.polarizability))
+                logger.info('  Rotational relaxation collision number: {0}'.format(spc.transport_data.rotrelaxcollnum))
+                logger.info('  Comment: {0}'.format(spc.transport_data.comment))
             else:
-                logging.warning('Species {0} did not contain any thermo data and was omitted from the thermo'
-                                ' library.'.format(str(spc.label)))
+                logger.warning('Species {0} did not contain any thermo data and was omitted from the thermo'
+                               ' library.'.format(str(spc.label)))
 
         transport_library.save(lib_path)
 
@@ -530,8 +532,8 @@ def save_kinetics_lib(rxn_list, path, name, lib_long_desc):
                 rxn.rmg_reaction.kinetics.comment = str('')
                 entries[i+1] = entry
             else:
-                logging.warning('Reaction {0} did not contain any kinetic data and was omitted from the kinetics'
-                                ' library.'.format(rxn.label))
+                logger.warning('Reaction {0} did not contain any kinetic data and was omitted from the kinetics'
+                               ' library.'.format(rxn.label))
         kinetics_library = KineticsLibrary(name=name, longDesc=lib_long_desc, autoGenerated=True)
         kinetics_library.entries = entries
         lib_path = os.path.join(path, 'kinetics', '')
