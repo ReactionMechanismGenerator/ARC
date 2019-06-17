@@ -117,10 +117,10 @@ class Scheduler(object):
              }
     # Note that rotor scans are located under Species.rotors_dict
     """
-    def __init__(self, project, ess_settings, species_list, composite_method, conformer_level, opt_level, freq_level,
-                 sp_level, scan_level, ts_guess_level, orbitals_level, adaptive_levels, project_directory, rmgdatabase,
-                 job_types=None, initial_trsh=None, rxn_list=None, restart_dict=None, max_job_time=120,
-                 allow_nonisomorphic_2d=False, memory=15, testing=False, bath_gas=None):
+    def __init__(self, project, ess_settings, species_list, project_directory, composite_method='', conformer_level='',
+                 opt_level='', freq_level='', sp_level='', scan_level='', ts_guess_level='', orbitals_level='',
+                 adaptive_levels=None, rmgdatabase=None, job_types=None, initial_trsh=None, rxn_list=None, bath_gas=None,
+                 restart_dict=None, max_job_time=120, allow_nonisomorphic_2d=False, memory=15, testing=False):
         self.rmgdb = rmgdatabase
         self.restart_dict = restart_dict
         self.species_list = species_list
@@ -1841,7 +1841,7 @@ class Scheduler(object):
         """
         Update the restart_dict and save the restart.yml file
         """
-        if self.save_restart:
+        if self.save_restart and self.restart_dict is not None:
             yaml.add_representer(str, string_representer)
             yaml.add_representer(unicode, unicode_representer)
             logging.debug('Creating a restart file...')
