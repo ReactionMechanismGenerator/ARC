@@ -3,6 +3,7 @@
 
 """
 ARC's common module
+This module should not import any other module that has logging to avoid circular imports.
 """
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
@@ -13,13 +14,11 @@ import sys
 import time
 import datetime
 import shutil
-import re
 import subprocess
 import yaml
 
-from arc.settings import arc_path, check_status_command, servers
+from arc.settings import arc_path, servers
 from arc.arc_exceptions import InputError, SettingsError
-from arc.job.ssh import SSHClient
 
 ##################################################################
 
@@ -43,38 +42,6 @@ def read_file(path):
     with open(path, 'r') as f:
         input_dict = yaml.load(stream=f, Loader=yaml.FullLoader)
     return input_dict
-
-
-def delete_all_arc_jobs(server_list):
-    """
-    Delete all ARC-spawned jobs (with job name starting with `a` and a digit) from :list:servers
-    (`servers` could also be a string of one server name)
-    Make sure you know what you're doing, so unrelated jobs won't be deleted...
-    Useful when terminating ARC while some (ghost) jobs are still running.
-
-    Args:
-        server_list (list): List of servers to delete ARC jobs from.
-    """
-    if isinstance(server_list, str):
-        server_list = [server_list]
-    for server in server_list:
-        print('\nDeleting all ARC jobs from {0}...'.format(server))
-        cmd = check_status_command[servers[server]['cluster_soft']] + ' -u ' + servers[server]['un']
-        ssh = SSHClient(server)
-        stdout = ssh.send_command_to_server(cmd)[0]
-        for status_line in stdout:
-            s = re.search(r' a\d+', status_line)
-            if s is not None:
-                if servers[server]['cluster_soft'].lower() == 'slurm':
-                    job_id = s.group()[1:]
-                    server_job_id = status_line.split()[0]
-                    ssh.delete_job(server_job_id)
-                    print('deleted job {0} ({1} on server)'.format(job_id, server_job_id))
-                elif servers[server]['cluster_soft'].lower() == 'oge':
-                    job_id = s.group()[1:]
-                    ssh.delete_job(job_id)
-                    print('deleted job {0}'.format(job_id))
-    print('\ndone.')
 
 
 def time_lapse(t0):
