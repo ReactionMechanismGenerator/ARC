@@ -49,22 +49,23 @@ class TestARC(unittest.TestCase):
         """Test the as_dict() method of ARC"""
         spc1 = ARCSpecies(label='spc1', smiles=str('CC'), generate_thermo=False)
         arc0 = ARC(project='arc_test', job_types=self.job_types1, initial_trsh='scf=(NDump=30)',
-                   arc_species_list=[spc1])
+                   arc_species_list=[spc1], level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)')
         restart_dict = arc0.as_dict()
         expected_dict = {'composite_method': '',
                          'conformer_level': 'b97d3/6-31+g(d,p)',
                          'ts_guess_level': 'b97d3/6-31+g(d,p)',
-                         'opt_level': 'wb97xd/6-311++g(d,p)',
-                         'freq_level': 'wb97xd/6-311++g(d,p)',
+                         'opt_level': 'b3lyp/6-311+g(3df,2p)',
+                         'freq_level': 'b3lyp/6-311+g(3df,2p)',
+                         'freq_scale_factor': 0.967,
                          'initial_trsh': 'scf=(NDump=30)',
                          'max_job_time': 120,
-                         'model_chemistry': 'ccsd(t)-f12/cc-pvtz-f12//wb97xd/6-311++g(d,p)',
+                         'model_chemistry': 'ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)',
                          'output': {},
                          'project': 'arc_test',
                          'running_jobs': {},
                          'reactions': [],
                          'scan_level': '',
-                         'sp_level': 'ccsd(t)-f12/cc-pvtz-f12',
+                         'sp_level': 'ccsd(t)-f12/cc-pvdz-f12',
                          'job_memory': 15,
                          'job_types': {u'1d_rotors': False,
                                        'conformers': True,
@@ -107,6 +108,7 @@ class TestARC(unittest.TestCase):
                         'conformer_level': 'b97-d3/6-311+g(d,p)',
                         'fine': True,
                         'freq_level': 'wb97x-d3/6-311+g(d,p)',
+                        'freq_scale_factor': 0.96,
                         'generate_conformers': True,
                         'initial_trsh': 'scf=(NDump=30)',
                         'model_chemistry': 'ccsd(t)-f12/cc-pvtz-f12',
@@ -134,10 +136,12 @@ class TestARC(unittest.TestCase):
                                      'rotors_dict': {},
                                      'xyzs': []}],
                         'use_bac': True}
-        arc1 = ARC(project='wrong')
+        arc1 = ARC(project='wrong', freq_scale_factor=0.95)
+        self.assertEqual(arc1.freq_scale_factor, 0.95)  # user input
         project = 'arc_project_for_testing_delete_after_usage1'
         project_directory = os.path.join(arc_path, 'Projects', project)
         arc1.from_dict(input_dict=restart_dict, project='testing_from_dict', project_directory=project_directory)
+        self.assertEqual(arc1.freq_scale_factor, 0.96)  # loaded from the restart dict
         self.assertEqual(arc1.project, 'testing_from_dict')
         self.assertTrue('arc_project_for_testing_delete_after_usage' in arc1.project_directory)
         self.assertTrue(arc1.job_types['fine'])
@@ -168,6 +172,7 @@ class TestARC(unittest.TestCase):
         project_directory = os.path.join(arc_path, 'Projects', project)
         arc1 = ARC(project=project, input_dict=restart_path, project_directory=project_directory)
         arc1.execute()
+        self.assertEqual(arc1.freq_scale_factor, 0.986)
 
         with open(os.path.join(project_directory, 'output', 'thermo.info'), 'r') as f:
             thermo_sft_ccsdtf12_bac = False
@@ -265,34 +270,33 @@ class TestARC(unittest.TestCase):
         spc2 = Species().fromSMILES(str('CC([O])=O'))
         spc2.generate_resonance_structures()
         spc2.thermo = db.thermo.getThermoData(spc2)
-        self.assertAlmostEqual(spc2.getEnthalpy(298), -179231.05071240617, 1)
+        self.assertAlmostEqual(spc2.getEnthalpy(298), -179468.25500924312, 1)
         self.assertAlmostEqual(spc2.getEntropy(298), 283.50278467781203, 1)
-        self.assertAlmostEqual(spc2.getHeatCapacity(1000), 118.81862727376, 1)
+        self.assertAlmostEqual(spc2.getHeatCapacity(1000), 118.90817413719998, 1)
         self.assertTrue('arc_project_for_testing_delete_after_usage2' in spc2.thermo.comment)
 
         # delete the generated library from RMG-database
         os.remove(new_thermo_library_path)
 
-
-    def test_determine_model_chemistry(self):
-        """Test determining the model chemistry"""
+    def test_determine_model_chemistry_and_freq_scale_factor(self):
+        """Test determining the model chemistry and the frequency scaling factor"""
         arc0 = ARC(project='arc_model_chemistry_test_0', level_of_theory='CBS-QB3')
-        # arc0.determine_model_chemistry()
         self.assertEqual(arc0.model_chemistry, 'cbs-qb3')
+        self.assertEqual(arc0.freq_scale_factor, 1.00386)  # 0.99 * 1.014 = 1.00386
 
-        arc1 = ARC(project='arc_model_chemistry_test_1', model_chemistry='CBS-QB3-Paraskevas')
-        # arc1.determine_model_chemistry()
+        arc1 = ARC(project='arc_model_chemistry_test_1', level_of_theory='CBS-QB3-Paraskevas')
         self.assertEqual(arc1.model_chemistry, 'cbs-qb3-paraskevas')
+        self.assertEqual(arc1.freq_scale_factor, 1.00386)  # 0.99 * 1.014 = 1.00386
 
         arc2 = ARC(project='arc_model_chemistry_test_2',
-                   level_of_theory='ccsd(t)-f12/cc-pvtz-f12//wb97xd/6-311++g(d,p)')
-        # arc2.determine_model_chemistry()
-        self.assertEqual(arc2.model_chemistry, 'ccsd(t)-f12/cc-pvtz-f12//wb97xd/6-311++g(d,p)')
+                   level_of_theory='ccsd(t)-f12/cc-pvtz-f12//m06-2x/cc-pvtz')
+        self.assertEqual(arc2.model_chemistry, 'ccsd(t)-f12/cc-pvtz-f12//m06-2x/cc-pvtz')
+        self.assertEqual(arc2.freq_scale_factor, 0.955)
 
         arc3 = ARC(project='arc_model_chemistry_test_2',
-                   sp_level='ccsd(t)-f12/cc-pvtz-f12', opt_level='wb97xd/6-311++g(d,p)')
-        # arc3.determine_model_chemistry()
-        self.assertEqual(arc3.model_chemistry, 'ccsd(t)-f12/cc-pvtz-f12//wb97xd/6-311++g(d,p)')
+                   sp_level='ccsd(t)-f12/cc-pvtz-f12', opt_level='wb97x-d/aug-cc-pvtz')
+        self.assertEqual(arc3.model_chemistry, 'ccsd(t)-f12/cc-pvtz-f12//wb97x-d/aug-cc-pvtz')
+        self.assertEqual(arc3.freq_scale_factor, 0.988)
 
 
     @classmethod
