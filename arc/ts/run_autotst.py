@@ -49,21 +49,23 @@ def parse_command_line_arguments(command_line_args=None):
     return args
 
 
-def main():
+def main(reaction_label=None, reaction_family=None):
     """
     Run AutoTST to generate a TS guess
     Currently only works for H Abstraction
     """
-    # Parse the command-line arguments (requires the argparse module)
-    args = parse_command_line_arguments()
-    reaction_label = str(args.reaction_label)
-    reaction_family = str(args.reaction_family)
+    if reaction_label is None:
+        # Parse the command-line arguments (requires the argparse module)
+        args = parse_command_line_arguments()
+        reaction_label = str(args.reaction_label)
+        reaction_family = str(args.reaction_family)
+    reaction_family = str('H_Abstraction') if reaction_family is None else reaction_family
 
     try:
         reaction = AutoTST_Reaction(label=reaction_label, reaction_family=reaction_family)
-    except AssertionError:
+    except AssertionError as e:
         logger.error('Could not generate a TS guess using AutoTST for reaction {0}'.format(reaction_label))
-        raise TSError('Could not generate AutoTST guess')
+        raise TSError('Could not generate AutoTST guess:\n{0}'.format(e.message))
     else:
         positions = reaction.ts.ase_ts.get_positions()
         numbers = reaction.ts.ase_ts.get_atomic_numbers()
@@ -71,7 +73,7 @@ def main():
 
         xyz_path = os.path.join(arc_path, 'arc', 'ts', 'auto_tst.xyz')
 
-        with open(xyz_path, 'wb') as f:
+        with open(xyz_path, 'w') as f:
             f.write(xyz_guess)
 
 
