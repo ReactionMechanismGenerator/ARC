@@ -318,7 +318,7 @@ class Scheduler(object):
                             and 'opt' not in self.job_dict[species.label] and not self.composite_method \
                             and 'geo' not in self.output[species.label]:
                         self.run_opt_job(species.label)
-                    elif 'opt converged' in self.output[species.label]['status']:
+                    elif 'opt converged' in self.output[species.label]['status'] and not self.composite_method:
                         # opt is done
                         if 'freq' not in self.output[species.label] and 'freq' not in self.job_dict[species.label]:
                             if self.species_dict[species.label].is_ts\
