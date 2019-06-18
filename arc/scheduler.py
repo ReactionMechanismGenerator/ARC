@@ -632,10 +632,22 @@ class Scheduler(object):
                                          job_type='conformer', conformer=i)
                     elif len(self.species_dict[label].conformers) == 1:
                         logging.info('Only one conformer is available for species {0}, '
-                                     'using it for geometry optimization'.format(label))
+                                     'using it as initial xyz'.format(label))
                         self.species_dict[label].initial_xyz = self.species_dict[label].conformers[0]
                         if not self.composite_method:
-                            self.run_opt_job(label)
+                            if self.job_types['opt']:
+                                self.run_opt_job(label)
+                            else:
+                                if self.job_types['freq']:
+                                    self.run_freq_job(label)
+                                if self.job_types['sp']:
+                                    self.run_sp_job(label)
+                                if self.job_types['1d_rotors']:
+                                    self.run_scan_jobs(label)
+                                if self.job_types['onedmin']:
+                                    self.run_onedmin_job(label)
+                                if self.job_types['orbitals']:
+                                    self.run_orbitals_job(label)
                         else:
                             self.run_composite_job(label)
 
