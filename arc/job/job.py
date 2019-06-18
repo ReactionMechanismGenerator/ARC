@@ -190,7 +190,7 @@ class Job(object):
                             raise JobError('Could not find the Gaussian software to run the double-hybrid method {0}.\n'
                                            'ess_settings is:\n{1}'.format(self.method, self.ess_settings))
                         self.software = 'gaussian'
-                    if 'ccs' in self.method or 'cis' in self.method or 'pv' in self.basis_set:
+                    if 'ccs' in self.method or 'cis' in self.method:
                         if 'molpro' in self.ess_settings.keys():
                             self.software = 'molpro'
                         elif 'gaussian' in self.ess_settings.keys():
@@ -260,6 +260,13 @@ class Job(object):
                             raise JobError('Could not find the Gaussian software to run {0}/{1}'.format(
                                 self.method, self.basis_set))
                         self.software = 'gaussian'
+                    if 'pv' in self.basis_set:
+                        if 'molpro' in self.ess_settings.keys():
+                            self.software = 'molpro'
+                        elif 'gaussian' in self.ess_settings.keys():
+                            self.software = 'gaussian'
+                        elif 'qchem' in self.ess_settings.keys():
+                            self.software = 'qchem'
                     else:
                         if 'gaussian' in self.ess_settings.keys():
                             self.software = 'gaussian'
