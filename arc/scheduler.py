@@ -758,8 +758,10 @@ class Scheduler(object):
                 self.run_job(label=label, xyz=self.species_dict[label].final_xyz, level_of_theory='ccsd/vdz',
                              job_type='sp')
         if self.job_types['sp']:
-            self.run_job(label=label, xyz=self.species_dict[label].final_xyz,
-                         level_of_theory=self.sp_level, job_type='sp')
+            xyz = self.species_dict[label].final_xyz or self.species_dict[label].initial_xyz
+            if xyz is None:
+                xyz = self.species_dict[label].conformers[0]
+            self.run_job(label=label, xyz=xyz, level_of_theory=self.sp_level, job_type='sp')
 
     def run_scan_jobs(self, label):
         """
