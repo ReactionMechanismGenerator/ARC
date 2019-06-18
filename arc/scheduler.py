@@ -318,7 +318,7 @@ class Scheduler(object):
                             and 'opt' not in self.job_dict[species.label] and not self.composite_method \
                             and 'geo' not in self.output[species.label]:
                         self.run_opt_job(species.label)
-                    elif 'opt converged' in self.output[species.label]['status']:
+                    elif 'opt converged' in self.output[species.label]['status'] and not self.composite_method:
                         # opt is done
                         if 'freq' not in self.output[species.label] and 'freq' not in self.job_dict[species.label]:
                             if self.species_dict[species.label].is_ts\
@@ -632,10 +632,22 @@ class Scheduler(object):
                                          job_type='conformer', conformer=i)
                     elif len(self.species_dict[label].conformers) == 1:
                         logging.info('Only one conformer is available for species {0}, '
-                                     'using it for geometry optimization'.format(label))
+                                     'using it as initial xyz'.format(label))
                         self.species_dict[label].initial_xyz = self.species_dict[label].conformers[0]
                         if not self.composite_method:
-                            self.run_opt_job(label)
+                            if self.job_types['opt']:
+                                self.run_opt_job(label)
+                            else:
+                                if self.job_types['freq']:
+                                    self.run_freq_job(label)
+                                if self.job_types['sp']:
+                                    self.run_sp_job(label)
+                                if self.job_types['1d_rotors']:
+                                    self.run_scan_jobs(label)
+                                if self.job_types['onedmin']:
+                                    self.run_onedmin_job(label)
+                                if self.job_types['orbitals']:
+                                    self.run_orbitals_job(label)
                         else:
                             self.run_composite_job(label)
 
@@ -746,8 +758,10 @@ class Scheduler(object):
                 self.run_job(label=label, xyz=self.species_dict[label].final_xyz, level_of_theory='ccsd/vdz',
                              job_type='sp')
         if self.job_types['sp']:
-            self.run_job(label=label, xyz=self.species_dict[label].final_xyz,
-                         level_of_theory=self.sp_level, job_type='sp')
+            xyz = self.species_dict[label].final_xyz or self.species_dict[label].initial_xyz
+            if xyz is None:
+                xyz = self.species_dict[label].conformers[0]
+            self.run_job(label=label, xyz=xyz, level_of_theory=self.sp_level, job_type='sp')
 
     def run_scan_jobs(self, label):
         """
