@@ -750,7 +750,7 @@ class ARCSpecies(object):
             if xyz is None and len(self.conformers):
                 xyz = self.conformers[0]
             if xyz:
-                _, atoms, _, _, _ = get_xyz_matrix(xyz)
+                atoms = get_xyz_matrix(xyz)[1]
                 electrons = 0
                 for atom in atoms:
                     for number, symbol in symbol_by_number.items():
