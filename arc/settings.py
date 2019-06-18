@@ -34,22 +34,9 @@ import string
 #    },
 # }
 servers = {
-    'server1': {
-        'cluster_soft': 'OGE',
-        'address': 'server1.host.edu',
-        'un': '<username>',
-        'key': 'path_to_rsa_key',
-    },
-    'server2': {
-        'cluster_soft': 'Slurm',
-        'address': 'server2.host.edu',
-        'un': '<username>',
-        'key': 'path_to_rsa_key',
-        'cpus': 48,  # optional (default: 8)
-    },
     'local': {
-        'cluster_soft': 'OGE',
-        'un': '<username>',
+        'cluster_soft': 'Slurm',
+        'un': 'grinba',
     },
 }
 
@@ -57,11 +44,7 @@ servers = {
 # An ordered list of servers indicates priority
 # Keeping this dictionary empty will cause ARC to scan for software on the servers defined above
 global_ess_settings = {
-    'gaussian': ['local', 'server2'],
-    'molpro': 'server2',
-    'qchem': 'server1',
-    'onedmin': 'server1',
-    'terachem': 'server1',
+    'terachem': 'local',
 }
 
 # List here job types to execute by default
@@ -70,7 +53,7 @@ default_job_types = {'conformers': True,      # defaults to True if not specifie
                      'fine_grid': True,       # defaults to True if not specified
                      'freq': True,            # defaults to True if not specified
                      'sp': True,              # defaults to True if not specified
-                     '1d_rotors': True,       # defaults to True if not specified
+                     '1d_rotors': False,       # defaults to True if not specified
                      'orbitals': False,       # defaults to False if not specified
                      'lennard_jones': False,  # defaults to False if not specified
                      }
@@ -86,16 +69,16 @@ levels_ess = {
 }
 
 check_status_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat',
-                        'Slurm': '/usr/bin/squeue'}
+                        'Slurm': '/cm/shared/apps/slurm/17.11.8/bin/squeue'}
 
 submit_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qsub',
-                  'Slurm': '/usr/bin/sbatch'}
+                  'Slurm': '/cm/shared/apps/slurm/17.11.8/bin/sbatch'}
 
 delete_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qdel',
-                  'Slurm': '/usr/bin/scancel'}
+                  'Slurm': '/cm/shared/apps/slurm/17.11.8/bin/scancel'}
 
 list_available_nodes_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat -f | grep "/8 " | grep "long" | grep -v "8/8"| grep -v "aAu"',
-                                'Slurm': 'sinfo'}
+                                'Slurm': '/cm/shared/apps/slurm/17.11.8/bin/sinfo'}
 
 submit_filename = {'OGE': 'submit.sh',
                    'Slurm': 'submit.sl'}
@@ -117,12 +100,12 @@ output_filename = {'gaussian': 'input.log',
                    'onedmin': 'output.out',
                    }
 
-default_levels_of_theory = {'conformer': 'b97d3/6-31+g(d,p)',
-                            'ts_guesses': 'b97d3/6-31+g(d,p)',  # used for IRC as well
-                            'opt': 'wb97xd/6-311++g(d,p)',
-                            'freq': 'wb97xd/6-311++g(d,p)',  # should be the same level as opt (to calc freq at min E)
-                            'scan': 'b97d3/6-31+g(d,p)',  # should be the same level as freq (to project out rotors)
-                            'sp': 'ccsd(t)-f12/cc-pvtz-f12',  # This should be a level for which BAC is available
+default_levels_of_theory = {'conformer': 'b3lyp/6-31+g*',
+                            'ts_guesses': 'b3lyp/6-31+g*',  # used for IRC as well
+                            'opt': 'wb97xd2/6-31+g*',
+                            'freq': 'wb97xd2/6-31+g*',  # should be the same level as opt (to calc freq at min E)
+                            'scan': 'wb97xd2/6-31+g*',  # should be the same level as freq (to project out rotors)
+                            'sp': 'wb97xd2/6-31+g*',  # This should be a level for which BAC is available
                             # 'sp': 'b3lyp/6-311+g(3df,2p)',
                             'orbitals': 'wb97x-d3/6-311++g(d,p)',  # save orbitals for visualization
                             'scan_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of the CBS-QB3 method

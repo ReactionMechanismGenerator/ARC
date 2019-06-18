@@ -300,7 +300,7 @@ cd $WorkDir
 """,
     },
 
-    'delta': {
+    'local': {
         # TeraChem
         'terachem': """#!/bin/bash -l
 #SBATCH -e %err.txt

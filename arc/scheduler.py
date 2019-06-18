@@ -369,6 +369,7 @@ class Scheduler(object):
                     continue
                 for job_name in job_list:
                     if 'conformer' in job_name:
+                        print(job_name)
                         i = int(job_name[9:])  # the conformer number. parsed from a string like 'conformer12'.
                         job = self.job_dict[label]['conformers'][i]
                         if self.job_dict[label]['conformers'][i].job_id not in self.servers_jobs_ids:
