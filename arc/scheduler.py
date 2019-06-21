@@ -85,7 +85,7 @@ class Scheduler(object):
                                         isomorphic to the 2D graph representation
     `dont_gen_confs`        ``list``  A list of species labels for which conformer jobs were loaded from a restart file,
                                         and additional conformer generation should be avoided
-    `memory`                ``int``   The total allocated job memory in GB (15 by default)
+    `memory`                ``int``   The total allocated job memory in GB (14 by default)
     `job_types`             ``dict``  A dictionary of job types to execute. Keys are job types, values are boolean
     `bath_gas`              ``str``   A bath gas. Currently used in OneDMin to calc L-J parameters.
                                         Allowed values are He, Ne, Ar, Kr, H2, N2, O2
@@ -122,7 +122,7 @@ class Scheduler(object):
     def __init__(self, project, ess_settings, species_list, project_directory, composite_method='', conformer_level='',
                  opt_level='', freq_level='', sp_level='', scan_level='', ts_guess_level='', orbitals_level='',
                  adaptive_levels=None, rmgdatabase=None, job_types=None, initial_trsh=None, rxn_list=None, bath_gas=None,
-                 restart_dict=None, max_job_time=120, allow_nonisomorphic_2d=False, memory=15, testing=False):
+                 restart_dict=None, max_job_time=120, allow_nonisomorphic_2d=False, memory=14, testing=False):
         self.rmgdb = rmgdatabase
         self.restart_dict = restart_dict
         self.species_list = species_list

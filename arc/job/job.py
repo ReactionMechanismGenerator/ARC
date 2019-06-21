@@ -57,7 +57,7 @@ class Job(object):
     `scan_res`         ``int``           The rotor scan resolution in degrees
     `software`         ``str``           The electronic structure software to be used
     `server_nodes`     ``list``          A list of nodes this job was submitted to (for troubleshooting)
-    `memory`           ``int``           The total job allocated memory in GB (15 by default)
+    `memory`           ``int``           The total job allocated memory in GB (14 by default)
     `method`           ``str``           The calculation method (e.g., 'B3LYP', 'CCSD(T)', 'CBS-QB3'...)
     `basis_set`        ``str``           The basis set (e.g., '6-311++G(d,p)', 'aug-cc-pVTZ'...)
     `fine`             ``bool``          Whether to use fine geometry optimization parameters
@@ -99,7 +99,7 @@ class Job(object):
     """
     def __init__(self, project, ess_settings, species_name, xyz, job_type, level_of_theory, multiplicity,
                  project_directory, charge=0, conformer=-1, fine=False, shift='', software=None, is_ts=False, scan='',
-                 pivots=None, memory=15, comments='', trsh='', scan_trsh='', ess_trsh_methods=None, bath_gas=None,
+                 pivots=None, memory=14, comments='', trsh='', scan_trsh='', ess_trsh_methods=None, bath_gas=None,
                  initial_trsh=None, job_num=None, job_server_name=None, job_name=None, job_id=None, server=None,
                  initial_time=None, occ=None, max_job_time=120, scan_res=None, checkfile=None, number_of_radicals=None,
                  testing=False):

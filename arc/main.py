@@ -87,7 +87,7 @@ class ARC(object):
     `rmgdb`                ``RMGDatabase``  The RMG database object
     `allow_nonisomorphic_2d` ``bool`` Whether to optimize species even if they do not have a 3D conformer that is
                                         isomorphic to the 2D graph representation
-    `memory`               ``int``    The total allocated job memory in GB (15 by default)
+    `memory`               ``int``    The total allocated job memory in GB (14 by default to be lower than 90% * 16 GB)
     `job_types`            ``dict``   A dictionary of job types to execute. Keys are job types, values are boolean
     `bath_gas`             ``str``    A bath gas. Currently used in OneDMin to calc L-J parameters.
                                         Allowed values are He, Ne, Ar, Kr, H2, N2, O2
@@ -101,7 +101,7 @@ class ARC(object):
                  conformer_level='', composite_method='', opt_level='', freq_level='', sp_level='', scan_level='',
                  ts_guess_level='', use_bac=True, job_types=None, model_chemistry='', initial_trsh=None, t_min=None,
                  t_max=None, t_count=None, verbose=logging.INFO, project_directory=None, max_job_time=120,
-                 allow_nonisomorphic_2d=False, job_memory=15, ess_settings=None, bath_gas=None,
+                 allow_nonisomorphic_2d=False, job_memory=14, ess_settings=None, bath_gas=None,
                  adaptive_levels=None, freq_scale_factor=None, calc_freq_factor=True):
         self.__version__ = VERSION
         self.verbose = verbose
