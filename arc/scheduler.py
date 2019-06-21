@@ -1361,6 +1361,13 @@ class Scheduler(object):
         """
         Troubleshooting cases where stable species (not TS's) have negative frequencies.
         We take  +/-1.1 displacements, generating several initial geometries, and running them as conformers
+
+        Todo:
+            * get all torsions of the molecule (if weren't already generated),
+              identify atom/s with largest displacements (top 2)
+              determine torsions with unique PIVOTS where these atoms are in the "scan" and "top" but not pivotal
+              generate a 360 scal using 30 deg increments and append all 12 results as conformers
+              (consider rotor symmetry to append less conformers?)
         """
         factor = 1.1
         ccparser = cclib.io.ccopen(str(job.local_path_to_output_file))
@@ -1391,25 +1398,25 @@ class Scheduler(object):
         if vibfreqs[largest_neg_freq_idx] >= 0 or len(neg_freqs_idx) == 0:
             raise SchedulerError('Could not determine negative frequency in species {0} while troubleshooting for'
                                  ' negative frequencies'.format(label))
-        if len(neg_freqs_idx) == 1 and len(self.species_dict[label].neg_freqs_trshed) == 0:
+        if len(neg_freqs_idx) == 1 and not len(self.species_dict[label].neg_freqs_trshed):
             # species has one negative frequency, and has not been troubleshooted for it before
-            logger.info('Species {0} has a negative frequencies ({1}). Perturbing its geometry using the respective '
+            logger.info('Species {0} has a negative frequency ({1}). Perturbing its geometry using the respective '
                         'vibrational displacements'.format(label, vibfreqs[largest_neg_freq_idx]))
             neg_freqs_idx = [largest_neg_freq_idx]  # indices of the negative frequencies to troubleshoot for
-        elif len(neg_freqs_idx) == 1 and len(self.species_dict[label].neg_freqs_trshed) == 0:
+        elif len(neg_freqs_idx) == 1 and len(self.species_dict[label].neg_freqs_trshed):
             # species has one negative frequency, and has been troubleshooted for it before
-            factor = 1.3
-            logger.info('Species {0} has a negative frequencies ({1}). Perturbing its geometry using the respective '
-                        'vibrational displacements, this time using a larger factor ({2})'.format(
-                         label, vibfreqs[largest_neg_freq_idx], factor))
+            factor = 1 + 0.1 * (len(self.species_dict[label].neg_freqs_trshed) + 1)
+            logger.info('Species {0} has a negative frequency ({1}) for the {2} time. Perturbing its geometry using '
+                        'the respective vibrational displacements, this time using a larger factor (x {3})'.format(
+                         label, vibfreqs[largest_neg_freq_idx], len(self.species_dict[label].neg_freqs_trshed), factor))
             neg_freqs_idx = [largest_neg_freq_idx]  # indices of the negative frequencies to troubleshoot for
-        elif len(neg_freqs_idx) > 1 and len(self.species_dict[label].neg_freqs_trshed) == 0:
+        elif len(neg_freqs_idx) > 1 and not len(self.species_dict[label].neg_freqs_trshed):
             # species has more than one negative frequency, and has not been troubleshooted for it before
             logger.info('Species {0} has {1} negative frequencies. Perturbing its geometry using the vibrational '
                         'displacements of its largest negative frequency, {2}'.format(label, len(neg_freqs_idx),
                                                                                       vibfreqs[largest_neg_freq_idx]))
             neg_freqs_idx = [largest_neg_freq_idx]  # indices of the negative frequencies to troubleshoot for
-        elif len(neg_freqs_idx) > 1 and len(self.species_dict[label].neg_freqs_trshed) > 0:
+        elif len(neg_freqs_idx) > 1 and len(self.species_dict[label].neg_freqs_trshed):
             # species has more than one negative frequency, and has been troubleshooted for it before
             logger.info('Species {0} has {1} negative frequencies. Perturbing its geometry using the vibrational'
                         ' displacements of ALL negative frequencies'.format(label, len(neg_freqs_idx)))
