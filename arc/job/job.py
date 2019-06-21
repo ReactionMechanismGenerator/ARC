@@ -747,11 +747,12 @@ $end
                     raise
         else:
             try:
-                self.input = self.input.format(memory=self.memory, method=self.method, slash=slash, bath=self.bath_gas,
+                self.input = self.input.format(memory=int(self.memory), method=self.method, slash=slash,
                                                basis=self.basis_set, charge=self.charge, multiplicity=self.multiplicity,
                                                spin=self.spin, xyz=self.xyz, job_type_1=job_type_1, cpus=self.cpus,
                                                job_type_2=job_type_2, scan=scan_string, restricted=restricted,
-                                               fine=fine, shift=self.shift, trsh=self.trsh, scan_trsh=self.scan_trsh,)
+                                               fine=fine, shift=self.shift, trsh=self.trsh, scan_trsh=self.scan_trsh,
+                                               bath=self.bath_gas)
             except KeyError:
                 logger.error('Could not interpret all input file keys in\n{0}'.format(self.input))
                 raise
