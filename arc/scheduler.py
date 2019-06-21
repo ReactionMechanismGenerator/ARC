@@ -14,6 +14,7 @@ import numpy as np
 import math
 import shutil
 import yaml
+import logging
 from IPython.display import display
 
 import cclib
@@ -1370,7 +1371,7 @@ class Scheduler(object):
               (consider rotor symmetry to append less conformers?)
         """
         factor = 1.1
-        ccparser = cclib.io.ccopen(str(job.local_path_to_output_file))
+        ccparser = cclib.io.ccopen(str(job.local_path_to_output_file), logging.CRITICAL)
         data = ccparser.parse()
         vibfreqs = data.vibfreqs
         vibdisps = data.vibdisps
