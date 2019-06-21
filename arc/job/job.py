@@ -567,7 +567,7 @@ wf,spin={spin},charge={charge};}}
                 if self.is_ts:
                     job_type_1 = 'opt=(ts, calcfc, noeigentest, maxstep=5)'
                 else:
-                    job_type_1 = 'opt=(calcfc, noeigentest)'
+                    job_type_1 = 'opt'
                 if self.checkfile is not None:
                     job_type_1 += ' guess=read'
                 else:
@@ -578,7 +578,7 @@ wf,spin={spin},charge={charge};}}
                     if self.is_ts:
                         job_type_1 = 'opt=(ts, calcfc, noeigentest, tight, maxstep=5)'
                     else:
-                        job_type_1 = 'opt=(calcfc, noeigentest, tight)'
+                        job_type_1 = 'opt=(tight)'
             elif self.software == 'qchem':
                 if self.is_ts:
                     job_type_1 = 'ts'
