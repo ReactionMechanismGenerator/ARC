@@ -1706,12 +1706,11 @@ class Scheduler(object):
                 # job.job_status[1] will be for example `'errored: additional memory (mW) required: 996.31'`.
                 # The number is the ADDITIONAL memory required
                 job.ess_trsh_methods.append('memory')
-                add_mem = float(job.job_status[1].split()[-1])  # parse Molpro's requirement
+                add_mem = float(job.job_status[1].split()[-1])  # parse Molpro's requirement in MW
                 add_mem = int(math.ceil(add_mem / 100.0)) * 100  # round up to the next hundred
-                add_mem += 250  # be conservative
-                memory = job.memory_gb + add_mem / 128.  # convert MW to GB
-                logger.info('Troubleshooting {type} job in {software} using memory: {mem} GB'.format(
-                    type=job_type, software=job.software, mem=memory))
+                memory = job.memory_gb + add_mem / 128. + 5  # convert MW to GB, add 5 extra GB (be conservative)
+                logger.info('Troubleshooting {type} job in {software} using memory: {mem} GB instead of {old} GB'.
+                    format(type=job_type, software=job.software, mem=memory, old=job.memory_gb))
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
                              job_type=job_type, fine=job.fine, shift=job.shift, memory=memory,
                              ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
@@ -1747,8 +1746,8 @@ class Scheduler(object):
                 # Increase memory allocation, also run with a shift
                 job.ess_trsh_methods.append('memory')
                 memory = servers[job.server]['memory']  # set memory to the value of an entire node (in GB)
-                logger.info('Troubleshooting {type} job in {software} using memory: {mem} GB'.format(
-                    type=job_type, software=job.software, mem=memory))
+                logger.info('Troubleshooting {type} job in {software} using memory: {mem} GB instead of {old} GB'.
+                    format(type=job_type, software=job.software, mem=memory, old=job.memory_gb))
                 shift = 'shift,-1.0,-0.5;'
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
                              job_type=job_type, fine=job.fine, shift=shift, memory=memory,
