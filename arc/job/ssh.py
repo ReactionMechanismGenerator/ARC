@@ -10,13 +10,17 @@ import logging
 import os
 import time
 import datetime
+import re
 
 import paramiko
 
+from arc.common import get_logger
 from arc.settings import servers, check_status_command, submit_command, submit_filename, delete_command
 from arc.arc_exceptions import InputError, ServerError
 
 ##################################################################
+
+logger = get_logger()
 
 
 class SSHClient(object):
@@ -35,8 +39,6 @@ class SSHClient(object):
         self.address = servers[server]['address']
         self.un = servers[server]['un']
         self.key = servers[server]['key']
-        # logger = paramiko.util.logging.getLogger()
-        # logger.setLevel(50)
         logging.getLogger("paramiko").setLevel(logging.WARNING)
 
     def send_command_to_server(self, command, remote_path=''):
@@ -106,10 +108,10 @@ class SSHClient(object):
             if os.path.isfile(local_file_path):
                 i = 1000
             else:
-                logging.error('Could not download file {0} from {1}!'.format(remote_file_path, self.server))
-                logging.error('ARC is sleeping for {0} seconds before re-trying,'
-                              ' please check your connectivity.'.format(sleep_time * i))
-                logging.info('ZZZZZ..... ZZZZZ.....')
+                logger.error('Could not download file {0} from {1}!'.format(remote_file_path, self.server))
+                logger.error('ARC is sleeping for {0} seconds before re-trying,'
+                             ' please check your connectivity.'.format(sleep_time * i))
+                logger.info('ZZZZZ..... ZZZZZ.....')
                 time.sleep(sleep_time * i)  # in seconds
             i += 1
 
@@ -121,8 +123,8 @@ class SSHClient(object):
         try:
             sftp.get(remotepath=remote_file_path, localpath=local_file_path)
         except IOError:
-            logging.debug('Got an IOError when trying to download file {0} from {1}'.format(remote_file_path,
-                                                                                            self.server))
+            logger.debug('Got an IOError when trying to download file {0} from {1}'.format(remote_file_path,
+                                                                                           self.server))
         sftp.close()
         ssh.close()
 
@@ -148,9 +150,9 @@ class SSHClient(object):
         while i < 30:
             result = self._check_job_status(job_id)
             if result == 'connection error':
-                logging.error('ARC is sleeping for {0} min before re-trying,'
-                              ' please check your connectivity.'.format(sleep_time * i))
-                logging.info('ZZZZZ..... ZZZZZ.....')
+                logger.error('ARC is sleeping for {0} min before re-trying,'
+                             ' please check your connectivity.'.format(sleep_time * i))
+                logger.info('ZZZZZ..... ZZZZZ.....')
                 time.sleep(sleep_time * i * 60)  # in seconds
             else:
                 i = 1000
@@ -167,8 +169,8 @@ class SSHClient(object):
         cmd = check_status_command[servers[self.server]['cluster_soft']] + ' -u ' + servers[self.server]['un']
         stdout, stderr = self.send_command_to_server(cmd)
         if stderr:
-            logging.info('\n\n')
-            logging.error('Could not check status of job {0} due to {1}'.format(job_id, stderr))
+            logger.info('\n\n')
+            logger.error('Could not check status of job {0} due to {1}'.format(job_id, stderr))
             return 'connection error'
         return check_job_status_in_stdout(job_id=job_id, stdout=stdout, server=self.server)
 
@@ -223,10 +225,10 @@ class SSHClient(object):
             except:
                 pass
             else:
-                logging.debug('Successfully connected to {0} at the {1} trial.'.format(self.server, times_tried))
+                logger.debug('Successfully connected to {0} at the {1} trial.'.format(self.server, times_tried))
                 return sftp, ssh
             if not times_tried % 10:
-                logging.info('Tried connecting to {0} {1} times with no success....'.format(self.server, times_tried))
+                logger.info('Tried connecting to {0} {1} times with no success....'.format(self.server, times_tried))
             else:
                 print('Tried connecting to {0} {1} times with no success....'.format(self.server, times_tried))
             time.sleep(interval)
@@ -301,5 +303,37 @@ def check_job_status_in_stdout(job_id, stdout, server):
             return 'errored on node ' + status_line.split()[-1][-2:]
         else:
             raise ValueError('Unknown cluster software {0}'.format(servers[server]['cluster_soft']))
+
+
+def delete_all_arc_jobs(server_list):
+    """
+    Delete all ARC-spawned jobs (with job name starting with `a` and a digit) from :list:servers
+    (`servers` could also be a string of one server name)
+    Make sure you know what you're doing, so unrelated jobs won't be deleted...
+    Useful when terminating ARC while some (ghost) jobs are still running.
+
+    Args:
+        server_list (list): List of servers to delete ARC jobs from.
+    """
+    if isinstance(server_list, str):
+        server_list = [server_list]
+    for server in server_list:
+        print('\nDeleting all ARC jobs from {0}...'.format(server))
+        cmd = check_status_command[servers[server]['cluster_soft']] + ' -u ' + servers[server]['un']
+        ssh = SSHClient(server)
+        stdout = ssh.send_command_to_server(cmd)[0]
+        for status_line in stdout:
+            s = re.search(r' a\d+', status_line)
+            if s is not None:
+                if servers[server]['cluster_soft'].lower() == 'slurm':
+                    job_id = s.group()[1:]
+                    server_job_id = status_line.split()[0]
+                    ssh.delete_job(server_job_id)
+                    print('deleted job {0} ({1} on server)'.format(job_id, server_job_id))
+                elif servers[server]['cluster_soft'].lower() == 'oge':
+                    job_id = s.group()[1:]
+                    ssh.delete_job(job_id)
+                    print('deleted job {0}'.format(job_id))
+    print('\ndone.')
 
 # TODO: delete scratch files of a failed job: ssh nodeXX; rm scratch/dhdhdhd/job_number

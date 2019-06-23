@@ -8,7 +8,6 @@ Processor module for outputting thermoproperties and rates
 from __future__ import (absolute_import, division, print_function, unicode_literals)
 import os
 import shutil
-import logging
 from random import randint
 
 from arkane.input import species as arkane_input_species, transitionState as arkane_transition_state,\
@@ -19,6 +18,7 @@ from arkane.kinetics import KineticsJob
 
 from rmgpy.species import Species
 
+from arc.common import get_logger
 import arc.rmgdb as rmgdb
 from arc.job.inputs import input_files
 from arc import plotter
@@ -27,30 +27,35 @@ from arc.species.species import determine_rotor_symmetry, determine_rotor_type
 
 ##################################################################
 
+logger = get_logger()
+
 
 class Processor(object):
     """
     ARC Processor class. Post processes results in Arkane. The attributes are:
 
-    ================ =========== ===============================================================================
-    Attribute        Type        Description
-    ================ =========== ===============================================================================
-    `project`         ``str``    The project's name. Used for naming the directory.
-    `species_dict`    ``dict``   Keys are labels, values are ARCSpecies objects
-    `rxn_list`        ``list``   List of ARCReaction objects
-    `output`          ``dict``   Keys are labels, values are output file paths
-    `use_bac`         ``bool``   Whether or not to use bond additivity corrections for thermo calculations
-    `sp_level`        ``str``    The single point level of theory, used for atom and bond corrections in Arkane
-    `freq_level`      ``str``    The frequency level of theory, used for the frequency scaling factor in Arkane
-    `lib_long_desc`   ``str``    A multiline description of levels of theory for the outputted RMG libraries
-    `project_directory` ``str``  The path of the ARC project directory
-    `t_min`           ``tuple``  The minimum temperature for kinetics computations, e.g., (500, str('K'))
-    `t_max`           ``tuple``  The maximum temperature for kinetics computations, e.g., (3000, str('K'))
-    `t_count`         ``int``    The number of temperature points between t_min and t_max for kinetics computations
-    ================ =========== ===============================================================================
+    ================== =========== =====================================================================================
+    Attribute          Type        Description
+    ================== =========== =====================================================================================
+    `project`           ``str``    The project's name. Used for naming the directory.
+    `species_dict`      ``dict``   Keys are labels, values are ARCSpecies objects
+    `rxn_list`          ``list``   List of ARCReaction objects
+    `output`            ``dict``   Keys are labels, values are output file paths
+    `use_bac`           ``bool``   Whether or not to use bond additivity corrections for thermo calculations
+    `sp_level`          ``str``    The single point level of theory, used for atom and bond corrections in Arkane
+    `freq_level`        ``str``    The frequency level of theory, used for the frequency scaling factor in Arkane
+                                     if `freq_scale_factor` was not given.
+    `freq_scale_factor` ``float``  The harmonic frequencies scaling factor. Could be automatically determined
+                                     if not available in Arkane and not provided by the user.
+    `lib_long_desc`     ``str``    A multiline description of levels of theory for the outputted RMG libraries
+    `project_directory` ``str``    The path of the ARC project directory
+    `t_min`             ``tuple``  The minimum temperature for kinetics computations, e.g., (500, str('K'))
+    `t_max`             ``tuple``  The maximum temperature for kinetics computations, e.g., (3000, str('K'))
+    `t_count`           ``int``    The number of temperature points between t_min and t_max for kinetics computations
+    ================== =========== =====================================================================================
     """
     def __init__(self, project, project_directory, species_dict, rxn_list, output, use_bac, model_chemistry,
-                 lib_long_desc, rmgdatabase, t_min=None, t_max=None, t_count=None):
+                 lib_long_desc, rmgdatabase, t_min=None, t_max=None, t_count=None, freq_scale_factor=None):
         self.rmgdb = rmgdatabase
         self.project = project
         self.project_directory = project_directory
@@ -59,6 +64,7 @@ class Processor(object):
         self.output = output
         self.use_bac = use_bac
         self.sp_level, self.freq_level = process_model_chemistry(model_chemistry)
+        self.freq_scale_factor = freq_scale_factor
         self.lib_long_desc = lib_long_desc
         load_thermo_libs, load_kinetic_libs = False, False
         if any([species.is_ts and species.final_xyz for species in self.species_dict.values()])\
@@ -126,9 +132,9 @@ class Processor(object):
                     try:
                         rotor_symmetry, max_e = determine_rotor_symmetry(rotor_path, species.label, pivots)
                     except RotorError:
-                        logging.error('Could not determine rotor symmetry for species {0} between pivots {1}.'
-                                      ' Setting the rotor symmetry to 1, which is probably WRONG.'.format(
-                                       species.label, pivots))
+                        logger.error('Could not determine rotor symmetry for species {0} between pivots {1}.'
+                                     ' Setting the rotor symmetry to 1, which is probably WRONG.'.format(
+                                      species.label, pivots))
                         rotor_symmetry = 1
                         max_e = None
                     max_e = ', max scan energy: {0:.2f} kJ/mol'.format(max_e) if max_e is not None else ''
@@ -155,10 +161,10 @@ class Processor(object):
                                        '{0}_arkane_input.py'.format(species.label))
         input_file = input_files['arkane_input_species']
         if self.use_bac and not species.is_ts:
-            logging.info('Using the following BAC for {0}: {1}'.format(species.label, species.bond_corrections))
+            logger.info('Using the following BAC for {0}: {1}'.format(species.label, species.bond_corrections))
             bonds = 'bonds = {0}\n\n'.format(species.bond_corrections)
         else:
-            logging.debug('NOT using BAC for {0}'.format(species.label))
+            logger.debug('NOT using BAC for {0}'.format(species.label))
             bonds = ''
         input_file = input_file.format(bonds=bonds, symmetry=species.external_symmetry,
                                        multiplicity=species.multiplicity, optical=species.optical_isomers,
@@ -216,8 +222,8 @@ class Processor(object):
                 try:
                     species.rmg_thermo = self.rmgdb.thermo.getThermoData(species.rmg_species)
                 except ValueError:
-                    logging.info('Could not retrieve RMG thermo for species {0}, possibly due to missing 2D structure '
-                                 '(bond orders). Not including this species in the parity plots.'.format(species.label))
+                    logger.info('Could not retrieve RMG thermo for species {0}, possibly due to missing 2D structure '
+                                '(bond orders). Not including this species in the parity plots.'.format(species.label))
                 else:
                     if species.generate_thermo:
                         species_list_for_thermo_parity.append(species)
@@ -229,7 +235,7 @@ class Processor(object):
         rxn_list_for_kinetics_plots = list()
         arkane_spc_dict = dict()  # a dictionary with all species and the TSs
         for rxn in self.rxn_list:
-            logging.info('\n\n')
+            logger.info('\n\n')
             species = self.species_dict[rxn.ts_label]  # The TS
             if 'ALL converged' in self.output[species.label]['status'] and rxn.check_ts():
                 self.copy_freq_output_for_ts(species.label)
@@ -256,7 +262,7 @@ class Processor(object):
                                                        if label in rxn.products],
                                              transitionState=rxn.ts_label, tunneling='Eckart')
                 kinetics_job = KineticsJob(reaction=arkane_rxn, Tmin=self.t_min, Tmax=self.t_max, Tcount=self.t_count)
-                logging.info('Calculating rate for reaction {0}'.format(rxn.label))
+                logger.info('Calculating rate for reaction {0}'.format(rxn.label))
                 try:
                     kinetics_job.execute(outputFile=output_file_path, plot=False)
                 except (ValueError, OverflowError) as e:
@@ -270,7 +276,7 @@ class Processor(object):
                     #   File "rmgpy/reaction.py", line 818, in rmgpy.reaction.Reaction.calculateTSTRateCoefficient
                     #   File "rmgpy/reaction.py", line 844, in rmgpy.reaction.Reaction.calculateTSTRateCoefficient
                     # OverflowError: math range error
-                    logging.error('Failed to generate kinetics for {0} with message:\n{1}'.format(rxn.label, e))
+                    logger.error('Failed to generate kinetics for {0} with message:\n{1}'.format(rxn.label, e))
                     success = False
                 if success:
                     rxn.kinetics = kinetics_job.reaction.kinetics
@@ -278,7 +284,7 @@ class Processor(object):
                     rxn.rmg_reactions = rmgdb.determine_rmg_kinetics(rmgdb=self.rmgdb, reaction=rxn.rmg_reaction,
                                                                      dh_rxn298=rxn.dh_rxn298)
 
-        logging.info('\n\n')
+        logger.info('\n\n')
         output_dir = os.path.join(self.project_directory, 'output')
         libraries_path = os.path.join(output_dir, 'RMG libraries')
 
@@ -332,7 +338,9 @@ class Processor(object):
         else:
             # if this is a kinetics computation and we don't have a valid model chemistry, don't bother about it
             stat_mech_job.applyAtomEnergyCorrections = False
-        stat_mech_job.frequencyScaleFactor = assign_frequency_scale_factor(self.freq_level)
+        # Use the scaling factor if given, else try determining it from Arkane
+        # (defaults to 1 and prints a warning if not found)
+        stat_mech_job.frequencyScaleFactor = self.freq_scale_factor or assign_frequency_scale_factor(self.freq_level)
         try:
             stat_mech_job.execute(outputFile=output_file_path, plot=plot)
         except Exception:

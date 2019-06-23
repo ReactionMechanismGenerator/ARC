@@ -56,7 +56,7 @@ class TestJob(unittest.TestCase):
                          'job_status': ['initializing', 'initializing'],
                          'job_type': 'opt',
                          'level_of_theory': 'b3lyp/6-31+g(d)',
-                         'memory': 15000,
+                         'memory': 14000,
                          'occ': None,
                          'pivots': [],
                          'project_directory': os.path.join(arc_path, 'Projects', 'project_test'),
@@ -118,7 +118,7 @@ class TestJob(unittest.TestCase):
                    project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'qchem')
 
-        self.assertEqual(job0.memory_gb, 15)
+        self.assertEqual(job0.memory_gb, 14)
         self.assertEqual(job0.max_job_time, 120)
 
     def test_bath_gas(self):

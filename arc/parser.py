@@ -7,7 +7,6 @@ A module for parsing information from files
 """
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
-import logging
 import numpy as np
 import os
 
@@ -16,6 +15,7 @@ from arkane.qchem import QChemLog
 from arkane.gaussian import GaussianLog
 from arkane.molpro import MolproLog
 
+from arc.common import get_logger
 from arc.species.converter import get_xyz_string, standardize_xyz_string
 from arc.arc_exceptions import InputError, ParserError
 
@@ -24,6 +24,8 @@ Various ESS parsing tools
 """
 
 ##################################################################
+
+logger = get_logger()
 
 
 def parse_frequencies(path, software):
@@ -61,7 +63,7 @@ def parse_frequencies(path, software):
     else:
         raise ParserError('parse_frequencies() can currently only parse Molpro, QChem and Gaussian files,'
                           ' got {0}'.format(software))
-    logging.debug('Using parser.parse_frequencies. Determined frequencies are: {0}'.format(freqs))
+    logger.debug('Using parser.parse_frequencies. Determined frequencies are: {0}'.format(freqs))
     return freqs
 
 
@@ -87,7 +89,7 @@ def parse_e_elect(path, zpe_scale_factor=1.):
     try:
         e_elect = log.loadEnergy(zpe_scale_factor) * 0.001  # convert to kJ/mol
     except Exception:
-        logging.warning('Could not read e_elect from {0}'.format(path))
+        logger.warning('Could not read e_elect from {0}'.format(path))
         e_elect = None
     return e_elect
 

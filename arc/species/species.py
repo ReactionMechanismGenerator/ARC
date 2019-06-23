@@ -7,7 +7,6 @@ A module for representing species
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
 import os
-import logging
 import numpy as np
 import datetime
 
@@ -31,6 +30,7 @@ from rmgpy.molecule.resonance import generate_kekule_structure
 from rmgpy.transport import TransportData
 from rmgpy.exceptions import InvalidAdjacencyListError
 
+from arc.common import get_logger
 from arc.arc_exceptions import SpeciesError, RotorError, InputError, TSError
 from arc.settings import arc_path, default_ts_methods, valid_chars, minimum_barrier
 from arc.parser import parse_xyz_from_file, parse_dipole_moment, parse_polarizability
@@ -39,6 +39,8 @@ from arc.species.converter import get_xyz_string, get_xyz_matrix, rdkit_conf_fro
 from arc.ts import atst
 
 ##################################################################
+
+logger = get_logger()
 
 
 class ARCSpecies(object):
@@ -216,9 +218,9 @@ class ARCSpecies(object):
                             keep_isomorphic=False, filter_structures=True)
                     self.mol_list = self.rmg_species.molecule
                     if len(self.mol_list) > 1:
-                        logging.info('Using localized structure {0} of species {1} for BAC determination. To use a'
-                                     ' different structure, pass the RMG:Molecule object in the `mol` parameter'.format(
-                                        self.mol.toSMILES(), self.label))
+                        logger.info('Using localized structure {0} of species {1} for BAC determination. To use a'
+                                    ' different structure, pass the RMG:Molecule object in the `mol` parameter'.format(
+                                      self.mol.toSMILES(), self.label))
                 self.multiplicity = self.rmg_species.molecule[0].multiplicity
                 self.charge = self.rmg_species.molecule[0].getNetCharge()
 
@@ -236,9 +238,9 @@ class ARCSpecies(object):
                 elif smiles:
                     self.mol = Molecule(SMILES=smiles)
             if not self.is_ts and self.mol is None and self.generate_thermo:
-                logging.warning('No structure (SMILES, adjList, RMG:Species, or RMG:Molecule) was given for species'
-                                ' {0}, NOT using bond additivity corrections (BAC) for thermo computation.'
-                                .format(self.label))
+                logger.warning('No structure (SMILES, adjList, RMG:Species, or RMG:Molecule) was given for species'
+                               ' {0}, NOT using bond additivity corrections (BAC) for thermo computation.'
+                               .format(self.label))
 
             if not self.is_ts:
                 # Perceive molecule from xyz coordinates
@@ -255,16 +257,16 @@ class ARCSpecies(object):
                 mol_copy = self.mol.copy(deep=True)
                 self.mol_list = mol_copy.generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
             elif not self.bond_corrections and self.generate_thermo:
-                logging.warning('Cannot determine bond additivity corrections (BAC) for species {0} based on xyz'
-                                ' coordinates only. For better thermoproperties, provide bond corrections.')
+                logger.warning('Cannot determine bond additivity corrections (BAC) for species {0} based on xyz'
+                               ' coordinates only. For better thermoproperties, provide bond corrections.')
 
             self.neg_freqs_trshed = list()
 
         if self.multiplicity is None:
             self.determine_multiplicity(smiles, adjlist, self.mol)
-            logging.debug('No multiplicity specified for {0}, assuming {1}.'.format(self.label, self.multiplicity))
+            logger.debug('No multiplicity specified for {0}, assuming {1}.'.format(self.label, self.multiplicity))
         if self.charge is None:
-            logging.debug('No charge specified for {0}, assuming charge 0.'.format(self.label))
+            logger.debug('No charge specified for {0}, assuming charge 0.'.format(self.label))
             self.charge = 0
         if self.multiplicity is not None and self.multiplicity < 1:
             raise SpeciesError('Multiplicity for species {0} is lower than 1. Got: {1}'.format(
@@ -439,7 +441,7 @@ class ARCSpecies(object):
         try:
             self.charge = species_dict['charge']
         except KeyError:
-            logging.debug('No charge specified for {0}, assuming charge 0.'.format(self.label))
+            logger.debug('No charge specified for {0}, assuming charge 0.'.format(self.label))
             self.charge = 0
         if self.is_ts:
             self.generate_thermo = False
@@ -456,7 +458,7 @@ class ARCSpecies(object):
         try:
             self.mol = Molecule().fromAdjacencyList(str(species_dict['mol'])) if 'mol' in species_dict else None
         except (ValueError, InvalidAdjacencyListError) as e:
-            logging.error('Could not read RMG adjacency list {0}. Got:\n{1}'.format(species_dict['mol'] if 'mol'
+            logger.error('Could not read RMG adjacency list {0}. Got:\n{1}'.format(species_dict['mol'] if 'mol'
                                                                                     in species_dict else None,
                                                                                     e.message))
             self.mol = None
@@ -585,10 +587,10 @@ class ARCSpecies(object):
                 error = True
             if self.unsuccessful_methods:
                 message += ' Unsuccessful methods: {0}'.format(self.unsuccessful_methods)
-            logging.info(message)
+            logger.info(message)
             if error:
-                logging.error('No TS methods for {0} have converged!'.format(self.label))
-            logging.info('\n')
+                logger.error('No TS methods for {0} have converged!'.format(self.label))
+            logger.info('\n')
 
     def find_conformers(self, mol, method='all'):
         """
@@ -609,7 +611,7 @@ class ARCSpecies(object):
             try:
                 rd_xyzs, rd_energies = _get_possible_conformers_rdkit(mol)
             except ValueError as e:
-                logging.warning('Could not generate RDkit conformers for {0}, failed with: {1}'.format(
+                logger.warning('Could not generate RDkit conformers for {0}, failed with: {1}'.format(
                     self.label, e.message))
             if rd_xyzs:
                 rd_xyz = get_min_energy_conformer(xyzs=rd_xyzs, energies=rd_energies)
@@ -618,7 +620,7 @@ class ARCSpecies(object):
             ob_xyzs, ob_energies = _get_possible_conformers_openbabel(mol)
             ob_xyz = get_min_energy_conformer(xyzs=ob_xyzs, energies=ob_energies)
             self.xyzs.append(get_xyz_string(coord=ob_xyz, mol=mol))
-        logging.debug('Considering {actual} conformers for {label} out of {total} total ran using a force field'.format(
+        logger.debug('Considering {actual} conformers for {label} out of {total} total ran using a force field'.format(
             actual=len(self.xyzs), total=len(rd_xyzs+ob_xyzs), label=self.label))
 
     def determine_rotors(self):
@@ -643,11 +645,11 @@ class ARCSpecies(object):
                         self.rotors_dict[self.number_of_rotors] = new_rotor
                         self.number_of_rotors += 1
             if self.number_of_rotors == 1:
-                logging.info('\nFound one possible rotor for {0}'.format(self.label))
+                logger.info('\nFound one possible rotor for {0}'.format(self.label))
             elif self.number_of_rotors > 1:
-                logging.info('\nFound {0} possible rotors for {1}'.format(self.number_of_rotors, self.label))
+                logger.info('\nFound {0} possible rotors for {1}'.format(self.number_of_rotors, self.label))
             if self.number_of_rotors > 0:
-                logging.info('Pivot list(s) for {0}: {1}\n'.format(
+                logger.info('Pivot list(s) for {0}: {1}\n'.format(
                     self.label, [self.rotors_dict[i]['pivots'] for i in range(self.number_of_rotors)]))
 
     def set_dihedral(self, scan, pivots, deg_increment):
@@ -658,7 +660,7 @@ class ARCSpecies(object):
         `pivots` is used to identify the rotor.
         """
         if deg_increment == 0:
-            logging.warning('set_dihedral was called with zero increment for {label} with pivots {pivots}'
+            logger.warning('set_dihedral was called with zero increment for {label} with pivots {pivots}'
                             .format(label=self.label, pivots=pivots))
             for rotor in self.rotors_dict.values():  # penalize this rotor to avoid inf. looping
                 if rotor['pivots'] == pivots:
@@ -670,9 +672,9 @@ class ARCSpecies(object):
                     rotor['times_dihedral_set'] += 1
                     break
             else:
-                logging.info('\n\n')
+                logger.info('\n\n')
                 for i, rotor in self.rotors_dict.items():
-                    logging.error('Rotor {i} with pivots {pivots} was set {times} times'.format(
+                    logger.error('Rotor {i} with pivots {pivots} was set {times} times'.format(
                         i=i, pivots=rotor['pivots'], times=rotor['times_dihedral_set']))
                 raise RotorError('Rotors for {0} were set beyond the maximal number of times without converging')
             for i, _ in enumerate(scan):
@@ -722,12 +724,12 @@ class ARCSpecies(object):
             optical_isomers = 2 if pg.chiral else optical_isomers
         self.optical_isomers = self.optical_isomers if self.optical_isomers is not None else optical_isomers
         if self.optical_isomers != optical_isomers:
-            logging.warning("User input of optical isomers for {0} and ARC's calculation differ: {1} and {2},"
+            logger.warning("User input of optical isomers for {0} and ARC's calculation differ: {1} and {2},"
                             " respectively. Using the user input of {1}"
                             .format(self.label, self.optical_isomers, optical_isomers))
         self.external_symmetry = self.external_symmetry if self.external_symmetry is not None else symmetry
         if self.external_symmetry != symmetry:
-            logging.warning("User input of external symmetry for {0} and ARC's calculation differ: {1} and {2},"
+            logger.warning("User input of external symmetry for {0} and ARC's calculation differ: {1} and {2},"
                             " respectively. Using the user input of {1}"
                             .format(self.label, self.external_symmetry, symmetry))
 
@@ -761,10 +763,10 @@ class ARCSpecies(object):
                         raise SpeciesError('Could not identify atom symbol {0}'.format(atom))
                 if electrons % 2 == 1:
                     self.multiplicity = 2
-                    logging.warning('Assuming a multiplicity of 2 for species {0}'.format(self.label))
+                    logger.warning('Assuming a multiplicity of 2 for species {0}'.format(self.label))
                 else:
                     self.multiplicity = 1
-                    logging.warning('Assuming a multiplicity of 1 for species {0}'.format(self.label))
+                    logger.warning('Assuming a multiplicity of 1 for species {0}'.format(self.label))
         if self.multiplicity is None:
             raise SpeciesError('Could not determine multiplicity for species {0}'.format(self.label))
 
@@ -1048,7 +1050,7 @@ class TSGuess(object):
         self.family = ts_dict['family'] if 'family' in ts_dict else None
         if self.family is None and self.method.lower() in ['kinbot', 'autotst']:
             # raise TSError('No family specified for method {0}'.format(self.method))
-            logging.warning('No family specified for method {0}'.format(self.method))
+            logger.warning('No family specified for method {0}'.format(self.method))
         if 'rmg_reaction' not in ts_dict:
             self.rmg_reaction = None
         else:
@@ -1110,7 +1112,7 @@ class TSGuess(object):
         if not isinstance(self.rmg_reaction, Reaction):
             raise InputError('AutoTST requires an RMG Reaction object. Got: {0}'.format(type(self.rmg_reaction)))
         if self.family not in ['H_Abstraction']:
-            logging.debug('AutoTST currently only works for H_Abstraction. Got: {0}'.format(self.family))
+            logger.debug('AutoTST currently only works for H_Abstraction. Got: {0}'.format(self.family))
             self.xyz = ''
         else:
             self.xyz = atst.autotst(rmg_reaction=self.rmg_reaction, reaction_family=self.family)
@@ -1390,7 +1392,7 @@ def determine_rotor_symmetry(rotor_path, label, pivots):
         if i == 0 and energies[im1] == e:
             # If the first and last scan points have same energy, change im1
             im1 -= 1
-            logging.debug('im1: {0}, ip1: {1}, em1: {2}, e: {3}, ep1: {4}'.format(
+            logger.debug('im1: {0}, ip1: {1}, em1: {2}, e: {3}, ep1: {4}'.format(
                 im1, ip1, energies[im1], e, energies[ip1]))
         if e > energies[im1] and e > energies[ip1]:
             # this is a local peak
@@ -1405,8 +1407,8 @@ def determine_rotor_symmetry(rotor_path, label, pivots):
     # The number of peaks and valley must always be the same (what goes up must come down), if it isn't then there's
     # something seriously wrong with the scan
     if len(peaks) != len(valleys):
-        logging.error('Rotor of species {0} between pivots {1} does not have the same number'
-                      ' of peaks ({2}) and valleys ({3}).'.format(label, pivots, len(peaks), len(valleys)))
+        logger.error('Rotor of species {0} between pivots {1} does not have the same number'
+                     ' of peaks ({2}) and valleys ({3}).'.format(label, pivots, len(peaks), len(valleys)))
         return len(peaks), max_e * 0.001  # this works for CC(=O)[O]
     min_peak = min(peaks)
     max_peak = max(peaks)
@@ -1431,11 +1433,11 @@ def determine_rotor_symmetry(rotor_path, label, pivots):
         symmetry = len(peaks)
         reason = 'number of peaks and valleys, all within the determined resolution criteria'
     if symmetry not in [1, 2, 3]:
-        logging.info('Determined symmetry number {0} for rotor of species {1} between pivots {2};'
-                     ' you should make sure this makes sense'.format(symmetry, label, pivots))
+        logger.info('Determined symmetry number {0} for rotor of species {1} between pivots {2};'
+                    ' you should make sure this makes sense'.format(symmetry, label, pivots))
     else:
-        logging.info('Determined a symmetry number of {0} for rotor of species {1} between pivots {2}'
-                     ' based on the {3}.'.format(symmetry, label, pivots, reason))
+        logger.info('Determined a symmetry number of {0} for rotor of species {1} between pivots {2}'
+                    ' based on the {3}.'.format(symmetry, label, pivots, reason))
     return symmetry, max_e * 0.001  # max_e in kJ/mol
 
 

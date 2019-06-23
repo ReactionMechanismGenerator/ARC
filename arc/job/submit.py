@@ -100,14 +100,13 @@ rm -rf $WorkDir
 
     'rmg': {
         # Gaussian16
-        'gaussian16': """#!/bin/bash -l
+        'gaussian': """#!/bin/bash -l
 #SBATCH -p long
 #SBATCH -J {name}
 #SBATCH -N 1
 #SBATCH -n {cpus}
 #SBATCH --time={t_max}
 #SBATCH --mem-per-cpu={mem_per_cpu}
-#SBATCH -x node07, node05
 
 which 16
 

@@ -8,6 +8,7 @@ generate_conformers: true
 max_job_time: 120
 model_chemistry: ''
 opt_level: wb97xd/6-311++g(d,p)
+freq_scale_factor: 0.986
 output:
   CH3CO2_rad: {freq: testing/restart/freq_a275.out,
     geo: testing/restart/freq_a275.out,

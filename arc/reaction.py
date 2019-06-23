@@ -6,17 +6,19 @@ A module for representing a reaction
 """
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
-import logging
 
 from rmgpy.species import Species
 from rmgpy.reaction import Reaction
 
+from arc.common import get_logger
 import arc.rmgdb as rmgdb
 from arc.species.species import ARCSpecies
 from arc.arc_exceptions import ReactionError, InputError
 from arc.settings import default_ts_methods
 
 ##################################################################
+
+logger = get_logger()
 
 
 class ARCReaction(object):
@@ -265,15 +267,15 @@ class ARCReaction(object):
                     self.multiplicity = 2  # S + D = D
                 elif ordered_multiplicity_list == [2, 2]:
                     self.multiplicity = 1  # D + D = S or T
-                    logging.warn('ASSUMING a multiplicity of 1 (singlet) for reaction {0}'.format(self.label))
+                    logger.warning('ASSUMING a multiplicity of 1 (singlet) for reaction {0}'.format(self.label))
                 elif ordered_multiplicity_list == [1, 3]:
                     self.multiplicity = 3  # S + T = T
                 elif ordered_multiplicity_list == [2, 3]:
                     self.multiplicity = 2  # D + T = D or Q
-                    logging.warn('ASSUMING a multiplicity of 2 (doublet) for reaction {0}'.format(self.label))
+                    logger.warning('ASSUMING a multiplicity of 2 (doublet) for reaction {0}'.format(self.label))
                 elif ordered_multiplicity_list == [3, 3]:
                     self.multiplicity = 3  # T + T = S or T or quintet
-                    logging.warn('ASSUMING a multiplicity of 3 (triplet) for reaction {0}'.format(self.label))
+                    logger.warning('ASSUMING a multiplicity of 3 (triplet) for reaction {0}'.format(self.label))
                 elif ordered_multiplicity_list == [1, 1, 1]:
                     self.multiplicity = 1  # S + S + S = S
                 elif ordered_multiplicity_list == [1, 1, 2]:
@@ -282,17 +284,17 @@ class ARCReaction(object):
                     self.multiplicity = 3  # S + S + T = T
                 elif ordered_multiplicity_list == [1, 2, 2]:
                     self.multiplicity = 1  # S + D + D = S or T
-                    logging.warn('ASSUMING a multiplicity of 1 (singlet) for reaction {0}'.format(self.label))
+                    logger.warning('ASSUMING a multiplicity of 1 (singlet) for reaction {0}'.format(self.label))
                 elif ordered_multiplicity_list == [2, 2, 2]:
                     self.multiplicity = 2  # D + D + D = D or T or Q
-                    logging.warn('ASSUMING a multiplicity of 2 (doublet) for reaction {0}'.format(self.label))
+                    logger.warning('ASSUMING a multiplicity of 2 (doublet) for reaction {0}'.format(self.label))
                 elif ordered_multiplicity_list == [1, 2, 3]:
                     self.multiplicity = 2  # S + D + T = D or T
-                    logging.warn('ASSUMING a multiplicity of 2 (doublet) for reaction {0}'.format(self.label))
+                    logger.warning('ASSUMING a multiplicity of 2 (doublet) for reaction {0}'.format(self.label))
                 else:
                     raise ReactionError('Could not determine multiplicity for reaction {0}, please input it.'.format(
                         self.multiplicity))
-            logging.info('Setting multiplicity of reaction {0} to {1}'.format(self.label, self.multiplicity))
+            logger.info('Setting multiplicity of reaction {0} to {1}'.format(self.label, self.multiplicity))
 
     def determine_rxn_charge(self):
         """A helper function for determining the surface charge"""
@@ -311,27 +313,27 @@ class ARCReaction(object):
         Return ``False`` if this test fails, else ``True``
         """
         if any([spc.e_elect is None for spc in self.r_species + self.p_species + [self.ts_species]]):
-            logging.error("Could not get E0's of all species participating in reaction {0}. Cannot check TS E0.".format(
+            logger.error("Could not get E0's of all species participating in reaction {0}. Cannot check TS E0.".format(
                 self.label))
             r_e_elect = None if any([spc.e_elect is None for spc in self.r_species])\
                 else sum(spc.e_elect for spc in self.r_species)
             p_e_elect = None if any([spc.e_elect is None for spc in self.p_species])\
                 else sum(spc.e_elect for spc in self.p_species)
             ts_e_elect = self.ts_species.e_elect
-            logging.error('Reactants E0: {0}\nProducts E0: {1}\nTS E0: {2}'.format(r_e_elect, p_e_elect, ts_e_elect))
+            logger.error('Reactants E0: {0}\nProducts E0: {1}\nTS E0: {2}'.format(r_e_elect, p_e_elect, ts_e_elect))
             return True
         r_e_elect = sum([spc.e_elect for spc in self.r_species])
         p_e_elect = sum([spc.e_elect for spc in self.p_species])
         if self.ts_species.e_elect < r_e_elect or self.ts_species.e_elect < p_e_elect:
             if log:
-                logging.error('TS of reaction {0} has a lower E0 value than expected:\nReactants: {1} kJ/mol\nTS:'
-                              ' {2} kJ/mol\nProducts: {3} kJ/mol'.format(self.label, r_e_elect,
-                                                                         self.ts_species.e_elect, p_e_elect))
+                logger.error('TS of reaction {0} has a lower E0 value than expected:\nReactants: {1} kJ/mol\nTS:'
+                             ' {2} kJ/mol\nProducts: {3} kJ/mol'.format(self.label, r_e_elect,
+                                                                        self.ts_species.e_elect, p_e_elect))
             return False
         if log:
-            logging.info('Reaction {0} has the following path energies:\nReactants: {1} kJ/mol'
-                         '\nTS: {2} kJ/mol\nProducts: {3} kJ/mol'.format(self.label, r_e_elect,
-                                                                         self.ts_species.e_elect, p_e_elect))
+            logger.info('Reaction {0} has the following path energies:\nReactants: {1} kJ/mol'
+                        '\nTS: {2} kJ/mol\nProducts: {3} kJ/mol'.format(self.label, r_e_elect,
+                                                                        self.ts_species.e_elect, p_e_elect))
         return True
 
     def check_attributes(self):
