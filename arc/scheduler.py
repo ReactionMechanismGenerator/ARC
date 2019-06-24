@@ -274,6 +274,9 @@ class Scheduler(object):
                 self.output[species.label]['status'] += '; Restarted ARC at {0}; '.format(datetime.datetime.now())
             if species.label not in self.job_dict:
                 self.job_dict[species.label] = dict()
+            if 'onedmin' in self.job_types and self.job_types['onedmin']\
+                    and not species.is_ts and species.final_xyz is not None:
+                self.run_onedmin_job(species.label)
             if species.yml_path is None:
                 if self.job_types['1d_rotors'] and not self.species_dict[species.label].number_of_rotors:
                     self.species_dict[species.label].determine_rotors()
@@ -301,8 +304,6 @@ class Scheduler(object):
                             self.run_composite_job(species.label)
                         else:
                             self.run_sp_job(label=species.label)
-                        if self.job_types['onedmin']:
-                            self.run_onedmin_job(species.label)
                 elif (self.species_dict[species.label].initial_xyz is not None
                         or self.species_dict[species.label].final_xyz is not None) and not self.testing:
                     # For restarting purposes: check before running jobs whether they were already terminated
@@ -547,16 +548,21 @@ class Scheduler(object):
         if self.adaptive_levels is not None:
             level_of_theory = self.determine_adaptive_level(original_level_of_theory=level_of_theory, job_type=job_type,
                                                             heavy_atoms=self.species_dict[label].number_of_heavy_atoms)
+        if job_type == 'onedmin':
+            self.species_dict[label].determine_onedmin_radii(bath_gas=self.bath_gas)
         job = Job(project=self.project, ess_settings=self.ess_settings, species_name=label, xyz=xyz, job_type=job_type,
                   level_of_theory=level_of_theory, multiplicity=species.multiplicity, charge=species.charge, fine=fine,
                   shift=shift, software=software, is_ts=species.is_ts, memory=memory, trsh=trsh,
                   ess_trsh_methods=ess_trsh_methods, scan=scan, pivots=pivots, occ=occ, initial_trsh=self.initial_trsh,
                   project_directory=self.project_directory, max_job_time=max_job_time, scan_trsh=scan_trsh,
                   scan_res=scan_res, conformer=conformer, checkfile=checkfile, bath_gas=self.bath_gas,
-                  number_of_radicals=species.number_of_radicals)
+                  number_of_radicals=species.number_of_radicals, r_min=self.species_dict[label].r_min,
+                  r_max=self.species_dict[label].r_max)
         if job.software is not None:
             if conformer < 0:
                 # this is NOT a conformer job
+                if label not in self.running_jobs:
+                    self.running_jobs[label] = list()
                 self.running_jobs[label].append(job.job_name)  # mark as a running job
                 try:
                     self.job_dict[label][job_type]
@@ -610,6 +616,9 @@ class Scheduler(object):
                         self.species_dict[label].conformer_checkfiles[job.conformer] = check_path
                     else:
                         self.species_dict[label].checkfile = check_path
+            if job.software.lower() == 'onedmin' and (label not in self.output or 'geo' not in self.output[label]):
+                # OneDMin can be run on a user specified geometry w/o running opt
+                self.output[label]['geo'] = None
             return True
 
     def run_conformer_jobs(self):
@@ -802,8 +811,8 @@ class Scheduler(object):
         if 'onedmin' not in self.ess_settings:
             logger.error('Cannot execute a Lennard Jones job without the OneDMin software')
         elif 'onedmin' not in self.job_dict[label]:
-            self.run_job(label=label, xyz=self.species_dict[label].final_xyz, job_type='onedmin',
-                         level_of_theory='')
+            xyz = self.species_dict[label].final_xyz or self.species_dict[label].initial_xyz
+            self.run_job(label=label, xyz=xyz, job_type='onedmin', level_of_theory='')
 
     def parse_conformer_energy(self, job, label, i):
         """

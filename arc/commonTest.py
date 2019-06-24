@@ -10,7 +10,7 @@ import unittest
 import os
 import time
 
-from arc.common import read_file, get_git_commit, time_lapse, check_ess_settings
+from arc.common import read_file, get_git_commit, time_lapse, check_ess_settings, get_atom_radius, get_center_of_mass
 from arc.settings import arc_path, servers
 from arc.arc_exceptions import InputError, SettingsError
 
@@ -80,6 +80,33 @@ class TestARC(unittest.TestCase):
         with self.assertRaises(SettingsError):
             ess_settings7 = {'gaussian': ['noserver']}
             check_ess_settings(ess_settings7)
+
+    def test_get_atom_radius(self):
+        """Test determining the covalent radius of an atom"""
+        self.assertEqual(get_atom_radius('H'), 0.31)
+        self.assertEqual(get_atom_radius('Al'), 1.21)
+        self.assertIsNone(get_atom_radius('no atom'))
+        with self.assertRaises(InputError):
+            get_atom_radius(['H', 'C'])
+
+    def test_get_center_of_mass(self):
+        """Test identification of the center of mass for given 3D coordinates"""
+        xyz = 'H 0.0 1.0 2.0'
+        cm = get_center_of_mass(xyz)
+        self.assertEqual(cm, (0.0, 1.0, 2.0))
+
+        xyz = """
+        C       0.01110400    0.73099100    0.00000000
+        H       0.27332400    1.21632500    0.93134200
+        H       0.27332400    1.21632500   -0.93134200
+        N       0.01045700   -0.65996900   -0.00000000
+        H      -0.34564700   -1.09923900    0.83510100
+        H      -0.34564700   -1.09923900   -0.83510100
+        """
+        cm = get_center_of_mass(xyz)
+        self.assertAlmostEqual(cm[0], 0.004458, 5)
+        self.assertAlmostEqual(cm[1], -0.007781, 5)
+        self.assertAlmostEqual(cm[2], 0.0, 5)
 
 ################################################################################
 

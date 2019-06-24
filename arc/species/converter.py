@@ -127,6 +127,8 @@ def standardize_xyz_string(xyz):
     Usually empty lines are added by the user either in the beginning or the end,
     here we remove them along with other common issues
     """
+    if xyz is None:
+        raise SpeciesError('Could not standardize xyz with no input (got None)')
     xyz = os.linesep.join([s.lstrip() for s in xyz.splitlines() if s and any(c != ' ' for c in s)])
     lines = xyz.splitlines()
     if all([len(line.split()) == 6 for line in lines if len(line)]):
@@ -224,7 +226,10 @@ def molecules_from_xyz(xyz, multiplicity=None, charge=0):
                                    'following error:\n{0}'.format(e.message))
                     return None, None
             mol_s1_updated.multiplicity = mol_bo.multiplicity
-            order_atoms(ref_mol=mol_s1_updated, mol=mol_bo)
+            try:
+                order_atoms(ref_mol=mol_s1_updated, mol=mol_bo)
+            except SanitizationError as e:
+                logger.warning('Could not order atoms! Got:\n{0}'.format(e.message))
             try:
                 set_multiplicity(mol_s1_updated, mol_bo.multiplicity, charge, radical_map=mol_bo)
             except SpeciesError as e:
