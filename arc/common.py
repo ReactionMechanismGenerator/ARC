@@ -252,3 +252,29 @@ def log_footer(execution_time, level=logging.INFO):
     logger.log(level, '')
     logger.log(level, 'Total execution time: {0}'.format(execution_time))
     logger.log(level, 'ARC execution terminated on {0}'.format(time.asctime()))
+
+
+def save_dict_file(path, restart_dict):
+    """
+    Save an input / restart YAML file
+    """
+    yaml.add_representer(str, string_representer)
+    yaml.add_representer(unicode, unicode_representer)
+    logger.debug('Creating a restart file...')
+    content = yaml.dump(data=restart_dict, encoding='utf-8', allow_unicode=True)
+    with open(path, 'w') as f:
+        f.write(content)
+
+
+def string_representer(dumper, data):
+    """Add a custom string representer to use block literals for multiline strings"""
+    if len(data.splitlines()) > 1:
+        return dumper.represent_scalar(tag='tag:yaml.org,2002:str', value=data, style='|')
+    return dumper.represent_scalar(tag='tag:yaml.org,2002:str', value=data)
+
+
+def unicode_representer(dumper, data):
+    """Add a custom unicode representer to use block literals for multiline strings"""
+    if len(data.splitlines()) > 1:
+        return yaml.ScalarNode(tag='tag:yaml.org,2002:str', value=data, style='|')
+    return yaml.ScalarNode(tag='tag:yaml.org,2002:str', value=data)

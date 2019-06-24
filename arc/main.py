@@ -21,7 +21,8 @@ from arkane.statmech import assign_frequency_scale_factor
 import arc.rmgdb as rmgdb
 from arc.settings import arc_path, default_levels_of_theory, servers, valid_chars, default_job_types
 from arc.scheduler import Scheduler
-from arc.common import VERSION, read_file, time_lapse, check_ess_settings, initialize_log, log_footer, get_logger
+from arc.common import VERSION, read_file, time_lapse, check_ess_settings, initialize_log, log_footer, get_logger,\
+    save_dict_file
 from arc.arc_exceptions import InputError, SettingsError, SpeciesError
 from arc.species.species import ARCSpecies
 from arc.reaction import ARCReaction
@@ -600,6 +601,21 @@ class ARC(object):
                 rxn.index = i
         else:
             self.arc_rxn_list = list()
+
+    def write_input_file(self, path=None):
+        """
+        Save the current attributes as an ARC input file.
+
+        Args:
+             path (str, unicode, optional): The full path for the generated input file.
+        """
+        if path is None:
+            path = os.path.join(self.project_directory, 'input.yml')
+        base_path = os.path.dirname(path)
+        if not os.path.isdir(base_path):
+            os.makedirs(base_path)
+        logger.info('\n\nWriting input file to {0}'.format(path))
+        save_dict_file(path=path, restart_dict=self.restart_dict)
 
     def execute(self):
         """Execute ARC"""
