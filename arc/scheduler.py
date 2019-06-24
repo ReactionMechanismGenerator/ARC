@@ -811,8 +811,8 @@ class Scheduler(object):
         if 'onedmin' not in self.ess_settings:
             logger.error('Cannot execute a Lennard Jones job without the OneDMin software')
         elif 'onedmin' not in self.job_dict[label]:
-            self.run_job(label=label, xyz=self.species_dict[label].final_xyz, job_type='onedmin',
-                         level_of_theory='')
+            xyz = self.species_dict[label].final_xyz or self.species_dict[label].initial_xyz
+            self.run_job(label=label, xyz=xyz, job_type='onedmin', level_of_theory='')
 
     def parse_conformer_energy(self, job, label, i):
         """
