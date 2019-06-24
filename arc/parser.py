@@ -142,6 +142,9 @@ def parse_dipole_moment(path):
     """
     Parse the dipole moment in Debye from an opt job output file
     """
+    if path is None:
+        logger.warning('Could not parse dipole moment, opt path is None')
+        return None
     lines = _get_lines_from_file(path)
     log = determine_qm_software(path)
     dipole_moment = None
