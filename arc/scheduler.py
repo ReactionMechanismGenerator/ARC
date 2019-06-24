@@ -13,7 +13,6 @@ import datetime
 import numpy as np
 import math
 import shutil
-import yaml
 import logging
 from IPython.display import display
 
@@ -23,7 +22,7 @@ from arkane.statmech import determine_qm_software
 from rmgpy.reaction import Reaction
 from rmgpy.exceptions import InputError as RMGInputError
 
-from arc.common import get_logger
+from arc.common import get_logger, save_dict_file
 import arc.rmgdb as rmgdb
 from arc import plotter
 from arc import parser
@@ -1857,8 +1856,6 @@ class Scheduler(object):
         Update the restart_dict and save the restart.yml file
         """
         if self.save_restart and self.restart_dict is not None:
-            yaml.add_representer(str, string_representer)
-            yaml.add_representer(unicode, unicode_representer)
             logger.debug('Creating a restart file...')
             self.restart_dict['output'] = self.output
             self.restart_dict['species'] = [spc.as_dict() for spc in self.species_dict.values()]
@@ -1870,10 +1867,8 @@ class Scheduler(object):
                          for job_name in self.running_jobs[spc.label] if 'conformer' not in job_name]\
                         + [self.job_dict[spc.label]['conformers'][int(job_name.split('mer')[1])].as_dict()
                            for job_name in self.running_jobs[spc.label] if 'conformer' in job_name]
-            content = yaml.dump(data=self.restart_dict, encoding='utf-8', allow_unicode=True)
-            with open(self.restart_path, 'w') as f:
-                f.write(content)
             logger.debug('Dumping restart dictionary:\n{0}'.format(self.restart_dict))
+            save_dict_file(path=self.restart_path, restart_dict=self.restart_dict)
 
     def make_reaction_labels_info_file(self):
         """A helper function for creating the `reactions labels.info` file"""
@@ -1962,20 +1957,6 @@ class Scheduler(object):
 def min_list(lst):
     """A helper function for finding the minimum of a list of integers where some of the entries might be None"""
     return min([entry for entry in lst if entry is not None])
-
-
-def string_representer(dumper, data):
-    """Add a custom string representer to use block literals for multiline strings"""
-    if len(data.splitlines()) > 1:
-        return dumper.represent_scalar(tag='tag:yaml.org,2002:str', value=data, style='|')
-    return dumper.represent_scalar(tag='tag:yaml.org,2002:str', value=data)
-
-
-def unicode_representer(dumper, data):
-    """Add a custom unicode representer to use block literals for multiline strings"""
-    if len(data.splitlines()) > 1:
-        return yaml.ScalarNode(tag='tag:yaml.org,2002:str', value=data, style='|')
-    return yaml.ScalarNode(tag='tag:yaml.org,2002:str', value=data)
 
 
 def sum_time_delta(timedelta_list):
