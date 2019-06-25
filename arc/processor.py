@@ -73,8 +73,9 @@ class Processor(object):
         if any([species.generate_thermo for species in self.species_dict.values()])\
                 and any(['ALL converged' in out['status'] for out in output.values()]):
             load_thermo_libs = True
-        rmgdb.load_rmg_database(rmgdb=self.rmgdb, load_thermo_libs=load_thermo_libs,
-                                load_kinetic_libs=load_kinetic_libs)
+        if any(['ALL converged' in spc_output_dict['status'] for spc_output_dict in output.values()]):
+            rmgdb.load_rmg_database(rmgdb=self.rmgdb, load_thermo_libs=load_thermo_libs,
+                                    load_kinetic_libs=load_kinetic_libs)
         t_min = t_min if t_min is not None else (300, 'K')
         t_max = t_max if t_max is not None else (3000, 'K')
         if isinstance(t_min, (int, float)):
@@ -221,9 +222,10 @@ class Processor(object):
                         thermo_job.execute(outputFile=output_file_path[1], plot=False)
                 try:
                     species.rmg_thermo = self.rmgdb.thermo.getThermoData(species.rmg_species)
-                except ValueError:
+                except (ValueError, AttributeError) as e:
                     logger.info('Could not retrieve RMG thermo for species {0}, possibly due to missing 2D structure '
-                                '(bond orders). Not including this species in the parity plots.'.format(species.label))
+                                '(bond orders). Not including this species in the parity plots.'
+                                '\nGot: {1}'.format(species.label, e.message))
                 else:
                     if species.generate_thermo:
                         species_list_for_thermo_parity.append(species)
