@@ -4,6 +4,7 @@ channels:
   - rmg
   - omnia
   - conda-forge
+  - anaconda
 dependencies:
   - libgcc # [unix]
   - python
@@ -44,6 +45,7 @@ dependencies:
   - pymongo
   - mpmath
   - dde
+  - pydot-ng
   - pyyaml
   - paramiko >=2.4.2
   - cclib >=1.6
