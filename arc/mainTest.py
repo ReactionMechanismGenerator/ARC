@@ -175,12 +175,12 @@ class TestARC(unittest.TestCase):
         self.assertEqual(arc1.freq_scale_factor, 0.986)
 
         with open(os.path.join(project_directory, 'output', 'thermo.info'), 'r') as f:
-            thermo_sft_ccsdtf12_bac = False
+            thermo_dft_ccsdtf12_bac = False
             for line in f.readlines():
                 if 'thermo_DFT_CCSDTF12_BAC' in line:
-                    thermo_sft_ccsdtf12_bac = True
+                    thermo_dft_ccsdtf12_bac = True
                     break
-        self.assertTrue(thermo_sft_ccsdtf12_bac)
+        self.assertTrue(thermo_dft_ccsdtf12_bac)
 
         with open(os.path.join(project_directory, 'arc_project_for_testing_delete_after_usage2.info'), 'r') as f:
             sts, n2h3, oet, lot, ap = False, False, False, False, False
