@@ -40,8 +40,7 @@ class Job(object):
     `multiplicity`    ``int``            The species multiplicity.
     `number_of_radicals` ``int``         The number of radicals (inputted by the user, ARC won't attempt to determine
                                            it). Defaults to None. Important, e.g., if a Species is a bi-rad singlet,
-                                           in which case the job should be unrestricted, but the multiplicity does not
-                                           have the required information to make that decision (r vs. u)
+                                           in which case the job should be unrestricted with multiplicity = 1
     `spin`            ``int``            The spin. automatically derived from the multiplicity
     `xyz`             ``str``            The xyz geometry. Used for the calculation
     `n_atoms`         ``int``            The number of atoms in self.xyz
@@ -115,8 +114,6 @@ class Job(object):
         self.spin = self.multiplicity - 1
         self.number_of_radicals = number_of_radicals
         self.xyz = xyz
-        if self.xyz is None:
-            raise ValueError('{0} Job of species {1} got None for xyz'.format(job_type, self.species_name))
         self.n_atoms = self.xyz.count('\n')
         self.conformer = conformer
         self.is_ts = is_ts
@@ -125,16 +122,33 @@ class Job(object):
         self.initial_trsh = initial_trsh if initial_trsh is not None else dict()
         self.scan_trsh = scan_trsh
         self.scan_res = scan_res if scan_res is not None else rotor_scan_resolution
+        self.scan = scan
+        self.pivots = list() if pivots is None else pivots
         self.max_job_time = max_job_time
         self.bath_gas = bath_gas
         self.testing = testing
+        self.fine = fine
+        self.shift = shift
+        self.occ = occ
+        self.job_status = ['initializing', 'initializing']
+        self.job_id = job_id if job_id is not None else 0
+        self.comments = comments
+        self.project_directory = project_directory
+        self.checkfile = checkfile
+        self.submit = ''
+        self.input = ''
+        self.server_nodes = list()
         job_types = ['conformer', 'opt', 'freq', 'optfreq', 'sp', 'composite', 'scan', 'gsm', 'irc', 'ts_guess',
-                     'orbitals', 'onedmin']
+                     'orbitals', 'onedmin']  # allowed job types
         # the 'conformer' job type is identical to 'opt', but we differentiate them to be identifiable in Scheduler
         if job_type not in job_types:
             raise ValueError("Job type {0} not understood. Must be one of the following:\n{1}".format(
                 job_type, job_types))
         self.job_type = job_type
+
+        if self.xyz is None:
+            raise ValueError('{0} Job of species {1} got None for xyz'.format(job_type, self.species_name))
+
         if self.job_num < 0:
             self._set_job_number()
         self.job_server_name = job_server_name if job_server_name is not None else 'a' + str(self.job_num)
@@ -148,216 +162,18 @@ class Job(object):
             self.method, self.basis_set = self.level_of_theory.split('/')
         else:  # this is a composite job
             self.method, self.basis_set = self.level_of_theory, ''
+
         if self.software is not None:
             self.software = self.software.lower()
         else:
-            if job_type == 'onedmin':
-                if 'onedmin' not in self.ess_settings.keys():
-                    raise JobError('Could not find the OneDMin software to compute Lennard-Jones parameters.\n'
-                                   'ess_settings is:\n{0}'.format(self.ess_settings))
-                self.software = 'onedmin'
-                if self.bath_gas is None:
-                    logger.info('Setting bath gas for Lennard-Jones calculation to N2 for species {0}'.format(
-                        self.species_name))
-                    self.bath_gas = 'N2'
-                elif self.bath_gas not in ['He', 'Ne', 'Ar', 'Kr', 'H2', 'N2', 'O2']:
-                    raise JobError('Bath gas for OneDMin should be one of the following:\n'
-                                   'He, Ne, Ar, Kr, H2, N2, O2.\nGot: {0}'.format(self.bath_gas))
-            elif job_type == 'orbitals':
-                # currently we only have a script to print orbitals on QChem,
-                # could/should definitely be elaborated to additional ESS
-                if 'qchem' not in self.ess_settings.keys():
-                    logger.debug('Could not find the QChem software to compute molecular orbitals.\n'
-                                 'ess_settings is:\n{0}'.format(self.ess_settings))
-                    self.software = None
-                else:
-                    self.software = 'qchem'
-            elif job_type == 'composite':
-                if 'gaussian' not in self.ess_settings.keys():
-                    raise JobError('Could not find the Gaussian software to run the composite method {0}.\n'
-                                   'ess_settings is:\n{1}'.format(self.method, self.ess_settings))
-                self.software = 'gaussian'
-            else:
-                # use the levels_ess dictionary from settings.py:
-                for ess, phrase_list in levels_ess.items():
-                    for phrase in phrase_list:
-                        if phrase in self.level_of_theory:
-                            self.software = ess.lower()
-            if self.software is None:
-                # otherwise, deduce which software to use base on hard coded heuristics
-                if job_type in ['conformer', 'opt', 'freq', 'optfreq', 'sp']:
-                    if 'b2' in self.method or 'dsd' in self.method or 'pw2' in self.method:
-                        # this is a double-hybrid (MP2) DFT method, use Gaussian
-                        if 'gaussian' not in self.ess_settings.keys():
-                            raise JobError('Could not find the Gaussian software to run the double-hybrid method {0}.\n'
-                                           'ess_settings is:\n{1}'.format(self.method, self.ess_settings))
-                        self.software = 'gaussian'
-                    if 'ccs' in self.method or 'cis' in self.method:
-                        if 'molpro' in self.ess_settings.keys():
-                            self.software = 'molpro'
-                        elif 'gaussian' in self.ess_settings.keys():
-                            self.software = 'gaussian'
-                        elif 'qchem' in self.ess_settings.keys():
-                            self.software = 'qchem'
-                    elif 'b3lyp' in self.method:
-                        if 'gaussian' in self.ess_settings.keys():
-                            self.software = 'gaussian'
-                        elif 'qchem' in self.ess_settings.keys():
-                            self.software = 'qchem'
-                        elif 'molpro' in self.ess_settings.keys():
-                            self.software = 'molpro'
-                    elif 'wb97xd' in self.method:
-                        if 'gaussian' not in self.ess_settings.keys():
-                            raise JobError('Could not find the Gaussian software to run {0}/{1}'.format(
-                                self.method, self.basis_set))
-                        self.software = 'gaussian'
-                    elif 'wb97x-d3' in self.method:
-                        if 'qchem' not in self.ess_settings.keys():
-                            raise JobError('Could not find the QChem software to run {0}/{1}'.format(
-                                self.method, self.basis_set))
-                        self.software = 'qchem'
-                    elif 'b97' in self.method or 'def2' in self.basis_set:
-                        if 'gaussian' in self.ess_settings.keys():
-                            self.software = 'gaussian'
-                        elif 'qchem' in self.ess_settings.keys():
-                            self.software = 'qchem'
-                    elif 'm062x' in self.method:  # without dash
-                        if 'gaussian' not in self.ess_settings.keys():
-                            raise JobError('Could not find the Gaussian software to run {0}/{1}'.format(
-                                self.method, self.basis_set))
-                        self.software = 'gaussian'
-                    elif 'm06-2x' in self.method:  # with dash
-                        if 'qchem' not in self.ess_settings.keys():
-                            raise JobError('Could not find the QChem software to run {0}/{1}'.format(
-                                self.method, self.basis_set))
-                        self.software = 'qchem'
-                elif job_type == 'scan':
-                    if 'wb97xd' in self.method:
-                        if 'gaussian' not in self.ess_settings.keys():
-                            raise JobError('Could not find the Gaussian software to run {0}/{1}'.format(
-                                self.method, self.basis_set))
-                        self.software = 'gaussian'
-                    elif 'wb97x-d3' in self.method:
-                        if 'qchem' not in self.ess_settings.keys():
-                            raise JobError('Could not find the QChem software to run {0}/{1}'.format(
-                                self.method, self.basis_set))
-                        self.software = 'qchem'
-                    elif 'b3lyp' in self.method:
-                        if 'gaussian' in self.ess_settings.keys():
-                            self.software = 'gaussian'
-                        elif 'qchem' in self.ess_settings.keys():
-                            self.software = 'qchem'
-                    elif 'b97' in self.method or 'def2' in self.basis_set:
-                        if 'gaussian' in self.ess_settings.keys():
-                            self.software = 'gaussian'
-                        elif 'qchem' in self.ess_settings.keys():
-                            self.software = 'qchem'
-                    elif 'm06-2x' in self.method:  # with dash
-                        if 'qchem' not in self.ess_settings.keys():
-                            raise JobError('Could not find the QChem software to run {0}/{1}'.format(
-                                self.method, self.basis_set))
-                        self.software = 'qchem'
-                    elif 'm062x' in self.method:  # without dash
-                        if 'gaussian' not in self.ess_settings.keys():
-                            raise JobError('Could not find the Gaussian software to run {0}/{1}'.format(
-                                self.method, self.basis_set))
-                        self.software = 'gaussian'
-                    if 'pv' in self.basis_set:
-                        if 'molpro' in self.ess_settings.keys():
-                            self.software = 'molpro'
-                        elif 'gaussian' in self.ess_settings.keys():
-                            self.software = 'gaussian'
-                        elif 'qchem' in self.ess_settings.keys():
-                            self.software = 'qchem'
-                    else:
-                        if 'gaussian' in self.ess_settings.keys():
-                            self.software = 'gaussian'
-                        else:
-                            self.software = 'qchem'
-                elif job_type in ['gsm', 'irc']:
-                    if 'gaussian' not in self.ess_settings.keys():
-                        raise JobError('Could not find the Gaussian software to run {0}'.format(job_type))
-        if self.software is None:
-            # if still no software was determined, just try by order, if exists: Gaussian > QChem > Molpro
-            logger.error('job_num: {0}'.format(self.job_num))
-            logger.error('ess_trsh_methods: {0}'.format(self.ess_trsh_methods))
-            logger.error('trsh: {0}'.format(self.trsh))
-            logger.error('job_type: {0}'.format(self.job_type))
-            logger.error('job_name: {0}'.format(self.job_name))
-            logger.error('level_of_theory: {0}'.format(self.level_of_theory))
-            logger.error('software: {0}'.format(self.software))
-            logger.error('method: {0}'.format(self.method))
-            logger.error('basis_set: {0}'.format(self.basis_set))
-            logger.error('Could not determine software for job {0}'.format(self.job_name))
-            if 'gaussian' in self.ess_settings.keys():
-                logger.error('Setting it to Gaussian')
-                self.software = 'gaussian'
-            elif 'orca' in self.ess_settings.keys():
-                logger.error('Setting it to Orca')
-                self.software = 'orca'
-            elif 'qchem' in self.ess_settings.keys():
-                logger.error('Setting it to QChem')
-                self.software = 'qchem'
-            elif 'molpro' in self.ess_settings.keys():
-                logger.error('Setting it to Molpro')
-                self.software = 'molpro'
-
+            self.deduce_software()
         self.server = server if server is not None else self.ess_settings[self.software][0]
+        self.set_cpu_and_mem(memory=memory)
 
-        self.cpus = servers[self.server].get('cpus', 8)  # set to 8 by default
-        self.mem_per_cpu = memory * 1000 / self.cpus  # The `#SBATCH --mem-per-cpu` directive is in MB
-        max_mem = servers[self.server].get('memory', None)  # max memory per node
-        if max_mem is not None and memory > max_mem * 0.9:
-            logger.warning('The memory for job {0} using {1} ({2} GB) exceeds 90% of the the maximum node memory on '
-                           '{3}. Setting it to 90% * {4} GB.'.format(self.job_name, self.software,
-                                                                     memory, self.server, max_mem))
-            memory = 0.9 * max_mem
-        self.memory_gb = memory  # store the memory in GB for troubleshooting (when re-running the job)
-        if self.software == 'molpro':
-            # Molpro's memory is per cpu and in MW (mega word; 1 MW ~= 8 MB; 1 GB = 128 MW)
-            self.memory = memory * 128 / self.cpus
-        if self.software == 'terachem':
-            # TeraChem's memory is in MW (mega word; 1 MW ~= 8 MB; 1 GB = 128 MW)
-            self.memory = memory * 128
-        elif self.software == 'gaussian':
-            # Gaussian's memory is in MB, total for all cpus
-            self.memory = memory * 1000
-        elif self.software == 'orca':
-            # Orca's memory is per cpu and in MB
-            self.memory = memory * 1000 / self.cpus
-        elif self.software == 'qchem':
-            pass  # QChem manages its memory automatically, for now ARC will not intervene
-            # see http://www.q-chem.com/qchem-website/manual/qchem44_manual/CCparallel.html
+        self.set_file_paths()
 
-        self.fine = fine
-        self.shift = shift
-        self.occ = occ
-        self.job_status = ['initializing', 'initializing']
-        self.job_id = job_id if job_id is not None else 0
-        self.comments = comments
-
-        self.scan = scan
-        self.pivots = list() if pivots is None else pivots
-
-        conformer_folder = '' if self.conformer < 0 else os.path.join('conformers', str(self.conformer))
-        folder_name = 'TSs' if self.is_ts else 'Species'
-        self.project_directory = project_directory
-        self.local_path = os.path.join(self.project_directory, 'calcs', folder_name,
-                                       self.species_name, conformer_folder, self.job_name)
-        self.local_path_to_output_file = os.path.join(self.local_path, 'output.out')
-        self.local_path_to_orbitals_file = os.path.join(self.local_path, 'orbitals.fchk')
-        self.local_path_to_lj_file = os.path.join(self.local_path, 'lj.dat')
-        self.local_path_to_check_file = os.path.join(self.local_path, 'check.chk')
-        self.checkfile = checkfile
-        # parentheses don't play well in folder names:
-        species_name_for_remote_path = self.species_name.replace('(', '_').replace(')', '_')
-        self.remote_path = os.path.join('runs', 'ARC_Projects', self.project,
-                                        species_name_for_remote_path, conformer_folder, self.job_name)
-        self.submit = ''
-        self.input = ''
-        self.server_nodes = list()
         if job_num is None:
-            # this checks jon_num and not self.job_num on purpose
+            # this checks job_num and not self.job_num on purpose
             # if job_num was given, then don't save as initiated jobs, this is a restarted job
             self._write_initiated_job_to_csv_file()
 
@@ -780,20 +596,17 @@ $end
         ssh.send_command_to_server(command='mkdir -p {0}'.format(self.remote_path))
         remote_file_path = os.path.join(self.remote_path, input_filename[self.software])
         ssh.upload_file(remote_file_path=remote_file_path, file_string=self.input)
-        if self.software == 'onedmin':
-            # also create and upload a geometry file
-            local_geo_path = os.path.join(self.local_path, 'geo.xyz')
-            remote_geo_path = os.path.join(self.remote_path, 'geo.xyz')
-            with open(local_geo_path, 'w') as f:
-                f.write(self.xyz)
-            ssh.upload_file(remote_file_path=remote_geo_path, local_file_path=local_geo_path)
-            # also create and upload the molpro directives
-            remote_mx_path = os.path.join(self.remote_path, 'm.x')
-            ssh.upload_file(remote_file_path=remote_mx_path, file_string=input_files['onedmin.molpro.x'])
-            remote_qcmol_path = os.path.join(self.remote_path, 'qc.mol')
-            ssh.upload_file(remote_file_path=remote_qcmol_path, file_string=input_files['onedmin.qc.mol'])
-            # make the m.x file executable
-            ssh.send_command_to_server(command='chmod +x m.x', remote_path=self.remote_path)
+        for up_file in self.additional_files_to_upload:
+            if up_file['source'] == 'path':
+                local_file_path = up_file['local']
+            elif up_file['source'] == 'input_files':
+                local_file_path = input_files[up_file['local']]
+            else:
+                raise JobError('Unclear file source for {0}. Should either be "path" of "input_files", '
+                               'got: {1}'.format(up_file['name'], up_file['source']))
+            ssh.upload_file(remote_file_path=up_file['remote'], local_file_path=local_file_path)
+            if up_file['make_x']:
+                ssh.send_command_to_server(command='chmod +x {0}'.format(up_file['name']), remote_path=self.remote_path)
         self.initial_time = ssh.get_last_modified_time(remote_file_path=remote_file_path)
 
     def _upload_check_file(self, local_check_file_path=None):
@@ -1180,3 +993,223 @@ $end
             time_delta = self.final_time - self.initial_time
             remainder = time_delta.microseconds > 5e5
             self.run_time = datetime.timedelta(seconds=time_delta.seconds + remainder)
+
+    def deduce_software(self):
+        """
+        Deduce the software to be used based on hard coded heuristics
+        """
+        if self.job_type == 'onedmin':
+            if 'onedmin' not in self.ess_settings.keys():
+                raise JobError('Could not find the OneDMin software to compute Lennard-Jones parameters.\n'
+                               'ess_settings is:\n{0}'.format(self.ess_settings))
+            self.software = 'onedmin'
+            if self.bath_gas is None:
+                logger.info('Setting bath gas for Lennard-Jones calculation to N2 for species {0}'.format(
+                    self.species_name))
+                self.bath_gas = 'N2'
+            elif self.bath_gas not in ['He', 'Ne', 'Ar', 'Kr', 'H2', 'N2', 'O2']:
+                raise JobError('Bath gas for OneDMin should be one of the following:\n'
+                               'He, Ne, Ar, Kr, H2, N2, O2.\nGot: {0}'.format(self.bath_gas))
+        elif self.job_type == 'orbitals':
+            # currently we only have a script to print orbitals on QChem,
+            # could/should definitely be elaborated to additional ESS
+            if 'qchem' not in self.ess_settings.keys():
+                logger.debug('Could not find the QChem software to compute molecular orbitals.\n'
+                             'ess_settings is:\n{0}'.format(self.ess_settings))
+                self.software = None
+            else:
+                self.software = 'qchem'
+        elif self.job_type == 'composite':
+            if 'gaussian' not in self.ess_settings.keys():
+                raise JobError('Could not find the Gaussian software to run the composite method {0}.\n'
+                               'ess_settings is:\n{1}'.format(self.method, self.ess_settings))
+            self.software = 'gaussian'
+        else:
+            # First check the levels_ess dictionary from settings.py:
+            for ess, phrase_list in levels_ess.items():
+                for phrase in phrase_list:
+                    if phrase in self.level_of_theory:
+                        print(phrase)
+                        self.software = ess.lower()
+            if self.software is None:
+                if self.job_type in ['conformer', 'opt', 'freq', 'optfreq', 'sp']:
+                    if 'b2' in self.method or 'dsd' in self.method or 'pw2' in self.method:
+                        # this is a double-hybrid (MP2) DFT method, use Gaussian
+                        if 'gaussian' not in self.ess_settings.keys():
+                            raise JobError('Could not find the Gaussian software to run the double-hybrid method {0}.\n'
+                                           'ess_settings is:\n{1}'.format(self.method, self.ess_settings))
+                        self.software = 'gaussian'
+                    if 'ccs' in self.method or 'cis' in self.method:
+                        if 'molpro' in self.ess_settings.keys():
+                            self.software = 'molpro'
+                        elif 'gaussian' in self.ess_settings.keys():
+                            self.software = 'gaussian'
+                        elif 'qchem' in self.ess_settings.keys():
+                            self.software = 'qchem'
+                    elif 'b3lyp' in self.method:
+                        if 'gaussian' in self.ess_settings.keys():
+                            self.software = 'gaussian'
+                        elif 'qchem' in self.ess_settings.keys():
+                            self.software = 'qchem'
+                        elif 'molpro' in self.ess_settings.keys():
+                            self.software = 'molpro'
+                    elif 'wb97xd' in self.method:
+                        if 'gaussian' not in self.ess_settings.keys():
+                            raise JobError('Could not find the Gaussian software to run {0}/{1}'.format(
+                                self.method, self.basis_set))
+                        self.software = 'gaussian'
+                    elif 'wb97x-d3' in self.method:
+                        if 'qchem' not in self.ess_settings.keys():
+                            raise JobError('Could not find the QChem software to run {0}/{1}'.format(
+                                self.method, self.basis_set))
+                        self.software = 'qchem'
+                    elif 'b97' in self.method or 'def2' in self.basis_set:
+                        if 'gaussian' in self.ess_settings.keys():
+                            self.software = 'gaussian'
+                        elif 'qchem' in self.ess_settings.keys():
+                            self.software = 'qchem'
+                    elif 'm062x' in self.method:  # without dash
+                        if 'gaussian' not in self.ess_settings.keys():
+                            raise JobError('Could not find the Gaussian software to run {0}/{1}'.format(
+                                self.method, self.basis_set))
+                        self.software = 'gaussian'
+                    elif 'm06-2x' in self.method:  # with dash
+                        if 'qchem' not in self.ess_settings.keys():
+                            raise JobError('Could not find the QChem software to run {0}/{1}'.format(
+                                self.method, self.basis_set))
+                        self.software = 'qchem'
+                elif self.job_type == 'scan':
+                    if 'wb97xd' in self.method:
+                        if 'gaussian' not in self.ess_settings.keys():
+                            raise JobError('Could not find the Gaussian software to run {0}/{1}'.format(
+                                self.method, self.basis_set))
+                        self.software = 'gaussian'
+                    elif 'wb97x-d3' in self.method:
+                        if 'qchem' not in self.ess_settings.keys():
+                            raise JobError('Could not find the QChem software to run {0}/{1}'.format(
+                                self.method, self.basis_set))
+                        self.software = 'qchem'
+                    elif 'b3lyp' in self.method:
+                        if 'gaussian' in self.ess_settings.keys():
+                            self.software = 'gaussian'
+                        elif 'qchem' in self.ess_settings.keys():
+                            self.software = 'qchem'
+                    elif 'b97' in self.method or 'def2' in self.basis_set:
+                        if 'gaussian' in self.ess_settings.keys():
+                            self.software = 'gaussian'
+                        elif 'qchem' in self.ess_settings.keys():
+                            self.software = 'qchem'
+                    elif 'm06-2x' in self.method:  # with dash
+                        if 'qchem' not in self.ess_settings.keys():
+                            raise JobError('Could not find the QChem software to run {0}/{1}'.format(
+                                self.method, self.basis_set))
+                        self.software = 'qchem'
+                    elif 'm062x' in self.method:  # without dash
+                        if 'gaussian' not in self.ess_settings.keys():
+                            raise JobError('Could not find the Gaussian software to run {0}/{1}'.format(
+                                self.method, self.basis_set))
+                        self.software = 'gaussian'
+                    if 'pv' in self.basis_set:
+                        if 'molpro' in self.ess_settings.keys():
+                            self.software = 'molpro'
+                        elif 'gaussian' in self.ess_settings.keys():
+                            self.software = 'gaussian'
+                        elif 'qchem' in self.ess_settings.keys():
+                            self.software = 'qchem'
+                elif self.job_type in ['gsm', 'irc']:
+                    if 'gaussian' not in self.ess_settings.keys():
+                        raise JobError('Could not find the Gaussian software to run {0}'.format(self.job_type))
+                    self.software = 'gaussian'
+            if self.software is None:
+                # if still no software was determined, just try by order, if exists
+                logger.error('job_num: {0}'.format(self.job_num))
+                logger.error('ess_trsh_methods: {0}'.format(self.ess_trsh_methods))
+                logger.error('trsh: {0}'.format(self.trsh))
+                logger.error('job_type: {0}'.format(self.job_type))
+                logger.error('job_name: {0}'.format(self.job_name))
+                logger.error('level_of_theory: {0}'.format(self.level_of_theory))
+                logger.error('software: {0}'.format(self.software))
+                logger.error('method: {0}'.format(self.method))
+                logger.error('basis_set: {0}'.format(self.basis_set))
+                logger.error('Could not determine software for job {0}'.format(self.job_name))
+                if 'gaussian' in self.ess_settings.keys():
+                    logger.error('Setting it to Gaussian')
+                    self.software = 'gaussian'
+                elif 'orca' in self.ess_settings.keys():
+                    logger.error('Setting it to Orca')
+                    self.software = 'orca'
+                elif 'qchem' in self.ess_settings.keys():
+                    logger.error('Setting it to QChem')
+                    self.software = 'qchem'
+                elif 'molpro' in self.ess_settings.keys():
+                    logger.error('Setting it to Molpro')
+                    self.software = 'molpro'
+
+    def set_cpu_and_mem(self, memory):
+        """
+        Set the number of cpu's and the job's memory
+        """
+        self.cpus = servers[self.server].get('cpus', 8)  # set to 8 by default
+        self.mem_per_cpu = memory * 1000 / self.cpus  # The `#SBATCH --mem-per-cpu` directive is in MB
+        max_mem = servers[self.server].get('memory', None)  # max memory per node
+        if max_mem is not None and memory > max_mem * 0.9:
+            logger.warning('The memory for job {0} using {1} ({2} GB) exceeds 90% of the the maximum node memory on '
+                           '{3}. Setting it to 90% * {4} GB.'.format(self.job_name, self.software,
+                                                                     memory, self.server, max_mem))
+            memory = 0.9 * max_mem
+        self.memory_gb = memory  # store the memory in GB for troubleshooting (when re-running the job)
+        if self.software == 'molpro':
+            # Molpro's memory is per cpu and in MW (mega word; 1 MW ~= 8 MB; 1 GB = 128 MW)
+            self.memory = memory * 128 / self.cpus
+        if self.software == 'terachem':
+            # TeraChem's memory is per cpu and in MW (mega word; 1 MW ~= 8 MB; 1 GB = 128 MW)
+            self.memory = memory * 128 / self.cpus
+        elif self.software == 'gaussian':
+            # Gaussian's memory is in MB, total for all cpus
+            self.memory = memory * 1000
+        elif self.software == 'orca':
+            # Orca's memory is per cpu and in MB
+            self.memory = memory * 1000 / self.cpus
+        elif self.software == 'qchem':
+            pass  # QChem manages its memory automatically, for now ARC will not intervene
+            # see http://www.q-chem.com/qchem-website/manual/qchem44_manual/CCparallel.html
+
+    def set_file_paths(self):
+        """
+        Set local and remote job file paths.
+        """
+        conformer_folder = '' if self.conformer < 0 else os.path.join('conformers', str(self.conformer))
+        folder_name = 'TSs' if self.is_ts else 'Species'
+        self.local_path = os.path.join(self.project_directory, 'calcs', folder_name,
+                                       self.species_name, conformer_folder, self.job_name)
+        self.local_path_to_output_file = os.path.join(self.local_path, 'output.out')
+        self.local_path_to_orbitals_file = os.path.join(self.local_path, 'orbitals.fchk')
+        self.local_path_to_lj_file = os.path.join(self.local_path, 'lj.dat')
+        self.local_path_to_check_file = os.path.join(self.local_path, 'check.chk')
+
+        # parentheses don't play well in folder names:
+        species_name_for_remote_path = self.species_name.replace('(', '_').replace(')', '_')
+        self.remote_path = os.path.join('runs', 'ARC_Projects', self.project,
+                                        species_name_for_remote_path, conformer_folder, self.job_name)
+
+        self.additional_files_to_upload = list()
+        # self.additional_files_to_upload is a list of dictionaries, each with the following keys:
+        # 'name', 'source', 'local', and 'remote'.
+        # If 'source' = 'path', then the value in 'local' is treated as a file path.
+        # If 'source' = 'input_files', then the value in 'local' will be taken from the respective entry in inputs.py
+        # If 'make_x' is True, the file will be made executable.
+        if self.job_type == 'onedmin':
+            if self.testing and not os.path.isdir(self.local_path):
+                os.makedirs(self.local_path)
+            with open(os.path.join(self.local_path, 'geo.xyz'), 'w') as f:
+                f.write(self.xyz)
+            self.additional_files_to_upload.append({'name': 'geo', 'source': 'path', 'make_x': False,
+                                                    'local': 'onedmin.molpro.x',
+                                                    'remote': os.path.join(self.remote_path, 'geo.xyz')})
+            # make the m.x file executable
+            self.additional_files_to_upload.append({'name': 'm.x', 'source': 'input_files', 'make_x': True,
+                                                    'local': 'onedmin.molpro.x',
+                                                    'remote': os.path.join(self.remote_path, 'm.x')})
+            self.additional_files_to_upload.append({'name': 'qc.mol', 'source': 'input_files', 'make_x': False,
+                                                    'local': 'onedmin.qc.mol',
+                                                    'remote': os.path.join(self.remote_path, 'qc.mol')})
