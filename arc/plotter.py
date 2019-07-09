@@ -33,10 +33,58 @@ from arc.species.species import ARCSpecies
 from arc.species.converter import get_xyz_matrix, rdkit_conf_from_mol, molecules_from_xyz
 from arc.arc_exceptions import InputError
 
-
 ##################################################################
 
 logger = get_logger()
+
+
+def draw_structure(xyz=None, species=None, project_directory=None, save_only=False, method='show_sticks'):
+    """
+    A helper function for drawing a molecular structure using either show_sticks or draw_3d.
+
+    Args:
+        xyz (str, unicode, optional): The xyz coordinates to plot in string format.
+        species (ARCSpecies, optional): A species from which to extract the xyz coordinates to plot.
+        project_directory (str, unicode, optional): A directory for saving the image (only supported for draw_3d).
+        save_only (bool, optional): whether to only save an image without displaying it. True to no save.
+        method (str, unicode, optional): THe method to use, either show_sticks or draw_3d.
+    """
+    success = False
+    if method == 'show_sticks':
+        try:
+            success = show_sticks(xyz=xyz, species=species, project_directory=project_directory)
+        except (IndexError, InputError):
+            pass
+    if not success or method == 'draw_3d':
+        draw_3d(xyz=xyz, species=species, project_directory=project_directory, save_only=save_only)
+
+
+def show_sticks(xyz=None, species=None, project_directory=None):
+    """
+    Draws the molecule in a "sticks" style according to the supplied xyz coordinates
+    Returns whether successful of not
+    If successful, save an image using draw_3d
+    """
+    xyz = check_xyz_species_for_drawing(xyz, species)
+    coordinates = get_xyz_matrix(xyz)[0]
+    if species is None:
+        s_mol, b_mol = molecules_from_xyz(xyz)
+        mol = b_mol if b_mol is not None else s_mol
+    else:
+        mol = species.mol
+    try:
+        rd_mol = rdkit_conf_from_mol(mol, coordinates)[1]
+    except ValueError:
+        return False
+    mb = Chem.MolToMolBlock(rd_mol)
+    p = p3D.view(width=400, height=400)
+    p.addModel(mb, 'sdf')
+    p.setStyle({'stick': {}})
+    # p.setBackgroundColor('0xeeeeee')
+    p.zoomTo()
+    p.show()
+    draw_3d(xyz=xyz, species=species, project_directory=project_directory, save_only=True)
+    return True
 
 
 def draw_3d(xyz=None, species=None, project_directory=None, save_only=False):
@@ -62,42 +110,6 @@ def draw_3d(xyz=None, species=None, project_directory=None, save_only=False):
         if not os.path.exists(geo_path):
             os.makedirs(geo_path)
         ase_write(filename=os.path.join(geo_path, 'geometry.png'), images=ase_mol, scale=100)
-
-
-def show_sticks(xyz=None, species=None, project_directory=None):
-    """
-    Draws the molecule in a "sticks" style according to the supplied xyz coordinates
-    Returns whether successful of not
-    If successful, save an image using draw_3d
-    """
-    xyz = check_xyz_species_for_drawing(xyz, species)
-    coordinates, _, _, _, _ = get_xyz_matrix(xyz)
-    s_mol, b_mol = molecules_from_xyz(xyz)
-    mol = b_mol if b_mol is not None else s_mol
-    try:
-        _, rd_mol, _ = rdkit_conf_from_mol(mol, coordinates)
-    except ValueError:
-        return False
-    mb = Chem.MolToMolBlock(rd_mol)
-    p = p3D.view(width=400, height=400)
-    p.addModel(mb, 'sdf')
-    p.setStyle({'stick': {}})
-    # p.setBackgroundColor('0xeeeeee')
-    p.zoomTo()
-    p.show()
-    draw_3d(xyz=xyz, species=species, project_directory=project_directory, save_only=True)
-    return True
-
-
-def check_xyz_species_for_drawing(xyz, species):
-    """A helper function to avoid repetitive code"""
-    if species is not None and xyz is None:
-        xyz = xyz if xyz is not None else species.final_xyz
-    if species is not None and not isinstance(species, ARCSpecies):
-        raise InputError('Species must be an ARCSpecies instance. Got {0}.'.format(type(species)))
-    if species is not None and species.final_xyz is None:
-        raise InputError('Species {0} has an empty final_xyz attribute.'.format(species.label))
-    return xyz
 
 
 def plot_3d_mol_as_scatter(xyz, path=None, plot_h=True, show_plot=True):
@@ -144,6 +156,17 @@ def plot_3d_mol_as_scatter(xyz, path=None, plot_h=True, show_plot=True):
     if path is not None:
         image_path = os.path.join(path, "scattered_balls_structure.png")
         plt.savefig(image_path, bbox_inches='tight')
+
+
+def check_xyz_species_for_drawing(xyz, species):
+    """A helper function to avoid repetitive code"""
+    if species is not None and xyz is None:
+        xyz = xyz if xyz is not None else species.final_xyz
+    if species is not None and not isinstance(species, ARCSpecies):
+        raise InputError('Species must be an ARCSpecies instance. Got {0}.'.format(type(species)))
+    if species is not None and species.final_xyz is None:
+        raise InputError('Species {0} has an empty final_xyz attribute.'.format(species.label))
+    return xyz
 
 
 def plot_rotor_scan(angle, v_list, path=None, pivots=None, comment=''):
