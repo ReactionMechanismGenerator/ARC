@@ -76,7 +76,7 @@ class TestScheduler(unittest.TestCase):
         self.sched1.species_dict[label].conformers = [None, None]
         self.sched1.parse_conformer_energy(job=self.job1, label=label, i=0)
         self.sched1.parse_conformer_energy(job=self.job2, label=label, i=1)
-        expecting = [-251596443.5088726, -254221943.3698632]
+        expecting = [-251596.4435088726, -254221.9433698632]
         self.assertEqual(self.sched1.species_dict[label].conformer_energies, expecting)
         self.sched1.species_dict[label].conformers[0] = parser.parse_xyz_from_file(self.job1.local_path_to_output_file)
         self.sched1.species_dict[label].conformers[1] = parser.parse_xyz_from_file(self.job2.local_path_to_output_file)
@@ -100,6 +100,7 @@ H      -1.16566701    0.32023496   -0.81630508"""
         self.assertTrue('Relative Energy:' in lines[11])
         self.assertEqual(lines[15][0], 'N')
 
+        self.sched1.output['C2H6'] = {'status': ''}  # otherwise confs won't be generated due to the presence of 'geo'
         self.sched1.run_conformer_jobs()
         self.sched1.save_conformers_file(label='C2H6')
         c2h6_conf_path = os.path.join(self.sched1.project_directory, 'output', 'Species', 'C2H6', 'geometry',
@@ -109,7 +110,7 @@ H      -1.16566701    0.32023496   -0.81630508"""
             lines = f.readlines()
         self.assertEqual(lines[1][0], 'C')
         self.assertEqual(lines[9], '\n')
-        self.assertEqual(lines[17][0], 'H')
+        self.assertEqual(lines[10], 'SMILES: CC\n')
 
     def test_check_negative_freq(self):
         """Test the check_negative_freq() method"""
