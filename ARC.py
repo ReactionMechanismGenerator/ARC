@@ -10,7 +10,8 @@ import argparse
 import os
 import logging
 
-from arc.main import ARC, read_file
+from arc.main import ARC
+from arc.common import read_yaml_file
 
 ################################################################################
 
@@ -51,7 +52,7 @@ def main():
     # Parse the command-line arguments (requires the argparse module)
     args = parse_command_line_arguments()
     input_file = args.file
-    input_dict = read_file(input_file)
+    input_dict = read_yaml_file(input_file)
     project_directory = os.path.abspath(os.path.dirname(args.file))
     try:
         input_dict['project']
