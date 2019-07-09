@@ -11,7 +11,7 @@ sorted in a dictionary with server names as keys
 
 submit_scripts = {
     'c3ddb': {
-        # Gaussian09
+        # Gaussian 09
         'gaussian': """#!/bin/bash -l
 #SBATCH -p defq
 #SBATCH -J {name}
@@ -99,7 +99,7 @@ rm -rf $WorkDir
     },
 
     'rmg': {
-        # Gaussian16
+        # Gaussian 16
         'gaussian': """#!/bin/bash -l
 #SBATCH -p long
 #SBATCH -J {name}
@@ -148,7 +148,6 @@ rm -rf $WorkDir
 #SBATCH -n {cpus}
 #SBATCH --time={t_max}
 #SBATCH --mem-per-cpu={mem_per_cpu}
-#SBATCH -x node07, node05
 
 export PATH=/opt/molpro/molprop_2015_1_linux_x86_64_i8/bin:$PATH
 
@@ -176,10 +175,28 @@ cp geometry*.* $SubmitDir/
 rm -rf $sdir
 
 """,
+        # Gromacs
+        'gromacs': """#!/bin/bash -l
+#SBATCH -p long
+#SBATCH -J {name}
+#SBATCH -N 1
+#SBATCH --time={t_max}
+
+echo "============================================================"
+echo "Job ID : $SLURM_JOB_ID"
+echo "Job Name : $SLURM_JOB_NAME"
+echo "Starting on : $(date)"
+echo "Running on node : $SLURMD_NODENAME"
+echo "Current directory : $(pwd)"
+echo "============================================================"
+
+python mdconf.py -s {size}
+
+""",
     },
 
     'pharos': {
-        # Gaussian16
+        # Gaussian 16
         'gaussian': """#!/bin/bash -l
 
 #$ -N {name}
@@ -204,7 +221,7 @@ g16 input.gjf
 rm -r /scratch/{un}/{name}
 
 """,
-        # Gaussian03
+        # Gaussian 03
         'gaussian03_pharos': """#!/bin/bash -l
 
 #$ -N {name}
@@ -275,8 +292,9 @@ sdir=/scratch/{un}
 mkdir -p /scratch/{un}/qlscratch
 
 molpro -d $sdir -n {cpus} input.in
+
 """,
-        # oneDMin
+        # OneDMin
         'onedmin': """#! /bin/bash -l
 
 #$ -N {name}
@@ -295,6 +313,7 @@ mkdir -p /scratch/{un}/onedmin
 cd $WorkDir
 
 ~/auto1dmin/exe/auto1dmin.x < input.in > output.out
+
 """,
     }
 }
