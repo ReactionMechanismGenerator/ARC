@@ -21,8 +21,8 @@ from arkane.statmech import assign_frequency_scale_factor
 import arc.rmgdb as rmgdb
 from arc.settings import arc_path, default_levels_of_theory, servers, valid_chars, default_job_types
 from arc.scheduler import Scheduler
-from arc.common import VERSION, read_file, time_lapse, check_ess_settings, initialize_log, log_footer, get_logger,\
-    save_dict_file
+from arc.common import VERSION, read_yaml_file, time_lapse, check_ess_settings, initialize_log, log_footer, get_logger,\
+    save_yaml_file
 from arc.arc_exceptions import InputError, SettingsError, SpeciesError
 from arc.species.species import ARCSpecies
 from arc.reaction import ARCReaction
@@ -78,6 +78,7 @@ class ARC(object):
     `ess_settings`         ``dict``   A dictionary of available ESS (keys) and a corresponding server list (values)
     `initial_trsh`         ``dict``   Troubleshooting methods to try by default. Keys are ESS software, values are trshs
     't0'                   ``float``  Initial time when the project was spawned
+    `confs_to_dft`         ``int``    The number of lowest MD conformers to DFT at the conformers_level.
     `execution_time`       ``str``    Overall execution time
     `lib_long_desc`        ``str``    A multiline description of levels of theory for the outputted RMG libraries
     `running_jobs`         ``dict``   A dictionary of jobs submitted in a precious ARC instance, used for restarting ARC
@@ -103,7 +104,7 @@ class ARC(object):
                  ts_guess_level='', use_bac=True, job_types=None, model_chemistry='', initial_trsh=None, t_min=None,
                  t_max=None, t_count=None, verbose=logging.INFO, project_directory=None, max_job_time=120,
                  allow_nonisomorphic_2d=False, job_memory=14, ess_settings=None, bath_gas=None,
-                 adaptive_levels=None, freq_scale_factor=None, calc_freq_factor=True):
+                 adaptive_levels=None, freq_scale_factor=None, calc_freq_factor=True, confs_to_dft=5):
         self.__version__ = VERSION
         self.verbose = verbose
         self.output = dict()
@@ -128,6 +129,7 @@ class ARC(object):
             self.job_types = job_types
             self.initialize_job_types()
             self.bath_gas = bath_gas
+            self.confs_to_dft = confs_to_dft
             self.adaptive_levels = adaptive_levels
             self.project_directory = project_directory if project_directory is not None\
                 else os.path.join(arc_path, 'Projects', self.project)
@@ -399,6 +401,7 @@ class ARC(object):
         restart_dict['allow_nonisomorphic_2d'] = self.allow_nonisomorphic_2d
         restart_dict['ess_settings'] = self.ess_settings
         restart_dict['job_memory'] = self.memory
+        restart_dict['confs_to_dft'] = self.confs_to_dft
         return restart_dict
 
     def from_dict(self, input_dict, project=None, project_directory=None):
@@ -408,7 +411,7 @@ class ARC(object):
         in the restart dictionary.
         """
         if isinstance(input_dict, (str, unicode)):
-            input_dict = read_file(input_dict)
+            input_dict = read_yaml_file(input_dict)
         if project is None and 'project' not in input_dict:
             raise InputError('A project name must be given')
         self.project = project if project is not None else input_dict['project']
@@ -424,6 +427,7 @@ class ARC(object):
         self.max_job_time = input_dict['max_job_time'] if 'max_job_time' in input_dict else self.max_job_time
         self.memory = input_dict['job_memory'] if 'job_memory' in input_dict else self.memory
         self.bath_gas = input_dict['bath_gas'] if 'bath_gas' in input_dict else None
+        self.confs_to_dft = input_dict['confs_to_dft'] if 'confs_to_dft' in input_dict else 5
         self.adaptive_levels = input_dict['adaptive_levels'] if 'adaptive_levels' in input_dict else None
         self.allow_nonisomorphic_2d = input_dict['allow_nonisomorphic_2d']\
             if 'allow_nonisomorphic_2d' in input_dict else False
@@ -615,7 +619,7 @@ class ARC(object):
         if not os.path.isdir(base_path):
             os.makedirs(base_path)
         logger.info('\n\nWriting input file to {0}'.format(path))
-        save_dict_file(path=path, restart_dict=self.restart_dict)
+        save_yaml_file(path=path, content=self.restart_dict)
 
     def execute(self):
         """Execute ARC"""
@@ -644,7 +648,7 @@ class ARC(object):
                                    restart_dict=self.restart_dict, project_directory=self.project_directory,
                                    max_job_time=self.max_job_time, allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
                                    memory=self.memory, orbitals_level=self.orbitals_level,
-                                   adaptive_levels=self.adaptive_levels)
+                                   adaptive_levels=self.adaptive_levels, confs_to_dft=self.confs_to_dft)
 
         self.save_project_info_file()
 
@@ -751,7 +755,7 @@ class ARC(object):
                         and self.use_bac:
                     logger.info('\n\n')
                     logger.warning('Could not determine appropriate Model Chemistry to be used in Arkane for '
-                                   'thermochemical parameter calculations. Not using atom energy corrections and '
+                                   'thermochemical parameter calculations.\nNot using atom energy corrections and '
                                    'bond additivity corrections!\n\n')
                     self.use_bac = False
                 elif sp_level not in ['m06-2x/cc-pvtz', 'g3', 'm08so/mg3s*', 'klip_1', 'klip_2', 'klip_3', 'klip_2_cc',
