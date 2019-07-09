@@ -76,7 +76,7 @@ default_job_types = {'conformers': True,      # defaults to True if not specifie
                      }
 
 # List here (complete or partial) phrases of methods or basis sets you'd like to associate to specific ESS
-# Avoid ascribing the same phrase to more than one server, this may cause undeterministic assignment of software
+# Avoid ascribing the same phrase to more than one software, this may cause undeterministic assignment of software
 # Format is levels_ess = {ess: ['phrase1', 'phrase2'], ess2: ['phrase3', 'phrase3']}
 levels_ess = {
     'gaussian': ['b3lyp', 'm062x'],
@@ -112,6 +112,7 @@ output_filename = {'gaussian': 'input.log',
                    'qchem': 'output.out',
                    'molpro': 'input.out',
                    'onedmin': 'output.out',
+                   'gromacs': 'output.yml'
                    }
 
 default_levels_of_theory = {'conformer': 'b97d3/6-31+g(d,p)',
