@@ -10,7 +10,7 @@ import unittest
 import os
 import time
 
-from arc.common import read_file, get_git_commit, time_lapse, check_ess_settings
+from arc.common import read_yaml_file, get_git_commit, time_lapse, check_ess_settings
 from arc.settings import arc_path, servers
 from arc.arc_exceptions import InputError, SettingsError
 
@@ -22,10 +22,10 @@ class TestARC(unittest.TestCase):
     Contains unit tests for ARC's common module
     """
 
-    def test_read_file(self):
-        """Test the read_file() function"""
+    def test_read_yaml_file(self):
+        """Test the read_yaml_file() function"""
         restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart(H,H2O2,N2H3,CH3CO2).yml')
-        input_dict = read_file(restart_path)
+        input_dict = read_yaml_file(restart_path)
         self.assertIsInstance(input_dict, dict)
         self.assertTrue('reactions' in input_dict)
         self.assertTrue('freq_level' in input_dict)
@@ -34,7 +34,7 @@ class TestARC(unittest.TestCase):
         self.assertTrue('running_jobs' in input_dict)
 
         with self.assertRaises(InputError):
-            read_file('nopath')
+            read_yaml_file('nopath')
 
     def test_get_git_commit(self):
         """Test the get_git_commit() function"""
