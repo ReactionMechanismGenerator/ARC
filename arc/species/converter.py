@@ -10,13 +10,14 @@ import os
 import numpy as np
 
 from rdkit import Chem
+from rdkit.Chem import rdMolTransforms as rdMT
 import pybel
 
 from rmgpy.species import Species
 from rmgpy.molecule.molecule import Atom, Bond, Molecule
 from rmgpy.molecule.element import getElement
 from rmgpy.exceptions import AtomTypeError
-from arkane.common import symbol_by_number
+from arkane.common import symbol_by_number, get_element_mass
 
 from arc.common import get_logger
 from arc.arc_exceptions import SpeciesError, SanitizationError, InputError
@@ -27,7 +28,7 @@ from arc.species.xyz_to_2d import MolGraph
 logger = get_logger()
 
 
-def get_xyz_string(coord, mol=None, number=None, symbol=None):
+def get_xyz_string(coords, mol=None, numbers=None, symbols=None):
     """
     Convert list of lists xyz form:
     [[0.6616514836, 0.4027481525, -0.4847382281],
@@ -49,12 +50,15 @@ def get_xyz_string(coord, mol=None, number=None, symbol=None):
     `xyz` is an array of arrays, as shown in the example above.
     This function isn't defined as a method of ARCSpecies since it is also used when parsing opt geometry in Scheduler
     """
+    if isinstance(coords, (str, unicode)):
+        logger.debug('Cannot convert string format xyz into a string...')
+        return coords
     result = ''
-    if symbol is not None:
-        elements = symbol
-    elif number is not None:
+    if symbols is not None:
+        elements = symbols
+    elif numbers is not None:
         elements = []
-        for num in number:
+        for num in numbers:
             elements.append(getElement(int(num)).symbol)
     elif mol is not None:
         elements = []
@@ -62,7 +66,7 @@ def get_xyz_string(coord, mol=None, number=None, symbol=None):
             elements.append(atom.element.symbol)
     else:
         raise ValueError("Must have either an RMG:Molecule object input as `mol`, or atomic numbers / symbols.")
-    for i, coordinate in enumerate(coord):
+    for i, coordinate in enumerate(coords):
         result += elements[i] + ' ' * (4 - len(elements[i]))
         for c in coordinate:
             result += '{0:14.8f}'.format(c)
@@ -87,26 +91,36 @@ def get_xyz_matrix(xyz):
     [-2.2115796924, -0.4529256762, 0.4144516252],
     [-1.8113671395, -0.3268900681, -1.1468957003]]
 
-    Returns xyz as well as atom symbols, x, y, and z separately
+    Args:
+        xyz (str, unicode): The xyz coordinates to conver.
+
+    Returns:
+        list: Array-style coordinates.
+        list: Chemical symbols of the elements in xyz, order preserved.
+        list: X axis values.
+        list: Y axis values.
+        list: Z axis values.
     """
+    if not isinstance(xyz, (str, unicode)):
+        raise InputError('Can only convert sting or unicode to list, got: {0}'.format(xyz))
     xyz = standardize_xyz_string(xyz)
-    x, y, z, symbols = [], [], [], []
+    x, y, z, symbols = list(), list(), list(), list()
     for line in xyz.split('\n'):
         if line:
             line_split = line.split()
             if len(line_split) != 4:
-                raise InputError('Expecting each line in an xyz string to have 4 elements, e.g.:\n'
-                                 'C    0.1000    0.2000   -0.3000\nbut got {0} elements:\n{1}'.format(
+                raise InputError('Expecting each line in an xyz string to have 4 values, e.g.:\n'
+                                 'C    0.1000    0.2000   -0.3000\nbut got {0} values:\n{1}'.format(
                                   len(line_split), line))
             atom, xx, yy, zz = line.split()
             x.append(float(xx))
             y.append(float(yy))
             z.append(float(zz))
             symbols.append(atom)
-    xyz = []
+    coords = list()
     for i, _ in enumerate(x):
-        xyz.append([x[i], y[i], z[i]])
-    return xyz, symbols, x, y, z
+        coords.append([x[i], y[i], z[i]])
+    return coords, symbols, x, y, z
 
 
 def xyz_string_to_xyz_file_format(xyz, comment=''):
@@ -123,9 +137,9 @@ def xyz_string_to_xyz_file_format(xyz, comment=''):
 
 def standardize_xyz_string(xyz):
     """
-    A helper function to correct xyz string format input
+    A helper function to correct xyz string format input.
     Usually empty lines are added by the user either in the beginning or the end,
-    here we remove them along with other common issues
+    here we remove them along with other common issues.
     """
     xyz = os.linesep.join([s.lstrip() for s in xyz.splitlines() if s and any(c != ' ' for c in s)])
     lines = xyz.splitlines()
@@ -168,8 +182,8 @@ def rmg_mol_from_inchi(inchi):
     try:
         rmg_mol = Molecule().fromInChI(str(inchi))
     except (AtomTypeError, ValueError) as e:
-        logger.warning('Got the following Error when trying to create an RMG Molecule object from '
-                       'InChI:\n{0}'.format(e.message))
+        logger.warning('Got the following Error when trying to create an RMG Molecule object from InChI:'
+                       '\n{0}'.format(e.message))
         return None
     return rmg_mol
 
@@ -297,7 +311,6 @@ def add_rads_by_atom_valance(mol):
             missing_electrons = 4 - atomic_orbitals
             if missing_electrons:
                 atom.radicalElectrons = missing_electrons
-            # print(mol.toAdjacencyList())
 
 
 def set_radicals_by_map(mol, radical_map):
@@ -393,33 +406,131 @@ def s_bonds_mol_from_xyz(xyz):
     return mol, coordinates
 
 
-def rdkit_conf_from_mol(mol, coordinates):
-    """A helper function generating an RDKit Conformer object from an RMG Molecule object
+def to_rdkit_mol(mol, remove_h=False, return_mapping=True, sanitize=True):
+    """
+    Convert a molecular structure to a RDKit rdmol object. Uses
+    `RDKit <http://rdkit.org/>`_ to perform the conversion.
+    Perceives aromaticity.
+    Adopted from rmgpy/molecule/converter.py
 
     Args:
-        mol (Molecule): The RMG Molecule object
-        coordinates (list, str, unicode): Array of xyz coordinates for the conformer
+        mol (Molecule): An RMG Molecule object for the conversion.
+        remove_h (bool, optional): Whether to remove hydrogen atoms from the molecule, True to remove.
+        return_mapping (bool, optional): Whether to return the atom mapping, True to return.
+        sanitize (bool, optional): Whether to sanitize the RDKit molecule, True to sanitize.
 
     Returns:
-        Conformer: An RDKit Conformer object
-        RDMol: An RDKit Molecule object
-        dict: Atom index map. Keys are atom indices in the RMG Molecule, values are atom indices in the RDKit Molecule
+        RDMol: An RDKit molecule object corresponding to the input RMG Molecule object.
+        dict: An atom mapping dictionary. Keys are Atom objects of 'mol', values are atom indices in the RDKit Mol.
     """
+    mol_copy = mol.copy(deep=True)
+    if not mol_copy.atomIDValid():
+        mol_copy.assignAtomIDs()
+    atom_id_map = dict()
+    for i, atom in enumerate(mol_copy.atoms):
+        atom_id_map[atom.id] = i
+    # Sort the atoms before converting to ensure output is consistent between different runs
+    mol_copy.sortAtoms()
+    atoms = mol_copy.vertices
+    rd_atom_indices = {}  # dictionary of RDKit atom indices
+    rdkitmol = Chem.rdchem.EditableMol(Chem.rdchem.Mol())
+    for index, atom in enumerate(mol_copy.vertices):
+        if atom.element.symbol == 'X':
+            rd_atom = Chem.rdchem.Atom('Pt')  # not sure how to do this with linear scaling when this might not be Pt
+        else:
+            rd_atom = Chem.rdchem.Atom(atom.element.symbol)
+        if atom.element.isotope != -1:
+            rd_atom.SetIsotope(atom.element.isotope)
+        rd_atom.SetNumRadicalElectrons(atom.radicalElectrons)
+        rd_atom.SetFormalCharge(atom.charge)
+        if atom.element.symbol == 'C' and atom.lonePairs == 1 and mol_copy.multiplicity == 1:
+            rd_atom.SetNumRadicalElectrons(2)
+        rdkitmol.AddAtom(rd_atom)
+        if not (remove_h and atom.symbol == 'H'):
+            rd_atom_indices[mol.atoms[atom_id_map[atom.id]]] = index
+
+    rd_bonds = Chem.rdchem.BondType
+    orders = {'S': rd_bonds.SINGLE, 'D': rd_bonds.DOUBLE, 'T': rd_bonds.TRIPLE, 'B': rd_bonds.AROMATIC,
+              'Q': rd_bonds.QUADRUPLE}
+    # Add the bonds
+    for atom1 in mol_copy.vertices:
+        for atom2, bond in atom1.edges.iteritems():
+            if bond.isHydrogenBond():
+                continue
+            index1 = atoms.index(atom1)
+            index2 = atoms.index(atom2)
+            if index1 < index2:
+                order_string = bond.getOrderStr()
+                order = orders[order_string]
+                rdkitmol.AddBond(index1, index2, order)
+
+    # Make editable mol and rectify the molecule
+    rdkitmol = rdkitmol.GetMol()
+    if sanitize:
+        Chem.SanitizeMol(rdkitmol)
+    if remove_h:
+        rdkitmol = Chem.RemoveHs(rdkitmol, sanitize=sanitize)
+    if return_mapping:
+        return rdkitmol, rd_atom_indices
+    return rdkitmol
+
+
+def rdkit_conf_from_mol(mol, coordinates):
+    """
+     Generate an RDKit Conformer object from an RMG Molecule object
+
+    Args:
+        mol (Molecule): The RMG Molecule object.
+        coordinates (list, str, unicode): The coordinates (in any format) of the conformer,
+                                          atoms must be ordered as in the molecule.
+
+    Returns:
+        Conformer: An RDKit Conformer object.
+        RDMol: An RDKit Molecule object.
+        dict: Atom index map. Keys are atom indices in the RMG Molecule, values are atom indices in the RDKit Molecule.
+    """
+    if coordinates is None or not coordinates:
+        raise InputError('Cannot process empty coordinates, got: {0}'.format(coordinates))
     if isinstance(coordinates[0], (str, unicode)) and isinstance(coordinates, list):
         raise InputError('The coordinates argument seem to be of wrong type. Got a list of strings:\n{0}'.format(
             coordinates))
     if isinstance(coordinates, (str, unicode)):
         coordinates = get_xyz_matrix(xyz=coordinates)[0]
-    rd_mol, rd_indices = mol.toRDKitMol(removeHs=False, returnMapping=True)
-    Chem.AllChem.EmbedMolecule(rd_mol)  # unfortunately, this mandatory embedding changes the coordinates
-    indx_map = dict()
+    rd_mol, rd_indices = to_rdkit_mol(mol=mol, remove_h=False, return_mapping=True)
+    Chem.AllChem.EmbedMolecule(rd_mol)
+    index_map = dict()
     for xyz_index, atom in enumerate(mol.atoms):  # generate an atom index mapping dictionary
-        rd_index = rd_indices[atom]
-        indx_map[xyz_index] = rd_index
+        index_map[xyz_index] = rd_indices[atom]
     conf = rd_mol.GetConformer(id=0)
-    for i in range(rd_mol.GetNumAtoms()):  # reset atom coordinates
-        conf.SetAtomPosition(indx_map[i], coordinates[i])
-    return conf, rd_mol, indx_map
+    for i in range(rd_mol.GetNumAtoms()):
+        conf.SetAtomPosition(index_map[i], coordinates[i])  # reset atom coordinates
+    return conf, rd_mol, index_map
+
+
+def set_rdkit_dihedrals(conf, rd_mol, index_map, rd_scan, deg_increment=None, deg_abs=None):
+    """
+    A helper function for setting dihedral angles
+    `conf` is the RDKit conformer with the current xyz information
+    `rd_mol` is the RDKit molecule
+    `indx_map` is an atom index mapping dictionary, keys are xyz_index, values are rd_index
+    `rd_scan` is the torsion scan atom indices corresponding to the RDKit conformer indices
+    Either `deg_increment` or `deg_abs` must be specified for the dihedral increment
+    Returns xyz in an array format ordered according to the map,
+    the elements in the xyz should be identified by the calling function from the context
+    """
+    if deg_increment is None and deg_abs is None:
+        raise SpeciesError('Cannot set dihedral without either a degree increment or an absolute degree')
+    if deg_increment is not None:
+        deg0 = rdMT.GetDihedralDeg(conf, rd_scan[0], rd_scan[1], rd_scan[2], rd_scan[3])  # get original dihedral
+        deg = deg0 + deg_increment
+    else:
+        deg = deg_abs
+    rdMT.SetDihedralDeg(conf, rd_scan[0], rd_scan[1], rd_scan[2], rd_scan[3], deg)
+    new_xyz = list()
+    for i in range(rd_mol.GetNumAtoms()):
+        new_xyz.append([conf.GetAtomPosition(index_map[i]).x, conf.GetAtomPosition(index_map[i]).y,
+                        conf.GetAtomPosition(index_map[i]).z])
+    return new_xyz
 
 
 def check_isomorphism(mol1, mol2, filter_structures=True):
@@ -439,3 +550,66 @@ def check_isomorphism(mol1, mol2, filter_structures=True):
     spc2 = Species(molecule=[mol2_copy])
     spc2.generate_resonance_structures(keep_isomorphic=False, filter_structures=filter_structures)
     return spc1.isIsomorphic(spc2)
+
+
+def get_center_of_mass(xyz=None, coords=None, symbols=None):
+    """
+    Get the center of mass of xyz coordinates.
+    Assumes arc.converter.standardize_xyz_string() was already called for xyz.
+    Note that xyz from ESS output is usually already centered at the center of mass (to some precision).
+
+    Args:
+        xyz (list, string, unicode): The xyz coordinates in a string.
+
+    Returns:
+        tuple: The center of mass coordinates.
+    """
+    if xyz is not None:
+        masses, coords = list(), list()
+        for line in xyz.splitlines():
+            if line.strip():
+                splits = line.split()
+                masses.append(get_element_mass(str(splits[0]))[0])
+                coords.append([float(splits[1]), float(splits[2]), float(splits[3])])
+    elif coords is not None and symbols is not None:
+        masses = [get_element_mass(str(symbol))[0] for symbol in symbols]
+    else:
+        raise InputError('Either xyz or coords and symbols must be given')
+    cm_x, cm_y, cm_z = 0, 0, 0
+    for coord, mass in zip(coords, masses):
+        cm_x += coord[0] * mass
+        cm_y += coord[1] * mass
+        cm_z += coord[2] * mass
+    cm_x /= sum(masses)
+    cm_y /= sum(masses)
+    cm_z /= sum(masses)
+    return cm_x, cm_y, cm_z
+
+
+def translate_to_center_of_mass(xyz=None, coords=None, symbols=None):
+    """
+    Translate coordinates to their center of mass.
+    Must give either xyz or coords along with symbols.
+
+    Args:
+        xyz (str, unicode, optional): A molecule's coordinates in string-format.
+        coords (list): A molecule's coordinates in array-format.
+        symbols (list): The matching elemental symbols for the coordinates.
+
+    Returns:
+        list or str or unicode: The translated coordinates in the input format.
+    """
+    if xyz is not None:
+        coords, symbols, _, _, _ = get_xyz_matrix(xyz)
+    if coords is None or symbols is None:
+        raise InputError('Could not translate coordinates to center of mass. Got coords = {0} and '
+                         'symbols = {1}.'.format(coords, symbols))
+    cm_x, cm_y, cm_z = get_center_of_mass(coords=coords, symbols=symbols)
+    x = [coord[0] - cm_x for coord in coords]
+    y = [coord[1] - cm_y for coord in coords]
+    z = [coord[2] - cm_z for coord in coords]
+    translated_coords = [[xi, yi, zi] for xi, yi, zi in zip(x, y, z)]
+    if xyz is not None:
+        return get_xyz_string(coords=translated_coords, symbols=symbols)
+    else:
+        return translated_coords
