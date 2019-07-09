@@ -6,6 +6,13 @@ This module contains classes which extend Exception for usage in the RMG module
 """
 
 
+class ConformerError(Exception):
+    """
+    An exception raised when generating conformers
+    """
+    pass
+
+
 class InputError(Exception):
     """
     An exception raised when parsing an input file for any module
