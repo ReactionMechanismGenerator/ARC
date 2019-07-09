@@ -118,8 +118,8 @@ def parse_xyz_from_file(path):
                 break
     elif 'out' in file_extension or 'log' in file_extension:
         log = determine_qm_software(fullpath=path)
-        coord, number, _ = log.loadGeometry()
-        xyz = get_xyz_string(coord=coord, number=number)
+        coords, number, _ = log.loadGeometry()
+        xyz = get_xyz_string(coords=coords, numbers=number)
     else:
         record = False
         for line in lines:
