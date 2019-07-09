@@ -22,16 +22,17 @@ from arkane.statmech import determine_qm_software
 from rmgpy.reaction import Reaction
 from rmgpy.exceptions import InputError as RMGInputError
 
-from arc.common import get_logger, save_dict_file
+from arc.common import get_logger, read_yaml_file, save_yaml_file, get_ordinal_indicator
 import arc.rmgdb as rmgdb
 from arc import plotter
 from arc import parser
 from arc.job.job import Job
-from arc.arc_exceptions import SpeciesError, SchedulerError, TSError
+from arc.arc_exceptions import SpeciesError, SchedulerError, TSError, SanitizationError
 from arc.job.ssh import SSHClient
 from arc.job.local import check_running_jobs_ids
 from arc.species.species import ARCSpecies, TSGuess, determine_rotor_symmetry
-from arc.species.converter import get_xyz_string, molecules_from_xyz, check_isomorphism
+from arc.species.converter import get_xyz_string, molecules_from_xyz, check_isomorphism, standardize_xyz_string
+import arc.species.conformers as conformers
 from arc.ts.atst import autotst
 from arc.settings import rotor_scan_resolution, inconsistency_ab, inconsistency_az, maximum_barrier, default_job_types,\
     servers
@@ -85,6 +86,7 @@ class Scheduler(object):
                                         isomorphic to the 2D graph representation
     `dont_gen_confs`        ``list``  A list of species labels for which conformer jobs were loaded from a restart file,
                                         and additional conformer generation should be avoided
+    `confs_to_dft`          ``int``   The number of lowest MD conformers to DFT at the conformers_level.
     `memory`                ``int``   The total allocated job memory in GB (14 by default)
     `job_types`             ``dict``  A dictionary of job types to execute. Keys are job types, values are boolean
     `bath_gas`              ``str``   A bath gas. Currently used in OneDMin to calc L-J parameters.
@@ -122,7 +124,8 @@ class Scheduler(object):
     def __init__(self, project, ess_settings, species_list, project_directory, composite_method='', conformer_level='',
                  opt_level='', freq_level='', sp_level='', scan_level='', ts_guess_level='', orbitals_level='',
                  adaptive_levels=None, rmgdatabase=None, job_types=None, initial_trsh=None, rxn_list=None, bath_gas=None,
-                 restart_dict=None, max_job_time=120, allow_nonisomorphic_2d=False, memory=14, testing=False):
+                 restart_dict=None, max_job_time=120, allow_nonisomorphic_2d=False, memory=14, testing=False,
+                 dont_gen_confs=None, confs_to_dft=5):
         self.rmgdb = rmgdatabase
         self.restart_dict = restart_dict
         self.species_list = species_list
@@ -139,7 +142,8 @@ class Scheduler(object):
         self.memory = memory
         self.bath_gas = bath_gas
         self.adaptive_levels = adaptive_levels
-        self.dont_gen_confs = list()
+        self.confs_to_dft = confs_to_dft
+        self.dont_gen_confs = dont_gen_confs or list()
         if self.restart_dict is not None:
             self.output = self.restart_dict['output']
             if 'running_jobs' in self.restart_dict:
@@ -331,11 +335,8 @@ class Scheduler(object):
                         if self.job_types['1d_rotors']:
                             # restart-related checks are performed in run_scan_jobs()
                             self.run_scan_jobs(species.label)
-                elif not self.species_dict[species.label].is_ts and self.job_types['conformers']\
-                        and 'geo' not in self.output[species.label]:
-                    self.species_dict[species.label].generate_conformers()
             else:
-                # Species is loaded from a YAML file
+                # Species is loaded from an Arkane YAML file (no need to execute any job)
                 self.output[species.label]['status'] = 'ALL converged'
                 if species.is_ts:
                     # This is a TS loaded from a YAML file
@@ -501,6 +502,47 @@ class Scheduler(object):
                                     opt_path=self.output[label]['geo'], bath_gas=job.bath_gas, opt_level=self.opt_level)
                         self.timer = False
                         break
+                    elif 'ff_param_fit' in job_name\
+                            and not self.job_dict[label]['ff_param_fit'][job_name].job_id in self.servers_jobs_ids:
+                        job = self.job_dict[label]['ff_param_fit'][job_name]
+                        successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
+                        mmff94_fallback = False
+                        if successful_server_termination and job.job_status[1] == 'done':
+                            # copy the fitting file to the species output folder
+                            ff_param_fit_path = os.path.join(self.project_directory, 'calcs', 'Species', label,
+                                                             'ff_param_fit')
+                            if not os.path.isdir(ff_param_fit_path):
+                                os.makedirs(ff_param_fit_path)
+                            ff_param_fit_path = os.path.join(ff_param_fit_path, 'gaussian.out')
+                            if os.path.isfile(job.local_path_to_output_file):
+                                shutil.copyfile(job.local_path_to_output_file, ff_param_fit_path)
+                                self.output[label]['status'] += 'ff_param_fit converged; '
+                                self.spawn_md_jobs(label)
+                            else:
+                                mmff94_fallback = True
+                        else:
+                            mmff94_fallback = True
+                        if mmff94_fallback:
+                            logger.error('Force field parameter fitting job in Gaussian failed. Generating standard '
+                                         'MMFF94 conformers instead of fitting a force field for species {0}, although '
+                                         'its force_field attribute was set to "fit".'.format(label))
+                            self.species_dict[label].force_field = 'MMFF94'
+                            self.species_dict[label].generate_conformers(confs_to_dft=self.confs_to_dft,
+                                                                         plot_path=os.path.join(self.project_directory,
+                                                                                                'output', 'Species',
+                                                                                                label, 'geometry',
+                                                                                                'conformers'))
+                            self.process_conformers(label)
+                        self.timer = False
+                        break
+                    elif 'gromacs' in job_name\
+                            and not self.job_dict[label]['gromacs'][job_name].job_id in self.servers_jobs_ids:
+                        job = self.job_dict[label]['gromacs'][job_name]
+                        successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
+                        if successful_server_termination:
+                            self.check_md_job(label=label, job=job)
+                        self.timer = False
+                        break
 
                 if self.species_dict[label].is_ts and not self.species_dict[label].ts_conf_spawned\
                         and not any([tsg.success is None for tsg in self.species_dict[label].ts_guesses]):
@@ -532,7 +574,7 @@ class Scheduler(object):
 
     def run_job(self, label, xyz, level_of_theory, job_type, fine=False, software=None, shift='', trsh='', memory=None,
                 conformer=-1, ess_trsh_methods=None, scan='', pivots=None, occ=None, scan_trsh='', scan_res=None,
-                max_job_time=None):
+                max_job_time=None, confs=None, radius=None):
         """
         A helper function for running (all) jobs
         """
@@ -542,7 +584,8 @@ class Scheduler(object):
         species = self.species_dict[label]
         memory = memory if memory is not None else self.memory
         checkfile = self.species_dict[label].checkfile  # defaults to None
-        if self.species_dict[label].most_stable_conformer is not None and job_type in ['opt', 'composite', 'optfreq']:
+        if self.species_dict[label].most_stable_conformer is not None and job_type in ['opt', 'composite', 'optfreq'] \
+                and self.species_dict[label].conformer_checkfiles:
             checkfile = self.species_dict[label].conformer_checkfiles[self.species_dict[label].most_stable_conformer]
         if self.adaptive_levels is not None:
             level_of_theory = self.determine_adaptive_level(original_level_of_theory=level_of_theory, job_type=job_type,
@@ -553,20 +596,18 @@ class Scheduler(object):
                   ess_trsh_methods=ess_trsh_methods, scan=scan, pivots=pivots, occ=occ, initial_trsh=self.initial_trsh,
                   project_directory=self.project_directory, max_job_time=max_job_time, scan_trsh=scan_trsh,
                   scan_res=scan_res, conformer=conformer, checkfile=checkfile, bath_gas=self.bath_gas,
-                  number_of_radicals=species.number_of_radicals)
+                  number_of_radicals=species.number_of_radicals, conformers=confs, radius=radius)
         if job.software is not None:
             if conformer < 0:
-                # this is NOT a conformer job
+                # this is NOT a conformer DFT job
                 self.running_jobs[label].append(job.job_name)  # mark as a running job
-                try:
-                    self.job_dict[label][job_type]
-                except KeyError:
-                    # Jobs of this type haven't been spawned for label, this could be a troubleshooting job
+                if job_type not in self.job_dict[label]:
+                    # Jobs of this type haven't been spawned for label
                     self.job_dict[label][job_type] = dict()
                 self.job_dict[label][job_type][job.job_name] = job
                 self.job_dict[label][job_type][job.job_name].run()
             else:
-                # Running a conformer job. Append differently to job_dict.
+                # Running a conformer DFT job. Append differently to job_dict.
                 self.running_jobs[label].append('conformer{0}'.format(conformer))  # mark as a running job
                 self.job_dict[label]['conformers'][conformer] = job  # save job object
                 self.job_dict[label]['conformers'][conformer].run()  # run the job
@@ -598,7 +639,7 @@ class Scheduler(object):
             self.timer = False
             job.write_completed_job_to_csv_file()
             logger.info('  Ending job {name} for {label} (run time: {time})'.format(name=job.job_name, label=label,
-                                                                                     time=job.run_time))
+                                                                                    time=job.run_time))
             if job.job_status[0] != 'done':
                 return False
             self.save_restart_dict()
@@ -614,44 +655,45 @@ class Scheduler(object):
 
     def run_conformer_jobs(self):
         """
-        Select the most stable conformer for each species by spawning opt jobs at the conformer level of theory.
-        The resulting conformer is saved in a <xyz matrix with element labels> format
-        in self.species_dict[species.label]['initial_xyz']
+        Select the most stable conformer for each species using molecular dynamics (force fields) and subsequently
+        spawning opt jobs at the conformer level of theory, usually a reasonable yet cheap DFT, e.g., b97d3/6-31+g(d,p).
+        The resulting conformer is saved in a string format xyz in the Species initial_xyz attribute.
         """
+        log_info_printed = False
         for label in self.unique_species_labels:
             if not self.species_dict[label].is_ts and 'opt converged' not in self.output[label]['status'] \
                     and 'opt' not in self.job_dict[label] and 'composite' not in self.job_dict[label] \
                     and all([e is None for e in self.species_dict[label].conformer_energies]) \
-                    and self.species_dict[label].number_of_atoms > 1 and label not in self.dont_gen_confs:
+                    and self.species_dict[label].number_of_atoms > 1 and label not in self.dont_gen_confs \
+                    and 'geo' not in self.output[label] \
+                    and (self.job_types['conformers'] or (not self.job_types['conformers']
+                                                          and self.species_dict[label].initial_xyz is None
+                                                          and self.species_dict[label].final_xyz is None
+                                                          and not self.species_dict[label].conformers)):
                 # This is not a TS, opt (/composite) did not converged nor running, and conformer energies were not set
-                self.save_conformers_file(label)
-                if self.species_dict[label].initial_xyz is None and self.species_dict[label].final_xyz is None \
-                        and not self.testing:
-                    if len(self.species_dict[label].conformers) > 1:
-                        self.job_dict[label]['conformers'] = dict()
-                        for i, xyz in enumerate(self.species_dict[label].conformers):
-                            self.run_job(label=label, xyz=xyz, level_of_theory=self.conformer_level,
-                                         job_type='conformer', conformer=i)
-                    elif len(self.species_dict[label].conformers) == 1:
-                        logger.info('Only one conformer is available for species {0}, '
-                                    'using it as initial xyz'.format(label))
-                        self.species_dict[label].initial_xyz = self.species_dict[label].conformers[0]
-                        if not self.composite_method:
-                            if self.job_types['opt']:
-                                self.run_opt_job(label)
-                            else:
-                                if self.job_types['freq']:
-                                    self.run_freq_job(label)
-                                if self.job_types['sp']:
-                                    self.run_sp_job(label)
-                                if self.job_types['1d_rotors']:
-                                    self.run_scan_jobs(label)
-                                if self.job_types['onedmin']:
-                                    self.run_onedmin_job(label)
-                                if self.job_types['orbitals']:
-                                    self.run_orbitals_job(label)
-                        else:
-                            self.run_composite_job(label)
+                # (and it's not in self.dont_gen_confs). Also, either 'conformers' are set to True in job_types,
+                # or they are set to False but the species has no 3D information. Generate conformers.
+                if not log_info_printed:
+                    logger.info('\nStarting (non-TS) species conformational analysis...\n')
+                    log_info_printed = True
+                if self.species_dict[label].force_field == 'fit':
+                    # first run a Gaussian blyp/svp/svpfit job for force field parameters fitting
+                    if self.species_dict[label].cheap_conformer is None:
+                        self.species_dict[label].get_cheap_conformer()
+                    self.run_force_field_fit_job(label)
+                else:
+                    if self.species_dict[label].force_field == 'cheap':
+                        # just embed in RDKit and use MMFF94 for opt and energies
+                        if self.species_dict[label].initial_xyz is None:
+                            self.species_dict[label].initial_xyz = self.species_dict[label].get_xyz()
+                    else:
+                        # run the combinatorial method w/o fitting a force field
+                        self.species_dict[label].generate_conformers(confs_to_dft=self.confs_to_dft,
+                                                                     plot_path=os.path.join(self.project_directory,
+                                                                                            'output', 'Species',
+                                                                                            label, 'geometry',
+                                                                                            'conformers'))
+                    self.process_conformers(label)
 
     def run_ts_conformer_jobs(self, label):
         """
@@ -805,13 +847,161 @@ class Scheduler(object):
             self.run_job(label=label, xyz=self.species_dict[label].final_xyz, job_type='onedmin',
                          level_of_theory='')
 
+    def run_force_field_fit_job(self, label):
+        """
+        Spawn a force field parameter fitting job (currently only Gaussian is supported for this task).
+        """
+        if self.species_dict[label].svpfit_output_file is not None\
+                and os.path.isfile(self.species_dict[label].svpfit_output_file):
+            # a force field parameter fit job was already spawned, use this file
+            ff_param_fit_path = os.path.join(self.project_directory, 'calcs', 'Species', label, 'ff_param_fit')
+            if not os.path.isdir(ff_param_fit_path):
+                os.makedirs(ff_param_fit_path)
+            ff_param_fit_path = os.path.join(ff_param_fit_path, 'gaussian.out')
+            shutil.copyfile(self.species_dict[label].svpfit_output_file, ff_param_fit_path)
+            self.output[label]['status'] += 'ff_param_fit converged; '
+            self.spawn_md_jobs(label)
+        elif 'gaussian' not in self.ess_settings:
+            logger.error('Cannot execute a force field parameter fitting job in Gaussian. Gaussian  is missing from '
+                         'the ess_settings dictionary. Generating standard MMFF94 conformers instead for '
+                         'species {0}, although its force_field attribute was set to "fit".'.format(label))
+            self.species_dict[label].force_field = 'MMFF94'
+            self.species_dict[label].generate_conformers(confs_to_dft=self.confs_to_dft,
+                                                         plot_path=os.path.join(self.project_directory, 'output',
+                                                                                'Species', label, 'geometry',
+                                                                                'conformers'))
+            self.process_conformers(label)
+        else:
+            if 'ff_param_fit' not in self.job_dict[label]:
+                self.run_job(label=label, xyz=self.species_dict[label].get_xyz(), job_type='ff_param_fit',
+                             level_of_theory='blyp/svp/svpfit')
+
+    def run_gromacs_job(self, label, confs):
+        """
+        Run a Gromacs MD job.
+
+        Args:
+            label (str, unicode): The species label.
+            confs (str, unicode): The path to a YAML file with array-format coordinates to optimize.
+        """
+        if 'gromacs' not in self.ess_settings:
+            logger.error('Cannot execute a Gromacs MD job without the Gromacs software')
+        else:
+            self.run_job(label=label, xyz=None, job_type='gromacs', level_of_theory='', confs=confs,
+                         radius=self.species_dict[label].radius)
+
+    def spawn_md_jobs(self, label, prev_conf_list=None, num_confs=None):
+        """
+        Embed conformers and run a molecular dynamics optimization using a fitted force field.
+        Then generate conformers using combinations of the detected torsion wells, and re-run until converging.
+
+        Args:
+            label (str, unicode): The species label.
+            prev_conf_list (list, optional): The previous conformers (entries are two length lists, not dicts).
+                                             If not given, a first Gromacs job will be spawned.
+            num_confs (int, optional): The number of conformers to generate.
+        """
+        if not self.species_dict[label].rotors_dict:
+            self.species_dict[label].determine_rotors()
+        torsions, tops = list(), list()
+        for rotor_dict in self.species_dict[label].rotors_dict.values():
+            torsions.append(rotor_dict['scan'])
+            tops.append(rotor_dict['top'])
+
+        if prev_conf_list is None:
+            # first time spawning MD jobs for this species
+            if self.species_dict[label].mol_list is not None:
+                self.species_dict[label].mol_list = [conformers.update_mol(mol)
+                                                     for mol in self.species_dict[label].mol_list]
+                number_of_heavy_atoms = len([atom for atom in self.species_dict[label].mol_list[0].atoms
+                                             if atom.isNonHydrogen()])
+            else:
+                xyz = self.species_dict[label].get_xyz()
+                number_of_heavy_atoms = 0
+                for line in xyz.splitlines():
+                    if line and line.split()[0] != 'H':
+                        number_of_heavy_atoms += 1
+            num_confs = num_confs\
+                or conformers.determine_number_of_conformers_to_generate(heavy_atoms=number_of_heavy_atoms,
+                                                                         torsion_num=len(torsions), label=label)
+            coords = list()
+            for mol in self.species_dict[label].mol_list:
+                # embed conformers (but don't optimize)
+                rd_mol, rd_index_map = conformers.embed_rdkit(mol, num_confs=num_confs, xyz=None)
+                for i in range(rd_mol.GetNumConformers()):
+                    conf, coord = rd_mol.GetConformer(i), list()
+                    for j in range(conf.GetNumAtoms()):
+                        pt = conf.GetAtomPosition(j)
+                        coord.append([pt.x, pt.y, pt.z])
+                    if rd_index_map is not None:
+                        coord = [coord[rd_index_map[j]] for j, _ in enumerate(coord)]  # reorder
+                    coords.append(coord)
+            embedded_confs_path = os.path.join(self.project_directory, 'calcs', 'Species', label,
+                                               'ff_param_fit', 'embedded_conformers.yml')  # list of lists
+            save_yaml_file(path=embedded_confs_path, content=coords)
+            self.run_gromacs_job(label, confs=embedded_confs_path)
+        else:
+            # a previous Gromacs job was submitted, generate specific conformers via deduce_new_conformers()
+            confs = list()
+            confs_path = os.path.join(self.project_directory, 'calcs', 'Species', label,
+                                      'ff_param_fit', 'conformers.yml')  # list of dicts
+            if os.path.isfile(confs_path):
+                confs = read_yaml_file(confs_path)
+            for prev_conf in prev_conf_list:
+                confs.append({'xyz': prev_conf[0], 'FF energy': prev_conf[1], 'source': 'Gromacs', 'index': len(confs)})
+            save_yaml_file(path=confs_path, content=confs)  # save for the next iteration and for archiving
+
+            confs = conformers.determine_dihedrals(confs, torsions)
+            new_conformers, _ = conformers.deduce_new_conformers(conformers=confs, torsions=torsions, tops=tops,
+                                                                 mol_list=self.species_dict[label].mol_list,
+                                                                 plot_path=False)
+            new_confs_path = os.path.join(self.project_directory, 'calcs', 'Species', label,
+                                          'ff_param_fit', 'new_conformers.yml')  # list of lists
+            coords = [new_conf['xyz'] for new_conf in new_conformers]
+            save_yaml_file(path=new_confs_path, content=coords)
+            self.run_gromacs_job(label, confs=new_confs_path)
+
+    def process_conformers(self, label):
+        """
+        Process the generated conformers and spawn additional (non-conformer) jobs as needed.
+        If more than one conformer is available, they will be optimized at the DFT conformer_level.
+        """
+        self.save_conformers_file(label)  # before DFT optimization
+        if self.species_dict[label].initial_xyz is None and self.species_dict[label].final_xyz is None \
+                and not self.testing:
+            if len(self.species_dict[label].conformers) > 1:
+                self.job_dict[label]['conformers'] = dict()
+                for i, xyz in enumerate(self.species_dict[label].conformers):
+                    self.run_job(label=label, xyz=xyz, level_of_theory=self.conformer_level,
+                                 job_type='conformer', conformer=i)
+            elif len(self.species_dict[label].conformers) == 1:
+                logger.info('Only one conformer is available for species {0}, '
+                            'using it as initial xyz'.format(label))
+                self.species_dict[label].initial_xyz = self.species_dict[label].conformers[0]
+                if not self.composite_method:
+                    if self.job_types['opt']:
+                        self.run_opt_job(label)
+                    else:
+                        if self.job_types['freq']:
+                            self.run_freq_job(label)
+                        if self.job_types['sp']:
+                            self.run_sp_job(label)
+                        if self.job_types['1d_rotors']:
+                            self.run_scan_jobs(label)
+                        if self.job_types['onedmin']:
+                            self.run_onedmin_job(label)
+                        if self.job_types['orbitals']:
+                            self.run_orbitals_job(label)
+                else:
+                    self.run_composite_job(label)
+
     def parse_conformer_energy(self, job, label, i):
         """
-        Parse E0 (J/mol) from the conformer opt output file, and save it in the 'conformer_energies' attribute.
+        Parse E0 (kJ/mol) from the conformer opt output file, and save it in the 'conformer_energies' attribute.
         """
         if job.job_status[1] == 'done':
             log = determine_qm_software(fullpath=job.local_path_to_output_file)
-            self.species_dict[label].conformer_energies[i] = log.loadEnergy()  # in J/mol
+            self.species_dict[label].conformer_energies[i] = log.loadEnergy() / 1000  # in kJ/mol
             logger.debug('energy for {0} is {1}'.format(i, self.species_dict[label].conformer_energies[i]))
         else:
             logger.warning('Conformer {i} for {label} did not converge!'.format(i=i, label=label))
@@ -840,19 +1030,22 @@ class Scheduler(object):
                 for job in self.job_dict[label]['conformers'].values():
                     log = determine_qm_software(fullpath=job.local_path_to_output_file)
                     try:
-                        coord, number, _ = log.loadGeometry()
+                        coords, number, _ = log.loadGeometry()
                     except RMGInputError:
                         xyzs.append(None)
                     else:
-                        xyzs.append(get_xyz_string(coord=coord, number=number))
+                        xyzs.append(get_xyz_string(coords=coords, numbers=number))
             xyzs_in_original_order = xyzs
             energies, xyzs = (list(t) for t in zip(*sorted(zip(self.species_dict[label].conformer_energies, xyzs))))
-            self.save_conformers_file(label, xyzs=xyzs, energies=energies)
+            self.save_conformers_file(label, xyzs=xyzs, energies=energies)  # after optimization
             # Run isomorphism checks if a 2D representation is available
             if self.species_dict[label].mol is not None:
                 for i, xyz in enumerate(xyzs):
-                    b_mol = molecules_from_xyz(xyz, multiplicity=self.species_dict[label].multiplicity,
-                                               charge=self.species_dict[label].charge)[1]
+                    try:
+                        b_mol = molecules_from_xyz(xyz, multiplicity=self.species_dict[label].multiplicity,
+                                                   charge=self.species_dict[label].charge)[1]
+                    except SanitizationError:
+                        b_mol = None
                     if b_mol is not None:
                         try:
                             is_isomorphic = check_isomorphism(self.species_dict[label].mol, b_mol)
@@ -883,8 +1076,8 @@ class Scheduler(object):
                                                  label, self.species_dict[label].mol.toSMILES(),
                                                  (energies[i] - energies[0]) * 0.001,
                                                  molecules_from_xyz(xyzs[0],
-                                                 multiplicity=self.species_dict[label].multiplicity,
-                                                 charge=self.species_dict[label].charge)[1]))
+                                                                    multiplicity=self.species_dict[label].multiplicity,
+                                                                    charge=self.species_dict[label].charge)[1]))
                                 conformer_xyz = xyz
                                 self.output[label]['status'] += 'passed isomorphism check but not for the most stable' \
                                                                 ' conformer; '
@@ -894,12 +1087,16 @@ class Scheduler(object):
                                 logger.warning('Most stable conformer for species {0} with structure {1} was found to '
                                                'be NON-isomorphic with the 2D graph representation {2}. Searching for '
                                                'a different conformer that is isomorphic...'.format(
-                                    label, b_mol.toSMILES(), self.species_dict[label].mol.toSMILES()))
+                                                label, b_mol.toSMILES(), self.species_dict[label].mol.toSMILES()))
                 else:
                     smiles_list = list()
                     for xyz in xyzs:
-                        smiles_list.append(molecules_from_xyz(xyz, multiplicity=self.species_dict[label].multiplicity,
-                                                              charge=self.species_dict[label].charge)[1])
+                        try:
+                            b_mol = molecules_from_xyz(xyz, multiplicity=self.species_dict[label].multiplicity,
+                                                       charge=self.species_dict[label].charge)[1]
+                            smiles_list.append(b_mol.toSMILES())
+                        except (SanitizationError, AttributeError):
+                            smiles_list.append('Could not perceive molecule')
                     if self.allow_nonisomorphic_2d or self.species_dict[label].charge:
                         # we'll optimize the most stable conformer even if it is not isomorphic to the 2D graph
                         logger.error('No conformer for {0} was found to be isomorphic with the 2D graph representation'
@@ -959,7 +1156,7 @@ class Scheduler(object):
                     logger.info('{0}. Method: {1}, relative energy: {2} kcal/mol, guess execution time: {3}'.format(
                         tsg.index, tsg.method, tsg.energy, tsg.execution_time))
                     # for TSs, only use `draw_3d()`, not `show_sticks()` which gets connectivity wrong:
-                    plotter.draw_3d(xyz=tsg.xyz)
+                    plotter.draw_structure(xyz=tsg.xyz, method='draw_3d')
             if self.species_dict[label].chosen_ts is None:
                 raise SpeciesError('Could not attribute most stable conformer {0} of {1} with a respective '
                                    'TS guess'.format(i_min, label))
@@ -975,8 +1172,8 @@ class Scheduler(object):
         freq_ok = False
         if job.job_status[1] == 'done':
             log = determine_qm_software(fullpath=job.local_path_to_output_file)
-            coord, number, _ = log.loadGeometry()
-            self.species_dict[label].final_xyz = get_xyz_string(coord=coord, number=number)
+            coords, number, _ = log.loadGeometry()
+            self.species_dict[label].final_xyz = get_xyz_string(coords=coords, numbers=number)
             self.output[label]['status'] += 'composite converged; '
             self.output[label]['composite'] = os.path.join(job.local_path, 'output.out')
             self.species_dict[label].opt_level = self.composite_method
@@ -985,13 +1182,12 @@ class Scheduler(object):
                 rxn_str = ' of reaction {0}'.format(self.species_dict[label].rxn_label)
             logger.info('\nOptimized geometry for {label}{rxn} at {level}:\n{xyz}'.format(
                 label=label, rxn=rxn_str, level=job.level_of_theory, xyz=self.species_dict[label].final_xyz))
-            successful_drawing_sticks = False
             if not job.is_ts:
-                successful_drawing_sticks = plotter.show_sticks(species=self.species_dict[label],
-                                                                project_directory=self.project_directory)
-            if job.is_ts or not successful_drawing_sticks:
+                plotter.draw_structure(species=self.species_dict[label], project_directory=self.project_directory)
+            else:
                 # for TSs, only use `draw_3d()`, not `show_sticks()` which gets connectivity wrong:
-                plotter.draw_3d(species=self.species_dict[label], project_directory=self.project_directory)
+                plotter.draw_structure(species=self.species_dict[label], project_directory=self.project_directory,
+                                       method='draw_3d')
             # Check frequencies (using cclib crashes for CBS-QB3 output, so using an explicit parser here)
             frequencies = parser.parse_frequencies(job.local_path_to_output_file, job.software)
             freq_ok = self.check_negative_freq(label=label, job=job, vibfreqs=frequencies)
@@ -1012,36 +1208,29 @@ class Scheduler(object):
         and that exactly one imaginary frequency was assigned for a TS.
         Returns ``True`` if the job (or both jobs) converged successfully, ``False`` otherwise and troubleshoots opt.
         """
+        success = False
         logger.debug('parsing opt geo for {0}'.format(job.job_name))
         if job.job_status[1] == 'done':
             log = determine_qm_software(fullpath=job.local_path_to_output_file)
-            coord, number, _ = log.loadGeometry()
-            self.species_dict[label].final_xyz = get_xyz_string(coord=coord, number=number)
+            coords, number, _ = log.loadGeometry()
+            self.species_dict[label].final_xyz = get_xyz_string(coords=coords, numbers=number)
             if not job.fine and self.job_types['fine'] and not job.software == 'molpro':
                 # Run opt again using a finer grid.
                 xyz = self.species_dict[label].final_xyz
                 self.species_dict[label].initial_xyz = xyz  # save for troubleshooting, since trsh goes by initial
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, job_type='opt', fine=True)
             else:
+                success = True
                 if 'optfreq' in job.job_name:
                     self.check_freq_job(label, job)
                 self.output[label]['status'] += 'opt converged; '
-                rxn_str = ''
+                self.species_dict[label].opt_level = self.opt_level
                 if self.species_dict[label].is_ts:
                     rxn_str = ' of reaction {0}'.format(self.species_dict[label].rxn_label)
-                logger.info('\nOptimized geometry for {label}{rxn} at {level}:\n{xyz}'.format(
-                    label=label, rxn=rxn_str, level=job.level_of_theory, xyz=self.species_dict[label].final_xyz))
-                successful_drawing_sticks = False
-                if not job.is_ts:
-                    successful_drawing_sticks = plotter.show_sticks(species=self.species_dict[label],
-                                                                    project_directory=self.project_directory)
-                if job.is_ts or not successful_drawing_sticks:
-                    # for TSs, only use `draw_3d()`, not `show_sticks()` which gets connectivity wrong:
-                    plotter.draw_3d(species=self.species_dict[label], project_directory=self.project_directory)
-                self.species_dict[label].opt_level = self.opt_level
-                # Update restart dictionary and save the yaml restart file:
-                if not self.species_dict[label].is_ts:
-                    # This is the final geometry of a stable species. Determine whether the species participate in
+                else:
+                    rxn_str = ''
+                    # Update restart dictionary and save the yaml restart file:
+                    # This is the final geometry of a stable species. Determine whether the species participates in
                     # a reaction (or several), if so update its geometry in the respective Species representing the
                     # reaction's TS
                     for rxn in self.rxn_list:
@@ -1060,12 +1249,22 @@ class Scheduler(object):
                                     # This species is a product of rxn,
                                     # and its geometry wasn't saved in the TSGuess objects
                                     tsg.products_xyz.append((label, self.species_dict[label].final_xyz))
+                logger.info('\nOptimized geometry for {label}{rxn} at {level}:\n{xyz}'.format(
+                    label=label, rxn=rxn_str, level=job.level_of_theory, xyz=self.species_dict[label].final_xyz))
                 self.save_restart_dict()
                 self.output[label]['geo'] = job.local_path_to_output_file  # will be overwritten when freq is done
-                return True  # run freq / sp / scan jobs on this optimized geometry
+            if not job.is_ts:
+                plotter.draw_structure(species=self.species_dict[label], project_directory=self.project_directory)
+            else:
+                # for TSs, only use `draw_3d()`, not `show_sticks()` which gets connectivity wrong:
+                plotter.draw_structure(species=self.species_dict[label], project_directory=self.project_directory,
+                                       method='draw_3d')
         else:
             self.troubleshoot_opt_jobs(label=label)
-        return False  # return ``False``, so no freq / sp / scan jobs are initiated for this unoptimized geometry
+        if success:
+            return True  # run freq / sp / scan jobs on this optimized geometry
+        else:
+            return False  # return ``False``, so no freq / sp / scan jobs are initiated for this unoptimized geometry
 
     def check_freq_job(self, label, job):
         """
@@ -1114,7 +1313,7 @@ class Scheduler(object):
             self.output[label]['status'] += 'Warning: {0} imaginary freq for TS; '.format(neg_freq_counter)
             return False
         elif not self.species_dict[label].is_ts and neg_freq_counter != 0:
-            logger.error('species {0} has {1} imaginary frequencies,'
+            logger.error('Species {0} has {1} imaginary frequencies,'
                          ' should have exactly 0.'.format(label, neg_freq_counter))
             self.output[label]['status'] += 'Warning: {0} imaginary freq for stable species; '.format(
                 neg_freq_counter)
@@ -1226,7 +1425,8 @@ class Scheduler(object):
                                     error_message = 'Rotor scan of {label} between pivots {pivots} is inconsistent ' \
                                                     'by more than {incons_ab:.2f} kJ/mol between two consecutive ' \
                                                     'points. Invalidating rotor.'.format(
-                                        label=label, pivots=job.pivots, incons_ab=inconsistency_ab * max(v_list))
+                                                     label=label, pivots=job.pivots,
+                                                     incons_ab=inconsistency_ab * max(v_list))
                                     logger.error(error_message)
                                     message += error_message + '; '
                                     invalidate = True
@@ -1259,7 +1459,7 @@ class Scheduler(object):
                                 self.species_dict[label].rotors_dict[i]['success'] = False
                                 logger.info('Species {label} is not oriented correctly around pivots {pivots},'
                                             ' searching for a better conformation...'.format(label=label,
-                                                                                              pivots=job.pivots))
+                                                                                             pivots=job.pivots))
                                 # Find the rotation dihedral in degrees to the closest minimum:
                                 min_v = v_list[0]
                                 min_index = 0
@@ -1268,8 +1468,8 @@ class Scheduler(object):
                                         min_v = v
                                         min_index = j
                                 self.species_dict[label].set_dihedral(
-                                    scan=self.species_dict[label].rotors_dict[i]['scan'],
                                     pivots=self.species_dict[label].rotors_dict[i]['pivots'],
+                                    scan=self.species_dict[label].rotors_dict[i]['scan'],
                                     deg_increment=min_index*rotor_scan_resolution)
                                 self.delete_all_species_jobs(label)
                                 self.run_opt_job(label)  # run opt on new initial_xyz with the desired dihedral
@@ -1284,10 +1484,10 @@ class Scheduler(object):
                             symmetry = ' has symmetry {0}'.format(self.species_dict[label].rotors_dict[i]['symmetry'])
 
                             logger.info('{invalidated}Rotor scan {scan} between pivots {pivots}'
-                                        ' for {label}{symmetry}'.format(invalidated=invalidated,
-                                                       scan=self.species_dict[label].rotors_dict[i]['scan'],
-                                                       pivots=self.species_dict[label].rotors_dict[i]['pivots'],
-                                                       label=label, symmetry=symmetry))
+                                        ' for {label}{symmetry}'.format(
+                                         invalidated=invalidated, scan=self.species_dict[label].rotors_dict[i]['scan'],
+                                         pivots=self.species_dict[label].rotors_dict[i]['pivots'],
+                                         label=label, symmetry=symmetry))
                             folder_name = 'rxns' if job.is_ts else 'Species'
                             rotor_path = os.path.join(self.project_directory, 'output', folder_name,
                                                       job.species_name, 'rotors')
@@ -1308,6 +1508,65 @@ class Scheduler(object):
         else:
             raise SchedulerError('Could not match rotor with pivots {0} in species {1}'.format(job.pivots, label))
         self.save_restart_dict()
+
+    def check_md_job(self, label, job, max_iterations=10):
+        """
+        Check whether the MD spawning algorithm converged on a single structure.
+        If not converged, spawn another MD job (up to a maximum number of jobs).
+        If it did converge, save the resulting lowest conformers and DFT them.
+
+        Args:
+             label (str, unicode): The species label.
+             job (Job): The Gromacs MD job to check.
+             max_iterations (int, optional): The maximal number of MD trials per species.
+        """
+        done = False
+        conf_list = read_yaml_file(job.local_path_to_output_file)
+        lowest_conf = conformers.get_lowest_confs(label=label, confs=conf_list)[0]
+        if self.species_dict[label].recent_md_conformer is None:
+            self.species_dict[label].recent_md_conformer = lowest_conf + [0]
+        else:
+            if self.species_dict[label].recent_md_conformer[2] >= max_iterations:
+                logger.error('Could not converge on a single conformer using Gromacs for species {0} '
+                             'even after {1} iterations. Using the latest conformer.'.format(label, max_iterations))
+                done = True
+            elif lowest_conf[1] < self.species_dict[label].recent_md_conformer[1]:
+                # unconverged
+                self.species_dict[label].recent_md_conformer = lowest_conf\
+                                                               + [self.species_dict[label].recent_md_conformer[2] + 1]
+            elif lowest_conf[1] == self.species_dict[label].recent_md_conformer[1]:
+                if conformers.compare_xyz(lowest_conf[0], self.species_dict[label].recent_md_conformer[0]):
+                    # converged
+                    done = True
+                else:
+                    # same energy but different conformer? for now we'll consider it as converged
+                    logger.warning('MD jobs for {0} converged with same energy conformer by different xyz:\n'
+                                   '{1}\n\nand\n\n{2}'.format(label, self.species_dict[label].recent_md_conformer[0],
+                                                              lowest_conf[0]))
+                    done = True  # Todo: reconsider
+            else:
+                # why did we found a higher conformer?
+                logger.error('Could not converge on a single conformer using Gromacs for species {0}, got a higher'
+                             'energy conformer. Using the latest lowest conformer.'.format(label))
+                done = True
+        if done:
+            # process conformers and DFT them
+            logger.info('Final conformer for {0}:\n{1}'.format(label, lowest_conf[0]))
+            plotter.draw_structure(xyz=lowest_conf[0], species=self.species_dict[label])
+            lowest_confs = conformers.get_lowest_confs(label=label, confs=conf_list, n=self.confs_to_dft)
+            self.species_dict[label].conformers.extend(standardize_xyz_string(conf[0]) for conf in lowest_confs)
+            self.species_dict[label].conformer_energies = [None] * len(lowest_confs)
+            self.process_conformers(label=label)
+        else:
+            # spawn a new MD simulation
+            ordinal = get_ordinal_indicator(self.species_dict[label].recent_md_conformer[2] + 1)
+            logger.info('{0}{1} conformer for {2}:\n{3}'.format(self.species_dict[label].recent_md_conformer[2] + 1,
+                                                                ordinal, label, lowest_conf[0]))
+            plotter.draw_structure(xyz=lowest_conf[0], species=self.species_dict[label])
+            ordinal = get_ordinal_indicator(self.species_dict[label].recent_md_conformer[2] + 2)
+            logger.info('Spawning the {0}{1} round of MD simulations for {2}'.format(
+                self.species_dict[label].recent_md_conformer[2] + 2, ordinal, label))
+            self.spawn_md_jobs(label, prev_conf_list=conf_list)
 
     def check_all_done(self, label):
         """
@@ -1341,7 +1600,7 @@ class Scheduler(object):
                         ' Run time: {1}'.format(label, self.species_dict[label].run_time))
         elif not self.output[label]['status']:
             self.output[label]['status'] = 'nothing converged'
-            logger.error('species {0} did not converge. Status is: {1}'.format(label, status))
+            logger.error('Species {0} did not converge. Status is: {1}'.format(label, status))
         # Update restart dictionary and save the yaml restart file:
         self.save_restart_dict()
 
@@ -1431,8 +1690,8 @@ class Scheduler(object):
             displacement = vibdisps[neg_freq_idx]
             xyz1 = atomcoords + factor * displacement
             xyz2 = atomcoords - factor * displacement
-            self.species_dict[label].conformers.append(get_xyz_string(coord=xyz1, number=atomnos))
-            self.species_dict[label].conformers.append(get_xyz_string(coord=xyz2, number=atomnos))
+            self.species_dict[label].conformers.append(get_xyz_string(coords=xyz1, numbers=atomnos))
+            self.species_dict[label].conformers.append(get_xyz_string(coords=xyz2, numbers=atomnos))
             self.species_dict[label].conformer_energies.extend([None, None])  # a placeholder (lists are synced)
         self.job_dict[label]['conformers'] = dict()  # initialize the conformer job dictionary
         for i, xyz in enumerate(self.species_dict[label].conformers):
@@ -1710,7 +1969,7 @@ class Scheduler(object):
                 add_mem = int(math.ceil(add_mem / 100.0)) * 100  # round up to the next hundred
                 memory = job.memory_gb + add_mem / 128. + 5  # convert MW to GB, add 5 extra GB (be conservative)
                 logger.info('Troubleshooting {type} job in {software} using memory: {mem} GB instead of {old} GB'.
-                    format(type=job_type, software=job.software, mem=memory, old=job.memory_gb))
+                            format(type=job_type, software=job.software, mem=memory, old=job.memory_gb))
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
                              job_type=job_type, fine=job.fine, shift=job.shift, memory=memory,
                              ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
@@ -1747,7 +2006,7 @@ class Scheduler(object):
                 job.ess_trsh_methods.append('memory')
                 memory = servers[job.server]['memory']  # set memory to the value of an entire node (in GB)
                 logger.info('Troubleshooting {type} job in {software} using memory: {mem} GB instead of {old} GB'.
-                    format(type=job_type, software=job.software, mem=memory, old=job.memory_gb))
+                            format(type=job_type, software=job.software, mem=memory, old=job.memory_gb))
                 shift = 'shift,-1.0,-0.5;'
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
                              job_type=job_type, fine=job.fine, shift=shift, memory=memory,
@@ -1863,12 +2122,12 @@ class Scheduler(object):
             for spc in self.species_dict.values():
                 if spc.label in self.running_jobs:
                     self.restart_dict['running_jobs'][spc.label] =\
-                        [self.job_dict[spc.label][job_name.split('_')[0]][job_name].as_dict()
+                        [self.job_dict[spc.label][job_name.rsplit('_', 1)[0]][job_name].as_dict()
                          for job_name in self.running_jobs[spc.label] if 'conformer' not in job_name]\
                         + [self.job_dict[spc.label]['conformers'][int(job_name.split('mer')[1])].as_dict()
                            for job_name in self.running_jobs[spc.label] if 'conformer' in job_name]
             logger.debug('Dumping restart dictionary:\n{0}'.format(self.restart_dict))
-            save_dict_file(path=self.restart_path, restart_dict=self.restart_dict)
+            save_yaml_file(path=self.restart_path, content=self.restart_dict)
 
     def make_reaction_labels_info_file(self):
         """A helper function for creating the `reactions labels.info` file"""
@@ -1887,9 +2146,15 @@ class Scheduler(object):
 
     def save_conformers_file(self, label, xyzs=None, energies=None):
         """
-        A helper function for saving the conformers for species `label` before and after optimization.
-        If `xyzs` is given, then it is used as the conformers xyz list, otherwise it is taken from the species.conformers
-        attribute. If `energies`, a list of respective conformer energies in J/mol, is given, it will also be reported.
+        Save the conformers before or after optimization.
+        If energies are given or Species.conformer_energies is not empty, the conformers are considered to be optimized.
+
+        Args:
+            label (str, unicode): The species label.
+            xyzs (list, optional): Entries are sting-format xyz coordinates of conformers.
+                                   If not given (None) then the Species.conformers are used instead.
+            energies (list, optional): Entries are energies corresponding to the conformer list in kJ/mol.
+                                       If not given (None) then the Species.conformer_energies are used instead.
         """
         geo_dir = os.path.join(self.project_directory, 'output', 'Species', label, 'geometry')
         if not os.path.exists(geo_dir):
@@ -1897,31 +2162,38 @@ class Scheduler(object):
         smiles_list = list()
         xyzs = xyzs or self.species_dict[label].conformers
         for xyz in xyzs:
-            b_mol = molecules_from_xyz(xyz, multiplicity=self.species_dict[label].multiplicity,
-                                       charge=self.species_dict[label].charge)[1]
-            smiles = b_mol.toSMILES() if b_mol is not None else 'no 2D structure'
+            try:
+                b_mol = molecules_from_xyz(xyz, multiplicity=self.species_dict[label].multiplicity,
+                                           charge=self.species_dict[label].charge)[1]
+            except SanitizationError:
+                b_mol = None
+            smiles = b_mol.toSMILES() if b_mol is not None else 'Could not perceive molecule'
             smiles_list.append(smiles)
-        if energies is not None:
+        energies = energies or self.species_dict[label].conformer_energies
+        if energies is not None and any(e is not None for e in energies):
+            optimized = True
             conf_path = os.path.join(geo_dir, 'conformers_after_optimization.txt')
         else:
+            optimized = False
             conf_path = os.path.join(geo_dir, 'conformers_before_optimization.txt')
         with open(conf_path, 'w') as f:
-            if energies is not None:
-                f.write(str('conformers optimized at {0}\n\n'.format(self.conformer_level)))
-            for i, conf in enumerate(xyzs):
-                f.write(str('conformer {0}:\n'.format(i)))
-                if conf is not None:
-                    f.write(str(conf + '\n'))
-                    f.write(str('SMILES: ' + smiles_list[i] + '\n'))
-                    if energies is not None:
+            content = ''
+            if optimized:
+                content += 'conformers optimized at {0}\n\n'.format(self.conformer_level)
+            for i, xyz in enumerate(xyzs):
+                content += 'conformer {0}:\n'.format(i)
+                if xyz is not None:
+                    content += xyz + '\n'
+                    content += 'SMILES: ' + smiles_list[i] + '\n'
+                    if optimized:
                         if energies[i] == min_list(energies):
-                            f.write(str('Relative Energy: 0 kJ/mol (lowest)'))
+                            content += 'Relative Energy: 0 kJ/mol (lowest)'
                         elif energies[i] is not None:
-                            f.write(str('Relative Energy: {0:.3f} kJ/mol'.format(
-                                (energies[i] - min_list(energies)) * 0.001)))
+                            content += 'Relative Energy: {0:.3f} kJ/mol'.format(energies[i] - min_list(energies))
                 else:
-                    f.write(str('Failed to converge'))
-                f.write(str('\n\n\n'))
+                    content += 'Failed to converge'
+                content += '\n\n\n'
+            f.write(str(content))
 
     def determine_adaptive_level(self, original_level_of_theory, job_type, heavy_atoms):
         """
@@ -1956,6 +2228,8 @@ class Scheduler(object):
 
 def min_list(lst):
     """A helper function for finding the minimum of a list of integers where some of the entries might be None"""
+    if len(lst) == 1:
+        return lst[0]
     return min([entry for entry in lst if entry is not None])
 
 
