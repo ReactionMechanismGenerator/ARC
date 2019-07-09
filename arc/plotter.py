@@ -414,6 +414,111 @@ def text_plotter(x_data, y_data, labels, text_positions, axis, txt_width, txt_he
                        zorder=0, length_includes_head=True)
 
 
+def plot_torsion_angles(torsion_angles, torsions_sampling_points=None, wells_dict=None, e_conformers=None,
+                        de_threshold=5.0, plot_path=None):
+    """Plot the torsion angles of the generated conformers.
+
+    Args:
+        torsion_angles (dict): Keys are torsions, values are lists of corresponding angles.
+        torsions_sampling_points (dict, optional): Keys are torsions, values are sampling points.
+        wells_dict (dict, optional): Keys are torsions, values are lists of wells.
+                                     Each entry in such list is a well dictionary with the keys:
+                                    'start_idx', 'end_idx', 'start_angle', 'end_angle', 'angles'
+        e_conformers (list, optional): Entries are conformers corresponding to the sampling points with FF energies.
+        de_threshold (float, optional): Energy threshold, plotted as a dashed horizontal line.
+        plot_path (str, optional): The path for saving the plot.
+
+    Todo:
+        * Save fig
+    """
+    num_comb = None
+    torsions = torsion_angles.keys() if torsions_sampling_points is None else torsions_sampling_points.keys()
+    ticks = [0, 60, 120, 180, 240, 300, 360]
+    sampling_points = dict()
+    if torsions_sampling_points is not None:
+        for tor, points in torsions_sampling_points.items():
+            sampling_points[tor] = [point if point <= 360 else point - 360 for point in points]
+    if not torsions:
+        return
+    if len(torsions) == 1:
+        torsion = torsions[0]
+        fig, axs = plt.subplots(nrows=len(torsions), ncols=1, sharex=True, sharey=True, gridspec_kw={'hspace': 0})
+        fig.dpi = 120
+        axs.plot(np.array(torsion_angles[tuple(torsion)]),
+                 np.zeros_like(np.arange(len(torsion_angles[tuple(torsion)]))), 'g.')
+        if torsions_sampling_points is not None:
+            axs.plot(np.array(sampling_points[tuple(torsion)]),
+                        np.zeros_like(np.arange(len(sampling_points[tuple(torsion)]))), 'ro', alpha=0.35, ms=7)
+        axs.frameon = False
+        axs.set_ylabel(str(torsion), labelpad=10)
+        axs.set_yticklabels(['' for _ in range(len(torsions))])
+        axs.tick_params(axis='y',         # changes apply to the x-axis
+                        which='both',     # both major and minor ticks are affected
+                        left=False,       # ticks along the bottom edge are off
+                        right=False,      # ticks along the top edge are off
+                        labelleft=False)  # labels along the bottom edge are off
+        axs.set_title('Dihedral angle (degrees)')
+        axs.axes.xaxis.set_ticks(ticks=ticks)
+        fig.set_size_inches(8, 2)
+    else:
+        fig, axs = plt.subplots(nrows=len(torsions), ncols=1, sharex=True, sharey=True, gridspec_kw={'hspace': 0})
+        fig.dpi = 120
+        num_comb = 1
+        for i, torsion in enumerate(torsions):
+            axs[i].plot(np.array(torsion_angles[tuple(torsion)]),
+                        np.zeros_like(np.arange(len(torsion_angles[tuple(torsion)]))), 'g.')
+            if wells_dict is not None:
+                for well in wells_dict[torsion]:
+                    axs[i].plot(well['start_angle'] if well['start_angle'] <= 360 else well['start_angle'] - 360, 0,
+                                'b|', alpha=0.5)
+                    axs[i].plot(well['end_angle'] if well['end_angle'] <= 360 else well['end_angle'] - 360, 0,
+                                'k|', alpha=0.5)
+            if torsions_sampling_points is not None:
+                x, y = list(), list()
+                h_line = False
+                if e_conformers is not None:
+                    for dihedral in sampling_points[tuple(torsion)]:
+                        for e_conformer in e_conformers[tuple(torsion)]:
+                            if 'FF energy' in e_conformer and e_conformer['FF energy'] is not None \
+                                    and 'dihedral' in e_conformer and e_conformer['dihedral'] is not None \
+                                    and (abs(dihedral - e_conformer['dihedral']) < 0.1
+                                         or abs(dihedral - e_conformer['dihedral'] + 360) < 0.1):
+                                x.append(dihedral)
+                                y.append(e_conformer['FF energy'])
+                                break
+                    min_y = min(y)
+                    y = [round(yi - min_y, 3) for yi in y]
+                    num_comb *= len([yi for yi in y if yi < de_threshold])
+                    if any([yi > de_threshold for yi in y]):
+                        h_line = True
+                else:
+                    x = sampling_points[torsion]
+                    y = [0.0] * len(sampling_points[tuple(torsion)])
+                axs[i].plot(x, y, 'ro', alpha=0.35, ms=7)
+                if h_line:
+                    x_h = [0, 360]
+                    y_h = [de_threshold, de_threshold]
+                    axs[i].plot(x_h, y_h, '--k', alpha=0.30, linewidth=0.8)
+            axs[i].frameon = False
+            axs[i].set_ylabel(str(torsion), labelpad=10)
+            # axs[i].yaxis.label.set_rotation(0)
+            if e_conformers is None:
+                axs[i].set_yticklabels(['' for _ in range(len(torsions))])
+                axs[i].tick_params(axis='y',         # changes apply to the x-axis
+                                   which='both',     # both major and minor ticks are affected
+                                   left=False,       # ticks along the bottom edge are off
+                                   right=False,      # ticks along the top edge are off
+                                   labelleft=False)  # labels along the bottom edge are off
+        axs[0].set_title('Dihedral angle (degrees)')
+        # Hide x labels and tick labels for all but bottom plot.
+        # for ax in axs:
+        #     ax.label_outer()
+        axs[0].axes.xaxis.set_ticks(ticks=ticks)
+        fig.set_size_inches(8, len(torsions) * 1.5)
+    plt.show()
+    return num_comb
+
+
 def save_geo(species, project_directory):
     """
     Save the geometry in several forms for an ARC Species object in the project's output folder under the species name
