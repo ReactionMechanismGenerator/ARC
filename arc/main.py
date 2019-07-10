@@ -390,6 +390,7 @@ class ARC(object):
             restart_dict['initial_trsh'] = self.initial_trsh
         if self.freq_scale_factor is not None:
             restart_dict['freq_scale_factor'] = self.freq_scale_factor
+        restart_dict['calc_freq_factor'] = self.calc_freq_factor
         restart_dict['species'] = [spc.as_dict() for spc in self.arc_species_list]
         restart_dict['reactions'] = [rxn.as_dict() for rxn in self.arc_rxn_list]
         restart_dict['output'] = self.output  # if read from_dict then it has actual values
@@ -455,6 +456,7 @@ class ARC(object):
         self.job_types = input_dict['job_types'] if 'job_types' in input_dict else default_job_types
         self.initialize_job_types()
         self.use_bac = input_dict['use_bac'] if 'use_bac' in input_dict else True
+        self.calc_freq_factor = input_dict['calc_freq_factor'] if 'calc_freq_factor' in input_dict else True
         self.model_chemistry = input_dict['model_chemistry'] if 'use_bac' in input_dict\
                                                                 and input_dict['use_bac'] else ''
         ess_settings = input_dict['ess_settings'] if 'ess_settings' in input_dict else global_ess_settings
@@ -935,18 +937,18 @@ class ARC(object):
         otherwise spawn a calculation for it if calc_freq_factor is set to True.
         """
         if self.freq_scale_factor is None:
+            # the user did not specify a scaling factor, see if Arkane has it
             level = self.freq_level if not self.composite_method else self.composite_method
-            if self.calc_freq_factor:
-                # the user did not specify a scaling factor, see if Arkane has it
-                freq_scale_factor = assign_frequency_scale_factor(level)
-                if freq_scale_factor != 1:
-                    # Arkane has this harmonic frequencies scaling factor (if not found, the factor is set to exactly 1)
-                    self.freq_scale_factor = freq_scale_factor
-                else:
-                    logger.info("Could not determine the harmonic frequencies scaling factor for {0} from Arkane.\n"
-                                "Calculating it using Truhlar's method:\n\n".format(level))
+            freq_scale_factor = assign_frequency_scale_factor(level)
+            if freq_scale_factor != 1:
+                # Arkane has this harmonic frequencies scaling factor (if not found, the factor is set to exactly 1)
+                self.freq_scale_factor = freq_scale_factor
+            else:
+                logger.info('Could not determine the harmonic frequencies scaling factor for {0} from '
+                            'Arkane.'.format(level))
+                if self.calc_freq_factor:
+                    logger.info("Calculating it using Truhlar's method:\n\n")
                     self.freq_scale_factor = determine_scaling_factors(
                         level, ess_settings=self.ess_settings, init_log=False)[0]
-            else:
-                # Try to get a value for Arkane, default to 1.0 if not found (don't calculate it)
-                freq_scale_factor = assign_frequency_scale_factor(level)
+                else:
+                    logger.info('Not calculating it, assuming a frequencies scaling factor of 1.')
