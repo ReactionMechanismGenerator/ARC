@@ -293,6 +293,7 @@ class Job(object):
     def write_submit_script(self):
         """Write the Job's submit script"""
         un = servers[self.server]['un']  # user name
+        size = int(self.radius * 4) if self.radius is not None else None
         if self.max_job_time > 9999 or self.max_job_time <= 0:
             logger.debug('Setting max_job_time to 120 hours')
             self.max_job_time = 120
@@ -315,13 +316,21 @@ class Job(object):
             else:
                 architecture = '\n#$ -l magnycours'
         try:
-            size = int(self.radius * 4) if self.radius is not None else None
             self.submit = submit_scripts[self.server][self.software.lower()].format(
                 name=self.job_server_name, un=un, t_max=t_max, mem_per_cpu=int(self.mem_per_cpu), cpus=self.cpus,
                 architecture=architecture, size=size)
         except KeyError:
-            logger.error('Could not find submit script for server {0}, make sure your submit scripts '
-                         '(under arc/job/submit.py) are updated with the servers defined.'.format(self.server))
+            submit_scripts_for_printing = dict()
+            for server, values in submit_scripts.items():
+                submit_scripts_for_printing[server] = list()
+                for software in values.keys():
+                    submit_scripts_for_printing[server].append(software)
+            logger.error('Could not find submit script for server {0} and software {1}. Make sure your submit scripts '
+                         '(in arc/job/submit.py) are updated with the servers and software defined in arc/settings.py\n'
+                         'Alternatively, It is possible that you defined parameters in curly braces (e.g., {{PARAM}}) '
+                         'in your submit script/s. To avoid error, replace them with double curly braces (e.g., '
+                         '{{{{PARAM}}}} instead of {{PARAM}}.\nIdentified the following submit scripts:\n{2}'.format(
+                          self.server, self.software.lower(), submit_scripts_for_printing))
             raise
         if not os.path.exists(self.local_path):
             os.makedirs(self.local_path)
