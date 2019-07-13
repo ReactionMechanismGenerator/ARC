@@ -38,7 +38,7 @@ from arc.arc_exceptions import InputError
 logger = get_logger()
 
 
-def draw_structure(xyz=None, species=None, project_directory=None, save_only=False, method='show_sticks'):
+def draw_structure(xyz=None, species=None, project_directory=None, method='show_sticks'):
     """
     A helper function for drawing a molecular structure using either show_sticks or draw_3d.
 
@@ -46,8 +46,7 @@ def draw_structure(xyz=None, species=None, project_directory=None, save_only=Fal
         xyz (str, unicode, optional): The xyz coordinates to plot in string format.
         species (ARCSpecies, optional): A species from which to extract the xyz coordinates to plot.
         project_directory (str, unicode, optional): A directory for saving the image (only supported for draw_3d).
-        save_only (bool, optional): whether to only save an image without displaying it. True to no save.
-        method (str, unicode, optional): THe method to use, either show_sticks or draw_3d.
+        method (str, unicode, optional): The method to use, either show_sticks or draw_3d.
     """
     success = False
     if method == 'show_sticks':
@@ -56,7 +55,7 @@ def draw_structure(xyz=None, species=None, project_directory=None, save_only=Fal
         except (IndexError, InputError):
             pass
     if not success or method == 'draw_3d':
-        draw_3d(xyz=xyz, species=species, project_directory=project_directory, save_only=save_only)
+        draw_3d(xyz=xyz, species=species, project_directory=project_directory)
 
 
 def show_sticks(xyz=None, species=None, project_directory=None):
@@ -83,7 +82,8 @@ def show_sticks(xyz=None, species=None, project_directory=None):
     # p.setBackgroundColor('0xeeeeee')
     p.zoomTo()
     p.show()
-    draw_3d(xyz=xyz, species=species, project_directory=project_directory, save_only=True)
+    if project_directory is not None:
+        draw_3d(xyz=xyz, species=species, project_directory=project_directory, save_only=True)
     return True
 
 
@@ -154,7 +154,7 @@ def plot_3d_mol_as_scatter(xyz, path=None, plot_h=True, show_plot=True):
     if show_plot:
         plt.show()
     if path is not None:
-        image_path = os.path.join(path, "scattered_balls_structure.png")
+        image_path = os.path.join(path, 'scattered_balls_structure.png')
         plt.savefig(image_path, bbox_inches='tight')
 
 
@@ -450,9 +450,6 @@ def plot_torsion_angles(torsion_angles, torsions_sampling_points=None, wells_dic
         e_conformers (list, optional): Entries are conformers corresponding to the sampling points with FF energies.
         de_threshold (float, optional): Energy threshold, plotted as a dashed horizontal line.
         plot_path (str, optional): The path for saving the plot.
-
-    Todo:
-        * Save fig
     """
     num_comb = None
     torsions = torsion_angles.keys() if torsions_sampling_points is None else torsions_sampling_points.keys()
@@ -539,6 +536,19 @@ def plot_torsion_angles(torsion_angles, torsions_sampling_points=None, wells_dic
         axs[0].axes.xaxis.set_ticks(ticks=ticks)
         fig.set_size_inches(8, len(torsions) * 1.5)
     plt.show()
+    if plot_path is not None:
+        if not os.path.isdir(plot_path):
+            os.makedirs(plot_path)
+        file_names = list()
+        for (_, _, files) in os.walk(plot_path):
+            file_names.extend(files)
+            break  # don't continue to explore subdirectories
+        i = 0
+        for file_ in file_names:
+            if 'conformer torsions' in file_:
+                i += 1
+        image_path = os.path.join(plot_path, 'conformer torsions {0}.png'.format(i))
+        plt.savefig(image_path, bbox_inches='tight')
     return num_comb
 
 
