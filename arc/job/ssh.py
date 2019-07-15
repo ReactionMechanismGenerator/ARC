@@ -334,6 +334,7 @@ def delete_all_arc_jobs(server_list):
                     job_id = s.group()[1:]
                     ssh.delete_job(job_id)
                     print('deleted job {0}'.format(job_id))
-    print('\ndone.')
+    if server_list:
+        print('\ndone.')
 
 # TODO: delete scratch files of a failed job: ssh nodeXX; rm scratch/dhdhdhd/job_number
