@@ -14,12 +14,11 @@ import time
 
 from arkane.statmech import determine_qm_software
 
-from arc.common import get_logger
 from arc.settings import arc_path
 from arc.scheduler import Scheduler
 from arc.arc_exceptions import InputError
 from arc.species.species import ARCSpecies
-from arc.common import check_ess_settings, time_lapse, initialize_log
+from arc.common import get_logger, check_ess_settings, time_lapse, initialize_log
 
 try:
     from arc.settings import global_ess_settings
@@ -69,9 +68,9 @@ def determine_scaling_factors(levels_of_theory, ess_settings=None, init_log=True
             type(levels_of_theory)))
     t0 = time.time()
 
-    print('\n\n\n')
-    print(HEADER)
-    print('\n\nstarting ARC...\n')
+    logger.info('\n\n\n')
+    logger.info(HEADER)
+    logger.info('\n\nstarting ARC...\n')
 
     job_types = {'conformers': False, 'opt': True, 'fine': True, 'freq': True, 'sp': False, '1d_rotors': False,
                  'orbitals': False, 'onedmin': False}  # only run opt (fine) and freq
@@ -79,7 +78,7 @@ def determine_scaling_factors(levels_of_theory, ess_settings=None, init_log=True
     lambda_zpes, zpe_dicts, times = list(), list(), list()
     for level_of_theory in levels_of_theory:
         t1 = time.time()
-        print('\nComputing scaling factors at the {0} level of theory...\n\n'.format(level_of_theory))
+        logger.info('\nComputing scaling factors at the {0} level of theory...\n\n'.format(level_of_theory))
         renamed_level = rename_level(level_of_theory)
         project = 'scaling_' + renamed_level
         project_directory = os.path.join(arc_path, 'Projects', 'scaling_factors', project)
@@ -117,8 +116,8 @@ def determine_scaling_factors(levels_of_theory, ess_settings=None, init_log=True
         times.append(time_lapse(t1))
 
     summarize_results(lambda_zpes, levels_of_theory, zpe_dicts, times, time_lapse(t0))
-    print('\n\n\n')
-    print(HEADER)
+    logger.info('\n\n\n')
+    logger.info(HEADER)
 
     harmonic_freq_scaling_factors = [lambda_zpe * 1.014 for lambda_zpe in lambda_zpes]
     return harmonic_freq_scaling_factors
@@ -149,11 +148,11 @@ def calculate_truhlar_scaling_factors(zpe_dict, level_of_theory):
     """
     unconverged = [key for key, val in zpe_dict.items() if val is None]
     if len(unconverged):
-        print('\n\nWarning: Not all species in the standard set have converged at the {0} level of theory!\n'
-              'Unconverged species: {1}\n\n'.format(level_of_theory, unconverged))
+        logger.info('\n\nWarning: Not all species in the standard set have converged at the {0} level of theory!\n'
+                    'Unconverged species: {1}\n\n'.format(level_of_theory, unconverged))
     else:
-        print('\n\nAll species in the standard set have converged at the {0} level of theory\n\n\n'.format(
-            level_of_theory))
+        logger.info('\n\nAll species in the standard set have converged at the {0} level of theory\n\n\n'.format(
+                     level_of_theory))
 
     # Experimental ZPE values converted from kcal/mol to J/mol, as reported in reference [2]:
     exp_zpe_dict = {'C2H2': 16.490 * 4184,
@@ -230,18 +229,18 @@ def summarize_results(lambda_zpes, levels_of_theory, zpe_dicts, times, overall_t
             text += 'Scale Factor for Harmonic Frequencies    = {0:.3f}\n'.format(harmonic_freq_scaling_factor)
             text += 'Scale Factor for Fundamental Frequencies = {0:.3f}\n'.format(fundamental_freq_scaling_factor)
             text += '(execution time: {0})\n'.format(execution_time)
-            print(text)
+            logger.info(text)
             f.write(str(text))
             arkane_formats.append("                 '{0}': {1:.3f},  # [4]\n".format(level_of_theory,
                                                                             harmonic_freq_scaling_factor))
-        print(arkane_text)
+        logger.info(arkane_text)
         f.write(arkane_text)
         for arkane_format in arkane_formats:
-            print(arkane_format)
+            logger.info(arkane_format)
             f.write(str(arkane_format))
         overall_time_text = '\n\nScaling factors calculation for {0} levels of theory completed' \
                             ' (elapsed time: {1}).\n'.format(len(levels_of_theory), overall_time)
-        print(overall_time_text)
+        logger.info(overall_time_text)
         f.write(str(overall_time_text))
 
 
