@@ -149,8 +149,8 @@ def calculate_truhlar_scaling_factors(zpe_dict, level_of_theory):
     """
     unconverged = [key for key, val in zpe_dict.items() if val is None]
     if len(unconverged):
-        print('\n\nWarning: Not all species in the standard set have converged at the {0} level of theory! '
-              'Unconverged species: {1}\n\n\n'.format(level_of_theory, unconverged))
+        print('\n\nWarning: Not all species in the standard set have converged at the {0} level of theory!\n'
+              'Unconverged species: {1}\n\n'.format(level_of_theory, unconverged))
     else:
         print('\n\nAll species in the standard set have converged at the {0} level of theory\n\n\n'.format(
             level_of_theory))
@@ -176,7 +176,10 @@ def calculate_truhlar_scaling_factors(zpe_dict, level_of_theory):
 
     for label, zpe in zpe_dict.items():
         numerator += zpe * exp_zpe_dict[label] if zpe is not None else 0
-        denominator += zpe ** 2.0
+        if zpe is not None:
+            denominator += zpe ** 2.0
+        else:
+            logger.error('ZPE of species {0} could not be determined!'.format(label))
     lambda_zpe = numerator / denominator  # lambda_zpe on the left side of eq. 5 of [2]
 
     return lambda_zpe
