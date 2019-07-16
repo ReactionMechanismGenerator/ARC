@@ -231,7 +231,7 @@ class TestJob(unittest.TestCase):
         self.job1.software = 'qchem'
         self.job1.set_cpu_and_mem(memory=14)
         self.assertEqual(self.job1.cpus, 48)
-        self.assertIsNone(self.job1.memory)
+        self.assertEqual(self.job1.memory, 14)
 
     def test_set_file_paths(self):
         """Test setting file paths"""
