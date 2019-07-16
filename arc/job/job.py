@@ -138,6 +138,7 @@ class Job(object):
         self.submit = ''
         self.input = ''
         self.server_nodes = list()
+        self.mem_per_cpu, self.cpus, self.memory_gb, self.memory = None, None, None, None
         job_types = ['conformer', 'opt', 'freq', 'optfreq', 'sp', 'composite', 'scan', 'gsm', 'irc', 'ts_guess',
                      'orbitals', 'onedmin']  # allowed job types
         # the 'conformer' job type is identical to 'opt', but we differentiate them to be identifiable in Scheduler
@@ -1147,16 +1148,22 @@ $end
 
     def set_cpu_and_mem(self, memory):
         """
-        Set the number of cpu's and the job's memory
+        Set the number of cpu's and the job's memory.
+        self.memory is the actual memory allocated to the ESS.
+        self.mem_per_cpu is the cluster software allocated memory
+        (self.mem_per_cpu should be slightly larger than self.memory when considering all cpus)
         """
         self.cpus = servers[self.server].get('cpus', 8)  # set to 8 by default
-        self.mem_per_cpu = memory * 1000 / self.cpus  # The `#SBATCH --mem-per-cpu` directive is in MB
         max_mem = servers[self.server].get('memory', None)  # max memory per node
         if max_mem is not None and memory > max_mem * 0.9:
             logger.warning('The memory for job {0} using {1} ({2} GB) exceeds 90% of the the maximum node memory on '
                            '{3}. Setting it to 90% * {4} GB.'.format(self.job_name, self.software,
                                                                      memory, self.server, max_mem))
             memory = 0.9 * max_mem
+            self.mem_per_cpu = memory * 1024 * 1.05 / self.cpus
+        else:
+            self.mem_per_cpu = memory * 1024 * 1.1 / self.cpus  # The `#SBATCH --mem-per-cpu` directive is in MB
+
         self.memory_gb = memory  # store the memory in GB for troubleshooting (when re-running the job)
         if self.software == 'molpro':
             # Molpro's memory is per cpu and in MW (mega word; 1 MW ~= 8 MB; 1 GB = 128 MW)
@@ -1171,8 +1178,12 @@ $end
             # Orca's memory is per cpu and in MB
             self.memory = memory * 1000 / self.cpus
         elif self.software == 'qchem':
-            pass  # QChem manages its memory automatically, for now ARC will not intervene
+            # QChem manages its memory automatically, for now ARC will not intervene
             # see http://www.q-chem.com/qchem-website/manual/qchem44_manual/CCparallel.html
+            self.memory = memory  # dummy
+        elif self.software == 'gromacs':
+            # not managing memory for Gromacs
+            self.memory = memory  # dummy
 
     def set_file_paths(self):
         """
