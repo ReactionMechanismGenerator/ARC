@@ -93,6 +93,7 @@ class ARC(object):
     `job_types`            ``dict``   A dictionary of job types to execute. Keys are job types, values are boolean
     `bath_gas`             ``str``    A bath gas. Currently used in OneDMin to calc L-J parameters.
                                         Allowed values are He, Ne, Ar, Kr, H2, N2, O2
+    `keep_checks`          ``bool``   Whether to delete all Gaussian checkfiles when ARC terminates. True to keep.
     ====================== ========== ==================================================================================
 
     `level_of_theory` is a string representing either sp//geometry levels or a composite method, e.g. 'CBS-QB3',
@@ -104,7 +105,8 @@ class ARC(object):
                  ts_guess_level='', use_bac=True, job_types=None, model_chemistry='', initial_trsh=None, t_min=None,
                  t_max=None, t_count=None, verbose=logging.INFO, project_directory=None, max_job_time=120,
                  allow_nonisomorphic_2d=False, job_memory=14, ess_settings=None, bath_gas=None,
-                 adaptive_levels=None, freq_scale_factor=None, calc_freq_factor=True, confs_to_dft=5):
+                 adaptive_levels=None, freq_scale_factor=None, calc_freq_factor=True, confs_to_dft=5,
+                 keep_checks=False):
         self.__version__ = VERSION
         self.verbose = verbose
         self.output = dict()
@@ -118,6 +120,7 @@ class ARC(object):
         self.orbitals_level = default_levels_of_theory['orbitals'].lower()
         self.ess_settings = dict()
         self.calc_freq_factor = calc_freq_factor
+        self.keep_checks = keep_checks
 
         if input_dict is None:
             if project is None:
@@ -403,6 +406,8 @@ class ARC(object):
         restart_dict['ess_settings'] = self.ess_settings
         restart_dict['job_memory'] = self.memory
         restart_dict['confs_to_dft'] = self.confs_to_dft
+        if self.keep_checks:
+            restart_dict['keep_checks'] = self.keep_checks
         return restart_dict
 
     def from_dict(self, input_dict, project=None, project_directory=None):
@@ -430,6 +435,7 @@ class ARC(object):
         self.bath_gas = input_dict['bath_gas'] if 'bath_gas' in input_dict else None
         self.confs_to_dft = input_dict['confs_to_dft'] if 'confs_to_dft' in input_dict else 5
         self.adaptive_levels = input_dict['adaptive_levels'] if 'adaptive_levels' in input_dict else None
+        self.keep_checks = input_dict['keep_checks'] if 'keep_checks' in input_dict else False
         self.allow_nonisomorphic_2d = input_dict['allow_nonisomorphic_2d']\
             if 'allow_nonisomorphic_2d' in input_dict else False
         self.output = input_dict['output'] if 'output' in input_dict else dict()
@@ -661,6 +667,8 @@ class ARC(object):
                         t_count=self.t_count, freq_scale_factor=self.freq_scale_factor)
         prc.process()
         self.summary()
+        if not self.keep_checks:
+            self.delete_check_files()
         log_footer(execution_time=self.execution_time)
 
     def save_project_info_file(self):
@@ -952,3 +960,18 @@ class ARC(object):
                         level, ess_settings=self.ess_settings, init_log=False)[0]
                 else:
                     logger.info('Not calculating it, assuming a frequencies scaling factor of 1.')
+
+    def delete_check_files(self):
+        """
+        Delete the Gaussian checkfiles, the usually take up lots of space and are not needed after ARC terminates.
+        Pass True to the keep_checks flag to avoid deleting check files.
+        """
+        logged = False
+        calcs_path = os.path.join(self.project_directory, 'calcs')
+        for (root, _, files) in os.walk(calcs_path):
+            for file_ in files:
+                if file_ == 'check.chk' and os.path.isfile(os.path.join(root, file_)):
+                    if not logged:
+                        logger.info('deleting all Gaussian check files...')
+                        logged = True
+                    os.remove(os.path.join(root, file_))
