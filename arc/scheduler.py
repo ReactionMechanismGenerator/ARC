@@ -694,6 +694,13 @@ class Scheduler(object):
                                                                                             label, 'geometry',
                                                                                             'conformers'))
                     self.process_conformers(label)
+            elif not self.job_types['conformers']:
+                # we're not running conformer jobs
+                if self.species_dict[label].initial_xyz is not None or self.species_dict[label].final_xyz is not None:
+                    pass
+                elif self.species_dict[label].conformers:
+                    # the species was defined with xyz's
+                    self.process_conformers(label)
 
     def run_ts_conformer_jobs(self, label):
         """
