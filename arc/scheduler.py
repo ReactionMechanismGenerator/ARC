@@ -1008,8 +1008,16 @@ class Scheduler(object):
         """
         if job.job_status[1] == 'done':
             log = determine_qm_software(fullpath=job.local_path_to_output_file)
-            self.species_dict[label].conformer_energies[i] = log.loadEnergy() / 1000  # in kJ/mol
-            logger.debug('energy for {0} is {1}'.format(i, self.species_dict[label].conformer_energies[i]))
+            if self.species_dict[label].is_ts:
+                for tsg in self.species_dict[label].ts_guesses:
+                    if tsg.index == i:
+                        tsg.energy = log.loadEnergy() / 1000  # in kJ/mol
+                        logger.debug('energy for TSGuess {0} of {1} is {2}'.format(
+                            i, self.species_dict[label].label, self.species_dict[label].ts_guesses[i].energy))
+            else:
+                self.species_dict[label].conformer_energies[i] = log.loadEnergy() / 1000  # in kJ/mol
+                logger.debug('energy for conformer {0} of {1} is {2}'.format(
+                    i, self.species_dict[label].label, self.species_dict[label].conformer_energies[i]))
         else:
             logger.warning('Conformer {i} for {label} did not converge!'.format(i=i, label=label))
 
