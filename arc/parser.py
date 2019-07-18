@@ -111,11 +111,16 @@ def parse_xyz_from_file(path):
     if file_extension == '.xyz':
         relevant_lines = lines[2:]
     elif file_extension == '.gjf':
-        for line in lines[5:]:
-            if line and line != '\n' and line != '\r\n':
+        start_parsing = False
+        for line in lines:
+            if start_parsing and line and line != '\n' and line != '\r\n':
                 relevant_lines.append(line)
-            else:
+            elif start_parsing:
                 break
+            else:
+                splits = line.split()
+                if len(splits) == 2 and all([s.isdigit() for s in splits]):
+                    start_parsing = True
     elif 'out' in file_extension or 'log' in file_extension:
         log = determine_qm_software(fullpath=path)
         coords, number, _ = log.loadGeometry()
