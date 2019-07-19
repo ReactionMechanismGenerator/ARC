@@ -11,6 +11,7 @@ import os
 import numpy as np
 
 from arc.settings import arc_path
+from arc.species import ARCSpecies
 from arc import parser
 
 ################################################################################
@@ -51,6 +52,7 @@ class TestParser(unittest.TestCase):
         path4 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'molpro.in')
         path5 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'qchem.in')
         path6 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'qchem_output.out')
+        path7 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'TS.gjf')
 
         xyz1 = parser.parse_xyz_from_file(path1)
         xyz2 = parser.parse_xyz_from_file(path2)
@@ -58,6 +60,7 @@ class TestParser(unittest.TestCase):
         xyz4 = parser.parse_xyz_from_file(path4)
         xyz5 = parser.parse_xyz_from_file(path5)
         xyz6 = parser.parse_xyz_from_file(path6)
+        xyz7 = parser.parse_xyz_from_file(path7)
 
         self.assertEqual(xyz1.rstrip(), xyz2.rstrip())
         self.assertTrue('C       1.40511900    0.21728200    0.07675200' in xyz1)
@@ -65,9 +68,12 @@ class TestParser(unittest.TestCase):
         self.assertTrue('H      -0.43701200   -1.34990600    0.92900600' in xyz2)
         self.assertTrue('C                  2.12217963   -0.66843078    1.04808732' in xyz3)
         self.assertTrue('N                  2.41731872   -1.07916417    2.08039935' in xyz3)
+        spc3 = ARCSpecies(label='AIBN', xyz=xyz3)
+        self.assertEqual(len(spc3.mol.atoms), 24)
         self.assertTrue('S         -0.4204682221       -0.3909949822        0.0245352116' in xyz4)
         self.assertTrue('N                 -1.99742564    0.38106573    0.09139807' in xyz5)
         self.assertTrue('N      -1.17538406    0.34366165    0.03265021' in xyz6)
+        self.assertEqual(len(xyz7.strip().splitlines()), 34)
 
     def test_parse_t1(self):
         """Test T1 diagnostic parsing"""
