@@ -1143,9 +1143,8 @@ class Scheduler(object):
         Save the resulting xyz as `initial_xyz`
         """
         if not self.species_dict[label].is_ts:
-            raise SchedulerError('The determine_most_likely_ts_conformer() method only deals with transition'
-                                 ' state guesses.')
-        if all(e is None for e in self.species_dict[label].conformer_energies):
+            raise SchedulerError('determine_most_likely_ts_conformer() method only processes transition state guesses.')
+        if all(tsg.energy is None for tsg in self.species_dict[label].ts_guesses):
             logger.error('No guess converged for TS {0}!'.format(label))
             # for i, job in self.job_dict[label]['conformers'].items():
             #     self.troubleshoot_ess(label, job, level_of_theory=job.level_of_theory, job_type='conformer',
@@ -1154,26 +1153,29 @@ class Scheduler(object):
             energies = self.species_dict[label].conformer_energies
             # currently we take the most stable guess. We'll need to implement additional checks here:
             # - normal displacement mode of the imaginary frequency
-            # - IRC
-            e_min = min_list(energies)
-            i_min = energies.index(e_min)
-            self.species_dict[label].chosen_ts = None
-            logger.info('\n\nShowing geometry *guesses* of successful TS guess methods for {0} of {1}:'.format(
-                label, self.species_dict[label].rxn_label))
+            # - IRC isomorphism checks
+            rxn_txt = '' if self.species_dict[label].rxn_label is None\
+                else ' of reaction {0}'.format(self.species_dict[label].rxn_label)
+            logger.info('\n\nShowing geometry *guesses* of successful TS guesses for {0}{1}:'.format(label, rxn_txt))
+            e_min = self.species_dict[label].ts_guesses[0].energy
+            i_min = self.species_dict[label].ts_guesses[0].index
+            for tsg in self.species_dict[label].ts_guesses:
+                if tsg.energy < e_min:
+                    e_min = tsg.energy
+                    i_min = tsg.index
             for tsg in self.species_dict[label].ts_guesses:
                 if tsg.index == i_min:
                     self.species_dict[label].chosen_ts = i_min  # change this if selecting a better TS later
                     self.species_dict[label].chosen_ts_method = tsg.method  # change if selecting a better TS later
                     self.species_dict[label].initial_xyz = tsg.xyz
                 if tsg.success:
-                    # 0.000239006 is the conversion factor from J/mol to kcal/mol
-                    tsg.energy = (self.species_dict[label].conformer_energies[tsg.index] - e_min) * 0.000239006
-                    logger.info('{0}. Method: {1}, relative energy: {2} kcal/mol, guess execution time: {3}'.format(
+                    tsg.energy = (tsg.energy - e_min) * 0.001  # convert to kJ/mol
+                    logger.info('{0}. Method: {1}, relative energy: {2} kJ/mol, guess execution time: {3}'.format(
                         tsg.index, tsg.method, tsg.energy, tsg.execution_time))
                     # for TSs, only use `draw_3d()`, not `show_sticks()` which gets connectivity wrong:
                     plotter.draw_structure(xyz=tsg.xyz, method='draw_3d')
             if self.species_dict[label].chosen_ts is None:
-                raise SpeciesError('Could not attribute most stable conformer {0} of {1} with a respective '
+                raise SpeciesError('Could not pair most stable conformer {0} of {1} to a respective '
                                    'TS guess'.format(i_min, label))
 
     def parse_composite_geo(self, label, job):
