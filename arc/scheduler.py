@@ -1004,19 +1004,22 @@ class Scheduler(object):
 
     def parse_conformer_energy(self, job, label, i):
         """
-        Parse E0 (kJ/mol) from the conformer opt output file, and save it in the 'conformer_energies' attribute.
+        Parse E0 (kJ/mol) from the conformer opt output file.
+        For species, save it in the Species.conformer_energies attribute.
+        Fot TSs, save it in the TSGuess.energy attribute, and also parse the geometry.
         """
         if job.job_status[1] == 'done':
             log = determine_qm_software(fullpath=job.local_path_to_output_file)
+            coords, number, _ = log.loadGeometry()
             if self.species_dict[label].is_ts:
-                for tsg in self.species_dict[label].ts_guesses:
-                    if tsg.index == i:
-                        tsg.energy = log.loadEnergy() / 1000  # in kJ/mol
-                        logger.debug('energy for TSGuess {0} of {1} is {2}'.format(
-                            i, self.species_dict[label].label, self.species_dict[label].ts_guesses[i].energy))
+                self.species_dict[label].ts_guesses[i].energy = log.loadEnergy() * 0.001  # in kJ/mol
+                self.species_dict[label].ts_guesses[i].opt_xyz = get_xyz_string(coords=coords, numbers=number)
+                self.species_dict[label].ts_guesses[i].index = i
+                logger.debug('Energy for TSGuess {0} of {1} is {2}'.format(
+                    i, self.species_dict[label].label, self.species_dict[label].ts_guesses[i].energy))
             else:
-                self.species_dict[label].conformer_energies[i] = log.loadEnergy() / 1000  # in kJ/mol
-                logger.debug('energy for conformer {0} of {1} is {2}'.format(
+                self.species_dict[label].conformer_energies[i] = log.loadEnergy() * 0.001  # in kJ/mol
+                logger.debug('Energy for conformer {0} of {1} is {2}'.format(
                     i, self.species_dict[label].label, self.species_dict[label].conformer_energies[i]))
         else:
             logger.warning('Conformer {i} for {label} did not converge!'.format(i=i, label=label))
@@ -1150,33 +1153,34 @@ class Scheduler(object):
             #     self.troubleshoot_ess(label, job, level_of_theory=job.level_of_theory, job_type='conformer',
             #                           conformer=job.conformer)
         else:
-            energies = self.species_dict[label].conformer_energies
             # currently we take the most stable guess. We'll need to implement additional checks here:
             # - normal displacement mode of the imaginary frequency
             # - IRC isomorphism checks
             rxn_txt = '' if self.species_dict[label].rxn_label is None\
                 else ' of reaction {0}'.format(self.species_dict[label].rxn_label)
-            logger.info('\n\nShowing geometry *guesses* of successful TS guesses for {0}{1}:'.format(label, rxn_txt))
-            e_min = self.species_dict[label].ts_guesses[0].energy
-            i_min = self.species_dict[label].ts_guesses[0].index
+            logger.info('\n\nGeometry *guesses* of successful TS guesses for {0}{1}:'.format(label, rxn_txt))
+            e_min = min_list([tsg.energy for tsg in self.species_dict[label].ts_guesses])
+            i_min = None
             for tsg in self.species_dict[label].ts_guesses:
-                if tsg.energy < e_min:
-                    e_min = tsg.energy
+                if tsg.energy is not None and tsg.energy == e_min:
                     i_min = tsg.index
             for tsg in self.species_dict[label].ts_guesses:
                 if tsg.index == i_min:
                     self.species_dict[label].chosen_ts = i_min  # change this if selecting a better TS later
                     self.species_dict[label].chosen_ts_method = tsg.method  # change if selecting a better TS later
                     self.species_dict[label].initial_xyz = tsg.xyz
-                if tsg.success:
-                    tsg.energy = (tsg.energy - e_min) * 0.001  # convert to kJ/mol
-                    logger.info('{0}. Method: {1}, relative energy: {2} kJ/mol, guess execution time: {3}'.format(
-                        tsg.index, tsg.method, tsg.energy, tsg.execution_time))
+                if tsg.success and tsg.energy is not None:  # guess method and ts_level opt were both successful
+                    tsg.energy = tsg.energy - e_min
+                    logger.info('TS guess {0} for {1}. Method: {2}, relative energy: {3} kJ/mol, guess execution time:'
+                                ' {4}'.format(tsg.index, label, tsg.method, tsg.energy, tsg.execution_time))
                     # for TSs, only use `draw_3d()`, not `show_sticks()` which gets connectivity wrong:
                     plotter.draw_structure(xyz=tsg.xyz, method='draw_3d')
             if self.species_dict[label].chosen_ts is None:
                 raise SpeciesError('Could not pair most stable conformer {0} of {1} to a respective '
                                    'TS guess'.format(i_min, label))
+            self.save_conformers_file(label, xyzs=[tsg.opt_xyz for tsg in self.species_dict[label].ts_guesses],
+                                      energies=[tsg.energy for tsg in self.species_dict[label].ts_guesses],
+                                      ts_methods=[tsg.method for tsg in self.species_dict[label].ts_guesses])
 
     def parse_composite_geo(self, label, job):
         """
@@ -2161,7 +2165,7 @@ class Scheduler(object):
             f.write(str('Reaction labels and respective TS labels:\n\n'))
         return rxn_info_path
 
-    def save_conformers_file(self, label, xyzs=None, energies=None):
+    def save_conformers_file(self, label, xyzs=None, energies=None, ts_methods=None):
         """
         Save the conformers before or after optimization.
         If energies are given or Species.conformer_energies is not empty, the conformers are considered to be optimized.
@@ -2173,19 +2177,21 @@ class Scheduler(object):
             energies (list, optional): Entries are energies corresponding to the conformer list in kJ/mol.
                                        If not given (None) then the Species.conformer_energies are used instead.
         """
-        geo_dir = os.path.join(self.project_directory, 'output', 'Species', label, 'geometry')
+        spc_dir = 'rxns' if self.species_dict[label].is_ts else 'Species'
+        geo_dir = os.path.join(self.project_directory, 'output', spc_dir, label, 'geometry')
         if not os.path.exists(geo_dir):
             os.makedirs(geo_dir)
-        smiles_list = list()
-        xyzs = xyzs or self.species_dict[label].conformers
-        for xyz in xyzs:
-            try:
-                b_mol = molecules_from_xyz(xyz, multiplicity=self.species_dict[label].multiplicity,
-                                           charge=self.species_dict[label].charge)[1]
-            except SanitizationError:
-                b_mol = None
-            smiles = b_mol.toSMILES() if b_mol is not None else 'Could not perceive molecule'
-            smiles_list.append(smiles)
+        if not self.species_dict[label].is_ts:
+            smiles_list = list()
+            xyzs = xyzs or self.species_dict[label].conformers
+            for xyz in xyzs:
+                try:
+                    b_mol = molecules_from_xyz(xyz, multiplicity=self.species_dict[label].multiplicity,
+                                               charge=self.species_dict[label].charge)[1]
+                except SanitizationError:
+                    b_mol = None
+                smiles = b_mol.toSMILES() if b_mol is not None else 'Could not perceive molecule'
+                smiles_list.append(smiles)
         energies = energies or self.species_dict[label].conformer_energies
         if energies is not None and any(e is not None for e in energies):
             optimized = True
@@ -2201,13 +2207,18 @@ class Scheduler(object):
                 content += 'conformer {0}:\n'.format(i)
                 if xyz is not None:
                     content += xyz + '\n'
-                    content += 'SMILES: ' + smiles_list[i] + '\n'
+                    if not self.species_dict[label].is_ts:
+                        content += 'SMILES: ' + smiles_list[i] + '\n'
+                    elif ts_methods is not None:
+                        content += 'TS guess method: ' + ts_methods[i] + '\n'
                     if optimized:
                         if energies[i] == min_list(energies):
                             content += 'Relative Energy: 0 kJ/mol (lowest)'
                         elif energies[i] is not None:
                             content += 'Relative Energy: {0:.3f} kJ/mol'.format(energies[i] - min_list(energies))
                 else:
+                    if self.species_dict[label].is_ts and ts_methods is not None:
+                        content += 'TS guess method: ' + ts_methods[i] + '\n'
                     content += 'Failed to converge'
                 content += '\n\n\n'
             f.write(str(content))
