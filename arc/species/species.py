@@ -1008,7 +1008,8 @@ class TSGuess(object):
     ====================== ============= ===============================================================================
     Attribute              Type          Description
     ====================== ============= ===============================================================================
-    `xyz`                   ``str``      The 3D guess
+    `xyz`                   ``str``      The 3D coordinates guess
+    `opt_xyz`             ``str``      The 3D coordinates after optimization at the ts_guesses level
     `method`                ``str''      The method/source used for the xyz guess
     `reactants_xyz`         ``list``     A list of tuples, each containing:
                                            (reactant label, reactant geometry in string format)
@@ -1037,6 +1038,7 @@ class TSGuess(object):
             self.index = None
             self.execution_time = None
             self.xyz = None
+            self.opt_xyz = None
             self.process_xyz(xyz)  # populates self.xyz
             self.success = None
             self.energy = None
