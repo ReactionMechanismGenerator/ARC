@@ -19,6 +19,7 @@ from arc.species.species import ARCSpecies, TSGuess, determine_rotor_type, deter
 from arc.species.converter import get_xyz_string, get_xyz_matrix, molecules_from_xyz
 from arc.settings import arc_path, default_levels_of_theory
 from arc.rmgdb import make_rmg_database_object
+from arc.plotter import save_conformers_file
 from arc.scheduler import Scheduler
 
 ################################################################################
@@ -86,35 +87,79 @@ class TestARCSpecies(unittest.TestCase):
                           H      -0.50949998    0.00000000    0.00000000""")
         cls.spc9 = ARCSpecies(label=str('NH2(S)'), adjlist=nh_s_adj, xyz=nh_s_xyz, multiplicity=1, charge=0)
 
+        cls.spc10 = ARCSpecies(label='CCCCC', smiles='CCCCC')
+        cls.spc11 = ARCSpecies(label='CCCNO', smiles='CCCNO')  # has chiral N
+
     def test_conformers(self):
         """Test conformer generation"""
+        self.spc1.conformers = list()
+        self.spc1.conformer_energies = list()
+        self.assertEqual(len(self.spc1.conformers), len(self.spc1.conformer_energies))
         self.spc1.generate_conformers()
         self.assertIn(len(self.spc1.conformers), [2, 3])
         self.assertEqual(len(self.spc1.conformers), len(self.spc1.conformer_energies))
 
+        self.spc2.conformers = list()
         self.spc2.generate_conformers()
-        self.assertEqual(len(self.spc2.conformers), 2)
+        self.assertEqual(len(self.spc2.conformers), 1)
 
+        self.spc3.conformers = list()
         self.spc3.generate_conformers()
         self.assertEqual(len(self.spc3.conformers), 1)
 
+        self.spc4.conformers = list()
         self.spc4.generate_conformers()
         self.assertEqual(len(self.spc4.conformers), 4)
 
+        self.spc5.conformers = list()
         self.spc5.generate_conformers()
         self.assertEqual(len(self.spc5.conformers), 3)
 
-        # self.spc6.generate_conformers()
-        # self.assertEqual(len(self.spc6.conformers), 2)
+        self.spc6.conformers = list()
+        self.spc6.generate_conformers()
+        self.assertEqual(len(self.spc6.conformers), 4)
 
-        self.spc7.generate_conformers()
-        self.assertEqual(len(self.spc7.conformers), 6)
-
+        self.spc8.conformers = list()
         self.spc8.generate_conformers()
-        self.assertEqual(len(self.spc8.conformers), 5)
+        self.assertEqual(len(self.spc8.conformers), 4)
 
+        self.spc9.conformers = list()
         self.spc9.generate_conformers()
-        self.assertEqual(len(self.spc9.conformers), 2)
+        self.assertEqual(len(self.spc9.conformers), 1)
+
+        self.spc10.conformers = list()
+        self.spc10.generate_conformers(confs_to_dft=1)
+        self.assertEqual(len(self.spc10.conformers), 1)
+
+        self.spc10.conformers = list()
+        self.spc10.generate_conformers(confs_to_dft=2)
+        self.assertEqual(len(self.spc10.conformers), 2)
+
+        self.spc10.conformers = list()
+        self.spc10.generate_conformers(confs_to_dft=3)
+        self.assertEqual(len(self.spc10.conformers), 3)
+
+        self.spc11.conformers = list()
+        self.spc11.generate_conformers(confs_to_dft=1)
+        self.assertEqual(len(self.spc11.conformers), 2)  # has more confs due to chiral center
+
+        self.spc11.conformers = list()
+        self.spc11.generate_conformers(confs_to_dft=2)
+        self.assertEqual(len(self.spc11.conformers), 3)
+
+        self.spc11.conformers = list()
+        self.spc11.generate_conformers(confs_to_dft=3)
+        self.assertIn(len(self.spc11.conformers), [3, 4])
+
+        xyz12 = """C       0.00000000    0.00000000    0.00000000
+H       1.07008000   -0.14173100    0.00385900
+H      -0.65776100   -0.85584100   -0.00777700
+H      -0.41231900    0.99757300    0.00391900"""
+        spc12 = ARCSpecies(label='CH3', smiles='[CH3]', xyz=xyz12)
+        spc12.generate_conformers()
+        self.assertEqual(len(spc12.conformers), 2)
+        self.assertEqual(len(spc12.conformer_energies), 2)
+
 
     def test_rmg_species_conversion_into_arc_species(self):
         """Test the conversion of an RMG species into an ARCSpecies"""
@@ -568,32 +613,38 @@ C       2.92204100   -1.18335700   -0.38884900
 C       2.27655500   -0.00373900    0.08543500
 H       2.36544800   -1.88781000   -0.99914600
 H       3.96112000   -1.38854500   -0.14958800
-H       2.87813500    0.68828400    0.70399400""",
+H       2.87813500    0.68828400    0.70399400
+""",
                 """O       1.19396100   -0.06003700    0.03890100
 C       3.18797000    0.77061300   -0.87352700
 C       2.43591200   -0.04439300    0.02171600
 H       4.27370000    0.76090200   -0.86286100
 H       2.66641700    1.41155700   -1.57757300
-H       3.00398000   -0.68336800    0.72359800""",
+H       3.00398000   -0.68336800    0.72359800
+""",
                 """O       1.35241100   -1.02956000   -0.24056200
 C      -0.72084300    0.01308200    0.09573000
 C       0.69217700    0.01185100   -0.09044300
 H      -1.25803800   -0.93018100    0.10926800
 H      -1.26861200    0.94177100    0.22420100
-H       1.20290400    0.99303700   -0.09819400""",
+H       1.20290400    0.99303700   -0.09819400
+""",
                 """O      -1.40102900   -0.98575100   -0.11588500
 C       0.72457000   -0.01076700    0.06448800
 C      -0.69494600    0.03450000   -0.06206300
 H       1.22539000   -0.97248000    0.11741200
 H       1.31277400    0.90087100    0.10878400
-H      -1.16675800    1.03362600   -0.11273700"""]
+H      -1.16675800    1.03362600   -0.11273700
+"""]
         energies = [0, 5, 5, 5]  # J/mol
 
-        sched1.save_conformers_file(label='vinoxy', xyzs=xyzs)
+        save_conformers_file(project_directory=project_directory, label='vinoxy', xyzs=xyzs, level_of_theory='level1',
+                             multiplicity=2, charge=0)
         self.assertTrue(os.path.isfile(os.path.join(project_directory, 'output', 'Species', 'vinoxy', 'geometry',
                                                     'conformers_before_optimization.txt')))
 
-        sched1.save_conformers_file(label='vinoxy', xyzs=xyzs, energies=energies)
+        save_conformers_file(project_directory=project_directory, label='vinoxy', xyzs=xyzs, level_of_theory='level1',
+                             multiplicity=2, charge=0, energies=energies)
         self.assertTrue(os.path.isfile(os.path.join(project_directory, 'output', 'Species', 'vinoxy', 'geometry',
                                                     'conformers_after_optimization.txt')))
 
