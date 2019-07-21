@@ -111,8 +111,49 @@ class TestParser(unittest.TestCase):
         polar1 = parser.parse_polarizability(path1)
         self.assertAlmostEqual(polar1, 3.99506, 4)
 
+    def test_process_conformers_file(self):
+        """Test processing ARC conformer files"""
+        path1 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'conformers_before_optimization.txt')
+        path2 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'conformers_after_optimization.txt')
+        path3 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'conformers_file.txt')
+
+        xyzs, energies = parser.process_conformers_file(path1)
+        self.assertEqual(len(xyzs), 3)
+        self.assertEqual(len(energies), 3)
+        self.assertTrue(all([e is None for e in energies]))
+
+        spc1 = ARCSpecies(label='tst1', xyz=xyzs[0])
+        self.assertEqual(len(spc1.conformers), 1)
+
+        xyzs, energies = parser.process_conformers_file(path2)
+        self.assertEqual(len(xyzs), 3)
+        self.assertEqual(len(energies), 3)
+        self.assertEqual(energies, [0.0, 10.271, 10.288])
+
+        spc2 = ARCSpecies(label='tst2', xyz=xyzs[:2])
+        self.assertEqual(len(spc2.conformers), 2)
+        self.assertEqual(len(spc2.conformer_energies), 2)
+
+        xyzs, energies = parser.process_conformers_file(path3)
+        self.assertEqual(len(xyzs), 4)
+        self.assertEqual(len(energies), 4)
+        self.assertEqual(energies, [0.0, 0.005, None, 0.005])
+
+        spc3 = ARCSpecies(label='tst3', xyz=xyzs)
+        self.assertEqual(len(spc3.conformers), 4)
+        self.assertEqual(len(spc3.conformer_energies), 4)
+
+        spc4 = ARCSpecies(label='tst4', xyz=path1)
+        self.assertEqual(len(spc4.conformers), 3)
+        self.assertTrue(all([e is None for e in spc4.conformer_energies]))
+        spc5 = ARCSpecies(label='tst5', xyz=path2)
+        self.assertEqual(len(spc5.conformers), 3)
+        self.assertTrue(all([e is not None for e in spc5.conformer_energies]))
+        spc6 = ARCSpecies(label='tst6', xyz=path3)
+        self.assertEqual(len(spc6.conformers), 4)
 
 ################################################################################
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
