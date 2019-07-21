@@ -23,7 +23,7 @@ from rmgpy.exceptions import InvalidAdjacencyListError
 from arc.common import get_logger, get_atom_radius, determine_symmetry
 from arc.arc_exceptions import SpeciesError, RotorError, InputError, TSError
 from arc.settings import default_ts_methods, valid_chars, minimum_barrier
-from arc.parser import parse_xyz_from_file, parse_dipole_moment, parse_polarizability
+from arc.parser import parse_xyz_from_file, parse_dipole_moment, parse_polarizability, process_conformers_file
 from arc.species.converter import get_xyz_string, get_xyz_matrix, rdkit_conf_from_mol, standardize_xyz_string,\
     molecules_from_xyz, rmg_mol_from_inchi, order_atoms_in_mol_list, check_isomorphism, set_rdkit_dihedrals,\
     translate_to_center_of_mass
@@ -454,8 +454,6 @@ class ARCSpecies(object):
         self.initial_xyz = standardize_xyz_string(species_dict['initial_xyz']) if 'initial_xyz' in species_dict\
             else None
         self.final_xyz = standardize_xyz_string(species_dict['final_xyz']) if 'final_xyz' in species_dict else None
-        if 'xyz' in species_dict and self.initial_xyz is None and self.final_xyz is None:
-            self.process_xyz(species_dict['xyz'])
         self.is_ts = species_dict['is_ts'] if 'is_ts' in species_dict else False
         if self.is_ts:
             self.ts_conf_spawned = species_dict['ts_conf_spawned'] if 'ts_conf_spawned' in species_dict else False
@@ -483,6 +481,8 @@ class ARCSpecies(object):
                 else dict()
         else:
             self.ts_methods = None
+        if 'xyz' in species_dict and self.initial_xyz is None and self.final_xyz is None:
+            self.process_xyz(species_dict['xyz'])
         for char in self.label:
             if char not in valid_chars:
                 raise SpeciesError('Species label {0} contains an invalid character: "{1}"'.format(self.label, char))
@@ -593,7 +593,7 @@ class ARCSpecies(object):
 
         Args:
             confs_to_dft (int, optional): The number of conformers to store in the .conformers attribute of the species
-                                          that will later be DFT'ed at the conformers_level. Only relevant for non-TSs.
+                                          that will later be DFT'ed at the conformers_level.
             plot_path (str, unicode, optional): A folder path in which the plot will be saved.
                                                 If None, the plot will not be shown (nor saved).
         """
@@ -608,52 +608,10 @@ class ARCSpecies(object):
                                                           num_confs_to_return=confs_to_dft, return_all_conformers=False,
                                                           plot_path=plot_path)
             self.conformers.extend([conf['xyz'] for conf in lowest_confs])
-            self.conformer_energies = [None] * len(lowest_confs)
+            self.conformer_energies.extend([None] * len(lowest_confs))
             lowest_conf = conformers.get_lowest_confs(label=self.label, confs=lowest_confs, n=1)[0]
             logger.info('Most stable force field conformer for {0}:'.format(self.label))
             logger.info(lowest_conf['xyz'])
-
-        else:
-            # generate "conformers" from the results of the different TS guess methods, if successful
-            tsg_index = 0
-            self.successful_methods = list()
-            self.unsuccessful_methods = list()
-            for i, xyz in enumerate(self.conformers):
-                # when defining a TS species with xyz, it is saved in self.conformers via self.process_xyz()
-                # make TSGuess objects out of them if don't already exist
-                for tsg in self.ts_guesses:
-                    if xyz == tsg.xyz:
-                        break
-                else:
-                    self.ts_guesses.append(TSGuess(method='user guess {0}'.format(i), xyz=xyz))
-                    self.ts_guesses[-1].success = True
-            self.conformers = list()
-            for tsg in self.ts_guesses:
-                if tsg.success:
-                    self.conformers.append(tsg.xyz)
-                    self.conformer_energies.append(None)  # a placeholder (lists are synced)
-                    tsg.index = tsg_index
-                    tsg_index += 1
-                    self.successful_methods.append(tsg.method)
-                else:
-                    self.unsuccessful_methods.append(tsg.method)
-            error = False
-            message = '\nAll TS guesses for {0} terminated.'.format(self.label)
-            if self.successful_methods and not self.unsuccessful_methods:
-                message += '\n All methods were successful: {0}'.format(self.successful_methods)
-            elif self.successful_methods:
-                message += ' Successful methods: {0}'.format(self.successful_methods)
-            elif self.yml_path is not None and self.final_xyz is not None:
-                message += ' Geometry parsed from YAML file.'
-            else:
-                message += ' No method has converged!'
-                error = True
-            if self.unsuccessful_methods:
-                message += ' Unsuccessful methods: {0}'.format(self.unsuccessful_methods)
-            logger.info(message)
-            if error:
-                logger.error('No TS methods for {0} have converged!'.format(self.label))
-            logger.info('\n')
 
     def get_cheap_conformer(self):
         """
@@ -871,53 +829,20 @@ class ARCSpecies(object):
                                                                                    filter_structures=True)
         order_atoms_in_mol_list(ref_mol=self.mol, mol_list=self.mol_list)
 
-    def process_conformers_file(self, conformers_path):
-        """
-        Populate the conformers and conformer energies lists with data from an ARC's conformers file.
-        The `conformers_path` should direct to either a "conformers_before_optimization" or
-        a "conformers_after_optimization" ARC file.
-        """
-        if not os.path.isfile(conformers_path):
-            raise ValueError('Conformers file {0} could not be found'.format(conformers_path))
-        with open(conformers_path, 'r') as f:
-            lines = f.readlines()
-        conformer = ''
-        first_conformer = True  # to keep conformers and conformer_energies lists the same length we need to
-        # differentiate between starting the first conformer and the starting other conformers
-        # if energy wasn't read and this isn't the first conformer, append None to conformer_energies
-        read_energy = False
-        for line in lines:
-            if 'conformer' in line or 'SMILES' in line or 'Failed to converge' in line or line in ['\r', '\n', '\r\n']:
-                continue_reading_conformer = False
-            elif 'Relative Energy' in line:
-                self.conformer_energies.append(float(line.split()[2]))
-                continue_reading_conformer = False
-                read_energy = True
-            else:
-                if not first_conformer and conformer == '':
-                    if not read_energy:
-                        self.conformer_energies.append(None)  # dummy (lists should be the same length)
-                first_conformer = False
-                read_energy = False
-                conformer += line
-                continue_reading_conformer = True
-            if not continue_reading_conformer and conformer:
-                self.conformers.append(standardize_xyz_string(conformer))
-                conformer = ''
-
     def process_xyz(self, xyz_list):
         """
-        Process the user's input and add to the .conformers attribute.
+        Process the user's input and add either to the .conformers attribute or to .ts_guesses.
 
         Args:
-            xyz_list (list, str, unicode): Entries are either string format coordinates or file paths.
-                                           (One entry could be given directly, not in a list)
-                                           The path should direct to wither a .xyz file, ARC conformers (w/ or w/o
-                                           energies), or an ESS log/input files.
+            xyz_list (list, str, unicode): Entries are either string-format coordinates or file paths.
+                                           (If there's on;y one entry, it could be given directly, not in a list)
+                                           The file paths could direct to either a .xyz file, ARC conformers (w/ or w/o
+                                           energies), or an ESS log/input files, making this method extremely flexible.
         """
         if xyz_list is not None:
             if not isinstance(xyz_list, list):
                 xyz_list = [xyz_list]
+            xyzs, energies = list(), list()
             for xyz in xyz_list:
                 if not isinstance(xyz, (str, unicode)):
                     raise InputError('each xyz entry in xyz_list must be a string. '
@@ -926,15 +851,32 @@ class ARCSpecies(object):
                     file_extension = os.path.splitext(xyz)[1]
                     if 'txt' in file_extension:
                         # assume this is an ARC conformer file
-                        self.process_conformers_file(conformers_path=xyz)
+                        xyzs_, energies_ = process_conformers_file(conformers_path=xyz)
+                        xyzs.extend(xyzs_)
+                        energies.extend(energies_)
                     else:
                         # assume this is an ESS log file
-                        self.conformers.append(parse_xyz_from_file(xyz))  # also calls standardize_xyz_string()
-                        self.conformer_energies.append(None)  # dummy (lists should be the same length)
+                        xyzs.append(parse_xyz_from_file(xyz))  # also calls standardize_xyz_string()
+                        energies.append(None)  # dummy (lists should be the same length)
                 else:
                     # assume this is a string format xyz
-                    self.conformers.append(standardize_xyz_string(xyz))
-                    self.conformer_energies.append(None)  # dummy (lists should be the same length)
+                    xyzs.append(standardize_xyz_string(xyz))
+                    energies.append(None)  # dummy (lists should be the same length)
+            if not self.is_ts:
+                self.conformers.extend(xyzs)
+                self.conformer_energies.extend(energies)
+            else:
+                tsg_index = len(self.ts_guesses)
+                for xyz, energy in zip(xyzs, energies):
+                    # make TSGuess objects
+                    # for tsg in self.ts_guesses:
+                    #     if xyz == tsg.xyz:
+                    #         break
+                    # else:
+                    self.ts_guesses.append(TSGuess(method='user guess {0}'.format(tsg_index), xyz=xyz, energy=energy))
+                    # user guesses are always successful in generating a *guess*:
+                    self.ts_guesses[tsg_index].success = True
+                    tsg_index += 1
 
     def set_transport_data(self, lj_path, opt_path, bath_gas, opt_level, freq_path='', freq_level=None):
         """
@@ -1009,7 +951,7 @@ class TSGuess(object):
     Attribute              Type          Description
     ====================== ============= ===============================================================================
     `xyz`                   ``str``      The 3D coordinates guess
-    `opt_xyz`             ``str``      The 3D coordinates after optimization at the ts_guesses level
+    `opt_xyz`               ``str``      The 3D coordinates after optimization at the ts_guesses level
     `method`                ``str''      The method/source used for the xyz guess
     `reactants_xyz`         ``list``     A list of tuples, each containing:
                                            (reactant label, reactant geometry in string format)
@@ -1027,7 +969,7 @@ class TSGuess(object):
 
     """
     def __init__(self, method=None, reactants_xyz=None, products_xyz=None, family=None, xyz=None,
-                 rmg_reaction=None, ts_dict=None):
+                 rmg_reaction=None, ts_dict=None, energy=None):
 
         if ts_dict is not None:
             # Reading from a dictionary
@@ -1041,7 +983,7 @@ class TSGuess(object):
             self.opt_xyz = None
             self.process_xyz(xyz)  # populates self.xyz
             self.success = None
-            self.energy = None
+            self.energy = energy
             self.method = method.lower() if method is not None else 'user guess'
             if 'user guess' in self.method:
                 if self.xyz is None:

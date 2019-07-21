@@ -215,3 +215,42 @@ def _get_lines_from_file(path):
     else:
         raise InputError('Could not find file {0}'.format(path))
     return lines
+
+
+def process_conformers_file(conformers_path):
+    """
+    Parse coordinates and energies from an ARC conformers file of either species or TSs.
+
+    Args:
+        conformers_path (str, unicode): The path to an ARC conformers file
+                                        (either a "conformers_before_optimization" or
+                                        a "conformers_after_optimization" file).
+
+    Returns:
+        list: Entries are optimized xyz's in a string format.
+        list: Entries float numbers representing the energies in kJ/mol.
+    """
+    if not os.path.isfile(conformers_path):
+        raise ValueError('Conformers file {0} could not be found'.format(conformers_path))
+    with open(conformers_path, 'r') as f:
+        lines = f.readlines()
+    xyzs, energies = list(), list()
+    line_index = 0
+    while line_index < len(lines):
+        if 'conformer' in lines[line_index] and ':' in lines[line_index] and lines[line_index].strip()[-2].isdigit():
+            xyz, energy = '', None
+            line_index += 1
+            print(lines[line_index].strip())
+            while line_index < len(lines) and lines[line_index].strip() and 'SMILES' not in lines[line_index]\
+                    and 'energy' not in lines[line_index].lower() and 'guess method' not in lines[line_index].lower():
+                xyz += lines[line_index]
+                line_index += 1
+            while line_index < len(lines) and 'conformer' not in lines[line_index]:
+                if 'relative energy:' in lines[line_index].lower():
+                    energy = float(lines[line_index].split()[2])
+                line_index += 1
+            xyzs.append(xyz)
+            energies.append(energy)
+        else:
+            line_index += 1
+    return xyzs, energies

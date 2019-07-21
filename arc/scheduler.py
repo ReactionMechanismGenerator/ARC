@@ -934,7 +934,7 @@ class Scheduler(object):
             coords = list()
             for mol in self.species_dict[label].mol_list:
                 # embed conformers (but don't optimize)
-                rd_mol, rd_index_map = conformers.embed_rdkit(mol, num_confs=num_confs, xyz=None)
+                rd_mol, rd_index_map = conformers.embed_rdkit(label=label, mol=mol, num_confs=num_confs, xyz=None)
                 for i in range(rd_mol.GetNumConformers()):
                     conf, coord = rd_mol.GetConformer(i), list()
                     for j in range(conf.GetNumAtoms()):
@@ -959,8 +959,8 @@ class Scheduler(object):
             save_yaml_file(path=confs_path, content=confs)  # save for the next iteration and for archiving
 
             confs = conformers.determine_dihedrals(confs, torsions)
-            new_conformers, _ = conformers.deduce_new_conformers(conformers=confs, torsions=torsions, tops=tops,
-                                                                 mol_list=self.species_dict[label].mol_list,
+            new_conformers, _ = conformers.deduce_new_conformers(label=label, conformers=confs, torsions=torsions,
+                                                                 tops=tops, mol_list=self.species_dict[label].mol_list,
                                                                  plot_path=False)
             new_confs_path = os.path.join(self.project_directory, 'calcs', 'Species', label,
                                           'ff_param_fit', 'new_conformers.yml')  # list of lists
@@ -1147,6 +1147,26 @@ class Scheduler(object):
         """
         if not self.species_dict[label].is_ts:
             raise SchedulerError('determine_most_likely_ts_conformer() method only processes transition state guesses.')
+        for tsg in self.species_dict[label].ts_guesses:
+            if tsg.success:
+                self.species_dict[label].successful_methods.append(tsg.method)
+            else:
+                self.species_dict[label].unsuccessful_methods.append(tsg.method)
+        message = '\nAll TS guesses for {0} terminated.'.format(label)
+        if self.species_dict[label].successful_methods and not self.species_dict[label].unsuccessful_methods:
+            message += '\n All methods were successful: {0}'.format(self.species_dict[label].successful_methods)
+        elif self.species_dict[label].successful_methods:
+            message += ' Successful methods: {0}'.format(self.species_dict[label].successful_methods)
+        elif self.species_dict[label].yml_path is not None and self.species_dict[label].final_xyz is not None:
+            message += ' Geometry parsed from YAML file.'
+        else:
+            message += ' No method has converged!'
+            logger.error('No TS methods for {0} have converged!'.format(label))
+        if self.species_dict[label].unsuccessful_methods:
+            message += ' Unsuccessful methods: {0}'.format(self.species_dict[label].unsuccessful_methods)
+        logger.info(message)
+        logger.info('\n')
+
         if all(tsg.energy is None for tsg in self.species_dict[label].ts_guesses):
             logger.error('No guess converged for TS {0}!'.format(label))
             # for i, job in self.job_dict[label]['conformers'].items():
