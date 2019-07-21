@@ -68,6 +68,22 @@ H      -1.16115119    0.31478894   -0.81506145
             data = f.read()
         self.assertEqual(data, gjf_data)
 
+    def test_save_conformers_file(self):
+        """test the save_conformers_file function"""
+        project = 'arc_project_for_testing_delete_after_usage'
+        project_directory = os.path.join(arc_path, 'Projects', project)
+        label = 'butanol'
+        spc1 = ARCSpecies(label=label, smiles='CCCCO')
+        spc1.generate_conformers(confs_to_dft=3)
+        self.assertIn(len(spc1.conformers), [2,3])
+        plotter.save_conformers_file(project_directory=project_directory, label=spc1.label,
+                                     xyzs=spc1.conformers, level_of_theory='APFD/def2tzvp',
+                                     multiplicity=spc1.multiplicity, charge=spc1.charge, is_ts=False,
+                                     energies=spc1.conformer_energies)
+        conf_file_path = os.path.join(project_directory, 'output', 'Species', label, 'geometry',
+                                      'conformers_before_optimization.txt')
+        self.assertTrue(os.path.isfile(conf_file_path))
+
     @classmethod
     def tearDownClass(cls):
         """A function that is run ONCE after all unit tests in this class."""
@@ -75,8 +91,8 @@ H      -1.16115119    0.31478894   -0.81506145
         project_directory = os.path.join(arc_path, 'Projects', project)
         shutil.rmtree(project_directory)
 
-
 ################################################################################
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
