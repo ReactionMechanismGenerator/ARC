@@ -54,7 +54,7 @@ def load_families_only(rmgdb, kinetics_families='default'):
 
 
 def load_rmg_database(rmgdb, thermo_libraries=None, reaction_libraries=None, kinetics_families='default',
-                      load_thermo_libs=True, load_kinetic_libs=True):
+                      load_thermo_libs=True, load_kinetic_libs=True, include_nist=False):
     """
     A helper function for loading the RMG database
     """
@@ -115,6 +115,7 @@ def load_rmg_database(rmgdb, thermo_libraries=None, reaction_libraries=None, kin
     # reaction_libraries = list()  # empty library list for debugging
     logger.info('\n\nLoading the RMG database...')
 
+    kinetics_depositories = ['training', 'NIST'] if include_nist else ['training']
     rmgdb.load(
         path=db_path,
         thermoLibraries=thermo_libraries,
@@ -122,7 +123,7 @@ def load_rmg_database(rmgdb, thermo_libraries=None, reaction_libraries=None, kin
         reactionLibraries=reaction_libraries,
         seedMechanisms=list(),
         kineticsFamilies=kinetics_families,
-        kineticsDepositories=['training'],
+        kineticsDepositories=kinetics_depositories,
         depository=False,
     )
     for family in rmgdb.kinetics.families.values():
@@ -245,4 +246,18 @@ def determine_rmg_kinetics(rmgdb, reaction, dh_rxn298):
             deg_rxn.reactants = reaction.reactants
             deg_rxn.products = reaction.products
         rmg_reactions.extend(degenerate_reactions)
+    worked_through_nist_fams = []
+    # NIST:
+    for family, degenerate_reactions in fam_list:
+        if family not in worked_through_nist_fams:
+            worked_through_nist_fams.append(family)
+            for depo in family.depositories:
+                if 'NIST' in depo.label:
+                    for entry in depo.entries.values():
+                        rxn = entry.item
+                        rxn.kinetics = entry.data
+                        rxn.comment = str('NIST: {0}'.format(entry.index))
+                        if entry.reference is not None:
+                            rxn.comment += str('{0} {1}'.format(entry.reference.authors[0], entry.reference.year))
+                        rmg_reactions.append(rxn)
     return rmg_reactions

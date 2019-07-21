@@ -332,7 +332,9 @@ def draw_kinetics_plots(rxn_list, path=None, t_min=(300, 'K'), t_max=(3000, 'K')
                 rmg_rxn_dict['label'] = rmg_rxn.comment
                 rmg_rxns.append(rmg_rxn_dict)
             _draw_kinetics_plots(rxn.label, arc_k, temperature, rmg_rxns, units, pp)
-    pp.close()
+
+    if path is not None:
+        pp.close()
 
 
 def _draw_kinetics_plots(rxn_label, arc_k, temperature, rmg_rxns, units, pp, max_rmg_rxns=5):
