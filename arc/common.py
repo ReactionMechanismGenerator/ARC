@@ -377,3 +377,14 @@ def determine_symmetry(coords, symbols):
         symmetry = pg.symmetryNumber
         optical_isomers = 2 if pg.chiral else optical_isomers
     return symmetry, optical_isomers
+
+
+def min_list(lst):
+    """A helper function for finding the minimum of a list of integers where some of the entries might be None"""
+    if len(lst) == 0:
+        return None
+    elif len(lst) == 1:
+        return lst[0]
+    elif all([entry is None for entry in lst]):
+        return None
+    return min([entry for entry in lst if entry is not None])

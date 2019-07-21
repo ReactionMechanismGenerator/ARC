@@ -22,7 +22,7 @@ from arkane.statmech import determine_qm_software
 from rmgpy.reaction import Reaction
 from rmgpy.exceptions import InputError as RMGInputError
 
-from arc.common import get_logger, read_yaml_file, save_yaml_file, get_ordinal_indicator
+from arc.common import get_logger, read_yaml_file, save_yaml_file, get_ordinal_indicator, min_list
 import arc.rmgdb as rmgdb
 from arc import plotter
 from arc import parser
@@ -2252,13 +2252,6 @@ class Scheduler(object):
             else:
                 # for any other job type use the original level of theory regardless of the number of atoms
                 return original_level_of_theory
-
-
-def min_list(lst):
-    """A helper function for finding the minimum of a list of integers where some of the entries might be None"""
-    if len(lst) == 1:
-        return lst[0]
-    return min([entry for entry in lst if entry is not None])
 
 
 def sum_time_delta(timedelta_list):
