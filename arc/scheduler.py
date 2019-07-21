@@ -706,6 +706,12 @@ class Scheduler(object):
         """
         Spawn opt jobs at the ts_guesses level of theory for the TS guesses
         """
+        plotter.save_conformers_file(project_directory=self.project_directory, label=label,
+                                     xyzs=[tsg.xyz for tsg in self.species_dict[label].ts_guesses],
+                                     level_of_theory=self.ts_guess_level,
+                                     multiplicity=self.species_dict[label].multiplicity,
+                                     charge=self.species_dict[label].charge, is_ts=True,
+                                     ts_methods=[tsg.method for tsg in self.species_dict[label].ts_guesses])
         if len(self.species_dict[label].conformers) > 1:
             self.job_dict[label]['conformers'] = dict()
             for i, xyz in enumerate(self.species_dict[label].conformers):
@@ -973,7 +979,10 @@ class Scheduler(object):
         Process the generated conformers and spawn additional (non-conformer) jobs as needed.
         If more than one conformer is available, they will be optimized at the DFT conformer_level.
         """
-        self.save_conformers_file(label)  # before DFT optimization
+        plotter.save_conformers_file(project_directory=self.project_directory, label=label,
+                                     xyzs=self.species_dict[label].conformers, level_of_theory=self.conformer_level,
+                                     multiplicity=self.species_dict[label].multiplicity,
+                                     charge=self.species_dict[label].charge, is_ts=False)  # before optimization
         if self.species_dict[label].initial_xyz is None and self.species_dict[label].final_xyz is None \
                 and not self.testing:
             if len(self.species_dict[label].conformers) > 1:
@@ -1055,7 +1064,11 @@ class Scheduler(object):
                         xyzs.append(get_xyz_string(coords=coords, numbers=number))
             xyzs_in_original_order = xyzs
             energies, xyzs = (list(t) for t in zip(*sorted(zip(self.species_dict[label].conformer_energies, xyzs))))
-            self.save_conformers_file(label, xyzs=xyzs, energies=energies)  # after optimization
+            plotter.save_conformers_file(project_directory=self.project_directory, label=label,
+                                         xyzs=self.species_dict[label].conformers, level_of_theory=self.conformer_level,
+                                         multiplicity=self.species_dict[label].multiplicity,
+                                         charge=self.species_dict[label].charge, is_ts=False,
+                                         energies=self.species_dict[label].conformer_energies)  # after optimization
             # Run isomorphism checks if a 2D representation is available
             if self.species_dict[label].mol is not None:
                 for i, xyz in enumerate(xyzs):
@@ -1198,9 +1211,13 @@ class Scheduler(object):
             if self.species_dict[label].chosen_ts is None:
                 raise SpeciesError('Could not pair most stable conformer {0} of {1} to a respective '
                                    'TS guess'.format(i_min, label))
-            self.save_conformers_file(label, xyzs=[tsg.opt_xyz for tsg in self.species_dict[label].ts_guesses],
-                                      energies=[tsg.energy for tsg in self.species_dict[label].ts_guesses],
-                                      ts_methods=[tsg.method for tsg in self.species_dict[label].ts_guesses])
+            plotter.save_conformers_file(project_directory=self.project_directory, label=label,
+                                         xyzs=[tsg.opt_xyz for tsg in self.species_dict[label].ts_guesses],
+                                         level_of_theory=self.ts_guess_level,
+                                         multiplicity=self.species_dict[label].multiplicity,
+                                         charge=self.species_dict[label].charge, is_ts=True,
+                                         energies=[tsg.energy for tsg in self.species_dict[label].ts_guesses],
+                                         ts_methods=[tsg.method for tsg in self.species_dict[label].ts_guesses])
 
     def parse_composite_geo(self, label, job):
         """
@@ -2184,64 +2201,6 @@ class Scheduler(object):
         with open(rxn_info_path, 'w') as f:
             f.write(str('Reaction labels and respective TS labels:\n\n'))
         return rxn_info_path
-
-    def save_conformers_file(self, label, xyzs=None, energies=None, ts_methods=None):
-        """
-        Save the conformers before or after optimization.
-        If energies are given or Species.conformer_energies is not empty, the conformers are considered to be optimized.
-
-        Args:
-            label (str, unicode): The species label.
-            xyzs (list, optional): Entries are sting-format xyz coordinates of conformers.
-                                   If not given (None) then the Species.conformers are used instead.
-            energies (list, optional): Entries are energies corresponding to the conformer list in kJ/mol.
-                                       If not given (None) then the Species.conformer_energies are used instead.
-        """
-        spc_dir = 'rxns' if self.species_dict[label].is_ts else 'Species'
-        geo_dir = os.path.join(self.project_directory, 'output', spc_dir, label, 'geometry')
-        if not os.path.exists(geo_dir):
-            os.makedirs(geo_dir)
-        if not self.species_dict[label].is_ts:
-            smiles_list = list()
-            xyzs = xyzs or self.species_dict[label].conformers
-            for xyz in xyzs:
-                try:
-                    b_mol = molecules_from_xyz(xyz, multiplicity=self.species_dict[label].multiplicity,
-                                               charge=self.species_dict[label].charge)[1]
-                except SanitizationError:
-                    b_mol = None
-                smiles = b_mol.toSMILES() if b_mol is not None else 'Could not perceive molecule'
-                smiles_list.append(smiles)
-        energies = energies or self.species_dict[label].conformer_energies
-        if energies is not None and any(e is not None for e in energies):
-            optimized = True
-            conf_path = os.path.join(geo_dir, 'conformers_after_optimization.txt')
-        else:
-            optimized = False
-            conf_path = os.path.join(geo_dir, 'conformers_before_optimization.txt')
-        with open(conf_path, 'w') as f:
-            content = ''
-            if optimized:
-                content += 'conformers optimized at {0}\n\n'.format(self.conformer_level)
-            for i, xyz in enumerate(xyzs):
-                content += 'conformer {0}:\n'.format(i)
-                if xyz is not None:
-                    content += xyz + '\n'
-                    if not self.species_dict[label].is_ts:
-                        content += 'SMILES: ' + smiles_list[i] + '\n'
-                    elif ts_methods is not None:
-                        content += 'TS guess method: ' + ts_methods[i] + '\n'
-                    if optimized:
-                        if energies[i] == min_list(energies):
-                            content += 'Relative Energy: 0 kJ/mol (lowest)'
-                        elif energies[i] is not None:
-                            content += 'Relative Energy: {0:.3f} kJ/mol'.format(energies[i] - min_list(energies))
-                else:
-                    if self.species_dict[label].is_ts and ts_methods is not None:
-                        content += 'TS guess method: ' + ts_methods[i] + '\n'
-                    content += 'Failed to converge'
-                content += '\n\n\n'
-            f.write(str(content))
 
     def determine_adaptive_level(self, original_level_of_theory, job_type, heavy_atoms):
         """

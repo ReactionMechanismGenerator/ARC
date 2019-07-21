@@ -28,10 +28,10 @@ from rmgpy.data.base import Entry
 from rmgpy.quantity import ScalarQuantity
 from rmgpy.species import Species
 
-from arc.common import get_logger
+from arc.common import get_logger, min_list
 from arc.species.species import ARCSpecies
 from arc.species.converter import get_xyz_matrix, rdkit_conf_from_mol, molecules_from_xyz
-from arc.arc_exceptions import InputError
+from arc.arc_exceptions import InputError, SanitizationError
 
 ##################################################################
 
@@ -685,3 +685,63 @@ def save_kinetics_lib(rxn_list, path, name, lib_long_desc):
             pass
         kinetics_library.save(os.path.join(lib_path, 'reactions.py'))
         kinetics_library.saveDictionary(os.path.join(lib_path, 'dictionary.txt'))
+
+
+def save_conformers_file(project_directory, label, xyzs, level_of_theory, multiplicity=None, charge=None, is_ts=False,
+                         energies=None, ts_methods=None):
+    """
+    Save the conformers before or after optimization.
+    If energies are given, the conformers are considered to be optimized.
+
+    Args:
+        project_directory (str, unicode): The path to the project's directory.
+        label (str, unicode): The species label.
+        xyzs (list): Entries are sting-format xyz coordinates of conformers.
+        level_of_theory (str, unicode): The level of theory used for the conformers optimization.
+        multiplicity (int, optional): The species multiplicity, used for perceiving the molecule.
+        charge (int, optional): The species charge, used for perceiving the molecule.
+        is_ts (bool, optional): Whether the species represents a TS. True if it does.
+        energies (list, optional): Entries are energies corresponding to the conformer list in kJ/mol.
+                                   If not given (None) then the Species.conformer_energies are used instead.
+        ts_methods (list, optional): Entries are method names used to generate the TS guess.
+    """
+    spc_dir = 'rxns' if is_ts else 'Species'
+    geo_dir = os.path.join(project_directory, 'output', spc_dir, label, 'geometry')
+    if not os.path.exists(geo_dir):
+        os.makedirs(geo_dir)
+    if energies is not None and any(e is not None for e in energies):
+        optimized = True
+        min_e = min_list(energies)
+        conf_path = os.path.join(geo_dir, 'conformers_after_optimization.txt')
+    else:
+        optimized = False
+        conf_path = os.path.join(geo_dir, 'conformers_before_optimization.txt')
+    with open(conf_path, 'w') as f:
+        content = ''
+        if optimized:
+            content += 'Conformers for {0}, optimized at the {1} level:\n\n'.format(label, level_of_theory)
+        for i, xyz in enumerate(xyzs):
+            content += 'conformer {0}:\n'.format(i)
+            if xyz is not None:
+                content += xyz + '\n'
+                if not is_ts:
+                    try:
+                        b_mol = molecules_from_xyz(xyz, multiplicity=multiplicity, charge=charge)[1]
+                    except SanitizationError:
+                        b_mol = None
+                    smiles = b_mol.toSMILES() if b_mol is not None else 'Could not perceive molecule'
+                    content += 'SMILES: {0}\n'.format(smiles)
+                elif ts_methods is not None:
+                    content += 'TS guess method: {0}\n'.format(ts_methods[i])
+                if optimized:
+                    if energies[i] == min_e:
+                        content += 'Relative Energy: 0 kJ/mol (lowest)'
+                    elif energies[i] is not None:
+                        content += 'Relative Energy: {0:.3f} kJ/mol'.format(energies[i] - min_e)
+            else:
+                # Failed to converge
+                if is_ts and ts_methods is not None:
+                    content += 'TS guess method: ' + ts_methods[i] + '\n'
+                content += 'Failed to converge'
+            content += '\n\n\n'
+        f.write(str(content))
