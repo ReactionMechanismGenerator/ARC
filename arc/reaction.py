@@ -326,14 +326,14 @@ class ARCReaction(object):
         p_e_elect = sum([spc.e_elect for spc in self.p_species])
         if self.ts_species.e_elect < r_e_elect or self.ts_species.e_elect < p_e_elect:
             if log:
-                logger.error('TS of reaction {0} has a lower E0 value than expected:\nReactants: {1} kJ/mol\nTS:'
-                             ' {2} kJ/mol\nProducts: {3} kJ/mol'.format(self.label, r_e_elect,
-                                                                        self.ts_species.e_elect, p_e_elect))
+                logger.error('TS of reaction {0} has a lower E0 value than expected:\nReactants: {1:.2f} kJ/mol\nTS:'
+                             ' {2:.2f} kJ/mol\nProducts: {3:.2f} kJ/mol'.format(
+                    self.label, r_e_elect, self.ts_species.e_elect, p_e_elect))
             return False
         if log:
-            logger.info('Reaction {0} has the following path energies:\nReactants: {1} kJ/mol'
-                        '\nTS: {2} kJ/mol\nProducts: {3} kJ/mol'.format(self.label, r_e_elect,
-                                                                        self.ts_species.e_elect, p_e_elect))
+            logger.info('Reaction {0} has the following path energies:\nReactants: {1:.2f} kJ/mol'
+                        '\nTS: {2:.2f} kJ/mol\nProducts: {3:.2f} kJ/mol'.format(
+                self.label, r_e_elect, self.ts_species.e_elect, p_e_elect))
         return True
 
     def check_attributes(self):
