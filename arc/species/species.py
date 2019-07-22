@@ -486,15 +486,10 @@ class ARCSpecies(object):
         for char in self.label:
             if char not in valid_chars:
                 raise SpeciesError('Species label {0} contains an invalid character: "{1}"'.format(self.label, char))
-        try:
-            self.multiplicity = species_dict['multiplicity']
-        except KeyError:
-            self.multiplicity = None
-        try:
-            self.charge = species_dict['charge']
-        except KeyError:
+        self.multiplicity = species_dict['multiplicity'] if 'multiplicity' in species_dict else None
+        self.charge = species_dict['charge'] if 'charge' in species_dict else 0
+        if 'charge' not in species_dict:
             logger.debug('No charge specified for {0}, assuming charge 0.'.format(self.label))
-            self.charge = 0
         if self.is_ts:
             self.generate_thermo = False
         else:
@@ -877,6 +872,12 @@ class ARCSpecies(object):
                     # user guesses are always successful in generating a *guess*:
                     self.ts_guesses[tsg_index].success = True
                     tsg_index += 1
+            if self.multiplicity is not None and self.charge is not None:
+                for xyz in xyzs:
+                    consistent = check_xyz(xyz=xyz, multiplicity=self.multiplicity, charge=self.charge)
+                    if not consistent:
+                        raise SpeciesError('Inconsistent combination of number of electrons. multiplicity and charde  '
+                                           'for {0}.'.format(self.label))
 
     def set_transport_data(self, lj_path, opt_path, bath_gas, opt_level, freq_path='', freq_level=None):
         """
@@ -1290,3 +1291,31 @@ def enumerate_bonds(mol):
         return mol_list[0].enumerate_bonds()
     else:
         return mol.enumerate_bonds()
+
+
+def check_xyz(xyz, multiplicity, charge):
+    """
+    Checks a string-format coordinates for electronic consistency with the spin multiplicity and charge.
+
+    Args:
+        xyz (str, unicode): The species coordinates.
+        multiplicity (int): The species spin multiplicity.
+        charge (int): The species net charge.
+
+    Returns:
+        bool: Whether the input arguments are all in agreement. True if they are.
+    """
+    symbols = get_xyz_matrix(xyz)[1]
+    electrons = 0
+    for symbol in symbols:
+        for number, element_symbol in symbol_by_number.items():
+            if symbol == element_symbol:
+                electrons += number
+                break
+    print(electrons)
+    print(charge)
+    electrons -= charge
+    if electrons % 2 ^ multiplicity % 2:
+        return True
+    return False
+
