@@ -15,7 +15,7 @@ from rmgpy.species import Species
 from rmgpy.reaction import Reaction
 from rmgpy.transport import TransportData
 
-from arc.species.species import ARCSpecies, TSGuess, determine_rotor_type, determine_rotor_symmetry
+from arc.species.species import ARCSpecies, TSGuess, determine_rotor_type, determine_rotor_symmetry, check_xyz
 from arc.species.converter import get_xyz_string, get_xyz_matrix, molecules_from_xyz
 from arc.settings import arc_path, default_levels_of_theory
 from arc.rmgdb import make_rmg_database_object
@@ -823,6 +823,20 @@ H       2.82319256   -0.46240839   -0.40178723"""
 
         spc3 = ARCSpecies(label='r1', smiles='CCO')
         self.assertAlmostEqual(spc3.radius, 2.495184, 5)
+
+    def test_check_xyz(self):
+        """Test the check_xyz() function"""
+        xyz1 = """C       0.62797113   -0.03193934   -0.15151370
+C       1.35170118   -1.00275231   -0.48283333
+O      -0.67437022    0.01989281    0.16029161
+H      -1.14812497    0.95492850    0.42742905
+H      -1.27300665   -0.88397696    0.14797321
+H       1.11582953    0.94384729   -0.10134685"""
+        self.assertTrue(check_xyz(xyz1, multiplicity=2, charge=0))
+        self.assertFalse(check_xyz(xyz1, multiplicity=1, charge=0))
+        self.assertFalse(check_xyz(xyz1, multiplicity=2, charge=1))
+        self.assertTrue(check_xyz(xyz1, multiplicity=1, charge=-1))
+
 
     @classmethod
     def tearDownClass(cls):
