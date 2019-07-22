@@ -987,11 +987,11 @@ class Scheduler(object):
                 self.species_dict[label].ts_guesses[i].energy = log.loadEnergy() * 0.001  # in kJ/mol
                 self.species_dict[label].ts_guesses[i].opt_xyz = get_xyz_string(coords=coords, numbers=number)
                 self.species_dict[label].ts_guesses[i].index = i
-                logger.debug('Energy for TSGuess {0} of {1} is {2}'.format(
+                logger.debug('Energy for TSGuess {0} of {1} is {2:.2f}'.format(
                     i, self.species_dict[label].label, self.species_dict[label].ts_guesses[i].energy))
             else:
                 self.species_dict[label].conformer_energies[i] = log.loadEnergy() * 0.001  # in kJ/mol
-                logger.debug('Energy for conformer {0} of {1} is {2}'.format(
+                logger.debug('Energy for conformer {0} of {1} is {2:.2f}'.format(
                     i, self.species_dict[label].label, self.species_dict[label].conformer_energies[i]))
         else:
             logger.warning('Conformer {i} for {label} did not converge!'.format(i=i, label=label))
@@ -1063,8 +1063,8 @@ class Scheduler(object):
                             else:
                                 if energies[i] is not None:
                                     logger.info('A conformer for species {0} was found to be isomorphic '
-                                                'with the 2D graph representation {1}. This conformer is {2} kJ/mol '
-                                                'above the most stable one which corresponds to  {3} (and is not '
+                                                'with the 2D graph representation {1}. This conformer is {2:.2f} kJ/mol'
+                                                ' above the most stable one which corresponds to  {3} (and is not '
                                                 'isomorphic). Using the isomorphic conformer for further geometry '
                                                 'optimization.'.format(
                                                  label, self.species_dict[label].mol.toSMILES(),
@@ -1167,8 +1167,8 @@ class Scheduler(object):
                     self.species_dict[label].initial_xyz = tsg.xyz
                 if tsg.success and tsg.energy is not None:  # guess method and ts_level opt were both successful
                     tsg.energy = tsg.energy - e_min
-                    logger.info('TS guess {0} for {1}. Method: {2}, relative energy: {3} kJ/mol, guess execution time:'
-                                ' {4}'.format(tsg.index, label, tsg.method, tsg.energy, tsg.execution_time))
+                    logger.info('TS guess {0} for {1}. Method: {2}, relative energy: {3:.2f} kJ/mol, guess execution '
+                                'time: {4}'.format(tsg.index, label, tsg.method, tsg.energy, tsg.execution_time))
                     # for TSs, only use `draw_3d()`, not `show_sticks()` which gets connectivity wrong:
                     plotter.draw_structure(xyz=tsg.xyz, method='draw_3d')
             if self.species_dict[label].chosen_ts is None:
@@ -1424,15 +1424,15 @@ class Scheduler(object):
                             # initial and final points differ by more than `inconsistency_az` kJ/mol.
                             # seems like this rotor broke the conformer. Invalidate
                             error_message = 'Rotor scan of {label} between pivots {pivots} is inconsistent by more' \
-                                            ' than {incons_az} kJ/mol between initial and final positions.' \
+                                            ' than {incons_az:.2f} kJ/mol between initial and final positions.' \
                                             ' Invalidating rotor.\nv_list[0] = {v0}, v_list[-1] = {vneg1}'.format(
                                              label=label, pivots=job.pivots, incons_az=inconsistency_az,
                                              v0=v_list[0], vneg1=v_list[-1])
                             logger.error(error_message)
                             message += error_message + '; '
                             invalidate = True
-                            invalidation_reason = 'initial and final points are inconsistent by more than {0}' \
-                                                  ' kJ/mol'.format(inconsistency_az)
+                            invalidation_reason = 'initial and final points are inconsistent by more than {0:.2f} ' \
+                                                  'kJ/mol'.format(inconsistency_az)
                             if not job.scan_trsh:
                                 logger.info('Trying to troubleshoot rotor {0} of {1}...'.format(job.pivots, label))
                                 trsh = True
@@ -1451,8 +1451,8 @@ class Scheduler(object):
                                     logger.error(error_message)
                                     message += error_message + '; '
                                     invalidate = True
-                                    invalidation_reason = 'two consecutive points are inconsistent by more than {0}' \
-                                                          ' kJ/mol'.format(inconsistency_ab)
+                                    invalidation_reason = 'two consecutive points are inconsistent by more than ' \
+                                                          '{0:.2f} kJ/mol'.format(inconsistency_ab)
                                     if not job.scan_trsh:
                                         logger.info('Trying to troubleshoot rotor {0} of {1}...'.format(
                                             job.pivots, label))
@@ -1463,8 +1463,8 @@ class Scheduler(object):
                                     # The barrier for the hinderd rotor is higher than `maximum_barrier` kJ/mol.
                                     # Invalidate
                                     warn_message = 'Rotor scan of {label} between pivots {pivots} has a barrier ' \
-                                                   'larger than {maximum_barrier} kJ/mol. Invalidating rotor.'.format(
-                                                    label=label, pivots=job.pivots, maximum_barrier=maximum_barrier)
+                                                   'larger than {max_barrier:.2f} kJ/mol. Invalidating rotor.'.format(
+                                                    label=label, pivots=job.pivots, max_barrier=maximum_barrier)
                                     logger.warning(warn_message)
                                     message += warn_message + '; '
                                     invalidate = True
