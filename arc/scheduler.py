@@ -627,7 +627,7 @@ class Scheduler(object):
                 logger.warning('Tried to determine status of job {0}, but it seems like the job never ran.'
                                ' Re-running job.'.format(job.job_name))
                 self.run_job(label=label, xyz=job.xyz, level_of_theory=job.level_of_theory, job_type=job.job_type,
-                             fine=job.fine, software=job.software, shift=job.shift, trsh=job.trsh, memory=job.memory,
+                             fine=job.fine, software=job.software, shift=job.shift, trsh=job.trsh, memory=job.memory_gb,
                              conformer=job.conformer, ess_trsh_methods=job.ess_trsh_methods, scan=job.scan,
                              pivots=job.pivots, occ=job.occ, scan_trsh=job.scan_trsh, scan_res=job.scan_res,
                              max_job_time=job.max_job_time)
@@ -712,25 +712,10 @@ class Scheduler(object):
                                      multiplicity=self.species_dict[label].multiplicity,
                                      charge=self.species_dict[label].charge, is_ts=True,
                                      ts_methods=[tsg.method for tsg in self.species_dict[label].ts_guesses])
-        if len(self.species_dict[label].conformers) > 1:
-            self.job_dict[label]['conformers'] = dict()
-            for i, xyz in enumerate(self.species_dict[label].conformers):
-                self.run_job(label=label, xyz=xyz, level_of_theory=self.ts_guess_level, job_type='conformer',
-                             conformer=i)
-        elif len(self.species_dict[label].conformers) == 1:
-            if 'opt' not in self.job_dict[label] and 'composite' not in self.job_dict[label]:
-                # proceed only if opt (/composite) not already spawned
-                rxn = ''
-                if self.species_dict[label].rxn_label is not None:
-                    rxn = ' of reaction ' + self.species_dict[label].rxn_label
-                logger.info('Only one TS guess is available for species {0}{1},'
-                            ' using it for geometry optimization'.format(label, rxn))
-                self.species_dict[label].initial_xyz = self.species_dict[label].conformers[0]
-                if not self.composite_method:
-                    self.run_opt_job(label)
-                else:
-                    self.run_composite_job(label)
-                self.species_dict[label].chosen_ts_method = self.species_dict[label].ts_guesses[0].method
+        self.job_dict[label]['conformers'] = dict()
+        for i, tsg in enumerate(self.species_dict[label].ts_guesses):
+            self.run_job(label=label, xyz=tsg.xyz, level_of_theory=self.ts_guess_level, job_type='conformer',
+                         conformer=i)
 
     def run_opt_job(self, label):
         """
@@ -976,8 +961,7 @@ class Scheduler(object):
 
     def process_conformers(self, label):
         """
-        Process the generated conformers and spawn additional (non-conformer) jobs as needed.
-        If more than one conformer is available, they will be optimized at the DFT conformer_level.
+        Process the generated conformers and spawn DFT jobs at the conformer_level.
         """
         plotter.save_conformers_file(project_directory=self.project_directory, label=label,
                                      xyzs=self.species_dict[label].conformers, level_of_theory=self.conformer_level,
@@ -985,31 +969,10 @@ class Scheduler(object):
                                      charge=self.species_dict[label].charge, is_ts=False)  # before optimization
         if self.species_dict[label].initial_xyz is None and self.species_dict[label].final_xyz is None \
                 and not self.testing:
-            if len(self.species_dict[label].conformers) > 1:
-                self.job_dict[label]['conformers'] = dict()
-                for i, xyz in enumerate(self.species_dict[label].conformers):
-                    self.run_job(label=label, xyz=xyz, level_of_theory=self.conformer_level,
-                                 job_type='conformer', conformer=i)
-            elif len(self.species_dict[label].conformers) == 1:
-                logger.info('Only one conformer is available for species {0}, '
-                            'using it as initial xyz'.format(label))
-                self.species_dict[label].initial_xyz = self.species_dict[label].conformers[0]
-                if not self.composite_method:
-                    if self.job_types['opt']:
-                        self.run_opt_job(label)
-                    else:
-                        if self.job_types['freq']:
-                            self.run_freq_job(label)
-                        if self.job_types['sp']:
-                            self.run_sp_job(label)
-                        if self.job_types['1d_rotors']:
-                            self.run_scan_jobs(label)
-                        if self.job_types['onedmin']:
-                            self.run_onedmin_job(label)
-                        if self.job_types['orbitals']:
-                            self.run_orbitals_job(label)
-                else:
-                    self.run_composite_job(label)
+            self.job_dict[label]['conformers'] = dict()
+            for i, xyz in enumerate(self.species_dict[label].conformers):
+                self.run_job(label=label, xyz=xyz, level_of_theory=self.conformer_level,
+                             job_type='conformer', conformer=i)
 
     def parse_conformer_energy(self, job, label, i):
         """
