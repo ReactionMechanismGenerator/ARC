@@ -58,7 +58,8 @@ class Job(object):
     `scan_res`         ``int``           The rotor scan resolution in degrees
     `software`         ``str``           The electronic structure software to be used
     `server_nodes`     ``list``          A list of nodes this job was submitted to (for troubleshooting)
-    `memory`           ``int``           The total job allocated memory in GB (14 by default)
+    `memory_gb`        ``int``           The total job allocated memory in GB (14 by default)
+    `memory`           ``int``           The total job allocated memory in appropriate units per ESS
     `method`           ``str``           The calculation method (e.g., 'B3LYP', 'CCSD(T)', 'CBS-QB3'...)
     `basis_set`        ``str``           The basis set (e.g., '6-311++G(d,p)', 'aug-cc-pVTZ'...)
     `fine`             ``bool``          Whether to use fine geometry optimization parameters
@@ -142,7 +143,6 @@ class Job(object):
         self.submit = ''
         self.input = ''
         self.server_nodes = list()
-        self.mem_per_cpu, self.cpus, self.memory_gb, self.memory = None, None, None, None
         job_types = ['conformer', 'opt', 'freq', 'optfreq', 'sp', 'composite', 'scan', 'gsm', 'irc', 'ts_guess',
                      'orbitals', 'onedmin', 'ff_param_fit', 'gromacs']  # allowed job types
         # the 'conformer' job type is identical to 'opt', but we differentiate them to be identifiable in Scheduler
@@ -177,6 +177,7 @@ class Job(object):
         else:
             self.deduce_software()
         self.server = server if server is not None else self.ess_settings[self.software][0]
+        self.mem_per_cpu, self.cpus, self.memory_gb, self.memory = None, None, None, None
         self.set_cpu_and_mem(memory=memory)
 
         self.set_file_paths()
@@ -207,7 +208,7 @@ class Job(object):
         job_dict['xyz'] = self.xyz
         job_dict['fine'] = self.fine
         job_dict['shift'] = self.shift
-        job_dict['memory'] = self.memory
+        job_dict['memory'] = self.memory_gb
         job_dict['software'] = self.software
         job_dict['occ'] = self.occ
         job_dict['job_status'] = self.job_status
