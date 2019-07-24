@@ -75,7 +75,7 @@ H      -1.16115119    0.31478894   -0.81506145
         label = 'butanol'
         spc1 = ARCSpecies(label=label, smiles='CCCCO')
         spc1.generate_conformers(confs_to_dft=3)
-        self.assertIn(len(spc1.conformers), [2,3])
+        self.assertIn(len(spc1.conformers), [2, 3])
         plotter.save_conformers_file(project_directory=project_directory, label=spc1.label,
                                      xyzs=spc1.conformers, level_of_theory='APFD/def2tzvp',
                                      multiplicity=spc1.multiplicity, charge=spc1.charge, is_ts=False,

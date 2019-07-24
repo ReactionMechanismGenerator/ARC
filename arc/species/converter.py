@@ -330,7 +330,7 @@ def order_atoms_in_mol_list(ref_mol, mol_list):
                 order_atoms(ref_mol, mol)
             except SanitizationError as e:
                 logger.warning('Could not order atoms in\n{0}\nGot the following error:'
-                                '\n{1}'.format(mol.toAdjacencyList, e))
+                               '\n{1}'.format(mol.toAdjacencyList, e))
 
 
 def order_atoms(ref_mol, mol):
@@ -454,7 +454,7 @@ def to_rdkit_mol(mol, remove_h=False, return_mapping=True, sanitize=True):
               'Q': rd_bonds.QUADRUPLE}
     # Add the bonds
     for atom1 in mol_copy.vertices:
-        for atom2, bond in atom1.edges.iteritems():
+        for atom2, bond in atom1.edges.items():
             if bond.isHydrogenBond():
                 continue
             index1 = atoms.index(atom1)
@@ -557,9 +557,12 @@ def get_center_of_mass(xyz=None, coords=None, symbols=None):
     Get the center of mass of xyz coordinates.
     Assumes arc.converter.standardize_xyz_string() was already called for xyz.
     Note that xyz from ESS output is usually already centered at the center of mass (to some precision).
+    Either xyz or coords and symbols must be given.
 
     Args:
-        xyz (list, string, unicode): The xyz coordinates in a string.
+        xyz (string, unicode, optional): The xyz coordinates in a string format.
+        coords (list, optional): The xyz coordinates in an array format.
+        symbols (list, optional): The chemical element symbols corresponding to `coords`.
 
     Returns:
         tuple: The center of mass coordinates.

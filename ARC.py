@@ -49,6 +49,7 @@ def parse_command_line_arguments(command_line_args=None):
 
 
 def main():
+    """The main ARC executable function"""
     # Parse the command-line arguments (requires the argparse module)
     args = parse_command_line_arguments()
     input_file = args.file

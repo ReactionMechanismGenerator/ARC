@@ -468,7 +468,7 @@ def plot_torsion_angles(torsion_angles, torsions_sampling_points=None, wells_dic
                  np.zeros_like(np.arange(len(torsion_angles[tuple(torsion)]))), 'g.')
         if torsions_sampling_points is not None:
             axs.plot(np.array(sampling_points[tuple(torsion)]),
-                        np.zeros_like(np.arange(len(sampling_points[tuple(torsion)]))), 'ro', alpha=0.35, ms=7)
+                     np.zeros_like(np.arange(len(sampling_points[tuple(torsion)]))), 'ro', alpha=0.35, ms=7)
         axs.frameon = False
         axs.set_ylabel(str(torsion), labelpad=10)
         axs.set_yticklabels(['' for _ in range(len(torsions))])

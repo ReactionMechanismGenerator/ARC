@@ -83,41 +83,41 @@ class TestARC(unittest.TestCase):
 
     def test_min_list(self):
         """Test the min_list() function"""
-        l = []
-        min_l = common.min_list(l)
-        self.assertEqual(min_l, None)
+        lst = []
+        min_lst = common.min_list(lst)
+        self.assertEqual(min_lst, None)
 
-        l = [None]
-        min_l = common.min_list(l)
-        self.assertEqual(min_l, None)
+        lst = [None]
+        min_lst = common.min_list(lst)
+        self.assertEqual(min_lst, None)
 
-        l = [None, None]
-        min_l = common.min_list(l)
-        self.assertEqual(min_l, None)
+        lst = [None, None]
+        min_lst = common.min_list(lst)
+        self.assertEqual(min_lst, None)
 
-        l = [0]
-        min_l = common.min_list(l)
-        self.assertEqual(min_l, 0)
+        lst = [0]
+        min_lst = common.min_list(lst)
+        self.assertEqual(min_lst, 0)
 
-        l = [-8]
-        min_l = common.min_list(l)
-        self.assertEqual(min_l, -8)
+        lst = [-8]
+        min_lst = common.min_list(lst)
+        self.assertEqual(min_lst, -8)
 
-        l = [-8, -80]
-        min_l = common.min_list(l)
-        self.assertEqual(min_l, -80)
+        lst = [-8, -80]
+        min_lst = common.min_list(lst)
+        self.assertEqual(min_lst, -80)
 
-        l = [-8, None]
-        min_l = common.min_list(l)
-        self.assertEqual(min_l, -8)
+        lst = [-8, None]
+        min_lst = common.min_list(lst)
+        self.assertEqual(min_lst, -8)
 
-        l = [-8, -8, -8, -8]
-        min_l = common.min_list(l)
-        self.assertEqual(min_l, -8)
+        lst = [-8, -8, -8, -8]
+        min_lst = common.min_list(lst)
+        self.assertEqual(min_lst, -8)
 
-        l = [-8, None, None, 100, -79, None]
-        min_l = common.min_list(l)
-        self.assertEqual(min_l, -79)
+        lst = [-8, None, None, 100, -79, None]
+        min_lst = common.min_list(lst)
+        self.assertEqual(min_lst, -79)
 
 ################################################################################
 

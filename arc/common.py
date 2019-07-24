@@ -301,7 +301,7 @@ def get_ordinal_indicator(number):
         str, unicode: The integer's ordinal indicator.
     """
     ordinal_dict = {1: 'st', 2: 'nd', 3: 'rd'}
-    if number > 13 :
+    if number > 13:
         number %= 10
     if number in ordinal_dict.keys():
         return ordinal_dict[number]

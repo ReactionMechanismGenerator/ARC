@@ -301,7 +301,6 @@ class TestARC(unittest.TestCase):
         self.assertEqual(arc3.model_chemistry, 'ccsd(t)-f12/cc-pvtz-f12//wb97x-d/aug-cc-pvtz')
         self.assertEqual(arc3.freq_scale_factor, 0.988)
 
-
     @classmethod
     def tearDownClass(cls):
         """

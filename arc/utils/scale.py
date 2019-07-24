@@ -167,7 +167,7 @@ def calculate_truhlar_scaling_factors(zpe_dict, level_of_theory):
                     'HF': 5.864 * 4184,
                     'N2O': 6.770 * 4184,
                     'N2': 3.3618 * 4184,
-                    'NH3':21.200 * 4184,
+                    'NH3': 21.200 * 4184,
                     'OH': 5.2915 * 4184,
                     'Cl2': 0.7983 * 4184}
 
@@ -232,7 +232,7 @@ def summarize_results(lambda_zpes, levels_of_theory, zpe_dicts, times, overall_t
             logger.info(text)
             f.write(str(text))
             arkane_formats.append("                 '{0}': {1:.3f},  # [4]\n".format(level_of_theory,
-                                                                            harmonic_freq_scaling_factor))
+                                                                                     harmonic_freq_scaling_factor))
         logger.info(arkane_text)
         f.write(arkane_text)
         for arkane_format in arkane_formats:
@@ -370,11 +370,11 @@ def rename_level(level):
     Returns:
         str, unicode: The renamed level of theory
     """
-    level=level.replace('/', '_')
-    level=level.replace('*', 's')
-    level=level.replace('+', 'p')
-    level=level.replace('(', 'b')
-    level=level.replace(')', 'b')
-    level=level.replace(')', 'b')
-    level=level.replace(', ', 'c')
+    level = level.replace('/', '_')
+    level = level.replace('*', 's')
+    level = level.replace('+', 'p')
+    level = level.replace('(', 'b')
+    level = level.replace(')', 'b')
+    level = level.replace(')', 'b')
+    level = level.replace(', ', 'c')
     return level

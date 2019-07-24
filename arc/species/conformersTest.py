@@ -945,7 +945,8 @@ C	0.0000000	0.0000000	-1.9736270"""  # no colliding atoms
                                   'start_idx': 14}])
 
         torsion_angles = [-179, -178, -175, -170, -61, -59, -58, -50, -40, -30, -20, -10, 0, 10, 150, 160]
-        sampling_points = conformers.determine_torsion_sampling_points(label='', torsion_angles=torsion_angles, symmetry=3)[0]
+        sampling_points = conformers.determine_torsion_sampling_points(
+            label='', torsion_angles=torsion_angles, symmetry=3)[0]
         self.assertEqual(sampling_points, [-175.5])
 
         torsion_angles = [-179.59209512848707, -179.59039374817334, -178.5381860689443, -178.5381860689443,

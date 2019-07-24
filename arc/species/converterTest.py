@@ -731,7 +731,6 @@ H      -4.07566100   -0.52115800    0.00003300"""
                 self.assertIn(index, [3, 4, 5, 6, 7])
         self.assertIsInstance(rdkitmol, rdchem.Mol)
 
-
     def test_rdkit_conf_from_mol(self):
         """Test rdkit_conf_from_mol"""
         _, b_mol = converter.molecules_from_xyz(self.xyz2)

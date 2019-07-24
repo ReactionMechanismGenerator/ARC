@@ -1599,8 +1599,8 @@ class Scheduler(object):
         """
         status = self.output[label]['status']
         if 'error' not in status and ('composite converged' in status or ('sp converged' in status and
-                     (self.species_dict[label].is_ts or self.species_dict[label].number_of_atoms == 1 or
-                     ('freq converged' in status and 'opt converged' in status)))):
+                (self.species_dict[label].is_ts or self.species_dict[label].number_of_atoms == 1 or
+                ('freq converged' in status and 'opt converged' in status)))):
             self.output[label]['status'] += 'ALL converged'
             plotter.save_geo(species=self.species_dict[label], project_directory=self.project_directory)
             if self.species_dict[label].is_ts:

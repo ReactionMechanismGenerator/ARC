@@ -328,12 +328,12 @@ class ARCReaction(object):
             if log:
                 logger.error('TS of reaction {0} has a lower E0 value than expected:\nReactants: {1:.2f} kJ/mol\nTS:'
                              ' {2:.2f} kJ/mol\nProducts: {3:.2f} kJ/mol'.format(
-                    self.label, r_e_elect, self.ts_species.e_elect, p_e_elect))
+                              self.label, r_e_elect, self.ts_species.e_elect, p_e_elect))
             return False
         if log:
             logger.info('Reaction {0} has the following path energies:\nReactants: {1:.2f} kJ/mol'
                         '\nTS: {2:.2f} kJ/mol\nProducts: {3:.2f} kJ/mol'.format(
-                self.label, r_e_elect, self.ts_species.e_elect, p_e_elect))
+                         self.label, r_e_elect, self.ts_species.e_elect, p_e_elect))
         return True
 
     def check_attributes(self):

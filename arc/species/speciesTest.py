@@ -837,7 +837,6 @@ H       1.11582953    0.94384729   -0.10134685"""
         self.assertFalse(check_xyz(xyz1, multiplicity=2, charge=1))
         self.assertTrue(check_xyz(xyz1, multiplicity=1, charge=-1))
 
-
     @classmethod
     def tearDownClass(cls):
         """

@@ -761,7 +761,7 @@ class ARC(object):
                         sp_level + '-f12', sp_level))
                     sp_level += '-f12'
                 if sp_level not in ['ccsd(t)-f12/cc-pvdz-f12', 'ccsd(t)-f12/cc-pvtz-f12', 'ccsd(t)-f12/cc-pvqz-f12',
-                                  'b3lyp/cbsb7', 'b3lyp/6-311g(2d,d,p)', 'b3lyp/6-311+g(3df,2p)', 'b3lyp/6-31g**']\
+                                    'b3lyp/cbsb7', 'b3lyp/6-311g(2d,d,p)', 'b3lyp/6-311+g(3df,2p)', 'b3lyp/6-31g**']\
                         and self.use_bac:
                     logger.info('\n\n')
                     logger.warning('Could not determine appropriate Model Chemistry to be used in Arkane for '
