@@ -746,7 +746,8 @@ class Scheduler(object):
             xyz = self.species_dict[label].final_xyz
         else:
             xyz = self.species_dict[label].initial_xyz
-        self.run_job(label=label, xyz=xyz, level_of_theory=self.composite_method, job_type='composite', fine=False)
+        self.run_job(label=label, xyz=xyz, level_of_theory=self.composite_method, job_type='composite',
+                     fine=self.job_types['fine'])
 
     def run_freq_job(self, label):
         """
