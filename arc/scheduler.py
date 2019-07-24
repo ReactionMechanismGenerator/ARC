@@ -144,12 +144,17 @@ class Scheduler(object):
         self.adaptive_levels = adaptive_levels
         self.confs_to_dft = confs_to_dft
         self.dont_gen_confs = dont_gen_confs or list()
+
+        self.species_dict = dict()
+        for species in self.species_list:
+            self.species_dict[species.label] = species
         if self.restart_dict is not None:
             self.output = self.restart_dict['output']
             if 'running_jobs' in self.restart_dict:
                 self.restore_running_jobs()
         else:
             self.output = dict()
+
         self.restart_path = os.path.join(self.project_directory, 'restart.yml')
         self.report_time = time.time()  # init time for reporting status every 1 hr
         self.servers = list()
@@ -261,7 +266,6 @@ class Scheduler(object):
                         # add to job_dict only spawn if `ts_guess.xyz is None` (restart)
                         pass
 
-        self.species_dict = dict()
         for species in self.species_list:
             if not isinstance(species, ARCSpecies):
                 raise SpeciesError('Each species in `species_list` must be an ARCSpecies object.'
@@ -270,7 +274,6 @@ class Scheduler(object):
                 raise SpeciesError('Each species in `species_list` has to have a unique label.'
                                    ' Label of species {0} is not unique.'.format(species.label))
             self.unique_species_labels.append(species.label)
-            self.species_dict[species.label] = species
             if species.label not in self.output:
                 self.output[species.label] = dict()
                 self.output[species.label]['status'] = ''
@@ -379,7 +382,7 @@ class Scheduler(object):
                             # this is a completed conformer job
                             successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
                             if successful_server_termination:
-                                self.parse_conformer_energy(job=job, label=label, i=i)
+                                self.parse_conformer(job=job, label=label, i=i)
                             # Just terminated a conformer job.
                             # Are there additional conformer jobs currently running for this species?
                             for spec_jobs in job_list:
@@ -974,7 +977,7 @@ class Scheduler(object):
                 self.run_job(label=label, xyz=xyz, level_of_theory=self.conformer_level,
                              job_type='conformer', conformer=i)
 
-    def parse_conformer_energy(self, job, label, i):
+    def parse_conformer(self, job, label, i):
         """
         Parse E0 (kJ/mol) from the conformer opt output file.
         For species, save it in the Species.conformer_energies attribute.
@@ -991,6 +994,7 @@ class Scheduler(object):
                     i, self.species_dict[label].label, self.species_dict[label].ts_guesses[i].energy))
             else:
                 self.species_dict[label].conformer_energies[i] = log.loadEnergy() * 0.001  # in kJ/mol
+                self.species_dict[label].conformers[i] = get_xyz_string(coords=coords, numbers=number)
                 logger.debug('Energy for conformer {0} of {1} is {2:.2f}'.format(
                     i, self.species_dict[label].label, self.species_dict[label].conformer_energies[i]))
         else:

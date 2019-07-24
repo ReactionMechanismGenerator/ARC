@@ -425,6 +425,9 @@ class ARCSpecies(object):
             species_dict['svpfit_output_file'] = self.svpfit_output_file
         if self._radius is not None:
             species_dict['radius'] = self._radius
+        if self.conformers:
+            species_dict['conformers'] = self.conformers
+            species_dict['conformer_energies'] = self.conformer_energies
         return species_dict
 
     def from_dict(self, species_dict):
@@ -534,6 +537,10 @@ class ARCSpecies(object):
                 if not self.charge:
                     self.mol_list = self.mol.generate_resonance_structures(keep_isomorphic=False,
                                                                            filter_structures=True)
+        if 'conformers' in species_dict:
+            self.conformers = species_dict['conformers']
+            self.conformer_energies = species_dict['conformer_energies'] if 'conformer_energies' in species_dict\
+                else [None] * len(self.conformers)
         if self.mol is None and self.initial_xyz is None and self.final_xyz is None and not self.conformers\
                 and not any([tsg.xyz for tsg in self.ts_guesses]):
             # TS species are allowed to be loaded w/o a structure
