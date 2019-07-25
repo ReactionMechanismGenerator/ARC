@@ -8,6 +8,8 @@ This module contains unit tests of the arc.species.converter module
 from __future__ import (absolute_import, division, print_function, unicode_literals)
 import unittest
 
+from rdkit.Chem import rdMolTransforms as rdMT, rdchem
+
 from rmgpy.molecule.molecule import Molecule
 from rmgpy.species import Species
 
@@ -134,10 +136,10 @@ H       1.59252246    1.51178950   -0.33908352
 H      -0.87856890   -2.02453514    0.38494433
 H      -1.34135876    1.49608206    0.53295071
 """
-        xyz1 = converter.get_xyz_string(coord=xyz_array, symbol=symbols)
+        xyz1 = converter.get_xyz_string(coords=xyz_array, symbols=symbols)
         self.assertEqual(xyz1, xyz_expected)
         number = [16, 8, 8, 7, 6, 1, 1, 1, 1, 1]
-        xyz2 = converter.get_xyz_string(coord=xyz_array, number=number)
+        xyz2 = converter.get_xyz_string(coords=xyz_array, numbers=number)
         self.assertEqual(xyz2, xyz_expected)
         mol = Molecule().fromAdjacencyList(str("""1  S u0 p0 c0 {2,D} {3,S} {4,D} {5,S}
 2  O u0 p2 c0 {1,D}
@@ -149,7 +151,7 @@ H      -1.34135876    1.49608206    0.53295071
 8  H u0 p0 c0 {5,S}
 9  H u0 p0 c0 {5,S}
 10 H u0 p0 c0 {5,S}"""))
-        xyz3 = converter.get_xyz_string(coord=xyz_array, mol=mol)
+        xyz3 = converter.get_xyz_string(coords=xyz_array, mol=mol)
         self.assertEqual(xyz3, xyz_expected)
 
     def test_get_xyz_matrix(self):
@@ -681,7 +683,7 @@ H      -4.07566100   -0.52115800    0.00003300"""
         mol20 = converter.molecules_from_xyz(xyz20)[1]
 
         self.assertEqual(mol1.toSMILES(), '[NH-][S+](=O)(O)C')
-        self.assertEqual(mol2.toSMILES(), 'COC1C=CC(=CC=1CO)[C](C)C')
+        self.assertIn(mol2.toSMILES(), ['COC1=C(CO)C=C([C](C)C)C=C1', 'COC1C=CC(=CC=1CO)[C](C)C'])
         self.assertEqual(mol3.toSMILES(), '[N]=C=C(C)C')
         self.assertEqual(mol4.toSMILES(), 'N#CC(N=NC(C#N)(C)C)(C)C')
         self.assertEqual(mol5.toSMILES(), '[O-][O+]=O')
@@ -710,14 +712,33 @@ H      -4.07566100   -0.52115800    0.00003300"""
 """)  # cannot read SMILES 'c1ncc[n]1' (but can generate them)
         self.assertEqual(mol20.toSMILES(), 'C=C[CH]C=CC')
 
+    def test_to_rdkit_mol(self):
+        """Test converting an RMG Molecule object to an RDKit Molecule object"""
+        n3_xyz = """N      -1.1997440839    -0.1610052059     0.0274738287
+        H      -1.4016624407    -0.6229695533    -0.8487034080
+        H      -0.0000018759     1.2861082773     0.5926077870
+        N       0.0000008520     0.5651072858    -0.1124621525
+        H      -1.1294692206    -0.8709078271     0.7537518889
+        N       1.1997613019    -0.1609980472     0.0274604887
+        H       1.1294795781    -0.8708998550     0.7537444446
+        H       1.4015274689    -0.6230592706    -0.8487058662"""
+        spc1 = ARCSpecies(label=str('N3'), xyz=n3_xyz, smiles='NNN')
+        rdkitmol, rd_atom_indices = converter.to_rdkit_mol(spc1.mol)
+        for atom, index in rd_atom_indices.items():
+            if atom.symbol == 'N':
+                self.assertIn(index, [0, 1, 2])
+            else:
+                self.assertIn(index, [3, 4, 5, 6, 7])
+        self.assertIsInstance(rdkitmol, rdchem.Mol)
+
     def test_rdkit_conf_from_mol(self):
         """Test rdkit_conf_from_mol"""
         _, b_mol = converter.molecules_from_xyz(self.xyz2)
         xyz, _, _, _, _ = converter.get_xyz_matrix(self.xyz2)
-        conf, rd_mol, indx_map = converter.rdkit_conf_from_mol(mol=b_mol, coordinates=xyz)
+        conf, rd_mol, index_map = converter.rdkit_conf_from_mol(mol=b_mol, coordinates=xyz)
         self.assertTrue(conf.Is3D())
         self.assertEqual(rd_mol.GetNumAtoms(), 5)
-        self.assertEqual(indx_map, {0: 0, 1: 1, 2: 2, 3: 3, 4: 4})
+        self.assertEqual(index_map, {0: 0, 1: 1, 2: 2, 3: 3, 4: 4})
 
     def test_s_bonds_mol_from_xyz(self):
         """Test creating a molecule with only single bonds from xyz"""
@@ -813,6 +834,227 @@ O       2.17315400   -0.03069900   -0.09349100"""
         self.assertEqual(len(mol3.atoms), 11)
         self.assertEqual(len(mol4.atoms), 24)
         self.assertEqual(len(mol5.atoms), 3)
+
+    def test_set_rdkit_dihedrals(self):
+        """Test setting the dihedral angle of an RDKit molecule"""
+        xyz0 = """O       1.17961475   -0.92725986    0.15472373
+C       0.45858928    0.27919340   -0.04589251
+C      -1.02470597   -0.01894626    0.00226686
+H       0.73480842    0.69726202   -1.01850832
+H       0.73330833    0.98882191    0.74024781
+H      -1.29861662   -0.45953441    0.96660817
+H      -1.29713649   -0.74721756   -0.76877222
+H      -1.61116041    0.89155300   -0.14917209
+H       2.12529871   -0.70387223    0.11849858"""
+        spc0 = ARCSpecies(label='CCO', smiles='CCO', xyz=xyz0)  # define with xyz for consistent atom order
+        mol0 = spc0.mol
+
+        torsion0 = (3, 2, 1, 9)  # the OH rotor
+        new_dihedral = -60
+        deg_increment = 240  # -180 + 240 = +60
+
+        conf, rd_mol, index_map = converter.rdkit_conf_from_mol(mol0, xyz0)
+        rd_tor_map = [index_map[i - 1] for i in torsion0]  # convert the atom indices in the torsion to RDKit indices
+        new_coord1 = converter.set_rdkit_dihedrals(conf, rd_mol, index_map, rd_tor_map, deg_abs=new_dihedral)
+        new_xyz1 = converter.get_xyz_string(coords=new_coord1, mol=mol0)
+
+        conf, rd_mol, index_map = converter.rdkit_conf_from_mol(mol0, xyz0)  # convert again to init the conf object
+        rd_tor_map = [index_map[i - 1] for i in torsion0]  # convert the atom indices in the torsion to RDKit indices
+        new_coord2 = converter.set_rdkit_dihedrals(conf, rd_mol, index_map, rd_tor_map, deg_increment=deg_increment)
+        new_xyz2 = converter.get_xyz_string(coords=new_coord2, mol=mol0)
+
+        expected_xyz1 = """O       1.17961475   -0.92725986    0.15472373
+C       0.45858928    0.27919340   -0.04589251
+C      -1.02470597   -0.01894626    0.00226686
+H       0.73480842    0.69726202   -1.01850832
+H       0.73330833    0.98882191    0.74024781
+H      -1.29861662   -0.45953441    0.96660817
+H      -1.29713649   -0.74721756   -0.76877222
+H      -1.61116041    0.89155300   -0.14917209
+H       0.92345327   -1.27098714    1.02751540
+"""
+        expected_xyz2 = """O       1.17961475   -0.92725986    0.15472373
+C       0.45858928    0.27919340   -0.04589251
+C      -1.02470597   -0.01894626    0.00226686
+H       0.73480842    0.69726202   -1.01850832
+H       0.73330833    0.98882191    0.74024781
+H      -1.29861662   -0.45953441    0.96660817
+H      -1.29713649   -0.74721756   -0.76877222
+H      -1.61116041    0.89155300   -0.14917209
+H       0.92480849   -1.53430645   -0.56088835
+"""
+
+        self.assertEqual(new_xyz1, expected_xyz1)
+        self.assertEqual(new_xyz2, expected_xyz2)
+
+        xyz1 = """N      -0.29070308    0.26322835    0.48770927
+N       0.29070351   -0.26323281   -0.48771096
+N      -2.61741263    1.38275080    2.63428181
+N       2.61742270   -1.38276006   -2.63427425
+C      -1.77086206    0.18100754    0.43957605
+C       1.77086254   -0.18101028   -0.43957552
+C      -2.22486176   -1.28143567    0.45202312
+C      -2.30707039    0.92407663   -0.78734681
+C       2.30707074   -0.92407071    0.78735246
+C       2.22485929    1.28143406   -0.45203080
+C      -2.23868798    0.85547218    1.67084736
+C       2.23869247   -0.85548109   -1.67084185
+H      -1.90398693   -1.81060764   -0.45229645
+H      -3.31681639   -1.35858536    0.51240600
+H      -1.80714051   -1.81980551    1.31137107
+H      -3.40300863    0.95379538   -0.78701415
+H      -1.98806037    0.44494681   -1.71978670
+H      -1.94802915    1.96005927   -0.81269573
+H       1.98805486   -0.44493850    1.71978893
+H       1.94803425   -1.96005464    0.81270509
+H       3.40300902   -0.95378386    0.78702431
+H       1.90398036    1.81061002    0.45228426
+H       3.31681405    1.35858667   -0.51241516
+H       1.80713611    1.81979843   -1.31138136"""
+        spc1 = ARCSpecies(label='AIBN', smiles='CC(C)(C#N)/N=N/C(C)(C)C#N', xyz=xyz1)
+        mol1 = spc1.mol
+
+        torsion1 = (1, 2, 6, 9)
+        new_dihedral = 118.2
+
+        conf, rd_mol, index_map = converter.rdkit_conf_from_mol(mol1, xyz1)
+        rd_tor_map = [index_map[i - 1] for i in torsion1]  # convert the atom indices in the torsion to RDKit indices
+        new_coord3 = converter.set_rdkit_dihedrals(conf, rd_mol, index_map, rd_tor_map, deg_abs=new_dihedral)
+        new_xyz3 = converter.get_xyz_string(coords=new_coord3, mol=mol1)
+
+        expected_xyz3 = """N      -0.29070308    0.26322835    0.48770927
+N       0.29070351   -0.26323281   -0.48771096
+N      -2.61741263    1.38275080    2.63428181
+N       2.48573367    1.01638899   -2.68295766
+C      -1.77086206    0.18100754    0.43957605
+C       1.77086254   -0.18101028   -0.43957552
+C      -2.22486176   -1.28143567    0.45202312
+C      -2.30707039    0.92407663   -0.78734681
+C       2.38216062   -1.58430507   -0.39387342
+C       2.21983062    0.66527087    0.75509913
+C      -2.23868798    0.85547218    1.67084736
+C       2.16482620    0.49023713   -1.69815092
+H      -1.90398693   -1.81060764   -0.45229645
+H      -3.31681639   -1.35858536    0.51240600
+H      -1.80714051   -1.81980551    1.31137107
+H      -3.40300863    0.95379538   -0.78701415
+H      -1.98806037    0.44494681   -1.71978670
+H      -1.94802915    1.96005927   -0.81269573
+H       2.11909310   -2.10839740    0.53181512
+H       2.02775663   -2.19945525   -1.22981644
+H       3.47613291   -1.54390687   -0.45350823
+H       1.95308217    0.19222185    1.70685860
+H       3.30593713    0.81467275    0.75113509
+H       1.74954927    1.65592664    0.73932447
+"""
+
+        self.assertEqual(new_xyz3, expected_xyz3)
+
+        rd_conf, rd_mol, index_map = converter.rdkit_conf_from_mol(mol1, expected_xyz3)
+        rd_scan = [index_map[i - 1] for i in torsion1]  # convert the atom indices to RDKit indices
+        angle = rdMT.GetDihedralDeg(rd_conf, rd_scan[0], rd_scan[1], rd_scan[2], rd_scan[3])
+
+        self.assertAlmostEqual(angle, 118.2, 5)
+
+        xyz4 = """O       1.28706525    0.52121353    0.04219198
+C       0.39745682   -0.35265044   -0.63649234
+C      -0.98541845    0.26289370   -0.64801959
+H       0.76016885   -0.50111637   -1.65799025
+H       0.38478504   -1.31559717   -0.11722981
+H      -0.96971239    1.23774091   -1.14654347
+H      -1.69760597   -0.38642828   -1.16478035
+H      -1.34010718    0.43408610    0.37373771
+H       2.16336803    0.09985803    0.03295192"""
+        spc4 = ARCSpecies(label='ethanol', smiles='CCO', xyz=xyz4)
+        rd_conf, rd_mol, index_map = converter.rdkit_conf_from_mol(mol=spc4.mol, coordinates=xyz4)
+        torsion4 = [9, 1, 2, 3]
+        rd_tor_map = [index_map[i - 1] for i in torsion4]  # convert the atom indices to RDKit indices
+        new_coord4 = converter.set_rdkit_dihedrals(rd_conf, rd_mol, index_map, rd_tor_map, deg_abs=60)
+        new_xyz4 = converter.get_xyz_string(coords=new_coord4, mol=spc4.mol)
+        expected_xyz4 = """O       1.28706525    0.52121353    0.04219198
+C       0.39745682   -0.35265044   -0.63649234
+C       0.36441173   -1.68197093    0.08682400
+H      -0.59818222    0.10068325   -0.65235399
+H       0.74799641   -0.48357798   -1.66461710
+H       0.03647269   -1.54932006    1.12314420
+H      -0.31340646   -2.38081353   -0.41122551
+H       1.36475837   -2.12581592    0.12433596
+H       2.16336803    0.09985803    0.03295192
+"""
+        self.assertEqual(new_xyz4, expected_xyz4)
+
+    def test_get_center_of_mass(self):
+        """Test calculating the center of mass for coordinates"""
+        xyz = """O       1.28706525    0.52121353    0.04219198
+C       0.39745682   -0.35265044   -0.63649234
+C       0.36441173   -1.68197093    0.08682400
+H      -0.59818222    0.10068325   -0.65235399
+H       0.74799641   -0.48357798   -1.66461710
+H       0.03647269   -1.54932006    1.12314420
+H      -0.31340646   -2.38081353   -0.41122551
+H       1.36475837   -2.12581592    0.12433596
+H       2.16336803    0.09985803    0.03295192
+"""
+        cm_x, cm_y, cm_z = converter.get_center_of_mass(xyz=xyz)
+        self.assertAlmostEqual(cm_x, 0.7201, 3)
+        self.assertAlmostEqual(cm_y, -0.4880, 3)
+        self.assertAlmostEqual(cm_z, -0.1603, 3)
+
+        xyz = """C	1.1714680	-0.4048940	0.0000000
+C	0.0000000	0.5602500	0.0000000
+O	-1.1945070	-0.2236470	0.0000000
+H	-1.9428910	0.3834580	0.0000000
+H	2.1179810	0.1394450	0.0000000
+H	1.1311780	-1.0413680	0.8846660
+H	1.1311780	-1.0413680	-0.8846660
+H	0.0448990	1.2084390	0.8852880
+H	0.0448990	1.2084390	-0.8852880"""
+        cm_x, cm_y, cm_z = converter.get_center_of_mass(xyz=xyz)
+        self.assertAlmostEqual(cm_x, -0.0540, 3)
+        self.assertAlmostEqual(cm_y, -0.0184, 3)
+        self.assertAlmostEqual(cm_z, -0.0000, 3)
+
+        coords = [[0.0, 0.0, 0.113488], [0.0, 0.93867, -0.264806], [0.812912, -0.469335, -0.264806],
+                  [-0.812912, -0.469335, -0.264806]]
+        symbols = ['N', 'H', 'H', 'H']
+        cm_x, cm_y, cm_z = converter.get_center_of_mass(coords=coords, symbols=symbols)
+        self.assertAlmostEqual(cm_x, 0.0000, 3)
+        self.assertAlmostEqual(cm_y, 0.0000, 3)
+        self.assertAlmostEqual(cm_z, 0.0463, 3)
+
+    def test_translate_to_center_of_mass(self):
+        """Test calculating the center of mass for coordinates"""
+        xyz = """O       1.28706525    0.52121353    0.04219198
+C       0.39745682   -0.35265044   -0.63649234
+C       0.36441173   -1.68197093    0.08682400
+H      -0.59818222    0.10068325   -0.65235399
+H       0.74799641   -0.48357798   -1.66461710
+H       0.03647269   -1.54932006    1.12314420
+H      -0.31340646   -2.38081353   -0.41122551
+H       1.36475837   -2.12581592    0.12433596
+H       2.16336803    0.09985803    0.03295192
+"""
+        translated_xyz = converter.translate_to_center_of_mass(xyz)
+        cm_x, cm_y, cm_z = converter.get_center_of_mass(xyz=translated_xyz)
+        self.assertAlmostEqual(cm_x, 0.0000, 3)
+        self.assertAlmostEqual(cm_y, 0.0000, 3)
+        self.assertAlmostEqual(cm_z, 0.0000, 3)
+
+        coords = [[0.0, 0.0, 0.113488], [0.0, 0.93867, -0.264806], [0.812912, -0.469335, -0.264806],
+                  [-0.812912, -0.469335, -0.264806]]
+        symbols = ['N', 'H', 'H', 'H']
+        translated_coords = converter.translate_to_center_of_mass(coords=coords, symbols=symbols)
+        translated_xyz = converter.get_xyz_string(coords=translated_coords, symbols=symbols)
+        expected_xyz = """N       0.00000000    0.00000000    0.06717524
+H       0.00000000    0.93867000   -0.31111876
+H       0.81291200   -0.46933500   -0.31111876
+H      -0.81291200   -0.46933500   -0.31111876
+"""
+        self.assertEqual(translated_xyz, expected_xyz)
+        cm_x, cm_y, cm_z = converter.get_center_of_mass(xyz=translated_xyz)
+        self.assertAlmostEqual(cm_x, 0.0000, 3)
+        self.assertAlmostEqual(cm_y, 0.0000, 3)
+        self.assertAlmostEqual(cm_z, 0.0000, 3)
 
     def set_radicals_correctly_from_xyz(self):
         """Test that we determine the number of radicals correctly from given xyz and multiplicity"""

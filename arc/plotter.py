@@ -28,15 +28,63 @@ from rmgpy.data.base import Entry
 from rmgpy.quantity import ScalarQuantity
 from rmgpy.species import Species
 
-from arc.common import get_logger
+from arc.common import get_logger, min_list
 from arc.species.species import ARCSpecies
 from arc.species.converter import get_xyz_matrix, rdkit_conf_from_mol, molecules_from_xyz
-from arc.arc_exceptions import InputError
-
+from arc.arc_exceptions import InputError, SanitizationError
 
 ##################################################################
 
 logger = get_logger()
+
+
+def draw_structure(xyz=None, species=None, project_directory=None, method='show_sticks'):
+    """
+    A helper function for drawing a molecular structure using either show_sticks or draw_3d.
+
+    Args:
+        xyz (str, unicode, optional): The xyz coordinates to plot in string format.
+        species (ARCSpecies, optional): A species from which to extract the xyz coordinates to plot.
+        project_directory (str, unicode, optional): A directory for saving the image (only supported for draw_3d).
+        method (str, unicode, optional): The method to use, either show_sticks or draw_3d.
+    """
+    success = False
+    if method == 'show_sticks':
+        try:
+            success = show_sticks(xyz=xyz, species=species, project_directory=project_directory)
+        except (IndexError, InputError):
+            pass
+    if not success or method == 'draw_3d':
+        draw_3d(xyz=xyz, species=species, project_directory=project_directory)
+
+
+def show_sticks(xyz=None, species=None, project_directory=None):
+    """
+    Draws the molecule in a "sticks" style according to the supplied xyz coordinates
+    Returns whether successful of not
+    If successful, save an image using draw_3d
+    """
+    xyz = check_xyz_species_for_drawing(xyz, species)
+    coordinates = get_xyz_matrix(xyz)[0]
+    if species is None:
+        s_mol, b_mol = molecules_from_xyz(xyz)
+        mol = b_mol if b_mol is not None else s_mol
+    else:
+        mol = species.mol
+    try:
+        rd_mol = rdkit_conf_from_mol(mol, coordinates)[1]
+    except ValueError:
+        return False
+    mb = Chem.MolToMolBlock(rd_mol)
+    p = p3D.view(width=400, height=400)
+    p.addModel(mb, 'sdf')
+    p.setStyle({'stick': {}})
+    # p.setBackgroundColor('0xeeeeee')
+    p.zoomTo()
+    p.show()
+    if project_directory is not None:
+        draw_3d(xyz=xyz, species=species, project_directory=project_directory, save_only=True)
+    return True
 
 
 def draw_3d(xyz=None, species=None, project_directory=None, save_only=False):
@@ -62,42 +110,6 @@ def draw_3d(xyz=None, species=None, project_directory=None, save_only=False):
         if not os.path.exists(geo_path):
             os.makedirs(geo_path)
         ase_write(filename=os.path.join(geo_path, 'geometry.png'), images=ase_mol, scale=100)
-
-
-def show_sticks(xyz=None, species=None, project_directory=None):
-    """
-    Draws the molecule in a "sticks" style according to the supplied xyz coordinates
-    Returns whether successful of not
-    If successful, save an image using draw_3d
-    """
-    xyz = check_xyz_species_for_drawing(xyz, species)
-    coordinates, _, _, _, _ = get_xyz_matrix(xyz)
-    s_mol, b_mol = molecules_from_xyz(xyz)
-    mol = b_mol if b_mol is not None else s_mol
-    try:
-        _, rd_mol, _ = rdkit_conf_from_mol(mol, coordinates)
-    except ValueError:
-        return False
-    mb = Chem.MolToMolBlock(rd_mol)
-    p = p3D.view(width=400, height=400)
-    p.addModel(mb, 'sdf')
-    p.setStyle({'stick': {}})
-    # p.setBackgroundColor('0xeeeeee')
-    p.zoomTo()
-    p.show()
-    draw_3d(xyz=xyz, species=species, project_directory=project_directory, save_only=True)
-    return True
-
-
-def check_xyz_species_for_drawing(xyz, species):
-    """A helper function to avoid repetitive code"""
-    if species is not None and xyz is None:
-        xyz = xyz if xyz is not None else species.final_xyz
-    if species is not None and not isinstance(species, ARCSpecies):
-        raise InputError('Species must be an ARCSpecies instance. Got {0}.'.format(type(species)))
-    if species is not None and species.final_xyz is None:
-        raise InputError('Species {0} has an empty final_xyz attribute.'.format(species.label))
-    return xyz
 
 
 def plot_3d_mol_as_scatter(xyz, path=None, plot_h=True, show_plot=True):
@@ -142,8 +154,19 @@ def plot_3d_mol_as_scatter(xyz, path=None, plot_h=True, show_plot=True):
     if show_plot:
         plt.show()
     if path is not None:
-        image_path = os.path.join(path, "scattered_balls_structure.png")
+        image_path = os.path.join(path, 'scattered_balls_structure.png')
         plt.savefig(image_path, bbox_inches='tight')
+
+
+def check_xyz_species_for_drawing(xyz, species):
+    """A helper function to avoid repetitive code"""
+    if species is not None and xyz is None:
+        xyz = xyz if xyz is not None else species.final_xyz
+    if species is not None and not isinstance(species, ARCSpecies):
+        raise InputError('Species must be an ARCSpecies instance. Got {0}.'.format(type(species)))
+    if species is not None and species.final_xyz is None:
+        raise InputError('Species {0} has an empty final_xyz attribute.'.format(species.label))
+    return xyz
 
 
 def plot_rotor_scan(angle, v_list, path=None, pivots=None, comment=''):
@@ -414,6 +437,121 @@ def text_plotter(x_data, y_data, labels, text_positions, axis, txt_width, txt_he
                        zorder=0, length_includes_head=True)
 
 
+def plot_torsion_angles(torsion_angles, torsions_sampling_points=None, wells_dict=None, e_conformers=None,
+                        de_threshold=5.0, plot_path=None):
+    """Plot the torsion angles of the generated conformers.
+
+    Args:
+        torsion_angles (dict): Keys are torsions, values are lists of corresponding angles.
+        torsions_sampling_points (dict, optional): Keys are torsions, values are sampling points.
+        wells_dict (dict, optional): Keys are torsions, values are lists of wells.
+                                     Each entry in such list is a well dictionary with the keys:
+                                    'start_idx', 'end_idx', 'start_angle', 'end_angle', 'angles'
+        e_conformers (list, optional): Entries are conformers corresponding to the sampling points with FF energies.
+        de_threshold (float, optional): Energy threshold, plotted as a dashed horizontal line.
+        plot_path (str, optional): The path for saving the plot.
+    """
+    num_comb = None
+    torsions = torsion_angles.keys() if torsions_sampling_points is None else torsions_sampling_points.keys()
+    ticks = [0, 60, 120, 180, 240, 300, 360]
+    sampling_points = dict()
+    if torsions_sampling_points is not None:
+        for tor, points in torsions_sampling_points.items():
+            sampling_points[tor] = [point if point <= 360 else point - 360 for point in points]
+    if not torsions:
+        return
+    if len(torsions) == 1:
+        torsion = torsions[0]
+        fig, axs = plt.subplots(nrows=len(torsions), ncols=1, sharex=True, sharey=True, gridspec_kw={'hspace': 0})
+        fig.dpi = 120
+        axs.plot(np.array(torsion_angles[tuple(torsion)]),
+                 np.zeros_like(np.arange(len(torsion_angles[tuple(torsion)]))), 'g.')
+        if torsions_sampling_points is not None:
+            axs.plot(np.array(sampling_points[tuple(torsion)]),
+                     np.zeros_like(np.arange(len(sampling_points[tuple(torsion)]))), 'ro', alpha=0.35, ms=7)
+        axs.frameon = False
+        axs.set_ylabel(str(torsion), labelpad=10)
+        axs.set_yticklabels(['' for _ in range(len(torsions))])
+        axs.tick_params(axis='y',         # changes apply to the x-axis
+                        which='both',     # both major and minor ticks are affected
+                        left=False,       # ticks along the bottom edge are off
+                        right=False,      # ticks along the top edge are off
+                        labelleft=False)  # labels along the bottom edge are off
+        axs.set_title('Dihedral angle (degrees)')
+        axs.axes.xaxis.set_ticks(ticks=ticks)
+        fig.set_size_inches(8, 2)
+    else:
+        fig, axs = plt.subplots(nrows=len(torsions), ncols=1, sharex=True, sharey=True, gridspec_kw={'hspace': 0})
+        fig.dpi = 120
+        num_comb = 1
+        for i, torsion in enumerate(torsions):
+            axs[i].plot(np.array(torsion_angles[tuple(torsion)]),
+                        np.zeros_like(np.arange(len(torsion_angles[tuple(torsion)]))), 'g.')
+            if wells_dict is not None:
+                for well in wells_dict[torsion]:
+                    axs[i].plot(well['start_angle'] if well['start_angle'] <= 360 else well['start_angle'] - 360, 0,
+                                'b|', alpha=0.5)
+                    axs[i].plot(well['end_angle'] if well['end_angle'] <= 360 else well['end_angle'] - 360, 0,
+                                'k|', alpha=0.5)
+            if torsions_sampling_points is not None:
+                x, y = list(), list()
+                h_line = False
+                if e_conformers is not None:
+                    for dihedral in sampling_points[tuple(torsion)]:
+                        for e_conformer in e_conformers[tuple(torsion)]:
+                            if 'FF energy' in e_conformer and e_conformer['FF energy'] is not None \
+                                    and 'dihedral' in e_conformer and e_conformer['dihedral'] is not None \
+                                    and (abs(dihedral - e_conformer['dihedral']) < 0.1
+                                         or abs(dihedral - e_conformer['dihedral'] + 360) < 0.1):
+                                x.append(dihedral)
+                                y.append(e_conformer['FF energy'])
+                                break
+                    min_y = min(y)
+                    y = [round(yi - min_y, 3) for yi in y]
+                    num_comb *= len([yi for yi in y if yi < de_threshold])
+                    if any([yi > de_threshold for yi in y]):
+                        h_line = True
+                else:
+                    x = sampling_points[torsion]
+                    y = [0.0] * len(sampling_points[tuple(torsion)])
+                axs[i].plot(x, y, 'ro', alpha=0.35, ms=7)
+                if h_line:
+                    x_h = [0, 360]
+                    y_h = [de_threshold, de_threshold]
+                    axs[i].plot(x_h, y_h, '--k', alpha=0.30, linewidth=0.8)
+            axs[i].frameon = False
+            axs[i].set_ylabel(str(torsion), labelpad=10)
+            # axs[i].yaxis.label.set_rotation(0)
+            if e_conformers is None:
+                axs[i].set_yticklabels(['' for _ in range(len(torsions))])
+                axs[i].tick_params(axis='y',         # changes apply to the x-axis
+                                   which='both',     # both major and minor ticks are affected
+                                   left=False,       # ticks along the bottom edge are off
+                                   right=False,      # ticks along the top edge are off
+                                   labelleft=False)  # labels along the bottom edge are off
+        axs[0].set_title('Dihedral angle (degrees)')
+        # Hide x labels and tick labels for all but bottom plot.
+        # for ax in axs:
+        #     ax.label_outer()
+        axs[0].axes.xaxis.set_ticks(ticks=ticks)
+        fig.set_size_inches(8, len(torsions) * 1.5)
+    plt.show()
+    if plot_path is not None:
+        if not os.path.isdir(plot_path):
+            os.makedirs(plot_path)
+        file_names = list()
+        for (_, _, files) in os.walk(plot_path):
+            file_names.extend(files)
+            break  # don't continue to explore subdirectories
+        i = 0
+        for file_ in file_names:
+            if 'conformer torsions' in file_:
+                i += 1
+        image_path = os.path.join(plot_path, 'conformer torsions {0}.png'.format(i))
+        plt.savefig(image_path, bbox_inches='tight')
+    return num_comb
+
+
 def save_geo(species, project_directory):
     """
     Save the geometry in several forms for an ARC Species object in the project's output folder under the species name
@@ -547,3 +685,63 @@ def save_kinetics_lib(rxn_list, path, name, lib_long_desc):
             pass
         kinetics_library.save(os.path.join(lib_path, 'reactions.py'))
         kinetics_library.saveDictionary(os.path.join(lib_path, 'dictionary.txt'))
+
+
+def save_conformers_file(project_directory, label, xyzs, level_of_theory, multiplicity=None, charge=None, is_ts=False,
+                         energies=None, ts_methods=None):
+    """
+    Save the conformers before or after optimization.
+    If energies are given, the conformers are considered to be optimized.
+
+    Args:
+        project_directory (str, unicode): The path to the project's directory.
+        label (str, unicode): The species label.
+        xyzs (list): Entries are sting-format xyz coordinates of conformers.
+        level_of_theory (str, unicode): The level of theory used for the conformers optimization.
+        multiplicity (int, optional): The species multiplicity, used for perceiving the molecule.
+        charge (int, optional): The species charge, used for perceiving the molecule.
+        is_ts (bool, optional): Whether the species represents a TS. True if it does.
+        energies (list, optional): Entries are energies corresponding to the conformer list in kJ/mol.
+                                   If not given (None) then the Species.conformer_energies are used instead.
+        ts_methods (list, optional): Entries are method names used to generate the TS guess.
+    """
+    spc_dir = 'rxns' if is_ts else 'Species'
+    geo_dir = os.path.join(project_directory, 'output', spc_dir, label, 'geometry')
+    if not os.path.exists(geo_dir):
+        os.makedirs(geo_dir)
+    if energies is not None and any(e is not None for e in energies):
+        optimized = True
+        min_e = min_list(energies)
+        conf_path = os.path.join(geo_dir, 'conformers_after_optimization.txt')
+    else:
+        optimized = False
+        conf_path = os.path.join(geo_dir, 'conformers_before_optimization.txt')
+    with open(conf_path, 'w') as f:
+        content = ''
+        if optimized:
+            content += 'Conformers for {0}, optimized at the {1} level:\n\n'.format(label, level_of_theory)
+        for i, xyz in enumerate(xyzs):
+            content += 'conformer {0}:\n'.format(i)
+            if xyz is not None:
+                content += xyz + '\n'
+                if not is_ts:
+                    try:
+                        b_mol = molecules_from_xyz(xyz, multiplicity=multiplicity, charge=charge)[1]
+                    except SanitizationError:
+                        b_mol = None
+                    smiles = b_mol.toSMILES() if b_mol is not None else 'Could not perceive molecule'
+                    content += 'SMILES: {0}\n'.format(smiles)
+                elif ts_methods is not None:
+                    content += 'TS guess method: {0}\n'.format(ts_methods[i])
+                if optimized:
+                    if energies[i] == min_e:
+                        content += 'Relative Energy: 0 kJ/mol (lowest)'
+                    elif energies[i] is not None:
+                        content += 'Relative Energy: {0:.3f} kJ/mol'.format(energies[i] - min_e)
+            else:
+                # Failed to converge
+                if is_ts and ts_methods is not None:
+                    content += 'TS guess method: ' + ts_methods[i] + '\n'
+                content += 'Failed to converge'
+            content += '\n\n\n'
+        f.write(str(content))

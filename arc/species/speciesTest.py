@@ -15,11 +15,11 @@ from rmgpy.species import Species
 from rmgpy.reaction import Reaction
 from rmgpy.transport import TransportData
 
-from arc.species.species import ARCSpecies, TSGuess, get_min_energy_conformer,\
-    determine_rotor_type, determine_rotor_symmetry
+from arc.species.species import ARCSpecies, TSGuess, determine_rotor_type, determine_rotor_symmetry, check_xyz
 from arc.species.converter import get_xyz_string, get_xyz_matrix, molecules_from_xyz
 from arc.settings import arc_path, default_levels_of_theory
 from arc.rmgdb import make_rmg_database_object
+from arc.plotter import save_conformers_file
 from arc.scheduler import Scheduler
 
 ################################################################################
@@ -87,11 +87,79 @@ class TestARCSpecies(unittest.TestCase):
                           H      -0.50949998    0.00000000    0.00000000""")
         cls.spc9 = ARCSpecies(label=str('NH2(S)'), adjlist=nh_s_adj, xyz=nh_s_xyz, multiplicity=1, charge=0)
 
+        cls.spc10 = ARCSpecies(label='CCCCC', smiles='CCCCC')
+        cls.spc11 = ARCSpecies(label='CCCNO', smiles='CCCNO')  # has chiral N
+
     def test_conformers(self):
         """Test conformer generation"""
-        self.spc1.generate_conformers()  # vinoxy has two res. structures, each is assigned two conformers (RDkit/ob)
-        self.assertEqual(len(self.spc1.conformers), 4)
+        self.spc1.conformers = list()
+        self.spc1.conformer_energies = list()
         self.assertEqual(len(self.spc1.conformers), len(self.spc1.conformer_energies))
+        self.spc1.generate_conformers()
+        self.assertIn(len(self.spc1.conformers), [2, 3])
+        self.assertEqual(len(self.spc1.conformers), len(self.spc1.conformer_energies))
+
+        self.spc2.conformers = list()
+        self.spc2.generate_conformers()
+        self.assertEqual(len(self.spc2.conformers), 1)
+
+        self.spc3.conformers = list()
+        self.spc3.generate_conformers()
+        self.assertEqual(len(self.spc3.conformers), 1)
+
+        self.spc4.conformers = list()
+        self.spc4.generate_conformers()
+        self.assertEqual(len(self.spc4.conformers), 4)
+
+        self.spc5.conformers = list()
+        self.spc5.generate_conformers()
+        self.assertEqual(len(self.spc5.conformers), 3)
+
+        self.spc6.conformers = list()
+        self.spc6.generate_conformers()
+        self.assertEqual(len(self.spc6.conformers), 4)
+
+        self.spc8.conformers = list()
+        self.spc8.generate_conformers()
+        self.assertEqual(len(self.spc8.conformers), 4)
+
+        self.spc9.conformers = list()
+        self.spc9.generate_conformers()
+        self.assertEqual(len(self.spc9.conformers), 1)
+
+        self.spc10.conformers = list()
+        self.spc10.generate_conformers(confs_to_dft=1)
+        self.assertEqual(len(self.spc10.conformers), 1)
+
+        self.spc10.conformers = list()
+        self.spc10.generate_conformers(confs_to_dft=2)
+        self.assertEqual(len(self.spc10.conformers), 2)
+
+        self.spc10.conformers = list()
+        self.spc10.generate_conformers(confs_to_dft=3)
+        self.assertEqual(len(self.spc10.conformers), 3)
+
+        self.spc11.conformers = list()
+        self.spc11.generate_conformers(confs_to_dft=1)
+        self.assertEqual(len(self.spc11.conformers), 2)  # has more confs due to chiral center
+
+        self.spc11.conformers = list()
+        self.spc11.generate_conformers(confs_to_dft=2)
+        self.assertEqual(len(self.spc11.conformers), 3)
+
+        self.spc11.conformers = list()
+        self.spc11.generate_conformers(confs_to_dft=3)
+        self.assertIn(len(self.spc11.conformers), [3, 4])
+
+        xyz12 = """C       0.00000000    0.00000000    0.00000000
+H       1.07008000   -0.14173100    0.00385900
+H      -0.65776100   -0.85584100   -0.00777700
+H      -0.41231900    0.99757300    0.00391900"""
+        spc12 = ARCSpecies(label='CH3', smiles='[CH3]', xyz=xyz12)
+        spc12.generate_conformers()
+        self.assertEqual(len(spc12.conformers), 2)
+        self.assertEqual(len(spc12.conformer_energies), 2)
+
 
     def test_rmg_species_conversion_into_arc_species(self):
         """Test the conversion of an RMG species into an ARCSpecies"""
@@ -221,10 +289,10 @@ H      -1.67091600   -1.35164600   -0.93286400
         xyz_list, atoms, x, y, z = get_xyz_matrix(xyz_str0)
 
         # test all forms of input for get_xyz_string():
-        xyz_str1 = get_xyz_string(xyz_list, symbol=atoms)
-        xyz_str2 = get_xyz_string(xyz_list, number=[7, 6, 6, 6, 6, 1, 1, 1, 1, 1, 1])
+        xyz_str1 = get_xyz_string(coords=xyz_list, symbols=atoms)
+        xyz_str2 = get_xyz_string(coords=xyz_list, numbers=[7, 6, 6, 6, 6, 1, 1, 1, 1, 1, 1])
         mol, _ = molecules_from_xyz(xyz_str0)
-        xyz_str3 = get_xyz_string(xyz_list, mol=mol)
+        xyz_str3 = get_xyz_string(coords=xyz_list, mol=mol)
 
         self.assertEqual(xyz_str0, xyz_str1)
         self.assertEqual(xyz_str1, xyz_str2)
@@ -308,6 +376,7 @@ H      -1.67091600   -1.35164600   -0.93286400
                          'label': 'methylamine',
                          'long_thermo_description': spc_dict['long_thermo_description'],
                          'charge': 0,
+                         'force_field': 'MMFF94',
                          'is_ts': False,
                          't1': None,
                          'bond_corrections': {'C-H': 3, 'C-N': 1, 'H-N': 2},
@@ -472,13 +541,6 @@ H      -1.69944700    0.93441600   -0.11271200"""
         self.assertIsNotNone(spc4.conformer_energies[3])
         self.assertEqual(spc4.multiplicity, 2)
 
-    def test_get_min_energy_conformer(self):
-        """Test that the xyz with the minimum specified energy is returned from get_min_energy_conformer()"""
-        xyzs = ['xyz1', 'xyz2', 'xyz3']
-        energies = [-5, -30, -1.5]
-        min_xyz = get_min_energy_conformer(xyzs, energies)
-        self.assertEqual(min_xyz, 'xyz2')
-
     def test_mol_from_xyz_atom_id_1(self):
         """Test that atom ids are saved properly when loading both xyz and smiles."""
         mol = self.spc6.mol
@@ -551,32 +613,38 @@ C       2.92204100   -1.18335700   -0.38884900
 C       2.27655500   -0.00373900    0.08543500
 H       2.36544800   -1.88781000   -0.99914600
 H       3.96112000   -1.38854500   -0.14958800
-H       2.87813500    0.68828400    0.70399400""",
+H       2.87813500    0.68828400    0.70399400
+""",
                 """O       1.19396100   -0.06003700    0.03890100
 C       3.18797000    0.77061300   -0.87352700
 C       2.43591200   -0.04439300    0.02171600
 H       4.27370000    0.76090200   -0.86286100
 H       2.66641700    1.41155700   -1.57757300
-H       3.00398000   -0.68336800    0.72359800""",
+H       3.00398000   -0.68336800    0.72359800
+""",
                 """O       1.35241100   -1.02956000   -0.24056200
 C      -0.72084300    0.01308200    0.09573000
 C       0.69217700    0.01185100   -0.09044300
 H      -1.25803800   -0.93018100    0.10926800
 H      -1.26861200    0.94177100    0.22420100
-H       1.20290400    0.99303700   -0.09819400""",
+H       1.20290400    0.99303700   -0.09819400
+""",
                 """O      -1.40102900   -0.98575100   -0.11588500
 C       0.72457000   -0.01076700    0.06448800
 C      -0.69494600    0.03450000   -0.06206300
 H       1.22539000   -0.97248000    0.11741200
 H       1.31277400    0.90087100    0.10878400
-H      -1.16675800    1.03362600   -0.11273700"""]
+H      -1.16675800    1.03362600   -0.11273700
+"""]
         energies = [0, 5, 5, 5]  # J/mol
 
-        sched1.save_conformers_file(label='vinoxy', xyzs=xyzs)
+        save_conformers_file(project_directory=project_directory, label='vinoxy', xyzs=xyzs, level_of_theory='level1',
+                             multiplicity=2, charge=0)
         self.assertTrue(os.path.isfile(os.path.join(project_directory, 'output', 'Species', 'vinoxy', 'geometry',
                                                     'conformers_before_optimization.txt')))
 
-        sched1.save_conformers_file(label='vinoxy', xyzs=xyzs, energies=energies)
+        save_conformers_file(project_directory=project_directory, label='vinoxy', xyzs=xyzs, level_of_theory='level1',
+                             multiplicity=2, charge=0, energies=energies)
         self.assertTrue(os.path.isfile(os.path.join(project_directory, 'output', 'Species', 'vinoxy', 'geometry',
                                                     'conformers_after_optimization.txt')))
 
@@ -694,6 +762,81 @@ H       1.32129900    0.71837500    0.38017700
         self.assertEqual(spc4.conformers, ['C 0.4 0.5 0.0', 'C 0.5 0.5 0.0'])
         self.assertEqual(spc4.conformer_energies, [None, None])
 
+    def test_consistent_atom_order(self):
+        """Test that the atom order is preserved whether starting from SMILES or from xyz"""
+        spc1 = ARCSpecies(label='spc1', smiles='CCCO')
+        xyz1 = spc1.get_xyz()
+        for adj, coord in zip(spc1.mol.toAdjacencyList().splitlines(), xyz1.splitlines()):
+            if adj and coord:
+                self.assertEqual(adj.split()[1], coord.split()[0])
+
+        xyz2 = """C      -0.37147383   -0.54225753    0.07779977
+C       0.99011397    0.11006088   -0.10715587
+H      -0.33990169   -1.22256017    0.93731544
+H      -0.60100180   -1.16814809   -0.79292035
+H       1.26213386    0.70273091    0.77209458
+O       1.96607463   -0.90691160   -0.28642183
+H       0.99631715    0.75813344   -0.98936747
+H      -1.27803075    1.09840370    1.16400304
+C      -1.46891192    0.48768649    0.27579733
+H      -2.43580767   -0.00829320    0.40610628
+H      -1.54270451    1.15356356   -0.58992943
+H       2.82319256   -0.46240839   -0.40178723"""
+        spc2 = ARCSpecies(label='spc2', xyz=xyz2)
+        for adj, coord in zip(spc2.mol.toAdjacencyList().splitlines(), xyz2.splitlines()):
+            if adj and coord:
+                self.assertEqual(adj.split()[1], coord.split()[0])
+
+        n3_xyz = str("""N      -1.1997440839    -0.1610052059     0.0274738287
+        H      -1.4016624407    -0.6229695533    -0.8487034080
+        H      -0.0000018759     1.2861082773     0.5926077870
+        N       0.0000008520     0.5651072858    -0.1124621525
+        H      -1.1294692206    -0.8709078271     0.7537518889
+        N       1.1997613019    -0.1609980472     0.0274604887
+        H       1.1294795781    -0.8708998550     0.7537444446
+        H       1.4015274689    -0.6230592706    -0.8487058662""")
+        spc3 = ARCSpecies(label=str('N3'), xyz=n3_xyz, multiplicity=1, smiles=str('NNN'))
+        self.assertEqual(spc3.mol.atoms[1].symbol, 'H')
+        spc3.generate_conformers()
+        self.assertEqual(len(spc3.conformers), 5)
+
+        xyz4 = """O      -1.48027320    0.36597456    0.41386552
+        C      -0.49770656   -0.40253648   -0.26500019
+        C       0.86215119    0.24734211   -0.11510338
+        H      -0.77970114   -0.46128090   -1.32025907
+        H      -0.49643724   -1.41548311    0.14879346
+        H       0.84619526    1.26924854   -0.50799415
+        H       1.14377239    0.31659216    0.94076336
+        H       1.62810781   -0.32407050   -0.64676910
+        H      -1.22610851    0.40421362    1.35170355"""
+        spc4 = ARCSpecies(label='CCO', smiles='CCO', xyz=xyz4)  # define from xyz for consistent atom order
+        for atom1, atom2 in zip(spc4.mol.atoms, spc4.mol_list[0].atoms):
+            self.assertEqual(atom1.symbol, atom2.symbol)
+
+    def test_get_radius(self):
+        """Test determining the species radius"""
+        spc1 = ARCSpecies(label='r1', smiles='O=C=O')
+        self.assertAlmostEqual(spc1.radius, 2.065000, 5)
+
+        spc2 = ARCSpecies(label='r1', smiles='CCCCC')
+        self.assertAlmostEqual(spc2.radius, 3.734040, 5)
+
+        spc3 = ARCSpecies(label='r1', smiles='CCO')
+        self.assertAlmostEqual(spc3.radius, 2.495184, 5)
+
+    def test_check_xyz(self):
+        """Test the check_xyz() function"""
+        xyz1 = """C       0.62797113   -0.03193934   -0.15151370
+C       1.35170118   -1.00275231   -0.48283333
+O      -0.67437022    0.01989281    0.16029161
+H      -1.14812497    0.95492850    0.42742905
+H      -1.27300665   -0.88397696    0.14797321
+H       1.11582953    0.94384729   -0.10134685"""
+        self.assertTrue(check_xyz(xyz1, multiplicity=2, charge=0))
+        self.assertFalse(check_xyz(xyz1, multiplicity=1, charge=0))
+        self.assertFalse(check_xyz(xyz1, multiplicity=2, charge=1))
+        self.assertTrue(check_xyz(xyz1, multiplicity=1, charge=-1))
+
     @classmethod
     def tearDownClass(cls):
         """
@@ -735,11 +878,11 @@ class TestTSGuess(unittest.TestCase):
     def test_as_dict(self):
         """Test TSGuess.as_dict()"""
         tsg_dict = self.tsg1.as_dict()
-        expected_dict = {'method': u'autotst',
+        expected_dict = {'method': 'autotst',
                          'energy': None,
                          'family': 'H_Abstraction',
                          'index': None,
-                         'rmg_reaction': u'CON=O <=> [O-][N+](=O)C',
+                         'rmg_reaction': 'CON=O <=> [O-][N+](=O)C',
                          'success': None,
                          't0': None,
                          'execution_time': None}

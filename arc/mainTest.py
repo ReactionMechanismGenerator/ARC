@@ -67,7 +67,7 @@ class TestARC(unittest.TestCase):
                          'scan_level': '',
                          'sp_level': 'ccsd(t)-f12/cc-pvdz-f12',
                          'job_memory': 14,
-                         'job_types': {u'1d_rotors': False,
+                         'job_types': {'1d_rotors': False,
                                        'conformers': True,
                                        'fine': False,
                                        'freq': True,
@@ -80,7 +80,9 @@ class TestARC(unittest.TestCase):
                          't_max': None,
                          't_count': None,
                          'use_bac': True,
+                         'confs_to_dft': 5,
                          'allow_nonisomorphic_2d': False,
+                         'calc_freq_factor': True,
                          'ess_settings': {'gaussian': ['local', 'server2'], 'onedmin': ['server1'],
                                           'molpro': ['server2'], 'qchem': ['server1']},
                          'species': [{'bond_corrections': {'C-C': 1, 'C-H': 6},
@@ -91,13 +93,14 @@ class TestARC(unittest.TestCase):
                                       'optical_isomers': None,
                                       'generate_thermo': False,
                                       'is_ts': False,
-                                      'label': u'spc1',
+                                      'label': 'spc1',
                                       'long_thermo_description': "Bond corrections: {'C-C': 1, 'C-H': 6}\n",
                                       'mol': '1 C u0 p0 c0 {2,S} {3,S} {4,S} {5,S}\n2 C u0 p0 c0 {1,S} {6,S} {7,S} {8,S}\n3 H u0 p0 c0 {1,S}\n4 H u0 p0 c0 {1,S}\n5 H u0 p0 c0 {1,S}\n6 H u0 p0 c0 {2,S}\n7 H u0 p0 c0 {2,S}\n8 H u0 p0 c0 {2,S}\n',
                                       'multiplicity': 1,
                                       'neg_freqs_trshed': [],
                                       'number_of_rotors': 0,
                                       'rotors_dict': {},
+                                      'force_field': 'MMFF94',
                                       't1': None}],
                          }
         self.assertEqual(restart_dict, expected_dict)
@@ -297,7 +300,6 @@ class TestARC(unittest.TestCase):
                    sp_level='ccsd(t)-f12/cc-pvtz-f12', opt_level='wb97x-d/aug-cc-pvtz')
         self.assertEqual(arc3.model_chemistry, 'ccsd(t)-f12/cc-pvtz-f12//wb97x-d/aug-cc-pvtz')
         self.assertEqual(arc3.freq_scale_factor, 0.988)
-
 
     @classmethod
     def tearDownClass(cls):

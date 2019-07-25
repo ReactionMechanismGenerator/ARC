@@ -11,6 +11,7 @@ import subprocess
 import os
 import shutil
 import datetime
+import re
 
 from arc.job.ssh import check_job_status_in_stdout
 from arc.settings import servers, check_status_command, submit_command, submit_filename, delete_command, output_filename
@@ -35,8 +36,8 @@ def check_job_status(job_id):
     """
     Possible statuses: `before_submission`, `running`, `errored on node xx`, `done`
     Status line formats:
-    pharos: '540420 0.45326 xq1340b    user_name       r     10/26/2018 11:08:30 long1@node18.cluster'
-    rmg: '14428     debug xq1371m2   user_name  R 50-04:04:46      1 node06'
+    OGE: '540420 0.45326 xq1340b    user_name       r     10/26/2018 11:08:30 long1@node18.cluster'
+    Slurm: '14428     debug xq1371m2   user_name  R 50-04:04:46      1 node06'
     """
     server = 'local'
     cmd = check_status_command[servers[server]['cluster_soft']] + ' -u ' + servers[server]['un']
@@ -113,3 +114,29 @@ def rename_output(local_file_path, software):
     software = software.lower()
     if os.path.isfile(os.path.join(os.path.dirname(local_file_path), output_filename[software])):
         shutil.move(src=os.path.join(os.path.dirname(local_file_path), output_filename[software]), dst=local_file_path)
+
+
+def delete_all_local_arc_jobs():
+    """
+    Delete all ARC-spawned jobs (with job name starting with `a` and a digit) from the local server.
+    Make sure you know what you're doing, so unrelated jobs won't be deleted...
+    Useful when terminating ARC while some (ghost) jobs are still running.
+    """
+    server = 'local'
+    if server in servers:
+        print('\nDeleting all ARC jobs from local server...')
+        cmd = check_status_command[servers[server]['cluster_soft']] + ' -u ' + servers[server]['un']
+        stdout = execute_command(cmd)[0]
+        for status_line in stdout:
+            s = re.search(r' a\d+', status_line)
+            if s is not None:
+                if servers[server]['cluster_soft'].lower() == 'slurm':
+                    job_id = s.group()[1:]
+                    server_job_id = status_line.split()[0]
+                    delete_job(server_job_id)
+                    print('deleted job {0} ({1} on server)'.format(job_id, server_job_id))
+                elif servers[server]['cluster_soft'].lower() == 'oge':
+                    job_id = s.group()[1:]
+                    delete_job(job_id)
+                    print('deleted job {0}'.format(job_id))
+        print('\ndone.')

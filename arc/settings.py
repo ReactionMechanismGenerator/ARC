@@ -76,12 +76,12 @@ default_job_types = {'conformers': True,      # defaults to True if not specifie
                      }
 
 # List here (complete or partial) phrases of methods or basis sets you'd like to associate to specific ESS
-# Avoid ascribing the same phrase to more than one server, this may cause undeterministic assignment of software
+# Avoid ascribing the same phrase to more than one software, this may cause undeterministic assignment of software
 # Format is levels_ess = {ess: ['phrase1', 'phrase2'], ess2: ['phrase3', 'phrase3']}
 levels_ess = {
-    'gaussian': ['b3lyp', 'm062x'],
+    'gaussian': ['apfd', 'b3lyp', 'm062x'],
     'molpro': ['ccsd', 'cisd', 'vpz'],
-    'qchem': ['m06-2x', 'def2']
+    'qchem': ['m06-2x']
 }
 
 check_status_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat',
@@ -112,13 +112,14 @@ output_filename = {'gaussian': 'input.log',
                    'qchem': 'output.out',
                    'molpro': 'input.out',
                    'onedmin': 'output.out',
+                   'gromacs': 'output.yml'
                    }
 
 default_levels_of_theory = {'conformer': 'b97d3/6-31+g(d,p)',
                             'ts_guesses': 'b97d3/6-31+g(d,p)',  # used for IRC as well
-                            'opt': 'wb97xd/6-311++g(d,p)',
-                            'freq': 'wb97xd/6-311++g(d,p)',  # should be the same level as opt (to calc freq at min E)
-                            'scan': 'b97d3/6-31+g(d,p)',  # should be the same level as freq (to project out rotors)
+                            'opt': 'wb97xd/def2TZVP',
+                            'freq': 'wb97xd/def2TZVP',  # should be the same level as opt (to calc freq at min E)
+                            'scan': 'wb97xd/def2TZVP',  # should be the same level as freq (to project out rotors)
                             'sp': 'ccsd(t)-f12/cc-pvtz-f12',  # This should be a level for which BAC is available
                             # 'sp': 'b3lyp/6-311+g(3df,2p)',
                             'orbitals': 'wb97x-d3/6-311++g(d,p)',  # save orbitals for visualization

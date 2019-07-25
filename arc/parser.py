@@ -111,15 +111,20 @@ def parse_xyz_from_file(path):
     if file_extension == '.xyz':
         relevant_lines = lines[2:]
     elif file_extension == '.gjf':
-        for line in lines[5:]:
-            if line and line != '\n' and line != '\r\n':
+        start_parsing = False
+        for line in lines:
+            if start_parsing and line and line != '\n' and line != '\r\n':
                 relevant_lines.append(line)
-            else:
+            elif start_parsing:
                 break
+            else:
+                splits = line.split()
+                if len(splits) == 2 and all([s.isdigit() for s in splits]):
+                    start_parsing = True
     elif 'out' in file_extension or 'log' in file_extension:
         log = determine_qm_software(fullpath=path)
-        coord, number, _ = log.loadGeometry()
-        xyz = get_xyz_string(coord=coord, number=number)
+        coords, number, _ = log.loadGeometry()
+        xyz = get_xyz_string(coords=coords, numbers=number)
     else:
         record = False
         for line in lines:
@@ -210,3 +215,42 @@ def _get_lines_from_file(path):
     else:
         raise InputError('Could not find file {0}'.format(path))
     return lines
+
+
+def process_conformers_file(conformers_path):
+    """
+    Parse coordinates and energies from an ARC conformers file of either species or TSs.
+
+    Args:
+        conformers_path (str, unicode): The path to an ARC conformers file
+                                        (either a "conformers_before_optimization" or
+                                        a "conformers_after_optimization" file).
+
+    Returns:
+        list: Entries are optimized xyz's in a string format.
+        list: Entries float numbers representing the energies in kJ/mol.
+    """
+    if not os.path.isfile(conformers_path):
+        raise ValueError('Conformers file {0} could not be found'.format(conformers_path))
+    with open(conformers_path, 'r') as f:
+        lines = f.readlines()
+    xyzs, energies = list(), list()
+    line_index = 0
+    while line_index < len(lines):
+        if 'conformer' in lines[line_index] and ':' in lines[line_index] and lines[line_index].strip()[-2].isdigit():
+            xyz, energy = '', None
+            line_index += 1
+            print(lines[line_index].strip())
+            while line_index < len(lines) and lines[line_index].strip() and 'SMILES' not in lines[line_index]\
+                    and 'energy' not in lines[line_index].lower() and 'guess method' not in lines[line_index].lower():
+                xyz += lines[line_index]
+                line_index += 1
+            while line_index < len(lines) and 'conformer' not in lines[line_index]:
+                if 'relative energy:' in lines[line_index].lower():
+                    energy = float(lines[line_index].split()[2])
+                line_index += 1
+            xyzs.append(xyz)
+            energies.append(energy)
+        else:
+            line_index += 1
+    return xyzs, energies

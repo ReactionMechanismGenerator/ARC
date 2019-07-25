@@ -57,7 +57,7 @@ class TestJob(unittest.TestCase):
                          'job_status': ['initializing', 'initializing'],
                          'job_type': 'opt',
                          'level_of_theory': 'b3lyp/6-31+g(d)',
-                         'memory': 14000,
+                         'memory': 14,
                          'occ': None,
                          'pivots': [],
                          'project_directory': os.path.join(arc_path, 'Projects', 'project_test'),
@@ -238,18 +238,63 @@ class TestJob(unittest.TestCase):
         self.job1.job_type = 'onedmin'
         self.job1.set_file_paths()
         self.assertEqual(len(self.job1.additional_files_to_upload), 3)
-        self.assertEqual(self.job1.additional_files_to_upload[0],
-                         {'source': 'path',
-                          'remote': 'runs/ARC_Projects/arc_project_for_testing_delete_after_usage3/tst_spc/opt_a100/geo.xyz',
-                          'local': 'onedmin.molpro.x', 'name': 'geo', 'make_x': False})
-        self.assertEqual(self.job1.additional_files_to_upload[1],
-                         {'source': 'input_files',
-                          'remote': 'runs/ARC_Projects/arc_project_for_testing_delete_after_usage3/tst_spc/opt_a100/m.x',
-                          'local': 'onedmin.molpro.x', 'name': 'm.x', 'make_x': True})
-        self.assertEqual(self.job1.additional_files_to_upload[2],
-                         {'source': 'input_files',
-                          'remote': 'runs/ARC_Projects/arc_project_for_testing_delete_after_usage3/tst_spc/opt_a100/qc.mol',
-                          'local': 'onedmin.qc.mol', 'name': 'qc.mol', 'make_x': False})
+
+        self.assertEqual(self.job1.additional_files_to_upload[0]['source'], 'path')
+        self.assertEqual(self.job1.additional_files_to_upload[0]['name'], 'geo')
+        self.assertFalse(self.job1.additional_files_to_upload[0]['make_x'])
+        self.assertIn('geo.xyz', self.job1.additional_files_to_upload[0]['remote'])
+        self.assertIn('geo.xyz', self.job1.additional_files_to_upload[0]['local'])
+
+        self.assertEqual(self.job1.additional_files_to_upload[1]['source'], 'input_files')
+        self.assertEqual(self.job1.additional_files_to_upload[1]['name'], 'm.x')
+        self.assertTrue(self.job1.additional_files_to_upload[1]['make_x'])
+        self.assertIn('m.x', self.job1.additional_files_to_upload[1]['remote'])
+        self.assertEqual(self.job1.additional_files_to_upload[1]['local'], 'onedmin.molpro.x')
+
+        self.assertEqual(self.job1.additional_files_to_upload[2]['source'], 'input_files')
+        self.assertEqual(self.job1.additional_files_to_upload[2]['name'], 'qc.mol')
+        self.assertFalse(self.job1.additional_files_to_upload[2]['make_x'])
+        self.assertIn('qc.mol', self.job1.additional_files_to_upload[2]['remote'])
+        self.assertEqual(self.job1.additional_files_to_upload[2]['local'], 'onedmin.qc.mol')
+
+        self.job1.job_type = 'gromacs'
+        self.job1.set_file_paths()
+        self.assertEqual(len(self.job1.additional_files_to_upload), 6)
+
+        self.assertEqual(self.job1.additional_files_to_upload[0]['source'], 'path')
+        self.assertEqual(self.job1.additional_files_to_upload[0]['name'], 'gaussian.out')
+        self.assertFalse(self.job1.additional_files_to_upload[0]['make_x'])
+        self.assertIn('gaussian.out', self.job1.additional_files_to_upload[0]['remote'])
+        self.assertIn('gaussian.out', self.job1.additional_files_to_upload[0]['local'])
+
+        self.assertEqual(self.job1.additional_files_to_upload[1]['source'], 'path')
+        self.assertEqual(self.job1.additional_files_to_upload[1]['name'], 'coords.yml')
+        self.assertFalse(self.job1.additional_files_to_upload[1]['make_x'])
+        self.assertIn('coords.yml', self.job1.additional_files_to_upload[1]['remote'])
+
+        self.assertEqual(self.job1.additional_files_to_upload[2]['source'], 'path')
+        self.assertEqual(self.job1.additional_files_to_upload[2]['name'], 'acpype.py')
+        self.assertFalse(self.job1.additional_files_to_upload[2]['make_x'])
+        self.assertIn('acpype.py', self.job1.additional_files_to_upload[2]['remote'])
+        self.assertIn('acpype.py', self.job1.additional_files_to_upload[2]['local'])
+
+        self.assertEqual(self.job1.additional_files_to_upload[3]['source'], 'path')
+        self.assertEqual(self.job1.additional_files_to_upload[3]['name'], 'mdconf.py')
+        self.assertFalse(self.job1.additional_files_to_upload[3]['make_x'])
+        self.assertIn('mdconf.py', self.job1.additional_files_to_upload[3]['remote'])
+        self.assertIn('mdconf.py', self.job1.additional_files_to_upload[3]['local'])
+
+        self.assertEqual(self.job1.additional_files_to_upload[4]['source'], 'path')
+        self.assertEqual(self.job1.additional_files_to_upload[4]['name'], 'M00.tleap')
+        self.assertFalse(self.job1.additional_files_to_upload[4]['make_x'])
+        self.assertIn('M00.tleap', self.job1.additional_files_to_upload[4]['remote'])
+        self.assertIn('M00.tleap', self.job1.additional_files_to_upload[4]['local'])
+
+        self.assertEqual(self.job1.additional_files_to_upload[5]['source'], 'path')
+        self.assertEqual(self.job1.additional_files_to_upload[5]['name'], 'mdp.mdp')
+        self.assertFalse(self.job1.additional_files_to_upload[5]['make_x'])
+        self.assertIn('mdp.mdp', self.job1.additional_files_to_upload[5]['remote'])
+        self.assertIn('mdp.mdp', self.job1.additional_files_to_upload[5]['local'])
 
     @classmethod
     def tearDownClass(cls):

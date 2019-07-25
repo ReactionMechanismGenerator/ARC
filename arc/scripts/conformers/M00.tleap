@@ -1,0 +1,7 @@
+source leaprc.protein.ff14SB
+source leaprc.gaff
+M00=loadMol2 M00_resp.mol2
+loadamberparams M00.frcmod
+A=loadpdb M00_resp.pdb
+saveamberparm A M00.parm7 M00.crd7
+quit

@@ -15,6 +15,7 @@ from arc.scheduler import Scheduler
 from arc.job.job import Job
 from arc.species.species import ARCSpecies
 import arc.parser as parser
+from arc.plotter import save_conformers_file
 from arc.settings import arc_path, default_levels_of_theory
 
 ################################################################################
@@ -74,10 +75,11 @@ class TestScheduler(unittest.TestCase):
         self.sched1.job_dict[label]['conformers'][1] = self.job2
         self.sched1.species_dict[label].conformer_energies = [None, None]
         self.sched1.species_dict[label].conformers = [None, None]
-        self.sched1.parse_conformer_energy(job=self.job1, label=label, i=0)
-        self.sched1.parse_conformer_energy(job=self.job2, label=label, i=1)
-        expecting = [-251596443.5088726, -254221943.3698632]
-        self.assertEqual(self.sched1.species_dict[label].conformer_energies, expecting)
+        self.sched1.parse_conformer(job=self.job1, label=label, i=0)
+        self.sched1.parse_conformer(job=self.job2, label=label, i=1)
+        expecting = [-251596.4435088726, -254221.9433698632]
+        self.assertAlmostEqual(self.sched1.species_dict[label].conformer_energies[0], expecting[0], 5)
+        self.assertAlmostEqual(self.sched1.species_dict[label].conformer_energies[1], expecting[1], 5)
         self.sched1.species_dict[label].conformers[0] = parser.parse_xyz_from_file(self.job1.local_path_to_output_file)
         self.sched1.species_dict[label].conformers[1] = parser.parse_xyz_from_file(self.job2.local_path_to_output_file)
 
@@ -95,13 +97,16 @@ H      -1.16566701    0.32023496   -0.81630508"""
         self.assertTrue(os.path.isfile(methylamine_conf_path))
         with open(methylamine_conf_path, 'r') as f:
             lines = f.readlines()
-        self.assertTrue('conformers optimized at' in lines[0])
+        self.assertTrue('Conformers for methylamine, optimized at the b97d3/6-31+g(d,p) level' in lines[0])
         self.assertEqual(lines[10], 'SMILES: CN\n')
         self.assertTrue('Relative Energy:' in lines[11])
         self.assertEqual(lines[15][0], 'N')
 
+        self.sched1.output['C2H6'] = {'status': ''}  # otherwise confs won't be generated due to the presence of 'geo'
         self.sched1.run_conformer_jobs()
-        self.sched1.save_conformers_file(label='C2H6')
+        save_conformers_file(project_directory=self.sched1.project_directory, label='C2H6',
+                             xyzs=self.sched1.species_dict['C2H6'].conformers, level_of_theory='level1',
+                             multiplicity=1, charge=0)
         c2h6_conf_path = os.path.join(self.sched1.project_directory, 'output', 'Species', 'C2H6', 'geometry',
                                       'conformers_before_optimization.txt')
         self.assertTrue(os.path.isfile(c2h6_conf_path))
@@ -109,7 +114,7 @@ H      -1.16566701    0.32023496   -0.81630508"""
             lines = f.readlines()
         self.assertEqual(lines[1][0], 'C')
         self.assertEqual(lines[9], '\n')
-        self.assertEqual(lines[17][0], 'H')
+        self.assertEqual(lines[10], 'SMILES: CC\n')
 
     def test_check_negative_freq(self):
         """Test the check_negative_freq() method"""
