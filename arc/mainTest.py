@@ -52,8 +52,8 @@ class TestARC(unittest.TestCase):
                    arc_species_list=[spc1], level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)')
         restart_dict = arc0.as_dict()
         expected_dict = {'composite_method': '',
-                         'conformer_level': 'b97d3/6-31+g(d,p)',
-                         'ts_guess_level': 'b97d3/6-31+g(d,p)',
+                         'conformer_level': 'b3lyp/6-31g(d,p) empiricaldispersion=gd3bj',
+                         'ts_guess_level': 'b3lyp/6-31g(d,p) empiricaldispersion=gd3bj',
                          'opt_level': 'b3lyp/6-311+g(3df,2p)',
                          'freq_level': 'b3lyp/6-311+g(3df,2p)',
                          'freq_scale_factor': 0.967,
