@@ -115,8 +115,8 @@ output_filename = {'gaussian': 'input.log',
                    'gromacs': 'output.yml'
                    }
 
-default_levels_of_theory = {'conformer': 'b97d3/6-31+g(d,p)',
-                            'ts_guesses': 'b97d3/6-31+g(d,p)',  # used for IRC as well
+default_levels_of_theory = {'conformer': 'b3lyp/6-31g(d,p) EmpiricalDispersion=GD3BJ',
+                            'ts_guesses': 'b3lyp/6-31g(d,p) EmpiricalDispersion=GD3BJ',  # used for IRC as well
                             'opt': 'wb97xd/def2TZVP',
                             'freq': 'wb97xd/def2TZVP',  # should be the same level as opt (to calc freq at min E)
                             'scan': 'wb97xd/def2TZVP',  # should be the same level as freq (to project out rotors)
