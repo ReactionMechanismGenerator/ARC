@@ -913,7 +913,8 @@ $end
                                 reason = 'During the optimization process, either the standard orientation ' \
                                          'or the point group of the molecule has changed.'
                             elif 'l401.exe' in line:
-                                reason = 'The projection from the old to the new basis set has failed.'
+                                reason = '"Basis set data is not on the checkpoint file", or' \
+                                         ' "The projection from the old to the new basis set has failed."'
                             elif 'malloc failed' in line or 'galloc' in line:
                                 reason = 'Memory allocation failed (did you ask for too much?)'
                             elif 'A SYNTAX ERROR WAS DETECTED' in line:
