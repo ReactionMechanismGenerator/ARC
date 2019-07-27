@@ -238,7 +238,8 @@ class TestARC(unittest.TestCase):
 
         self.assertTrue(os.path.isfile(os.path.join(project_directory, 'output', 'thermo_parity_plots.pdf')))
 
-        with open(os.path.join(project_directory, 'output', 'Species', 'H2O2', 'species_dictionary.txt'), 'r') as f:
+        with open(os.path.join(project_directory, 'output', 'Species', 'H2O2', 'arkane', 'species_dictionary.txt'),
+                  'r') as f:
             lines = f.readlines()
         adj_list = ''
         for line in lines:

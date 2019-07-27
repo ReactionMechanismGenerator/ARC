@@ -203,13 +203,17 @@ def plot_rotor_scan(angle, v_list, path=None, pivots=None, comment=''):
 
 def log_thermo(label, path):
     """
-    Logging thermodata from an Arkane output file
+    Logging thermodata from an Arkane output file.
+
+    Args:
+        label (str, unicode): The species label.
+        path (str, unicode): The path to the folder containing the relevant Arkane output file.
     """
     logger.info('\n\n')
     logger.debug('Thermodata for species {0}'.format(label))
     thermo_block = ''
     log = False
-    with open(path, 'r') as f:
+    with open(os.path.join(path, 'output.py'), 'r') as f:
         line = f.readline()
         while line != '':
             if 'Thermodynamics for' in line:
@@ -226,13 +230,17 @@ def log_thermo(label, path):
 
 def log_kinetics(label, path):
     """
-    Logging kinetics from an Arkane output file
+    Logging kinetics from an Arkane output file.
+
+    Args:
+        label (str, unicode): The species label.
+        path (str, unicode): The path to the folder containing the relevant Arkane output file.
     """
     logger.info('\n\n')
     logger.debug('Kinetics for species {0}'.format(label))
     kinetics_block = ''
     log = False
-    with open(path, 'r') as f:
+    with open(os.path.join(path, 'output.py'), 'r') as f:
         line = f.readline()
         while line != '':
             if 'kinetics(' in line:

@@ -88,21 +88,23 @@ class Processor(object):
 
     def _generate_arkane_species_file(self, species):
         """
-        A helper function for generating the Arkane species file
-        Assigns the input file path to species.arkane_file and returns a desired path for the output file
+        A helper function for generating the Arkane species file.
+        Assigns the input file path to species.arkane_file.
+
+        Args:
+            species (ARCSpecies): The species to process.
+
+        Returns:
+            str, unicode: The Arkane output path.
         """
         folder_name = 'rxns' if species.is_ts else 'Species'
-        output_dir = os.path.join(self.project_directory, 'output', folder_name, species.label)
-        if not os.path.isdir(output_dir):
-            os.makedirs(output_dir)
-        output_file_path = [os.path.join(output_dir, species.label + '_arkane_output.py'),
-                            os.path.join(output_dir, species.label + '_arkane_output_no_BAC.py')]
-        if os.path.isfile(os.path.join(output_dir, 'species_dictionary.txt')):
-            os.remove(os.path.join(output_dir, 'species_dictionary.txt'))
+        output_path = os.path.join(self.project_directory, 'output', folder_name, species.label, 'arkane')
+        if not os.path.isdir(output_path):
+            os.makedirs(output_path)
 
         if species.yml_path is not None:
             species.arkane_file = species.yml_path
-            return output_file_path
+            return output_path
 
         species.determine_symmetry()
         try:
@@ -174,7 +176,7 @@ class Processor(object):
         with open(input_file_path, 'wb') as f:
             f.write(input_file)
         species.arkane_file = input_file_path
-        return output_file_path
+        return output_path
 
     def process(self):
         """Process ARC outputs and generate thermo and kinetics"""
@@ -185,7 +187,7 @@ class Processor(object):
         unconverged_species = list()
         for species in self.species_dict.values():
             if not species.is_ts and 'ALL converged' in self.output[species.label]['status']:
-                output_file_path = self._generate_arkane_species_file(species)
+                output_path = self._generate_arkane_species_file(species)
                 unique_arkane_species_label = False
                 while not unique_arkane_species_label:
                     try:
@@ -199,27 +201,27 @@ class Processor(object):
                 if species.mol_list:
                     arkane_spc.molecule = species.mol_list
                     species.rmg_species.molecule = species.mol_list  # add resonance structures for thermo determination
-                statmech_success = self._run_statmech(arkane_spc, species.arkane_file, output_file_path[0],
+                statmech_success = self._run_statmech(arkane_spc, species.arkane_file, output_path,
                                                       use_bac=self.use_bac)
                 if not statmech_success:
                     continue
 
                 if species.generate_thermo:
                     thermo_job = ThermoJob(arkane_spc, 'NASA')
-                    thermo_job.execute(outputFile=output_file_path[0], plot=False)
+                    thermo_job.execute(output_directory=output_path, plot=False)
                     species.thermo = arkane_spc.getThermoData()
-                    plotter.log_thermo(species.label, path=output_file_path[0])
+                    plotter.log_thermo(species.label, path=output_path)
                     species_for_thermo_lib.append(species)
                 if self.use_bac and self.sp_level:
                     # If BAC was used, save another Arkane YAML file of this species with no BAC, so it can be used
                     # for further rate calculations if needed (where the conformer.E0 has no BAC)
-                    statmech_success = self._run_statmech(arkane_spc, species.arkane_file, output_file_path[1],
+                    statmech_success = self._run_statmech(arkane_spc, species.arkane_file, output_path,
                                                           use_bac=False)
-                    if statmech_success:
-                        arkane_spc.label += str('_no_BAC')
-                        arkane_spc.thermo = None  # otherwise thermo won't be calculated, although we don't really care
-                        thermo_job = ThermoJob(arkane_spc, 'NASA')
-                        thermo_job.execute(outputFile=output_file_path[1], plot=False)
+                    # if statmech_success:
+                    #     arkane_spc.label += str('_no_BAC')
+                    #     arkane_spc.thermo = None  # otherwise thermo won't be calculated, although we don't really care
+                    #     thermo_job = ThermoJob(arkane_spc, 'NASA')
+                    #     thermo_job.execute(output_directory=output_path, plot=False)
                 try:
                     species.rmg_thermo = self.rmgdb.thermo.getThermoData(species.rmg_species)
                 except (ValueError, AttributeError) as e:
@@ -243,7 +245,7 @@ class Processor(object):
                 self.copy_freq_output_for_ts(species.label)
                 success = True
                 rxn_list_for_kinetics_plots.append(rxn)
-                output_file_path = self._generate_arkane_species_file(species)[0]
+                output_path = self._generate_arkane_species_file(species)
                 arkane_ts = arkane_transition_state(str(species.label), species.arkane_file)
                 arkane_spc_dict[species.label] = arkane_ts
                 self._run_statmech(arkane_ts, species.arkane_file, kinetics=True)
@@ -266,7 +268,7 @@ class Processor(object):
                 kinetics_job = KineticsJob(reaction=arkane_rxn, Tmin=self.t_min, Tmax=self.t_max, Tcount=self.t_count)
                 logger.info('Calculating rate for reaction {0}'.format(rxn.label))
                 try:
-                    kinetics_job.execute(outputFile=output_file_path, plot=False)
+                    kinetics_job.execute(output_directory=output_path, plot=False)
                 except (ValueError, OverflowError) as e:
                     # ValueError: One or both of the barrier heights of -9.3526 and 62.683 kJ/mol encountered in Eckart
                     # method are invalid.
@@ -282,7 +284,7 @@ class Processor(object):
                     success = False
                 if success:
                     rxn.kinetics = kinetics_job.reaction.kinetics
-                    plotter.log_kinetics(species.label, path=output_file_path)
+                    plotter.log_kinetics(species.label, path=output_path)
                     rxn.rmg_reactions = rmgdb.determine_rmg_kinetics(rmgdb=self.rmgdb, reaction=rxn.rmg_reaction,
                                                                      dh_rxn298=rxn.dh_rxn298)
 
@@ -317,13 +319,13 @@ class Processor(object):
                         f.write(str(' SMILES: {0}'.format(spc.mol.toSMILES())))
                     f.write(str('\n'))
 
-    def _run_statmech(self, arkane_spc, arkane_file, output_file_path=None, use_bac=False, kinetics=False, plot=False):
+    def _run_statmech(self, arkane_spc, arkane_file, output_path=None, use_bac=False, kinetics=False, plot=False):
         """A helper function for running an Arkane statmech job
 
         Args:
             arkane_spc (str, unicode): An Arkane species() function representor.
             arkane_file (str, unicode): The path to the Arkane species file (either in .py or YAML form).
-            output_file_path (str, unicode): The path to the Arkane output.py file.
+            output_path (str, unicode): The path to the folder containing the Arkane output.py file.
             use_bac (bool): A flag indicating whether or not to use bond additivity corrections (True to use).
             kinetics (bool) A flag indicating whether this specie is part of a kinetics job.
             plot (bool): A flag indicating whether to plot a PDF of the calculated thermo properties (True to plot)
@@ -344,7 +346,7 @@ class Processor(object):
         # (defaults to 1 and prints a warning if not found)
         stat_mech_job.frequencyScaleFactor = self.freq_scale_factor or assign_frequency_scale_factor(self.freq_level)
         try:
-            stat_mech_job.execute(outputFile=output_file_path, plot=plot)
+            stat_mech_job.execute(output_directory=os.path.join(output_path, 'output.py'), plot=plot)
         except Exception:
             success = False
         return success
@@ -377,13 +379,16 @@ class Processor(object):
                     elif '_rotor' in file_name:  # move to the rotor directory
                         shutil.move(src=os.path.join(species_path, file_name),
                                     dst=os.path.join(species_path, 'rotors', file_name))
-                if os.path.exists(os.path.join(species_path, 'species')):  # This is where Arkane saves the YAML file
-                    species_yaml_files = os.listdir(os.path.join(species_path, 'species'))
+
+                # Arkane YAML files:
+                species_yaml_base_path = os.path.join(species_path, 'arkane', 'species')
+                if os.path.exists(species_yaml_base_path):  # The Arkane YAML file is here
+                    species_yaml_files = os.listdir(species_yaml_base_path)
                     if species_yaml_files:
                         for yml_file in species_yaml_files:
-                            shutil.move(src=os.path.join(species_path, 'species', yml_file),
-                                        dst=os.path.join(species_path, yml_file))
-                    shutil.rmtree(os.path.join(species_path, 'species'))
+                            shutil.move(src=os.path.join(species_yaml_base_path, yml_file),
+                                        dst=os.path.join(species_path, 'arkane', yml_file))
+                    shutil.rmtree(species_yaml_base_path)
 
     def copy_freq_output_for_ts(self, label):
         """

@@ -563,7 +563,7 @@ class Scheduler(object):
                         # delete the label only if it represents an empty dictionary
                         del self.running_jobs[label]
 
-            if self.timer:
+            if self.timer and job_list:
                 time.sleep(30)  # wait 30 sec before bugging the servers again.
             t = time.time() - self.report_time
             if t > 3600:
