@@ -74,8 +74,10 @@ def load_rmg_database(rmgdb, thermo_libraries=None, reaction_libraries=None, kin
     if not thermo_libraries:
         thermo_path = os.path.join(db_path, 'thermo', 'libraries')
         for thermo_library_path in os.listdir(thermo_path):
-            thermo_library, _ = os.path.splitext(os.path.basename(thermo_library_path))
-            thermo_libraries.append(thermo_library)
+            # Avoid reading .DS_store files for compatibility with Mac OS
+            if not thermo_library_path.startswith('.'):
+                thermo_library, _ = os.path.splitext(os.path.basename(thermo_library_path))
+                thermo_libraries.append(thermo_library)
         # prioritize libraries
         thermo_priority = ['BurkeH2O2', 'thermo_DFT_CCSDTF12_BAC', 'DFT_QCI_thermo', 'Klippenstein_Glarborg2016',
                            'primaryThermoLibrary', 'primaryNS', 'NitrogenCurran', 'NOx2018', 'FFCM1(-)',
@@ -91,14 +93,16 @@ def load_rmg_database(rmgdb, thermo_libraries=None, reaction_libraries=None, kin
 
     if not reaction_libraries:
         kinetics_path = os.path.join(db_path, 'kinetics', 'libraries')
-        reaction_libraries = os.listdir(kinetics_path)
+        # Avoid reading .DS_store files for compatibility with Mac OS
+        reaction_libraries = [library for library in os.listdir(kinetics_path) if not library.startswith('.')]
         indices_to_pop = list()
         second_level_libraries = list()
         for i, library in enumerate(reaction_libraries):
             if not os.path.isfile(os.path.join(kinetics_path, library, 'reactions.py')) and library != 'Surface':
                 indices_to_pop.append(i)
                 second_level_libraries.extend([library + '/' + second_level
-                                               for second_level in os.listdir(os.path.join(kinetics_path, library))])
+                                               for second_level in os.listdir(os.path.join(kinetics_path, library))
+                                               if not second_level.startswith('.')]) # Avoid reading .DS_store files for compatibility with Mac OS
         for i in reversed(range(len(reaction_libraries))):  # pop starting from the end, so other indices won't change
             if i in indices_to_pop or reaction_libraries[i] == 'Surface':
                 reaction_libraries.pop(i)
