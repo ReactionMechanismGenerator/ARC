@@ -20,7 +20,7 @@ import cclib
 
 from arkane.statmech import determine_qm_software
 from rmgpy.reaction import Reaction
-from rmgpy.exceptions import InputError as RMGInputError
+from rmgpy.exceptions import InputError as RMGInputError, AtomTypeError
 
 from arc.common import get_logger, read_yaml_file, save_yaml_file, get_ordinal_indicator, min_list
 import arc.rmgdb as rmgdb
@@ -1048,7 +1048,7 @@ class Scheduler(object):
                     if b_mol is not None:
                         try:
                             is_isomorphic = check_isomorphism(self.species_dict[label].mol, b_mol)
-                        except ValueError as e:
+                        except (ValueError, AtomTypeError) as e:
                             if self.species_dict[label].charge:
                                 logger.error('Could not determine isomorphism for charged species {0}. '
                                              'Optimizing the most stable conformer anyway. Got the '
