@@ -1073,7 +1073,7 @@ class Scheduler(object):
                                                 'isomorphic). Using the isomorphic conformer for further geometry '
                                                 'optimization.'.format(
                                                  label, self.species_dict[label].mol.toSMILES(),
-                                                 (energies[i] - energies[0]) * 0.001,
+                                                 (energies[i] - min_list(energies)) * 0.001,
                                                  molecules_from_xyz(xyzs[0],
                                                                     multiplicity=self.species_dict[label].multiplicity,
                                                                     charge=self.species_dict[label].charge)[1]))
