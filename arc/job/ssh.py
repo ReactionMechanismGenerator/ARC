@@ -81,19 +81,25 @@ class SSHClient(object):
             raise InputError('Cannot upload a non-existing file.'
                              ' Check why file in path {0} is missing.'.format(local_file_path))
         sftp, ssh = self.connect()
-        times_tried = 0
-        max_times_to_try = 10
+        i, max_times_to_try = 1, 30
         success = False
-        while not success and times_tried < max_times_to_try:
-            times_tried += 1
+        sleep_time = 10  # seconds
+        while i < 30:
             try:
                 write_file(sftp, remote_file_path, local_file_path, file_string)
             except IOError:
-                pass
+                logger.error('Could not upload file {0} to {1}!'.format(local_file_path, self.server))
+                logger.error('ARC is sleeping for {0} seconds before re-trying,'
+                             ' please check your connectivity.'.format(sleep_time * i))
+                logger.info('ZZZZZ..... ZZZZZ.....')
+                time.sleep(sleep_time * i)  # in seconds
             else:
                 success = True
-        if times_tried == max_times_to_try:
-            raise ServerError('Could not write file {0} on {1}'.format(remote_file_path, self.server))
+                i = 1000
+            i += 1
+        if not success:
+            raise ServerError('Could not write file {0} on {1}. Tried {2} times.'.format(
+                remote_file_path, self.server, max_times_to_try))
         sftp.close()
         ssh.close()
 
@@ -101,11 +107,13 @@ class SSHClient(object):
         """
         Download a file from `remote_file_path` to `local_file_path`.
         """
-        i = 1
+        i, max_times_to_try = 1, 30
+        success = False
         sleep_time = 10  # seconds
         while i < 30:
             self._download_file(remote_file_path, local_file_path)
             if os.path.isfile(local_file_path):
+                success = True
                 i = 1000
             else:
                 logger.error('Could not download file {0} from {1}!'.format(remote_file_path, self.server))
@@ -114,6 +122,9 @@ class SSHClient(object):
                 logger.info('ZZZZZ..... ZZZZZ.....')
                 time.sleep(sleep_time * i)  # in seconds
             i += 1
+        if not success:
+            raise ServerError('Could not download file {0} from {1}. Tried {2} times.'.format(
+                remote_file_path, self.server, max_times_to_try))
 
     def _download_file(self, remote_file_path, local_file_path):
         """
