@@ -93,7 +93,7 @@ H      -1.16566701    0.32023496    0.81630508
 H      -1.16566701    0.32023496   -0.81630508"""
         self.assertEqual(self.sched1.species_dict[label].initial_xyz, expecting)
         methylamine_conf_path = os.path.join(self.sched1.project_directory, 'output', 'Species', 'methylamine',
-                                             'geometry', 'conformers_after_optimization.txt')
+                                             'geometry', 'conformers', 'conformers_after_optimization.txt')
         self.assertTrue(os.path.isfile(methylamine_conf_path))
         with open(methylamine_conf_path, 'r') as f:
             lines = f.readlines()
@@ -109,7 +109,7 @@ H      -1.16566701    0.32023496   -0.81630508"""
                              xyzs=self.sched1.species_dict['C2H6'].conformers, level_of_theory='level1',
                              multiplicity=1, charge=0)
         c2h6_conf_path = os.path.join(self.sched1.project_directory, 'output', 'Species', 'C2H6', 'geometry',
-                                      'conformers_before_optimization.txt')
+                                      'conformers', 'conformers_before_optimization.txt')
         self.assertTrue(os.path.isfile(c2h6_conf_path))
         with open(c2h6_conf_path, 'r') as f:
             lines = f.readlines()
