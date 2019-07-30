@@ -641,18 +641,20 @@ H      -1.16675800    1.03362600   -0.11273700
         save_conformers_file(project_directory=project_directory, label='vinoxy', xyzs=xyzs, level_of_theory='level1',
                              multiplicity=2, charge=0)
         self.assertTrue(os.path.isfile(os.path.join(project_directory, 'output', 'Species', 'vinoxy', 'geometry',
-                                                    'conformers_before_optimization.txt')))
+                                                    'conformers', 'conformers_before_optimization.txt')))
 
         save_conformers_file(project_directory=project_directory, label='vinoxy', xyzs=xyzs, level_of_theory='level1',
                              multiplicity=2, charge=0, energies=energies)
         self.assertTrue(os.path.isfile(os.path.join(project_directory, 'output', 'Species', 'vinoxy', 'geometry',
-                                                    'conformers_after_optimization.txt')))
+                                                    'conformers', 'conformers_after_optimization.txt')))
 
         spc2 = ARCSpecies(label=str('vinoxy'), smiles=str('C=C[O]'), xyz=os.path.join(
-            project_directory, 'output', 'Species', 'vinoxy', 'geometry', 'conformers_before_optimization.txt'))
+            project_directory, 'output', 'Species', 'vinoxy', 'geometry', 'conformers',
+            'conformers_before_optimization.txt'))
 
         spc3 = ARCSpecies(label=str('vinoxy'), smiles=str('C=C[O]'), xyz=os.path.join(
-            project_directory, 'output', 'Species', 'vinoxy', 'geometry', 'conformers_after_optimization.txt'))
+            project_directory, 'output', 'Species', 'vinoxy', 'geometry', 'conformers',
+            'conformers_after_optimization.txt'))
 
         self.assertEqual(spc2.conformers[2], xyzs[2])
         self.assertEqual(spc3.conformers[2], xyzs[2])

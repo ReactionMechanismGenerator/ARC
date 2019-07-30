@@ -714,7 +714,7 @@ def save_conformers_file(project_directory, label, xyzs, level_of_theory, multip
         ts_methods (list, optional): Entries are method names used to generate the TS guess.
     """
     spc_dir = 'rxns' if is_ts else 'Species'
-    geo_dir = os.path.join(project_directory, 'output', spc_dir, label, 'geometry')
+    geo_dir = os.path.join(project_directory, 'output', spc_dir, label, 'geometry', 'conformers')
     if not os.path.exists(geo_dir):
         os.makedirs(geo_dir)
     if energies is not None and any(e is not None for e in energies):

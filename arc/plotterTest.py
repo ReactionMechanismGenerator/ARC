@@ -80,7 +80,7 @@ H      -1.16115119    0.31478894   -0.81506145
                                      xyzs=spc1.conformers, level_of_theory='APFD/def2tzvp',
                                      multiplicity=spc1.multiplicity, charge=spc1.charge, is_ts=False,
                                      energies=spc1.conformer_energies)
-        conf_file_path = os.path.join(project_directory, 'output', 'Species', label, 'geometry',
+        conf_file_path = os.path.join(project_directory, 'output', 'Species', label, 'geometry', 'conformers',
                                       'conformers_before_optimization.txt')
         self.assertTrue(os.path.isfile(conf_file_path))
 
