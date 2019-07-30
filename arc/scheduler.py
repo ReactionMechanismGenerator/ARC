@@ -1251,6 +1251,7 @@ class Scheduler(object):
                     self.check_freq_job(label, job)
                 self.output[label]['status'] += 'opt converged; '
                 self.species_dict[label].opt_level = self.opt_level
+                plotter.save_geo(species=self.species_dict[label], project_directory=self.project_directory)
                 if self.species_dict[label].is_ts:
                     rxn_str = ' of reaction {0}'.format(self.species_dict[label].rxn_label)
                 else:
@@ -1603,7 +1604,6 @@ class Scheduler(object):
                 (self.species_dict[label].is_ts or self.species_dict[label].number_of_atoms == 1 or
                 ('freq converged' in status and 'opt converged' in status)))):
             self.output[label]['status'] += 'ALL converged'
-            plotter.save_geo(species=self.species_dict[label], project_directory=self.project_directory)
             if self.species_dict[label].is_ts:
                 self.species_dict[label].make_ts_report()
                 logger.info(self.species_dict[label].ts_report + '\n')
