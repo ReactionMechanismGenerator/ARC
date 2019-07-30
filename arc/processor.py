@@ -387,7 +387,7 @@ class Processor(object):
                     if species_yaml_files:
                         for yml_file in species_yaml_files:
                             shutil.move(src=os.path.join(species_yaml_base_path, yml_file),
-                                        dst=os.path.join(species_path, 'arkane', yml_file))
+                                        dst=os.path.join(species_path, yml_file))
                     shutil.rmtree(species_yaml_base_path)
 
     def copy_freq_output_for_ts(self, label):
