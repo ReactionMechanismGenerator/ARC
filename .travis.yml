@@ -63,4 +63,5 @@ jobs:
         - conda list
         - export COMMITMESSAGE="Automatic documentation rebuild"
       script:
+        - make setup_github_pages
         - make travis_setup clean html publish
