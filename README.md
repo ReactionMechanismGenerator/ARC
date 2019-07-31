@@ -6,8 +6,17 @@
 [![MIT license](http://img.shields.io/badge/license-MIT-brightgreen.svg)](http://opensource.org/licenses/MIT)
 ![Release](https://img.shields.io/badge/version-1.0.0-blue.svg)
 
+
 <img src="https://github.com/ReactionMechanismGenerator/ARC/blob/master/logo/ARC-logo-small.jpg" alt="arc logo"/>
 
-ARC automates quantum chemical calculations and calculates thermodynamic properties and kinetic rates from 2D representations of species.
+**ARC - Automated Rate Calculator** is a software for automating
+electronic structure calculations relevant for chemical kinetic modeling.
+ARC has many advanced options, yet at its core it is simple: it accepts 2D
+graph representations of chemical species (e.g., SMILES or adjacency lists),
+and  automatically executes, tracks, and processes relevant electronic structure
+jobs on user-defined servers. The principal outputs of ARC are thermodynamic properties
+(H, S, Cp) and high-pressure limit kinetic rate coefficients for the defined species
+and reactions.
+(Note that automating transition states is still in progress).
 
-Documentation and instructions are on the <a href="https://github.com/ReactionMechanismGenerator/ARC/wiki">Wiki pages</a> of this project.
+Make sure to visit <a href="https://reactionmechanismgenerator.github.io/ARC/index.html">ARC's Documentation</a> page.
