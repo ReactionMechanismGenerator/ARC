@@ -3,7 +3,7 @@
 
 
 """
-A module for parsing information from files
+A module for parsing information from various files.
 """
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
@@ -19,10 +19,6 @@ from arc.common import get_logger
 from arc.species.converter import get_xyz_string, standardize_xyz_string
 from arc.arc_exceptions import InputError, ParserError
 
-"""
-Various ESS parsing tools
-"""
-
 ##################################################################
 
 logger = get_logger()
@@ -30,7 +26,7 @@ logger = get_logger()
 
 def parse_frequencies(path, software):
     """
-    Parse the frequencies from a freq job output file
+    Parse the frequencies from a freq job output file.
     """
     lines = _get_lines_from_file(path)
     freqs = np.array([], np.float64)
@@ -69,7 +65,7 @@ def parse_frequencies(path, software):
 
 def parse_t1(path):
     """
-    Parse the T1 parameter from a Molpro coupled cluster calculation
+    Parse the T1 parameter from a Molpro coupled cluster calculation.
     """
     lines = _get_lines_from_file(path)
     t1 = None
@@ -81,7 +77,7 @@ def parse_t1(path):
 
 def parse_e_elect(path, zpe_scale_factor=1.):
     """
-    Parse the zero K energy, E0, from an sp job output file
+    Parse the zero K energy, E0, from an sp job output file.
     """
     if not os.path.isfile(path):
         raise InputError('Could not find file {0}'.format(path))
@@ -145,7 +141,7 @@ def parse_xyz_from_file(path):
 
 def parse_dipole_moment(path):
     """
-    Parse the dipole moment in Debye from an opt job output file
+    Parse the dipole moment in Debye from an opt job output file.
     """
     lines = _get_lines_from_file(path)
     log = determine_qm_software(path)
@@ -195,7 +191,7 @@ def parse_dipole_moment(path):
 
 def parse_polarizability(path):
     """
-    Parse the polarizability from a freq job output file, returns the value in Angstrom^3
+    Parse the polarizability from a freq job output file, returns the value in Angstrom^3.
     """
     lines = _get_lines_from_file(path)
     polarizability = None
@@ -208,7 +204,9 @@ def parse_polarizability(path):
 
 
 def _get_lines_from_file(path):
-    """A helper function for getting a list of lines from the file at `path`"""
+    """
+    A helper function for getting a list of lines from the file at `path`.
+    """
     if os.path.isfile(path):
         with open(path, 'r') as f:
             lines = f.readlines()
@@ -222,13 +220,14 @@ def process_conformers_file(conformers_path):
     Parse coordinates and energies from an ARC conformers file of either species or TSs.
 
     Args:
-        conformers_path (str, unicode): The path to an ARC conformers file
-                                        (either a "conformers_before_optimization" or
-                                        a "conformers_after_optimization" file).
+        conformers_path (str): The path to an ARC conformers file
+                               (either a "conformers_before_optimization" or
+                               a "conformers_after_optimization" file).
 
     Returns:
-        list: Entries are optimized xyz's in a string format.
-        list: Entries float numbers representing the energies in kJ/mol.
+        xyz (list): Entries are optimized xyz's in a string format.
+    Returns:
+        energies (list): Entries float numbers representing the energies in kJ/mol.
     """
     if not os.path.isfile(conformers_path):
         raise ValueError('Conformers file {0} could not be found'.format(conformers_path))

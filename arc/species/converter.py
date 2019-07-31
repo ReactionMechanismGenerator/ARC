@@ -2,7 +2,7 @@
 # encoding: utf-8
 
 """
-A module for various conversions
+A module for performing various species-related format conversions.
 """
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
@@ -30,25 +30,35 @@ logger = get_logger()
 
 def get_xyz_string(coords, mol=None, numbers=None, symbols=None):
     """
-    Convert list of lists xyz form:
-    [[0.6616514836, 0.4027481525, -0.4847382281],
-    [-0.6039793084, 0.6637270105, 0.0671637135],
-    [-1.4226865648, -0.4973210697, -0.2238712255],
-    [-0.4993010635, 0.6531020442, 1.0853092315],
-    [-2.2115796924, -0.4529256762, 0.4144516252],
-    [-1.8113671395, -0.3268900681, -1.1468957003]]
-    into a geometry form read by ESS:
-    C    0.6616514836    0.4027481525   -0.4847382281
-    N   -0.6039793084    0.6637270105    0.0671637135
-    H   -1.4226865648   -0.4973210697   -0.2238712255
-    H   -0.4993010635    0.6531020442    1.0853092315
-    H   -2.2115796924   -0.4529256762    0.4144516252
-    H   -1.8113671395   -0.3268900681   -1.1468957003
-    The atom symbols are derived from either an RMG Molecule object (`mol`) or atom numbers ('number`)
-    or explicitly given (`symbol`).
-    `number` and `symbol` are lists (optional parameters)
-    `xyz` is an array of arrays, as shown in the example above.
-    This function isn't defined as a method of ARCSpecies since it is also used when parsing opt geometry in Scheduler
+    Convert list of lists xyz form::
+
+        [[0.6616514836, 0.4027481525, -0.4847382281],
+        [-0.6039793084, 0.6637270105, 0.0671637135],
+        [-1.4226865648, -0.4973210697, -0.2238712255],
+        [-0.4993010635, 0.6531020442, 1.0853092315],
+        [-2.2115796924, -0.4529256762, 0.4144516252],
+        [-1.8113671395, -0.3268900681, -1.1468957003]]
+
+    into a geometry form read by an ESS::
+
+        C    0.6616514836    0.4027481525   -0.4847382281
+        N   -0.6039793084    0.6637270105    0.0671637135
+        H   -1.4226865648   -0.4973210697   -0.2238712255
+        H   -0.4993010635    0.6531020442    1.0853092315
+        H   -2.2115796924   -0.4529256762    0.4144516252
+        H   -1.8113671395   -0.3268900681   -1.1468957003
+
+    The atom symbols are derived from either an RMG Molecule object, atom numbers, or explicitly given (`symbol`).
+    This function isn't defined as a method of ARCSpecies since it is also used when parsing opt geometry in Scheduler.
+
+    Args:
+        coords (list): The array-format coordinates to be converted.
+        mol (Molecule, optional): An RMG Molecule object.
+        numbers (list, optional): Entries are atomic numbers (integers) corresponding to `coords`.
+        symbols (list, optional): Entries are atomic symbols (strings) corresponding to `coords`.
+
+    Returns:
+        str: A string representation of the coordinates.
     """
     if isinstance(coords, (str, unicode)):
         logger.debug('Cannot convert string format xyz into a string...')
@@ -76,29 +86,36 @@ def get_xyz_string(coords, mol=None, numbers=None, symbols=None):
 
 def get_xyz_matrix(xyz):
     """
-    Convert a string xyz form:
-    C    0.6616514836    0.4027481525   -0.4847382281
-    N   -0.6039793084    0.6637270105    0.0671637135
-    H   -1.4226865648   -0.4973210697   -0.2238712255
-    H   -0.4993010635    0.6531020442    1.0853092315
-    H   -2.2115796924   -0.4529256762    0.4144516252
-    H   -1.8113671395   -0.3268900681   -1.1468957003
-    into a list of lists xyz form:
-    [[0.6616514836, 0.4027481525, -0.4847382281],
-    [-0.6039793084, 0.6637270105, 0.0671637135],
-    [-1.4226865648, -0.4973210697, -0.2238712255],
-    [-0.4993010635, 0.6531020442, 1.0853092315],
-    [-2.2115796924, -0.4529256762, 0.4144516252],
-    [-1.8113671395, -0.3268900681, -1.1468957003]]
+    Convert a string xyz form::
+
+        C    0.6616514836    0.4027481525   -0.4847382281
+        N   -0.6039793084    0.6637270105    0.0671637135
+        H   -1.4226865648   -0.4973210697   -0.2238712255
+        H   -0.4993010635    0.6531020442    1.0853092315
+        H   -2.2115796924   -0.4529256762    0.4144516252
+        H   -1.8113671395   -0.3268900681   -1.1468957003
+
+    into a list of lists xyz form::
+
+        [[0.6616514836, 0.4027481525, -0.4847382281],
+        [-0.6039793084, 0.6637270105, 0.0671637135],
+        [-1.4226865648, -0.4973210697, -0.2238712255],
+        [-0.4993010635, 0.6531020442, 1.0853092315],
+        [-2.2115796924, -0.4529256762, 0.4144516252],
+        [-1.8113671395, -0.3268900681, -1.1468957003]]
 
     Args:
-        xyz (str, unicode): The xyz coordinates to conver.
+        xyz (str): The xyz coordinates to conver.
 
     Returns:
         list: Array-style coordinates.
+    Returns:
         list: Chemical symbols of the elements in xyz, order preserved.
+    Returns:
         list: X axis values.
+    Returns:
         list: Y axis values.
+    Returns:
         list: Z axis values.
     """
     if not isinstance(xyz, (str, unicode)):
@@ -125,7 +142,14 @@ def get_xyz_matrix(xyz):
 
 def xyz_string_to_xyz_file_format(xyz, comment=''):
     """
-    Convert the ARC xyz string format into the XYZ file format: https://en.wikipedia.org/wiki/XYZ_file_format
+    Convert the ARC xyz string format into the `XYZ file format <https://en.wikipedia.org/wiki/XYZ_file_format>`_
+
+    Args:
+        xyz (str): Coordinates.
+        comment (str, optional): A comment to be added to the xyz format representation of the coordinates.
+
+    Returns:
+        str: The coordinates in an XYZ file format.
     """
     if xyz is not None:
         xyz = standardize_xyz_string(xyz)
@@ -140,6 +164,12 @@ def standardize_xyz_string(xyz):
     A helper function to correct xyz string format input.
     Usually empty lines are added by the user either in the beginning or the end,
     here we remove them along with other common issues.
+
+    Args:
+        xyz (str): Coordinates.
+
+    Returns:
+        xyz (str): Coordinates in standardized format.
     """
     xyz = os.linesep.join([s.lstrip() for s in xyz.splitlines() if s and any(c != ' ' for c in s)])
     lines = xyz.splitlines()
@@ -334,7 +364,9 @@ def order_atoms_in_mol_list(ref_mol, mol_list):
 
 
 def order_atoms(ref_mol, mol):
-    """Order the atoms in `mol` by the atom order in ref_mol"""
+    """
+    Order the atoms in `mol` by the atom order in ref_mol
+    """
     if ref_mol is not None and mol is not None:
         ref_mol_is_iso_copy = ref_mol.copy(deep=True)
         mol_is_iso_copy = mol.copy(deep=True)
@@ -391,7 +423,9 @@ def update_molecule(mol, to_single_bonds=False):
 
 
 def s_bonds_mol_from_xyz(xyz):
-    """Create a single bonded molecule from xyz using RMG's connectTheDots()"""
+    """
+    Create a single bonded molecule from xyz using RMG's connectTheDots()
+    """
     mol = Molecule()
     coordinates = list()
     if not isinstance(xyz, (str, unicode)):
@@ -421,6 +455,7 @@ def to_rdkit_mol(mol, remove_h=False, return_mapping=True, sanitize=True):
 
     Returns:
         RDMol: An RDKit molecule object corresponding to the input RMG Molecule object.
+    Returns:
         dict: An atom mapping dictionary. Keys are Atom objects of 'mol', values are atom indices in the RDKit Mol.
     """
     mol_copy = mol.copy(deep=True)
@@ -481,12 +516,14 @@ def rdkit_conf_from_mol(mol, coordinates):
 
     Args:
         mol (Molecule): The RMG Molecule object.
-        coordinates (list, str, unicode): The coordinates (in any format) of the conformer,
+        coordinates (list, str): The coordinates (in any format) of the conformer,
                                           atoms must be ordered as in the molecule.
 
     Returns:
         Conformer: An RDKit Conformer object.
+    Returns:
         RDMol: An RDKit Molecule object.
+    Returns:
         dict: Atom index map. Keys are atom indices in the RMG Molecule, values are atom indices in the RDKit Molecule.
     """
     if coordinates is None or not coordinates:
@@ -560,7 +597,7 @@ def get_center_of_mass(xyz=None, coords=None, symbols=None):
     Either xyz or coords and symbols must be given.
 
     Args:
-        xyz (string, unicode, optional): The xyz coordinates in a string format.
+        xyz (string, optional): The xyz coordinates in a string format.
         coords (list, optional): The xyz coordinates in an array format.
         symbols (list, optional): The chemical element symbols corresponding to `coords`.
 
@@ -595,12 +632,12 @@ def translate_to_center_of_mass(xyz=None, coords=None, symbols=None):
     Must give either xyz or coords along with symbols.
 
     Args:
-        xyz (str, unicode, optional): A molecule's coordinates in string-format.
+        xyz (str, optional): A molecule's coordinates in string-format.
         coords (list): A molecule's coordinates in array-format.
         symbols (list): The matching elemental symbols for the coordinates.
 
     Returns:
-        list or str or unicode: The translated coordinates in the input format.
+        list or str: The translated coordinates in the input format.
     """
     if xyz is not None:
         coords, symbols, _, _, _ = get_xyz_matrix(xyz)

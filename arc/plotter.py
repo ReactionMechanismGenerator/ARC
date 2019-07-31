@@ -2,7 +2,7 @@
 # encoding: utf-8
 
 """
-A module for plotting and saving output files such as RMG libraries
+A module for plotting and saving output files such as RMG libraries.
 """
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
@@ -43,10 +43,10 @@ def draw_structure(xyz=None, species=None, project_directory=None, method='show_
     A helper function for drawing a molecular structure using either show_sticks or draw_3d.
 
     Args:
-        xyz (str, unicode, optional): The xyz coordinates to plot in string format.
+        xyz (str, optional): The xyz coordinates to plot in string format.
         species (ARCSpecies, optional): A species from which to extract the xyz coordinates to plot.
-        project_directory (str, unicode, optional): A directory for saving the image (only supported for draw_3d).
-        method (str, unicode, optional): The method to use, either show_sticks or draw_3d.
+        project_directory (str, optional): A directory for saving the image (only supported for draw_3d).
+        method (str, optional): The method to use, either show_sticks or draw_3d.
     """
     success = False
     if method == 'show_sticks':
@@ -60,9 +60,8 @@ def draw_structure(xyz=None, species=None, project_directory=None, method='show_
 
 def show_sticks(xyz=None, species=None, project_directory=None):
     """
-    Draws the molecule in a "sticks" style according to the supplied xyz coordinates
-    Returns whether successful of not
-    If successful, save an image using draw_3d
+    Draws the molecule in a "sticks" style according to the supplied xyz coordinates.
+    Returns whether successful of not. If successful, saves an image using draw_3d.
     """
     xyz = check_xyz_species_for_drawing(xyz, species)
     coordinates = get_xyz_matrix(xyz)[0]
@@ -159,7 +158,9 @@ def plot_3d_mol_as_scatter(xyz, path=None, plot_h=True, show_plot=True):
 
 
 def check_xyz_species_for_drawing(xyz, species):
-    """A helper function to avoid repetitive code"""
+    """
+    A helper function for checking the coordinates before drawing them.
+    """
     if species is not None and xyz is None:
         xyz = xyz if xyz is not None else species.final_xyz
     if species is not None and not isinstance(species, ARCSpecies):
@@ -171,7 +172,7 @@ def check_xyz_species_for_drawing(xyz, species):
 
 def plot_rotor_scan(angle, v_list, path=None, pivots=None, comment=''):
     """
-    plots a 1D rotor PES for v_list vs. angle
+    plots a 1D rotor PES for v_list vs. angle.
     """
     angle = angle * 180 / math.pi  # convert radians to degree
     v_list = np.array(v_list, np.float64)  # in kJ/mol
@@ -206,8 +207,8 @@ def log_thermo(label, path):
     Logging thermodata from an Arkane output file.
 
     Args:
-        label (str, unicode): The species label.
-        path (str, unicode): The path to the folder containing the relevant Arkane output file.
+        label (str): The species label.
+        path (str): The path to the folder containing the relevant Arkane output file.
     """
     logger.info('\n\n')
     logger.debug('Thermodata for species {0}'.format(label))
@@ -233,8 +234,8 @@ def log_kinetics(label, path):
     Logging kinetics from an Arkane output file.
 
     Args:
-        label (str, unicode): The species label.
-        path (str, unicode): The path to the folder containing the relevant Arkane output file.
+        label (str): The species label.
+        path (str): The path to the folder containing the relevant Arkane output file.
     """
     logger.info('\n\n')
     logger.debug('Kinetics for species {0}'.format(label))
@@ -257,7 +258,7 @@ def log_kinetics(label, path):
 
 def draw_thermo_parity_plots(species_list, path=None):
     """
-    Draws parity plots of calculated thermo and RMG's best values for species in species_list
+    Draws parity plots of calculated thermo and RMG's best values for species in species_list.
     """
     pp = None
     if path is not None:
@@ -288,7 +289,9 @@ def draw_thermo_parity_plots(species_list, path=None):
 
 
 def draw_parity_plot(var_arc, var_rmg, var_label, var_units, labels, pp):
-    """Draw a parity plot"""
+    """
+    Draw a parity plot.
+    """
     height = max(len(var_arc) / 3.5, 4)
     width = 8
     min_var = min(var_arc + var_rmg)
@@ -317,7 +320,7 @@ def draw_parity_plot(var_arc, var_rmg, var_label, var_units, labels, pp):
 def draw_kinetics_plots(rxn_list, path=None, t_min=(300, 'K'), t_max=(3000, 'K'), t_count=50):
     """
     Draws plots of calculated rates and RMG's best values for reaction rates in rxn_list
-    `rxn_list` has a .kinetics attribute calculated by ARC and an .rmg_reactions list with RMG rates
+    `rxn_list` has a .kinetics attribute calculated by ARC and an .rmg_reactions list with RMG rates.
     """
     plt.style.use(str('seaborn-talk'))
     t_min = ScalarQuantity(value=t_min[0], units=str(t_min[1]))
@@ -409,8 +412,8 @@ def _draw_kinetics_plots(rxn_label, arc_k, temperature, rmg_rxns, units, pp, max
 
 def get_text_positions(x_data, y_data, txt_width, txt_height):
     """
-    Get the positions of plot annotations to avoid overlapping
-    Source: https://stackoverflow.com/questions/8850142/matplotlib-overlapping-annotations
+    Get the positions of plot annotations to avoid overlapping.
+    Source: `stackoverflow <https://stackoverflow.com/questions/8850142/matplotlib-overlapping-annotations>`_.
     """
     a = zip(y_data, x_data)
     text_positions = y_data
@@ -434,8 +437,8 @@ def get_text_positions(x_data, y_data, txt_width, txt_height):
 
 def text_plotter(x_data, y_data, labels, text_positions, axis, txt_width, txt_height):
     """
-    Annotate a plot and add an arrow
-    Source: https://stackoverflow.com/questions/8850142/matplotlib-overlapping-annotations
+    Annotate a plot and add an arrow.
+    Source: `stackoverflow <https://stackoverflow.com/questions/8850142/matplotlib-overlapping-annotations>`_.
     """
     for x, y, l, t in zip(x_data, y_data, labels, text_positions):
         axis.text(x - .03, 1.02 * t, '{0}'.format(l), rotation=0, color='black', fontsize=10)
@@ -447,14 +450,15 @@ def text_plotter(x_data, y_data, labels, text_positions, axis, txt_width, txt_he
 
 def plot_torsion_angles(torsion_angles, torsions_sampling_points=None, wells_dict=None, e_conformers=None,
                         de_threshold=5.0, plot_path=None):
-    """Plot the torsion angles of the generated conformers.
+    """
+    Plot the torsion angles of the generated conformers.
 
     Args:
         torsion_angles (dict): Keys are torsions, values are lists of corresponding angles.
         torsions_sampling_points (dict, optional): Keys are torsions, values are sampling points.
         wells_dict (dict, optional): Keys are torsions, values are lists of wells.
-                                     Each entry in such list is a well dictionary with the keys:
-                                    'start_idx', 'end_idx', 'start_angle', 'end_angle', 'angles'
+                                     Each entry in such a list is a well dictionary with the following keys:
+                                     ``start_idx``, ``end_idx``, ``start_angle``, ``end_angle``, and ``angles``.
         e_conformers (list, optional): Entries are conformers corresponding to the sampling points with FF energies.
         de_threshold (float, optional): Energy threshold, plotted as a dashed horizontal line.
         plot_path (str, optional): The path for saving the plot.
@@ -562,7 +566,7 @@ def plot_torsion_angles(torsion_angles, torsions_sampling_points=None, wells_dic
 
 def save_geo(species, project_directory):
     """
-    Save the geometry in several forms for an ARC Species object in the project's output folder under the species name
+    Save the geometry in several forms for an ARC Species object in the project's output folder under the species name.
     """
     folder_name = 'rxns' if species.is_ts else 'Species'
     geo_path = os.path.join(project_directory, 'output', folder_name, species.label, 'geometry')
@@ -586,9 +590,9 @@ def save_geo(species, project_directory):
 
 def save_thermo_lib(species_list, path, name, lib_long_desc):
     """
-    Save an RMG thermo library of all species in `species_list` in the supplied `path`
-    `name` is the library's name (or project's name)
-    `long_desc` is a multiline string with level of theory description
+    Save an RMG thermo library of all species in `species_list` in the supplied `path`.
+    `name` is the library's name (or project's name).
+    `long_desc` is a multiline string with level of theory description.
     """
     if species_list:
         lib_path = os.path.join(path, 'thermo', '{0}.py'.format(name))
@@ -613,9 +617,9 @@ def save_thermo_lib(species_list, path, name, lib_long_desc):
 
 def save_transport_lib(species_list, path, name, lib_long_desc=''):
     """
-    Save an RMG transport library of all species in `species_list` in the supplied `path`
-    `name` is the library's name (or project's name)
-    `long_desc` is a multiline string with level of theory description
+    Save an RMG transport library of all species in `species_list` in the supplied `path`.
+    `name` is the library's name (or project's name).
+    `long_desc` is a multiline string with level of theory description.
     """
     if species_list:
         lib_path = os.path.join(path, 'transport', '{0}.py'.format(name))
@@ -646,10 +650,10 @@ def save_transport_lib(species_list, path, name, lib_long_desc=''):
 
 def save_kinetics_lib(rxn_list, path, name, lib_long_desc):
     """
-    Save an RMG kinetics library of all reactions in `rxn_list` in the supplied `path`
-    `rxn_list` is a list of ARCReaction objects
-    `name` is the library's name (or project's name)
-    `long_desc` is a multiline string with level of theory description
+    Save an RMG kinetics library of all reactions in `rxn_list` in the supplied `path`.
+    `rxn_list` is a list of ARCReaction objects.
+    `name` is the library's name (or project's name).
+    `long_desc` is a multiline string with level of theory description.
     """
     entries = dict()
     if rxn_list:
@@ -702,10 +706,10 @@ def save_conformers_file(project_directory, label, xyzs, level_of_theory, multip
     If energies are given, the conformers are considered to be optimized.
 
     Args:
-        project_directory (str, unicode): The path to the project's directory.
-        label (str, unicode): The species label.
+        project_directory (str): The path to the project's directory.
+        label (str): The species label.
         xyzs (list): Entries are sting-format xyz coordinates of conformers.
-        level_of_theory (str, unicode): The level of theory used for the conformers optimization.
+        level_of_theory (str): The level of theory used for the conformers optimization.
         multiplicity (int, optional): The species multiplicity, used for perceiving the molecule.
         charge (int, optional): The species charge, used for perceiving the molecule.
         is_ts (bool, optional): Whether the species represents a TS. True if it does.

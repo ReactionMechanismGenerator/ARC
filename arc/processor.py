@@ -2,7 +2,7 @@
 # encoding: utf-8
 
 """
-Processor module for outputting thermoproperties and rates
+Processor module for outputting thermoproperties and rates.
 """
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
@@ -32,27 +32,41 @@ logger = get_logger()
 
 class Processor(object):
     """
-    ARC Processor class. Post processes results in Arkane. The attributes are:
+    ARC Processor class. Post processes results in Arkane.
 
-    ================== =========== =====================================================================================
-    Attribute          Type        Description
-    ================== =========== =====================================================================================
-    `project`           ``str``    The project's name. Used for naming the directory.
-    `species_dict`      ``dict``   Keys are labels, values are ARCSpecies objects
-    `rxn_list`          ``list``   List of ARCReaction objects
-    `output`            ``dict``   Keys are labels, values are output file paths
-    `use_bac`           ``bool``   Whether or not to use bond additivity corrections for thermo calculations
-    `sp_level`          ``str``    The single point level of theory, used for atom and bond corrections in Arkane
-    `freq_level`        ``str``    The frequency level of theory, used for the frequency scaling factor in Arkane
-                                     if `freq_scale_factor` was not given.
-    `freq_scale_factor` ``float``  The harmonic frequencies scaling factor. Could be automatically determined
-                                     if not available in Arkane and not provided by the user.
-    `lib_long_desc`     ``str``    A multiline description of levels of theory for the outputted RMG libraries
-    `project_directory` ``str``    The path of the ARC project directory
-    `t_min`             ``tuple``  The minimum temperature for kinetics computations, e.g., (500, str('K'))
-    `t_max`             ``tuple``  The maximum temperature for kinetics computations, e.g., (3000, str('K'))
-    `t_count`           ``int``    The number of temperature points between t_min and t_max for kinetics computations
-    ================== =========== =====================================================================================
+    Args:
+        project (str): The project's name. Used for naming the directory.
+        project_directory (str): The path of the ARC project directory.
+        species_dict (dict): Keys are labels, values are ARCSpecies objects.
+        rxn_list (list): List of ARCReaction objects.
+        output (dict): Keys are labels, values are output file paths.
+        use_bac (bool): Whether or not to use bond additivity corrections for thermo calculations.
+        model_chemistry (str): The level of theory used in the sp//freq form (or a composite method).
+        lib_long_desc (str): A multiline description of levels of theory for the outputted RMG libraries.
+        rmgdatabase (RMGDatabase, optional): The RMG database object.
+        t_min (tuple, optional): The minimum temperature for kinetics computations, e.g., (500, str('K')).
+        t_max (tuple, optional): The maximum temperature for kinetics computations, e.g., (3000, str('K')).
+        t_count (int, optional): The number of temperature points between t_min and t_max for kinetics computations.
+        freq_scale_factor (float, optional): The harmonic frequencies scaling factor. Could be automatically determined
+                                             if not available in Arkane and not provided by the user.
+
+    Attributes:
+        project (str): The project's name. Used for naming the directory.
+        project_directory (str): The path of the ARC project directory.
+        species_dict (dict): Keys are labels, values are ARCSpecies objects.
+        rxn_list (list): List of ARCReaction objects.
+        output (dict): Keys are labels, values are output file paths.
+        use_bac (bool): Whether or not to use bond additivity corrections for thermo calculations.
+        sp_level (str): The single point level of theory, used for atom and bond corrections in Arkane.
+        freq_level (str): The frequency level of theory, used for the frequency scaling factor in Arkane
+                          if `freq_scale_factor` is not given.
+        freq_scale_factor (float): The harmonic frequencies scaling factor. Could be automatically determined
+                                   if not available in Arkane and not provided by the user.
+        lib_long_desc (str): A multiline description of levels of theory for the outputted RMG libraries.
+        t_min (tuple): The minimum temperature for kinetics computations, e.g., (500, str('K')).
+        t_max (tuple): The maximum temperature for kinetics computations, e.g., (3000, str('K')).
+        t_count (int): The number of temperature points between t_min and t_max for kinetics computations.
+        rmgdb (RMGDatabase): The RMG database object.
     """
     def __init__(self, project, project_directory, species_dict, rxn_list, output, use_bac, model_chemistry,
                  lib_long_desc, rmgdatabase, t_min=None, t_max=None, t_count=None, freq_scale_factor=None):
@@ -95,7 +109,7 @@ class Processor(object):
             species (ARCSpecies): The species to process.
 
         Returns:
-            str, unicode: The Arkane output path.
+            str: The Arkane output path.
         """
         folder_name = 'rxns' if species.is_ts else 'Species'
         output_path = os.path.join(self.project_directory, 'output', folder_name, species.label, 'arkane')
@@ -179,7 +193,9 @@ class Processor(object):
         return output_path
 
     def process(self):
-        """Process ARC outputs and generate thermo and kinetics"""
+        """
+        Process ARC outputs and generate thermo and kinetics.
+        """
         # Thermo:
         species_list_for_thermo_parity = list()
         species_for_thermo_lib = list()
@@ -320,12 +336,13 @@ class Processor(object):
                     f.write(str('\n'))
 
     def _run_statmech(self, arkane_spc, arkane_file, output_path=None, use_bac=False, kinetics=False, plot=False):
-        """A helper function for running an Arkane statmech job
+        """
+        A helper function for running an Arkane statmech job.
 
         Args:
-            arkane_spc (str, unicode): An Arkane species() function representor.
-            arkane_file (str, unicode): The path to the Arkane species file (either in .py or YAML form).
-            output_path (str, unicode): The path to the folder containing the Arkane output.py file.
+            arkane_spc (str): An Arkane species() function representor.
+            arkane_file (str): The path to the Arkane species file (either in .py or YAML form).
+            output_path (str): The path to the folder containing the Arkane output.py file.
             use_bac (bool): A flag indicating whether or not to use bond additivity corrections (True to use).
             kinetics (bool) A flag indicating whether this specie is part of a kinetics job.
             plot (bool): A flag indicating whether to plot a PDF of the calculated thermo properties (True to plot)
@@ -353,10 +370,12 @@ class Processor(object):
 
     def _clean_output_directory(self):
         """
-        A helper function to organize the output directory
-        - remove redundant rotor.txt files (from kinetics jobs)
-        - move remaining rotor files to the rotor directory
-        - move the Arkane YAML file from the `species` directory to the base directory, and delete `species`
+        A helper function to organize the output directory.
+
+            - remove redundant rotor.txt files (from kinetics jobs)
+            - move remaining rotor files to the rotor directory
+            - move the Arkane YAML file from the `species` directory to the base directory, and delete `species`
+
         """
         for base_folder in ['Species', 'rxns']:
             base_path = os.path.join(self.project_directory, 'output', base_folder)
@@ -392,7 +411,7 @@ class Processor(object):
 
     def copy_freq_output_for_ts(self, label):
         """
-        Copy the frequency job output file into the TS geometry folder
+        Copy the frequency job output file into the TS geometry folder.
         """
         calc_path = os.path.join(self.output[label]['freq'])
         output_path = os.path.join(self.project_directory, 'output', 'rxns', label, 'geometry', 'frequency.out')

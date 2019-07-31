@@ -2,8 +2,9 @@
 # encoding: utf-8
 
 """
-A module for running jobs on the local machine
-When transitioning to Python 3, use subprocess.run(), https://docs.python.org/3/library/subprocess.html#subprocess.run
+A module for running jobs on the local machine.
+When transitioning to Python 3, use
+`subprocess.run() <https://docs.python.org/3/library/subprocess.html#subprocess.run>`_
 """
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
@@ -36,8 +37,15 @@ def check_job_status(job_id):
     """
     Possible statuses: `before_submission`, `running`, `errored on node xx`, `done`
     Status line formats:
-    OGE: '540420 0.45326 xq1340b    user_name       r     10/26/2018 11:08:30 long1@node18.cluster'
-    Slurm: '14428     debug xq1371m2   user_name  R 50-04:04:46      1 node06'
+
+    OGE::
+
+        540420 0.45326 xq1340b    user_name       r     10/26/2018 11:08:30 long1@node18.cluster
+
+    Slurm::
+
+        14428     debug xq1371m2   user_name  R 50-04:04:46      1 node06
+
     """
     server = 'local'
     cmd = check_status_command[servers[server]['cluster_soft']] + ' -u ' + servers[server]['un']

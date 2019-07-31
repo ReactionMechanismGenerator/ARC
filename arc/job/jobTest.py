@@ -61,7 +61,7 @@ class TestJob(unittest.TestCase):
                          'occ': None,
                          'pivots': [],
                          'project_directory': os.path.join(arc_path, 'Projects', 'project_test'),
-                         'scan': '',
+                         'scan': None,
                          'server': 'server1',
                          'shift': '',
                          'max_job_time': 120,

@@ -2,7 +2,11 @@
 # encoding: utf-8
 
 """
-A module for SSHing into servers
+A module for SSHing into servers.
+Used for giving commands, uploading, and downloading files.
+
+Todo:
+    * delete scratch files of a failed job: ssh nodeXX; rm scratch/dhdhdhd/job_number
 """
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
@@ -25,12 +29,18 @@ logger = get_logger()
 
 class SSHClient(object):
     """
-    This is a class for communicating with servers
+    This is a class for communicating with remote servers via SSH.
+
+    Args:
+        server (str): The server name as specified in ARCs's settings file under ``servers`` as a key.
+
+    Attributes:
+        server (str): The server name as specified in ARCs's settings file under ``servers`` as a key.
+        address (str): The server's address.
+        un (str): The username to use on the server.
+        key (str): A path to a file containing the RSA SSH private key to the server.
     """
     def __init__(self, server=''):
-        """
-        `server` is a key (string) for the servers dictionary
-        """
         if server == '':
             raise ValueError('A server name must be specified')
         if server not in servers.keys():
@@ -273,9 +283,14 @@ class SSHClient(object):
 
 def write_file(sftp, remote_file_path, local_file_path='', file_string=''):
     """
-    Write a file in `file_path`
-    If `file_string` is given, write it as the content of the file
-    Else, if `local_file_path` is given, copy it to `remote_file_path`
+    Write a file. If `file_string` is given, write it as the content of the file.
+    Else, if `local_file_path` is given, copy it to `remote_file_path`.
+
+    Args:
+        sftp (paramiko's SFTP): The SFTP object.
+        remote_file_path (str): The path to write into on the remote server.
+        local_file_path (str, optional): A local file path to be copied into the remote location.
+        file_string (str): The file content to be copied and saved as the remote file.
     """
     with sftp.open(remote_file_path, 'w') as f_remote:
         if file_string:
@@ -290,7 +305,17 @@ def write_file(sftp, remote_file_path, local_file_path='', file_string=''):
 
 
 def check_job_status_in_stdout(job_id, stdout, server):
-    """A helper function for checking job status"""
+    """
+    A helper function for checking job status.
+
+    Args:
+        job_id (int): the job ID recognized by the server.
+        stdout (str): The output of a queue status check.
+        server (str): The server name.
+
+    Returns:
+        str: The job status on the server ('running', 'done', or 'errored').
+    """
     if not isinstance(stdout, list):
         stdout = stdout.splitlines()
     for status_line in stdout:
@@ -347,5 +372,3 @@ def delete_all_arc_jobs(server_list):
                     print('deleted job {0}'.format(job_id))
     if server_list:
         print('\ndone.')
-
-# TODO: delete scratch files of a failed job: ssh nodeXX; rm scratch/dhdhdhd/job_number

@@ -28,79 +28,121 @@ logger = get_logger()
 
 class Job(object):
     """
-    ARC Job class. The attributes are:
+    ARC's Job class.
 
-    ================ =================== ===============================================================================
-    Attribute        Type                Description
-    ================ =================== ===============================================================================
-    `project`         ``str``            The project's name. Used for naming the directory.
-    `ess_settings`    ``dict``           A dictionary of available ESS and a corresponding server list
-    `species_name`    ``str``            The species/TS name. Used for naming the directory.
-    `charge`          ``int``            The species net charge. Default is 0
-    `multiplicity`    ``int``            The species multiplicity.
-    `number_of_radicals` ``int``         The number of radicals (inputted by the user, ARC won't attempt to determine
-                                           it). Defaults to None. Important, e.g., if a Species is a bi-rad singlet,
-                                           in which case the job should be unrestricted with multiplicity = 1
-    `spin`            ``int``            The spin. automatically derived from the multiplicity
-    `xyz`             ``str``            The xyz geometry. Used for the calculation
-    `radius`          ``float``          The species radius in Angstrom.
-    `n_atoms`         ``int``            The number of atoms in self.xyz
-    `conformer`       ``int``            Conformer number if optimizing conformers
-    `conformers`      ``str``            A path to the YAML file conformer coordinates for a Gromacs MD job.
-    `is_ts`           ``bool``           Whether this species represents a transition structure
-    `level_of_theory` ``str``            Level of theory, e.g. 'CBS-QB3', 'CCSD(T)-F12a/aug-cc-pVTZ',
-                                           'B3LYP/6-311++G(3df,3pd)'...
-    `job_type`         ``str``           The job's type
-    `scan`             ``list``          A list representing atom labels for the dihedral scan
-                                           (e.g., "2 1 3 5" as a string or [2, 1, 3, 5] as a list of integers)
-    `pivots`           ``list``          The rotor scan pivots, if the job type is scan. Not used directly in these
-                                           methods, but used to identify the rotor.
-    `scan_res`         ``int``           The rotor scan resolution in degrees
-    `software`         ``str``           The electronic structure software to be used
-    `server_nodes`     ``list``          A list of nodes this job was submitted to (for troubleshooting)
-    `memory_gb`        ``int``           The total job allocated memory in GB (14 by default)
-    `memory`           ``int``           The total job allocated memory in appropriate units per ESS
-    `method`           ``str``           The calculation method (e.g., 'B3LYP', 'CCSD(T)', 'CBS-QB3'...)
-    `basis_set`        ``str``           The basis set (e.g., '6-311++G(d,p)', 'aug-cc-pVTZ'...)
-    `fine`             ``bool``          Whether to use fine geometry optimization parameters
-    `shift`            ``str``           A string representation alpha- and beta-spin orbitals shifts (molpro only)
-    `comments`         ``str``           Job comments (archived, not used)
-    `initial_time`     ``datetime``      The date-time this job was initiated. Determined automatically
-    `final_time`       ``datetime``      The date-time this job was initiated. Determined automatically
-    `run_time`         ``timedelta``     Job execution time. Determined automatically
-    `job_status`       ``list``          The job's server and ESS statuses. Determined automatically
-    `job_server_name`  ``str``           Job's name on the server (e.g., 'a103'). Determined automatically
-    `job_name`         ``str``           Job's name for internal usage (e.g., 'opt_a103'). Determined automatically
-    `job_id`           ``int``           The job's ID determined by the server.
-    `local_path`       ``str``           Local path to job's folder. Determined automatically
-    `local_path_to_output_file` ``str``  The local path to the output.out file
-    `local_path_to_orbitals_file` ``str``  The local path to the orbitals.fchk file (only for orbitals jobs)
-    `local_path_to_check_file` ``str``   The local path to the Gaussian check file of the current job (downloaded)
-    `local_path_to_lj_file`  ``str``     The local path to the lennard_jones data file (from OneDMin)
-    `checkfile`        ``str``           The path to a previous Gaussian checkfile to be used in the current job
-    `remote_path`      ``str``           Remote path to job's folder. Determined automatically
-    `submit`           ``str``           The submit script. Created automatically
-    `input`            ``str``           The input file. Created automatically
-    `server`           ``str``           Server's name. Determined automatically
-    'trsh'             ''str''           A troubleshooting handle to be appended to input files
-    'ess_trsh_methods' ``list``          A list of troubleshooting methods already tried out for ESS convergence
-    `initial_trsh`     ``dict``          Troubleshooting methods to try by default. Keys are ESS software,
-                                           values are trshs
-    `scan_trsh`        ``str``           A troubleshooting method for rotor scans
-    `occ`              ``int``           The number of occupied orbitals (core + val) from a molpro CCSD sp calc
-    `project_directory` ``str``          The path to the project directory
-    `max_job_time`     ``int``           The maximal allowed job time on the server in hours
-    `bath_gas`         ``str``           A bath gas. Currently used in OneDMin to calc L-J parameters.
-                                           Allowed values are He, Ne, Ar, Kr, H2, N2, O2
-    ================ =================== ===============================================================================
+    Args:
+        project (str): The project's name. Used for naming the directory.
+        project_directory (str): The path to the project directory.
+        ess_settings (dict): A dictionary of available ESS and a corresponding server list.
+        species_name (str): The species/TS name. Used for naming the directory.
+        xyz (str): The xyz geometry. Used for the calculation.
+        job_type (str): The job's type.
+        level_of_theory (str): Level of theory, e.g. 'CBS-QB3', 'CCSD(T)-F12a/aug-cc-pVTZ', 'B3LYP/6-311++G(3df,3pd)'...
+        multiplicity (int): The species multiplicity.
+        charge (int, optional): The species net charge. Default is 0.
+        conformer (int, optional): Conformer number if optimizing conformers.
+        fine (bool, optional): Whether to use fine geometry optimization parameters.
+        shift (str, optional): A string representation alpha- and beta-spin orbitals shifts (molpro only).
+        software (str, optional): The electronic structure software to be used.
+        is_ts (bool, optional): Whether this species represents a transition structure.
+        scan (list, optional): A list representing atom labels for the dihedral scan
+                                (e.g., "2 1 3 5" as a string or [2, 1, 3, 5] as a list of integers).
+        pivots (list, optional): The rotor scan pivots, if the job type is scan. Not used directly in these methods,
+                                   but used to identify the rotor.
+        memory (int, optional): The total job allocated memory in GB.
+        comments (str, optional): Job comments (archived, not used).
+        trsh (str, optional): A troubleshooting keyword to be used in input files.
+        scan_trsh (str, optional): A troubleshooting method for rotor scans.
+        ess_trsh_methods (list, optional): A list of troubleshooting methods already tried out for ESS convergence.
+        bath_gas (str, optional): A bath gas. Currently used in OneDMin to calc L-J parameters.
+                                    Allowed values are He, Ne, Ar, Kr, H2, N2, O2
+        initial_trsh (dict, optional): Troubleshooting methods to try by default. Keys are ESS software,
+                                         values are trshs.
+        job_num (int, optional): Used as the entry number in the database, as well as the job name on the server.
+        job_server_name (str, optional): Job's name on the server (e.g., 'a103').
+        job_name (str, optional): Job's name for internal usage (e.g., 'opt_a103').
+        job_id (int, optional): The job's ID determined by the server.
+        server (str, optional): Server's name.
+        initial_time (datetime, optional): The date-time this job was initiated.
+        occ (int, optional): The number of occupied orbitals (core + val) from a molpro CCSD sp calc.
+        max_job_time (int, optional): The maximal allowed job time on the server in hours.
+        scan_res (int, optional): The rotor scan resolution in degrees.
+        checkfile (str, optional): The path to a previous Gaussian checkfile to be used in the current job.
+        number_of_radicals (int, optional): The number of radicals (inputted by the user, ARC won't attempt to
+                                              determine it). Defaults to None. Important, e.g., if a Species is a bi-rad
+                                              singlet, in which case the job should be unrestricted with
+                                              multiplicity = 1.
+        conformers (str, optional): A path to the YAML file conformer coordinates for a Gromacs MD job.
+        radius (float, optional): The species radius in Angstrom.
+        testing (bool, optional): Whether the object is generated for testing purposes, True if it is.
 
-    self.job_status:
-    The job server status is in job.job_status[0] and can be either 'initializing' / 'running' / 'errored' / 'done'
-    The job ess (electronic structure software calculation) status is in  job.job_status[1] and can be
-    either `initializing` / `running` / `errored: {error type / message}` / `unconverged` / `done`
+    Attributes:
+        project (str): The project's name. Used for naming the directory.
+        ess_settings (dict): A dictionary of available ESS and a corresponding server list.
+        species_name (str): The species/TS name. Used for naming the directory.
+        charge (int): The species net charge. Default is 0.
+        multiplicity (int): The species multiplicity.
+        number_of_radicals (int): The number of radicals (inputted by the user, ARC won't attempt to determine it).
+                                    Defaults to None. Important, e.g., if a Species is a bi-rad singlet, in which case
+                                    the job should be unrestricted with multiplicity = 1.
+        spin (int): The spin. automatically derived from the multiplicity.
+        xyz (str): The xyz geometry. Used for the calculation.
+        radius (float): The species radius in Angstrom.
+        n_atoms (int): The number of atoms in self.xyz.
+        conformer (int): Conformer number if optimizing conformers.
+        conformers (str): A path to the YAML file conformer coordinates for a Gromacs MD job.
+        is_ts (bool): Whether this species represents a transition structure.
+        level_of_theory (str): Level of theory, e.g. 'CBS-QB3', 'CCSD(T)-F12a/aug-cc-pVTZ', 'B3LYP/6-311++G(3df,3pd)'...
+        job_type (str): The job's type.
+        scan (list): A list representing atom labels for the dihedral scan
+                      (e.g., "2 1 3 5" as a string or [2, 1, 3, 5] as a list of integers).
+        pivots (list): The rotor scan pivots, if the job type is scan. Not used directly in these methods,
+                         but used to identify the rotor.
+        scan_res (int): The rotor scan resolution in degrees.
+        software (str): The electronic structure software to be used.
+        server_nodes (list): A list of nodes this job was submitted to (for troubleshooting).
+        memory_gb (int): The total job allocated memory in GB (14 by default).
+        memory (int): The total job allocated memory in appropriate units per ESS.
+        method (str): The calculation method (e.g., 'B3LYP', 'CCSD(T)', 'CBS-QB3'...).
+        basis_set (str): The basis set (e.g., '6-311++G(d,p)', 'aug-cc-pVTZ'...).
+        fine (bool): Whether to use fine geometry optimization parameters.
+        shift (str): A string representation alpha- and beta-spin orbitals shifts (molpro only).
+        comments (str): Job comments (archived, not used).
+        initial_time (datetime): The date-time this job was initiated.
+        final_time (datetime): The date-time this job was initiated.
+        run_time (timedelta): Job execution time.
+        job_status (list): The job's server and ESS statuses.
+                             The job server status is in job.job_status[0] and can be either 'initializing' / 'running'
+                             / 'errored' / 'done'. The job ess (electronic structure software calculation) status is in
+                             job.job_status[1] and can be either `initializing` / `running` / `errored:
+                             {error type / message}` / `unconverged` / `done`.
+        job_server_name (str): Job's name on the server (e.g., 'a103').
+        job_name (str): Job's name for internal usage (e.g., 'opt_a103').
+        job_id (int): The job's ID determined by the server.
+        job_num (int): Used as the entry number in the database, as well as the job name on the server.
+        local_path (str): Local path to job's folder.
+        local_path_to_output_file (str): The local path to the output.out file.
+        local_path_to_orbitals_file (str): The local path to the orbitals.fchk file (only for orbitals jobs).
+        local_path_to_check_file (str): The local path to the Gaussian check file of the current job (downloaded).
+        local_path_to_lj_file (str): The local path to the lennard_jones data file (from OneDMin).
+        checkfile (str): The path to a previous Gaussian checkfile to be used in the current job.
+        remote_path (str): Remote path to job's folder.
+        submit (str): The submit script. Created automatically.
+        input (str): The input file. Created automatically.
+        server (str): Server's name.
+        trsh (str): A troubleshooting keyword to be used in input files.
+        ess_trsh_methods (list): A list of troubleshooting methods already tried out for ESS convergence.
+        initial_trsh (dict): Troubleshooting methods to try by default. Keys are ESS software, values are trshs.
+        scan_trsh (str): A troubleshooting method for rotor scans.
+        occ (int): The number of occupied orbitals (core + val) from a molpro CCSD sp calc.
+        project_directory (str): The path to the project directory.
+        max_job_time (int): The maximal allowed job time on the server in hours.
+        bath_gas (str): A bath gas. Currently used in OneDMin to calc L-J parameters.
+                                      Allowed values are He, Ne, Ar, Kr, H2, N2, O2
+
     """
     def __init__(self, project, ess_settings, species_name, xyz, job_type, level_of_theory, multiplicity,
-                 project_directory, charge=0, conformer=-1, fine=False, shift='', software=None, is_ts=False, scan='',
+                 project_directory, charge=0, conformer=-1, fine=False, shift='', software=None, is_ts=False, scan=None,
                  pivots=None, memory=14, comments='', trsh='', scan_trsh='', ess_trsh_methods=None, bath_gas=None,
                  initial_trsh=None, job_num=None, job_server_name=None, job_name=None, job_id=None, server=None,
                  initial_time=None, occ=None, max_job_time=120, scan_res=None, checkfile=None, number_of_radicals=None,
@@ -188,7 +230,9 @@ class Job(object):
             self._write_initiated_job_to_csv_file()
 
     def as_dict(self):
-        """A helper function for dumping this object as a dictionary in a YAML file for restarting ARC"""
+        """
+        A helper function for dumping this object as a dictionary in a YAML file for restarting ARC.
+        """
         job_dict = dict()
         job_dict['initial_time'] = self.initial_time
         job_dict['final_time'] = self.final_time
@@ -224,7 +268,7 @@ class Job(object):
 
     def _set_job_number(self):
         """
-        Used as the entry number in the database, as well as the job name on the server
+        Used as the entry number in the database, as well as the job name on the server.
         """
         csv_path = os.path.join(arc_path, 'initiated_jobs.csv')
         if not os.path.isfile(csv_path):
@@ -292,7 +336,9 @@ class Job(object):
             writer.writerow(row)
 
     def write_submit_script(self):
-        """Write the Job's submit script"""
+        """
+        Write the Job's submit script.
+        """
         un = servers[self.server]['un']  # user name
         size = int(self.radius * 4) if self.radius is not None else None
         if self.max_job_time > 9999 or self.max_job_time <= 0:
@@ -676,7 +722,9 @@ $end
             shutil.copyfile(local_check_file_path, new_check_file_path)
 
     def _download_output_file(self):
-        """Download ESS output, orbitals check file, and the Gaussian check file, if relevant"""
+        """
+        Download ESS output, orbitals check file, and the Gaussian check file, if relevant.
+        """
         ssh = SSHClient(self.server)
 
         # download output file
@@ -718,7 +766,9 @@ $end
                                '(this is not the output file)'.format(self.job_name))
 
     def run(self):
-        """Execute the Job"""
+        """
+        Execute the Job.
+        """
         if self.fine:
             logger.info('Running job {name} for {label} (fine opt)'.format(name=self.job_name,
                                                                            label=self.species_name))
@@ -748,7 +798,9 @@ $end
             self.job_status[0], self.job_id = submit_job(path=self.local_path)
 
     def delete(self):
-        """Delete a running Job"""
+        """
+        Delete a running Job.
+        """
         logger.debug('Deleting job {name} for {label}'.format(name=self.job_name, label=self.species_name))
         if self.server != 'local':
             ssh = SSHClient(self.server)
@@ -759,7 +811,9 @@ $end
             delete_job(job_id=self.job_id)
 
     def determine_job_status(self):
-        """Determine the Job's status"""
+        """
+        Determine the Job's status. Updates self.job_status.
+        """
         if self.job_status[0] == 'errored':
             return
         server_status = self._check_job_server_status()
@@ -790,7 +844,7 @@ $end
 
     def _get_additional_job_info(self):
         """
-        Download the additional information of stdout and stderr from the server
+        Download the additional information of stdout and stderr from the server.
         """
         lines1, lines2 = list(), list()
         content = ''
@@ -852,7 +906,7 @@ $end
 
     def _check_job_server_status(self):
         """
-        Possible statuses: `initializing`, `running`, `errored on node xx`, `done`
+        Possible statuses: `initializing`, `running`, `errored on node xx`, `done`.
         """
         if self.server != 'local':
             ssh = SSHClient(self.server)
@@ -862,8 +916,8 @@ $end
 
     def _check_job_ess_status(self):
         """
-        Check the status of the job ran by the electronic structure software (ESS)
-        Possible statuses: `initializing`, `running`, `errored: {error type / message}`, `unconverged`, `done`
+        Check the status of the job ran by the electronic structure software (ESS).
+        Possible statuses: `initializing`, `running`, `errored: {error type / message}`, `unconverged`, `done`.
         """
         if self.server != 'local':
             if os.path.exists(self.local_path_to_output_file):
@@ -989,7 +1043,9 @@ $end
                     return 'errored: Unknown reason'
 
     def troubleshoot_server(self):
-        """Troubleshoot server errors"""
+        """
+        Troubleshoot server errors.
+        """
         if servers[self.server]['cluster_soft'].lower() == 'oge':
             # delete present server run
             logger.error('Job {name} has server status "{stat}" on {server}. Troubleshooting by changing node.'.
@@ -1039,8 +1095,7 @@ $end
 
     def determine_run_time(self):
         """
-        Determine the run time
-        Round to seconds
+        Determine the run time. Update self.run_time and round to seconds.
         """
         if self.initial_time is not None and self.final_time is not None:
             time_delta = self.final_time - self.initial_time
@@ -1049,7 +1104,7 @@ $end
 
     def deduce_software(self):
         """
-        Deduce the software to be used based on hard coded heuristics
+        Deduce the software to be used based on heuristics.
         """
         if self.job_type == 'onedmin':
             if 'onedmin' not in self.ess_settings.keys():
@@ -1211,8 +1266,8 @@ $end
         """
         Set the number of cpu's and the job's memory.
         self.memory is the actual memory allocated to the ESS.
-        self.mem_per_cpu is the cluster software allocated memory
-        (self.mem_per_cpu should be slightly larger than self.memory when considering all cpus)
+        self.mem_per_cpu is the cluster software allocated memory.
+        (self.mem_per_cpu should be slightly larger than self.memory when considering all cpus).
         """
         self.cpus = servers[self.server].get('cpus', 8)  # set to 8 by default
         max_mem = servers[self.server].get('memory', None)  # max memory per node

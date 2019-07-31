@@ -44,82 +44,110 @@ logger = get_logger()
 
 class Scheduler(object):
     """
-    ARC Scheduler class. Creates jobs, submits, checks status, troubleshoots.
+    ARC's Scheduler class. Creates jobs, submits, checks status, troubleshoots.
     Each species in `species_list` has to have a unique label.
 
-    The attributes are:
+    Dictionary structures::
 
-    ======================= ========= ==================================================================================
-    Attribute               Type               Description
-    ======================= ========= ==================================================================================
-    `project`               ``str``   The project's name. Used for naming the working directory.
-    `servers`               ''list''  A list of servers used for the present project
-    `species_list`          ``list``  Contains input ``ARCSpecies`` objects (both species and TSs)
-    `species_dict`          ``dict``  Keys are labels, values are ARCSpecies objects
-    `rxn_list`              ``list``  Contains input ``ARCReaction`` objects
-    `unique_species_labels` ``list``  A list of species labels (checked for duplicates)
-    `level_of_theory`       ``str``   *FULL* level of theory, e.g. 'CBS-QB3',
-                                        'CCSD(T)-F12a/aug-cc-pVTZ//B3LYP/6-311++G(3df,3pd)'...
-    `adaptive_levels`       ``dict``  A dictionary of levels of theory for ranges of the number of heavy atoms in the
-                                        molecule. Keys are tuples of (min_num_atoms, max_num_atoms), values are
-                                        dictionaries with 'optfreq' and 'sp' as keys and levels of theory as values.
-    `composite`             ``bool``    Whether level_of_theory represents a composite method or not
-    `job_dict`              ``dict``  A dictionary of all scheduled jobs. Keys are species / TS labels,
-                                        values are dictionaries where keys are job names (corresponding to
-                                        'running_jobs' if job is running) and values are the Job objects.
-    `running_jobs`          ``dict``  A dictionary of currently running jobs (a subset of `job_dict`).
-                                        Keys are species/TS label, values are lists of job names
-                                        (e.g. 'conformer3', 'opt_a123').
-    `servers_jobs_ids`      ``list``  A list of relevant job IDs currently running on the server
-    `output`                ``dict``  Output dictionary with status and final QM file paths for all species
-    `ess_settings`          ``dict``  A dictionary of available ESS and a correcponding server list
-    `initial_trsh`          ``dict``  Troubleshooting methods to try by default. Keys are ESS software, values are trshs
-    `restart_dict`          ``dict``  A restart dictionary parsed from a YAML restart file
-    `project_directory`     ``str``   Folder path for the project: the input file path or ARC/Projects/project-name
-    `save_restart`          ``bool``  Whether to start saving a restart file. ``True`` only after all species are loaded
-                                        (otherwise saves a partial file and may cause loss of information)
-    `restart_path`          ``str``   Path to the `restart.yml` file to be saved
-    `max_job_time`          ``int``   The maximal allowed job time on the server in hours
-    `testing`               ``bool``  Used for internal ARC testing (generating the object w/o executing it)
-    `rmgdb`                 ``RMGDatabase``  The RMG database object
-    `allow_nonisomorphic_2d` ``bool`` Whether to optimize species even if they do not have a 3D conformer that is
-                                        isomorphic to the 2D graph representation
-    `dont_gen_confs`        ``list``  A list of species labels for which conformer jobs were loaded from a restart file,
-                                        and additional conformer generation should be avoided
-    `confs_to_dft`          ``int``   The number of lowest MD conformers to DFT at the conformers_level.
-    `memory`                ``int``   The total allocated job memory in GB (14 by default)
-    `job_types`             ``dict``  A dictionary of job types to execute. Keys are job types, values are boolean
-    `bath_gas`              ``str``   A bath gas. Currently used in OneDMin to calc L-J parameters.
-                                        Allowed values are He, Ne, Ar, Kr, H2, N2, O2
-    ======================= ========= ==================================================================================
+        job_dict = {label_1: {'conformers': {0: Job1,
+                                             1: Job2, ...},  # TS guesses are considered `conformers` as well
+                              'opt':        {job_name1: Job1,
+                                             job_name2: Job2, ...},
+                              'sp':         {job_name1: Job1,
+                                             job_name2: Job2, ...},
+                              'freq':       {job_name1: Job1,
+                                             job_name2: Job2, ...},
+                              'composite':  {job_name1: Job1,
+                                             job_name2: Job2, ...},
+                              'scan':       {job_name1: Job1,
+                                             job_name2: Job2, ...},
+                              ...
+                              }
+                    label_2: {...},
+                    }
 
-    Dictionary structures:
+        output = {label_1: {'status': ``str``,  # 'converged', or 'Error: <reason>'
+                            'geo': <path to geometry optimization output file>,
+                            'freq': <path to freq output file>,
+                            'sp': <path to sp output file>,
+                            'composite': <path to composite output file>,
+                 label_2: {...},
+                 }
 
-*   job_dict = {label_1: {'conformers': {0: Job1,
-                                         1: Job2, ...},  # TS guesses are considered `conformers` as well
-                          'opt':        {job_name1: Job1,
-                                         job_name2: Job2, ...},
-                          'sp':         {job_name1: Job1,
-                                         job_name2: Job2, ...},
-                          'freq':       {job_name1: Job1,
-                                         job_name2: Job2, ...},
-                          'composite':  {job_name1: Job1,
-                                         job_name2: Job2, ...},
-                          'scan':       {job_name1: Job1,
-                                         job_name2: Job2, ...},
-                          ...
-                          }
-                label_2: {...},
-                }
+    Note that rotor scans are located under Species.rotors_dict
 
-*   output = {label_1: {'status': ``str``,  # 'converged', or 'Error: <reason>'
-                        'geo': <path to geometry optimization output file>,
-                        'freq': <path to freq output file>,
-                        'sp': <path to sp output file>,
-                        'composite': <path to composite output file>,
-             label_2: {...},
-             }
-    # Note that rotor scans are located under Species.rotors_dict
+    Args:
+        project (str): The project's name. Used for naming the working directory.
+        ess_settings (dict): A dictionary of available ESS and a corresponding server list.
+        species_list (list): Contains input :ref:`ARCSpecies <species>` objects (both species and TSs).
+        rxn_list (list): Contains input :ref:`ARCReaction <reaction>` objects.
+        project_directory (str): Folder path for the project: the input file path or ARC/Projects/project-name.
+        composite_method (str, optional): A composite method to use.
+        conformer_level (str, optional): The level of theory to use for conformer comparisons.
+        opt_level (str, optional): The level of theory to use for geometry optimizations.
+        freq_level (str, optional): The level of theory to use for frequency calculations.
+        sp_level (str, optional): The level of theory to use for single point energy calculations.
+        scan_level (str, optional): The level of theory to use for torsion scans.
+        ts_guess_level (str, optional): The level of theory to use for TS guess comparisons.
+        orbitals_level (str, optional): The level of theory to use for calculating MOs (for plotting).
+        adaptive_levels (dict, optional): A dictionary of levels of theory for ranges of the number of heavy atoms in
+                                            the molecule. Keys are tuples of (min_num_atoms, max_num_atoms), values are
+                                            dictionaries with 'optfreq' and 'sp' as keys and levels of theory as values.
+        rmgdatabase (RMGDatabase, optional): The RMG database object.
+        job_types (dict, optional): A dictionary of job types to execute. Keys are job types, values are boolean.
+        initial_trsh (dict, optional): Troubleshooting methods to try by default. Keys are ESS software,
+                                         values are trshs.
+        bath_gas (str, optional): A bath gas. Currently used in OneDMin to calc L-J parameters.
+                                    Allowed values are He, Ne, Ar, Kr, H2, N2, O2.
+        restart_dict (dict, optional): A restart dictionary parsed from a YAML restart file.
+        max_job_time (int, optional): The maximal allowed job time on the server in hours.
+        allow_nonisomorphic_2d (bool, optional): Whether to optimize species even if they do not have a 3D conformer
+                                                   that is isomorphic to the 2D graph representation.
+        memory (int, optional): The total allocated job memory in GB (14 by default).
+        testing (bool, optional): Used for internal ARC testing (generating the object w/o executing it).
+        dont_gen_confs (list, optional): A list of species labels for which conformer jobs were loaded from a restart
+                                           file, and additional conformer generation should be avoided.
+        confs_to_dft (int, optional): The number of lowest MD conformers to DFT at the conformers_level.
+
+    Attributes:
+        project (str): The project's name. Used for naming the working directory.
+        servers (list): A list of servers used for the present project.
+        species_list (list): Contains input :ref:`ARCSpecies <species>` objects (both species and TSs).
+        species_dict (dict): Keys are labels, values are :ref:`ARCSpecies <species>` objects.
+        rxn_list (list): Contains input :ref:`ARCReaction <reaction>` objects.
+        unique_species_labels (list): A list of species labels (checked for duplicates).
+        adaptive_levels (dict): A dictionary of levels of theory for ranges of the number of heavy atoms in the
+                                            molecule. Keys are tuples of (min_num_atoms, max_num_atoms), values are
+                                            dictionaries with 'optfreq' and 'sp' as keys and levels of theory as values.
+        job_dict (dict): A dictionary of all scheduled jobs. Keys are species / TS labels,
+                                            values are dictionaries where keys are job names (corresponding to
+                                            'running_jobs' if job is running) and values are the Job objects.
+        running_jobs (dict): A dictionary of currently running jobs (a subset of `job_dict`).
+                                            Keys are species/TS label, values are lists of job names
+                                            (e.g. 'conformer3', 'opt_a123').
+        servers_jobs_ids (list): A list of relevant job IDs currently running on the server.
+        output (dict): Output dictionary with status and final QM file paths for all species.
+        ess_settings (dict): A dictionary of available ESS and a corresponding server list.
+        initial_trsh (dict): Troubleshooting methods to try by default. Keys are ESS software, values are trshs.
+        restart_dict (dict): A restart dictionary parsed from a YAML restart file.
+        project_directory (str): Folder path for the project: the input file path or ARC/Projects/project-name.
+        save_restart (bool): Whether to start saving a restart file. ``True`` only after all species are loaded
+                                            (otherwise saves a partial file and may cause loss of information).
+        restart_path (str): Path to the `restart.yml` file to be saved.
+        max_job_time (int): The maximal allowed job time on the server in hours.
+        testing (bool): Used for internal ARC testing (generating the object w/o executing it).
+        rmgdb (RMGDatabase): The RMG database object.
+        allow_nonisomorphic_2d (bool): Whether to optimize species even if they do not have a 3D conformer that is
+                                         isomorphic to the 2D graph representation.
+        dont_gen_confs (list): A list of species labels for which conformer jobs were loaded from a restart file,
+                                 and additional conformer generation should be avoided.
+        confs_to_dft (int): The number of lowest MD conformers to DFT at the conformers_level.
+        memory (int): The total allocated job memory in GB (14 by default).
+        job_types (dict): A dictionary of job types to execute. Keys are job types, values are boolean.
+        bath_gas (str): A bath gas. Currently used in OneDMin to calc L-J parameters.
+                          Allowed values are He, Ne, Ar, Kr, H2, N2, O2.
+        composite_method (str): A composite method to use.
+
     """
     def __init__(self, project, ess_settings, species_list, project_directory, composite_method='', conformer_level='',
                  opt_level='', freq_level='', sp_level='', scan_level='', ts_guess_level='', orbitals_level='',
@@ -883,8 +911,8 @@ class Scheduler(object):
         Run a Gromacs MD job.
 
         Args:
-            label (str, unicode): The species label.
-            confs (str, unicode): The path to a YAML file with array-format coordinates to optimize.
+            label (str): The species label.
+            confs (str): The path to a YAML file with array-format coordinates to optimize.
         """
         if 'gromacs' not in self.ess_settings:
             logger.error('Cannot execute a Gromacs MD job without the Gromacs software')
@@ -898,7 +926,7 @@ class Scheduler(object):
         Then generate conformers using combinations of the detected torsion wells, and re-run until converging.
 
         Args:
-            label (str, unicode): The species label.
+            label (str): The species label.
             prev_conf_list (list, optional): The previous conformers (entries are two length lists, not dicts).
                                              If not given, a first Gromacs job will be spawned.
             num_confs (int, optional): The number of conformers to generate.
@@ -1393,7 +1421,9 @@ class Scheduler(object):
         Check that a rotor scan job converged successfully. Also checks (QA) whether the scan is relatively "smooth",
         and whether the optimized geometry indeed represents the minimum energy conformer.
         Recommends whether or not to use this rotor using the 'successful_rotors' and 'unsuccessful_rotors' attributes.
-        * rotors_dict structure (attribute of ARCSpecies):
+
+        rotors_dict structure (attribute of ARCSpecies)::
+
             rotors_dict: {1: {'pivots': pivots_list,
                               'top': top_list,
                               'scan': scan_list,
@@ -1405,6 +1435,7 @@ class Scheduler(object):
                               'symmetry': ``int``}
                           2: {}, ...
                          }
+
         """
         for i in range(self.species_dict[label].number_of_rotors):
             message = ''
@@ -1543,7 +1574,7 @@ class Scheduler(object):
         If it did converge, save the resulting lowest conformers and DFT them.
 
         Args:
-             label (str, unicode): The species label.
+             label (str): The species label.
              job (Job): The Gromacs MD job to check.
              max_iterations (int, optional): The maximal number of MD trials per species.
         """

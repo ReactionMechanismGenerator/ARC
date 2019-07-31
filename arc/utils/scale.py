@@ -48,7 +48,7 @@ def determine_scaling_factors(levels_of_theory, ess_settings=None, init_log=True
     for a given frequencies level of theory.
 
     Args:
-        levels_of_theory (list, str, unicode): A list of frequencies levels of theory
+        levels_of_theory (list, str): A list of frequencies levels of theory
                                                for which scaling factors are determined.
                                                A string can also be passed for just one level of theory.
         ess_settings (dict, optional): A dictionary of available ESS (keys) and a corresponding server list (values).
@@ -56,7 +56,7 @@ def determine_scaling_factors(levels_of_theory, ess_settings=None, init_log=True
                                    Should be True when called as a stand alone, and False when called within ARC.
 
     Returns:
-        str, unicode: The modified level of theory
+        str: The modified level of theory
     """
     if init_log:
         initialize_log(log_file='scaling_factor.log', project='Scaling Factors')
@@ -141,7 +141,7 @@ def calculate_truhlar_scaling_factors(zpe_dict, level_of_theory):
     Args:
         zpe_dict (dict): The calculated vibrational zero-point energies at the requested level of theory.
                          Keys are species labels, values are floats representing the ZPE in J/mol.
-        level_of_theory (str, unicode): The frequencies level of theory.
+        level_of_theory (str): The frequencies level of theory.
 
     Returns:
         float: The scale factor for the vibrational zero-point energy (lambda ZPE) as defined in reference [2].
@@ -194,8 +194,8 @@ def summarize_results(lambda_zpes, levels_of_theory, zpe_dicts, times, overall_t
         zpe_dicts (list): Entries are The calculated vibrational zero-point energies at the requested level of theory.
                           Keys are species labels, values are floats representing the ZPE in J/mol.
         times (list): Entries are string-format of the calculation execution times.
-        overall_time (str, unicode): A string-format of the overall calculation execution time.
-        base_path (str, unicode, optional): The path to the scaling factors base folder.
+        overall_time (str): A string-format of the overall calculation execution time.
+        base_path (str, optional): The path to the scaling factors base folder.
     """
     base_path = base_path or os.path.join(arc_path, 'Projects', 'scaling_factors')
     if not os.path.exists(base_path):
@@ -350,7 +350,7 @@ def get_zpe(path):
     Determine the calculated ZPE from a frequency output file"
 
     Args:
-        path (str, unicode): The path to a frequency calculation output file.
+        path (str): The path to a frequency calculation output file.
 
     Returns:
         float: The calculated zero point energy in J/mol.
@@ -365,10 +365,10 @@ def rename_level(level):
     Rename the level of theory so it can be used for folder names.
 
     Args:
-        level (str, unicode): The level of theory to be renamed.
+        level (str): The level of theory to be renamed.
 
     Returns:
-        str, unicode: The renamed level of theory
+        str: The renamed level of theory
     """
     level = level.replace('/', '_')
     level = level.replace('*', 's')
