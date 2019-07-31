@@ -34,3 +34,6 @@ scratch/
 
 # iPython files
 *.ipynb_*
+
+# Compiled documentation
+docs/build/*

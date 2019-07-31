@@ -1,0 +1,16 @@
+.. _GitHub: https://github.com/ReactionMechanismGenerator/ARC
+.. _SMILES: https://en.wikipedia.org/wiki/Simplified_molecular-input_line-entry_system
+.. _ubuntu: http://releases.ubuntu.com/18.04/
+.. _cluster: https://en.wikipedia.org/wiki/Comparison_of_cluster_software
+.. _anaconda: https://www.anaconda.com/distribution/
+.. _yaml: https://yaml.org/
+.. _jupyter: https://jupyter.org/
+.. _examplesGitHub: https://github.com/ReactionMechanismGenerator/ARC/tree/master/examples
+.. _xyz_format: https://en.wikipedia.org/wiki/XYZ_file_format
+.. _Arkane: http://reactionmechanismgenerator.github.io/RMG-Py/users/arkane/input.html
+.. _Truhlar: https://dx.doi.org/10.1021/ct100326h
+.. _semantic: https://semver.org/
+.. _autotst: https://github.com/ReactionMechanismGenerator/AutoTST
+.. _greengp: http://greengroup.mit.edu/
+.. _contributorGuidlines: https://github.com/ReactionMechanismGenerator/ARC/wiki/ARC-Contributor-Guidelines
+.. _roadmap: https://github.com/ReactionMechanismGenerator/ARC/wiki/Roadmap
