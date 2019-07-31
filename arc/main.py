@@ -2,7 +2,14 @@
 # encoding: utf-8
 
 """
-ARC's main module
+ARC's main module.
+To run ARC through its API, first make an instance of the ARC class, then call the .execute() method. For example::
+
+  arc0 = ARC(project='ArcDemo', arc_species_list=[spc0, spc1, spc2])
+  arc0.execute()
+
+Where ``spc0``, ``spc1``, and ``spc2`` in the above example are :ref:`ARCSpecies <species>` objects.
+
 """
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
@@ -42,62 +49,99 @@ logger = get_logger()
 
 class ARC(object):
     """
-    Main ARC object.
-    The software is currently configured to run on a local computer, sending jobs / commands to one or more servers.
+    The main ARC class.
 
-    The attributes are:
+    Args:
+        input_dict (dict, str, optional): Either a dictionary from which to recreate this object, or the path to an ARC
+                                          input/restart YAML file.
+        project (str, optional): The project's name. Used for naming the working directory.
+        arc_species_list (list, optional): A list of :ref:`ARCSpecies <species>` objects.
+        arc_rxn_list (list, optional): A list of :ref:`ARCReaction <reaction>` objects.
+        level_of_theory (str, optional): A string representing either sp//geometry levels or a composite method, e.g.
+                                         'CBS-QB3', 'CCSD(T)-F12a/aug-cc-pVTZ//B3LYP/6-311++G(3df,3pd)'...
+        conformer_level (str, optional): Level of theory for conformer searches.
+        composite_method (str, optional): Composite method.
+        opt_level (str, optional): Level of theory for geometry optimization.
+        freq_level (str, optional): Level of theory for frequency calculations.
+        sp_level (str, optional): Level of theory for single point calculations.
+        scan_level (str, optional): Level of theory for rotor scans.
+        ts_guess_level (str, optional): Level of theory for comparisons of TS guesses between different methods.
+        use_bac (bool, optional): Whether or not to use bond additivity corrections for thermo calculations.
+        job_types (dict, optional): A dictionary of job types to execute. Keys are job types, values are boolean.
+        model_chemistry (str, optional): The model chemistry in Arkane for energy corrections (AE, BAC) and
+                                         frequencies/ZPE scaling factor. Can usually be determined automatically.
+        initial_trsh (dict, optional): Troubleshooting methods to try by default. Keys are ESS software, values are
+                                       trshs.
+        t_min (tuple, optional): The minimum temperature for kinetics computations, e.g., (500, str('K')).
+        t_max (tuple, optional): The maximum temperature for kinetics computations, e.g., (3000, str('K')).
+        t_count (int, optional): The number of temperature points between t_min and t_max for kinetics computations.
+        verbose (int, optional): The logging level to use.
+        project_directory (str, optional): The path to the project directory.
+        max_job_time (int, optional): The maximal allowed job time on the server in hours.
+        allow_nonisomorphic_2d (bool, optional): Whether to optimize species even if they do not have a 3D conformer
+                                                 that is isomorphic to the 2D graph representation.
+        job_memory (int, optional): The total allocated job memory in GB (14 by default to be lower than 90% * 16 GB).
+        ess_settings (dict, optional): A dictionary of available ESS (keys) and a corresponding server list (values).
+        bath_gas (str, optional): A bath gas. Currently used in OneDMin to calc L-J parameters.
+                                  Allowed values are He, Ne, Ar, Kr, H2, N2, O2.
+        adaptive_levels (dict, optional): A dictionary of levels of theory for ranges of the number of heavy atoms in
+                                          the molecule. Keys are tuples of (min_num_atoms, max_num_atoms), values are
+                                          dictionaries with ``optfreq`` and ``sp`` as keys and levels of theory as
+                                          values.
+        freq_scale_factor (float, optional): The harmonic frequencies scaling factor. Could be automatically determined
+                                             if not available in Arkane and not provided by the user.
+        calc_freq_factor (bool, optional): Whether to calculate the frequencies scaling factor using Truhlar's method if
+                                           it was not given by the user and could not be determined by Arkane. True to
+                                           calculate, False to use user input / Arkane's value / Arkane's default.
+        confs_to_dft (int, optional): The number of lowest MD conformers to DFT at the conformers_level.
+        keep_checks (bool, optional): Whether to keep all Gaussian checkfiles when ARC terminates. True to keep,
+                                      default is False.
 
-    ====================== ========== ==================================================================================
-    Attribute              Type       Description
-    ====================== ========== ==================================================================================
-    `project`              ``str``    The project's name. Used for naming the working directory.
-    `project_directory`    ``str``    The path to the project directory
-    `arc_species_list`     ``list``   A list of ARCSpecies objects (each entry should represent either a stable well,
-                                        TS guesses are given in the arc_rxn_list)
-    'arc_rxn_list`         ``list``   A list of ARCReaction objects
-    `conformer_level`      ``str``    Level of theory for conformer searches
-    `ts_guess_level`       ``str``    Level of theory for comparisons of TS guesses between different methods
-    `composite_method'     ``str``    Composite method
-    `opt_level`            ``str``    Level of theory for geometry optimization
-    `freq_level`           ``str``    Level of theory for frequency calculations
-    `sp_level`             ``str``    Level of theory for single point calculations
-    `scan_level`           ``str``    Level of theory for rotor scans
-    `adaptive_levels`      ``dict``   A dictionary of levels of theory for ranges of the number of heavy atoms in the
-                                        molecule. Keys are tuples of (min_num_atoms, max_num_atoms), values are
-                                        dictionaries with 'optfreq' and 'sp' as keys and levels of theory as values.
-    `output`               ``dict``   Output dictionary with status and final QM file paths for all species
-                                        Only used for restarting, the actual object used is in the Scheduler class
-    `use_bac`              ``bool``   Whether or not to use bond additivity corrections for thermo calculations
-    `model_chemistry`      ``str``    The model chemistry in Arkane for energy corrections (AE, BAC)
-                                        and frequencies/ZPE scaling factor. Can usually be determined automatically.
-    `freq_scale_factor`    ``float``  The harmonic frequencies scaling factor. Could be automatically determined
-                                        if not available in Arkane and not provided by the user.
-    `calc_freq_factor`     ``bool``   Whether to calculate the frequencies scaling factor using Truhlar's method
-                                        if it was not given by the user and could not be determined by Arkane.
-                                        True to calculate, False to use user input / Arkane's value / Arkane's default.
-    `ess_settings`         ``dict``   A dictionary of available ESS (keys) and a corresponding server list (values)
-    `initial_trsh`         ``dict``   Troubleshooting methods to try by default. Keys are ESS software, values are trshs
-    't0'                   ``float``  Initial time when the project was spawned
-    `confs_to_dft`         ``int``    The number of lowest MD conformers to DFT at the conformers_level.
-    `execution_time`       ``str``    Overall execution time
-    `lib_long_desc`        ``str``    A multiline description of levels of theory for the outputted RMG libraries
-    `running_jobs`         ``dict``   A dictionary of jobs submitted in a precious ARC instance, used for restarting ARC
-    `t_min`                ``tuple``  The minimum temperature for kinetics computations, e.g., (500, str('K'))
-    `t_max`                ``tuple``  The maximum temperature for kinetics computations, e.g., (3000, str('K'))
-    `t_count`              ``int``    The number of temperature points between t_min and t_max for kinetics computations
-    `max_job_time`         ``int``    The maximal allowed job time on the server in hours
-    `rmgdb`                ``RMGDatabase``  The RMG database object
-    `allow_nonisomorphic_2d` ``bool`` Whether to optimize species even if they do not have a 3D conformer that is
-                                        isomorphic to the 2D graph representation
-    `memory`               ``int``    The total allocated job memory in GB (14 by default to be lower than 90% * 16 GB)
-    `job_types`            ``dict``   A dictionary of job types to execute. Keys are job types, values are boolean
-    `bath_gas`             ``str``    A bath gas. Currently used in OneDMin to calc L-J parameters.
-                                        Allowed values are He, Ne, Ar, Kr, H2, N2, O2
-    `keep_checks`          ``bool``   Whether to delete all Gaussian checkfiles when ARC terminates. True to keep.
-    ====================== ========== ==================================================================================
+    Attributes:
+        project (str): The project's name. Used for naming the working directory.
+        project_directory (str): The path to the project directory.
+        arc_species_list (list): A list of :ref:`ARCSpecies <species>` objects.
+        arc_rxn_list (list): A list of :ref:`ARCReaction <reaction>` objects.
+        conformer_level (str): Level of theory for conformer searches.
+        composite_method (str): Composite method.
+        opt_level (str): Level of theory for geometry optimization.
+        freq_level (str): Level of theory for frequency calculations.
+        sp_level (str): Level of theory for single point calculations.
+        scan_level (str): Level of theory for rotor scans.
+        ts_guess_level (str): Level of theory for comparisons of TS guesses between different methods.
+        adaptive_levels (dict): A dictionary of levels of theory for ranges of the number of heavy atoms in the
+                                molecule. Keys are tuples of (min_num_atoms, max_num_atoms), values are dictionaries
+                                with ``optfreq`` and ``sp`` as keys and levels of theory as values.
+        output (dict): Output dictionary with status and final QM file paths for all species. Only used for restarting,
+                         the actual object used is in the Scheduler class.
+        use_bac (bool): Whether or not to use bond additivity corrections for thermo calculations.
+        model_chemistry (str): The model chemistry in Arkane for energy corrections (AE, BAC) and frequencies/ZPE
+                               scaling factor. Can usually be determined automatically.
+        freq_scale_factor (float): The harmonic frequencies scaling factor. Could be automatically determined if not
+                                   available in Arkane and not provided by the user.
+        calc_freq_factor (bool): Whether to calculate the frequencies scaling factor using Truhlar's method if it was
+                                 not given by the user and could not be determined by Arkane. True to calculate, False
+                                 to use user input / Arkane's value / Arkane's default.
+        ess_settings (dict): A dictionary of available ESS (keys) and a corresponding server list (values).
+        initial_trsh (dict): Troubleshooting methods to try by default. Keys are ESS software, values are trshs.
+        t0 (float): Initial time when the project was spawned.
+        confs_to_dft (int): The number of lowest MD conformers to DFT at the conformers_level.
+        execution_time (str): Overall execution time.
+        lib_long_desc (str): A multiline description of levels of theory for the outputted RMG libraries.
+        running_jobs (dict): A dictionary of jobs submitted in a precious ARC instance, used for restarting ARC.
+        t_min (tuple): The minimum temperature for kinetics computations, e.g., (500, str('K')).
+        t_max (tuple): The maximum temperature for kinetics computations, e.g., (3000, str('K')).
+        t_count (int): The number of temperature points between t_min and t_max for kinetics computations.
+        max_job_time (int): The maximal allowed job time on the server in hours.
+        rmgdb (RMGDatabase): The RMG database object.
+        allow_nonisomorphic_2d (bool): Whether to optimize species even if they do not have a 3D conformer that is
+                                       isomorphic to the 2D graph representation.
+        memory (int): The total allocated job memory in GB (14 by default to be lower than 90% * 16 GB).
+        job_types (dict): A dictionary of job types to execute. Keys are job types, values are boolean.
+        bath_gas (str): A bath gas. Currently used in OneDMin to calc L-J parameters.
+                        Allowed values are He, Ne, Ar, Kr, H2, N2, O2.
+        keep_checks (bool): Whether to keep all Gaussian checkfiles when ARC terminates. True to keep, default is False.
 
-    `level_of_theory` is a string representing either sp//geometry levels or a composite method, e.g. 'CBS-QB3',
-                                                 'CCSD(T)-F12a/aug-cc-pVTZ//B3LYP/6-311++G(3df,3pd)'...
     """
 
     def __init__(self, input_dict=None, project=None, arc_species_list=None, arc_rxn_list=None, level_of_theory='',
@@ -370,7 +414,7 @@ class ARC(object):
 
     def as_dict(self):
         """
-        A helper function for dumping this object as a dictionary in a YAML file for restarting ARC
+        A helper function for dumping this object as a dictionary in a YAML file for restarting ARC.
         """
         restart_dict = dict()
         restart_dict['project'] = self.project
@@ -412,7 +456,7 @@ class ARC(object):
 
     def from_dict(self, input_dict, project=None, project_directory=None):
         """
-        A helper function for loading this object from a dictionary in a YAML file for restarting ARC
+        A helper function for loading this object from a dictionary in a YAML file for restarting ARC.
         If `project` name and `ess_settings` are given as well to __init__, they will override the respective values
         in the restart dictionary.
         """
@@ -619,7 +663,7 @@ class ARC(object):
         Save the current attributes as an ARC input file.
 
         Args:
-             path (str, unicode, optional): The full path for the generated input file.
+             path (str, optional): The full path for the generated input file.
         """
         if path is None:
             path = os.path.join(self.project_directory, 'input.yml')
@@ -630,7 +674,9 @@ class ARC(object):
         save_yaml_file(path=path, content=self.restart_dict)
 
     def execute(self):
-        """Execute ARC"""
+        """
+        Execute ARC.
+        """
         logger.info('\n')
         for species in self.arc_species_list:
             if not isinstance(species, ARCSpecies):
@@ -672,7 +718,9 @@ class ARC(object):
         log_footer(execution_time=self.execution_time)
 
     def save_project_info_file(self):
-        """Save a project info file"""
+        """
+        Save a project info file.
+        """
         self.execution_time = time_lapse(t0=self.t0)
         path = os.path.join(self.project_directory, '{0}.info'.format(self.project))
         if os.path.exists(path):
@@ -723,7 +771,7 @@ class ARC(object):
 
     def summary(self):
         """
-        Report status and data of all species / reactions
+        Report status and data of all species / reactions.
         """
         logger.info('\n\n\nAll jobs terminated. Summary for project {0}:\n'.format(self.project))
         for label, output in self.scheduler.output.items():
@@ -733,10 +781,11 @@ class ARC(object):
                 logger.info('Species {0} failed with status:\n  {1}'.format(label, output['status']))
 
     def determine_model_chemistry(self):
-        """Determine the model_chemistry to be used in Arkane
+        """
+        Determine the model_chemistry to be used in Arkane.
 
         Todo:
-            * Determine whether the model chemistry exists in Arkane automaticaly instead of hard coding
+            * Determine whether the model chemistry exists in Arkane automatically instead of hard coding
         """
         if self.model_chemistry:
             self.model_chemistry = self.model_chemistry.lower()
@@ -792,7 +841,7 @@ class ARC(object):
     def determine_ess_settings(self, diagnostics=False):
         """
         Determine where each ESS is available, locally (in running on a server) and/or on remote servers.
-        if `diagnostics` is True, this method will not raise errors, and will print its findings
+        if `diagnostics` is True, this method will not raise errors, and will print its findings.
         """
         if self.ess_settings is not None and not diagnostics:
             self.ess_settings = check_ess_settings(self.ess_settings)
@@ -907,7 +956,9 @@ class ARC(object):
             logger.info('ESS diagnostics completed (elapsed time: {0})'.format(time_lapse(t0)))
 
     def check_project_name(self):
-        """Check the validity of the project name"""
+        """
+        Check the validity of the project name.
+        """
         for char in self.project:
             if char not in valid_chars:
                 raise InputError('A project name (used to naming folders) must contain only valid characters.'
@@ -918,7 +969,7 @@ class ARC(object):
 
     def initialize_job_types(self):
         """
-        A helper function for initializing self.job_types
+        A helper function for initializing self.job_types.
         """
         if self.job_types is None:
             self.job_types = default_job_types

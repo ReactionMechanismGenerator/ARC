@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""A module for (non-TS) species conformer generation
+"""
+A module for (non-TS) species conformer generation
 
-Note that variables that contain atom indices such as torsions and tops are 1-indexed,
-while atoms in Molecules are 0-indexed
+Note:
+    variables that contain atom indices such as torsions and tops are 1-indexed,
+    while atoms in Molecules are 0-indexed.
 
 Todo:
     * Consider boat-chair conformers (https://en.wikipedia.org/wiki/Cyclohexane_conformation)
@@ -11,6 +13,7 @@ Todo:
     * Does it take the scan energy into account when generating combinations??
     * The secretary problem - incorporate for stochastic searching
     * What's the confirmed bottleneck?
+
 """
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
@@ -106,7 +109,7 @@ def generate_conformers(mol_list, label, xyzs=None, torsions=None, tops=None, ch
 
     Args:
         mol_list (list or Molecule): Molecule objects to consider (or Molecule, resonance structures will be generated).
-        label (str, unicode): The species' label.
+        label (str): The species' label.
         xyzs (list), optional: A list of user guess xyzs, each in string format, that will also be taken into account.
         torsions (list, optional): A list of all possible torsions in the molecule. Will be determined if not given.
         tops (list, optional): A list of tops corresponding to torsions. Will be determined if not given.
@@ -118,15 +121,15 @@ def generate_conformers(mol_list, label, xyzs=None, torsions=None, tops=None, ch
         de_threshold (float, optional): Energy threshold (in kJ/mol) above which wells will not be considered.
         smeared_scan_res (float, optional): The resolution (in degrees) for scanning smeared wells.
         combination_threshold (int, optional): A threshold below which all combinations will be generated.
-        force_field (str, unicode, optional): The type of force field to use (MMFF94, MMFF94s, UFF, GAFF, fit).
-                                              'fit' will first run MMFF94, than fit a custom Amber FF to the species.
+        force_field (str, optional): The type of force field to use (MMFF94, MMFF94s, UFF, GAFF, fit).
+                                       'fit' will first run MMFF94, than fit a custom Amber FF to the species.
         max_combination_iterations (int, optional): The maximum number of times to iteratively search
                                                     for the lowest conformer.
         determine_h_bonds (bool, optional): Whether to determine add. conformers w/ hydrogen bonds from the lowest one.
         return_all_conformers (bool, optional): Whether to return the full conformers list of conformer dictionaries
                                                 In addition to the lowest conformers list. Tru to return it.
-        plot_path (str, unicode, optional): A folder path in which the plot will be saved.
-                                            If None, the plot will not be shown (nor saved).
+        plot_path (str, optional): A folder path in which the plot will be saved.
+                                     If None, the plot will not be shown (nor saved).
         print_logs (bool, optional): Whether define a logger so logs are also printed to stdout.
                                      Useful when run outside of ARC. True to print.
 
@@ -223,17 +226,17 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
     Validate that atoms don't collide in the generated conformers (don't consider ones where they do).
 
     Args:
-        label (str, unicode): The species' label.
+        label (str): The species' label.
         conformers (list): Entries are conformer dictionaries.
         torsions (list): A list of all possible torsion angles in the molecule, each torsion angles list is sorted.
         tops (list): A list of tops corresponding to torsions.
         mol_list (list): A list of RMG Molecule objects.
         smeared_scan_res (float, optional): The resolution (in degrees) for scanning smeared wells.
-        plot_path (str, unicode, optional): A folder path in which the plot will be saved.
-                                            If None, the plot will not be shown (nor saved).
+        plot_path (str, optional): A folder path in which the plot will be saved.
+                                     If None, the plot will not be shown (nor saved).
 
     Returns:
-        many inter-level variables...
+        many inter-level variables.
     """
     smeared_scan_res = smeared_scan_res or SMEARED_SCAN_RESOLUTIONS
     if not any(['torsion_dihedrals' in conformer for conformer in conformers]):
@@ -306,9 +309,9 @@ def generate_conformer_combinations(label, mol, base_xyz, hypothetical_num_comb,
     according to the hypothetical_num_comb.
 
     Args:
-        label (str, unicode): The species' label.
+        label (str): The species' label.
         mol (Molecule): The RMG molecule with the connectivity information.
-        base_xyz (str, unicode, or list): The base 3D geometry to be changed, in either string or array format.
+        base_xyz (str, or list): The base 3D geometry to be changed, in either string or array format.
         hypothetical_num_comb (int): The number of combinations that could be generated by changing dihedrals,
                                      considering symmetry but not considering atom collisions.
         combination_threshold (int, optional): A threshold below which all combinations will be generated.
@@ -318,13 +321,13 @@ def generate_conformer_combinations(label, mol, base_xyz, hypothetical_num_comb,
         len_conformers (int, optional): The length of the existing conformers list (for consecutive numbering).
         de_threshold (float, optional): An energy threshold (in kJ/mol) above which wells in a torsion
                                         will not be considered.
-        force_field (str, unicode, optional): The type of force field to use.
+        force_field (str, optional): The type of force field to use.
         max_combination_iterations (int, optional): The max num of times to iteratively search for the lowest conformer.
         torsion_angles (dict, optional): The torsion angles. Keys are torsion tuples, values are lists of all
                                          corresponding angles from conformers.
         multiple_sampling_points_dict (dict, optional): Keys are torsion tuples, values are respective sampling points.
         wells_dict (dict, optional): Keys are torsion tuples, values are well dictionaries.
-        plot_path (str, unicode, optional): A folder path in which the plot will be saved.
+        plot_path (str, optional): A folder path in which the plot will be saved.
                                             If None, the plot will not be shown (nor saved).
 
     Returns:
@@ -359,22 +362,22 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
     untested
 
     Args:
-        label (str, unicode): The species' label.
+        label (str): The species' label.
         mol (Molecule): The RMG molecule with the connectivity information.
-        base_xyz (str, unicode, or list): The base 3D geometry to be changed, in either string or array format.
+        base_xyz (str, or list): The base 3D geometry to be changed, in either string or array format.
         multiple_tors (list): Entries are torsion tuples of non-symmetric torsions.
         multiple_sampling_points (list): Entries are lists of dihedral angles (sampling points), respectively correspond
                                          to torsions in multiple_tors.
         len_conformers (int, optional): The length of the existing conformers list (for consecutive numbering).
         de_threshold (float, optional): An energy threshold (in kJ/mol) above which wells in a torsion
                                         will not be considered.
-        force_field (str, unicode, optional): The type of force field to use.
+        force_field (str, optional): The type of force field to use.
         max_combination_iterations (int, optional): The max num of times to iteratively search for the lowest conformer.
         torsion_angles (dict, optional): The torsion angles. Keys are torsion tuples, values are lists of all
                                          corresponding angles from conformers.
         multiple_sampling_points_dict (dict, optional): Keys are torsion tuples, values are respective sampling points.
         wells_dict (dict, optional): Keys are torsion tuples, values are well dictionaries.
-        plot_path (str, unicode, optional): A folder path in which the plot will be saved.
+        plot_path (str, optional): A folder path in which the plot will be saved.
                                             If None, the plot will not be shown (nor saved).
 
     Returns:
@@ -449,14 +452,14 @@ def generate_all_combinations(label, mol, base_xyz, multiple_tors, multiple_samp
     untested
 
     Args:
-        label (str, unicode): The species' label.
+        label (str): The species' label.
         mol (Molecule): The RMG molecule with the connectivity information.
-        base_xyz (str, unicode, or list): The base 3D geometry to be changed, in either string or array format.
+        base_xyz (str, or list): The base 3D geometry to be changed, in either string or array format.
         multiple_tors (list): Entries are torsion tuples of non-symmetric torsions.
         multiple_sampling_points (list): Entries are lists of dihedral angles (sampling points), respectively correspond
                                          to torsions in multiple_tors.
         len_conformers (int, optional): The length of the existing conformers list (for consecutive numbering).
-        force_field (str, unicode, optional): The type of force field to use.
+        force_field (str, optional): The type of force field to use.
 
     Returns:
         list: New conformer combinations, entries are conformer dictionaries.
@@ -496,14 +499,14 @@ def generate_force_field_conformers(label, mol_list, torsion_num, charge, multip
     Also consider user guesses in `xyzs`
 
     Args:
-        label (str, unicode): The species' label.
+        label (str): The species' label.
         mol_list (list): Entries are Molecule objects representing resonance structures of a chemical species.
         xyzs (list, optional): Entries are xyz coordinates in string format, given as initial guesses.
         torsion_num (int): The number of torsions identified in the molecule.
         charge (int): The net charge of the species.
         multiplicity (int): The species spin multiplicity.
         num_confs (int, optional): The number of conformers to generate.
-        force_field (str, unicode, optional): The type of force field to use.
+        force_field (str, optional): The type of force field to use.
 
     Returns:
         list: Entries are conformer dictionaries.
@@ -552,26 +555,30 @@ def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals
     """
     Change dihedrals of specified torsions according to the new dihedrals specified, and get FF energies.
 
-    Example:
+    Example::
+
         torsions = [(1, 2, 3, 4), (9, 4, 7, 1)]
         new_dihedrals = [[90, 120], [90, 300], [180, 270], [30, 270]]
-        This will calculate the energy of the original conformer (defined using `xyz`).
-        We iterate through new_dihedrals. The torsions are set accordingly and the energy and xyz of the newly
-        generated conformer are kept.
-        We assume that each list entry in new_dihedrals is of the length of the torsions list (2 in the example).
+
+    This will calculate the energy of the original conformer (defined using `xyz`).
+    We iterate through new_dihedrals. The torsions are set accordingly and the energy and xyz of the newly
+    generated conformer are kept.
+
+    We assume that each list entry in new_dihedrals is of the length of the torsions list (2 in the example).
 
     Args:
-        label (str, unicode): The species' label.
+        label (str): The species' label.
         mol (Molecule): The RMG molecule with the connectivity information.
-        xyz (str, unicode, or list): The base 3D geometry to be changed, in either string or array format.
+        xyz (str, or list): The base 3D geometry to be changed, in either string or array format.
         torsions (list): Entries are torsion tuples for which the dihedral will be changed relative to xyz.
         new_dihedrals (list): Entries are same size lists of dihedral angles (floats) corresponding to the torsions.
         optimize (bool, optional): Whether to optimize the coordinates using FF. True to optimize.
         return_xyz_strings (bool, optional): Whether to return xyz in string or array format. True for string.
-        force_field (str, unicode, optional): The type of force field to use.
+        force_field (str, optional): The type of force field to use.
 
     Returns:
         list: The conformer FF energies corresponding to the list of dihedrals.
+    Returns:
         list: The conformer xyz geometries corresponding to the list of dihedrals.
     """
     if isinstance(xyz, (str, unicode)):
@@ -611,14 +618,15 @@ def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals
 
 def determine_rotors(mol_list):
     """
-    Determine possible unique rotors in the species to be treated as hindered rotors
+    Determine possible unique rotors in the species to be treated as hindered rotors.
 
     Args:
-        mol_list (list): Localized structures (Molecule objects) by which all rotors will be determined
+        mol_list (list): Localized structures (Molecule objects) by which all rotors will be determined.
 
     Returns:
-        list: A list of indices of scan pivots
-        list: A list of indices of top atoms (including one of the pivotal atoms) corresponding to the torsions
+        list: A list of indices of scan pivots.
+    Returns:
+        list: A list of indices of top atoms (including one of the pivotal atoms) corresponding to the torsions.
     """
     torsions, tops = list(), list()
     for mol in mol_list:
@@ -638,7 +646,7 @@ def determine_number_of_conformers_to_generate(label, heavy_atoms, torsion_num, 
     Determine the number of conformers to generate using molecular mechanics
 
     Args:
-        label (str, unicode): The species' label.
+        label (str): The species' label.
         heavy_atoms (int): The number of heavy atoms in the molecule.
         torsion_num (int): The number of potential torsions in the molecule.
         minimalist (bool, optional): Whether to return a small number of conformers, useful when this is just a guess
@@ -710,15 +718,16 @@ def determine_torsion_sampling_points(label, torsion_angles, smeared_scan_res=No
     Determine how many points to consider in each well of a torsion for conformer combinations
 
     Args:
-        label (str, unicode): The species' label.
+        label (str): The species' label.
         torsion_angles (list): Well angles in the torsion.
         smeared_scan_res (float, optional): The resolution (in degrees) for scanning smeared wells.
         symmetry (int, optional): The torsion symmetry number.
 
     Returns:
         list: Sampling points for the torsion.
-        list: Each entry is a well dictionary with the keys:
-             'start_idx', 'end_idx', 'start_angle', 'end_angle', 'angles'.
+    Returns:
+        list: Each entry is a well dictionary with the keys
+        ``start_idx``, ``end_idx``, ``start_angle``, ``end_angle``, ``angles``.
     """
     smeared_scan_res = smeared_scan_res or SMEARED_SCAN_RESOLUTIONS
     sampling_points = list()
@@ -744,10 +753,10 @@ def determine_torsion_symmetry(label, top1, mol_list, torsion_scan):
     If a torsion well is "well defined" and not smeared, it could be symmetric.
     Check the groups attached to the rotor pivots to determine whether it is indeed symmetric
     We don't care about the actual rotor symmetry number here, since we plan to just use the first well
-    (they're all the same)
+    (they're all the same).
 
     Args:
-        label (str, unicode): The species' label.
+        label (str): The species' label.
         top1 (list): A list of atom indices on one side of the torsion, including the pivotal atom.
         mol_list (list): A list of molecules.
         torsion_scan (list): The angles corresponding to this torsion from all conformers.
@@ -812,8 +821,9 @@ def determine_well_width_tolerance(mean_width):
     """
     Determine the tolerance by which well widths are determined to be nearly equal.
 
-    Fitted to a polynomial trend line for the following data of (mean, tolerance) pairs:
-    (100, 0.11), (60, 0.13), (50, 0.15), (25, 0.25), (5, 0.50), (1, 0.59)
+    Fitted to a polynomial trend line for the following data of (mean, tolerance) pairs::
+
+        (100, 0.11), (60, 0.13), (50, 0.15), (25, 0.25), (5, 0.50), (1, 0.59)
 
     Args:
         mean_width (float): The mean well width in degrees.
@@ -833,10 +843,10 @@ def get_lowest_confs(label, confs, n=1, energy='FF energy'):
     Get the most stable conformer
 
     Args:
-        label (str, unicode): The species' label.
+        label (str): The species' label.
         confs (list): Entries are either conformer dictionaries or a length two list of xyz coordinates and energy.
         n (int): Number of lowest conformers to return.
-        energy (str, unicode, optional): The energy attribute to search by. Currently only 'FF energy' is supported.
+        energy (str, optional): The energy attribute to search by. Currently only 'FF energy' is supported.
 
     Returns:
         list: Conformer dictionaries.
@@ -858,7 +868,7 @@ def get_torsion_angles(label, conformers, torsions):
     Populate each torsion pivots with all available angles from the generated conformers
 
     Args:
-        label (str, unicode): The species' label.
+        label (str): The species' label.
         conformers (list): The conformers from which to extract the angles.
         torsions (list): The torsions to consider.
 
@@ -888,16 +898,17 @@ def get_force_field_energies(label, mol, num_confs=None, xyz=None, force_field='
     The coordinates are returned in the order of atoms in mol.
 
     Args:
-        label (str, unicode): The species' label.
+        label (str): The species' label.
         mol (Molecule): The RMG molecule object with connectivity and bond order information.
         num_confs (int, optional): The number of random 3D conformations to generate.
         xyz (string or list, optional): A 3D coordinates guess in either a string or an array format.
-        force_field (str, unicode, optional): The type of force field to use.
+        force_field (str, optional): The type of force field to use.
         return_xyz_strings (bool, optional): Whether to return xyz in string or array format. True for string.
         optimize (bool, optional): Whether to first optimize the conformer using FF. True to optimize.
 
     Returns:
         list: Entries are xyz coordinates.
+    Returns:
         list: Entries are the FF energies (in kJ/mol).
     """
     if force_field.lower() in ['mmff94', 'mmff94s', 'uff']:
@@ -921,15 +932,16 @@ def mix_rdkit_and_openbabel_force_field(label, mol, num_confs=None, xyz=None, fo
     but use open babel to optimize them (RDKit doesn't have GAFF)
 
     Args:
-        label (str, unicode): The species' label.
+        label (str): The species' label.
         mol (Molecule, optional): The RMG molecule object with connectivity and bond order information.
         num_confs (int, optional): The number of random 3D conformations to generate.
         xyz (string or list, optional): The 3D coordinates in either a string or an array format.
-        force_field (str, unicode, optional): The type of force field to use.
+        force_field (str, optional): The type of force field to use.
         return_xyz_strings (bool, optional): Whether to return xyz in string or array format. True for string.
 
     Returns:
         list: Entries are optimized xyz's in a list format.
+    Returns:
         list: Entries are float numbers representing the energies in kJ/mol.
     """
     xyzs, energies = list(), list()
@@ -957,17 +969,18 @@ def openbabel_force_field(label, mol, num_confs=None, xyz=None, force_field='GAF
     Optimize conformers using a force field (GAFF, MMFF94s, MMFF94, UFF, Ghemical)
 
     Args:
-        label (str, unicode): The species' label.
+        label (str): The species' label.
         mol (Molecule, optional): The RMG molecule object with connectivity and bond order information.
         num_confs (int, optional): The number of random 3D conformations to generate.
         xyz (list, optional): The 3D coordinates in an array format.
-        force_field (str, unicode, optional): The type of force field to use.
+        force_field (str, optional): The type of force field to use.
         return_xyz_strings (bool, optional): Whether to return xyz in string or array format. True for string.
-        method (str, unicode, optional): The conformer searching method to use in open babel.
+        method (str, optional): The conformer searching method to use in open babel.
                                          For method description, see http://openbabel.org/dev-api/group__conformer.shtml
 
     Returns:
         list: Entries are optimized xyz's in a list format.
+    Returns:
         list: Entries are float numbers representing the energies in kJ/mol.
     """
     xyzs, energies = list(), list()
@@ -1058,13 +1071,14 @@ def embed_rdkit(label, mol, num_confs=None, xyz=None):
     Generate random conformers (unoptimized) in RDKit
 
     Args:
-        label (str, unicode): The species' label.
+        label (str): The species' label.
         mol (RMG Molecule or RDKit RDMol): The molecule object with connectivity and bond order information.
         num_confs (int, optional): The number of random 3D conformations to generate.
         xyz (string or list, optional): The 3D coordinates in either a string or an array format.
 
     Returns:
         RDMol: An RDKIt molecule with embedded conformers.
+    Returns:
         dict: The atom mapping dictionary.
     """
     rd_index_map = dict()
@@ -1100,7 +1114,7 @@ def read_rdkit_embedded_conformers(label, rd_mol, i=None, rd_index_map=None, mol
     Read coordinates from RDKit conformers.
 
     Args:
-        label (str, unicode): The species' label.
+        label (str): The species' label.
         rd_mol (RDKit RDMol): The RDKit molecule with embedded conformers to optimize.
         i (int, optional): The conformer index from rd_mol to read. If None, all will be read,
         rd_index_map (list, optional): An atom map dictionary to reorder the xyz. Requires mol to not be None.
@@ -1140,7 +1154,7 @@ def read_rdkit_embedded_conformer_i(rd_mol, i, rd_index_map=None, mol=None, retu
                                              Requires mol to not be None to return string format.
 
     Returns:
-        list or str or unicode: xyz coordinates in the desired format.
+        list or str: xyz coordinates in the desired format.
     """
     conf, xyz = rd_mol.GetConformer(i), list()
     for j in range(conf.GetNumAtoms()):
@@ -1160,17 +1174,18 @@ def rdkit_force_field(label, rd_mol, rd_index_map=None, mol=None, force_field='M
     Fallback to Open Babel if RDKit fails.
 
     Args:
-        label (str, unicode): The species' label.
+        label (str): The species' label.
         rd_mol (RDKit RDMol): The RDKit molecule with embedded conformers to optimize.
         rd_index_map (list, optional): An atom map dictionary to reorder the xyz. Requires mol to not be None.
         mol (Molecule, optional): The RMG molecule object with connectivity and bond order information.
-        force_field (str, unicode, optional): The type of force field to use.
+        force_field (str, optional): The type of force field to use.
         return_xyz_strings (bool, optional): Whether to return xyz in string or array format. True for string.
                                              Requires mol to not be None to return string format.
         optimize (bool, optional): Whether to first optimize the conformer using FF. True to optimize.
 
     Returns:
         list: Entries are optimized xyz's in the desired format.
+    Returns:
         list: Entries are float numbers representing the energies.
     """
     xyzs, energies = list(), list()
@@ -1204,13 +1219,13 @@ def get_wells(label, angles, blank=20):
     Determine the distinct wells from a list of angles.
 
     Args:
-        label (str, unicode): The species' label.
+        label (str): The species' label.
         angles (list): The angles in the torsion.
         blank (int, optional): The blank space between wells.
 
     Returns:
-        list: Each entry is a well dictionary with the keys:
-             'start_idx', 'end_idx', 'start_angle', 'end_angle', 'angles'.
+        list: Each entry is a well dictionary with the keys: ``start_idx``, ``end_idx``, ``start_angle``, ``end_angle``,
+        ``angles``.
     """
     if not angles:
         raise ConformerError('Cannot determine wells without angles for {0}'.format(label))
@@ -1251,7 +1266,7 @@ def check_atom_collisions(xyz):
     Check whether atoms are too close to each other.
 
     Args:
-        xyz (str, unicode): The 3D geometry.
+        xyz (str): The 3D geometry.
 
     Returns:
          bool: True if they are colliding, False otherwise.
@@ -1277,9 +1292,12 @@ def check_special_non_rotor_cases(mol, top1, top2):
     Check whether one of the tops correspond to a special case which could not be rotated
     `mol` is the RMG Molecule to diagnose
     `top1` and `top2` are indices of atoms on each side of the pivots, the first index corresponds to one of the pivots
+
     Special cases considered are:
-    - cyano groups: R-C#N
-    - azide groups: N-N#N
+
+    - cyano groups: ``R-C#N``
+    - azide groups: ``N-N#N``
+
     These cases have a 180 degree angle and torsion is meaningless, but they are identified by our methods since they
     have a single bond
     Returns `True` if this is indeed a special case which should not be treated as a rotor
@@ -1301,7 +1319,7 @@ def determine_top_group_indices(mol, atom1, atom2, index=1):
     """
     Determine the indices of a "top group" in a molecule.
     The top is defined as all atoms connected to atom2, including atom2, excluding the direction of atom1.
-    Two atom_list_to_explore are used so the list the loop iterates through isn't changed within the loop.
+    Two ``atom_list_to_explore`` are used so the list the loop iterates through isn't changed within the loop.
 
     Args:
         mol (Molecule): The Molecule object to explore.
@@ -1311,6 +1329,7 @@ def determine_top_group_indices(mol, atom1, atom2, index=1):
 
     Returns:
         list: The indices of the atoms in the top (either 0-index or 1-index, as requested).
+    Returns:
         bool: Whether the top has heavy atoms (is not just a hydrogen atom). True if it has heavy atoms.
     """
     top = list()
@@ -1441,7 +1460,7 @@ def to_group(mol, atom_indices):
 def update_mol(mol):
     """
     Update atom types, multiplicity, and atom charges in the molecule.
-    untested
+    *untested*
 
     Args:
         mol (Molecule): The molecule to update.
@@ -1462,8 +1481,8 @@ def compare_xyz(xyz1, xyz2, precision=0.1):
     Compare coordinates of two conformers of the same species
 
     Args:
-        xyz1 (list, str, unicode): Coordinates of conformer 1 in either string or array format.
-        xyz2 (list, str, unicode): Coordinates of conformer 2 in either string or array format.
+        xyz1 (list, str): Coordinates of conformer 1 in either string or array format.
+        xyz2 (list, str): Coordinates of conformer 2 in either string or array format.
         precision (float, optional): The allowed difference threshold between coordinates, in Angstroms.
 
     Returns:
@@ -1488,9 +1507,9 @@ def generate_all_enantiomers(label, mol, xyz):
     Generate all combinations of enantiomers for a given conformer's coordinates.
 
     Args:
-        label (str, unicode): The species' label.
+        label (str): The species' label.
         mol (Molecule): The 2D graph representation of the molecule.
-        xyz (str, unicode): A string-format 3d coordinates of the molecule with the same atom order as in mol.
+        xyz (str): A string-format 3d coordinates of the molecule with the same atom order as in mol.
 
     Returns:
         list: A list of string-format coordinates of all enantiomer combinations.
@@ -1568,9 +1587,9 @@ def translate_groups(label, mol, xyz, pivot):
     If the pivotal atom has exactly one lone pair, consider it as well as a dummy atom in translations.
 
     Args:
-        label (str, unicode): The species' label.
+        label (str): The species' label.
         mol (Molecule): The 2D graph representation of the molecule.
-        xyz (str, unicode): A string-format 3d coordinates of the molecule with the same atom order as in mol.
+        xyz (str): A string-format 3d coordinates of the molecule with the same atom order as in mol.
         pivot (int): The 0-index of the pivotal atom around which groups are to be translated.
     """
     mol.identifyRingMembership()  # populates the Atom.props['inRing'] attribute
@@ -1626,7 +1645,7 @@ def translate_group(mol, xyz, pivot, anchor, vector):
 
     Args:
         mol (Molecule): The 2D graph representation of the molecule.
-        xyz (str, unicode): A string-format 3d coordinates of the molecule with the same atom order as in mol.
+        xyz (str): A string-format 3d coordinates of the molecule with the same atom order as in mol.
         pivot (int): The 0-index of the pivotal atom around which groups are to be translated.
         anchor (int): The 0-index of an anchor atom. The group is defined from the pivot atom to the anchor atom,
                       including all other atoms in the molecule connected to the anchor. The pivot and anchor
@@ -1634,7 +1653,7 @@ def translate_group(mol, xyz, pivot, anchor, vector):
         vector (list): The new vector by which the group will be translated.
 
     Returns:
-        str, unicode: The translated coordinates.
+        str: The translated coordinates.
     """
     # v1 = unit_vector([-vector[0], -vector[1], -vector[2]])  # reverse the direction to get the correct angle
     v1 = unit_vector(vector)
@@ -1698,6 +1717,7 @@ def unit_vector(vector):
 def rotate_vector(point_a, point_b, normal, theta):
     """
     Rotate a vector in 3D space around a given axis by a certain angle.
+
     Inspired by https://stackoverflow.com/questions/6802577/rotation-of-3d-vector
 
     Args:
@@ -1731,7 +1751,7 @@ def get_vector(pivot, anchor, xyz):
     Args:
         pivot (int): The 0-index of the pivotal atom around which groups are to be translated.
         anchor (int): The 0-index of an additional atom in the molecule.
-        xyz (str, unicode): A string-format 3d coordinates of the molecule with the same atom order as in mol.
+        xyz (str): A string-format 3d coordinates of the molecule with the same atom order as in mol.
 
     Returns:
          list: A vector pointing from the pivotal atom towards the anchor atom.
@@ -1749,9 +1769,9 @@ def get_lp_vector(label, mol, xyz, pivot):
     The approach is to reverse the average of the three unit vectors between the pivotal atom and its neighbors.
 
     Args:
-        label (str, unicode): The species' label.
+        label (str): The species' label.
         mol (Molecule): The 2D graph representation of the molecule.
-        xyz (str, unicode): A string-format 3d coordinates of the molecule with the same atom order as in mol.
+        xyz (str): A string-format 3d coordinates of the molecule with the same atom order as in mol.
         pivot (int): The 0-index of the pivotal atom around which groups are to be translated.
 
     Returns:

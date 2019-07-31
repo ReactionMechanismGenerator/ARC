@@ -2,8 +2,12 @@
 # encoding: utf-8
 
 """
-ARC's common module
-This module should not import any other module that has logging to avoid circular imports.
+This module contains functions which are shared across multiple ARC modules.
+As such, it should not import any other ARC module (specifically ones that use logging) to avoid circular imports.
+
+VERSION is the full ARC version, using `semantic versioning <https://semver.org/>`_.
+
+ATOM_RADII data taken from `DOI 10.1039/b801115j <http://dx.doi.org/10.1039/b801115j>`_.
 """
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
@@ -40,7 +44,7 @@ def time_lapse(t0):
         t0 (time.pyi): The initial time the count starts from.
 
     Returns:
-        str, unicode: A "D HH:MM:SS" formatted time difference between now and t0.
+        str: A "D HH:MM:SS" formatted time difference between now and t0.
     """
     t = time.time() - t0
     m, s = divmod(t, 60)
@@ -98,9 +102,9 @@ def initialize_log(log_file, project, project_directory=None, verbose=logging.IN
     Set up a logger for ARC.
 
     Args:
-        log_file (str, unicode): The log file name.
-        project (str, unicode): A name for the project.
-        project_directory (str, unicode, optional): The path to the project directory.
+        log_file (str): The log file name.
+        project (str): A name for the project.
+        project_directory (str, optional): The path to the project directory.
         verbose (int, optional): Specify the amount of log text seen.
     """
     # backup and delete an existing log file if needed
@@ -161,7 +165,7 @@ def log_header(project, level=logging.INFO):
     Output a header containing identifying information about ARC to the log.
 
     Args:
-        project (str, unicode): The ARC project name to be logged in the header.
+        project (str): The ARC project name to be logged in the header.
         level: The desired logging level.
     """
     logger.log(level, 'ARC execution initiated on {0}'.format(time.asctime()))
@@ -198,8 +202,7 @@ def get_git_commit():
         Returns empty strings if hash and date cannot be determined.
 
     Returns:
-        str, unicode: The git HEAD commit hash.
-        str, unicode: The git HEAD commit date.
+        tuple: The git HEAD commit hash and the git HEAD commit date, each as a string.
     """
     if os.path.exists(os.path.join(arc_path, '.git')):
         try:
@@ -215,7 +218,7 @@ def get_git_branch():
     Get the git branch to be logged.
 
     Returns:
-        str, unicode: The git branch name.
+        str: The git branch name.
     """
     if os.path.exists(os.path.join(arc_path, '.git')):
         try:
@@ -234,7 +237,7 @@ def log_footer(execution_time, level=logging.INFO):
     Output a footer for the log.
 
     Args:
-        execution_time (str, unicode): The overall execution time for ARC.
+        execution_time (str): The overall execution time for ARC.
         level: The desired logging level.
     """
     logger.log(level, '')
@@ -248,10 +251,10 @@ def read_yaml_file(path):
     and return the parameters as python variables.
 
     Args:
-        path (str, unicode): The YAML file path to read.
+        path (str): The YAML file path to read.
 
     Returns:
-        dict, list: The content read from the file.
+        dict or list: The content read from the file.
     """
     if not os.path.isfile(path):
         raise InputError('Could not find the YAML file {0}'.format(path))
@@ -265,8 +268,8 @@ def save_yaml_file(path, content):
     Save a YAML file (usually an input / restart file, but also conformers file)
 
     Args:
-        path (str, unicode): The YAML file path to save.
-        content (str, unicode): The content to save.
+        path (str): The YAML file path to save.
+        content (str): The content to save.
     """
     yaml.add_representer(str, string_representer)
     yaml.add_representer(unicode, unicode_representer)
@@ -277,14 +280,18 @@ def save_yaml_file(path, content):
 
 
 def string_representer(dumper, data):
-    """Add a custom string representer to use block literals for multiline strings"""
+    """
+    Add a custom string representer to use block literals for multiline strings.
+    """
     if len(data.splitlines()) > 1:
         return dumper.represent_scalar(tag='tag:yaml.org,2002:str', value=data, style='|')
     return dumper.represent_scalar(tag='tag:yaml.org,2002:str', value=data)
 
 
 def unicode_representer(dumper, data):
-    """Add a custom unicode representer to use block literals for multiline strings"""
+    """
+    Add a custom unicode representer to use block literals for multiline strings in unicode.
+    """
     if len(data.splitlines()) > 1:
         return yaml.ScalarNode(tag='tag:yaml.org,2002:str', value=data, style='|')
     return yaml.ScalarNode(tag='tag:yaml.org,2002:str', value=data)
@@ -298,7 +305,7 @@ def get_ordinal_indicator(number):
         number (int): An integer for which the ordinal indicator will be determined.
 
     Returns:
-        str, unicode: The integer's ordinal indicator.
+        str: The integer's ordinal indicator.
     """
     ordinal_dict = {1: 'st', 2: 'nd', 3: 'rd'}
     if number > 13:
@@ -308,7 +315,6 @@ def get_ordinal_indicator(number):
     return 'th'
 
 
-# ATOM_RADII data taken from DOI: 10.1039/b801115j
 ATOM_RADII = {'H': 0.31, 'He': 0.28,
               'Li': 1.28, 'Be': 0.96, 'B': 0.84, 'C': 0.76, 'N': 0.71, 'O': 0.66, 'F': 0.57, 'Ne': 0.58,
               'Na': 1.66, 'Mg': 1.41, 'Al': 1.21, 'Si': 1.11, 'P': 1.07, 'S': 1.05, 'Cl': 1.02, 'Ar': 1.06,
@@ -327,7 +333,7 @@ def get_atom_radius(symbol):
     (Change to QCElemental after transitioning to Py3)
 
     Args:
-        symbol (str, unicode): The atomic symbol.
+        symbol (str): The atomic symbol.
 
     Returns:
         float: The atomic covalent radius (None if not found).
@@ -351,6 +357,7 @@ def determine_symmetry(coords, symbols):
 
     Returns:
         int: The external symmetry number.
+    Returns:
         int: 1 if no chiral centers are present, 2 if chiral centers are present.
     """
     atom_numbers = list()  # List of atomic numbers
@@ -380,7 +387,9 @@ def determine_symmetry(coords, symbols):
 
 
 def min_list(lst):
-    """A helper function for finding the minimum of a list of integers where some of the entries might be None"""
+    """
+    A helper function for finding the minimum of a list of integers where some of the entries might be None.
+    """
     if len(lst) == 0:
         return None
     elif len(lst) == 1:

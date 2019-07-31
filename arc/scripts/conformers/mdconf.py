@@ -68,7 +68,7 @@ def read_yaml(path):
     Read a YAML file.
 
     Args:
-        (str, unicode): The YAML file path.
+        (str): The YAML file path.
 
     Returns:
         list: The list saved to file.
@@ -85,8 +85,8 @@ def purge(pattern=r'\.\d+#', directory=None):
     Delete files that match a pattern.
 
     Args:
-        pattern (str, unicode): The file name patters to search.
-        directory (str, unicode, optional): The directory path to search is (default: current working directory).
+        pattern (str): The file name patters to search.
+        directory (str, optional): The directory path to search is (default: current working directory).
     """
     if directory is None:
         directory = os.getcwd()
@@ -101,8 +101,8 @@ def write_mol_files(coord, ac_path=None, mol2_path=None):
 
     Args:
         coord (list): The coordinates of a single conformer in array form to be updated in the .mol2 file.
-        ac_path (str, unicode, optional): The path to the .mol2 file to be modified.
-        mol2_path (str, unicode, optional): The path to the .mol2 file to be modified.
+        ac_path (str, optional): The path to the .mol2 file to be modified.
+        mol2_path (str, optional): The path to the .mol2 file to be modified.
     """
     ac_path = ac_path if ac_path is not None else 'M00.ac'
     mol2_path = mol2_path if mol2_path is not None else 'M00.mol2'
@@ -162,14 +162,15 @@ def amber_to_gromacs(g_path, coord=None, size=25, mdp_filename='mdp.mdp', first_
     Use Amber Tools to train a force field and prepare all input files for a Gromacs minimization.
 
     Args:
-        g_path (str, unicode): A path to the Gaussian output file.
+        g_path (str): A path to the Gaussian output file.
         coord (list, optional): The 3D coordinates for a single conformer (ordered as in the Gaussian output file).
         size (float, optional): The box size used in MD simulations.
-        mdp_filename (str, unicode, optional): The MD properties file path to use.
+        mdp_filename (str, optional): The MD properties file path to use.
         first_iteration (bool, optional): Whether this is the first conformer. True if it is.
 
     Returns:
         str: The xyz coordinates of the optimized conformer in string format.
+    Returns:
         float: The energy in kJ/mol of the optimized conformer.
     """
     if not first_iteration and not os.path.isfile(os.path.join(cwd, 'M00.mol2')):
