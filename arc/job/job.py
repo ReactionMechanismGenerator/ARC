@@ -113,7 +113,7 @@ class Job(object):
         run_time (timedelta): Job execution time.
         job_status (list): The job's server and ESS statuses.
                              The job server status is in job.job_status[0] and can be either 'initializing' / 'running'
-                             / 'errored' / 'done'. The job ess (electronic structure software calculation) status is in 
+                             / 'errored' / 'done'. The job ess (electronic structure software calculation) status is in
                              job.job_status[1] and can be either `initializing` / `running` / `errored:
                              {error type / message}` / `unconverged` / `done`.
         job_server_name (str): Job's name on the server (e.g., 'a103').
