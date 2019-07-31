@@ -142,7 +142,7 @@ class Job(object):
 
     """
     def __init__(self, project, ess_settings, species_name, xyz, job_type, level_of_theory, multiplicity,
-                 project_directory, charge=0, conformer=-1, fine=False, shift='', software=None, is_ts=False, scan='',
+                 project_directory, charge=0, conformer=-1, fine=False, shift='', software=None, is_ts=False, scan=None,
                  pivots=None, memory=14, comments='', trsh='', scan_trsh='', ess_trsh_methods=None, bath_gas=None,
                  initial_trsh=None, job_num=None, job_server_name=None, job_name=None, job_id=None, server=None,
                  initial_time=None, occ=None, max_job_time=120, scan_res=None, checkfile=None, number_of_radicals=None,
