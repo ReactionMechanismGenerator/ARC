@@ -1,8 +1,6 @@
 ARC - Automated Rate Calculator v\ |release|
 ============================================
 
-
-
 .. image:: arc.png
    :align: center
 
@@ -10,7 +8,7 @@ ARC - Automated Rate Calculator v\ |release|
 electronic structure calculations relevant for chemical kinetic modeling.
 ARC has many advanced options, yet at its core it is simple: it accepts 2D
 graph representations of chemical species (e.g., SMILES_ or `adjacency lists`__),
-and  automatically executes, tracks, and process relevant electronic structure
+and  automatically executes, tracks, and processes relevant electronic structure
 jobs on user-defined servers. The principal outputs of ARC are thermodynamic properties
 (H, S, Cp) and high-pressure limit kinetic rate coefficients for the defined species
 and reactions.

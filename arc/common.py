@@ -33,7 +33,7 @@ from arc.arc_exceptions import InputError, SettingsError
 
 logger = logging.getLogger('arc')
 
-VERSION = '1.0.0'
+VERSION = '1.1.0'
 
 
 def time_lapse(t0):
