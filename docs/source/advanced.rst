@@ -96,7 +96,7 @@ in the ``initial_trsh`` (`trsh` stands for `troubleshooting`) dictionary passed 
 
     initial_trsh:
       gaussian:
-      - scf=NoDIIS
+      - iop(1/18=1)
       molpro:
       - shift,-1.0,-0.5;
       qchem:
