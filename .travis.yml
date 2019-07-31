@@ -17,25 +17,50 @@ before_install:
   - git config --global user.email "alongd@mit.edu"
 
 cache: pip
-install:
-  - cd ARC
-  - conda env create -q -f environment.yml
-  - source activate arc_env
-  - cd ..
-  - git clone https://github.com/ReactionMechanismGenerator/RMG-Py
-  - cd RMG-Py
-  - export PYTHONPATH=$PYTHONPATH:$(pwd)
-  - make
-  - cd ..
-  - git clone https://github.com/ReactionMechanismGenerator/RMG-database
-  - git clone https://github.com/alongd/AutoTST
-  - cd AutoTST
-  - export PYTHONPATH=$PYTHONPATH:$(pwd)
-  - cd ..
-  - conda install -y -c conda-forge codecov
-  - conda list
-  - cd ARC
 
-script:
-  - make test
-  - codecov --token=f259713a-7f1d-4e9c-b140-bb3bb371d3ef
+jobs:
+  include:
+    - stage: test
+      install:
+        - cd ARC
+        - conda env create -q -f environment.yml
+        - source activate arc_env
+        - cd ..
+        - git clone https://github.com/ReactionMechanismGenerator/RMG-Py
+        - cd RMG-Py
+        - export PYTHONPATH=$PYTHONPATH:$(pwd)
+        - make
+        - cd ..
+        - git clone https://github.com/ReactionMechanismGenerator/RMG-database
+        - git clone https://github.com/alongd/AutoTST
+        - cd AutoTST
+        - export PYTHONPATH=$PYTHONPATH:$(pwd)
+        - cd ..
+        - conda install -y -c conda-forge codecov
+        - conda list
+        - cd ARC
+      script:
+        - make test
+        - codecov --token=f259713a-7f1d-4e9c-b140-bb3bb371d3ef
+    - stage: documentation
+      install:
+        - cd ARC
+        - conda env create -q -f environment.yml
+        - source activate arc_env
+        - cd ..
+        - git clone https://github.com/ReactionMechanismGenerator/RMG-Py
+        - cd RMG-Py
+        - export PYTHONPATH=$PYTHONPATH:$(pwd)
+        - make
+        - cd ..
+        - git clone https://github.com/ReactionMechanismGenerator/RMG-database
+        - git clone https://github.com/alongd/AutoTST
+        - cd AutoTST
+        - export PYTHONPATH=$PYTHONPATH:$(pwd)
+        - cd ../ARC/docs
+        # Install sphinx for building documentation
+        - conda install -y sphinx
+        - conda list
+        - export COMMITMESSAGE="Automatic documentation rebuild"
+      script:
+        - make travis_setup clean html publish
