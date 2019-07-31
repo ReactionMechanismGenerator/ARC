@@ -57,9 +57,11 @@ Electronic Structure Software Settings
 
 ARC currently supports the following electronic structure software (ESS):
 
-    - `Gaussian <http://gaussian.com/>`_
+    - `Gaussian`__
     - `Molpro <https://www.molpro.net/>`_
     - `QChem <https://www.q-chem.com/>`_
+
+__ gaussian_
 
 ARC also supports the following (non-ESS) software:
 
@@ -82,6 +84,7 @@ You may pass an ESS settings dictionary to direct ARC where to find each softwar
       - server1
 
 
+
 Troubleshooting
 ^^^^^^^^^^^^^^^
 
@@ -100,13 +103,16 @@ in the ``initial_trsh`` (`trsh` stands for `troubleshooting`) dictionary passed 
       - GEOM_OPT_MAX_CYCLES 250
 
 
+
 Gaussian check files
 ^^^^^^^^^^^^^^^^^^^^
 
-ARC copies check files from previous Gaussian jobs, and uses them when spawning additional
+ARC copies check files from previous `Gaussian`__ jobs, and uses them when spawning additional
 jobs for the same species. When ARC terminates it will attempt to delete all downloaded checkfiles
 (remote copies remain). To keep the check files set the ``keep_checks`` attribute to ``True`` (it is
 ``False`` by default).
+
+__ gaussian_
 
 
 Frequency scaling factors
@@ -120,6 +126,7 @@ factor using the ``freq_scale_factor`` attribute (see :ref:`examples <examples>`
 ``calc_freq_factor`` attribute to ``False`` (it is ``True`` by default).
 
 __ Truhlar_
+
 
 Adaptive levels of theory
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -142,6 +149,7 @@ there aren't any gaps in the heavy atom ranges. The below is in Python (not YAML
                                      'sp': 'b3lyp/6-311+g(d,p)'}}
 
 
+
 Isomorphism checks
 ^^^^^^^^^^^^^^^^^^
 
@@ -152,10 +160,11 @@ with the input 2D graph, ARC will not spawn any additional jobs for the species,
 issues with charged species and triplets are known). To continue spawning jobs for all species in an ARC
 project, pass `True` to the ``allow_nonisomorphic_2d`` argument (it is `False` by default).
 
+
 .. _directory:
 
-Using a different project directory
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Using a non-default project directory
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 If ARC is run from the terminal with an input/restart file
 then the folder in which that file is located becomes the Project's folder.
@@ -163,6 +172,26 @@ If ARC is run using the API, a folder with the Project's name is created under `
 To change this behavior, you may request a specific project folder. Simply pass the desired project
 folder path using the ``project_directory`` argument. If the folder does not exist, ARC will create it
 (and all parent folders, if necessary).
+
+
+Visualizing molecular orbitals (MOs)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+There are various ways to visualize MOs.
+One way is to open a `Gaussian`__ output file
+using `GaussView <https://gaussian.com/gaussview6/>`_.
+
+__ gaussian_
+
+ARC supports an additional way to generate high quality and good looking MOs.
+Simply set the ``orbitals`` entry of the ``job_types`` dictionary to `True` (it is `False` by default`).
+ARC will spawn a `QChem <https://www.q-chem.com/>`_ job with the
+``PRINT_ORBITALS TRUE`` directive using `NBO <http://nbo.chem.wisc.edu/>`_,
+and will copy the resulting FCheck output file.
+Make sure you set the `orbitals` level of theory to the desired level in ``default_levels_of_theory``
+in ``settings.py``.
+Open the resulting FCheck file using `IQMol <http://iqmol.org/>`_
+to post process and save images.
 
 
 .. include:: links.txt
