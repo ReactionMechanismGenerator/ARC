@@ -74,7 +74,7 @@ class Scheduler(object):
                  label_2: {...},
                  }
 
-    Note that rotor scans are located under Species.rotors_dict
+    Note: The rotor scan dicts are located under Species.rotors_dict
 
     Args:
         project (str): The project's name. Used for naming the working directory.
@@ -91,22 +91,22 @@ class Scheduler(object):
         ts_guess_level (str, optional): The level of theory to use for TS guess comparisons.
         orbitals_level (str, optional): The level of theory to use for calculating MOs (for plotting).
         adaptive_levels (dict, optional): A dictionary of levels of theory for ranges of the number of heavy atoms in
-                                            the molecule. Keys are tuples of (min_num_atoms, max_num_atoms), values are
-                                            dictionaries with 'optfreq' and 'sp' as keys and levels of theory as values.
+                                          the molecule. Keys are tuples of (min_num_atoms, max_num_atoms), values are
+                                          dictionaries with 'optfreq' and 'sp' as keys and levels of theory as values.
         rmgdatabase (RMGDatabase, optional): The RMG database object.
         job_types (dict, optional): A dictionary of job types to execute. Keys are job types, values are boolean.
         initial_trsh (dict, optional): Troubleshooting methods to try by default. Keys are ESS software,
-                                         values are trshs.
+                                       values are trshs.
         bath_gas (str, optional): A bath gas. Currently used in OneDMin to calc L-J parameters.
-                                    Allowed values are He, Ne, Ar, Kr, H2, N2, O2.
+                                  Allowed values are He, Ne, Ar, Kr, H2, N2, O2.
         restart_dict (dict, optional): A restart dictionary parsed from a YAML restart file.
         max_job_time (int, optional): The maximal allowed job time on the server in hours.
         allow_nonisomorphic_2d (bool, optional): Whether to optimize species even if they do not have a 3D conformer
-                                                   that is isomorphic to the 2D graph representation.
+                                                 that is isomorphic to the 2D graph representation.
         memory (int, optional): The total allocated job memory in GB (14 by default).
         testing (bool, optional): Used for internal ARC testing (generating the object w/o executing it).
         dont_gen_confs (list, optional): A list of species labels for which conformer jobs were loaded from a restart
-                                           file, and additional conformer generation should be avoided.
+                                         file, or user-requested. Additional conformer generation should be avoided.
         confs_to_dft (int, optional): The number of lowest MD conformers to DFT at the conformers_level.
 
     Attributes:
@@ -117,14 +117,13 @@ class Scheduler(object):
         rxn_list (list): Contains input :ref:`ARCReaction <reaction>` objects.
         unique_species_labels (list): A list of species labels (checked for duplicates).
         adaptive_levels (dict): A dictionary of levels of theory for ranges of the number of heavy atoms in the
-                                            molecule. Keys are tuples of (min_num_atoms, max_num_atoms), values are
-                                            dictionaries with 'optfreq' and 'sp' as keys and levels of theory as values.
+                                molecule. Keys are tuples of (min_num_atoms, max_num_atoms), values are
+                                dictionaries with 'optfreq' and 'sp' as keys and levels of theory as values.
         job_dict (dict): A dictionary of all scheduled jobs. Keys are species / TS labels,
-                                            values are dictionaries where keys are job names (corresponding to
-                                            'running_jobs' if job is running) and values are the Job objects.
+                         values are dictionaries where keys are job names (corresponding to
+                         'running_jobs' if job is running) and values are the Job objects.
         running_jobs (dict): A dictionary of currently running jobs (a subset of `job_dict`).
-                                            Keys are species/TS label, values are lists of job names
-                                            (e.g. 'conformer3', 'opt_a123').
+                             Keys are species/TS label, values are lists of job names (e.g. 'conformer3', 'opt_a123').
         servers_jobs_ids (list): A list of relevant job IDs currently running on the server.
         output (dict): Output dictionary with status and final QM file paths for all species.
         ess_settings (dict): A dictionary of available ESS and a corresponding server list.
@@ -132,20 +131,20 @@ class Scheduler(object):
         restart_dict (dict): A restart dictionary parsed from a YAML restart file.
         project_directory (str): Folder path for the project: the input file path or ARC/Projects/project-name.
         save_restart (bool): Whether to start saving a restart file. ``True`` only after all species are loaded
-                                            (otherwise saves a partial file and may cause loss of information).
+                             (otherwise saves a partial file and may cause loss of information).
         restart_path (str): Path to the `restart.yml` file to be saved.
         max_job_time (int): The maximal allowed job time on the server in hours.
         testing (bool): Used for internal ARC testing (generating the object w/o executing it).
         rmgdb (RMGDatabase): The RMG database object.
         allow_nonisomorphic_2d (bool): Whether to optimize species even if they do not have a 3D conformer that is
-                                         isomorphic to the 2D graph representation.
+                                       isomorphic to the 2D graph representation.
         dont_gen_confs (list): A list of species labels for which conformer jobs were loaded from a restart file,
-                                 and additional conformer generation should be avoided.
+                               or user-requested. Additional conformer generation should be avoided for them.
         confs_to_dft (int): The number of lowest MD conformers to DFT at the conformers_level.
         memory (int): The total allocated job memory in GB (14 by default).
         job_types (dict): A dictionary of job types to execute. Keys are job types, values are boolean.
         bath_gas (str): A bath gas. Currently used in OneDMin to calc L-J parameters.
-                          Allowed values are He, Ne, Ar, Kr, H2, N2, O2.
+                        Allowed values are He, Ne, Ar, Kr, H2, N2, O2.
         composite_method (str): A composite method to use.
 
     """
