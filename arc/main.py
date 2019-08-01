@@ -96,6 +96,8 @@ class ARC(object):
         confs_to_dft (int, optional): The number of lowest MD conformers to DFT at the conformers_level.
         keep_checks (bool, optional): Whether to keep all Gaussian checkfiles when ARC terminates. True to keep,
                                       default is False.
+        dont_gen_confs (list, optional): A list of species labels for which conformer generation should be avoided
+                                         if xyz is given.
 
     Attributes:
         project (str): The project's name. Used for naming the working directory.
@@ -141,6 +143,8 @@ class ARC(object):
         bath_gas (str): A bath gas. Currently used in OneDMin to calc L-J parameters.
                         Allowed values are He, Ne, Ar, Kr, H2, N2, O2.
         keep_checks (bool): Whether to keep all Gaussian checkfiles when ARC terminates. True to keep, default is False.
+        dont_gen_confs (list): A list of species labels for which conformer generation should be avoided
+                               if xyz is given.
 
     """
 
@@ -150,7 +154,7 @@ class ARC(object):
                  t_max=None, t_count=None, verbose=logging.INFO, project_directory=None, max_job_time=120,
                  allow_nonisomorphic_2d=False, job_memory=14, ess_settings=None, bath_gas=None,
                  adaptive_levels=None, freq_scale_factor=None, calc_freq_factor=True, confs_to_dft=5,
-                 keep_checks=False):
+                 keep_checks=False, dont_gen_confs=None):
         self.__version__ = VERSION
         self.verbose = verbose
         self.output = dict()
@@ -184,6 +188,7 @@ class ARC(object):
                 os.makedirs(self.project_directory)
             initialize_log(log_file=os.path.join(self.project_directory, 'arc.log'), project=self.project,
                            project_directory=self.project_directory, verbose=self.verbose)
+            self.dont_gen_confs = dont_gen_confs if dont_gen_confs is not None else list()
             self.t0 = time.time()  # init time
             self.execution_time = None
             self.initial_trsh = initial_trsh if initial_trsh is not None else dict()
@@ -438,6 +443,8 @@ class ARC(object):
         if self.freq_scale_factor is not None:
             restart_dict['freq_scale_factor'] = self.freq_scale_factor
         restart_dict['calc_freq_factor'] = self.calc_freq_factor
+        if self.dont_gen_confs:
+            restart_dict['dont_gen_confs'] = self.dont_gen_confs
         restart_dict['species'] = [spc.as_dict() for spc in self.arc_species_list]
         restart_dict['reactions'] = [rxn.as_dict() for rxn in self.arc_rxn_list]
         restart_dict['output'] = self.output  # if read from_dict then it has actual values
@@ -511,6 +518,7 @@ class ARC(object):
                                                                 and input_dict['use_bac'] else ''
         ess_settings = input_dict['ess_settings'] if 'ess_settings' in input_dict else global_ess_settings
         self.ess_settings = check_ess_settings(ess_settings)
+        self.dont_gen_confs = input_dict['dont_gen_confs'] if 'dont_gen_confs' in input_dict else list()
         if not self.job_types['fine']:
             logger.info('\n')
             logger.warning('Not using a fine grid for geometry optimization jobs')
@@ -702,7 +710,8 @@ class ARC(object):
                                    restart_dict=self.restart_dict, project_directory=self.project_directory,
                                    max_job_time=self.max_job_time, allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
                                    memory=self.memory, orbitals_level=self.orbitals_level,
-                                   adaptive_levels=self.adaptive_levels, confs_to_dft=self.confs_to_dft)
+                                   adaptive_levels=self.adaptive_levels, confs_to_dft=self.confs_to_dft,
+                                   dont_gen_confs=self.dont_gen_confs)
 
         self.save_project_info_file()
 
