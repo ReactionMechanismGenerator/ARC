@@ -1473,7 +1473,7 @@ class Scheduler(object):
                             if not job.scan_trsh:
                                 logger.info('Trying to troubleshoot rotor {0} of {1}...'.format(job.pivots, label))
                                 trsh = True
-                                self.troubleshoot_scan_job(job=job)
+                                self.troubleshoot_scan_job(job=job, method=['inc_res', 'freeze'])
                         if not invalidate:
                             v_last = v_list[-1]
                             for v in v_list:
@@ -1494,7 +1494,7 @@ class Scheduler(object):
                                         logger.info('Trying to troubleshoot rotor {0} of {1}...'.format(
                                             job.pivots, label))
                                         trsh = True
-                                        self.troubleshoot_scan_job(job=job)
+                                        self.troubleshoot_scan_job(job=job, method=['inc_res', 'freeze'])
                                     break
                                 if abs(v - v_list[0]) > maximum_barrier:
                                     # The barrier for the hinderd rotor is higher than `maximum_barrier` kJ/mol.
@@ -1536,9 +1536,9 @@ class Scheduler(object):
                         elif invalidate:
                             invalidated = '*INVALIDATED* '
                         if self.species_dict[label].rotors_dict[i]['success']:
-                            self.species_dict[label].rotors_dict[i]['symmetry'], _ = determine_rotor_symmetry(
+                            self.species_dict[label].rotors_dict[i]['symmetry'] = determine_rotor_symmetry(
                                 rotor_path=job.local_path_to_output_file, label=label,
-                                pivots=self.species_dict[label].rotors_dict[i]['pivots'])
+                                pivots=self.species_dict[label].rotors_dict[i]['pivots'])[0]
                             symmetry = ' has symmetry {0}'.format(self.species_dict[label].rotors_dict[i]['symmetry'])
 
                             logger.info('{invalidated}Rotor scan {scan} between pivots {pivots}'
@@ -1754,26 +1754,44 @@ class Scheduler(object):
         for i, xyz in enumerate(self.species_dict[label].conformers):
             self.run_job(label=label, xyz=xyz, level_of_theory=self.conformer_level, job_type='conformer', conformer=i)
 
-    def troubleshoot_scan_job(self, job):
+    def troubleshoot_scan_job(self, job, method=None):
         """
-        Try freezing all dihedrals other than the scan's pivots for this job
+        Troubleshooting rotor scans
+        Using the following methods: freezing all dihedrals other than the scan's pivots for this job,
+        or increasing the scan resolution.
+
+        Args:
+            job (Job): The scan Job object.
+            method (list): The troubleshooting method/s to try.
+                           Optional values: 'freeze', 'inc_res'.
         """
+        if method is None:
+            raise SchedulerError('Called troubleshoot_scan_job() with no method')
         label = job.species_name
-        species_scan_lists = [rotor_dict['scan'] for rotor_dict in self.species_dict[label].rotors_dict.values()]
-        if job.scan not in species_scan_lists:
-            raise SchedulerError('Could not find the dihedral to troubleshoot for in the dcan list of species'
-                                 ' {0}'.format(label))
-        species_scan_lists.pop(species_scan_lists.index(job.scan))
-        if len(species_scan_lists):
-            scan_trsh = '\n'
-            for scan in species_scan_lists:
-                scan_trsh += 'D ' + ''.join([str(num) + ' ' for num in scan]) + 'F\n'
-            scan_res = min(4, int(job.scan_res / 2))
-            # make sure mod(360, scan res) is 0:
-            if scan_res not in [4, 2, 1]:
-                scan_res = min([4, 2, 1], key=lambda x: abs(x - scan_res))
+        if 'troubleshoot_scan_job' in job.ess_trsh_methods:
+            logger.error('Will not troubleshoot a rotor scan for {0} more than once.'.format(label))
+        else:
+            scan_trsh = ''
+            if 'freeze' in method:
+                species_scan_lists = [rotor_dict['scan'] for rotor_dict in self.species_dict[label].rotors_dict.values()]
+                if job.scan not in species_scan_lists:
+                    raise SchedulerError('Could not find the dihedral to troubleshoot for in the dcan list of species'
+                                         ' {0}'.format(label))
+                species_scan_lists.pop(species_scan_lists.index(job.scan))
+                if len(species_scan_lists):
+                    scan_trsh = '\n'
+                    for scan in species_scan_lists:
+                        scan_trsh += 'D ' + ''.join([str(num) + ' ' for num in scan]) + 'F\n'
+            if 'inc_res' in method:
+                scan_res = min(4, int(job.scan_res / 2))
+                # make sure mod(360, scan res) is 0:
+                if scan_res not in [4, 2, 1]:
+                    scan_res = min([4, 2, 1], key=lambda x: abs(x - scan_res))
+            else:
+                scan_res = job.scan_res
+            job.ess_trsh_methods.append('troubleshoot_scan_job')
             self.run_job(label=label, xyz=job.xyz, level_of_theory=job.level_of_theory, job_type='scan',
-                         scan=job.scan, pivots=job.pivots, scan_trsh=scan_trsh, scan_res=4)
+                         scan=job.scan, pivots=job.pivots, scan_trsh=scan_trsh, scan_res=scan_res)
 
     def troubleshoot_opt_jobs(self, label):
         """
