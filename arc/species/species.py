@@ -1245,7 +1245,9 @@ def determine_rotor_symmetry(rotor_path, label, pivots):
         pivots (list): A list of two atom indices representing the torsion pivots.
 
     Returns:
-        tuple: The symmetry number (int) and the highest torsional energy barrier (float) in kJ/mol.
+        int: The symmetry number (int)
+    Returns:
+        float: The highest torsional energy barrier in kJ/mol.
     """
     log = determine_qm_software(fullpath=rotor_path)
     energies, _ = log.loadScanEnergies()
