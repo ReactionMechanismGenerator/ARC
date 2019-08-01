@@ -7,9 +7,10 @@ Flexible coordinates (xyz) input
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The xyz attribute of an :ref:`ARCSpecies <species>` objects (whether TS or not) is extremely flexible.
-It could be a multiline string containing the coordinates, or a list of several multiline strings (as
-shown in the examples above). It could also contain valid file paths to ESS input files, output files,
-`XYZ format`__ files, or ARC's conformers (before/after optimization) files. See :ref:`the examples <examples>`.
+It could be a multiline string containing the coordinates, or a list of several multiline strings.
+It could also contain valid file paths to ESS input files, output files,
+`XYZ format`__ files, or ARC's conformers (before/after optimization) files.
+See :ref:`the examples <examples>`.
 
 __ xyz_format_
 
