@@ -195,4 +195,61 @@ Open the resulting FCheck file using `IQMol <http://iqmol.org/>`_
 to post process and save images.
 
 
+Don't generate conformers for specific species
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The ``conformers`` entry in the ``job_types`` dictionary is a global flag,
+affecting conformer generation of all species in the project.
+
+If you'd like to avoid generating conformers just for selected species,
+pass their labels to ARC in the ``dont_gen_confs`` list, e.g.::
+
+    project: arc_demo_selective_confs
+
+    dont_gen_confs:
+    - propanol
+
+    species:
+
+    - label: propane
+      smiles: CCC
+      xyz: |
+        C   0.0000000   0.0000000   0.5863560
+        C   0.0000000   1.2624760  -0.2596090
+        C   0.0000000  -1.2624760  -0.2596090
+        H   0.8743630   0.0000000   1.2380970
+        H  -0.8743630   0.0000000   1.2380970
+        H   0.0000000   2.1562580   0.3624930
+        H   0.0000000  -2.1562580   0.3624930
+        H   0.8805340   1.2981830  -0.9010030
+        H  -0.8805340   1.2981830  -0.9010030
+        H  -0.8805340  -1.2981830  -0.9010030
+        H   0.8805340  -1.2981830  -0.9010030
+
+    - label: propanol
+      smiles: CCCO
+      xyz: |
+        C  -1.4392250   1.2137610   0.0000000
+        C   0.0000000   0.7359250   0.0000000
+        C   0.0958270  -0.7679350   0.0000000
+        O   1.4668240  -1.1155780   0.0000000
+        H  -1.4886150   2.2983600   0.0000000
+        H  -1.9711060   0.8557990   0.8788010
+        H  -1.9711060   0.8557990  -0.8788010
+        H   0.5245130   1.1136730   0.8740840
+        H   0.5245130   1.1136730  -0.8740840
+        H  -0.4095940  -1.1667640   0.8815110
+        H  -0.4095940  -1.1667640  -0.8815110
+        H   1.5267840  -2.0696580   0.0000000
+
+In the above example, ARC will only generate conformers for propane, but not for propanol.
+For propane, it will compare the selected conformers agains the user-given xyz guess using the
+conformer level DFT method, and will take the most stable structure for the rest of the calculations,
+regardless of its source (ARC's conformers or the user guess). For propanol, on the other hand,
+ARC will not attempt to generate conformers, and will simply use the user guess.
+
+Note: If a species label is added to the ``dont_gen_confs`` list, but the species has no 3D
+coordinates, ARC **will** generate conformers for it.
+
+
 .. include:: links.txt
