@@ -694,15 +694,13 @@ class Scheduler(object):
             if not self.species_dict[label].is_ts and 'opt converged' not in self.output[label]['status'] \
                     and 'opt' not in self.job_dict[label] and 'composite' not in self.job_dict[label] \
                     and all([e is None for e in self.species_dict[label].conformer_energies]) \
-                    and self.species_dict[label].number_of_atoms > 1 and label not in self.dont_gen_confs \
-                    and 'geo' not in self.output[label] \
-                    and (self.job_types['conformers'] or (not self.job_types['conformers']
-                                                          and self.species_dict[label].initial_xyz is None
-                                                          and self.species_dict[label].final_xyz is None
-                                                          and not self.species_dict[label].conformers)):
-                # This is not a TS, opt (/composite) did not converged nor running, and conformer energies were not set
-                # (and it's not in self.dont_gen_confs). Also, either 'conformers' are set to True in job_types,
-                # or they are set to False but the species has no 3D information. Generate conformers.
+                    and self.species_dict[label].number_of_atoms > 1 and 'geo' not in self.output[label] \
+                    and (self.job_types['conformers'] and label not in self.dont_gen_confs
+                         or self.species_dict[label].get_xyz(get_cheap=False) is None):
+                # This is not a TS, opt (/composite) did not converged nor running, and conformer energies were not set.
+                # Also, either 'conformers' are set to True in job_types (and it's not in dont_gen_confs),
+                # or they are set to False (or it's in dont_gen_confs), but the species has no 3D information.
+                # Generate conformers.
                 if not log_info_printed:
                     logger.info('\nStarting (non-TS) species conformational analysis...\n')
                     log_info_printed = True
@@ -719,10 +717,9 @@ class Scheduler(object):
                     else:
                         # run the combinatorial method w/o fitting a force field
                         self.species_dict[label].generate_conformers(confs_to_dft=self.confs_to_dft,
-                                                                     plot_path=os.path.join(self.project_directory,
-                                                                                            'output', 'Species',
-                                                                                            label, 'geometry',
-                                                                                            'conformers'))
+                                                                     plot_path=os.path.join(
+                                                                         self.project_directory, 'output', 'Species',
+                                                                         label, 'geometry', 'conformers'))
                     self.process_conformers(label)
             elif not self.job_types['conformers']:
                 # we're not running conformer jobs
