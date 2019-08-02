@@ -74,7 +74,7 @@ class Scheduler(object):
                  label_2: {...},
                  }
 
-    Note that rotor scans are located under Species.rotors_dict
+    Note: The rotor scan dicts are located under Species.rotors_dict
 
     Args:
         project (str): The project's name. Used for naming the working directory.
@@ -91,22 +91,22 @@ class Scheduler(object):
         ts_guess_level (str, optional): The level of theory to use for TS guess comparisons.
         orbitals_level (str, optional): The level of theory to use for calculating MOs (for plotting).
         adaptive_levels (dict, optional): A dictionary of levels of theory for ranges of the number of heavy atoms in
-                                            the molecule. Keys are tuples of (min_num_atoms, max_num_atoms), values are
-                                            dictionaries with 'optfreq' and 'sp' as keys and levels of theory as values.
+                                          the molecule. Keys are tuples of (min_num_atoms, max_num_atoms), values are
+                                          dictionaries with 'optfreq' and 'sp' as keys and levels of theory as values.
         rmgdatabase (RMGDatabase, optional): The RMG database object.
         job_types (dict, optional): A dictionary of job types to execute. Keys are job types, values are boolean.
         initial_trsh (dict, optional): Troubleshooting methods to try by default. Keys are ESS software,
-                                         values are trshs.
+                                       values are trshs.
         bath_gas (str, optional): A bath gas. Currently used in OneDMin to calc L-J parameters.
-                                    Allowed values are He, Ne, Ar, Kr, H2, N2, O2.
+                                  Allowed values are He, Ne, Ar, Kr, H2, N2, O2.
         restart_dict (dict, optional): A restart dictionary parsed from a YAML restart file.
         max_job_time (int, optional): The maximal allowed job time on the server in hours.
         allow_nonisomorphic_2d (bool, optional): Whether to optimize species even if they do not have a 3D conformer
-                                                   that is isomorphic to the 2D graph representation.
+                                                 that is isomorphic to the 2D graph representation.
         memory (int, optional): The total allocated job memory in GB (14 by default).
         testing (bool, optional): Used for internal ARC testing (generating the object w/o executing it).
         dont_gen_confs (list, optional): A list of species labels for which conformer jobs were loaded from a restart
-                                           file, and additional conformer generation should be avoided.
+                                         file, or user-requested. Additional conformer generation should be avoided.
         confs_to_dft (int, optional): The number of lowest MD conformers to DFT at the conformers_level.
 
     Attributes:
@@ -117,14 +117,13 @@ class Scheduler(object):
         rxn_list (list): Contains input :ref:`ARCReaction <reaction>` objects.
         unique_species_labels (list): A list of species labels (checked for duplicates).
         adaptive_levels (dict): A dictionary of levels of theory for ranges of the number of heavy atoms in the
-                                            molecule. Keys are tuples of (min_num_atoms, max_num_atoms), values are
-                                            dictionaries with 'optfreq' and 'sp' as keys and levels of theory as values.
+                                molecule. Keys are tuples of (min_num_atoms, max_num_atoms), values are
+                                dictionaries with 'optfreq' and 'sp' as keys and levels of theory as values.
         job_dict (dict): A dictionary of all scheduled jobs. Keys are species / TS labels,
-                                            values are dictionaries where keys are job names (corresponding to
-                                            'running_jobs' if job is running) and values are the Job objects.
+                         values are dictionaries where keys are job names (corresponding to
+                         'running_jobs' if job is running) and values are the Job objects.
         running_jobs (dict): A dictionary of currently running jobs (a subset of `job_dict`).
-                                            Keys are species/TS label, values are lists of job names
-                                            (e.g. 'conformer3', 'opt_a123').
+                             Keys are species/TS label, values are lists of job names (e.g. 'conformer3', 'opt_a123').
         servers_jobs_ids (list): A list of relevant job IDs currently running on the server.
         output (dict): Output dictionary with status and final QM file paths for all species.
         ess_settings (dict): A dictionary of available ESS and a corresponding server list.
@@ -132,20 +131,20 @@ class Scheduler(object):
         restart_dict (dict): A restart dictionary parsed from a YAML restart file.
         project_directory (str): Folder path for the project: the input file path or ARC/Projects/project-name.
         save_restart (bool): Whether to start saving a restart file. ``True`` only after all species are loaded
-                                            (otherwise saves a partial file and may cause loss of information).
+                             (otherwise saves a partial file and may cause loss of information).
         restart_path (str): Path to the `restart.yml` file to be saved.
         max_job_time (int): The maximal allowed job time on the server in hours.
         testing (bool): Used for internal ARC testing (generating the object w/o executing it).
         rmgdb (RMGDatabase): The RMG database object.
         allow_nonisomorphic_2d (bool): Whether to optimize species even if they do not have a 3D conformer that is
-                                         isomorphic to the 2D graph representation.
+                                       isomorphic to the 2D graph representation.
         dont_gen_confs (list): A list of species labels for which conformer jobs were loaded from a restart file,
-                                 and additional conformer generation should be avoided.
+                               or user-requested. Additional conformer generation should be avoided for them.
         confs_to_dft (int): The number of lowest MD conformers to DFT at the conformers_level.
         memory (int): The total allocated job memory in GB (14 by default).
         job_types (dict): A dictionary of job types to execute. Keys are job types, values are boolean.
         bath_gas (str): A bath gas. Currently used in OneDMin to calc L-J parameters.
-                          Allowed values are He, Ne, Ar, Kr, H2, N2, O2.
+                        Allowed values are He, Ne, Ar, Kr, H2, N2, O2.
         composite_method (str): A composite method to use.
 
     """
@@ -695,15 +694,13 @@ class Scheduler(object):
             if not self.species_dict[label].is_ts and 'opt converged' not in self.output[label]['status'] \
                     and 'opt' not in self.job_dict[label] and 'composite' not in self.job_dict[label] \
                     and all([e is None for e in self.species_dict[label].conformer_energies]) \
-                    and self.species_dict[label].number_of_atoms > 1 and label not in self.dont_gen_confs \
-                    and 'geo' not in self.output[label] \
-                    and (self.job_types['conformers'] or (not self.job_types['conformers']
-                                                          and self.species_dict[label].initial_xyz is None
-                                                          and self.species_dict[label].final_xyz is None
-                                                          and not self.species_dict[label].conformers)):
-                # This is not a TS, opt (/composite) did not converged nor running, and conformer energies were not set
-                # (and it's not in self.dont_gen_confs). Also, either 'conformers' are set to True in job_types,
-                # or they are set to False but the species has no 3D information. Generate conformers.
+                    and self.species_dict[label].number_of_atoms > 1 and 'geo' not in self.output[label] \
+                    and (self.job_types['conformers'] and label not in self.dont_gen_confs
+                         or self.species_dict[label].get_xyz(get_cheap=False) is None):
+                # This is not a TS, opt (/composite) did not converged nor running, and conformer energies were not set.
+                # Also, either 'conformers' are set to True in job_types (and it's not in dont_gen_confs),
+                # or they are set to False (or it's in dont_gen_confs), but the species has no 3D information.
+                # Generate conformers.
                 if not log_info_printed:
                     logger.info('\nStarting (non-TS) species conformational analysis...\n')
                     log_info_printed = True
@@ -720,10 +717,9 @@ class Scheduler(object):
                     else:
                         # run the combinatorial method w/o fitting a force field
                         self.species_dict[label].generate_conformers(confs_to_dft=self.confs_to_dft,
-                                                                     plot_path=os.path.join(self.project_directory,
-                                                                                            'output', 'Species',
-                                                                                            label, 'geometry',
-                                                                                            'conformers'))
+                                                                     plot_path=os.path.join(
+                                                                         self.project_directory, 'output', 'Species',
+                                                                         label, 'geometry', 'conformers'))
                     self.process_conformers(label)
             elif not self.job_types['conformers']:
                 # we're not running conformer jobs
@@ -743,10 +739,25 @@ class Scheduler(object):
                                      multiplicity=self.species_dict[label].multiplicity,
                                      charge=self.species_dict[label].charge, is_ts=True,
                                      ts_methods=[tsg.method for tsg in self.species_dict[label].ts_guesses])
-        self.job_dict[label]['conformers'] = dict()
-        for i, tsg in enumerate(self.species_dict[label].ts_guesses):
-            self.run_job(label=label, xyz=tsg.xyz, level_of_theory=self.ts_guess_level, job_type='conformer',
-                         conformer=i)
+        if len(self.species_dict[label].conformers) > 1:
+            self.job_dict[label]['conformers'] = dict()
+            for i, xyz in enumerate(self.species_dict[label].conformers):
+                self.run_job(label=label, xyz=xyz, level_of_theory=self.ts_guess_level, job_type='conformer',
+                             conformer=i)
+        elif len(self.species_dict[label].conformers) == 1:
+            if 'opt' not in self.job_dict[label] and 'composite' not in self.job_dict[label]:
+                # proceed only if opt (/composite) not already spawned
+                rxn = ''
+                if self.species_dict[label].rxn_label is not None:
+                    rxn = ' of reaction ' + self.species_dict[label].rxn_label
+                logger.info('Only one TS guess is available for species {0}{1},'
+                            ' using it for geometry optimization'.format(label, rxn))
+                self.species_dict[label].initial_xyz = self.species_dict[label].conformers[0]
+                if not self.composite_method:
+                    self.run_opt_job(label)
+                else:
+                    self.run_composite_job(label)
+                self.species_dict[label].chosen_ts_method = self.species_dict[label].ts_guesses[0].method
 
     def run_opt_job(self, label):
         """
@@ -994,6 +1005,7 @@ class Scheduler(object):
     def process_conformers(self, label):
         """
         Process the generated conformers and spawn DFT jobs at the conformer_level.
+        If more than one conformer is available, they will be optimized at the DFT conformer_level.
         """
         plotter.save_conformers_file(project_directory=self.project_directory, label=label,
                                      xyzs=self.species_dict[label].conformers, level_of_theory=self.conformer_level,
@@ -1001,10 +1013,31 @@ class Scheduler(object):
                                      charge=self.species_dict[label].charge, is_ts=False)  # before optimization
         if self.species_dict[label].initial_xyz is None and self.species_dict[label].final_xyz is None \
                 and not self.testing:
-            self.job_dict[label]['conformers'] = dict()
-            for i, xyz in enumerate(self.species_dict[label].conformers):
-                self.run_job(label=label, xyz=xyz, level_of_theory=self.conformer_level,
-                             job_type='conformer', conformer=i)
+            if len(self.species_dict[label].conformers) > 1:
+                self.job_dict[label]['conformers'] = dict()
+                for i, xyz in enumerate(self.species_dict[label].conformers):
+                    self.run_job(label=label, xyz=xyz, level_of_theory=self.conformer_level,
+                                 job_type='conformer', conformer=i)
+            elif len(self.species_dict[label].conformers) == 1:
+                logger.info('Only one conformer is available for species {0}, '
+                            'using it as initial xyz'.format(label))
+                self.species_dict[label].initial_xyz = self.species_dict[label].conformers[0]
+                if not self.composite_method:
+                    if self.job_types['opt']:
+                        self.run_opt_job(label)
+                    else:
+                        if self.job_types['freq']:
+                            self.run_freq_job(label)
+                        if self.job_types['sp']:
+                            self.run_sp_job(label)
+                        if self.job_types['1d_rotors']:
+                            self.run_scan_jobs(label)
+                        if self.job_types['onedmin']:
+                            self.run_onedmin_job(label)
+                        if self.job_types['orbitals']:
+                            self.run_orbitals_job(label)
+                else:
+                    self.run_composite_job(label)
 
     def parse_conformer(self, job, label, i):
         """
