@@ -22,7 +22,7 @@ from rmgpy.transport import TransportData
 from rmgpy.exceptions import InvalidAdjacencyListError
 
 from arc.common import get_logger, get_atom_radius, determine_symmetry
-from arc.arc_exceptions import SpeciesError, RotorError, InputError, TSError
+from arc.arc_exceptions import SpeciesError, RotorError, InputError, TSError, SanitizationError
 from arc.settings import default_ts_methods, valid_chars, minimum_barrier
 from arc.parser import parse_xyz_from_file, parse_dipole_moment, parse_polarizability, process_conformers_file
 from arc.species.converter import get_xyz_string, get_xyz_matrix, rdkit_conf_from_mol, standardize_xyz_string,\
@@ -992,6 +992,53 @@ class ARCSpecies(object):
             rotrelaxcollnum=2,  # rotational relaxation collision number at 298 K
             comment=str(comment)
         )
+
+    def check_final_xyz_isomorphism(self, allow_nonisomorphic_2d=False):
+        """
+        Check whether the perception of self.final_xyz is isomorphic with self.mol.
+
+        Args:
+            allow_nonisomorphic_2d (bool): Whether to continue spawning jobs for the species even if this test fails.
+                                           `True` to allow (default is `False`).
+
+        Returns:
+            bool: Whether the perception of self.final_xyz is isomorphic with self.mol, `True` if it is.
+        """
+        passed_test, return_value = False, False
+        if self.mol is not None:
+            try:
+                b_mol = molecules_from_xyz(self.final_xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
+            except SanitizationError:
+                b_mol = None
+            if b_mol is not None:
+                is_isomorphic = check_isomorphism(self.mol, b_mol)
+            else:
+                is_isomorphic = False
+            if is_isomorphic:
+                passed_test, return_value = True, True
+            else:
+                # isomorphism test failed
+                passed_test = False
+                if self.conf_is_isomorphic:
+                    if allow_nonisomorphic_2d:
+                        # conformer was isomorphic, we **do** allow nonisomorphism, and the optimized structure isn't
+                        return_value = True
+                    else:
+                        # conformer was isomorphic, we don't allow nonisomorphism, but the optimized structure isn't
+                        return_value = False
+                else:
+                    # conformer was not isomorphic, don't strictly enforce isomorphism here
+                    return_value = True
+            if not passed_test:
+                logger.error('The optimized geometry of species {0} is not isomorphic with the 2D structure {1}'.format(
+                    self.label, self.mol.toSMILES()))
+                if not return_value:
+                    logger.error('Not spawning additional jobs for this species!')
+            else:
+                logger.info('Species {0} was found to be isomorphic with the perception of its optimized coordinates.')
+        else:
+            logger.error('Cannot check isomorphism for species {0}'.format(self.label))
+        return return_value
 
 
 class TSGuess(object):
