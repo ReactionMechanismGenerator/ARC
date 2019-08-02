@@ -1522,7 +1522,7 @@ class Scheduler(object):
                                     message += error_message + '; '
                                     invalidate = True
                                     invalidation_reason = 'two consecutive points are inconsistent by more than ' \
-                                                          '{0:.2f} kJ/mol'.format(inconsistency_ab)
+                                                          '{0:.2f} kJ/mol'.format(inconsistency_ab * max(v_list))
                                     if not job.scan_trsh:
                                         logger.info('Trying to troubleshoot rotor {0} of {1}...'.format(
                                             job.pivots, label))
