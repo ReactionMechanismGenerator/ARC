@@ -172,6 +172,9 @@ class ARCSpecies(object):
                            with the fitted force field (recommended for drug-like species and species with many
                            heteroatoms). Another option is specifying 'cheap', and the "old" RDKit embedding method
                            will be used.
+        conf_is_isomorphic (bool): Whether the lowest conformer is isomorphic with the 2D graph representation
+                                   of the species. `True` if it is. Defaults to `None`. If `True`, an isomorphism check
+                                   will be strictly enforced for the final optimized coordinates.
 
     """
     def __init__(self, label=None, is_ts=False, rmg_species=None, mol=None, xyz=None, multiplicity=None, charge=None,
@@ -218,6 +221,7 @@ class ARCSpecies(object):
             self.e_elect = None
             self.arkane_file = None
             self.svpfit_output_file = svpfit_output_file
+            self.conf_is_isomorphic = None
             if self.is_ts:
                 if ts_methods is None:
                     self.ts_methods = default_ts_methods
@@ -450,6 +454,8 @@ class ARCSpecies(object):
         species_dict['external_symmetry'] = self.external_symmetry
         species_dict['optical_isomers'] = self.optical_isomers
         species_dict['neg_freqs_trshed'] = self.neg_freqs_trshed
+        if self.conf_is_isomorphic is not None:
+            species_dict['conf_is_isomorphic'] = self.conf_is_isomorphic
         if self.bond_corrections is not None:
             species_dict['bond_corrections'] = self.bond_corrections
         if self.mol is not None:
@@ -502,6 +508,7 @@ class ARCSpecies(object):
         self.initial_xyz = standardize_xyz_string(species_dict['initial_xyz']) if 'initial_xyz' in species_dict\
             else None
         self.final_xyz = standardize_xyz_string(species_dict['final_xyz']) if 'final_xyz' in species_dict else None
+        self.conf_is_isomorphic = species_dict['conf_is_isomorphic'] if 'conf_is_isomorphic' in species_dict else None
         self.is_ts = species_dict['is_ts'] if 'is_ts' in species_dict else False
         if self.is_ts:
             self.ts_conf_spawned = species_dict['ts_conf_spawned'] if 'ts_conf_spawned' in species_dict else False
