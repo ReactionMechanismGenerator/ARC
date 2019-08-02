@@ -109,7 +109,7 @@ class TestARCSpecies(unittest.TestCase):
 
         self.spc4.conformers = list()
         self.spc4.generate_conformers()
-        self.assertIn(len(self.spc4.conformers), [4, 5])
+        self.assertIn(len(self.spc4.conformers), [3, 4, 5])
 
         self.spc5.conformers = list()
         self.spc5.generate_conformers()
