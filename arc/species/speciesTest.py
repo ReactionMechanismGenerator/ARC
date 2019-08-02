@@ -839,6 +839,51 @@ H       1.11582953    0.94384729   -0.10134685"""
         self.assertFalse(check_xyz(xyz1, multiplicity=2, charge=1))
         self.assertTrue(check_xyz(xyz1, multiplicity=1, charge=-1))
 
+    def test_check_final_xyz_isomorphism(self):
+        """Test the check_final_xyz_isomorphism() method"""
+        xyz1 = """C  -1.9681540   0.0333440  -0.0059220
+                  C  -0.6684360  -0.7562450   0.0092140
+                  C   0.5595480   0.1456260  -0.0036480
+                  O   0.4958540   1.3585920   0.0068500
+                  N   1.7440770  -0.5331650  -0.0224050
+                  H  -2.8220500  -0.6418490   0.0045680
+                  H  -2.0324190   0.6893210   0.8584580
+                  H  -2.0300690   0.6574940  -0.8939330
+                  H  -0.6121640  -1.4252590  -0.8518010
+                  H  -0.6152180  -1.3931710   0.8949150
+                  H   1.7901420  -1.5328370   0.0516350
+                  H   2.6086580  -0.0266360   0.0403330"""
+        spc1 = ARCSpecies(label='propanamide1', smiles='CCC(=O)N', xyz=xyz1)
+        spc1.final_xyz = spc1.conformers[0]
+        is_isomorphic1 = spc1.check_final_xyz_isomorphism()
+        self.assertTrue(is_isomorphic1)
+
+        xyz2 = """C   0.6937910  -0.8316510   0.0000000
+                  O   0.2043990  -1.9431180   0.0000000
+                  N   0.0000000   0.3473430   0.0000000
+                  C  -1.4529360   0.3420060   0.0000000
+                  C   0.6724520   1.6302410   0.0000000
+                  H   1.7967050  -0.6569720   0.0000000
+                  H  -1.7909050  -0.7040620   0.0000000
+                  H  -1.8465330   0.8552430   0.8979440
+                  H  -1.8465330   0.8552430  -0.8979440
+                  H   1.7641260   1.4761740   0.0000000
+                  H   0.4040540   2.2221690  -0.8962980
+                  H   0.4040540   2.2221690   0.8962980"""  # dimethylformamide, O=CN(C)C
+        spc2 = ARCSpecies(label='propanamide2', smiles='CCC(=O)N', xyz=xyz1)  # define w/ the correct xyz
+        spc2.final_xyz = xyz2  # set .final_xyz to the incorrect isomer
+
+        spc2.conf_is_isomorphic = True  # set to True so that isomorphism is strictly enforced
+        is_isomorphic2 = spc2.check_final_xyz_isomorphism()
+        self.assertFalse(is_isomorphic2)
+
+        is_isomorphic3 = spc2.check_final_xyz_isomorphism(allow_nonisomorphic_2d=True)
+        self.assertTrue(is_isomorphic3)
+
+        spc2.conf_is_isomorphic = False  # set to False so that isomorphism is not strictly enforced
+        is_isomorphic4 = spc2.check_final_xyz_isomorphism()
+        self.assertTrue(is_isomorphic4)
+
     @classmethod
     def tearDownClass(cls):
         """
