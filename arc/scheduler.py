@@ -1563,6 +1563,12 @@ class Scheduler(object):
                                     scan=self.species_dict[label].rotors_dict[i]['scan'],
                                     deg_increment=min_index*rotor_scan_resolution)
                                 self.delete_all_species_jobs(label)
+                                # Remove all completed rotor calculation information
+                                for rotor in self.species_dict[label].rotors_dict.values():
+                                    rotor["scan_path"] = ''
+                                    rotor["invalidation_reason"] = ''
+                                    rotor["success"] = None
+                                    rotor.pop('symmetry', None)
                                 self.run_opt_job(label)  # run opt on new initial_xyz with the desired dihedral
                             else:
                                 self.species_dict[label].rotors_dict[i]['success'] = True
