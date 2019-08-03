@@ -101,7 +101,7 @@ ARC 1.1.0
     - Improved error message if rxn energetics are problematic
     - Added min_list() to Scheduler
     - Improve converter xyz functions
-    - Improved xyz handeling in Species (`xyz` can now be a list)
+    - Improved xyz handling in Species (`xyz` can now be a list)
 
   - #133:
 

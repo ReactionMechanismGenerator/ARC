@@ -3,6 +3,8 @@
 Advanced Features
 =================
 
+.. _flexXYZ:
+
 Flexible coordinates (xyz) input
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -47,7 +49,7 @@ ARC will perform 1D rotor scans to all possible unique hindered rotors in the sp
 
 The rotor scan resolution is 8 degrees by default (scanning 360 degrees overall).
 Rotors are invalidated (not used for thermo / rate calculations) if at least one barrier
-is above a maximum threshold (40 kJ/mol by defaut), if the scan is inconsistent by more than 30%
+is above a maximum threshold (40 kJ/mol by default), if the scan is inconsistent by more than 30%
 between two consecutive points, or if the scan is inconsistent by more than 5 kJ/mol
 between the initial anf final points.
 All of the above settings can be modified in the settings.py file.
@@ -91,7 +93,7 @@ Troubleshooting
 
 ARC is has fairly good auto-troubleshooting methods.
 
-However, at times a user might know in advance that a particular additional keywork
+However, at times a user might know in advance that a particular additional keyword
 is required for the calculation. In such cases, simply pass the relevant keyword
 in the ``initial_trsh`` (`trsh` stands for `troubleshooting`) dictionary passed to ARC::
 
@@ -243,13 +245,157 @@ pass their labels to ARC in the ``dont_gen_confs`` list, e.g.::
         H   1.5267840  -2.0696580   0.0000000
 
 In the above example, ARC will only generate conformers for propane, but not for propanol.
-For propane, it will compare the selected conformers agains the user-given xyz guess using the
+For propane, it will compare the selected conformers against the user-given xyz guess using the
 conformer level DFT method, and will take the most stable structure for the rest of the calculations,
 regardless of its source (ARC's conformers or the user guess). For propanol, on the other hand,
 ARC will not attempt to generate conformers, and will simply use the user guess.
 
 Note: If a species label is added to the ``dont_gen_confs`` list, but the species has no 3D
 coordinates, ARC **will** generate conformers for it.
+
+
+Writing an ARC input file using the API
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Writing in YAML isn't very intuitive for many, especially without a good editor.
+You could use ARC's API to define your objects, and then dump it all in a YAML file
+which could be read as an input in ARC::
+
+    from arc.species.species import ARCSpecies
+    from arc.common import save_yaml_file
+
+    input_dict = dict()
+
+    input_dict['project'] = 'Demo_project_input_file_from_API'
+
+    input_dict['job_types'] = {'conformers': True,
+                               'opt': True,
+                               'fine_grid': True,
+                               'freq': True,
+                               'sp': True,
+                               '1d_rotors': True,
+                               'orbitals': False,
+                               'lennard_jones': False,
+                              }
+
+    spc1 = ARCSpecies(label='NO', smiles='[N]=O')
+
+    adj1 = """multiplicity 2
+    1 C u0 p0 c0 {2,D} {4,S} {5,S}
+    2 C u0 p0 c0 {1,D} {3,S} {6,S}
+    3 O u1 p2 c0 {2,S}
+    4 H u0 p0 c0 {1,S}
+    5 H u0 p0 c0 {1,S}
+    6 H u0 p0 c0 {2,S}"""
+
+    xyz2 = [
+        """O       1.35170118   -1.00275231   -0.48283333
+           C      -0.67437022    0.01989281    0.16029161
+           C       0.62797113   -0.03193934   -0.15151370
+           H      -1.14812497    0.95492850    0.42742905
+           H      -1.27300665   -0.88397696    0.14797321
+           H       1.11582953    0.94384729   -0.10134685""",
+        """O       1.49847909   -0.87864716    0.21971764
+           C      -0.69134542   -0.01812252    0.05076812
+           C       0.64534929    0.00412787   -0.04279617
+           H      -1.19713983   -0.90988817    0.40350584
+           H      -1.28488154    0.84437992   -0.22108130
+           H       1.02953840    0.95815005   -0.41011413"""]
+
+    spc2 = ARCSpecies(label='vinoxy', xyz=xyz2, adjlist=adj1)
+
+    spc_list = [spc1, spc2]
+
+    input_dict['species'] = [spc.as_dict() for spc in spc_list]
+
+    save_yaml_file(path='some/path/to/desired/folder/input.yml', content=input_dict)
+
+
+The above code generated the following input file::
+
+    project: Demo_project_input_file_from_API
+
+    job_types:
+      1d_rotors: true
+      conformers: true
+      fine_grid: true
+      freq: true
+      lennard_jones: false
+      opt: true
+      orbitals: false
+      sp: true
+
+    species:
+    - E0: null
+      arkane_file: null
+      bond_corrections:
+        N=O: 1
+      charge: 0
+      external_symmetry: null
+      force_field: MMFF94
+      generate_thermo: true
+      is_ts: false
+      label: 'NO'
+      long_thermo_description: 'Bond corrections: {''N=O'': 1}
+
+        '
+      mol: |
+        multiplicity 2
+        1 N u1 p1 c0 {2,D}
+        2 O u0 p2 c0 {1,D}
+      multiplicity: 2
+      neg_freqs_trshed: []
+      number_of_rotors: 0
+      optical_isomers: null
+      rotors_dict: {}
+      t1: null
+    - E0: null
+      arkane_file: null
+      bond_corrections:
+        C-H: 3
+        C-O: 1
+        C=C: 1
+      charge: 0
+      conformer_energies:
+      - null
+      - null
+      conformers:
+      - |-
+        O       1.35170118   -1.00275231   -0.48283333
+        C      -0.67437022    0.01989281    0.16029161
+        C       0.62797113   -0.03193934   -0.15151370
+        H      -1.14812497    0.95492850    0.42742905
+        H      -1.27300665   -0.88397696    0.14797321
+        H       1.11582953    0.94384729   -0.10134685
+      - |-
+        O       1.49847909   -0.87864716    0.21971764
+        C      -0.69134542   -0.01812252    0.05076812
+        C       0.64534929    0.00412787   -0.04279617
+        H      -1.19713983   -0.90988817    0.40350584
+        H      -1.28488154    0.84437992   -0.22108130
+        H       1.02953840    0.95815005   -0.41011413
+      external_symmetry: null
+      force_field: MMFF94
+      generate_thermo: true
+      is_ts: false
+      label: vinoxy
+      long_thermo_description: 'Bond corrections: {''C-O'': 1, ''C=C'': 1, ''C-H'': 3}
+
+        '
+      mol: |
+        multiplicity 2
+        1 O u1 p2 c0 {3,S}
+        2 C u0 p0 c0 {3,D} {4,S} {5,S}
+        3 C u0 p0 c0 {1,S} {2,D} {6,S}
+        4 H u0 p0 c0 {2,S}
+        5 H u0 p0 c0 {2,S}
+        6 H u0 p0 c0 {3,S}
+      multiplicity: 2
+      neg_freqs_trshed: []
+      number_of_rotors: 0
+      optical_isomers: null
+      rotors_dict: {}
+      t1: null
 
 
 .. include:: links.txt

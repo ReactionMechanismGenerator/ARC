@@ -83,7 +83,7 @@ To specify a composite method, simply define something like::
 
 Note that for composite methods the default ``freq_level`` and ``scan_level`` may have different
 default values than for non-composite methods (defined in settings.py). Yes, an independent
-frequencies calculation job is executed afte a composite job just so that the Hamiltonian will
+frequencies calculation job is executed after a composite job just so that the Hamiltonian will
 be outputted.
 
 The same example as above ran via the API (e.g., in `Jupyter notebooks`__) would look like the following::
@@ -160,6 +160,11 @@ Here's an example for optimizing a transition state (TS) after generating severa
           - TS3/2.gjf
           - TS3/3.gjf
           - TS3/4.gjf
+
+In the above example we're using `.gjf` files (Gaussian job files) that contain the coordinate guesses.
+You could define ``xyz`` using various forms, see `Flexible coordinates (xyz) input`__.
+
+__ flexXYZ_
 
 Note that the main difference is the ``is_ts`` flag which is set to `True` (it is `False` by default).
 

@@ -72,9 +72,9 @@ After running a Project, the local Project folder will contain the following dir
     - *species_dictionary.txt*: The adjacency list for the species.
     - **geometry**
 
-        - *<species_name>.gjf*: A Gaussian job file for visuallizing the species' coordinates in GaussView.
-        - *<species_name>.xyz*: An XYZ format file for visuallizing the species' coordinates, e.g., in Avogadro.
-        - *freq.out*: The frequency job output file for visuallizing vibrational modes.
+        - *<species_name>.gjf*: A Gaussian job file for visualizing the species' coordinates in GaussView.
+        - *<species_name>.xyz*: An XYZ format file for visualizing the species' coordinates, e.g., in Avogadro.
+        - *freq.out*: The frequency job output file for visualizing vibrational modes.
         - *geometry.png*: An image of the species in an arbitrary orientation for quick viewing.
         - **conformers**
 
