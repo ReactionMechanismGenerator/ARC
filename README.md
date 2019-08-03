@@ -20,3 +20,5 @@ and reactions.
 (Note that automating transition states is still in progress).
 
 Make sure to visit <a href="https://reactionmechanismgenerator.github.io/ARC/index.html">ARC's Documentation</a> page.
+
+Developers and contributors: Visit <a href="https://github.com/ReactionMechanismGenerator/ARC/wiki">ARC's Developer's Guide</a> on the wiki page
