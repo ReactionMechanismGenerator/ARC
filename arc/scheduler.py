@@ -1022,22 +1022,56 @@ class Scheduler(object):
                 logger.info('Only one conformer is available for species {0}, '
                             'using it as initial xyz'.format(label))
                 self.species_dict[label].initial_xyz = self.species_dict[label].conformers[0]
-                if not self.composite_method:
-                    if self.job_types['opt']:
-                        self.run_opt_job(label)
+                # check whether this conformer is isomorphic to the species 2D graph representation
+                # (since this won't be checked in determine_most_stable_conformer)
+                is_isomorphic, spawn_jobs = False, True
+                try:
+                    b_mol = molecules_from_xyz(self.species_dict[label].initial_xyz,
+                                               multiplicity=self.species_dict[label].multiplicity,
+                                               charge=self.species_dict[label].charge)[1]
+                except SanitizationError:
+                    b_mol = None
+                if b_mol is not None:
+                    try:
+                        is_isomorphic = check_isomorphism(self.species_dict[label].mol, b_mol)
+                    except ValueError as e:
+                        if self.species_dict[label].charge:
+                            logger.error('Could not determine isomorphism for charged species {0}. Got the '
+                                         'following error:\n{1}'.format(label, e))
+                        else:
+                            logger.error('Could not determine isomorphism for (non-charged) species {0}. Got the '
+                                         'following error:\n{1}'.format(label, e))
+                    if is_isomorphic:
+                        logger.info('The only conformer for species {0} was found to be isomorphic '
+                                    'with the 2D graph representation {1}\n'.format(label, b_mol.toSMILES()))
+                        self.output[label]['status'] += 'conformer passed isomorphism check; '
+                        self.species_dict[label].conf_is_isomorphic = True
                     else:
-                        if self.job_types['freq']:
-                            self.run_freq_job(label)
-                        if self.job_types['sp']:
-                            self.run_sp_job(label)
-                        if self.job_types['1d_rotors']:
-                            self.run_scan_jobs(label)
-                        if self.job_types['onedmin']:
-                            self.run_onedmin_job(label)
-                        if self.job_types['orbitals']:
-                            self.run_orbitals_job(label)
-                else:
-                    self.run_composite_job(label)
+                        logger.error('The only conformer for species {0} is not isomorphic '
+                                     'with the 2D graph representation {1}\n'.format(label, b_mol.toSMILES()))
+                        if self.allow_nonisomorphic_2d:
+                            logger.info('Using this conformer anyway (allow_nonisomorphic_2d was set to True)')
+                        else:
+                            logger.info('Not using this conformer (to change this behavior, set allow_nonisomorphic_2d '
+                                        'to True)')
+                        self.species_dict[label].conf_is_isomorphic, spawn_jobs = False, False
+                if spawn_jobs:
+                    if not self.composite_method:
+                        if self.job_types['opt']:
+                            self.run_opt_job(label)
+                        else:
+                            if self.job_types['freq']:
+                                self.run_freq_job(label)
+                            if self.job_types['sp']:
+                                self.run_sp_job(label)
+                            if self.job_types['1d_rotors']:
+                                self.run_scan_jobs(label)
+                            if self.job_types['onedmin']:
+                                self.run_onedmin_job(label)
+                            if self.job_types['orbitals']:
+                                self.run_orbitals_job(label)
+                    else:
+                        self.run_composite_job(label)
 
     def parse_conformer(self, job, label, i):
         """
@@ -1125,7 +1159,9 @@ class Scheduler(object):
                                 logger.info('Most stable conformer for species {0} was found to be isomorphic '
                                             'with the 2D graph representation {1}\n'.format(label, b_mol.toSMILES()))
                                 conformer_xyz = xyz
-                                self.output[label]['status'] += 'passed isomorphism check; '
+                                self.output[label]['status'] += 'most stable conformer ({0}) passed isomorphism ' \
+                                                                'check; '.format(i)
+                                self.species_dict[label].conf_is_isomorphic = True
                             else:
                                 if energies[i] is not None:
                                     logger.info('A conformer for species {0} was found to be isomorphic '
@@ -1139,11 +1175,12 @@ class Scheduler(object):
                                                                     multiplicity=self.species_dict[label].multiplicity,
                                                                     charge=self.species_dict[label].charge)[1]))
                                 conformer_xyz = xyz
-                                self.output[label]['status'] += 'passed isomorphism check but not for the most stable' \
-                                                                ' conformer; '
                             break
                         else:
                             if i == 0:
+                                self.output[label]['status'] += 'most stable conformer ({0}) did not pass isomorphism ' \
+                                                                'check; '.format(i)
+                                self.species_dict[label].conf_is_isomorphic = False
                                 logger.warning('Most stable conformer for species {0} with structure {1} was found to '
                                                'be NON-isomorphic with the 2D graph representation {2}. Searching for '
                                                'a different conformer that is isomorphic...'.format(
@@ -1281,7 +1318,16 @@ class Scheduler(object):
             if freq_ok:
                 # Update restart dictionary and save the yaml restart file:
                 self.save_restart_dict()
-                return True  # run freq / scan jobs on this optimized geometry
+                success = True  # run freq / scan jobs on this optimized geometry
+                if not self.species_dict[label].is_ts:
+                    is_isomorphic = self.species_dict[label].check_final_xyz_isomorphism(
+                        allow_nonisomorphic_2d=self.allow_nonisomorphic_2d)
+                    if is_isomorphic:
+                        self.output[label]['status'] += 'composite passed isomorphism check; '
+                    else:
+                        self.output[label]['status'] += 'composite did not pass isomorphism check; '
+                    success &= is_isomorphic
+                return success
             elif not self.species_dict[label].is_ts:
                 self.troubleshoot_negative_freq(label=label, job=job)
         if job.job_status[1] != 'done' or not freq_ok:
@@ -1347,6 +1393,14 @@ class Scheduler(object):
                 # for TSs, only use `draw_3d()`, not `show_sticks()` which gets connectivity wrong:
                 plotter.draw_structure(species=self.species_dict[label], project_directory=self.project_directory,
                                        method='draw_3d')
+            if not self.species_dict[label].is_ts:
+                is_isomorphic = self.species_dict[label].check_final_xyz_isomorphism(
+                    allow_nonisomorphic_2d=self.allow_nonisomorphic_2d)
+                if is_isomorphic:
+                    self.output[label]['status'] += 'opt passed isomorphism check; '
+                else:
+                    self.output[label]['status'] += 'opt did not pass isomorphism check; '
+                success &= is_isomorphic
         else:
             self.troubleshoot_opt_jobs(label=label)
         if success:
