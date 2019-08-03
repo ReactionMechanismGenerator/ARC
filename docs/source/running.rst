@@ -107,7 +107,7 @@ __ jupyter_
 
 Example iPython notebooks are available in the ``ipython/Demo`` folder.
 Various :ref:`standalone tools <tools>` in an iPython format are also available,
-demonstraiting different utilizations of the API.
+demonstrating different utilizations of the API.
 Users are of course directed to read :ref:`ARC's API <api>`.
 
 .. include:: links.txt

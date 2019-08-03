@@ -49,7 +49,7 @@ ARC will perform 1D rotor scans to all possible unique hindered rotors in the sp
 
 The rotor scan resolution is 8 degrees by default (scanning 360 degrees overall).
 Rotors are invalidated (not used for thermo / rate calculations) if at least one barrier
-is above a maximum threshold (40 kJ/mol by defaut), if the scan is inconsistent by more than 30%
+is above a maximum threshold (40 kJ/mol by default), if the scan is inconsistent by more than 30%
 between two consecutive points, or if the scan is inconsistent by more than 5 kJ/mol
 between the initial anf final points.
 All of the above settings can be modified in the settings.py file.
@@ -93,7 +93,7 @@ Troubleshooting
 
 ARC is has fairly good auto-troubleshooting methods.
 
-However, at times a user might know in advance that a particular additional keywork
+However, at times a user might know in advance that a particular additional keyword
 is required for the calculation. In such cases, simply pass the relevant keyword
 in the ``initial_trsh`` (`trsh` stands for `troubleshooting`) dictionary passed to ARC::
 
@@ -245,7 +245,7 @@ pass their labels to ARC in the ``dont_gen_confs`` list, e.g.::
         H   1.5267840  -2.0696580   0.0000000
 
 In the above example, ARC will only generate conformers for propane, but not for propanol.
-For propane, it will compare the selected conformers agains the user-given xyz guess using the
+For propane, it will compare the selected conformers against the user-given xyz guess using the
 conformer level DFT method, and will take the most stable structure for the rest of the calculations,
 regardless of its source (ARC's conformers or the user guess). For propanol, on the other hand,
 ARC will not attempt to generate conformers, and will simply use the user guess.
@@ -308,7 +308,7 @@ which could be read as an input in ARC::
 
     input_dict['species'] = [spc.as_dict() for spc in spc_list]
 
-    save_yaml_file(path='/home/alongd/Code/Scripts/ARC/input.yml', content=input_dict)
+    save_yaml_file(path='some/path/to/desired/folder/input.yml', content=input_dict)
 
 
 The above code generated the following input file::

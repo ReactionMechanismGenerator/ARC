@@ -12,6 +12,6 @@
 .. _semantic: https://semver.org/
 .. _autotst: https://github.com/ReactionMechanismGenerator/AutoTST
 .. _greengp: http://greengroup.mit.edu/
-.. _contributorGuidlines: https://github.com/ReactionMechanismGenerator/ARC/wiki/ARC-Contributor-Guidelines
+.. _contributorGuidelines: https://github.com/ReactionMechanismGenerator/ARC/wiki/ARC-Contributor-Guidelines
 .. _roadmap: https://github.com/ReactionMechanismGenerator/ARC/wiki/Roadmap
 .. _gaussian: http://gaussian.com/
