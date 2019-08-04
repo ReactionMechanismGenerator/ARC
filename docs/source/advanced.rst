@@ -17,26 +17,31 @@ See :ref:`the examples <examples>`.
 __ xyz_format_
 
 
-Using a fine grid for optimization
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Using a fine DFT grid for optimization
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 This option is turned on by default. If you'd like to turn it off,
 set ``fine`` in the ``job_types`` dictionary to `False`.
 
-If turned on, ARC will spawn another optimization job with a fine grid
-using the already optimized geometry.
+If turned on, ARC will spawn another optimization job after the first one converges
+with a fine grid settings, using the already optimized geometry.
 
-In Gaussian, this will add the keywords::
+Note that this argument is called ``fine`` in ARC, although in practice
+it directs the ESS to use an **ultrafine** grid. See, for example, `this study`__
+describing the importance of a DFT grid.
+
+__ DFTGridStudy_
+
+In Gaussian, this will add the following keywords::
 
     scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)
 
 In QChem, this will add the following directives::
 
-   GEOM_OPT_TOL_GRADIENT 15
+   GEOM_OPT_TOL_GRADIENT     15
    GEOM_OPT_TOL_DISPLACEMENT 60
-   GEOM_OPT_TOL_ENERGY 5
-
-It has no effect for Molpro optimization jobs.
+   GEOM_OPT_TOL_ENERGY       5
+   XC_GRID                   3
 
 
 Rotor scans

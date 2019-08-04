@@ -15,3 +15,4 @@
 .. _contributorGuidelines: https://github.com/ReactionMechanismGenerator/ARC/wiki/ARC-Contributor-Guidelines
 .. _roadmap: https://github.com/ReactionMechanismGenerator/ARC/wiki/Roadmap
 .. _gaussian: http://gaussian.com/
+.. _DFTGridStudy: https://doi.org/10.26434/chemrxiv.8864204.v5
