@@ -24,8 +24,8 @@ as a benefit to the community in the hopes that others may find it useful as wel
 Its code is hosted on GitHub_, which is where comments, issues, and community
 contributions are welcomed.
 
-The following pages describe how to install ARC, how to execute calculations via ARC,
-how ARC works, and some advanced features.
+The following pages describe how to install and execute ARC,
+show some advanced features and what to expect from its output.
 
 
 Documentation Contents
