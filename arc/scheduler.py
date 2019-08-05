@@ -739,12 +739,13 @@ class Scheduler(object):
                                      multiplicity=self.species_dict[label].multiplicity,
                                      charge=self.species_dict[label].charge, is_ts=True,
                                      ts_methods=[tsg.method for tsg in self.species_dict[label].ts_guesses])
-        if len(self.species_dict[label].conformers) > 1:
+        successful_tsgs = [tsg for tsg in self.species_dict[label].ts_guesses if tsg.success]
+        if len(successful_tsgs) > 1:
             self.job_dict[label]['conformers'] = dict()
-            for i, xyz in enumerate(self.species_dict[label].conformers):
-                self.run_job(label=label, xyz=xyz, level_of_theory=self.ts_guess_level, job_type='conformer',
+            for i, tsg in enumerate(successful_tsgs):
+                self.run_job(label=label, xyz=tsg.xyz, level_of_theory=self.ts_guess_level, job_type='conformer',
                              conformer=i)
-        elif len(self.species_dict[label].conformers) == 1:
+        elif len(successful_tsgs) == 1:
             if 'opt' not in self.job_dict[label] and 'composite' not in self.job_dict[label]:
                 # proceed only if opt (/composite) not already spawned
                 rxn = ''
@@ -752,7 +753,7 @@ class Scheduler(object):
                     rxn = ' of reaction ' + self.species_dict[label].rxn_label
                 logger.info('Only one TS guess is available for species {0}{1},'
                             ' using it for geometry optimization'.format(label, rxn))
-                self.species_dict[label].initial_xyz = self.species_dict[label].conformers[0]
+                self.species_dict[label].initial_xyz = successful_tsgs[0].xyz
                 if not self.composite_method:
                     self.run_opt_job(label)
                 else:
