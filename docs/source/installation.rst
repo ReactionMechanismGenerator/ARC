@@ -126,6 +126,8 @@ server's definitions are different that ARC's, you should also modify the follow
 - ``submit_filename``
 - ``t_max_format``
 
+__ cluster_
+
 You will find the values for ``check_status_command``, ``submit_command``, ``delete_command``, and
 ``list_available_nodes_command`` by typing on the respective server the `which` command, e.g.::
 
@@ -133,8 +135,6 @@ You will find the values for ``check_status_command``, ``submit_command``, ``del
 
 If you have different servers with the same cluster software that have different cluster software definitions, just name
 them differently, e.g., `Slurm1` and `Slurm2`, and make sure to pair them accordingly under the ``servers`` dictionary.
-
-__ cluster_
 
 
 .. _Tests:
@@ -157,6 +157,7 @@ Tests
 
     git stash pop
 
+
 .. _aliases:
 
 Add ARC aliases to your .bashrc (for convenience)
@@ -170,6 +171,71 @@ Below are optional aliases to make ARC (even) more convenient (make sure to chan
   alias arcrestart='source activate arc_env && python $arc_path/ARC.py restart.yml'
   alias arcode='cd $arc_path'
   alias j='cd $arc_path/ipython/ && arce && jupyter notebook'
+
+
+
+Updating ARC
+^^^^^^^^^^^^
+
+ARC is being updated frequently. Make sure to update ARC and enjoy new features and bug fixes.
+
+**Note:** It is highly recommended to backup files you manually changed in ARC before updating the version,
+these are usually `ARC/arc/settings.py` and `ARC/arc/job/submit.py`.
+
+You can update ARC to a specific version, or to the most recent developer version.
+To get the most recent developer version, do the following
+(and make sure to change `~/Path/to/ARC/` accordingly)::
+
+    cd ~/Path/to/ARC/
+    git stash
+    git fetch origin
+    git pull origin master
+    git stash pop
+
+The above will update your `master` branch of ARC.
+
+To update to a specific version (e.g., version 1.1.0), do the following
+(and make sure to change `~/Path/to/ARC/` accordingly)::
+
+    cd ~/Path/to/ARC/
+    git stash
+    git fetch origin
+    git checkout tags/1.1.0 -b v1.1.0
+    git stash pop
+
+The above will create a `v1.1.0` branch which replicates the stable 1.1.0 version.
+
+**Note:** This process might cause merge conflicts if the updated version (either the developer version
+or a stable version) changes a file you changed locally. Although we try to avoid causing merge conflicts
+for ARC's users as much as we can, it could still sometimes happen.
+You'll identify a merge conflict if git prints a message similar to this::
+
+    $ git merge BRANCH-NAME
+    > Auto-merging settings.py
+    > CONFLICT (content): Merge conflict in styleguide.md
+    > Automatic merge failed; fix conflicts and then commit the result
+
+Detailed steps to resolve a git merge conflict can be found `online`__.
+
+__ mergeConflict_
+
+Principally, you should open the files that have merge conflicts, and look for the following markings::
+
+    <<<<<<< HEAD
+    this is some content introduced by updating ARC
+    =======
+    totally different content the user added, adding different changes
+    to the same lines that were also updated remotely
+    >>>>>>> new_branch_to_merge_later
+
+Resolving a merge conflict consists of three stages:
+
+- determine which version of the code you'd like to keep
+  (usually you should manually append your oun changes to the more
+  updated ARC code). Make the changes and get rid of the unneeded ``<<<<<<< HEAD``,
+  ``=======``, and ``>>>>>>> new_branch_to_merge_later`` markings. Repeat for all conflicts.
+- Stage the changed by typing: ``git add .``
+- If you don't plan to commit your changes, unstage them by typing: ``git reset --soft origin/master``
 
 
 .. include:: links.txt

@@ -16,3 +16,4 @@
 .. _roadmap: https://github.com/ReactionMechanismGenerator/ARC/wiki/Roadmap
 .. _gaussian: http://gaussian.com/
 .. _DFTGridStudy: https://doi.org/10.26434/chemrxiv.8864204.v5
+.. _mergeConflict: https://www.atlassian.com/git/tutorials/using-branches/merge-conflicts
