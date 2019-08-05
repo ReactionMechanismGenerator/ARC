@@ -162,9 +162,7 @@ Here's an example for optimizing a transition state (TS) after generating severa
           - TS3/4.gjf
 
 In the above example we're using `.gjf` files (Gaussian job files) that contain the coordinate guesses.
-You could define ``xyz`` using various forms, see `Flexible coordinates (xyz) input`__.
-
-__ flexXYZ_
+You could define ``xyz`` using various forms, see :ref:`Flexible coordinates (xyz) input <flexXYZ>`.
 
 Note that the main difference is the ``is_ts`` flag which is set to `True` (it is `False` by default).
 
