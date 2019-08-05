@@ -17,33 +17,38 @@ See :ref:`the examples <examples>`.
 __ xyz_format_
 
 
-Using a fine grid for optimization
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Using a fine DFT grid for optimization
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 This option is turned on by default. If you'd like to turn it off,
 set ``fine`` in the ``job_types`` dictionary to `False`.
 
-If turned on, ARC will spawn another optimization job with a fine grid
-using the already optimized geometry.
+If turned on, ARC will spawn another optimization job after the first one converges
+with a fine grid settings, using the already optimized geometry.
 
-In Gaussian, this will add the keywords::
+Note that this argument is called ``fine`` in ARC, although in practice
+it directs the ESS to use an **ultrafine** grid. See, for example, `this study`__
+describing the importance of a DFT grid.
+
+__ DFTGridStudy_
+
+In Gaussian, this will add the following keywords::
 
     scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)
 
 In QChem, this will add the following directives::
 
-   GEOM_OPT_TOL_GRADIENT 15
+   GEOM_OPT_TOL_GRADIENT     15
    GEOM_OPT_TOL_DISPLACEMENT 60
-   GEOM_OPT_TOL_ENERGY 5
-
-It has no effect for Molpro optimization jobs.
+   GEOM_OPT_TOL_ENERGY       5
+   XC_GRID                   3
 
 
 Rotor scans
 ^^^^^^^^^^^
 
 This option is turned on by default. If you'd like to turn it off,
-set ``scan_rotors`` in the ``job_types`` dictionary to ``False``.
+set ``scan_rotors`` in the ``job_types`` dictionary to `False`.
 
 ARC will perform 1D rotor scans to all possible unique hindered rotors in the species,
 
@@ -157,9 +162,10 @@ Isomorphism checks
 ^^^^^^^^^^^^^^^^^^
 
 When a species is defined using a 2D graph (i.e., SMILES, AdjList, or InChI), an isomorphism check
-is performed on the optimized geometry. If the molecule perceived from the 3D coordinate is not isomorphic
+is performed on the optimized geometry (all conformers and final optimization).
+If the molecule perceived from the 3D coordinate is not isomorphic
 with the input 2D graph, ARC will not spawn any additional jobs for the species, and will not use it further
-(for thermo and/or rates). However, sometimes the perception algorithm doesn't work as expected (e.g.,
+(for thermo and/or rates calculations). However, sometimes the perception algorithm doesn't work as expected (e.g.,
 issues with charged species and triplets are known). To continue spawning jobs for all species in an ARC
 project, pass `True` to the ``allow_nonisomorphic_2d`` argument (it is `False` by default).
 
@@ -244,7 +250,7 @@ pass their labels to ARC in the ``dont_gen_confs`` list, e.g.::
         H  -0.4095940  -1.1667640  -0.8815110
         H   1.5267840  -2.0696580   0.0000000
 
-In the above example, ARC will only generate conformers for propane, but not for propanol.
+In the above example, ARC will only generate conformers for propane (not for propanol).
 For propane, it will compare the selected conformers against the user-given xyz guess using the
 conformer level DFT method, and will take the most stable structure for the rest of the calculations,
 regardless of its source (ARC's conformers or the user guess). For propanol, on the other hand,

@@ -5,7 +5,7 @@ How to cite ARC
 
 Text form::
 
-    A. Grinberg Dana, D., H. Wu, C. Grambow, X. Dong, M. Johnson, M. Goldman, M. Liu, W.H. Green,
+    A. Grinberg Dana, D. Ranasinghe, H. Wu, C. Grambow, X. Dong, M. Johnson, M. Goldman, M. Liu, W.H. Green,
     "ARC - Automated Rate Calculator", version 1.1.0, https://github.com/ReactionMechanismGenerator/ARC,
     DOI: 10.5281/zenodo.3356849
 
