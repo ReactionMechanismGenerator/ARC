@@ -46,18 +46,18 @@ class Job(object):
         software (str, optional): The electronic structure software to be used.
         is_ts (bool, optional): Whether this species represents a transition structure.
         scan (list, optional): A list representing atom labels for the dihedral scan
-                                (e.g., "2 1 3 5" as a string or [2, 1, 3, 5] as a list of integers).
+                              (e.g., "2 1 3 5" as a string or [2, 1, 3, 5] as a list of integers).
         pivots (list, optional): The rotor scan pivots, if the job type is scan. Not used directly in these methods,
-                                   but used to identify the rotor.
+                                 but used to identify the rotor.
         memory (int, optional): The total job allocated memory in GB.
         comments (str, optional): Job comments (archived, not used).
         trsh (str, optional): A troubleshooting keyword to be used in input files.
         scan_trsh (str, optional): A troubleshooting method for rotor scans.
         ess_trsh_methods (list, optional): A list of troubleshooting methods already tried out for ESS convergence.
         bath_gas (str, optional): A bath gas. Currently used in OneDMin to calc L-J parameters.
-                                    Allowed values are He, Ne, Ar, Kr, H2, N2, O2
+                                  Allowed values are He, Ne, Ar, Kr, H2, N2, O2
         initial_trsh (dict, optional): Troubleshooting methods to try by default. Keys are ESS software,
-                                         values are trshs.
+                                       values are trshs.
         job_num (int, optional): Used as the entry number in the database, as well as the job name on the server.
         job_server_name (str, optional): Job's name on the server (e.g., 'a103').
         job_name (str, optional): Job's name for internal usage (e.g., 'opt_a103').
@@ -69,9 +69,9 @@ class Job(object):
         scan_res (int, optional): The rotor scan resolution in degrees.
         checkfile (str, optional): The path to a previous Gaussian checkfile to be used in the current job.
         number_of_radicals (int, optional): The number of radicals (inputted by the user, ARC won't attempt to
-                                              determine it). Defaults to None. Important, e.g., if a Species is a bi-rad
-                                              singlet, in which case the job should be unrestricted with
-                                              multiplicity = 1.
+                                            determine it). Defaults to None. Important, e.g., if a Species is a bi-rad
+                                            singlet, in which case the job should be unrestricted with
+                                            multiplicity = 1.
         conformers (str, optional): A path to the YAML file conformer coordinates for a Gromacs MD job.
         radius (float, optional): The species radius in Angstrom.
         testing (bool, optional): Whether the object is generated for testing purposes, True if it is.
@@ -83,8 +83,8 @@ class Job(object):
         charge (int): The species net charge. Default is 0.
         multiplicity (int): The species multiplicity.
         number_of_radicals (int): The number of radicals (inputted by the user, ARC won't attempt to determine it).
-                                    Defaults to None. Important, e.g., if a Species is a bi-rad singlet, in which case
-                                    the job should be unrestricted with multiplicity = 1.
+                                  Defaults to None. Important, e.g., if a Species is a bi-rad singlet, in which case
+                                  the job should be unrestricted with multiplicity = 1.
         spin (int): The spin. automatically derived from the multiplicity.
         xyz (str): The xyz geometry. Used for the calculation.
         radius (float): The species radius in Angstrom.
@@ -95,9 +95,9 @@ class Job(object):
         level_of_theory (str): Level of theory, e.g. 'CBS-QB3', 'CCSD(T)-F12a/aug-cc-pVTZ', 'B3LYP/6-311++G(3df,3pd)'...
         job_type (str): The job's type.
         scan (list): A list representing atom labels for the dihedral scan
-                      (e.g., "2 1 3 5" as a string or [2, 1, 3, 5] as a list of integers).
+                    (e.g., "2 1 3 5" as a string or [2, 1, 3, 5] as a list of integers).
         pivots (list): The rotor scan pivots, if the job type is scan. Not used directly in these methods,
-                         but used to identify the rotor.
+                       but used to identify the rotor.
         scan_res (int): The rotor scan resolution in degrees.
         software (str): The electronic structure software to be used.
         server_nodes (list): A list of nodes this job was submitted to (for troubleshooting).
@@ -112,10 +112,10 @@ class Job(object):
         final_time (datetime): The date-time this job was initiated.
         run_time (timedelta): Job execution time.
         job_status (list): The job's server and ESS statuses.
-                             The job server status is in job.job_status[0] and can be either 'initializing' / 'running'
-                             / 'errored' / 'done'. The job ess (electronic structure software calculation) status is in
-                             job.job_status[1] and can be either `initializing` / `running` / `errored:
-                             {error type / message}` / `unconverged` / `done`.
+                           The job server status is in job.job_status[0] and can be either 'initializing' / 'running'
+                           / 'errored' / 'done'. The job ess (electronic structure software calculation) status is in
+                           job.job_status[1] and can be either `initializing` / `running` / `errored:
+                           {error type / message}` / `unconverged` / `done`.
         job_server_name (str): Job's name on the server (e.g., 'a103').
         job_name (str): Job's name for internal usage (e.g., 'opt_a103').
         job_id (int): The job's ID determined by the server.
@@ -138,7 +138,7 @@ class Job(object):
         project_directory (str): The path to the project directory.
         max_job_time (int): The maximal allowed job time on the server in hours.
         bath_gas (str): A bath gas. Currently used in OneDMin to calc L-J parameters.
-                                      Allowed values are He, Ne, Ar, Kr, H2, N2, O2
+                        Allowed values are He, Ne, Ar, Kr, H2, N2, O2
 
     """
     def __init__(self, project, ess_settings, species_name, xyz, job_type, level_of_theory, multiplicity,

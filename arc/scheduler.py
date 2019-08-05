@@ -606,7 +606,30 @@ class Scheduler(object):
                 conformer=-1, ess_trsh_methods=None, scan='', pivots=None, occ=None, scan_trsh='', scan_res=None,
                 max_job_time=None, confs=None, radius=None):
         """
-        A helper function for running (all) jobs
+        A helper function for running (all) jobs.
+
+        Args:
+            label (str): The species label.
+            xyz (str): A string-formated 3D coordinates for the species.
+            level_of_theory (str): The level of theory to use.
+            job_type (dtr): The type of job to run.
+            fine (bool, optional): Whether to run an optimization job with a fine grid. `True` to use fine.
+            software (str, optional): An ESS software to use.
+            shift (str, optional): A string representation alpha- and beta-spin orbitals shifts (molpro only).
+            trsh (str, optional): A troubleshooting keyword to be used in input files.
+            memory (int, optional): The total job allocated memory in GB.
+            conformer (int, optional): Conformer number if optimizing conformers.
+            ess_trsh_methods (list, optional): A list of troubleshooting methods already tried out for ESS convergence.
+            scan (list, optional): A list representing atom labels for the dihedral scan
+                                  (e.g., "2 1 3 5" as a string or [2, 1, 3, 5] as a list of integers).
+            pivots (list, optional): The rotor scan pivots, if the job type is scan. Not used directly in these methods,
+                                     but used to identify the rotor.
+            occ (int, optional): The number of occupied orbitals (core + val) from a molpro CCSD sp calc.
+            scan_trsh (str, optional): A troubleshooting method for rotor scans.
+            scan_res (int, optional): The rotor scan resolution in degrees.
+            max_job_time (int, optional): The maximal allowed job time on the server in hours.
+            confs (str, optional): A path to the YAML file conformer coordinates for a Gromacs MD job.
+            radius (float, optional): The species radius in Angstrom.
         """
         max_job_time = max_job_time or self.max_job_time  # if it's None, set to default
         ess_trsh_methods = ess_trsh_methods if ess_trsh_methods is not None else list()
@@ -648,7 +671,14 @@ class Scheduler(object):
     def end_job(self, job, label, job_name):
         """
         A helper function for checking job status, saving in csv file, and downloading output files.
-        Returns ``True`` if job terminated successfully on the server, ``False`` otherwise
+
+        Args:
+            job (Job): The job object.
+            label (str): The species label.
+            job_name (str): The job name from the running_jobs dict.
+
+        Returns:
+             bool: `True` if job terminated successfully on the server, `False` otherwise.
         """
         try:
             job.determine_job_status()  # also downloads output file
@@ -731,7 +761,10 @@ class Scheduler(object):
 
     def run_ts_conformer_jobs(self, label):
         """
-        Spawn opt jobs at the ts_guesses level of theory for the TS guesses
+        Spawn opt jobs at the ts_guesses level of theory for the TS guesses.
+
+        Args:
+            label (str): The TS species label.
         """
         plotter.save_conformers_file(project_directory=self.project_directory, label=label,
                                      xyzs=[tsg.xyz for tsg in self.species_dict[label].ts_guesses],
@@ -763,6 +796,9 @@ class Scheduler(object):
     def run_opt_job(self, label):
         """
         Spawn a geometry optimization job. The initial guess is taken from the `initial_xyz` attribute.
+
+        Args:
+            label (str): The species label.
         """
         if 'opt' not in self.job_dict[label]:  # Check whether or not opt jobs have been spawned yet
             # we're spawning the first opt job for this species
@@ -776,6 +812,9 @@ class Scheduler(object):
     def run_composite_job(self, label):
         """
         Spawn a composite job (e.g., CBS-QB3) using 'final_xyz' for species ot TS 'label'.
+
+        Args:
+            label (str): The species label.
         """
         if not self.composite_method:
             raise SchedulerError('Cannot run {0} as a composite method, without specifying a method.'.format(label))
@@ -793,6 +832,9 @@ class Scheduler(object):
         """
         Spawn a freq job using 'final_xyz' for species ot TS 'label'.
         If this was originally a composite job, run an appropriate separate freq job outputting the Hessian.
+
+        Args:
+            label (str): The species label.
         """
         if 'freq' not in self.job_dict[label]:  # Check whether or not freq jobs have been spawned yet
             # we're spawning the first freq job for this species
@@ -804,7 +846,10 @@ class Scheduler(object):
     def run_sp_job(self, label):
         """
         Spawn a single point job using 'final_xyz' for species ot TS 'label'.
-        If the method is MRCI, first spawn a simple CCSD job, and use orbital determination to run the MRCI job
+        If the method is MRCI, first spawn a simple CCSD job, and use orbital determination to run the MRCI job.
+
+        Args:
+            label (str): The species label.
         """
         # determine_occ(label=self.label, xyz=self.xyz, charge=self.charge)
         if 'sp' not in self.job_dict[label]:  # Check whether or not single point jobs have been spawned yet
@@ -852,6 +897,9 @@ class Scheduler(object):
     def run_scan_jobs(self, label):
         """
         Spawn rotor scan jobs using 'final_xyz' for species or TS 'label'.
+
+        Args:
+            label (str): The species label.
         """
         if self.job_types['1d_rotors']:
             if 'scan' not in self.job_dict[label]:  # Check whether or not rotor scan jobs have been spawned yet
@@ -872,8 +920,11 @@ class Scheduler(object):
 
     def run_orbitals_job(self, label):
         """
-        Spawn orbitals job used for molecular orbital visualization
-        Currently supporting QChem for printing the orbitals, the output could be visualized using IQMol
+        Spawn orbitals job used for molecular orbital visualization.
+        Currently supporting QChem for printing the orbitals, the output could be visualized using IQMol.
+
+        Args:
+            label (str): The species label.
         """
         if self.job_types['orbitals'] and 'orbitals' not in self.job_dict[label]:
             self.run_job(label=label, xyz=self.species_dict[label].final_xyz, level_of_theory=self.orbitals_level,
@@ -881,7 +932,10 @@ class Scheduler(object):
 
     def run_onedmin_job(self, label):
         """
-        Spawn a lennard-jones calculation using OneDMin
+        Spawn a lennard-jones calculation using OneDMin.
+
+        Args:
+            label (str): The species label.
         """
         if 'onedmin' not in self.ess_settings:
             logger.error('Cannot execute a Lennard Jones job without the OneDMin software')
@@ -892,6 +946,9 @@ class Scheduler(object):
     def run_force_field_fit_job(self, label):
         """
         Spawn a force field parameter fitting job (currently only Gaussian is supported for this task).
+
+        Args:
+            label (str): The species label.
         """
         if self.species_dict[label].svpfit_output_file is not None\
                 and os.path.isfile(self.species_dict[label].svpfit_output_file):
@@ -1007,6 +1064,9 @@ class Scheduler(object):
         """
         Process the generated conformers and spawn DFT jobs at the conformer_level.
         If more than one conformer is available, they will be optimized at the DFT conformer_level.
+
+        Args:
+            label (str): The species label.
         """
         plotter.save_conformers_file(project_directory=self.project_directory, label=label,
                                      xyzs=self.species_dict[label].conformers, level_of_theory=self.conformer_level,
@@ -1079,6 +1139,11 @@ class Scheduler(object):
         Parse E0 (kJ/mol) from the conformer opt output file.
         For species, save it in the Species.conformer_energies attribute.
         Fot TSs, save it in the TSGuess.energy attribute, and also parse the geometry.
+
+        Args:
+            job (Job): The conformer job object.
+            label (str): The TS species label.
+            i (int): The conformer index.
         """
         if job.job_status[1] == 'done':
             log = determine_qm_software(fullpath=job.local_path_to_output_file)
@@ -1101,7 +1166,10 @@ class Scheduler(object):
         """
         Determine the most stable conformer for a species (which is not a TS).
         Also run an isomorphism check.
-        Save the resulting xyz as `initial_xyz`
+        Save the resulting xyz as `initial_xyz`.
+
+        Args:
+            label (str): The species label.
         """
         if self.species_dict[label].is_ts:
             raise SchedulerError('The determine_most_stable_conformer() method does not deal with transition'
@@ -1223,7 +1291,10 @@ class Scheduler(object):
     def determine_most_likely_ts_conformer(self, label):
         """
         Determine the most likely TS conformer.
-        Save the resulting xyz as `initial_xyz`
+        Save the resulting xyz as `initial_xyz`.
+
+        Args:
+            label (str): The TS species label.
         """
         if not self.species_dict[label].is_ts:
             raise SchedulerError('determine_most_likely_ts_conformer() method only processes transition state guesses.')
@@ -1292,6 +1363,10 @@ class Scheduler(object):
         Also checks (QA) that no imaginary frequencies were assigned for stable species,
         and that exactly one imaginary frequency was assigned for a TS.
         Returns ``True`` if the job converged successfully, ``False`` otherwise and troubleshoots.
+
+        Args:
+            label (str): The species label.
+            job (Job): The composite job object.
         """
         logger.debug('parsing composite geo for {0}'.format(job.job_name))
         freq_ok = False
@@ -1341,6 +1416,10 @@ class Scheduler(object):
         If the job is 'optfreq', also checks (QA) that no imaginary frequencies were assigned for stable species,
         and that exactly one imaginary frequency was assigned for a TS.
         Returns ``True`` if the job (or both jobs) converged successfully, ``False`` otherwise and troubleshoots opt.
+
+        Args:
+            label (str): The species label.
+            job (Job): The optimization job object.
         """
         success = False
         logger.debug('parsing opt geo for {0}'.format(job.job_name))
@@ -1413,6 +1492,10 @@ class Scheduler(object):
         """
         Check that a freq job converged successfully. Also checks (QA) that no imaginary frequencies were assigned for
         stable species, and that exactly one imaginary frequency was assigned for a TS.
+
+        Args:
+            label (str): The species label.
+            job (Job): The frequency job object.
         """
         if job.job_status[1] == 'done':
             if not os.path.isfile(job.local_path_to_output_file):
@@ -1443,6 +1526,11 @@ class Scheduler(object):
         """
         A helper function for determining the number of negative frequencies. Also logs appropriate errors.
         Returns ``True`` if the number of negative frequencies is as excepted, ``False`` otherwise.
+
+        Args:
+            label (str): The species label.
+            job (Job): The optimization job object.
+            vibfreqs (list): The vibrational frequencies.
         """
         neg_freq_counter = 0
         neg_fre = None
@@ -1475,6 +1563,10 @@ class Scheduler(object):
     def check_sp_job(self, label, job):
         """
         Check that a single point job converged successfully.
+
+        Args:
+            label (str): The species label.
+            job (Job): The single point job object.
         """
         if 'mrci' in self.sp_level and 'mrci' not in job.level_of_theory:
             # This is a CCSD job ran before MRCI. Spawn MRCI
@@ -1524,6 +1616,9 @@ class Scheduler(object):
                           2: {}, ...
                          }
 
+        Args:
+            label (str): The species label.
+            job (Job): The rotor scan job object.
         """
         for i in range(self.species_dict[label].number_of_rotors):
             message = ''
@@ -1722,7 +1817,10 @@ class Scheduler(object):
 
     def check_all_done(self, label):
         """
-        Check that we have all required data for the species/TS in ``label``
+        Check that we have all required data for the species/TS.
+
+        Args:
+            label (str): The species label.
         """
         status = self.output[label]['status']
         if 'error' not in status and ('composite converged' in status or ('sp converged' in status and
@@ -1770,7 +1868,11 @@ class Scheduler(object):
     def troubleshoot_negative_freq(self, label, job):
         """
         Troubleshooting cases where stable species (not TS's) have negative frequencies.
-        We take  +/-1.1 displacements, generating several initial geometries, and running them as conformers
+        We take  +/-1.1 displacements, generating several initial geometries, and running them as conformers.
+
+        Args:
+            label (str): The species label.
+            job (Job): The frequency job object.
 
         Todo:
             * get all torsions of the molecule (if weren't already generated),
@@ -1892,6 +1994,9 @@ class Scheduler(object):
         We're troubleshooting for opt jobs.
         First check for server status and troubleshoot if needed. Then check for ESS status and troubleshoot
         if needed. Finally, check whether or not the last job had fine=True, add if it didn't run with fine.
+
+        Args:
+            label (str): The species label.
         """
         previous_job_num = -1
         latest_job_num = -1
@@ -1936,7 +2041,14 @@ class Scheduler(object):
 
     def troubleshoot_ess(self, label, job, level_of_theory, job_type, conformer=-1):
         """
-        Troubleshoot issues related to the electronic structure software, such as conversion
+        Troubleshoot issues related to the electronic structure software, such as conversion.
+
+        Args:
+            label (str): The species label.
+            job (Job): The job object to troubleshoot.
+            level_of_theory (str): The level of theory to use.
+            job_type (str): The original job type.
+            conformer (str, optional): The conformer index.
         """
         logger.info('\n')
         logger.warning('Troubleshooting {label} job {job_name} which failed with status "{stat}" in {soft}.'.format(
@@ -2232,7 +2344,10 @@ class Scheduler(object):
 
     def delete_all_species_jobs(self, label):
         """
-        Delete all jobs of species/TS represented by `label`
+        Delete all jobs of a species/TS.
+
+        Args:
+            label (str): The species label.
         """
         logger.debug('Deleting all jobs for species {0}'.format(label))
         for job_dict in self.job_dict[label].values():
@@ -2307,7 +2422,7 @@ class Scheduler(object):
 
     def save_restart_dict(self):
         """
-        Update the restart_dict and save the restart.yml file
+        Update the restart_dict and save the restart.yml file.
         """
         if self.save_restart and self.restart_dict is not None:
             logger.debug('Creating a restart file...')
@@ -2345,6 +2460,11 @@ class Scheduler(object):
         self.adaptive_levels is a dictionary of levels of theory for ranges of the number of heavy atoms in the
         molecule. Keys are tuples of (min_num_atoms, max_num_atoms), values are dictionaries with 'optfreq' and 'sp'
         as keys and levels of theory as values. 'inf' is accepted an max_num_atoms.
+
+        Args:
+            original_level_of_theory (str): The level of theory for non-sp/opt/freq job types.
+            job_type (Job): The job type for whcih the level of theory is determined.
+            heavy_atoms (int): The number of heavy atoms in the species.
         """
         if self.adaptive_levels is not None:
             for constraint, level_dict in self.adaptive_levels.items():
@@ -2371,7 +2491,12 @@ class Scheduler(object):
 
 
 def sum_time_delta(timedelta_list):
-    """A helper function for summing datetime.timedelta objects"""
+    """
+    A helper function for summing datetime.timedelta objects.
+
+    Args:
+        timedelta_list (list): Time delta's to sum.
+    """
     result = datetime.timedelta(0)
     for timedelta in timedelta_list:
         if timedelta is not None:
