@@ -16,6 +16,7 @@ import re
 
 from arc.job.ssh import check_job_status_in_stdout
 from arc.settings import servers, check_status_command, submit_command, submit_filename, delete_command, output_filename
+from arc.arc_exceptions import SettingsError
 
 ##################################################################
 
@@ -29,7 +30,15 @@ def execute_command(command, shell=True):
     """
     if not isinstance(command, list) and not shell:
         command = [command]
-    stdout = subprocess.check_output(command, shell=shell)
+    try:
+        stdout = subprocess.check_output(command, shell=shell)
+    except subprocess.CalledProcessError as e:
+        logger.error('The following command is erroneous:\n{0}'.format(e.message))
+        raise SettingsError('The following command is erroneous: \n{0}'
+                            '\nTo correct the command, modify settings.py'
+                            '\nTips: use "which" command to locate cluster software commands on server.'
+                            '\nExample: type "which sbatch" on a server running Slurm to find the correct'
+                            ' sbatch path required in the submit_command dictionary.'.format(e.message))
     return stdout.splitlines(), ''
 
 
