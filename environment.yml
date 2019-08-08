@@ -49,6 +49,7 @@ dependencies:
   - symmetry
   - textgenrnn
   - xlwt
+  - numdifftools
   - paramiko >=2.4.2
   - cclib
   - py3Dmol
