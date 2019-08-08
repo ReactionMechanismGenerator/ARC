@@ -713,6 +713,9 @@ class ARC(object):
                                    adaptive_levels=self.adaptive_levels, confs_to_dft=self.confs_to_dft,
                                    dont_gen_confs=self.dont_gen_confs)
 
+        if not self.keep_checks:
+            self.delete_check_files()
+
         self.save_project_info_file()
 
         prc = Processor(project=self.project, project_directory=self.project_directory,
@@ -722,8 +725,6 @@ class ARC(object):
                         t_count=self.t_count, freq_scale_factor=self.freq_scale_factor)
         prc.process()
         self.summary()
-        if not self.keep_checks:
-            self.delete_check_files()
         log_footer(execution_time=self.execution_time)
 
     def save_project_info_file(self):
