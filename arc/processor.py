@@ -415,4 +415,6 @@ class Processor(object):
         """
         calc_path = os.path.join(self.output[label]['freq'])
         output_path = os.path.join(self.project_directory, 'output', 'rxns', label, 'geometry', 'frequency.out')
+        if not os.path.exists(os.path.dirname(output_path)):
+            os.makedirs(os.path.dirname(output_path))
         shutil.copyfile(calc_path, output_path)
