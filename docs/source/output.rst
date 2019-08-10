@@ -52,6 +52,8 @@ After running a Project, the local Project folder will contain the following dir
   - *thermo.info*: Sources of thermoproperties determined by RMG for the parity plots for H298 and S298.
   - *thermo_parity_plots.pdf*: Parity plots of ARC's calculation and RMG's values.
   - *rate_plots.pdf.pdf*: ARC's calculated rate coefficient and RMG's values (log k vs. 1000/T).
+  - *status.yml*: A status file for all species and TSs (includes important paths, warnings, errors,
+    and job convergence by job type)
   - **RMG libraries**
 
     - **thermo**
