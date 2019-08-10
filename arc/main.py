@@ -713,6 +713,8 @@ class ARC(object):
                                    adaptive_levels=self.adaptive_levels, confs_to_dft=self.confs_to_dft,
                                    dont_gen_confs=self.dont_gen_confs)
 
+        save_yaml_file(path=os.path.join(self.project_directory, 'output', 'status.yml'), content=self.scheduler.output)
+
         if not self.keep_checks:
             self.delete_check_files()
 
