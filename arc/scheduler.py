@@ -1554,20 +1554,19 @@ class Scheduler(object):
                     label=label, rxn=rxn_str, level=job.level_of_theory, xyz=self.species_dict[label].final_xyz))
                 self.save_restart_dict()
                 self.output[label]['paths']['geo'] = job.local_path_to_output_file  # will be overwritten with freq
-            if not job.is_ts:
-                plotter.draw_structure(species=self.species_dict[label], project_directory=self.project_directory)
-            else:
-                # for TSs, only use `draw_3d()`, not `show_sticks()` which gets connectivity wrong:
-                plotter.draw_structure(species=self.species_dict[label], project_directory=self.project_directory,
-                                       method='draw_3d')
-            if not self.species_dict[label].is_ts:
-                is_isomorphic = self.species_dict[label].check_final_xyz_isomorphism(
-                    allow_nonisomorphic_2d=self.allow_nonisomorphic_2d)
-                if is_isomorphic:
-                    self.output[label]['isomorphism'] += 'opt passed isomorphism check; '
+                if not self.species_dict[label].is_ts:
+                    plotter.draw_structure(species=self.species_dict[label], project_directory=self.project_directory)
+                    is_isomorphic = self.species_dict[label].check_final_xyz_isomorphism(
+                        allow_nonisomorphic_2d=self.allow_nonisomorphic_2d)
+                    if is_isomorphic:
+                        self.output[label]['isomorphism'] += 'opt passed isomorphism check; '
+                    else:
+                        self.output[label]['isomorphism'] += 'opt did not pass isomorphism check; '
+                    success &= is_isomorphic
                 else:
-                    self.output[label]['isomorphism'] += 'opt did not pass isomorphism check; '
-                success &= is_isomorphic
+                    # for TSs, only use `draw_3d()`, not `show_sticks()` which gets connectivity wrong:
+                    plotter.draw_structure(species=self.species_dict[label], project_directory=self.project_directory,
+                                           method='draw_3d')
         else:
             self.troubleshoot_opt_jobs(label=label)
         if success:
