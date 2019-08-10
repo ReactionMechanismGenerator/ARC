@@ -652,9 +652,6 @@ class Scheduler(object):
         species = self.species_dict[label]
         memory = memory if memory is not None else self.memory
         checkfile = self.species_dict[label].checkfile  # defaults to None
-        if self.species_dict[label].most_stable_conformer is not None and job_type in ['opt', 'composite', 'optfreq'] \
-                and self.species_dict[label].conformer_checkfiles:
-            checkfile = self.species_dict[label].conformer_checkfiles[self.species_dict[label].most_stable_conformer]
         if self.adaptive_levels is not None:
             level_of_theory = self.determine_adaptive_level(original_level_of_theory=level_of_theory, job_type=job_type,
                                                             heavy_atoms=self.species_dict[label].number_of_heavy_atoms)
@@ -722,9 +719,7 @@ class Scheduler(object):
                     and job.job_type in ['conformer', 'opt', 'optfreq', 'composite']:
                 check_path = os.path.join(job.local_path, 'check.chk')
                 if os.path.isfile(check_path):
-                    if job.job_type == 'conformer':
-                        self.species_dict[label].conformer_checkfiles[job.conformer] = check_path
-                    else:
+                    if job.job_type != 'conformer':
                         self.species_dict[label].checkfile = check_path
             return True
 
@@ -2177,7 +2172,6 @@ class Scheduler(object):
                              type=job_type, software=job.software, label=label))
                 job.ess_trsh_methods.append('checkfie=None')
                 self.species_dict[label].checkfile = None
-                self.species_dict[label].conformer_checkfiles = dict()
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
                              job_type=job_type, fine=job.fine, ess_trsh_methods=job.ess_trsh_methods,
                              conformer=conformer)
