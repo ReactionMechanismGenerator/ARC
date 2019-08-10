@@ -1254,11 +1254,11 @@ class Scheduler(object):
                                                  molecules_from_xyz(xyzs[0],
                                                                     multiplicity=self.species_dict[label].multiplicity,
                                                                     charge=self.species_dict[label].charge)[1]))
-                                    self.output[label]['status'] += 'Conformer {0} was found to be the lowest energy ' \
-                                                                    'isomorphic conformer; '.format(i)
+                                    self.output[label]['conformers'] += 'Conformer {0} was found to be the lowest ' \
+                                                                        'energy isomorphic conformer; '.format(i)
                                 conformer_xyz = xyz
-                            self.output[label]['status'] += 'Conformers optimized and compared at {0}; '\
-                                                            .format(self.conformer_level)
+                            self.output[label]['conformers'] += 'Conformers optimized and compared at {0}; '.format(
+                                                                 self.conformer_level)
                             break
                         else:
                             if i == 0:
@@ -1269,7 +1269,8 @@ class Scheduler(object):
                                                'be NON-isomorphic with the 2D graph representation {2}. Searching for '
                                                'a different conformer that is isomorphic...'.format(
                                                 label, b_mol.toSMILES(), self.species_dict[label].mol.toSMILES()))
-                else:  # all conformers for a species failed isomorphism test
+                else:
+                    # all conformers for the species failed isomorphism test
                     smiles_list = list()
                     for xyz in xyzs:
                         try:
@@ -1306,6 +1307,7 @@ class Scheduler(object):
                 self.species_dict[label].most_stable_conformer = xyzs_in_original_order.index(conformer_xyz)
                 logger.info('Conformer {0} is used for geometry optimization'
                             .format(xyzs_in_original_order.index(conformer_xyz)))
+                self.output[label]['job_types']['conformers'] = True
 
     def troubleshoot_conformer_isomorphism(self, label):
         """
@@ -1317,12 +1319,11 @@ class Scheduler(object):
         """
 
         if self.species_dict[label].is_ts:
-            raise SchedulerError('The troubleshoot_conformer_isomorphism() method does not deal with transition'
-                                 ' state geometries.')
+            raise SchedulerError('The troubleshoot_conformer_isomorphism() method does not yet deal with TSs.')
 
         num_of_conformers = len(self.species_dict[label].conformers)
 
-        if num_of_conformers == 0:
+        if not num_of_conformers:
             raise SchedulerError('The troubleshoot_conformer_isomorphism() method got zero conformers.')
 
         # use the first conformer of a species to determine applicable troubleshooting method
@@ -1348,13 +1349,12 @@ class Scheduler(object):
                          ' {0}. No conformer for this species was found to be isomorphic with the 2D graph'
                          ' representation {1}. NOT optimizing this species.'
                          .format(label, self.species_dict[label].mol.toSMILES()))
-            self.output[label]['status'] += 'Error: No conformer was found to be isomorphic with the 2D' \
-                                            ' graph representation!; '
+            self.output[label]['conformers'] += 'Error: No conformer was found to be isomorphic with the 2D' \
+                                                ' graph representation!; '
 
         if level_of_theory is not None:
-            logger.info('Troubleshooting conformer job in {software} using {level} for species {species} with '
-                        'smiles {smiles}'.format(software=job.software, level=level_of_theory, species=label,
-                                                 smiles=self.species_dict[label].mol.toSMILES()))
+            logger.info('Troubleshooting conformer job in {software} using {level} for species {species}'.format(
+                software=job.software, level=level_of_theory, species=label))
 
             # rerun conformer job at higher level for all conformers
             for conformer in range(0, num_of_conformers):
@@ -1367,7 +1367,7 @@ class Scheduler(object):
                     job.ess_trsh_methods.append('conformer ' + method)
 
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
-                             job_type='conformer', ess_trsh_methods=job.ess_trsh_methods, conformer=job.conformer)
+                             job_type='conformer', ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
 
     def determine_most_likely_ts_conformer(self, label):
         """
@@ -1909,11 +1909,11 @@ class Scheduler(object):
             label (str): The species label.
         """
         all_converged = True
-        for job_type in self.job_types:
-            if job_type and not self.output[label]['job_types'][job_type]:
-                if (self.species_dict[label].is_ts and job_type == 'scan') \
-                        or (self.species_dict[label].number_of_atoms == 1 and job_type == 'freq'):
-                    continue
+        for job_type, spawn_job_type in self.job_types.items():
+            if spawn_job_type and not self.output[label]['job_types'][job_type] \
+                    and not((self.species_dict[label].is_ts and job_type == 'scan')
+                            or (self.species_dict[label].number_of_atoms == 1
+                                and job_type in ['conformers', 'opt', 'fine', 'freq', '1d_rotors'])):
                 all_converged = False
                 break
         if all_converged:
@@ -1939,8 +1939,9 @@ class Scheduler(object):
             logger.info('\nAll jobs for species {0} successfully converged.'
                         ' Run time: {1}'.format(label, self.species_dict[label].run_time))
         else:
-            logger.error('Species {0} did not converge. Job type status is: {1}'.format(
-                label, self.output[label]['job_types']))
+            job_type_status = {key: val for key, val in self.output[label]['job_types'].items()
+                               if key in self.job_types and self.job_types[key]}
+            logger.error('Species {0} did not converge. Job type status is: {1}'.format(label, job_type_status))
         # Update restart dictionary and save the yaml restart file:
         self.save_restart_dict()
 
@@ -2582,26 +2583,32 @@ class Scheduler(object):
     def initialize_output_dict(self):
         """
         Initialize self.output.
-        Do not initialize keys that will contain paths ('geo', 'freq', 'composite'),
+        Do not initialize keys that will contain paths ('geo', 'freq', 'sp', 'composite'),
         their existence indicate the job was terminated for restarting purposes.
         """
-        for species in self.species_list:
-            if species.label not in self.output:
-                self.output[species.label] = dict()
-            if 'paths' not in self.output[species.label]:
-                self.output[species.label]['paths'] = dict()
-            path_keys = ['geo', 'freq', 'composite']
-            for key in path_keys:
-                if key not in self.output[species.label]['paths']:
-                    self.output[species.label]['paths'][key] = ''
-            if 'job_types' not in self.output[species.label]:
-                self.output[species.label]['job_types'] = dict()
-            for job_type in list(set(self.job_types.keys() + ['opt', 'freq', 'sp', 'composite', 'onedmin'])):
-                self.output[species.label]['job_types'][job_type] = False
-            keys = ['conformers', 'isomorphism', 'convergence', 'restart', 'warnings', 'info']
-            for key in keys:
-                if key not in self.output[species.label]:
-                    self.output[species.label][key] = ''
+        if not self.does_output_dict_contain_info():
+            for species in self.species_list:
+                if species.label not in self.output:
+                    self.output[species.label] = dict()
+                if 'paths' not in self.output[species.label]:
+                    self.output[species.label]['paths'] = dict()
+                path_keys = ['geo', 'freq', 'sp', 'composite']
+                for key in path_keys:
+                    if key not in self.output[species.label]['paths']:
+                        self.output[species.label]['paths'][key] = ''
+                if 'job_types' not in self.output[species.label]:
+                    self.output[species.label]['job_types'] = dict()
+                for job_type in list(set(self.job_types.keys() + ['opt', 'freq', 'sp', 'composite', 'onedmin'])):
+                    if job_type == '1d_rotors':
+                        # rotors could be invalidated due to many reasons,
+                        # also could be falsely identified in a species that has no torsional modes.
+                        self.output[species.label]['job_types'][job_type] = True
+                    else:
+                        self.output[species.label]['job_types'][job_type] = False
+                keys = ['conformers', 'isomorphism', 'convergence', 'restart', 'errors', 'warnings', 'info']
+                for key in keys:
+                    if key not in self.output[species.label]:
+                        self.output[species.label][key] = ''
 
     def does_output_dict_contain_info(self):
         """
@@ -2610,14 +2617,17 @@ class Scheduler(object):
         Returns:
             bool: Whether self.output contains any information, `True` if it does.
         """
-        for key0, val0 in self.output.items():
-            if key0 in ['paths', 'job_types']:
-                for key1, val1 in self.output[key0].items():
-                    if val1:
+        for species_output_dict in self.output.values():
+            for key0, val0 in species_output_dict.items():
+                if key0 in ['paths', 'job_types']:
+                    for key1, val1 in species_output_dict[key0].items():
+                        if val1 and key1 != '1d_rotors':
+                            print(key1, val1)
+                            return True
+                else:
+                    if val0:
+                        print(key0, val0)
                         return True
-            else:
-                if val0:
-                    return True
         return False
 
 
