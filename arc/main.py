@@ -493,16 +493,18 @@ class ARC(object):
         self.freq_scale_factor = input_dict['freq_scale_factor'] if 'freq_scale_factor' in input_dict else None
         if self.output:
             for label, spc_output in self.output.items():
-                for key, val in spc_output.items():
-                    if key in ['geo', 'freq', 'sp', 'composite']:
-                        if not os.path.isfile(val):
-                            dir_path = os.path.dirname(os.path.realpath(__file__))
-                            if os.path.isfile(os.path.join(dir_path, val)):
-                                # correct relative paths
-                                self.output[label][key] = os.path.join(dir_path, val)
-                            else:
-                                raise SpeciesError('Could not find {0} output file for species {1}: {2}'.format(
-                                    key, label, val))
+                if 'paths' in spc_output:
+                    for key, val in spc_output['paths'].items():
+                        if key in ['geo', 'freq', 'sp', 'composite']:
+                            if val and not os.path.isfile(val):
+                                # try correcting relative paths
+                                if os.path.isfile(os.path.join(arc_path, val)):
+                                    self.output[label]['paths'][key] = os.path.join(arc_path, val)
+                                elif os.path.isfile(os.path.join(arc_path, 'Projects', val)):
+                                    self.output[label]['paths'][key] = os.path.join(arc_path, 'Projects', val)
+                                else:
+                                    raise SpeciesError('Could not find {0} output file for species {1}: {2}'.format(
+                                        key, label, val))
         self.running_jobs = input_dict['running_jobs'] if 'running_jobs' in input_dict else dict()
         logger.debug('output dictionary successfully parsed:\n{0}'.format(self.output))
         self.t_min = input_dict['t_min'] if 't_min' in input_dict else None
@@ -650,10 +652,12 @@ class ARC(object):
             for spc in self.arc_species_list:
                 for rotor_num, rotor_dict in spc.rotors_dict.items():
                     if not os.path.isfile(rotor_dict['scan_path']) and rotor_dict['success']:
-                        rotor_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), rotor_dict['scan_path'])
-                        if os.path.isfile(rotor_path):
-                            # correct relative paths
-                            spc.rotors_dict[rotor_num]['scan_path'] = os.path.join(rotor_path)
+                        # try correcting relative paths
+                        if os.path.isfile(os.path.join(arc_path, rotor_dict['scan_path'])):
+                            spc.rotors_dict[rotor_num]['scan_path'] = os.path.join(arc_path, rotor_dict['scan_path'])
+                        elif os.path.isfile(os.path.join(arc_path, 'Projects', rotor_dict['scan_path'])):
+                            spc.rotors_dict[rotor_num]['scan_path'] =\
+                                os.path.join(arc_path, 'Projects', rotor_dict['scan_path'])
                         else:
                             raise SpeciesError('Could not find rotor scan output file for rotor {0} of species {1}:'
                                                ' {2}'.format(rotor_num, spc.label, rotor_dict['scan_path']))
@@ -768,7 +772,7 @@ class ARC(object):
         txt += '\nConsidered the following species and TSs:\n'
         for species in self.arc_species_list:
             descriptor = 'TS' if species.is_ts else 'Species'
-            failed = '' if 'ALL converged' in self.scheduler.output[species.label]['status'] else ' (Failed!)'
+            failed = '' if self.scheduler.output[species.label]['convergence'] else ' (Failed!)'
             txt += '{descriptor} {label}{failed} (run time: {time})\n'.format(
                 descriptor=descriptor, label=species.label, failed=failed, time=species.run_time)
         if self.arc_rxn_list:
@@ -787,10 +791,21 @@ class ARC(object):
         """
         logger.info('\n\n\nAll jobs terminated. Summary for project {0}:\n'.format(self.project))
         for label, output in self.scheduler.output.items():
-            if 'ALL converged' in output['status']:
-                logger.info('Species {0} converged successfully'.format(label))
+            if output['convergence']:
+                logger.info('Species {0} converged successfully\n'.format(label))
             else:
-                logger.info('Species {0} failed with status:\n  {1}'.format(label, output['status']))
+                job_type_status = {key: val for key, val in self.output[label]['job_types'].items()
+                                   if key in self.job_types and self.job_types[key]}
+                logger.info('Species {0} failed with status:\n  {1}'.format(label, job_type_status))
+                keys = ['conformers', 'isomorphism', 'info']
+                for key in keys:
+                    if key in output and output[key]:
+                        logger.info(output[key])
+                if 'warnings' in output and output['warnings']:
+                    logger.info('\n and warnings: {0}'.format(output['warnings']))
+                if 'errors' in output and output['errors']:
+                    logger.info('\n and errors: {0}'.format(output['errors']))
+                logger.info('\n')
 
     def determine_model_chemistry(self):
         """
