@@ -357,7 +357,7 @@ class Processor(object):
         # (defaults to 1 and prints a warning if not found)
         stat_mech_job.frequencyScaleFactor = self.freq_scale_factor or assign_frequency_scale_factor(self.freq_level)
         try:
-            stat_mech_job.execute(output_directory=os.path.join(output_path, 'output.py'), plot=plot)
+            stat_mech_job.execute(output_directory=output_path, plot=plot)
         except Exception:
             success = False
         return success
