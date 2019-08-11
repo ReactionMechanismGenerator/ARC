@@ -941,8 +941,8 @@ $end
                     if 'Normal termination of Gaussian' in line:
                         break
                 else:
-                    for line in lines[::-1]:
-                        if 'Error' in line or 'NtrErr' in line or 'Erroneous' in line or 'malloc' in line\
+                    for i, line in enumerate(lines[::-1]):
+                        if 'Error' in line or 'NtrErr' in line or 'Erroneous' in line or 'malloc' in line \
                                 or 'galloc' in line:
                             reason = ''
                             if 'l9999.exe' in line or 'l103.exe' in line:
@@ -956,8 +956,7 @@ $end
                             elif 'l716.exe' in line:
                                 reason = 'Angle in z-matrix outside the allowed range 0 < x < 180.'
                             elif 'l301.exe' in line:
-                                reason = 'Input Error. Either charge, multiplicity, or basis set was not specified ' \
-                                         'correctly. Or, an atom specified does not match any standard atomic symbol.'
+                                reason = 'l301'
                             elif 'NtrErr Called from FileIO' in line:
                                 reason = 'Operation on .chk file was specified, but .chk was not found.'
                             elif 'l101.exe' in line:
@@ -967,12 +966,25 @@ $end
                                 reason = 'During the optimization process, either the standard orientation ' \
                                          'or the point group of the molecule has changed.'
                             elif 'l401.exe' in line:
-                                reason = '"Basis set data is not on the checkpoint file", or' \
-                                         ' "The projection from the old to the new basis set has failed."'
+                                reason = 'l401'
                             elif 'malloc failed' in line or 'galloc' in line:
                                 reason = 'Memory allocation failed (did you ask for too much?)'
                             elif 'A SYNTAX ERROR WAS DETECTED' in line:
                                 reason = 'Check .inp carefully for syntax errors in keywords.'
+
+                            if reason in ['l301', 'l401']:
+                                additional_info = lines[len(lines) - i - 2]
+                                print('additional info: ', additional_info)
+                                if 'No data on chk file' in additional_info \
+                                        or 'Basis set data is not on the checkpoint file' in additional_info:
+                                    reason += ' check file problematic'
+                                elif reason == 'l301':
+                                    reason += 'Input Error. Either charge, multiplicity, or basis set was not ' \
+                                             'specified correctly. Or, an atom specified does not match any standard ' \
+                                              'atomic symbol.'
+                                elif reason == 'l401':
+                                    reason += ' "The projection from the old to the new basis set has failed."'
+
                             return 'errored: {0}; {1}'.format(line, reason)
                     return 'errored: Unknown reason'
                 return 'done'
