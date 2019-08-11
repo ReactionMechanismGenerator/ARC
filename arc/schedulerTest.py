@@ -103,7 +103,14 @@ H      -1.16566701    0.32023496   -0.81630508"""
         self.assertTrue('Relative Energy:' in lines[11])
         self.assertEqual(lines[15][0], 'N')
 
-        self.sched1.output['C2H6'] = {'status': ''}  # otherwise confs won't be generated due to the presence of 'geo'
+        self.sched1.output['C2H6'] = {'info': '',
+                                      'paths': {'composite': '', 'freq': '', 'geo': ''},
+                                      'isomorphism': '',
+                                      'warnings': '',
+                                      'errors': '',
+                                      'job_types': {'opt': False, 'composite': False, 'sp': False, 'fine_grid': False,
+                                                    'freq': False, 'conformers': False},
+                                      'convergence': '', 'conformers': '', 'restart': ''}
         self.sched1.run_conformer_jobs()
         save_conformers_file(project_directory=self.sched1.project_directory, label='C2H6',
                              xyzs=self.sched1.species_dict['C2H6'].conformers, level_of_theory='level1',
