@@ -334,9 +334,9 @@ class Processor(object):
         A helper function for running an Arkane statmech job.
 
         Args:
-            arkane_spc (str): An Arkane species() function representor.
+            arkane_spc (arkane_input_species): An Arkane species() function representor.
             arkane_file (str): The path to the Arkane species file (either in .py or YAML form).
-            output_path (str): The path to the folder containing the Arkane output.py file.
+            output_path (str): The path to the folder in which the Arkane output.py file will be saved.
             use_bac (bool): A flag indicating whether or not to use bond additivity corrections (True to use).
             kinetics (bool) A flag indicating whether this specie is part of a kinetics job.
             plot (bool): A flag indicating whether to plot a PDF of the calculated thermo properties (True to plot)
@@ -358,7 +358,9 @@ class Processor(object):
         stat_mech_job.frequencyScaleFactor = self.freq_scale_factor or assign_frequency_scale_factor(self.freq_level)
         try:
             stat_mech_job.execute(output_directory=output_path, plot=plot)
-        except Exception:
+        except Exception as e:
+            logger.error('statmech job for species {0} failed with the error message:\n{1}'.format(
+                arkane_spc.label, e.message))
             success = False
         return success
 
