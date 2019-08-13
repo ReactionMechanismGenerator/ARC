@@ -454,21 +454,7 @@ class Scheduler(object):
                         if successful_server_termination:
                             success = self.parse_opt_geo(label=label, job=job)
                             if success:
-                                if self.composite_method:
-                                    # This was originally a composite method, probably troubleshooted as 'opt'
-                                    self.run_composite_job(label)
-                                else:
-                                    if self.species_dict[label].is_ts\
-                                            or self.species_dict[label].number_of_atoms > 1:
-                                        if 'freq' not in job_name:
-                                            self.run_freq_job(label)
-                                        else:  # this is an 'optfreq' job type
-                                            self.check_freq_job(label=label, job=job)
-                                    self.run_sp_job(label)
-                                    self.run_scan_jobs(label)
-                                    self.run_orbitals_job(label)
-                                    if self.job_types['onedmin'] and not self.species_dict[label].is_ts:
-                                        self.run_onedmin_job(label)
+                                self.spawn_post_opt_jobs(label=label, job_name=job_name)
                         self.timer = False
                         break
                     elif 'freq' in job_name\
@@ -936,9 +922,8 @@ class Scheduler(object):
         Args:
             label (str): The species label.
         """
-        if self.job_types['orbitals'] and 'orbitals' not in self.job_dict[label]:
-            self.run_job(label=label, xyz=self.species_dict[label].final_xyz, level_of_theory=self.orbitals_level,
-                         job_type='orbitals')
+        self.run_job(label=label, xyz=self.species_dict[label].final_xyz, level_of_theory=self.orbitals_level,
+                     job_type='orbitals')
 
     def run_onedmin_job(self, label):
         """
@@ -998,6 +983,61 @@ class Scheduler(object):
         else:
             self.run_job(label=label, xyz=None, job_type='gromacs', level_of_theory='', confs=confs,
                          radius=self.species_dict[label].radius)
+
+    def spawn_post_opt_jobs(self, label, job_name):
+        """
+        Spawn additional jobs after opt has converged.
+
+        Args:
+            label (str): The species label.
+            job_name (str): THe opt job name to differetiate between `opt` and `optfreq` jobs.
+        """
+        if self.composite_method:
+            # This was originally a composite method, probably troubleshooted as 'opt'
+            self.run_composite_job(label)
+        else:
+            if self.species_dict[label].is_ts \
+                    or self.species_dict[label].number_of_atoms > 1:
+                if 'freq' not in job_name:
+                    self.run_freq_job(label)
+                else:  # this is an 'optfreq' job type
+                    self.check_freq_job(label=label, job=job)
+            self.run_sp_job(label)
+            self.run_scan_jobs(label)
+
+        if self.job_types['orbitals'] and 'orbitals' not in self.job_dict[label]:
+            self.run_orbitals_job(label)
+
+        if self.job_types['onedmin'] and not self.species_dict[label].is_ts:
+            self.run_onedmin_job(label)
+
+        if self.job_types['bde'] and self.species_dict[label].bdes is not None:
+            bde_species_list = self.species_dict[label].scissors()
+            for bde_species in bde_species_list:
+                if bde_species.label != 'H':
+                    # H is was added in main
+                    logging.info('Creating the BDE species {0} from the original species {1}'.format(
+                        bde_species.label, label))
+                    self.species_list.append(bde_species)
+                    self.species_dict[bde_species.label] = bde_species
+                    self.unique_species_labels.append(bde_species.label)
+                    self.initialize_output_dict(label=bde_species.label)
+                    self.job_dict[bde_species.label] = dict()
+                    self.running_jobs[bde_species.label] = list()
+                    if bde_species.number_of_atoms == 1:
+                        logger.debug('Species {0} is monoatomic'.format(bde_species.label))
+                        # No need to run opt/freq jobs for a monoatomic species, only run sp (or composite if relevant)
+                        if self.composite_method:
+                            self.run_composite_job(bde_species.label)
+                        else:
+                            self.run_sp_job(label=bde_species.label)
+                    else:
+                        # bde_species is not monoatomic
+                        if self.composite_method:
+                            self.run_composite_job(bde_species.label)
+                        else:
+                            self.run_opt_job(bde_species.label)
+            self.output[label]['job_types']['bde'] = True
 
     def spawn_md_jobs(self, label, prev_conf_list=None, num_confs=None):
         """
@@ -1132,6 +1172,7 @@ class Scheduler(object):
                         if self.job_types['opt']:
                             self.run_opt_job(label)
                         else:
+                            # opt wasn't requested, skip directly to additional relevant job types
                             if self.job_types['freq']:
                                 self.run_freq_job(label)
                             if self.job_types['sp']:
@@ -1305,8 +1346,8 @@ class Scheduler(object):
             if conformer_xyz is not None:
                 self.species_dict[label].initial_xyz = conformer_xyz
                 self.species_dict[label].most_stable_conformer = xyzs_in_original_order.index(conformer_xyz)
-                logger.info('Conformer {0} is used for geometry optimization'
-                            .format(xyzs_in_original_order.index(conformer_xyz)))
+                logger.info('Conformer number {0} for species {1} is used for geometry optimization.'.format(
+                             xyzs_in_original_order.index(conformer_xyz), label))
                 self.output[label]['job_types']['conformers'] = True
 
     def troubleshoot_conformer_isomorphism(self, label):
