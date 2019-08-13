@@ -216,6 +216,7 @@ class Processor(object):
                 if not statmech_success:
                     continue
 
+                species.e0 = arkane_spc.conformer.E0.value_si * 0.001  # convert to kJ/mol
                 if species.generate_thermo:
                     thermo_job = ThermoJob(arkane_spc, 'NASA')
                     thermo_job.execute(output_directory=output_path, plot=False)
@@ -259,6 +260,7 @@ class Processor(object):
                 arkane_ts = arkane_transition_state(str(species.label), species.arkane_file)
                 arkane_spc_dict[species.label] = arkane_ts
                 self._run_statmech(arkane_ts, species.arkane_file, kinetics=True)
+                species.e0 = arkane_ts.conformer.E0.value_si * 0.001  # convert to kJ/mol
                 for spc in rxn.r_species + rxn.p_species:
                     if spc.label not in arkane_spc_dict.keys():
                         # add an extra character to the arkane_species label to distinguish between species calculated
