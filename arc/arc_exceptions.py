@@ -2,55 +2,62 @@
 # -*- coding: utf-8 -*-
 
 """
-This module contains classes which extend Exception for usage in the RMG module
+This module contains classes which extend Exception for usage in the RMG module.
 """
 
 
 class ConformerError(Exception):
     """
-    An exception raised when generating conformers
+    An exception raised when generating conformers.
     """
     pass
 
 
 class InputError(Exception):
     """
-    An exception raised when parsing an input file for any module
+    An exception raised when parsing an input file for any module.
     """
     pass
 
 
 class JobError(Exception):
     """
-    An exception class for exceptional behavior that occurs while working with jobs
+    An exception class for exceptional behavior that occurs while working with jobs.
     """
     pass
 
 
 class OutputError(Exception):
     """
-    This exception is raised whenever an error occurs while saving output information
+    This exception is raised whenever an error occurs while saving output information.
     """
     pass
 
 
 class ParserError(Exception):
     """
-    This exception is raised whenever an error occurs while parsing files
+    This exception is raised whenever an error occurs while parsing files.
+    """
+    pass
+
+
+class ProcessorError(Exception):
+    """
+    This exception is raised whenever an error occurs while processing thermo and kinetics.
     """
     pass
 
 
 class ReactionError(Exception):
     """
-    An exception class for exceptional behavior that occurs while working with reactions
+    An exception class for exceptional behavior that occurs while working with reactions.
     """
     pass
 
 
 class RotorError(Exception):
     """
-    An exception class for exceptional behavior that occurs while working with rotors
+    An exception class for exceptional behavior that occurs while working with rotors.
     """
     pass
 
@@ -64,34 +71,34 @@ class SanitizationError(Exception):
 
 class SchedulerError(Exception):
     """
-    An exception class for exceptional behavior that occurs while working with the scheduler
+    An exception class for exceptional behavior that occurs while working with the scheduler.
     """
     pass
 
 
 class ServerError(Exception):
     """
-    An exception class for exceptional behavior that occurs while working with servers
+    An exception class for exceptional behavior that occurs while working with servers.
     """
     pass
 
 
 class SettingsError(Exception):
     """
-    An exception raised when dealing with settings
+    An exception raised when dealing with settings.
     """
     pass
 
 
 class SpeciesError(Exception):
     """
-    An exception class for exceptional behavior that occurs while working with chemical species
+    An exception class for exceptional behavior that occurs while working with chemical species.
     """
     pass
 
 
 class TSError(Exception):
     """
-    An exception class for exceptional behavior that occurs while working with transition states
+    An exception class for exceptional behavior that occurs while working with transition states.
     """
     pass
