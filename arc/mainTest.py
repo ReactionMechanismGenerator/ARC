@@ -16,6 +16,7 @@ from rmgpy.species import Species
 from rmgpy.molecule.molecule import Molecule
 
 from arc.main import ARC
+from arc.common import read_yaml_file
 from arc.species.species import ARCSpecies
 from arc.settings import arc_path, servers
 from arc.arc_exceptions import InputError
@@ -175,7 +176,7 @@ class TestARC(unittest.TestCase):
         project_directory = os.path.join(arc_path, 'Projects', project)
         arc1 = ARC(project=project, input_dict=restart_path, project_directory=project_directory)
         arc1.execute()
-        self.assertEqual(arc1.freq_scale_factor, 0.986)
+        self.assertEqual(arc1.freq_scale_factor, 0.988)
 
         with open(os.path.join(project_directory, 'output', 'thermo.info'), 'r') as f:
             thermo_dft_ccsdtf12_bac = False
@@ -238,6 +239,10 @@ class TestARC(unittest.TestCase):
 
         self.assertTrue(os.path.isfile(os.path.join(project_directory, 'output', 'thermo_parity_plots.pdf')))
 
+        status = read_yaml_file(os.path.join(project_directory, 'output', 'status.yml'))
+        self.assertEqual(status['CH3CO2_rad']['isomorphism'], 'opt passed isomorphism check; ')
+        self.assertTrue(status['CH3CO2_rad']['job_types']['sp'])
+
         with open(os.path.join(project_directory, 'output', 'Species', 'H2O2', 'arkane', 'species_dictionary.txt'),
                   'r') as f:
             lines = f.readlines()
@@ -274,9 +279,9 @@ class TestARC(unittest.TestCase):
         spc2 = Species().fromSMILES(str('CC([O])=O'))
         spc2.generate_resonance_structures()
         spc2.thermo = db.thermo.getThermoData(spc2)
-        self.assertAlmostEqual(spc2.getEnthalpy(298), -179468.25500924312, 1)
-        self.assertAlmostEqual(spc2.getEntropy(298), 283.50278467781203, 1)
-        self.assertAlmostEqual(spc2.getHeatCapacity(1000), 118.90817413719998, 1)
+        self.assertAlmostEqual(spc2.getEnthalpy(298), -212439.26998495663, 1)
+        self.assertAlmostEqual(spc2.getEntropy(298), 283.3972662956835, 1)
+        self.assertAlmostEqual(spc2.getHeatCapacity(1000), 118.751379824224, 1)
         self.assertTrue('arc_project_for_testing_delete_after_usage2' in spc2.thermo.comment)
 
         # delete the generated library from RMG-database
