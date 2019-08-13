@@ -1527,7 +1527,8 @@ def generate_all_enantiomers(label, mol, xyz):
     pivot_combinations = [list(set(comb)) for comb in pivot_combinations]  # remove dups, i.e., convert (6, 6) to [6]
     if pivot_combinations == [[]]:
         pivot_combinations = []
-    logger.info('Identified {0} enantiomeric combinations for {1}'.format(len(pivot_combinations) + 1, label))
+    if len(pivot_combinations):
+        logger.info('Identified {0} enantiomeric combinations for {1}'.format(len(pivot_combinations) + 1, label))
     xyzs = list()
     for pivots in pivot_combinations:
         new_xyz = xyz

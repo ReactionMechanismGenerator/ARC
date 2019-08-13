@@ -103,7 +103,14 @@ H      -1.16566701    0.32023496   -0.81630508"""
         self.assertTrue('Relative Energy:' in lines[11])
         self.assertEqual(lines[15][0], 'N')
 
-        self.sched1.output['C2H6'] = {'status': ''}  # otherwise confs won't be generated due to the presence of 'geo'
+        self.sched1.output['C2H6'] = {'info': '',
+                                      'paths': {'composite': '', 'freq': '', 'geo': ''},
+                                      'isomorphism': '',
+                                      'warnings': '',
+                                      'errors': '',
+                                      'job_types': {'opt': False, 'composite': False, 'sp': False, 'fine_grid': False,
+                                                    'freq': False, 'conformers': False},
+                                      'convergence': '', 'conformers': '', 'restart': ''}
         self.sched1.run_conformer_jobs()
         save_conformers_file(project_directory=self.sched1.project_directory, label='C2H6',
                              xyzs=self.sched1.species_dict['C2H6'].conformers, level_of_theory='level1',
@@ -164,6 +171,63 @@ H      -1.16566701    0.32023496   -0.81630508"""
         self.assertEqual(level5, 'some_original_level')
         self.assertEqual(level6, 'dlpno-ccsd(t)/def2-tzvp/c')
         self.assertEqual(level7, 'wb97xd/6-311+g(2d,2p)')
+
+    def test_initialize_output_dict(self):
+        """Test Scheduler.initialize_output_dict"""
+        self.sched1.output = dict()
+        self.assertEqual(self.sched1.output, dict())
+        self.sched1.initialize_output_dict()
+        initialized_output_dict = {'C2H6': {
+            'conformers': '',
+            'convergence': '',
+            'errors': '',
+            'info': '',
+            'isomorphism': '',
+            'job_types': {'1d_rotors': True,
+                          'composite': False,
+                          'conformers': False,
+                          'fine_grid': False,
+                          'freq': False,
+                          'lennard_jones': False,
+                          'onedmin': False,
+                          'opt': False,
+                          'orbitals': False,
+                          'sp': False},
+            'paths': {'composite': '', 'freq': '', 'sp': '', 'geo': ''},
+            'restart': '',
+            'warnings': ''},
+            'methylamine': {
+                'conformers': '',
+            'convergence': '',
+            'errors': '',
+            'info': '',
+            'isomorphism': '',
+            'job_types': {'1d_rotors': True,
+                          'composite': False,
+                          'conformers': False,
+                          'fine_grid': False,
+                          'freq': False,
+                          'lennard_jones': False,
+                          'onedmin': False,
+                          'opt': False,
+                          'orbitals': False,
+                          'sp': False},
+            'paths': {'composite': '', 'freq': '', 'sp': '', 'geo': ''},
+            'restart': '',
+            'warnings': ''},
+        }
+        self.assertEqual(self.sched1.output, initialized_output_dict)
+
+    def test_does_output_dict_contain_info(self):
+        """Test Scheduler.does_output_dict_contain_info"""
+        self.sched1.output = dict()
+        self.sched1.initialize_output_dict()
+        self.assertFalse(self.sched1.does_output_dict_contain_info())
+
+        self.sched1.output['C2H6']['info'] = 'some text'
+        self.sched1.output['C2H6']['job_types']['freq'] = True
+        self.sched1.output['C2H6']['paths']['sp'] = 'some/path/out.out'
+        self.assertTrue(self.sched1.does_output_dict_contain_info())
 
     @classmethod
     def tearDownClass(cls):

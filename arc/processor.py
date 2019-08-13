@@ -55,7 +55,7 @@ class Processor(object):
         project_directory (str): The path of the ARC project directory.
         species_dict (dict): Keys are labels, values are ARCSpecies objects.
         rxn_list (list): List of ARCReaction objects.
-        output (dict): Keys are labels, values are output file paths.
+        output (dict): Keys are labels, values are output file paths. Structure specified in Scheduler.
         use_bac (bool): Whether or not to use bond additivity corrections for thermo calculations.
         sp_level (str): The single point level of theory, used for atom and bond corrections in Arkane.
         freq_level (str): The frequency level of theory, used for the frequency scaling factor in Arkane
@@ -81,13 +81,12 @@ class Processor(object):
         self.freq_scale_factor = freq_scale_factor
         self.lib_long_desc = lib_long_desc
         load_thermo_libs, load_kinetic_libs = False, False
-        if any([species.is_ts and species.final_xyz for species in self.species_dict.values()])\
-                and any(['ALL converged' in out['status'] for out in output.values()]):
+        if any([species.is_ts and output[species.label]['convergence'] for species in self.species_dict.values()]):
             load_kinetic_libs = True
-        if any([species.generate_thermo for species in self.species_dict.values()])\
-                and any(['ALL converged' in out['status'] for out in output.values()]):
+        if any([species.generate_thermo and output[species.label]['convergence']
+                for species in self.species_dict.values()]):
             load_thermo_libs = True
-        if any(['ALL converged' in spc_output_dict['status'] for spc_output_dict in output.values()]):
+        if load_kinetic_libs or load_thermo_libs:
             rmgdb.load_rmg_database(rmgdb=self.rmgdb, load_thermo_libs=load_thermo_libs,
                                     load_kinetic_libs=load_kinetic_libs)
         t_min = t_min if t_min is not None else (300, 'K')
@@ -121,20 +120,15 @@ class Processor(object):
             return output_path
 
         species.determine_symmetry()
-        try:
-            sp_path = self.output[species.label]['composite']
-        except KeyError:
-            try:
-                sp_path = self.output[species.label]['sp']
-            except KeyError:
-                raise SchedulerError('Could not find path to sp calculation for species {0}'.format(
-                    species.label))
+        sp_path = self.output[species.label]['paths']['composite'] or self.output[species.label]['paths']['sp']
+        if not sp_path:
+            raise SchedulerError('Could not find path to sp calculation for species {0}'.format(species.label))
         if species.number_of_atoms == 1:
             freq_path = sp_path
             opt_path = sp_path
         else:
-            freq_path = self.output[species.label]['freq']
-            opt_path = self.output[species.label]['freq']
+            freq_path = self.output[species.label]['paths']['freq']
+            opt_path = self.output[species.label]['paths']['freq']
         rotors, rotors_description = '', ''
         if any([i_r_dict['success'] for i_r_dict in species.rotors_dict.values()]):
             rotors = '\n\nrotors = ['
@@ -202,7 +196,7 @@ class Processor(object):
         species_for_transport_lib = list()
         unconverged_species = list()
         for species in self.species_dict.values():
-            if not species.is_ts and 'ALL converged' in self.output[species.label]['status']:
+            if not species.is_ts and self.output[species.label]['convergence']:
                 output_path = self._generate_arkane_species_file(species)
                 unique_arkane_species_label = False
                 while not unique_arkane_species_label:
@@ -247,9 +241,9 @@ class Processor(object):
                 else:
                     if species.generate_thermo:
                         species_list_for_thermo_parity.append(species)
-                if 'onedmin converged' in self.output[species.label]['status'].lower():
+                if self.output[species.label]['job_types']['onedmin']:
                     species_for_transport_lib.append(species)
-            elif 'ALL converged' not in self.output[species.label]['status']:
+            elif not self.output[species.label]['convergence']:
                 unconverged_species.append(species)
         # Kinetics:
         rxn_list_for_kinetics_plots = list()
@@ -257,7 +251,7 @@ class Processor(object):
         for rxn in self.rxn_list:
             logger.info('\n\n')
             species = self.species_dict[rxn.ts_label]  # The TS
-            if 'ALL converged' in self.output[species.label]['status'] and rxn.check_ts():
+            if self.output[species.label]['convergence'] and rxn.check_ts():
                 self.copy_freq_output_for_ts(species.label)
                 success = True
                 rxn_list_for_kinetics_plots.append(rxn)
@@ -340,9 +334,9 @@ class Processor(object):
         A helper function for running an Arkane statmech job.
 
         Args:
-            arkane_spc (str): An Arkane species() function representor.
+            arkane_spc (arkane_input_species): An Arkane species() function representor.
             arkane_file (str): The path to the Arkane species file (either in .py or YAML form).
-            output_path (str): The path to the folder containing the Arkane output.py file.
+            output_path (str): The path to the folder in which the Arkane output.py file will be saved.
             use_bac (bool): A flag indicating whether or not to use bond additivity corrections (True to use).
             kinetics (bool) A flag indicating whether this specie is part of a kinetics job.
             plot (bool): A flag indicating whether to plot a PDF of the calculated thermo properties (True to plot)
@@ -363,8 +357,10 @@ class Processor(object):
         # (defaults to 1 and prints a warning if not found)
         stat_mech_job.frequencyScaleFactor = self.freq_scale_factor or assign_frequency_scale_factor(self.freq_level)
         try:
-            stat_mech_job.execute(output_directory=os.path.join(output_path, 'output.py'), plot=plot)
-        except Exception:
+            stat_mech_job.execute(output_directory=output_path, plot=plot)
+        except Exception as e:
+            logger.error('statmech job for species {0} failed with the error message:\n{1}'.format(
+                arkane_spc.label, e.message))
             success = False
         return success
 
@@ -413,7 +409,7 @@ class Processor(object):
         """
         Copy the frequency job output file into the TS geometry folder.
         """
-        calc_path = os.path.join(self.output[label]['freq'])
+        calc_path = os.path.join(self.output[label]['paths']['freq'])
         output_path = os.path.join(self.project_directory, 'output', 'rxns', label, 'geometry', 'frequency.out')
         if not os.path.exists(os.path.dirname(output_path)):
             os.makedirs(os.path.dirname(output_path))

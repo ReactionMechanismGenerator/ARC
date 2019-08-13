@@ -159,8 +159,6 @@ class ARCSpecies(object):
         arkane_file (str): Path to the Arkane Species file generated in Processor.
         yml_path (str): Path to an Arkane YAML file representing a species (for loading the object).
         checkfile (str): The local path to the latest checkfile by Gaussian for the species.
-        conformer_checkfiles (dict): A dictionary of conformer checkfiles. Keys are conformer indices,
-                                     Values are local paths to check files.
         external_symmetry (int): The external symmetry of the species (not including rotor symmetries).
         optical_isomers (int): Whether (=2) or not (=1) the species has chiral center/s.
         transport_data (TransportData): A placeholder for updating transport properties after Lennard-Jones
@@ -208,7 +206,6 @@ class ARCSpecies(object):
         self.charge = charge
         self.run_time = run_time
         self.checkfile = checkfile
-        self.conformer_checkfiles = dict()
         self.transport_data = TransportData()
         smiles, adjlist, inchi = str(smiles), str(adjlist), str(inchi)
 
@@ -466,8 +463,6 @@ class ARCSpecies(object):
             species_dict['initial_xyz'] = self.initial_xyz
         if self.checkfile is not None:
             species_dict['checkfile'] = self.checkfile
-        if self.conformer_checkfiles:
-            species_dict['conformer_checkfiles'] = self.conformer_checkfiles
         if self.most_stable_conformer is not None:
             species_dict['most_stable_conformer'] = self.most_stable_conformer
         if self.cheap_conformer is not None:
@@ -536,8 +531,6 @@ class ARCSpecies(object):
             self.chosen_ts_method = species_dict['chosen_ts_method'] if 'chosen_ts_method' in species_dict else None
             self.chosen_ts = species_dict['chosen_ts'] if 'chosen_ts' in species_dict else None
             self.checkfile = species_dict['checkfile'] if 'checkfile' in species_dict else None
-            self.conformer_checkfiles = species_dict['conformer_checkfiles'] if 'conformer_checkfiles' in species_dict\
-                else dict()
         else:
             self.ts_methods = None
         if 'xyz' in species_dict and self.initial_xyz is None and self.final_xyz is None:
@@ -1042,7 +1035,8 @@ class ARCSpecies(object):
                 if not return_value:
                     logger.error('Not spawning additional jobs for this species!')
             else:
-                logger.info('Species {0} was found to be isomorphic with the perception of its optimized coordinates.')
+                logger.info('Species {0} was found to be isomorphic with the perception '
+                            'of its optimized coordinates.'.format(self.label))
         else:
             logger.error('Cannot check isomorphism for species {0}'.format(self.label))
         return return_value

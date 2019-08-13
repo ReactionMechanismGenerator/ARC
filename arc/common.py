@@ -275,6 +275,8 @@ def save_yaml_file(path, content):
     yaml.add_representer(unicode, unicode_representer)
     logger.debug('Creating a restart file...')
     content = yaml.dump(data=content, encoding='utf-8', allow_unicode=True)
+    if not os.path.exists(os.path.dirname(path)):
+        os.makedirs(os.path.dirname(path))
     with open(path, 'w') as f:
         f.write(content)
 
