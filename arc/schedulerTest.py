@@ -172,6 +172,63 @@ H      -1.16566701    0.32023496   -0.81630508"""
         self.assertEqual(level6, 'dlpno-ccsd(t)/def2-tzvp/c')
         self.assertEqual(level7, 'wb97xd/6-311+g(2d,2p)')
 
+    def test_initialize_output_dict(self):
+        """Test Scheduler.initialize_output_dict"""
+        self.sched1.output = dict()
+        self.assertEqual(self.sched1.output, dict())
+        self.sched1.initialize_output_dict()
+        initialized_output_dict = {'C2H6': {
+            'conformers': '',
+            'convergence': '',
+            'errors': '',
+            'info': '',
+            'isomorphism': '',
+            'job_types': {'1d_rotors': True,
+                          'composite': False,
+                          'conformers': False,
+                          'fine_grid': False,
+                          'freq': False,
+                          'lennard_jones': False,
+                          'onedmin': False,
+                          'opt': False,
+                          'orbitals': False,
+                          'sp': False},
+            'paths': {'composite': '', 'freq': '', 'sp': '', 'geo': ''},
+            'restart': '',
+            'warnings': ''},
+            'methylamine': {
+                'conformers': '',
+            'convergence': '',
+            'errors': '',
+            'info': '',
+            'isomorphism': '',
+            'job_types': {'1d_rotors': True,
+                          'composite': False,
+                          'conformers': False,
+                          'fine_grid': False,
+                          'freq': False,
+                          'lennard_jones': False,
+                          'onedmin': False,
+                          'opt': False,
+                          'orbitals': False,
+                          'sp': False},
+            'paths': {'composite': '', 'freq': '', 'sp': '', 'geo': ''},
+            'restart': '',
+            'warnings': ''},
+        }
+        self.assertEqual(self.sched1.output, initialized_output_dict)
+
+    def test_does_output_dict_contain_info(self):
+        """Test Scheduler.does_output_dict_contain_info"""
+        self.sched1.output = dict()
+        self.sched1.initialize_output_dict()
+        self.assertFalse(self.sched1.does_output_dict_contain_info())
+
+        self.sched1.output['C2H6']['info'] = 'some text'
+        self.sched1.output['C2H6']['job_types']['freq'] = True
+        self.sched1.output['C2H6']['paths']['sp'] = 'some/path/out.out'
+        self.assertTrue(self.sched1.does_output_dict_contain_info())
+
     @classmethod
     def tearDownClass(cls):
         """
