@@ -1659,26 +1659,26 @@ class Scheduler(object):
             job (Job): The optimization job object.
             vibfreqs (list): The vibrational frequencies.
         """
-        neg_freq_counter = 0
-        neg_fre = None
+        neg_freqs = list()
         for freq in vibfreqs:
             if freq < 0:
-                neg_freq_counter += 1
-                neg_fre = freq
-        if self.species_dict[label].is_ts and neg_freq_counter != 1:
-            logger.error('TS {0} has {1} imaginary frequencies,'
-                         ' should have exactly 1.'.format(label, neg_freq_counter))
-            self.output[label]['warnings'] += 'Warning: {0} imaginary freq for TS; '.format(neg_freq_counter)
+                neg_freqs.append(freq)
+        if self.species_dict[label].is_ts and len(neg_freqs) != 1:
+            logger.error('TS {0} has {1} imaginary frequencies ({2}),'
+                         ' should have exactly 1.'.format(label, len(neg_freqs), neg_freqs))
+            self.output[label]['warnings'] += 'Warning: {0} imaginary freqs for TS ({1}); '.format(
+                                               len(neg_freqs), neg_freqs)
             return False
-        elif not self.species_dict[label].is_ts and neg_freq_counter != 0:
-            logger.error('Species {0} has {1} imaginary frequencies,'
-                         ' should have exactly 0.'.format(label, neg_freq_counter))
-            self.output[label]['warnings'] += 'Warning: {0} imaginary freq for stable species; '.format(
-                neg_freq_counter)
+        elif not self.species_dict[label].is_ts and len(neg_freqs) != 0:
+            logger.error('Species {0} has {1} imaginary frequencies ({2}),'
+                         ' should have exactly 0.'.format(label, len(neg_freqs), neg_freqs))
+            self.output[label]['warnings'] += 'Warning: {0} imaginary freq for stable species ({1}); '.format(
+                                               len(neg_freqs), neg_freqs)
             return False
         else:
             if self.species_dict[label].is_ts:
-                logger.info('{0} has exactly one imaginary frequency: {1}'.format(label, neg_fre))
+                logger.info('TS {0} has exactly one imaginary frequency: {1}'.format(label, neg_freqs[0]))
+                self.output[label]['info'] += 'Imaginary frequency: {0}; '.format(neg_freqs[0])
             self.output[label]['job_types']['freq'] = True
             self.output[label]['paths']['geo'] = job.local_path_to_output_file
             self.output[label]['paths']['freq'] = job.local_path_to_output_file
@@ -1957,7 +1957,8 @@ class Scheduler(object):
             if spawn_job_type and not self.output[label]['job_types'][job_type] \
                     and not((self.species_dict[label].is_ts and job_type == 'scan')
                             or (self.species_dict[label].number_of_atoms == 1
-                                and job_type in ['conformers', 'opt', 'fine', 'freq', '1d_rotors'])):
+                                and job_type in ['conformers', 'opt', 'fine', 'freq', '1d_rotors', 'bde'])
+                            or job_type == 'bde' and self.species_dict[label].bdes is None):
                 all_converged = False
                 break
         if all_converged:
