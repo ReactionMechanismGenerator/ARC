@@ -2020,7 +2020,13 @@ class Scheduler(object):
         """
         factor = 1.1
         ccparser = cclib.io.ccopen(str(job.local_path_to_output_file), logging.CRITICAL)
-        data = ccparser.parse()
+        try:
+            data = ccparser.parse()
+        except AttributeError:
+            # see https://github.com/cclib/cclib/issues/754
+            logger.error('Could not troubleshoot negative frequency for species {0}'.format(label))
+            self.output[label]['errors'] += 'Error: Could not troubleshoot negative frequency; '
+            return
         vibfreqs = data.vibfreqs
         vibdisps = data.vibdisps
         atomnos = data.atomnos
