@@ -404,4 +404,55 @@ The above code generated the following input file::
       t1: null
 
 
+Calculating BDEs (bond dissociation energies)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+To direct ARC to calculate BDEs for a species, set the ``bde`` job type to `True`,
+and set the requested atom indices (1-indexed) in the species ``.bdes`` argument
+as a list of tuples representing indices of bonded atoms (via a single bond)
+between which the BDE will be calculated (a list of lists is also allowed and will be converted),
+E.g., a species can be defined as::
+
+    spc1 = ARCSpecies(label='label1', smiles='CC(NO)C', xyz=xyz1, bdes=[(1, 2), (5, 8)])
+
+Note that the `bdes` species argument also accepts the string ``'all_h'`` as one of the entries
+in the list, directing ARC to calculate BDEs for all hydrogen atoms in the species.
+Below is an example requesting all hydrogen BDEs in ethanol including the `C--O` BDE::
+
+    project: ethanol_BDEs
+
+    job_types:
+      1d_rotors: true
+      conformers: true
+      fine_grid: true
+      freq: true
+      opt: true
+      sp: true
+      bde: true
+
+    species:
+    - label: ethanol
+      smiles: CCO
+      xyz: |
+        O       1.20823797   -0.43654321    0.79046266
+        C       0.38565457    0.37473766   -0.03466399
+        C      -0.94122817   -0.32248828   -0.24592109
+        H       0.89282946    0.53292877   -0.99112072
+        H       0.23767951    1.34108205    0.45660206
+        H      -0.79278514   -1.30029213   -0.71598886
+        H      -1.43922693   -0.50288055    0.71249177
+        H      -1.60098471    0.27712988   -0.87920708
+        H       2.04982343    0.03632579    0.90734524
+      bdes:
+      - all_h
+      - - 1
+        - 2
+
+Note: The BDEs are determined based on `E0`, therefore both ``sp`` and ``freq`` jobs
+must be spawned (and successfully terminated for all species and fragments).
+
+The calculated BDEs are reported in the log file as well as in a designated `BDE_report.yml`
+file under the `output` directory in the project's folder. Units are kJ/mol.
+
+
 .. include:: links.txt
