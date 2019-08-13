@@ -974,7 +974,6 @@ $end
 
                             if reason in ['l301', 'l401']:
                                 additional_info = lines[len(lines) - i - 2]
-                                print('additional info: ', additional_info)
                                 if 'No data on chk file' in additional_info \
                                         or 'Basis set data is not on the checkpoint file' in additional_info:
                                     reason += ' check file problematic'

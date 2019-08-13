@@ -1435,8 +1435,6 @@ def check_xyz(xyz, multiplicity, charge):
             if symbol == element_symbol:
                 electrons += number
                 break
-    print(electrons)
-    print(charge)
     electrons -= charge
     if electrons % 2 ^ multiplicity % 2:
         return True

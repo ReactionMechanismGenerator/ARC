@@ -239,7 +239,6 @@ def process_conformers_file(conformers_path):
         if 'conformer' in lines[line_index] and ':' in lines[line_index] and lines[line_index].strip()[-2].isdigit():
             xyz, energy = '', None
             line_index += 1
-            print(lines[line_index].strip())
             while line_index < len(lines) and lines[line_index].strip() and 'SMILES' not in lines[line_index]\
                     and 'energy' not in lines[line_index].lower() and 'guess method' not in lines[line_index].lower():
                 xyz += lines[line_index]

@@ -2629,11 +2629,9 @@ class Scheduler(object):
                 if key0 in ['paths', 'job_types']:
                     for key1, val1 in species_output_dict[key0].items():
                         if val1 and key1 != '1d_rotors':
-                            print(key1, val1)
                             return True
                 else:
                     if val0:
-                        print(key0, val0)
                         return True
         return False
 
