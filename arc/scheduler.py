@@ -2635,35 +2635,40 @@ class Scheduler(object):
                 # for any other job type use the original level of theory regardless of the number of atoms
                 return original_level_of_theory
 
-    def initialize_output_dict(self):
+    def initialize_output_dict(self, label=None):
         """
         Initialize self.output.
         Do not initialize keys that will contain paths ('geo', 'freq', 'sp', 'composite'),
         their existence indicate the job was terminated for restarting purposes.
+        If `label` is not None, will initialize for a specific species, otherwise will initialize for all species.
+
+        Args:
+            label (str, optional): A species label.
         """
-        if not self.does_output_dict_contain_info():
+        if label is not None or not self.does_output_dict_contain_info():
             for species in self.species_list:
-                if species.label not in self.output:
-                    self.output[species.label] = dict()
-                if 'paths' not in self.output[species.label]:
-                    self.output[species.label]['paths'] = dict()
-                path_keys = ['geo', 'freq', 'sp', 'composite']
-                for key in path_keys:
-                    if key not in self.output[species.label]['paths']:
-                        self.output[species.label]['paths'][key] = ''
-                if 'job_types' not in self.output[species.label]:
-                    self.output[species.label]['job_types'] = dict()
-                for job_type in list(set(self.job_types.keys() + ['opt', 'freq', 'sp', 'composite', 'onedmin'])):
-                    if job_type == '1d_rotors':
-                        # rotors could be invalidated due to many reasons,
-                        # also could be falsely identified in a species that has no torsional modes.
-                        self.output[species.label]['job_types'][job_type] = True
-                    else:
-                        self.output[species.label]['job_types'][job_type] = False
-                keys = ['conformers', 'isomorphism', 'convergence', 'restart', 'errors', 'warnings', 'info']
-                for key in keys:
-                    if key not in self.output[species.label]:
-                        self.output[species.label][key] = ''
+                if label is None or (label is not None and species.label == label):
+                    if species.label not in self.output:
+                        self.output[species.label] = dict()
+                    if 'paths' not in self.output[species.label]:
+                        self.output[species.label]['paths'] = dict()
+                    path_keys = ['geo', 'freq', 'sp', 'composite']
+                    for key in path_keys:
+                        if key not in self.output[species.label]['paths']:
+                            self.output[species.label]['paths'][key] = ''
+                    if 'job_types' not in self.output[species.label]:
+                        self.output[species.label]['job_types'] = dict()
+                    for job_type in list(set(self.job_types.keys() + ['opt', 'freq', 'sp', 'composite', 'onedmin'])):
+                        if job_type == '1d_rotors':
+                            # rotors could be invalidated due to many reasons,
+                            # also could be falsely identified in a species that has no torsional modes.
+                            self.output[species.label]['job_types'][job_type] = True
+                        else:
+                            self.output[species.label]['job_types'][job_type] = False
+                    keys = ['conformers', 'isomorphism', 'convergence', 'restart', 'errors', 'warnings', 'info']
+                    for key in keys:
+                        if key not in self.output[species.label]:
+                            self.output[species.label][key] = ''
 
     def does_output_dict_contain_info(self):
         """
