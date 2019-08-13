@@ -175,6 +175,7 @@ class ARCSpecies(object):
         conf_is_isomorphic (bool): Whether the lowest conformer is isomorphic with the 2D graph representation
                                    of the species. `True` if it is. Defaults to `None`. If `True`, an isomorphism check
                                    will be strictly enforced for the final optimized coordinates.
+        conformers_before_opt (tuple): Conformers XYZs of a species before optimization.
 
     """
     def __init__(self, label=None, is_ts=False, rmg_species=None, mol=None, xyz=None, multiplicity=None, charge=None,
@@ -185,6 +186,7 @@ class ARCSpecies(object):
         self.t1 = None
         self.ts_number = ts_number
         self.conformers = list()
+        self.conformers_before_opt = None
         self.ts_guesses = list()
         self.cheap_conformer = None
         self.most_stable_conformer = None
@@ -479,6 +481,8 @@ class ARCSpecies(object):
         if self.conformers:
             species_dict['conformers'] = self.conformers
             species_dict['conformer_energies'] = self.conformer_energies
+        if self.conformers_before_opt is not None:
+            species_dict['conformers_before_opt'] = self.conformers_before_opt
         return species_dict
 
     def from_dict(self, species_dict):
@@ -597,6 +601,9 @@ class ARCSpecies(object):
                 and not any([tsg.xyz for tsg in self.ts_guesses]):
             # TS species are allowed to be loaded w/o a structure
             raise SpeciesError('Must have either mol or xyz for species {0}'.format(self.label))
+
+        self.conformers_before_opt = species_dict['conformers_before_opt'] \
+            if 'conformers_before_opt' in species_dict else None
 
     def from_yml_file(self, label=None):
         """

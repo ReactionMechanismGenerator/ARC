@@ -1072,6 +1072,7 @@ class Scheduler(object):
                                      xyzs=self.species_dict[label].conformers, level_of_theory=self.conformer_level,
                                      multiplicity=self.species_dict[label].multiplicity,
                                      charge=self.species_dict[label].charge, is_ts=False)  # before optimization
+        self.species_dict[label].conformers_before_opt = tuple(self.species_dict[label].conformers)
         if self.species_dict[label].initial_xyz is None and self.species_dict[label].final_xyz is None \
                 and not self.testing:
             if len(self.species_dict[label].conformers) > 1:
@@ -1243,18 +1244,22 @@ class Scheduler(object):
                                                  molecules_from_xyz(xyzs[0],
                                                                     multiplicity=self.species_dict[label].multiplicity,
                                                                     charge=self.species_dict[label].charge)[1]))
+                                    self.output[label]['status'] += 'Conformer {0} was found to be the lowest energy ' \
+                                                                    'isomorphic conformer; '.format(i)
                                 conformer_xyz = xyz
+                            self.output[label]['status'] += 'Conformers optimized and compared at {0}; '\
+                                                            .format(self.conformer_level)
                             break
                         else:
                             if i == 0:
-                                self.output[label]['status'] += 'most stable conformer ({0}) did not pass isomorphism ' \
-                                                                'check; '.format(i)
+                                self.output[label]['status'] += 'most stable conformer ({0}) did not pass ' \
+                                                                'isomorphism check; '.format(i)
                                 self.species_dict[label].conf_is_isomorphic = False
                                 logger.warning('Most stable conformer for species {0} with structure {1} was found to '
                                                'be NON-isomorphic with the 2D graph representation {2}. Searching for '
                                                'a different conformer that is isomorphic...'.format(
                                                 label, b_mol.toSMILES(), self.species_dict[label].mol.toSMILES()))
-                else:
+                else:  # all conformers for a species failed isomorphism test
                     smiles_list = list()
                     for xyz in xyzs:
                         try:
@@ -1274,11 +1279,12 @@ class Scheduler(object):
                             logger.warning('Isomorphism check cannot be done for charged species {0}'.format(label))
                         conformer_xyz = xyzs[0]
                     else:
-                        logger.error('No conformer for {0} was found to be isomorphic with the 2D graph representation'
-                                     ' {1} (got: {2}). NOT optimizing this species.'.format(
-                                      label, self.species_dict[label].mol.toSMILES(), smiles_list))
-                        self.output[label]['status'] += 'Error: No conformer was found to be isomorphic with the 2D' \
-                                                        ' graph representation!; '
+                        # troubleshoot when all conformers of a species failed isomorphic test
+                        logger.warning('Isomorphism check for species {0} failed at {1}. '
+                                       'Attempt to troubleshoot at other levels.'.format(label, self.conformer_level))
+                        self.output[label]['status'] += 'No conformer was found to be isomorphic with the 2D' \
+                                                        ' graph representation at {0}; '.format(self.conformer_level)
+                        self.troubleshoot_conformer_isomorphism(label=label)
             else:
                 logger.warning('Could not run isomorphism check for species {0} due to missing 2D graph '
                                'representation. Using the most stable conformer for further geometry'
@@ -1287,6 +1293,70 @@ class Scheduler(object):
             if conformer_xyz is not None:
                 self.species_dict[label].initial_xyz = conformer_xyz
                 self.species_dict[label].most_stable_conformer = xyzs_in_original_order.index(conformer_xyz)
+                logger.info('Conformer {0} is used for geometry optimization'
+                            .format(xyzs_in_original_order.index(conformer_xyz)))
+
+    def troubleshoot_conformer_isomorphism(self, label):
+        """
+        Troubleshoot conformer optimization for a species that failed isomorphic test in
+        `determine_most_stable_conformer`.
+
+        Args:
+            label (str): The species label.
+        """
+
+        if self.species_dict[label].is_ts:
+            raise SchedulerError('The troubleshoot_conformer_isomorphism() method does not deal with transition'
+                                 ' state geometries.')
+
+        num_of_conformers = len(self.species_dict[label].conformers)
+
+        if num_of_conformers == 0:
+            raise SchedulerError('The troubleshoot_conformer_isomorphism() method got zero conformers.')
+
+        # use the first conformer of a species to determine applicable troubleshooting method
+        job = self.job_dict[label]['conformers'][0]
+
+        if job.software == 'gaussian':
+            conformer_trsh_methods = ['wb97xd/def2TZVP', 'apfd/def2TZVP']
+        elif job.software == 'qchem':
+            conformer_trsh_methods = ['wb97x-d3/def2-TZVP']
+        else:
+            raise SchedulerError('The troubleshoot_conformer_isomorphism() method is not implemented for {0}.'
+                                 .format(job.software))
+
+        level_of_theory = None
+        for method in conformer_trsh_methods:
+            if 'conformer ' + method in job.ess_trsh_methods:
+                continue
+            job.ess_trsh_methods.append('conformer ' + method)
+            level_of_theory = method
+            break
+        else:
+            logger.error('ARC has attempted all built-in conformer isomorphism troubleshoot methods for species'
+                         ' {0}. No conformer for this species was found to be isomorphic with the 2D graph'
+                         ' representation {1}. NOT optimizing this species.'
+                         .format(label, self.species_dict[label].mol.toSMILES()))
+            self.output[label]['status'] += 'Error: No conformer was found to be isomorphic with the 2D' \
+                                            ' graph representation!; '
+
+        if level_of_theory is not None:
+            logger.info('Troubleshooting conformer job in {software} using {level} for species {species} with '
+                        'smiles {smiles}'.format(software=job.software, level=level_of_theory, species=label,
+                                                 smiles=self.species_dict[label].mol.toSMILES()))
+
+            # rerun conformer job at higher level for all conformers
+            for conformer in range(0, num_of_conformers):
+
+                # initial xyz before trouble shooting
+                xyz = self.species_dict[label].conformers_before_opt[conformer]
+
+                job = self.job_dict[label]['conformers'][conformer]
+                if 'conformer ' + method not in job.ess_trsh_methods:
+                    job.ess_trsh_methods.append('conformer ' + method)
+
+                self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
+                             job_type='conformer', ess_trsh_methods=job.ess_trsh_methods, conformer=job.conformer)
 
     def determine_most_likely_ts_conformer(self, label):
         """
