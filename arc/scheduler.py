@@ -76,7 +76,7 @@ class Scheduler(object):
                                      },
                             'conformers': <comments>,
                             'isomorphism': <comments>,
-                            'convergence': <comments>,
+                            'convergence': <status>,  # boolean
                             'restart': <comments>,
                             'info': <comments>,
                             'warnings': <comments>,
@@ -2668,7 +2668,10 @@ class Scheduler(object):
                     keys = ['conformers', 'isomorphism', 'convergence', 'restart', 'errors', 'warnings', 'info']
                     for key in keys:
                         if key not in self.output[species.label]:
-                            self.output[species.label][key] = ''
+                            if key == 'convergence':
+                                self.output[species.label][key] = False
+                            else:
+                                self.output[species.label][key] = ''
 
     def does_output_dict_contain_info(self):
         """
