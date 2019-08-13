@@ -114,7 +114,8 @@ class ARCSpecies(object):
                                   Defaults to None. Important, e.g., if a Species is a bi-rad singlet, in which case
                                   the job should be unrestricted, but the multiplicity does not have the required
                                   information to make that decision (r vs. u).
-        e_elect (float): The total electronic energy (without ZPE) of the species at the chosen sp level, in kJ/mol.
+        e_elect (float): The total electronic energy (without ZPE) at the chosen sp level, in kJ/mol.
+        e0 (float): The 0 Kelvin energy (total electronic energy plus ZPE) at the chosen sp level, in kJ/mol.
         is_ts (bool):  Whether or not the species represents a transition state.
         number_of_rotors (int): The number of potential rotors to scan.
         rotors_dict (dict): A dictionary of rotors. structure given below.
@@ -224,6 +225,7 @@ class ARCSpecies(object):
             self.is_ts = is_ts
             self.ts_conf_spawned = False
             self.e_elect = None
+            self.e0 = None
             self.arkane_file = None
             self.svpfit_output_file = svpfit_output_file
             self.conf_is_isomorphic = None
@@ -430,7 +432,10 @@ class ARCSpecies(object):
         species_dict = dict()
         species_dict['force_field'] = self.force_field
         species_dict['is_ts'] = self.is_ts
-        species_dict['E0'] = self.e_elect
+        if self.e_elect is not None:
+            species_dict['e_elect'] = self.e_elect
+        if self.e0 is not None:
+            species_dict['e0'] = self.e0
         species_dict['arkane_file'] = self.arkane_file
         if self.yml_path is not None:
             species_dict['yml_path'] = self.yml_path
@@ -503,7 +508,8 @@ class ARCSpecies(object):
             raise InputError('All species must have a label')
         self.run_time = datetime.timedelta(seconds=species_dict['run_time']) if 'run_time' in species_dict else None
         self.t1 = species_dict['t1'] if 't1' in species_dict else None
-        self.e_elect = species_dict['E electronic'] if 'E electronic' in species_dict else None
+        self.e_elect = species_dict['e_elect'] if 'e_elect' in species_dict else None
+        self.e0 = species_dict['e0'] if 'e0' in species_dict else None
         self.arkane_file = species_dict['arkane_file'] if 'arkane_file' in species_dict else None
         self.yml_path = species_dict['yml_path'] if 'yml_path' in species_dict else None
         self.rxn_label = species_dict['rxn_label'] if 'rxn_label' in species_dict else None
