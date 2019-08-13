@@ -101,6 +101,9 @@ class ARCSpecies(object):
                                      and the "old" RDKit embedding method will be used.
         svpfit_output_file (str, optional): The path to a Gaussian output file of an SVP Fit job if previously ran
                                             (otherwise, this job will be spawned if running Gromacs).
+        bdes (list): Specifying for which bonds should bond dissociation energies be calculated.
+                     Entries are bonded atom indices tuples (1-indexed). An 'all_h' string entry is also allowed,
+                     triggering BDE calculations for all hydrogen atoms in the molecule.
 
     Attributes:
         label (str): The species' label.
@@ -174,13 +177,16 @@ class ARCSpecies(object):
                                    of the species. `True` if it is. Defaults to `None`. If `True`, an isomorphism check
                                    will be strictly enforced for the final optimized coordinates.
         conformers_before_opt (tuple): Conformers XYZs of a species before optimization.
+        bdes (list): Specifying for which bonds should bond dissociation energies be calculated.
+                     Entries are bonded atom indices tuples (1-indexed). An 'all_h' string entry is also allowed,
+                     triggering BDE calculations for all hydrogen atoms in the molecule.
 
     """
     def __init__(self, label=None, is_ts=False, rmg_species=None, mol=None, xyz=None, multiplicity=None, charge=None,
                  smiles='', adjlist='', inchi='', bond_corrections=None, generate_thermo=True, species_dict=None,
                  yml_path=None, ts_methods=None, ts_number=None, rxn_label=None, external_symmetry=None,
                  optical_isomers=None, run_time=None, checkfile=None, number_of_radicals=None, force_field='MMFF94',
-                 svpfit_output_file=None):
+                 svpfit_output_file=None, bdes=None):
         self.t1 = None
         self.ts_number = ts_number
         self.conformers = list()
@@ -221,6 +227,10 @@ class ARCSpecies(object):
             self.arkane_file = None
             self.svpfit_output_file = svpfit_output_file
             self.conf_is_isomorphic = None
+            self.bdes = bdes
+            if self.bdes is not None and not isinstance(self.bdes, list):
+                raise SpeciesError('The .bdes argument must be a list, got {0} which is a {1}'.format(
+                                    self.bdes, type(self.bdes)))
             if self.is_ts:
                 if ts_methods is None:
                     self.ts_methods = default_ts_methods
@@ -319,8 +329,9 @@ class ARCSpecies(object):
                 mol_copy = self.mol.copy(deep=True)
                 self.mol_list = mol_copy.generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
             elif not self.bond_corrections and self.generate_thermo:
-                logger.warning('Cannot determine bond additivity corrections (BAC) for species {0} based on xyz'
-                               ' coordinates only. For better thermoproperties, provide bond corrections.')
+                logger.warning('Cannot determine bond additivity corrections (BAC) for species {0} based on xyz '
+                               'coordinates only. For better thermoproperties, provide bond corrections.'.format(
+                                self.label))
 
             self.neg_freqs_trshed = list()
 
@@ -478,6 +489,8 @@ class ARCSpecies(object):
             species_dict['conformer_energies'] = self.conformer_energies
         if self.conformers_before_opt is not None:
             species_dict['conformers_before_opt'] = self.conformers_before_opt
+        if self.bdes is not None:
+            species_dict['bdes'] = self.bdes
         return species_dict
 
     def from_dict(self, species_dict):
@@ -594,6 +607,10 @@ class ARCSpecies(object):
                 and not any([tsg.xyz for tsg in self.ts_guesses]):
             # TS species are allowed to be loaded w/o a structure
             raise SpeciesError('Must have either mol or xyz for species {0}'.format(self.label))
+        self.bdes = species_dict['bdes'] if 'bdes' in species_dict else None
+        if self.bdes is not None and not isinstance(self.bdes, list):
+            raise SpeciesError('The .bdes argument must be a list, got {0} which is a {1}'.format(
+                                self.bdes, type(self.bdes)))
 
         self.conformers_before_opt = species_dict['conformers_before_opt'] \
             if 'conformers_before_opt' in species_dict else None
