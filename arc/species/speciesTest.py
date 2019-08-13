@@ -21,6 +21,7 @@ from arc.settings import arc_path, default_levels_of_theory
 from arc.rmgdb import make_rmg_database_object
 from arc.plotter import save_conformers_file
 from arc.scheduler import Scheduler
+from arc.species.converter import standardize_xyz_string
 
 ################################################################################
 
@@ -363,7 +364,6 @@ H      -1.67091600   -1.35164600   -0.93286400
                          'external_symmetry': None,
                          'multiplicity': 1,
                          'arkane_file': None,
-                         'E0': None,
                          'mol': """1 C u0 p0 c0 {2,S} {3,S} {4,S} {5,S}
 2 N u0 p1 c0 {1,S} {6,S} {7,S}
 3 H u0 p0 c0 {1,S}
@@ -883,6 +883,67 @@ H       1.11582953    0.94384729   -0.10134685"""
         spc2.conf_is_isomorphic = False  # set to False so that isomorphism is not strictly enforced
         is_isomorphic4 = spc2.check_final_xyz_isomorphism()
         self.assertTrue(is_isomorphic4)
+
+    def test_scissors(self):
+        """Test the scissors method in Species"""
+        ch3oc2h5_xyz = """C  1.3324310  1.2375310  0.0000000
+                          O  0.0018390  0.7261240  0.0000000
+                          C  0.0000000 -0.7039850  0.0000000
+                          C -1.4484340 -1.1822370  0.0000000
+                          H  1.2595400  2.3362390  0.0000000
+                          H  1.8883830  0.9070030  0.9017920
+                          H  1.8883830  0.9070030 -0.9017920
+                          H  0.5387190 -1.0786510 -0.8972750
+                          H  0.5387190 -1.0786510  0.8972750
+                          H -1.4840700 -2.2862140  0.0000000
+                          H -1.9741850 -0.8117890  0.8963760
+                          H -1.9741850 -0.8117890 -0.8963760"""
+        ch3oc2h5 = ARCSpecies(label='ch3oc2h5', smiles='COCC', xyz=ch3oc2h5_xyz, bdes=[(1, 2)])
+        ch3oc2h5.final_xyz = ch3oc2h5.conformers[0]
+
+        resulting_species = ch3oc2h5.scissors()
+        self.assertEqual(len(resulting_species), 2)
+        for spc in resulting_species:
+            self.assertIn(spc.label, ['ch3oc2h5_BDE_1_2_A', 'ch3oc2h5_BDE_1_2_B'])
+            self.assertIn(spc.mol.toSMILES(), ['CC[O]', '[CH3]'])
+
+        ch3oc2h5.bdes = ['all_h']
+        resulting_species = ch3oc2h5.scissors()
+        self.assertEqual(len(resulting_species), 9)  # inc. H
+        self.assertIn('H', [spc.label for spc in resulting_species])
+        xyz1 = """C       1.37610855    1.22086621   -0.01539125
+                  O       0.04551655    0.70945921   -0.01539125
+                  C       0.04367755   -0.72064979   -0.01539125
+                  C      -1.40475645   -1.19890179   -0.01539125
+                  H       1.30321755    2.31957421   -0.01539125
+                  H       1.93206055    0.89033821    0.88640075
+                  H       0.58239655   -1.09531579   -0.91266625
+                  H       0.58239655   -1.09531579    0.88188375
+                  H      -1.44039245   -2.30287879   -0.01539125
+                  H      -1.93050745   -0.82845379    0.88098475
+                  H      -1.93050745   -0.82845379   -0.91176725"""
+        self.assertIn(standardize_xyz_string(xyz1), [standardize_xyz_string(spc.conformers[0])
+                                                     for spc in resulting_species])
+        self.assertEqual(resulting_species[0].multiplicity, 2)
+        self.assertEqual(resulting_species[0].multiplicity, 2)
+
+        ch3ch2o_xyz = """C  1.0591720 -0.5840990  0.0000000
+                         C  0.0000000  0.5217430  0.0000000
+                         O -1.3168640  0.0704390  0.0000000
+                         H  2.0740310 -0.1467690  0.0000000
+                         H  0.9492620 -1.2195690  0.8952700
+                         H  0.9492620 -1.2195690 -0.8952700
+                         H  0.1036620  1.1982630  0.8800660
+                         H  0.1036620  1.1982630 -0.8800660"""
+        ch3ch2o = ARCSpecies(label='ch3ch2o', smiles='CC[O]', xyz=ch3ch2o_xyz, multiplicity=2, bdes=[(1, 2)])
+        ch3ch2o.final_xyz = ch3ch2o.conformers[0]
+        spc1, spc2 = ch3ch2o.scissors()
+        self.assertEqual(spc2.mol.toSMILES(), '[CH3]')
+        self.assertIn('C       0.69489465    0.19509601    0.00000000', spc1.conformers[0])
+        self.assertIn('H       0.79855665    0.87161601    0.88006600', spc1.conformers[0])
+        self.assertEqual(spc1.multiplicity, 3)
+        self.assertEqual(spc2.multiplicity, 2)
+
 
     @classmethod
     def tearDownClass(cls):
