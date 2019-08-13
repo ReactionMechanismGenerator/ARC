@@ -34,6 +34,7 @@ jobs:
         - cd ..
         - git clone https://github.com/ReactionMechanismGenerator/RMG-Py
         - cd RMG-Py
+        - git checkout -b arkane_absolute origin/arkane_absolute
         - export PYTHONPATH=$PYTHONPATH:$(pwd)
         - make
         - cd ..
