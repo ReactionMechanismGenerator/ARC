@@ -73,6 +73,7 @@ default_job_types = {'conformers': True,      # defaults to True if not specifie
                      '1d_rotors': True,       # defaults to True if not specified
                      'orbitals': False,       # defaults to False if not specified
                      'lennard_jones': False,  # defaults to False if not specified
+                     'bde': False,            # defaults to False if not specified
                      }
 
 # List here (complete or partial) phrases of methods or basis sets you'd like to associate to specific ESS

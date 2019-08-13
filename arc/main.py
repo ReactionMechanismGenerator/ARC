@@ -1012,7 +1012,7 @@ class ARC(object):
             if job_type not in self.job_types:
                 # set default value to True if key is missing
                 self.job_types[job_type] = True
-        for job_type in ['onedmin', 'orbitals']:
+        for job_type in ['onedmin', 'orbitals', 'bde']:
             if job_type not in self.job_types:
                 # set default value to False if key is missing
                 self.job_types[job_type] = False
