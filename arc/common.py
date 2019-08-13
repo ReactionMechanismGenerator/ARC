@@ -269,7 +269,7 @@ def save_yaml_file(path, content):
 
     Args:
         path (str): The YAML file path to save.
-        content (str): The content to save.
+        content (list, dict): The content to save.
     """
     yaml.add_representer(str, string_representer)
     yaml.add_representer(unicode, unicode_representer)
