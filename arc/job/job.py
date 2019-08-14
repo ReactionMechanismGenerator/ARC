@@ -186,7 +186,7 @@ class Job(object):
         self.input = ''
         self.server_nodes = list()
         job_types = ['conformer', 'opt', 'freq', 'optfreq', 'sp', 'composite', 'scan', 'gsm', 'irc', 'ts_guess',
-                     'orbitals', 'onedmin', 'ff_param_fit', 'gromacs']  # allowed job types
+                     'orbitals', 'onedmin', 'ff_param_fit', 'gromacs', 'bde']  # allowed job types
         # the 'conformer' job type is identical to 'opt', but we differentiate them to be identifiable in Scheduler
         if job_type not in job_types:
             raise ValueError("Job type {0} not understood. Must be one of the following:\n{1}".format(
@@ -974,7 +974,6 @@ $end
 
                             if reason in ['l301', 'l401']:
                                 additional_info = lines[len(lines) - i - 2]
-                                print('additional info: ', additional_info)
                                 if 'No data on chk file' in additional_info \
                                         or 'Basis set data is not on the checkpoint file' in additional_info:
                                     reason += ' check file problematic'

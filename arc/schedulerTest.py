@@ -110,7 +110,7 @@ H      -1.16566701    0.32023496   -0.81630508"""
                                       'errors': '',
                                       'job_types': {'opt': False, 'composite': False, 'sp': False, 'fine_grid': False,
                                                     'freq': False, 'conformers': False},
-                                      'convergence': '', 'conformers': '', 'restart': ''}
+                                      'convergence': True, 'conformers': '', 'restart': ''}
         self.sched1.run_conformer_jobs()
         save_conformers_file(project_directory=self.sched1.project_directory, label='C2H6',
                              xyzs=self.sched1.species_dict['C2H6'].conformers, level_of_theory='level1',
@@ -174,48 +174,56 @@ H      -1.16566701    0.32023496   -0.81630508"""
 
     def test_initialize_output_dict(self):
         """Test Scheduler.initialize_output_dict"""
+        self.assertTrue(self.sched1.does_output_dict_contain_info())
         self.sched1.output = dict()
         self.assertEqual(self.sched1.output, dict())
         self.sched1.initialize_output_dict()
-        initialized_output_dict = {'C2H6': {
-            'conformers': '',
-            'convergence': '',
-            'errors': '',
-            'info': '',
-            'isomorphism': '',
-            'job_types': {'1d_rotors': True,
-                          'composite': False,
-                          'conformers': False,
-                          'fine_grid': False,
-                          'freq': False,
-                          'lennard_jones': False,
-                          'onedmin': False,
-                          'opt': False,
-                          'orbitals': False,
-                          'sp': False},
-            'paths': {'composite': '', 'freq': '', 'sp': '', 'geo': ''},
-            'restart': '',
-            'warnings': ''},
-            'methylamine': {
-                'conformers': '',
-            'convergence': '',
-            'errors': '',
-            'info': '',
-            'isomorphism': '',
-            'job_types': {'1d_rotors': True,
-                          'composite': False,
-                          'conformers': False,
-                          'fine_grid': False,
-                          'freq': False,
-                          'lennard_jones': False,
-                          'onedmin': False,
-                          'opt': False,
-                          'orbitals': False,
-                          'sp': False},
-            'paths': {'composite': '', 'freq': '', 'sp': '', 'geo': ''},
-            'restart': '',
-            'warnings': ''},
-        }
+        self.assertFalse(self.sched1.does_output_dict_contain_info())
+        initialized_output_dict = {'C2H6':
+                                       {'conformers': '',
+                                        'convergence': False,
+                                        'errors': '',
+                                        'info': '',
+                                        'isomorphism': '',
+                                        'job_types': {'1d_rotors': True,
+                                                      'composite': False,
+                                                      'conformers': False,
+                                                      'fine_grid': False,
+                                                      'freq': False,
+                                                      'lennard_jones': False,
+                                                      'onedmin': False,
+                                                      'opt': False,
+                                                      'orbitals': False,
+                                                      'sp': False},
+                                        'paths': {'composite': '',
+                                                  'freq': '',
+                                                  'geo': '',
+                                                  'sp': ''},
+                                        'restart': '',
+                                        'warnings': ''},
+                                   'methylamine':
+                                       {'conformers': '',
+                                        'convergence': False,
+                                        'errors': '',
+                                        'info': '',
+                                        'isomorphism': '',
+                                        'job_types': {'1d_rotors': True,
+                                                      'composite': False,
+                                                      'conformers': False,
+                                                      'fine_grid': False,
+                                                      'freq': False,
+                                                      'lennard_jones': False,
+                                                      'onedmin': False,
+                                                      'opt': False,
+                                                      'orbitals': False,
+                                                      'sp': False},
+                                        'paths': {'composite': '',
+                                                  'freq': '',
+                                                  'geo': '',
+                                                  'sp': ''},
+                                        'restart': '',
+                                        'warnings': ''}
+                                   }
         self.assertEqual(self.sched1.output, initialized_output_dict)
 
     def test_does_output_dict_contain_info(self):

@@ -350,11 +350,9 @@ class ARC(object):
                 if i in indices_to_pop:
                     self.arc_species_list.pop(i)
             self.arc_species_list.extend(converted_species_list)
-            for arc_spc in self.arc_species_list:
-                if arc_spc.label not in self.unique_species_labels:
-                    self.unique_species_labels.append(arc_spc.label)
-                else:
-                    raise ValueError('Species label {0} is not unique'.format(arc_spc.label))
+            if self.job_types['bde']:
+                self.add_hydrogen_for_bde()
+            self.determine_unique_species_labels()
             self.arc_rxn_list = arc_rxn_list if arc_rxn_list is not None else list()
             converted_rxn_list = list()
             indices_to_pop = []
@@ -663,6 +661,9 @@ class ARC(object):
                                                ' {2}'.format(rotor_num, spc.label, rotor_dict['scan_path']))
         else:
             self.arc_species_list = list()
+        if self.job_types['bde']:
+            self.add_hydrogen_for_bde()
+        self.determine_unique_species_labels()
         if 'reactions' in input_dict:
             self.arc_rxn_list = [ARCReaction(reaction_dict=rxn_dict) for rxn_dict in input_dict['reactions']]
             for i, rxn in enumerate(self.arc_rxn_list):
@@ -1012,7 +1013,7 @@ class ARC(object):
             if job_type not in self.job_types:
                 # set default value to True if key is missing
                 self.job_types[job_type] = True
-        for job_type in ['onedmin', 'orbitals']:
+        for job_type in ['onedmin', 'orbitals', 'bde']:
             if job_type not in self.job_types:
                 # set default value to False if key is missing
                 self.job_types[job_type] = False
@@ -1053,3 +1054,33 @@ class ARC(object):
                         logger.info('deleting all Gaussian check files...')
                         logged = True
                     os.remove(os.path.join(root, file_))
+
+    def determine_unique_species_labels(self):
+        """
+        Determine unique species labels.
+
+        Raises:
+            ValueError: If a non-unique species is found.
+        """
+        for arc_spc in self.arc_species_list:
+            if arc_spc.label not in self.unique_species_labels:
+                self.unique_species_labels.append(arc_spc.label)
+            else:
+                raise ValueError('Species label {0} is not unique'.format(arc_spc.label))
+
+    def add_hydrogen_for_bde(self):
+        """
+        Make sure ARC has a hydrogen species labeled as 'H' for the final processing of bde jobs (if not, create one).
+        """
+        if any([spc.bdes is not None for spc in self.arc_species_list]):
+            for species in self.arc_species_list:
+                if species.label == 'H':
+                    if species.number_of_atoms == 1 and species.get_xyz(get_cheap=True).split()[0][0] == 'H':
+                        break
+                    else:
+                        raise SpeciesError('A species with label "H" was defined, but does not seem to be '
+                                           'the hydrogen atom species. Cannot calculate bond dissociation energies.')
+            else:
+                # no H species defined, make one
+                h = ARCSpecies(label='H', smiles='[H]', generate_thermo=False)
+                self.arc_species_list.append(h)

@@ -19,6 +19,7 @@ from rmgpy.species import Species
 from rmgpy.statmech import NonlinearRotor, LinearRotor
 from rmgpy.molecule.resonance import generate_kekule_structure
 from rmgpy.transport import TransportData
+import rmgpy.molecule.element as elements
 from rmgpy.exceptions import InvalidAdjacencyListError
 
 from arc.common import get_logger, get_atom_radius, determine_symmetry
@@ -101,6 +102,9 @@ class ARCSpecies(object):
                                      and the "old" RDKit embedding method will be used.
         svpfit_output_file (str, optional): The path to a Gaussian output file of an SVP Fit job if previously ran
                                             (otherwise, this job will be spawned if running Gromacs).
+        bdes (list): Specifying for which bonds should bond dissociation energies be calculated.
+                     Entries are bonded atom indices tuples (1-indexed). An 'all_h' string entry is also allowed,
+                     triggering BDE calculations for all hydrogen atoms in the molecule.
 
     Attributes:
         label (str): The species' label.
@@ -111,7 +115,8 @@ class ARCSpecies(object):
                                   Defaults to None. Important, e.g., if a Species is a bi-rad singlet, in which case
                                   the job should be unrestricted, but the multiplicity does not have the required
                                   information to make that decision (r vs. u).
-        e_elect (float): The total electronic energy (without ZPE) of the species at the chosen sp level, in kJ/mol.
+        e_elect (float): The total electronic energy (without ZPE) at the chosen sp level, in kJ/mol.
+        e0 (float): The 0 Kelvin energy (total electronic energy plus ZPE) at the chosen sp level, in kJ/mol.
         is_ts (bool):  Whether or not the species represents a transition state.
         number_of_rotors (int): The number of potential rotors to scan.
         rotors_dict (dict): A dictionary of rotors. structure given below.
@@ -174,13 +179,16 @@ class ARCSpecies(object):
                                    of the species. `True` if it is. Defaults to `None`. If `True`, an isomorphism check
                                    will be strictly enforced for the final optimized coordinates.
         conformers_before_opt (tuple): Conformers XYZs of a species before optimization.
+        bdes (list): Specifying for which bonds should bond dissociation energies be calculated.
+                     Entries are bonded atom indices tuples (1-indexed). An 'all_h' string entry is also allowed,
+                     triggering BDE calculations for all hydrogen atoms in the molecule.
 
     """
     def __init__(self, label=None, is_ts=False, rmg_species=None, mol=None, xyz=None, multiplicity=None, charge=None,
                  smiles='', adjlist='', inchi='', bond_corrections=None, generate_thermo=True, species_dict=None,
                  yml_path=None, ts_methods=None, ts_number=None, rxn_label=None, external_symmetry=None,
                  optical_isomers=None, run_time=None, checkfile=None, number_of_radicals=None, force_field='MMFF94',
-                 svpfit_output_file=None):
+                 svpfit_output_file=None, bdes=None):
         self.t1 = None
         self.ts_number = ts_number
         self.conformers = list()
@@ -218,9 +226,14 @@ class ARCSpecies(object):
             self.is_ts = is_ts
             self.ts_conf_spawned = False
             self.e_elect = None
+            self.e0 = None
             self.arkane_file = None
             self.svpfit_output_file = svpfit_output_file
             self.conf_is_isomorphic = None
+            self.bdes = bdes
+            if self.bdes is not None and not isinstance(self.bdes, list):
+                raise SpeciesError('The .bdes argument must be a list, got {0} which is a {1}'.format(
+                                    self.bdes, type(self.bdes)))
             if self.is_ts:
                 if ts_methods is None:
                     self.ts_methods = default_ts_methods
@@ -319,8 +332,9 @@ class ARCSpecies(object):
                 mol_copy = self.mol.copy(deep=True)
                 self.mol_list = mol_copy.generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
             elif not self.bond_corrections and self.generate_thermo:
-                logger.warning('Cannot determine bond additivity corrections (BAC) for species {0} based on xyz'
-                               ' coordinates only. For better thermoproperties, provide bond corrections.')
+                logger.warning('Cannot determine bond additivity corrections (BAC) for species {0} based on xyz '
+                               'coordinates only. For better thermoproperties, provide bond corrections.'.format(
+                                self.label))
 
             self.neg_freqs_trshed = list()
 
@@ -419,7 +433,10 @@ class ARCSpecies(object):
         species_dict = dict()
         species_dict['force_field'] = self.force_field
         species_dict['is_ts'] = self.is_ts
-        species_dict['E0'] = self.e_elect
+        if self.e_elect is not None:
+            species_dict['e_elect'] = self.e_elect
+        if self.e0 is not None:
+            species_dict['e0'] = self.e0
         species_dict['arkane_file'] = self.arkane_file
         if self.yml_path is not None:
             species_dict['yml_path'] = self.yml_path
@@ -478,6 +495,8 @@ class ARCSpecies(object):
             species_dict['conformer_energies'] = self.conformer_energies
         if self.conformers_before_opt is not None:
             species_dict['conformers_before_opt'] = self.conformers_before_opt
+        if self.bdes is not None:
+            species_dict['bdes'] = self.bdes
         return species_dict
 
     def from_dict(self, species_dict):
@@ -490,7 +509,8 @@ class ARCSpecies(object):
             raise InputError('All species must have a label')
         self.run_time = datetime.timedelta(seconds=species_dict['run_time']) if 'run_time' in species_dict else None
         self.t1 = species_dict['t1'] if 't1' in species_dict else None
-        self.e_elect = species_dict['E electronic'] if 'E electronic' in species_dict else None
+        self.e_elect = species_dict['e_elect'] if 'e_elect' in species_dict else None
+        self.e0 = species_dict['e0'] if 'e0' in species_dict else None
         self.arkane_file = species_dict['arkane_file'] if 'arkane_file' in species_dict else None
         self.yml_path = species_dict['yml_path'] if 'yml_path' in species_dict else None
         self.rxn_label = species_dict['rxn_label'] if 'rxn_label' in species_dict else None
@@ -594,6 +614,10 @@ class ARCSpecies(object):
                 and not any([tsg.xyz for tsg in self.ts_guesses]):
             # TS species are allowed to be loaded w/o a structure
             raise SpeciesError('Must have either mol or xyz for species {0}'.format(self.label))
+        self.bdes = species_dict['bdes'] if 'bdes' in species_dict else None
+        if self.bdes is not None and not isinstance(self.bdes, list):
+            raise SpeciesError('The .bdes argument must be a list, got {0} which is a {1}'.format(
+                                self.bdes, type(self.bdes)))
 
         self.conformers_before_opt = species_dict['conformers_before_opt'] \
             if 'conformers_before_opt' in species_dict else None
@@ -865,10 +889,16 @@ class ARCSpecies(object):
             self.mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
 
             if self.mol is not None and not check_isomorphism(original_mol, self.mol):
-                raise InputError('XYZ and the 2D graph representation of the Molecule are not isomorphic.\n'
-                                 'Got xyz:\n{0}\n\nwhich corresponds to {1}\n{2}\n\nand: {3}\n{4}'.format(
-                                   xyz, self.mol.toSMILES(), self.mol.toAdjacencyList(),
-                                   original_mol.toSMILES(), original_mol.toAdjacencyList()))
+                if original_mol.multiplicity in [1, 2]:
+                    raise InputError('XYZ and the 2D graph representation for {0} are not isomorphic.\n'
+                                     'Got xyz:\n{1}\n\nwhich corresponds to {2}\n{3}\n\nand: {4}\n{5}'.format(
+                                      self.label, xyz, self.mol.toSMILES(), self.mol.toAdjacencyList(),
+                                      original_mol.toSMILES(), original_mol.toAdjacencyList()))
+                else:
+                    logger.warning('XYZ and the 2D graph representation for {0} are not isomorphic.\n'
+                                   'Got xyz:\n{1}\n\nwhich corresponds to {2}\n{3}\n\nand: {4}\n{5}'.format(
+                                    self.label, xyz, self.mol.toSMILES(), self.mol.toAdjacencyList(),
+                                    original_mol.toSMILES(), original_mol.toAdjacencyList()))
             if self.mol is None:
                 self.mol = original_mol  # todo: Atom order will not be correct, need fix
         else:
@@ -1040,6 +1070,159 @@ class ARCSpecies(object):
         else:
             logger.error('Cannot check isomorphism for species {0}'.format(self.label))
         return return_value
+
+    def scissors(self):
+        """
+        Cut chemical bonds to create new species from the original one according to the .bdes attribute,
+        preserving the 3D geometry other than the splitted bond.
+        If one of the scission-resulting species is a hydrogen atom, it will be returned last, labeled as 'H'.
+        Other species labels will be <original species label>_BDE_index1_index2_X, where "X" is either "A" or "B",
+        and the indices are 1-indexed.
+
+        Returns:
+            list: The scission-resulting species.
+        """
+        all_h = True if 'all_h' in self.bdes else False
+        if all_h:
+            self.bdes.pop(self.bdes.index('all_h'))
+        for entry in self.bdes:
+            if len(entry) != 2:
+                raise SpeciesError('Could not interpret entry {0} in {1} for BDEs calculations.'.format(
+                    entry, self.bdes))
+            if not isinstance(entry, (tuple, list)):
+                raise SpeciesError('`indices` entries must be tuples or lists, got {0} which is a {1} in {2}'.format(
+                    entry, type(entry), self.bdes))
+        self.bdes = [tuple(bde) for bde in self.bdes]
+        if all_h:
+            for atom1 in self.mol.atoms:
+                if atom1.isHydrogen():
+                    for atom2, bond12 in atom1.edges.items():
+                        if bond12.isSingle():
+                            atom_indices = (self.mol.atoms.index(atom2) + 1, self.mol.atoms.index(atom1) + 1)
+                            atom_indices_reverse = (atom_indices[1], atom_indices[0])
+                            if atom_indices not in self.bdes and atom_indices_reverse not in self.bdes:
+                                self.bdes.append(atom_indices)
+        resulting_species = list()
+        for index_tuple in self.bdes:
+            new_species_list = self._scissors(indices=index_tuple)
+            for new_species in new_species_list:
+                if new_species.label not in [existing_species.label for existing_species in resulting_species]:
+                    # mainly checks that the H species doesn't already exist
+                    resulting_species.append(new_species)
+        return resulting_species
+
+    def _scissors(self, indices):
+        """
+        Cut a chemical bond to create two new species from the original one, preserving the 3D geometry.
+
+        Args:
+            indices (tuple): The atom indices between which to cut (1-indexed, atoms must be bonded).
+
+        Returns:
+            list: The scission-resulting species.
+        """
+        if any([i < 1 for i in indices]):
+            raise SpeciesError('Indices must be larger than 0')
+        if not all([isinstance(i, int) for i in indices]):
+            raise SpeciesError('Indices must be integers')
+        if self.final_xyz is None:
+            raise SpeciesError('Cannot use scission without the .final_xyz attribute')
+        indices = (indices[0] - 1, indices[1] - 1)  # convert to 0-indexed atoms
+        atom1 = self.mol.atoms[indices[0]]
+        atom2 = self.mol.atoms[indices[1]]
+        if atom1.isHydrogen():
+            top1 = [self.mol.atoms.index(atom1)]
+            top2 = [i for i in range(len(self.mol.atoms)) if i not in top1]
+        elif atom2.isHydrogen():
+            top2 = [self.mol.atoms.index(atom2)]
+            top1 = [i for i in range(len(self.mol.atoms)) if i not in top2]
+        else:
+            # for robustness, only use the smaller top,
+            # determine_top_group_indices() might get confused for (large) convolved tops.
+            top1 = conformers.determine_top_group_indices(self.mol, atom1, atom2, index=0)[0]
+            top2 = conformers.determine_top_group_indices(self.mol, atom2, atom1, index=0)[0]
+            if len(top1) > len(top2):
+                top1 = [i for i in range(len(self.mol.atoms)) if i not in top2]
+            elif len(top2) > len(top1):
+                top2 = [i for i in range(len(self.mol.atoms)) if i not in top1]
+        split_xyz = self.final_xyz.splitlines()
+        xyz1 = '\n'.join([split_xyz[i] for i in top1])
+        xyz2 = '\n'.join([split_xyz[i] for i in top2])
+        xyz1, xyz2 = translate_to_center_of_mass(xyz1), translate_to_center_of_mass(xyz2)
+
+        mol_copy = self.mol.copy(deep=True)
+        # We are about to change the connectivity of the atoms in the molecule,
+        # which invalidates any existing vertex connectivity information; thus we reset it.
+        mol_copy.resetConnectivityValues()
+        atom1 = mol_copy.atoms[indices[0]]  # Note: redefining atom1 and atom2
+        atom2 = mol_copy.atoms[indices[1]]
+        if not mol_copy.hasBond(atom1, atom2):
+            raise SpeciesError('Attempted to remove a nonexistent bond.')
+        bond = mol_copy.getBond(atom1, atom2)
+        mol_copy.removeBond(bond)
+        mol1, mol2 = mol_copy.split()
+
+        used_a_label = False
+        if len(mol1.atoms) == 1 and mol1.atoms[0].isHydrogen():
+            label1 = 'H'
+        else:
+            label1 = self.label + '_BDE_' + str(indices[0] + 1) + '_' + str(indices[1] + 1) + '_A'
+            used_a_label = True
+        if len(mol2.atoms) == 1 and mol2.atoms[0].isHydrogen():
+            label2 = 'H'
+        else:
+            letter = 'B' if used_a_label else 'A'
+            label2 = self.label + '_BDE_' + str(indices[0] + 1) + '_' + str(indices[1] + 1) + '_' + letter
+
+        added_radical = list()
+        for mol, label in zip([mol1, mol2], [label1, label2]):
+            for atom in mol.atoms:
+                theoretical_charge = elements.PeriodicSystem.valence_electrons[atom.symbol] \
+                                     - atom.getBondOrdersForAtom() \
+                                     - atom.radicalElectrons -\
+                                     2 * atom.lonePairs
+                if theoretical_charge == atom.charge + 1:
+                    # we're missing a radical electron on this atom
+                    if label not in added_radical or label == 'H':
+                        atom.radicalElectrons += 1
+                        added_radical.append(label)
+                    else:
+                        raise SpeciesError('Could not figure out which atom should gain a radical '
+                                           'due to scission in {0}'.format(self.label))
+        mol1.update()
+        mol2.update()
+
+        # match xyz to mol:
+        if len(mol1.atoms) != len(mol2.atoms):
+            # easy
+            if len(mol1.atoms) != len(top1):
+                xyz1, xyz2 = xyz2, xyz1
+        else:
+            # harder
+            element_dict_mol1, element_dict_top1 = dict(), dict()
+            for atom in mol1.atoms:
+                if atom.element.symbol in element_dict_mol1:
+                    element_dict_mol1[atom.element.symbol] += 1
+                else:
+                    element_dict_mol1[atom.element.symbol] = 1
+            for i in top1:
+                atom = mol_copy.atoms[i - 1]
+                if atom.element.symbol in element_dict_top1:
+                    element_dict_top1[atom.element.symbol] += 1
+                else:
+                    element_dict_top1[atom.element.symbol] = 1
+            for element, count in element_dict_mol1.items():
+                if element not in element_dict_top1 or count != element_dict_top1[element]:
+                    xyz1, xyz2 = xyz2, xyz1
+
+        spc1 = ARCSpecies(label=label1, mol=mol1, xyz=xyz1, multiplicity=mol1.multiplicity, charge=mol1.getNetCharge(),
+                          generate_thermo=False)
+        spc1.initial_xyz = xyz1
+        spc2 = ARCSpecies(label=label2, mol=mol2, xyz=xyz2, multiplicity=mol2.multiplicity, charge=mol2.getNetCharge(),
+                          generate_thermo=False)
+        spc2.initial_xyz = xyz2
+
+        return [spc1, spc2]
 
 
 class TSGuess(object):
@@ -1435,8 +1618,6 @@ def check_xyz(xyz, multiplicity, charge):
             if symbol == element_symbol:
                 electrons += number
                 break
-    print(electrons)
-    print(charge)
     electrons -= charge
     if electrons % 2 ^ multiplicity % 2:
         return True

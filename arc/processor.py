@@ -18,12 +18,12 @@ from arkane.kinetics import KineticsJob
 
 from rmgpy.species import Species
 
-from arc.common import get_logger
+from arc.common import get_logger, save_yaml_file
 import arc.rmgdb as rmgdb
 from arc.job.inputs import input_files
 from arc import plotter
-from arc.arc_exceptions import SchedulerError, RotorError
 from arc.species.species import determine_rotor_symmetry, determine_rotor_type
+from arc.arc_exceptions import ProcessorError, SchedulerError, RotorError
 
 ##################################################################
 
@@ -86,7 +86,7 @@ class Processor(object):
         if any([species.generate_thermo and output[species.label]['convergence']
                 for species in self.species_dict.values()]):
             load_thermo_libs = True
-        if load_kinetic_libs or load_thermo_libs:
+        if self.rmgdb is not None and (load_kinetic_libs or load_thermo_libs):
             rmgdb.load_rmg_database(rmgdb=self.rmgdb, load_thermo_libs=load_thermo_libs,
                                     load_kinetic_libs=load_kinetic_libs)
         t_min = t_min if t_min is not None else (300, 'K')
@@ -181,9 +181,12 @@ class Processor(object):
                                        multiplicity=species.multiplicity, optical=species.optical_isomers,
                                        sp_level=self.sp_level, sp_path=sp_path, opt_path=opt_path,
                                        freq_path=freq_path, rotors=rotors)
-        with open(input_file_path, 'wb') as f:
-            f.write(input_file)
-        species.arkane_file = input_file_path
+        if freq_path:
+            with open(input_file_path, 'wb') as f:
+                f.write(input_file)
+            species.arkane_file = input_file_path
+        else:
+            species.arkane_file = None
         return output_path
 
     def process(self):
@@ -214,8 +217,11 @@ class Processor(object):
                 statmech_success = self._run_statmech(arkane_spc, species.arkane_file, output_path,
                                                       use_bac=self.use_bac)
                 if not statmech_success:
+                    logger.error('Could not run statmech job for species {0}'.format(species.label))
                     continue
 
+                species.e0 = arkane_spc.conformer.E0.value_si * 0.001  # convert to kJ/mol
+                logger.debug('Assigned E0 to {0}: {1} kJ/mol'.format(species.label, species.e0))
                 if species.generate_thermo:
                     thermo_job = ThermoJob(arkane_spc, 'NASA')
                     thermo_job.execute(output_directory=output_path, plot=False)
@@ -245,6 +251,16 @@ class Processor(object):
                     species_for_transport_lib.append(species)
             elif not self.output[species.label]['convergence']:
                 unconverged_species.append(species)
+
+        bde_report = dict()
+        for species in self.species_dict.values():
+            # looping again to make sure all relevant Species.e0 attributes were set
+            if species.bdes is not None:
+                bde_report[species.label] = self.process_bdes(species.label)
+        if bde_report:
+            bde_path = os.path.join(self.project_directory, 'output', 'BDE_report.yml')
+            save_yaml_file(path=bde_path, content=bde_report)
+
         # Kinetics:
         rxn_list_for_kinetics_plots = list()
         arkane_spc_dict = dict()  # a dictionary with all species and the TSs
@@ -259,6 +275,7 @@ class Processor(object):
                 arkane_ts = arkane_transition_state(str(species.label), species.arkane_file)
                 arkane_spc_dict[species.label] = arkane_ts
                 self._run_statmech(arkane_ts, species.arkane_file, kinetics=True)
+                species.e0 = arkane_ts.conformer.E0.value_si * 0.001  # convert to kJ/mol
                 for spc in rxn.r_species + rxn.p_species:
                     if spc.label not in arkane_spc_dict.keys():
                         # add an extra character to the arkane_species label to distinguish between species calculated
@@ -344,6 +361,8 @@ class Processor(object):
         Returns:
             bool: Whether the job was successful (True for successful).
         """
+        if arkane_file is None:
+            return False
         success = True
         stat_mech_job = StatMechJob(arkane_spc, arkane_file)
         stat_mech_job.applyBondEnergyCorrections = use_bac and not kinetics and self.sp_level
@@ -363,6 +382,50 @@ class Processor(object):
                 arkane_spc.label, e.message))
             success = False
         return success
+
+    def process_bdes(self, label):
+        """
+        Process bond dissociation energies for a single parent species represented by `label`.
+
+        Args:
+            label (str): The species label.
+        """
+        source = self.species_dict[label]
+        bde_report = dict()
+        if source.e0 is None:
+            logger.error('Cannot calculate BDEs without E0 for {0}. Make sure freq and sp jobs ran successfully '
+                         'for this species.'.format(label))
+            return bde_report
+        for bde_indices in source.bdes:
+            found_a_label = False
+            # index 0 of the tuple:
+            if source.mol.atoms[bde_indices[0] - 1].isHydrogen():
+                e1 = self.species_dict['H'].e0
+            else:
+                bde_label = label + '_BDE_' + str(bde_indices[0]) + '_' + str(bde_indices[1]) + '_A'
+                if bde_label not in self.species_dict:
+                    raise ProcessorError('Could not find BDE species {0} for processing'.format(bde_label))
+                found_a_label = True
+                e1 = self.species_dict[bde_label].e0
+            # index 1 of the tuple:
+            if source.mol.atoms[bde_indices[1] - 1].isHydrogen():
+                e2 = self.species_dict['H'].e0
+            else:
+                letter = 'B' if found_a_label else 'A'
+                bde_label = label + '_BDE_' + str(bde_indices[0]) + '_' + str(bde_indices[1]) + '_' + letter
+                if bde_label not in self.species_dict:
+                    raise ProcessorError('Could not find BDE species {0} for processing'.format(bde_label))
+                e2 = self.species_dict[bde_label].e0
+            if e1 is not None and e2 is not None:
+                bde_report[bde_indices] = e1 + e2 - source.e0  # products - reactant
+            else:
+                bde_report[bde_indices] = 'N/A'
+                logger.error('could not calculate BDE for {0} between atoms {1} ({2}) and {3} ({4})'.format(
+                              label, bde_indices[0], source.mol.atoms[bde_indices[0] - 1].element.symbol,
+                              bde_indices[1], source.mol.atoms[bde_indices[1] - 1].element.symbol))
+        logger.info('\n\nBDE report for {0} (kJ/mol):\n{1}\n'.format(label, bde_report))
+        return bde_report
+
 
     def _clean_output_directory(self):
         """
