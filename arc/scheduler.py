@@ -1157,6 +1157,7 @@ class Scheduler(object):
                         logger.info('The only conformer for species {0} was found to be isomorphic '
                                     'with the 2D graph representation {1}\n'.format(label, b_mol.toSMILES()))
                         self.output[label]['conformers'] += 'single conformer passed isomorphism check; '
+                        self.output[label]['job_types']['conformers'] = True
                         self.species_dict[label].conf_is_isomorphic = True
                     else:
                         logger.error('The only conformer for species {0} is not isomorphic '
