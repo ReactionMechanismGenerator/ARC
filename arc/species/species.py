@@ -732,8 +732,6 @@ class ARCSpecies(object):
                         xyz = ts_guess.xyz
                         return xyz
                 return None
-            elif len(self.conformers):
-                xyz = self.conformers[0]
             elif get_cheap:
                 self.get_cheap_conformer()
                 xyz = self.cheap_conformer

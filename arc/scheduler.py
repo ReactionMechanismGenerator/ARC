@@ -742,10 +742,9 @@ class Scheduler(object):
                             self.species_dict[label].initial_xyz = self.species_dict[label].get_xyz()
                     else:
                         # run the combinatorial method w/o fitting a force field
-                        self.species_dict[label].generate_conformers(confs_to_dft=self.confs_to_dft,
-                                                                     plot_path=os.path.join(
-                                                                         self.project_directory, 'output', 'Species',
-                                                                         label, 'geometry', 'conformers'))
+                        self.species_dict[label].generate_conformers(
+                            confs_to_dft=self.confs_to_dft, plot_path=os.path.join(
+                                self.project_directory, 'output', 'Species', label, 'geometry', 'conformers'))
                     self.process_conformers(label)
             elif not self.job_types['conformers']:
                 # we're not running conformer jobs

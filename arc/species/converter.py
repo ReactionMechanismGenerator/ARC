@@ -268,7 +268,10 @@ def molecules_from_xyz(xyz, multiplicity=None, charge=0):
                                    'following error:\n{0}'.format(e.message))
                     return None, None
             mol_s1_updated.multiplicity = mol_bo.multiplicity
-            order_atoms(ref_mol=mol_s1_updated, mol=mol_bo)
+            try:
+                order_atoms(ref_mol=mol_s1_updated, mol=mol_bo)
+            except SanitizationError:
+                logger.warning('Could not order atoms for {0}!'.format(mol_s1_updated.toSMILES()))
             try:
                 set_multiplicity(mol_s1_updated, mol_bo.multiplicity, charge, radical_map=mol_bo)
             except SpeciesError as e:
