@@ -586,9 +586,15 @@ def check_isomorphism(mol1, mol2, filter_structures=True):
     mol1_copy = mol1.copy(deep=True)
     mol2_copy = mol2.copy(deep=True)
     spc1 = Species(molecule=[mol1_copy])
-    spc1.generate_resonance_structures(keep_isomorphic=False, filter_structures=filter_structures)
     spc2 = Species(molecule=[mol2_copy])
-    spc2.generate_resonance_structures(keep_isomorphic=False, filter_structures=filter_structures)
+    try:
+        spc1.generate_resonance_structures(keep_isomorphic=False, filter_structures=filter_structures)
+    except AtomTypeError:
+        pass
+    try:
+        spc2.generate_resonance_structures(keep_isomorphic=False, filter_structures=filter_structures)
+    except AtomTypeError:
+        pass
     return spc1.isIsomorphic(spc2)
 
 
