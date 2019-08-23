@@ -882,22 +882,23 @@ class ARCSpecies(object):
             xyz = self.get_xyz(get_cheap=get_cheap)
 
         if self.mol is not None:
-            # self.mol should have come from another source, e.g. SMILES or yml
-            original_mol = self.mol
+            # self.mol should have come from another source, e.g., SMILES or yml
+            original_mol = self.mol.copy(deep=True)
             self.mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
 
             if self.mol is not None and not check_isomorphism(original_mol, self.mol):
                 if original_mol.multiplicity in [1, 2]:
-                    raise InputError('XYZ and the 2D graph representation for {0} are not isomorphic.\n'
-                                     'Got xyz:\n{1}\n\nwhich corresponds to {2}\n{3}\n\nand: {4}\n{5}'.format(
-                                      self.label, xyz, self.mol.toSMILES(), self.mol.toAdjacencyList(),
-                                      original_mol.toSMILES(), original_mol.toAdjacencyList()))
+                    raise SpeciesError('XYZ and the 2D graph representation for {0} are not isomorphic.\n'
+                                       'Got xyz:\n{1}\n\nwhich corresponds to {2}\n{3}\n\nand: {4}\n{5}'.format(
+                                        self.label, xyz, self.mol.toSMILES(), self.mol.toAdjacencyList(),
+                                        original_mol.toSMILES(), original_mol.toAdjacencyList()))
                 else:
                     logger.warning('XYZ and the 2D graph representation for {0} are not isomorphic.\n'
                                    'Got xyz:\n{1}\n\nwhich corresponds to {2}\n{3}\n\nand: {4}\n{5}'.format(
                                     self.label, xyz, self.mol.toSMILES(), self.mol.toAdjacencyList(),
                                     original_mol.toSMILES(), original_mol.toAdjacencyList()))
-            if self.mol is None:
+            elif self.mol is None:
+                # molecules_from_xyz() returned None for b_mol
                 self.mol = original_mol  # todo: Atom order will not be correct, need fix
         else:
             self.mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
@@ -1124,7 +1125,7 @@ class ARCSpecies(object):
         if not all([isinstance(i, int) for i in indices]):
             raise SpeciesError('Indices must be integers')
         if self.final_xyz is None:
-            raise SpeciesError('Cannot use scission without the .final_xyz attribute')
+            raise SpeciesError('Cannot use scissors without the .final_xyz attribute of species {0}'.format(self.label))
         indices = (indices[0] - 1, indices[1] - 1)  # convert to 0-indexed atoms
         atom1 = self.mol.atoms[indices[0]]
         atom2 = self.mol.atoms[indices[1]]
