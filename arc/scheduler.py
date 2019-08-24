@@ -1849,6 +1849,7 @@ class Scheduler(object):
                                     rotor["success"] = None
                                     rotor.pop('symmetry', None)
                                 self.run_opt_job(label)  # run opt on new initial_xyz with the desired dihedral
+                                break
                             else:
                                 self.species_dict[label].rotors_dict[i]['success'] = True
                         elif invalidate:
