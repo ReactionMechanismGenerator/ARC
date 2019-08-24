@@ -884,7 +884,7 @@ $end
             else:
                 response = execute_command('ls -alF {0}'.format(self.local_path))
             files = list()
-            for line in response[0][0].splitlines():
+            for line in response[0]:
                 files.append(line.split()[-1])
             for file_name in files:
                 if 'slurm' in file_name and '.out' in file_name:
