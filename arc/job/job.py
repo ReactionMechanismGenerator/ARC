@@ -938,55 +938,68 @@ $end
             lines = f.readlines()
             if self.software == 'gaussian':
                 for line in lines[-1:-20:-1]:
-                    if 'Normal termination of Gaussian' in line:
-                        break
-                else:
-                    for i, line in enumerate(lines[::-1]):
-                        if 'Error' in line or 'NtrErr' in line or 'Erroneous' in line or 'malloc' in line \
-                                or 'galloc' in line:
-                            reason = ''
-                            if 'l9999.exe' in line or 'l103.exe' in line:
-                                return 'unconverged'
-                            elif 'l502.exe' in line:
-                                return 'unconverged SCF'
-                            elif 'l103.exe' in line:
-                                return 'l103 internal coordinate error'
-                            elif 'Erroneous write' in line or 'Write error in NtrExt1' in line:
-                                reason = 'Ran out of disk space.'
-                            elif 'l716.exe' in line:
-                                reason = 'Angle in z-matrix outside the allowed range 0 < x < 180.'
-                            elif 'l301.exe' in line:
-                                reason = 'l301'
-                            elif 'NtrErr Called from FileIO' in line:
-                                reason = 'Operation on .chk file was specified, but .chk was not found.'
-                            elif 'l101.exe' in line:
-                                reason = 'Input Error. The blank line after the coordinate section is missing, ' \
-                                         'or charge/multiplicity was not specified correctly.'
-                            elif 'l202.exe' in line:
-                                reason = 'During the optimization process, either the standard orientation ' \
-                                         'or the point group of the molecule has changed.'
-                            elif 'l401.exe' in line:
-                                reason = 'l401'
-                            elif 'malloc failed' in line or 'galloc' in line:
-                                reason = 'Memory allocation failed (did you ask for too much?)'
-                            elif 'A SYNTAX ERROR WAS DETECTED' in line:
-                                reason = 'Check .inp carefully for syntax errors in keywords.'
-
-                            if reason in ['l301', 'l401']:
-                                additional_info = lines[len(lines) - i - 2]
-                                if 'No data on chk file' in additional_info \
-                                        or 'Basis set data is not on the checkpoint file' in additional_info:
-                                    reason += ' check file problematic'
-                                elif reason == 'l301':
-                                    reason += 'Input Error. Either charge, multiplicity, or basis set was not ' \
-                                             'specified correctly. Or, an atom specified does not match any standard ' \
-                                              'atomic symbol.'
-                                elif reason == 'l401':
-                                    reason += ' "The projection from the old to the new basis set has failed."'
-
-                            return 'errored: {0}; {1}'.format(line, reason)
-                    return 'errored: Unknown reason'
-                return 'done'
+                    if 'Normal termination' in line:
+                        return 'done'
+                for i, line in enumerate(lines[::-1]):
+                    reason = ''
+                    if 'termination' in line:
+                        if 'l9999.exe' in line or 'link 9999' in line:
+                            reason = 'G9999: Unconverged'
+                        elif 'l101.exe' in line:
+                            reason = 'G101: Input Error. The blank line after the coordinate section is missing, '\
+                                     'or charge/multiplicity was not specified correctly.'
+                        elif 'l103.exe' in line:
+                            reason = 'G103: Internal coordinate error.'
+                        elif 'l108.exe' in line:
+                            reason = 'G108: Input Error. There are two blank lines between z-matrix and '\
+                                     'the variables, expected only one.'
+                        elif 'l202.exe' in line:
+                            reason = 'G202: During the optimization process, either the standard orientation ' \
+                                     'or the point group of the molecule has changed.'
+                        elif 'l301.exe' in line:
+                            reason = 'G301'
+                        elif 'l401.exe' in line:
+                            reason = 'G401'
+                        elif 'l502.exe' in line:
+                            reason = 'G502: unconverged SCF'
+                        elif 'l716.exe' in line:
+                            reason = 'G716: Angle in z-matrix outside the allowed range 0 < x < 180.'
+                        elif 'l906.exe' in line:
+                            reason = 'G906: The MP2 calculation has failed. It may be related to pseudopotential. ' \
+                                     'basis sets (CEP-121G*) that are used with polarization functions, ' \
+                                     'where no polarization functions actually exist.'
+                        else:
+                            reason = 'Gaussian job was terminated with unknown reason.'
+                        if reason in ['G301', 'G401']:
+                            additional_info = lines[len(lines) - i - 2]
+                            print('additional info: ', additional_info)
+                            if 'No data on chk file' in additional_info \
+                                    or 'Basis set data is not on the checkpoint file' in additional_info:
+                                reason += ': Check file problematic'
+                            elif reason == 'G301':
+                                reason += ': Input Error. Either charge, multiplicity, or basis set was not ' \
+                                         'specified correctly. Or, an atom specified does not match any standard ' \
+                                          'atomic symbol.'
+                            elif reason == 'G401':
+                                reason += ': "The projection from the old to the new basis set has failed."'
+                    elif 'Erroneous write' in line or 'Write error in NtrExt1' in line:
+                        reason = 'Ran out of disk space.'
+                    elif 'NtrErr' in line:
+                        reason = 'Operation on .chk file was specified, but .chk was not found or ' \
+                                 'incomplete. '
+                    elif 'malloc failed' in line or 'galloc' in line:
+                        reason = 'Memory allocation failed (did you ask for too much?)'
+                    elif 'A SYNTAX ERROR WAS DETECTED' in line:
+                        reason = 'There was a syntax error in the Gaussian input file. Check your ' \
+                                 'Gaussian input file template under arc/job/inputs.py.'
+                    elif 'PGFIO/stdio: No such file or directory' in line:
+                        reason = 'Wrongly specified the scratch directory. Correct the "GAUSS_SCRDIR" ' \
+                                 'variable in the submit script, it should point to an existing directory. ' \
+                                 'Make sure to add "mkdir -p $GAUSS_SCRDIR" to your submit script.'
+                    if reason:
+                        return 'errored: {0}; {1}'.format(reason, line)
+                return  'errored: Gaussian job did not terminated correctly. It is possible there '\
+                        'was a node failure for the job.'
             elif self.software == 'qchem':
                 done = False
                 error_message = ''
