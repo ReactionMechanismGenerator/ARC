@@ -34,8 +34,7 @@ from arc.species.species import ARCSpecies, TSGuess, determine_rotor_symmetry
 from arc.species.converter import get_xyz_string, molecules_from_xyz, check_isomorphism, standardize_xyz_string
 import arc.species.conformers as conformers
 from arc.ts.atst import autotst
-from arc.settings import rotor_scan_resolution, inconsistency_ab, inconsistency_az, maximum_barrier, default_job_types,\
-    servers
+from arc.settings import inconsistency_ab, inconsistency_az, maximum_barrier, default_job_types, servers
 
 ##################################################################
 
@@ -1746,144 +1745,137 @@ class Scheduler(object):
             label (str): The species label.
             job (Job): The rotor scan job object.
         """
+        # If the job has not converged, troubleshoot
         if job.job_status[1] != 'done':
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level_of_theory, job_type='scan')
             return None
+        # If the job has converged, check the scan quality
+        message = ''
+        invalidation_reason = ''
+        trsh = False
+        invalidate = False
         for i in range(self.species_dict[label].number_of_rotors):
-            message = ''
-            invalidation_reason = ''
-            trsh = False
             if self.species_dict[label].rotors_dict[i]['pivots'] == job.pivots:
-                invalidate = False
-                if job.job_status[1] == 'done':
-                    # ESS converged. Get PES scan using Arkane:
-                    log = determine_qm_software(fullpath=job.local_path_to_output_file)
-                    try:
-                        v_list, angle = log.loadScanEnergies()
-                    except ZeroDivisionError:
-                        logger.error('Energies from rotor scan of {label} between pivots {pivots} could not'
-                                     'be read. Invalidating rotor.'.format(label=label, pivots=job.pivots))
-                        invalidate = True
-                        invalidation_reason = 'could not read energies'
-                    else:
-                        v_list = np.array(v_list, np.float64)
-                        v_list *= 0.001  # convert to kJ/mol
-                        # 1. Check smoothness:
-                        if abs(v_list[-1] - v_list[0]) > inconsistency_az:
-                            # initial and final points differ by more than `inconsistency_az` kJ/mol.
-                            # seems like this rotor broke the conformer. Invalidate
-                            error_message = 'Rotor scan of {label} between pivots {pivots} is inconsistent by more' \
-                                            ' than {incons_az:.2f} kJ/mol between initial and final positions.' \
-                                            ' Invalidating rotor.\nv_list[0] = {v0}, v_list[-1] = {vneg1}'.format(
-                                             label=label, pivots=job.pivots, incons_az=inconsistency_az,
-                                             v0=v_list[0], vneg1=v_list[-1])
-                            logger.error(error_message)
-                            message += error_message + '; '
-                            invalidate = True
-                            invalidation_reason = 'initial and final points are inconsistent by more than {0:.2f} ' \
-                                                  'kJ/mol'.format(inconsistency_az)
-                            if not job.scan_trsh:
-                                logger.info('Trying to troubleshoot rotor {0} of {1}...'.format(job.pivots, label))
-                                trsh = True
-                                self.troubleshoot_scan_job(job=job, method=['inc_res', 'freeze'])
-                        if not invalidate:
-                            v_last = v_list[-1]
-                            for v in v_list:
-                                if abs(v - v_last) > inconsistency_ab * max(v_list):
-                                    # Two consecutive points on the scan differ by more than `inconsistency_ab` kJ/mol.
-                                    # This is a serious inconsistency. Invalidate
-                                    error_message = 'Rotor scan of {label} between pivots {pivots} is inconsistent ' \
-                                                    'by more than {incons_ab:.2f} kJ/mol between two consecutive ' \
-                                                    'points. Invalidating rotor.'.format(
-                                                     label=label, pivots=job.pivots,
-                                                     incons_ab=inconsistency_ab * max(v_list))
-                                    logger.error(error_message)
-                                    message += error_message + '; '
-                                    invalidate = True
-                                    invalidation_reason = 'two consecutive points are inconsistent by more than ' \
-                                                          '{0:.2f} kJ/mol'.format(inconsistency_ab * max(v_list))
-                                    if not job.scan_trsh:
-                                        logger.info('Trying to troubleshoot rotor {0} of {1}...'.format(
-                                            job.pivots, label))
-                                        trsh = True
-                                        self.troubleshoot_scan_job(job=job, method=['inc_res', 'freeze'])
-                                    break
-                                if abs(v - v_list[0]) > maximum_barrier:
-                                    # The barrier for the hinderd rotor is higher than `maximum_barrier` kJ/mol.
-                                    # Invalidate
-                                    warn_message = 'Rotor scan of {label} between pivots {pivots} has a barrier ' \
-                                                   'larger than {max_barrier:.2f} kJ/mol. Invalidating rotor.'.format(
-                                                    label=label, pivots=job.pivots, max_barrier=maximum_barrier)
-                                    logger.warning(warn_message)
-                                    message += warn_message + '; '
-                                    invalidate = True
-                                    invalidation_reason = 'scan has a barrier larger than {0}' \
-                                                          ' kJ/mol'.format(maximum_barrier)
-                                    break
-                                v_last = v
-                        # 2. Check conformation:
-                        invalidated = ''
-                        if not invalidate and not trsh:
-                            v_diff = (v_list[0] - np.min(v_list))
-                            if v_diff >= 2 or v_diff > 0.5 * (max(v_list) - min(v_list)):
-                                self.species_dict[label].rotors_dict[i]['success'] = False
-                                logger.info('Species {label} is not oriented correctly around pivots {pivots},'
-                                            ' searching for a better conformation...'.format(label=label,
-                                                                                             pivots=job.pivots))
-                                # Find the rotation dihedral in degrees to the closest minimum:
-                                min_v = v_list[0]
-                                min_index = 0
-                                for j, v in enumerate(v_list):
-                                    if v < min_v - 2:
-                                        min_v = v
-                                        min_index = j
-                                self.species_dict[label].set_dihedral(
-                                    pivots=self.species_dict[label].rotors_dict[i]['pivots'],
-                                    scan=self.species_dict[label].rotors_dict[i]['scan'],
-                                    deg_increment=min_index*rotor_scan_resolution)
-                                self.delete_all_species_jobs(label)
-                                # Remove all completed rotor calculation information
-                                for rotor in self.species_dict[label].rotors_dict.values():
-                                    rotor["scan_path"] = ''
-                                    rotor["invalidation_reason"] = ''
-                                    rotor["success"] = None
-                                    rotor.pop('symmetry', None)
-                                self.run_opt_job(label)  # run opt on new initial_xyz with the desired dihedral
-                                break
-                            else:
-                                self.species_dict[label].rotors_dict[i]['success'] = True
-                        elif invalidate:
-                            invalidated = '*INVALIDATED* '
-                        if self.species_dict[label].rotors_dict[i]['success']:
-                            self.species_dict[label].rotors_dict[i]['symmetry'] = determine_rotor_symmetry(
-                                rotor_path=job.local_path_to_output_file, label=label,
-                                pivots=self.species_dict[label].rotors_dict[i]['pivots'])[0]
-                            symmetry = ' has symmetry {0}'.format(self.species_dict[label].rotors_dict[i]['symmetry'])
-
-                            logger.info('{invalidated}Rotor scan {scan} between pivots {pivots}'
-                                        ' for {label}{symmetry}'.format(
-                                         invalidated=invalidated, scan=self.species_dict[label].rotors_dict[i]['scan'],
-                                         pivots=self.species_dict[label].rotors_dict[i]['pivots'],
-                                         label=label, symmetry=symmetry))
-                            folder_name = 'rxns' if job.is_ts else 'Species'
-                            rotor_path = os.path.join(self.project_directory, 'output', folder_name,
-                                                      job.species_name, 'rotors')
-                            message += invalidated
-                            plotter.plot_rotor_scan(angle, v_list, path=rotor_path, pivots=job.pivots, comment=message)
-                else:
-                    # scan job crashed
+                # 1. Check whether the log file is readable, get PES scan using Arkane
+                log = determine_qm_software(fullpath=job.local_path_to_output_file)
+                try:
+                    v_list, angle = log.loadScanEnergies()
+                except ZeroDivisionError:
+                    message = 'Energies from rotor scan of {label} between pivots {pivots} could not' \
+                              ' be read. Invalidating rotor.'.format(label=label, pivots=job.pivots)
+                    logger.error(message)
                     invalidate = True
-                    invalidation_reason = 'scan job crashed'
-                if not trsh:
-                    if invalidate:
-                        self.species_dict[label].rotors_dict[i]['success'] = False
-                    else:
-                        self.species_dict[label].rotors_dict[i]['success'] = True
-                    self.species_dict[label].rotors_dict[i]['scan_path'] = job.local_path_to_output_file
-                    self.species_dict[label].rotors_dict[i]['invalidation_reason'] = invalidation_reason
-                break  # A job object has only one pivot. Break if found, otherwise raise an error.
+                    invalidation_reason = 'could not read energies'
+                    break
+
+                # 1. Check rotor scan curve
+                # 1.1. Check consistency between initial and final points
+                v_list = np.array(v_list, np.float64)
+                v_list *= 0.001  # convert to kJ/mol
+                if abs(v_list[-1] - v_list[0]) > inconsistency_az:
+                    # initial and final points differ by more than `inconsistency_az` kJ/mol.
+                    # seems like this rotor broke the conformer. Invalidate
+                    message = 'Rotor scan of {label} between pivots {pivots} is inconsistent by more' \
+                              ' than {incons_az:.2f} kJ/mol between initial and final positions.' \
+                              ' Invalidating rotor.\nv_list[0] = {v0}, v_list[-1] = {vneg1}'.format(
+                               label=label, pivots=job.pivots, incons_az=inconsistency_az,
+                               v0=v_list[0], vneg1=v_list[-1])
+                    logger.error(message)
+                    invalidate = True
+                    invalidation_reason = 'initial and final points are inconsistent by more than {0:.2f} ' \
+                                          'kJ/mol'.format(inconsistency_az)
+                    if not job.scan_trsh:
+                        logger.info('Trying to troubleshoot rotor {0} of {1}...'.format(job.pivots, label))
+                        trsh = True
+                        self.troubleshoot_scan_job(job=job, method=['inc_res', 'freeze'])
+                    break
+
+                # 1.2. Check consistency between consecutive points
+                for j in range(len(v_list) - 1):
+                    if abs(v_list[j] - v_list[j + 1]) > inconsistency_ab * np.max(v_list):
+                        # Two consecutive points on the scan differ by more than `inconsistency_ab` kJ/mol.
+                        # This is a serious inconsistency. Invalidate
+                        message = 'Rotor scan of {label} between pivots {pivots} is inconsistent ' \
+                                  'by more than {incons_ab:.2f} kJ/mol between two consecutive ' \
+                                  'points. Invalidating rotor.'.format(
+                                   label=label, pivots=job.pivots, incons_ab=inconsistency_ab * max(v_list))
+                        logger.error(message)
+                        invalidate = True
+                        invalidation_reason = 'two consecutive points are inconsistent by more than ' \
+                                              '{0:.2f} kJ/mol'.format(inconsistency_ab * max(v_list))
+                        if not job.scan_trsh:
+                            logger.info('Trying to troubleshoot rotor {0} of {1}...'.format(
+                                job.pivots, label))
+                            trsh = True
+                            self.troubleshoot_scan_job(job=job, method=['inc_res', 'freeze'])
+                        break
+                if invalidate:
+                    break
+
+                # 2. Check conformation:
+                v_diff = v_list[0] - np.min(v_list)
+                if v_diff >= 2 or v_diff > 0.5 * (max(v_list) - min(v_list)):
+                    message = 'Species {label} is not oriented correctly around pivots {pivots},' \
+                              ' searching for a better conformation...'.format(label=label,
+                                                                               pivots=job.pivots)
+                    logger.info(message)
+                    # Find the rotation dihedral in degrees to the closest minimum:
+                    min_index = np.argmin(v_list)
+                    self.species_dict[label].set_dihedral(
+                        pivots=self.species_dict[label].rotors_dict[i]['pivots'],
+                        scan=self.species_dict[label].rotors_dict[i]['scan'],
+                        deg_increment=min_index * job.scan_res)
+                    self.delete_all_species_jobs(label)
+                    # Remove all completed rotor calculation information
+                    for rotor in self.species_dict[label].rotors_dict.values():
+                        rotor["scan_path"] = ''
+                        rotor["invalidation_reason"] = ''
+                        rotor["success"] = None
+                        rotor.pop('symmetry', None)
+                    self.run_opt_job(label)  # run opt on new initial_xyz with the desired dihedral
+                    break
+
+                # 3. Check the barrier height
+                if (np.max(v_list) - np.min(v_list)) > maximum_barrier:
+                    # The barrier for the hinderd rotor is higher than `maximum_barrier` kJ/mol.
+                    # Invalidate
+                    message = 'Rotor scan of {label} between pivots {pivots} has a barrier ' \
+                              'larger than {max_barrier:.2f} kJ/mol. Invalidating rotor.'.format(
+                               label=label, pivots=job.pivots, max_barrier=maximum_barrier)
+                    logger.warning(message)
+                    invalidate = True
+                    invalidation_reason = 'scan has a barrier larger than {0}' \
+                                          ' kJ/mol'.format(maximum_barrier)
+                    break
+
+                # 4. Calculate the symmetry if the scan succeed
+                if not invalidate:
+                    self.species_dict[label].rotors_dict[i]['success'] = True
+                    self.species_dict[label].rotors_dict[i]['symmetry'] = determine_rotor_symmetry(
+                        rotor_path=job.local_path_to_output_file, label=label,
+                        pivots=self.species_dict[label].rotors_dict[i]['pivots'])[0]
+                    logger.info('Rotor scan {scan} between pivots {pivots}'
+                                ' for {label} has symmetry {symmetry}'.format(
+                                 scan=self.species_dict[label].rotors_dict[i]['scan'],
+                                 pivots=self.species_dict[label].rotors_dict[i]['pivots'],
+                                 label=label, symmetry=self.species_dict[label].rotors_dict[i]['symmetry']))
+                    break
         else:
             raise SchedulerError('Could not match rotor with pivots {0} in species {1}'.format(job.pivots, label))
+
+        if not trsh:  # Only continue if not troubleshooting the scan
+            if invalidate:
+                self.species_dict[label].rotors_dict[i]['success'] = False
+            if self.species_dict[label].rotors_dict[i]['success'] is not None:  # exclude reset conformer
+                self.species_dict[label].rotors_dict[i]['scan_path'] = job.local_path_to_output_file
+                self.species_dict[label].rotors_dict[i]['invalidation_reason'] = invalidation_reason
+        # If v_list is obtained, draw the scan curve
+        if 'could not read' not in invalidation_reason:
+            folder_name = 'rxns' if job.is_ts else 'Species'
+            rotor_path = os.path.join(self.project_directory, 'output', folder_name,
+                                        job.species_name, 'rotors')
+            plotter.plot_rotor_scan(angle, v_list, path=rotor_path, pivots=job.pivots, comment=message)
+        # Save the Restart dictionary
         self.save_restart_dict()
 
     def check_md_job(self, label, job, max_iterations=10):

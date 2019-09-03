@@ -9,7 +9,6 @@ from __future__ import (absolute_import, division, print_function, unicode_liter
 import numpy as np
 import os
 import shutil
-import math
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.backends.backend_pdf import PdfPages
@@ -174,25 +173,25 @@ def plot_rotor_scan(angle, v_list, path=None, pivots=None, comment=''):
     """
     plots a 1D rotor PES for v_list vs. angle.
     """
-    angle = angle * 180 / math.pi  # convert radians to degree
+    angle = angle * 180 / np.pi  # convert radians to degree
     v_list = np.array(v_list, np.float64)  # in kJ/mol
+    marker_color, line_color = plt.cm.viridis([0.1, 0.9])
     plt.figure(figsize=(4, 3), dpi=120)
     plt.subplot(1, 1, 1)
-    plt.plot(angle, v_list, 'g.')
+    plt.plot(angle, v_list, '.-', markerfacecolor=marker_color,
+             markeredgecolor=marker_color, color=line_color)
     plt.xlabel('dihedral (deg)')
     plt.xlim = (0, 360)
     plt.xticks(np.arange(0, 361, step=60))
     plt.ylabel('V (kJ/mol)')
     plt.tight_layout()
     plt.show()
+
     if path is not None and pivots is not None:
         if not os.path.exists(path):
             os.makedirs(path)
-        fig_path = os.path.join(path, '{0}.png'.format(pivots))
-        plt.savefig(fig_path, dpi=120, facecolor='w', edgecolor='w', orientation='portrait', papertype=None,
-                    format=str('png'), transparent=False, bbox_inches=None, pad_inches=0.1, frameon=False,
-                    metadata=None)
         if comment:
+            fig_name = '{0}-invalid.png'.format(pivots)
             txt_path = os.path.join(path, 'rotor comments.txt')
             if os.path.isfile(txt_path):
                 with open(txt_path, 'a') as f:
@@ -200,6 +199,12 @@ def plot_rotor_scan(angle, v_list, path=None, pivots=None, comment=''):
             else:
                 with open(txt_path, 'w') as f:
                     f.write(str('Pivots: {0}\nComment: {1}'.format(pivots, comment)))
+        else:
+            fig_name = '{0}.png'.format(pivots)
+        fig_path = os.path.join(path, fig_name)
+        plt.savefig(fig_path, dpi=120, facecolor='w', edgecolor='w', orientation='portrait', papertype=None,
+                    format=str('png'), transparent=False, bbox_inches=None, pad_inches=0.1, frameon=False,
+                    metadata=None)
 
 
 def log_thermo(label, path):
