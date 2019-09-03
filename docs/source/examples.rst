@@ -86,6 +86,10 @@ default values than for non-composite methods (defined in settings.py). Yes, an 
 frequencies calculation job is executed after a composite job just so that the Hamiltonian will
 be outputted.
 
+Tip: if you only need to run ARC for a specific job type, simply replace the ``job_types`` block in the above example
+with ``specific_job_type : job type``. For instance, ``specific_job_type : freq`` instructs ARC to run frequency job
+only.
+
 The same example as above ran via the API (e.g., in `Jupyter notebooks`__) would look like the following::
 
     from arc import ARC

@@ -140,6 +140,7 @@ class ARC(object):
                                        isomorphic to the 2D graph representation.
         memory (int): The total allocated job memory in GB (14 by default to be lower than 90% * 16 GB).
         job_types (dict): A dictionary of job types to execute. Keys are job types, values are boolean.
+        specific_job_type (str): Specific job type to execute. Legal strings are job types (keys of job_types dict).
         bath_gas (str): A bath gas. Currently used in OneDMin to calc L-J parameters.
                         Allowed values are He, Ne, Ar, Kr, H2, N2, O2.
         keep_checks (bool): Whether to keep all Gaussian checkfiles when ARC terminates. True to keep, default is False.
@@ -150,9 +151,9 @@ class ARC(object):
 
     def __init__(self, input_dict=None, project=None, arc_species_list=None, arc_rxn_list=None, level_of_theory='',
                  conformer_level='', composite_method='', opt_level='', freq_level='', sp_level='', scan_level='',
-                 ts_guess_level='', use_bac=True, job_types=None, model_chemistry='', initial_trsh=None, t_min=None,
-                 t_max=None, t_count=None, verbose=logging.INFO, project_directory=None, max_job_time=120,
-                 allow_nonisomorphic_2d=False, job_memory=14, ess_settings=None, bath_gas=None,
+                 ts_guess_level='', use_bac=True, job_types=None, specific_job_type=None, model_chemistry='',
+                 initial_trsh=None, t_min=None, t_max=None, t_count=None, verbose=logging.INFO, project_directory=None,
+                 max_job_time=120, allow_nonisomorphic_2d=False, job_memory=14, ess_settings=None, bath_gas=None,
                  adaptive_levels=None, freq_scale_factor=None, calc_freq_factor=True, confs_to_dft=5,
                  keep_checks=False, dont_gen_confs=None):
         self.__version__ = VERSION
@@ -178,6 +179,7 @@ class ARC(object):
             self.t_max = t_max
             self.t_count = t_count
             self.job_types = job_types
+            self.specific_job_type = specific_job_type
             self.initialize_job_types()
             self.bath_gas = bath_gas
             self.confs_to_dft = confs_to_dft
@@ -999,6 +1001,12 @@ class ARC(object):
         """
         A helper function for initializing self.job_types.
         """
+        if self.specific_job_type is not None:
+            self.job_types = {job_type: False for job_type in default_job_types.keys()}
+            try:
+                self.job_types[self.specific_job_type] = True
+            except KeyError:
+                raise InputError('Specified job type "{0}" is not supported'.format(self.specific_job_type))
         if self.job_types is None:
             self.job_types = default_job_types
         if 'lennard_jones' in self.job_types:
