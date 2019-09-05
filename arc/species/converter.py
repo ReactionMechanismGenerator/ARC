@@ -211,7 +211,7 @@ def rmg_mol_from_inchi(inchi):
     """
     try:
         rmg_mol = Molecule().fromInChI(str(inchi))
-    except (AtomTypeError, ValueError) as e:
+    except (AtomTypeError, ValueError, KeyError) as e:
         logger.warning('Got the following Error when trying to create an RMG Molecule object from InChI:'
                        '\n{0}'.format(e.message))
         return None
@@ -419,7 +419,7 @@ def update_molecule(mol, to_single_bonds=False):
             new_mol.addBond(bond)
     try:
         new_mol.updateAtomTypes()
-    except AtomTypeError:
+    except (AtomTypeError, KeyError):
         pass
     new_mol.multiplicity = mol.multiplicity
     return new_mol
@@ -587,6 +587,7 @@ def check_isomorphism(mol1, mol2, filter_structures=True):
     mol2_copy = mol2.copy(deep=True)
     spc1 = Species(molecule=[mol1_copy])
     spc2 = Species(molecule=[mol2_copy])
+
     try:
         spc1.generate_resonance_structures(keep_isomorphic=False, filter_structures=filter_structures)
     except AtomTypeError:
@@ -595,7 +596,12 @@ def check_isomorphism(mol1, mol2, filter_structures=True):
         spc2.generate_resonance_structures(keep_isomorphic=False, filter_structures=filter_structures)
     except AtomTypeError:
         pass
-    return spc1.isIsomorphic(spc2)
+
+    for molecule1 in spc1.molecule:
+        for molecule2 in spc2.molecule:
+            if molecule1.isIsomorphic(molecule2, saveOrder=True):
+                return True
+    return False
 
 
 def get_center_of_mass(xyz=None, coords=None, symbols=None):

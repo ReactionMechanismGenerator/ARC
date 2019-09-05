@@ -151,7 +151,8 @@ def generate_conformers(mol_list, label, xyzs=None, torsions=None, tops=None, ch
     if isinstance(mol_list, Molecule):
         mol_list = [mol for mol in mol_list.generate_resonance_structures() if mol.reactive]
     if not isinstance(mol_list, list):
-        raise ConformerError('The `mol_list` argument must be a list, got {0}'.format(type(mol_list)))
+        logger.error('The `mol_list` argument must be a list, got {0}'.format(type(mol_list)))
+        return None
     for mol in mol_list:
         if not isinstance(mol, Molecule):
             raise ConformerError('Each entry in the `mol_list` argument must be an RMG Molecule object, '
@@ -812,7 +813,7 @@ def determine_torsion_symmetry(label, top1, mol_list, torsion_scan):
                     symmetry *= 2
                 # all other groups:
                 elif not mol.atoms[top[0] - 1].lonePairs > 0 and not mol.atoms[top[0] - 1].radicalElectrons > 0 \
-                        and all([groups[0].isIsomorphic(group) for group in groups[1:]]):
+                        and all([groups[0].isIsomorphic(group, saveOrder=True) for group in groups[1:]]):
                     symmetry *= len(groups)
     return symmetry
 
@@ -1572,8 +1573,8 @@ def identify_chiral_centers(mol):
             for atom2 in atom1.edges.keys():
                 top = determine_top_group_indices(mol, atom1, atom2, index=0)[0]
                 groups.append(to_group(mol, top))
-            if all([not groups[0].isIsomorphic(group) for group in groups[1:]] +
-                   [not groups[-1].isIsomorphic(group) for group in groups[:-1]]):
+            if all([not groups[0].isIsomorphic(group, saveOrder=True) for group in groups[1:]] +
+                   [not groups[-1].isIsomorphic(group, saveOrder=True) for group in groups[:-1]]):
                 # if we can say that TWO groups, each separately considered ins't isomorphic to the other two,
                 # then this nitrogen has all different (three) groups.
                 chiral_centers.append(mol.atoms.index(atom1))
