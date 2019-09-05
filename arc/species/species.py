@@ -65,9 +65,9 @@ class ARCSpecies(object):
                                      (If there's only one entry, it could be given directly as a string, not in a list).
                                      The file paths could direct to either a .xyz file, ARC conformers
                                      (w/ or w/o energies), or an ESS log/input files.
-        multiplicity (int, optional): The species' multiplicity. Can be determined from the adjlist/smiles/xyz
-                                      (the algorithm assumes it's either a singlet or a doublet).
-        charge (int, optional): The species' net charge. Assumed to be 0 be default.
+        multiplicity (int, optional): The species' electron spin multiplicity. Can be determined from the
+                                      adjlist/smiles/xyz (If unspecified, assumed to be either a singlet or a doublet).
+        charge (int, optional): The species' net charge. Assumed to be 0 if unspecified.
         smiles (str, optional): A `SMILES <https://en.wikipedia.org/wiki/Simplified_molecular-input_line-entry_system>`_
                                 representation for the species 2D graph.
         adjlist (str, optional): An `RMG adjacency list
@@ -108,16 +108,16 @@ class ARCSpecies(object):
 
     Attributes:
         label (str): The species' label.
-        multiplicity (int): The species' multiplicity. Can be determined from the adjlist/smiles/xyz
-                            (the algorithm assumes it's either a singlet or a doublet).
-        charge (int): The species' net charge. Assumed to be 0 be default.
+        multiplicity (int): The species' electron spin multiplicity. Can be determined from the adjlist/smiles/xyz
+                            (If unspecified, assumed to be either a singlet or a doublet).
+        charge (int): The species' net charge. Assumed to be 0 if unspecified.
         number_of_radicals (int): The number of radicals (inputted by the user, ARC won't attempt to determine it).
                                   Defaults to None. Important, e.g., if a Species is a bi-rad singlet, in which case
                                   the job should be unrestricted, but the multiplicity does not have the required
                                   information to make that decision (r vs. u).
         e_elect (float): The total electronic energy (without ZPE) at the chosen sp level, in kJ/mol.
         e0 (float): The 0 Kelvin energy (total electronic energy plus ZPE) at the chosen sp level, in kJ/mol.
-        is_ts (bool):  Whether or not the species represents a transition state.
+        is_ts (bool):  Whether the species represents a transition state. `True` if it does.
         number_of_rotors (int): The number of potential rotors to scan.
         rotors_dict (dict): A dictionary of rotors. structure given below.
         conformers (list): A list of selected conformers XYZs.
