@@ -151,7 +151,8 @@ def generate_conformers(mol_list, label, xyzs=None, torsions=None, tops=None, ch
     if isinstance(mol_list, Molecule):
         mol_list = [mol for mol in mol_list.generate_resonance_structures() if mol.reactive]
     if not isinstance(mol_list, list):
-        raise ConformerError('The `mol_list` argument must be a list, got {0}'.format(type(mol_list)))
+        logger.error('The `mol_list` argument must be a list, got {0}'.format(type(mol_list)))
+        return None
     for mol in mol_list:
         if not isinstance(mol, Molecule):
             raise ConformerError('Each entry in the `mol_list` argument must be an RMG Molecule object, '
