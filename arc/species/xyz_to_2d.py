@@ -423,7 +423,7 @@ class MolGraph(object):
         """
         self_rmg = self.to_rmg_mol()
         other_rmg = other.to_rmg_mol()
-        return self_rmg.isIsomorphic(other_rmg)
+        return self_rmg.isIsomorphic(other_rmg, saveOrder=True)
 
     def set_coords(self, coords):
         """
