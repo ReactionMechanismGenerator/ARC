@@ -988,7 +988,7 @@ class Scheduler(object):
 
         Args:
             label (str): The species label.
-            job_name (str): THe opt job name to differetiate between `opt` and `optfreq` jobs.
+            job_name (str): The opt job name (used for differetiating between `opt` and `optfreq` jobs).
         """
         if self.composite_method:
             # This was originally a composite method, probably troubleshooted as 'opt'
@@ -998,8 +998,8 @@ class Scheduler(object):
                     or self.species_dict[label].number_of_atoms > 1:
                 if 'freq' not in job_name:
                     self.run_freq_job(label)
-                else:  # this is an 'optfreq' job type
-                    self.check_freq_job(label=label, job=job)
+                else:  # this is an 'optfreq' job type, don't run freq
+                    self.check_freq_job(label=label, job=self.job_dict[label]['optfreq'][job_name])
             self.run_sp_job(label)
             self.run_scan_jobs(label)
 
