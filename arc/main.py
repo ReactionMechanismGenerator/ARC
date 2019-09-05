@@ -1017,6 +1017,9 @@ class ARC(object):
             if job_type not in self.job_types:
                 # set default value to False if key is missing
                 self.job_types[job_type] = False
+        job_types = [job_type for job_type, val in self.job_types.items() if val]
+        logger.info('\nConsidering the following job types: {0}\n'.format(job_types))
+
 
     def check_freq_scaling_factor(self):
         """
