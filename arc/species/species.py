@@ -685,11 +685,17 @@ class ARCSpecies(object):
                                                           force_field=self.force_field, print_logs=False,
                                                           num_confs_to_return=confs_to_dft, return_all_conformers=False,
                                                           plot_path=plot_path)
-            self.conformers.extend([conf['xyz'] for conf in lowest_confs])
-            self.conformer_energies.extend([None] * len(lowest_confs))
-            lowest_conf = conformers.get_lowest_confs(label=self.label, confs=lowest_confs, n=1)[0]
-            logger.info('Most stable force field conformer for {0}:'.format(self.label))
-            logger.info(lowest_conf['xyz'])
+            if lowest_confs is not None:
+                self.conformers.extend([conf['xyz'] for conf in lowest_confs])
+                self.conformer_energies.extend([None] * len(lowest_confs))
+                lowest_conf = conformers.get_lowest_confs(label=self.label, confs=lowest_confs, n=1)[0]
+                logger.info('Most stable force field conformer for {0}:'.format(self.label))
+                logger.info(lowest_conf['xyz'])
+            else:
+                logger.error('Could not generate conformers for {0}'.format(self.label))
+                if not self.get_xyz(get_cheap=False):
+                    logger.warning('No 3D coordinates available for species {0}!'.format(self.label))
+
 
     def get_cheap_conformer(self):
         """
