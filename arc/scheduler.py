@@ -338,8 +338,8 @@ class Scheduler(object):
                         self.species_dict[species.label].final_xyz = symbol + '   0.0   0.0   0.0'
                     if not self.output[species.label]['job_types']['sp'] \
                             and not self.output[species.label]['job_types']['composite'] \
-                            and 'sp' not in self.job_dict[species.label] \
-                            and 'composite' not in self.job_dict[species.label]:
+                            and 'sp' not in list(self.job_dict[species.label].keys()) \
+                            and 'composite' not in list(self.job_dict[species.label].keys()):
                         # No need to run opt/freq jobs for a monoatomic species, only run sp (or composite if relevant)
                         if self.composite_method:
                             self.run_composite_job(species.label)
@@ -354,25 +354,25 @@ class Scheduler(object):
                     # This section takes care of restarting a Species (including a TS), but does not
                     # deal with conformers nor with ts_guesses
                     if self.composite_method and not self.output[species.label]['job_types']['composite'] \
-                            and 'composite' not in self.job_dict[species.label]:
+                            and 'composite' not in list(self.job_dict[species.label].keys()):
                         self.run_composite_job(species.label)
                     elif not self.output[species.label]['job_types']['opt'] \
-                            and 'opt' not in self.job_dict[species.label] and not self.composite_method \
+                            and 'opt' not in list(self.job_dict[species.label].keys()) and not self.composite_method \
                             and not self.output[species.label]['paths']['geo']:
                         self.run_opt_job(species.label)
                     elif not self.output[species.label]['job_types']['opt']:
                         if not self.composite_method:
                             if not self.output[species.label]['job_types']['freq'] \
-                                    and 'freq' not in self.job_dict[species.label]:
+                                    and 'freq' not in list(self.job_dict[species.label].keys()):
                                 if self.species_dict[species.label].is_ts \
                                         or self.species_dict[species.label].number_of_atoms > 1:
                                     self.run_freq_job(species.label)
                             if not self.output[species.label]['job_types']['sp'] \
-                                    and 'sp' not in self.job_dict[species.label]:
+                                    and 'sp' not in list(self.job_dict[species.label].keys()):
                                 self.run_sp_job(species.label)
                         elif not self.output[species.label]['job_types']['freq'] \
-                                and 'freq' not in self.job_dict[species.label] \
-                                and 'composite' not in self.job_dict[species.label]:
+                                and 'freq' not in list(self.job_dict[species.label].keys()) \
+                                and 'composite' not in list(self.job_dict[species.label].keys()):
                             self.run_freq_job(species.label)
                         if self.job_types['1d_rotors']:
                             # restart-related checks are performed in run_scan_jobs()
