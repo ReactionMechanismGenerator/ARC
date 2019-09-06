@@ -18,7 +18,7 @@ from arc.settings import arc_path
 from arc.scheduler import Scheduler
 from arc.arc_exceptions import InputError
 from arc.species.species import ARCSpecies
-from arc.common import get_logger, check_ess_settings, time_lapse, initialize_log
+from arc.common import get_logger, check_ess_settings, time_lapse, initialize_log, initialize_job_types
 
 try:
     from arc.settings import global_ess_settings
@@ -72,8 +72,10 @@ def determine_scaling_factors(levels_of_theory, ess_settings=None, init_log=True
     logger.info(HEADER)
     logger.info('\n\nstarting ARC...\n')
 
-    job_types = {'conformers': False, 'opt': True, 'fine': True, 'freq': True, 'sp': False, '1d_rotors': False,
-                 'orbitals': False, 'onedmin': False}  # only run opt (fine) and freq
+    # only run opt (fine) and freq
+    job_types = initialize_job_types(dict())  # get the defaults, so no job type is missing
+    job_types = {job_type: False for job_type in job_types.keys()}
+    job_types['opt'], job_types['fine'], job_types['freq'] = True, True, True
 
     lambda_zpes, zpe_dicts, times = list(), list(), list()
     for level_of_theory in levels_of_theory:
