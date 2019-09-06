@@ -119,6 +119,31 @@ class TestARC(unittest.TestCase):
         min_lst = common.min_list(lst)
         self.assertEqual(min_lst, -79)
 
+
+    def test_initialize_job_types(self):
+        """Test the initialize_job_types() function"""
+        job_types_0 = {'conformers': False, 'opt': True, 'fine': True, 'freq': True, 'sp': False, '1d_rotors': False}
+        job_types_0_expected = {'1d_rotors': False, 'bde': False, 'conformers': False, 'fine': True,
+                                'freq': True, 'onedmin': False, 'opt': True, 'orbitals': False, 'sp': False}
+        job_types_0_initialized = common.initialize_job_types(job_types_0)
+        self.assertEqual(job_types_0_expected, job_types_0_initialized)
+
+        job_types_1 = {}
+        job_types_1_expected = {'1d_rotors': True, 'bde': False, 'conformers': True, 'fine': True, 'freq': True,
+                                'onedmin': False, 'opt': True, 'orbitals': False, 'sp': True}
+        job_types_1_initialized = common.initialize_job_types(job_types_1)
+        self.assertEqual(job_types_1_expected, job_types_1_initialized)
+
+        job_types_2 = {'bde': True}
+        job_types_2_expected = {'1d_rotors': True, 'bde': True, 'conformers': True, 'fine': True, 'freq': True,
+                                'onedmin': False, 'opt': True, 'orbitals': False, 'sp': True}
+        job_types_2_initialized = common.initialize_job_types(job_types_2)
+        self.assertEqual(job_types_2_expected, job_types_2_initialized)
+        with self.assertRaises(InputError):
+            job_types_3 = {'fake_job': True}
+            common.initialize_job_types(job_types_3)
+
+
 ################################################################################
 
 
