@@ -3,7 +3,8 @@
 
 """
 This module contains functions which are shared across multiple ARC modules.
-As such, it should not import any other ARC module (specifically ones that use logging) to avoid circular imports.
+As such, it should not import any other ARC module (specifically ones that use the logger defined here)
+  to avoid circular imports.
 
 VERSION is the full ARC version, using `semantic versioning <https://semver.org/>`_.
 
@@ -26,7 +27,7 @@ from rmgpy.molecule.element import getElement
 from rmgpy.qm.qmdata import QMData
 from rmgpy.qm.symmetry import PointGroupCalculator
 
-from arc.settings import arc_path, servers
+from arc.settings import arc_path, servers, default_job_types
 from arc.arc_exceptions import InputError, SettingsError
 
 ##################################################################
@@ -399,3 +400,43 @@ def min_list(lst):
     elif all([entry is None for entry in lst]):
         return None
     return min([entry for entry in lst if entry is not None])
+
+
+def initialize_job_types(job_types):
+    """
+    A helper function for initializing job_types.
+    Returns the comprehensive (default values for missing job types) job types for ARC.
+
+    Args:
+        job_types (dict): Keys are job types, values are booleans of whether or not to consider this job type.
+
+    Returns:
+        job_types (dict): An updated (comprehensive) job type dictionary.
+    """
+    defaults_to_true = ['conformers', 'opt', 'fine', 'freq', 'sp', '1d_rotors']
+    defaults_to_false = ['onedmin', 'orbitals', 'bde']
+    if job_types is None:
+        job_types = default_job_types
+    if 'lennard_jones' in job_types:
+        # rename lennard_jones to OneDMin
+        job_types['onedmin'] = job_types['lennard_jones']
+        del job_types['lennard_jones']
+    if 'fine_grid' in job_types:
+        # rename fine_grid to fine
+        job_types['fine'] = job_types['fine_grid']
+        del job_types['fine_grid']
+    for job_type in defaults_to_true:
+        if job_type not in job_types:
+            # set default value to True if this job type key is missing
+            job_types[job_type] = True
+    for job_type in defaults_to_false:
+        if job_type not in job_types:
+            # set default value to False if this job type key is missing
+            job_types[job_type] = False
+    for job_type in job_types.keys():
+        if job_type not in defaults_to_true and job_type not in defaults_to_false:
+            raise InputError("Job type '{0}' not supported. Check the job types dictionary "
+                             "(either in ARC's input or in default_job_types under settings)".format(job_type))
+    job_types_report = [job_type for job_type, val in job_types.items() if val]
+    logger.info('\nConsidering the following job types: {0}\n'.format(job_types_report))
+    return job_types

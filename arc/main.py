@@ -29,7 +29,7 @@ import arc.rmgdb as rmgdb
 from arc.settings import arc_path, default_levels_of_theory, servers, valid_chars, default_job_types
 from arc.scheduler import Scheduler
 from arc.common import VERSION, read_yaml_file, time_lapse, check_ess_settings, initialize_log, log_footer, get_logger,\
-    save_yaml_file
+    save_yaml_file, initialize_job_types
 from arc.arc_exceptions import InputError, SettingsError, SpeciesError
 from arc.species.species import ARCSpecies
 from arc.reaction import ARCReaction
@@ -177,8 +177,7 @@ class ARC(object):
             self.t_min = t_min
             self.t_max = t_max
             self.t_count = t_count
-            self.job_types = job_types
-            self.initialize_job_types()
+            self.job_types = initialize_job_types(job_types)
             self.bath_gas = bath_gas
             self.confs_to_dft = confs_to_dft
             self.adaptive_levels = adaptive_levels
@@ -511,7 +510,7 @@ class ARC(object):
 
         self.initial_trsh = input_dict['initial_trsh'] if 'initial_trsh' in input_dict else dict()
         self.job_types = input_dict['job_types'] if 'job_types' in input_dict else default_job_types
-        self.initialize_job_types()
+        self.job_types = initialize_job_types(self.job_types)
         self.use_bac = input_dict['use_bac'] if 'use_bac' in input_dict else True
         self.calc_freq_factor = input_dict['calc_freq_factor'] if 'calc_freq_factor' in input_dict else True
         self.model_chemistry = input_dict['model_chemistry'] if 'use_bac' in input_dict\
@@ -994,32 +993,6 @@ class ARC(object):
             if char == ' ':  # space IS a valid character for other purposes, but isn't valid in project names
                 raise InputError('A project name (used to naming folders) must not contain spaces.'
                                  ' Got {0}.'.format(self.project))
-
-    def initialize_job_types(self):
-        """
-        A helper function for initializing self.job_types.
-        """
-        if self.job_types is None:
-            self.job_types = default_job_types
-        if 'lennard_jones' in self.job_types:
-            # rename lennard_jones to OneDMin
-            self.job_types['onedmin'] = self.job_types['lennard_jones']
-            del self.job_types['lennard_jones']
-        if 'fine_grid' in self.job_types:
-            # rename fine_grid to fine
-            self.job_types['fine'] = self.job_types['fine_grid']
-            del self.job_types['fine_grid']
-        for job_type in ['conformers', 'opt', 'fine', 'freq', 'sp', '1d_rotors']:
-            if job_type not in self.job_types:
-                # set default value to True if key is missing
-                self.job_types[job_type] = True
-        for job_type in ['onedmin', 'orbitals', 'bde']:
-            if job_type not in self.job_types:
-                # set default value to False if key is missing
-                self.job_types[job_type] = False
-        job_types = [job_type for job_type, val in self.job_types.items() if val]
-        logger.info('\nConsidering the following job types: {0}\n'.format(job_types))
-
 
     def check_freq_scaling_factor(self):
         """
