@@ -13,6 +13,7 @@ import datetime
 
 from arkane.common import ArkaneSpecies, symbol_by_number
 from arkane.statmech import determine_qm_software, is_linear
+from arkane.reference import ReferenceSpecies
 from rmgpy.molecule.molecule import Atom, Molecule
 from rmgpy.reaction import Reaction
 from rmgpy.species import Species
@@ -22,7 +23,7 @@ from rmgpy.transport import TransportData
 import rmgpy.molecule.element as elements
 from rmgpy.exceptions import InvalidAdjacencyListError
 
-from arc.common import get_logger, get_atom_radius, determine_symmetry
+from arc.common import get_logger, get_atom_radius, determine_symmetry, read_yaml_file
 from arc.arc_exceptions import SpeciesError, RotorError, InputError, TSError, SanitizationError
 from arc.settings import default_ts_methods, valid_chars, minimum_barrier
 from arc.parser import parse_xyz_from_file, parse_dipole_moment, parse_polarizability, process_conformers_file
@@ -943,6 +944,21 @@ class ARCSpecies(object):
                         xyzs_, energies_ = process_conformers_file(conformers_path=xyz)
                         xyzs.extend(xyzs_)
                         energies.extend(energies_)
+                    elif 'yml' in file_extension:
+                        content = read_yaml_file(path=xyz)
+                        if content['class'] == 'ReferenceSpecies':
+                            if len(xyz_list) != 1:
+                                raise InputError('Expected only one source for the species coordinates when using '
+                                                 'ReferenceSpecies (populating self.initial_xyz, not self.conformers). '
+                                                 'Got {0} sources for the coordinates'.format(len(xyz_list)))
+                            ref_spc = ReferenceSpecies.__new__(ReferenceSpecies)  # new instance w/o raising init errors
+                            ref_spc.load_yaml(path=xyz)
+                            default_xyz = ref_spc.get_default_xyz()
+                            self.initial_xyz = get_xyz_string(coords=default_xyz['coords'],
+                                                              numbers=default_xyz['numbers'])
+                        else:
+                            # in the future we might want to load other YAML files
+                            raise InputError('Unrecognized YAML file. Only ReferenceSpecies are currently supported.')
                     else:
                         # assume this is an ESS log file
                         xyzs.append(parse_xyz_from_file(xyz))  # also calls standardize_xyz_string()
