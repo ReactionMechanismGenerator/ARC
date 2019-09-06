@@ -532,7 +532,7 @@ H      -1.69944700    0.93441600   -0.11271200"""
         self.assertEqual(spc3.multiplicity, 1)
 
         conformers_path = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'conformers_file.txt')
-        spc4 = ARCSpecies(label='test_spc3', xyz=conformers_path)
+        spc4 = ARCSpecies(label='test_spc4', xyz=conformers_path)
         self.assertEqual(len(spc4.conformers), 4)
         self.assertEqual(len(spc4.conformer_energies), 4)
         self.assertIsNotNone(spc4.conformer_energies[0])
@@ -540,6 +540,28 @@ H      -1.69944700    0.93441600   -0.11271200"""
         self.assertIsNone(spc4.conformer_energies[2])
         self.assertIsNotNone(spc4.conformer_energies[3])
         self.assertEqual(spc4.multiplicity, 2)
+
+        xyz_path = os.path.join(arc_path, 'arc', 'testing', 'xyz', '2-Methoxypropane_ReferenceSpecies.yml')
+        spc5 = ARCSpecies(label='test_spc5', xyz=xyz_path)
+        self.assertIsNotNone(spc5.initial_xyz)
+        expected_xyz5 = """C      -0.61994505   -1.43973673   -0.10191317
+C      -0.41890851    0.00902891    0.31879841
+O       0.69042434    0.60536743   -0.34111085
+C       1.94185436    0.11743630    0.08053086
+C      -1.62533110    0.86256192   -0.01454581
+H      -0.76991521   -1.49466238   -1.18195084
+H       0.23294474   -2.06461079    0.16242724
+H      -1.49959615   -1.85557807    0.39150597
+H      -0.23485658    0.04615445    1.40320675
+H       2.03800118    0.16178478    1.17265903
+H       2.70269022    0.75514015   -0.36514915
+H       2.11920268   -0.91305299   -0.24353500
+H      -2.51375636    0.48576571    0.49328080
+H      -1.80674850    0.84531636   -1.09062848
+H      -1.45737893    1.89506098    0.28984872
+"""
+        self.assertEqual(spc5.initial_xyz, expected_xyz5)
+
 
     def test_mol_from_xyz_atom_id_1(self):
         """Test that atom ids are saved properly when loading both xyz and smiles."""
