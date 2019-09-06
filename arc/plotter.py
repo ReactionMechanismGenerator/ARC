@@ -71,7 +71,7 @@ def show_sticks(xyz=None, species=None, project_directory=None):
         mol = species.mol
     try:
         rd_mol = rdkit_conf_from_mol(mol, coordinates)[1]
-    except ValueError:
+    except (ValueError, AttributeError):
         return False
     mb = Chem.MolToMolBlock(rd_mol)
     p = p3D.view(width=400, height=400)
