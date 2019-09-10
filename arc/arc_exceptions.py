@@ -97,6 +97,13 @@ class SpeciesError(Exception):
     pass
 
 
+class TrshError(Exception):
+    """
+    An exception class for exceptional behavior that occurs while troubleshooting ESS jobs.
+    """
+    pass
+
+
 class TSError(Exception):
     """
     An exception class for exceptional behavior that occurs while working with transition states.

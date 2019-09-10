@@ -35,6 +35,7 @@ from arc.species.converter import get_xyz_string, molecules_from_xyz, check_isom
 import arc.species.conformers as conformers
 from arc.ts.atst import autotst
 from arc.settings import inconsistency_ab, inconsistency_az, maximum_barrier, default_job_types, servers
+from arc.job.trsh import trsh_negative_freq, trsh_scan_job, trsh_ess_job, trsh_conformer_isomorphism
 
 ##################################################################
 
@@ -311,7 +312,7 @@ class Scheduler(object):
                 raise SpeciesError('Each species in `species_list` has to have a unique label.'
                                    ' Label of species {0} is not unique.'.format(species.label))
             self.unique_species_labels.append(species.label)
-            if self.does_output_dict_contain_info():
+            if self._does_output_dict_contain_info():
                 self.output[species.label]['restart'] += 'Restarted ARC at {0}; '.format(
                     datetime.datetime.now())
             if species.label not in self.job_dict:
@@ -537,7 +538,7 @@ class Scheduler(object):
                         job = self.job_dict[label]['ff_param_fit'][job_name]
                         successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
                         mmff94_fallback = False
-                        if successful_server_termination and job.job_status[1] == 'done':
+                        if successful_server_termination and job.job_status[1]['status'] == 'done':
                             # copy the fitting file to the species output folder
                             ff_param_fit_path = os.path.join(self.project_directory, 'calcs', 'Species', label,
                                                              'ff_param_fit')
@@ -690,7 +691,7 @@ class Scheduler(object):
                              max_job_time=job.max_job_time)
             if job_name in self.running_jobs[label]:
                 self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
-        if job.job_status[0] != 'running' and job.job_status[1] != 'running':
+        if job.job_status[0] != 'running' and job.job_status[1]['status'] != 'running':
             if job_name in self.running_jobs[label]:
                 self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
             self.timer = False
@@ -1196,7 +1197,7 @@ class Scheduler(object):
             label (str): The TS species label.
             i (int): The conformer index.
         """
-        if job.job_status[1] == 'done':
+        if job.job_status[1]['status'] == 'done':
             log = determine_qm_software(fullpath=job.local_path_to_output_file)
             coords, number, _ = log.loadGeometry()
             if self.species_dict[label].is_ts:
@@ -1349,66 +1350,6 @@ class Scheduler(object):
                              xyzs_in_original_order.index(conformer_xyz), label))
                 self.output[label]['job_types']['conformers'] = True
 
-    def troubleshoot_conformer_isomorphism(self, label):
-        """
-        Troubleshoot conformer optimization for a species that failed isomorphic test in
-        `determine_most_stable_conformer`.
-
-        Args:
-            label (str): The species label.
-        """
-
-        if self.species_dict[label].is_ts:
-            raise SchedulerError('The troubleshoot_conformer_isomorphism() method does not yet deal with TSs.')
-
-        num_of_conformers = len(self.species_dict[label].conformers)
-
-        if not num_of_conformers:
-            raise SchedulerError('The troubleshoot_conformer_isomorphism() method got zero conformers.')
-
-        # use the first conformer of a species to determine applicable troubleshooting method
-        job = self.job_dict[label]['conformers'][0]
-
-        if job.software == 'gaussian':
-            conformer_trsh_methods = ['wb97xd/def2TZVP', 'apfd/def2TZVP']
-        elif job.software == 'qchem':
-            conformer_trsh_methods = ['wb97x-d3/def2-TZVP']
-        else:
-            raise SchedulerError('The troubleshoot_conformer_isomorphism() method is not implemented for {0}.'
-                                 .format(job.software))
-
-        level_of_theory = None
-        for method in conformer_trsh_methods:
-            if 'conformer ' + method in job.ess_trsh_methods:
-                continue
-            job.ess_trsh_methods.append('conformer ' + method)
-            level_of_theory = method
-            break
-        else:
-            logger.error('ARC has attempted all built-in conformer isomorphism troubleshoot methods for species'
-                         ' {0}. No conformer for this species was found to be isomorphic with the 2D graph'
-                         ' representation {1}. NOT optimizing this species.'
-                         .format(label, self.species_dict[label].mol.toSMILES()))
-            self.output[label]['conformers'] += 'Error: No conformer was found to be isomorphic with the 2D' \
-                                                ' graph representation!; '
-
-        if level_of_theory is not None:
-            logger.info('Troubleshooting conformer job in {software} using {level} for species {species}'.format(
-                software=job.software, level=level_of_theory, species=label))
-
-            # rerun conformer job at higher level for all conformers
-            for conformer in range(0, num_of_conformers):
-
-                # initial xyz before trouble shooting
-                xyz = self.species_dict[label].conformers_before_opt[conformer]
-
-                job = self.job_dict[label]['conformers'][conformer]
-                if 'conformer ' + method not in job.ess_trsh_methods:
-                    job.ess_trsh_methods.append('conformer ' + method)
-
-                self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
-                             job_type='conformer', ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
-
     def determine_most_likely_ts_conformer(self, label):
         """
         Determine the most likely TS conformer.
@@ -1491,7 +1432,7 @@ class Scheduler(object):
         """
         logger.debug('parsing composite geo for {0}'.format(job.job_name))
         freq_ok = False
-        if job.job_status[1] == 'done':
+        if job.job_status[1]['status'] == 'done':
             log = determine_qm_software(fullpath=job.local_path_to_output_file)
             coords, number, _ = log.loadGeometry()
             self.species_dict[label].final_xyz = get_xyz_string(coords=coords, numbers=number)
@@ -1521,7 +1462,7 @@ class Scheduler(object):
                 self.save_restart_dict()
                 success = True  # run freq / scan jobs on this optimized geometry
                 if not self.species_dict[label].is_ts:
-                    is_isomorphic = self.species_dict[label].check_final_xyz_isomorphism(
+                    is_isomorphic = self.species_dict[label].check_xyz_isomorphism(
                         allow_nonisomorphic_2d=self.allow_nonisomorphic_2d)
                     if is_isomorphic:
                         self.output[label]['isomorphism'] += 'composite passed isomorphism check; '
@@ -1531,7 +1472,7 @@ class Scheduler(object):
                 return success
             elif not self.species_dict[label].is_ts:
                 self.troubleshoot_negative_freq(label=label, job=job)
-        if job.job_status[1] != 'done' or not freq_ok:
+        if job.job_status[1]['status'] != 'done' or not freq_ok:
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level_of_theory, job_type='composite')
         return False  # return ``False``, so no freq / scan jobs are initiated for this unoptimized geometry
 
@@ -1548,7 +1489,7 @@ class Scheduler(object):
         """
         success = False
         logger.debug('parsing opt geo for {0}'.format(job.job_name))
-        if job.job_status[1] == 'done':
+        if job.job_status[1]['status'] == 'done':
             log = determine_qm_software(fullpath=job.local_path_to_output_file)
             coords, number, _ = log.loadGeometry()
             self.species_dict[label].final_xyz = get_xyz_string(coords=coords, numbers=number)
@@ -1596,7 +1537,7 @@ class Scheduler(object):
                 self.output[label]['paths']['geo'] = job.local_path_to_output_file  # will be overwritten with freq
                 if not self.species_dict[label].is_ts:
                     plotter.draw_structure(species=self.species_dict[label], project_directory=self.project_directory)
-                    is_isomorphic = self.species_dict[label].check_final_xyz_isomorphism(
+                    is_isomorphic = self.species_dict[label].check_xyz_isomorphism(
                         allow_nonisomorphic_2d=self.allow_nonisomorphic_2d)
                     if is_isomorphic:
                         self.output[label]['isomorphism'] += 'opt passed isomorphism check; '
@@ -1623,7 +1564,7 @@ class Scheduler(object):
             label (str): The species label.
             job (Job): The frequency job object.
         """
-        if job.job_status[1] == 'done':
+        if job.job_status[1]['status'] == 'done':
             if not os.path.isfile(job.local_path_to_output_file):
                 raise SchedulerError('Called check_freq_job with no output file')
             vibfreqs = parser.parse_frequencies(path=str(job.local_path_to_output_file), software=job.software)
@@ -1697,7 +1638,7 @@ class Scheduler(object):
         if 'mrci' in self.sp_level and 'mrci' not in job.level_of_theory:
             # This is a CCSD job ran before MRCI. Spawn MRCI
             self.run_sp_job(label)
-        elif job.job_status[1] == 'done':
+        elif job.job_status[1]['status'] == 'done':
             self.output[label]['job_types']['sp'] = True
             self.output[label]['paths']['sp'] = os.path.join(job.local_path, 'output.out')
             self.species_dict[label].t1 = parser.parse_t1(self.output[label]['paths']['sp'])
@@ -1746,12 +1687,11 @@ class Scheduler(object):
             job (Job): The rotor scan job object.
         """
         # If the job has not converged, troubleshoot
-        if job.job_status[1] != 'done':
+        if job.job_status[1]['status'] != 'done':
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level_of_theory, job_type='scan')
             return None
         # If the job has converged, check the scan quality
-        message = ''
-        invalidation_reason = ''
+        message, invalidation_reason = '', ''
         trsh = False
         invalidate = False
         for i in range(self.species_dict[label].number_of_rotors):
@@ -1787,7 +1727,7 @@ class Scheduler(object):
                     if not job.scan_trsh:
                         logger.info('Trying to troubleshoot rotor {0} of {1}...'.format(job.pivots, label))
                         trsh = True
-                        self.troubleshoot_scan_job(job=job, method=['inc_res', 'freeze'])
+                        self.troubleshoot_scan_job(job=job, methods=['inc_res', 'freeze'])
                     break
 
                 # 1.2. Check consistency between consecutive points
@@ -1807,7 +1747,7 @@ class Scheduler(object):
                             logger.info('Trying to troubleshoot rotor {0} of {1}...'.format(
                                 job.pivots, label))
                             trsh = True
-                            self.troubleshoot_scan_job(job=job, method=['inc_res', 'freeze'])
+                            self.troubleshoot_scan_job(job=job, methods=['inc_res', 'freeze'])
                         break
                 if invalidate:
                     break
@@ -1825,14 +1765,26 @@ class Scheduler(object):
                         pivots=self.species_dict[label].rotors_dict[i]['pivots'],
                         scan=self.species_dict[label].rotors_dict[i]['scan'],
                         deg_increment=min_index * job.scan_res)
-                    self.delete_all_species_jobs(label)
-                    # Remove all completed rotor calculation information
-                    for rotor in self.species_dict[label].rotors_dict.values():
-                        rotor["scan_path"] = ''
-                        rotor["invalidation_reason"] = ''
-                        rotor["success"] = None
-                        rotor.pop('symmetry', None)
-                    self.run_opt_job(label)  # run opt on new initial_xyz with the desired dihedral
+                    is_isomorphic = self.species_dict[label].check_xyz_isomorphism(
+                        allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
+                        xyz=self.species_dict[label].initial_xyz)
+                    if is_isomorphic:
+                        self.delete_all_species_jobs(label)
+                        # Remove all completed rotor calculation information
+                        for rotor in self.species_dict[label].rotors_dict.values():
+                            rotor['scan_path'] = ''
+                            rotor['invalidation_reason'] = ''
+                            rotor['success'] = None
+                            rotor.pop('symmetry', None)
+                        self.run_opt_job(label)  # run opt on new initial_xyz with the desired dihedral
+                    else:
+                        # The conformer is wrong, and changing the dihedral resulted in a non-isomorphic species.
+                        self.output[label]['errors'] += 'A lower conformer was found for {0} via a torsion mode, ' \
+                                                        'but it is not isomorphic with the 2D graph representation ' \
+                                                        '{1}. Not calculating this species.'.format(
+                                                         label, self.species_dict[label].mol.toSMILES())
+                        self.output[label]['conformers'] += 'Unconverged'
+                        self.output[label]['convergence'] = False
                     break
 
                 # 3. Check the barrier height
@@ -1844,8 +1796,8 @@ class Scheduler(object):
                                label=label, pivots=job.pivots, max_barrier=maximum_barrier)
                     logger.warning(message)
                     invalidate = True
-                    invalidation_reason = 'scan has a barrier larger than {0}' \
-                                          ' kJ/mol'.format(maximum_barrier)
+                    invalidation_reason = 'scan has a barrier larger than {0} ' \
+                                          'kJ/mol'.format(maximum_barrier)
                     break
 
                 # 4. Calculate the symmetry if the scan succeed
@@ -1997,96 +1949,33 @@ class Scheduler(object):
 
     def troubleshoot_negative_freq(self, label, job):
         """
-        Troubleshooting cases where stable species (not TS's) have negative frequencies.
-        We take  +/-1.1 displacements, generating several initial geometries, and running them as conformers.
+        Troubleshooting cases where non-TS species have negative frequencies.
+        Run newly generated conformers.
 
         Args:
             label (str): The species label.
             job (Job): The frequency job object.
-
-        Todo:
-            * get all torsions of the molecule (if weren't already generated),
-              identify atom/s with largest displacements (top 2)
-              determine torsions with unique PIVOTS where these atoms are in the "scan" and "top" but not pivotal
-              generate a 360 scal using 30 deg increments and append all 12 results as conformers
-              (consider rotor symmetry to append less conformers?)
         """
-        factor = 1.1
-        ccparser = cclib.io.ccopen(str(job.local_path_to_output_file), logging.CRITICAL)
-        try:
-            data = ccparser.parse()
-        except AttributeError:
-            # see https://github.com/cclib/cclib/issues/754
-            logger.error('Could not troubleshoot negative frequency for species {0}'.format(label))
-            self.output[label]['errors'] += 'Error: Could not troubleshoot negative frequency; '
-            return
-        vibfreqs = data.vibfreqs
-        vibdisps = data.vibdisps
-        atomnos = data.atomnos
-        atomcoords = data.atomcoords
-        if len(self.species_dict[label].neg_freqs_trshed) > 10:
-            logger.error('Species {0} was troubleshooted for negative frequencies too many times.'.format(label))
-            if not self.job_types['1d_rotors']:
-                logger.error('The rotor scans feature is turned off, '
-                             'cannot troubleshoot geometry using dihedral modifications.')
-                self.output[label]['warnings'] = '1d_rotors = False; '
-            logger.error('Invalidating species.')
-            self.output[label]['errors'] = 'Error: Encountered negative frequencies too many times; '
-            return
-        neg_freqs_idx = list()  # store indices w.r.t. vibfreqs
-        largest_neg_freq_idx = 0  # index in vibfreqs
-        for i, freq in enumerate(vibfreqs):
-            if freq < 0:
-                neg_freqs_idx.append(i)
-                if vibfreqs[i] < vibfreqs[largest_neg_freq_idx]:
-                    largest_neg_freq_idx = i
-            else:
-                # assuming frequencies are ordered, break after the first positive freq encounter
-                break
-        if vibfreqs[largest_neg_freq_idx] >= 0 or len(neg_freqs_idx) == 0:
-            raise SchedulerError('Could not determine negative frequency in species {0} while troubleshooting for'
-                                 ' negative frequencies'.format(label))
-        if len(neg_freqs_idx) == 1 and not len(self.species_dict[label].neg_freqs_trshed):
-            # species has one negative frequency, and has not been troubleshooted for it before
-            logger.info('Species {0} has a negative frequency ({1}). Perturbing its geometry using the respective '
-                        'vibrational displacements'.format(label, vibfreqs[largest_neg_freq_idx]))
-            neg_freqs_idx = [largest_neg_freq_idx]  # indices of the negative frequencies to troubleshoot for
-        elif len(neg_freqs_idx) == 1 and len(self.species_dict[label].neg_freqs_trshed):
-            # species has one negative frequency, and has been troubleshooted for it before
-            factor = 1 + 0.1 * (len(self.species_dict[label].neg_freqs_trshed) + 1)
-            logger.info('Species {0} has a negative frequency ({1}) for the {2} time. Perturbing its geometry using '
-                        'the respective vibrational displacements, this time using a larger factor (x {3})'.format(
-                         label, vibfreqs[largest_neg_freq_idx], len(self.species_dict[label].neg_freqs_trshed), factor))
-            neg_freqs_idx = [largest_neg_freq_idx]  # indices of the negative frequencies to troubleshoot for
-        elif len(neg_freqs_idx) > 1 and not len(self.species_dict[label].neg_freqs_trshed):
-            # species has more than one negative frequency, and has not been troubleshooted for it before
-            logger.info('Species {0} has {1} negative frequencies. Perturbing its geometry using the vibrational '
-                        'displacements of its largest negative frequency, {2}'.format(label, len(neg_freqs_idx),
-                                                                                      vibfreqs[largest_neg_freq_idx]))
-            neg_freqs_idx = [largest_neg_freq_idx]  # indices of the negative frequencies to troubleshoot for
-        elif len(neg_freqs_idx) > 1 and len(self.species_dict[label].neg_freqs_trshed):
-            # species has more than one negative frequency, and has been troubleshooted for it before
-            logger.info('Species {0} has {1} negative frequencies. Perturbing its geometry using the vibrational'
-                        ' displacements of ALL negative frequencies'.format(label, len(neg_freqs_idx)))
-        self.species_dict[label].neg_freqs_trshed.extend([round(vibfreqs[i], 2) for i in neg_freqs_idx])  # record freqs
-        logger.info('Deleting all currently running jobs for species {0} before troubleshooting for'
-                    ' negative frequency...'.format(label))
-        self.delete_all_species_jobs(label)
-        self.species_dict[label].conformers = list()  # initialize the conformer list
-        self.species_dict[label].conformer_energies = list()
-        atomcoords = atomcoords[-1]  # it's a list within a list, take the last geometry
-        for neg_freq_idx in neg_freqs_idx:
-            displacement = vibdisps[neg_freq_idx]
-            xyz1 = atomcoords + factor * displacement
-            xyz2 = atomcoords - factor * displacement
-            self.species_dict[label].conformers.append(get_xyz_string(coords=xyz1, numbers=atomnos))
-            self.species_dict[label].conformers.append(get_xyz_string(coords=xyz2, numbers=atomnos))
-            self.species_dict[label].conformer_energies.extend([None, None])  # a placeholder (lists are synced)
-        self.job_dict[label]['conformers'] = dict()  # initialize the conformer job dictionary
-        for i, xyz in enumerate(self.species_dict[label].conformers):
-            self.run_job(label=label, xyz=xyz, level_of_theory=self.conformer_level, job_type='conformer', conformer=i)
+        current_neg_freqs_trshed, confs, output_errors, output_warnings = trsh_negative_freq(
+            label=label, log_file=job.local_path_to_output_file,
+            neg_freqs_trshed=self.species_dict[label].neg_freqs_trshed, job_types=self.job_types)
+        self.species_dict[label].neg_freqs_trshed.extend(current_neg_freqs_trshed)
+        for output_error in output_errors:
+            self.output[label]['errors'] += output_error
+        for output_warning in output_warnings:
+            self.output[label]['warnings'] += output_warning
+        if len(confs):
+            logger.info('Deleting all currently running jobs for species {0} before troubleshooting for'
+                        ' negative frequency...'.format(label))
+            self.delete_all_species_jobs(label)
+            self.species_dict[label].conformers = conformers
+            self.species_dict[label].conformer_energies = [None] * len(confs)
+            self.job_dict[label]['conformers'] = dict()  # initialize the conformer job dictionary
+            for i, xyz in enumerate(self.species_dict[label].conformers):
+                self.run_job(label=label, xyz=xyz, level_of_theory=self.conformer_level, job_type='conformer',
+                             conformer=i)
 
-    def troubleshoot_scan_job(self, job, method=None):
+    def troubleshoot_scan_job(self, job, methods=None):
         """
         Troubleshooting rotor scans
         Using the following methods: freezing all dihedrals other than the scan's pivots for this job,
@@ -2094,33 +1983,16 @@ class Scheduler(object):
 
         Args:
             job (Job): The scan Job object.
-            method (list): The troubleshooting method/s to try.
-                           Optional values: 'freeze', 'inc_res'.
+            methods (list): The troubleshooting method/s to try. Optional values: 'freeze', 'inc_res'.
         """
-        if method is None:
-            raise SchedulerError('Called troubleshoot_scan_job() with no method')
         label = job.species_name
         if 'troubleshoot_scan_job' in job.ess_trsh_methods:
             logger.error('Will not troubleshoot a rotor scan for {0} more than once.'.format(label))
         else:
-            scan_trsh = ''
-            if 'freeze' in method:
-                species_scan_lists = [rotor_dict['scan'] for rotor_dict in self.species_dict[label].rotors_dict.values()]
-                if job.scan not in species_scan_lists:
-                    raise SchedulerError('Could not find the dihedral to troubleshoot for in the dcan list of species'
-                                         ' {0}'.format(label))
-                species_scan_lists.pop(species_scan_lists.index(job.scan))
-                if len(species_scan_lists):
-                    scan_trsh = '\n'
-                    for scan in species_scan_lists:
-                        scan_trsh += 'D ' + ''.join([str(num) + ' ' for num in scan]) + 'F\n'
-            if 'inc_res' in method:
-                scan_res = min(4, int(job.scan_res / 2))
-                # make sure mod(360, scan res) is 0:
-                if scan_res not in [4, 2, 1]:
-                    scan_res = min([4, 2, 1], key=lambda x: abs(x - scan_res))
-            else:
-                scan_res = job.scan_res
+            species_scan_lists = [rotor_dict['scan'] for rotor_dict in self.species_dict[label].rotors_dict.values()]
+            scan_trsh, scan_res = trsh_scan_job(label=label, scan_res=job.scan_res, scan=job.scan,
+                                                species_scan_lists=species_scan_lists, methods=methods)
+
             job.ess_trsh_methods.append('troubleshoot_scan_job')
             self.run_job(label=label, xyz=job.xyz, level_of_theory=job.level_of_theory, job_type='scan',
                          scan=job.scan, pivots=job.pivots, scan_trsh=scan_trsh, scan_res=scan_res)
@@ -2144,7 +2016,7 @@ class Scheduler(object):
                 latest_job_num = job_name_int
                 job = self.job_dict[label]['opt'][job_name]
         if job.job_status[0] == 'done':
-            if job.job_status[1] == 'done':
+            if job.job_status[1]['status'] == 'done':
                 if job.fine:
                     # run_opt_job should not be called if all looks good...
                     logger.error('opt job for {label} seems right, yet "run_opt_job"'
@@ -2162,13 +2034,13 @@ class Scheduler(object):
                 if previous_job_num >= 0 and job.fine:
                     previous_job = self.job_dict[label]['opt']['opt_a' + str(previous_job_num)]
                     if not previous_job.fine and previous_job.job_status[0] == 'done' \
-                            and previous_job.job_status[1] == 'done':
+                            and previous_job.job_status[1]['status'] == 'done':
                         # The present job with a fine grid failed in the ESS calculation.
                         # A *previous* job without a fine grid terminated successfully on the server and ESS.
                         # So use the xyz determined w/o the fine grid, and output an error message to alert users.
-                        logger.error('Optimization job for {label} with a fine grid terminated successfully'
-                                     ' on the server, but crashed during calculation. NOT running with fine'
-                                     ' grid again.'.format(label=label))
+                        logger.error('Optimization job for {label} with a fine grid terminated successfully '
+                                     'on the server, but crashed during calculation. NOT running with fine '
+                                     'grid again.'.format(label=label))
                         self.parse_opt_geo(label=label, job=previous_job)
                 else:
                     self.troubleshoot_ess(label=label, job=job, level_of_theory=self.opt_level, job_type='opt')
@@ -2187,299 +2059,86 @@ class Scheduler(object):
             conformer (str, optional): The conformer index.
         """
         logger.info('\n')
-        logger.warning('Troubleshooting {label} job {job_name} which failed with status "{stat}" in {soft}.'.format(
-            job_name=job.job_name, label=label, stat=job.job_status[1], soft=job.software))
+        logger.warning('Troubleshooting {label} job {job_name} which failed with status "{stat}" with keywords '
+                       '{keywords} in {soft}. The error "{error}" was derived from the following line in the log '
+                       'file: "{line}".'.format(job_name=job.job_name, label=label, stat=job.job_status[1]['status'],
+                                                keywords=job.job_status[1]['keywords'], soft=job.software,
+                                                error=job.job_status[1]['error'], line=job.job_status[1]['line']))
         if conformer != -1:
             xyz = self.species_dict[label].conformers[conformer]
         else:
             xyz = self.species_dict[label].final_xyz or self.species_dict[label].initial_xyz
-        if 'Unknown reason' in job.job_status[1] and 'change_node' not in job.ess_trsh_methods:
+
+        if 'Unknown' in job.job_status[1]['keywords'] and 'change_node' not in job.ess_trsh_methods:
             job.ess_trsh_methods.append('change_node')
             job.troubleshoot_server()
             if job.job_name not in self.running_jobs[label]:
                 self.running_jobs[label].append(job.job_name)  # mark as a running job
-        elif 'Ran out of disk space' in job.job_status[1]:
-            self.output[label]['errors'] += 'Error: Could not troubleshoot {job_type} for {label}! ' \
-                                            ' The job ran out of disc space on {server}; '.format(
-                job_type=job_type, label=label, methods=job.ess_trsh_methods, server=job.server)
-            logger.error('Could not troubleshoot {job_type} for {label}! The job ran out of disc space on '
-                         '{server}'.format(job_type=job_type, label=label, methods=job.ess_trsh_methods,
-                                           server=job.server))
-        elif job.software == 'gaussian':
+        if job.software == 'gaussian':
             if self.species_dict[label].checkfile is None:
                 self.species_dict[label].checkfile = job.checkfile
-            if 'check file problematic' in job.job_status[1]\
-                    and 'checkfie=None' not in job.ess_trsh_methods:
-                # The checkfile doesn't match the new basis set, remove it and rerun the job
-                logger.info('Troubleshooting {type} job in {software} for {label} that failed with '
-                            '"Basis set data is not on the checkpoint file" by removing the checkfile.'.format(
-                             type=job_type, software=job.software, label=label))
-                job.ess_trsh_methods.append('checkfie=None')
-                self.species_dict[label].checkfile = None
+        level_of_theory = level_of_theory or self.composite_method
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, dont_rerun = trsh_ess_job(label=label, level_of_theory=level_of_theory, server=job.server,
+                                                     job_status=job.job_status[1], job_type=job.job_type,
+                                                     software=job.software, fine=job.fine, memory_gb=job.memory_gb,
+                                                     ess_trsh_methods=job.ess_trsh_methods,
+                                                     available_ess=self.ess_settings.keys())
+        for output_error in output_errors:
+            self.output[label]['errors'] += output_error
+        if remove_checkfile:
+            self.species_dict[label].checkfile = None
+        job.ess_trsh_methods = ess_trsh_methods
+
+        if not dont_rerun:
+            self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=software, memory=memory,
+                         job_type=job_type, fine=fine, ess_trsh_methods=ess_trsh_methods, trsh=trsh_keyword,
+                         conformer=conformer, scan=job.scan, pivots=job.pivots, scan_res=job.scan_res, shift=shift)
+        self.save_restart_dict()
+
+    def troubleshoot_conformer_isomorphism(self, label):
+        """
+        Troubleshoot conformer optimization for a species that failed isomorphic test in
+        `determine_most_stable_conformer`.
+
+        Args:
+            label (str): The species label.
+        """
+        if self.species_dict[label].is_ts:
+            raise SchedulerError('The troubleshoot_conformer_isomorphism() method does not yet deal with TSs.')
+
+        num_of_conformers = len(self.species_dict[label].conformers)
+        if not num_of_conformers:
+            raise SchedulerError('The troubleshoot_conformer_isomorphism() method got zero conformers.')
+
+        # use the first conformer of a species to determine applicable troubleshooting method
+        job = self.job_dict[label]['conformers'][0]
+
+        level_of_theory = trsh_conformer_isomorphism(software=job.software, ess_trsh_methods=job.ess_trsh_methods)
+
+        if level_of_theory is None:
+            logger.error('ARC has attempted all built-in conformer isomorphism troubleshoot methods for species'
+                         ' {0}. No conformer for this species was found to be isomorphic with the 2D graph'
+                         ' representation {1}. NOT optimizing this species.'
+                         .format(label, self.species_dict[label].mol.toSMILES()))
+            self.output[label]['conformers'] += 'Error: No conformer was found to be isomorphic with the 2D' \
+                                                ' graph representation!; '
+        else:
+            logger.info('Troubleshooting conformer job in {software} using {level} for species {species}'.format(
+                software=job.software, level=level_of_theory, species=label))
+
+            # rerun conformer job at higher level for all conformers
+            for conformer in range(0, num_of_conformers):
+
+                # initial xyz before troubleshooting
+                xyz = self.species_dict[label].conformers_before_opt[conformer]
+
+                job = self.job_dict[label]['conformers'][conformer]
+                if 'Conformers: ' + level_of_theory not in job.ess_trsh_methods:
+                    job.ess_trsh_methods.append('Conformers: ' + level_of_theory)
+
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
-                             job_type=job_type, fine=job.fine, ess_trsh_methods=job.ess_trsh_methods,
-                             conformer=conformer, scan=job.scan, pivots=job.pivots, scan_res=job.scan_res)
-            elif 'l103 internal coordinate error' in job.job_status[1]\
-                    and 'cartesian' not in job.ess_trsh_methods and job_type == 'opt':
-                # try both cartesian and nosymm
-                logger.info('Troubleshooting {type} job in {software} for {label} using opt=cartesian with'
-                            ' nosyym'.format(type=job_type, software=job.software, label=label))
-                job.ess_trsh_methods.append('cartesian')
-                trsh = 'opt=(cartesian,nosymm)'
-                self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
-                             job_type=job_type, fine=job.fine, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
-                             conformer=conformer, scan=job.scan, pivots=job.pivots, scan_res=job.scan_res)
-            elif 'unconverged' in job.job_status[1] and 'fine' not in job.ess_trsh_methods and not job.fine:
-                # try a fine grid for SCF and integral
-                logger.info('Troubleshooting {type} job in {software} for {label} using a fine grid'.format(
-                    type=job_type, software=job.software, label=label))
-                job.ess_trsh_methods.append('fine')
-                self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
-                             job_type=job_type, fine=True, ess_trsh_methods=job.ess_trsh_methods,
-                             conformer=conformer, scan=job.scan, pivots=job.pivots, scan_res=job.scan_res)
-            elif 'scf=(qc,nosymm)' not in job.ess_trsh_methods:
-                # try both qc and nosymm
-                logger.info('Troubleshooting {type} job in {software} for {label} using scf=(qc,nosymm)'.format(
-                    type=job_type, software=job.software, label=label))
-                job.ess_trsh_methods.append('scf=(qc,nosymm)')
-                trsh = 'scf=(qc,nosymm)'
-                self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
-                             job_type=job_type, fine=job.fine, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
-                             conformer=conformer, scan=job.scan, pivots=job.pivots, scan_res=job.scan_res)
-            elif 'scf=(NDump=30)' not in job.ess_trsh_methods:
-                # Allows dynamic dumping for up to N SCF iterations (slower conversion)
-                logger.info('Troubleshooting {type} job in {software} for {label} using scf=(NDump=30)'.format(
-                    type=job_type, software=job.software, label=label))
-                job.ess_trsh_methods.append('scf=(NDump=30)')
-                trsh = 'scf=(NDump=30)'
-                self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
-                             job_type=job_type, fine=job.fine, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
-                             conformer=conformer, scan=job.scan, pivots=job.pivots, scan_res=job.scan_res)
-            elif 'scf=NoDIIS' not in job.ess_trsh_methods:
-                # Switching off Pulay's Direct Inversion
-                logger.info('Troubleshooting {type} job in {software} for {label} using scf=NoDIIS'.format(
-                    type=job_type, software=job.software, label=label))
-                job.ess_trsh_methods.append('scf=NoDIIS')
-                trsh = 'scf=NoDIIS'
-                self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
-                             job_type=job_type, fine=job.fine, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
-                             conformer=conformer, scan=job.scan, pivots=job.pivots, scan_res=job.scan_res)
-            elif 'int=(Acc2E=14)' not in job.ess_trsh_methods:  # does not work in g03
-                # Change integral accuracy (skip everything up to 1E-14 instead of 1E-12)
-                logger.info('Troubleshooting {type} job in {software} for {label} using int=(Acc2E=14)'.format(
-                    type=job_type, software=job.software, label=label))
-                job.ess_trsh_methods.append('int=(Acc2E=14)')
-                trsh = 'int=(Acc2E=14)'
-                self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
-                             job_type=job_type, fine=job.fine, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
-                             conformer=conformer, scan=job.scan, pivots=job.pivots, scan_res=job.scan_res)
-            elif 'cbs-qb3' not in job.ess_trsh_methods and self.composite_method != 'cbs-qb3' \
-                    and job.job_type != 'scan':
-                # try running CBS-QB3, which is relatively robust
-                logger.info('Troubleshooting {type} job in {software} for {label} using CBS-QB3'.format(
-                    type=job_type, software=job.software, label=label))
-                job.ess_trsh_methods.append('cbs-qb3')
-                level_of_theory = 'cbs-qb3'
-                self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, job_type='composite',
-                             fine=job.fine, ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
-            elif 'scf=nosymm' not in job.ess_trsh_methods:
-                # try running w/o considering symmetry
-                logger.info('Troubleshooting {type} job in {software} for {label} using scf=nosymm'.format(
-                    type=job_type, software=job.software, label=label))
-                job.ess_trsh_methods.append('scf=nosymm')
-                trsh = 'scf=nosymm'
-                self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
-                             job_type=job_type, fine=job.fine, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
-                             conformer=conformer, scan=job.scan, pivots=job.pivots, scan_res=job.scan_res)
-            elif 'memory' not in job.ess_trsh_methods:
-                # Increase memory allocation
-                max_mem = servers[job.server].get('memory', 128)  # Node memory in GB, default to 128 if not specified
-                memory = job.memory_gb * 2 if job.memory_gb * 2 < max_mem * 0.9 else max_mem * 0.9
-                logger.info('Troubleshooting {type} job in {software} for {label} using memory: {mem} GB instead of'
-                            ' {old} GB'.format(type=job_type, software=job.software, mem=memory, old=job.memory_gb,
-                                               label=label))
-                job.ess_trsh_methods.append('memory')
-                self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
-                             job_type=job_type, fine=job.fine, memory=memory, ess_trsh_methods=job.ess_trsh_methods,
-                             conformer=conformer, scan=job.scan, pivots=job.pivots, scan_res=job.scan_res)
-            elif self.composite_method != 'cbs-qb3' and 'scf=(qc,nosymm) & CBS-QB3' not in job.ess_trsh_methods:
-                # try both qc and nosymm with CBS-QB3
-                logger.info('Troubleshooting {type} job in {software} for {label} using scf=(qc,nosymm) with '
-                            'CBS-QB3'.format(type=job_type, software=job.software, label=label))
-                job.ess_trsh_methods.append('scf=(qc,nosymm) & CBS-QB3')
-                level_of_theory = 'cbs-qb3'
-                trsh = 'scf=(qc,nosymm)'
-                self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
-                             job_type=job_type, fine=job.fine, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
-                             conformer=conformer, scan=job.scan, pivots=job.pivots, scan_res=job.scan_res)
-            elif 'qchem' not in job.ess_trsh_methods and not job.job_type == 'composite' and \
-                    'qchem' in [ess.lower() for ess in self.ess_settings.keys()]:
-                # Try QChem
-                logger.info('Troubleshooting {type} job using qchem instead of {software} for {label}'.format(
-                    type=job_type, software=job.software, label=label))
-                job.ess_trsh_methods.append('qchem')
-                self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, job_type=job_type, fine=job.fine,
-                             software='qchem', ess_trsh_methods=job.ess_trsh_methods, conformer=conformer,
-                             scan=job.scan, pivots=job.pivots, scan_res=job.scan_res)
-            elif 'molpro' not in job.ess_trsh_methods and not job.job_type == 'composite' \
-                    and 'molpro' in [ess.lower() for ess in self.ess_settings.keys()] \
-                    and job.job_type != 'scan':
-                # Try molpro
-                logger.info('Troubleshooting {type} job using molpro instead of {software} for {label}'.format(
-                    type=job_type, software=job.software, label=label))
-                job.ess_trsh_methods.append('molpro')
-                self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, job_type=job_type, fine=job.fine,
-                             software='molpro', ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
-            else:
-                logger.error('Could not troubleshoot geometry optimization for {label}! Tried'
-                             ' troubleshooting with the following methods: {methods}'.format(
-                              label=label, methods=job.ess_trsh_methods))
-                self.output[label]['errors'] += 'Error: Could not troubleshoot {job_type} for {label}! ' \
-                                                'Tried troubleshooting with the following methods: {methods}; '.format(
-                                                job_type=job_type, label=label, methods=job.ess_trsh_methods)
-                self.save_restart_dict()
-        elif job.software == 'qchem':
-            if 'max opt cycles reached' in job.job_status[1] and 'max_cycles' not in job.ess_trsh_methods:
-                # this is a common error, increase max cycles and continue running from last geometry
-                logger.info('Troubleshooting {type} job in {software} for {label} using max_cycles'.format(
-                    type=job_type, software=job.software, label=label))
-                job.ess_trsh_methods.append('max_cycles')
-                trsh = '\n   GEOM_OPT_MAX_CYCLES 250'  # default is 50
-                self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
-                             job_type=job_type, fine=job.fine, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
-                             conformer=conformer, scan=job.scan, pivots=job.pivots, scan_res=job.scan_res)
-            elif 'SCF failed' in job.job_status[1] and 'DIIS_GDM' not in job.ess_trsh_methods:
-                # change the SCF algorithm and increase max SCF cycles
-                logger.info('Troubleshooting {type} job in {software} for {label} using the DIIS_GDM SCF algorithm'.format(
-                    type=job_type, software=job.software, label=label))
-                job.ess_trsh_methods.append('DIIS_GDM')
-                trsh = '\n   SCF_ALGORITHM DIIS_GDM\n   MAX_SCF_CYCLES 1000'  # default is 50
-                self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
-                             job_type=job_type, fine=job.fine, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
-                             conformer=conformer, scan=job.scan, pivots=job.pivots, scan_res=job.scan_res)
-            elif 'SYM_IGNORE' not in job.ess_trsh_methods:  # symmetry - look in manual, no symm if fails
-                # change the SCF algorithm and increase max SCF cycles
-                logger.info('Troubleshooting {type} job in {software} for {label} using SYM_IGNORE as well as the '
-                            'DIIS_GDM SCF algorithm'.format(type=job_type, software=job.software, label=label))
-                job.ess_trsh_methods.append('SYM_IGNORE')
-                trsh = '\n   SCF_ALGORITHM DIIS_GDM\n   MAX_SCF_CYCLES 250\n   SYM_IGNORE     True'
-                self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
-                             job_type=job_type, fine=job.fine, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
-                             conformer=conformer, scan=job.scan, pivots=job.pivots, scan_res=job.scan_res)
-            elif 'b3lyp' not in job.ess_trsh_methods:
-                logger.info('Troubleshooting {type} job in {software} for {label} using b3lyp'.format(
-                    type=job_type, software=job.software, label=label))
-                job.ess_trsh_methods.append('b3lyp')
-                # try converging with B3LYP
-                level_of_theory = 'b3lyp/6-311++g(d,p)'
-                self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
-                             job_type=job_type, fine=job.fine, ess_trsh_methods=job.ess_trsh_methods,
-                             conformer=conformer, scan=job.scan, pivots=job.pivots, scan_res=job.scan_res)
-            elif 'gaussian' not in job.ess_trsh_methods\
-                    and 'gaussian' in [ess.lower() for ess in self.ess_settings.keys()]:
-                # Try Gaussian
-                logger.info('Troubleshooting {type} job using gaussian instead of {software} for {label}'.format(
-                    type=job_type, software=job.software, label=label))
-                job.ess_trsh_methods.append('gaussian')
-                self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, job_type=job_type,
-                             fine=job.fine, software='gaussian', ess_trsh_methods=job.ess_trsh_methods,
-                             conformer=conformer, scan=job.scan, pivots=job.pivots, scan_res=job.scan_res)
-            elif 'molpro' not in job.ess_trsh_methods \
-                    and 'molpro' in [ess.lower() for ess in self.ess_settings.keys()] \
-                    and job.job_type != 'scan':
-                # Try molpro
-                logger.info('Troubleshooting {type} job using molpro instead of {software} for {label}'.format(
-                    type=job_type, software=job.software, label=label))
-                job.ess_trsh_methods.append('molpro')
-                self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, job_type=job_type,
-                             fine=job.fine, software='molpro', ess_trsh_methods=job.ess_trsh_methods,
-                             conformer=conformer)
-            else:
-                logger.error('Could not troubleshoot geometry optimization for {label}! Tried'
-                             ' troubleshooting with the following methods: {methods}'.format(
-                              label=label, methods=job.ess_trsh_methods))
-                self.output[label]['errors'] += 'Error: Could not troubleshoot {job_type} for {label}! ' \
-                                                'Tried troubleshooting with the following methods: {methods}; '.format(
-                                                job_type=job_type, label=label, methods=job.ess_trsh_methods)
-                self.save_restart_dict()
-        elif 'molpro' in job.software:
-            if 'additional memory (mW) required' in job.job_status[1]:
-                # Increase memory allocation.
-                # job.job_status[1] will be for example `'errored: additional memory (mW) required: 996.31'`.
-                # The number is the ADDITIONAL memory required
-                job.ess_trsh_methods.append('memory')
-                add_mem = float(job.job_status[1].split()[-1])  # parse Molpro's requirement in MW
-                add_mem = int(math.ceil(add_mem / 100.0)) * 100  # round up to the next hundred
-                memory = job.memory_gb + add_mem / 128. + 5  # convert MW to GB, add 5 extra GB (be conservative)
-                logger.info('Troubleshooting {type} job in {software} for {label} using memory: {mem} GB instead of '
-                            '{old} GB'.format(type=job_type, software=job.software, mem=memory, old=job.memory_gb,
-                                              label=label))
-                self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
-                             job_type=job_type, fine=job.fine, shift=job.shift, memory=memory,
-                             ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
-            elif 'shift' not in job.ess_trsh_methods:
-                # try adding a level shift for alpha- and beta-spin orbitals
-                logger.info('Troubleshooting {type} job in {software} for {label} using shift'.format(
-                    type=job_type, software=job.software, label=label))
-                job.ess_trsh_methods.append('shift')
-                shift = 'shift,-1.0,-0.5;'
-                self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
-                             job_type=job_type, fine=job.fine, shift=shift, ess_trsh_methods=job.ess_trsh_methods,
-                             conformer=conformer)
-            elif 'vdz' not in job.ess_trsh_methods:
-                # degrade the basis set
-                logger.info('Troubleshooting {type} job in {software} for {label} using vdz'.format(
-                    type=job_type, software=job.software, label=label))
-                job.ess_trsh_methods.append('vdz')
-                trsh = 'vdz'
-                self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
-                             job_type=job_type, fine=job.fine, trsh=trsh, ess_trsh_methods=job.ess_trsh_methods,
-                             conformer=conformer)
-            elif 'vdz & shift' not in job.ess_trsh_methods:
-                # try adding a level shift for alpha- and beta-spin orbitals
-                logger.info('Troubleshooting {type} job in {software} for {label} using vdz'.format(
-                    type=job_type, software=job.software, label=label))
-                job.ess_trsh_methods.append('vdz & shift')
-                shift = 'shift,-1.0,-0.5;'
-                trsh = 'vdz'
-                self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
-                             job_type=job_type, fine=job.fine, shift=shift, trsh=trsh,
-                             ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
-            elif 'memory' not in job.ess_trsh_methods:
-                # Increase memory allocation, also run with a shift
-                job.ess_trsh_methods.append('memory')
-                memory = servers[job.server]['memory']  # set memory to the value of an entire node (in GB)
-                logger.info('Troubleshooting {type} job in {software} for {label} using memory: {mem} GB instead of '
-                            '{old} GB'.format(type=job_type, software=job.software, mem=memory, old=job.memory_gb,
-                                              label=label))
-                shift = 'shift,-1.0,-0.5;'
-                self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, software=job.software,
-                             job_type=job_type, fine=job.fine, shift=shift, memory=memory,
-                             ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
-            elif 'gaussian' not in job.ess_trsh_methods\
-                    and 'gaussian' in [ess.lower() for ess in self.ess_settings.keys()]:
-                # Try Gaussian
-                logger.info('Troubleshooting {type} job using gaussian instead of {software} for {label}'.format(
-                    type=job_type, software=job.software, label=label))
-                job.ess_trsh_methods.append('gaussian')
-                self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, job_type=job_type,
-                             fine=job.fine, software='gaussian', ess_trsh_methods=job.ess_trsh_methods,
-                             conformer=conformer)
-            elif 'qchem' not in job.ess_trsh_methods and 'qchem' in [ess.lower() for ess in self.ess_settings.keys()]:
-                # Try QChem
-                logger.info('Troubleshooting {type} job using qchem instead of {software} for {label}'.format(
-                    type=job_type, software=job.software, label=label))
-                job.ess_trsh_methods.append('qchem')
-                self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, job_type=job_type, fine=job.fine,
-                             software='qchem', ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
-            else:
-                logger.error('Could not troubleshoot geometry optimization for {label}! Tried'
-                             ' troubleshooting with the following methods: {methods}'.format(
-                              label=label, methods=job.ess_trsh_methods))
-                self.output[label]['errors'] += 'Error: Could not troubleshoot {job_type} for {label}! ' \
-                                                'Tried troubleshooting with the following methods: {methods}; '.format(
-                                                job_type=job_type, label=label, methods=job.ess_trsh_methods)
-                self.save_restart_dict()
+                             job_type='conformer', ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
 
     def delete_all_species_jobs(self, label):
         """
@@ -2638,7 +2297,7 @@ class Scheduler(object):
         Args:
             label (str, optional): A species label.
         """
-        if label is not None or not self.does_output_dict_contain_info():
+        if label is not None or not self._does_output_dict_contain_info():
             for species in self.species_list:
                 if label is None or (label is not None and species.label == label):
                     if species.label not in self.output:
@@ -2666,7 +2325,7 @@ class Scheduler(object):
                             else:
                                 self.output[species.label][key] = ''
 
-    def does_output_dict_contain_info(self):
+    def _does_output_dict_contain_info(self):
         """
         Determine whether self.output contains any information other than the initialized structure.
 

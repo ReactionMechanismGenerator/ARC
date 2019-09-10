@@ -4,24 +4,22 @@
 The ARC Job module
 """
 
-
 from __future__ import (absolute_import, division, print_function, unicode_literals)
-import os
 import csv
-import shutil
 import datetime
+import os
+import shutil
 
+from arc.arc_exceptions import JobError
 from arc.common import get_logger
-from arc.settings import arc_path, servers, submit_filename, delete_command, t_max_format,\
-    input_filename, output_filename, rotor_scan_resolution, list_available_nodes_command, levels_ess
-from arc.job.submit import submit_scripts
 from arc.job.inputs import input_files
-from arc.job.ssh import SSHClient
-from arc.job.local import get_last_modified_time, submit_job, delete_job, execute_command, check_job_status,\
+from arc.job.local import get_last_modified_time, submit_job, delete_job, execute_command, check_job_status, \
     rename_output
-from arc.arc_exceptions import JobError, SpeciesError
-
-##################################################################
+from arc.job.submit import submit_scripts
+from arc.job.ssh import SSHClient
+from arc.job.trsh import determine_ess_status, trsh_job_on_server
+from arc.settings import arc_path, servers, submit_filename, t_max_format, input_filename, output_filename, \
+    rotor_scan_resolution, levels_ess
 
 logger = get_logger()
 
@@ -113,9 +111,11 @@ class Job(object):
         run_time (timedelta): Job execution time.
         job_status (list): The job's server and ESS statuses.
                            The job server status is in job.job_status[0] and can be either 'initializing' / 'running'
-                           / 'errored' / 'done'. The job ess (electronic structure software calculation) status is in
-                           job.job_status[1] and can be either `initializing` / `running` / `errored:
-                           {error type / message}` / `unconverged` / `done`.
+                           / 'errored' / 'done'. The job ESS status is in job.job_status[1] is a dictionary of
+                           {'status': str, 'keywords': list, 'error': str, 'line': str}.
+                           The values of 'status' can be either `initializing`, `running`, `errored`, `unconverged`,
+                           or `done`. If the status is 'errored', then standardized error keywords, the error
+                           description and the identified error line from the ESS log file will be given as well.
         job_server_name (str): Job's name on the server (e.g., 'a103').
         job_name (str): Job's name for internal usage (e.g., 'opt_a103').
         job_id (int): The job's ID determined by the server.
@@ -177,7 +177,7 @@ class Job(object):
         self.fine = fine
         self.shift = shift
         self.occ = occ
-        self.job_status = ['initializing', 'initializing']
+        self.job_status = ['initializing', {'status': 'initializing', 'keywords': list(), 'error': '', 'line': ''}]
         self.job_id = job_id if job_id is not None else 0
         self.comments = comments
         self.project_directory = project_directory
@@ -307,7 +307,7 @@ class Job(object):
         """
         Write a completed ARCJob into the completed_jobs.csv file.
         """
-        if self.job_status != ['done', 'done']:
+        if self.job_status[0] != 'done' or self.job_status[1]['status'] != 'done':
             self.determine_job_status()
         csv_path = os.path.join(arc_path, 'completed_jobs.csv')
         if not os.path.isfile(csv_path):
@@ -332,7 +332,7 @@ class Job(object):
             row = [self.job_num, self.project, self.species_name, conformer, self.is_ts, self.charge,
                    self.multiplicity, job_type, self.job_name, self.job_id, self.server, self.software,
                    self.memory, self.method, self.basis_set, self.initial_time, self.final_time, self.run_time,
-                   self.job_status[0], self.job_status[1], self.ess_trsh_methods, self.comments]
+                   self.job_status[0], self.job_status[1]['status'], self.ess_trsh_methods, self.comments]
             writer.writerow(row)
 
     def write_submit_script(self):
@@ -820,14 +820,16 @@ $end
     def determine_job_status(self):
         """
         Determine the Job's status. Updates self.job_status.
+
+        Raises:
+            IOError: If the output file and any additional server information cannot be found.
         """
         if self.job_status[0] == 'errored':
             return
-        server_status = self._check_job_server_status()
-        ess_status = ''
-        if server_status == 'done':
+        self.job_status[0] = self._check_job_server_status()
+        if self.job_status[0] == 'done':
             try:
-                ess_status = self._check_job_ess_status()  # also downloads output file
+                self._check_job_ess_status()  # populates self.job_status[1], and downloads the output file
             except IOError:
                 logger.error('Got an IOError when trying to download output file for job {0}.'.format(self.job_name))
                 content = self._get_additional_job_info()
@@ -844,10 +846,14 @@ $end
                             logger.warning('Setting max job time to {0} (was {1})'.format(new_max_job_time,
                                                                                           self.max_job_time))
                             self.max_job_time = new_max_job_time
+                            self.job_status[1]['status'] = 'errored'
+                            self.job_status[1]['keywords'] = ['ServerTimeLimit']
+                            self.job_status[1]['error'] = 'Job cancelled by the server since it reached the maximal ' \
+                                                          'time limit.'
+                            self.job_status[1]['line'] = ''
                 raise
-        elif server_status == 'running':
-            ess_status = 'running'
-        self.job_status = [server_status, ess_status]
+        elif self.job_status[0] == 'running':
+            self.job_status[1]['status'] = 'running'
 
     def _get_additional_job_info(self):
         """
@@ -941,187 +947,25 @@ $end
                     file_path=os.path.join(self.local_path, output_filename[self.software]))
             rename_output(local_file_path=self.local_path_to_output_file, software=self.software)
         self.determine_run_time()
-        with open(self.local_path_to_output_file, 'r') as f:
-            lines = f.readlines()
-            if self.software == 'gaussian':
-                for line in lines[-1:-20:-1]:
-                    if 'Normal termination' in line:
-                        return 'done'
-                for i, line in enumerate(lines[::-1]):
-                    reason = ''
-                    if 'termination' in line:
-                        if 'l9999.exe' in line or 'link 9999' in line:
-                            reason = 'G9999: Unconverged'
-                        elif 'l101.exe' in line:
-                            reason = 'G101: Input Error. The blank line after the coordinate section is missing, '\
-                                     'or charge/multiplicity was not specified correctly.'
-                        elif 'l103.exe' in line:
-                            reason = 'G103: Internal coordinate error.'
-                        elif 'l108.exe' in line:
-                            reason = 'G108: Input Error. There are two blank lines between z-matrix and '\
-                                     'the variables, expected only one.'
-                        elif 'l202.exe' in line:
-                            reason = 'G202: During the optimization process, either the standard orientation ' \
-                                     'or the point group of the molecule has changed.'
-                        elif 'l301.exe' in line:
-                            reason = 'G301'
-                        elif 'l401.exe' in line:
-                            reason = 'G401'
-                        elif 'l502.exe' in line:
-                            reason = 'G502: unconverged SCF'
-                        elif 'l716.exe' in line:
-                            reason = 'G716: Angle in z-matrix outside the allowed range 0 < x < 180.'
-                        elif 'l906.exe' in line:
-                            reason = 'G906: The MP2 calculation has failed. It may be related to pseudopotential. ' \
-                                     'basis sets (CEP-121G*) that are used with polarization functions, ' \
-                                     'where no polarization functions actually exist.'
-                        else:
-                            reason = 'Gaussian job was terminated with unknown reason.'
-                        if reason in ['G301', 'G401']:
-                            additional_info = lines[len(lines) - i - 2]
-                            print('additional info: ', additional_info)
-                            if 'No data on chk file' in additional_info \
-                                    or 'Basis set data is not on the checkpoint file' in additional_info:
-                                reason += ': Check file problematic'
-                            elif reason == 'G301':
-                                reason += ': Input Error. Either charge, multiplicity, or basis set was not ' \
-                                         'specified correctly. Or, an atom specified does not match any standard ' \
-                                          'atomic symbol.'
-                            elif reason == 'G401':
-                                reason += ': "The projection from the old to the new basis set has failed."'
-                    elif 'Erroneous write' in line or 'Write error in NtrExt1' in line:
-                        reason = 'Ran out of disk space.'
-                    elif 'NtrErr' in line:
-                        reason = 'Operation on .chk file was specified, but .chk was not found or ' \
-                                 'incomplete. '
-                    elif 'malloc failed' in line or 'galloc' in line:
-                        reason = 'Memory allocation failed (did you ask for too much?)'
-                    elif 'A SYNTAX ERROR WAS DETECTED' in line:
-                        reason = 'There was a syntax error in the Gaussian input file. Check your ' \
-                                 'Gaussian input file template under arc/job/inputs.py.'
-                    elif 'PGFIO/stdio: No such file or directory' in line:
-                        reason = 'Wrongly specified the scratch directory. Correct the "GAUSS_SCRDIR" ' \
-                                 'variable in the submit script, it should point to an existing directory. ' \
-                                 'Make sure to add "mkdir -p $GAUSS_SCRDIR" to your submit script.'
-                    if reason:
-                        return 'errored: {0}; {1}'.format(reason, line)
-                return  'errored: Gaussian job did not terminated correctly. It is possible there '\
-                        'was a node failure for the job.'
-            elif self.software == 'qchem':
-                done = False
-                error_message = ''
-                for line in lines[::-1]:
-                    if 'Thank you very much for using Q-Chem' in line:
-                        done = True
-                    elif 'SCF failed' in line:
-                        return 'errored: {0}'.format(line)
-                    elif 'error' in line and 'DIIS' not in line:
-                        # these are *normal* lines: "SCF converges when DIIS error is below 1.0E-08", or
-                        # "Cycle       Energy         DIIS Error"
-                        error_message = line
-                    elif 'Invalid charge/multiplicity combination' in line:
-                        raise SpeciesError('The multiplicity and charge combination for species {0} are wrong.'.format(
-                            self.species_name))
-                    if 'opt' in self.job_type or 'conformer' in self.job_type or 'ts' in self.job_type:
-                        if 'MAXIMUM OPTIMIZATION CYCLES REACHED' in line:
-                            return 'errored: unconverged, max opt cycles reached'
-                        elif 'OPTIMIZATION CONVERGED' in line and done:  # `done` should already be assigned
-                            return 'done'
-                if done:
-                    return 'done'
-                else:
-                    if error_message:
-                        return 'errored: ' + error_message
-                    else:
-                        return 'errored: Unknown reason'
-            elif self.software == 'molpro':
-                for line in lines[::-1]:
-                    if 'molpro calculation terminated' in line.lower()\
-                            or 'variable memory released' in line.lower():
-                        return 'done'
-                    elif 'No convergence' in line:
-                        return 'unconverged'
-                    elif 'A further' in line and 'Mwords of memory are needed' in line and 'Increase memory to' in line:
-                        # e.g.: `A further 246.03 Mwords of memory are needed for the triples to run.
-                        # Increase memory to 996.31 Mwords.` (w/o the line break)
-                        return 'errored: additional memory (mW) required: {0}'.format(line.split()[2])
-                    elif 'insufficient memory available - require' in line:
-                        # e.g.: `insufficient memory available - require              228765625  have
-                        #        62928590
-                        #        the request was for real words`
-                        # add_mem = (float(line.split()[-2]) - float(prev_line.split()[0])) / 1e6
-                        return 'errored: additional memory (mW) required: {0}'.format(float(line.split()[-2]) / 1e6)
-                for line in lines[::-1]:
-                    if 'the problem occurs' in line:
-                        return 'errored: ' + line
-                return 'errored: Unknown reason'
-        if self.software == 'onedmin':
-            with open(self.local_path_to_lj_file, 'r') as f:
-                lines = f.readlines()
-                score = 0
-                for line in lines:
-                    if 'LennardJones' in line and len(line.split()) == 1:
-                        score += 1
-                    elif 'Epsilons[1/cm]' in line and len(line.split()) == 3:
-                        score += 1
-                    elif 'Sigmas[angstrom]' in line and len(line.split()) == 3:
-                        score += 1
-                    elif 'End' in line and len(line.split()) == 1:
-                        score += 1
-                if score == 4:
-                    return 'done'
-                else:
-                    return 'errored: Unknown reason'
+        status, keywords, error, line = determine_ess_status(output_path=self.local_path_to_output_file,
+                                                             species_label=self.species_name, job_type=self.job_type,
+                                                             software=self.software)
+        self.job_status[1]['status'] = status
+        self.job_status[1]['keywords'] = keywords
+        self.job_status[1]['error'] = error
+        self.job_status[1]['line'] = line
 
     def troubleshoot_server(self):
         """
         Troubleshoot server errors.
         """
-        if servers[self.server]['cluster_soft'].lower() == 'oge':
-            # delete present server run
-            logger.error('Job {name} has server status "{stat}" on {server}. Troubleshooting by changing node.'.
-                         format(name=self.job_name, stat=self.job_status[0], server=self.server))
-            ssh = SSHClient(self.server)
-            ssh.send_command_to_server(command=delete_command[servers[self.server]['cluster_soft']] +
-                                       ' ' + str(self.job_id))
-            # find available nodes
-            stdout, _ = ssh.send_command_to_server(
-                command=list_available_nodes_command[servers[self.server]['cluster_soft']])
-            for line in stdout:
-                node = line.split()[0].split('.')[0].split('node')[1]
-                if servers[self.server]['cluster_soft'] == 'OGE' and '0/0/8' in line \
-                        and node not in self.server_nodes:
-                    self.server_nodes.append(node)
-                    break
-            else:
-                logger.error('Could not find an available node on the server')
-                # TODO: continue troubleshooting; if all else fails, put job to sleep
-                #  and try again searching for a node
-                return
-            # modify submit file
-            content = ssh.read_remote_file(remote_path=self.remote_path,
-                                           filename=submit_filename[servers[self.server]['cluster_soft']])
-            for i, line in enumerate(content):
-                if '#$ -l h=node' in line:
-                    content[i] = '#$ -l h=node{0}.cluster'.format(node)
-                    break
-            else:
-                content.insert(7, '#$ -l h=node{0}.cluster'.format(node))
-            content = ''.join(content)  # convert list into a single string, not to upset paramiko
-            # resubmit
-            ssh.upload_file(remote_file_path=os.path.join(self.remote_path,
-                            submit_filename[servers[self.server]['cluster_soft']]), file_string=content)
-            self.run()
-        elif servers[self.server]['cluster_soft'].lower() == 'slurm':
-            # TODO: change node on Slurm
-            # delete present server run
-            if self.job_status[0] != 'done':
-                logger.error('Job {name} has server status "{stat}" on {server}. Re-running job.'.format(
-                    name=self.job_name, stat=self.job_status[0], server=self.server))
-            ssh = SSHClient(self.server)
-            ssh.send_command_to_server(command=delete_command[servers[self.server]['cluster_soft']] +
-                                       ' ' + str(self.job_id))
-            # resubmit
+        node, run_job = trsh_job_on_server(server=self.server, job_name=self.job_name, job_id=self.job_id,
+                                           job_server_status=self.job_status[0], remote_path=self.remote_path,
+                                           server_nodes=self.server_nodes)
+        if node is not None:
+            self.server_nodes.append(node)
+        if run_job:
+            # resubmit job
             self.run()
 
     def determine_run_time(self):

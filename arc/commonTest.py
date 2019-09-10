@@ -24,7 +24,7 @@ class TestARC(unittest.TestCase):
 
     def test_read_yaml_file(self):
         """Test the read_yaml_file() function"""
-        restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart(H,H2O2,N2H3,CH3CO2).yml')
+        restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart', 'restart(H,H2O2,N2H3,CH3CO2).yml')
         input_dict = common.read_yaml_file(restart_path)
         self.assertIsInstance(input_dict, dict)
         self.assertTrue('reactions' in input_dict)
@@ -119,7 +119,6 @@ class TestARC(unittest.TestCase):
         min_lst = common.min_list(lst)
         self.assertEqual(min_lst, -79)
 
-
     def test_initialize_job_types(self):
         """Test the initialize_job_types() function"""
         job_types_0 = {'conformers': False, 'opt': True, 'fine': True, 'freq': True, 'sp': False, '1d_rotors': False}
@@ -142,7 +141,6 @@ class TestARC(unittest.TestCase):
         with self.assertRaises(InputError):
             job_types_3 = {'fake_job': True}
             common.initialize_job_types(job_types_3)
-
 
 ################################################################################
 
