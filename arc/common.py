@@ -450,3 +450,23 @@ def initialize_job_types(job_types):
     job_types_report = [job_type for job_type, val in job_types.items() if val]
     logger.info('\nConsidering the following job types: {0}\n'.format(job_types_report))
     return job_types
+
+
+def determine_ess(log_file):
+    """
+    Determine the ESS to which the log file belongs.
+
+    Args:
+        log_file (str): The ESS log file path.
+
+    Returns:
+        str: The ESS (either 'gaussian', 'qchem', or 'molpro'.
+    """
+    log = determine_qm_software(log_file)
+    if isinstance(log, GaussianLog):
+        return 'gaussian'
+    if isinstance(log, QChemLog):
+        return 'qchem'
+    if isinstance(log, MolproLog):
+        return 'molpro'
+    raise InputError('Could not identify the log file in {0} as belonging to Gaussian, QChem, or Molpro.')
