@@ -174,11 +174,11 @@ H      -1.16566701    0.32023496   -0.81630508"""
 
     def test_initialize_output_dict(self):
         """Test Scheduler.initialize_output_dict"""
-        self.assertTrue(self.sched1.does_output_dict_contain_info())
+        self.assertTrue(self.sched1._does_output_dict_contain_info())
         self.sched1.output = dict()
         self.assertEqual(self.sched1.output, dict())
         self.sched1.initialize_output_dict()
-        self.assertFalse(self.sched1.does_output_dict_contain_info())
+        self.assertFalse(self.sched1._does_output_dict_contain_info())
         initialized_output_dict = {'C2H6':
                                        {'conformers': '',
                                         'convergence': False,
@@ -230,12 +230,12 @@ H      -1.16566701    0.32023496   -0.81630508"""
         """Test Scheduler.does_output_dict_contain_info"""
         self.sched1.output = dict()
         self.sched1.initialize_output_dict()
-        self.assertFalse(self.sched1.does_output_dict_contain_info())
+        self.assertFalse(self.sched1._does_output_dict_contain_info())
 
         self.sched1.output['C2H6']['info'] = 'some text'
         self.sched1.output['C2H6']['job_types']['freq'] = True
         self.sched1.output['C2H6']['paths']['sp'] = 'some/path/out.out'
-        self.assertTrue(self.sched1.does_output_dict_contain_info())
+        self.assertTrue(self.sched1._does_output_dict_contain_info())
 
     @classmethod
     def tearDownClass(cls):

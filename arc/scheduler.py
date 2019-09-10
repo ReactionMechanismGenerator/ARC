@@ -311,7 +311,7 @@ class Scheduler(object):
                 raise SpeciesError('Each species in `species_list` has to have a unique label.'
                                    ' Label of species {0} is not unique.'.format(species.label))
             self.unique_species_labels.append(species.label)
-            if self.does_output_dict_contain_info():
+            if self._does_output_dict_contain_info():
                 self.output[species.label]['restart'] += 'Restarted ARC at {0}; '.format(
                     datetime.datetime.now())
             if species.label not in self.job_dict:
@@ -2638,7 +2638,7 @@ class Scheduler(object):
         Args:
             label (str, optional): A species label.
         """
-        if label is not None or not self.does_output_dict_contain_info():
+        if label is not None or not self._does_output_dict_contain_info():
             for species in self.species_list:
                 if label is None or (label is not None and species.label == label):
                     if species.label not in self.output:
@@ -2666,7 +2666,7 @@ class Scheduler(object):
                             else:
                                 self.output[species.label][key] = ''
 
-    def does_output_dict_contain_info(self):
+    def _does_output_dict_contain_info(self):
         """
         Determine whether self.output contains any information other than the initialized structure.
 
