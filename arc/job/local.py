@@ -8,17 +8,19 @@ When transitioning to Python 3, use
 """
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
-import subprocess
-import os
-import shutil
 import datetime
+import os
 import re
+import shutil
+import subprocess
 
-from arc.job.ssh import check_job_status_in_stdout
-from arc.settings import servers, check_status_command, submit_command, submit_filename, delete_command, output_filename
 from arc.arc_exceptions import SettingsError
+from arc.common import get_logger
+from arc.settings import servers, check_status_command, submit_command, submit_filename, delete_command, output_filename
+from arc.job.ssh import check_job_status_in_stdout
 
-##################################################################
+
+logger = get_logger()
 
 
 def execute_command(command, shell=True):
