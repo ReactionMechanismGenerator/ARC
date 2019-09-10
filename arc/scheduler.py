@@ -1825,14 +1825,26 @@ class Scheduler(object):
                         pivots=self.species_dict[label].rotors_dict[i]['pivots'],
                         scan=self.species_dict[label].rotors_dict[i]['scan'],
                         deg_increment=min_index * job.scan_res)
-                    self.delete_all_species_jobs(label)
-                    # Remove all completed rotor calculation information
-                    for rotor in self.species_dict[label].rotors_dict.values():
-                        rotor["scan_path"] = ''
-                        rotor["invalidation_reason"] = ''
-                        rotor["success"] = None
-                        rotor.pop('symmetry', None)
-                    self.run_opt_job(label)  # run opt on new initial_xyz with the desired dihedral
+                    is_isomorphic = self.species_dict[label].check_xyz_isomorphism(
+                        allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
+                        xyz=self.species_dict[label].initial_xyz)
+                    if is_isomorphic:
+                        self.delete_all_species_jobs(label)
+                        # Remove all completed rotor calculation information
+                        for rotor in self.species_dict[label].rotors_dict.values():
+                            rotor['scan_path'] = ''
+                            rotor['invalidation_reason'] = ''
+                            rotor['success'] = None
+                            rotor.pop('symmetry', None)
+                        self.run_opt_job(label)  # run opt on new initial_xyz with the desired dihedral
+                    else:
+                        # The conformer is wrong, and changing the dihedral resulted in a non-isomorphic species.
+                        self.output[label]['errors'] += 'A lower conformer was found for {0} via a torsion mode, ' \
+                                                        'but it is not isomorphic with the 2D graph representation ' \
+                                                        '{1}. Not calculating this species.'.format(
+                                                         label, self.species_dict[label].mol.toSMILES())
+                        self.output[label]['conformers'] += 'Unconverged'
+                        self.output[label]['convergence'] = False
                     break
 
                 # 3. Check the barrier height
