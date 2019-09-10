@@ -12,25 +12,29 @@ ATOM_RADII data taken from `DOI 10.1039/b801115j <http://dx.doi.org/10.1039/b801
 """
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
-import logging
-import warnings
-import os
-import sys
-import time
 import datetime
+import logging
+import os
 import shutil
 import subprocess
+import sys
+import time
+import warnings
 import yaml
+
 import numpy as np
 
+from arkane.gaussian import GaussianLog
+from arkane.molpro import MolproLog
+from arkane.qchem import QChemLog
+from arkane.util import determine_qm_software
 from rmgpy.molecule.element import getElement
 from rmgpy.qm.qmdata import QMData
 from rmgpy.qm.symmetry import PointGroupCalculator
 
-from arc.settings import arc_path, servers, default_job_types
 from arc.arc_exceptions import InputError, SettingsError
+from arc.settings import arc_path, servers, default_job_types
 
-##################################################################
 
 logger = logging.getLogger('arc')
 
@@ -195,6 +199,19 @@ def log_header(project, level=logging.INFO):
     logger.info('Starting project {0}'.format(project))
 
 
+def log_footer(execution_time, level=logging.INFO):
+    """
+    Output a footer for the log.
+
+    Args:
+        execution_time (str): The overall execution time for ARC.
+        level: The desired logging level.
+    """
+    logger.log(level, '')
+    logger.log(level, 'Total execution time: {0}'.format(execution_time))
+    logger.log(level, 'ARC execution terminated on {0}'.format(time.asctime()))
+
+
 def get_git_commit():
     """
     Get the recent git commit to be logged.
@@ -231,19 +248,6 @@ def get_git_branch():
                 return branch_name[2:]
     else:
         return ''
-
-
-def log_footer(execution_time, level=logging.INFO):
-    """
-    Output a footer for the log.
-
-    Args:
-        execution_time (str): The overall execution time for ARC.
-        level: The desired logging level.
-    """
-    logger.log(level, '')
-    logger.log(level, 'Total execution time: {0}'.format(execution_time))
-    logger.log(level, 'ARC execution terminated on {0}'.format(time.asctime()))
 
 
 def read_yaml_file(path):
@@ -392,6 +396,12 @@ def determine_symmetry(coords, symbols):
 def min_list(lst):
     """
     A helper function for finding the minimum of a list of integers where some of the entries might be None.
+
+    Args:
+        lst (list): The list.
+
+    Returns:
+        int: The entry with the minimal value.
     """
     if len(lst) == 0:
         return None
