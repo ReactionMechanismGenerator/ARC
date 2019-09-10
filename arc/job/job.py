@@ -113,9 +113,11 @@ class Job(object):
         run_time (timedelta): Job execution time.
         job_status (list): The job's server and ESS statuses.
                            The job server status is in job.job_status[0] and can be either 'initializing' / 'running'
-                           / 'errored' / 'done'. The job ess (electronic structure software calculation) status is in
-                           job.job_status[1] and can be either `initializing` / `running` / `errored:
-                           {error type / message}` / `unconverged` / `done`.
+                           / 'errored' / 'done'. The job ESS status is in job.job_status[1] is a dictionary of
+                           {'status': str, 'keywords': list, 'error': str, 'line': str}.
+                           The values of 'status' can be either `initializing`, `running`, `errored`, `unconverged`,
+                           or `done`. If the status is 'errored', then standardized error keywords, the error
+                           description and the identified error line from the ESS log file will be given as well.
         job_server_name (str): Job's name on the server (e.g., 'a103').
         job_name (str): Job's name for internal usage (e.g., 'opt_a103').
         job_id (int): The job's ID determined by the server.
@@ -177,7 +179,7 @@ class Job(object):
         self.fine = fine
         self.shift = shift
         self.occ = occ
-        self.job_status = ['initializing', 'initializing']
+        self.job_status = ['initializing', {'status': 'initializing', 'keywords': list(), 'error': '', 'line': ''}]
         self.job_id = job_id if job_id is not None else 0
         self.comments = comments
         self.project_directory = project_directory
@@ -307,7 +309,7 @@ class Job(object):
         """
         Write a completed ARCJob into the completed_jobs.csv file.
         """
-        if self.job_status != ['done', 'done']:
+        if self.job_status[0] != 'done' or self.job_status[1]['status'] != 'done':
             self.determine_job_status()
         csv_path = os.path.join(arc_path, 'completed_jobs.csv')
         if not os.path.isfile(csv_path):
@@ -332,7 +334,7 @@ class Job(object):
             row = [self.job_num, self.project, self.species_name, conformer, self.is_ts, self.charge,
                    self.multiplicity, job_type, self.job_name, self.job_id, self.server, self.software,
                    self.memory, self.method, self.basis_set, self.initial_time, self.final_time, self.run_time,
-                   self.job_status[0], self.job_status[1], self.ess_trsh_methods, self.comments]
+                   self.job_status[0], self.job_status[1]['status'], self.ess_trsh_methods, self.comments]
             writer.writerow(row)
 
     def write_submit_script(self):
@@ -820,14 +822,16 @@ $end
     def determine_job_status(self):
         """
         Determine the Job's status. Updates self.job_status.
+
+        Raises:
+            IOError: If the output file and any additional server information cannot be found.
         """
         if self.job_status[0] == 'errored':
             return
-        server_status = self._check_job_server_status()
-        ess_status = ''
-        if server_status == 'done':
+        self.job_status[0] = self._check_job_server_status()
+        if self.job_status[0] == 'done':
             try:
-                ess_status = self._check_job_ess_status()  # also downloads output file
+                self._check_job_ess_status()  # populates self.job_status[1], and downloads the output file
             except IOError:
                 logger.error('Got an IOError when trying to download output file for job {0}.'.format(self.job_name))
                 content = self._get_additional_job_info()
@@ -844,10 +848,14 @@ $end
                             logger.warning('Setting max job time to {0} (was {1})'.format(new_max_job_time,
                                                                                           self.max_job_time))
                             self.max_job_time = new_max_job_time
+                            self.job_status[1]['status'] = 'errored'
+                            self.job_status[1]['keywords'] = ['ServerTimeLimit']
+                            self.job_status[1]['error'] = 'Job cancelled by the server since it reached the maximal ' \
+                                                          'time limit.'
+                            self.job_status[1]['line'] = ''
                 raise
-        elif server_status == 'running':
-            ess_status = 'running'
-        self.job_status = [server_status, ess_status]
+        elif self.job_status[0] == 'running':
+            self.job_status[1]['status'] = 'running'
 
     def _get_additional_job_info(self):
         """

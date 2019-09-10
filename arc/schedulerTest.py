@@ -66,9 +66,9 @@ class TestScheduler(unittest.TestCase):
         """Test the parse_conformer_energy() and determine_most_stable_conformer() methods"""
         label = 'methylamine'
         self.job1.local_path_to_output_file = os.path.join(arc_path, 'arc', 'testing', 'methylamine_conformer_0.out')
-        self.job1.job_status = ['done', 'done']
+        self.job1.job_status = ['done', {'status': 'done', 'keywords': list(), 'error': '', 'line': ''}]
         self.job2.local_path_to_output_file = os.path.join(arc_path, 'arc', 'testing', 'methylamine_conformer_1.out')
-        self.job2.job_status = ['done', 'done']
+        self.job2.job_status = ['done', {'status': 'done', 'keywords': list(), 'error': '', 'line': ''}]
         self.sched1.job_dict[label] = dict()
         self.sched1.job_dict[label]['conformers'] = dict()
         self.sched1.job_dict[label]['conformers'][0] = self.job1
@@ -128,7 +128,7 @@ H      -1.16566701    0.32023496   -0.81630508"""
         """Test the check_negative_freq() method"""
         label = 'C2H6'
         self.job3.local_path_to_output_file = os.path.join(arc_path, 'arc', 'testing', 'C2H6_freq_Qchem.out')
-        self.job3.job_status = ['done', 'done']
+        self.job3.job_status = ['done', {'status': 'done', 'keywords': list(), 'error': '', 'line': ''}]
         vibfreqs = parser.parse_frequencies(path=str(self.job3.local_path_to_output_file), software=self.job3.software)
         self.assertTrue(self.sched1.check_negative_freq(label=label, job=self.job3, vibfreqs=vibfreqs))
 

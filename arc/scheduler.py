@@ -537,7 +537,7 @@ class Scheduler(object):
                         job = self.job_dict[label]['ff_param_fit'][job_name]
                         successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
                         mmff94_fallback = False
-                        if successful_server_termination and job.job_status[1] == 'done':
+                        if successful_server_termination and job.job_status[1]['status'] == 'done':
                             # copy the fitting file to the species output folder
                             ff_param_fit_path = os.path.join(self.project_directory, 'calcs', 'Species', label,
                                                              'ff_param_fit')
@@ -690,7 +690,7 @@ class Scheduler(object):
                              max_job_time=job.max_job_time)
             if job_name in self.running_jobs[label]:
                 self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
-        if job.job_status[0] != 'running' and job.job_status[1] != 'running':
+        if job.job_status[0] != 'running' and job.job_status[1]['status'] != 'running':
             if job_name in self.running_jobs[label]:
                 self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
             self.timer = False
@@ -1196,7 +1196,7 @@ class Scheduler(object):
             label (str): The TS species label.
             i (int): The conformer index.
         """
-        if job.job_status[1] == 'done':
+        if job.job_status[1]['status'] == 'done':
             log = determine_qm_software(fullpath=job.local_path_to_output_file)
             coords, number, _ = log.loadGeometry()
             if self.species_dict[label].is_ts:
@@ -1491,7 +1491,7 @@ class Scheduler(object):
         """
         logger.debug('parsing composite geo for {0}'.format(job.job_name))
         freq_ok = False
-        if job.job_status[1] == 'done':
+        if job.job_status[1]['status'] == 'done':
             log = determine_qm_software(fullpath=job.local_path_to_output_file)
             coords, number, _ = log.loadGeometry()
             self.species_dict[label].final_xyz = get_xyz_string(coords=coords, numbers=number)
@@ -1531,7 +1531,7 @@ class Scheduler(object):
                 return success
             elif not self.species_dict[label].is_ts:
                 self.troubleshoot_negative_freq(label=label, job=job)
-        if job.job_status[1] != 'done' or not freq_ok:
+        if job.job_status[1]['status'] != 'done' or not freq_ok:
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level_of_theory, job_type='composite')
         return False  # return ``False``, so no freq / scan jobs are initiated for this unoptimized geometry
 
@@ -1548,7 +1548,7 @@ class Scheduler(object):
         """
         success = False
         logger.debug('parsing opt geo for {0}'.format(job.job_name))
-        if job.job_status[1] == 'done':
+        if job.job_status[1]['status'] == 'done':
             log = determine_qm_software(fullpath=job.local_path_to_output_file)
             coords, number, _ = log.loadGeometry()
             self.species_dict[label].final_xyz = get_xyz_string(coords=coords, numbers=number)
@@ -1623,7 +1623,7 @@ class Scheduler(object):
             label (str): The species label.
             job (Job): The frequency job object.
         """
-        if job.job_status[1] == 'done':
+        if job.job_status[1]['status'] == 'done':
             if not os.path.isfile(job.local_path_to_output_file):
                 raise SchedulerError('Called check_freq_job with no output file')
             vibfreqs = parser.parse_frequencies(path=str(job.local_path_to_output_file), software=job.software)
@@ -1697,7 +1697,7 @@ class Scheduler(object):
         if 'mrci' in self.sp_level and 'mrci' not in job.level_of_theory:
             # This is a CCSD job ran before MRCI. Spawn MRCI
             self.run_sp_job(label)
-        elif job.job_status[1] == 'done':
+        elif job.job_status[1]['status'] == 'done':
             self.output[label]['job_types']['sp'] = True
             self.output[label]['paths']['sp'] = os.path.join(job.local_path, 'output.out')
             self.species_dict[label].t1 = parser.parse_t1(self.output[label]['paths']['sp'])
@@ -1746,12 +1746,11 @@ class Scheduler(object):
             job (Job): The rotor scan job object.
         """
         # If the job has not converged, troubleshoot
-        if job.job_status[1] != 'done':
+        if job.job_status[1]['status'] != 'done':
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level_of_theory, job_type='scan')
             return None
         # If the job has converged, check the scan quality
-        message = ''
-        invalidation_reason = ''
+        message, invalidation_reason = '', ''
         trsh = False
         invalidate = False
         for i in range(self.species_dict[label].number_of_rotors):
@@ -2199,13 +2198,17 @@ class Scheduler(object):
             conformer (str, optional): The conformer index.
         """
         logger.info('\n')
-        logger.warning('Troubleshooting {label} job {job_name} which failed with status "{stat}" in {soft}.'.format(
-            job_name=job.job_name, label=label, stat=job.job_status[1], soft=job.software))
+        logger.warning('Troubleshooting {label} job {job_name} which failed with status "{stat}" with keywords '
+                       '{keywords} in {soft}. The error "{error}" was derived from the following line in the log '
+                       'file: "{line}".'.format(job_name=job.job_name, label=label, stat=job.job_status[1]['status'],
+                                                keywords=job.job_status[1]['keywords'], soft=job.software,
+                                                error=job.job_status[1]['error'], line=job.job_status[1]['line']))
         if conformer != -1:
             xyz = self.species_dict[label].conformers[conformer]
         else:
             xyz = self.species_dict[label].final_xyz or self.species_dict[label].initial_xyz
-        if 'Unknown reason' in job.job_status[1] and 'change_node' not in job.ess_trsh_methods:
+
+        if 'Unknown' in job.job_status[1]['keywords'] and 'change_node' not in job.ess_trsh_methods:
             job.ess_trsh_methods.append('change_node')
             job.troubleshoot_server()
             if job.job_name not in self.running_jobs[label]:
