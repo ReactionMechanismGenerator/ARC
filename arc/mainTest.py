@@ -172,7 +172,7 @@ class TestARC(unittest.TestCase):
         Test restarting ARC through the ARC class in main.py via the input_dict argument of the API
         Rather than through ARC.py. Check that all files are in place and the log file content.
         """
-        restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart(H,H2O2,N2H3,CH3CO2).yml')
+        restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart', 'restart(H,H2O2,N2H3,CH3CO2).yml')
         project = 'arc_project_for_testing_delete_after_usage2'
         project_directory = os.path.join(arc_path, 'Projects', project)
         arc1 = ARC(project=project, input_dict=restart_path, project_directory=project_directory)
