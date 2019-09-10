@@ -117,8 +117,8 @@ output_filename = {'gaussian': 'input.log',
                    }
 
 default_levels_of_theory = {'conformer': 'b3lyp/6-31g(d,p) EmpiricalDispersion=GD3BJ',
-                            'ts_guesses': 'b3lyp/6-31g(d,p) EmpiricalDispersion=GD3BJ',  # used for IRC as well
-                            'opt': 'wb97xd/def2TZVP',
+                            'ts_guesses': 'b3lyp/6-31g(d,p) EmpiricalDispersion=GD3BJ',
+                            'opt': 'wb97xd/def2TZVP',  # used for IRC as well
                             'freq': 'wb97xd/def2TZVP',  # should be the same level as opt (to calc freq at min E)
                             'scan': 'wb97xd/def2TZVP',  # should be the same level as freq (to project out rotors)
                             'sp': 'ccsd(t)-f12/cc-pvtz-f12',  # This should be a level for which BAC is available

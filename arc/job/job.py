@@ -627,7 +627,14 @@ $end
                 self.trsh = 'scf=xqc'
 
         if self.job_type == 'irc':  # TODO
-            pass
+            if self.fine:
+                # Note that the Acc2E argument is not available in Gaussian03
+                fine = 'scf=(direct) integral=(grid=ultrafine, Acc2E=12)'
+            job_type_1 = 'irc=(CalcAll,forward,maxpoints=50,stepsize=7)'  # also run reverse; trsh: stepsize=20
+            if self.checkfile is not None:
+                job_type_1 += ' guess=read'
+            else:
+                job_type_1 += ' guess=mix'
 
         if self.job_type == 'gsm':  # TODO
             pass
