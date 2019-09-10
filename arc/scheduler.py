@@ -1521,7 +1521,7 @@ class Scheduler(object):
                 self.save_restart_dict()
                 success = True  # run freq / scan jobs on this optimized geometry
                 if not self.species_dict[label].is_ts:
-                    is_isomorphic = self.species_dict[label].check_final_xyz_isomorphism(
+                    is_isomorphic = self.species_dict[label].check_xyz_isomorphism(
                         allow_nonisomorphic_2d=self.allow_nonisomorphic_2d)
                     if is_isomorphic:
                         self.output[label]['isomorphism'] += 'composite passed isomorphism check; '
@@ -1596,7 +1596,7 @@ class Scheduler(object):
                 self.output[label]['paths']['geo'] = job.local_path_to_output_file  # will be overwritten with freq
                 if not self.species_dict[label].is_ts:
                     plotter.draw_structure(species=self.species_dict[label], project_directory=self.project_directory)
-                    is_isomorphic = self.species_dict[label].check_final_xyz_isomorphism(
+                    is_isomorphic = self.species_dict[label].check_xyz_isomorphism(
                         allow_nonisomorphic_2d=self.allow_nonisomorphic_2d)
                     if is_isomorphic:
                         self.output[label]['isomorphism'] += 'opt passed isomorphism check; '

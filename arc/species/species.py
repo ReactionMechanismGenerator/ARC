@@ -1028,21 +1028,23 @@ class ARCSpecies(object):
             comment=str(comment)
         )
 
-    def check_final_xyz_isomorphism(self, allow_nonisomorphic_2d=False):
+    def check_xyz_isomorphism(self, allow_nonisomorphic_2d=False, xyz=None):
         """
-        Check whether the perception of self.final_xyz is isomorphic with self.mol.
+        Check whether the perception of self.final_xyz or ``xyz`` is isomorphic with self.mol.
 
         Args:
-            allow_nonisomorphic_2d (bool): Whether to continue spawning jobs for the species even if this test fails.
-                                           `True` to allow (default is `False`).
+            allow_nonisomorphic_2d (bool, optional): Whether to continue spawning jobs for the species even if this
+                                                     test fails. `True` to allow (default is `False`).
+            xyz (str, optional): The coordinates to check (will use self.final_xyz if not given).
 
         Returns:
             bool: Whether the perception of self.final_xyz is isomorphic with self.mol, `True` if it is.
         """
+        xyz = xyz or self.final_xyz
         passed_test, return_value = False, False
         if self.mol is not None:
             try:
-                b_mol = molecules_from_xyz(self.final_xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
+                b_mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
             except SanitizationError:
                 b_mol = None
             if b_mol is not None:

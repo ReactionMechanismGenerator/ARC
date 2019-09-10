@@ -839,8 +839,8 @@ H       1.11582953    0.94384729   -0.10134685"""
         self.assertFalse(check_xyz(xyz1, multiplicity=2, charge=1))
         self.assertTrue(check_xyz(xyz1, multiplicity=1, charge=-1))
 
-    def test_check_final_xyz_isomorphism(self):
-        """Test the check_final_xyz_isomorphism() method"""
+    def test_check_xyz_isomorphism(self):
+        """Test the check_xyz_isomorphism() method"""
         xyz1 = """C  -1.9681540   0.0333440  -0.0059220
                   C  -0.6684360  -0.7562450   0.0092140
                   C   0.5595480   0.1456260  -0.0036480
@@ -855,7 +855,7 @@ H       1.11582953    0.94384729   -0.10134685"""
                   H   2.6086580  -0.0266360   0.0403330"""
         spc1 = ARCSpecies(label='propanamide1', smiles='CCC(=O)N', xyz=xyz1)
         spc1.final_xyz = spc1.conformers[0]
-        is_isomorphic1 = spc1.check_final_xyz_isomorphism()
+        is_isomorphic1 = spc1.check_xyz_isomorphism()
         self.assertTrue(is_isomorphic1)
 
         xyz2 = """C   0.6937910  -0.8316510   0.0000000
@@ -874,14 +874,14 @@ H       1.11582953    0.94384729   -0.10134685"""
         spc2.final_xyz = xyz2  # set .final_xyz to the incorrect isomer
 
         spc2.conf_is_isomorphic = True  # set to True so that isomorphism is strictly enforced
-        is_isomorphic2 = spc2.check_final_xyz_isomorphism()
+        is_isomorphic2 = spc2.check_xyz_isomorphism()
         self.assertFalse(is_isomorphic2)
 
-        is_isomorphic3 = spc2.check_final_xyz_isomorphism(allow_nonisomorphic_2d=True)
+        is_isomorphic3 = spc2.check_xyz_isomorphism(allow_nonisomorphic_2d=True)
         self.assertTrue(is_isomorphic3)
 
         spc2.conf_is_isomorphic = False  # set to False so that isomorphism is not strictly enforced
-        is_isomorphic4 = spc2.check_final_xyz_isomorphism()
+        is_isomorphic4 = spc2.check_xyz_isomorphism()
         self.assertTrue(is_isomorphic4)
 
     def test_scissors(self):
