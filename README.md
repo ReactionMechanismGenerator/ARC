@@ -13,7 +13,7 @@
 **ARC - Automated Rate Calculator** is a software for automating
 electronic structure calculations relevant for chemical kinetic modeling.
 
-ARC's mission is to provide the kinetics community with a well-documented and extensible code base for automatically calculating species thermochemistry and reaction rates coefficients.
+ARC's mission is to provide the kinetics community with a well-documented and extensible code base for automatically calculating species thermochemistry and reaction rate coefficients.
 
 ARC has many advanced options, yet at its core it is simple: it accepts 2D
 graph representations of chemical species (e.g., SMILES or adjacency lists),
