@@ -1050,7 +1050,7 @@ $end
                             raise JobError('Could not find the Gaussian software to run {0}/{1}'.format(
                                 self.method, self.basis_set))
                         self.software = 'gaussian'
-                    elif 'wb97x-d3' in self.method:
+                    elif 'wb97x-d3' in self.method or 'wb97m' in self.method:
                         if 'qchem' not in self.ess_settings.keys():
                             raise JobError('Could not find the QChem software to run {0}/{1}'.format(
                                 self.method, self.basis_set))
