@@ -14,6 +14,27 @@ Todo:
     * The secretary problem - incorporate for stochastic searching
     * What's the confirmed bottleneck?
 
+conformers is a list of dictionaries, each with the following keys::
+
+    {'xyz': <str>,
+     'index': <int>,
+     'FF energy': <float>,
+     'source': <str>,
+     'torsion_dihedrals': {<torsion tuple 0>: angle 0,
+                           <torsion tuple 1>: angle 1,
+     }
+
+
+Module workflow::
+
+    generate_conformers
+        generate_force_field_conformers
+            get_force_field_energies, rdkit_force_field or mix_rdkit_and_openbabel_force_field, determine_dihedrals
+        deduce_new_conformers
+            get_torsion_angles, determine_torsion_symmetry, determine_torsion_sampling_points,
+            change_dihedrals_and_force_field_it
+        get_lowest_confs
+
 """
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
@@ -40,26 +61,6 @@ from arc.species import converter
 from arc.common import logger, determine_symmetry
 import arc.plotter
 
-##################################################################
-
-
-# conformers is a list of dictionaries, each with the following keys:
-# {'xyz': <str>,
-#  'index': <int>,
-#  'FF energy': <float>,
-#  'source': <str>,
-#  'torsion_dihedrals': {<torsion tuple 0>: angle 0,
-#                        <torsion tuple 1>: angle 1,
-#  }
-
-# Module workflow:
-# generate_conformers
-#     generate_force_field_conformers
-#         get_force_field_energies, rdkit_force_field or mix_rdkit_and_openbabel_force_field, determine_dihedrals
-#     deduce_new_conformers
-#         get_torsion_angles, determine_torsion_symmetry, determine_torsion_sampling_points,
-#         change_dihedrals_and_force_field_it
-#     get_lowest_confs
 
 # The number of conformers to generate per range of heavy atoms in the molecule
 CONFS_VS_HEAVY_ATOMS = {(0, 1): 1,
