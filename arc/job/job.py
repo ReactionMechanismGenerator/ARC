@@ -953,7 +953,7 @@ $end
         self.job_status[1]['status'] = status
         self.job_status[1]['keywords'] = keywords
         self.job_status[1]['error'] = error
-        self.job_status[1]['line'] = line
+        self.job_status[1]['line'] = line.rstrip()
 
     def troubleshoot_server(self):
         """
