@@ -15,14 +15,19 @@ electronic structure calculations relevant for chemical kinetic modeling.
 
 ARC's mission is to provide the kinetics community with a well-documented and extensible code base for automatically calculating species thermochemistry and reaction rate coefficients.
 
-ARC has many advanced options, yet at its core it is simple: it accepts 2D
-graph representations of chemical species (e.g., SMILES or adjacency lists),
+ARC has many <a href="https://reactionmechanismgenerator.github.io/ARC/advanced.html">advanced features</a>,
+yet at its core it is simple: It accepts 2D graph representations of chemical species (i.e.,
+<a href="https://en.wikipedia.org/wiki/Simplified_molecular-input_line-entry_system">SMILES</a>,
+<a href="https://www.inchi-trust.org/">InChI</a>,
+or <a href="https://rmg.mit.edu/">RMG</a>'s
+<a href="https://reactionmechanismgenerator.github.io/RMG-Py/reference/molecule/adjlist.html">adjacency list</a>),
 and  automatically executes, tracks, and processes relevant electronic structure
 jobs on user-defined servers. The principal outputs of ARC are thermodynamic properties
 (H, S, Cp) and high-pressure limit kinetic rate coefficients for the defined species
 and reactions.
-(Note that automating transition states is still in progress).
 
 Make sure to visit <a href="https://reactionmechanismgenerator.github.io/ARC/index.html">ARC's Documentation</a> page.
 
-Developers and contributors: Visit <a href="https://github.com/ReactionMechanismGenerator/ARC/wiki">ARC's Developer's Guide</a> on the wiki page
+Developers and contributors: Visit
+<a href="https://github.com/ReactionMechanismGenerator/ARC/wiki">ARC's Developer's Guide</a>
+on the wiki page.
