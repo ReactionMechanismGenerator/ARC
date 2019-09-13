@@ -1423,6 +1423,7 @@ def find_internal_rotors(mol):
                         rotor['invalidation_reason'] = ''
                         rotor['times_dihedral_set'] = 0
                         rotor['scan_path'] = ''
+                        rotor['directed_scan'] = dict()
                         rotors.append(rotor)
     return rotors
 
