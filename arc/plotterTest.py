@@ -6,15 +6,13 @@ This module contains unit tests for the plotter functions
 """
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
-import unittest
 import os
 import shutil
+import unittest
 
-from arc.settings import arc_path
 from arc import plotter
+from arc.settings import arc_path
 from arc.species.species import ARCSpecies
-
-################################################################################
 
 
 class TestPlotter(unittest.TestCase):
@@ -83,6 +81,19 @@ H      -1.16115119    0.31478894   -0.81506145
         conf_file_path = os.path.join(project_directory, 'output', 'Species', label, 'geometry', 'conformers',
                                       'conformers_before_optimization.txt')
         self.assertTrue(os.path.isfile(conf_file_path))
+
+    def test_save_rotor_text_file(self):
+        """Test the save_rotor_text_file function"""
+        project = 'arc_project_for_testing_delete_after_usage'
+        angles = [0, 90, 180, 270, 360]
+        energies = [0, 10, 0, 10, 0]
+        pivots = [1, 2]
+        path = os.path.join(arc_path, 'Projects', project, 'rotors', '{0}_directed_scan.txt'.format(pivots))
+        plotter.save_rotor_text_file(angles, energies, path)
+        self.assertTrue(os.path.isfile(path))
+        with open(path, 'r') as f:
+            lines = f.readlines()
+        self.assertIn('Angle (degrees)        Energy (kJ/mol)\n', lines)
 
     @classmethod
     def tearDownClass(cls):
