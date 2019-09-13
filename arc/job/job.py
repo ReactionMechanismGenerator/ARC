@@ -613,6 +613,20 @@ $end
                     raise JobError('Scan job got an illegal rotor scan resolution of {0}'.format(self.scan_res))
                 scan_string = 'D ' + scan_string + 'S ' + str(int(360 / self.scan_res)) + ' ' +\
                               '{0:10}'.format(float(self.scan_res))
+            elif self.software == 'qchem':
+                if self.is_ts:
+                    job_type_1 = 'ts'
+                else:
+                    job_type_1 = 'opt'
+                dihedral1 = int(calculate_dihedral_angle(coords=get_xyz_matrix(self.xyz)[0], torsion=self.scan))
+                dihedral2 = dihedral1 - self.scan_res
+                if dihedral2 < -180:
+                    dihedral2 += 360
+                scan_string = """
+$scan
+    tors {scan} {dihedral1} {dihedral2} {increment}
+$end
+""".format(scan=scan, dihedral1=0, dihedral2=0, increment=self.scan_res)
             else:
                 raise ValueError('Currently rotor scan is only supported in gaussian. Got: {0} using the {1} level of'
                                  ' theory'.format(self.software, self.method + '/' + self.basis_set))

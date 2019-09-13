@@ -60,6 +60,7 @@ $rem
    UNRESTRICTED  {restricted}
    BASIS         {basis}{fine}{trsh}
 $end
+{scan}
 
 """,
 
