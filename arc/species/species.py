@@ -433,13 +433,18 @@ class ARCSpecies(object):
         species_dict = dict()
         species_dict['force_field'] = self.force_field
         species_dict['is_ts'] = self.is_ts
-        if self.e_elect is not None:
-            species_dict['e_elect'] = self.e_elect
-        if self.e0 is not None:
-            species_dict['e0'] = self.e0
+        species_dict['t1'] = self.t1
+        species_dict['label'] = self.label
+        species_dict['long_thermo_description'] = self.long_thermo_description
+        species_dict['multiplicity'] = self.multiplicity
+        species_dict['charge'] = self.charge
+        species_dict['generate_thermo'] = self.generate_thermo
+        species_dict['number_of_rotors'] = self.number_of_rotors
+        species_dict['rotors_dict'] = self.rotors_dict
+        species_dict['external_symmetry'] = self.external_symmetry
+        species_dict['optical_isomers'] = self.optical_isomers
+        species_dict['neg_freqs_trshed'] = self.neg_freqs_trshed
         species_dict['arkane_file'] = self.arkane_file
-        if self.yml_path is not None:
-            species_dict['yml_path'] = self.yml_path
         if self.is_ts:
             species_dict['ts_methods'] = self.ts_methods
             species_dict['ts_guesses'] = [tsg.as_dict() for tsg in self.ts_guesses]
@@ -451,25 +456,22 @@ class ARCSpecies(object):
             species_dict['unsuccessful_methods'] = self.unsuccessful_methods
             species_dict['chosen_ts_method'] = self.chosen_ts_method
             species_dict['chosen_ts'] = self.chosen_ts
+        if self.e_elect is not None:
+            species_dict['e_elect'] = self.e_elect
+        if self.e0 is not None:
+            species_dict['e0'] = self.e0
+        if self.yml_path is not None:
+            species_dict['yml_path'] = self.yml_path
         if self.run_time is not None:
             species_dict['run_time'] = self.run_time.total_seconds()
-        species_dict['t1'] = self.t1
-        species_dict['label'] = self.label
-        species_dict['long_thermo_description'] = self.long_thermo_description
-        species_dict['multiplicity'] = self.multiplicity
         if self.number_of_radicals is not None:
             species_dict['number_of_radicals'] = self.number_of_radicals
-        species_dict['charge'] = self.charge
-        species_dict['generate_thermo'] = self.generate_thermo
         if self.opt_level is not None:
             species_dict['opt_level'] = self.opt_level
         if self.final_xyz is not None:
             species_dict['final_xyz'] = self.final_xyz
         species_dict['number_of_rotors'] = self.number_of_rotors
         species_dict['rotors_dict'] = self.rotors_dict
-        species_dict['external_symmetry'] = self.external_symmetry
-        species_dict['optical_isomers'] = self.optical_isomers
-        species_dict['neg_freqs_trshed'] = self.neg_freqs_trshed
         if self.conf_is_isomorphic is not None:
             species_dict['conf_is_isomorphic'] = self.conf_is_isomorphic
         if self.bond_corrections is not None:
