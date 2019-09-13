@@ -223,6 +223,7 @@ class SSHClient(object):
             + submit_filename[servers[self.server]['cluster_soft']]
         stdout, stderr = self.send_command_to_server(cmd, remote_path)
         if len(stderr) > 0 or len(stdout) == 0:
+            logger.warning('Got stderr when submitting job:\n{0}'.format(stderr))
             job_status = 'errored'
         elif 'submitted' in stdout[0].lower():
             job_status = 'running'
