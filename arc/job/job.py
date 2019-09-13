@@ -10,8 +10,8 @@ import datetime
 import os
 import shutil
 
-from arc.arc_exceptions import JobError
-from arc.common import get_logger
+from arc.arc_exceptions import JobError, InputError
+from arc.common import get_logger, calculate_dihedral_angle
 from arc.job.inputs import input_files
 from arc.job.local import get_last_modified_time, submit_job, delete_job, execute_command, check_job_status, \
     rename_output
@@ -20,6 +20,8 @@ from arc.job.ssh import SSHClient
 from arc.job.trsh import determine_ess_status, trsh_job_on_server
 from arc.settings import arc_path, servers, submit_filename, t_max_format, input_filename, output_filename, \
     rotor_scan_resolution, levels_ess
+from arc.species.converter import get_xyz_matrix
+
 
 logger = get_logger()
 
@@ -72,6 +74,8 @@ class Job(object):
                                             multiplicity = 1.
         conformers (str, optional): A path to the YAML file conformer coordinates for a Gromacs MD job.
         radius (float, optional): The species radius in Angstrom.
+        directed_dihedral (float): The dihedral angle of a directed scan job (either continuous or brute force).
+        job_dict (dict, optional): A dictionary to create this object from (used when restarting ARC).
         testing (bool, optional): Whether the object is generated for testing purposes, True if it is.
 
     Attributes:
@@ -92,8 +96,7 @@ class Job(object):
         is_ts (bool): Whether this species represents a transition structure.
         level_of_theory (str): Level of theory, e.g. 'CBS-QB3', 'CCSD(T)-F12a/aug-cc-pVTZ', 'B3LYP/6-311++G(3df,3pd)'...
         job_type (str): The job's type.
-        scan (list): A list representing atom labels for the dihedral scan
-                    (e.g., "2 1 3 5" as a string or [2, 1, 3, 5] as a list of integers).
+        scan (list): A list representing atom labels for the dihedral scan (e.g., [2, 1, 3, 5]).
         pivots (list): The rotor scan pivots, if the job type is scan. Not used directly in these methods,
                        but used to identify the rotor.
         scan_res (int): The rotor scan resolution in degrees.
@@ -138,74 +141,91 @@ class Job(object):
         project_directory (str): The path to the project directory.
         max_job_time (int): The maximal allowed job time on the server in hours.
         bath_gas (str): A bath gas. Currently used in OneDMin to calc L-J parameters.
-                        Allowed values are He, Ne, Ar, Kr, H2, N2, O2
-
+                        Allowed values are He, Ne, Ar, Kr, H2, N2, O2.
+        directed_dihedral (float): The dihedral angle of a directed scan job (either continuous or brute force).
     """
-    def __init__(self, project, ess_settings, species_name, xyz, job_type, level_of_theory, multiplicity,
-                 project_directory, charge=0, conformer=-1, fine=False, shift='', software=None, is_ts=False, scan=None,
-                 pivots=None, memory=14, comments='', trsh='', scan_trsh='', ess_trsh_methods=None, bath_gas=None,
-                 initial_trsh=None, job_num=None, job_server_name=None, job_name=None, job_id=None, server=None,
-                 initial_time=None, occ=None, max_job_time=120, scan_res=None, checkfile=None, number_of_radicals=None,
-                 conformers=None, radius=None, testing=False):
-        self.project = project
-        self.ess_settings = ess_settings
-        self.initial_time = initial_time
-        self.final_time = None
-        self.run_time = None
-        self.species_name = species_name
-        self.job_num = job_num if job_num is not None else -1
-        self.charge = charge
-        self.multiplicity = multiplicity
-        self.spin = self.multiplicity - 1
-        self.number_of_radicals = number_of_radicals
-        self.xyz = xyz
-        self.n_atoms = self.xyz.count('\n') if xyz is not None else None
-        self.radius = radius
-        self.conformer = conformer
-        self.conformers = conformers
-        self.is_ts = is_ts
-        self.ess_trsh_methods = ess_trsh_methods if ess_trsh_methods is not None else list()
-        self.trsh = trsh
-        self.initial_trsh = initial_trsh if initial_trsh is not None else dict()
-        self.scan_trsh = scan_trsh
-        self.scan_res = scan_res if scan_res is not None else rotor_scan_resolution
-        self.scan = scan
-        self.pivots = list() if pivots is None else pivots
-        self.max_job_time = max_job_time
-        self.bath_gas = bath_gas
-        self.testing = testing
-        self.fine = fine
-        self.shift = shift
-        self.occ = occ
-        self.job_status = ['initializing', {'status': 'initializing', 'keywords': list(), 'error': '', 'line': ''}]
-        self.job_id = job_id if job_id is not None else 0
-        self.comments = comments
-        self.project_directory = project_directory
-        self.checkfile = checkfile
-        self.submit = ''
-        self.input = ''
-        self.server_nodes = list()
-        job_types = ['conformer', 'opt', 'freq', 'optfreq', 'sp', 'composite', 'scan', 'gsm', 'irc', 'ts_guess',
-                     'orbitals', 'onedmin', 'ff_param_fit', 'gromacs', 'bde']  # allowed job types
-        # the 'conformer' job type is identical to 'opt', but we differentiate them to be identifiable in Scheduler
-        if job_type not in job_types:
-            raise ValueError("Job type {0} not understood. Must be one of the following:\n{1}".format(
-                job_type, job_types))
-        self.job_type = job_type
-
+    def __init__(self, project='', ess_settings=None, species_name='', xyz=None, job_type='', level_of_theory='',
+                 multiplicity=None, project_directory='', charge=0, conformer=-1, fine=False, shift='', software=None,
+                 is_ts=False, scan=None, pivots=None, memory=14, comments='', trsh='', scan_trsh='', job_dict=None,
+                 ess_trsh_methods=None, bath_gas=None, initial_trsh=None, job_num=None, job_server_name=None,
+                 job_name=None, job_id=None, server=None, initial_time=None, occ=None, max_job_time=120, scan_res=None,
+                 checkfile=None, number_of_radicals=None, conformers=None, radius=None, directed_dihedral=None,
+                 testing=False):
+        if job_dict is not None:
+            self.from_dict(job_dict)
+        else:
+            if not project:
+                raise InputError('project must be specified')
+            if not species_name:
+                raise InputError('species_name must be specified')
+            if not job_type:
+                raise InputError('job_type must be specified')
+            if not level_of_theory:
+                raise InputError('level_of_theory must be specified')
+            if ess_settings is None:
+                raise InputError('ess_settings must be specified')
+            if multiplicity is None:
+                raise InputError('multiplicity must be specified')
+            self.project = project
+            self.project_directory = project_directory
+            self.species_name = species_name
+            self.initial_time = initial_time
+            self.final_time = None
+            self.run_time = None
+            self.ess_settings = ess_settings
+            self.job_num = job_num if job_num is not None else -1
+            self.charge = charge
+            self.multiplicity = multiplicity
+            self.number_of_radicals = number_of_radicals
+            self.xyz = xyz
+            self.radius = radius
+            self.directed_dihedral = directed_dihedral
+            self.conformer = conformer
+            self.conformers = conformers
+            self.is_ts = is_ts
+            self.ess_trsh_methods = ess_trsh_methods if ess_trsh_methods is not None else list()
+            self.trsh = trsh
+            self.initial_trsh = initial_trsh if initial_trsh is not None else dict()
+            self.scan_trsh = scan_trsh
+            self.scan_res = scan_res if scan_res is not None else rotor_scan_resolution
+            self.scan = scan
+            self.pivots = pivots if pivots is not None else list()
+            self.max_job_time = max_job_time
+            self.bath_gas = bath_gas
+            self.testing = testing
+            self.fine = fine
+            self.shift = shift
+            self.occ = occ
+            self.job_status = ['initializing', {'status': 'initializing', 'keywords': list(), 'error': '', 'line': ''}]
+            self.job_id = job_id if job_id is not None else 0
+            self.comments = comments
+            self.checkfile = checkfile
+            self.server_nodes = list()
+            self.job_type = job_type
+            self.job_server_name = job_server_name
+            self.job_name = job_name
+            self.level_of_theory = level_of_theory.lower()
+            self.server = server
+            self.software = software
+        # allowed job types:
+        job_types = ['conformer', 'opt', 'freq', 'optfreq', 'sp', 'composite', 'bde', 'scan', 'cont_directed_scan',
+                     'brute_directed_scan', 'gsm', 'irc', 'ts_guess', 'orbitals', 'onedmin', 'ff_param_fit', 'gromacs']
+        if self.job_type not in job_types:
+            raise ValueError('Job type {0} not understood. Must be one of the following:\n{1}'.format(
+                self.job_type, job_types))
         if self.xyz is None and not self.job_type == 'gromacs':
-            raise ValueError('{0} Job of species {1} got None for xyz'.format(self.job_type, self.species_name))
-        if self.conformers is None and self.job_type == 'gromacs':
-            raise ValueError('{0} Job of species {1} got None for conformers'.format(self.job_type, self.species_name))
+            raise InputError('{0} Job of species {1} got None for xyz'.format(self.job_type, self.species_name))
+        if self.job_type == 'gromacs' and self.conformers is None:
+            raise InputError('{0} Job of species {1} got None for conformers'.format(self.job_type, self.species_name))
+        if self.job_type in ['cont_directed_scan', 'brute_directed_scan'] and self.directed_dihedral is None:
+            raise InputError('Must have the directed_dihedral attribute for a directed scan job')
 
         if self.job_num < 0:
             self._set_job_number()
-        self.job_server_name = job_server_name if job_server_name is not None else 'a' + str(self.job_num)
-        self.job_name = job_name if job_name is not None else self.job_type + '_' + self.job_server_name
+        self.job_server_name = self.job_server_name if self.job_server_name is not None else 'a' + str(self.job_num)
+        self.job_name = self.job_name if self.job_name is not None else self.job_type + '_' + self.job_server_name
 
-        # determine level of theory and software to use:
-        self.level_of_theory = level_of_theory.lower()
-        self.software = software
+        # determine the level of theory and software to use:
         self.method, self.basis_set = '', ''
         if '/' in self.level_of_theory:
             splits = self.level_of_theory.split('/')
@@ -218,9 +238,16 @@ class Job(object):
             self.software = self.software.lower()
         else:
             self.deduce_software()
-        self.server = server if server is not None else self.ess_settings[self.software][0]
+        if self.server is None:  # might have been set in from_dict()
+            self.server = server if server is not None else self.ess_settings[self.software][0]
+
+        self.spin = self.multiplicity - 1
+        self.n_atoms = self.xyz.count('\n') if xyz is not None else None
+        self.submit = ''
+        self.input = ''
         self.mem_per_cpu, self.cpus, self.memory_gb, self.memory = None, None, None, None
         self.set_cpu_and_mem(memory=memory)
+        self.determine_run_time()
 
         self.set_file_paths()
 
@@ -234,37 +261,116 @@ class Job(object):
         A helper function for dumping this object as a dictionary in a YAML file for restarting ARC.
         """
         job_dict = dict()
-        job_dict['initial_time'] = self.initial_time
-        job_dict['final_time'] = self.final_time
-        if self.run_time is not None:
-            job_dict['run_time'] = self.run_time.total_seconds()
-        job_dict['max_job_time'] = self.max_job_time
+        job_dict['project'] = self.project
         job_dict['project_directory'] = self.project_directory
+        job_dict['species_name'] = self.species_name
+        job_dict['ess_settings'] = self.ess_settings
+        job_dict['max_job_time'] = self.max_job_time
         job_dict['job_num'] = self.job_num
         job_dict['server'] = self.server
-        job_dict['ess_trsh_methods'] = self.ess_trsh_methods
-        job_dict['trsh'] = self.trsh
-        job_dict['initial_trsh'] = self.initial_trsh
         job_dict['job_type'] = self.job_type
         job_dict['job_server_name'] = self.job_server_name
         job_dict['job_name'] = self.job_name
         job_dict['level_of_theory'] = self.level_of_theory
         job_dict['xyz'] = self.xyz
         job_dict['fine'] = self.fine
-        job_dict['shift'] = self.shift
-        job_dict['memory'] = self.memory_gb
-        job_dict['software'] = self.software
-        job_dict['occ'] = self.occ
         job_dict['job_status'] = self.job_status
+        job_dict['memory'] = self.memory_gb
+        job_dict['job_id'] = self.job_id
+        job_dict['scan_res'] = self.scan_res
+        job_dict['is_ts'] = self.is_ts
+        job_dict['multiplicity'] = self.multiplicity
+        if self.initial_time is not None:
+            job_dict['initial_time'] = self.initial_time.strftime('%Y-%m-%d %H:%M:%S')
+        if self.final_time is not None:
+            job_dict['final_time'] = self.final_time.strftime('%Y-%m-%d %H:%M:%S')
+        if self.server_nodes:
+            job_dict['server_nodes'] = self.server_nodes
+        if self.number_of_radicals is not None:
+            job_dict['number_of_radicals'] = self.number_of_radicals
+        if self.ess_trsh_methods:
+            job_dict['ess_trsh_methods'] = self.ess_trsh_methods
+        if self.trsh:
+            job_dict['trsh'] = self.trsh
+        if self.initial_trsh:
+            job_dict['initial_trsh'] = self.initial_trsh
+        if self.shift:
+            job_dict['shift'] = self.shift
+        if self.software is not None:
+            job_dict['software'] = self.software
+        if self.occ is not None:
+            job_dict['occ'] = self.occ
         if self.conformer >= 0:
             job_dict['conformer'] = self.conformer
-        job_dict['job_id'] = self.job_id
-        job_dict['comments'] = self.comments
-        job_dict['scan'] = self.scan
-        job_dict['pivots'] = self.pivots
-        job_dict['scan_res'] = self.scan_res
-        job_dict['scan_trsh'] = self.scan_trsh
+        if self.comments:
+            job_dict['comments'] = self.comments
+        if self.scan is not None:
+            job_dict['scan'] = self.scan
+        if self.pivots:
+            job_dict['pivots'] = self.pivots
+        if self.scan_trsh:
+            job_dict['scan_trsh'] = self.scan_trsh
+        if self.directed_dihedral is not None:
+            job_dict['directed_dihedral'] = '{0:.2f}'.format(self.directed_dihedral)
+        if self.bath_gas is not None:
+            job_dict['bath_gas'] = self.bath_gas
+        if self.checkfile is not None:
+            job_dict['checkfile'] = self.checkfile
+        if self.conformers is not None:
+            job_dict['conformers'] = self.conformers
+        if self.radius is not None:
+            job_dict['radius'] = self.radius
         return job_dict
+
+    def from_dict(self, job_dict):
+        """
+        A helper function for loading this object from a dictionary in a YAML file for restarting ARC
+        """
+        # mandatory attributes:
+        self.project = job_dict['project']
+        self.project_directory = job_dict['project_directory']
+        self.initial_time = datetime.datetime.strptime(job_dict['initial_time'], '%Y-%m-%d %H:%M:%S') \
+            if 'initial_time' in job_dict else None
+        self.final_time = datetime.datetime.strptime(job_dict['final_time'], '%Y-%m-%d %H:%M:%S') \
+            if 'final_time' in job_dict else None
+        self.ess_settings = job_dict['ess_settings']
+        self.species_name = job_dict['species_name']
+        self.job_type = job_dict['job_type']
+        self.level_of_theory = job_dict['level_of_theory'].lower()
+        self.multiplicity = job_dict['multiplicity']
+        # optional attributes:
+        self.xyz = job_dict['xyz'] if 'xyz' in job_dict else None
+        self.server_nodes = job_dict['server_nodes'] if 'server_nodes' in job_dict else list()
+        self.job_status = job_dict['job_status'] if 'job_status' in job_dict \
+            else ['initializing', {'status': 'initializing', 'keywords': list(), 'error': '', 'line': ''}]
+        self.charge = job_dict['charge'] if 'charge' in job_dict else 0
+        self.conformer = job_dict['conformer'] if 'conformer' in job_dict else -1
+        self.fine = job_dict['fine'] if 'fine' in job_dict else False
+        self.shift = job_dict['shift'] if 'shift' in job_dict else ''
+        self.software = job_dict['software'] if 'software' in job_dict else None
+        self.is_ts = job_dict['is_ts'] if 'is_ts' in job_dict else False
+        self.scan = job_dict['scan'] if 'scan' in job_dict else None
+        self.pivots = job_dict['pivots'] if 'pivots' in job_dict else list()
+        self.memory = job_dict['memory'] if 'memory' in job_dict else 14
+        self.comments = job_dict['comments'] if 'comments' in job_dict else ''
+        self.trsh = job_dict['trsh'] if 'trsh' in job_dict else ''
+        self.scan_trsh = job_dict['scan_trsh'] if 'scan_trsh' in job_dict else ''
+        self.initial_trsh = job_dict['initial_trsh'] if 'initial_trsh' in job_dict else dict()
+        self.ess_trsh_methods = job_dict['ess_trsh_methods'] if 'ess_trsh_methods' in job_dict else list()
+        self.bath_gas = job_dict['bath_gas'] if 'bath_gas' in job_dict else None
+        self.job_num = job_dict['job_num'] if 'job_num' in job_dict else -1
+        self.job_server_name = job_dict['job_server_name'] if 'job_server_name' in job_dict else None
+        self.job_name = job_dict['job_name'] if 'job_name' in job_dict else None
+        self.job_id = job_dict['job_id'] if 'job_id' in job_dict else 0
+        self.server = job_dict['server'] if 'server' in job_dict else None
+        self.occ = job_dict['occ'] if 'occ' in job_dict else None
+        self.max_job_time = job_dict['max_job_time'] if 'max_job_time' in job_dict else 120
+        self.scan_res = job_dict['scan_res'] if 'scan_res' in job_dict else rotor_scan_resolution
+        self.checkfile = job_dict['checkfile'] if 'checkfile' in job_dict else None
+        self.number_of_radicals = job_dict['number_of_radicals'] if 'number_of_radicals' in job_dict else None
+        self.conformers = job_dict['conformers'] if 'conformers' in job_dict else None
+        self.radius = job_dict['radius'] if 'radius' in job_dict else None
+        self.directed_dihedral = job_dict['directed_dihedral'] if 'directed_dihedral' in job_dict else None
 
     def _set_job_number(self):
         """
@@ -398,7 +504,7 @@ class Job(object):
 
         self.input = input_files.get(self.software, None)
 
-        slash = ''
+        slash, scan_string, constraint = '', '', ''
         if self.software == 'gaussian' and '/' in self.level_of_theory:
             slash = '/'
 
@@ -597,22 +703,22 @@ $end
                 raise JobError('Currently composite methods are only supported in gaussian')
 
         if self.job_type == 'scan':
+            if not divmod(360, self.scan_res):
+                raise JobError('Scan job got an illegal rotor scan resolution of {0}'.format(self.scan_res))
+            scan = ' '.join([str(num) for num in self.scan])
             if self.software == 'gaussian':
                 if self.is_ts:
-                    job_type_1 = 'opt=(ts, modredundant, calcfc, noeigentest, maxStep=5) scf=(tight, direct)' \
-                                 ' integral=(grid=ultrafine, Acc2E=12)'
+                    job_type_1 = 'opt=(ts, modredundant, calcfc, noeigentest, maxStep=5) scf=(tight, direct) ' \
+                                 'integral=(grid=ultrafine, Acc2E=12)'
                 else:
-                    job_type_1 = 'opt=(modredundant, calcfc, noeigentest, maxStep=5) scf=(tight, direct)' \
-                                 ' integral=(grid=ultrafine, Acc2E=12)'
+                    job_type_1 = 'opt=(modredundant, calcfc, noeigentest, maxStep=5) scf=(tight, direct) ' \
+                                 'integral=(grid=ultrafine, Acc2E=12)'
                 if self.checkfile is not None:
                     job_type_1 += ' guess=read'
                 else:
                     job_type_1 += ' guess=mix'
-                scan_string = ''.join([str(num) + ' ' for num in self.scan])
-                if not divmod(360, self.scan_res):
-                    raise JobError('Scan job got an illegal rotor scan resolution of {0}'.format(self.scan_res))
-                scan_string = 'D ' + scan_string + 'S ' + str(int(360 / self.scan_res)) + ' ' +\
-                              '{0:10}'.format(float(self.scan_res))
+                scan_string = 'D {scan} S {steps} {increment:.1f}'.format(scan=scan, steps=str(int(360 / self.scan_res)),
+                                                                          increment=float(self.scan_res))
             elif self.software == 'qchem':
                 if self.is_ts:
                     job_type_1 = 'ts'
@@ -628,10 +734,42 @@ $scan
 $end
 """.format(scan=scan, dihedral1=0, dihedral2=0, increment=self.scan_res)
             else:
-                raise ValueError('Currently rotor scan is only supported in gaussian. Got: {0} using the {1} level of'
-                                 ' theory'.format(self.software, self.method + '/' + self.basis_set))
-        else:
-            scan_string = ''
+                raise ValueError('Currently rotor scan is only supported in Gaussian and QChem. Got: {0} using the '
+                                 '{1} level of theory'.format(self.software, self.method + '/' + self.basis_set))
+
+        elif self.job_type in ['brute_directed_scan', 'cont_directed_scan']:
+            # this is a constrained opt job, constraining the relevant dihedral to self.directed_dihedral
+            # as far as the job is concerned, there's no difference between brute_directed_scan and cont_directed_scan.
+            # The difference is in how there jobs are spawned.
+            scan = ' '.join([str(num) for num in self.scan])
+            if self.software == 'gaussian':
+                if self.is_ts:
+                    job_type_1 = 'opt=(ts, modredundant, calcfc, noeigentest, maxStep=5) scf=(tight, direct)' \
+                                 ' integral=(grid=ultrafine, Acc2E=12)'
+                else:
+                    job_type_1 = 'opt=(modredundant, calcfc, noeigentest, maxStep=5) scf=(tight, direct)' \
+                                 ' integral=(grid=ultrafine, Acc2E=12)'
+                if self.checkfile is not None:
+                    job_type_1 += ' guess=read'
+                else:
+                    job_type_1 += ' guess=mix'
+                scan_string = 'D {scan} ={dihedral} B\nD {scan} F'.format(
+                    scan=scan, dihedral='{0:.2f}'.format(self.directed_dihedral))
+            elif self.software == 'qchem':
+                # following https://manual.q-chem.com/5.2/Ch10.S3.SS4.html
+                if self.is_ts:
+                    job_type_1 = 'ts'
+                else:
+                    job_type_1 = 'opt'
+                constraint = """
+    CONSTRAINT
+        tors {scan} {dihedral}
+    ENDCONSTRAINT
+    """.format(scan=scan, dihedral=self.directed_dihedral)
+            else:
+                raise ValueError('Currently directed rotor scans are only supported in Gaussian and QChem. '
+                                 'Got: {0} using the {1} level of theory'.format(
+                                  self.software, self.method + '/' + self.basis_set))
 
         if self.software == 'gaussian' and not self.trsh:
             if self.level_of_theory[:2] == 'ro':
@@ -673,7 +811,7 @@ $end
                                                multiplicity=self.multiplicity, spin=self.spin, xyz=self.xyz,
                                                job_type_1=job_type_1, job_type_2=job_type_2, scan=scan_string,
                                                restricted=restricted, fine=fine, shift=self.shift, trsh=self.trsh,
-                                               scan_trsh=self.scan_trsh, bath=self.bath_gas) \
+                                               scan_trsh=self.scan_trsh, bath=self.bath_gas, constraint=constraint) \
                     if self.input is not None else None
             except KeyError:
                 logger.error('Could not interpret all input file keys in\n{0}'.format(self.input))
@@ -791,12 +929,14 @@ $end
         Execute the Job.
         """
         if self.fine:
-            logger.info('Running job {name} for {label} (fine opt)'.format(name=self.job_name,
-                                                                           label=self.species_name))
+            logger.info('Running job {name} for {label} (fine opt)'.format(
+                name=self.job_name, label=self.species_name))
+        elif self.directed_dihedral is not None:
+            logger.info('Running job {name} for {label} (pivots: {pivots}, dihedral: {dihedral:.2f})'.format(
+                name=self.job_name, label=self.species_name, pivots=self.pivots, dihedral=self.directed_dihedral))
         elif self.pivots:
-            logger.info('Running job {name} for {label} (pivots: {pivots})'.format(name=self.job_name,
-                                                                                   label=self.species_name,
-                                                                                   pivots=self.pivots))
+            logger.info('Running job {name} for {label} (pivots: {pivots})'.format(
+                name=self.job_name, label=self.species_name, pivots=self.pivots))
         else:
             logger.info('Running job {name} for {label}'.format(name=self.job_name, label=self.species_name))
         logger.debug('writing submit script...')
@@ -990,6 +1130,8 @@ $end
             time_delta = self.final_time - self.initial_time
             remainder = time_delta.microseconds > 5e5
             self.run_time = datetime.timedelta(seconds=time_delta.seconds + remainder)
+        else:
+            self.run_time = None
 
     def deduce_software(self):
         """
@@ -1038,7 +1180,8 @@ $end
                     if phrase in self.level_of_theory:
                         self.software = ess.lower()
             if self.software is None:
-                if self.job_type in ['conformer', 'opt', 'freq', 'optfreq', 'sp']:
+                if self.job_type in ['conformer', 'opt', 'freq', 'optfreq', 'sp',
+                                     'brute_directed_scan', 'cont_directed_scan']:
                     if 'b2' in self.method or 'dsd' in self.method or 'pw2' in self.method:
                         # this is a double-hybrid (MP2) DFT method, use Gaussian
                         if 'gaussian' not in self.ess_settings.keys():

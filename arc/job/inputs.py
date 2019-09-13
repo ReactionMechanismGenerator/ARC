@@ -58,7 +58,7 @@ $rem
    JOBTYPE       {job_type_1}
    METHOD        {method}
    UNRESTRICTED  {restricted}
-   BASIS         {basis}{fine}{trsh}
+   BASIS         {basis}{fine}{trsh}{constraint}
 $end
 {scan}
 
