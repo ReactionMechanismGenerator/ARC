@@ -774,40 +774,54 @@ class ARCSpecies(object):
                 logger.info('Pivot list(s) for {0}: {1}\n'.format(
                     self.label, [self.rotors_dict[i]['pivots'] for i in range(self.number_of_rotors)]))
 
-    def set_dihedral(self, pivots, scan, deg_increment):
+    def set_dihedral(self, pivots, scan, deg_increment=None, deg_abs=None, count=True, xyz=None):
         """
-        Generated an RDKit molecule object from the given self.final_xyz.
+        Generated an RDKit molecule object from either self.final_xyz or ``xyz``.
         Increments the current dihedral angle between atoms i, j, k, l in the `scan` list by 'deg_increment` in degrees.
+        Alternatively, specifying deg_abs will rotate to this desired dihedral.
         All bonded atoms are moved accordingly. The result is saved in self.initial_xyz.
+
+        Args:
+            pivots (list): The pivotal atoms.
+            scan (list): The atom indices representing the dihedral.
+            deg_increment (float, optional): The dihedral angle increment.
+            deg_abs (float, optional): The absolute desired dihedral angle.
+            count (bool, optional): Whether to increment the rotor's times_dihedral_set parameter. `True` to increment.
+            xyz (str, optional): An alternative xyz to use instead of self.final_xyz.
         """
-        if deg_increment == 0:
+        xyz = xyz or self.final_xyz
+        if deg_increment is None and deg_abs is None:
+            raise InputError('Either deg_increment or deg_abs must be given.')
+        if deg_increment == 0 and deg_abs is None:
             logger.warning('set_dihedral was called with zero increment for {label} with pivots {pivots}'.format(
                 label=self.label, pivots=pivots))
-            for rotor in self.rotors_dict.values():  # penalize this rotor to avoid inf. looping
-                if rotor['pivots'] == pivots:
-                    rotor['times_dihedral_set'] += 1
-                    break
+            if count:
+                for rotor in self.rotors_dict.values():  # penalize this rotor to avoid inf. looping
+                    if rotor['pivots'] == pivots:
+                        rotor['times_dihedral_set'] += 1
+                        break
         else:
-            for rotor in self.rotors_dict.values():
-                if rotor['pivots'] == pivots and rotor['times_dihedral_set'] <= 10:
-                    rotor['times_dihedral_set'] += 1
-                    break
-            else:
-                logger.info('\n\n')
-                for i, rotor in self.rotors_dict.items():
-                    logger.error('Rotor {i} with pivots {pivots} was set {times} times'.format(
-                        i=i, pivots=rotor['pivots'], times=rotor['times_dihedral_set']))
-                raise RotorError('Rotors were set beyond the maximal number of times without converging')
-            coordinates, atoms, _, _, _ = get_xyz_matrix(self.final_xyz)
-            mol = molecules_from_xyz(self.final_xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
+            if count:
+                for rotor in self.rotors_dict.values():
+                    if rotor['pivots'] == pivots and rotor['times_dihedral_set'] <= 10:
+                        rotor['times_dihedral_set'] += 1
+                        break
+                else:
+                    logger.info('\n\n')
+                    for i, rotor in self.rotors_dict.items():
+                        logger.error('Rotor {i} with pivots {pivots} was set {times} times'.format(
+                            i=i, pivots=rotor['pivots'], times=rotor['times_dihedral_set']))
+                    raise RotorError('Rotors were set beyond the maximal number of times without converging')
+            coordinates, atoms, _, _, _ = get_xyz_matrix(xyz)
+            mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
             conf, rd_mol, indx_map = rdkit_conf_from_mol(mol, coordinates)
             rd_scan = [indx_map[i - 1] for i in scan]  # convert the atom indices in `scan` to RDKit indices
-            new_xyz = set_rdkit_dihedrals(conf, rd_mol, indx_map, rd_scan, deg_increment=deg_increment)
+            new_xyz = set_rdkit_dihedrals(conf, rd_mol, indx_map, rd_scan, deg_increment=deg_increment, deg_abs=deg_abs)
             self.initial_xyz = get_xyz_string(coords=new_xyz, symbols=atoms)
 
     def determine_symmetry(self):
         """
-        Determine external symmetry and chirality (optical isomers) of the species
+        Determine external symmetry and chirality (optical isomers) of the species.
         """
         if self.optical_isomers is None and self.external_symmetry is None:
             xyz = self.get_xyz()
@@ -1030,7 +1044,7 @@ class ARCSpecies(object):
             comment=str(comment)
         )
 
-    def check_xyz_isomorphism(self, allow_nonisomorphic_2d=False, xyz=None):
+    def check_xyz_isomorphism(self, allow_nonisomorphic_2d=False, xyz=None, verbose=True):
         """
         Check whether the perception of self.final_xyz or ``xyz`` is isomorphic with self.mol.
 
@@ -1038,6 +1052,7 @@ class ARCSpecies(object):
             allow_nonisomorphic_2d (bool, optional): Whether to continue spawning jobs for the species even if this
                                                      test fails. `True` to allow (default is `False`).
             xyz (str, optional): The coordinates to check (will use self.final_xyz if not given).
+            verbose (bool, optional): Whether to log isomorphism findings and errors.
 
         Returns:
             bool: Whether the perception of self.final_xyz is isomorphic with self.mol, `True` if it is.
@@ -1068,15 +1083,15 @@ class ARCSpecies(object):
                 else:
                     # conformer was not isomorphic, don't strictly enforce isomorphism here
                     return_value = True
-            if not passed_test:
+            if not passed_test and verbose:
                 logger.error('The optimized geometry of species {0} is not isomorphic with the 2D structure {1}'.format(
                     self.label, self.mol.toSMILES()))
                 if not return_value:
                     logger.error('Not spawning additional jobs for this species!')
-            else:
+            elif verbose:
                 logger.info('Species {0} was found to be isomorphic with the perception '
                             'of its optimized coordinates.'.format(self.label))
-        else:
+        elif verbose:
             logger.error('Cannot check isomorphism for species {0}'.format(self.label))
         return return_value
 
