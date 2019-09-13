@@ -456,7 +456,7 @@ def trsh_ess_job(label, level_of_theory, server, job_status, job_type, software,
                 type=job_type, software=software, label=label))
             ess_trsh_methods.append('int=(Acc2E=14)')
             trsh_keyword = 'int=(Acc2E=14)'
-        elif 'cbs-qb3' not in ess_trsh_methods and level_of_theory != 'cbs-qb3' and job_type != 'scan':
+        elif 'cbs-qb3' not in ess_trsh_methods and level_of_theory != 'cbs-qb3' and 'scan' not in job_type:
             # try running CBS-QB3, which is relatively robust.
             logger.info('Troubleshooting {type} job in {software} for {label} using CBS-QB3'.format(
                 type=job_type, software=software, label=label))
