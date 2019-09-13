@@ -49,9 +49,12 @@ class ARCSpecies(object):
                           'success': ``bool``.
                           'invalidation_reason': ``str``,
                           'times_dihedral_set': ``int``,
-                          'scan_path': <path to scan output file>},
+                          'scan_path': <path to scan output file>,
                           'max_e': ``float``,  # in kJ/mol
                           'symmetry': ``int``,
+                          'directed_scan': ``dict``,  # keys: dihedrals,
+                                                      # values: dicts of energy, xyz, is_isomorphic, trsh
+                         }
                       2: {}, ...
                      }
 
@@ -105,6 +108,14 @@ class ARCSpecies(object):
         bdes (list): Specifying for which bonds should bond dissociation energies be calculated.
                      Entries are bonded atom indices tuples (1-indexed). An 'all_h' string entry is also allowed,
                      triggering BDE calculations for all hydrogen atoms in the molecule.
+        directed_rotors (dict): Execute a directed internal rotation scan (i.e., a series of constrained optimizations).
+                                Keys are either 'cont' for a continues scan (each point in the scan is executed using
+                                the geometry of the previous converged point) or 'brute' (all scan points are spawned at
+                                once by changing the respective dihedral). Values (for either key) are a list of pivots
+                                tuples for which internal rotation scans will be executed using the respective directed
+                                method (ARC will generate geometries using the ``rotor_scan_resolution`` in settings.py)
+                                Note: An 'all' string entry is also allowed in the value list, triggering a directed
+                                internal rotation scans for all torsions in the molecule.
 
     Attributes:
         label (str): The species' label.
@@ -131,6 +142,7 @@ class ARCSpecies(object):
                                   (otherwise, this job will be spawned if running Gromacs).
         initial_xyz (str): The initial geometry guess.
         final_xyz (str): The optimized species geometry.
+        cont_scan_xyz (str): The geometry used for continuous directed scan jobs.
         radius (float): The species radius in Angstrom.
         opt_level (str): Level of theory for geometry optimization. Saved for archiving.
         number_of_atoms (int): The number of atoms in the species/TS.
@@ -182,13 +194,20 @@ class ARCSpecies(object):
         bdes (list): Specifying for which bonds should bond dissociation energies be calculated.
                      Entries are bonded atom indices tuples (1-indexed). An 'all_h' string entry is also allowed,
                      triggering BDE calculations for all hydrogen atoms in the molecule.
-
+        directed_rotors (dict): Execute a directed internal rotation scan (i.e., a series of constrained optimizations).
+                                Keys are either 'cont' for a continues scan (each point in the scan is executed using
+                                the geometry of the previous converged point) or 'brute' (all scan points are spawned at
+                                once by changing the respective dihedral). Values (for either key) are a list of pivots
+                                tuples for which internal rotation scans will be executed using the respective directed
+                                method (ARC will generate geometries using the ``rotor_scan_resolution`` in settings.py)
+                                Note: An 'all' string entry is also allowed in the value list, triggering a directed
+                                internal rotation scans for all torsions in the molecule.
     """
     def __init__(self, label=None, is_ts=False, rmg_species=None, mol=None, xyz=None, multiplicity=None, charge=None,
                  smiles='', adjlist='', inchi='', bond_corrections=None, generate_thermo=True, species_dict=None,
                  yml_path=None, ts_methods=None, ts_number=None, rxn_label=None, external_symmetry=None,
                  optical_isomers=None, run_time=None, checkfile=None, number_of_radicals=None, force_field='MMFF94',
-                 svpfit_output_file=None, bdes=None):
+                 svpfit_output_file=None, bdes=None, directed_rotors=None):
         self.t1 = None
         self.ts_number = ts_number
         self.conformers = list()
@@ -231,6 +250,8 @@ class ARCSpecies(object):
             self.svpfit_output_file = svpfit_output_file
             self.conf_is_isomorphic = None
             self.bdes = bdes
+            self.cont_scan_xyz = None
+            self.directed_rotors = directed_rotors if directed_rotors is not None else dict()
             if self.bdes is not None and not isinstance(self.bdes, list):
                 raise SpeciesError('The .bdes argument must be a list, got {0} which is a {1}'.format(
                                     self.bdes, type(self.bdes)))
@@ -363,6 +384,10 @@ class ARCSpecies(object):
         for char in self.label:
             if char not in valid_chars:
                 raise SpeciesError('Species label {0} contains an invalid character: "{1}"'.format(self.label, char))
+        if self.directed_rotors and 'brute' not in list(self.directed_rotors.keys()) \
+                and 'cont' not in list(self.directed_rotors.keys()):
+            raise SpeciesError('Directed rotors were specified for species {0}, yet ARC could not find "cont" or '
+                               '"brute" in the directed_rotors dictionary keys.'.format(self.label))
 
     @property
     def number_of_atoms(self):
@@ -470,8 +495,8 @@ class ARCSpecies(object):
             species_dict['opt_level'] = self.opt_level
         if self.final_xyz is not None:
             species_dict['final_xyz'] = self.final_xyz
-        species_dict['number_of_rotors'] = self.number_of_rotors
-        species_dict['rotors_dict'] = self.rotors_dict
+        if self.directed_rotors:
+            species_dict['directed_rotors'] = self.directed_rotors
         if self.conf_is_isomorphic is not None:
             species_dict['conf_is_isomorphic'] = self.conf_is_isomorphic
         if self.bond_corrections is not None:
@@ -499,6 +524,8 @@ class ARCSpecies(object):
             species_dict['conformers_before_opt'] = self.conformers_before_opt
         if self.bdes is not None:
             species_dict['bdes'] = self.bdes
+        if self.cont_scan_xyz is not None:
+            species_dict['cont_scan_xyz'] = self.cont_scan_xyz
         return species_dict
 
     def from_dict(self, species_dict):
@@ -557,6 +584,7 @@ class ARCSpecies(object):
             self.ts_methods = None
         if 'xyz' in species_dict and self.initial_xyz is None and self.final_xyz is None:
             self.process_xyz(species_dict['xyz'])
+        self.cont_scan_xyz = species_dict['cont_scan_xyz'] if 'cont_scan_xyz' in species_dict else None
         for char in self.label:
             if char not in valid_chars:
                 raise SpeciesError('Species label {0} contains an invalid character: "{1}"'.format(self.label, char))
@@ -616,6 +644,7 @@ class ARCSpecies(object):
                 and not any([tsg.xyz for tsg in self.ts_guesses]):
             # TS species are allowed to be loaded w/o a structure
             raise SpeciesError('Must have either mol or xyz for species {0}'.format(self.label))
+        self.directed_rotors = species_dict['directed_rotors'] if 'directed_rotors' in species_dict else dict()
         self.bdes = species_dict['bdes'] if 'bdes' in species_dict else None
         if self.bdes is not None and not isinstance(self.bdes, list):
             raise SpeciesError('The .bdes argument must be a list, got {0} which is a {1}'.format(
