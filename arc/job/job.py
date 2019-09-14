@@ -379,7 +379,7 @@ class Job(object):
                          '{{{{PARAM}}}} instead of {{PARAM}}.\nIdentified the following submit scripts:\n{2}'.format(
                           self.server, self.software.lower(), submit_scripts_for_printing))
             raise
-        if not os.path.exists(self.local_path):
+        if not os.path.isdir(self.local_path):
             os.makedirs(self.local_path)
         with open(os.path.join(self.local_path, submit_filename[servers[self.server]['cluster_soft']]), 'wb') as f:
             f.write(self.submit)

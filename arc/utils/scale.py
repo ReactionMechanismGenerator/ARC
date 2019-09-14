@@ -11,21 +11,21 @@ Adapted by Duminda Ranasinghe and Alon Grinberg Dana
 from __future__ import (absolute_import, division, print_function, unicode_literals)
 import os
 import time
+import shutil
 
 from arkane.statmech import determine_qm_software
 
-from arc.settings import arc_path
-from arc.scheduler import Scheduler
 from arc.arc_exceptions import InputError
-from arc.species.species import ARCSpecies
 from arc.common import get_logger, check_ess_settings, time_lapse, initialize_log, initialize_job_types
+from arc.scheduler import Scheduler
+from arc.settings import arc_path
+from arc.species.species import ARCSpecies
 
 try:
     from arc.settings import global_ess_settings
 except ImportError:
     global_ess_settings = None
 
-##################################################################
 
 logger = get_logger()
 
@@ -84,6 +84,8 @@ def determine_scaling_factors(levels_of_theory, ess_settings=None, init_log=True
         renamed_level = rename_level(level_of_theory)
         project = 'scaling_' + renamed_level
         project_directory = os.path.join(arc_path, 'Projects', 'scaling_factors', project)
+        if os.path.isdir(project_directory):
+            shutil.rmtree(project_directory)
 
         species_list = get_species_list()
 
