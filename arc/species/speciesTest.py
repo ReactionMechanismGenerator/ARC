@@ -408,11 +408,11 @@ H      -1.67091600   -1.35164600   -0.93286400
         path4 = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'sBuOH.out')  # symmetry = 3
         path5 = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'CH3C(O)O_FreeRotor.out')  # symmetry = 6
 
-        symmetry1, _ = determine_rotor_symmetry(rotor_path=path1, label='label', pivots=[3, 4])
-        symmetry2, _ = determine_rotor_symmetry(rotor_path=path2, label='label', pivots=[3, 4])
-        symmetry3, _ = determine_rotor_symmetry(rotor_path=path3, label='label', pivots=[3, 4])
-        symmetry4, _ = determine_rotor_symmetry(rotor_path=path4, label='label', pivots=[3, 4])
-        symmetry5, _ = determine_rotor_symmetry(rotor_path=path5, label='label', pivots=[3, 4])
+        symmetry1, _ = determine_rotor_symmetry(label='label', pivots=[3, 4], rotor_path=path1)
+        symmetry2, _ = determine_rotor_symmetry(label='label', pivots=[3, 4], rotor_path=path2)
+        symmetry3, _ = determine_rotor_symmetry(label='label', pivots=[3, 4], rotor_path=path3)
+        symmetry4, _ = determine_rotor_symmetry(label='label', pivots=[3, 4], rotor_path=path4)
+        symmetry5, _ = determine_rotor_symmetry(label='label', pivots=[3, 4], rotor_path=path5)
 
         self.assertEqual(symmetry1, 1)
         self.assertEqual(symmetry2, 1)

@@ -1521,7 +1521,7 @@ def nearly_equal(a, b, sig_fig=5):
     return a == b or int(a*10**sig_fig) == int(b*10**sig_fig)
 
 
-def determine_rotor_symmetry(rotor_path, label, pivots):
+def determine_rotor_symmetry(label, pivots, rotor_path='', energies=None):
     """
     Determine the rotor symmetry number from a potential energy scan.
     The *worst* resolution for each peak and valley is determined.
@@ -1533,15 +1533,29 @@ def determine_rotor_symmetry(rotor_path, label, pivots):
     Args:
         rotor_path (str): The path to an ESS output rotor scan file.
         label (str): The species label (used for error messages).
-        pivots (list): A list of two atom indices representing the torsion pivots.
+        pivots (list, optional): A list of two atom indices representing the torsion pivots.
+        energies (list, optional): THe list of energies in the scan in kJ/mol.
 
     Returns:
         int: The symmetry number (int)
     Returns:
         float: The highest torsional energy barrier in kJ/mol.
+
+    Raises:
+        InputError: If both or none of the rotor_path and energy arguments are given,
+        or if rotor_path does not point to an existing file.
     """
-    log = determine_qm_software(fullpath=rotor_path)
-    energies, _ = log.loadScanEnergies()
+    if not rotor_path and energies is None:
+        raise InputError('Expected either rotor_path or energies, got neither')
+    if rotor_path and energies is not None:
+        raise InputError('Expected either rotor_path or energies, got both')
+    if not os.path.isfile(rotor_path):
+        raise InputError('Could not find the file {0}'.format(rotor_path))
+
+    if energies is None:
+        log = determine_qm_software(fullpath=rotor_path)
+        energies = log.loadScanEnergies()[0]
+        energies *= 0.001
 
     symmetry = None
     max_e = max(energies)
@@ -1580,7 +1594,7 @@ def determine_rotor_symmetry(rotor_path, label, pivots):
     if len(peaks) != len(valleys):
         logger.error('Rotor of species {0} between pivots {1} does not have the same number'
                      ' of peaks ({2}) and valleys ({3}).'.format(label, pivots, len(peaks), len(valleys)))
-        return len(peaks), max_e * 0.001  # this works for CC(=O)[O]
+        return len(peaks), max_e  # this works for CC(=O)[O]
     min_peak = min(peaks)
     max_peak = max(peaks)
     min_valley = min(valleys)
@@ -1609,7 +1623,7 @@ def determine_rotor_symmetry(rotor_path, label, pivots):
     else:
         logger.info('Determined a symmetry number of {0} for rotor of species {1} between pivots {2}'
                     ' based on the {3}.'.format(symmetry, label, pivots, reason))
-    return symmetry, max_e * 0.001  # max_e in kJ/mol
+    return symmetry, max_e
 
 
 def cyclic_index_i_plus_1(i, length):
