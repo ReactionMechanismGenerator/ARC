@@ -14,7 +14,8 @@ import numpy as np
 
 from arc.arc_exceptions import SpeciesError, TrshError
 from arc.common import get_logger, determine_ess
-from arc.settings import servers, delete_command, list_available_nodes_command, submit_filename
+from arc.settings import servers, delete_command, list_available_nodes_command, submit_filename, \
+    inconsistency_ab, inconsistency_az, maximum_barrier, rotor_scan_resolution
 from arc.species.converter import get_xyz_string
 from arc.job.ssh import SSHClient
 
@@ -707,3 +708,96 @@ def trsh_job_on_server(server, job_name, job_id, job_server_status, remote_path,
         ssh = SSHClient(server)
         ssh.send_command_to_server(command=delete_command[servers[server]['cluster_soft']] + ' ' + str(job_id))
         return None, True
+
+
+def scan_quality_check(label, pivots, energies, scan_res=rotor_scan_resolution):
+    """
+    Checks the scan's quality:
+    - Whether the initial and final points are consistent
+    - whether it is relatively "smooth"
+    - whether the optimized geometry indeed represents the minimum energy conformer
+    - whether the barrier height is reasonable
+    Recommends whether or not to use this rotor using the 'successful_rotors' and 'unsuccessful_rotors' attributes.
+
+    Args:
+        label (str): The species label.
+        pivots (list): The rotor pivots.
+        energies (list): The scan energies in kJ/mol.
+        scan_res (float): The scan resolution in degrees.
+
+    Returns:
+        invalidate (bool): Whether to invalidate this rotor, ``True`` to invalidate.
+    Returns:
+        invalidation_reason (str): Reason for invalidating this rotor.
+    Returns:
+        message (str): Error or warning message.
+    Returns:
+        actions (list): Troubleshooting methods to apply, including conformational changes.
+    """
+    message, invalidation_reason = '', ''
+    invalidate = False
+    actions = list()
+    energies = np.array(energies, np.float64)
+
+    # 1. Check rotor scan curve
+    # 1.1. Check consistency between initial and final points
+    if abs(energies[-1] - energies[0]) > inconsistency_az:
+        # initial and final points differ by more than `inconsistency_az` kJ/mol.
+        # seems like this rotor broke the conformer. Invalidate
+        invalidate = True
+        invalidation_reason = 'initial and final points are inconsistent by more than {0:.2f} ' \
+                              'kJ/mol'.format(inconsistency_az)
+        message = 'Rotor scan of {label} between pivots {pivots} is inconsistent by more ' \
+                  'than {incons_az:.2f} kJ/mol between initial and final positions. ' \
+                  'Invalidating rotor.\nenergies[0] = {e_first}, energies[-1] = {e_last}'.format(
+                   label=label, pivots=pivots, incons_az=inconsistency_az,
+                   e_first=energies[0], e_last=energies[-1])
+        logger.error(message)
+        actions = ['inc_res', 'freeze']
+        return invalidate, invalidation_reason, message, actions
+
+    # 1.2. Check consistency between consecutive points
+    for j in range(len(energies) - 1):
+        if abs(energies[j] - energies[j + 1]) > inconsistency_ab * np.max(energies):
+            # Two consecutive points on the scan differ by more than `inconsistency_ab` kJ/mol.
+            # This is a serious inconsistency. Invalidate
+            invalidate = True
+            invalidation_reason = 'Two consecutive points are inconsistent by more than ' \
+                                  '{0:.2f} kJ/mol'.format(inconsistency_ab * max(energies))
+            message = 'Rotor scan of {label} between pivots {pivots} is inconsistent ' \
+                      'by more than {incons_ab:.2f} kJ/mol between two consecutive ' \
+                      'points. Invalidating rotor.'.format(
+                       label=label, pivots=pivots, incons_ab=inconsistency_ab * max(energies))
+            logger.error(message)
+            actions = ['inc_res', 'freeze']
+            return invalidate, invalidation_reason, message, actions
+
+    # 2. Check conformation:
+    energy_diff = energies[0] - np.min(energies)
+    if energy_diff >= 2 or energy_diff > 0.5 * (max(energies) - min(energies)):
+        invalidate = True
+        invalidation_reason = 'Another conformer for {0} exists which is {1:.2f} kJ/mol lower.'.format(
+                               label, energy_diff)
+        message = 'Species {label} is not oriented correctly around pivots {pivots}, ' \
+                  'searching for a better conformation...'.format(label=label, pivots=pivots)
+        logger.info(message)
+        # Find the rotation dihedral in degrees to the closest minimum:
+        min_index = np.argmin(energies)
+        deg_increment = min_index * scan_res
+        actions = ['change conformer', deg_increment]
+        return invalidate, invalidation_reason, message, actions
+
+    # 3. Check the barrier height
+    if (np.max(energies) - np.min(energies)) > maximum_barrier:
+        # The barrier for the internal rotation is higher than `maximum_barrier`
+        invalidate = True
+        invalidation_reason = 'The rotor scan has a barrier of {0} kJ/mol, which is higher than the maximal ' \
+                              'barrier for rotation ({1} kJ/mol)'.format(
+                               np.max(energies) - np.min(energies), maximum_barrier)
+        message = 'Rotor scan of {label} between pivots {pivots} has a barrier ' \
+                  'larger than {max_barrier:.2f} kJ/mol. Invalidating rotor.'.format(
+                   label=label, pivots=pivots, max_barrier=maximum_barrier)
+        logger.warning(message)
+        return invalidate, invalidation_reason, message, actions
+
+    return invalidate, invalidation_reason, message, actions
