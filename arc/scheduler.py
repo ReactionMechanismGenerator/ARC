@@ -1142,6 +1142,22 @@ class Scheduler(object):
                                                charge=self.species_dict[label].charge)[1]
                 except SanitizationError:
                     b_mol = None
+                    if self.allow_nonisomorphic_2d or self.species_dict[label].charge:
+                        # we'll optimize the single conformer even if it is not isomorphic to the 2D graph
+                        logger.error('The single conformer {0} could not be checked for isomorphism with the 2D graph '
+                                     'representation {1}. Optimizing this conformer anyway.'.format(
+                                      label, self.species_dict[label].mol.toSMILES()))
+                        if self.species_dict[label].charge:
+                            logger.warning('Isomorphism check cannot be done for charged species {0}'.format(label))
+                        self.output[label]['conformers'] += 'Single conformer could not be checked for isomorphism; '
+                        self.output[label]['job_types']['conformers'] = True
+                        self.species_dict[label].conf_is_isomorphic, spawn_jobs = False, True
+                    else:
+                        logger.error('The only conformer for species {0} could not be checked for isomorphism with the '
+                                     '2D graph representation {1}. NOT calculating this species. To change this '
+                                     'behaviour, pass `allow_nonisomorphic_2d = True` to ARC.'.format(
+                                      label, b_mol.toSMILES()))
+                        self.species_dict[label].conf_is_isomorphic, spawn_jobs = False, False
                 if b_mol is not None:
                     try:
                         is_isomorphic = check_isomorphism(self.species_dict[label].mol, b_mol)

@@ -1,0 +1,8 @@
+exclude:
+- /docs/.*:
+- /examples/.*:
+- /ipython/.*:
+- /logo/.*
+languages:
+- python
+component_depth: 3
