@@ -26,6 +26,7 @@ class TestAutoTST(unittest.TestCase):
         """
         A function run ONCE before all unit tests in this class.
         """
+        cls.maxDiff = None
         cls.spc1 = Species().fromSMILES(str('C'))
         cls.spc2 = Species().fromSMILES(str('[OH]'))
         cls.spc3 = Species().fromSMILES(str('[CH3]'))
@@ -44,18 +45,15 @@ class TestAutoTST(unittest.TestCase):
 
     def test_generate_reaction_string(self):
         """Test the generate_reaction_string() function"""
-
         reaction_label1 = atst.get_reaction_label(rmg_reaction=self.reaction1)
         reaction_label2 = atst.get_reaction_label(rmg_reaction=self.reaction2)
         reaction_label3 = atst.get_reaction_label(rmg_reaction=self.reaction3)
-
         self.assertEqual(reaction_label1, 'C+[OH]_[CH3]+O')
         self.assertEqual(reaction_label2, 'CCCC+[O]O_[CH2]CCC+OO')
         self.assertEqual(reaction_label3, 'CC[O]+[NH2]_[CH2]C[O]+N')
 
     def test_run_autotsts(self):
         """Test running AutoTST"""
-        self.maxDiff = None
         reaction_label1 = atst.get_reaction_label(rmg_reaction=self.reaction1)
         xyz1a = atst.autotst(reaction_label=reaction_label1, reaction_family='H_Abstraction')
         xyz1b = atst.autotst(rmg_reaction=self.reaction1, reaction_family='H_Abstraction')
