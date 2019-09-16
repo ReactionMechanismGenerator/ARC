@@ -6,36 +6,37 @@ A module for plotting and saving output files such as RMG libraries.
 """
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
-import numpy as np
 import os
 import shutil
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
+import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
+from mpl_toolkits.mplot3d import Axes3D
 
 import py3Dmol as p3D
-from rdkit import Chem
-from IPython.display import display
-from ase.visualize import view
 from ase import Atom, Atoms
 from ase.io import write as ase_write
+from ase.visualize import view
+from IPython.display import display
+from rdkit import Chem
 
-from rmgpy.data.thermo import ThermoLibrary
-from rmgpy.data.kinetics.library import KineticsLibrary
-from rmgpy.data.transport import TransportLibrary
 from rmgpy.data.base import Entry
+from rmgpy.data.kinetics.library import KineticsLibrary
+from rmgpy.data.thermo import ThermoLibrary
+from rmgpy.data.transport import TransportLibrary
 from rmgpy.quantity import ScalarQuantity
 from rmgpy.species import Species
 
-from arc.common import get_logger, min_list
-from arc.species.species import ARCSpecies
-from arc.species.converter import get_xyz_matrix, rdkit_conf_from_mol, molecules_from_xyz
 from arc.arc_exceptions import InputError, SanitizationError
+from arc.common import get_logger, min_list
+from arc.species.converter import get_xyz_matrix, rdkit_conf_from_mol, molecules_from_xyz
+from arc.species.species import ARCSpecies
 
-##################################################################
 
 logger = get_logger()
 
+
+# *** Drawings species ***
 
 def draw_structure(xyz=None, species=None, project_directory=None, method='show_sticks'):
     """
@@ -169,43 +170,7 @@ def check_xyz_species_for_drawing(xyz, species):
     return xyz
 
 
-def plot_rotor_scan(angle, v_list, path=None, pivots=None, comment=''):
-    """
-    plots a 1D rotor PES for v_list vs. angle.
-    """
-    angle = angle * 180 / np.pi  # convert radians to degree
-    v_list = np.array(v_list, np.float64)  # in kJ/mol
-    marker_color, line_color = plt.cm.viridis([0.1, 0.9])
-    plt.figure(figsize=(4, 3), dpi=120)
-    plt.subplot(1, 1, 1)
-    plt.plot(angle, v_list, '.-', markerfacecolor=marker_color,
-             markeredgecolor=marker_color, color=line_color)
-    plt.xlabel('dihedral (deg)')
-    plt.xlim = (0, 360)
-    plt.xticks(np.arange(0, 361, step=60))
-    plt.ylabel('V (kJ/mol)')
-    plt.tight_layout()
-    plt.show()
-
-    if path is not None and pivots is not None:
-        if not os.path.exists(path):
-            os.makedirs(path)
-        if comment:
-            fig_name = '{0}-invalid.png'.format(pivots)
-            txt_path = os.path.join(path, 'rotor comments.txt')
-            if os.path.isfile(txt_path):
-                with open(txt_path, 'a') as f:
-                    f.write(str('\n\nPivots: {0}\nComment: {1}'.format(pivots, comment)))
-            else:
-                with open(txt_path, 'w') as f:
-                    f.write(str('Pivots: {0}\nComment: {1}'.format(pivots, comment)))
-        else:
-            fig_name = '{0}.png'.format(pivots)
-        fig_path = os.path.join(path, fig_name)
-        plt.savefig(fig_path, dpi=120, facecolor='w', edgecolor='w', orientation='portrait', papertype=None,
-                    format=str('png'), transparent=False, bbox_inches=None, pad_inches=0.1, frameon=False,
-                    metadata=None)
-
+# *** Logging output ***
 
 def log_thermo(label, path):
     """
@@ -260,6 +225,8 @@ def log_kinetics(label, path):
     logger.info(kinetics_block)
     logger.info('\n')
 
+
+# *** Parity and kinetic plots ***
 
 def draw_thermo_parity_plots(species_list, path=None):
     """
@@ -453,122 +420,6 @@ def text_plotter(x_data, y_data, labels, text_positions, axis, txt_width, txt_he
                        zorder=0, length_includes_head=True)
 
 
-def plot_torsion_angles(torsion_angles, torsions_sampling_points=None, wells_dict=None, e_conformers=None,
-                        de_threshold=5.0, plot_path=None):
-    """
-    Plot the torsion angles of the generated conformers.
-
-    Args:
-        torsion_angles (dict): Keys are torsions, values are lists of corresponding angles.
-        torsions_sampling_points (dict, optional): Keys are torsions, values are sampling points.
-        wells_dict (dict, optional): Keys are torsions, values are lists of wells.
-                                     Each entry in such a list is a well dictionary with the following keys:
-                                     ``start_idx``, ``end_idx``, ``start_angle``, ``end_angle``, and ``angles``.
-        e_conformers (list, optional): Entries are conformers corresponding to the sampling points with FF energies.
-        de_threshold (float, optional): Energy threshold, plotted as a dashed horizontal line.
-        plot_path (str, optional): The path for saving the plot.
-    """
-    num_comb = None
-    torsions = torsion_angles.keys() if torsions_sampling_points is None else torsions_sampling_points.keys()
-    ticks = [0, 60, 120, 180, 240, 300, 360]
-    sampling_points = dict()
-    if torsions_sampling_points is not None:
-        for tor, points in torsions_sampling_points.items():
-            sampling_points[tor] = [point if point <= 360 else point - 360 for point in points]
-    if not torsions:
-        return
-    if len(torsions) == 1:
-        torsion = torsions[0]
-        fig, axs = plt.subplots(nrows=len(torsions), ncols=1, sharex=True, sharey=True, gridspec_kw={'hspace': 0})
-        fig.dpi = 120
-        axs.plot(np.array(torsion_angles[tuple(torsion)]),
-                 np.zeros_like(np.arange(len(torsion_angles[tuple(torsion)]))), 'g.')
-        if torsions_sampling_points is not None:
-            axs.plot(np.array(sampling_points[tuple(torsion)]),
-                     np.zeros_like(np.arange(len(sampling_points[tuple(torsion)]))), 'ro', alpha=0.35, ms=7)
-        axs.frameon = False
-        axs.set_ylabel(str(torsion), labelpad=10)
-        axs.set_yticklabels(['' for _ in range(len(torsions))])
-        axs.tick_params(axis='y',         # changes apply to the x-axis
-                        which='both',     # both major and minor ticks are affected
-                        left=False,       # ticks along the bottom edge are off
-                        right=False,      # ticks along the top edge are off
-                        labelleft=False)  # labels along the bottom edge are off
-        axs.set_title('Dihedral angle (degrees)')
-        axs.axes.xaxis.set_ticks(ticks=ticks)
-        fig.set_size_inches(8, 2)
-    else:
-        fig, axs = plt.subplots(nrows=len(torsions), ncols=1, sharex=True, sharey=True, gridspec_kw={'hspace': 0})
-        fig.dpi = 120
-        num_comb = 1
-        for i, torsion in enumerate(torsions):
-            axs[i].plot(np.array(torsion_angles[tuple(torsion)]),
-                        np.zeros_like(np.arange(len(torsion_angles[tuple(torsion)]))), 'g.')
-            if wells_dict is not None:
-                for well in wells_dict[torsion]:
-                    axs[i].plot(well['start_angle'] if well['start_angle'] <= 360 else well['start_angle'] - 360, 0,
-                                'b|', alpha=0.5)
-                    axs[i].plot(well['end_angle'] if well['end_angle'] <= 360 else well['end_angle'] - 360, 0,
-                                'k|', alpha=0.5)
-            if torsions_sampling_points is not None:
-                x, y = list(), list()
-                h_line = False
-                if e_conformers is not None:
-                    for dihedral in sampling_points[tuple(torsion)]:
-                        for e_conformer in e_conformers[tuple(torsion)]:
-                            if 'FF energy' in e_conformer and e_conformer['FF energy'] is not None \
-                                    and 'dihedral' in e_conformer and e_conformer['dihedral'] is not None \
-                                    and (abs(dihedral - e_conformer['dihedral']) < 0.1
-                                         or abs(dihedral - e_conformer['dihedral'] + 360) < 0.1):
-                                x.append(dihedral)
-                                y.append(e_conformer['FF energy'])
-                                break
-                    min_y = min(y)
-                    y = [round(yi - min_y, 3) for yi in y]
-                    num_comb *= len([yi for yi in y if yi < de_threshold])
-                    if any([yi > de_threshold for yi in y]):
-                        h_line = True
-                else:
-                    x = sampling_points[torsion]
-                    y = [0.0] * len(sampling_points[tuple(torsion)])
-                axs[i].plot(x, y, 'ro', alpha=0.35, ms=7)
-                if h_line:
-                    x_h = [0, 360]
-                    y_h = [de_threshold, de_threshold]
-                    axs[i].plot(x_h, y_h, '--k', alpha=0.30, linewidth=0.8)
-            axs[i].frameon = False
-            axs[i].set_ylabel(str(torsion), labelpad=10)
-            # axs[i].yaxis.label.set_rotation(0)
-            if e_conformers is None:
-                axs[i].set_yticklabels(['' for _ in range(len(torsions))])
-                axs[i].tick_params(axis='y',         # changes apply to the x-axis
-                                   which='both',     # both major and minor ticks are affected
-                                   left=False,       # ticks along the bottom edge are off
-                                   right=False,      # ticks along the top edge are off
-                                   labelleft=False)  # labels along the bottom edge are off
-        axs[0].set_title('Dihedral angle (degrees)')
-        # Hide x labels and tick labels for all but bottom plot.
-        # for ax in axs:
-        #     ax.label_outer()
-        axs[0].axes.xaxis.set_ticks(ticks=ticks)
-        fig.set_size_inches(8, len(torsions) * 1.5)
-    plt.show()
-    if plot_path is not None:
-        if not os.path.isdir(plot_path):
-            os.makedirs(plot_path)
-        file_names = list()
-        for (_, _, files) in os.walk(plot_path):
-            file_names.extend(files)
-            break  # don't continue to explore subdirectories
-        i = 0
-        for file_ in file_names:
-            if 'conformer torsions' in file_:
-                i += 1
-        image_path = os.path.join(plot_path, 'conformer torsions {0}.png'.format(i))
-        plt.savefig(image_path, bbox_inches='tight')
-    return num_comb
-
-
 def save_geo(species, project_directory):
     """
     Save the geometry in several forms for an ARC Species object in the project's output folder under the species name.
@@ -592,6 +443,8 @@ def save_geo(species, project_directory):
     with open(os.path.join(geo_path, '{0}.gjf'.format(species.label)), 'w') as f:
         f.write(str(gv))
 
+
+# *** Files (libraries, xyz, conformers) ***
 
 def save_thermo_lib(species_list, path, name, lib_long_desc):
     """
@@ -762,3 +615,197 @@ def save_conformers_file(project_directory, label, xyzs, level_of_theory, multip
                 content += 'Failed to converge'
             content += '\n\n\n'
         f.write(str(content))
+
+
+# *** Torsions ***
+
+def plot_torsion_angles(torsion_angles, torsions_sampling_points=None, wells_dict=None, e_conformers=None,
+                        de_threshold=5.0, plot_path=None):
+    """
+    Plot the torsion angles of the generated conformers.
+
+    Args:
+        torsion_angles (dict): Keys are torsions, values are lists of corresponding angles.
+        torsions_sampling_points (dict, optional): Keys are torsions, values are sampling points.
+        wells_dict (dict, optional): Keys are torsions, values are lists of wells.
+                                     Each entry in such a list is a well dictionary with the following keys:
+                                     ``start_idx``, ``end_idx``, ``start_angle``, ``end_angle``, and ``angles``.
+        e_conformers (list, optional): Entries are conformers corresponding to the sampling points with FF energies.
+        de_threshold (float, optional): Energy threshold, plotted as a dashed horizontal line.
+        plot_path (str, optional): The path for saving the plot.
+    """
+    num_comb = None
+    torsions = torsion_angles.keys() if torsions_sampling_points is None else torsions_sampling_points.keys()
+    ticks = [0, 60, 120, 180, 240, 300, 360]
+    sampling_points = dict()
+    if torsions_sampling_points is not None:
+        for tor, points in torsions_sampling_points.items():
+            sampling_points[tor] = [point if point <= 360 else point - 360 for point in points]
+    if not torsions:
+        return
+    if len(torsions) == 1:
+        torsion = torsions[0]
+        fig, axs = plt.subplots(nrows=len(torsions), ncols=1, sharex=True, sharey=True, gridspec_kw={'hspace': 0})
+        fig.dpi = 120
+        axs.plot(np.array(torsion_angles[tuple(torsion)]),
+                 np.zeros_like(np.arange(len(torsion_angles[tuple(torsion)]))), 'g.')
+        if torsions_sampling_points is not None:
+            axs.plot(np.array(sampling_points[tuple(torsion)]),
+                     np.zeros_like(np.arange(len(sampling_points[tuple(torsion)]))), 'ro', alpha=0.35, ms=7)
+        axs.frameon = False
+        axs.set_ylabel(str(torsion), labelpad=10)
+        axs.set_yticklabels(['' for _ in range(len(torsions))])
+        axs.tick_params(axis='y',         # changes apply to the x-axis
+                        which='both',     # both major and minor ticks are affected
+                        left=False,       # ticks along the bottom edge are off
+                        right=False,      # ticks along the top edge are off
+                        labelleft=False)  # labels along the bottom edge are off
+        axs.set_title('Dihedral angle (degrees)')
+        axs.axes.xaxis.set_ticks(ticks=ticks)
+        fig.set_size_inches(8, 2)
+    else:
+        fig, axs = plt.subplots(nrows=len(torsions), ncols=1, sharex=True, sharey=True, gridspec_kw={'hspace': 0})
+        fig.dpi = 120
+        num_comb = 1
+        for i, torsion in enumerate(torsions):
+            axs[i].plot(np.array(torsion_angles[tuple(torsion)]),
+                        np.zeros_like(np.arange(len(torsion_angles[tuple(torsion)]))), 'g.')
+            if wells_dict is not None:
+                for well in wells_dict[torsion]:
+                    axs[i].plot(well['start_angle'] if well['start_angle'] <= 360 else well['start_angle'] - 360, 0,
+                                'b|', alpha=0.5)
+                    axs[i].plot(well['end_angle'] if well['end_angle'] <= 360 else well['end_angle'] - 360, 0,
+                                'k|', alpha=0.5)
+            if torsions_sampling_points is not None:
+                x, y = list(), list()
+                h_line = False
+                if e_conformers is not None:
+                    for dihedral in sampling_points[tuple(torsion)]:
+                        for e_conformer in e_conformers[tuple(torsion)]:
+                            if 'FF energy' in e_conformer and e_conformer['FF energy'] is not None \
+                                    and 'dihedral' in e_conformer and e_conformer['dihedral'] is not None \
+                                    and (abs(dihedral - e_conformer['dihedral']) < 0.1
+                                         or abs(dihedral - e_conformer['dihedral'] + 360) < 0.1):
+                                x.append(dihedral)
+                                y.append(e_conformer['FF energy'])
+                                break
+                    min_y = min(y)
+                    y = [round(yi - min_y, 3) for yi in y]
+                    num_comb *= len([yi for yi in y if yi < de_threshold])
+                    if any([yi > de_threshold for yi in y]):
+                        h_line = True
+                else:
+                    x = sampling_points[torsion]
+                    y = [0.0] * len(sampling_points[tuple(torsion)])
+                axs[i].plot(x, y, 'ro', alpha=0.35, ms=7)
+                if h_line:
+                    x_h = [0, 360]
+                    y_h = [de_threshold, de_threshold]
+                    axs[i].plot(x_h, y_h, '--k', alpha=0.30, linewidth=0.8)
+            axs[i].frameon = False
+            axs[i].set_ylabel(str(torsion), labelpad=10)
+            # axs[i].yaxis.label.set_rotation(0)
+            if e_conformers is None:
+                axs[i].set_yticklabels(['' for _ in range(len(torsions))])
+                axs[i].tick_params(axis='y',         # changes apply to the x-axis
+                                   which='both',     # both major and minor ticks are affected
+                                   left=False,       # ticks along the bottom edge are off
+                                   right=False,      # ticks along the top edge are off
+                                   labelleft=False)  # labels along the bottom edge are off
+        axs[0].set_title('Dihedral angle (degrees)')
+        # Hide x labels and tick labels for all but bottom plot.
+        # for ax in axs:
+        #     ax.label_outer()
+        axs[0].axes.xaxis.set_ticks(ticks=ticks)
+        fig.set_size_inches(8, len(torsions) * 1.5)
+    plt.show()
+    if plot_path is not None:
+        if not os.path.isdir(plot_path):
+            os.makedirs(plot_path)
+        file_names = list()
+        for (_, _, files) in os.walk(plot_path):
+            file_names.extend(files)
+            break  # don't continue to explore subdirectories
+        i = 0
+        for file_ in file_names:
+            if 'conformer torsions' in file_:
+                i += 1
+        image_path = os.path.join(plot_path, 'conformer torsions {0}.png'.format(i))
+        plt.savefig(image_path, bbox_inches='tight')
+    return num_comb
+
+
+def plot_rotor_scan(angles, energies, path=None, pivots=None, comment='', units='radians'):
+    """
+    Plots a 1D rotor PES for energy vs. angles.
+
+    Args:
+        angles (list, tuple, np.array): Dihedral angles.
+        energies (list, tuple, np.array): The energies in kJ/mol.
+        path (str, optional): The folder path for saving the rotor scan image and comments.
+        pivots (list, tuple, optional): The pivotal atoms of the scan.
+        comment (str, optional): Reason for invalidating this rotor.
+        units (str, optional): The ``angle`` units, either 'degrees' or 'radians'.
+    """
+    if units == 'radians':
+        angles = angles * 180 / np.pi  # convert radians to degree
+    energies = np.array(energies, np.float64)  # in kJ/mol
+    marker_color, line_color = plt.cm.viridis([0.1, 0.9])
+    plt.figure(figsize=(4, 3), dpi=120)
+    plt.subplot(1, 1, 1)
+    plt.plot(angles, energies, '.-', markerfacecolor=marker_color,
+             markeredgecolor=marker_color, color=line_color)
+    plt.xlabel('Dihedral angle (degrees)')
+    min_angle = int(np.ceil(min(angles) / 10.0)) * 10
+    plt.xlim = (min_angle, min_angle + 360)
+    plt.xticks(np.arange(min_angle, min_angle + 361, step=60))
+    plt.ylabel('Electronic energy (kJ/mol)')
+    plt.tight_layout()
+    plt.show()
+
+    if path is not None and pivots is not None:
+        if not os.path.exists(path):
+            os.makedirs(path)
+        if comment:
+            fig_name = '{0}-invalid.png'.format(pivots)
+            txt_path = os.path.join(path, 'rotor comments.txt')
+            if os.path.isfile(txt_path):
+                with open(txt_path, 'a') as f:
+                    f.write(str('\n\nPivots: {0}\nComment: {1}'.format(pivots, comment)))
+            else:
+                with open(txt_path, 'w') as f:
+                    f.write(str('Pivots: {0}\nComment: {1}'.format(pivots, comment)))
+        else:
+            fig_name = '{0}.png'.format(pivots)
+        fig_path = os.path.join(path, fig_name)
+        plt.savefig(fig_path, dpi=120, facecolor='w', edgecolor='w', orientation='portrait', papertype=None,
+                    format=str('png'), transparent=False, bbox_inches=None, pad_inches=0.1, frameon=False,
+                    metadata=None)
+
+
+def save_rotor_text_file(angles, energies, path):
+    """
+    Save a text file summarizing a rotor scan, useful for brute force scans.
+
+    Args:
+        angles (list): The dihedral angles in degrees.
+        energies (list): The respective scan energies in kJ/mol.
+        path (str): The path of the file to be saved.
+
+    Raises:
+        InputError: If energies and angles are not the same length.
+    """
+    if len(energies) != len(angles):
+        raise InputError('energies and angles must be the same length')
+    if not os.path.isdir(os.path.dirname(path)):
+        os.makedirs(os.path.dirname(path))
+    min_angle = min_list(angles)
+    angles = [angle - min_angle for angle in angles]  # set first angle to 0
+    if energies:
+        lines = ['Angle (degrees)        Energy (kJ/mol)\n']
+        for angle, energy in zip(angles, energies):
+            lines.append('{0:12.2f} {1:24.3f}\n'.format(angle, energy))
+        with open(path, 'w') as f:
+            f.writelines(lines)
+
+
