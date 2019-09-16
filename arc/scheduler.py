@@ -1036,7 +1036,6 @@ class Scheduler(object):
                             self.run_composite_job(bde_species.label)
                         else:
                             self.run_opt_job(bde_species.label)
-            self.output[label]['job_types']['bde'] = True
 
     def spawn_md_jobs(self, label, prev_conf_list=None, num_confs=None):
         """
@@ -1919,7 +1918,9 @@ class Scheduler(object):
                     and not((self.species_dict[label].is_ts and job_type == 'scan')
                             or (self.species_dict[label].number_of_atoms == 1
                                 and job_type in ['conformers', 'opt', 'fine', 'freq', '1d_rotors', 'bde'])
-                            or job_type == 'bde' and self.species_dict[label].bdes is None):
+                            or job_type == 'bde' and self.species_dict[label].bdes is None
+                            or job_type == 'conformers' and '_BDE_' in label):
+                logger.debug('Species {0} did not converge'.format(label))
                 all_converged = False
                 break
         if all_converged:
@@ -2327,7 +2328,7 @@ class Scheduler(object):
                     if 'job_types' not in self.output[species.label]:
                         self.output[species.label]['job_types'] = dict()
                     for job_type in list(set(self.job_types.keys() + ['opt', 'freq', 'sp', 'composite', 'onedmin'])):
-                        if job_type == '1d_rotors':
+                        if job_type in ['1d_rotors', 'bde']:
                             # rotors could be invalidated due to many reasons,
                             # also could be falsely identified in a species that has no torsional modes.
                             self.output[species.label]['job_types'][job_type] = True
