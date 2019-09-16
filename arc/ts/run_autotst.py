@@ -16,14 +16,22 @@ from __future__ import (absolute_import, division, print_function, unicode_liter
 import argparse
 import os
 
-from autotst.reaction import AutoTST_Reaction
+has_auto_tst = True
+try:
+    # old format
+    from autotst.reaction import AutoTST_Reaction
+except ImportError:
+    try:
+        # new format
+        from autotst.reaction import Reaction as AutoTST_Reaction
+    except ImportError:
+        has_auto_tst = False
 
-from arc.common import get_logger
-from arc.species.converter import get_xyz_string
 from arc.arc_exceptions import TSError
+from arc.common import get_logger
 from arc.settings import arc_path
+from arc.species.converter import get_xyz_string
 
-##################################################################
 
 logger = get_logger()
 
@@ -54,27 +62,28 @@ def main(reaction_label=None, reaction_family=None):
     Run AutoTST to generate a TS guess
     Currently only works for H Abstraction
     """
-    if reaction_label is None:
-        # Parse the command-line arguments (requires the argparse module)
-        args = parse_command_line_arguments()
-        reaction_label = str(args.reaction_label)
-        reaction_family = str(args.reaction_family)
-    reaction_family = str('H_Abstraction') if reaction_family is None else reaction_family
+    if has_auto_tst:
+        if reaction_label is None:
+            # Parse the command-line arguments (requires the argparse module)
+            args = parse_command_line_arguments()
+            reaction_label = str(args.reaction_label)
+            reaction_family = str(args.reaction_family)
+        reaction_family = str('H_Abstraction') if reaction_family is None else reaction_family
 
-    try:
-        reaction = AutoTST_Reaction(label=reaction_label, reaction_family=reaction_family)
-    except AssertionError as e:
-        logger.error('Could not generate a TS guess using AutoTST for reaction {0}'.format(reaction_label))
-        raise TSError('Could not generate AutoTST guess:\n{0}'.format(e.message))
-    else:
-        positions = reaction.ts.ase_ts.get_positions()
-        numbers = reaction.ts.ase_ts.get_atomic_numbers()
-        xyz_guess = get_xyz_string(coords=positions, numbers=numbers)
+        try:
+            reaction = AutoTST_Reaction(label=reaction_label, reaction_family=reaction_family)
+        except AssertionError as e:
+            logger.error('Could not generate a TS guess using AutoTST for reaction {0}'.format(reaction_label))
+            raise TSError('Could not generate AutoTST guess:\n{0}'.format(e.message))
+        else:
+            positions = reaction.ts.ase_ts.get_positions()
+            numbers = reaction.ts.ase_ts.get_atomic_numbers()
+            xyz_guess = get_xyz_string(coords=positions, numbers=numbers)
 
-        xyz_path = os.path.join(arc_path, 'arc', 'ts', 'auto_tst.xyz')
+            xyz_path = os.path.join(arc_path, 'arc', 'ts', 'auto_tst.xyz')
 
-        with open(xyz_path, 'w') as f:
-            f.write(xyz_guess)
+            with open(xyz_path, 'w') as f:
+                f.write(xyz_guess)
 
 
 ################################################################################

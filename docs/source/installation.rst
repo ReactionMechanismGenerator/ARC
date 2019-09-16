@@ -38,6 +38,8 @@ Install dependencies
   <http://reactionmechanismgenerator.github.io/RMG-Py/users/rmg/installation/index.html
   #for-developers-installation-by-source-using-anaconda-environment>`_ instructions.
   Make sure to add RMG-Py to your PATH and PYTHONPATH variables as explained in RMG's documentation.
+- If you'd like to use `AutoTST <https://github.com/ReactionMechanismGenerator/AutoTST>`_ in ARC,
+  clone it in a separate folder and add it to your PYTHONPATH just as well.
 - Create the Anaconda environment for ARC::
 
     conda env create -f environment.yml.
