@@ -45,10 +45,10 @@ class TestJob(unittest.TestCase):
         final_time = job_dict['final_time']
         expected_dict = {'initial_time': initial_time,
                          'final_time': final_time,
-                         'run_time': 1.0,
-                         'ess_trsh_methods': [],
-                         'trsh': '',
-                         'initial_trsh': {},
+                         'ess_settings': {'gaussian': ['server1', 'server2'],
+                                          'molpro': [u'server2'], 'onedmin': [u'server1'], 'qchem': [u'server1']},
+                         'species_name': 'tst_spc',
+                         'is_ts': False,
                          'fine': True,
                          'job_id': 0,
                          'job_name': 'opt_a100',
@@ -59,19 +59,30 @@ class TestJob(unittest.TestCase):
                          'job_type': 'opt',
                          'level_of_theory': 'b3lyp/6-31+g(d)',
                          'memory': 14,
-                         'occ': None,
-                         'pivots': [],
+                         'multiplicity': 1,
+                         'project': 'arc_project_for_testing_delete_after_usage3',
                          'project_directory': os.path.join(arc_path, 'Projects', 'project_test'),
-                         'scan': None,
                          'server': 'server1',
-                         'shift': '',
                          'max_job_time': 120,
-                         'comments': '',
                          'scan_res': 8.0,
-                         'scan_trsh': '',
                          'software': 'gaussian',
                          'xyz': 'C 0.0 0.0 0.0'}
         self.assertEqual(job_dict, expected_dict)
+
+    def test_from_dict(self):
+        """Test Job.from_dict()"""
+        job_dict = self.job1.as_dict()
+        job = Job(job_dict=job_dict)
+        self.assertEqual(job.multiplicity, 1)
+        self.assertEqual(job.charge, 0)
+        self.assertEqual(job.species_name, 'tst_spc')
+        self.assertEqual(job.server, 'server1')
+        self.assertEqual(job.level_of_theory, 'm062x/6-311g')
+        self.assertEqual(job.job_type, 'scan')
+        self.assertEqual(job.project_directory.split('/')[-1], 'project_test')
+        self.assertEqual(job.method, 'm062x')
+        self.assertEqual(job.basis_set, '6-311g')
+        self.assertFalse(job.is_ts)
 
     def test_automatic_ess_assignment(self):
         """Test that the Job module correctly assigns a software for specific methods and basis sets"""

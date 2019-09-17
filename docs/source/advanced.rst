@@ -48,16 +48,71 @@ Rotor scans
 ^^^^^^^^^^^
 
 This option is turned on by default. If you'd like to turn it off,
-set ``scan_rotors`` in the ``job_types`` dictionary to `False`.
+set ``1d_rotors`` in the ``job_types`` dictionary to `False`.
 
-ARC will perform 1D rotor scans to all possible unique hindered rotors in the species,
+ARC will perform 1D rotor scans for all possible unique internal rotors in the species,
 
 The rotor scan resolution is 8 degrees by default (scanning 360 degrees overall).
+This can be changed via the ``rotor_scan_resolution`` parameter in the settings.
 Rotors are invalidated (not used for thermo / rate calculations) if at least one barrier
 is above a maximum threshold (40 kJ/mol by default), if the scan is inconsistent by more than 30%
 between two consecutive points, or if the scan is inconsistent by more than 5 kJ/mol
 between the initial anf final points.
 All of the above settings can be modified in the settings.py file.
+
+
+Directed rotor scans
+^^^^^^^^^^^^^^^^^^^^
+
+ARC can also spawn a series of constrained (fixed dihedral) optimization jobs for an internal rotor scan.
+This feature is mainly useful to conduct scans in ESS that do not offer a robust scan feature,
+or do not offer one at all. There are prncipally two approaches here, a "continuous" directed scan,
+and a "brute" directed scan. The former ("continuous") approach spawns the optimization jobs in serial where each job
+relays on the final optimization geometry of the previous point in the scan. The latter ("brute" force) spawn all
+the optimization jobs in parallel, all stemming from the global minimum conformation of the species (each job
+has a different dihedral angle which is kept frozen for the desired pivot).
+The "continuous" approach is closer to the phisical reality, while the "brute" approach is more robust.
+Note that the brute force approach is also in ARC's arsenal of internal rotation troubleshooting methods.
+
+To use directed internal rotation scans, make sure ``1d_rotors`` in the ``job_types`` dictionary is set to `True`
+(this is the default value). Next, specify the specific pivots in the species for which a directed scan should
+be spawned using the ``directed_rotors`` attribute of the species class. Note that instead of specifying pivots,
+you can also specify ``all`` to treat all internal rotations of the species using this method.
+Here are two (simple) examples::
+
+
+    species:
+
+    - label: ethane_1
+      smiles: CC
+      xyz: |
+        C      -0.76058300    0.01581500    0.05881300
+        C       0.76058300   -0.01581500   -0.05881200
+        H      -1.22350200   -0.74245600   -0.57963900
+        H      -1.08284500   -0.17477700    1.08677700
+        H      -1.16115500    0.98931900   -0.23902800
+        H       1.22350200    0.74245600    0.57964000
+        H       1.16115500   -0.98931900    0.23902900
+        H       1.08284500    0.17477700   -1.08677700
+      directed_rotors:
+        cont:
+        - 1
+        - 2
+
+    - label: ethane_2
+      smiles: CC
+      xyz: |
+        C      -0.76058300    0.01581500    0.05881300
+        C       0.76058300   -0.01581500   -0.05881200
+        H      -1.22350200   -0.74245600   -0.57963900
+        H      -1.08284500   -0.17477700    1.08677700
+        H      -1.16115500    0.98931900   -0.23902800
+        H       1.22350200    0.74245600    0.57964000
+        H       1.16115500   -0.98931900    0.23902900
+        H       1.08284500    0.17477700   -1.08677700
+      directed_rotors:
+        brute:
+        - all
 
 
 Electronic Structure Software Settings

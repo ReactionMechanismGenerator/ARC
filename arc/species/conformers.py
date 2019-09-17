@@ -14,6 +14,27 @@ Todo:
     * The secretary problem - incorporate for stochastic searching
     * What's the confirmed bottleneck?
 
+conformers is a list of dictionaries, each with the following keys::
+
+    {'xyz': <str>,
+     'index': <int>,
+     'FF energy': <float>,
+     'source': <str>,
+     'torsion_dihedrals': {<torsion tuple 0>: angle 0,
+                           <torsion tuple 1>: angle 1,
+     }
+
+
+Module workflow::
+
+    generate_conformers
+        generate_force_field_conformers
+            get_force_field_energies, rdkit_force_field or mix_rdkit_and_openbabel_force_field, determine_dihedrals
+        deduce_new_conformers
+            get_torsion_angles, determine_torsion_symmetry, determine_torsion_sampling_points,
+            change_dihedrals_and_force_field_it
+        get_lowest_confs
+
 """
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
@@ -37,29 +58,9 @@ import rmgpy.molecule.group as gr
 
 from arc.arc_exceptions import ConformerError
 from arc.species import converter
-from arc.common import logger, determine_symmetry
+from arc.common import logger, determine_symmetry, calculate_dihedral_angle
 import arc.plotter
 
-##################################################################
-
-
-# conformers is a list of dictionaries, each with the following keys:
-# {'xyz': <str>,
-#  'index': <int>,
-#  'FF energy': <float>,
-#  'source': <str>,
-#  'torsion_dihedrals': {<torsion tuple 0>: angle 0,
-#                        <torsion tuple 1>: angle 1,
-#  }
-
-# Module workflow:
-# generate_conformers
-#     generate_force_field_conformers
-#         get_force_field_energies, rdkit_force_field or mix_rdkit_and_openbabel_force_field, determine_dihedrals
-#     deduce_new_conformers
-#         get_torsion_angles, determine_torsion_symmetry, determine_torsion_sampling_points,
-#         change_dihedrals_and_force_field_it
-#     get_lowest_confs
 
 # The number of conformers to generate per range of heavy atoms in the molecule
 CONFS_VS_HEAVY_ATOMS = {(0, 1): 1,
@@ -703,13 +704,13 @@ def determine_dihedrals(conformers, torsions):
     """
     for conformer in conformers:
         if isinstance(conformer['xyz'], (str, unicode)):
-            coord = converter.get_xyz_matrix(conformer['xyz'])[0]
+            coords = converter.get_xyz_matrix(conformer['xyz'])[0]
         else:
-            coord = conformer['xyz']
+            coords = conformer['xyz']
         if 'torsion_dihedrals' not in conformer or not conformer['torsion_dihedrals']:
             conformer['torsion_dihedrals'] = dict()
             for torsion in torsions:
-                angle = calculate_dihedral_angle(coord=coord, torsion=torsion)
+                angle = calculate_dihedral_angle(coords=coords, torsion=torsion)
                 conformer['torsion_dihedrals'][tuple(torsion)] = angle
     return conformers
 
@@ -1351,13 +1352,13 @@ def determine_top_group_indices(mol, atom1, atom2, index=1):
 
 def find_internal_rotors(mol):
     """
-    Locates the sets of indices corresponding to every internal rotor.
+    Locates the sets of indices corresponding to every internal rotor (1-indexed).
 
     Args:
         mol (Molecule): The molecule for which rotors will be determined
 
     Returns:
-        list: All rotor dictionaries with the gaussian scan coordinates, the pivots and the smallest top.
+        list: Entrties are rotor dictionaries with the gaussian scan coordinates, the pivots and the smallest top.
     """
     rotors = []
     for atom1 in mol.vertices:
@@ -1422,6 +1423,7 @@ def find_internal_rotors(mol):
                         rotor['invalidation_reason'] = ''
                         rotor['times_dihedral_set'] = 0
                         rotor['scan_path'] = ''
+                        rotor['directed_scan'] = dict()
                         rotors.append(rotor)
     return rotors
 
@@ -1797,38 +1799,6 @@ def get_lp_vector(label, mol, xyz, pivot):
     z = sum(vector[2] for vector in vectors) / 3
     vector = [x, y, z]
     return vector
-
-
-def calculate_dihedral_angle(coord, torsion):
-    """
-    Calculate a dihedral angle. Inspired by ASE Atoms.get_dihedral().
-
-    Args:
-        coord (list): The array-format coordinates.
-        torsion (list): The 4 atoms defining the dihedral angle.
-
-    Returns:
-        float: The dihedral angle.
-    """
-    torsion = [t - 1 for t in torsion]  # convert 1-index to 0-index
-    coord = np.asarray(coord, dtype=np.float32)
-    a = coord[torsion[1]] - coord[torsion[0]]
-    b = coord[torsion[2]] - coord[torsion[1]]
-    c = coord[torsion[3]] - coord[torsion[2]]
-    bxa = np.cross(b, a)
-    bxa /= np.linalg.norm(bxa)
-    cxb = np.cross(c, b)
-    cxb /= np.linalg.norm(cxb)
-    angle = np.vdot(bxa, cxb)
-    # check for numerical trouble due to finite precision:
-    if angle < -1:
-        angle = -1
-    elif angle > 1:
-        angle = 1
-    angle = np.arccos(angle)
-    if np.vdot(bxa, c) > 0:
-        angle = 2 * np.pi - angle
-    return angle * 180 / np.pi
 
 
 def initialize_log(verbose=logging.INFO):

@@ -49,9 +49,12 @@ class ARCSpecies(object):
                           'success': ``bool``.
                           'invalidation_reason': ``str``,
                           'times_dihedral_set': ``int``,
-                          'scan_path': <path to scan output file>},
+                          'scan_path': <path to scan output file>,
                           'max_e': ``float``,  # in kJ/mol
                           'symmetry': ``int``,
+                          'directed_scan': ``dict``,  # keys: dihedrals,
+                                                      # values: dicts of energy, xyz, is_isomorphic, trsh
+                         }
                       2: {}, ...
                      }
 
@@ -105,6 +108,14 @@ class ARCSpecies(object):
         bdes (list): Specifying for which bonds should bond dissociation energies be calculated.
                      Entries are bonded atom indices tuples (1-indexed). An 'all_h' string entry is also allowed,
                      triggering BDE calculations for all hydrogen atoms in the molecule.
+        directed_rotors (dict): Execute a directed internal rotation scan (i.e., a series of constrained optimizations).
+                                Keys are either 'cont' for a continues scan (each point in the scan is executed using
+                                the geometry of the previous converged point) or 'brute' (all scan points are spawned at
+                                once by changing the respective dihedral). Values (for either key) are a list of pivots
+                                tuples for which internal rotation scans will be executed using the respective directed
+                                method (ARC will generate geometries using the ``rotor_scan_resolution`` in settings.py)
+                                Note: An 'all' string entry is also allowed in the value list, triggering a directed
+                                internal rotation scans for all torsions in the molecule.
 
     Attributes:
         label (str): The species' label.
@@ -131,6 +142,7 @@ class ARCSpecies(object):
                                   (otherwise, this job will be spawned if running Gromacs).
         initial_xyz (str): The initial geometry guess.
         final_xyz (str): The optimized species geometry.
+        cont_scan_xyz (str): The geometry used for continuous directed scan jobs.
         radius (float): The species radius in Angstrom.
         opt_level (str): Level of theory for geometry optimization. Saved for archiving.
         number_of_atoms (int): The number of atoms in the species/TS.
@@ -182,13 +194,20 @@ class ARCSpecies(object):
         bdes (list): Specifying for which bonds should bond dissociation energies be calculated.
                      Entries are bonded atom indices tuples (1-indexed). An 'all_h' string entry is also allowed,
                      triggering BDE calculations for all hydrogen atoms in the molecule.
-
+        directed_rotors (dict): Execute a directed internal rotation scan (i.e., a series of constrained optimizations).
+                                Keys are either 'cont' for a continues scan (each point in the scan is executed using
+                                the geometry of the previous converged point) or 'brute' (all scan points are spawned at
+                                once by changing the respective dihedral). Values (for either key) are a list of pivots
+                                tuples for which internal rotation scans will be executed using the respective directed
+                                method (ARC will generate geometries using the ``rotor_scan_resolution`` in settings.py)
+                                Note: An 'all' string entry is also allowed in the value list, triggering a directed
+                                internal rotation scans for all torsions in the molecule.
     """
     def __init__(self, label=None, is_ts=False, rmg_species=None, mol=None, xyz=None, multiplicity=None, charge=None,
                  smiles='', adjlist='', inchi='', bond_corrections=None, generate_thermo=True, species_dict=None,
                  yml_path=None, ts_methods=None, ts_number=None, rxn_label=None, external_symmetry=None,
                  optical_isomers=None, run_time=None, checkfile=None, number_of_radicals=None, force_field='MMFF94',
-                 svpfit_output_file=None, bdes=None):
+                 svpfit_output_file=None, bdes=None, directed_rotors=None):
         self.t1 = None
         self.ts_number = ts_number
         self.conformers = list()
@@ -231,6 +250,8 @@ class ARCSpecies(object):
             self.svpfit_output_file = svpfit_output_file
             self.conf_is_isomorphic = None
             self.bdes = bdes
+            self.cont_scan_xyz = None
+            self.directed_rotors = directed_rotors if directed_rotors is not None else dict()
             if self.bdes is not None and not isinstance(self.bdes, list):
                 raise SpeciesError('The .bdes argument must be a list, got {0} which is a {1}'.format(
                                     self.bdes, type(self.bdes)))
@@ -363,6 +384,10 @@ class ARCSpecies(object):
         for char in self.label:
             if char not in valid_chars:
                 raise SpeciesError('Species label {0} contains an invalid character: "{1}"'.format(self.label, char))
+        if self.directed_rotors and 'brute' not in list(self.directed_rotors.keys()) \
+                and 'cont' not in list(self.directed_rotors.keys()):
+            raise SpeciesError('Directed rotors were specified for species {0}, yet ARC could not find "cont" or '
+                               '"brute" in the directed_rotors dictionary keys.'.format(self.label))
 
     @property
     def number_of_atoms(self):
@@ -433,13 +458,18 @@ class ARCSpecies(object):
         species_dict = dict()
         species_dict['force_field'] = self.force_field
         species_dict['is_ts'] = self.is_ts
-        if self.e_elect is not None:
-            species_dict['e_elect'] = self.e_elect
-        if self.e0 is not None:
-            species_dict['e0'] = self.e0
+        species_dict['t1'] = self.t1
+        species_dict['label'] = self.label
+        species_dict['long_thermo_description'] = self.long_thermo_description
+        species_dict['multiplicity'] = self.multiplicity
+        species_dict['charge'] = self.charge
+        species_dict['generate_thermo'] = self.generate_thermo
+        species_dict['number_of_rotors'] = self.number_of_rotors
+        species_dict['rotors_dict'] = self.rotors_dict
+        species_dict['external_symmetry'] = self.external_symmetry
+        species_dict['optical_isomers'] = self.optical_isomers
+        species_dict['neg_freqs_trshed'] = self.neg_freqs_trshed
         species_dict['arkane_file'] = self.arkane_file
-        if self.yml_path is not None:
-            species_dict['yml_path'] = self.yml_path
         if self.is_ts:
             species_dict['ts_methods'] = self.ts_methods
             species_dict['ts_guesses'] = [tsg.as_dict() for tsg in self.ts_guesses]
@@ -451,25 +481,22 @@ class ARCSpecies(object):
             species_dict['unsuccessful_methods'] = self.unsuccessful_methods
             species_dict['chosen_ts_method'] = self.chosen_ts_method
             species_dict['chosen_ts'] = self.chosen_ts
+        if self.e_elect is not None:
+            species_dict['e_elect'] = self.e_elect
+        if self.e0 is not None:
+            species_dict['e0'] = self.e0
+        if self.yml_path is not None:
+            species_dict['yml_path'] = self.yml_path
         if self.run_time is not None:
             species_dict['run_time'] = self.run_time.total_seconds()
-        species_dict['t1'] = self.t1
-        species_dict['label'] = self.label
-        species_dict['long_thermo_description'] = self.long_thermo_description
-        species_dict['multiplicity'] = self.multiplicity
         if self.number_of_radicals is not None:
             species_dict['number_of_radicals'] = self.number_of_radicals
-        species_dict['charge'] = self.charge
-        species_dict['generate_thermo'] = self.generate_thermo
         if self.opt_level is not None:
             species_dict['opt_level'] = self.opt_level
         if self.final_xyz is not None:
             species_dict['final_xyz'] = self.final_xyz
-        species_dict['number_of_rotors'] = self.number_of_rotors
-        species_dict['rotors_dict'] = self.rotors_dict
-        species_dict['external_symmetry'] = self.external_symmetry
-        species_dict['optical_isomers'] = self.optical_isomers
-        species_dict['neg_freqs_trshed'] = self.neg_freqs_trshed
+        if self.directed_rotors:
+            species_dict['directed_rotors'] = self.directed_rotors
         if self.conf_is_isomorphic is not None:
             species_dict['conf_is_isomorphic'] = self.conf_is_isomorphic
         if self.bond_corrections is not None:
@@ -497,6 +524,8 @@ class ARCSpecies(object):
             species_dict['conformers_before_opt'] = self.conformers_before_opt
         if self.bdes is not None:
             species_dict['bdes'] = self.bdes
+        if self.cont_scan_xyz is not None:
+            species_dict['cont_scan_xyz'] = self.cont_scan_xyz
         return species_dict
 
     def from_dict(self, species_dict):
@@ -555,6 +584,7 @@ class ARCSpecies(object):
             self.ts_methods = None
         if 'xyz' in species_dict and self.initial_xyz is None and self.final_xyz is None:
             self.process_xyz(species_dict['xyz'])
+        self.cont_scan_xyz = species_dict['cont_scan_xyz'] if 'cont_scan_xyz' in species_dict else None
         for char in self.label:
             if char not in valid_chars:
                 raise SpeciesError('Species label {0} contains an invalid character: "{1}"'.format(self.label, char))
@@ -614,6 +644,7 @@ class ARCSpecies(object):
                 and not any([tsg.xyz for tsg in self.ts_guesses]):
             # TS species are allowed to be loaded w/o a structure
             raise SpeciesError('Must have either mol or xyz for species {0}'.format(self.label))
+        self.directed_rotors = species_dict['directed_rotors'] if 'directed_rotors' in species_dict else dict()
         self.bdes = species_dict['bdes'] if 'bdes' in species_dict else None
         if self.bdes is not None and not isinstance(self.bdes, list):
             raise SpeciesError('The .bdes argument must be a list, got {0} which is a {1}'.format(
@@ -772,40 +803,54 @@ class ARCSpecies(object):
                 logger.info('Pivot list(s) for {0}: {1}\n'.format(
                     self.label, [self.rotors_dict[i]['pivots'] for i in range(self.number_of_rotors)]))
 
-    def set_dihedral(self, pivots, scan, deg_increment):
+    def set_dihedral(self, pivots, scan, deg_increment=None, deg_abs=None, count=True, xyz=None):
         """
-        Generated an RDKit molecule object from the given self.final_xyz.
+        Generated an RDKit molecule object from either self.final_xyz or ``xyz``.
         Increments the current dihedral angle between atoms i, j, k, l in the `scan` list by 'deg_increment` in degrees.
+        Alternatively, specifying deg_abs will rotate to this desired dihedral.
         All bonded atoms are moved accordingly. The result is saved in self.initial_xyz.
+
+        Args:
+            pivots (list): The pivotal atoms.
+            scan (list): The atom indices representing the dihedral.
+            deg_increment (float, optional): The dihedral angle increment.
+            deg_abs (float, optional): The absolute desired dihedral angle.
+            count (bool, optional): Whether to increment the rotor's times_dihedral_set parameter. `True` to increment.
+            xyz (str, optional): An alternative xyz to use instead of self.final_xyz.
         """
-        if deg_increment == 0:
+        xyz = xyz or self.final_xyz
+        if deg_increment is None and deg_abs is None:
+            raise InputError('Either deg_increment or deg_abs must be given.')
+        if deg_increment == 0 and deg_abs is None:
             logger.warning('set_dihedral was called with zero increment for {label} with pivots {pivots}'.format(
                 label=self.label, pivots=pivots))
-            for rotor in self.rotors_dict.values():  # penalize this rotor to avoid inf. looping
-                if rotor['pivots'] == pivots:
-                    rotor['times_dihedral_set'] += 1
-                    break
+            if count:
+                for rotor in self.rotors_dict.values():  # penalize this rotor to avoid inf. looping
+                    if rotor['pivots'] == pivots:
+                        rotor['times_dihedral_set'] += 1
+                        break
         else:
-            for rotor in self.rotors_dict.values():
-                if rotor['pivots'] == pivots and rotor['times_dihedral_set'] <= 10:
-                    rotor['times_dihedral_set'] += 1
-                    break
-            else:
-                logger.info('\n\n')
-                for i, rotor in self.rotors_dict.items():
-                    logger.error('Rotor {i} with pivots {pivots} was set {times} times'.format(
-                        i=i, pivots=rotor['pivots'], times=rotor['times_dihedral_set']))
-                raise RotorError('Rotors were set beyond the maximal number of times without converging')
-            coordinates, atoms, _, _, _ = get_xyz_matrix(self.final_xyz)
-            mol = molecules_from_xyz(self.final_xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
+            if count:
+                for rotor in self.rotors_dict.values():
+                    if rotor['pivots'] == pivots and rotor['times_dihedral_set'] <= 10:
+                        rotor['times_dihedral_set'] += 1
+                        break
+                else:
+                    logger.info('\n\n')
+                    for i, rotor in self.rotors_dict.items():
+                        logger.error('Rotor {i} with pivots {pivots} was set {times} times'.format(
+                            i=i, pivots=rotor['pivots'], times=rotor['times_dihedral_set']))
+                    raise RotorError('Rotors were set beyond the maximal number of times without converging')
+            coordinates, atoms, _, _, _ = get_xyz_matrix(xyz)
+            mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
             conf, rd_mol, indx_map = rdkit_conf_from_mol(mol, coordinates)
             rd_scan = [indx_map[i - 1] for i in scan]  # convert the atom indices in `scan` to RDKit indices
-            new_xyz = set_rdkit_dihedrals(conf, rd_mol, indx_map, rd_scan, deg_increment=deg_increment)
+            new_xyz = set_rdkit_dihedrals(conf, rd_mol, indx_map, rd_scan, deg_increment=deg_increment, deg_abs=deg_abs)
             self.initial_xyz = get_xyz_string(coords=new_xyz, symbols=atoms)
 
     def determine_symmetry(self):
         """
-        Determine external symmetry and chirality (optical isomers) of the species
+        Determine external symmetry and chirality (optical isomers) of the species.
         """
         if self.optical_isomers is None and self.external_symmetry is None:
             xyz = self.get_xyz()
@@ -1028,7 +1073,7 @@ class ARCSpecies(object):
             comment=str(comment)
         )
 
-    def check_xyz_isomorphism(self, allow_nonisomorphic_2d=False, xyz=None):
+    def check_xyz_isomorphism(self, allow_nonisomorphic_2d=False, xyz=None, verbose=True):
         """
         Check whether the perception of self.final_xyz or ``xyz`` is isomorphic with self.mol.
 
@@ -1036,6 +1081,7 @@ class ARCSpecies(object):
             allow_nonisomorphic_2d (bool, optional): Whether to continue spawning jobs for the species even if this
                                                      test fails. `True` to allow (default is `False`).
             xyz (str, optional): The coordinates to check (will use self.final_xyz if not given).
+            verbose (bool, optional): Whether to log isomorphism findings and errors.
 
         Returns:
             bool: Whether the perception of self.final_xyz is isomorphic with self.mol, `True` if it is.
@@ -1066,15 +1112,15 @@ class ARCSpecies(object):
                 else:
                     # conformer was not isomorphic, don't strictly enforce isomorphism here
                     return_value = True
-            if not passed_test:
+            if not passed_test and verbose:
                 logger.error('The optimized geometry of species {0} is not isomorphic with the 2D structure {1}'.format(
                     self.label, self.mol.toSMILES()))
                 if not return_value:
                     logger.error('Not spawning additional jobs for this species!')
-            else:
+            elif verbose:
                 logger.info('Species {0} was found to be isomorphic with the perception '
                             'of its optimized coordinates.'.format(self.label))
-        else:
+        elif verbose:
             logger.error('Cannot check isomorphism for species {0}'.format(self.label))
         return return_value
 
@@ -1475,7 +1521,7 @@ def nearly_equal(a, b, sig_fig=5):
     return a == b or int(a*10**sig_fig) == int(b*10**sig_fig)
 
 
-def determine_rotor_symmetry(rotor_path, label, pivots):
+def determine_rotor_symmetry(label, pivots, rotor_path='', energies=None):
     """
     Determine the rotor symmetry number from a potential energy scan.
     The *worst* resolution for each peak and valley is determined.
@@ -1487,15 +1533,29 @@ def determine_rotor_symmetry(rotor_path, label, pivots):
     Args:
         rotor_path (str): The path to an ESS output rotor scan file.
         label (str): The species label (used for error messages).
-        pivots (list): A list of two atom indices representing the torsion pivots.
+        pivots (list, optional): A list of two atom indices representing the torsion pivots.
+        energies (list, optional): THe list of energies in the scan in kJ/mol.
 
     Returns:
         int: The symmetry number (int)
     Returns:
         float: The highest torsional energy barrier in kJ/mol.
+
+    Raises:
+        InputError: If both or none of the rotor_path and energy arguments are given,
+        or if rotor_path does not point to an existing file.
     """
-    log = determine_qm_software(fullpath=rotor_path)
-    energies, _ = log.loadScanEnergies()
+    if not rotor_path and energies is None:
+        raise InputError('Expected either rotor_path or energies, got neither')
+    if rotor_path and energies is not None:
+        raise InputError('Expected either rotor_path or energies, got both')
+    if not os.path.isfile(rotor_path):
+        raise InputError('Could not find the file {0}'.format(rotor_path))
+
+    if energies is None:
+        log = determine_qm_software(fullpath=rotor_path)
+        energies = log.loadScanEnergies()[0]
+        energies *= 0.001
 
     symmetry = None
     max_e = max(energies)
@@ -1534,7 +1594,7 @@ def determine_rotor_symmetry(rotor_path, label, pivots):
     if len(peaks) != len(valleys):
         logger.error('Rotor of species {0} between pivots {1} does not have the same number'
                      ' of peaks ({2}) and valleys ({3}).'.format(label, pivots, len(peaks), len(valleys)))
-        return len(peaks), max_e * 0.001  # this works for CC(=O)[O]
+        return len(peaks), max_e  # this works for CC(=O)[O]
     min_peak = min(peaks)
     max_peak = max(peaks)
     min_valley = min(valleys)
@@ -1563,7 +1623,7 @@ def determine_rotor_symmetry(rotor_path, label, pivots):
     else:
         logger.info('Determined a symmetry number of {0} for rotor of species {1} between pivots {2}'
                     ' based on the {3}.'.format(symmetry, label, pivots, reason))
-    return symmetry, max_e * 0.001  # max_e in kJ/mol
+    return symmetry, max_e
 
 
 def cyclic_index_i_plus_1(i, length):

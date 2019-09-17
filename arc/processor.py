@@ -141,7 +141,7 @@ class Processor(object):
                     rotor_type = determine_rotor_type(rotor_path)
                     top = str(species.rotors_dict[i]['top'])
                     try:
-                        rotor_symmetry, max_e = determine_rotor_symmetry(rotor_path, species.label, pivots)
+                        rotor_symmetry, max_e = determine_rotor_symmetry(species.label, pivots, rotor_path)
                     except RotorError:
                         logger.error('Could not determine rotor symmetry for species {0} between pivots {1}.'
                                      ' Setting the rotor symmetry to 1, which is probably WRONG.'.format(
