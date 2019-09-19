@@ -235,7 +235,7 @@ class Processor(object):
                                                           use_bac=False)
                     # if statmech_success:
                     #     arkane_spc.label += str('_no_BAC')
-                    #     arkane_spc.thermo = None  # otherwise thermo won't be calculated, although we don't really care
+                    #     arkane_spc.thermo = None  # otherwise thermo won't be calculated, although we don't care
                     #     thermo_job = ThermoJob(arkane_spc, 'NASA')
                     #     thermo_job.execute(output_directory=output_path, plot=False)
                 try:
@@ -251,6 +251,10 @@ class Processor(object):
                     species_for_transport_lib.append(species)
             elif not self.output[species.label]['convergence']:
                 unconverged_species.append(species)
+            elif species.is_ts:
+                # useful if the TS species does not participate in an ARCReaction
+                # let the user be able to use the Arkane species .py file later on
+                output_path = self._generate_arkane_species_file(species)
 
         bde_report = dict()
         for species in self.species_dict.values():
