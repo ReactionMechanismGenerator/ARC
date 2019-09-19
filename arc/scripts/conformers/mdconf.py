@@ -123,7 +123,8 @@ def write_mol_files(coord, ac_path=None, mol2_path=None):
             s0 = ' ' if coord[i][0] >= 0 else ''
             s1 = ' ' if coord[i][0] >= 0 else ''
             s2 = ' ' if coord[i][0] >= 0 else ''
-            content += line[:32] + s0 + str(coord[i][0]) + '  ' + s1 + str(coord[i][1]) + '  ' + s2 + str(coord[i][2]) + '  ' + line[56:] + '\n'
+            content += line[:32] + s0 + str(coord[i][0]) + '  ' + s1 + str(coord[i][1]) + '  ' + s2 + str(coord[i][2]) \
+                       + '  ' + line[56:] + '\n'
             i += 1
         if 'Formula' in line:
             # e.g., `Formula: H18 C13 O2 `

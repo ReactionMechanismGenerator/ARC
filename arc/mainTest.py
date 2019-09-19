@@ -327,13 +327,13 @@ class TestARC(unittest.TestCase):
     def test_add_hydrogen_for_bde(self):
         """Test the add_hydrogen_for_bde method"""
         spc0 = ARCSpecies(label='spc0', smiles=str('CC'), generate_thermo=False)
-        arc0 = ARC(project='arc_test', job_types=self.job_types1, arc_species_list=[spc0],  # using job_types1
+        arc0 = ARC(project='arc_test', job_types=self.job_types1, arc_species_list=[spc0],
                    level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)')
         arc0.add_hydrogen_for_bde()
         self.assertEqual(len(arc0.arc_species_list), 1)
 
         spc1 = ARCSpecies(label='spc1', smiles=str('CC'), generate_thermo=False, bdes=['all_h'])
-        arc1 = ARC(project='arc_test', job_types=self.job_types1, arc_species_list=[spc1],  # using job_types2
+        arc1 = ARC(project='arc_test', job_types=self.job_types1, arc_species_list=[spc1],
                    level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)')
         arc1.add_hydrogen_for_bde()
         self.assertEqual(len(arc1.arc_species_list), 2)

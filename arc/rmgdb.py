@@ -103,9 +103,10 @@ def load_rmg_database(rmgdb, thermo_libraries=None, reaction_libraries=None, kin
         for i, library in enumerate(reaction_libraries):
             if not os.path.isfile(os.path.join(kinetics_path, library, 'reactions.py')) and library != 'Surface':
                 indices_to_pop.append(i)
+                # Avoid reading .DS_store files for compatibility with Mac OS (`if not second_level.startswith('.')`)
                 second_level_libraries.extend([library + '/' + second_level
                                                for second_level in os.listdir(os.path.join(kinetics_path, library))
-                                               if not second_level.startswith('.')]) # Avoid reading .DS_store files for compatibility with Mac OS
+                                               if not second_level.startswith('.')])
         for i in reversed(range(len(reaction_libraries))):  # pop starting from the end, so other indices won't change
             if i in indices_to_pop or reaction_libraries[i] == 'Surface':
                 reaction_libraries.pop(i)
