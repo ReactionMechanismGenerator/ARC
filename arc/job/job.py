@@ -556,10 +556,6 @@ wf,spin={spin},charge={charge};}}
                     job_type_1 = 'opt=(ts, calcfc, noeigentest, maxstep=5)'
                 else:
                     job_type_1 = 'opt'
-                if self.checkfile is not None:
-                    job_type_1 += ' guess=read'
-                else:
-                    job_type_1 += ' guess=mix'
                 if self.fine:
                     # Note that the Acc2E argument is not available in Gaussian03
                     fine = 'scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
@@ -567,6 +563,10 @@ wf,spin={spin},charge={charge};}}
                         job_type_1 = 'opt=(ts, calcfc, noeigentest, tight, maxstep=5)'
                     else:
                         job_type_1 = 'opt=(tight)'
+                if self.checkfile is not None:
+                    job_type_1 += ' guess=read'
+                else:
+                    job_type_1 += ' guess=mix'
             elif self.software == 'qchem':
                 if self.is_ts:
                     job_type_1 = 'ts'
