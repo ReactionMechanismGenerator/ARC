@@ -179,6 +179,7 @@ class TestARC(unittest.TestCase):
         arc1.execute()
         self.assertEqual(arc1.freq_scale_factor, 0.988)
 
+        self.assertTrue(os.path.isfile(os.path.join(project_directory, 'output', 'thermo.info')))
         with open(os.path.join(project_directory, 'output', 'thermo.info'), 'r') as f:
             thermo_dft_ccsdtf12_bac = False
             for line in f.readlines():
@@ -241,7 +242,9 @@ class TestARC(unittest.TestCase):
         self.assertTrue(os.path.isfile(os.path.join(project_directory, 'output', 'thermo_parity_plots.pdf')))
 
         status = read_yaml_file(os.path.join(project_directory, 'output', 'status.yml'))
-        self.assertEqual(status['CH3CO2_rad']['isomorphism'], 'opt passed isomorphism check; ')
+        self.assertEqual(status['CH3CO2_rad']['isomorphism'],
+                         'opt passed isomorphism check; '
+                         'Conformers optimized and compared at b3lyp/6-31g(d,p) empiricaldispersion=gd3bj; ')
         self.assertTrue(status['CH3CO2_rad']['job_types']['sp'])
 
         with open(os.path.join(project_directory, 'output', 'Species', 'H2O2', 'arkane', 'species_dictionary.txt'),
@@ -324,13 +327,13 @@ class TestARC(unittest.TestCase):
     def test_add_hydrogen_for_bde(self):
         """Test the add_hydrogen_for_bde method"""
         spc0 = ARCSpecies(label='spc0', smiles=str('CC'), generate_thermo=False)
-        arc0 = ARC(project='arc_test', job_types=self.job_types1, arc_species_list=[spc0],  # using job_types1
+        arc0 = ARC(project='arc_test', job_types=self.job_types1, arc_species_list=[spc0],
                    level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)')
         arc0.add_hydrogen_for_bde()
         self.assertEqual(len(arc0.arc_species_list), 1)
 
         spc1 = ARCSpecies(label='spc1', smiles=str('CC'), generate_thermo=False, bdes=['all_h'])
-        arc1 = ARC(project='arc_test', job_types=self.job_types1, arc_species_list=[spc1],  # using job_types2
+        arc1 = ARC(project='arc_test', job_types=self.job_types1, arc_species_list=[spc1],
                    level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)')
         arc1.add_hydrogen_for_bde()
         self.assertEqual(len(arc1.arc_species_list), 2)

@@ -30,7 +30,7 @@ except ImportError:
 from arc.arc_exceptions import TSError
 from arc.common import get_logger
 from arc.settings import arc_path
-from arc.species.converter import get_xyz_string
+from arc.species.converter import xyz_from_data, xyz_to_str
 
 
 logger = get_logger()
@@ -78,7 +78,7 @@ def main(reaction_label=None, reaction_family=None):
         else:
             positions = reaction.ts.ase_ts.get_positions()
             numbers = reaction.ts.ase_ts.get_atomic_numbers()
-            xyz_guess = get_xyz_string(coords=positions, numbers=numbers)
+            xyz_guess = xyz_to_str(xyz_dict=xyz_from_data(coords=positions, numbers=numbers))
 
             xyz_path = os.path.join(arc_path, 'arc', 'ts', 'auto_tst.xyz')
 

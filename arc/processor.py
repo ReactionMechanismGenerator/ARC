@@ -80,15 +80,6 @@ class Processor(object):
         self.sp_level, self.freq_level = process_model_chemistry(model_chemistry)
         self.freq_scale_factor = freq_scale_factor
         self.lib_long_desc = lib_long_desc
-        load_thermo_libs, load_kinetic_libs = False, False
-        if any([species.is_ts and output[species.label]['convergence'] for species in self.species_dict.values()]):
-            load_kinetic_libs = True
-        if any([species.generate_thermo and output[species.label]['convergence']
-                for species in self.species_dict.values()]):
-            load_thermo_libs = True
-        if self.rmgdb is not None and (load_kinetic_libs or load_thermo_libs):
-            rmgdb.load_rmg_database(rmgdb=self.rmgdb, load_thermo_libs=load_thermo_libs,
-                                    load_kinetic_libs=load_kinetic_libs)
         t_min = t_min if t_min is not None else (300, 'K')
         t_max = t_max if t_max is not None else (3000, 'K')
         if isinstance(t_min, (int, float)):
@@ -129,6 +120,12 @@ class Processor(object):
         else:
             freq_path = self.output[species.label]['paths']['freq']
             opt_path = self.output[species.label]['paths']['freq']
+        if not os.path.isfile(freq_path):
+            logger.error('Could not find the freq file in path {0}'.format(freq_path))
+        if not os.path.isfile(opt_path):
+            logger.error('Could not find the opt file in path {0}'.format(opt_path))
+        if not os.path.isfile(sp_path):
+            logger.error('Could not find the sp file in path {0}'.format(sp_path))
         rotors, rotors_description = '', ''
         if any([i_r_dict['success'] for i_r_dict in species.rotors_dict.values()]):
             rotors = '\n\nrotors = ['
@@ -235,9 +232,13 @@ class Processor(object):
                                                           use_bac=False)
                     # if statmech_success:
                     #     arkane_spc.label += str('_no_BAC')
-                    #     arkane_spc.thermo = None  # otherwise thermo won't be calculated, although we don't really care
+                    #     arkane_spc.thermo = None  # otherwise thermo won't be calculated, although we don't care
                     #     thermo_job = ThermoJob(arkane_spc, 'NASA')
                     #     thermo_job.execute(output_directory=output_path, plot=False)
+                try:
+                    self.load_rmg_db()
+                except Exception as e:
+                    logger.error('Could not load the RMG database! Got:\n{0}'.format(e))
                 try:
                     species.rmg_thermo = self.rmgdb.thermo.getThermoData(species.rmg_species)
                 except (ValueError, AttributeError) as e:
@@ -251,6 +252,10 @@ class Processor(object):
                     species_for_transport_lib.append(species)
             elif not self.output[species.label]['convergence']:
                 unconverged_species.append(species)
+            elif species.is_ts:
+                # useful if the TS species does not participate in an ARCReaction
+                # let the user be able to use the Arkane species .py file later on
+                output_path = self._generate_arkane_species_file(species)
 
         bde_report = dict()
         for species in self.species_dict.values():
@@ -259,7 +264,7 @@ class Processor(object):
                 bde_report[species.label] = self.process_bdes(species.label)
         if bde_report:
             bde_path = os.path.join(self.project_directory, 'output', 'BDE_report.yml')
-            save_yaml_file(path=bde_path, content=bde_report)
+            plotter.log_bde_report(path=bde_path, bde_report=bde_report)
 
         # Kinetics:
         rxn_list_for_kinetics_plots = list()
@@ -312,6 +317,10 @@ class Processor(object):
                 if success:
                     rxn.kinetics = kinetics_job.reaction.kinetics
                     plotter.log_kinetics(species.label, path=output_path)
+                    try:
+                        self.load_rmg_db()  # will only try to load if not already loaded (self.rmgdb is not None)
+                    except Exception as e:
+                        logger.error('Could not load the RMG database! Got:\n{0}'.format(e))
                     rxn.rmg_reactions = rmgdb.determine_rmg_kinetics(rmgdb=self.rmgdb, reaction=rxn.rmg_reaction,
                                                                      dh_rxn298=rxn.dh_rxn298)
 
@@ -359,7 +368,7 @@ class Processor(object):
             plot (bool): A flag indicating whether to plot a PDF of the calculated thermo properties (True to plot)
 
         Returns:
-            bool: Whether the job was successful (True for successful).
+            bool: Whether the job was successful (``True`` for successful).
         """
         if arkane_file is None:
             return False
@@ -378,8 +387,8 @@ class Processor(object):
         try:
             stat_mech_job.execute(output_directory=output_path, plot=plot)
         except Exception as e:
-            logger.error('statmech job for species {0} failed with the error message:\n{1}'.format(
-                arkane_spc.label, e.message))
+            logger.error('Arkane statmech job for species {0} failed with the error message:\n{1}'.format(
+                arkane_spc.label, e))
             success = False
         return success
 
@@ -389,6 +398,9 @@ class Processor(object):
 
         Args:
             label (str): The species label.
+
+        Returns:
+            bde_report (dict): The BDE report for a single species. Keys are pivots, values are energies in kJ/mol.
         """
         source = self.species_dict[label]
         bde_report = dict()
@@ -423,9 +435,7 @@ class Processor(object):
                 logger.error('could not calculate BDE for {0} between atoms {1} ({2}) and {3} ({4})'.format(
                               label, bde_indices[0], source.mol.atoms[bde_indices[0] - 1].element.symbol,
                               bde_indices[1], source.mol.atoms[bde_indices[1] - 1].element.symbol))
-        logger.info('\n\nBDE report for {0} (kJ/mol):\n{1}\n'.format(label, bde_report))
         return bde_report
-
 
     def _clean_output_directory(self):
         """
@@ -477,3 +487,15 @@ class Processor(object):
         if not os.path.exists(os.path.dirname(output_path)):
             os.makedirs(os.path.dirname(output_path))
         shutil.copyfile(calc_path, output_path)
+
+    def load_rmg_db(self):
+        """Load the RMG database"""
+        load_thermo_libs, load_kinetic_libs = False, False
+        if any([species.is_ts and self.output[species.label]['convergence'] for species in self.species_dict.values()]):
+            load_kinetic_libs = True
+        if any([species.generate_thermo and self.output[species.label]['convergence']
+                for species in self.species_dict.values()]):
+            load_thermo_libs = True
+        if self.rmgdb is not None and (load_kinetic_libs or load_thermo_libs):
+            rmgdb.load_rmg_database(rmgdb=self.rmgdb, load_thermo_libs=load_thermo_libs,
+                                    load_kinetic_libs=load_kinetic_libs)

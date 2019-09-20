@@ -6,15 +6,14 @@ This module contains unit tests for the arc.utils.scale module
 """
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
-import unittest
 import os
 import shutil
+import unittest
 
+from arc.common import almost_equal_coords_lists
+from arc.settings import arc_path
 from arc.utils.scale import calculate_truhlar_scaling_factors, summarize_results, get_species_list, get_zpe,\
     rename_level
-from arc.settings import arc_path
-
-################################################################################
 
 
 class TestScale(unittest.TestCase):
@@ -95,11 +94,9 @@ class TestScale(unittest.TestCase):
         for spc in species_list:
             self.assertIn(spc.label, labels)
             self.assertTrue(spc.initial_xyz)
-        c2h2_xyz = """     C                  0.00000000    0.00000000    0.00000000
-     C                  0.00000000    0.00000000    1.20314200
-     H                  0.00000000   -0.00000000    2.26574700
-     H                 -0.00000000   -0.00000000   -1.06260500"""
-        self.assertEqual(species_list[0].initial_xyz, c2h2_xyz)
+        c2h2_xyz = {'symbols': ('C', 'C', 'H', 'H'), 'isotopes': (12, 12, 1, 1),
+                'coords': ((0.0, 0.0, 0.0), (0.0, 0.0, 1.203142), (0.0, -0.0, 2.265747), (-0.0, -0.0, -1.062605))}
+        self.assertTrue(almost_equal_coords_lists(species_list[0].initial_xyz, c2h2_xyz))
 
     def test_get_zpe(self):
         """Test the scale get_zpe() function"""

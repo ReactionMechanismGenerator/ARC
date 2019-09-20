@@ -17,8 +17,7 @@ from arc.species.species import ARCSpecies
 import arc.parser as parser
 from arc.plotter import save_conformers_file
 from arc.settings import arc_path, default_levels_of_theory
-
-################################################################################
+from arc.common import almost_equal_coords_lists
 
 
 class TestScheduler(unittest.TestCase):
@@ -35,13 +34,14 @@ class TestScheduler(unittest.TestCase):
         cls.project_directory = os.path.join(arc_path, 'Projects', 'arc_project_for_testing_delete_after_usage3')
         cls.spc1 = ARCSpecies(label=str('methylamine'), smiles=str('CN'))
         cls.spc2 = ARCSpecies(label=str('C2H6'), smiles=str('CC'))
+        xyz = {'symbols': ('C',), 'isotopes': (12,), 'coords': ((0.0, 0.0, 0.0),)}
         cls.job1 = Job(project='project_test', ess_settings=cls.ess_settings, species_name='methylamine',
-                       xyz='C 0.0 0.0 0.0', job_type='conformer', conformer=0, level_of_theory='b97-d3/6-311+g(d,p)',
+                       xyz=xyz, job_type='conformer', conformer=0, level_of_theory='b97-d3/6-311+g(d,p)',
                        multiplicity=1, project_directory=cls.project_directory, job_num=101)
         cls.job2 = Job(project='project_test', ess_settings=cls.ess_settings, species_name='methylamine',
-                       xyz='C 0.0 0.0 0.0', job_type='conformer', conformer=1, level_of_theory='b97-d3/6-311+g(d,p)',
+                       xyz=xyz, job_type='conformer', conformer=1, level_of_theory='b97-d3/6-311+g(d,p)',
                        multiplicity=1, project_directory=cls.project_directory, job_num=102)
-        cls.job3 = Job(project='project_test', ess_settings=cls.ess_settings, species_name='C2H6', xyz='C 0.0 0.0 0.0',
+        cls.job3 = Job(project='project_test', ess_settings=cls.ess_settings, species_name='C2H6', xyz=xyz,
                        job_type='freq', level_of_theory='wb97x-d3/6-311+g(d,p)', multiplicity=1,
                        project_directory=cls.project_directory, software='qchem', job_num=103)
         cls.rmgdb = rmgdb.make_rmg_database_object()
@@ -84,14 +84,12 @@ class TestScheduler(unittest.TestCase):
         self.sched1.species_dict[label].conformers[1] = parser.parse_xyz_from_file(self.job2.local_path_to_output_file)
 
         self.sched1.determine_most_stable_conformer(label=label)
-        expecting = """N      -0.75555952   -0.12937106    0.00000000
-C       0.70855440    0.03887206    0.00000000
-H       1.06395135    1.08711266    0.00000000
-H       1.12732348   -0.45978507    0.88433277
-H       1.12732348   -0.45978507   -0.88433277
-H      -1.16566701    0.32023496    0.81630508
-H      -1.16566701    0.32023496   -0.81630508"""
-        self.assertEqual(self.sched1.species_dict[label].initial_xyz, expecting)
+        expecting = {'symbols': ('N', 'C', 'H', 'H', 'H', 'H', 'H'), 'isotopes': (14, 12, 1, 1, 1, 1, 1),
+                     'coords': ((-0.75555952, -0.12937106, 0.0), (0.7085544, 0.03887206, 0.0),
+                                (1.06395135, 1.08711266, 0.0), (1.12732348, -0.45978507, 0.88433277),
+                                (1.12732348, -0.45978507, -0.88433277), (-1.16566701, 0.32023496, 0.81630508),
+                                (-1.16566701, 0.32023496, -0.81630508))}
+        self.assertTrue(almost_equal_coords_lists(self.sched1.species_dict[label].initial_xyz, expecting))
         methylamine_conf_path = os.path.join(self.sched1.project_directory, 'output', 'Species', 'methylamine',
                                              'geometry', 'conformers', 'conformers_after_optimization.txt')
         self.assertTrue(os.path.isfile(methylamine_conf_path))
@@ -99,9 +97,9 @@ H      -1.16566701    0.32023496   -0.81630508"""
             lines = f.readlines()
         self.assertTrue('Conformers for methylamine, optimized at the b3lyp/6-31g(d,p) EmpiricalDispersion=GD3BJ level'
                         in lines[0])
-        self.assertEqual(lines[10], 'SMILES: CN\n')
-        self.assertTrue('Relative Energy:' in lines[11])
-        self.assertEqual(lines[15][0], 'N')
+        self.assertEqual(lines[11], 'SMILES: CN\n')
+        self.assertTrue('Relative Energy:' in lines[12])
+        self.assertEqual(lines[16][0], 'N')
 
         self.sched1.output['C2H6'] = {'info': '',
                                       'paths': {'composite': '', 'freq': '', 'geo': ''},
@@ -120,6 +118,8 @@ H      -1.16566701    0.32023496   -0.81630508"""
         self.assertTrue(os.path.isfile(c2h6_conf_path))
         with open(c2h6_conf_path, 'r') as f:
             lines = f.readlines()
+        print(''.join(lines))
+        self.assertEqual(lines[0], 'conformer 0:\n')
         self.assertEqual(lines[1][0], 'C')
         self.assertEqual(lines[9], '\n')
         self.assertEqual(lines[10], 'SMILES: CC\n')

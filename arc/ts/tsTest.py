@@ -8,12 +8,11 @@ This module contains unit tests for TS guess generation methods
 from __future__ import (absolute_import, division, print_function, unicode_literals)
 import unittest
 
-from rmgpy.species import Species
 from rmgpy.reaction import Reaction
+from rmgpy.species import Species
 
+from arc.species.converter import xyz_to_str
 from arc.ts import atst
-
-################################################################################
 
 
 class TestAutoTST(unittest.TestCase):
@@ -65,8 +64,7 @@ H       0.30830000   -0.36560000   -0.03850000
 H      -0.95970000    0.82970000   -0.78620000
 H      -1.01810000    0.50970000    0.99600000
 H      -1.53870000   -0.77340000   -0.17220000
-H       2.36710000    0.22020000    0.01520000
-"""
+H       2.36710000    0.22020000    0.01520000"""
         expected_xyz2 = """O       3.52880000    1.08880000    0.26840000
 O       2.57010000    0.20370000    0.43990000
 C      -0.55710000   -0.79590000    0.46080000
@@ -83,10 +81,9 @@ H       0.67640000   -1.88780000   -0.96150000
 H      -2.31340000    1.94900000   -0.76840000
 H      -2.99310000    0.39200000   -0.16030000
 H      -2.07290000    1.48160000    0.95770000
-H       3.46120000    1.34610000   -0.68540000
-"""
-        self.assertEqual(xyz1a, expected_xyz1)
-        self.assertEqual(xyz2, expected_xyz2)
+H       3.46120000    1.34610000   -0.68540000"""
+        self.assertEqual(xyz_to_str(xyz1a), expected_xyz1)
+        self.assertEqual(xyz_to_str(xyz2), expected_xyz2)
 
     def test_ts_error(self):
         """Test that AutoTST raises a TSError for a non-H-Abstraction reaction

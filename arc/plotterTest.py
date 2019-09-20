@@ -13,6 +13,7 @@ import unittest
 from arc import plotter
 from arc.settings import arc_path
 from arc.species.species import ARCSpecies
+from arc.species.converter import str_to_xyz
 
 
 class TestPlotter(unittest.TestCase):
@@ -23,13 +24,13 @@ class TestPlotter(unittest.TestCase):
     def test_save_geo(self):
         """Test saving the geometry files for a species"""
         spc = ARCSpecies(label='methylamine', smiles=str('CN'), multiplicity=1, charge=0)
-        spc.final_xyz = """N      -0.74566988   -0.11773792    0.00000000
+        spc.final_xyz = str_to_xyz("""N      -0.74566988   -0.11773792    0.00000000
 C       0.70395487    0.03951260    0.00000000
 H       1.12173564   -0.45689176   -0.87930074
 H       1.06080468    1.07995075    0.00000000
 H       1.12173564   -0.45689176    0.87930074
 H      -1.16115119    0.31478894    0.81506145
-H      -1.16115119    0.31478894   -0.81506145"""
+H      -1.16115119    0.31478894   -0.81506145""")
         spc.opt_level = 'opt/level'
         project = 'arc_project_for_testing_delete_after_usage'
         project_directory = os.path.join(arc_path, 'Projects', project)

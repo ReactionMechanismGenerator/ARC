@@ -29,8 +29,8 @@ from arc.job.local import check_running_jobs_ids
 from arc.job.ssh import SSHClient
 from arc.job.trsh import trsh_negative_freq, trsh_scan_job, trsh_ess_job, trsh_conformer_isomorphism, scan_quality_check
 from arc.species.species import ARCSpecies, TSGuess, determine_rotor_symmetry
-from arc.species.converter import get_xyz_string, get_xyz_matrix, molecules_from_xyz, check_isomorphism, \
-    standardize_xyz_string
+from arc.species.converter import molecules_from_xyz, check_isomorphism, standardize_xyz_string, xyz_from_data, \
+    str_to_xyz, xyz_to_str
 from arc.ts.atst import autotst
 from arc.settings import default_job_types, rotor_scan_resolution
 import arc.rmgdb as rmgdb
@@ -328,15 +328,16 @@ class Scheduler(object):
                 if species.number_of_atoms == 1:
                     logger.debug('Species {0} is monoatomic'.format(species.label))
                     if not self.species_dict[species.label].initial_xyz:
-                        # generate a simple "Symbol   0.0   0.0   0.0" xyz matrix
+                        # generate a simple "Symbol   0.0   0.0   0.0" coords in a dictionary format
                         if self.species_dict[species.label].mol is not None:
                             symbol = self.species_dict[species.label].mol.atoms[0].symbol
                         else:
                             symbol = species.label
                             logger.warning('Could not determine element of monoatomic species {0}.'
                                            ' Assuming element is {1}'.format(species.label, symbol))
-                        self.species_dict[species.label].initial_xyz = symbol + '   0.0   0.0   0.0'
-                        self.species_dict[species.label].final_xyz = symbol + '   0.0   0.0   0.0'
+                        monoatomic_xyz_dict = str_to_xyz('{0}   0.0   0.0   0.0'.format(symbol))
+                        self.species_dict[species.label].initial_xyz = monoatomic_xyz_dict
+                        self.species_dict[species.label].final_xyz = monoatomic_xyz_dict
                     if not self.output[species.label]['job_types']['sp'] \
                             and not self.output[species.label]['job_types']['composite'] \
                             and 'sp' not in list(self.job_dict[species.label].keys()) \
@@ -642,7 +643,7 @@ class Scheduler(object):
 
         Args:
             label (str): The species label.
-            xyz (str): A string-formated 3D coordinates for the species.
+            xyz (dict): The 3D coordinates for the species.
             level_of_theory (str): The level of theory to use.
             job_type (str): The type of job to run.
             fine (bool, optional): Whether to run an optimization job with a fine grid. `True` to use fine.
@@ -755,7 +756,7 @@ class Scheduler(object):
                     and all([e is None for e in self.species_dict[label].conformer_energies]) \
                     and self.species_dict[label].number_of_atoms > 1 and not self.output[label]['paths']['geo'] \
                     and (self.job_types['conformers'] and label not in self.dont_gen_confs
-                         or self.species_dict[label].get_xyz(get_cheap=False) is None):
+                         or self.species_dict[label].get_xyz(generate=False) is None):
                 # This is not a TS, opt (/composite) did not converged nor running, and conformer energies were not set.
                 # Also, either 'conformers' are set to True in job_types (and it's not in dont_gen_confs),
                 # or they are set to False (or it's in dont_gen_confs), but the species has no 3D information.
@@ -879,7 +880,7 @@ class Scheduler(object):
         Args:
             label (str): The species label.
         """
-        # determine_occ(label=self.label, xyz=self.xyz, charge=self.charge)
+        # determine_occ(xyz=self.xyz, charge=self.charge)
         if 'sp' not in self.job_dict[label]:  # Check whether or not single point jobs have been spawned yet
             # we're spawning the first sp job for this species
             self.job_dict[label]['sp'] = dict()
@@ -937,8 +938,9 @@ class Scheduler(object):
                 if self.species_dict[label].directed_rotors:
                     if 'cont' in list(self.species_dict[label].directed_rotors.keys()) \
                             and (pivots in self.species_dict[label].directed_rotors['cont']
-                            or pivots[::-1] in self.species_dict[label].directed_rotors['cont']
-                            or any(['all' in entry for entry in self.species_dict[label].directed_rotors['cont']])):
+                                 or pivots[::-1] in self.species_dict[label].directed_rotors['cont']
+                                 or any(['all' in entry
+                                         for entry in self.species_dict[label].directed_rotors['cont']])):
                         # This is a brute force directed scan
                         directed_scan = True
                         if 'scan_path' not in self.species_dict[label].rotors_dict[i] \
@@ -955,8 +957,9 @@ class Scheduler(object):
                                 self.spawn_directed_scan_jobs(label, scan, pivots, directed_scan_type='cont')
                     elif 'brute' in list(self.species_dict[label].directed_rotors.keys()) \
                             and (pivots in self.species_dict[label].directed_rotors['brute']
-                            or pivots[::-1] in self.species_dict[label].directed_rotors['brute']
-                            or any(['all' in entry for entry in self.species_dict[label].directed_rotors['brute']])):
+                                 or pivots[::-1] in self.species_dict[label].directed_rotors['brute']
+                                 or any(['all' in entry
+                                         for entry in self.species_dict[label].directed_rotors['brute']])):
                         # This is a brute force directed scan
                         directed_scan = True
                         if 'scan_path' not in self.species_dict[label].rotors_dict[i] \
@@ -1131,8 +1134,8 @@ class Scheduler(object):
         increment = rotor_scan_resolution
         if 'brute' in directed_scan_type:
             # spawn jobs all at once
-            original_dihedral = calculate_dihedral_angle(
-                coords=get_xyz_matrix(self.species_dict[label].final_xyz)[0], torsion=scan)
+            original_dihedral = calculate_dihedral_angle(coords=self.species_dict[label].final_xyz['coords'],
+                                                         torsion=scan)
             dihedrals = [original_dihedral + i * increment if original_dihedral + i * increment <= 180.0
                          else original_dihedral + i * increment - 360.0 for i in range(int(360 / increment) + 1)]
             for dihedral in dihedrals:
@@ -1144,8 +1147,8 @@ class Scheduler(object):
             # spawn jobs one by one, use the species.cont_scan_xyz attribute
             index_str, original_dihedral_str = 'index_cont_{0}'.format(pivots), 'dihedral_cont_{0}'.format(pivots)
             if original_dihedral_str not in self.species_dict[label].directed_rotors.keys():
-                original_dihedral = calculate_dihedral_angle(
-                    coords=get_xyz_matrix(self.species_dict[label].final_xyz)[0], torsion=scan)
+                original_dihedral = calculate_dihedral_angle(coords=self.species_dict[label].final_xyz['coords'],
+                                                             torsion=scan)
                 self.species_dict[label].directed_rotors[original_dihedral_str] = '{0:.2f}'.format(original_dihedral)
             if index_str not in self.species_dict[label].directed_rotors.keys():
                 self.species_dict[label].directed_rotors[index_str] = 0
@@ -1171,7 +1174,6 @@ class Scheduler(object):
                 logger.info('Completed all jobs for the continuous directed rotor scan for species {0} between pivots '
                             '{1}'.format(label, pivots))
                 self.process_directed_scans(label, pivots)
-
 
     def spawn_md_jobs(self, label, prev_conf_list=None, num_confs=None):
         """
@@ -1410,13 +1412,13 @@ class Scheduler(object):
             coords, number, _ = log.loadGeometry()
             if self.species_dict[label].is_ts:
                 self.species_dict[label].ts_guesses[i].energy = log.loadEnergy() * 0.001  # in kJ/mol
-                self.species_dict[label].ts_guesses[i].opt_xyz = get_xyz_string(coords=coords, numbers=number)
+                self.species_dict[label].ts_guesses[i].opt_xyz = xyz_from_data(coords=coords, numbers=number)
                 self.species_dict[label].ts_guesses[i].index = i
                 logger.debug('Energy for TSGuess {0} of {1} is {2:.2f}'.format(
                     i, self.species_dict[label].label, self.species_dict[label].ts_guesses[i].energy))
             else:
                 self.species_dict[label].conformer_energies[i] = log.loadEnergy() * 0.001  # in kJ/mol
-                self.species_dict[label].conformers[i] = get_xyz_string(coords=coords, numbers=number)
+                self.species_dict[label].conformers[i] = xyz_from_data(coords=coords, numbers=number)
                 logger.debug('Energy for conformer {0} of {1} is {2:.2f}'.format(
                     i, self.species_dict[label].label, self.species_dict[label].conformer_energies[i]))
         else:
@@ -1452,7 +1454,7 @@ class Scheduler(object):
                     except RMGInputError:
                         xyzs.append(None)
                     else:
-                        xyzs.append(get_xyz_string(coords=coords, numbers=number))
+                        xyzs.append(xyz_from_data(coords=coords, numbers=number))
             xyzs_in_original_order = xyzs
             energies, xyzs = (list(t) for t in zip(*sorted(zip(self.species_dict[label].conformer_energies, xyzs))))
             plotter.save_conformers_file(project_directory=self.project_directory, label=label,
@@ -1610,7 +1612,7 @@ class Scheduler(object):
                     self.species_dict[label].chosen_ts_method = tsg.method  # change if selecting a better TS later
                     self.species_dict[label].initial_xyz = tsg.xyz
                 if tsg.success and tsg.energy is not None:  # guess method and ts_level opt were both successful
-                    tsg.energy = tsg.energy - e_min
+                    tsg.energy -= e_min
                     logger.info('TS guess {0} for {1}. Method: {2}, relative energy: {3:.2f} kJ/mol, guess execution '
                                 'time: {4}'.format(tsg.index, label, tsg.method, tsg.energy, tsg.execution_time))
                     # for TSs, only use `draw_3d()`, not `show_sticks()` which gets connectivity wrong:
@@ -1642,7 +1644,7 @@ class Scheduler(object):
         if job.job_status[1]['status'] == 'done':
             log = determine_qm_software(fullpath=job.local_path_to_output_file)
             coords, number, _ = log.loadGeometry()
-            self.species_dict[label].final_xyz = get_xyz_string(coords=coords, numbers=number)
+            self.species_dict[label].final_xyz = xyz_from_data(coords=coords, numbers=number)
             self.output[label]['job_types']['composite'] = True
             self.output[label]['job_types']['opt'] = True
             self.output[label]['job_types']['sp'] = True
@@ -1654,7 +1656,8 @@ class Scheduler(object):
             if self.species_dict[label].is_ts:
                 rxn_str = ' of reaction {0}'.format(self.species_dict[label].rxn_label)
             logger.info('\nOptimized geometry for {label}{rxn} at {level}:\n{xyz}'.format(
-                label=label, rxn=rxn_str, level=job.level_of_theory, xyz=self.species_dict[label].final_xyz))
+                label=label, rxn=rxn_str, level=job.level_of_theory,
+                xyz=xyz_to_str(xyz_dict=self.species_dict[label].final_xyz)))
             if not job.is_ts:
                 plotter.draw_structure(species=self.species_dict[label], project_directory=self.project_directory)
             else:
@@ -1699,7 +1702,7 @@ class Scheduler(object):
         if job.job_status[1]['status'] == 'done':
             log = determine_qm_software(fullpath=job.local_path_to_output_file)
             coords, number, _ = log.loadGeometry()
-            self.species_dict[label].final_xyz = get_xyz_string(coords=coords, numbers=number)
+            self.species_dict[label].final_xyz = xyz_from_data(coords=coords, numbers=number)
             if not job.fine and self.job_types['fine'] and not job.software == 'molpro':
                 # Run opt again using a finer grid.
                 xyz = self.species_dict[label].final_xyz
@@ -1739,7 +1742,8 @@ class Scheduler(object):
                                     # and its geometry wasn't saved in the TSGuess objects
                                     tsg.products_xyz.append((label, self.species_dict[label].final_xyz))
                 logger.info('\nOptimized geometry for {label}{rxn} at {level}:\n{xyz}'.format(
-                    label=label, rxn=rxn_str, level=job.level_of_theory, xyz=self.species_dict[label].final_xyz))
+                    label=label, rxn=rxn_str, level=job.level_of_theory,
+                    xyz=xyz_to_str(self.species_dict[label].final_xyz)))
                 self.save_restart_dict()
                 self.output[label]['paths']['geo'] = job.local_path_to_output_file  # will be overwritten with freq
                 if not self.species_dict[label].is_ts:
@@ -1941,26 +1945,32 @@ class Scheduler(object):
                         else:
                             # The conformer is wrong, and changing the dihedral resulted in a non-isomorphic species.
                             self.output[label]['errors'] += 'A lower conformer was found for {0} via a torsion mode, ' \
-                                                            'but it is not isomorphic with the 2D graph representation ' \
-                                                            '{1}. Not calculating this species.'.format(
+                                                            'but it is not isomorphic with the 2D graph ' \
+                                                            'representation {1}. Not calculating this species.'.format(
                                                              label, self.species_dict[label].mol.toSMILES())
                             self.output[label]['conformers'] += 'Unconverged'
                             self.output[label]['convergence'] = False
-                    elif not job.scan_trsh:
-                        # apply the troubleshooting methods in the `actions` list
-                        logger.info('Trying to troubleshoot rotor {0} of {1}...'.format(job.pivots, label))
+
+                    methods_to_try = [method for method in actions
+                                      if method not in self.species_dict[label].rotors_dict[i]['trsh_methods']]
+                    if len(methods_to_try):
+                        # apply the troubleshooting methods in the `actions` list if they weren't already tried out
+                        logger.info('Trying to troubleshoot rotor {0} of {1} using {2}...'.format(
+                            job.pivots, label, methods_to_try))
+                        self.species_dict[label].rotors_dict[i]['trsh_methods'].extend(methods_to_try)
                         self.troubleshoot_scan_job(job=job, methods=actions)
 
-            if not invalidate:
-                # the rotor scan is good, calculate the symmetry number
-                self.species_dict[label].rotors_dict[i]['success'] = True
-                self.species_dict[label].rotors_dict[i]['symmetry'] = determine_rotor_symmetry(
-                    label=label, pivots=self.species_dict[label].rotors_dict[i]['pivots'],
-                    rotor_path=job.local_path_to_output_file)[0]
-                logger.info('Rotor scan {scan} between pivots {pivots} for {label} has symmetry {symmetry}'.format(
-                    scan=self.species_dict[label].rotors_dict[i]['scan'],
-                    pivots=self.species_dict[label].rotors_dict[i]['pivots'],
-                    label=label, symmetry=self.species_dict[label].rotors_dict[i]['symmetry']))
+                if not invalidate:
+                    # the rotor scan is good, calculate the symmetry number
+                    self.species_dict[label].rotors_dict[i]['success'] = True
+                    self.species_dict[label].rotors_dict[i]['symmetry'] = determine_rotor_symmetry(
+                        label=label, pivots=self.species_dict[label].rotors_dict[i]['pivots'],
+                        rotor_path=job.local_path_to_output_file)[0]
+                    logger.info('Rotor scan {scan} between pivots {pivots} for {label} has symmetry {symmetry}'.format(
+                        scan=self.species_dict[label].rotors_dict[i]['scan'],
+                        pivots=self.species_dict[label].rotors_dict[i]['pivots'],
+                        label=label, symmetry=self.species_dict[label].rotors_dict[i]['symmetry']))
+                break
         else:
             raise SchedulerError('Could not match rotor with pivots {0} in species {1}'.format(job.pivots, label))
 
@@ -1972,7 +1982,7 @@ class Scheduler(object):
                 self.species_dict[label].rotors_dict[i]['scan_path'] = job.local_path_to_output_file
                 self.species_dict[label].rotors_dict[i]['invalidation_reason'] = invalidation_reason
         # If energies were obtained, draw the scan curve
-        if energies:
+        if len(energies):
             folder_name = 'rxns' if job.is_ts else 'Species'
             rotor_path = os.path.join(self.project_directory, 'output', folder_name, job.species_name, 'rotors')
             plotter.plot_rotor_scan(angles=angles, energies=energies, path=rotor_path,
@@ -2075,7 +2085,7 @@ class Scheduler(object):
         if job.job_status[1]['status'] == 'done':
             log = determine_qm_software(fullpath=job.local_path_to_output_file)
             coords, number, _ = log.loadGeometry()
-            xyz = get_xyz_string(coords=coords, numbers=number)
+            xyz = xyz_from_data(coords=coords, numbers=number)
             is_isomorphic = self.species_dict[label].check_xyz_isomorphism(xyz=xyz, verbose=False)
             for rotor_dict in self.species_dict[label].rotors_dict.values():
                 if rotor_dict['pivots'] == job.pivots:
@@ -2315,7 +2325,6 @@ class Scheduler(object):
             label (str): The species label.
             job (Job): The job object to troubleshoot.
             level_of_theory (str): The level of theory to use.
-            job_type (str): The original job type.
             conformer (str, optional): The conformer index.
         """
         logger.info('\n')
@@ -2507,7 +2516,7 @@ class Scheduler(object):
 
         Args:
             original_level_of_theory (str): The level of theory for non-sp/opt/freq job types.
-            job_type (Job): The job type for whcih the level of theory is determined.
+            job_type (str): The job type for which the level of theory is determined.
             heavy_atoms (int): The number of heavy atoms in the species.
         """
         if self.adaptive_levels is not None:

@@ -89,10 +89,11 @@ def trace_calls(frame, event, arg):
     return
 
 
-
 svnId = '$Id$'
-try: svnRev, svnDate, svnTime = svnId.split()[2:5]
-except: svnRev, svnDate, svnTime = '0', '0', '0'
+try:
+    svnRev, svnDate, svnTime = svnId.split()[2:5]
+except:
+    svnRev, svnDate, svnTime = '0', '0', '0'
 year = datetime.today().year
 tag = "%s %s Rev: %s" % (svnDate, svnTime, svnRev)
 
@@ -363,7 +364,7 @@ def imprDihAngle(a, b, c, d):
     angle = math.acos(dotproduct(n1, n2) / (length(n1) * length(n2))) * 180 / Pi
     cp = crosproduct(n1, n2)
     if dotproduct(cp, bc) < 0:
-        angle = -1 * angle
+        angle *= -1
     return angle
 
 def invalidArgs(text = None):
@@ -407,7 +408,7 @@ def elapsedTime(seconds, suffixes=None, add_s=False, separator=' '):
     for suffix, length in parts:
         value = seconds // length
         if value > 0:
-            seconds = seconds % length
+            seconds %= length
             time.append('%s%s' % (str(value),
                            (suffix, (suffix, suffix + 's')[value > 1])[add_s]))
         if seconds < 1:
@@ -3055,13 +3056,8 @@ coord fit sele=(known and not hydrogen) end
 
 stop
 """
-        dictInp = {}
-        dictInp['CNS_top'] = top
-        dictInp['CNS_par'] = par
-        dictInp['NEW_pdb'] = pdb
-        dictInp['CNS_min'] = self.baseName + '_NEW_min.pdb'
-        dictInp['CNS_psf'] = self.baseName + '_CNS.psf'
-        dictInp['CNS_ran'] = self.baseName + '_rand.pdb'
+        dictInp = {'CNS_top': top, 'CNS_par': par, 'NEW_pdb': pdb, 'CNS_min': self.baseName + '_NEW_min.pdb',
+                   'CNS_psf': self.baseName + '_CNS.psf', 'CNS_ran': self.baseName + '_rand.pdb'}
         line = inpData % dictInp
         inpFile.write(line)
         if os.path.exists(self.obchiralExe):

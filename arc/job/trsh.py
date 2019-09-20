@@ -16,7 +16,7 @@ from arc.arc_exceptions import SpeciesError, TrshError
 from arc.common import get_logger, determine_ess
 from arc.settings import servers, delete_command, list_available_nodes_command, submit_filename, \
     inconsistency_ab, inconsistency_az, maximum_barrier, rotor_scan_resolution
-from arc.species.converter import get_xyz_string
+from arc.species.converter import xyz_from_data
 from arc.job.ssh import SSHClient
 
 logger = get_logger()
@@ -304,8 +304,8 @@ def trsh_negative_freq(label, log_file, neg_freqs_trshed=None, job_types=None):
             displacement = vibdisps[neg_freq_idx]
             xyz1 = atomcoords + factor * displacement
             xyz2 = atomcoords - factor * displacement
-            conformers.append(get_xyz_string(coords=xyz1, numbers=atomnos))
-            conformers.append(get_xyz_string(coords=xyz2, numbers=atomnos))
+            conformers.append(xyz_from_data(coords=xyz1, numbers=atomnos))
+            conformers.append(xyz_from_data(coords=xyz2, numbers=atomnos))
     return current_neg_freqs_trshed, conformers, output_errors, output_warnings
 
 
@@ -470,7 +470,7 @@ def trsh_ess_job(label, level_of_theory, server, job_status, job_type, software,
             memory = min(memory_gb * 2, max_mem * 0.9)
             logger.info('Troubleshooting {type} job in {software} for {label} using more memory: {mem} GB instead of '
                         '{old} GB'.format(type=job_type, software=software, mem=memory, old=memory_gb,
-                                           label=label))
+                                          label=label))
             ess_trsh_methods.append('memory')
         elif level_of_theory != 'cbs-qb3' and 'scf=(qc,nosymm) & CBS-QB3' not in ess_trsh_methods:
             # try both qc and nosymm with CBS-QB3
@@ -480,14 +480,14 @@ def trsh_ess_job(label, level_of_theory, server, job_status, job_type, software,
             level_of_theory = 'cbs-qb3'
             trsh_keyword = 'scf=(qc,nosymm)'
         elif 'qchem' not in ess_trsh_methods and job_type != 'composite' and \
-                (available_ess is None or 'qchem' in [ess.lower() for ess in available_ess.keys()]):
+                (available_ess is None or 'qchem' in [ess.lower() for ess in available_ess]):
             # Try QChem
             logger.info('Troubleshooting {type} job using qchem instead of {software} for {label}'.format(
                 type=job_type, software=software, label=label))
             ess_trsh_methods.append('qchem')
             software = 'qchem'
         elif 'molpro' not in ess_trsh_methods and job_type not in ['composite', 'scan'] \
-                and (available_ess is None or 'molpro' in [ess.lower() for ess in available_ess.keys()]):
+                and (available_ess is None or 'molpro' in [ess.lower() for ess in available_ess]):
             # Try molpro
             logger.info('Troubleshooting {type} job using molpro instead of {software} for {label}'.format(
                 type=job_type, software=software, label=label))
@@ -528,14 +528,14 @@ def trsh_ess_job(label, level_of_theory, server, job_status, job_type, software,
             # try converging with B3LYP
             level_of_theory = 'b3lyp/6-311++g(d,p)'
         elif 'gaussian' not in ess_trsh_methods \
-                and (available_ess is None or 'gaussian' in [ess.lower() for ess in available_ess.keys()]):
+                and (available_ess is None or 'gaussian' in [ess.lower() for ess in available_ess]):
             # Try Gaussian
             logger.info('Troubleshooting {type} job using gaussian instead of {software} for {label}'.format(
                 type=job_type, software=software, label=label))
             ess_trsh_methods.append('gaussian')
             software = 'gaussian'
         elif 'molpro' not in ess_trsh_methods and job_type != 'scan' \
-                and (available_ess is None or 'molpro' in [ess.lower() for ess in available_ess.keys()]):
+                and (available_ess is None or 'molpro' in [ess.lower() for ess in available_ess]):
             # Try molpro
             logger.info('Troubleshooting {type} job using molpro instead of {software} for {label}'.format(
                 type=job_type, software=software, label=label))
@@ -586,14 +586,14 @@ def trsh_ess_job(label, level_of_theory, server, job_status, job_type, software,
                                           label=label))
             shift = 'shift,-1.0,-0.5;'
         elif 'gaussian' not in ess_trsh_methods\
-                and (available_ess is None or 'gaussian' in [ess.lower() for ess in available_ess.keys()]):
+                and (available_ess is None or 'gaussian' in [ess.lower() for ess in available_ess]):
             # Try Gaussian
             logger.info('Troubleshooting {type} job using gaussian instead of {software} for {label}'.format(
                 type=job_type, software=software, label=label))
             ess_trsh_methods.append('gaussian')
             software = 'gaussian'
         elif 'qchem' not in ess_trsh_methods\
-                and (available_ess is None or 'qchem' in [ess.lower() for ess in available_ess.keys()]):
+                and (available_ess is None or 'qchem' in [ess.lower() for ess in available_ess]):
             # Try QChem
             logger.info('Troubleshooting {type} job using qchem instead of {software} for {label}'.format(
                 type=job_type, software=software, label=label))

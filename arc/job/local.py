@@ -35,12 +35,24 @@ def execute_command(command, shell=True):
     try:
         stdout = subprocess.check_output(command, shell=shell)
     except subprocess.CalledProcessError as e:
-        logger.error('The following command is erroneous:\n{0}'.format(e.message))
-        raise SettingsError('The following command is erroneous: \n{0}'
+        logger.error('The server command is erroneous.')
+        logger.error('Tried to submit the following command:\n{0}'.format(command))
+        logger.error('And got the following status (cmd, message, output, returncode, cms:')
+        logger.error(e.cmd)
+        logger.info('\n')
+        logger.error(e.message)
+        logger.info('\n')
+        logger.error(e.output)
+        logger.info('\n')
+        logger.error(e.returncode)
+        logger.info('\n')
+        logger.error(e.cmd)
+        logger.info('\n')
+        raise SettingsError('The command "{0}" is erroneous, got: \n{1}'
                             '\nTo correct the command, modify settings.py'
                             '\nTips: use "which" command to locate cluster software commands on server.'
                             '\nExample: type "which sbatch" on a server running Slurm to find the correct'
-                            ' sbatch path required in the submit_command dictionary.'.format(e.message))
+                            ' sbatch path required in the submit_command dictionary.'.format(command, e.message))
     return stdout.splitlines(), ''
 
 

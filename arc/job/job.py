@@ -20,7 +20,7 @@ from arc.job.ssh import SSHClient
 from arc.job.trsh import determine_ess_status, trsh_job_on_server
 from arc.settings import arc_path, servers, submit_filename, t_max_format, input_filename, output_filename, \
     rotor_scan_resolution, levels_ess
-from arc.species.converter import get_xyz_matrix
+from arc.species.converter import xyz_to_str, str_to_xyz, check_xyz_dict
 
 
 logger = get_logger()
@@ -35,7 +35,7 @@ class Job(object):
         project_directory (str): The path to the project directory.
         ess_settings (dict): A dictionary of available ESS and a corresponding server list.
         species_name (str): The species/TS name. Used for naming the directory.
-        xyz (str): The xyz geometry. Used for the calculation.
+        xyz (dict): The xyz geometry. Used for the calculation.
         job_type (str): The job's type.
         level_of_theory (str): Level of theory, e.g. 'CBS-QB3', 'CCSD(T)-F12a/aug-cc-pVTZ', 'B3LYP/6-311++G(3df,3pd)'...
         multiplicity (int): The species multiplicity.
@@ -88,7 +88,7 @@ class Job(object):
                                   Defaults to None. Important, e.g., if a Species is a bi-rad singlet, in which case
                                   the job should be unrestricted with multiplicity = 1.
         spin (int): The spin. automatically derived from the multiplicity.
-        xyz (str): The xyz geometry. Used for the calculation.
+        xyz (dict): The xyz geometry. Used for the calculation.
         radius (float): The species radius in Angstrom.
         n_atoms (int): The number of atoms in self.xyz.
         conformer (int): Conformer number if optimizing conformers.
@@ -177,7 +177,7 @@ class Job(object):
             self.charge = charge
             self.multiplicity = multiplicity
             self.number_of_radicals = number_of_radicals
-            self.xyz = xyz
+            self.xyz = check_xyz_dict(xyz)
             self.radius = radius
             self.directed_dihedral = directed_dihedral
             self.conformer = conformer
@@ -242,7 +242,7 @@ class Job(object):
             self.server = server if server is not None else self.ess_settings[self.software][0]
 
         self.spin = self.multiplicity - 1
-        self.n_atoms = self.xyz.count('\n') if xyz is not None else None
+        self.n_atoms = len(self.xyz['symbols']) if self.xyz is not None else None
         self.submit = ''
         self.input = ''
         self.mem_per_cpu, self.cpus, self.memory_gb, self.memory = None, None, None, None
@@ -272,7 +272,7 @@ class Job(object):
         job_dict['job_server_name'] = self.job_server_name
         job_dict['job_name'] = self.job_name
         job_dict['level_of_theory'] = self.level_of_theory
-        job_dict['xyz'] = self.xyz
+        job_dict['xyz'] = xyz_to_str(self.xyz)
         job_dict['fine'] = self.fine
         job_dict['job_status'] = self.job_status
         job_dict['memory'] = self.memory_gb
@@ -339,7 +339,7 @@ class Job(object):
         self.level_of_theory = job_dict['level_of_theory'].lower()
         self.multiplicity = job_dict['multiplicity']
         # optional attributes:
-        self.xyz = job_dict['xyz'] if 'xyz' in job_dict else None
+        self.xyz = str_to_xyz(job_dict['xyz']) if 'xyz' in job_dict else None
         self.server_nodes = job_dict['server_nodes'] if 'server_nodes' in job_dict else list()
         self.job_status = job_dict['job_status'] if 'job_status' in job_dict \
             else ['initializing', {'status': 'initializing', 'keywords': list(), 'error': '', 'line': ''}]
@@ -556,10 +556,6 @@ wf,spin={spin},charge={charge};}}
                     job_type_1 = 'opt=(ts, calcfc, noeigentest, maxstep=5)'
                 else:
                     job_type_1 = 'opt'
-                if self.checkfile is not None:
-                    job_type_1 += ' guess=read'
-                else:
-                    job_type_1 += ' guess=mix'
                 if self.fine:
                     # Note that the Acc2E argument is not available in Gaussian03
                     fine = 'scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
@@ -567,6 +563,10 @@ wf,spin={spin},charge={charge};}}
                         job_type_1 = 'opt=(ts, calcfc, noeigentest, tight, maxstep=5)'
                     else:
                         job_type_1 = 'opt=(tight)'
+                if self.checkfile is not None:
+                    job_type_1 += ' guess=read'
+                else:
+                    job_type_1 += ' guess=mix'
             elif self.software == 'qchem':
                 if self.is_ts:
                     job_type_1 = 'ts'
@@ -717,14 +717,15 @@ $end
                     job_type_1 += ' guess=read'
                 else:
                     job_type_1 += ' guess=mix'
-                scan_string = 'D {scan} S {steps} {increment:.1f}'.format(scan=scan, steps=str(int(360 / self.scan_res)),
+                scan_string = 'D {scan} S {steps} {increment:.1f}'.format(scan=scan,
+                                                                          steps=str(int(360 / self.scan_res)),
                                                                           increment=float(self.scan_res))
             elif self.software == 'qchem':
                 if self.is_ts:
                     job_type_1 = 'ts'
                 else:
                     job_type_1 = 'opt'
-                dihedral1 = int(calculate_dihedral_angle(coords=get_xyz_matrix(self.xyz)[0], torsion=self.scan))
+                dihedral1 = int(calculate_dihedral_angle(coords=self.xyz['coords'], torsion=self.scan))
                 dihedral2 = dihedral1 - self.scan_res
                 if dihedral2 < -180:
                     dihedral2 += 360
@@ -799,8 +800,9 @@ $end
                                'Selective occ, closed, core, frozen keyword still not implemented.')
             else:
                 try:
-                    self.input = input_files['mrci'].format(memory=self.memory, xyz=self.xyz, basis=self.basis_set,
-                                                            spin=self.spin, charge=self.charge, trsh=self.trsh)
+                    self.input = input_files['mrci'].format(memory=self.memory, xyz=xyz_to_str(self.xyz),
+                                                            basis=self.basis_set, spin=self.spin, charge=self.charge,
+                                                            trsh=self.trsh)
                 except KeyError:
                     logger.error('Could not interpret all input file keys in\n{0}'.format(self.input))
                     raise
@@ -808,7 +810,7 @@ $end
             try:
                 self.input = self.input.format(memory=int(self.memory), method=self.method, slash=slash,
                                                basis=self.basis_set, charge=self.charge, cpus=self.cpus,
-                                               multiplicity=self.multiplicity, spin=self.spin, xyz=self.xyz,
+                                               multiplicity=self.multiplicity, spin=self.spin, xyz=xyz_to_str(self.xyz),
                                                job_type_1=job_type_1, job_type_2=job_type_2, scan=scan_string,
                                                restricted=restricted, fine=fine, shift=self.shift, trsh=self.trsh,
                                                scan_trsh=self.scan_trsh, bath=self.bath_gas, constraint=constraint) \
@@ -1361,7 +1363,7 @@ $end
             if self.testing and not os.path.isdir(self.local_path):
                 os.makedirs(self.local_path)
             with open(os.path.join(self.local_path, 'geo.xyz'), 'w') as f:
-                f.write(self.xyz)
+                f.write(xyz_to_str(self.xyz))
             self.additional_files_to_upload.append({'name': 'geo', 'source': 'path', 'make_x': False,
                                                     'local': os.path.join(self.local_path, 'geo.xyz'),
                                                     'remote': os.path.join(self.remote_path, 'geo.xyz')})

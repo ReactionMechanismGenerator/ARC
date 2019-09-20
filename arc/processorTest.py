@@ -13,6 +13,7 @@ from arc.processor import Processor
 from arc.species.species import ARCSpecies
 from arc.common import arc_path
 
+
 ################################################################################
 
 
@@ -20,6 +21,7 @@ class TestProcessor(unittest.TestCase):
     """
     Contains unit tests for the Processor class
     """
+
     @classmethod
     def setUpClass(cls):
         """
@@ -31,10 +33,10 @@ class TestProcessor(unittest.TestCase):
         ch4 = ARCSpecies(label='CH4', smiles='C')
         nh3 = ARCSpecies(label='NH3', smiles='N')
         h = ARCSpecies(label='H', smiles='[H]')
-        ch4_BDE_1_2_A = ARCSpecies(label='CH4_BDE_1_2_A', smiles='[CH3]')
-        ch4.e0, h.e0, ch4_BDE_1_2_A.e0 = 10, 25, 35
+        ch4_bde_1_2_A = ARCSpecies(label='CH4_BDE_1_2_A', smiles='[CH3]')
+        ch4.e0, h.e0, ch4_bde_1_2_A.e0 = 10, 25, 35
         ch4.bdes = [(1, 2)]
-        species_dict = {'CH4': ch4, 'NH3': nh3, 'H': h, 'CH4_BDE_1_2_A': ch4_BDE_1_2_A}
+        species_dict = {'CH4': ch4, 'NH3': nh3, 'H': h, 'CH4_BDE_1_2_A': ch4_bde_1_2_A}
         output_dict = {'CH4':
                            {'conformers': '',
                             'convergence': True,
@@ -136,6 +138,7 @@ class TestProcessor(unittest.TestCase):
         """Test the process_bdes method"""
         bde_report = self.processor0.process_bdes(label='CH4')
         self.assertEqual(bde_report, {(1, 2): 50})
+
 
 ################################################################################
 

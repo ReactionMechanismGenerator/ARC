@@ -7,32 +7,31 @@ If the species is a transition state (TS), its ``ts_guesses`` attribute will hav
 """
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
+import datetime
 import os
 import numpy as np
-import datetime
 
 from arkane.common import ArkaneSpecies, symbol_by_number
+from rmgpy.exceptions import InvalidAdjacencyListError
 from arkane.statmech import determine_qm_software, is_linear
+import rmgpy.molecule.element as elements
 from rmgpy.molecule.molecule import Atom, Molecule
+from rmgpy.molecule.resonance import generate_kekule_structure
 from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 from rmgpy.statmech import NonlinearRotor, LinearRotor
-from rmgpy.molecule.resonance import generate_kekule_structure
 from rmgpy.transport import TransportData
-import rmgpy.molecule.element as elements
-from rmgpy.exceptions import InvalidAdjacencyListError
 
-from arc.common import get_logger, get_atom_radius, determine_symmetry
 from arc.arc_exceptions import SpeciesError, RotorError, InputError, TSError, SanitizationError
-from arc.settings import default_ts_methods, valid_chars, minimum_barrier
+from arc.common import get_logger, get_atom_radius, determine_symmetry
 from arc.parser import parse_xyz_from_file, parse_dipole_moment, parse_polarizability, process_conformers_file
-from arc.species.converter import get_xyz_string, get_xyz_matrix, rdkit_conf_from_mol, standardize_xyz_string,\
-    molecules_from_xyz, rmg_mol_from_inchi, order_atoms_in_mol_list, check_isomorphism, set_rdkit_dihedrals,\
-    translate_to_center_of_mass
+from arc.settings import default_ts_methods, valid_chars, minimum_barrier
 from arc.species import conformers
+from arc.species.converter import rdkit_conf_from_mol, xyz_from_data, molecules_from_xyz, rmg_mol_from_inchi, \
+    order_atoms_in_mol_list, check_isomorphism, set_rdkit_dihedrals, translate_to_center_of_mass, \
+    str_to_xyz, xyz_to_str, check_xyz_dict, xyz_to_x_y_z
 from arc.ts import atst
 
-##################################################################
 
 logger = get_logger()
 
@@ -41,7 +40,7 @@ class ARCSpecies(object):
     """
     A class for representing stationary points.
 
-    Dictionary structure::
+    Dictionary structure (initialized in conformers.find_internal_rotors)::
 
         rotors_dict: {1: {'pivots': pivots_list,
                           'top': top_list,
@@ -49,6 +48,7 @@ class ARCSpecies(object):
                           'success': ``bool``.
                           'invalidation_reason': ``str``,
                           'times_dihedral_set': ``int``,
+                          'trsh_methods': ``list``,
                           'scan_path': <path to scan output file>,
                           'max_e': ``float``,  # in kJ/mol
                           'symmetry': ``int``,
@@ -64,10 +64,10 @@ class ARCSpecies(object):
         rmg_species (Species, optional): An RMG Species object to be converted to an ARCSpecies object.
         mol (Molecule, optional): An ``RMG Molecule`` object used for BAC determination.
                                   Atom order corresponds to the order in .initial_xyz
-        xyz (str or list, optional): Entries are either string-format coordinates or file paths.
-                                     (If there's only one entry, it could be given directly as a string, not in a list).
-                                     The file paths could direct to either a .xyz file, ARC conformers
-                                     (w/ or w/o energies), or an ESS log/input files.
+        xyz (list, str, dict, optional): Entries are either string-format coordinates, file paths, or ARC's dict format.
+                                         (If there's only one entry, it could be given directly, not in a list).
+                                         The file paths could direct to either a .xyz file, ARC conformers
+                                         (w/ or w/o energies), or an ESS log/input files.
         multiplicity (int, optional): The species' electron spin multiplicity. Can be determined from the
                                       adjlist/smiles/xyz (If unspecified, assumed to be either a singlet or a doublet).
         charge (int, optional): The species' net charge. Assumed to be 0 if unspecified.
@@ -131,18 +131,18 @@ class ARCSpecies(object):
         is_ts (bool):  Whether the species represents a transition state. `True` if it does.
         number_of_rotors (int): The number of potential rotors to scan.
         rotors_dict (dict): A dictionary of rotors. structure given below.
-        conformers (list): A list of selected conformers XYZs.
+        conformers (list): A list of selected conformers XYZs (dict format).
         conformer_energies (list): A list of conformers E0 (in kJ/mol).
         cheap_conformer (str): A string format xyz of a cheap conformer (not necessarily the best/lowest one).
-        most_stable_conformer (str): A string format xyz of the best/lowest conformer ARC found.
-        recent_md_conformer (list): A length three list containing the string format xyz of the recent conformer
+        most_stable_conformer (int): The index of the best/lowest conformer in self.conformers.
+        recent_md_conformer (list): A length three list containing the coordinates of the recent conformer
                                     generated by MD, the energy in kJ/mol, and the number of MD runs. Used to detect
                                     when the MD algorithm converges on a single structure.
         svpfit_output_file (str): The path to a Gaussian output file of an SVP Fit job if previously ran
                                   (otherwise, this job will be spawned if running Gromacs).
-        initial_xyz (str): The initial geometry guess.
-        final_xyz (str): The optimized species geometry.
-        cont_scan_xyz (str): The geometry used for continuous directed scan jobs.
+        initial_xyz (dict): The initial geometry guess.
+        final_xyz (dict): The optimized species geometry.
+        cont_scan_xyz (dict): The geometry used for continuous directed scan jobs.
         radius (float): The species radius in Angstrom.
         opt_level (str): Level of theory for geometry optimization. Saved for archiving.
         number_of_atoms (int): The number of atoms in the species/TS.
@@ -396,7 +396,7 @@ class ARCSpecies(object):
             if self.mol is not None:
                 self._number_of_atoms = len(self.mol.atoms)
             elif not self.is_ts:
-                self._number_of_atoms = len(self.get_xyz().splitlines())
+                self._number_of_atoms = len(self.get_xyz()['symbols'])
         return self._number_of_atoms
 
     @number_of_atoms.setter
@@ -411,8 +411,7 @@ class ARCSpecies(object):
             if self.mol is not None:
                 self._number_of_heavy_atoms = len([atom for atom in self.mol.atoms if atom.isNonHydrogen()])
             elif self.final_xyz is not None or self.initial_xyz is not None:
-                self._number_of_heavy_atoms = len([line for line in self.get_xyz().splitlines()
-                                                   if line.split()[0] != 'H'])
+                self._number_of_heavy_atoms = len([symbol for symbol in self.get_xyz()['symbols'] if symbol != 'H'])
             elif self.is_ts:
                 for ts_guess in self.ts_guesses:
                     if ts_guess.xyz is not None:
@@ -429,14 +428,17 @@ class ARCSpecies(object):
     def radius(self):
         """
         Determine the largest distance from the coordinate system origin attributed to one of the molecule's
-        atoms in 3D space. Units are Angstrom.
+        atoms in 3D space.
+
+        Returns:
+            float: Radius in are Angstrom.
         """
         if self._radius is None:
             translated_xyz = translate_to_center_of_mass(self.get_xyz())
-            _, symbols, x, y, z = get_xyz_matrix(translated_xyz)
             border_elements = list()  # a list of the farthest element/s
             r = 0
-            for si, xi, yi, zi in zip(symbols, x, y, z):
+            x, y, z = xyz_to_x_y_z(translated_xyz)
+            for si, xi, yi, zi in zip(translated_xyz['symbols'], x, y, z):
                 ri = xi ** 2 + yi ** 2 + zi ** 2
                 if ri == r:
                     border_elements.append(si)
@@ -493,8 +495,6 @@ class ARCSpecies(object):
             species_dict['number_of_radicals'] = self.number_of_radicals
         if self.opt_level is not None:
             species_dict['opt_level'] = self.opt_level
-        if self.final_xyz is not None:
-            species_dict['final_xyz'] = self.final_xyz
         if self.directed_rotors:
             species_dict['directed_rotors'] = self.directed_rotors
         if self.conf_is_isomorphic is not None:
@@ -504,7 +504,11 @@ class ARCSpecies(object):
         if self.mol is not None:
             species_dict['mol'] = self.mol.toAdjacencyList()
         if self.initial_xyz is not None:
-            species_dict['initial_xyz'] = self.initial_xyz
+            species_dict['initial_xyz'] = xyz_to_str(self.initial_xyz)
+        if self.final_xyz is not None:
+            species_dict['final_xyz'] = xyz_to_str(self.final_xyz)
+        if self.cont_scan_xyz is not None:
+            species_dict['cont_scan_xyz'] = xyz_to_str(self.cont_scan_xyz)
         if self.checkfile is not None:
             species_dict['checkfile'] = self.checkfile
         if self.most_stable_conformer is not None:
@@ -512,20 +516,18 @@ class ARCSpecies(object):
         if self.cheap_conformer is not None:
             species_dict['cheap_conformer'] = self.cheap_conformer
         if self.recent_md_conformer is not None:
-            species_dict['recent_md_conformer'] = self.recent_md_conformer
+            species_dict['recent_md_conformer'] = xyz_to_str(self.recent_md_conformer)
         if self.svpfit_output_file is not None:
             species_dict['svpfit_output_file'] = self.svpfit_output_file
         if self._radius is not None:
             species_dict['radius'] = self._radius
         if self.conformers:
-            species_dict['conformers'] = self.conformers
+            species_dict['conformers'] = [xyz_to_str(conf) for conf in self.conformers]
             species_dict['conformer_energies'] = self.conformer_energies
         if self.conformers_before_opt is not None:
-            species_dict['conformers_before_opt'] = self.conformers_before_opt
+            species_dict['conformers_before_opt'] = [xyz_to_str(conf) for conf in self.conformers_before_opt]
         if self.bdes is not None:
             species_dict['bdes'] = self.bdes
-        if self.cont_scan_xyz is not None:
-            species_dict['cont_scan_xyz'] = self.cont_scan_xyz
         return species_dict
 
     def from_dict(self, species_dict):
@@ -544,18 +546,17 @@ class ARCSpecies(object):
         self.yml_path = species_dict['yml_path'] if 'yml_path' in species_dict else None
         self.rxn_label = species_dict['rxn_label'] if 'rxn_label' in species_dict else None
         self._radius = species_dict['radius'] if 'radius' in species_dict else None
-        self.most_stable_conformer = species_dict['most_stable_conformer'] if 'most_stable_conformer'\
-                                                                              in species_dict else None
+        self.most_stable_conformer = species_dict['most_stable_conformer'] \
+            if 'most_stable_conformer' in species_dict else None
         self.cheap_conformer = species_dict['cheap_conformer'] if 'cheap_conformer' in species_dict else None
-        self.recent_md_conformer = species_dict['recent_md_conformer']\
+        self.recent_md_conformer = str_to_xyz(species_dict['recent_md_conformer']) \
             if 'recent_md_conformer' in species_dict else None
         self.force_field = species_dict['force_field'] if 'force_field' in species_dict else 'MMFF94'
         self.svpfit_output_file = species_dict['svpfit_output_file'] if 'svpfit_output_file' in species_dict else None
-        self.long_thermo_description = species_dict['long_thermo_description']\
+        self.long_thermo_description = species_dict['long_thermo_description'] \
             if 'long_thermo_description' in species_dict else ''
-        self.initial_xyz = standardize_xyz_string(species_dict['initial_xyz']) if 'initial_xyz' in species_dict\
-            else None
-        self.final_xyz = standardize_xyz_string(species_dict['final_xyz']) if 'final_xyz' in species_dict else None
+        self.initial_xyz = str_to_xyz(species_dict['initial_xyz']) if 'initial_xyz' in species_dict else None
+        self.final_xyz = str_to_xyz(species_dict['final_xyz']) if 'final_xyz' in species_dict else None
         self.conf_is_isomorphic = species_dict['conf_is_isomorphic'] if 'conf_is_isomorphic' in species_dict else None
         self.is_ts = species_dict['is_ts'] if 'is_ts' in species_dict else False
         if self.is_ts:
@@ -571,11 +572,11 @@ class ARCSpecies(object):
                     self.ts_methods = ['user guess']
             else:
                 raise TSError('ts_methods must be a list, got {0} of type {1}'.format(ts_methods, type(ts_methods)))
-            self.ts_guesses = [TSGuess(ts_dict=tsg) for tsg in species_dict['ts_guesses']]\
+            self.ts_guesses = [TSGuess(ts_dict=tsg) for tsg in species_dict['ts_guesses']] \
                 if 'ts_guesses' in species_dict else list()
-            self.successful_methods = species_dict['successful_methods']\
+            self.successful_methods = species_dict['successful_methods'] \
                 if 'successful_methods' in species_dict else list()
-            self.unsuccessful_methods = species_dict['unsuccessful_methods']\
+            self.unsuccessful_methods = species_dict['unsuccessful_methods'] \
                 if 'unsuccessful_methods' in species_dict else list()
             self.chosen_ts_method = species_dict['chosen_ts_method'] if 'chosen_ts_method' in species_dict else None
             self.chosen_ts = species_dict['chosen_ts'] if 'chosen_ts' in species_dict else None
@@ -584,7 +585,7 @@ class ARCSpecies(object):
             self.ts_methods = None
         if 'xyz' in species_dict and self.initial_xyz is None and self.final_xyz is None:
             self.process_xyz(species_dict['xyz'])
-        self.cont_scan_xyz = species_dict['cont_scan_xyz'] if 'cont_scan_xyz' in species_dict else None
+        self.cont_scan_xyz = str_to_xyz(species_dict['cont_scan_xyz']) if 'cont_scan_xyz' in species_dict else None
         for char in self.label:
             if char not in valid_chars:
                 raise SpeciesError('Species label {0} contains an invalid character: "{1}"'.format(self.label, char))
@@ -637,12 +638,14 @@ class ARCSpecies(object):
                     self.mol_list = self.mol.generate_resonance_structures(keep_isomorphic=False,
                                                                            filter_structures=True)
         if 'conformers' in species_dict:
-            self.conformers = species_dict['conformers']
-            self.conformer_energies = species_dict['conformer_energies'] if 'conformer_energies' in species_dict\
+            self.conformers = [str_to_xyz(conf) for conf in species_dict['conformers']]
+            self.conformer_energies = species_dict['conformer_energies'] if 'conformer_energies' in species_dict \
                 else [None] * len(self.conformers)
-        if self.mol is None and self.initial_xyz is None and self.final_xyz is None and not self.conformers\
-                and not any([tsg.xyz for tsg in self.ts_guesses]):
-            # TS species are allowed to be loaded w/o a structure
+        self.conformers_before_opt = [str_to_xyz(conf) for conf in species_dict['conformers_before_opt']] \
+            if 'conformers_before_opt' in species_dict else None
+        if self.mol is None and self.initial_xyz is None and self.final_xyz is None and not self.conformers \
+                and not self.is_ts:
+            # Only TS species are allowed to be loaded w/o a structure
             raise SpeciesError('Must have either mol or xyz for species {0}'.format(self.label))
         self.directed_rotors = species_dict['directed_rotors'] if 'directed_rotors' in species_dict else dict()
         self.bdes = species_dict['bdes'] if 'bdes' in species_dict else None
@@ -650,21 +653,24 @@ class ARCSpecies(object):
             raise SpeciesError('The .bdes argument must be a list, got {0} which is a {1}'.format(
                                 self.bdes, type(self.bdes)))
 
-        self.conformers_before_opt = species_dict['conformers_before_opt'] \
-            if 'conformers_before_opt' in species_dict else None
-
     def from_yml_file(self, label=None):
         """
-        Load important species attributes such as label and final_xyz from the Arkane YAML file
-        Actual QM data parsing is done later when processing thermo and kinetics
+        Load important species attributes such as label and final_xyz from an Arkane YAML file.
+        Actual QM data parsing is done later when processing thermo and kinetics.
+
+        Args:
+            label (str, optional): The specie label.
+
+        Raises:
+            ValueError: If the adjlist cannot be read.
         """
         rmg_spc = Species()
         arkane_spc = ArkaneSpecies(species=rmg_spc)
         # The data from the YAML file is loaded into the `species` argument of the `load_yaml` method in Arkane
         arkane_spc.load_yaml(path=self.yml_path, label=label, pdep=False)
         self.label = label if label is not None else arkane_spc.label
-        self.final_xyz = get_xyz_string(coords=arkane_spc.conformer.coordinates.value,
-                                        numbers=arkane_spc.conformer.number.value)
+        self.final_xyz = xyz_from_data(coords=arkane_spc.conformer.coordinates.value,
+                                       numbers=arkane_spc.conformer.number.value)
         if arkane_spc.adjacency_list is not None:
             try:
                 self.mol = Molecule().fromAdjacencyList(adjlist=arkane_spc.adjacency_list)
@@ -720,26 +726,22 @@ class ARCSpecies(object):
                 self.conformers.extend([conf['xyz'] for conf in lowest_confs])
                 self.conformer_energies.extend([None] * len(lowest_confs))
                 lowest_conf = conformers.get_lowest_confs(label=self.label, confs=lowest_confs, n=1)[0]
-                logger.info('Most stable force field conformer for {0}:'.format(self.label))
-                logger.info(lowest_conf['xyz'])
+                logger.info('Most stable force field conformer for {label}:\n{xyz}\n'.format(
+                    label=self.label, xyz=xyz_to_str(lowest_conf['xyz'])))
             else:
                 logger.error('Could not generate conformers for {0}'.format(self.label))
-                if not self.get_xyz(get_cheap=False):
+                if not self.get_xyz(generate=False):
                     logger.warning('No 3D coordinates available for species {0}!'.format(self.label))
-
 
     def get_cheap_conformer(self):
         """
         Cheaply (limiting the number of possible conformers) get a reasonable conformer,
         this could very well not be the best (lowest) one.
-
-        Returns:
-            str: A reasonable conformer's xyz coordinates in string format.
         """
         num_confs = min(500, max(50, len(self.mol.atoms) * 3))
         rd_mol, rd_index_map = conformers.embed_rdkit(label=self.label, mol=self.mol, num_confs=num_confs)
         xyzs, energies = conformers.rdkit_force_field(label=self.label, rd_mol=rd_mol, rd_index_map=rd_index_map,
-                                                      mol=self.mol, force_field='MMFF94', return_xyz_strings=True)
+                                                      mol=self.mol, force_field='MMFF94')
         if energies:
             min_energy = min(energies)
             min_energy_index = energies.index(min_energy)
@@ -750,15 +752,17 @@ class ARCSpecies(object):
             logger.warning('Could not generate a cheap conformer for {0}'.format(self.label))
             self.cheap_conformer = None
 
-    def get_xyz(self, get_cheap=True):
+    def get_xyz(self, generate=True):
         """
         Get the highest quality xyz the species has. If it doesn't have any 3D information, cheaply generate it.
 
         Args:
-            get_cheap (bool, optional): Whether to get a cheap FF conformer if no xyz is found. True to get.
+            generate (bool, optional): Whether to cheaply generate an FF conformer if no xyz is found.
+                                       ``True`` to generate. If generate is ``False`` and the species has no xyz data,
+                                       the method will return None.
 
         Return:
-             str: A string-format xyz coordinates.
+             dict: The xyz coordinates.
         """
         conf = self.conformers[0] if self.conformers else None
         xyz = self.final_xyz or self.initial_xyz or self.most_stable_conformer or conf or self.cheap_conformer
@@ -769,7 +773,7 @@ class ARCSpecies(object):
                         xyz = ts_guess.xyz
                         return xyz
                 return None
-            elif get_cheap:
+            elif generate:
                 self.get_cheap_conformer()
                 xyz = self.cheap_conformer
         return xyz
@@ -816,7 +820,7 @@ class ARCSpecies(object):
             deg_increment (float, optional): The dihedral angle increment.
             deg_abs (float, optional): The absolute desired dihedral angle.
             count (bool, optional): Whether to increment the rotor's times_dihedral_set parameter. `True` to increment.
-            xyz (str, optional): An alternative xyz to use instead of self.final_xyz.
+            xyz (dict, optional): An alternative xyz to use instead of self.final_xyz.
         """
         xyz = xyz or self.final_xyz
         if deg_increment is None and deg_abs is None:
@@ -841,12 +845,11 @@ class ARCSpecies(object):
                         logger.error('Rotor {i} with pivots {pivots} was set {times} times'.format(
                             i=i, pivots=rotor['pivots'], times=rotor['times_dihedral_set']))
                     raise RotorError('Rotors were set beyond the maximal number of times without converging')
-            coordinates, atoms, _, _, _ = get_xyz_matrix(xyz)
             mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
-            conf, rd_mol, indx_map = rdkit_conf_from_mol(mol, coordinates)
+            conf, rd_mol, indx_map = rdkit_conf_from_mol(mol, xyz)
             rd_scan = [indx_map[i - 1] for i in scan]  # convert the atom indices in `scan` to RDKit indices
             new_xyz = set_rdkit_dihedrals(conf, rd_mol, indx_map, rd_scan, deg_increment=deg_increment, deg_abs=deg_abs)
-            self.initial_xyz = get_xyz_string(coords=new_xyz, symbols=atoms)
+            self.initial_xyz = new_xyz
 
     def determine_symmetry(self):
         """
@@ -854,8 +857,7 @@ class ARCSpecies(object):
         """
         if self.optical_isomers is None and self.external_symmetry is None:
             xyz = self.get_xyz()
-            coords, symbols, _, _, _ = get_xyz_matrix(xyz)
-            symmetry, optical_isomers = determine_symmetry(coords, symbols)
+            symmetry, optical_isomers = determine_symmetry(xyz)
             self.optical_isomers = self.optical_isomers if self.optical_isomers is not None else optical_isomers
             if self.optical_isomers != optical_isomers:
                 logger.warning("User input of optical isomers for {0} and ARC's calculation differ: {1} and {2},"
@@ -886,15 +888,14 @@ class ARCSpecies(object):
             if xyz is None and len(self.conformers):
                 xyz = self.conformers[0]
             if xyz:
-                atoms = get_xyz_matrix(xyz)[1]
                 electrons = 0
-                for atom in atoms:
-                    for number, symbol in symbol_by_number.items():
-                        if symbol == atom:
+                for symbol in xyz['symbols']:
+                    for number, symb in symbol_by_number.items():
+                        if symbol == symb:
                             electrons += number
                             break
                     else:
-                        raise SpeciesError('Could not identify atom symbol {0}'.format(atom))
+                        raise SpeciesError('Could not identify atom symbol {0}'.format(symbol))
                 if electrons % 2 == 1:
                     self.multiplicity = 2
                     logger.warning('\nMultiplicity not specified for {0}, assuming a value of 2'.format(self.label))
@@ -922,15 +923,20 @@ class ARCSpecies(object):
 
     def mol_from_xyz(self, xyz=None, get_cheap=False):
         """
-        Make sure atom order in self.mol corresponds to xyz
-        Important for TS discovery and for identifying rotor indices
+        Make sure atom order in self.mol corresponds to xyz.
+        Important for TS discovery and for identifying rotor indices.
 
-        This works by generating a molecule from the xyz and using the
+        This works by generating a molecule from xyz and using the
         2D structure to confirm that the perceived molecule is correct.
-        Resonance structures are generated and saved to ``self.mol_list``.
+        Resonance structures are generated and saved to self.mol_list.
+        If ``xyz`` is not given, the species xyz will be used.
+
+        Args:
+            xyz (dict, optional): Alternative coordinates to use.
+            get_cheap (bool, optional): Whether to generate conformers if the species has no xyz data.
         """
         if xyz is None:
-            xyz = self.get_xyz(get_cheap=get_cheap)
+            xyz = self.get_xyz(generate=get_cheap)
 
         if self.mol is not None:
             # self.mol should have come from another source, e.g., SMILES or yml
@@ -968,20 +974,23 @@ class ARCSpecies(object):
         Process the user's input and add either to the .conformers attribute or to .ts_guesses.
 
         Args:
-            xyz_list (list, str): Entries are either string-format coordinates or file paths.
-                                  (If there's only one entry, it could be given directly, not in a list)
-                                  The file paths could direct to either a .xyz file, ARC conformers (w/ or w/o
-                                  energies), or an ESS log/input files, making this method extremely flexible.
+            xyz_list (list, str, dict): Entries are either string-format, dict-format coordinates or file paths.
+                                       (If there's only one entry, it could be given directly, not in a list)
+                                       The file paths could direct to either a .xyz file, ARC conformers (w/ or w/o
+                                       energies), or an ESS log/input files, making this method extremely flexible.
         """
         if xyz_list is not None:
             if not isinstance(xyz_list, list):
                 xyz_list = [xyz_list]
             xyzs, energies = list(), list()
             for xyz in xyz_list:
-                if not isinstance(xyz, (str, unicode)):
-                    raise InputError('each xyz entry in xyz_list must be a string. '
+                if not isinstance(xyz, (str, unicode, dict)):
+                    raise InputError('Each xyz entry in xyz_list must be either a string or a dictionary. '
                                      'Got:\n{0}\nwhich is a {1}'.format(xyz, type(xyz)))
-                if os.path.isfile(xyz):
+                if isinstance(xyz, dict):
+                    xyzs.append(check_xyz_dict(xyz))
+                    energies.append(None)  # dummy (lists should be the same length)
+                elif os.path.isfile(xyz):
                     file_extension = os.path.splitext(xyz)[1]
                     if 'txt' in file_extension:
                         # assume this is an ARC conformer file
@@ -992,9 +1001,9 @@ class ARCSpecies(object):
                         # assume this is an ESS log file
                         xyzs.append(parse_xyz_from_file(xyz))  # also calls standardize_xyz_string()
                         energies.append(None)  # dummy (lists should be the same length)
-                else:
-                    # assume this is a string format xyz
-                    xyzs.append(standardize_xyz_string(xyz))
+                elif isinstance(xyz, (str, unicode)):
+                    # string which does not represent a (valid) path, treat as a string representation of xyz
+                    xyzs.append(str_to_xyz(xyz))
                     energies.append(None)  # dummy (lists should be the same length)
             if not self.is_ts:
                 self.conformers.extend(xyzs)
@@ -1020,11 +1029,15 @@ class ARCSpecies(object):
 
     def set_transport_data(self, lj_path, opt_path, bath_gas, opt_level, freq_path='', freq_level=None):
         """
-        Set the species.transport_data attribute after a Lennard-Jones calculation (via OneDMin)
-        `lj_path` is the path to a oneDMin job output file
-        `opt_path` is the path to an opt job output file
-        `bath_gas` is the oneDMin job bath gas
-        `opt_level` is the optimization level of theory
+        Set the species.transport_data attribute after a Lennard-Jones calculation (via OneDMin).
+
+        Args:
+            lj_path (str): The path to a oneDMin job output file.
+            opt_path (str): The path to an opt job output file.
+            bath_gas (str): The oneDMin job bath gas.
+            opt_level (str): The optimization level of theory.
+            freq_path (str, optional): The path to a frequencies job output file.
+            freq_level (str, optional): The frequencies level of theory.
         """
         original_comment = self.transport_data.comment
         comment = 'L-J coefficients calculated by OneDMin using a DF-MP2/aug-cc-pVDZ potential energy surface ' \
@@ -1043,9 +1056,7 @@ class ARCSpecies(object):
             shape_index = 0
             comment += '; The molecule is monoatomic'
         else:
-            coordinates = get_xyz_matrix(self.get_xyz())[0]
-            coordinates = np.array(coordinates)
-            if is_linear(coordinates):
+            if is_linear(coordinates=np.array(self.get_xyz()['coords'])):
                 shape_index = 1
                 comment += '; The molecule is linear'
             else:
@@ -1080,7 +1091,7 @@ class ARCSpecies(object):
         Args:
             allow_nonisomorphic_2d (bool, optional): Whether to continue spawning jobs for the species even if this
                                                      test fails. `True` to allow (default is `False`).
-            xyz (str, optional): The coordinates to check (will use self.final_xyz if not given).
+            xyz (dict, optional): The coordinates to check (will use self.final_xyz if not given).
             verbose (bool, optional): Whether to log isomorphism findings and errors.
 
         Returns:
@@ -1198,9 +1209,13 @@ class ARCSpecies(object):
                 top1 = [i for i in range(len(self.mol.atoms)) if i not in top2]
             elif len(top2) > len(top1):
                 top2 = [i for i in range(len(self.mol.atoms)) if i not in top1]
-        split_xyz = self.final_xyz.splitlines()
-        xyz1 = '\n'.join([split_xyz[i] for i in top1])
-        xyz2 = '\n'.join([split_xyz[i] for i in top2])
+        xyz1, xyz2 = dict(), dict()
+        xyz1['symbols'] = tuple(symbol for i, symbol in enumerate(self.final_xyz['symbols']) if i in top1)
+        xyz2['symbols'] = tuple(symbol for i, symbol in enumerate(self.final_xyz['symbols']) if i in top2)
+        xyz1['isotopes'] = tuple(isotope for i, isotope in enumerate(self.final_xyz['isotopes']) if i in top1)
+        xyz2['isotopes'] = tuple(isotope for i, isotope in enumerate(self.final_xyz['isotopes']) if i in top2)
+        xyz1['coords'] = tuple(coord for i, coord in enumerate(self.final_xyz['coords']) if i in top1)
+        xyz2['coords'] = tuple(coord for i, coord in enumerate(self.final_xyz['coords']) if i in top2)
         xyz1, xyz2 = translate_to_center_of_mass(xyz1), translate_to_center_of_mass(xyz2)
 
         mol_copy = self.mol.copy(deep=True)
@@ -1282,8 +1297,8 @@ class TSGuess(object):
     """
     TSGuess class
 
-    The user can define xyz directly, and the default `method` will be 'User guess'
-    Alternatively, either ARC or the user can provide reactant/s and product/s geometries with a specified `method`
+    The user can define xyz directly, and the default `method` will be 'User guess'.
+    Alternatively, either ARC or the user can provide reactant/s and product/s geometries with a specified `method`.
     `method` could be one of the following:
     - QST2 (not implemented)
     - DEGSM (not implemented)
@@ -1298,19 +1313,19 @@ class TSGuess(object):
         products_xyz (list, optional): A list of tuples, each containing:
                                        (product label, product geometry in string format).
         family (str, optional): The RMG family that corresponds to the reaction, if applicable.
-        xyz (str, optional): The 3D coordinates guess.
+        xyz (dict, str, optional): The 3D coordinates guess.
         rmg_reaction (Reaction, optional): An RMG Reaction object.
         ts_dict (dict, optional): A dictionary to create this object from (used when restarting ARC).
         energy (float): Relative energy of all TS conformers in kJ/mol.
 
     Attributes:
-        xyz (str): The 3D coordinates guess.
-        opt_xyz (str): The 3D coordinates after optimization at the ts_guesses level.
+        initial_xyz (dict): The 3D coordinates guess.
+        opt_xyz (dict): The 3D coordinates after optimization at the ts_guesses level.
         method (str): The method/source used for the xyz guess.
         reactants_xyz (list): A list of tuples, each containing:
-                              (reactant label, reactant geometry in string format).
+                              (reactant label, reactant xyz).
         products_xyz (list): A list of tuples, each containing:
-                             (product label, product geometry in string format).
+                             (product label, product xyz).
         family (str): The RMG family that corresponds to the reaction, if applicable.
         rmg_reaction (Reaction): An RMG Reaction object.
         t0 (float): Initial time of spawning the guess job.
@@ -1332,14 +1347,14 @@ class TSGuess(object):
             self.t0 = None
             self.index = None
             self.execution_time = None
-            self.xyz = None
             self.opt_xyz = None
-            self.process_xyz(xyz)  # populates self.xyz
+            self.initial_xyz = None
+            self.process_xyz(xyz)  # populates self.initial_xyz
             self.success = None
             self.energy = energy
             self.method = method.lower() if method is not None else 'user guess'
             if 'user guess' in self.method:
-                if self.xyz is None:
+                if self.initial_xyz is None:
                     raise TSError('If no method is specified, an xyz guess must be given')
                 self.success = True
                 self.execution_time = 0
@@ -1363,8 +1378,10 @@ class TSGuess(object):
         ts_dict['energy'] = self.energy
         ts_dict['index'] = self.index
         ts_dict['execution_time'] = self.execution_time
-        if self.xyz:
-            ts_dict['xyz'] = self.xyz
+        if self.initial_xyz:
+            ts_dict['initial_xyz'] = self.initial_xyz
+        if self.opt_xyz:
+            ts_dict['opt_xyz'] = self.opt_xyz
         if self.reactants_xyz:
             ts_dict['reactants_xyz'] = self.reactants_xyz
         if self.products_xyz:
@@ -1383,15 +1400,15 @@ class TSGuess(object):
         """
         self.t0 = ts_dict['t0'] if 't0' in ts_dict else None
         self.index = ts_dict['index'] if 'index' in ts_dict else None
-        self.xyz = ts_dict['xyz'] if 'xyz' in ts_dict else None
-        self.process_xyz(self.xyz)  # re-populates self.xyz
+        self.initial_xyz = ts_dict['initial_xyz'] if 'initial_xyz' in ts_dict else None
+        self.process_xyz(self.initial_xyz)  # re-populates self.initial_xyz
         self.success = ts_dict['success'] if 'success' in ts_dict else None
         self.energy = ts_dict['energy'] if 'energy' in ts_dict else None
         self.execution_time = ts_dict['execution_time'] if 'execution_time' in ts_dict else None
         self.method = ts_dict['method'].lower() if 'method' in ts_dict else 'user guess'
         if 'user guess' in self.method:
-            if self.xyz is None:
-                raise TSError('If no method is specified, an xyz guess must be given')
+            if self.initial_xyz is None:
+                raise TSError('If no method is specified, an xyz guess must be given (initial_xyz).')
             self.success = self.success if self.success is not None else True
             self.execution_time = '0'
         self.reactants_xyz = ts_dict['reactants_xyz'] if 'reactants_xyz' in ts_dict else list()
@@ -1462,9 +1479,9 @@ class TSGuess(object):
             raise InputError('AutoTST requires an RMG Reaction object. Got: {0}'.format(type(self.rmg_reaction)))
         if self.family not in ['H_Abstraction']:
             logger.debug('AutoTST currently only works for H_Abstraction. Got: {0}'.format(self.family))
-            self.xyz = ''
+            self.initial_xyz = None
         else:
-            self.xyz = atst.autotst(rmg_reaction=self.rmg_reaction, reaction_family=self.family)
+            self.initial_xyz = atst.autotst(rmg_reaction=self.rmg_reaction, reaction_family=self.family)
 
     def qst2(self):
         """
@@ -1492,18 +1509,28 @@ class TSGuess(object):
 
     def process_xyz(self, xyz):
         """
-        If xyz represents a file path, parse it.
-        Standardize the xyz format using converter.standardize_xyz_string
+        Process the user's input. If ``xyz`` represents a file path, parse it.
+
+        Args:
+            xyz (dict, str): The coordinates in a dict/string form or a path to a file containing the coordinates.
+
+        Raises:
+            InputError: If xyz is of wrong type.
         """
         if xyz is not None:
-            if os.path.isfile(xyz):
-                xyz = parse_xyz_from_file(xyz)
-            self.xyz = standardize_xyz_string(xyz)
+            if not isinstance(xyz, (dict, str, unicode)):
+                raise InputError('xyz must be either a dictionary or string, '
+                                 'got:\n{0}\nwhich is a {1}'.format(xyz, type(xyz)))
+            if isinstance(xyz, str):
+                xyz = parse_xyz_from_file(xyz) if os.path.isfile(xyz) else str_to_xyz(xyz)
+            self.initial_xyz = check_xyz_dict(xyz)
 
 
-def determine_occ(label, xyz, charge):
+def determine_occ(xyz, charge):
     """
-    Determines the number of occupied orbitals for an MRCI calculation
+    Determines the number of occupied orbitals for an MRCI calculation.
+
+    Todo
     """
     electrons = 0
     for line in xyz.split('\n'):
@@ -1668,17 +1695,17 @@ def enumerate_bonds(mol):
 
 def check_xyz(xyz, multiplicity, charge):
     """
-    Checks a string-format coordinates for electronic consistency with the spin multiplicity and charge.
+    Checks xyz for electronic consistency with the spin multiplicity and charge.
 
     Args:
-        xyz (str): The species coordinates.
+        xyz (dict): The species coordinates.
         multiplicity (int): The species spin multiplicity.
         charge (int): The species net charge.
 
     Returns:
         bool: Whether the input arguments are all in agreement. True if they are.
     """
-    symbols = get_xyz_matrix(xyz)[1]
+    symbols = xyz['symbols']
     electrons = 0
     for symbol in symbols:
         for number, element_symbol in symbol_by_number.items():
@@ -1689,4 +1716,3 @@ def check_xyz(xyz, multiplicity, charge):
     if electrons % 2 ^ multiplicity % 2:
         return True
     return False
-

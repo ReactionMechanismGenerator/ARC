@@ -497,8 +497,10 @@ class ARC(object):
                                 # try correcting relative paths
                                 if os.path.isfile(os.path.join(arc_path, val)):
                                     self.output[label]['paths'][key] = os.path.join(arc_path, val)
+                                    logger.debug('corrected path to {0}'.format(os.path.join(arc_path, val)))
                                 elif os.path.isfile(os.path.join(arc_path, 'Projects', val)):
                                     self.output[label]['paths'][key] = os.path.join(arc_path, 'Projects', val)
+                                    logger.debug('corrected path to {0}'.format(os.path.join(arc_path, val)))
                                 else:
                                     raise SpeciesError('Could not find {0} output file for species {1}: {2}'.format(
                                         key, label, val))
@@ -1051,11 +1053,13 @@ class ARC(object):
         if any([spc.bdes is not None for spc in self.arc_species_list]):
             for species in self.arc_species_list:
                 if species.label == 'H':
-                    if species.number_of_atoms == 1 and species.get_xyz(get_cheap=True).split()[0][0] == 'H':
+                    if species.number_of_atoms == 1 and species.get_xyz(generate=True)['symbols'][0] == 'H':
                         break
                     else:
                         raise SpeciesError('A species with label "H" was defined, but does not seem to be '
-                                           'the hydrogen atom species. Cannot calculate bond dissociation energies.')
+                                           'the hydrogen atom species. Cannot calculate bond dissociation energies.\n'
+                                           'Got the following species: {0}'.format(
+                                            [spc.label for spc in self.arc_species_list]))
             else:
                 # no H species defined, make one
                 h = ARCSpecies(label='H', smiles='[H]', generate_thermo=False)
