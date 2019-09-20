@@ -80,15 +80,6 @@ class Processor(object):
         self.sp_level, self.freq_level = process_model_chemistry(model_chemistry)
         self.freq_scale_factor = freq_scale_factor
         self.lib_long_desc = lib_long_desc
-        load_thermo_libs, load_kinetic_libs = False, False
-        if any([species.is_ts and output[species.label]['convergence'] for species in self.species_dict.values()]):
-            load_kinetic_libs = True
-        if any([species.generate_thermo and output[species.label]['convergence']
-                for species in self.species_dict.values()]):
-            load_thermo_libs = True
-        if self.rmgdb is not None and (load_kinetic_libs or load_thermo_libs):
-            rmgdb.load_rmg_database(rmgdb=self.rmgdb, load_thermo_libs=load_thermo_libs,
-                                    load_kinetic_libs=load_kinetic_libs)
         t_min = t_min if t_min is not None else (300, 'K')
         t_max = t_max if t_max is not None else (3000, 'K')
         if isinstance(t_min, (int, float)):
@@ -245,6 +236,10 @@ class Processor(object):
                     #     thermo_job = ThermoJob(arkane_spc, 'NASA')
                     #     thermo_job.execute(output_directory=output_path, plot=False)
                 try:
+                    self.load_rmg_db()
+                except Exception as e:
+                    logger.error('Could not load the RMG database! Got:\n{0}'.format(e))
+                try:
                     species.rmg_thermo = self.rmgdb.thermo.getThermoData(species.rmg_species)
                 except (ValueError, AttributeError) as e:
                     logger.info('Could not retrieve RMG thermo for species {0}, possibly due to missing 2D structure '
@@ -322,6 +317,10 @@ class Processor(object):
                 if success:
                     rxn.kinetics = kinetics_job.reaction.kinetics
                     plotter.log_kinetics(species.label, path=output_path)
+                    try:
+                        self.load_rmg_db()  # will only try to load if not already loaded (self.rmgdb is not None)
+                    except Exception as e:
+                        logger.error('Could not load the RMG database! Got:\n{0}'.format(e))
                     rxn.rmg_reactions = rmgdb.determine_rmg_kinetics(rmgdb=self.rmgdb, reaction=rxn.rmg_reaction,
                                                                      dh_rxn298=rxn.dh_rxn298)
 
@@ -369,7 +368,7 @@ class Processor(object):
             plot (bool): A flag indicating whether to plot a PDF of the calculated thermo properties (True to plot)
 
         Returns:
-            bool: Whether the job was successful (True for successful).
+            bool: Whether the job was successful (``True`` for successful).
         """
         if arkane_file is None:
             return False
@@ -388,8 +387,8 @@ class Processor(object):
         try:
             stat_mech_job.execute(output_directory=output_path, plot=plot)
         except Exception as e:
-            logger.error('statmech job for species {0} failed with the error message:\n{1}'.format(
-                arkane_spc.label, e.message))
+            logger.error('Arkane statmech job for species {0} failed with the error message:\n{1}'.format(
+                arkane_spc.label, e))
             success = False
         return success
 
@@ -488,3 +487,15 @@ class Processor(object):
         if not os.path.exists(os.path.dirname(output_path)):
             os.makedirs(os.path.dirname(output_path))
         shutil.copyfile(calc_path, output_path)
+
+    def load_rmg_db(self):
+        """Load the RMG database"""
+        load_thermo_libs, load_kinetic_libs = False, False
+        if any([species.is_ts and self.output[species.label]['convergence'] for species in self.species_dict.values()]):
+            load_kinetic_libs = True
+        if any([species.generate_thermo and self.output[species.label]['convergence']
+                for species in self.species_dict.values()]):
+            load_thermo_libs = True
+        if self.rmgdb is not None and (load_kinetic_libs or load_thermo_libs):
+            rmgdb.load_rmg_database(rmgdb=self.rmgdb, load_thermo_libs=load_thermo_libs,
+                                    load_kinetic_libs=load_kinetic_libs)
