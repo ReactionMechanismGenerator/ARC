@@ -156,7 +156,7 @@ def xyz_to_str(xyz_dict, isotope_format=None):
             row = '{0:4}'.format(symbol)
         row += '{0:14.8f}{1:14.8f}{2:14.8f}'.format(*coord)
         xyz_list.append(row)
-    return '\n'.join(xyz_list) + '\n'
+    return '\n'.join(xyz_list)
 
 
 def xyz_to_x_y_z(xyz_dict):

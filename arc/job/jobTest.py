@@ -6,15 +6,13 @@ This module contains unit tests of the arc.job.job module
 """
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
-import unittest
-import os
 import datetime
+import os
 import shutil
+import unittest
 
 from arc.job.job import Job
 from arc.settings import arc_path
-
-################################################################################
 
 
 class TestJob(unittest.TestCase):
@@ -30,8 +28,9 @@ class TestJob(unittest.TestCase):
         cls.maxDiff = None
         cls.ess_settings = {'gaussian': ['server1', 'server2'], 'molpro': ['server2'],
                             'qchem': ['server1'], 'onedmin': ['server1']}
+        cls.xyz_c = {'symbols': ('C',), 'isotopes': (12,), 'coords': ((0.0, 0.0, 0.0),)}
         cls.job1 = Job(project='arc_project_for_testing_delete_after_usage3', ess_settings=cls.ess_settings,
-                       species_name='tst_spc', xyz='C 0.0 0.0 0.0', job_type='opt', level_of_theory='b3lyp/6-31+g(d)',
+                       species_name='tst_spc', xyz=cls.xyz_c, job_type='opt', level_of_theory='b3lyp/6-31+g(d)',
                        multiplicity=1, fine=True, job_num=100,
                        testing=True, project_directory=os.path.join(arc_path, 'Projects', 'project_test'))
         cls.job1.initial_time = datetime.datetime(2019, 3, 15, 19, 53, 7, 0)
@@ -66,7 +65,7 @@ class TestJob(unittest.TestCase):
                          'max_job_time': 120,
                          'scan_res': 8.0,
                          'software': 'gaussian',
-                         'xyz': 'C 0.0 0.0 0.0'}
+                         'xyz': 'C       0.00000000    0.00000000    0.00000000'}
         self.assertEqual(job_dict, expected_dict)
 
     def test_from_dict(self):
@@ -86,47 +85,47 @@ class TestJob(unittest.TestCase):
 
     def test_automatic_ess_assignment(self):
         """Test that the Job module correctly assigns a software for specific methods and basis sets"""
-        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz='C 0.0 0.0 0.0',
+        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
                    job_type='opt', level_of_theory='b3lyp/6-311++G(d,p)', multiplicity=1, testing=True,
                    project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'gaussian')
 
-        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz='C 0.0 0.0 0.0',
+        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
                    job_type='opt', level_of_theory='ccsd(t)/avtz', multiplicity=1, testing=True,
                    project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'molpro')
 
-        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz='C 0.0 0.0 0.0',
+        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
                    job_type='opt', level_of_theory='wb97xd/6-311++g(d,p)', multiplicity=1, testing=True,
                    project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'gaussian')
 
-        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz='C 0.0 0.0 0.0',
+        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
                    job_type='opt', level_of_theory='wb97x-d3/6-311++g(d,p)', multiplicity=1, testing=True,
                    project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'qchem')
 
-        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz='C 0.0 0.0 0.0',
+        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
                    job_type='opt', level_of_theory='b97/6-311++g(d,p)', multiplicity=1, testing=True,
                    project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'gaussian')
 
-        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz='C 0.0 0.0 0.0',
+        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
                    job_type='opt', level_of_theory='m062x/6-311++g(d,p)', multiplicity=1, testing=True,
                    project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'gaussian')
 
-        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz='C 0.0 0.0 0.0',
+        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
                    job_type='opt', level_of_theory='m06-2x/6-311++g(d,p)', multiplicity=1, testing=True,
                    project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'qchem')
 
-        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz='C 0.0 0.0 0.0',
+        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
                    job_type='scan', level_of_theory='m062x/6-311++g(d,p)', multiplicity=1, testing=True,
                    project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'gaussian')
 
-        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz='C 0.0 0.0 0.0',
+        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
                    job_type='scan', level_of_theory='m06-2x/6-311++g(d,p)', multiplicity=1, testing=True,
                    project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'qchem')
@@ -139,13 +138,13 @@ class TestJob(unittest.TestCase):
         self.assertIsNone(self.job1.bath_gas)
 
         job2 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc',
-                   xyz='C 0.0 0.0 0.0', job_type='onedmin', level_of_theory='b3lyp/6-31+g(d)', multiplicity=1,
+                   xyz=self.xyz_c, job_type='onedmin', level_of_theory='b3lyp/6-31+g(d)', multiplicity=1,
                    testing=True, project_directory=os.path.join(arc_path, 'Projects', 'project_test'),
                    fine=True, job_num=100)
         self.assertEqual(job2.bath_gas, 'N2')
 
         job2 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc',
-                   xyz='C 0.0 0.0 0.0', job_type='onedmin', level_of_theory='b3lyp/6-31+g(d)', multiplicity=1,
+                   xyz=self.xyz_c, job_type='onedmin', level_of_theory='b3lyp/6-31+g(d)', multiplicity=1,
                    testing=True, project_directory=os.path.join(arc_path, 'Projects', 'project_test'),
                    fine=True, job_num=100, bath_gas='Ar')
         self.assertEqual(job2.bath_gas, 'Ar')

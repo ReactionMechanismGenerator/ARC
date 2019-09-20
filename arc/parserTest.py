@@ -12,6 +12,7 @@ import numpy as np
 
 from arc.settings import arc_path
 from arc.species import ARCSpecies
+from arc.species.converter import xyz_to_str
 from arc import parser
 
 ################################################################################
@@ -62,18 +63,24 @@ class TestParser(unittest.TestCase):
         xyz6 = parser.parse_xyz_from_file(path6)
         xyz7 = parser.parse_xyz_from_file(path7)
 
-        self.assertEqual(xyz1.rstrip(), xyz2.rstrip())
-        self.assertTrue('C       1.40511900    0.21728200    0.07675200' in xyz1)
-        self.assertTrue('O      -0.79314200    1.04818800    0.18134200' in xyz1)
-        self.assertTrue('H      -0.43701200   -1.34990600    0.92900600' in xyz2)
-        self.assertTrue('C                  2.12217963   -0.66843078    1.04808732' in xyz3)
-        self.assertTrue('N                  2.41731872   -1.07916417    2.08039935' in xyz3)
+        self.assertEqual(xyz1, xyz2)
+        xyz1_str = xyz_to_str(xyz1)
+        xyz2_str = xyz_to_str(xyz2)
+        xyz3_str = xyz_to_str(xyz3)
+        xyz4_str = xyz_to_str(xyz4)
+        xyz5_str = xyz_to_str(xyz5)
+        xyz6_str = xyz_to_str(xyz6)
+        self.assertTrue('C       1.40511900    0.21728200    0.07675200' in xyz1_str)
+        self.assertTrue('O      -0.79314200    1.04818800    0.18134200' in xyz1_str)
+        self.assertTrue('H      -0.43701200   -1.34990600    0.92900600' in xyz2_str)
+        self.assertTrue('C       2.12217963   -0.66843078    1.04808732' in xyz3_str)
+        self.assertTrue('N       2.41731872   -1.07916417    2.08039935' in xyz3_str)
         spc3 = ARCSpecies(label='AIBN', xyz=xyz3)
         self.assertEqual(len(spc3.mol.atoms), 24)
-        self.assertTrue('S         -0.4204682221       -0.3909949822        0.0245352116' in xyz4)
-        self.assertTrue('N                 -1.99742564    0.38106573    0.09139807' in xyz5)
-        self.assertTrue('N      -1.17538406    0.34366165    0.03265021' in xyz6)
-        self.assertEqual(len(xyz7.strip().splitlines()), 34)
+        self.assertTrue('S      -0.42046822   -0.39099498    0.02453521' in xyz4_str)
+        self.assertTrue('N      -1.99742564    0.38106573    0.09139807' in xyz5_str)
+        self.assertTrue('N      -1.17538406    0.34366165    0.03265021' in xyz6_str)
+        self.assertEqual(len(xyz7['symbols']), 34)
 
     def test_parse_t1(self):
         """Test T1 diagnostic parsing"""

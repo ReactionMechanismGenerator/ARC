@@ -354,13 +354,12 @@ def get_atom_radius(symbol):
         return None
 
 
-def determine_symmetry(coords, symbols):
+def determine_symmetry(xyz):
     """
     Determine external symmetry and chirality (optical isomers) of the species.
 
     Args:
-        coords (list): The 3D coordinates of a molecule in array-format.
-        symbols (list): Entries are atomic symbols correcponding to coords.
+        xyz (dict): The 3D coordinates.
 
     Returns:
         int: The external symmetry number.
@@ -368,10 +367,10 @@ def determine_symmetry(coords, symbols):
         int: 1 if no chiral centers are present, 2 if chiral centers are present.
     """
     atom_numbers = list()  # List of atomic numbers
-    for symbol in symbols:
+    for symbol in xyz['symbols']:
         atom_numbers.append(getElement(str(symbol)).number)
-    coords = np.array(coords, np.float64)  # N x 3 numpy.ndarray of atomic coordinates
-    #  in the same order as `atom_numbers`
+    # coords is an N x 3 numpy.ndarray of atomic coordinates in the same order as `atom_numbers`
+    coords = np.array(xyz['coords'], np.float64)
     unique_id = '0'  # Just some name that the SYMMETRY code gives to one of its jobs
     scr_dir = os.path.join(arc_path, str('scratch'))  # Scratch directory that the SYMMETRY code writes its files in
     if not os.path.exists(scr_dir):
@@ -502,3 +501,45 @@ def calculate_dihedral_angle(coords, torsion):
     if np.vdot(bxa, c) > 0:
         angle = 2 * np.pi - angle
     return angle * 180 / np.pi
+
+
+def almost_equal_coords(xyz1, xyz2):
+    """
+    A helper function for checking two xyz's are almost equal.
+
+    Args:
+        xyz1 (dict): Coordinates.
+        xyz2 (dict): Coordinates.
+    """
+    for xyz_coord1, xyz_coord2 in zip(xyz1['coords'], xyz2['coords']):
+        for xyz1_c, xyz2_c in zip(xyz_coord1, xyz_coord2):
+            if not np.isclose([xyz1_c], [xyz2_c]):
+                return False
+    return True
+
+
+def almost_equal_coords_lists(xyz1, xyz2):
+    """
+    A helper function for checking two lists of xyz's has at least one entry in each that is almost equal.
+    Useful for comparing xyz's in unit tests.
+
+    Args:
+        xyz1 (list, dict): Either a dict-format xyz, or a list of them.
+        xyz2 (list, dict): Either a dict-format xyz, or a list of them.
+
+    Returns:
+        bool: Whether at least one entry in each input xyz's is almost equal to an entry in the other xyz.
+    """
+    if not isinstance(xyz1, list):
+        xyz1 = [xyz1]
+    if not isinstance(xyz2, list):
+        xyz2 = [xyz2]
+    for xyz1_entry in xyz1:
+        for xyz2_entry in xyz2:
+            if xyz1_entry['symbols'] != xyz2_entry['symbols']:
+                return False
+            if almost_equal_coords(xyz1_entry, xyz2_entry):
+                break
+        else:
+            return False
+    return True

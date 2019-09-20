@@ -15,6 +15,7 @@ freq_scale_factor: 0.988
 job_memory: 14
 job_types:
   1d_rotors: true
+  bde: false
   conformers: true
   fine: true
   freq: true
@@ -31,9 +32,11 @@ output:
     convergence: true
     errors: ''
     info: ''
-    isomorphism: 'opt passed isomorphism check; '
+    isomorphism: 'opt passed isomorphism check; Conformers optimized
+      and compared at b3lyp/6-31g(d,p) empiricaldispersion=gd3bj; '
     job_types:
       1d_rotors: true
+      bde: true
       composite: false
       conformers: true
       fine: true
@@ -57,6 +60,7 @@ output:
     isomorphism: ''
     job_types:
       1d_rotors: true
+      bde: true
       composite: false
       conformers: false
       fine: false
@@ -73,13 +77,15 @@ output:
     restart: ''
     warnings: ''
   H2O2:
-    conformers: 'most stable conformer (0) passed isomorphism check; '
+    conformers: 'most stable conformer (0) passed isomorphism check; Conformers optimized
+      and compared at b3lyp/6-31g(d,p) empiricaldispersion=gd3bj; '
     convergence: true
     errors: ''
     info: ''
-    isomorphism: 'opt passed isomorphism check; '
+    isomorphism: 'opt passed isomorphism check;'
     job_types:
       1d_rotors: true
+      bde: true
       composite: false
       conformers: true
       fine: true
@@ -96,13 +102,15 @@ output:
     restart: ''
     warnings: ''
   N2H3:
-    conformers: 'most stable conformer (0) passed isomorphism check; '
+    conformers: 'most stable conformer (0) passed isomorphism check; Conformers optimized
+      and compared at b3lyp/6-31g(d,p) empiricaldispersion=gd3bj; '
     convergence: true
     errors: ''
     info: ''
     isomorphism: 'opt passed isomorphism check; '
     job_types:
       1d_rotors: true
+      bde: true
       composite: false
       conformers: true
       fine: true
@@ -130,10 +138,10 @@ species:
   bond_corrections: {}
   charge: 0
   external_symmetry: null
-  final_xyz: H   0.0   0.0   0.0
+  final_xyz: H       0.00000000    0.00000000    0.00000000
   force_field: MMFF94
   generate_thermo: true
-  initial_xyz: H   0.0   0.0   0.0
+  initial_xyz: H       0.00000000    0.00000000    0.00000000
   is_ts: false
   label: H
   long_thermo_description: ''

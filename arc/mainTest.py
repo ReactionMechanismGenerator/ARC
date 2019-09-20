@@ -179,6 +179,7 @@ class TestARC(unittest.TestCase):
         arc1.execute()
         self.assertEqual(arc1.freq_scale_factor, 0.988)
 
+        self.assertTrue(os.path.isfile(os.path.join(project_directory, 'output', 'thermo.info')))
         with open(os.path.join(project_directory, 'output', 'thermo.info'), 'r') as f:
             thermo_dft_ccsdtf12_bac = False
             for line in f.readlines():
@@ -241,7 +242,9 @@ class TestARC(unittest.TestCase):
         self.assertTrue(os.path.isfile(os.path.join(project_directory, 'output', 'thermo_parity_plots.pdf')))
 
         status = read_yaml_file(os.path.join(project_directory, 'output', 'status.yml'))
-        self.assertEqual(status['CH3CO2_rad']['isomorphism'], 'opt passed isomorphism check; ')
+        self.assertEqual(status['CH3CO2_rad']['isomorphism'],
+                         'opt passed isomorphism check; '
+                         'Conformers optimized and compared at b3lyp/6-31g(d,p) empiricaldispersion=gd3bj; ')
         self.assertTrue(status['CH3CO2_rad']['job_types']['sp'])
 
         with open(os.path.join(project_directory, 'output', 'Species', 'H2O2', 'arkane', 'species_dictionary.txt'),

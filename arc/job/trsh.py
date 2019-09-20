@@ -16,7 +16,7 @@ from arc.arc_exceptions import SpeciesError, TrshError
 from arc.common import get_logger, determine_ess
 from arc.settings import servers, delete_command, list_available_nodes_command, submit_filename, \
     inconsistency_ab, inconsistency_az, maximum_barrier, rotor_scan_resolution
-from arc.species.converter import get_xyz_string
+from arc.species.converter import xyz_from_data
 from arc.job.ssh import SSHClient
 
 logger = get_logger()
@@ -304,8 +304,8 @@ def trsh_negative_freq(label, log_file, neg_freqs_trshed=None, job_types=None):
             displacement = vibdisps[neg_freq_idx]
             xyz1 = atomcoords + factor * displacement
             xyz2 = atomcoords - factor * displacement
-            conformers.append(get_xyz_string(coords=xyz1, numbers=atomnos))
-            conformers.append(get_xyz_string(coords=xyz2, numbers=atomnos))
+            conformers.append(xyz_from_data(coords=xyz1, numbers=atomnos))
+            conformers.append(xyz_from_data(coords=xyz2, numbers=atomnos))
     return current_neg_freqs_trshed, conformers, output_errors, output_warnings
 
 

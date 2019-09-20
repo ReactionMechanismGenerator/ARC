@@ -44,6 +44,7 @@ name
 
 {charge} {multiplicity}
 {xyz}
+
 {scan}{scan_trsh}
 
 

@@ -10,19 +10,27 @@ import os
 
 from arc.arc_exceptions import TSError
 from arc.settings import arc_path
+from arc.species.converter import str_to_xyz
 
 
 def autotst(reaction_label=None, rmg_reaction=None, reaction_family=None):
     """
-    Run AutoTST to generate a TS guess
-    Currently only works for H Abstraction
-    `reaction_label` is AutoTST's string format of a reaction, e.g., CCCC+[O]O_[CH2]CCC+OO
-    `rmg_reaction` is an RMG Reaction object
-    `reaction_family` is the RMG family corresponding to the RMG Reaction object
-    Either `reaction_label` or `rmg_reaction` has to be given (ARC sends rmg_reaction)
-    If reaction_family isn't specified, it is assumed to be H_Abstraction
+    Run AutoTST to generate a TS guess. Currently only works for H Abstraction reactions.
+    Either `reaction_label` or `rmg_reaction` has to be given (ARC sends rmg_reaction).
+    If reaction_family isn't specified, it is assumed to be H_Abstraction.
+
+    Args:
+        reaction_label (str): AutoTST's string format reaction, e.g., CCCC+[O]O_[CH2]CCC+OO
+        rmg_reaction (Reaction): An RMG Reaction object.
+        reaction_family (str): The RMG family corresponding to the RMG Reaction object
+
+    Returns:
+        xyz (dict): THe TS guess.
+
+    Raises:
+        TSError: if neither ``rmg_reaction`` nor ``reaction_family`` were specified.
     """
-    xyz = None
+    xyz_str = ''
     xyz_path = os.path.join(arc_path, 'arc', 'ts', 'auto_tst.xyz')
     run_autotst_path = os.path.join(arc_path, 'arc', 'ts', 'run_autotst.py')
 
@@ -40,11 +48,11 @@ def autotst(reaction_label=None, rmg_reaction=None, reaction_family=None):
     if os.path.isfile(xyz_path):
         with open(xyz_path, 'r') as f:
             lines = f.readlines()
-            xyz = ''.join([str(line) for line in lines])
+            xyz_str = ''.join([str(line) for line in lines])
         os.remove(xyz_path)
-    if not xyz or xyz == '\n':
-        xyz = None
-    return xyz
+    if not xyz_str or xyz_str == '\n':
+        return None
+    return str_to_xyz(xyz_str)
 
 
 def get_reaction_label(rmg_reaction):

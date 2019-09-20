@@ -12,7 +12,7 @@ import time
 
 import arc.common as common
 from arc.arc_exceptions import InputError, SettingsError
-from arc.species.converter import get_xyz_matrix
+from arc.species.converter import str_to_xyz
 from arc.settings import arc_path, servers
 
 
@@ -143,7 +143,7 @@ class TestARC(unittest.TestCase):
 
     def test_calculate_dihedral_angle(self):
         """Test calculating a dihedral angle"""
-        propene = get_xyz_matrix("""C       1.22905000   -0.16449200    0.00000000
+        propene = str_to_xyz("""C       1.22905000   -0.16449200    0.00000000
 C      -0.13529200    0.45314000    0.00000000
 C      -1.27957200   -0.21983000    0.00000000
 H       1.17363000   -1.25551200    0.00000000
@@ -151,14 +151,14 @@ H       1.79909600    0.15138400    0.87934300
 H       1.79909600    0.15138400   -0.87934300
 H      -0.16831500    1.54137600    0.00000000
 H      -2.23664600    0.28960500    0.00000000
-H      -1.29848800   -1.30626200    0.00000000""")[0]
-        hydrazine = get_xyz_matrix("""N       0.70683700   -0.07371000   -0.21400700
+H      -1.29848800   -1.30626200    0.00000000""")
+        hydrazine = str_to_xyz("""N       0.70683700   -0.07371000   -0.21400700
 N      -0.70683700    0.07371000   -0.21400700
 H       1.11984200    0.81113900   -0.47587600
 H       1.07456200   -0.35127300    0.68988300
 H      -1.11984200   -0.81113900   -0.47587600
-H      -1.07456200    0.35127300    0.68988300""")[0]
-        cj_11974 = get_xyz_matrix("""C 	5.675	2.182	1.81
+H      -1.07456200    0.35127300    0.68988300""")
+        cj_11974 = str_to_xyz("""C 	5.675	2.182	1.81
 O 	4.408	1.923	1.256
 C 	4.269	0.813	0.479
 C 	5.303	-0.068	0.178
@@ -229,17 +229,17 @@ H 	2.383	-4.464	-2.049
 H 	2.851	-3.899	-0.431
 H 	3.826	-1.542	-3.932
 H 	2.134	-1.659	-3.429
-H 	2.951	-3.078	-4.102""")[0]
+H 	2.951	-3.078	-4.102""")
 
-        dihedral0 = common.calculate_dihedral_angle(coords=propene, torsion=[9, 3, 2, 7])
-        dihedral1 = common.calculate_dihedral_angle(coords=propene, torsion=[5, 1, 2, 7])
+        dihedral0 = common.calculate_dihedral_angle(coords=propene['coords'], torsion=[9, 3, 2, 7])
+        dihedral1 = common.calculate_dihedral_angle(coords=propene['coords'], torsion=[5, 1, 2, 7])
         self.assertAlmostEqual(dihedral0, 180, 2)
         self.assertAlmostEqual(dihedral1, 59.26447, 2)
 
-        dihedral2 = common.calculate_dihedral_angle(coords=hydrazine, torsion=[3, 1, 2, 5])
+        dihedral2 = common.calculate_dihedral_angle(coords=hydrazine['coords'], torsion=[3, 1, 2, 5])
         self.assertAlmostEqual(dihedral2, 148.31829, 2)
 
-        dihedral3 = common.calculate_dihedral_angle(coords=cj_11974, torsion=[15, 18, 19, 20])
+        dihedral3 = common.calculate_dihedral_angle(coords=cj_11974['coords'], torsion=[15, 18, 19, 20])
         self.assertAlmostEqual(dihedral3, 308.04758, 2)
 
 ################################################################################

@@ -16,14 +16,12 @@ from rmgpy.reaction import Reaction
 from rmgpy.transport import TransportData
 
 from arc.species.species import ARCSpecies, TSGuess, determine_rotor_type, determine_rotor_symmetry, check_xyz
-from arc.species.converter import get_xyz_string, get_xyz_matrix, molecules_from_xyz, check_isomorphism
+from arc.species.converter import molecules_from_xyz, check_isomorphism, str_to_xyz, xyz_to_str, xyz_to_x_y_z
 from arc.settings import arc_path, default_levels_of_theory
 from arc.rmgdb import make_rmg_database_object
 from arc.plotter import save_conformers_file
 from arc.scheduler import Scheduler
-from arc.species.converter import standardize_xyz_string
-
-################################################################################
+from arc.common import almost_equal_coords_lists
 
 
 class TestARCSpecies(unittest.TestCase):
@@ -161,7 +159,6 @@ H      -0.41231900    0.99757300    0.00391900"""
         self.assertEqual(len(spc12.conformers), 2)
         self.assertEqual(len(spc12.conformer_energies), 2)
 
-
     def test_rmg_species_conversion_into_arc_species(self):
         """Test the conversion of an RMG species into an ARCSpecies"""
         self.spc1_rmg.label = None
@@ -205,38 +202,38 @@ H      -0.41231900    0.99757300    0.00391900"""
     def test_symmetry(self):
         """Test external symmetry and chirality determination"""
         allene = ARCSpecies(label=str('allene'), smiles=str('C=C=C'), multiplicity=1, charge=0)
-        allene.final_xyz = """C  -1.01646   0.10640  -0.91445
+        allene.final_xyz = str_to_xyz("""C  -1.01646   0.10640  -0.91445
                               H  -1.39000   1.03728  -1.16672
                               C   0.00000   0.00000   0.00000
                               C   1.01653  -0.10640   0.91438
                               H  -1.40975  -0.74420  -1.35206
                               H   0.79874  -0.20864   1.92036
-                              H   2.00101  -0.08444   0.59842"""
+                              H   2.00101  -0.08444   0.59842""")
         allene.determine_symmetry()
         self.assertEqual(allene.optical_isomers, 1)
         self.assertEqual(allene.external_symmetry, 4)
 
         ammonia = ARCSpecies(label=str('ammonia'), smiles=str('N'), multiplicity=1, charge=0)
-        ammonia.final_xyz = """N  0.06617   0.20024   0.13886
+        ammonia.final_xyz = str_to_xyz("""N  0.06617   0.20024   0.13886
                                H  -0.62578  -0.34119   0.63709
                                H  -0.32018   0.51306  -0.74036
-                               H   0.87976  -0.37219  -0.03564"""
+                               H   0.87976  -0.37219  -0.03564""")
         ammonia.determine_symmetry()
         self.assertEqual(ammonia.optical_isomers, 1)
         self.assertEqual(ammonia.external_symmetry, 3)
 
         methane = ARCSpecies(label=str('methane'), smiles=str('C'), multiplicity=1, charge=0)
-        methane.final_xyz = """C   0.00000   0.00000   0.00000
+        methane.final_xyz = str_to_xyz("""C   0.00000   0.00000   0.00000
                                H  -0.29717   0.97009  -0.39841
                                H   1.08773  -0.06879   0.01517
                                H  -0.38523  -0.10991   1.01373
-                               H -0.40533  -0.79140  -0.63049"""
+                               H -0.40533  -0.79140  -0.63049""")
         methane.determine_symmetry()
         self.assertEqual(methane.optical_isomers, 1)
         self.assertEqual(methane.external_symmetry, 12)
 
         chiral = ARCSpecies(label=str('chiral'), smiles=str('C(C)(O)(N)'), multiplicity=1, charge=0)
-        chiral.final_xyz = """C                 -0.49341625    0.37828349    0.00442108
+        chiral.final_xyz = str_to_xyz("""C                 -0.49341625    0.37828349    0.00442108
                               H                 -1.56331545    0.39193350    0.01003359
                               N                  0.01167132    1.06479568    1.20212111
                               H                  1.01157784    1.05203730    1.19687531
@@ -246,34 +243,34 @@ H      -0.41231900    0.99757300    0.00391900"""
                               C                  0.02253835    1.09779040   -1.25561654
                               H                 -0.34510997    0.59808430   -2.12741255
                               H                 -0.32122209    2.11106387   -1.25369100
-                              H                  1.09243518    1.08414066   -1.26122530"""
+                              H                  1.09243518    1.08414066   -1.26122530""")
         chiral.determine_symmetry()
         self.assertEqual(chiral.optical_isomers, 2)
         self.assertEqual(chiral.external_symmetry, 1)
 
         s8 = ARCSpecies(label=str('s8'), smiles=str('S1SSSSSSS1'), multiplicity=1, charge=0)
-        s8.final_xyz = """S   2.38341   0.12608   0.09413
+        s8.final_xyz = str_to_xyz("""S   2.38341   0.12608   0.09413
                           S   1.45489   1.88955  -0.13515
                           S  -0.07226   2.09247   1.14966
                           S  -1.81072   1.52327   0.32608
                           S  -2.23488  -0.39181   0.74645
                           S  -1.60342  -1.62383  -0.70542
                           S   0.22079  -2.35820  -0.30909
-                          S   1.66220  -1.25754  -1.16665"""
+                          S   1.66220  -1.25754  -1.16665""")
         s8.determine_symmetry()
         self.assertEqual(s8.optical_isomers, 1)
         self.assertEqual(s8.external_symmetry, 8)
 
         water = ARCSpecies(label=str('H2O'), smiles=str('O'), multiplicity=1, charge=0)
-        water.final_xyz = """O   0.19927   0.29049  -0.11186
+        water.final_xyz = str_to_xyz("""O   0.19927   0.29049  -0.11186
                              H   0.50770  -0.61852  -0.09124
-                             H  -0.70697   0.32803   0.20310"""
+                             H  -0.70697   0.32803   0.20310""")
         water.determine_symmetry()
         self.assertEqual(water.optical_isomers, 1)
         self.assertEqual(water.external_symmetry, 2)
 
     def test_xyz_format_conversion(self):
-        """Test conversions from string to list xyz formats"""
+        """Test conversions from string to dict xyz formats"""
         xyz_str0 = """N       2.24690600   -0.00006500    0.11597700
 C      -1.05654800    1.29155000   -0.02642500
 C      -1.05661400   -1.29150400   -0.02650600
@@ -284,23 +281,19 @@ H      -1.67242600    1.35091400   -0.93175000
 H      -1.74185400    1.35367700    0.82742800
 H      -0.39187100   -2.15447800    0.00045500
 H      -1.74341400   -1.35278100    0.82619100
-H      -1.67091600   -1.35164600   -0.93286400
-"""
+H      -1.67091600   -1.35164600   -0.93286400"""
 
-        xyz_list, atoms, x, y, z = get_xyz_matrix(xyz_str0)
-
-        # test all forms of input for get_xyz_string():
-        xyz_str1 = get_xyz_string(coords=xyz_list, symbols=atoms)
-        xyz_str2 = get_xyz_string(coords=xyz_list, numbers=[7, 6, 6, 6, 6, 1, 1, 1, 1, 1, 1])
-        mol, _ = molecules_from_xyz(xyz_str0)
-        xyz_str3 = get_xyz_string(coords=xyz_list, mol=mol)
+        xyz_dict = str_to_xyz(xyz_str0)
+        xyz_str1 = xyz_to_str(xyz_dict)
+        s_mol, b_mol = molecules_from_xyz(xyz_dict)
+        x, y, z = xyz_to_x_y_z(xyz_dict)
 
         self.assertEqual(xyz_str0, xyz_str1)
-        self.assertEqual(xyz_str1, xyz_str2)
-        self.assertEqual(xyz_str2, xyz_str3)
-        self.assertEqual(atoms, ['N', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H'])
-        self.assertEqual(x, [2.246906, -1.056548, -1.056614, -0.305141, 1.083589, -0.391683, -1.672426, -1.741854,
-                             -0.391871, -1.743414, -1.670916])
+        self.assertEqual(xyz_dict['symbols'], ('N', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H'))
+        self.assertEqual(xyz_dict['symbols'], tuple(atom.symbol for atom in s_mol.atoms))
+        self.assertEqual(xyz_dict['symbols'], tuple(atom.symbol for atom in b_mol.atoms))
+        self.assertEqual(x, (2.246906, -1.056548, -1.056614, -0.305141, 1.083589, -0.391683, -1.672426, -1.741854,
+                             -0.391871, -1.743414, -1.670916))
         self.assertEqual(y[1], 1.29155)
         self.assertEqual(z[-1], -0.932864)
 
@@ -422,7 +415,24 @@ H      -1.67091600   -1.35164600   -0.93286400
 
     def test_xyz_from_file(self):
         """Test parsing xyz from a file and saving it in the .initial_xyz attribute"""
-        self.assertTrue('N                 -2.36276900    2.14528400   -0.76917500' in self.spc7.conformers[0])
+        expected_xyz = {'symbols': ('N', 'N', 'N', 'N', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C',
+                                    'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
+                        'isotopes': (14, 14, 14, 14, 12, 12, 12, 12, 12, 12, 12, 12,
+                                     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                        'coords': ((0.342697, 0.256671, -0.178208),
+                                   (-0.433495, -0.657695, 0.054512), (2.41731872, -1.07916417, 2.08039935),
+                                   (-2.362769, 2.145284, -0.769175), (1.770075, -0.169463, -0.293983),
+                                   (-1.853044, -0.247836, 0.17823), (2.55942025, 1.11530153, -0.58321611),
+                                   (2.04300531, -1.25673666, -1.33341538), (-2.184306, -0.295998, 1.676229),
+                                   (-2.679947, -1.265, -0.615282), (2.12217963, -0.66843078, 1.04808732),
+                                   (-2.10138, 1.108101, -0.348404), (3.63048242, 0.90778556, -0.5731045),
+                                   (2.33388242, 1.88038907, 0.16008174), (2.28038909, 1.48886093, -1.57118254),
+                                   (1.4720186, -2.16169122, -1.12648223), (3.10742908, -1.49794218, -1.3260035),
+                                   (1.7671938, -0.89392348, -2.32499076), (-1.967535, -1.295127, 2.059502),
+                                   (-3.242229, -0.077235, 1.830058), (-1.586982, 0.433821, 2.22524),
+                                   (-2.479993, -2.265879, -0.228516), (-3.743773, -1.046138, -0.509693),
+                                   (-2.420253, -1.234761, -1.674964))}
+        self.assertTrue(almost_equal_coords_lists(self.spc7.conformers[0], expected_xyz))
 
     def test_process_xyz(self):
         """Test the process_xyz() function"""
@@ -505,7 +515,7 @@ H    2.9757   -2.2266    0.5368"""
         spc2 = ARCSpecies(label='test_spc2', xyz=xyz)
         self.assertIsNone(spc1.initial_xyz)
         self.assertIsNone(spc1.final_xyz)
-        self.assertEqual(spc2.conformers[0], expected_xyz2)
+        self.assertEqual(spc2.conformers[0], str_to_xyz(expected_xyz2))
         self.assertIsNone(spc2.final_xyz)
         self.assertEqual(len(spc2.conformers), 1)
         self.assertEqual(len(spc2.conformer_energies), 1)
@@ -526,7 +536,7 @@ H      -1.69944700    0.93441600   -0.11271200"""
         spc3 = ARCSpecies(label='test_spc3', xyz=xyz_path)
         self.assertIsNone(spc1.initial_xyz)
         self.assertIsNone(spc1.final_xyz)
-        self.assertEqual(spc3.conformers[0], expected_xyz3)
+        self.assertEqual(spc3.conformers[0], str_to_xyz(expected_xyz3))
         self.assertEqual(len(spc3.conformers), 1)
         self.assertEqual(len(spc3.conformer_energies), 1)
         self.assertEqual(spc3.multiplicity, 1)
@@ -608,34 +618,22 @@ H      -1.69944700    0.93441600   -0.11271200"""
                            ts_guess_level=default_levels_of_theory['ts_guesses'], rmgdatabase=rmgdb,
                            project_directory=project_directory, testing=True, job_types=job_types1,
                            orbitals_level=default_levels_of_theory['orbitals'], adaptive_levels=None)
-        xyzs = ["""O       1.09068700    0.26516800   -0.16706300
-C       2.92204100   -1.18335700   -0.38884900
-C       2.27655500   -0.00373900    0.08543500
-H       2.36544800   -1.88781000   -0.99914600
-H       3.96112000   -1.38854500   -0.14958800
-H       2.87813500    0.68828400    0.70399400
-""",
-                """O       1.19396100   -0.06003700    0.03890100
-C       3.18797000    0.77061300   -0.87352700
-C       2.43591200   -0.04439300    0.02171600
-H       4.27370000    0.76090200   -0.86286100
-H       2.66641700    1.41155700   -1.57757300
-H       3.00398000   -0.68336800    0.72359800
-""",
-                """O       1.35241100   -1.02956000   -0.24056200
-C      -0.72084300    0.01308200    0.09573000
-C       0.69217700    0.01185100   -0.09044300
-H      -1.25803800   -0.93018100    0.10926800
-H      -1.26861200    0.94177100    0.22420100
-H       1.20290400    0.99303700   -0.09819400
-""",
-                """O      -1.40102900   -0.98575100   -0.11588500
-C       0.72457000   -0.01076700    0.06448800
-C      -0.69494600    0.03450000   -0.06206300
-H       1.22539000   -0.97248000    0.11741200
-H       1.31277400    0.90087100    0.10878400
-H      -1.16675800    1.03362600   -0.11273700
-"""]
+        xyzs = [{'symbols': ('O', 'C', 'C', 'H', 'H', 'H'), 'isotopes': (16, 12, 12, 1, 1, 1),
+                 'coords': ((1.090687, 0.265168, -0.167063), (2.922041, -1.183357, -0.388849),
+                            (2.276555, -0.003739, 0.085435), (2.365448, -1.88781, -0.999146),
+                            (3.96112, -1.388545, -0.149588), (2.878135, 0.688284, 0.703994))},
+                {'symbols': ('O', 'C', 'C', 'H', 'H', 'H'), 'isotopes': (16, 12, 12, 1, 1, 1),
+                 'coords': ((1.193961, -0.060037, 0.038901), (3.18797, 0.770613, -0.873527),
+                            (2.435912, -0.044393, 0.021716), (4.2737, 0.760902, -0.862861),
+                            (2.666417, 1.411557, -1.577573), (3.00398, -0.683368, 0.723598))},
+                {'symbols': ('O', 'C', 'C', 'H', 'H', 'H'), 'isotopes': (16, 12, 12, 1, 1, 1),
+                 'coords': ((1.352411, -1.02956, -0.240562), (-0.720843, 0.013082, 0.09573),
+                            (0.692177, 0.011851, -0.090443), (-1.258038, -0.930181, 0.109268),
+                            (-1.268612, 0.941771, 0.224201), (1.202904, 0.993037, -0.098194))},
+                {'symbols': ('O', 'C', 'C', 'H', 'H', 'H'), 'isotopes': (16, 12, 12, 1, 1, 1),
+                 'coords': ((-1.401029, -0.985751, -0.115885), (0.72457, -0.010767, 0.064488),
+                            (-0.694946, 0.0345, -0.062063), (1.22539, -0.97248, 0.117412),
+                            (1.312774, 0.900871, 0.108784), (-1.166758, 1.033626, -0.112737))}]
         energies = [0, 5, 5, 5]  # J/mol
 
         save_conformers_file(project_directory=project_directory, label='vinoxy', xyzs=xyzs, level_of_theory='level1',
@@ -746,31 +744,31 @@ H       1.32129900    0.71837500    0.38017700
 
         self.assertIsNone(spc1.initial_xyz)
         self.assertIsNone(spc1.final_xyz)
-        self.assertEqual(spc1.conformers, ['C 0.1 0.5 0.0'])
+        self.assertEqual(spc1.conformers, [{'coords': ((0.1, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)}])
         self.assertEqual(spc1.conformer_energies, [None])
 
-        self.assertEqual(spc2.initial_xyz, 'C 0.2 0.5 0.0')
+        self.assertEqual(spc2.initial_xyz, {'coords': ((0.2, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)})
         self.assertIsNone(spc2.final_xyz)
         self.assertEqual(spc2.conformers, [])
         self.assertEqual(spc2.conformer_energies, [])
 
         self.assertIsNone(spc3.initial_xyz)
-        self.assertEqual(spc3.final_xyz, 'C 0.3 0.5 0.0')
+        self.assertEqual(spc3.final_xyz, {'coords': ((0.3, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)})
         self.assertEqual(spc3.conformers, [])
         self.assertEqual(spc3.conformer_energies, [])
 
         self.assertIsNone(spc4.initial_xyz)
         self.assertIsNone(spc4.final_xyz)
-        self.assertEqual(spc4.conformers, ['C 0.4 0.5 0.0', 'C 0.5 0.5 0.0'])
+        self.assertEqual(spc4.conformers, [{'coords': ((0.4, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)},
+                                           {'coords': ((0.5, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)}])
         self.assertEqual(spc4.conformer_energies, [None, None])
 
     def test_consistent_atom_order(self):
         """Test that the atom order is preserved whether starting from SMILES or from xyz"""
         spc1 = ARCSpecies(label='spc1', smiles='CCCO')
         xyz1 = spc1.get_xyz()
-        for adj, coord in zip(spc1.mol.toAdjacencyList().splitlines(), xyz1.splitlines()):
-            if adj and coord:
-                self.assertEqual(adj.split()[1], coord.split()[0])
+        for atom, symbol in zip(spc1.mol.atoms, xyz1['symbols']):
+            self.assertEqual(atom.symbol, symbol)
 
         xyz2 = """C      -0.37147383   -0.54225753    0.07779977
 C       0.99011397    0.11006088   -0.10715587
@@ -834,10 +832,11 @@ O      -0.67437022    0.01989281    0.16029161
 H      -1.14812497    0.95492850    0.42742905
 H      -1.27300665   -0.88397696    0.14797321
 H       1.11582953    0.94384729   -0.10134685"""
-        self.assertTrue(check_xyz(xyz1, multiplicity=2, charge=0))
-        self.assertFalse(check_xyz(xyz1, multiplicity=1, charge=0))
-        self.assertFalse(check_xyz(xyz1, multiplicity=2, charge=1))
-        self.assertTrue(check_xyz(xyz1, multiplicity=1, charge=-1))
+        xyz_dict1 = str_to_xyz(xyz1)
+        self.assertTrue(check_xyz(xyz_dict1, multiplicity=2, charge=0))
+        self.assertFalse(check_xyz(xyz_dict1, multiplicity=1, charge=0))
+        self.assertFalse(check_xyz(xyz_dict1, multiplicity=2, charge=1))
+        self.assertTrue(check_xyz(xyz_dict1, multiplicity=1, charge=-1))
 
     def test_check_xyz_isomorphism(self):
         """Test the check_xyz_isomorphism() method"""
@@ -871,7 +870,7 @@ H       1.11582953    0.94384729   -0.10134685"""
                   H   0.4040540   2.2221690  -0.8962980
                   H   0.4040540   2.2221690   0.8962980"""  # dimethylformamide, O=CN(C)C
         spc2 = ARCSpecies(label='propanamide2', smiles='CCC(=O)N', xyz=xyz1)  # define w/ the correct xyz
-        spc2.final_xyz = xyz2  # set .final_xyz to the incorrect isomer
+        spc2.final_xyz = str_to_xyz(xyz2)  # set .final_xyz to the incorrect isomer
 
         spc2.conf_is_isomorphic = True  # set to True so that isomorphism is strictly enforced
         is_isomorphic2 = spc2.check_xyz_isomorphism()
@@ -922,8 +921,7 @@ H       1.11582953    0.94384729   -0.10134685"""
                   H      -1.44039245   -2.30287879   -0.01539125
                   H      -1.93050745   -0.82845379    0.88098475
                   H      -1.93050745   -0.82845379   -0.91176725"""
-        self.assertIn(standardize_xyz_string(xyz1), [standardize_xyz_string(spc.conformers[0])
-                                                     for spc in resulting_species])
+        self.assertTrue(any([almost_equal_coords_lists(str_to_xyz(xyz1), spc.conformers) for spc in resulting_species]))
         self.assertEqual(resulting_species[0].multiplicity, 2)
         self.assertEqual(resulting_species[0].multiplicity, 2)
 
@@ -939,8 +937,12 @@ H       1.11582953    0.94384729   -0.10134685"""
         ch3ch2o.final_xyz = ch3ch2o.conformers[0]
         spc1, spc2 = ch3ch2o.scissors()
         self.assertEqual(spc2.mol.toSMILES(), '[CH3]')
-        self.assertIn('C       0.69489465    0.19509601    0.00000000', spc1.conformers[0])
-        self.assertIn('H       0.79855665    0.87161601    0.88006600', spc1.conformers[0])
+        expected_conformer0 = {'symbols': ('C', 'O', 'H', 'H'), 'isotopes': (12, 16, 1, 1),
+                               'coords': ((0.6948946528715227, 0.1950960079388373, 0.0),
+                                          (-0.6219693471284773, -0.2562079920611626, 0.0),
+                                          (0.7985566528715228, 0.8716160079388374, 0.880066),
+                                          (0.7985566528715228, 0.8716160079388374, -0.880066))}
+        self.assertTrue(almost_equal_coords_lists(spc1.conformers[0], expected_conformer0))
         self.assertEqual(spc1.multiplicity, 3)
         self.assertEqual(spc2.multiplicity, 2)
 
@@ -965,7 +967,7 @@ H       1.11582953    0.94384729   -0.10134685"""
                    H                 -1.02428550    1.53977616   -0.58246004
                    O                  1.32323842    0.95413994   -1.37785658"""
         spc0 = ARCSpecies(label='0',
-                        smiles='CONSC1OCCC1', xyz=xyz0, bdes=[(6, 8), 'all_h'])
+                          smiles='CONSC1OCCC1', xyz=xyz0, bdes=[(6, 8), 'all_h'])
         spc0.final_xyz = spc0.conformers[0]
         spc_list = spc0.scissors()
         self.assertEqual(len(spc_list), 14)  # 11 H's, one H species, two non-H cut fragments

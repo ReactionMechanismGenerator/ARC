@@ -131,6 +131,7 @@ cd $WorkDir
 . $g16root/g16/bsd/g16.profile
 
 cp $SubmitDir/input.gjf .
+cp $SubmitDir/check.chk .
 
 g16 < input.gjf > input.log
 formchk check.chk check.fchk

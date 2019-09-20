@@ -29,7 +29,8 @@ from rmgpy.species import Species
 
 from arc.arc_exceptions import InputError, SanitizationError
 from arc.common import get_logger, min_list
-from arc.species.converter import get_xyz_matrix, rdkit_conf_from_mol, molecules_from_xyz
+from arc.species.converter import rdkit_conf_from_mol, molecules_from_xyz, check_xyz_dict, str_to_xyz, xyz_to_str, \
+    xyz_to_x_y_z, xyz_from_data
 from arc.species.species import ARCSpecies
 
 
@@ -61,17 +62,25 @@ def draw_structure(xyz=None, species=None, project_directory=None, method='show_
 def show_sticks(xyz=None, species=None, project_directory=None):
     """
     Draws the molecule in a "sticks" style according to the supplied xyz coordinates.
-    Returns whether successful of not. If successful, saves an image using draw_3d.
+    Returns whether successful of not. If successful, saves the image using draw_3d.
+    Either ``xyz`` or ``species`` must be specified.
+
+    Args:
+        xyz (str, dict, optional): The coordinates to display.
+        species (ARCSpecies, optional): xyz coordinates will be taken from the species.
+        project_directory (str): ARC's project directory to save a draw_3d image in.
+
+    Returns:
+        bool: Whether the show_sticks drawing was successfull. ``True`` if it was.
     """
     xyz = check_xyz_species_for_drawing(xyz, species)
-    coordinates = get_xyz_matrix(xyz)[0]
     if species is None:
         s_mol, b_mol = molecules_from_xyz(xyz)
         mol = b_mol if b_mol is not None else s_mol
     else:
         mol = species.mol
     try:
-        rd_mol = rdkit_conf_from_mol(mol, coordinates)[1]
+        rd_mol = rdkit_conf_from_mol(mol, xyz)[1]
     except (ValueError, AttributeError):
         return False
     mb = Chem.MolToMolBlock(rd_mol)
@@ -88,18 +97,19 @@ def show_sticks(xyz=None, species=None, project_directory=None):
 
 def draw_3d(xyz=None, species=None, project_directory=None, save_only=False):
     """
-    Draws the molecule in a "3D-balls" style
-    If xyz is given, it will be used, otherwise the function looks for species.final_xyz
-    Input coordinates are in string format
-    Saves an image if a species and `project_directory` are provided
-    If `save_only` is ``True``, then don't plot, only save the image
+    Draws the molecule in a "3D-balls" style.
+    Saves an image if a species and ``project_directory`` are provided.
+
+    Args:
+        xyz (str, dict, optional): The coordinates to display.
+        species (ARCSpecies, optional): xyz coordinates will be taken from the species.
+        project_directory (str): ARC's project directory to save the image in.
+        save_only (bool): Whether to only save an image without plotting it, ``True`` to only save.
     """
     xyz = check_xyz_species_for_drawing(xyz, species)
-    _, atoms, x, y, z = get_xyz_matrix(xyz)
-    atoms = [str(a) for a in atoms]
     ase_atoms = list()
-    for i, atom in enumerate(atoms):
-        ase_atoms.append(Atom(symbol=atom, position=(x[i], y[i], z[i])))
+    for symbol, coord in zip(xyz['symbols'], xyz['coords']):
+        ase_atoms.append(Atom(symbol=symbol, position=coord))
     ase_mol = Atoms(ase_atoms)
     if not save_only:
         display(view(ase_mol, viewer='x3d'))
@@ -111,63 +121,85 @@ def draw_3d(xyz=None, species=None, project_directory=None, save_only=False):
         ase_write(filename=os.path.join(geo_path, 'geometry.png'), images=ase_mol, scale=100)
 
 
-def plot_3d_mol_as_scatter(xyz, path=None, plot_h=True, show_plot=True):
+def plot_3d_mol_as_scatter(xyz, path=None, plot_h=True, show_plot=True, name=''):
     """
-    Draws the molecule as scattered balls in space according to the supplied xyz coordinates
-    `xyz` is in string form
-    `path` is the species output path to save the image
+    Draws the molecule as scattered balls in space according to the supplied xyz coordinates.
+
+    Args:
+        xyz (dict, str): The xyz coordinates.
+        path (str, optional): A directory path to save the generated figure in.
+        plot_h (bool, optional): Whether to plot hydrogen atoms as well. ``True`` to plot them.
+        show_plot (bool, optional): Whether to show the plot. ``True`` to show.
+        name (str, optional): A name to be added to the saved file name.
     """
-    xyz, atoms, x, y, z = get_xyz_matrix(xyz)
-    x = np.array(x, dtype=float)
-    y = np.array(y, dtype=float)
-    z = np.array(z, dtype=float)
-    colors = []
-    sizes = []
-    for i, atom in enumerate(atoms):
+    xyz = check_xyz_species_for_drawing(xyz=xyz)
+    coords, symbols, colors, sizes = list(), list(), list(), list()
+    for symbol, coord in zip(xyz['symbols'], xyz['coords']):
         size = 500
-        if atom == 'H':
-            if plot_h:
-                colors.append('gray')
-                size = 250
-            else:
-                colors.append('white')
-                atoms[i] = ''
-                x[i], y[i], z[i] = 0, 0, 0
-        elif atom == 'C':
-            colors.append('k')
-        elif atom == 'N':
-            colors.append('b')
-        elif atom == 'O':
-            colors.append('r')
-        elif atom == 'S':
-            colors.append('orange')
+        if symbol == 'H':
+            color = 'gray'
+            size = 250
+        elif symbol == 'C':
+            color = 'k'
+        elif symbol == 'N':
+            color = 'b'
+        elif symbol == 'O':
+            color = 'r'
+        elif symbol == 'S':
+            color = 'orange'
         else:
-            colors.append('g')
-        sizes.append(size)
+            color = 'g'
+        if not (symbol == 'H' and not plot_h):
+            # we do want to plot this atom
+            coords.append(coord)
+            symbols.append(symbol)
+            colors.append(color)
+            sizes.append(size)
+
+    xyz_ = xyz_from_data(coords=coords, symbols=symbols)
+    x, y, z = xyz_to_x_y_z(xyz_)
     fig = plt.figure()
     ax = Axes3D(fig)
     ax.scatter(xs=x, ys=y, zs=z, s=sizes, c=colors, depthshade=True)
-    for i, atom in enumerate(atoms):
-        ax.text(x[i]+0.01, y[i]+0.01, z[i]+0.01, str(atom), size=7)
+    for i, symbol in enumerate(symbols):
+        ax.text(x[i]+0.01, y[i]+0.01, z[i]+0.01, str(symbol), size=7)
     plt.axis('off')
     if show_plot:
         plt.show()
     if path is not None:
-        image_path = os.path.join(path, 'scattered_balls_structure.png')
+        if not os.path.isdir(path):
+            os.makedirs(path)
+        image_path = os.path.join(path, 'scattered_balls_structure{0}.png'.format(name))
         plt.savefig(image_path, bbox_inches='tight')
 
 
-def check_xyz_species_for_drawing(xyz, species):
+def check_xyz_species_for_drawing(xyz=None, species=None):
     """
     A helper function for checking the coordinates before drawing them.
+    Either ``xyz`` or ``species`` must be given. If both are given, ``xyz`` gets precedence.
+    If ``species`` is given, xys will be taken from it or cheaply generated for it.
+
+    Args:
+        xyz (dict, str, optional): The 3D coordinates in any form.
+        species (ARCSpecies, optional): A species to take the coordinates from.
+
+    Returns:
+        xyz (dict): The coordinates to plot.
+
+    Raises:
+        InputError: If neither ``xyz`` nor ``species`` are given.
+        TypeError: If ``species`` is of wrong type.
     """
-    if species is not None and xyz is None:
-        xyz = xyz if xyz is not None else species.final_xyz
+    if xyz is None and species is None:
+        raise InputError('Either xyz or species must be given.')
     if species is not None and not isinstance(species, ARCSpecies):
-        raise InputError('Species must be an ARCSpecies instance. Got {0}.'.format(type(species)))
-    if species is not None and species.final_xyz is None:
-        raise InputError('Species {0} has an empty final_xyz attribute.'.format(species.label))
-    return xyz
+        raise TypeError('Species must be an ARCSpecies instance. Got {0}.'.format(type(species)))
+    if xyz is not None:
+        if isinstance(xyz, str):
+            xyz = str_to_xyz(xyz)
+    else:
+        xyz = species.get_xyz(generate=True)
+    return check_xyz_dict(xyz)
 
 
 # *** Logging output ***
@@ -452,17 +484,19 @@ def save_geo(species, project_directory):
     if not os.path.exists(geo_path):
         os.makedirs(geo_path)
 
+    xyz_str = xyz_to_str(species.final_xyz)
+
     # xyz
     xyz = '{0}\n'.format(species.number_of_atoms)
     xyz += '{0} optimized at {1}\n'.format(species.label, species.opt_level)
-    xyz += '{0}\n'.format(species.final_xyz)
+    xyz += '{0}\n'.format(xyz_str)
     with open(os.path.join(geo_path, '{0}.xyz'.format(species.label)), 'w') as f:
         f.write(str(xyz))
 
     # GaussView file
     gv = '# hf/3-21g\n\n{0} optimized at {1}\n\n'.format(species.label, species.opt_level)
     gv += '{0} {1}\n'.format(species.charge, species.multiplicity)
-    gv += '{0}\n'.format(species.final_xyz)
+    gv += '{0}\n'.format(xyz_str)
     with open(os.path.join(geo_path, '{0}.gjf'.format(species.label)), 'w') as f:
         f.write(str(gv))
 
@@ -589,7 +623,7 @@ def save_conformers_file(project_directory, label, xyzs, level_of_theory, multip
     Args:
         project_directory (str): The path to the project's directory.
         label (str): The species label.
-        xyzs (list): Entries are sting-format xyz coordinates of conformers.
+        xyzs (list): Entries are dict-format xyz coordinates of conformers.
         level_of_theory (str): The level of theory used for the conformers optimization.
         multiplicity (int, optional): The species multiplicity, used for perceiving the molecule.
         charge (int, optional): The species charge, used for perceiving the molecule.
@@ -616,14 +650,14 @@ def save_conformers_file(project_directory, label, xyzs, level_of_theory, multip
         for i, xyz in enumerate(xyzs):
             content += 'conformer {0}:\n'.format(i)
             if xyz is not None:
-                content += xyz + '\n'
+                content += xyz_to_str(xyz) + '\n'
                 if not is_ts:
                     try:
                         b_mol = molecules_from_xyz(xyz, multiplicity=multiplicity, charge=charge)[1]
                     except SanitizationError:
                         b_mol = None
                     smiles = b_mol.toSMILES() if b_mol is not None else 'Could not perceive molecule'
-                    content += 'SMILES: {0}\n'.format(smiles)
+                    content += '\nSMILES: {0}\n'.format(smiles)
                 elif ts_methods is not None:
                     content += 'TS guess method: {0}\n'.format(ts_methods[i])
                 if optimized:
@@ -830,5 +864,3 @@ def save_rotor_text_file(angles, energies, path):
             lines.append('{0:12.2f} {1:24.3f}\n'.format(angle, energy))
         with open(path, 'w') as f:
             f.writelines(lines)
-
-

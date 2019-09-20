@@ -7,19 +7,18 @@ A module for parsing information from various files.
 """
 
 from __future__ import (absolute_import, division, print_function, unicode_literals)
-import numpy as np
 import os
+import numpy as np
 
-from arkane.statmech import determine_qm_software
-from arkane.qchem import QChemLog
 from arkane.gaussian import GaussianLog
 from arkane.molpro import MolproLog
+from arkane.qchem import QChemLog
+from arkane.statmech import determine_qm_software
 
-from arc.common import get_logger
-from arc.species.converter import get_xyz_string, standardize_xyz_string
 from arc.arc_exceptions import InputError, ParserError
+from arc.common import get_logger
+from arc.species.converter import xyz_from_data, str_to_xyz
 
-##################################################################
 
 logger = get_logger()
 
@@ -93,10 +92,16 @@ def parse_e_elect(path, zpe_scale_factor=1.):
 def parse_xyz_from_file(path):
     """
     Parse xyz coordinated from:
-    .xyz - XYZ file
-    .gjf - Gaussian input file
-    .out or .log - ESS output file (Gaussian, QChem, Molpro)
-    other - Molpro or QChem input file
+    - .xyz: XYZ file
+    - .gjf: Gaussian input file
+    - .out or .log: ESS output file (Gaussian, QChem, Molpro)
+    - other: Molpro or QChem input file
+
+    Args:
+        path (str): The file path.
+
+    Returns:
+        xyz (dict): THe parsed coordinates.
     """
     lines = _get_lines_from_file(path)
     file_extension = os.path.splitext(path)[1]
@@ -120,7 +125,7 @@ def parse_xyz_from_file(path):
     elif 'out' in file_extension or 'log' in file_extension:
         log = determine_qm_software(fullpath=path)
         coords, number, _ = log.loadGeometry()
-        xyz = get_xyz_string(coords=coords, numbers=number)
+        xyz = xyz_from_data(coords=coords, numbers=number)
     else:
         record = False
         for line in lines:
@@ -135,8 +140,8 @@ def parse_xyz_from_file(path):
         if not relevant_lines:
             raise ParserError('Could not parse xyz coordinates from file {0}'.format(path))
     if xyz is None and relevant_lines:
-        xyz = ''.join([line for line in relevant_lines if line])
-    return standardize_xyz_string(xyz)
+        xyz = str_to_xyz(''.join([line for line in relevant_lines if line]))
+    return xyz
 
 
 def parse_dipole_moment(path):
@@ -225,12 +230,15 @@ def process_conformers_file(conformers_path):
                                a "conformers_after_optimization" file).
 
     Returns:
-        xyz (list): Entries are optimized xyz's in a string format.
+        xyz (list): Entries are conformer coordinates in a dict format.
     Returns:
         energies (list): Entries float numbers representing the energies in kJ/mol.
+
+    Raises:
+        InputError: If the file could not be found.
     """
     if not os.path.isfile(conformers_path):
-        raise ValueError('Conformers file {0} could not be found'.format(conformers_path))
+        raise InputError('Conformers file {0} could not be found'.format(conformers_path))
     with open(conformers_path, 'r') as f:
         lines = f.readlines()
     xyzs, energies = list(), list()
@@ -247,7 +255,7 @@ def process_conformers_file(conformers_path):
                 if 'relative energy:' in lines[line_index].lower():
                     energy = float(lines[line_index].split()[2])
                 line_index += 1
-            xyzs.append(xyz)
+            xyzs.append(str_to_xyz(xyz))
             energies.append(energy)
         else:
             line_index += 1

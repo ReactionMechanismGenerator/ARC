@@ -129,6 +129,12 @@ class Processor(object):
         else:
             freq_path = self.output[species.label]['paths']['freq']
             opt_path = self.output[species.label]['paths']['freq']
+        if not os.path.isfile(freq_path):
+            logger.error('Could not find the freq file in path {0}'.format(freq_path))
+        if not os.path.isfile(opt_path):
+            logger.error('Could not find the opt file in path {0}'.format(opt_path))
+        if not os.path.isfile(sp_path):
+            logger.error('Could not find the sp file in path {0}'.format(sp_path))
         rotors, rotors_description = '', ''
         if any([i_r_dict['success'] for i_r_dict in species.rotors_dict.values()]):
             rotors = '\n\nrotors = ['
