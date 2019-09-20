@@ -259,7 +259,7 @@ class Processor(object):
                 bde_report[species.label] = self.process_bdes(species.label)
         if bde_report:
             bde_path = os.path.join(self.project_directory, 'output', 'BDE_report.yml')
-            save_yaml_file(path=bde_path, content=bde_report)
+            plotter.log_bde_report(path=bde_path, bde_report=bde_report)
 
         # Kinetics:
         rxn_list_for_kinetics_plots = list()
@@ -389,6 +389,9 @@ class Processor(object):
 
         Args:
             label (str): The species label.
+
+        Returns:
+            bde_report (dict): The BDE report for a single species. Keys are pivots, values are energies in kJ/mol.
         """
         source = self.species_dict[label]
         bde_report = dict()
@@ -423,9 +426,7 @@ class Processor(object):
                 logger.error('could not calculate BDE for {0} between atoms {1} ({2}) and {3} ({4})'.format(
                               label, bde_indices[0], source.mol.atoms[bde_indices[0] - 1].element.symbol,
                               bde_indices[1], source.mol.atoms[bde_indices[1] - 1].element.symbol))
-        logger.info('\n\nBDE report for {0} (kJ/mol):\n{1}\n'.format(label, bde_report))
         return bde_report
-
 
     def _clean_output_directory(self):
         """

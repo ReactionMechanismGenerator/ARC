@@ -226,6 +226,29 @@ def log_kinetics(label, path):
     logger.info('\n')
 
 
+def log_bde_report(path, bde_report):
+    """
+    Prettify the report for bond dissociation energies. Log and save to file.
+
+    Args:
+        path (str): The file path.
+        bde_report (dict): The BDE report dictionary. Keys are species labels, values are species BDE dictionaries.
+                           In the second level dict, keys are pivot tuples, values are energies in kJ/mol.
+    """
+    with open(path, 'w') as f:
+        content = ''
+        for label, bde_dict in bde_report.items():
+            content += ' BDE report for {0}:\n'.format(label)
+            content += ' Pivots        BDE (kJ/mol)\n'
+            content += ' ------        ------------\n'
+            for pivots, bde in bde_dict.items():
+                content += ' {0:15} {1:10.2f}\n'.format(pivots, bde)
+            content += '\n\n'
+        logger.info('\n\n')
+        logger.info(content)
+        f.write(content)
+
+
 # *** Parity and kinetic plots ***
 
 def draw_thermo_parity_plots(species_list, path=None):
