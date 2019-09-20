@@ -1950,9 +1950,14 @@ class Scheduler(object):
                                                              label, self.species_dict[label].mol.toSMILES())
                             self.output[label]['conformers'] += 'Unconverged'
                             self.output[label]['convergence'] = False
-                    elif not job.scan_trsh:
-                        # apply the troubleshooting methods in the `actions` list
-                        logger.info('Trying to troubleshoot rotor {0} of {1}...'.format(job.pivots, label))
+
+                    methods_to_try = [method for method in actions
+                                      if method not in self.species_dict[label].rotors_dict[i]['trsh_methods']]
+                    if len(methods_to_try):
+                        # apply the troubleshooting methods in the `actions` list if they weren't already tried out
+                        logger.info('Trying to troubleshoot rotor {0} of {1} using {2}...'.format(
+                            job.pivots, label, methods_to_try))
+                        self.species_dict[label].rotors_dict[i]['trsh_methods'].extend(methods_to_try)
                         self.troubleshoot_scan_job(job=job, methods=actions)
 
                 if not invalidate:

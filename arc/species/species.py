@@ -40,7 +40,7 @@ class ARCSpecies(object):
     """
     A class for representing stationary points.
 
-    Dictionary structure::
+    Dictionary structure (initialized in conformers.find_internal_rotors)::
 
         rotors_dict: {1: {'pivots': pivots_list,
                           'top': top_list,
@@ -48,6 +48,7 @@ class ARCSpecies(object):
                           'success': ``bool``.
                           'invalidation_reason': ``str``,
                           'times_dihedral_set': ``int``,
+                          'trsh_methods': ``list``,
                           'scan_path': <path to scan output file>,
                           'max_e': ``float``,  # in kJ/mol
                           'symmetry': ``int``,
