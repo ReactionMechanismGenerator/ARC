@@ -1400,7 +1400,11 @@ def find_internal_rotors(mol):
                         rotor['times_dihedral_set'] = 0
                         rotor['trsh_methods'] = list()
                         rotor['scan_path'] = ''
+                        rotor['directed_scan_type'] = ''
                         rotor['directed_scan'] = dict()
+                        rotor['dimensions'] = 1
+                        rotor['original_dihedrals'] = list()
+                        rotor['cont_index'] = 0
                         rotors.append(rotor)
     return rotors
 
