@@ -318,7 +318,7 @@ class Scheduler(object):
             if species.label not in self.job_dict:
                 self.job_dict[species.label] = dict()
             if species.yml_path is None:
-                if self.job_types['1d_rotors'] and not self.species_dict[species.label].number_of_rotors:
+                if self.job_types['rotors'] and not self.species_dict[species.label].number_of_rotors:
                     self.species_dict[species.label].determine_rotors()
                 if not self.job_types['opt'] and self.species_dict[species.label].final_xyz is not None:
                     # opt wasn't asked for, and it's not needed, declare it as converged
@@ -376,7 +376,7 @@ class Scheduler(object):
                                 and 'freq' not in list(self.job_dict[species.label].keys()) \
                                 and 'composite' not in list(self.job_dict[species.label].keys()):
                             self.run_freq_job(species.label)
-                        if self.job_types['1d_rotors']:
+                        if self.job_types['rotors']:
                             # restart-related checks are performed in run_scan_jobs()
                             self.run_scan_jobs(species.label)
             else:
@@ -930,7 +930,7 @@ class Scheduler(object):
         Args:
             label (str): The species label.
         """
-        if self.job_types['1d_rotors']:
+        if self.job_types['rotors']:
             for i in range(self.species_dict[label].number_of_rotors):
                 scan = self.species_dict[label].rotors_dict[i]['scan']
                 pivots = self.species_dict[label].rotors_dict[i]['pivots']
@@ -1387,7 +1387,7 @@ class Scheduler(object):
                                 self.run_freq_job(label)
                             if self.job_types['sp']:
                                 self.run_sp_job(label)
-                            if self.job_types['1d_rotors']:
+                            if self.job_types['rotors']:
                                 self.run_scan_jobs(label)
                             if self.job_types['onedmin']:
                                 self.run_onedmin_job(label)
@@ -2171,7 +2171,7 @@ class Scheduler(object):
             if spawn_job_type and not self.output[label]['job_types'][job_type] \
                     and not((self.species_dict[label].is_ts and job_type == 'scan')
                             or (self.species_dict[label].number_of_atoms == 1
-                                and job_type in ['conformers', 'opt', 'fine', 'freq', '1d_rotors', 'bde'])
+                                and job_type in ['conformers', 'opt', 'fine', 'freq', 'rotors', 'bde'])
                             or job_type == 'bde' and self.species_dict[label].bdes is None
                             or job_type == 'conformers' and '_BDE_' in label):
                 logger.debug('Species {0} did not converge'.format(label))
@@ -2567,7 +2567,7 @@ class Scheduler(object):
                     if 'job_types' not in self.output[species.label]:
                         self.output[species.label]['job_types'] = dict()
                     for job_type in list(set(self.job_types.keys() + ['opt', 'freq', 'sp', 'composite', 'onedmin'])):
-                        if job_type in ['1d_rotors', 'bde']:
+                        if job_type in ['rotors', 'bde']:
                             # rotors could be invalidated due to many reasons,
                             # also could be falsely identified in a species that has no torsional modes.
                             self.output[species.label]['job_types'][job_type] = True
@@ -2592,7 +2592,7 @@ class Scheduler(object):
             for key0, val0 in species_output_dict.items():
                 if key0 in ['paths', 'job_types']:
                     for key1, val1 in species_output_dict[key0].items():
-                        if val1 and key1 != '1d_rotors':
+                        if val1 and key1 != 'rotors':
                             return True
                 else:
                     if val0:

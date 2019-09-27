@@ -14,7 +14,7 @@ freq_level: wb97xd/def2tzvp
 freq_scale_factor: 0.988
 job_memory: 14
 job_types:
-  1d_rotors: true
+  rotors: true
   bde: false
   conformers: true
   fine: true
@@ -35,7 +35,7 @@ output:
     isomorphism: 'opt passed isomorphism check; Conformers optimized
       and compared at b3lyp/6-31g(d,p) empiricaldispersion=gd3bj; '
     job_types:
-      1d_rotors: true
+      rotors: true
       bde: true
       composite: false
       conformers: true
@@ -59,7 +59,7 @@ output:
     info: ''
     isomorphism: ''
     job_types:
-      1d_rotors: true
+      rotors: true
       bde: true
       composite: false
       conformers: false
@@ -84,7 +84,7 @@ output:
     info: ''
     isomorphism: 'opt passed isomorphism check;'
     job_types:
-      1d_rotors: true
+      rotors: true
       bde: true
       composite: false
       conformers: true
@@ -109,7 +109,7 @@ output:
     info: ''
     isomorphism: 'opt passed isomorphism check; '
     job_types:
-      1d_rotors: true
+      rotors: true
       bde: true
       composite: false
       conformers: true

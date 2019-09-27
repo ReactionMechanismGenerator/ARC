@@ -201,7 +201,7 @@ class ARC(object):
                 logger.info('\n')
                 logger.warning('Not using a fine grid for geometry optimization jobs')
                 logger.info('\n')
-            if not self.job_types['1d_rotors']:
+            if not self.job_types['rotors']:
                 logger.info('\n')
                 logger.warning("Not running rotor scans."
                                " This might compromise finding the best conformer, as dihedral angles won't be"
@@ -314,9 +314,9 @@ class ARC(object):
 
             if scan_level:
                 self.scan_level = scan_level.lower()
-                if self.job_types['1d_rotors']:
+                if self.job_types['rotors']:
                     logger.info('Using {0} for rotor scans'.format(self.scan_level))
-            elif self.job_types['1d_rotors']:
+            elif self.job_types['rotors']:
                 if not self.composite_method:
                     self.scan_level = default_levels_of_theory['scan'].lower()
                     logger.info('Using default level {0} for rotor scans'.format(self.scan_level))
@@ -524,7 +524,7 @@ class ARC(object):
             logger.info('\n')
             logger.warning('Not using a fine grid for geometry optimization jobs')
             logger.info('\n')
-        if not self.job_types['1d_rotors']:
+        if not self.job_types['rotors']:
             logger.info('\n')
             logger.warning("Not running rotor scans."
                            " This might compromise finding the best conformer, as dihedral angles won't be"
@@ -632,9 +632,9 @@ class ARC(object):
 
         if 'scan_level' in input_dict:
             self.scan_level = input_dict['scan_level'].lower()
-            if '1d_rotors' in self.job_types:
+            if 'rotors' in self.job_types:
                 logger.info('Using {0} for rotor scans'.format(self.scan_level))
-        elif '1d_rotors' in self.job_types:
+        elif 'rotors' in self.job_types:
             if not self.composite_method:
                 self.scan_level = default_levels_of_theory['scan'].lower()
                 logger.info('Using default level {0} for rotor scans'.format(self.scan_level))
@@ -760,7 +760,7 @@ class ARC(object):
             txt += 'Optimization:     {0} {1}\n'.format(self.opt_level, fine_txt)
             txt += 'Frequencies:      {0}\n'.format(self.freq_level)
             txt += 'Single point:     {0}\n'.format(self.sp_level)
-        if '1d_rotors' in self.job_types:
+        if 'rotors' in self.job_types:
             txt += 'Rotor scans:      {0}\n'.format(self.scan_level)
         else:
             txt += 'Not scanning rotors\n'

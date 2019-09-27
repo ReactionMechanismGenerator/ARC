@@ -607,7 +607,7 @@ H      -1.69944700    0.93441600   -0.11271200"""
                       'fine_grid': False,
                       'freq': True,
                       'sp': True,
-                      '1d_rotors': False,
+                      'rotors': False,
                       'orbitals': False,
                       'lennard_jones': False,
                       }

@@ -48,7 +48,7 @@ Rotor scans
 ^^^^^^^^^^^
 
 This option is turned on by default. If you'd like to turn it off,
-set ``1d_rotors`` in the ``job_types`` dictionary to `False`.
+set ``rotors`` in the ``job_types`` dictionary to `False`.
 
 ARC will perform 1D rotor scans for all possible unique internal rotors in the species,
 
@@ -74,7 +74,7 @@ has a different dihedral angle which is kept frozen for the desired pivot).
 The "continuous" approach is closer to the phisical reality, while the "brute" approach is more robust.
 Note that the brute force approach is also in ARC's arsenal of internal rotation troubleshooting methods.
 
-To use directed internal rotation scans, make sure ``1d_rotors`` in the ``job_types`` dictionary is set to `True`
+To use directed internal rotation scans, make sure ``rotors`` in the ``job_types`` dictionary is set to `True`
 (this is the default value). Next, specify the specific pivots in the species for which a directed scan should
 be spawned using the ``directed_rotors`` attribute of the species class. Note that instead of specifying pivots,
 you can also specify ``all`` to treat all internal rotations of the species using this method.
@@ -334,7 +334,7 @@ which could be read as an input in ARC::
                                'fine_grid': True,
                                'freq': True,
                                'sp': True,
-                               '1d_rotors': True,
+                               'rotors': True,
                                'orbitals': False,
                                'lennard_jones': False,
                               }
@@ -377,7 +377,7 @@ The above code generated the following input file::
     project: Demo_project_input_file_from_API
 
     job_types:
-      1d_rotors: true
+      rotors: true
       conformers: true
       fine_grid: true
       freq: true
@@ -477,7 +477,7 @@ Below is an example requesting all hydrogen BDEs in ethanol including the `C--O`
     project: ethanol_BDEs
 
     job_types:
-      1d_rotors: true
+      rotors: true
       conformers: true
       fine_grid: true
       freq: true
