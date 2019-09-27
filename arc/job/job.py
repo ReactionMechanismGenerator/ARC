@@ -10,7 +10,7 @@ import datetime
 import os
 import shutil
 
-from arc.arc_exceptions import JobError, InputError
+from arc.exceptions import JobError, InputError
 from arc.common import get_logger, calculate_dihedral_angle
 from arc.job.inputs import input_files
 from arc.job.local import get_last_modified_time, submit_job, delete_job, execute_command, check_job_status, \

@@ -19,7 +19,7 @@ from arc.main import ARC
 from arc.common import read_yaml_file
 from arc.species.species import ARCSpecies
 from arc.settings import arc_path, servers
-from arc.arc_exceptions import InputError
+from arc.exceptions import InputError
 
 ################################################################################
 

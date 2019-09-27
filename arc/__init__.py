@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import arc_exceptions
+import exceptions
 import main
 from main import ARC
 import common

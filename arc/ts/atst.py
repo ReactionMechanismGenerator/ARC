@@ -8,7 +8,7 @@ A module for calling AutoTST
 from __future__ import (absolute_import, division, print_function, unicode_literals)
 import os
 
-from arc.arc_exceptions import TSError
+from arc.exceptions import TSError
 from arc.settings import arc_path
 from arc.species.converter import str_to_xyz
 

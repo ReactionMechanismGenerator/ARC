@@ -30,7 +30,7 @@ from arc.settings import arc_path, default_levels_of_theory, servers, valid_char
 from arc.scheduler import Scheduler
 from arc.common import VERSION, read_yaml_file, time_lapse, check_ess_settings, initialize_log, log_footer, get_logger,\
     save_yaml_file, initialize_job_types
-from arc.arc_exceptions import InputError, SettingsError, SpeciesError
+from arc.exceptions import InputError, SettingsError, SpeciesError
 from arc.species.species import ARCSpecies
 from arc.reaction import ARCReaction
 from arc.processor import Processor

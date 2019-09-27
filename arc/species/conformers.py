@@ -56,7 +56,7 @@ from rmgpy.molecule.converter import toOBMol
 from rmgpy.molecule.molecule import Molecule
 import rmgpy.molecule.group as gr
 
-from arc.arc_exceptions import ConformerError, InputError
+from arc.exceptions import ConformerError, InputError
 from arc.common import logger, determine_symmetry, calculate_dihedral_angle
 from arc.species import converter
 import arc.plotter

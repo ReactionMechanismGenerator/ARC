@@ -11,7 +11,7 @@ import os
 import time
 
 import arc.common as common
-from arc.arc_exceptions import InputError, SettingsError
+from arc.exceptions import InputError, SettingsError
 from arc.species.converter import str_to_xyz
 from arc.settings import arc_path, servers
 

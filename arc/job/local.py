@@ -14,7 +14,7 @@ import re
 import shutil
 import subprocess
 
-from arc.arc_exceptions import SettingsError
+from arc.exceptions import SettingsError
 from arc.common import get_logger
 from arc.settings import servers, check_status_command, submit_command, submit_filename, delete_command, output_filename
 from arc.job.ssh import check_job_status_in_stdout

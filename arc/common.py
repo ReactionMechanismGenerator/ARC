@@ -32,7 +32,7 @@ from rmgpy.molecule.element import getElement
 from rmgpy.qm.qmdata import QMData
 from rmgpy.qm.symmetry import PointGroupCalculator
 
-from arc.arc_exceptions import InputError, SettingsError
+from arc.exceptions import InputError, SettingsError
 from arc.settings import arc_path, servers, default_job_types
 
 

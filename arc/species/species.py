@@ -22,7 +22,7 @@ from rmgpy.species import Species
 from rmgpy.statmech import NonlinearRotor, LinearRotor
 from rmgpy.transport import TransportData
 
-from arc.arc_exceptions import SpeciesError, RotorError, InputError, TSError, SanitizationError
+from arc.exceptions import SpeciesError, RotorError, InputError, TSError, SanitizationError
 from arc.common import get_logger, get_atom_radius, determine_symmetry
 from arc.parser import parse_xyz_from_file, parse_dipole_moment, parse_polarizability, process_conformers_file
 from arc.settings import default_ts_methods, valid_chars, minimum_barrier

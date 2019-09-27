@@ -15,7 +15,7 @@ from rmgpy.data.kinetics.common import find_degenerate_reactions
 from rmgpy.exceptions import KineticsError
 
 from arc.common import get_logger
-from arc.arc_exceptions import InputError
+from arc.exceptions import InputError
 
 ##################################################################
 

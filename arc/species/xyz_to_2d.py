@@ -10,7 +10,7 @@ import pybel
 from rdkit import Chem
 from rdkit.Chem import GetPeriodicTable
 
-from arc.arc_exceptions import SanitizationError
+from arc.exceptions import SanitizationError
 
 _rdkit_periodic_table = GetPeriodicTable()
 

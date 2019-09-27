@@ -24,7 +24,7 @@ from arc.common import get_logger, read_yaml_file, save_yaml_file, get_ordinal_i
 from arc import plotter
 from arc import parser
 from arc.job.job import Job
-from arc.arc_exceptions import SpeciesError, SchedulerError, TSError, SanitizationError
+from arc.exceptions import SpeciesError, SchedulerError, TSError, SanitizationError, InputError
 from arc.job.local import check_running_jobs_ids
 from arc.job.ssh import SSHClient
 from arc.job.trsh import trsh_negative_freq, trsh_scan_job, trsh_ess_job, trsh_conformer_isomorphism, scan_quality_check

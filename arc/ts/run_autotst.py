@@ -27,7 +27,7 @@ except ImportError:
     except ImportError:
         has_auto_tst = False
 
-from arc.arc_exceptions import TSError
+from arc.exceptions import TSError
 from arc.common import get_logger
 from arc.settings import arc_path
 from arc.species.converter import xyz_from_data, xyz_to_str

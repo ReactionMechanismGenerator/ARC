@@ -20,7 +20,7 @@ import paramiko
 
 from arc.common import get_logger
 from arc.settings import servers, check_status_command, submit_command, submit_filename, delete_command
-from arc.arc_exceptions import InputError, ServerError
+from arc.exceptions import InputError, ServerError
 
 ##################################################################
 

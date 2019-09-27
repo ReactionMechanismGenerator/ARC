@@ -15,7 +15,7 @@ from arkane.molpro import MolproLog
 from arkane.qchem import QChemLog
 from arkane.statmech import determine_qm_software
 
-from arc.arc_exceptions import InputError, ParserError
+from arc.exceptions import InputError, ParserError
 from arc.common import get_logger
 from arc.species.converter import xyz_from_data, str_to_xyz
 
