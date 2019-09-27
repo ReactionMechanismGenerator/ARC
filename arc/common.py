@@ -27,7 +27,7 @@ import numpy as np
 from arkane.gaussian import GaussianLog
 from arkane.molpro import MolproLog
 from arkane.qchem import QChemLog
-from arkane.util import determine_qm_software
+from arkane.statmech import determine_qm_software
 from rmgpy.molecule.element import getElement
 from rmgpy.qm.qmdata import QMData
 from rmgpy.qm.symmetry import PointGroupCalculator
@@ -459,7 +459,7 @@ def determine_ess(log_file):
         log_file (str): The ESS log file path.
 
     Returns:
-        str: The ESS (either 'gaussian', 'qchem', or 'molpro'.
+        str: The ESS (either 'gaussian', 'qchem', or 'molpro').
     """
     log = determine_qm_software(log_file)
     if isinstance(log, GaussianLog):

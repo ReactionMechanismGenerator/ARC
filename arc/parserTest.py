@@ -26,7 +26,7 @@ class TestParser(unittest.TestCase):
     def test_parse_frequencies(self):
         """Test frequency parsing"""
         no3_path = os.path.join(arc_path, 'arc', 'testing', 'NO3_freq_QChem_fails_on_cclib.out')
-        c2h6_path = os.path.join(arc_path, 'arc', 'testing', 'C2H6_freq_Qchem.out')
+        c2h6_path = os.path.join(arc_path, 'arc', 'testing', 'C2H6_freq_QChem.out')
         so2oo_path = os.path.join(arc_path, 'arc', 'testing', 'SO2OO_CBS-QB3.log')
         ch2o_path = os.path.join(arc_path, 'arc', 'testing', 'CH2O_freq_molpro.out')
         no3_freqs = parser.parse_frequencies(path=no3_path, software='QChem')

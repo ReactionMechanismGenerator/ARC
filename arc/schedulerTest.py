@@ -127,7 +127,7 @@ class TestScheduler(unittest.TestCase):
     def test_check_negative_freq(self):
         """Test the check_negative_freq() method"""
         label = 'C2H6'
-        self.job3.local_path_to_output_file = os.path.join(arc_path, 'arc', 'testing', 'C2H6_freq_Qchem.out')
+        self.job3.local_path_to_output_file = os.path.join(arc_path, 'arc', 'testing', 'C2H6_freq_QChem.out')
         self.job3.job_status = ['done', {'status': 'done', 'keywords': list(), 'error': '', 'line': ''}]
         vibfreqs = parser.parse_frequencies(path=str(self.job3.local_path_to_output_file), software=self.job3.software)
         self.assertTrue(self.sched1.check_negative_freq(label=label, job=self.job3, vibfreqs=vibfreqs))

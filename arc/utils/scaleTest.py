@@ -100,7 +100,7 @@ class TestScale(unittest.TestCase):
 
     def test_get_zpe(self):
         """Test the scale get_zpe() function"""
-        path1 = os.path.join(arc_path, 'arc', 'testing', 'C2H6_freq_Qchem.out')
+        path1 = os.path.join(arc_path, 'arc', 'testing', 'C2H6_freq_QChem.out')
         path2 = os.path.join(arc_path, 'arc', 'testing', 'CH2O_freq_molpro.out')
         path3 = os.path.join(arc_path, 'arc', 'testing', 'NO3_freq_QChem_fails_on_cclib.out')
         path4 = os.path.join(arc_path, 'arc', 'testing', 'SO2OO_CBS-QB3.log')

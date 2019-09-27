@@ -242,6 +242,16 @@ H 	2.951	-3.078	-4.102""")
         dihedral3 = common.calculate_dihedral_angle(coords=cj_11974['coords'], torsion=[15, 18, 19, 20])
         self.assertAlmostEqual(dihedral3, 308.04758, 2)
 
+    def test_determine_ess(self):
+        """Test the determine_ess function"""
+        gaussian = os.path.join(arc_path, 'arc', 'testing', 'SO2OO_CBS-QB3.log')
+        qchem = os.path.join(arc_path, 'arc', 'testing', 'C2H6_freq_QChem.out')
+        molpro = os.path.join(arc_path, 'arc', 'testing', 'CH2O_freq_molpro.out')
+
+        self.assertEqual(common.determine_ess(gaussian), 'gaussian')
+        self.assertEqual(common.determine_ess(qchem), 'qchem')
+        self.assertEqual(common.determine_ess(molpro), 'molpro')
+
 ################################################################################
 
 
