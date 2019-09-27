@@ -231,7 +231,7 @@ H      -1.97060638    1.29922153   -0.25658392"""
         self.assertIn([1, 3], spc1.rotors_dict[0]['pivots'])
         self.assertIn([1, 2], spc1.rotors_dict[0]['pivots'])
         self.assertIn([2, 4], spc1.rotors_dict[0]['pivots'])
-        self.assertEqual(spc1.rotors_dict[0]['cont_index'], 0)
+        self.assertEqual(spc1.rotors_dict[0]['cont_indices'], [])
 
         spc2 = ARCSpecies(label='propanol', smiles='CCO', directed_rotors={'brute_force_sp': [['all']]})
         spc2.determine_rotors()  # also initializes directed_rotors
@@ -412,8 +412,7 @@ H      -1.67091600   -1.35164600   -0.93286400"""
                          'force_field': 'MMFF94',
                          'is_ts': False,
                          't1': None,
-                         'bond_corrections': {'C-H': 3, 'C-N': 1, 'H-N': 2},
-                         'rotors_dict': {}}
+                         'bond_corrections': {'C-H': 3, 'C-N': 1, 'H-N': 2}}
         self.assertEqual(spc_dict, expected_dict)
 
     def test_from_dict(self):

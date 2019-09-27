@@ -101,7 +101,6 @@ class TestARC(unittest.TestCase):
                                       'multiplicity': 1,
                                       'neg_freqs_trshed': [],
                                       'number_of_rotors': 0,
-                                      'rotors_dict': {},
                                       'force_field': 'MMFF94',
                                       't1': None}],
                          }

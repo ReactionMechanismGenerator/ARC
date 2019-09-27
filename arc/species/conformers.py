@@ -1395,6 +1395,7 @@ def find_internal_rotors(mol):
                                 if i < smallest_index:
                                     smallest_index = i
                         rotor['scan'].append(smallest_index + 1)
+                        rotor['number_of_running_jobs'] = 0
                         rotor['success'] = None
                         rotor['invalidation_reason'] = ''
                         rotor['times_dihedral_set'] = 0
@@ -1404,7 +1405,7 @@ def find_internal_rotors(mol):
                         rotor['directed_scan'] = dict()
                         rotor['dimensions'] = 1
                         rotor['original_dihedrals'] = list()
-                        rotor['cont_index'] = 0
+                        rotor['cont_indices'] = list()
                         rotors.append(rotor)
     return rotors
 
