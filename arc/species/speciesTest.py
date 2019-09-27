@@ -199,6 +199,46 @@ H      -0.41231900    0.99757300    0.00391900"""
         self.assertEqual(len(self.spc6.rotors_dict[1][str('top')]), 3)
         self.assertTrue(all([t in [6, 7, 8] for t in self.spc6.rotors_dict[1][str('top')]]))
 
+    def test_initialize_directed_rotors(self):
+        """Test the initialize_directed_rotors() method"""
+        xyz1 = """C       0.56128965    0.34357304    0.38495536
+C      -0.56128955   -0.34357303   -0.38993306
+C       1.92143728   -0.23016746    0.02127176
+C      -1.92143731    0.23016755   -0.02625006
+H       0.39721807    0.22480962    1.46233923
+H       0.55622819    1.41911534    0.17290968
+H      -0.55622807   -1.41911525   -0.17788706
+H      -0.39721778   -0.22481004   -1.46731694
+H       2.13051816   -0.09814896   -1.04512584
+H       1.97060552   -1.29922203    0.25160298
+H       2.70987905    0.27583092    0.58717473
+H      -2.13051778    0.09815130    1.04014792
+H      -2.70987907   -0.27583253   -0.59215160
+H      -1.97060638    1.29922153   -0.25658392"""
+        directed_rotors1 = {'cont_opt': ['all'],
+                            'brute_force_sp': [['all'], [1, 2]],
+                            'brute_force_opt': [[1, 2], [1, 3], [2, 4], [[1, 2], [1, 3]]]
+                            }
+        spc1 = ARCSpecies(label='spc1', smiles='CCCC', xyz=xyz1, directed_rotors=directed_rotors1)
+        spc1.determine_rotors()  # also initializes directed_rotors
+        self.assertIn([[3, 1, 2, 4]], spc1.directed_rotors['cont_opt'])
+        self.assertIn([[2, 1, 3, 9]], spc1.directed_rotors['cont_opt'])
+        self.assertIn([[1, 2, 4, 12]], spc1.directed_rotors['cont_opt'])
+        self.assertIn([3, 1, 2, 4], spc1.directed_rotors['brute_force_sp'][0])
+        self.assertIn([[3, 1, 2, 4], [2, 1, 3, 9]], spc1.directed_rotors['brute_force_opt'])
+        self.assertEqual(len(spc1.rotors_dict.keys()), 9)
+        self.assertEqual(spc1.rotors_dict[0]['dimensions'], 3)
+        self.assertIn([1, 3], spc1.rotors_dict[0]['pivots'])
+        self.assertIn([1, 2], spc1.rotors_dict[0]['pivots'])
+        self.assertIn([2, 4], spc1.rotors_dict[0]['pivots'])
+        self.assertEqual(spc1.rotors_dict[0]['cont_index'], 0)
+
+        spc2 = ARCSpecies(label='propanol', smiles='CCO', directed_rotors={'brute_force_sp': [['all']]})
+        spc2.determine_rotors()  # also initializes directed_rotors
+        self.assertEqual(spc2.directed_rotors, {'brute_force_sp': [[[9, 1, 2, 3], [1, 2, 3, 6]]]})
+        self.assertEqual(len(spc2.rotors_dict), 1)
+        self.assertEqual(spc2.rotors_dict[0]['dimensions'], 2)
+
     def test_symmetry(self):
         """Test external symmetry and chirality determination"""
         allene = ARCSpecies(label=str('allene'), smiles=str('C=C=C'), multiplicity=1, charge=0)
