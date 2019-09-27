@@ -1456,7 +1456,8 @@ class Scheduler(object):
                     else:
                         xyzs.append(xyz_from_data(coords=coords, numbers=number))
             xyzs_in_original_order = xyzs
-            energies, xyzs = (list(t) for t in zip(*sorted(zip(self.species_dict[label].conformer_energies, xyzs))))
+            energies, xyzs = (list(t) for t in zip(*sorted(zip(self.species_dict[label].conformer_energies, xyzs)))
+                              if t[0] is not None)
             plotter.save_conformers_file(project_directory=self.project_directory, label=label,
                                          xyzs=self.species_dict[label].conformers, level_of_theory=self.conformer_level,
                                          multiplicity=self.species_dict[label].multiplicity,
@@ -1495,9 +1496,9 @@ class Scheduler(object):
                             else:
                                 if energies[i] is not None:
                                     logger.info('A conformer for species {0} was found to be isomorphic '
-                                                'with the 2D graph representation {1}. This conformer is {2:.2f} kJ/mol'
-                                                ' above the most stable one which corresponds to  {3} (and is not '
-                                                'isomorphic). Using the isomorphic conformer for further geometry '
+                                                'with the 2D graph representation {1}. This conformer is {2:.2f} '
+                                                'kJ/mol above the most stable one which corresponds to {3} (and is '
+                                                'not isomorphic). Using the isomorphic conformer for further geometry '
                                                 'optimization.'.format(
                                                  label, self.species_dict[label].mol.toSMILES(),
                                                  (energies[i] - energies[0]) * 0.001,
