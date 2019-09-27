@@ -411,17 +411,29 @@ def min_list(lst):
     return min([entry for entry in lst if entry is not None])
 
 
-def initialize_job_types(job_types):
+def initialize_job_types(job_types, specific_job_type=''):
     """
     A helper function for initializing job_types.
     Returns the comprehensive (default values for missing job types) job types for ARC.
 
     Args:
         job_types (dict): Keys are job types, values are booleans of whether or not to consider this job type.
+        specific_job_type (str): Specific job type to execute. Legal strings are job types (keys of job_types dict).
 
     Returns:
         job_types (dict): An updated (comprehensive) job type dictionary.
     """
+
+    if specific_job_type:
+        if job_types:
+            logger.warning('Both job_types and specific_job_type are given, ARC will only use specific_job_type to '
+                           'populate the job_types dictionary.')
+        job_types = {job_type: False for job_type in default_job_types.keys()}
+        try:
+            job_types[specific_job_type] = True
+        except KeyError:
+            raise InputError('Specified job type "{0}" is not supported'.format(specific_job_type))
+
     defaults_to_true = ['conformers', 'opt', 'fine', 'freq', 'sp', 'rotors']
     defaults_to_false = ['onedmin', 'orbitals', 'bde']
     if job_types is None:
