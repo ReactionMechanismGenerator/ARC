@@ -48,9 +48,9 @@ Rotor scans
 ^^^^^^^^^^^
 
 This option is turned on by default. If you'd like to turn it off,
-set ``1d_rotors`` in the ``job_types`` dictionary to `False`.
+set ``rotors`` in the ``job_types`` dictionary to `False`.
 
-ARC will perform 1D rotor scans for all possible unique internal rotors in the species,
+ARC will perform 1D (one dimensional) rotor scans for all possible unique internal rotors in the species,
 
 The rotor scan resolution is 8 degrees by default (scanning 360 degrees overall).
 This can be changed via the ``rotor_scan_resolution`` parameter in the settings.
@@ -61,58 +61,73 @@ between the initial anf final points.
 All of the above settings can be modified in the settings.py file.
 
 
-Directed rotor scans
-^^^^^^^^^^^^^^^^^^^^
+ND Rotor scans
+^^^^^^^^^^^^^^
+ARC also supports ND (N dimensional, N >= 1) rotor scans. There are seven different ND types to execute:
 
-ARC can also spawn a series of constrained (fixed dihedral) optimization jobs for an internal rotor scan.
-This feature is mainly useful to conduct scans in ESS that do not offer a robust scan feature,
-or do not offer one at all. There are prncipally two approaches here, a "continuous" directed scan,
-and a "brute" directed scan. The former ("continuous") approach spawns the optimization jobs in serial where each job
-relays on the final optimization geometry of the previous point in the scan. The latter ("brute" force) spawn all
-the optimization jobs in parallel, all stemming from the global minimum conformation of the species (each job
-has a different dihedral angle which is kept frozen for the desired pivot).
-The "continuous" approach is closer to the phisical reality, while the "brute" approach is more robust.
-Note that the brute force approach is also in ARC's arsenal of internal rotation troubleshooting methods.
+- A. Generate all geometries in advance (brute force)
+- - A1. Just calculate single point energies
+- - A2. Constraint optimization
+- B. Derive the geometry from the previous point (continuous constrained optimization)
 
-To use directed internal rotation scans, make sure ``1d_rotors`` in the ``job_types`` dictionary is set to `True`
-(this is the default value). Next, specify the specific pivots in the species for which a directed scan should
-be spawned using the ``directed_rotors`` attribute of the species class. Note that instead of specifying pivots,
-you can also specify ``all`` to treat all internal rotations of the species using this method.
-Here are two (simple) examples::
+Each of the options above can be either "nested" (considering all ND dihedral combinations) or "diagonal"
+(resulting in a unique 1D rotor scan across several dimensions). THe last option is to allow the ESS to control
+the ND scan, which is similar to option B.
 
+The optional primary keys are:
 
-    species:
+- `brute_force_sp`
+- `brute_force_opt`
+- `cont_opt`
 
-    - label: ethane_1
-      smiles: CC
-      xyz: |
-        C      -0.76058300    0.01581500    0.05881300
-        C       0.76058300   -0.01581500   -0.05881200
-        H      -1.22350200   -0.74245600   -0.57963900
-        H      -1.08284500   -0.17477700    1.08677700
-        H      -1.16115500    0.98931900   -0.23902800
-        H       1.22350200    0.74245600    0.57964000
-        H       1.16115500   -0.98931900    0.23902900
-        H       1.08284500    0.17477700   -1.08677700
-      directed_rotors:
-        cont:
-        - 1
-        - 2
+The brute force methods will generate all the geometries in advance and submit all relevant jobs simultaneously.
+The continuous method will wait for the previous job to terminate, and use its geometry as the initial guess for
+the next job.
 
-    - label: ethane_2
-      smiles: CC
-      xyz: |
-        C      -0.76058300    0.01581500    0.05881300
-        C       0.76058300   -0.01581500   -0.05881200
-        H      -1.22350200   -0.74245600   -0.57963900
-        H      -1.08284500   -0.17477700    1.08677700
-        H      -1.16115500    0.98931900   -0.23902800
-        H       1.22350200    0.74245600    0.57964000
-        H       1.16115500   -0.98931900    0.23902900
-        H       1.08284500    0.17477700   -1.08677700
-      directed_rotors:
-        brute:
-        - all
+Another set of three keys is allowed, adding `_diagonal` to each of the above keys. the secondary keys are therefore:
+
+- `brute_force_sp_diagonal`
+- `brute_force_opt_diagonal`
+- `cont_opt_diagonal`
+
+Specifying `_diagonal` will increment all the respective dihedrals together, resulting in a 1D scan instead of
+an ND scan. Values are nested lists. Each value is a list where the entries are either pivot lists (e.g., [1,5])
+or lists of pivot lists (e.g., [[1,5], [6,8]]), or a mix (e.g., [[4,8], [[6,9], [3, 4]]). The requested directed
+scan type will be executed separately for each list entry in the value. A list entry that contains only two pivots
+will result in a 1D scan, while a list entry with N pivots will consider all of them, and will result in an ND scan
+if '_diagonal' is not specified.
+
+ARC will generate geometries using the ``rotor_scan_resolution`` argument in settings.py
+
+Note: An 'all' string entry is also allowed in the value list, triggering a directed internal rotation scan for all
+torsions in the molecule. If 'all' is specified within a second level list, then all the dihedrals will be considered
+together. Currently ARC does not automatically identify torsions to be treated as ND, and this attribute must be
+specified by the user. An additional supported key is 'ess', in which case ARC will allow the ESS to take care of
+spawning the ND continuous constrained optimizations.
+
+To execute ND rotor scans, first set the ```rotors`` job type to ``True``.
+Next, set the ``directed_rotors`` attribute of the relevant species. Below are several examples.
+
+To run all dihedral scans of a species separately (each as 1D)::
+
+    spc1 = ARCSpecies(label='some_label', smiles='species_smiles', directed_rotors={'brute_force_sp': ['all']})
+
+To run all dihedral scans of a species as a conjugated scan (ND, N = the number of torsions)::
+
+    spc1 = ARCSpecies(label='some_label', smiles='species_smiles', directed_rotors={'cont_opt': [['all']]})
+
+Note in the above example the change in list level (``all`` is either within one or two nested lists).
+
+To run specific dihedrals as ND (here all 2D combinations for a species with 3 torsions)::
+
+    spc1 = ARCSpecies(label='C4O2', smiles='[O]CCCC=O', xyz=xyz,
+                      directed_rotors={'brute_force_opt': [[[5, 3], [3, 4]], [[3, 4], [4, 6]], [[5, 3], [4, 6]]]})
+
+- Note: ND rotors are still **not** incorporated into the molecular partition function,
+so currently will not affect thermo or rates.
+- Note: Any torsion defined as part of an ND rotor scan will **not** be spawned for that species as a separate 1D scan.
+- Warning: Job arrays have not been incorporated into ARC yet. Spawning ND rotor scans will result in **many**
+individual jobs being submit to your server queue system.
 
 
 Electronic Structure Software Settings
@@ -334,7 +349,7 @@ which could be read as an input in ARC::
                                'fine_grid': True,
                                'freq': True,
                                'sp': True,
-                               '1d_rotors': True,
+                               'rotors': True,
                                'orbitals': False,
                                'lennard_jones': False,
                               }
@@ -377,7 +392,7 @@ The above code generated the following input file::
     project: Demo_project_input_file_from_API
 
     job_types:
-      1d_rotors: true
+      rotors: true
       conformers: true
       fine_grid: true
       freq: true
@@ -477,7 +492,7 @@ Below is an example requesting all hydrogen BDEs in ethanol including the `C--O`
     project: ethanol_BDEs
 
     job_types:
-      1d_rotors: true
+      rotors: true
       conformers: true
       fine_grid: true
       freq: true

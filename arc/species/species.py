@@ -22,7 +22,7 @@ from rmgpy.species import Species
 from rmgpy.statmech import NonlinearRotor, LinearRotor
 from rmgpy.transport import TransportData
 
-from arc.arc_exceptions import SpeciesError, RotorError, InputError, TSError, SanitizationError
+from arc.exceptions import SpeciesError, RotorError, InputError, TSError, SanitizationError
 from arc.common import get_logger, get_atom_radius, determine_symmetry
 from arc.parser import parse_xyz_from_file, parse_dipole_moment, parse_polarizability, process_conformers_file
 from arc.settings import default_ts_methods, valid_chars, minimum_barrier
@@ -42,21 +42,25 @@ class ARCSpecies(object):
 
     Dictionary structure (initialized in conformers.find_internal_rotors)::
 
-        rotors_dict: {1: {'pivots': pivots_list,
-                          'top': top_list,
-                          'scan': scan_list,
-                          'success': ``bool``.
-                          'invalidation_reason': ``str``,
-                          'times_dihedral_set': ``int``,
-                          'trsh_methods': ``list``,
-                          'scan_path': <path to scan output file>,
-                          'max_e': ``float``,  # in kJ/mol
-                          'symmetry': ``int``,
-                          'directed_scan': ``dict``,  # keys: dihedrals,
-                                                      # values: dicts of energy, xyz, is_isomorphic, trsh
+            rotors_dict: {1: {'pivots': ``list``,
+                              'top': ``list``,
+                              'scan': ``list``,
+                              'number_of_running_jobs': ``int``,
+                              'success': ``bool``,
+                              'invalidation_reason': ``str``,
+                              'times_dihedral_set': ``int``,
+                              'scan_path': <path to scan output file>,
+                              'max_e': ``float``,  # in kJ/mol,
+                              'symmetry': ``int``,
+                              'dimensions': ``int``,
+                              'original_dihedrals': ``list``,
+                              'cont_indices': ``list``,
+                              'directed_scan_type': ``str``,
+                              'directed_scan': ``dict``,  # keys: tuples of dihedrals as strings,
+                                                          # values: dicts of energy, xyz, is_isomorphic, trsh
+                             }
+                          2: {}, ...
                          }
-                      2: {}, ...
-                     }
 
     Args:
         label (str, optional): The species label.
@@ -108,14 +112,35 @@ class ARCSpecies(object):
         bdes (list): Specifying for which bonds should bond dissociation energies be calculated.
                      Entries are bonded atom indices tuples (1-indexed). An 'all_h' string entry is also allowed,
                      triggering BDE calculations for all hydrogen atoms in the molecule.
-        directed_rotors (dict): Execute a directed internal rotation scan (i.e., a series of constrained optimizations).
-                                Keys are either 'cont' for a continues scan (each point in the scan is executed using
-                                the geometry of the previous converged point) or 'brute' (all scan points are spawned at
-                                once by changing the respective dihedral). Values (for either key) are a list of pivots
-                                tuples for which internal rotation scans will be executed using the respective directed
-                                method (ARC will generate geometries using the ``rotor_scan_resolution`` in settings.py)
+        directed_rotors (dict): Execute a directed internal rotation scan (i.e., a series of sp or constrained opt jobs)
+                                for the pivots of interest. The optional primary keys are:
+                                - 'brute_force_sp'
+                                - 'brute_force_opt'
+                                - 'cont_opt'
+                                The brute force methods will generate all the geometries in advance and submit all
+                                relevant jobs simultaneously. The continuous method will wait for the previous job
+                                to terminate, and use its geometry as the initial guess for the next job.
+                                Another set of three keys is allowed, adding `_diagonal' to each of the above
+                                keys. the secondary keys are therefore:
+                                - 'brute_force_sp_diagonal'
+                                - 'brute_force_opt_diagonal'
+                                - 'cont_opt_diagonal'
+                                Specifying '_diagonal' will increment all the respective dihedrals together,
+                                resulting in a 1D scan instead of an ND scan.
+                                Values are nested lists. Each value is a list where the entries are either pivot lists
+                                (e.g., [1,5]) or lists of pivot lists (e.g., [[1,5], [6,8]]), or a mix
+                                (e.g., [[4,8], [[6,9], [3, 4]]). The requested directed scan type will be executed
+                                separately for each list entry in the value. A list entry that contains only two pivots
+                                will result in a 1D scan, while a list entry with N pivots will consider all of them,
+                                and will result in an ND scan if '_diagonal' is not specified.
+                                ARC will generate geometries using the ``rotor_scan_resolution`` argument in settings.py
                                 Note: An 'all' string entry is also allowed in the value list, triggering a directed
-                                internal rotation scans for all torsions in the molecule.
+                                internal rotation scan for all torsions in the molecule. If 'all' is specified within
+                                a second level list, then all the dihedrals will be considered together.
+                                Currently ARC does not automatically identify torsions to be treated as ND, and this
+                                attribute must be specified by the user.
+                                An additional supported key is 'ess', in which case ARC will allow the ESS to take care
+                                of spawning the ND continuous constrained optimizations (not yet implemented).
 
     Attributes:
         label (str): The species' label.
@@ -142,7 +167,6 @@ class ARCSpecies(object):
                                   (otherwise, this job will be spawned if running Gromacs).
         initial_xyz (dict): The initial geometry guess.
         final_xyz (dict): The optimized species geometry.
-        cont_scan_xyz (dict): The geometry used for continuous directed scan jobs.
         radius (float): The species radius in Angstrom.
         opt_level (str): Level of theory for geometry optimization. Saved for archiving.
         number_of_atoms (int): The number of atoms in the species/TS.
@@ -195,13 +219,7 @@ class ARCSpecies(object):
                      Entries are bonded atom indices tuples (1-indexed). An 'all_h' string entry is also allowed,
                      triggering BDE calculations for all hydrogen atoms in the molecule.
         directed_rotors (dict): Execute a directed internal rotation scan (i.e., a series of constrained optimizations).
-                                Keys are either 'cont' for a continues scan (each point in the scan is executed using
-                                the geometry of the previous converged point) or 'brute' (all scan points are spawned at
-                                once by changing the respective dihedral). Values (for either key) are a list of pivots
-                                tuples for which internal rotation scans will be executed using the respective directed
-                                method (ARC will generate geometries using the ``rotor_scan_resolution`` in settings.py)
-                                Note: An 'all' string entry is also allowed in the value list, triggering a directed
-                                internal rotation scans for all torsions in the molecule.
+                                Data is in 3 levels of nested lists, converted from pivots to four-atom scan indices.
     """
     def __init__(self, label=None, is_ts=False, rmg_species=None, mol=None, xyz=None, multiplicity=None, charge=None,
                  smiles='', adjlist='', inchi='', bond_corrections=None, generate_thermo=True, species_dict=None,
@@ -250,7 +268,6 @@ class ARCSpecies(object):
             self.svpfit_output_file = svpfit_output_file
             self.conf_is_isomorphic = None
             self.bdes = bdes
-            self.cont_scan_xyz = None
             self.directed_rotors = directed_rotors if directed_rotors is not None else dict()
             if self.bdes is not None and not isinstance(self.bdes, list):
                 raise SpeciesError('The .bdes argument must be a list, got {0} which is a {1}'.format(
@@ -384,10 +401,12 @@ class ARCSpecies(object):
         for char in self.label:
             if char not in valid_chars:
                 raise SpeciesError('Species label {0} contains an invalid character: "{1}"'.format(self.label, char))
-        if self.directed_rotors and 'brute' not in list(self.directed_rotors.keys()) \
-                and 'cont' not in list(self.directed_rotors.keys()):
-            raise SpeciesError('Directed rotors were specified for species {0}, yet ARC could not find "cont" or '
-                               '"brute" in the directed_rotors dictionary keys.'.format(self.label))
+        allowed_keys = ['brute_force_sp', 'brute_force_opt', 'cont_opt', 'ess',
+                        'brute_force_sp_diagonal', 'brute_force_opt_diagonal', 'cont_opt_diagonal']
+        for key in self.directed_rotors.keys():
+            if key not in allowed_keys:
+                raise SpeciesError('Allowed keys for directed_rotors are {0}. Got for species {1}: {2}'.format(
+                    allowed_keys, key, self.label))
 
     @property
     def number_of_atoms(self):
@@ -467,7 +486,6 @@ class ARCSpecies(object):
         species_dict['charge'] = self.charge
         species_dict['generate_thermo'] = self.generate_thermo
         species_dict['number_of_rotors'] = self.number_of_rotors
-        species_dict['rotors_dict'] = self.rotors_dict
         species_dict['external_symmetry'] = self.external_symmetry
         species_dict['optical_isomers'] = self.optical_isomers
         species_dict['neg_freqs_trshed'] = self.neg_freqs_trshed
@@ -507,8 +525,6 @@ class ARCSpecies(object):
             species_dict['initial_xyz'] = xyz_to_str(self.initial_xyz)
         if self.final_xyz is not None:
             species_dict['final_xyz'] = xyz_to_str(self.final_xyz)
-        if self.cont_scan_xyz is not None:
-            species_dict['cont_scan_xyz'] = xyz_to_str(self.cont_scan_xyz)
         if self.checkfile is not None:
             species_dict['checkfile'] = self.checkfile
         if self.most_stable_conformer is not None:
@@ -528,6 +544,26 @@ class ARCSpecies(object):
             species_dict['conformers_before_opt'] = [xyz_to_str(conf) for conf in self.conformers_before_opt]
         if self.bdes is not None:
             species_dict['bdes'] = self.bdes
+        if len(list(self.rotors_dict.keys())):
+            rotors_dict = dict()
+            for index, rotor_dict in self.rotors_dict.items():
+                rotors_dict[index] = dict()
+                for key, val in rotor_dict.items():
+                    if key == 'directed_scan':
+                        rotors_dict[index][key] = dict()
+                        for dihedrals, result in val.items():
+                            rotors_dict[index][key][dihedrals] = dict()
+                            for result_key, result_val in result.items():
+                                if result_key == 'energy':
+                                    rotors_dict[index][key][dihedrals][result_key] = str(result_val)
+                                elif result_key == 'xyz':
+                                    rotors_dict[index][key][dihedrals][result_key] = xyz_to_str(result_val) \
+                                        if isinstance(result_val, dict) else result_val
+                                else:
+                                    rotors_dict[index][key][dihedrals][result_key] = result_val
+                    else:
+                        rotors_dict[index][key] = val
+            species_dict['rotors_dict'] = rotors_dict
         return species_dict
 
     def from_dict(self, species_dict):
@@ -585,7 +621,6 @@ class ARCSpecies(object):
             self.ts_methods = None
         if 'xyz' in species_dict and self.initial_xyz is None and self.final_xyz is None:
             self.process_xyz(species_dict['xyz'])
-        self.cont_scan_xyz = str_to_xyz(species_dict['cont_scan_xyz']) if 'cont_scan_xyz' in species_dict else None
         for char in self.label:
             if char not in valid_chars:
                 raise SpeciesError('Species label {0} contains an invalid character: "{1}"'.format(self.label, char))
@@ -600,7 +635,6 @@ class ARCSpecies(object):
         self.number_of_radicals = species_dict['number_of_radicals'] if 'number_of_radicals' in species_dict else None
         self.opt_level = species_dict['opt_level'] if 'opt_level' in species_dict else None
         self.number_of_rotors = species_dict['number_of_rotors'] if 'number_of_rotors' in species_dict else 0
-        self.rotors_dict = species_dict['rotors_dict'] if 'rotors_dict' in species_dict else dict()
         self.external_symmetry = species_dict['external_symmetry'] if 'external_symmetry' in species_dict else None
         self.optical_isomers = species_dict['optical_isomers'] if 'optical_isomers' in species_dict else None
         self.neg_freqs_trshed = species_dict['neg_freqs_trshed'] if 'neg_freqs_trshed' in species_dict else list()
@@ -652,6 +686,24 @@ class ARCSpecies(object):
         if self.bdes is not None and not isinstance(self.bdes, list):
             raise SpeciesError('The .bdes argument must be a list, got {0} which is a {1}'.format(
                                 self.bdes, type(self.bdes)))
+        self.rotors_dict = dict()
+        if 'rotors_dict' in species_dict:
+            for index, rotor_dict in species_dict['rotors_dict'].items():
+                self.rotors_dict[index] = dict()
+                for key, val in rotor_dict.items():
+                    if key == 'directed_scan':
+                        self.rotors_dict[index][key] = dict()
+                        for dihedrals, result in val.items():
+                            self.rotors_dict[index][key][dihedrals] = dict()
+                            for directed_scan_key, directed_scan_val in result.items():
+                                if directed_scan_key == 'energy':
+                                    self.rotors_dict[index][key][dihedrals][directed_scan_key] = float(directed_scan_val)
+                                elif directed_scan_key == 'xyz':
+                                    self.rotors_dict[index][key][dihedrals][directed_scan_key] = str_to_xyz(directed_scan_val)
+                                else:
+                                    self.rotors_dict[index][key][dihedrals][directed_scan_key] = directed_scan_val
+                    else:
+                        self.rotors_dict[index][key] = val
 
     def from_yml_file(self, label=None):
         """
@@ -806,8 +858,123 @@ class ARCSpecies(object):
             if self.number_of_rotors > 0:
                 logger.info('Pivot list(s) for {0}: {1}\n'.format(
                     self.label, [self.rotors_dict[i]['pivots'] for i in range(self.number_of_rotors)]))
+        self.initialize_directed_rotors()
 
-    def set_dihedral(self, pivots, scan, deg_increment=None, deg_abs=None, count=True, xyz=None):
+    def initialize_directed_rotors(self):
+        """
+        Initialize self.directed_rotors, correcting the input to nested lists and to scans instead of pivots.
+        Also modifies self.rotors_dict to remove respective 1D rotors dicts if appropriate and adds ND rotors dicts.
+        Principally, from this point we don't really need self.directed_rotors, self.rotors_dict should have all
+        relevant rotors info for the species, including directed and ND rotors.
+
+        Dictionary structure (initialized in conformers.find_internal_rotors)::
+
+                rotors_dict: {1: {'pivots': ``list``,
+                                  'top': ``list``,
+                                  'scan': ``list``,
+                                  'number_of_running_jobs': ``int``,
+                                  'success': ``bool``,
+                                  'invalidation_reason': ``str``,
+                                  'times_dihedral_set': ``int``,
+                                  'scan_path': <path to scan output file>,
+                                  'max_e': ``float``,  # in kJ/mol,
+                                  'symmetry': ``int``,
+                                  'dimensions': ``int``,
+                                  'original_dihedrals': ``list``,
+                                  'cont_indices': ``list``,
+                                  'directed_scan_type': ``str``,
+                                  'directed_scan': ``dict``,  # keys: tuples of dihedrals as strings,
+                                                              # values: dicts of energy, xyz, is_isomorphic, trsh
+                                 }
+                              2: {}, ...
+                             }
+
+        Raises:
+            SpeciesError: If the pivots don't represent a dihedral in the species.
+        """
+        if self.directed_rotors:
+            all_pivots = [self.rotors_dict[i]['pivots'] for i in range(self.number_of_rotors)]
+            directed_rotors, directed_rotors_scans = dict(), dict()
+            for key, vals in self.directed_rotors.items():
+                # reformat as nested lists
+                directed_rotors[key] = list()
+                for val1 in vals:
+                    if isinstance(val1, (tuple, list)) and isinstance(val1[0], int):
+                        corrected_val = val1 if list(val1) in all_pivots else [val1[1], val1[0]]
+                        directed_rotors[key].append([list(corrected_val)])
+                    elif isinstance(val1, (tuple, list)) and isinstance(val1[0], (tuple, list)):
+                        directed_rotors[key].append([list(val2 if list(val2) in all_pivots else [val2[1], val2[0]])
+                                                     for val2 in val1])
+                    elif val1 == 'all':
+                        # 1st level all, add all pivots, they will be treated separately
+                        for i in range(self.number_of_rotors):
+                            if [self.rotors_dict[i]['pivots']] not in directed_rotors[key]:
+                                directed_rotors[key].append([self.rotors_dict[i]['pivots']])
+                    elif val1 == ['all']:
+                        # 2nd level all, add all pivots, they will be treated together
+                        directed_rotors[key].append(all_pivots)
+            for key, vals1 in directed_rotors.items():
+                # check
+                for vals2 in vals1:
+                    for val in vals2:
+                        if val not in all_pivots:
+                            raise SpeciesError('The pivots {0} do not represent a rotor in species {1}. Valid rotors '
+                                               'are: {2}'.format(val, self.label, all_pivots))
+            # Modify self.rotors_dict to remove respective 1D rotors dicts and add ND rotors dicts
+            rotor_indices_to_del = list()
+            for key, vals in directed_rotors.items():
+                # an independent loop, so 1D *directed* scans won't be deleted (treated above)
+                for pivots_list in vals:
+                    new_rotor = {'pivots': pivots_list,
+                                 'top': list(),
+                                 'scan': list(),
+                                 'number_of_running_jobs': 0,
+                                 'success': None,
+                                 'invalidation_reason': '',
+                                 'times_dihedral_set': 0,
+                                 'trsh_methods': list(),
+                                 'scan_path': '',
+                                 'directed_scan_type': key,
+                                 'directed_scan': dict(),
+                                 'dimensions': 0,
+                                 'original_dihedrals': list(),
+                                 'cont_indices': list(),
+                                 }
+                    for pivots in pivots_list:
+                        for index, rotors_dict in self.rotors_dict.items():
+                            if rotors_dict['pivots'] == pivots:
+                                new_rotor['top'].append(rotors_dict['top'])
+                                new_rotor['scan'].append(rotors_dict['scan'])
+                                new_rotor['dimensions'] += 1
+                                if not rotors_dict['directed_scan_type'] and index not in rotor_indices_to_del:
+                                    # remove this rotor dict, an ND one will be created instead
+                                    rotor_indices_to_del.append(index)
+                                break
+                    if new_rotor['dimensions'] != 1:
+                        pass  # Todo: consolidate top
+                    self.rotors_dict[max(list(self.rotors_dict.keys())) + 1] = new_rotor
+            for i in set(rotor_indices_to_del):
+                if not self.rotors_dict[i]['directed_scan_type']:
+                    del(self.rotors_dict[i])
+
+            # renumber the keys so iterative looping will make sense
+            new_rotors_dict = dict()
+            for i, rotor_dict in enumerate(self.rotors_dict.values()):
+                new_rotors_dict[i] = rotor_dict
+            self.rotors_dict = new_rotors_dict
+            self.number_of_rotors = i + 1
+
+            # replace pivots with four-atom scans
+            for key, vals in directed_rotors.items():
+                directed_rotors_scans[key] = list()
+                for pivots_list in vals:
+                    for rotors_dict in self.rotors_dict.values():
+                        if rotors_dict['pivots'] == pivots_list:
+                            directed_rotors_scans[key].append(rotors_dict['scan'])
+                            break
+            self.directed_rotors = directed_rotors_scans
+
+    def set_dihedral(self, scan, deg_increment=None, deg_abs=None, count=True, xyz=None):
         """
         Generated an RDKit molecule object from either self.final_xyz or ``xyz``.
         Increments the current dihedral angle between atoms i, j, k, l in the `scan` list by 'deg_increment` in degrees.
@@ -815,13 +982,13 @@ class ARCSpecies(object):
         All bonded atoms are moved accordingly. The result is saved in self.initial_xyz.
 
         Args:
-            pivots (list): The pivotal atoms.
             scan (list): The atom indices representing the dihedral.
             deg_increment (float, optional): The dihedral angle increment.
             deg_abs (float, optional): The absolute desired dihedral angle.
             count (bool, optional): Whether to increment the rotor's times_dihedral_set parameter. `True` to increment.
             xyz (dict, optional): An alternative xyz to use instead of self.final_xyz.
         """
+        pivots = scan[1:3]
         xyz = xyz or self.final_xyz
         if deg_increment is None and deg_abs is None:
             raise InputError('Either deg_increment or deg_abs must be given.')
@@ -1095,7 +1262,7 @@ class ARCSpecies(object):
             verbose (bool, optional): Whether to log isomorphism findings and errors.
 
         Returns:
-            bool: Whether the perception of self.final_xyz is isomorphic with self.mol, `True` if it is.
+            bool: Whether the perception of self.final_xyz is isomorphic with self.mol, ``True`` if it is.
         """
         xyz = xyz or self.final_xyz
         passed_test, return_value = False, False
@@ -1131,8 +1298,11 @@ class ARCSpecies(object):
             elif verbose:
                 logger.info('Species {0} was found to be isomorphic with the perception '
                             'of its optimized coordinates.'.format(self.label))
-        elif verbose:
-            logger.error('Cannot check isomorphism for species {0}'.format(self.label))
+        else:
+            if verbose:
+                logger.error('Cannot check isomorphism for species {0}'.format(self.label))
+            if allow_nonisomorphic_2d:
+                return_value = True
         return return_value
 
     def scissors(self):

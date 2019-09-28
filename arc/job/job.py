@@ -10,7 +10,7 @@ import datetime
 import os
 import shutil
 
-from arc.arc_exceptions import JobError, InputError
+from arc.exceptions import JobError, InputError
 from arc.common import get_logger, calculate_dihedral_angle
 from arc.job.inputs import input_files
 from arc.job.local import get_last_modified_time, submit_job, delete_job, execute_command, check_job_status, \
@@ -74,7 +74,10 @@ class Job(object):
                                             multiplicity = 1.
         conformers (str, optional): A path to the YAML file conformer coordinates for a Gromacs MD job.
         radius (float, optional): The species radius in Angstrom.
-        directed_dihedral (float): The dihedral angle of a directed scan job (either continuous or brute force).
+        directed_scans (list): Entries are lists of four-atom dihedral scan indices to constrain during a directed scan.
+        directed_dihedrals (list): The dihedral angles of a directed scan job corresponding to ``directed_scans``.
+        directed_scan_type (str): The type of the directed scan.
+        rotor_index (int): The 0-indexed rotor number (key) in the species.rotors_dict dictionary.
         job_dict (dict, optional): A dictionary to create this object from (used when restarting ARC).
         testing (bool, optional): Whether the object is generated for testing purposes, True if it is.
 
@@ -142,15 +145,18 @@ class Job(object):
         max_job_time (int): The maximal allowed job time on the server in hours.
         bath_gas (str): A bath gas. Currently used in OneDMin to calc L-J parameters.
                         Allowed values are He, Ne, Ar, Kr, H2, N2, O2.
-        directed_dihedral (float): The dihedral angle of a directed scan job (either continuous or brute force).
+        directed_scans (list): Entries are lists of four-atom dihedral scan indices to constrain during a directed scan.
+        directed_dihedrals (list): The dihedral angles of a directed scan job corresponding to ``directed_scans``.
+        directed_scan_type (str): The type of the directed scan.
+        rotor_index (int): The 0-indexed rotor number (key) in the species.rotors_dict dictionary.
     """
     def __init__(self, project='', ess_settings=None, species_name='', xyz=None, job_type='', level_of_theory='',
                  multiplicity=None, project_directory='', charge=0, conformer=-1, fine=False, shift='', software=None,
                  is_ts=False, scan=None, pivots=None, memory=14, comments='', trsh='', scan_trsh='', job_dict=None,
                  ess_trsh_methods=None, bath_gas=None, initial_trsh=None, job_num=None, job_server_name=None,
                  job_name=None, job_id=None, server=None, initial_time=None, occ=None, max_job_time=120, scan_res=None,
-                 checkfile=None, number_of_radicals=None, conformers=None, radius=None, directed_dihedral=None,
-                 testing=False):
+                 checkfile=None, number_of_radicals=None, conformers=None, radius=None, directed_scan_type=None,
+                 directed_scans=None, directed_dihedrals=None, rotor_index=None, testing=False):
         if job_dict is not None:
             self.from_dict(job_dict)
         else:
@@ -179,7 +185,10 @@ class Job(object):
             self.number_of_radicals = number_of_radicals
             self.xyz = check_xyz_dict(xyz)
             self.radius = radius
-            self.directed_dihedral = directed_dihedral
+            self.directed_scan_type = directed_scan_type
+            self.rotor_index = rotor_index
+            self.directed_scans = directed_scans
+            self.directed_dihedrals = directed_dihedrals
             self.conformer = conformer
             self.conformers = conformers
             self.is_ts = is_ts
@@ -208,8 +217,8 @@ class Job(object):
             self.server = server
             self.software = software
         # allowed job types:
-        job_types = ['conformer', 'opt', 'freq', 'optfreq', 'sp', 'composite', 'bde', 'scan', 'cont_directed_scan',
-                     'brute_directed_scan', 'gsm', 'irc', 'ts_guess', 'orbitals', 'onedmin', 'ff_param_fit', 'gromacs']
+        job_types = ['conformer', 'opt', 'freq', 'optfreq', 'sp', 'composite', 'bde', 'scan', 'directed_scan',
+                     'gsm', 'irc', 'ts_guess', 'orbitals', 'onedmin', 'ff_param_fit', 'gromacs']
         if self.job_type not in job_types:
             raise ValueError('Job type {0} not understood. Must be one of the following:\n{1}'.format(
                 self.job_type, job_types))
@@ -217,8 +226,13 @@ class Job(object):
             raise InputError('{0} Job of species {1} got None for xyz'.format(self.job_type, self.species_name))
         if self.job_type == 'gromacs' and self.conformers is None:
             raise InputError('{0} Job of species {1} got None for conformers'.format(self.job_type, self.species_name))
-        if self.job_type in ['cont_directed_scan', 'brute_directed_scan'] and self.directed_dihedral is None:
-            raise InputError('Must have the directed_dihedral attribute for a directed scan job')
+        if self.job_type == 'directed_scan' and (self.directed_dihedrals is None or self.directed_scans is None
+                                                 or self.directed_scan_type is None):
+            raise InputError('Must have the directed_dihedrals, directed_scans, and directed_scan_type attributes '
+                             'for a directed scan job. Got {0}, {1}, {2}, respectively.'.format(
+                              self.directed_dihedrals, self.directed_scans, self.directed_scan_type))
+        if self.job_type == 'directed_scan' and self.rotor_index is None:
+            raise InputError('Must have the rotor_index argument for a directed scan job.')
 
         if self.job_num < 0:
             self._set_job_number()
@@ -310,8 +324,14 @@ class Job(object):
             job_dict['pivots'] = self.pivots
         if self.scan_trsh:
             job_dict['scan_trsh'] = self.scan_trsh
-        if self.directed_dihedral is not None:
-            job_dict['directed_dihedral'] = '{0:.2f}'.format(self.directed_dihedral)
+        if self.directed_dihedrals is not None:
+            job_dict['directed_dihedrals'] = ['{0:.2f}'.format(dihedral) for dihedral in self.directed_dihedrals]
+        if self.directed_scans is not None:
+            job_dict['directed_scans'] = self.directed_scans
+        if self.directed_scan_type is not None:
+            job_dict['directed_scan_type'] = self.directed_scan_type
+        if self.rotor_index is not None:
+            job_dict['rotor_index'] = self.rotor_index
         if self.bath_gas is not None:
             job_dict['bath_gas'] = self.bath_gas
         if self.checkfile is not None:
@@ -370,7 +390,11 @@ class Job(object):
         self.number_of_radicals = job_dict['number_of_radicals'] if 'number_of_radicals' in job_dict else None
         self.conformers = job_dict['conformers'] if 'conformers' in job_dict else None
         self.radius = job_dict['radius'] if 'radius' in job_dict else None
-        self.directed_dihedral = job_dict['directed_dihedral'] if 'directed_dihedral' in job_dict else None
+        self.directed_dihedrals = [float(dihedral) for dihedral in job_dict['directed_dihedrals']] \
+            if 'directed_dihedrals' in job_dict else None
+        self.directed_scans = job_dict['directed_scans'] if 'directed_scans' in job_dict else None
+        self.directed_scan_type = job_dict['directed_scan_type'] if 'directed_scan_type' in job_dict else None
+        self.rotor_index = job_dict['rotor_index'] if 'rotor_index' in job_dict else None
 
     def _set_job_number(self):
         """
@@ -738,35 +762,42 @@ $end
                 raise ValueError('Currently rotor scan is only supported in Gaussian and QChem. Got: {0} using the '
                                  '{1} level of theory'.format(self.software, self.method + '/' + self.basis_set))
 
-        elif self.job_type in ['brute_directed_scan', 'cont_directed_scan']:
-            # this is a constrained opt job, constraining the relevant dihedral to self.directed_dihedral
-            # as far as the job is concerned, there's no difference between brute_directed_scan and cont_directed_scan.
-            # The difference is in how there jobs are spawned.
-            scan = ' '.join([str(num) for num in self.scan])
+        elif self.job_type == 'directed_scan':
+            # this is either a constrained opt job or an sp job (depends on self.directed_scan_type).
+            # If opt, the dihedrals in self.directed_dihedral are constrained.
             if self.software == 'gaussian':
-                if self.is_ts:
-                    job_type_1 = 'opt=(ts, modredundant, calcfc, noeigentest, maxStep=5) scf=(tight, direct)' \
-                                 ' integral=(grid=ultrafine, Acc2E=12)'
+                if 'sp' in self.directed_scan_type:
+                    job_type_1 = 'scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
                 else:
-                    job_type_1 = 'opt=(modredundant, calcfc, noeigentest, maxStep=5) scf=(tight, direct)' \
-                                 ' integral=(grid=ultrafine, Acc2E=12)'
+                    if self.is_ts:
+                        job_type_1 = 'opt=(ts, modredundant, calcfc, noeigentest, maxStep=5) scf=(tight, direct)' \
+                                     ' integral=(grid=ultrafine, Acc2E=12)'
+                    else:
+                        job_type_1 = 'opt=(modredundant, calcfc, noeigentest, maxStep=5) scf=(tight, direct)' \
+                                     ' integral=(grid=ultrafine, Acc2E=12)'
+                    for directed_scan, directed_dihedral in zip(self.directed_scans, self.directed_dihedrals):
+                        scan_atoms = ' '.join([str(num) for num in directed_scan])
+                        scan_string += 'D {scan} ={dihedral} B\nD {scan} F\n'.format(
+                            scan=scan_atoms, dihedral='{0:.2f}'.format(directed_dihedral))
                 if self.checkfile is not None:
                     job_type_1 += ' guess=read'
                 else:
                     job_type_1 += ' guess=mix'
-                scan_string = 'D {scan} ={dihedral} B\nD {scan} F'.format(
-                    scan=scan, dihedral='{0:.2f}'.format(self.directed_dihedral))
             elif self.software == 'qchem':
                 # following https://manual.q-chem.com/5.2/Ch10.S3.SS4.html
-                if self.is_ts:
-                    job_type_1 = 'ts'
+                if 'sp' in self.directed_scan_type:
+                    job_type_1 = 'sp'
                 else:
-                    job_type_1 = 'opt'
-                constraint = """
-    CONSTRAINT
-        tors {scan} {dihedral}
-    ENDCONSTRAINT
-    """.format(scan=scan, dihedral=self.directed_dihedral)
+                    if self.is_ts:
+                        job_type_1 = 'ts'
+                    else:
+                        job_type_1 = 'opt'
+                    constraint = '\n    CONSTRAINT\n'
+                    for directed_scan, directed_dihedral in zip(self.directed_scans, self.directed_dihedrals):
+                        scan_atoms = ' '.join([str(num) for num in directed_scan])
+                        constraint += '        tors {scan} {dihedral}\n'.format(
+                            scan=scan_atoms, dihedral='{0:.2f}'.format(directed_dihedral))
+                    constraint += '    ENDCONSTRAINT\n'
             else:
                 raise ValueError('Currently directed rotor scans are only supported in Gaussian and QChem. '
                                  'Got: {0} using the {1} level of theory'.format(
@@ -933,9 +964,10 @@ $end
         if self.fine:
             logger.info('Running job {name} for {label} (fine opt)'.format(
                 name=self.job_name, label=self.species_name))
-        elif self.directed_dihedral is not None:
-            logger.info('Running job {name} for {label} (pivots: {pivots}, dihedral: {dihedral:.2f})'.format(
-                name=self.job_name, label=self.species_name, pivots=self.pivots, dihedral=self.directed_dihedral))
+        elif self.directed_dihedrals is not None and self.directed_scans is not None:
+            dihedrals = ['{0:.2f}'.format(dihedral) for dihedral in self.directed_dihedrals]
+            logger.info('Running job {name} for {label} (pivots: {pivots}, dihedrals: {dihedrals})'.format(
+                name=self.job_name, label=self.species_name, pivots=self.directed_scans, dihedrals=dihedrals))
         elif self.pivots:
             logger.info('Running job {name} for {label} (pivots: {pivots})'.format(
                 name=self.job_name, label=self.species_name, pivots=self.pivots))
@@ -1183,7 +1215,7 @@ $end
                         self.software = ess.lower()
             if self.software is None:
                 if self.job_type in ['conformer', 'opt', 'freq', 'optfreq', 'sp',
-                                     'brute_directed_scan', 'cont_directed_scan']:
+                                     'directed_scan']:
                     if 'b2' in self.method or 'dsd' in self.method or 'pw2' in self.method:
                         # this is a double-hybrid (MP2) DFT method, use Gaussian
                         if 'gaussian' not in self.ess_settings.keys():

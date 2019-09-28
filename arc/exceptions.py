@@ -48,6 +48,13 @@ class ProcessorError(Exception):
     pass
 
 
+class QAError(Exception):
+    """
+    This exception is raised whenever an error occurs while checking a Job's quality.
+    """
+    pass
+
+
 class ReactionError(Exception):
     """
     An exception class for exceptional behavior that occurs while working with reactions.

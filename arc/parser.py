@@ -15,7 +15,7 @@ from arkane.molpro import MolproLog
 from arkane.qchem import QChemLog
 from arkane.statmech import determine_qm_software
 
-from arc.arc_exceptions import InputError, ParserError
+from arc.exceptions import InputError, ParserError
 from arc.common import get_logger
 from arc.species.converter import xyz_from_data, str_to_xyz
 
@@ -76,7 +76,14 @@ def parse_t1(path):
 
 def parse_e_elect(path, zpe_scale_factor=1.):
     """
-    Parse the zero K energy, E0, from an sp job output file.
+    Parse the electronic energy from an sp job output file.
+
+    Args:
+        path (str): The ESS log file to parse from.
+        zpe_scale_factor: The ZPE scaling factor, used only for composite methods in Gaussian via Arkane.
+
+    Returns:
+        e_elect (float): The electronic energy in kJ/mol
     """
     if not os.path.isfile(path):
         raise InputError('Could not find file {0}'.format(path))

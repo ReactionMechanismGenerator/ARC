@@ -19,7 +19,7 @@ from rmgpy.molecule.element import getElement
 from rmgpy.species import Species
 
 from arc.common import get_logger
-from arc.arc_exceptions import SpeciesError, SanitizationError, InputError
+from arc.exceptions import SpeciesError, SanitizationError, InputError
 from arc.species.xyz_to_2d import MolGraph
 
 

@@ -32,7 +32,7 @@ from rmgpy.molecule.element import getElement
 from rmgpy.qm.qmdata import QMData
 from rmgpy.qm.symmetry import PointGroupCalculator
 
-from arc.arc_exceptions import InputError, SettingsError
+from arc.exceptions import InputError, SettingsError
 from arc.settings import arc_path, servers, default_job_types
 
 
@@ -422,7 +422,7 @@ def initialize_job_types(job_types):
     Returns:
         job_types (dict): An updated (comprehensive) job type dictionary.
     """
-    defaults_to_true = ['conformers', 'opt', 'fine', 'freq', 'sp', '1d_rotors']
+    defaults_to_true = ['conformers', 'opt', 'fine', 'freq', 'sp', 'rotors']
     defaults_to_false = ['onedmin', 'orbitals', 'bde']
     if job_types is None:
         job_types = default_job_types
@@ -444,8 +444,11 @@ def initialize_job_types(job_types):
             job_types[job_type] = False
     for job_type in job_types.keys():
         if job_type not in defaults_to_true and job_type not in defaults_to_false:
+            if job_type == '1d_rotors':
+                logging.error("Note: The `1d_rotors` job type was renamed to simply `rotors`. "
+                              "Please modify your input accordingly (see ARC's documentation for examples).")
             raise InputError("Job type '{0}' not supported. Check the job types dictionary "
-                             "(either in ARC's input or in default_job_types under settings)".format(job_type))
+                             "(either in ARC's input or in default_job_types under settings).".format(job_type))
     job_types_report = [job_type for job_type, val in job_types.items() if val]
     logger.info('\nConsidering the following job types: {0}\n'.format(job_types_report))
     return job_types

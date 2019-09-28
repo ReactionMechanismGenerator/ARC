@@ -23,7 +23,7 @@ import arc.rmgdb as rmgdb
 from arc.job.inputs import input_files
 from arc import plotter
 from arc.species.species import determine_rotor_symmetry, determine_rotor_type
-from arc.arc_exceptions import ProcessorError, SchedulerError, RotorError
+from arc.exceptions import ProcessorError, SchedulerError, RotorError
 
 ##################################################################
 

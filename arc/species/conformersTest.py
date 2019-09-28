@@ -17,7 +17,7 @@ from rmgpy.molecule.group import GroupAtom, GroupBond, Group
 import arc.species.converter as converter
 import arc.species.conformers as conformers
 from arc.species.species import ARCSpecies
-from arc.arc_exceptions import ConformerError
+from arc.exceptions import ConformerError
 from arc.common import almost_equal_coords_lists
 
 

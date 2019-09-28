@@ -27,7 +27,7 @@ Multiple species are defined using SMILES / an XYZ list / InChI::
       - server2
 
     job_types:
-      1d_rotors: true
+      rotors: true
       conformers: true
       fine: true
       freq: true
@@ -120,7 +120,7 @@ The same example as above ran via the API (e.g., in `Jupyter notebooks`__) would
 
     arc0 = ARC(project='arc_demo_1',
                ess_settings={'gaussian': ['local', 'server1'], 'molpro': 'server1', 'qchem': 'server2'},
-               job_types={'1d_rotors': True, 'conformers': True, 'fine': True, 'freq': True, 'opt': True, sp: True},
+               job_types={'rotors': True, 'conformers': True, 'fine': True, 'freq': True, 'opt': True, sp: True},
                max_job_time=24,
                level_of_theory='CCSD(T)-F12/cc-pVTZ-F12//wb97xd/def2tzvp',
                scan_level='wb97xd/def2tzvp',

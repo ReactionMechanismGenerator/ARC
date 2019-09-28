@@ -56,7 +56,7 @@ from rmgpy.molecule.converter import toOBMol
 from rmgpy.molecule.molecule import Molecule
 import rmgpy.molecule.group as gr
 
-from arc.arc_exceptions import ConformerError, InputError
+from arc.exceptions import ConformerError, InputError
 from arc.common import logger, determine_symmetry, calculate_dihedral_angle
 from arc.species import converter
 import arc.plotter
@@ -1395,12 +1395,17 @@ def find_internal_rotors(mol):
                                 if i < smallest_index:
                                     smallest_index = i
                         rotor['scan'].append(smallest_index + 1)
+                        rotor['number_of_running_jobs'] = 0
                         rotor['success'] = None
                         rotor['invalidation_reason'] = ''
                         rotor['times_dihedral_set'] = 0
                         rotor['trsh_methods'] = list()
                         rotor['scan_path'] = ''
+                        rotor['directed_scan_type'] = ''
                         rotor['directed_scan'] = dict()
+                        rotor['dimensions'] = 1
+                        rotor['original_dihedrals'] = list()
+                        rotor['cont_indices'] = list()
                         rotors.append(rotor)
     return rotors
 

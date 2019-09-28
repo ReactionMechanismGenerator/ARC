@@ -19,7 +19,7 @@ from arc.main import ARC
 from arc.common import read_yaml_file
 from arc.species.species import ARCSpecies
 from arc.settings import arc_path, servers
-from arc.arc_exceptions import InputError
+from arc.exceptions import InputError
 
 ################################################################################
 
@@ -41,7 +41,7 @@ class TestARC(unittest.TestCase):
                           'fine_grid': False,
                           'freq': True,
                           'sp': True,
-                          '1d_rotors': False,
+                          'rotors': False,
                           'orbitals': False,
                           'lennard_jones': False,
                           'bde': True,
@@ -69,7 +69,7 @@ class TestARC(unittest.TestCase):
                          'scan_level': '',
                          'sp_level': 'ccsd(t)-f12/cc-pvdz-f12',
                          'job_memory': 14,
-                         'job_types': {'1d_rotors': False,
+                         'job_types': {'rotors': False,
                                        'conformers': True,
                                        'fine': False,
                                        'freq': True,
@@ -101,7 +101,6 @@ class TestARC(unittest.TestCase):
                                       'multiplicity': 1,
                                       'neg_freqs_trshed': [],
                                       'number_of_rotors': 0,
-                                      'rotors_dict': {},
                                       'force_field': 'MMFF94',
                                       't1': None}],
                          }
@@ -150,7 +149,7 @@ class TestARC(unittest.TestCase):
         self.assertEqual(arc1.project, 'testing_from_dict')
         self.assertTrue('arc_project_for_testing_delete_after_usage' in arc1.project_directory)
         self.assertTrue(arc1.job_types['fine'])
-        self.assertTrue(arc1.job_types['1d_rotors'])
+        self.assertTrue(arc1.job_types['rotors'])
         self.assertEqual(arc1.sp_level, 'ccsdt-f12/cc-pvqz-f12')
         self.assertEqual(arc1.arc_species_list[0].label, 'testing_spc1')
         self.assertFalse(arc1.arc_species_list[0].is_ts)

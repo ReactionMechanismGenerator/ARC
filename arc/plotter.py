@@ -27,8 +27,8 @@ from rmgpy.data.transport import TransportLibrary
 from rmgpy.quantity import ScalarQuantity
 from rmgpy.species import Species
 
-from arc.arc_exceptions import InputError, SanitizationError
-from arc.common import get_logger, min_list
+from arc.exceptions import InputError, SanitizationError
+from arc.common import get_logger, min_list, save_yaml_file
 from arc.species.converter import rdkit_conf_from_mol, molecules_from_xyz, check_xyz_dict, str_to_xyz, xyz_to_str, \
     xyz_to_x_y_z, xyz_from_data
 from arc.species.species import ARCSpecies
@@ -792,21 +792,37 @@ def plot_torsion_angles(torsion_angles, torsions_sampling_points=None, wells_dic
     return num_comb
 
 
-def plot_rotor_scan(angles, energies, path=None, pivots=None, comment='', units='radians'):
+def plot_1d_rotor_scan(angles=None, energies=None, results=None, path=None, pivots=None, comment='', units='radians'):
     """
-    Plots a 1D rotor PES for energy vs. angles.
+    Plots a 1D rotor PES for energy vs. angles. Either ``angles`` and ``energies`` or ``results`` must be given.
 
     Args:
-        angles (list, tuple, np.array): Dihedral angles.
-        energies (list, tuple, np.array): The energies in kJ/mol.
+        angles (list, tuple, np.array, optional): Dihedral angles.
+        energies (list, tuple, np.array, optional): The energies in kJ/mol.
+        results (dict, optional): The results dictionary, dihedrals are assumed to be in degrees (not radians).
         path (str, optional): The folder path for saving the rotor scan image and comments.
         pivots (list, tuple, optional): The pivotal atoms of the scan.
         comment (str, optional): Reason for invalidating this rotor.
         units (str, optional): The ``angle`` units, either 'degrees' or 'radians'.
+
+    Raises:
+        InputError: If neither `angles`` and ``energies`` nor ``results`` were given.
     """
-    if units == 'radians':
-        angles = angles * 180 / np.pi  # convert radians to degree
-    energies = np.array(energies, np.float64)  # in kJ/mol
+    if (angles is None or energies is None) and results is None:
+        raise InputError('Either angles and energies or results must be given')
+    if results is not None:
+        energies = np.zeros(shape=(len(results['directed_scan'].keys())), dtype=np.float64)
+        for i, key in enumerate(results['directed_scan'].keys()):
+            energies[i] = results['directed_scan'][key]['energy']
+        if len(list(results['directed_scan'].keys())[0]) == 1:
+            # keys represent a single dihedral
+            angles = [float(key[0]) for key in results['directed_scan'].keys()]
+        else:
+            angles = list(range(len(list(results['directed_scan'].keys()))))
+    else:
+        if units == 'radians':
+            angles = angles * 180 / np.pi  # convert radians to degree
+        energies = np.array(energies, np.float64)  # in kJ/mol
     marker_color, line_color = plt.cm.viridis([0.1, 0.9])
     plt.figure(figsize=(4, 3), dpi=120)
     plt.subplot(1, 1, 1)
@@ -840,6 +856,89 @@ def plot_rotor_scan(angles, energies, path=None, pivots=None, comment='', units=
                     metadata=None)
 
 
+def plot_2d_rotor_scan(results, path=None, label='', cmap='Blues', resolution=90):
+    """
+    Plot a 2D rotor scan.
+
+    Args:
+        results (dict): The results dictionary, dihedrals are assumed to be in degrees (not radians).
+        path (str, optional): The folder path to save this 2D image.
+        units (str, optional): The dihedral angle units, either `degrees` or `radians`.
+        label (str, optional): The species label.
+        cmap (str, optional): The color map to use. See optional arguments below.
+        resolution (int, optional): The image resolution to produce.
+
+    Raises:
+        TypeError: If ``results`` if of wrong type.
+        InputError: If ``results`` does not represent a 2D rotor.
+
+    Optional arguments for cmap::
+
+        Accent, Accent_r, Blues, Blues_r, BrBG, BrBG_r, BuGn, BuGn_r, BuPu, BuPu_r, CMRmap, CMRmap_r, Dark2, Dark2_r,
+        GnBu, GnBu_r, Greens, Greens_r, Greys, Greys_r, OrRd, OrRd_r, Oranges, Oranges_r, PRGn, PRGn_r, Paired,
+        Paired_r, Pastel1, Pastel1_r, Pastel2, Pastel2_r, PiYG, PiYG_r, PuBu, PuBuGn, PuBuGn_r, PuBu_r, PuOr, PuOr_r,
+        PuRd, PuRd_r, Purples, Purples_r, RdBu, RdBu_r, RdGy, RdGy_r, RdPu, RdPu_r, RdYlBu, RdYlBu_r, RdYlGn, RdYlGn_r,
+        Reds, Reds_r, Set1, Set1_r, Set2, Set2_r, Set3, Set3_r, Spectral, Spectral_r, Wistia, Wistia_r, YlGn, YlGnBu,
+        YlGnBu_r, YlGn_r, YlOrBr, YlOrBr_r, YlOrRd, YlOrRd_r, afmhot, afmhot_r, autumn, autumn_r, binary, binary_r,
+        bone, bone_r, brg, brg_r, bwr, bwr_r, cividis, cividis_r, cool, cool_r, coolwarm, coolwarm_r, copper, copper_r,
+        cubehelix, cubehelix_r, flag, flag_r, gist_earth, gist_earth_r, gist_gray, gist_gray_r, gist_heat, gist_heat_r,
+        gist_ncar, gist_ncar_r, gist_rainbow, gist_rainbow_r, gist_stern, gist_stern_r, gist_yarg, gist_yarg_r, gnuplot,
+        gnuplot2, gnuplot2_r, gnuplot_r, gray, gray_r, hot, hot_r, hsv, hsv_r, inferno, inferno_r, jet, jet_r, magma,
+        magma_r, nipy_spectral, nipy_spectral_r, ocean, ocean_r, pink, pink_r, plasma, plasma_r, prism, prism_r,
+        rainbow, rainbow_r, seismic, seismic_r, spring, spring_r, summer, summer_r, tab10, tab10_r, tab20, tab20_r,
+        tab20b, tab20b_r, tab20c, tab20c_r, terrain, terrain_r, viridis, viridis_r, winter, winter_r
+    """
+    if not isinstance(results, dict):
+        raise TypeError('results must be a dictionary, got {0}'.format(type(results)))
+    if len(results['scans']) != 2:
+        raise InputError('results must represent a 2D rotor, got {0}D'.format(len(results['scans'])))
+
+    # phis0 and phis1 correspond to columns and rows in energies, respectively
+    phis0 = np.array(sorted(list(set([float(key[0]) for key in results['directed_scan'].keys()]))), np.float64)
+    phis1 = np.array(sorted(list(set([float(key[1]) for key in results['directed_scan'].keys()]))), np.float64)
+    # If the last phi equals to the first, it is removed by the abive set() call. Bring it back:
+    if phis0.size < 360 / (phis0[1] - phis0[0]) + 1:
+        phis0 = np.append(phis0, phis0[0])
+    if phis1.size < 360 / (phis1[1] - phis1[0]) + 1:
+        phis1 = np.append(phis1, phis1[0])
+    zero_phi0, zero_phi1 = list(), list()
+    energies = np.zeros(shape=(phis0.size, phis1.size), dtype=np.float64)
+    for i, phi0 in enumerate(phis0):
+        for j, phi1 in enumerate(phis1):
+            key = tuple('{0:.2f}'.format(dihedral) for dihedral in [phi0, phi1])
+            energies[i, j] = results['directed_scan'][key]['energy']
+            if energies[i, j] == 0:
+                zero_phi0.append(phi0)
+                zero_phi1.append(phi1)
+
+    plt.figure(num=None, figsize=(12, 8), dpi=resolution, facecolor='w', edgecolor='k')
+
+    plt.contourf(phis0, phis1, energies, 20, cmap=cmap)
+    plt.colorbar()
+    contours = plt.contour(phis0, phis1, energies, 4, colors='black')
+    plt.clabel(contours, inline=True, fontsize=8)
+
+    plt.xlabel('Dihedral 1 for {scan} (degrees)'.format(scan=results['scans'][0]))
+    plt.ylabel('Dihedral 2 for {scan} (degrees)'.format(scan=results['scans'][1]))
+    label = ' for ' + label if label else ''
+    plt.title('2D scan energies (kJ/mol){label}'.format(label=label))
+    min_x = int(np.ceil(np.min(phis0) / 10.0)) * 10
+    plt.xlim = (min_x, min_x + 360)
+    plt.xticks(np.arange(min_x, min_x + 361, step=60))
+    min_y = int(np.ceil(np.min(phis1) / 10.0)) * 10
+    plt.ylim = (min_y, min_y + 360)
+    plt.yticks(np.arange(min_y, min_y + 361, step=60))
+
+    plt.plot(zero_phi0, zero_phi1, color='k', marker='D', markersize=12, linewidth=0)  # mark the lowest conformations
+
+    if path is not None:
+        fig_name = '{0}_{1}.png'.format(results['directed_scan_type'], results['scans'])
+        fig_path = os.path.join(path, fig_name)
+        plt.savefig(fig_path, dpi=120, facecolor='w', edgecolor='w', orientation='portrait', papertype=None,
+                    format=str('png'), transparent=False, bbox_inches=None, pad_inches=0.1, frameon=False,
+                    metadata=None)
+
+
 def save_rotor_text_file(angles, energies, path):
     """
     Save a text file summarizing a rotor scan, useful for brute force scans.
@@ -864,3 +963,24 @@ def save_rotor_text_file(angles, energies, path):
             lines.append('{0:12.2f} {1:24.3f}\n'.format(angle, energy))
         with open(path, 'w') as f:
             f.writelines(lines)
+
+
+def save_nd_rotor_yaml(results, path):
+    """
+    Save a text file summarizing a rotor scan, useful for brute force scans.
+
+    Args:
+        results (dict): The respective scan dictionary to save.
+        path (str): The path of the file to be saved.
+    """
+    print('save_nd_rotor_yaml')
+    if not os.path.isdir(os.path.dirname(path)):
+        os.makedirs(os.path.dirname(path))
+    modified_results = results.copy()  # don't dump floats into a YAML file, it's buggy
+    for dihedral_tuple, dihedral_dict in results['directed_scan'].items():
+        for key, val in dihedral_dict.items():
+            if key == 'energy':
+                modified_results['directed_scan'][dihedral_tuple][key] = '{:.2f}'.format(val)
+            elif key == 'xyz':
+                modified_results['directed_scan'][dihedral_tuple][key] = xyz_to_str(val)
+    save_yaml_file(path=path, content=modified_results)

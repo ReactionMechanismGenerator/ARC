@@ -12,7 +12,7 @@ import os
 import cclib
 import numpy as np
 
-from arc.arc_exceptions import SpeciesError, TrshError
+from arc.exceptions import SpeciesError, TrshError
 from arc.common import get_logger, determine_ess
 from arc.settings import servers, delete_command, list_available_nodes_command, submit_filename, \
     inconsistency_ab, inconsistency_az, maximum_barrier, rotor_scan_resolution
@@ -213,7 +213,7 @@ def trsh_negative_freq(label, log_file, neg_freqs_trshed=None, job_types=None):
         label (str): The species label.
         log_file (str): The frequency job log file.
         neg_freqs_trshed (list, optional): A list of negative frequencies the species was troubleshooted for.
-        job_types (list, optional): The job types used for ARC, e.g., ['opt', '1d_rotors'].
+        job_types (list, optional): The job types used for ARC, e.g., ['opt', 'rotors'].
 
     Todo:
         * get all torsions of the molecule (if weren't already generated),
@@ -236,7 +236,7 @@ def trsh_negative_freq(label, log_file, neg_freqs_trshed=None, job_types=None):
         TrshError: If a negative frequency could not be determined.
     """
     neg_freqs_trshed = neg_freqs_trshed if neg_freqs_trshed is not None else list()
-    job_types = job_types if job_types is not None else ['1d_rotors']
+    job_types = job_types if job_types is not None else ['rotors']
     output_errors, output_warnings, conformers, current_neg_freqs_trshed = list(), list(), list(), list()
     factor = 1.1
     ccparser = cclib.io.ccopen(str(log_file), logging.CRITICAL)
@@ -253,10 +253,10 @@ def trsh_negative_freq(label, log_file, neg_freqs_trshed=None, job_types=None):
     atomcoords = data.atomcoords
     if len(neg_freqs_trshed) > 10:
         logger.error('Species {0} was troubleshooted for negative frequencies too many times.'.format(label))
-        if '1d_rotors' not in job_types:
+        if 'rotors' not in job_types:
             logger.error('The rotor scans feature is turned off, '
                          'cannot troubleshoot geometry using dihedral modifications.')
-            output_warnings.append('1d_rotors = False; ')
+            output_warnings.append('rotors = False; ')
         logger.error('Invalidating species.')
         output_errors.append('Error: Encountered negative frequencies too many times; ')
     else:
