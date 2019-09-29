@@ -40,8 +40,9 @@ jobs:
         - git clone https://github.com/ReactionMechanismGenerator/RMG-database
         - cd RMG-database
         - cd ..
-        - git clone https://github.com/alongd/AutoTST
+        - git clone https://github.com/ReactionMechanismGenerator/AutoTST
         - cd AutoTST
+        - git checkout -b py3 origin/py3
         - export PYTHONPATH=$PYTHONPATH:$(pwd)
         - cd ..
         - conda install -y -c conda-forge codecov
@@ -63,8 +64,9 @@ jobs:
         - make
         - cd ..
         - git clone https://github.com/ReactionMechanismGenerator/RMG-database
-        - git clone https://github.com/alongd/AutoTST
+        - git clone https://github.com/ReactionMechanismGenerator/AutoTST
         - cd AutoTST
+        - git checkout -b py3 origin/py3
         - export PYTHONPATH=$PYTHONPATH:$(pwd)
         - cd ../ARC/docs
         # Install sphinx for building the documentation
