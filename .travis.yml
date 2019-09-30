@@ -34,7 +34,7 @@ jobs:
         - cd ..
         - git clone https://github.com/ReactionMechanismGenerator/RMG-Py
         - cd RMG-Py
-        - git checkout -b 2.4.0 tags/2.4.1
+        - git checkout -b 2.4.1 tags/2.4.1
         - export PYTHONPATH=$PYTHONPATH:$(pwd)
         - make
         - cd ..
@@ -61,10 +61,14 @@ jobs:
         - cd ..
         - git clone https://github.com/ReactionMechanismGenerator/RMG-Py
         - cd RMG-Py
+        - git checkout -b 2.4.1 tags/2.4.1
         - export PYTHONPATH=$PYTHONPATH:$(pwd)
         - make
         - cd ..
         - git clone https://github.com/ReactionMechanismGenerator/RMG-database
+        - cd RMG-database
+        - git checkout -b 2.4.0 tags/2.4.0
+        - cd ..
         - git clone https://github.com/alongd/AutoTST
         - cd AutoTST
         - export PYTHONPATH=$PYTHONPATH:$(pwd)
