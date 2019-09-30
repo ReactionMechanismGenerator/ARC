@@ -29,6 +29,9 @@ class TestTrsh(unittest.TestCase):
 
     def test_determine_ess_status(self):
         """Test the determine_ess_status() function"""
+
+        # Gaussian
+
         path = os.path.join(self.base_path['gaussian'], 'converged.out')
         status, keywords, error, line = trsh.determine_ess_status(
             output_path=path, species_label='OH', job_type='opt')
@@ -74,6 +77,16 @@ class TestTrsh(unittest.TestCase):
                                 'file template under arc/job/inputs.py. Alternatively, perhaps the level of theory '
                                 'is not supported by Gaussian in the format it was given.')
         self.assertFalse(line)
+
+        # QChem
+
+        path = os.path.join(self.base_path['qchem'], 'H2_opt.out')
+        status, keywords, error, line = trsh.determine_ess_status(
+            output_path=path, species_label='H2', job_type='opt')
+        self.assertEqual(status, 'done')
+        self.assertEqual(keywords, list())
+        self.assertEqual(error, '')
+        self.assertEqual(line, '')
 
 
 if __name__ == '__main__':

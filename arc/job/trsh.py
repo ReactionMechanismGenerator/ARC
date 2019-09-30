@@ -139,10 +139,10 @@ def determine_ess_status(output_path, species_label, job_type, software=None):
             done = False
             for line in lines[::-1]:
                 if 'Thank you very much for using Q-Chem' in line:
+                    done = True
                     # if this is an opt job, we must also check that the max num of cycles hasn't been reached,
-                    # so don't mark as done yet
-                    if 'opt' not in job_type:
-                        done = True
+                    # so don't break yet
+                    if 'opt' not in job_type and 'conformer' not in job_type and 'ts' not in job_type:
                         break
                 elif 'SCF failed' in line:
                     keywords = ['SCF']
@@ -162,8 +162,10 @@ def determine_ess_status(output_path, species_label, job_type, software=None):
                     if 'MAXIMUM OPTIMIZATION CYCLES REACHED' in line:
                         keywords = ['MaxOptCycles']
                         error = 'Maximum optimization cycles reached.'
+                        break
                     elif 'OPTIMIZATION CONVERGED' in line and done:  # `done` should already be assigned
                         done = True
+                        break
             if done:
                 return 'done', keywords, '', ''
             error = error if error else 'QChem job terminated for an unknown reason.'
