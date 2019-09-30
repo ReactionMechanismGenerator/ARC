@@ -867,7 +867,7 @@ class Scheduler(object):
             # we're spawning the first freq job for this species
             self.job_dict[label]['freq'] = dict()
         if self.job_types['freq']:
-            self.run_job(label=label, xyz=self.species_dict[label].final_xyz,
+            self.run_job(label=label, xyz=self.species_dict[label].get_xyz(generate=False),
                          level_of_theory=self.freq_level, job_type='freq')
 
     def run_sp_job(self, label):
@@ -908,18 +908,16 @@ class Scheduler(object):
                         raise SchedulerError('Could not determine number of core and valence orbitals from CCSD'
                                              ' sp calculation for {label}'.format(label=label))
                 occ = val + core  # the occupied orbitals are the core and valence orbitals
-                self.run_job(label=label, xyz=self.species_dict[label].final_xyz, level_of_theory='ccsd/vdz',
-                             job_type='sp', occ=occ)
+                self.run_job(label=label, xyz=self.species_dict[label].get_xyz(generate=False),
+                             level_of_theory='ccsd/vdz', job_type='sp', occ=occ)
             else:
                 # MRCI was requested but no sp job ran for this species, run CCSD first
                 logger.info('running a CCSD job for {0} before MRCI'.format(label))
-                self.run_job(label=label, xyz=self.species_dict[label].final_xyz, level_of_theory='ccsd/vdz',
-                             job_type='sp')
+                self.run_job(label=label, xyz=self.species_dict[label].get_xyz(generate=False),
+                             level_of_theory='ccsd/vdz', job_type='sp')
         if self.job_types['sp']:
-            xyz = self.species_dict[label].final_xyz or self.species_dict[label].initial_xyz
-            if xyz is None:
-                xyz = self.species_dict[label].conformers[0]
-            self.run_job(label=label, xyz=xyz, level_of_theory=self.sp_level, job_type='sp')
+            self.run_job(label=label, xyz=self.species_dict[label].get_xyz(generate=False),
+                         level_of_theory=self.sp_level, job_type='sp')
 
     def run_scan_jobs(self, label):
         """
@@ -964,7 +962,7 @@ class Scheduler(object):
                             if scan_job.pivots == pivots and scan_job.job_name in self.running_jobs[label]:
                                 break
                         else:
-                            self.run_job(label=label, xyz=self.species_dict[label].final_xyz,
+                            self.run_job(label=label, xyz=self.species_dict[label].get_xyz(generate=False),
                                          level_of_theory=self.scan_level, job_type='scan', scan=scans, pivots=pivots)
 
     def run_orbitals_job(self, label):
@@ -975,8 +973,8 @@ class Scheduler(object):
         Args:
             label (str): The species label.
         """
-        self.run_job(label=label, xyz=self.species_dict[label].final_xyz, level_of_theory=self.orbitals_level,
-                     job_type='orbitals')
+        self.run_job(label=label, xyz=self.species_dict[label].get_xyz(generate=False),
+                     level_of_theory=self.orbitals_level, job_type='orbitals')
 
     def run_onedmin_job(self, label):
         """
@@ -988,7 +986,7 @@ class Scheduler(object):
         if 'onedmin' not in self.ess_settings:
             logger.error('Cannot execute a Lennard Jones job without the OneDMin software')
         elif 'onedmin' not in self.job_dict[label]:
-            self.run_job(label=label, xyz=self.species_dict[label].final_xyz, job_type='onedmin',
+            self.run_job(label=label, xyz=self.species_dict[label].get_xyz(generate=False), job_type='onedmin',
                          level_of_theory='')
 
     def run_force_field_fit_job(self, label):
@@ -1110,7 +1108,7 @@ class Scheduler(object):
         scans = self.species_dict[label].rotors_dict[rotor_index]['scan']
         pivots = self.species_dict[label].rotors_dict[rotor_index]['pivots']
         directed_scan_type = self.species_dict[label].rotors_dict[rotor_index]['directed_scan_type']
-        xyz = xyz if xyz is not None else self.species_dict[label].final_xyz
+        xyz = xyz or self.species_dict[label].get_xyz(generate=True)
         if 'cont' not in directed_scan_type and 'brute' not in directed_scan_type:
             raise ImportError('directed_scan_type must be either continuous or brute force, got: {0}'.format(
                 directed_scan_type))
