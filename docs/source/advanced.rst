@@ -16,6 +16,15 @@ See :ref:`the examples <examples>`.
 
 __ xyz_format_
 
+Specify a particular job type
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+To run ARC with a particular job type, set ``specific_job_type`` to the job type you want.
+Currently, ARC supports the following job types: ``conformers``, ``opt``, ``fine``, ``freq``,
+``sp``, ``rotors``, ``onedmin``, ``orbitals``, ``bde``.
+
+Notice that ``specific_job_type`` takes higher precedence than ``job_types``. If you specify both attributes, ARC will
+dismiss the given ``job_types`` and will only populate the ``job_types`` dictionary using given ``specific_job_type``.
 
 Using a fine DFT grid for optimization
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
