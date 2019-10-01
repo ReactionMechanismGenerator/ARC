@@ -547,3 +547,49 @@ def almost_equal_coords_lists(xyz1, xyz2):
         else:
             return False
     return True
+
+
+def sort_two_lists_by_the_first(list1, list2):
+    """
+    Sort two lists in increasing order by the values of the first list.
+    Ignoring None entries from list1 and their respective entries in list2.
+    The function was written in this format rather the more pytonic ``zip(*sorted(zip(list1, list2)))`` method
+    to accommodate for dictionaries as entries of list2, otherwise a
+    ``TypeError: '<' not supported between instances of 'dict' and 'dict'`` error is raised.
+
+    Args:
+        list1 (list, tuple): Entries are floats or ints (could also be None).
+        list2 (list, tuple): Entries could be anything.
+
+    Returns:
+        list: Sorted values from list1, ignoring None entries.
+    Returns:
+        list: Respective entries from list2.
+
+    Raises:
+        InputError: If types are wrong, or lists are not the same length.
+    """
+    if not isinstance(list1, (list, tuple)) or not isinstance(list2, (list, tuple)):
+        raise InputError(f'Arguments must be lists, got: {type(list1)} and {type(list2)}')
+    for entry in list1:
+        if not isinstance(entry, (float, int)) and entry is not None:
+            raise InputError(f'Entries of list1 must be either floats or integers, got: {type(entry)}.')
+    if len(list1) != len(list2):
+        raise InputError(f'Both lists must be the same length, got {len(list1)} and {len(list2)}')
+
+    # remove None entries from list1 and their respective entries from list2:
+    new_list1, new_list2 = list(), list()
+    for entry1, entry2 in zip(list1, list2):
+        if entry1 is not None:
+            new_list1.append(entry1)
+            new_list2.append(entry2)
+    indices = list(range(len(new_list1)))
+
+    zipped_lists = zip(new_list1, indices)
+    sorted_lists = sorted(zipped_lists)
+    sorted_list1 = [x for x, _ in sorted_lists]
+    sorted_indices = [x for _, x in sorted_lists]
+    sorted_list2 = [0] * len(new_list2)
+    for counter, index in enumerate(sorted_indices):
+        sorted_list2[counter] = new_list2[index]
+    return sorted_list1, sorted_list2
