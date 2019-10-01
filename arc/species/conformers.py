@@ -101,7 +101,7 @@ COMBINATION_THRESHOLD = 1000
 
 def generate_conformers(mol_list, label, xyzs=None, torsions=None, tops=None, charge=0, multiplicity=None,
                         num_confs=None, num_confs_to_return=None, well_tolerance=None, de_threshold=None,
-                        smeared_scan_res=None, combination_threshold=None, force_field='MMFF94',
+                        smeared_scan_res=None, combination_threshold=None, force_field='MMFF94s',
                         max_combination_iterations=None, determine_h_bonds=False, return_all_conformers=False,
                         plot_path=None, print_logs=True):
     """
@@ -310,7 +310,7 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
 
 def generate_conformer_combinations(label, mol, base_xyz, hypothetical_num_comb, multiple_tors,
                                     multiple_sampling_points, combination_threshold=1000, len_conformers=-1,
-                                    force_field='MMFF94', max_combination_iterations=25, plot_path=None,
+                                    force_field='MMFF94s', max_combination_iterations=25, plot_path=None,
                                     torsion_angles=None, multiple_sampling_points_dict=None, wells_dict=None,
                                     de_threshold=None):
     """
@@ -362,7 +362,7 @@ def generate_conformer_combinations(label, mol, base_xyz, hypothetical_num_comb,
 
 
 def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_tors, multiple_sampling_points,
-                                                len_conformers=-1, force_field='MMFF94', max_combination_iterations=25,
+                                                len_conformers=-1, force_field='MMFF94s', max_combination_iterations=25,
                                                 torsion_angles=None, multiple_sampling_points_dict=None,
                                                 wells_dict=None, de_threshold=None, plot_path=False):
     """
@@ -454,7 +454,7 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
 
 
 def generate_all_combinations(label, mol, base_xyz, multiple_tors, multiple_sampling_points, len_conformers=-1,
-                              force_field='MMFF94'):
+                              force_field='MMFF94s'):
     """
     Generate all combinations of torsion wells from a base conformer.
     untested
@@ -498,7 +498,7 @@ def generate_all_combinations(label, mol, base_xyz, multiple_tors, multiple_samp
 
 
 def generate_force_field_conformers(label, mol_list, torsion_num, charge, multiplicity, xyzs=None, num_confs=None,
-                                    force_field='MMFF94'):
+                                    force_field='MMFF94s'):
     """
     Generate conformers using RDKit and Open Babel and optimize them using a force field
     Also consider user guesses in `xyzs`
@@ -553,7 +553,7 @@ def generate_force_field_conformers(label, mol_list, torsion_num, charge, multip
     return conformers
 
 
-def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals, optimize=True, force_field='MMFF94'):
+def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals, optimize=True, force_field='MMFF94s'):
     """
     Change dihedrals of specified torsions according to the new dihedrals specified, and get FF energies.
 
@@ -890,7 +890,7 @@ def get_torsion_angles(label, conformers, torsions):
     return torsion_angles
 
 
-def get_force_field_energies(label, mol, num_confs=None, xyz=None, force_field='MMFF94',  optimize=True):
+def get_force_field_energies(label, mol, num_confs=None, xyz=None, force_field='MMFF94s',  optimize=True):
     """
     Determine force field energies using RDKit.
     If num_confs is given, random 3D geometries will be generated. If xyz is given, it will be directly used instead.
@@ -1151,7 +1151,7 @@ def read_rdkit_embedded_conformer_i(rd_mol, i, rd_index_map=None):
     return xyz_dict
 
 
-def rdkit_force_field(label, rd_mol, rd_index_map=None, mol=None, force_field='MMFF94', optimize=True):
+def rdkit_force_field(label, rd_mol, rd_index_map=None, mol=None, force_field='MMFF94s', optimize=True):
     """
     Optimize RDKit conformers using a force field (MMFF94 or MMFF94s are recommended).
     Fallback to Open Babel if RDKit fails.

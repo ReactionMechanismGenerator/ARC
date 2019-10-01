@@ -574,9 +574,9 @@ class Scheduler(object):
                             mmff94_fallback = True
                         if mmff94_fallback:
                             logger.error('Force field parameter fitting job in Gaussian failed. Generating standard '
-                                         'MMFF94 conformers instead of fitting a force field for species {0}, although '
-                                         'its force_field attribute was set to "fit".'.format(label))
-                            self.species_dict[label].force_field = 'MMFF94'
+                                         'MMFF94s conformers instead of fitting a force field for species {0}, '
+                                         'although its force_field attribute was set to "fit".'.format(label))
+                            self.species_dict[label].force_field = 'MMFF94s'
                             self.species_dict[label].generate_conformers(confs_to_dft=self.confs_to_dft,
                                                                          plot_path=os.path.join(self.project_directory,
                                                                                                 'output', 'Species',
@@ -765,7 +765,7 @@ class Scheduler(object):
                     self.run_force_field_fit_job(label)
                 else:
                     if self.species_dict[label].force_field == 'cheap':
-                        # just embed in RDKit and use MMFF94 for opt and energies
+                        # just embed in RDKit and use MMFF94s for opt and energies
                         if self.species_dict[label].initial_xyz is None:
                             self.species_dict[label].initial_xyz = self.species_dict[label].get_xyz()
                     else:
@@ -1004,9 +1004,9 @@ class Scheduler(object):
             self.spawn_md_jobs(label)
         elif 'gaussian' not in self.ess_settings:
             logger.error('Cannot execute a force field parameter fitting job in Gaussian. Gaussian  is missing from '
-                         'the ess_settings dictionary. Generating standard MMFF94 conformers instead for '
+                         'the ess_settings dictionary. Generating standard MMFF94s conformers instead for '
                          'species {0}, although its force_field attribute was set to "fit".'.format(label))
-            self.species_dict[label].force_field = 'MMFF94'
+            self.species_dict[label].force_field = 'MMFF94s'
             self.species_dict[label].generate_conformers(confs_to_dft=self.confs_to_dft,
                                                          plot_path=os.path.join(self.project_directory, 'output',
                                                                                 'Species', label, 'geometry',

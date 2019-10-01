@@ -107,7 +107,7 @@ H      -1.22610851    0.40421362    1.35170355"""
                                                  (-1.62427975, 0.88145943, -0.29124479),
                                                  (2.31444818, 1.17921842, 0.63815656))},
                   'torsion_dihedrals': {(9, 4, 2, 3): -61.78942, (4, 2, 3, 1): 63.79634, (2, 3, 1, 12): 179.70585},
-                  'source': 'MMFF94', 'FF energy': -1.5241875152610689},
+                  'source': 'MMFF94s', 'FF energy': -1.5241875152610689},
                  {'index': 1, 'xyz': {'symbols': ('O', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
                                       'isotopes': (16, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1),
                                       'coords': ((2.09496537, -0.68203123, 0.41738811),
@@ -123,7 +123,7 @@ H      -1.22610851    0.40421362    1.35170355"""
                                                  (-1.28838516, 1.04591267, -1.0987324),
                                                  (2.3713817, 0.17954064, 0.77357037))},
                   'torsion_dihedrals': {(9, 4, 2, 3): -179.98511, (4, 2, 3, 1): -179.22951, (2, 3, 1, 12): -60.04260},
-                  'source': 'MMFF94', 'FF energy': -1.641467160999287},
+                  'source': 'MMFF94s', 'FF energy': -1.641467160999287},
                  {'index': 2, 'xyz': {'symbols': ('O', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
                                       'isotopes': (16, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1),
                                       'coords': ((1.68732977, -0.20570878, 0.8604398),
@@ -139,7 +139,7 @@ H      -1.22610851    0.40421362    1.35170355"""
                                                  (-2.22543313, -0.5341506, 0.03344438),
                                                  (1.39952405, -1.13143453, 0.79164182))},
                   'torsion_dihedrals': {(9, 4, 2, 3): -57.02407, (4, 2, 3, 1): -66.21040, (2, 3, 1, 12): 69.65707},
-                  'source': 'MMFF94', 'FF energy': -1.0563449757315282}]
+                  'source': 'MMFF94s', 'FF energy': -1.0563449757315282}]
         torsions = [[9, 4, 2, 3], [4, 2, 3, 1], [2, 3, 1, 12]]
         tops = [[4, 9, 10, 11], [3, 7, 8, 1, 12], [1, 12]]
 
@@ -152,7 +152,7 @@ H      -1.22610851    0.40421362    1.35170355"""
             label='', mol=spc1.mol, base_xyz=base_xyz, hypothetical_num_comb=hypothetical_num_comb,
             multiple_tors=multiple_tors, multiple_sampling_points=multiple_sampling_points, len_conformers=len(confs),
             plot_path=None, torsion_angles=torsion_angles, multiple_sampling_points_dict=multiple_sampling_points_dict,
-            wells_dict=wells_dict, force_field='MMFF94', max_combination_iterations=25, combination_threshold=10)
+            wells_dict=wells_dict, force_field='MMFF94s', max_combination_iterations=25, combination_threshold=10)
 
         self.assertEqual(len(new_conformers), 9)
         self.assertEqual(hypothetical_num_comb, 40)
@@ -328,7 +328,7 @@ H       0.68104300    0.74807180    0.61546062""")]
                                                            num_confs=50)
 
         self.assertEqual(len(confs), 52)
-        self.assertEqual(confs[0]['source'], 'MMFF94')
+        self.assertEqual(confs[0]['source'], 'MMFF94s')
         self.assertEqual(confs[0]['index'], 0)
         self.assertEqual(confs[1]['index'], 1)
         self.assertEqual(confs[-1]['index'], 51)
@@ -391,7 +391,7 @@ O       1.40839617    0.14303696    0.00000000"""
         rd_mol, rd_index_map = conformers.embed_rdkit(label='', mol=spc.mol, num_confs=3, xyz=xyz)
         self.assertEqual(rd_index_map, {0: 0, 1: 1, 2: 2})
         xyzs, energies = conformers.rdkit_force_field(label='', rd_mol=rd_mol, rd_index_map=rd_index_map, mol=spc.mol,
-                                                      force_field='MMFF94', optimize=True)
+                                                      force_field='MMFF94s', optimize=True)
         self.assertEqual(len(energies), 3)
         self.assertAlmostEqual(energies[0], 2.8820960262158292e-11, 5)
         self.assertAlmostEqual(energies[1], 4.496464369416183e-14, 5)
@@ -414,7 +414,7 @@ O       1.40839617    0.14303696    0.00000000"""
 
         self.assertEqual(xyzs, expected_xyzs1)
         xyzs, energies = conformers.rdkit_force_field(label='', rd_mol=rd_mol, rd_index_map=rd_index_map, mol=spc.mol,
-                                                      force_field='MMFF94', optimize=False)
+                                                      force_field='MMFF94s', optimize=False)
         self.assertEqual(len(energies), 0)
         expected_xyzs2 = [{'symbols': ('S', 'O', 'O'),
                            'isotopes': (32, 16, 16),

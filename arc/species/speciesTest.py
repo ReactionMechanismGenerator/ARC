@@ -406,7 +406,7 @@ H      -1.67091600   -1.35164600   -0.93286400"""
                          'label': 'methylamine',
                          'long_thermo_description': spc_dict['long_thermo_description'],
                          'charge': 0,
-                         'force_field': 'MMFF94',
+                         'force_field': 'MMFF94s',
                          'is_ts': False,
                          't1': None,
                          'bond_corrections': {'C-H': 3, 'C-N': 1, 'H-N': 2}}

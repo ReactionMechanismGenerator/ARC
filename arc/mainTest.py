@@ -104,7 +104,7 @@ class TestARC(unittest.TestCase):
                                       'multiplicity': 1,
                                       'neg_freqs_trshed': [],
                                       'number_of_rotors': 0,
-                                      'force_field': 'MMFF94',
+                                      'force_field': 'MMFF94s',
                                       't1': None}],
                          }
         self.assertEqual(restart_dict, expected_dict)

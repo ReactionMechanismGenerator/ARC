@@ -100,9 +100,9 @@ class ARCSpecies(object):
                                             it). Defaults to None. Important, e.g., if a Species is a bi-rad singlet,
                                             in which case the job should be unrestricted, but the multiplicity does not
                                             have the required information to make that decision (r vs. u).
-        force_field (str, optional): The force field to be used for conformer screening. The default is MMFF94.
-                                     Other optional force fields are MMFF94s, UFF, or GAFF (not recommended, slow).
-                                     If 'fit' is specified for this parameter, some initial MMFF94 conformers will be
+        force_field (str, optional): The force field to be used for conformer screening. The default is MMFF94s.
+                                     Other optional force fields are MMFF94, UFF, or GAFF (not recommended, slow).
+                                     If 'fit' is specified for this parameter, some initial MMFF94s conformers will be
                                      generated, then force field parameters will be fitted for this molecule and
                                      conformers will be re-run with the fitted force field (recommended for drug-like
                                      species and species with many heteroatoms). Another option is specifying 'cheap',
@@ -204,9 +204,9 @@ class ARCSpecies(object):
         optical_isomers (int): Whether (=2) or not (=1) the species has chiral center/s.
         transport_data (TransportData): A placeholder for updating transport properties after Lennard-Jones
                                         calculation (using OneDMin).
-        force_field (str): The force field to be used for conformer screening. The default is MMFF94.
-                           Other optional force fields are MMFF94s, UFF, or GAFF (not recommended, slow).
-                           If 'fit' is specified for this parameter, some initial MMFF94 conformers will be generated,
+        force_field (str): The force field to be used for conformer screening. The default is MMFF94s.
+                           Other optional force fields are MMFF94, UFF, or GAFF (not recommended, slow).
+                           If 'fit' is specified for this parameter, some initial MMFF94s conformers will be generated,
                            then force field parameters will be fitted for this molecule and conformers will be re-run
                            with the fitted force field (recommended for drug-like species and species with many
                            heteroatoms). Another option is specifying 'cheap', and the "old" RDKit embedding method
@@ -224,7 +224,7 @@ class ARCSpecies(object):
     def __init__(self, label=None, is_ts=False, rmg_species=None, mol=None, xyz=None, multiplicity=None, charge=None,
                  smiles='', adjlist='', inchi='', bond_corrections=None, generate_thermo=True, species_dict=None,
                  yml_path=None, ts_methods=None, ts_number=None, rxn_label=None, external_symmetry=None,
-                 optical_isomers=None, run_time=None, checkfile=None, number_of_radicals=None, force_field='MMFF94',
+                 optical_isomers=None, run_time=None, checkfile=None, number_of_radicals=None, force_field='MMFF94s',
                  svpfit_output_file=None, bdes=None, directed_rotors=None):
         self.t1 = None
         self.ts_number = ts_number
@@ -586,7 +586,7 @@ class ARCSpecies(object):
         self.cheap_conformer = species_dict['cheap_conformer'] if 'cheap_conformer' in species_dict else None
         self.recent_md_conformer = str_to_xyz(species_dict['recent_md_conformer']) \
             if 'recent_md_conformer' in species_dict else None
-        self.force_field = species_dict['force_field'] if 'force_field' in species_dict else 'MMFF94'
+        self.force_field = species_dict['force_field'] if 'force_field' in species_dict else 'MMFF94s'
         self.svpfit_output_file = species_dict['svpfit_output_file'] if 'svpfit_output_file' in species_dict else None
         self.long_thermo_description = species_dict['long_thermo_description'] \
             if 'long_thermo_description' in species_dict else ''
@@ -793,7 +793,7 @@ class ARCSpecies(object):
         num_confs = min(500, max(50, len(self.mol.atoms) * 3))
         rd_mol, rd_index_map = conformers.embed_rdkit(label=self.label, mol=self.mol, num_confs=num_confs)
         xyzs, energies = conformers.rdkit_force_field(label=self.label, rd_mol=rd_mol, rd_index_map=rd_index_map,
-                                                      mol=self.mol, force_field='MMFF94')
+                                                      mol=self.mol, force_field='MMFF94s')
         if energies:
             min_energy = min(energies)
             min_energy_index = energies.index(min_energy)
