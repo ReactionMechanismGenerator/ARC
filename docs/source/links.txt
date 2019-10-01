@@ -17,3 +17,4 @@
 .. _gaussian: http://gaussian.com/
 .. _DFTGridStudy: https://doi.org/10.26434/chemrxiv.8864204.v5
 .. _mergeConflict: https://www.atlassian.com/git/tutorials/using-branches/merge-conflicts
+.. _truhlar: https://dx.doi.org/10.1016/j.cpc.2016.09.004
