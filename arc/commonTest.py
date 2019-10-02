@@ -25,6 +25,7 @@ class TestARC(unittest.TestCase):
         """
         A method that is run before all unit tests in this class.
         """
+        cls.maxDiff = None
         cls.default_job_types = {'conformers': True,
                                  'opt': True,
                                  'fine': True,
@@ -171,7 +172,8 @@ class TestARC(unittest.TestCase):
         conflict_job_type = {'bde': True}
         specific_job_type_expected = {job_type: False for job_type in self.default_job_types.keys()}
         specific_job_type_expected[specific_job_type] = True
-        specific_job_type_initialized = common.initialize_job_types(conflict_job_type, specific_job_type=specific_job_type)
+        specific_job_type_initialized = common.initialize_job_types(conflict_job_type,
+                                                                    specific_job_type=specific_job_type)
         self.assertEqual(specific_job_type_expected, specific_job_type_initialized)
 
     def test_initialize_job_with_not_supported_job_type(self):
@@ -293,6 +295,87 @@ H 	2.951	-3.078	-4.102""")
         self.assertEqual(common.determine_ess(gaussian), 'gaussian')
         self.assertEqual(common.determine_ess(qchem), 'qchem')
         self.assertEqual(common.determine_ess(molpro), 'molpro')
+
+    def test_sort_two_lists_by_the_first(self):
+        """Test the sort_two_lists_by_the_first function"""
+        list1 = [5, 2, 8, 1, 0]
+        list2 = ['D', 'C', 'E', 'B', 'A']
+        list1, list2 = common.sort_two_lists_by_the_first(list1, list2)
+        self.assertEqual(list1, [0, 1, 2, 5, 8])
+        self.assertEqual(list2, ['A', 'B', 'C', 'D', 'E'])
+
+        list1 = [-402175.42413054925, -402175.42413054925, -402175.42413054925]
+        list2 = [
+            {'symbols': ('O', 'C', 'C', 'H', 'H', 'H'), 'isotopes': (16, 12, 12, 1, 1, 1),
+             'coords': ((1.289877, -1.027889, -0.472673), (-0.705088, 0.018405, 0.167196),
+                        (0.681617, 0.004981, -0.157809), (-1.21258, 0.938155, 0.439627),
+                        (-1.264105, -0.911112, 0.141353), (1.210279, 0.97746, -0.117693))},
+            {'symbols': ('O', 'C', 'C', 'H', 'H', 'H'), 'isotopes': (16, 12, 12, 1, 1, 1),
+             'coords': ((1.438259, -0.905929, 0.233373), (-0.722557, -0.021223, 0.05388),
+                        (0.695838, 0.042156, -0.059689), (-1.184869, -0.935184, 0.411808),
+                        (-1.348775, 0.824904, -0.209994), (1.122104, 0.995276, -0.429377))},
+            {'symbols': ('O', 'C', 'C', 'H', 'H', 'H'), 'isotopes': (16, 12, 12, 1, 1, 1),
+             'coords': ((-1.097258, 1.288817, 0.280596), (0.66579, -0.163586, -0.235383),
+                        (-0.646392, 0.135474, 0.230984), (1.308294, 0.646397, -0.564452),
+                        (1.03492, -1.183579, -0.268027), (-1.265354, -0.723524, 0.556282))}]
+        list1, list2 = common.sort_two_lists_by_the_first(list1, list2)
+        self.assertEqual(list1, [-402175.42413054925, -402175.42413054925, -402175.42413054925])
+        self.assertEqual(list2, [
+            {'symbols': ('O', 'C', 'C', 'H', 'H', 'H'), 'isotopes': (16, 12, 12, 1, 1, 1),
+             'coords': ((1.289877, -1.027889, -0.472673), (-0.705088, 0.018405, 0.167196),
+                        (0.681617, 0.004981, -0.157809), (-1.21258, 0.938155, 0.439627),
+                        (-1.264105, -0.911112, 0.141353), (1.210279, 0.97746, -0.117693))},
+            {'symbols': ('O', 'C', 'C', 'H', 'H', 'H'), 'isotopes': (16, 12, 12, 1, 1, 1),
+             'coords': ((1.438259, -0.905929, 0.233373), (-0.722557, -0.021223, 0.05388),
+                        (0.695838, 0.042156, -0.059689), (-1.184869, -0.935184, 0.411808),
+                        (-1.348775, 0.824904, -0.209994), (1.122104, 0.995276, -0.429377))},
+            {'symbols': ('O', 'C', 'C', 'H', 'H', 'H'), 'isotopes': (16, 12, 12, 1, 1, 1),
+             'coords': ((-1.097258, 1.288817, 0.280596), (0.66579, -0.163586, -0.235383),
+                        (-0.646392, 0.135474, 0.230984), (1.308294, 0.646397, -0.564452),
+                        (1.03492, -1.183579, -0.268027), (-1.265354, -0.723524, 0.556282))}])
+
+        list1 = [-293712.44825524034, -293712.4484442763, -293719.9392868027]
+        list2 = [
+            {'symbols': ('N', 'N', 'H', 'H', 'H', 'H'), 'isotopes': (14, 14, 1, 1, 1, 1),
+             'coords': ((0.626959, 0.049055, 0.398851), (-0.627579, -0.002911, -0.40088),
+                        (1.135191, 0.833831, -0.015525), (1.156572, -0.755054, 0.054181),
+                        (-1.135811, -0.787687, 0.013496), (-1.157192, 0.801198, -0.056209))},
+            {'symbols': ('N', 'N', 'H', 'H', 'H', 'H'), 'isotopes': (14, 14, 1, 1, 1, 1),
+             'coords': ((0.650715, 0.034647, 0.359727), (-0.650716, -0.034614, -0.359727),
+                        (1.181164, -0.741554, -0.042786), (1.107, 0.847165, -0.061582),
+                        (-1.106969, -0.847181, 0.061521), (-1.181193, 0.741537, 0.042846))},
+            {'symbols': ('N', 'N', 'H', 'H', 'H', 'H'), 'isotopes': (14, 14, 1, 1, 1, 1),
+             'coords': ((-0.679412, 0.224819, -0.236977), (0.680753, -0.233287, -0.22462),
+                        (-0.974999, 0.570328, 0.676502), (-1.260937, -0.580211, -0.451942),
+                        (1.263604, 0.56338, -0.465582), (0.970991, -0.54503, 0.702618))}]
+        list1, list2 = common.sort_two_lists_by_the_first(list1, list2)
+        self.assertEqual(list1, [-293719.9392868027, -293712.4484442763, -293712.44825524034])
+        self.assertEqual(list2, [
+            {'isotopes': (14, 14, 1, 1, 1, 1), 'symbols': ('N', 'N', 'H', 'H', 'H', 'H'),
+             'coords': ((-0.679412, 0.224819, -0.236977), (0.680753, -0.233287, -0.22462),
+                        (-0.974999, 0.570328, 0.676502), (-1.260937, -0.580211, -0.451942),
+                        (1.263604, 0.56338, -0.465582), (0.970991, -0.54503, 0.702618))},
+            {'isotopes': (14, 14, 1, 1, 1, 1), 'symbols': ('N', 'N', 'H', 'H', 'H', 'H'),
+             'coords': ((0.650715, 0.034647, 0.359727), (-0.650716, -0.034614, -0.359727),
+                        (1.181164, -0.741554, -0.042786), (1.107, 0.847165, -0.061582),
+                        (-1.106969, -0.847181, 0.061521), (-1.181193, 0.741537, 0.042846))},
+            {'isotopes': (14, 14, 1, 1, 1, 1), 'symbols': ('N', 'N', 'H', 'H', 'H', 'H'),
+             'coords': ((0.626959, 0.049055, 0.398851), (-0.627579, -0.002911, -0.40088),
+                        (1.135191, 0.833831, -0.015525), (1.156572, -0.755054, 0.054181),
+                        (-1.135811, -0.787687, 0.013496), (-1.157192, 0.801198, -0.056209))}])
+
+        list1 = [5, None, 1]
+        list2 = [1, 2, 3]
+        list1, list2 = common.sort_two_lists_by_the_first(list1, list2)
+        self.assertEqual(list1, [1, 5])
+        self.assertEqual(list2, [3, 1])
+
+        list1 = [None, None, None]
+        list2 = [1, 2, 3]
+        list1, list2 = common.sort_two_lists_by_the_first(list1, list2)
+        self.assertEqual(list1, [])
+        self.assertEqual(list2, [])
+
 
 ################################################################################
 
