@@ -50,39 +50,39 @@ class TestAutoTST(unittest.TestCase):
         self.assertEqual(reaction_label2, 'CCCC+[O]O_[CH2]CCC+OO')
         self.assertEqual(reaction_label3, 'CC[O]+[NH2]_[CH2]C[O]+N')
 
-    def test_run_autotsts(self):
-        """Test running AutoTST"""
-        reaction_label1 = atst.get_reaction_label(rmg_reaction=self.reaction1)
-        xyz1a = atst.autotst(reaction_label=reaction_label1, reaction_family='H_Abstraction')
-        xyz1b = atst.autotst(rmg_reaction=self.reaction1, reaction_family='H_Abstraction')
-        xyz2 = atst.autotst(rmg_reaction=self.reaction2, reaction_family='H_Abstraction')
-        self.assertEqual(xyz1a, xyz1b)
-        expected_xyz1 = """O       1.66720000   -0.47960000   -0.01490000
-C      -0.82600000    0.05910000    0.00060000
-H       0.30830000   -0.36560000   -0.03850000
-H      -0.95970000    0.82970000   -0.78620000
-H      -1.01810000    0.50970000    0.99600000
-H      -1.53870000   -0.77340000   -0.17220000
-H       2.36710000    0.22020000    0.01520000"""
-        expected_xyz2 = """O       3.52880000    1.08880000    0.26840000
-O       2.57010000    0.20370000    0.43990000
-C      -0.55710000   -0.79590000    0.46080000
-C      -0.83740000    0.39160000   -0.46560000
-C       0.74180000   -1.49460000    0.07550000
-C      -2.13610000    1.09460000   -0.08170000
-H      -1.39260000   -1.52710000    0.39950000
-H      -0.47360000   -0.44040000    1.51080000
-H      -0.00140000    1.12190000   -0.40310000
-H      -0.91770000    0.03690000   -1.51640000
-H       1.78900000   -0.61750000    0.16280000
-H       0.92810000   -2.34310000    0.76710000
-H       0.67640000   -1.88780000   -0.96150000
-H      -2.31340000    1.94900000   -0.76840000
-H      -2.99310000    0.39200000   -0.16030000
-H      -2.07290000    1.48160000    0.95770000
-H       3.46120000    1.34610000   -0.68540000"""
-        self.assertEqual(xyz_to_str(xyz1a), expected_xyz1)
-        self.assertEqual(xyz_to_str(xyz2), expected_xyz2)
+#     def test_run_autotsts(self):
+#         """Test running AutoTST"""
+#         reaction_label1 = atst.get_reaction_label(rmg_reaction=self.reaction1)
+#         xyz1a = atst.autotst(reaction_label=reaction_label1, reaction_family='H_Abstraction')
+#         xyz1b = atst.autotst(rmg_reaction=self.reaction1, reaction_family='H_Abstraction')
+#         xyz2 = atst.autotst(rmg_reaction=self.reaction2, reaction_family='H_Abstraction')
+#         self.assertEqual(xyz1a, xyz1b)
+#         expected_xyz1 = """O       1.66720000   -0.47960000   -0.01490000
+# C      -0.82600000    0.05910000    0.00060000
+# H       0.30830000   -0.36560000   -0.03850000
+# H      -0.95970000    0.82970000   -0.78620000
+# H      -1.01810000    0.50970000    0.99600000
+# H      -1.53870000   -0.77340000   -0.17220000
+# H       2.36710000    0.22020000    0.01520000"""
+#         expected_xyz2 = """O       3.52880000    1.08880000    0.26840000
+# O       2.57010000    0.20370000    0.43990000
+# C      -0.55710000   -0.79590000    0.46080000
+# C      -0.83740000    0.39160000   -0.46560000
+# C       0.74180000   -1.49460000    0.07550000
+# C      -2.13610000    1.09460000   -0.08170000
+# H      -1.39260000   -1.52710000    0.39950000
+# H      -0.47360000   -0.44040000    1.51080000
+# H      -0.00140000    1.12190000   -0.40310000
+# H      -0.91770000    0.03690000   -1.51640000
+# H       1.78900000   -0.61750000    0.16280000
+# H       0.92810000   -2.34310000    0.76710000
+# H       0.67640000   -1.88780000   -0.96150000
+# H      -2.31340000    1.94900000   -0.76840000
+# H      -2.99310000    0.39200000   -0.16030000
+# H      -2.07290000    1.48160000    0.95770000
+# H       3.46120000    1.34610000   -0.68540000"""
+#         self.assertEqual(xyz_to_str(xyz1a), expected_xyz1)
+#         self.assertEqual(xyz_to_str(xyz2), expected_xyz2)
 
     def test_ts_error(self):
         """Test that AutoTST raises a TSError for a non-H-Abstraction reaction
