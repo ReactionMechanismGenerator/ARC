@@ -182,6 +182,24 @@ def xyz_to_x_y_z(xyz_dict):
     return x, y, z
 
 
+def xyz_to_coords_list(xyz_dict):
+    """
+    Get the coords part of an xyz dict as a (mutable) list of lists (rather than a tuple of tuples)
+
+    Args:
+        xyz_dict (dict): The ARC xyz format.
+
+    Returns:
+        list: The coordinates.
+    """
+    xyz_dict = check_xyz_dict(xyz_dict)
+    coords_tuple = xyz_dict['coords']
+    coords_list = list()
+    for coords_tup in coords_tuple:
+        coords_list.append([coords_tup[0], coords_tup[1], coords_tup[2]])
+    return coords_list
+
+
 def xyz_to_xyz_file_format(xyz_dict, comment=''):
     """
     Get the `XYZ file format <https://en.wikipedia.org/wiki/XYZ_file_format>`_ representation

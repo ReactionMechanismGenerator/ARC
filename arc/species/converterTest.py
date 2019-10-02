@@ -384,6 +384,23 @@ H      -2.12457300    1.65249500   -2.17600500""",
         self.assertEqual(y, (0.0, 0.6300326, -0.6300326, 0.6300326, -0.6300326))
         self.assertEqual(z, (0.0, 0.6300326, 0.6300326, -0.6300326, -0.6300326))
 
+    def test_xyz_to_coords_list(self):
+        """Test the xyz_to_coords_list function"""
+        xyz_dict = {'symbols': ('O', 'N', 'C', 'H', 'H'),
+                    'isotopes': (16, 14, 12, 1, 1),
+                    'coords': ((1.1746411, -0.15309781, 0.0),
+                               (0.06304988, 0.35149648, 0.0),
+                               (-1.12708952, -0.11333971, 0.0),
+                               (-1.93800144, 0.60171738, 0.0),
+                               (-1.29769464, -1.18742971, 0.0))}
+        coords = converter.xyz_to_coords_list(xyz_dict)
+        expected_coords = [[1.1746411, -0.15309781, 0.0],
+                           [0.06304988, 0.35149648, 0.0],
+                           [-1.12708952, -0.11333971, 0.0],
+                           [-1.93800144, 0.60171738, 0.0],
+                           [-1.29769464, -1.18742971, 0.0]]
+        self.assertEqual(coords, expected_coords)
+
     def test_xyz_to_xyz_file_format(self):
         """Test generating the XYZ file format from the xyz dictionary"""
         xyzf1 = converter.xyz_to_xyz_file_format(xyz_dict=self.xyz1['dict'], comment='test methane xyz conversion')

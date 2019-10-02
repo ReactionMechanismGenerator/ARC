@@ -1653,7 +1653,7 @@ def translate_group(mol, xyz, pivot, anchor, vector):
     # print(theta * 180 / math.pi)  # print theta in degrees when troubleshooting
     # All atoms within the group will be rotated around the same normal vector by theta:
     group = determine_top_group_indices(mol=mol, atom1=mol.atoms[pivot], atom2=mol.atoms[anchor], index=0)[0]
-    coords = list(xyz['coords'])
+    coords = converter.xyz_to_coords_list(xyz)
     for i in group:
         coords[i] = rotate_vector(point_a=coords[pivot], point_b=coords[i], normal=normal, theta=theta)
     new_xyz = converter.xyz_from_data(coords=coords, symbols=xyz['symbols'], isotopes=xyz['isotopes'])
