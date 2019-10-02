@@ -9,6 +9,7 @@ from __future__ import (absolute_import, division, print_function, unicode_liter
 import unittest
 import os
 import time
+import copy
 
 import arc.common as common
 from arc.exceptions import InputError, SettingsError
@@ -20,6 +21,21 @@ class TestARC(unittest.TestCase):
     """
     Contains unit tests for ARC's common module
     """
+    @classmethod
+    def setUpClass(cls):
+        """
+        A method that is run before all unit tests in this class.
+        """
+        cls.default_job_types = {'conformers': True,
+                                 'opt': True,
+                                 'fine': True,
+                                 'freq': True,
+                                 'sp': True,
+                                 'rotors': True,
+                                 'orbitals': False,
+                                 'onedmin': False,
+                                 'bde': False,
+                                 }
 
     def test_read_yaml_file(self):
         """Test the read_yaml_file() function"""
@@ -118,28 +134,63 @@ class TestARC(unittest.TestCase):
         min_lst = common.min_list(lst)
         self.assertEqual(min_lst, -79)
 
-    def test_initialize_job_types(self):
+    def test_initialize_job_with_given_job_type(self):
         """Test the initialize_job_types() function"""
-        job_types_0 = {'conformers': False, 'opt': True, 'fine': True, 'freq': True, 'sp': False, 'rotors': False}
-        job_types_0_expected = {'rotors': False, 'bde': False, 'conformers': False, 'fine': True,
-                                'freq': True, 'onedmin': False, 'opt': True, 'orbitals': False, 'sp': False}
-        job_types_0_initialized = common.initialize_job_types(job_types_0)
-        self.assertEqual(job_types_0_expected, job_types_0_initialized)
 
-        job_types_1 = {}
-        job_types_1_expected = {'rotors': True, 'bde': False, 'conformers': True, 'fine': True, 'freq': True,
-                                'onedmin': False, 'opt': True, 'orbitals': False, 'sp': True}
-        job_types_1_initialized = common.initialize_job_types(job_types_1)
-        self.assertEqual(job_types_1_expected, job_types_1_initialized)
+        job_types = {'conformers': False, 'opt': True, 'fine': True, 'freq': True, 'sp': False, 'rotors': False}
+        job_types_expected = copy.deepcopy(self.default_job_types)
+        job_types_expected.update(job_types)
+        job_types_initialized = common.initialize_job_types(job_types)
+        self.assertEqual(job_types_expected, job_types_initialized)
 
-        job_types_2 = {'bde': True}
-        job_types_2_expected = {'rotors': True, 'bde': True, 'conformers': True, 'fine': True, 'freq': True,
-                                'onedmin': False, 'opt': True, 'orbitals': False, 'sp': True}
-        job_types_2_initialized = common.initialize_job_types(job_types_2)
-        self.assertEqual(job_types_2_expected, job_types_2_initialized)
+    def test_initialize_job_with_empty_job_type(self):
+        """Test the initialize_job_types() function"""
+
+        job_types = {}
+        job_types_expected = copy.deepcopy(self.default_job_types)
+        job_types_expected.update(job_types)
+        job_types_initialized = common.initialize_job_types(job_types)
+        self.assertEqual(job_types_expected, job_types_initialized)
+
+    def test_initialize_job_with_bde_job_type(self):
+        """Test the initialize_job_types() function"""
+
+        job_types = {'bde': True}
+        job_types_expected = copy.deepcopy(self.default_job_types)
+        job_types_expected.update(job_types)
+        job_types_initialized = common.initialize_job_types(job_types)
+        self.assertEqual(job_types_expected, job_types_initialized)
+
+    def test_initialize_job_with_specific_job_type(self):
+        """Test the initialize_job_types() function"""
+
+        specific_job_type = 'freq'
+        specific_job_type_expected = {job_type: False for job_type in self.default_job_types.keys()}
+        specific_job_type_expected[specific_job_type] = True
+        specific_job_type_initialized = common.initialize_job_types({}, specific_job_type=specific_job_type)
+        self.assertEqual(specific_job_type_expected, specific_job_type_initialized)
+
+    def test_initialize_job_with_conflict_job_type(self):
+        """Test the initialize_job_types() function"""
+
+        specific_job_type = 'sp'
+        conflict_job_type = {'bde': True}
+        specific_job_type_expected = {job_type: False for job_type in self.default_job_types.keys()}
+        specific_job_type_expected[specific_job_type] = True
+        specific_job_type_initialized = common.initialize_job_types(conflict_job_type,
+                                                                    specific_job_type=specific_job_type)
+        self.assertEqual(specific_job_type_expected, specific_job_type_initialized)
+
+    def test_initialize_job_with_not_supported_job_type(self):
+        """Test the initialize_job_types() function"""
+
         with self.assertRaises(InputError):
-            job_types_3 = {'fake_job': True}
-            common.initialize_job_types(job_types_3)
+            job_types = {'fake_job': True}
+            common.initialize_job_types(job_types)
+
+        with self.assertRaises(InputError):
+            specific_job_type = 'fake_job_type'
+            common.initialize_job_types({}, specific_job_type=specific_job_type)
 
     def test_calculate_dihedral_angle(self):
         """Test calculating a dihedral angle"""
