@@ -12,7 +12,7 @@ from arkane.exceptions import LogError
 from arkane.gaussian import GaussianLog
 from arkane.molpro import MolproLog
 from arkane.qchem import QChemLog
-from arkane.statmech import determine_qm_software
+from arkane.util import determine_qm_software
 
 from arc.common import get_logger
 from arc.exceptions import InputError, ParserError
@@ -65,11 +65,14 @@ def parse_t1(path):
     """
     Parse the T1 parameter from a Molpro coupled cluster calculation.
     """
-    lines = _get_lines_from_file(path)
-    t1 = None
-    for line in lines:
-        if 'T1 diagnostic:' in line:
-            t1 = float(line.split()[-1])
+    if not os.path.isfile(path):
+        raise InputError('Could not find file {0}'.format(path))
+    log = determine_qm_software(fullpath=path)
+    try:
+        t1 = log.get_T1_diagnostic()
+    except (LogError, NotImplementedError):
+        logger.warning('Could not read t1 from {0}'.format(path))
+        t1 = None
     return t1
 
 
@@ -88,11 +91,56 @@ def parse_e_elect(path, zpe_scale_factor=1.):
         raise InputError('Could not find file {0}'.format(path))
     log = determine_qm_software(fullpath=path)
     try:
-        e_elect = log.loadEnergy(zpe_scale_factor) * 0.001  # convert to kJ/mol
-    except Exception:
+        e_elect = log.load_energy(zpe_scale_factor) * 0.001  # convert to kJ/mol
+    except (LogError, NotImplementedError):
         logger.warning('Could not read e_elect from {0}'.format(path))
         e_elect = None
     return e_elect
+
+
+def parse_zpe(path):
+    """
+    Determine the calculated ZPE from a frequency output file
+
+    Args:
+        path (str): The path to a frequency calculation output file.
+
+    Returns:
+        float: The calculated zero point energy in kJ/mol.
+    """
+    if not os.path.isfile(path):
+        raise InputError('Could not find file {0}'.format(path))
+    log = determine_qm_software(fullpath=path)
+    try:
+        zpe = log.load_zero_point_energy() * 0.001  # convert to kJ/mol
+    except (LogError, NotImplementedError):
+        logger.warning('Could not read zpe from {0}'.format(path))
+        zpe = None
+    return zpe
+
+
+def parse_scan_energies(path):
+    """
+    Parse the torsion scan energies from an ESS log file.
+
+    Args:
+        path (str): The ESS log file to parse from.
+
+    Returns:
+        energies (list): The electronic energy in kJ/mol.
+        angles (list): The scan angles in degrees.
+    """
+    if not os.path.isfile(path):
+        raise InputError('Could not find file {0}'.format(path))
+    log = determine_qm_software(fullpath=path)
+    try:
+        energies, angles = log.load_scan_energies()
+        energies *= 0.001  # convert to kJ/mol
+        angles *= 180 / np.pi  # convert to degrees
+    except (LogError, NotImplementedError):
+        logger.warning('Could not read energies from {0}'.format(path))
+        energies, angles = None, None
+    return energies, angles
 
 
 def parse_xyz_from_file(path):

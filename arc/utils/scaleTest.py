@@ -11,7 +11,7 @@ import unittest
 
 from arc.common import almost_equal_coords_lists
 from arc.settings import arc_path
-from arc.utils.scale import calculate_truhlar_scaling_factors, summarize_results, get_species_list, get_zpe,\
+from arc.utils.scale import calculate_truhlar_scaling_factors, summarize_results, get_species_list, \
     rename_level
 
 
@@ -96,18 +96,6 @@ class TestScale(unittest.TestCase):
         c2h2_xyz = {'symbols': ('C', 'C', 'H', 'H'), 'isotopes': (12, 12, 1, 1),
                     'coords': ((0.0, 0.0, 0.0), (0.0, 0.0, 1.203142), (0.0, -0.0, 2.265747), (-0.0, -0.0, -1.062605))}
         self.assertTrue(almost_equal_coords_lists(species_list[0].initial_xyz, c2h2_xyz))
-
-    def test_get_zpe(self):
-        """Test the scale get_zpe() function"""
-        path1 = os.path.join(arc_path, 'arc', 'testing', 'C2H6_freq_QChem.out')
-        path2 = os.path.join(arc_path, 'arc', 'testing', 'CH2O_freq_molpro.out')
-        path3 = os.path.join(arc_path, 'arc', 'testing', 'NO3_freq_QChem_fails_on_cclib.out')
-        path4 = os.path.join(arc_path, 'arc', 'testing', 'SO2OO_CBS-QB3.log')
-        zpe1, zpe2, zpe3, zpe4 = get_zpe(path1), get_zpe(path2), get_zpe(path3), get_zpe(path4)
-        self.assertAlmostEqual(zpe1, 198083.11200000, 5)
-        self.assertAlmostEqual(zpe2, 69793.662734869, 5)
-        self.assertAlmostEqual(zpe3, 25401.064000000, 5)
-        self.assertAlmostEqual(zpe4, 39368.057626223, 5)
 
     def test_rename_level(self):
         """Test the scale rename_level() function"""

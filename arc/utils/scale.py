@@ -12,10 +12,9 @@ import os
 import time
 import shutil
 
-from arkane.statmech import determine_qm_software
-
 from arc.common import get_logger, check_ess_settings, time_lapse, initialize_log, initialize_job_types
 from arc.exceptions import InputError
+from arc.parser import parse_zpe
 from arc.scheduler import Scheduler
 from arc.settings import arc_path
 from arc.species.species import ARCSpecies
@@ -108,11 +107,8 @@ def determine_scaling_factors(levels_of_theory, ess_settings=None, init_log=True
 
         zpe_dict = dict()
         for spc in species_list:
-            try:
-                zpe = get_zpe(os.path.join(project_directory, 'output', 'Species', spc.label, 'geometry', 'freq.out'))
-            except Exception:
-                zpe = None
-            zpe_dict[spc.label] = zpe
+            zpe_dict[spc.label] = parse_zpe(os.path.join(project_directory, 'output', 'Species', spc.label,
+                                                         'geometry', 'freq.out')) * 1000  # convert to J/mol
         zpe_dicts.append(zpe_dict)
 
         lambda_zpes.append(calculate_truhlar_scaling_factors(zpe_dict, level_of_theory))
@@ -329,21 +325,6 @@ def get_species_list():
     species_list = [c2h2, ch4, co2, co, f2, ch2o, h2o, h2, hcn, hf, n2o, n2, nh3, oh, cl2]
 
     return species_list
-
-
-def get_zpe(path):
-    """
-    Determine the calculated ZPE from a frequency output file"
-
-    Args:
-        path (str): The path to a frequency calculation output file.
-
-    Returns:
-        float: The calculated zero point energy in J/mol.
-    """
-    statmech_log = determine_qm_software(path)
-    zpe = statmech_log.load_zero_point_energy()
-    return zpe
 
 
 def rename_level(level):

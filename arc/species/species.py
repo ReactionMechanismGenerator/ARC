@@ -12,7 +12,7 @@ import os
 
 import rmgpy.molecule.element as elements
 from arkane.common import ArkaneSpecies, symbol_by_number
-from arkane.statmech import determine_qm_software, is_linear
+from arkane.statmech import is_linear
 from rmgpy.exceptions import InvalidAdjacencyListError
 from rmgpy.molecule.molecule import Atom, Molecule
 from rmgpy.molecule.resonance import generate_kekule_structure
@@ -23,7 +23,8 @@ from rmgpy.transport import TransportData
 
 from arc.common import get_logger, get_atom_radius, determine_symmetry
 from arc.exceptions import SpeciesError, RotorError, InputError, TSError, SanitizationError
-from arc.parser import parse_xyz_from_file, parse_dipole_moment, parse_polarizability, process_conformers_file
+from arc.parser import parse_xyz_from_file, parse_dipole_moment, parse_polarizability, process_conformers_file, \
+    parse_scan_energies
 from arc.settings import default_ts_methods, valid_chars, minimum_barrier
 from arc.species import conformers
 from arc.species.converter import rdkit_conf_from_mol, xyz_from_data, molecules_from_xyz, rmg_mol_from_inchi, \
@@ -1748,9 +1749,7 @@ def determine_rotor_symmetry(label, pivots, rotor_path='', energies=None):
         raise InputError('Could not find the file {0}'.format(rotor_path))
 
     if energies is None:
-        log = determine_qm_software(fullpath=rotor_path)
-        energies = log.load_scan_energies()[0]
-        energies *= 0.001
+        energies = parse_scan_energies(path=rotor_path)[0]
 
     symmetry = None
     max_e = max(energies)
@@ -1836,9 +1835,8 @@ def determine_rotor_type(rotor_path):
     Determine whether this rotor should be treated as a HinderedRotor of a FreeRotor
     according to it's maximum peak
     """
-    log = determine_qm_software(fullpath=rotor_path)
-    energies, _ = log.load_scan_energies()
-    max_val = max(energies) * 0.001  # convert to kJ/mol (Arkane used SI)
+    energies = parse_scan_energies(path=rotor_path)[0]
+    max_val = max(energies)
     return 'FreeRotor' if max_val < minimum_barrier else 'HinderedRotor'
 
 

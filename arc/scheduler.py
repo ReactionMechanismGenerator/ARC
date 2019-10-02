@@ -14,7 +14,6 @@ import shutil
 import time
 from IPython.display import display
 
-from arkane.statmech import determine_qm_software
 from rmgpy.reaction import Reaction
 
 from arc.common import get_logger, read_yaml_file, save_yaml_file, get_ordinal_indicator, min_list, \
@@ -1956,11 +1955,8 @@ class Scheduler(object):
         invalidate, actions, energies = False, list(), list()
         for i in range(self.species_dict[label].number_of_rotors):
             if self.species_dict[label].rotors_dict[i]['pivots'] == job.pivots:
-                # Check whether the log file is readable, get PES scan using Arkane
-                log = determine_qm_software(fullpath=job.local_path_to_output_file)
-                try:
-                    energies, angles = log.load_scan_energies()
-                except ZeroDivisionError:
+                energies, angles = parser.parse_scan_energies(path=job.local_path_to_output_file)
+                if energies is None:
                     invalidate = True
                     invalidation_reason = 'Could not read energies'
                     message = 'Energies from rotor scan of {label} between pivots {pivots} could not ' \
