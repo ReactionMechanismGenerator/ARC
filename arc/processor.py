@@ -253,7 +253,7 @@ class Processor(object):
                 bde_report[species.label] = self.process_bdes(species.label)
         if bde_report:
             bde_path = os.path.join(self.project_directory, 'output', 'BDE_report.yml')
-            plotter.log_bde_report(path=bde_path, bde_report=bde_report)
+            plotter.log_bde_report(path=bde_path, bde_report=bde_report, spc_dict=self.species_dict)
 
         # Kinetics:
         rxn_list_for_kinetics_plots = list()

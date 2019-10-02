@@ -262,7 +262,7 @@ def log_kinetics(label, path):
     logger.info('\n')
 
 
-def log_bde_report(path, bde_report):
+def log_bde_report(path, bde_report, spc_dict):
     """
     Prettify the report for bond dissociation energies. Log and save to file.
 
@@ -270,19 +270,24 @@ def log_bde_report(path, bde_report):
         path (str): The file path.
         bde_report (dict): The BDE report dictionary. Keys are species labels, values are species BDE dictionaries.
                            In the second level dict, keys are pivot tuples, values are energies in kJ/mol.
+        spc_dict (dict): The species dictionary.
     """
     with open(path, 'w') as f:
         content = ''
         for label, bde_dict in bde_report.items():
+            spc = spc_dict[label]
             content += ' BDE report for {0}:\n'.format(label)
-            content += ' Pivots        BDE (kJ/mol)\n'
-            content += ' ------        ------------\n'
+            content += '  Pivots           Atoms        BDE (kJ/mol)\n'
+            content += ' --------          -----        ------------\n'
             for pivots, bde in bde_dict.items():
                 pivots_str = f'({pivots[0]}, {pivots[1]})'
                 if isinstance(bde, str):
-                    content += ' {0:15} {1:13}\n'.format(pivots_str, bde)
+                    # bde is the 'N/A' string, cannot be formatted as a float
+                    content += ' {0:17} {1:2}- {2:2}          {3}\n'.format(pivots_str, spc.mol.atoms[pivots[0] - 1].symbol,
+                                                                     spc.mol.atoms[pivots[1] - 1].symbol, bde)
                 elif isinstance(bde, float):
-                    content += ' {0:15} {1:10.2f}\n'.format(pivots_str, bde)
+                    content += ' {0:17} {1:2}- {2:2}      {3:10.2f}\n'.format(pivots_str, spc.mol.atoms[pivots[0] - 1].symbol,
+                                                                        spc.mol.atoms[pivots[1] - 1].symbol, bde)
             content += '\n\n'
         logger.info('\n\n')
         logger.info(content)
