@@ -169,8 +169,6 @@ class TestParser(unittest.TestCase):
         spc6 = ARCSpecies(label='tst6', xyz=path3)
         self.assertEqual(len(spc6.conformers), 4)
 
-################################################################################
-
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

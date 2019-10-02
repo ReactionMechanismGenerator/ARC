@@ -21,7 +21,5 @@ class TestSubmit(unittest.TestCase):
             self.assertTrue(server in ['pharos', 'c3ddb', 'rmg'])
 
 
-################################################################################
-
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

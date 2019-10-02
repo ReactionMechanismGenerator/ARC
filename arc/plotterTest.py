@@ -102,8 +102,6 @@ H      -1.16115119    0.31478894   -0.81506145
         project_directory = os.path.join(arc_path, 'Projects', project)
         shutil.rmtree(project_directory)
 
-################################################################################
-
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

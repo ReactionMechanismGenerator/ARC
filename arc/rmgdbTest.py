@@ -64,7 +64,5 @@ class TestRMGDB(unittest.TestCase):
         self.assertTrue(found_rxn)
 
 
-################################################################################
-
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

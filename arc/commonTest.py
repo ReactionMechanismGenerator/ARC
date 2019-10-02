@@ -377,8 +377,5 @@ H 	2.951	-3.078	-4.102""")
         self.assertEqual(list2, [])
 
 
-################################################################################
-
-
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

@@ -273,7 +273,5 @@ def parse_command_line_arguments(command_line_args=None):
     return arguments
 
 
-################################################################################
-
 if __name__ == '__main__':
     main()

@@ -95,7 +95,5 @@ class TestAutoTST(unittest.TestCase):
         #     atst.autotst(rmg_reaction=self.reaction3, reaction_family='H_Abstraction')
 
 
-################################################################################
-
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

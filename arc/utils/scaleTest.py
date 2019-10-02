@@ -115,8 +115,6 @@ class TestScale(unittest.TestCase):
         path = os.path.join(arc_path, 'Projects', 'scaling_factors_arc_testing_delete_after_usage')
         shutil.rmtree(path)
 
-################################################################################
-
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

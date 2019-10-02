@@ -30,7 +30,5 @@ class TestSSH(unittest.TestCase):
         self.assertEqual(status3, 'done')
 
 
-################################################################################
-
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

@@ -85,7 +85,5 @@ def main(reaction_label=None, reaction_family=None):
                 f.write(xyz_guess)
 
 
-################################################################################
-
 if __name__ == '__main__':
     main()

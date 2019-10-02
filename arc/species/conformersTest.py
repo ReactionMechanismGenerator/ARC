@@ -1700,7 +1700,5 @@ Cl      2.38846685    0.24054066    0.55443324
         self.assertEqual(new_xyz1, expected_xyz1)
 
 
-################################################################################
-
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

@@ -357,8 +357,6 @@ class TestARC(unittest.TestCase):
             project_directory = os.path.join(arc_path, 'Projects', project)
             shutil.rmtree(project_directory)
 
-################################################################################
-
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

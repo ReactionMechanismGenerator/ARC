@@ -319,7 +319,5 @@ class TestJob(unittest.TestCase):
                 shutil.rmtree(project_directory)
 
 
-################################################################################
-
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

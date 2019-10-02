@@ -132,8 +132,5 @@ class TestProcessor(unittest.TestCase):
         self.assertEqual(bde_report, {(1, 2): 50})
 
 
-################################################################################
-
-
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

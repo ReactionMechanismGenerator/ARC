@@ -1082,7 +1082,5 @@ class TestTSGuess(unittest.TestCase):
         self.assertTrue(isinstance(tsg.rmg_reaction, Reaction))
 
 
-################################################################################
-
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

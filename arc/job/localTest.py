@@ -49,8 +49,6 @@ class TestLocal(unittest.TestCase):
         self.assertTrue(os.path.isfile(path2))
         shutil.rmtree(os.path.join(arc_path, 'scratch'))
 
-################################################################################
-
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
