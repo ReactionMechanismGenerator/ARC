@@ -6,8 +6,6 @@ Submit scripts
 sorted in a dictionary with server names as keys
 """
 
-##################################################################
-
 
 submit_scripts = {
     'c3ddb': {

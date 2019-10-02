@@ -9,8 +9,6 @@ import unittest
 
 from arc.job.submit import submit_scripts
 
-################################################################################
-
 
 class TestSubmit(unittest.TestCase):
     """

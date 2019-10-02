@@ -9,19 +9,18 @@ Todo:
     * delete scratch files of a failed job: ssh nodeXX; rm scratch/dhdhdhd/job_number
 """
 
+import datetime
 import logging
 import os
-import time
-import datetime
 import re
+import time
 
 import paramiko
 
 from arc.common import get_logger
-from arc.settings import servers, check_status_command, submit_command, submit_filename, delete_command
 from arc.exceptions import InputError, ServerError
+from arc.settings import servers, check_status_command, submit_command, submit_filename, delete_command
 
-##################################################################
 
 logger = get_logger()
 

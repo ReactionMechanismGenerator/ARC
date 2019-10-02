@@ -5,16 +5,14 @@
 This module contains unit tests for the parser functions
 """
 
-import unittest
-import os
 import numpy as np
+import os
+import unittest
 
+import arc.parser as parser
 from arc.settings import arc_path
 from arc.species import ARCSpecies
 from arc.species.converter import xyz_to_str
-from arc import parser
-
-################################################################################
 
 
 class TestParser(unittest.TestCase):

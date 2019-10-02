@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # encoding: utf-8
 
-import species
-from species import ARCSpecies
-import conformers
-import converter
-import xyz_to_2d
+import arc.species.conformers
+import arc.species.converter
+import arc.species.species
+import arc.species.xyz_to_2d
+from arc.species.species import ARCSpecies

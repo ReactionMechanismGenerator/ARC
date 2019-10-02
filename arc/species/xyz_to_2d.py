@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 # encoding: utf-8
 
-# Written by Colin Grambow
+"""
+Written by Colin Grambow
+"""
 
 import numpy as np
 
@@ -10,6 +12,7 @@ from rdkit import Chem
 from rdkit.Chem import GetPeriodicTable
 
 from arc.exceptions import SanitizationError
+
 
 _rdkit_periodic_table = GetPeriodicTable()
 

@@ -11,12 +11,13 @@ import os
 import cclib
 import numpy as np
 
-from arc.exceptions import SpeciesError, TrshError
 from arc.common import get_logger, determine_ess
+from arc.exceptions import SpeciesError, TrshError
+from arc.job.ssh import SSHClient
 from arc.settings import servers, delete_command, list_available_nodes_command, submit_filename, \
     inconsistency_ab, inconsistency_az, maximum_barrier, rotor_scan_resolution
 from arc.species.converter import xyz_from_data
-from arc.job.ssh import SSHClient
+
 
 logger = get_logger()
 

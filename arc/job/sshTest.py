@@ -9,8 +9,6 @@ import unittest
 
 import arc.job.ssh as ssh
 
-################################################################################
-
 
 class TestSSH(unittest.TestCase):
     """

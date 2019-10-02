@@ -7,13 +7,13 @@ If the species is a transition state (TS), its ``ts_guesses`` attribute will hav
 """
 
 import datetime
-import os
 import numpy as np
+import os
 
-from arkane.common import ArkaneSpecies, symbol_by_number
-from rmgpy.exceptions import InvalidAdjacencyListError
-from arkane.statmech import determine_qm_software, is_linear
 import rmgpy.molecule.element as elements
+from arkane.common import ArkaneSpecies, symbol_by_number
+from arkane.statmech import determine_qm_software, is_linear
+from rmgpy.exceptions import InvalidAdjacencyListError
 from rmgpy.molecule.molecule import Atom, Molecule
 from rmgpy.molecule.resonance import generate_kekule_structure
 from rmgpy.reaction import Reaction
@@ -21,8 +21,8 @@ from rmgpy.species import Species
 from rmgpy.statmech import NonlinearRotor, LinearRotor
 from rmgpy.transport import TransportData
 
-from arc.exceptions import SpeciesError, RotorError, InputError, TSError, SanitizationError
 from arc.common import get_logger, get_atom_radius, determine_symmetry
+from arc.exceptions import SpeciesError, RotorError, InputError, TSError, SanitizationError
 from arc.parser import parse_xyz_from_file, parse_dipole_moment, parse_polarizability, process_conformers_file
 from arc.settings import default_ts_methods, valid_chars, minimum_barrier
 from arc.species import conformers

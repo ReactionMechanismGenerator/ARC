@@ -5,16 +5,17 @@
 A module for parsing information from various files.
 """
 
-import os
 import numpy as np
+import os
 
+from arkane.exceptions import LogError
 from arkane.gaussian import GaussianLog
 from arkane.molpro import MolproLog
 from arkane.qchem import QChemLog
 from arkane.statmech import determine_qm_software
 
-from arc.exceptions import InputError, ParserError
 from arc.common import get_logger
+from arc.exceptions import InputError, ParserError
 from arc.species.converter import xyz_from_data, str_to_xyz
 
 

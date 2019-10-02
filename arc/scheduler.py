@@ -6,16 +6,15 @@ A module for scheduling jobs
 Includes spawning, terminating, checking, and troubleshooting various jobs
 """
 
-import time
-import os
 import datetime
-import shutil
-import logging
 import itertools
+import logging
+import os
+import shutil
+import time
 from IPython.display import display
 
 from arkane.statmech import determine_qm_software
-from rmgpy.exceptions import InputError as RMGInputError
 from rmgpy.reaction import Reaction
 
 from arc.common import get_logger, read_yaml_file, save_yaml_file, get_ordinal_indicator, min_list, \

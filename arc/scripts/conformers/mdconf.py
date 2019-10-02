@@ -12,12 +12,12 @@ AmberTools19: http://ambermd.org/Manuals.php
 Gromacs 2019: http://manual.gromacs.org/documentation/2019/install-guide/index.html
 """
 
+import argparse
 import os
 import re
-import yaml
-import time
 import subprocess
-import argparse
+import time
+import yaml
 from acpype import MolTopol
 
 # try:

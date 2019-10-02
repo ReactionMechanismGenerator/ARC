@@ -9,10 +9,10 @@ import os
 import shutil
 import unittest
 
-from arc import plotter
+import arc.plotter as plotter
 from arc.settings import arc_path
-from arc.species.species import ARCSpecies
 from arc.species.converter import str_to_xyz
+from arc.species.species import ARCSpecies
 
 
 class TestPlotter(unittest.TestCase):

@@ -8,15 +8,14 @@ A module for working with the RMG database.
 import os
 
 from rmgpy import settings
-from rmgpy.data.rmg import RMGDatabase
-from rmgpy.reaction import same_species_lists
 from rmgpy.data.kinetics.common import find_degenerate_reactions
+from rmgpy.data.rmg import RMGDatabase
 from rmgpy.exceptions import KineticsError
+from rmgpy.reaction import same_species_lists, Reaction
 
 from arc.common import get_logger
 from arc.exceptions import InputError
 
-##################################################################
 
 logger = get_logger()
 

@@ -5,10 +5,10 @@
 A module for plotting and saving output files such as RMG libraries.
 """
 
-import os
-import shutil
 import matplotlib.pyplot as plt
 import numpy as np
+import os
+import shutil
 from matplotlib.backends.backend_pdf import PdfPages
 from mpl_toolkits.mplot3d import Axes3D
 
@@ -26,8 +26,8 @@ from rmgpy.data.transport import TransportLibrary
 from rmgpy.quantity import ScalarQuantity
 from rmgpy.species import Species
 
-from arc.exceptions import InputError, SanitizationError
 from arc.common import get_logger, min_list, save_yaml_file
+from arc.exceptions import InputError, SanitizationError
 from arc.species.converter import rdkit_conf_from_mol, molecules_from_xyz, check_xyz_dict, str_to_xyz, xyz_to_str, \
     xyz_to_x_y_z, xyz_from_data
 from arc.species.species import ARCSpecies

@@ -14,8 +14,8 @@ import shutil
 
 from arkane.statmech import determine_qm_software
 
-from arc.exceptions import InputError
 from arc.common import get_logger, check_ess_settings, time_lapse, initialize_log, initialize_job_types
+from arc.exceptions import InputError
 from arc.scheduler import Scheduler
 from arc.settings import arc_path
 from arc.species.species import ARCSpecies

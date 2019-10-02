@@ -1,20 +1,6 @@
 #!/usr/bin/env python3
 # encoding: utf-8
 
-from datetime import datetime
-from shutil import copy2
-from shutil import rmtree
-import traceback
-import signal
-import time
-import optparse
-import math
-import os
-import pickle
-import sys
-import subprocess as sub
-import re
-
 """
     Requirements: Python 2.6 or higher or Python 3.x
                   Antechamber (from AmberTools preferably)
@@ -58,6 +44,20 @@ import re
 
     alanwilter _at_ gmail _dot_ com
 """
+
+import math
+import optparse
+import os
+import pickle
+import re
+import signal
+import subprocess as sub
+import sys
+import time
+import traceback
+from datetime import datetime
+from shutil import copy2
+from shutil import rmtree
 
 
 def trace_lines(frame, event, arg):

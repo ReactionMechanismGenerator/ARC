@@ -5,16 +5,15 @@
 A module for representing a reaction.
 """
 
-from rmgpy.species import Species
 from rmgpy.reaction import Reaction
+from rmgpy.species import Species
 
-from arc.common import get_logger
 import arc.rmgdb as rmgdb
-from arc.species.species import ARCSpecies
+from arc.common import get_logger
 from arc.exceptions import ReactionError, InputError
 from arc.settings import default_ts_methods
+from arc.species.species import ARCSpecies
 
-##################################################################
 
 logger = get_logger()
 

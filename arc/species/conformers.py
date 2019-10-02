@@ -38,28 +38,28 @@ Module workflow::
 
 """
 
+from itertools import product, combinations_with_replacement
 import logging
 import math
+import numpy as np
 import sys
 import time
-from itertools import product, combinations_with_replacement
 from heapq import nsmallest
-import numpy as np
 
+import openbabel as ob
+import pybel as pyb
 from rdkit import Chem
 from rdkit.Chem.rdchem import EditableMol as RDMol
 from rdkit.Chem.rdmolops import AssignStereochemistry
-import openbabel as ob
-import pybel as pyb
 
+import rmgpy.molecule.group as gr
 from rmgpy.molecule.converter import to_ob_mol
 from rmgpy.molecule.molecule import Molecule
-import rmgpy.molecule.group as gr
 
-from arc.exceptions import ConformerError, InputError
 from arc.common import logger, determine_symmetry, calculate_dihedral_angle
-from arc.species import converter
+from arc.exceptions import ConformerError, InputError
 import arc.plotter
+from arc.species import converter
 
 
 # The number of conformers to generate per range of heavy atoms in the molecule

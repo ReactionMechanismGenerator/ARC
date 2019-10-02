@@ -3,19 +3,15 @@
 
 """
 ARC - Automatic Rate Calculator
-"""
 
-from arc.job.ssh import delete_all_arc_jobs
-from arc.job.local import delete_all_local_arc_jobs
-from arc.settings import servers
-
-################################################################################
-
-"""
 Caution!!
-Using this function might results in deletion of jobs running on all servers ARC has access to (including 'local').
+Using this module might results in deletion of jobs running on all servers ARC has access to (including 'local').
 Use this only if you are certain in what you're doing to avoid deleting valuable jobs and information loss.
 """
+
+from arc.job.local import delete_all_local_arc_jobs
+from arc.job.ssh import delete_all_arc_jobs
+from arc.settings import servers
 
 
 def main():

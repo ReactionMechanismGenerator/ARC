@@ -5,21 +5,20 @@
 This module contains unit tests of the arc.species.species module
 """
 
-import unittest
 import os
 import shutil
+import unittest
 
 from rmgpy.molecule.molecule import Molecule
-from rmgpy.species import Species
 from rmgpy.reaction import Reaction
+from rmgpy.species import Species
 from rmgpy.transport import TransportData
 
-from arc.species.species import ARCSpecies, TSGuess, determine_rotor_type, determine_rotor_symmetry, check_xyz
-from arc.species.converter import molecules_from_xyz, check_isomorphism, str_to_xyz, xyz_to_str, xyz_to_x_y_z
-from arc.settings import arc_path
-from arc.rmgdb import make_rmg_database_object
-from arc.plotter import save_conformers_file
 from arc.common import almost_equal_coords_lists
+from arc.plotter import save_conformers_file
+from arc.settings import arc_path
+from arc.species.converter import molecules_from_xyz, check_isomorphism, str_to_xyz, xyz_to_str, xyz_to_x_y_z
+from arc.species.species import ARCSpecies, TSGuess, determine_rotor_type, determine_rotor_symmetry, check_xyz
 
 
 class TestARCSpecies(unittest.TestCase):

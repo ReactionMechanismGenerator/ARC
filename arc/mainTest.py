@@ -5,22 +5,20 @@
 This module contains unit tests for the arc.main module
 """
 
-import unittest
 import os
 import shutil
+import unittest
 
 from rmgpy import settings
 from rmgpy.data.rmg import RMGDatabase
-from rmgpy.species import Species
 from rmgpy.molecule.molecule import Molecule
+from rmgpy.species import Species
 
-from arc.main import ARC
 from arc.common import read_yaml_file
-from arc.species.species import ARCSpecies
-from arc.settings import arc_path, servers
 from arc.exceptions import InputError
-
-################################################################################
+from arc.main import ARC
+from arc.settings import arc_path, servers
+from arc.species.species import ARCSpecies
 
 
 class TestARC(unittest.TestCase):

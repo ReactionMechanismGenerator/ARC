@@ -13,8 +13,8 @@ from rmgpy.molecule.molecule import Molecule
 from rmgpy.species import Species
 
 import arc.species.converter as converter
-from arc.species.species import ARCSpecies
 from arc.common import almost_equal_coords_lists
+from arc.species.species import ARCSpecies
 
 
 class TestConverter(unittest.TestCase):

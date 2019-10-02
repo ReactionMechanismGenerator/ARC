@@ -1,23 +1,24 @@
 #!/usr/bin/env python3
 # encoding: utf-8
+
 """
 This module contains unit tests of the arc.species.conformers module
 """
 
-import unittest
 import math
+import unittest
 
 from rdkit.Chem import rdMolTransforms as rdMT
 
-from rmgpy.molecule.molecule import Molecule
 from rmgpy.molecule.atomtype import ATOMTYPES
 from rmgpy.molecule.group import GroupAtom, GroupBond, Group
+from rmgpy.molecule.molecule import Molecule
 
-import arc.species.converter as converter
 import arc.species.conformers as conformers
-from arc.species.species import ARCSpecies
-from arc.exceptions import ConformerError
+import arc.species.converter as converter
 from arc.common import almost_equal_coords_lists
+from arc.exceptions import ConformerError
+from arc.species.species import ARCSpecies
 
 
 class TestConformers(unittest.TestCase):

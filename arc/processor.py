@@ -11,20 +11,19 @@ from random import randint
 
 from arkane.input import species as arkane_input_species, transitionState as arkane_transition_state,\
     reaction as arkane_reaction, process_model_chemistry
+from arkane.kinetics import KineticsJob
 from arkane.statmech import StatMechJob, assign_frequency_scale_factor
 from arkane.thermo import ThermoJob
-from arkane.kinetics import KineticsJob
 
 from rmgpy.species import Species
 
-from arc.common import get_logger
+import arc.plotter as plotter
 import arc.rmgdb as rmgdb
-from arc.job.inputs import input_files
-from arc import plotter
-from arc.species.species import determine_rotor_symmetry, determine_rotor_type
+from arc.common import get_logger
 from arc.exceptions import ProcessorError, SchedulerError, RotorError
+from arc.job.inputs import input_files
+from arc.species.species import determine_rotor_symmetry, determine_rotor_type
 
-##################################################################
 
 logger = get_logger()
 

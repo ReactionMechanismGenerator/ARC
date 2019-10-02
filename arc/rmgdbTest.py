@@ -7,13 +7,11 @@ This module contains unit tests for the arc.rmgdb module
 
 import unittest
 
+from rmgpy.data.kinetics.library import LibraryReaction
 from rmgpy.reaction import Reaction
 from rmgpy.species import Species
-from rmgpy.data.kinetics.library import LibraryReaction
 
 import arc.rmgdb as rmgdb
-
-################################################################################
 
 
 class TestRMGDB(unittest.TestCase):

@@ -5,15 +5,15 @@
 This module contains unit tests for ARC's common module
 """
 
-import unittest
+import copy
 import os
 import time
-import copy
+import unittest
 
 import arc.common as common
 from arc.exceptions import InputError, SettingsError
-from arc.species.converter import str_to_xyz
 from arc.settings import arc_path, servers
+from arc.species.converter import str_to_xyz
 
 
 class TestARC(unittest.TestCase):
@@ -135,7 +135,6 @@ class TestARC(unittest.TestCase):
 
     def test_initialize_job_with_given_job_type(self):
         """Test the initialize_job_types() function"""
-
         job_types = {'conformers': False, 'opt': True, 'fine': True, 'freq': True, 'sp': False, 'rotors': False}
         job_types_expected = copy.deepcopy(self.default_job_types)
         job_types_expected.update(job_types)
@@ -144,7 +143,6 @@ class TestARC(unittest.TestCase):
 
     def test_initialize_job_with_empty_job_type(self):
         """Test the initialize_job_types() function"""
-
         job_types = {}
         job_types_expected = copy.deepcopy(self.default_job_types)
         job_types_expected.update(job_types)
@@ -153,7 +151,6 @@ class TestARC(unittest.TestCase):
 
     def test_initialize_job_with_bde_job_type(self):
         """Test the initialize_job_types() function"""
-
         job_types = {'bde': True}
         job_types_expected = copy.deepcopy(self.default_job_types)
         job_types_expected.update(job_types)
@@ -162,7 +159,6 @@ class TestARC(unittest.TestCase):
 
     def test_initialize_job_with_specific_job_type(self):
         """Test the initialize_job_types() function"""
-
         specific_job_type = 'freq'
         specific_job_type_expected = {job_type: False for job_type in self.default_job_types.keys()}
         specific_job_type_expected[specific_job_type] = True
@@ -171,22 +167,18 @@ class TestARC(unittest.TestCase):
 
     def test_initialize_job_with_conflict_job_type(self):
         """Test the initialize_job_types() function"""
-
         specific_job_type = 'sp'
         conflict_job_type = {'bde': True}
         specific_job_type_expected = {job_type: False for job_type in self.default_job_types.keys()}
         specific_job_type_expected[specific_job_type] = True
-        specific_job_type_initialized = common.initialize_job_types(conflict_job_type,
-                                                                    specific_job_type=specific_job_type)
+        specific_job_type_initialized = common.initialize_job_types(conflict_job_type, specific_job_type=specific_job_type)
         self.assertEqual(specific_job_type_expected, specific_job_type_initialized)
 
     def test_initialize_job_with_not_supported_job_type(self):
         """Test the initialize_job_types() function"""
-
         with self.assertRaises(InputError):
             job_types = {'fake_job': True}
             common.initialize_job_types(job_types)
-
         with self.assertRaises(InputError):
             specific_job_type = 'fake_job_type'
             common.initialize_job_types({}, specific_job_type=specific_job_type)

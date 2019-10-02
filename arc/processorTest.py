@@ -5,15 +5,12 @@
 This module contains unit tests for the arc.processor module
 """
 
-import unittest
 import os
+import unittest
 
+from arc.common import arc_path
 from arc.processor import Processor
 from arc.species.species import ARCSpecies
-from arc.common import arc_path
-
-
-################################################################################
 
 
 class TestProcessor(unittest.TestCase):

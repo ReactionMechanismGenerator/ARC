@@ -6,13 +6,11 @@ ARC - Automatic Rate Calculator
 """
 
 import argparse
-import os
 import logging
+import os
 
-from arc.main import ARC
 from arc.common import read_yaml_file
-
-################################################################################
+from arc.main import ARC
 
 
 def parse_command_line_arguments(command_line_args=None):

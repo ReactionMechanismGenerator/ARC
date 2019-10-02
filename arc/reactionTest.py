@@ -7,14 +7,12 @@ This module contains unit tests of the arc.reaction module
 
 import unittest
 
-from rmgpy.species import Species
 from rmgpy.reaction import Reaction
+from rmgpy.species import Species
 
 import arc.rmgdb as rmgdb
 from arc.reaction import ARCReaction
 from arc.settings import default_ts_methods
-
-################################################################################
 
 
 class TestARCReaction(unittest.TestCase):

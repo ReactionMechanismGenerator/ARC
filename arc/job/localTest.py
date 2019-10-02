@@ -5,15 +5,13 @@
 This module contains unit tests of the arc.job.local module
 """
 
-import unittest
+import datetime
 import os
 import shutil
-import datetime
+import unittest
 
 import arc.job.local as local
 from arc.settings import arc_path
-
-################################################################################
 
 
 class TestLocal(unittest.TestCase):
