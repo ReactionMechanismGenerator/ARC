@@ -188,6 +188,11 @@ class Processor(object):
         """
         Process ARC outputs and generate thermo and kinetics.
         """
+        # load the RMG database
+        try:
+            self.load_rmg_db()
+        except Exception as e:
+            logger.error('Could not load the RMG database! Got:\n{0}'.format(e))
         # Thermo:
         species_list_for_thermo_parity = list()
         species_for_thermo_lib = list()
@@ -223,20 +228,6 @@ class Processor(object):
                     species.thermo = arkane_spc.get_thermo_data()
                     plotter.log_thermo(species.label, path=output_path)
                     species_for_thermo_lib.append(species)
-                if self.use_bac and self.sp_level:
-                    # If BAC was used, save another Arkane YAML file of this species with no BAC, so it can be used
-                    # for further rate calculations if needed (where the conformer.E0 has no BAC)
-                    statmech_success = self._run_statmech(arkane_spc, species.arkane_file, output_path,
-                                                          use_bac=False)
-                    # if statmech_success:
-                    #     arkane_spc.label += str('_no_BAC')
-                    #     arkane_spc.thermo = None  # otherwise thermo won't be calculated, although we don't care
-                    #     thermo_job = ThermoJob(arkane_spc, 'NASA')
-                    #     thermo_job.execute(output_directory=output_path, plot=False)
-                try:
-                    self.load_rmg_db()
-                except Exception as e:
-                    logger.error('Could not load the RMG database! Got:\n{0}'.format(e))
                 try:
                     species.rmg_thermo = self.rmgdb.thermo.get_thermo_data(species.rmg_species)
                 except (ValueError, AttributeError) as e:
@@ -315,10 +306,6 @@ class Processor(object):
                 if success:
                     rxn.kinetics = kinetics_job.reaction.kinetics
                     plotter.log_kinetics(species.label, path=output_path)
-                    try:
-                        self.load_rmg_db()  # will only try to load if not already loaded (self.rmgdb is not None)
-                    except Exception as e:
-                        logger.error('Could not load the RMG database! Got:\n{0}'.format(e))
                     rxn.rmg_reactions = rmgdb.determine_rmg_kinetics(rmgdb=self.rmgdb, reaction=rxn.rmg_reaction,
                                                                      dh_rxn298=rxn.dh_rxn298)
 
