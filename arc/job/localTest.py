@@ -5,7 +5,6 @@
 This module contains unit tests of the arc.job.local module
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
 import unittest
 import os
 import shutil
@@ -29,9 +28,9 @@ class TestLocal(unittest.TestCase):
         self.assertIsInstance(out1, tuple)
         self.assertIsInstance(out1[0], list)
         self.assertEqual(out1[1], '')
-        self.assertIn('arc', out1[0])
-        self.assertIn('ARC.py', out1[0])
-        self.assertIn('environment.yml', out1[0])
+        self.assertIn('arc', [out.decode() for out in out1[0]])
+        self.assertIn('ARC.py', [out.decode() for out in out1[0]])
+        self.assertIn('environment.yml', [out.decode() for out in out1[0]])
 
     def test_get_last_modified_time(self):
         """Test the get_last_modified_time() function"""

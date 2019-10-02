@@ -5,7 +5,6 @@
 Processor module for outputting thermoproperties and rates.
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
 import os
 import shutil
 from random import randint
@@ -18,7 +17,7 @@ from arkane.kinetics import KineticsJob
 
 from rmgpy.species import Species
 
-from arc.common import get_logger, save_yaml_file
+from arc.common import get_logger
 import arc.rmgdb as rmgdb
 from arc.job.inputs import input_files
 from arc import plotter
@@ -44,8 +43,8 @@ class Processor(object):
         model_chemistry (str): The level of theory used in the sp//freq form (or a composite method).
         lib_long_desc (str): A multiline description of levels of theory for the outputted RMG libraries.
         rmgdatabase (RMGDatabase, optional): The RMG database object.
-        t_min (tuple, optional): The minimum temperature for kinetics computations, e.g., (500, str('K')).
-        t_max (tuple, optional): The maximum temperature for kinetics computations, e.g., (3000, str('K')).
+        t_min (tuple, optional): The minimum temperature for kinetics computations, e.g., (500, 'K').
+        t_max (tuple, optional): The maximum temperature for kinetics computations, e.g., (3000, 'K').
         t_count (int, optional): The number of temperature points between t_min and t_max for kinetics computations.
         freq_scale_factor (float, optional): The harmonic frequencies scaling factor. Could be automatically determined
                                              if not available in Arkane and not provided by the user.
@@ -63,8 +62,8 @@ class Processor(object):
         freq_scale_factor (float): The harmonic frequencies scaling factor. Could be automatically determined
                                    if not available in Arkane and not provided by the user.
         lib_long_desc (str): A multiline description of levels of theory for the outputted RMG libraries.
-        t_min (tuple): The minimum temperature for kinetics computations, e.g., (500, str('K')).
-        t_max (tuple): The maximum temperature for kinetics computations, e.g., (3000, str('K')).
+        t_min (tuple): The minimum temperature for kinetics computations, e.g., (500, 'K').
+        t_max (tuple): The maximum temperature for kinetics computations, e.g., (3000, 'K').
         t_count (int): The number of temperature points between t_min and t_max for kinetics computations.
         rmgdb (RMGDatabase): The RMG database object.
     """
@@ -86,8 +85,8 @@ class Processor(object):
             t_min = (t_min, 'K')
         if isinstance(t_max, (int, float)):
             t_max = (t_max, 'K')
-        self.t_min = (t_min[0], str(t_min[1]))
-        self.t_max = (t_max[0], str(t_max[1]))
+        self.t_min = t_min
+        self.t_max = t_max
         self.t_count = t_count if t_count is not None else 50
 
     def _generate_arkane_species_file(self, species):
@@ -179,7 +178,7 @@ class Processor(object):
                                        sp_level=self.sp_level, sp_path=sp_path, opt_path=opt_path,
                                        freq_path=freq_path, rotors=rotors)
         if freq_path:
-            with open(input_file_path, 'wb') as f:
+            with open(input_file_path, 'w') as f:
                 f.write(input_file)
             species.arkane_file = input_file_path
         else:
@@ -222,7 +221,7 @@ class Processor(object):
                 if species.generate_thermo:
                     thermo_job = ThermoJob(arkane_spc, 'NASA')
                     thermo_job.execute(output_directory=output_path, plot=False)
-                    species.thermo = arkane_spc.getThermoData()
+                    species.thermo = arkane_spc.get_thermo_data()
                     plotter.log_thermo(species.label, path=output_path)
                     species_for_thermo_lib.append(species)
                 if self.use_bac and self.sp_level:
@@ -240,11 +239,11 @@ class Processor(object):
                 except Exception as e:
                     logger.error('Could not load the RMG database! Got:\n{0}'.format(e))
                 try:
-                    species.rmg_thermo = self.rmgdb.thermo.getThermoData(species.rmg_species)
+                    species.rmg_thermo = self.rmgdb.thermo.get_thermo_data(species.rmg_species)
                 except (ValueError, AttributeError) as e:
                     logger.info('Could not retrieve RMG thermo for species {0}, possibly due to missing 2D structure '
                                 '(bond orders). Not including this species in the parity plots.'
-                                '\nGot: {1}'.format(species.label, e.message))
+                                '\nGot: {1}'.format(species.label, e))
                 else:
                     if species.generate_thermo:
                         species_list_for_thermo_parity.append(species)
@@ -287,9 +286,9 @@ class Processor(object):
                         #  for thermo and species calculated for kinetics (where we don't want to use BAC)
                         arkane_spc = arkane_input_species(str(spc.label + '_'), spc.arkane_file)
                         self._run_statmech(arkane_spc, spc.arkane_file, kinetics=True)
-                rxn.dh_rxn298 = sum([product.thermo.getEnthalpy(298) for product in arkane_spc_dict.values()
+                rxn.dh_rxn298 = sum([product.thermo.get_enthalpy(298) for product in arkane_spc_dict.values()
                                      if product.label in rxn.products])\
-                    - sum([reactant.thermo.getEnthalpy(298) for reactant in arkane_spc_dict.values()
+                    - sum([reactant.thermo.get_enthalpy(298) for reactant in arkane_spc_dict.values()
                            if reactant.label in rxn.reactants])
                 arkane_rxn = arkane_reaction(label=str(rxn.label),
                                              reactants=[str(label + '_') for label in arkane_spc_dict.keys()
@@ -352,7 +351,7 @@ class Processor(object):
                     if spc.is_ts:
                         f.write(str(' rxn: {0}'.format(spc.rxn_label)))
                     elif spc.mol is not None:
-                        f.write(str(' SMILES: {0}'.format(spc.mol.toSMILES())))
+                        f.write(str(' SMILES: {0}'.format(spc.mol.to_smiles())))
                     f.write(str('\n'))
 
     def _run_statmech(self, arkane_spc, arkane_file, output_path=None, use_bac=False, kinetics=False, plot=False):
@@ -411,7 +410,7 @@ class Processor(object):
         for bde_indices in source.bdes:
             found_a_label = False
             # index 0 of the tuple:
-            if source.mol.atoms[bde_indices[0] - 1].isHydrogen():
+            if source.mol.atoms[bde_indices[0] - 1].is_hydrogen():
                 e1 = self.species_dict['H'].e0
             else:
                 bde_label = label + '_BDE_' + str(bde_indices[0]) + '_' + str(bde_indices[1]) + '_A'
@@ -420,7 +419,7 @@ class Processor(object):
                 found_a_label = True
                 e1 = self.species_dict[bde_label].e0
             # index 1 of the tuple:
-            if source.mol.atoms[bde_indices[1] - 1].isHydrogen():
+            if source.mol.atoms[bde_indices[1] - 1].is_hydrogen():
                 e2 = self.species_dict['H'].e0
             else:
                 letter = 'B' if found_a_label else 'A'

@@ -12,7 +12,6 @@ This file is meant to accept command line arguments of an AutoTST reaction strin
 and save the TS guess output as auto_tst.xyz
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
 import argparse
 import os
 
@@ -74,7 +73,7 @@ def main(reaction_label=None, reaction_family=None):
             reaction = AutoTST_Reaction(label=reaction_label, reaction_family=reaction_family)
         except AssertionError as e:
             logger.error('Could not generate a TS guess using AutoTST for reaction {0}'.format(reaction_label))
-            raise TSError('Could not generate AutoTST guess:\n{0}'.format(e.message))
+            raise TSError('Could not generate AutoTST guess:\n{0}'.format(e))
         else:
             positions = reaction.ts.ase_ts.get_positions()
             numbers = reaction.ts.ase_ts.get_atomic_numbers()

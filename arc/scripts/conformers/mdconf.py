@@ -12,7 +12,6 @@ AmberTools19: http://ambermd.org/Manuals.php
 Gromacs 2019: http://manual.gromacs.org/documentation/2019/install-guide/index.html
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
 import os
 import re
 import yaml
@@ -124,13 +123,13 @@ def write_mol_files(coord, ac_path=None, mol2_path=None):
             s1 = ' ' if coord[i][0] >= 0 else ''
             s2 = ' ' if coord[i][0] >= 0 else ''
             content += line[:32] + s0 + str(coord[i][0]) + '  ' + s1 + str(coord[i][1]) + '  ' + s2 + str(coord[i][2]) \
-                       + '  ' + line[56:] + '\n'
+                + '  ' + line[56:] + '\n'
             i += 1
         if 'Formula' in line:
             # e.g., `Formula: H18 C13 O2 `
             change_xyz = True
     with open(ac_path, 'w') as f:
-        f.write(str(content))
+        f.write(content)
 
     with open(mol2_path, 'r') as f:
         lines = f.readlines()
@@ -245,8 +244,7 @@ def main():
 
     # save YAML output
     yaml.add_representer(str, string_representer)
-    yaml.add_representer(unicode, unicode_representer)
-    content = yaml.dump(data=output, encoding='utf-8', allow_unicode=True)
+    content = yaml.dump(data=output, encoding='utf-8')
     with open('output.yml', 'w') as f:
         f.write(content)
     dt = time.time() - t0
@@ -258,13 +256,6 @@ def string_representer(dumper, data):
     if len(data.splitlines()) > 1:
         return dumper.represent_scalar(tag='tag:yaml.org,2002:str', value=data, style='|')
     return dumper.represent_scalar(tag='tag:yaml.org,2002:str', value=data)
-
-
-def unicode_representer(dumper, data):
-    """Add a custom unicode representer to use block literals for multiline strings"""
-    if len(data.splitlines()) > 1:
-        return yaml.ScalarNode(tag='tag:yaml.org,2002:str', value=data, style='|')
-    return yaml.ScalarNode(tag='tag:yaml.org,2002:str', value=data)
 
 
 def parse_command_line_arguments(command_line_args=None):

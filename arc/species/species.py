@@ -6,7 +6,6 @@ A module for representing stationary points (chemical species and transition sta
 If the species is a transition state (TS), its ``ts_guesses`` attribute will have one or more ``TSGuess`` objects.
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
 import datetime
 import os
 import numpy as np
@@ -167,9 +166,9 @@ class ARCSpecies(object):
                                   (otherwise, this job will be spawned if running Gromacs).
         initial_xyz (dict): The initial geometry guess.
         final_xyz (dict): The optimized species geometry.
-        radius (float): The species radius in Angstrom.
+        _radius (float): The species radius in Angstrom.
         opt_level (str): Level of theory for geometry optimization. Saved for archiving.
-        number_of_atoms (int): The number of atoms in the species/TS.
+        _number_of_atoms (int): The number of atoms in the species/TS.
         mol (Molecule): An ``RMG Molecule`` object used for BAC determination.
                         Atom order corresponds to the order in .initial_xyz
         mol_list (list): A list of localized structures generated from 'mol', if possible.
@@ -252,7 +251,6 @@ class ARCSpecies(object):
         self.run_time = run_time
         self.checkfile = checkfile
         self.transport_data = TransportData()
-        smiles, adjlist, inchi = str(smiles), str(adjlist), str(inchi)
 
         if species_dict is not None:
             # Reading from a dictionary
@@ -332,9 +330,9 @@ class ARCSpecies(object):
                     if len(self.mol_list) > 1:
                         logger.info('Using localized structure {0} of species {1} for BAC determination. To use a'
                                     ' different structure, pass the RMG:Molecule object in the `mol` parameter'.format(
-                                      self.mol.toSMILES(), self.label))
+                                      self.mol.to_smiles(), self.label))
                 self.multiplicity = self.rmg_species.molecule[0].multiplicity
-                self.charge = self.rmg_species.molecule[0].getNetCharge()
+                self.charge = self.rmg_species.molecule[0].get_net_charge()
 
             if label is not None:
                 self.label = label
@@ -344,11 +342,11 @@ class ARCSpecies(object):
                 self.charge = charge
             if self.mol is None:
                 if adjlist:
-                    self.mol = Molecule().fromAdjacencyList(adjlist=adjlist)
+                    self.mol = Molecule().from_adjacency_list(adjlist=adjlist)
                 elif inchi:
                     self.mol = rmg_mol_from_inchi(inchi)
                 elif smiles:
-                    self.mol = Molecule(SMILES=smiles)
+                    self.mol = Molecule(smiles=smiles)
             if not self.is_ts:
                 # Perceive molecule from xyz coordinates. This also populates mol and mol_list.
                 # It overrides self.mol from adjlist or smiles so that xyz and mol have the same atom ordering.
@@ -356,8 +354,8 @@ class ARCSpecies(object):
                     self.mol_from_xyz(get_cheap=False)
                 if self.mol is None:
                     if self.generate_thermo:
-                        logger.warning('No structure (SMILES, adjList, RMG:Species, or RMG:Molecule) was given for '
-                                       ' species {0}, NOT using bond additivity corrections (BAC) for thermo '
+                        logger.warning('No structure (SMILES, adjList, RMG Species, or RMG Molecule) was given for '
+                                       'species {0}, NOT using bond additivity corrections (BAC) for thermo '
                                        'computation.'.format(self.label))
                 else:
                     # Generate bond list for applying bond additivity corrections
@@ -428,7 +426,7 @@ class ARCSpecies(object):
         """The number of heavy (non hydrogen) atoms in the species"""
         if self._number_of_heavy_atoms is None:
             if self.mol is not None:
-                self._number_of_heavy_atoms = len([atom for atom in self.mol.atoms if atom.isNonHydrogen()])
+                self._number_of_heavy_atoms = len([atom for atom in self.mol.atoms if atom.is_non_hydrogen()])
             elif self.final_xyz is not None or self.initial_xyz is not None:
                 self._number_of_heavy_atoms = len([symbol for symbol in self.get_xyz()['symbols'] if symbol != 'H'])
             elif self.is_ts:
@@ -520,7 +518,7 @@ class ARCSpecies(object):
         if self.bond_corrections is not None:
             species_dict['bond_corrections'] = self.bond_corrections
         if self.mol is not None:
-            species_dict['mol'] = self.mol.toAdjacencyList()
+            species_dict['mol'] = self.mol.to_adjacency_list()
         if self.initial_xyz is not None:
             species_dict['initial_xyz'] = xyz_to_str(self.initial_xyz)
         if self.final_xyz is not None:
@@ -640,22 +638,21 @@ class ARCSpecies(object):
         self.neg_freqs_trshed = species_dict['neg_freqs_trshed'] if 'neg_freqs_trshed' in species_dict else list()
         self.bond_corrections = species_dict['bond_corrections'] if 'bond_corrections' in species_dict else dict()
         try:
-            self.mol = Molecule().fromAdjacencyList(str(species_dict['mol'])) if 'mol' in species_dict else None
+            self.mol = Molecule().from_adjacency_list(species_dict['mol']) if 'mol' in species_dict else None
         except (ValueError, InvalidAdjacencyListError) as e:
             logger.error('Could not read RMG adjacency list {0}. Got:\n{1}'.format(species_dict['mol'] if 'mol'
-                                                                                   in species_dict else None,
-                                                                                   e.message))
+                                                                                   in species_dict else None, e))
             self.mol = None
         smiles = species_dict['smiles'] if 'smiles' in species_dict else None
         inchi = species_dict['inchi'] if 'inchi' in species_dict else None
         adjlist = species_dict['adjlist'] if 'adjlist' in species_dict else None
         if self.mol is None:
             if adjlist is not None:
-                self.mol = Molecule().fromAdjacencyList(adjlist=adjlist)
+                self.mol = Molecule().from_adjacency_list(adjlist=adjlist)
             elif inchi is not None:
                 self.mol = rmg_mol_from_inchi(inchi)
             elif smiles is not None:
-                self.mol = Molecule(SMILES=smiles)
+                self.mol = Molecule(smiles=smiles)
         if self.mol is None and not self.is_ts:
             self.mol_from_xyz()
         if self.mol is not None:
@@ -666,7 +663,7 @@ class ARCSpecies(object):
             if self.multiplicity is None:
                 self.multiplicity = self.mol.multiplicity
             if self.charge is None:
-                self.charge = self.mol.getNetCharge()
+                self.charge = self.mol.get_net_charge()
             if self.mol_list is None:
                 if not self.charge:
                     self.mol_list = self.mol.generate_resonance_structures(keep_isomorphic=False,
@@ -697,9 +694,11 @@ class ARCSpecies(object):
                             self.rotors_dict[index][key][dihedrals] = dict()
                             for directed_scan_key, directed_scan_val in result.items():
                                 if directed_scan_key == 'energy':
-                                    self.rotors_dict[index][key][dihedrals][directed_scan_key] = float(directed_scan_val)
+                                    self.rotors_dict[index][key][dihedrals][directed_scan_key] = \
+                                        float(directed_scan_val)
                                 elif directed_scan_key == 'xyz':
-                                    self.rotors_dict[index][key][dihedrals][directed_scan_key] = str_to_xyz(directed_scan_val)
+                                    self.rotors_dict[index][key][dihedrals][directed_scan_key] = \
+                                        str_to_xyz(directed_scan_val)
                                 else:
                                     self.rotors_dict[index][key][dihedrals][directed_scan_key] = directed_scan_val
                     else:
@@ -725,18 +724,18 @@ class ARCSpecies(object):
                                        numbers=arkane_spc.conformer.number.value)
         if arkane_spc.adjacency_list is not None:
             try:
-                self.mol = Molecule().fromAdjacencyList(adjlist=arkane_spc.adjacency_list)
+                self.mol = Molecule().from_adjacency_list(adjlist=arkane_spc.adjacency_list)
             except ValueError:
                 print('Could not read adjlist:\n{0}'.format(arkane_spc.adjacency_list))  # should *not* be logging
                 raise
         elif arkane_spc.inchi is not None:
-            self.mol = Molecule().fromInChI(inchistr=arkane_spc.inchi)
+            self.mol = Molecule().from_inchi(inchistr=arkane_spc.inchi)
         elif arkane_spc.smiles is not None:
-            self.mol = Molecule().fromSMILES(arkane_spc.smiles)
+            self.mol = Molecule().from_smiles(arkane_spc.smiles)
         if self.mol is not None:
             self.mol_list = self.mol.generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
             self.multiplicity = self.mol.multiplicity
-            self.charge = self.mol.getNetCharge()
+            self.charge = self.mol.get_net_charge()
         if self.multiplicity is None:
             self.multiplicity = arkane_spc.conformer.spinMultiplicity
         if self.optical_isomers is None:
@@ -959,7 +958,7 @@ class ARCSpecies(object):
 
             # renumber the keys so iterative looping will make sense
             new_rotors_dict = dict()
-            for i, rotor_dict in enumerate(self.rotors_dict.values()):
+            for i, rotor_dict in enumerate(list(self.rotors_dict.values())):
                 new_rotors_dict[i] = rotor_dict
             self.rotors_dict = new_rotors_dict
             self.number_of_rotors = i + 1
@@ -1043,12 +1042,12 @@ class ARCSpecies(object):
         if mol is not None and mol.multiplicity >= 1:
             self.multiplicity = mol.multiplicity
         elif adjlist:
-            mol = Molecule().fromAdjacencyList(str(adjlist))
+            mol = Molecule().from_adjacency_list(adjlist)
             self.multiplicity = mol.multiplicity
         elif self.mol is not None and self.mol.multiplicity >= 1:
             self.multiplicity = self.mol.multiplicity
         elif smiles:
-            mol = Molecule(SMILES=str(smiles))
+            mol = Molecule(smiles=smiles)
             self.multiplicity = mol.multiplicity
         else:
             xyz = self.get_xyz()
@@ -1109,18 +1108,17 @@ class ARCSpecies(object):
             # self.mol should have come from another source, e.g., SMILES or yml
             original_mol = self.mol.copy(deep=True)
             self.mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
-
             if self.mol is not None and not check_isomorphism(original_mol, self.mol):
                 if original_mol.multiplicity in [1, 2]:
                     raise SpeciesError('XYZ and the 2D graph representation for {0} are not isomorphic.\n'
                                        'Got xyz:\n{1}\n\nwhich corresponds to {2}\n{3}\n\nand: {4}\n{5}'.format(
-                                        self.label, xyz, self.mol.toSMILES(), self.mol.toAdjacencyList(),
-                                        original_mol.toSMILES(), original_mol.toAdjacencyList()))
+                                        self.label, xyz, self.mol.to_smiles(), self.mol.to_adjacency_list(),
+                                        original_mol.to_smiles(), original_mol.to_adjacency_list()))
                 else:
                     logger.warning('XYZ and the 2D graph representation for {0} are not isomorphic.\n'
                                    'Got xyz:\n{1}\n\nwhich corresponds to {2}\n{3}\n\nand: {4}\n{5}'.format(
-                                    self.label, xyz, self.mol.toSMILES(), self.mol.toAdjacencyList(),
-                                    original_mol.toSMILES(), original_mol.toAdjacencyList()))
+                                    self.label, xyz, self.mol.to_smiles(), self.mol.to_adjacency_list(),
+                                    original_mol.to_smiles(), original_mol.to_adjacency_list()))
             elif self.mol is None:
                 # molecules_from_xyz() returned None for b_mol
                 self.mol = original_mol  # todo: Atom order will not be correct, need fix
@@ -1129,7 +1127,7 @@ class ARCSpecies(object):
 
         if self.mol_list is None and self.mol is not None:
             # Assign atom ids first, so they carry through to the resonance structures
-            self.mol.assignAtomIDs()
+            self.mol.assign_atom_ids()
             # The generate_resonance_structures method changes atom order
             # Make a copy so we don't disturb the original order from xyz
             self.mol_list = self.mol.copy(deep=True).generate_resonance_structures(keep_isomorphic=False,
@@ -1151,7 +1149,7 @@ class ARCSpecies(object):
                 xyz_list = [xyz_list]
             xyzs, energies = list(), list()
             for xyz in xyz_list:
-                if not isinstance(xyz, (str, unicode, dict)):
+                if not isinstance(xyz, (str, dict)):
                     raise InputError('Each xyz entry in xyz_list must be either a string or a dictionary. '
                                      'Got:\n{0}\nwhich is a {1}'.format(xyz, type(xyz)))
                 if isinstance(xyz, dict):
@@ -1168,7 +1166,7 @@ class ARCSpecies(object):
                         # assume this is an ESS log file
                         xyzs.append(parse_xyz_from_file(xyz))  # also calls standardize_xyz_string()
                         energies.append(None)  # dummy (lists should be the same length)
-                elif isinstance(xyz, (str, unicode)):
+                elif isinstance(xyz, str):
                     # string which does not represent a (valid) path, treat as a string representation of xyz
                     xyzs.append(str_to_xyz(xyz))
                     energies.append(None)  # dummy (lists should be the same length)
@@ -1215,10 +1213,10 @@ class ARCSpecies(object):
         for line in lines:
             if 'Epsilons[1/cm]' in line:
                 # Conversion of cm^-1 to J/mol (see https://cccbdb.nist.gov/wavenumber.asp)
-                epsilon = (float(line.split()[-1]) * 11.96266, str('J/mol'))
+                epsilon = (float(line.split()[-1]) * 11.96266, 'J/mol')
             elif 'Sigmas[angstrom]' in line:
                 # Convert Angstroms to meters
-                sigma = (float(line.split()[-1]) * 1e-10, str('m'))
+                sigma = (float(line.split()[-1]) * 1e-10, 'm')
         if self.number_of_atoms == 1:
             shape_index = 0
             comment += '; The molecule is monoatomic'
@@ -1234,9 +1232,9 @@ class ARCSpecies(object):
                 comment += '; Dipole moment was calculated at the {0} level of theory'.format(opt_level)
         else:
             dipole_moment = 0
-        polar = self.transport_data.polarizability or (0, str('angstroms^3'))
+        polar = self.transport_data.polarizability or (0, 'angstroms^3')
         if freq_path:
-            polar = (parse_polarizability(freq_path), str('angstroms^3'))
+            polar = (parse_polarizability(freq_path), 'angstroms^3')
             comment += '; Polarizability was calculated at the {0} level of theory'.format(freq_level)
         comment += '; Rotational Relaxation Collision Number was not determined, default value is 2'
         if original_comment:
@@ -1245,10 +1243,10 @@ class ARCSpecies(object):
             shapeIndex=shape_index,
             epsilon=epsilon,
             sigma=sigma,
-            dipoleMoment=(dipole_moment, str('De')),
+            dipoleMoment=(dipole_moment, 'De'),
             polarizability=polar,
             rotrelaxcollnum=2,  # rotational relaxation collision number at 298 K
-            comment=str(comment)
+            comment=comment
         )
 
     def check_xyz_isomorphism(self, allow_nonisomorphic_2d=False, xyz=None, verbose=True):
@@ -1292,7 +1290,7 @@ class ARCSpecies(object):
                     return_value = True
             if not passed_test and verbose:
                 logger.error('The optimized geometry of species {0} is not isomorphic with the 2D structure {1}'.format(
-                    self.label, self.mol.toSMILES()))
+                    self.label, self.mol.to_smiles()))
                 if not return_value:
                     logger.error('Not spawning additional jobs for this species!')
             elif verbose:
@@ -1329,9 +1327,9 @@ class ARCSpecies(object):
         self.bdes = [tuple(bde) for bde in self.bdes]
         if all_h:
             for atom1 in self.mol.atoms:
-                if atom1.isHydrogen():
+                if atom1.is_hydrogen():
                     for atom2, bond12 in atom1.edges.items():
-                        if bond12.isSingle():
+                        if bond12.is_single():
                             atom_indices = (self.mol.atoms.index(atom2) + 1, self.mol.atoms.index(atom1) + 1)
                             atom_indices_reverse = (atom_indices[1], atom_indices[0])
                             if atom_indices not in self.bdes and atom_indices_reverse not in self.bdes:
@@ -1364,10 +1362,10 @@ class ARCSpecies(object):
         indices = (indices[0] - 1, indices[1] - 1)  # convert to 0-indexed atoms
         atom1 = self.mol.atoms[indices[0]]
         atom2 = self.mol.atoms[indices[1]]
-        if atom1.isHydrogen():
+        if atom1.is_hydrogen():
             top1 = [self.mol.atoms.index(atom1)]
             top2 = [i for i in range(len(self.mol.atoms)) if i not in top1]
-        elif atom2.isHydrogen():
+        elif atom2.is_hydrogen():
             top2 = [self.mol.atoms.index(atom2)]
             top1 = [i for i in range(len(self.mol.atoms)) if i not in top2]
         else:
@@ -1391,22 +1389,22 @@ class ARCSpecies(object):
         mol_copy = self.mol.copy(deep=True)
         # We are about to change the connectivity of the atoms in the molecule,
         # which invalidates any existing vertex connectivity information; thus we reset it.
-        mol_copy.resetConnectivityValues()
+        mol_copy.reset_connectivity_values()
         atom1 = mol_copy.atoms[indices[0]]  # Note: redefining atom1 and atom2
         atom2 = mol_copy.atoms[indices[1]]
-        if not mol_copy.hasBond(atom1, atom2):
+        if not mol_copy.has_bond(atom1, atom2):
             raise SpeciesError('Attempted to remove a nonexistent bond.')
-        bond = mol_copy.getBond(atom1, atom2)
-        mol_copy.removeBond(bond)
+        bond = mol_copy.get_bond(atom1, atom2)
+        mol_copy.remove_bond(bond)
         mol1, mol2 = mol_copy.split()
 
         used_a_label = False
-        if len(mol1.atoms) == 1 and mol1.atoms[0].isHydrogen():
+        if len(mol1.atoms) == 1 and mol1.atoms[0].is_hydrogen():
             label1 = 'H'
         else:
             label1 = self.label + '_BDE_' + str(indices[0] + 1) + '_' + str(indices[1] + 1) + '_A'
             used_a_label = True
-        if len(mol2.atoms) == 1 and mol2.atoms[0].isHydrogen():
+        if len(mol2.atoms) == 1 and mol2.atoms[0].is_hydrogen():
             label2 = 'H'
         else:
             letter = 'B' if used_a_label else 'A'
@@ -1416,13 +1414,13 @@ class ARCSpecies(object):
         for mol, label in zip([mol1, mol2], [label1, label2]):
             for atom in mol.atoms:
                 theoretical_charge = elements.PeriodicSystem.valence_electrons[atom.symbol] \
-                                     - atom.getBondOrdersForAtom() \
-                                     - atom.radicalElectrons -\
-                                     2 * atom.lonePairs
+                                     - atom.get_total_bond_order() \
+                                     - atom.radical_electrons -\
+                                     2 * atom.lone_pairs
                 if theoretical_charge == atom.charge + 1:
                     # we're missing a radical electron on this atom
                     if label not in added_radical or label == 'H':
-                        atom.radicalElectrons += 1
+                        atom.radical_electrons += 1
                         added_radical.append(label)
                     else:
                         raise SpeciesError('Could not figure out which atom should gain a radical '
@@ -1453,11 +1451,11 @@ class ARCSpecies(object):
                 if element not in element_dict_top1 or count != element_dict_top1[element]:
                     xyz1, xyz2 = xyz2, xyz1
 
-        spc1 = ARCSpecies(label=label1, mol=mol1, xyz=xyz1, multiplicity=mol1.multiplicity, charge=mol1.getNetCharge(),
-                          generate_thermo=False)
+        spc1 = ARCSpecies(label=label1, mol=mol1, xyz=xyz1, multiplicity=mol1.multiplicity,
+                          charge=mol1.get_net_charge(), generate_thermo=False)
         spc1.initial_xyz = xyz1
-        spc2 = ARCSpecies(label=label2, mol=mol2, xyz=xyz2, multiplicity=mol2.multiplicity, charge=mol2.getNetCharge(),
-                          generate_thermo=False)
+        spc2 = ARCSpecies(label=label2, mol=mol2, xyz=xyz2, multiplicity=mol2.multiplicity,
+                          charge=mol2.get_net_charge(), generate_thermo=False)
         spc2.initial_xyz = xyz2
 
         return [spc1, spc2]
@@ -1559,8 +1557,8 @@ class TSGuess(object):
         if self.family is not None:
             ts_dict['family'] = self.family
         if self.rmg_reaction is not None:
-            rxn_string = ' <=> '.join([' + '.join([spc.molecule[0].toSMILES() for spc in self.rmg_reaction.reactants]),
-                                      ' + '.join([spc.molecule[0].toSMILES() for spc in self.rmg_reaction.products])])
+            rxn_string = ' <=> '.join([' + '.join([spc.molecule[0].to_smiles() for spc in self.rmg_reaction.reactants]),
+                                      ' + '.join([spc.molecule[0].to_smiles() for spc in self.rmg_reaction.products])])
             ts_dict['rmg_reaction'] = rxn_string
         return ts_dict
 
@@ -1610,9 +1608,9 @@ class TSGuess(object):
             reactants = list()
             products = list()
             for reactant in reac:
-                reactants.append(Species().fromSMILES(str(reactant)))
+                reactants.append(Species().from_smiles(reactant))
             for product in prod:
-                products.append(Species().fromSMILES(str(product)))
+                products.append(Species().from_smiles(product))
             self.rmg_reaction = Reaction(reactants=reactants, products=products)
 
     def execute_ts_guess_method(self):
@@ -1688,7 +1686,7 @@ class TSGuess(object):
             InputError: If xyz is of wrong type.
         """
         if xyz is not None:
-            if not isinstance(xyz, (dict, str, unicode)):
+            if not isinstance(xyz, (dict, str)):
                 raise InputError('xyz must be either a dictionary or string, '
                                  'got:\n{0}\nwhich is a {1}'.format(xyz, type(xyz)))
             if isinstance(xyz, str):
@@ -1731,7 +1729,7 @@ def determine_rotor_symmetry(label, pivots, rotor_path='', energies=None):
         rotor_path (str): The path to an ESS output rotor scan file.
         label (str): The species label (used for error messages).
         pivots (list, optional): A list of two atom indices representing the torsion pivots.
-        energies (list, optional): THe list of energies in the scan in kJ/mol.
+        energies (list, optional): The list of energies in the scan in kJ/mol.
 
     Returns:
         int: The symmetry number (int)
@@ -1751,7 +1749,7 @@ def determine_rotor_symmetry(label, pivots, rotor_path='', energies=None):
 
     if energies is None:
         log = determine_qm_software(fullpath=rotor_path)
-        energies = log.loadScanEnergies()[0]
+        energies = log.load_scan_energies()[0]
         energies *= 0.001
 
     symmetry = None
@@ -1839,7 +1837,7 @@ def determine_rotor_type(rotor_path):
     according to it's maximum peak
     """
     log = determine_qm_software(fullpath=rotor_path)
-    energies, _ = log.loadScanEnergies()
+    energies, _ = log.load_scan_energies()
     max_val = max(energies) * 0.001  # convert to kJ/mol (Arkane used SI)
     return 'FreeRotor' if max_val < minimum_barrier else 'HinderedRotor'
 

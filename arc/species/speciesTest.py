@@ -5,7 +5,6 @@
 This module contains unit tests of the arc.species.species module
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
 import unittest
 import os
 import shutil
@@ -17,10 +16,9 @@ from rmgpy.transport import TransportData
 
 from arc.species.species import ARCSpecies, TSGuess, determine_rotor_type, determine_rotor_symmetry, check_xyz
 from arc.species.converter import molecules_from_xyz, check_isomorphism, str_to_xyz, xyz_to_str, xyz_to_x_y_z
-from arc.settings import arc_path, default_levels_of_theory
+from arc.settings import arc_path
 from arc.rmgdb import make_rmg_database_object
 from arc.plotter import save_conformers_file
-from arc.scheduler import Scheduler
 from arc.common import almost_equal_coords_lists
 
 
@@ -35,7 +33,7 @@ class TestARCSpecies(unittest.TestCase):
         """
         cls.maxDiff = None
         # Method 1: RMG Species object (here by SMILES)
-        cls.spc1_rmg = Species(molecule=[Molecule().fromSMILES(str('C=C[O]'))])  # delocalized radical + amine
+        cls.spc1_rmg = Species(molecule=[Molecule().from_smiles('C=C[O]')])  # delocalized radical + amine
         cls.spc1_rmg.label = str('vinoxy')
         cls.spc1 = ARCSpecies(rmg_species=cls.spc1_rmg)
 
@@ -48,7 +46,7 @@ class TestARCSpecies(unittest.TestCase):
         cls.spc3 = ARCSpecies(label=str('methylamine'), smiles=str('CN'), multiplicity=1, charge=0)
 
         # Method 4: ARCSpecies object by RMG Molecule object
-        mol4 = Molecule().fromSMILES(str('C=CC'))
+        mol4 = Molecule().from_smiles('C=CC')
         cls.spc4 = ARCSpecies(label=str('propene'), mol=mol4, multiplicity=1, charge=0)
 
         # Method 5: ARCSpecies by AdjacencyList (to generate AdjLists, see https://rmg.mit.edu/molecule_search)
@@ -159,7 +157,7 @@ H      -0.41231900    0.99757300    0.00391900"""
         self.assertEqual(len(spc12.conformers), 2)
         self.assertEqual(len(spc12.conformer_energies), 2)
 
-    def test_rmg_species_conversion_into_arc_species(self):
+    def test_from_rmg_species(self):
         """Test the conversion of an RMG species into an ARCSpecies"""
         self.spc1_rmg.label = None
         self.spc = ARCSpecies(rmg_species=self.spc1_rmg, label=str('vinoxy'))
@@ -227,11 +225,11 @@ H      -1.97060638    1.29922153   -0.25658392"""
         self.assertIn([3, 1, 2, 4], spc1.directed_rotors['brute_force_sp'][0])
         self.assertIn([[3, 1, 2, 4], [2, 1, 3, 9]], spc1.directed_rotors['brute_force_opt'])
         self.assertEqual(len(spc1.rotors_dict.keys()), 9)
-        self.assertEqual(spc1.rotors_dict[0]['dimensions'], 3)
-        self.assertIn([1, 3], spc1.rotors_dict[0]['pivots'])
-        self.assertIn([1, 2], spc1.rotors_dict[0]['pivots'])
-        self.assertIn([2, 4], spc1.rotors_dict[0]['pivots'])
-        self.assertEqual(spc1.rotors_dict[0]['cont_indices'], [])
+        self.assertEqual(spc1.rotors_dict[3]['dimensions'], 3)
+        self.assertIn([1, 3], spc1.rotors_dict[3]['pivots'])
+        self.assertIn([1, 2], spc1.rotors_dict[3]['pivots'])
+        self.assertIn([2, 4], spc1.rotors_dict[3]['pivots'])
+        self.assertEqual(spc1.rotors_dict[3]['cont_indices'], [])
 
         spc2 = ARCSpecies(label='propanol', smiles='CCO', directed_rotors={'brute_force_sp': [['all']]})
         spc2.determine_rotors()  # also initializes directed_rotors
@@ -339,8 +337,8 @@ H      -1.67091600   -1.35164600   -0.93286400"""
 
     def test_charge_and_multiplicity(self):
         """Test determination of molecule charge and multiplicity"""
-        spc1 = ARCSpecies(label='spc1', mol=Molecule(SMILES=str('C[CH]C')), generate_thermo=False)
-        spc2 = ARCSpecies(label='spc2', mol=Molecule(SMILES=str('CCC')), generate_thermo=False)
+        spc1 = ARCSpecies(label='spc1', mol=Molecule(smiles='C[CH]C'), generate_thermo=False)
+        spc2 = ARCSpecies(label='spc2', mol=Molecule(smiles='CCC'), generate_thermo=False)
         spc3 = ARCSpecies(label='spc3', smiles=str('N[NH]'), generate_thermo=False)
         spc4 = ARCSpecies(label='spc4', smiles=str('NNN'), generate_thermo=False)
         adj1 = """multiplicity 2
@@ -422,7 +420,7 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertEqual(spc.multiplicity, 2)
         self.assertEqual(spc.charge, 0)
         self.assertEqual(spc.label, 'OH')
-        self.assertEqual(spc.mol.toSMILES(), '[OH]')
+        self.assertEqual(spc.mol.to_smiles(), '[OH]')
         self.assertFalse(spc.is_ts)
 
     def test_determine_rotor_type(self):
@@ -591,33 +589,33 @@ H      -1.69944700    0.93441600   -0.11271200"""
         self.assertEqual(spc4.multiplicity, 2)
 
     def test_mol_from_xyz_atom_id_1(self):
-        """Test that atom ids are saved properly when loading both xyz and smiles."""
+        """Test that atom ids are saved properly when loading both xyz and smiles (1)."""
         mol = self.spc6.mol
         mol_list = self.spc6.mol_list
 
         self.assertEqual(len(mol_list), 1)
         res = mol_list[0]
 
-        self.assertTrue(mol.atomIDValid())
-        self.assertTrue(res.atomIDValid())
+        self.assertTrue(mol.atom_ids_valid())
+        self.assertTrue(res.atom_ids_valid())
 
-        self.assertTrue(mol.isIsomorphic(res))
-        self.assertTrue(mol.isIdentical(res))
+        self.assertTrue(mol.is_isomorphic(res))
+        self.assertTrue(mol.is_identical(res))
 
     def test_mol_from_xyz_atom_id_2(self):
-        """Test that atom ids are saved properly when loading both xyz and smiles."""
+        """Test that atom ids are saved properly when loading both xyz and smiles (2)."""
         mol = self.spc8.mol
         mol_list = self.spc8.mol_list
 
         self.assertEqual(len(mol_list), 2)
         res1, res2 = mol_list
 
-        self.assertTrue(mol.atomIDValid())
-        self.assertTrue(res1.atomIDValid())
-        self.assertTrue(res2.atomIDValid())
+        self.assertTrue(mol.atom_ids_valid())
+        self.assertTrue(res1.atom_ids_valid())
+        self.assertTrue(res2.atom_ids_valid())
 
-        self.assertTrue(mol.isIsomorphic(res1))
-        self.assertTrue(mol.isIdentical(res1))
+        self.assertTrue(mol.is_isomorphic(res1))
+        self.assertTrue(mol.is_identical(res1))
 
         # Check that atom ordering is consistent, ignoring specific oxygen ordering
         mol_ids = [(a.element.symbol, a.id) if a.element.symbol != 'O' else (a.element.symbol,) for a in mol.atoms]
@@ -637,26 +635,7 @@ H      -1.69944700    0.93441600   -0.11271200"""
 
     def test_append_conformers(self):
         """Test that ARC correctly parses its own conformer files"""
-        ess_settings = {'gaussian': 'server1', 'molpro': 'server2', 'qchem': 'server1'}
         project_directory = os.path.join(arc_path, 'Projects', 'arc_project_for_testing_delete_after_usage4')
-        spc1 = ARCSpecies(label=str('vinoxy'), smiles=str('C=C[O]'))
-        rmgdb = make_rmg_database_object()
-        job_types1 = {'conformers': True,
-                      'opt': True,
-                      'fine_grid': False,
-                      'freq': True,
-                      'sp': True,
-                      'rotors': False,
-                      'orbitals': False,
-                      'lennard_jones': False,
-                      }
-        sched1 = Scheduler(project='project_test', ess_settings=ess_settings, species_list=[spc1],
-                           composite_method='', conformer_level=default_levels_of_theory['conformer'],
-                           opt_level=default_levels_of_theory['opt'], freq_level=default_levels_of_theory['freq'],
-                           sp_level=default_levels_of_theory['sp'], scan_level=default_levels_of_theory['scan'],
-                           ts_guess_level=default_levels_of_theory['ts_guesses'], rmgdatabase=rmgdb,
-                           project_directory=project_directory, testing=True, job_types=job_types1,
-                           orbitals_level=default_levels_of_theory['orbitals'], adaptive_levels=None)
         xyzs = [{'symbols': ('O', 'C', 'C', 'H', 'H', 'H'), 'isotopes': (16, 12, 12, 1, 1, 1),
                  'coords': ((1.090687, 0.265168, -0.167063), (2.922041, -1.183357, -0.388849),
                             (2.276555, -0.003739, 0.085435), (2.365448, -1.88781, -0.999146),
@@ -685,11 +664,11 @@ H      -1.69944700    0.93441600   -0.11271200"""
         self.assertTrue(os.path.isfile(os.path.join(project_directory, 'output', 'Species', 'vinoxy', 'geometry',
                                                     'conformers', 'conformers_after_optimization.txt')))
 
-        spc2 = ARCSpecies(label=str('vinoxy'), smiles=str('C=C[O]'), xyz=os.path.join(
+        spc2 = ARCSpecies(label=str('vinoxy'), smiles='C=C[O]', xyz=os.path.join(
             project_directory, 'output', 'Species', 'vinoxy', 'geometry', 'conformers',
             'conformers_before_optimization.txt'))
 
-        spc3 = ARCSpecies(label=str('vinoxy'), smiles=str('C=C[O]'), xyz=os.path.join(
+        spc3 = ARCSpecies(label=str('vinoxy'), smiles='C=C[O]', xyz=os.path.join(
             project_directory, 'output', 'Species', 'vinoxy', 'geometry', 'conformers',
             'conformers_after_optimization.txt'))
 
@@ -822,7 +801,7 @@ H      -2.43580767   -0.00829320    0.40610628
 H      -1.54270451    1.15356356   -0.58992943
 H       2.82319256   -0.46240839   -0.40178723"""
         spc2 = ARCSpecies(label='spc2', xyz=xyz2)
-        for adj, coord in zip(spc2.mol.toAdjacencyList().splitlines(), xyz2.splitlines()):
+        for adj, coord in zip(spc2.mol.to_adjacency_list().splitlines(), xyz2.splitlines()):
             if adj and coord:
                 self.assertEqual(adj.split()[1], coord.split()[0])
 
@@ -852,16 +831,43 @@ H       2.82319256   -0.46240839   -0.40178723"""
         for atom1, atom2 in zip(spc4.mol.atoms, spc4.mol_list[0].atoms):
             self.assertEqual(atom1.symbol, atom2.symbol)
 
+        xyz5 = {'symbols': ('S', 'O', 'O', 'O', 'C', 'C', 'H', 'H', 'H', 'H'),
+                'isotopes': (32, 16, 16, 16, 12, 12, 1, 1, 1, 1),
+                'coords': ((0.35915171, 1.99254721, 1.1849049),
+                           (0.40385373, -0.65769862, 1.03431374),
+                           (-1.23178399, -0.59559801, -1.39114493),
+                           (0.6901556, -1.65712867, 0.01239391),
+                           (-0.0426136, 0.49595776, 0.40364219),
+                           (-0.80103934, 0.51314044, -0.70610325),
+                           (-1.17387862, 1.41490429, -1.17716515),
+                           (0.95726719, 1.46882836, 2.26423536),
+                           (-0.83008868, -1.36939497, -0.94170868),
+                           (1.65888059, -1.54205855, 0.02674995))}
+        spc5 = ARCSpecies(label='chiral1', smiles='SC(OO)=CO', xyz=xyz5)
+        for atom, symbol in zip(spc5.mol.atoms, xyz5['symbols']):
+            self.assertEqual(atom.symbol, symbol)
+
     def test_get_radius(self):
         """Test determining the species radius"""
         spc1 = ARCSpecies(label='r1', smiles='O=C=O')
         self.assertAlmostEqual(spc1.radius, 2.065000, 5)
 
-        spc2 = ARCSpecies(label='r1', smiles='CCCCC')
+        spc2 = ARCSpecies(label='r2', smiles='CCCCC')
         self.assertAlmostEqual(spc2.radius, 3.734040, 5)
 
-        spc3 = ARCSpecies(label='r1', smiles='CCO')
+        spc3 = ARCSpecies(label='r3', smiles='CCO')
         self.assertAlmostEqual(spc3.radius, 2.495184, 5)
+
+        xyz = """
+        C       0.05984800   -0.62319600    0.00000000
+        H      -0.46898100   -1.02444400    0.87886100
+        H      -0.46898100   -1.02444400   -0.87886100
+        H       1.08093800   -1.00826200    0.00000000
+        N       0.05980600    0.81236000    0.00000000
+        H      -0.92102100    1.10943400    0.00000000
+        """
+        spc4 = ARCSpecies(label='r4', xyz=xyz)
+        self.assertAlmostEqual(spc4.radius, 1.81471201, 5)
 
     def test_check_xyz(self):
         """Test the check_xyz() function"""
@@ -943,7 +949,7 @@ H       1.11582953    0.94384729   -0.10134685"""
         self.assertEqual(len(resulting_species), 2)
         for spc in resulting_species:
             self.assertIn(spc.label, ['ch3oc2h5_BDE_1_2_A', 'ch3oc2h5_BDE_1_2_B'])
-            self.assertIn(spc.mol.toSMILES(), ['CC[O]', '[CH3]'])
+            self.assertIn(spc.mol.to_smiles(), ['CC[O]', '[CH3]'])
 
         ch3oc2h5.bdes = ['all_h']
         resulting_species = ch3oc2h5.scissors()
@@ -975,7 +981,7 @@ H       1.11582953    0.94384729   -0.10134685"""
         ch3ch2o = ARCSpecies(label='ch3ch2o', smiles='CC[O]', xyz=ch3ch2o_xyz, multiplicity=2, bdes=[(1, 2)])
         ch3ch2o.final_xyz = ch3ch2o.conformers[0]
         spc1, spc2 = ch3ch2o.scissors()
-        self.assertEqual(spc2.mol.toSMILES(), '[CH3]')
+        self.assertEqual(spc2.mol.to_smiles(), '[CH3]')
         expected_conformer0 = {'symbols': ('C', 'O', 'H', 'H'), 'isotopes': (12, 16, 1, 1),
                                'coords': ((0.6948946528715227, 0.1950960079388373, 0.0),
                                           (-0.6219693471284773, -0.2562079920611626, 0.0),
@@ -1015,7 +1021,7 @@ H       1.11582953    0.94384729   -0.10134685"""
                                               mol2=molecules_from_xyz(xyz=spc.initial_xyz,
                                                                       multiplicity=spc.multiplicity,
                                                                       charge=spc.charge)[1]))
-        self.assertTrue(any(spc.mol.toSMILES() == 'CO[NH]' for spc in spc_list))
+        self.assertTrue(any(spc.mol.to_smiles() == 'CO[NH]' for spc in spc_list))
 
     @classmethod
     def tearDownClass(cls):
@@ -1039,9 +1045,9 @@ class TestTSGuess(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        spc1 = Species().fromSMILES(str('CON=O'))
+        spc1 = Species().from_smiles('CON=O')
         spc1.label = str('CONO')
-        spc2 = Species().fromSMILES(str('C[N+](=O)[O-]'))
+        spc2 = Species().from_smiles('C[N+](=O)[O-]')
         spc2.label = str('CNO2')
         rmg_reaction = Reaction(reactants=[spc1], products=[spc2])
         cls.tsg1 = TSGuess(rmg_reaction=rmg_reaction, method='AutoTST', family='H_Abstraction')

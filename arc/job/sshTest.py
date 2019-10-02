@@ -5,7 +5,6 @@
 This module contains unit tests of the arc.job.ssh module
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
 import unittest
 
 import arc.job.ssh as ssh
@@ -32,8 +31,8 @@ class TestSSH(unittest.TestCase):
         status3 = ssh.check_job_status_in_stdout(job_id=582600, stdout=stdout, server='server1')
         self.assertEqual(status3, 'done')
 
-################################################################################
 
+################################################################################
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

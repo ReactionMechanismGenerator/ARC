@@ -5,8 +5,6 @@
 The ARC troubleshooting ("trsh") module
 """
 
-
-from __future__ import (absolute_import, division, print_function, unicode_literals)
 import logging
 import os
 
@@ -48,6 +46,9 @@ def determine_ess_status(output_path, species_label, job_type, software=None):
     keywords, error, = list(), ''
     with open(output_path, 'r') as f:
         lines = f.readlines()
+
+        if len(lines) < 5:
+            return 'errored', ['NoOutput'], 'Log file could not be read', ''
 
         if software == 'gaussian':
             for line in lines[-1:-20:-1]:
@@ -553,7 +554,7 @@ def trsh_ess_job(label, level_of_theory, server, job_status, job_type, software,
             # job_status will be for example `'errored: additional memory (mW) required: 996.31'`.
             # The number is the ADDITIONAL memory required
             ess_trsh_methods.append('memory')
-            add_mem = float(job_status.split()[-1])  # parse Molpro's requirement in MW
+            add_mem = float(job_status['error'].split()[-2])  # parse Molpro's requirement in MW
             add_mem = int(np.ceil(add_mem / 100.0)) * 100  # round up to the next hundred
             memory = memory_gb + add_mem / 128. + 5  # convert MW to GB, add 5 extra GB (be conservative)
             logger.info('Troubleshooting {type} job in {software} for {label} using memory: {mem} GB instead of '

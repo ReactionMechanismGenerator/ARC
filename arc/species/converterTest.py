@@ -5,7 +5,6 @@
 This module contains unit tests of the arc.species.converter module
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
 import unittest
 
 from rdkit.Chem import rdMolTransforms as rdMT, rdchem
@@ -212,7 +211,7 @@ H       3.16280800    1.25020800   -0.70346900
                                         (4.303415, -1.721276, 0.43646), (2.873186, -2.442366, 1.214649),
                                         (-0.974342, 2.001828, 0.168003), (-1.585813, -2.263447, 0.022644),
                                         (0.811224, -2.603361, 0.132678), (3.162808, 1.250208, -0.703469))}
-}
+                    }
 
         cls.xyz8 = {'str': """N      -1.1997440839    -0.1610052059     0.0274738287
 H      -1.4016624407    -0.6229695533    -0.8487034080
@@ -265,8 +264,9 @@ H       3.88922100   -1.31541600    0.16697100
 O      -3.43304800    0.46172100   -1.53075600
 O      -2.89487900    1.76177800   -1.59155700
 H      -2.12457300    1.65249500   -2.17600500""",
-                    'dict': {'symbols': ('O', 'O', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'H', 'H', 'H',
-                                         'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'O', 'O', 'H'),
+                    'dict': {'symbols': ('O', 'O', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C',
+                                         'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H',
+                                         'H', 'H', 'H', 'O', 'O', 'H'),
                              'isotopes': (16, 16, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1,
                                           1, 1, 1, 1, 1, 1, 1, 16, 16, 1),
                              'coords': ((3.132319, 0.769111, -0.080869),
@@ -338,17 +338,17 @@ H      -2.12457300    1.65249500   -2.17600500""",
         """,
                     }
 
-        nh_s_adj = str("""1 N u0 p2 c0 {2,S}
-                          2 H u0 p0 c0 {1,S}""")
-        nh_s_xyz = str("""N       0.50949998    0.00000000    0.00000000
-                          H      -0.50949998    0.00000000    0.00000000""")
-        cls.spc1 = ARCSpecies(label=str('NH2(S)'), adjlist=nh_s_adj, xyz=nh_s_xyz, multiplicity=1, charge=0)
-        spc = Species().fromAdjacencyList(nh_s_adj)
-        cls.spc2 = ARCSpecies(label=str('NH2(S)'), rmg_species=spc, xyz=nh_s_xyz)
+        nh_s_adj = """1 N u0 p2 c0 {2,S}
+                          2 H u0 p0 c0 {1,S}"""
+        nh_s_xyz = """N       0.50949998    0.00000000    0.00000000
+                          H      -0.50949998    0.00000000    0.00000000"""
+        cls.spc1 = ARCSpecies(label='NH2(S)', adjlist=nh_s_adj, xyz=nh_s_xyz, multiplicity=1, charge=0)
+        spc = Species().from_adjacency_list(nh_s_adj)
+        cls.spc2 = ARCSpecies(label='NH2(S)', rmg_species=spc, xyz=nh_s_xyz)
 
-        cls.spc3 = ARCSpecies(label=str('NCN(S)'), smiles=str('[N]=C=[N]'), multiplicity=1, charge=0)
+        cls.spc3 = ARCSpecies(label='NCN(S)', smiles='[N]=C=[N]', multiplicity=1, charge=0)
 
-        cls.spc4 = ARCSpecies(label=str('NCN(T)'), smiles=str('[N]=C=[N]'), multiplicity=3, charge=0)
+        cls.spc4 = ARCSpecies(label='NCN(T)', smiles='[N]=C=[N]', multiplicity=3, charge=0)
 
     def test_str_to_xyz(self):
         """Test converting a string xyz format to the ARC xyz format"""
@@ -536,55 +536,55 @@ H                 -4.01978712   -0.12970163    0.82103635"""
         self.assertTrue(isinstance(mol1, Molecule))
         self.assertTrue(isinstance(mol2, Molecule))
 
-        smi1 = mol1.toSMILES()
-        smi2 = mol2.toSMILES()
+        smi1 = mol1.to_smiles()
+        smi2 = mol2.to_smiles()
 
         self.assertEqual(smi1, '[O]N=O')
         self.assertEqual(smi2, 'C1NOS1')
 
     def test_elementize(self):
-        """Test converting an RMG:Atom's atomType to its elemental atomType"""
-        mol = Molecule(SMILES=str('O=C=O'))
+        """Test converting an RMG:Atom's atom type to its elemental atom type"""
+        mol = Molecule(smiles='O=C=O')
         atom1 = mol.atoms[0]
         atom2 = mol.atoms[1]
-        self.assertEqual(atom1.atomType.label, 'O2d')
-        self.assertEqual(atom2.atomType.label, 'Cdd')
+        self.assertEqual(atom1.atomtype.label, 'O2d')
+        self.assertEqual(atom2.atomtype.label, 'Cdd')
         converter.elementize(atom1)
         converter.elementize(atom2)
-        self.assertEqual(atom1.atomType.label, 'O')
-        self.assertEqual(atom2.atomType.label, 'C')
+        self.assertEqual(atom1.atomtype.label, 'O')
+        self.assertEqual(atom2.atomtype.label, 'C')
 
     def test_molecules_from_xyz(self):
         """Tests that atom orders are preserved when converting xyz's into RMG Molecules"""
         s_mol, b_mol = converter.molecules_from_xyz(self.xyz6['dict'])
 
         # check that the atom order is the same
-        self.assertTrue(s_mol.atoms[0].isSulfur())
-        self.assertTrue(b_mol.atoms[0].isSulfur())
-        self.assertTrue(s_mol.atoms[1].isOxygen())
-        self.assertTrue(b_mol.atoms[1].isOxygen())
-        self.assertTrue(s_mol.atoms[2].isOxygen())
-        self.assertTrue(b_mol.atoms[2].isOxygen())
-        self.assertTrue(s_mol.atoms[3].isNitrogen())
-        self.assertTrue(b_mol.atoms[3].isNitrogen())
-        self.assertTrue(s_mol.atoms[4].isCarbon())
-        self.assertTrue(b_mol.atoms[4].isCarbon())
-        self.assertTrue(s_mol.atoms[5].isHydrogen())
-        self.assertTrue(b_mol.atoms[5].isHydrogen())
-        self.assertTrue(s_mol.atoms[6].isHydrogen())
-        self.assertTrue(b_mol.atoms[6].isHydrogen())
-        self.assertTrue(s_mol.atoms[7].isHydrogen())
-        self.assertTrue(b_mol.atoms[7].isHydrogen())
-        self.assertTrue(s_mol.atoms[8].isHydrogen())
-        self.assertTrue(b_mol.atoms[8].isHydrogen())
-        self.assertTrue(s_mol.atoms[9].isHydrogen())
-        self.assertTrue(b_mol.atoms[9].isHydrogen())
+        self.assertTrue(s_mol.atoms[0].is_sulfur())
+        self.assertTrue(b_mol.atoms[0].is_sulfur())
+        self.assertTrue(s_mol.atoms[1].is_oxygen())
+        self.assertTrue(b_mol.atoms[1].is_oxygen())
+        self.assertTrue(s_mol.atoms[2].is_oxygen())
+        self.assertTrue(b_mol.atoms[2].is_oxygen())
+        self.assertTrue(s_mol.atoms[3].is_nitrogen())
+        self.assertTrue(b_mol.atoms[3].is_nitrogen())
+        self.assertTrue(s_mol.atoms[4].is_carbon())
+        self.assertTrue(b_mol.atoms[4].is_carbon())
+        self.assertTrue(s_mol.atoms[5].is_hydrogen())
+        self.assertTrue(b_mol.atoms[5].is_hydrogen())
+        self.assertTrue(s_mol.atoms[6].is_hydrogen())
+        self.assertTrue(b_mol.atoms[6].is_hydrogen())
+        self.assertTrue(s_mol.atoms[7].is_hydrogen())
+        self.assertTrue(b_mol.atoms[7].is_hydrogen())
+        self.assertTrue(s_mol.atoms[8].is_hydrogen())
+        self.assertTrue(b_mol.atoms[8].is_hydrogen())
+        self.assertTrue(s_mol.atoms[9].is_hydrogen())
+        self.assertTrue(b_mol.atoms[9].is_hydrogen())
 
         s_mol, b_mol = converter.molecules_from_xyz(self.xyz7['dict'])
-        self.assertTrue(s_mol.atoms[0].isOxygen())
-        self.assertTrue(b_mol.atoms[0].isOxygen())
-        self.assertTrue(s_mol.atoms[2].isCarbon())
-        self.assertTrue(b_mol.atoms[2].isCarbon())
+        self.assertTrue(s_mol.atoms[0].is_oxygen())
+        self.assertTrue(b_mol.atoms[0].is_oxygen())
+        self.assertTrue(s_mol.atoms[2].is_carbon())
+        self.assertTrue(b_mol.atoms[2].is_carbon())
 
         expected_bonded_adjlist = """multiplicity 2
 1  O u0 p2 c0 {6,S} {10,S}
@@ -616,14 +616,14 @@ H                 -4.01978712   -0.12970163    0.82103635"""
 27 H u0 p0 c0 {13,S}
 28 H u0 p0 c0 {2,S}
 """
-        expected_mol = Molecule().fromAdjacencyList(str(expected_bonded_adjlist))
-        self.assertEqual(b_mol.toAdjacencyList(), expected_bonded_adjlist)
+        expected_mol = Molecule().from_adjacency_list(expected_bonded_adjlist)
+        self.assertEqual(b_mol.to_adjacency_list(), expected_bonded_adjlist)
         # the isIsomorphic test must come after the adjlist test since it changes the atom order
-        self.assertTrue(b_mol.isIsomorphic(expected_mol))
+        self.assertTrue(b_mol.is_isomorphic(expected_mol))
 
     def test_unsorted_xyz_mol_from_xyz(self):
         """Test atom order conservation when xyz isn't sorted with heavy atoms first"""
-        n3h5 = ARCSpecies(label=str('N3H5'), xyz=self.xyz8['str'], smiles=str('NNN'))
+        n3h5 = ARCSpecies(label='N3H5', xyz=self.xyz8['str'], smiles='NNN')
         expected_adjlist = """1 N u0 p1 c0 {2,S} {4,S} {5,S}
 2 H u0 p0 c0 {1,S}
 3 H u0 p0 c0 {4,S}
@@ -633,7 +633,7 @@ H                 -4.01978712   -0.12970163    0.82103635"""
 7 H u0 p0 c0 {6,S}
 8 H u0 p0 c0 {6,S}
 """
-        self.assertEqual(n3h5.mol.toAdjacencyList(), expected_adjlist)
+        self.assertEqual(n3h5.mol.to_adjacency_list(), expected_adjlist)
         self.assertEqual(n3h5.conformers[0], self.xyz8['dict'])
 
     def test_xyz_to_smiles(self):
@@ -840,25 +840,25 @@ H      -4.07566100   -0.52115800    0.00003300"""
         mol19 = converter.molecules_from_xyz(converter.str_to_xyz(xyz19))[1]
         mol20 = converter.molecules_from_xyz(converter.str_to_xyz(xyz20))[1]
 
-        self.assertEqual(mol1.toSMILES(), '[NH-][S+](=O)(O)C')
-        self.assertIn(mol2.toSMILES(), ['COC1=C(CO)C=C([C](C)C)C=C1', 'COC1C=CC(=CC=1CO)[C](C)C'])
-        self.assertEqual(mol3.toSMILES(), '[N]=C=C(C)C')
-        self.assertEqual(mol4.toSMILES(), 'N#CC(N=NC(C#N)(C)C)(C)C')
-        self.assertEqual(mol5.toSMILES(), '[O-][O+]=O')
-        # self.assertEqual(mol6.toSMILES(), 'N#S')  # gives '[N]S', multiplicity 3
-        # self.assertEqual(mol7.toSMILES(), '[NH2+]=[N-]')  # gives '[N]N', multiplicity 3
-        self.assertEqual(mol8.toSMILES(), 'C#N')
-        # self.assertEqual(mol9.toSMILES(), '[N-]=[S+]#N')  # gives [N]S#N, multiplicity 3
-        # self.assertEqual(mol10.toSMILES(), '[N+](=O)(O)[O-]')  # gives None
-        # self.assertEqual(mol11.toSMILES(), 'N(N)[N+](=O)[O-]')  # gives None
-        self.assertEqual(mol12.toSMILES(), '[O]N=O')
-        # self.assertEqual(mol13.toSMILES(), 'C[N+]([NH-])=O')  # gives None
-        self.assertEqual(mol14.toSMILES(), 'OS(=O)[O]')
-        self.assertEqual(mol15.toSMILES(), '[N-]=[N+]=N')
-        self.assertEqual(mol16.toSMILES(), '[O]N=C')
-        self.assertEqual(mol17.toSMILES(), 'OS(=O)(=O)O')
-        self.assertEqual(mol18.toSMILES(), 'O=S(=O)=O')
-        self.assertEqual(mol19.toAdjacencyList(), """multiplicity 2
+        self.assertEqual(mol1.to_smiles(), '[NH-][S+](=O)(O)C')
+        self.assertIn(mol2.to_smiles(), ['COC1=C(CO)C=C([C](C)C)C=C1', 'COC1C=CC(=CC=1CO)[C](C)C'])
+        self.assertEqual(mol3.to_smiles(), '[N]=C=C(C)C')
+        self.assertEqual(mol4.to_smiles(), 'N#CC(N=NC(C#N)(C)C)(C)C')
+        self.assertEqual(mol5.to_smiles(), '[O-][O+]=O')
+        # self.assertEqual(mol6.to_smiles(), 'N#S')  # gives '[N]S', multiplicity 3
+        # self.assertEqual(mol7.to_smiles(), '[NH2+]=[N-]')  # gives '[N]N', multiplicity 3
+        self.assertEqual(mol8.to_smiles(), 'C#N')
+        # self.assertEqual(mol9.to_smiles(), '[N-]=[S+]#N')  # gives [N]S#N, multiplicity 3
+        # self.assertEqual(mol10.to_smiles(), '[N+](=O)(O)[O-]')  # gives None
+        # self.assertEqual(mol11.to_smiles(), 'N(N)[N+](=O)[O-]')  # gives None
+        self.assertEqual(mol12.to_smiles(), '[O]N=O')
+        # self.assertEqual(mol13.to_smiles(), 'C[N+]([NH-])=O')  # gives None
+        self.assertEqual(mol14.to_smiles(), 'OS(=O)[O]')
+        self.assertEqual(mol15.to_smiles(), '[N-]=[N+]=N')
+        self.assertEqual(mol16.to_smiles(), '[O]N=C')
+        self.assertEqual(mol17.to_smiles(), 'OS(=O)(=O)O')
+        self.assertEqual(mol18.to_smiles(), 'O=S(=O)=O')
+        self.assertEqual(mol19.to_adjacency_list(), """multiplicity 2
 1 N u1 p1 c0 {4,S} {5,S}
 2 N u0 p1 c0 {3,S} {5,D}
 3 C u0 p0 c0 {2,S} {4,D} {6,S}
@@ -868,7 +868,7 @@ H      -4.07566100   -0.52115800    0.00003300"""
 7 H u0 p0 c0 {4,S}
 8 H u0 p0 c0 {5,S}
 """)  # cannot read SMILES 'c1ncc[n]1' (but can generate them)
-        self.assertEqual(mol20.toSMILES(), 'C=C[CH]C=CC')
+        self.assertEqual(mol20.to_smiles(), 'C=C[CH]C=CC')
 
     def test_to_rdkit_mol(self):
         """Test converting an RMG Molecule object to an RDKit Molecule object"""
@@ -880,7 +880,7 @@ H      -4.07566100   -0.52115800    0.00003300"""
         N       1.1997613019    -0.1609980472     0.0274604887
         H       1.1294795781    -0.8708998550     0.7537444446
         H       1.4015274689    -0.6230592706    -0.8487058662"""
-        spc1 = ARCSpecies(label=str('N3'), xyz=n3_xyz, smiles='NNN')
+        spc1 = ARCSpecies(label='N3', xyz=n3_xyz, smiles='NNN')
         rdkitmol, rd_atom_indices = converter.to_rdkit_mol(spc1.mol)
         for atom, index in rd_atom_indices.items():
             if atom.symbol == 'N':
@@ -1213,13 +1213,13 @@ H      -0.81291200   -0.46933500   -0.31111876"""
     def set_radicals_correctly_from_xyz(self):
         """Test that we determine the number of radicals correctly from given xyz and multiplicity"""
         self.assertEqual(self.spc1.multiplicity, 1)  # NH(S), a nitrene
-        self.assertTrue(all([atom.radicalElectrons == 0 for atom in self.spc1.mol.atoms]))
+        self.assertTrue(all([atom.radical_electrons == 0 for atom in self.spc1.mol.atoms]))
         self.assertEqual(self.spc2.multiplicity, 1)  # NH(S), a nitrene
-        self.assertTrue(all([atom.radicalElectrons == 0 for atom in self.spc2.mol.atoms]))
+        self.assertTrue(all([atom.radical_electrons == 0 for atom in self.spc2.mol.atoms]))
         self.assertEqual(self.spc3.multiplicity, 1)  # NCN(S), a singlet birad
-        self.assertTrue(all([atom.radicalElectrons == 1 for atom in self.spc3.mol.atoms if atom.isNitrogen()]))
+        self.assertTrue(all([atom.radical_electrons == 1 for atom in self.spc3.mol.atoms if atom.is_nitrogen()]))
         self.assertEqual(self.spc3.multiplicity, 3)  # NCN(T)
-        self.assertTrue(all([atom.radicalElectrons == 1 for atom in self.spc3.mol.atoms if atom.isNitrogen()]))
+        self.assertTrue(all([atom.radical_electrons == 1 for atom in self.spc3.mol.atoms if atom.is_nitrogen()]))
 
 
 ################################################################################

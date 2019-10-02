@@ -5,7 +5,6 @@
 A module for plotting and saving output files such as RMG libraries.
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
 import os
 import shutil
 import matplotlib.pyplot as plt
@@ -162,7 +161,7 @@ def plot_3d_mol_as_scatter(xyz, path=None, plot_h=True, show_plot=True, name='')
     ax = Axes3D(fig)
     ax.scatter(xs=x, ys=y, zs=z, s=sizes, c=colors, depthshade=True)
     for i, symbol in enumerate(symbols):
-        ax.text(x[i]+0.01, y[i]+0.01, z[i]+0.01, str(symbol), size=7)
+        ax.text(x[i]+0.01, y[i]+0.01, z[i]+0.01, symbol, size=7)
     plt.axis('off')
     if show_plot:
         plt.show()
@@ -274,7 +273,11 @@ def log_bde_report(path, bde_report):
             content += ' Pivots        BDE (kJ/mol)\n'
             content += ' ------        ------------\n'
             for pivots, bde in bde_dict.items():
-                content += ' {0:15} {1:10.2f}\n'.format(pivots, bde)
+                pivots_str = f'({pivots[0]}, {pivots[1]})'
+                if isinstance(bde, str):
+                    content += ' {0:15} {1:13}\n'.format(pivots_str, bde)
+                elif isinstance(bde, float):
+                    content += ' {0:15} {1:10.2f}\n'.format(pivots_str, bde)
             content += '\n\n'
         logger.info('\n\n')
         logger.info(content)
@@ -289,17 +292,17 @@ def draw_thermo_parity_plots(species_list, path=None):
     """
     pp = None
     if path is not None:
-        thermo_path = os.path.join(path, str('thermo_parity_plots.pdf'))
+        thermo_path = os.path.join(path, 'thermo_parity_plots.pdf')
         if os.path.exists(thermo_path):
             os.remove(thermo_path)
         pp = PdfPages(thermo_path)
     labels, comments, h298_arc, h298_rmg, s298_arc, s298_rmg = [], [], [], [], [], []
     for spc in species_list:
         labels.append(spc.label)
-        h298_arc.append(spc.thermo.getEnthalpy(298) * 0.001)  # converted to kJ/mol
-        h298_rmg.append(spc.rmg_thermo.getEnthalpy(298) * 0.001)  # converted to kJ/mol
-        s298_arc.append(spc.thermo.getEntropy(298))  # in J/mol*K
-        s298_rmg.append(spc.rmg_thermo.getEntropy(298))  # in J/mol*K
+        h298_arc.append(spc.thermo.get_enthalpy(298) * 0.001)  # converted to kJ/mol
+        h298_rmg.append(spc.rmg_thermo.get_enthalpy(298) * 0.001)  # converted to kJ/mol
+        s298_arc.append(spc.thermo.get_entropy(298))  # in J/mol*K
+        s298_rmg.append(spc.rmg_thermo.get_entropy(298))  # in J/mol*K
         comments.append(spc.rmg_thermo.comment)
     draw_parity_plot(var_arc=h298_arc, var_rmg=h298_rmg, var_label='H298', var_units='kJ / mol', labels=labels, pp=pp)
     draw_parity_plot(var_arc=s298_arc, var_rmg=s298_rmg, var_label='S298', var_units='J / mol * K', labels=labels,
@@ -311,8 +314,8 @@ def draw_thermo_parity_plots(species_list, path=None):
         thermo_sources += '   {0}: {1}{2}\n'.format(label, ' '*(max_label_len - len(label)), comments[i])
     logger.info(thermo_sources)
     if path is not None:
-        with open(os.path.join(path, str('thermo.info')), 'w') as f:
-            f.write(str(thermo_sources))
+        with open(os.path.join(path, 'thermo.info'), 'w') as f:
+            f.write(thermo_sources)
 
 
 def draw_parity_plot(var_arc, var_rmg, var_label, var_units, labels, pp):
@@ -333,7 +336,7 @@ def draw_parity_plot(var_arc, var_rmg, var_label, var_units, labels, pp):
     plt.ylabel('{0} determined by RMG ({1})'.format(var_label, var_units))
     plt.xlim = (min_var, max_var * 1.1)
     plt.ylim = (min_var, max_var)
-    plt.legend(shadow=False, frameon=False, loc='best')
+    plt.legend(shadow=False, loc='best')
     # txt_height = 0.04 * (plt.ylim[1] - plt.ylim[0])  # plt.ylim and plt.xlim return a tuple
     # txt_width = 0.02 * (plt.xlim[1] - plt.xlim[0])
     # text_positions = get_text_positions(var_arc, var_rmg, txt_width, txt_height)
@@ -349,15 +352,15 @@ def draw_kinetics_plots(rxn_list, path=None, t_min=(300, 'K'), t_max=(3000, 'K')
     Draws plots of calculated rates and RMG's best values for reaction rates in rxn_list
     `rxn_list` has a .kinetics attribute calculated by ARC and an .rmg_reactions list with RMG rates.
     """
-    plt.style.use(str('seaborn-talk'))
-    t_min = ScalarQuantity(value=t_min[0], units=str(t_min[1]))
-    t_max = ScalarQuantity(value=t_max[0], units=str(t_max[1]))
+    plt.style.use('seaborn-talk')
+    t_min = ScalarQuantity(value=t_min[0], units=t_min[1])
+    t_max = ScalarQuantity(value=t_max[0], units=t_max[1])
     temperature = np.linspace(t_min.value_si, t_max.value_si, t_count)
     pressure = 1e7  # Pa  (=100 bar)
 
     pp = None
     if path is not None:
-        path = os.path.join(path, str('rate_plots.pdf'))
+        path = os.path.join(path, 'rate_plots.pdf')
         if os.path.exists(path):
             os.remove(path)
         pp = PdfPages(path)
@@ -375,7 +378,7 @@ def draw_kinetics_plots(rxn_list, path=None, t_min=(300, 'K'), t_max=(3000, 'K')
                 units = r' (cm$^6$/(mol$^2$ s))'
             arc_k = list()
             for t in temperature:
-                arc_k.append(rxn.kinetics.getRateCoefficient(t, pressure) * conversion_factor[reaction_order])
+                arc_k.append(rxn.kinetics.get_rate_coefficient(t, pressure) * conversion_factor[reaction_order])
             rmg_rxns = list()
             for rmg_rxn in rxn.rmg_reactions:
                 rmg_rxn_dict = dict()
@@ -385,11 +388,11 @@ def draw_kinetics_plots(rxn_list, path=None, t_min=(300, 'K'), t_max=(3000, 'K')
                 k = list()
                 temp = np.linspace(rmg_rxn_dict['t_min'].value_si, rmg_rxn_dict['t_max'].value_si, t_count)
                 for t in temp:
-                    k.append(rmg_rxn.kinetics.getRateCoefficient(t, pressure) * conversion_factor[reaction_order])
+                    k.append(rmg_rxn.kinetics.get_rate_coefficient(t, pressure) * conversion_factor[reaction_order])
                 rmg_rxn_dict['k'] = k
                 rmg_rxn_dict['T'] = temp
-                if rmg_rxn.kinetics.isPressureDependent():
-                    rmg_rxn.comment += str(' (at {0} bar)'.format(int(pressure / 1e5)))
+                if rmg_rxn.kinetics.is_pressure_dependent():
+                    rmg_rxn.comment += ' (at {0} bar)'.format(int(pressure / 1e5))
                 rmg_rxn_dict['label'] = rmg_rxn.comment
                 rmg_rxns.append(rmg_rxn_dict)
             _draw_kinetics_plots(rxn.label, arc_k, temperature, rmg_rxns, units, pp)
@@ -491,14 +494,14 @@ def save_geo(species, project_directory):
     xyz += '{0} optimized at {1}\n'.format(species.label, species.opt_level)
     xyz += '{0}\n'.format(xyz_str)
     with open(os.path.join(geo_path, '{0}.xyz'.format(species.label)), 'w') as f:
-        f.write(str(xyz))
+        f.write(xyz)
 
     # GaussView file
     gv = '# hf/3-21g\n\n{0} optimized at {1}\n\n'.format(species.label, species.opt_level)
     gv += '{0} {1}\n'.format(species.charge, species.multiplicity)
     gv += '{0}\n'.format(xyz_str)
     with open(os.path.join(geo_path, '{0}.gjf'.format(species.label)), 'w') as f:
-        f.write(str(gv))
+        f.write(gv)
 
 
 # *** Files (libraries, xyz, conformers) ***
@@ -511,21 +514,21 @@ def save_thermo_lib(species_list, path, name, lib_long_desc):
     """
     if species_list:
         lib_path = os.path.join(path, 'thermo', '{0}.py'.format(name))
-        thermo_library = ThermoLibrary(name=name, longDesc=lib_long_desc)
+        thermo_library = ThermoLibrary(name=name, long_desc=lib_long_desc)
         for i, spc in enumerate(species_list):
             if spc.thermo is not None:
                 spc.long_thermo_description += '\nExternal symmetry: {0}, optical isomers: {1}\n'.format(
                     spc.external_symmetry, spc.optical_isomers)
                 spc.long_thermo_description += '\nGeometry:\n{0}'.format(spc.final_xyz)
-                thermo_library.loadEntry(index=i,
-                                         label=spc.label,
-                                         molecule=spc.mol_list[0].toAdjacencyList(),
-                                         thermo=spc.thermo,
-                                         shortDesc=spc.thermo.comment,
-                                         longDesc=spc.long_thermo_description)
+                thermo_library.load_entry(index=i,
+                                          label=spc.label,
+                                          molecule=spc.mol_list[0].to_adjacency_list(),
+                                          thermo=spc.thermo,
+                                          shortDesc=spc.thermo.comment,
+                                          longDesc=spc.long_thermo_description)
             else:
-                logger.warning('Species {0} did not contain any thermo data and was omitted from the thermo'
-                               ' library.'.format(str(spc.label)))
+                logger.warning('Species {0} did not contain any thermo data and was omitted from the thermo '
+                               'library.'.format(spc.label))
 
         thermo_library.save(lib_path)
 
@@ -538,16 +541,16 @@ def save_transport_lib(species_list, path, name, lib_long_desc=''):
     """
     if species_list:
         lib_path = os.path.join(path, 'transport', '{0}.py'.format(name))
-        transport_library = TransportLibrary(name=name, longDesc=lib_long_desc)
+        transport_library = TransportLibrary(name=name, long_desc=lib_long_desc)
         for i, spc in enumerate(species_list):
             if spc.transport_data is not None:
-                description = str('\nGeometry:\n{0}'.format(spc.final_xyz))
-                transport_library.loadEntry(index=i,
-                                            label=spc.label,
-                                            molecule=spc.mol_list[0].toAdjacencyList(),
-                                            transport=spc.transport_data,
-                                            shortDesc=spc.thermo.comment,
-                                            longDesc=description)
+                description = '\nGeometry:\n{0}'.format(spc.final_xyz)
+                transport_library.load_entry(index=i,
+                                             label=spc.label,
+                                             molecule=spc.mol_list[0].to_adjacency_list(),
+                                             transport=spc.transport_data,
+                                             shortDesc=spc.thermo.comment,
+                                             longDesc=description)
                 logger.info('\n\nTransport properties for {0}:'.format(spc.label))
                 logger.info('  Shape index: {0}'.format(spc.transport_data.shapeIndex))
                 logger.info('  Epsilon: {0}'.format(spc.transport_data.epsilon))
@@ -557,8 +560,8 @@ def save_transport_lib(species_list, path, name, lib_long_desc=''):
                 logger.info('  Rotational relaxation collision number: {0}'.format(spc.transport_data.rotrelaxcollnum))
                 logger.info('  Comment: {0}'.format(spc.transport_data.comment))
             else:
-                logger.warning('Species {0} did not contain any thermo data and was omitted from the thermo'
-                               ' library.'.format(str(spc.label)))
+                logger.warning('Species {0} did not contain any thermo data and was omitted from the thermo '
+                               'library.'.format(spc.label))
 
         transport_library.save(lib_path)
 
@@ -594,14 +597,14 @@ def save_kinetics_lib(rxn_list, path, name, lib_long_desc):
                     data=rxn.kinetics,
                     label=rxn.label)
                 rxn.ts_species.make_ts_report()
-                entry.longDesc = rxn.ts_species.ts_report + '\n\nOptimized TS geometry:\n' + rxn.ts_species.final_xyz
+                entry.long_desc = rxn.ts_species.ts_report + '\n\nOptimized TS geometry:\n' + rxn.ts_species.final_xyz
                 rxn.rmg_reaction.kinetics = rxn.kinetics
-                rxn.rmg_reaction.kinetics.comment = str('')
+                rxn.rmg_reaction.kinetics.comment = ''
                 entries[i+1] = entry
             else:
                 logger.warning('Reaction {0} did not contain any kinetic data and was omitted from the kinetics'
                                ' library.'.format(rxn.label))
-        kinetics_library = KineticsLibrary(name=name, longDesc=lib_long_desc, autoGenerated=True)
+        kinetics_library = KineticsLibrary(name=name, long_desc=lib_long_desc, auto_generated=True)
         kinetics_library.entries = entries
         lib_path = os.path.join(path, 'kinetics', '')
         if os.path.exists(lib_path):
@@ -611,7 +614,7 @@ def save_kinetics_lib(rxn_list, path, name, lib_long_desc):
         except OSError:
             pass
         kinetics_library.save(os.path.join(lib_path, 'reactions.py'))
-        kinetics_library.saveDictionary(os.path.join(lib_path, 'dictionary.txt'))
+        kinetics_library.save_dictionary(os.path.join(lib_path, 'dictionary.txt'))
 
 
 def save_conformers_file(project_directory, label, xyzs, level_of_theory, multiplicity=None, charge=None, is_ts=False,
@@ -656,7 +659,7 @@ def save_conformers_file(project_directory, label, xyzs, level_of_theory, multip
                         b_mol = molecules_from_xyz(xyz, multiplicity=multiplicity, charge=charge)[1]
                     except SanitizationError:
                         b_mol = None
-                    smiles = b_mol.toSMILES() if b_mol is not None else 'Could not perceive molecule'
+                    smiles = b_mol.to_smiles() if b_mol is not None else 'Could not perceive molecule'
                     content += '\nSMILES: {0}\n'.format(smiles)
                 elif ts_methods is not None:
                     content += 'TS guess method: {0}\n'.format(ts_methods[i])
@@ -671,7 +674,7 @@ def save_conformers_file(project_directory, label, xyzs, level_of_theory, multip
                     content += 'TS guess method: ' + ts_methods[i] + '\n'
                 content += 'Failed to converge'
             content += '\n\n\n'
-        f.write(str(content))
+        f.write(content)
 
 
 # *** Torsions ***
@@ -692,7 +695,8 @@ def plot_torsion_angles(torsion_angles, torsions_sampling_points=None, wells_dic
         plot_path (str, optional): The path for saving the plot.
     """
     num_comb = None
-    torsions = torsion_angles.keys() if torsions_sampling_points is None else torsions_sampling_points.keys()
+    torsions = list(torsion_angles.keys()) if torsions_sampling_points is None \
+        else list(torsions_sampling_points.keys())
     ticks = [0, 60, 120, 180, 240, 300, 360]
     sampling_points = dict()
     if torsions_sampling_points is not None:
@@ -792,7 +796,7 @@ def plot_torsion_angles(torsion_angles, torsions_sampling_points=None, wells_dic
     return num_comb
 
 
-def plot_1d_rotor_scan(angles=None, energies=None, results=None, path=None, pivots=None, comment='', units='radians'):
+def plot_1d_rotor_scan(angles=None, energies=None, results=None, path=None, pivots=None, comment='', units='degrees'):
     """
     Plots a 1D rotor PES for energy vs. angles. Either ``angles`` and ``energies`` or ``results`` must be given.
 
@@ -844,16 +848,15 @@ def plot_1d_rotor_scan(angles=None, energies=None, results=None, path=None, pivo
             txt_path = os.path.join(path, 'rotor comments.txt')
             if os.path.isfile(txt_path):
                 with open(txt_path, 'a') as f:
-                    f.write(str('\n\nPivots: {0}\nComment: {1}'.format(pivots, comment)))
+                    f.write('\n\nPivots: {0}\nComment: {1}'.format(pivots, comment))
             else:
                 with open(txt_path, 'w') as f:
-                    f.write(str('Pivots: {0}\nComment: {1}'.format(pivots, comment)))
+                    f.write('Pivots: {0}\nComment: {1}'.format(pivots, comment))
         else:
             fig_name = '{0}.png'.format(pivots)
         fig_path = os.path.join(path, fig_name)
         plt.savefig(fig_path, dpi=120, facecolor='w', edgecolor='w', orientation='portrait', papertype=None,
-                    format=str('png'), transparent=False, bbox_inches=None, pad_inches=0.1, frameon=False,
-                    metadata=None)
+                    format='png', transparent=False, bbox_inches=None, pad_inches=0.1, metadata=None)
 
 
 def plot_2d_rotor_scan(results, path=None, label='', cmap='Blues', resolution=90):
@@ -863,7 +866,6 @@ def plot_2d_rotor_scan(results, path=None, label='', cmap='Blues', resolution=90
     Args:
         results (dict): The results dictionary, dihedrals are assumed to be in degrees (not radians).
         path (str, optional): The folder path to save this 2D image.
-        units (str, optional): The dihedral angle units, either `degrees` or `radians`.
         label (str, optional): The species label.
         cmap (str, optional): The color map to use. See optional arguments below.
         resolution (int, optional): The image resolution to produce.
@@ -935,8 +937,7 @@ def plot_2d_rotor_scan(results, path=None, label='', cmap='Blues', resolution=90
         fig_name = '{0}_{1}.png'.format(results['directed_scan_type'], results['scans'])
         fig_path = os.path.join(path, fig_name)
         plt.savefig(fig_path, dpi=120, facecolor='w', edgecolor='w', orientation='portrait', papertype=None,
-                    format=str('png'), transparent=False, bbox_inches=None, pad_inches=0.1, frameon=False,
-                    metadata=None)
+                    format='png', transparent=False, bbox_inches=None, pad_inches=0.1, metadata=None)
 
 
 def save_rotor_text_file(angles, energies, path):

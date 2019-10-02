@@ -5,7 +5,6 @@
 The ARC Job module
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
 import csv
 import datetime
 import os
@@ -404,12 +403,12 @@ class Job(object):
         csv_path = os.path.join(arc_path, 'initiated_jobs.csv')
         if not os.path.isfile(csv_path):
             # check file, make index file and write headers if file doesn't exists
-            with open(csv_path, 'wb') as f:
+            with open(csv_path, 'w') as f:
                 writer = csv.writer(f, dialect='excel')
                 row = ['job_num', 'project', 'species_name', 'conformer', 'is_ts', 'charge', 'multiplicity', 'job_type',
                        'job_name', 'job_id', 'server', 'software', 'memory', 'method', 'basis_set', 'comments']
                 writer.writerow(row)
-        with open(csv_path, 'rb') as f:
+        with open(csv_path, 'r') as f:
             reader = csv.reader(f, dialect='excel')
             job_num = 0
             for _ in reader:
@@ -427,7 +426,7 @@ class Job(object):
             conformer = '-'
         else:
             conformer = str(self.conformer)
-        with open(csv_path, 'ab') as f:
+        with open(csv_path, 'a') as f:
             writer = csv.writer(f, dialect='excel')
             row = [self.job_num, self.project, self.species_name, conformer, self.is_ts, self.charge,
                    self.multiplicity, self.job_type, self.job_name, self.job_id, self.server, self.software,
@@ -443,7 +442,7 @@ class Job(object):
         csv_path = os.path.join(arc_path, 'completed_jobs.csv')
         if not os.path.isfile(csv_path):
             # check file, make index file and write headers if file doesn't exists
-            with open(csv_path, 'wb') as f:
+            with open(csv_path, 'w') as f:
                 writer = csv.writer(f, dialect='excel')
                 row = ['job_num', 'project', 'species_name', 'conformer', 'is_ts', 'charge', 'multiplicity', 'job_type',
                        'job_name', 'job_id', 'server', 'software', 'memory', 'method', 'basis_set', 'initial_time',
@@ -455,7 +454,7 @@ class Job(object):
             conformer = '-'
         else:
             conformer = str(self.conformer)
-        with open(csv_path, 'ab') as f:
+        with open(csv_path, 'a') as f:
             writer = csv.writer(f, dialect='excel')
             job_type = self.job_type
             if self.fine:
@@ -512,7 +511,7 @@ class Job(object):
             raise
         if not os.path.isdir(self.local_path):
             os.makedirs(self.local_path)
-        with open(os.path.join(self.local_path, submit_filename[servers[self.server]['cluster_soft']]), 'wb') as f:
+        with open(os.path.join(self.local_path, submit_filename[servers[self.server]['cluster_soft']]), 'w') as f:
             f.write(self.submit)
         if self.server != 'local' and not self.testing:
             self._upload_submit_file()
@@ -533,9 +532,10 @@ class Job(object):
         if self.software == 'gaussian' and '/' in self.level_of_theory:
             slash = '/'
 
-        if (self.multiplicity > 1 and '/' in self.level_of_theory) or self.number_of_radicals > 1:
+        if (self.multiplicity > 1 and '/' in self.level_of_theory) \
+                or (self.number_of_radicals is not None and self.number_of_radicals > 1):
             # don't add 'u' to composite jobs. Do add 'u' for bi-rad singlets if `number_of_radicals` > 1
-            if self.number_of_radicals > 1:
+            if self.number_of_radicals is not None and self.number_of_radicals > 1:
                 logger.info('Using an unrestricted method for species {0} which has {1} radicals and '
                             'multiplicity {2}'.format(self.species_name, self.number_of_radicals, self.multiplicity))
             if self.software == 'qchem':
@@ -869,7 +869,7 @@ $end
                         shutil.copyfile(source_path, destination_path)
                     elif up_file['source'] == 'input_files':
                         with open(os.path.join(self.local_path, up_file['name']), 'w') as f:
-                            f.write(str(input_files[up_file['local']]))
+                            f.write(input_files[up_file['local']])
 
             if self.checkfile is not None and os.path.isfile(self.checkfile):
                 self._upload_check_file(local_check_file_path=self.checkfile)
@@ -1062,14 +1062,14 @@ $end
                 except (TypeError, IOError) as e:
                     logger.warning('Got the following error when trying to download out.txt for {0}:'.format(
                         self.job_name))
-                    logger.warning(e.message)
+                    logger.warning(e)
                 remote_file_path = os.path.join(self.remote_path, 'err.txt')
                 try:
                     ssh.download_file(remote_file_path=remote_file_path, local_file_path=local_file_path2)
                 except (TypeError, IOError) as e:
                     logger.warning('Got the following error when trying to download err.txt for {0}:'.format(
                         self.job_name))
-                    logger.warning(e.message)
+                    logger.warning(e)
             if os.path.isfile(local_file_path1):
                 with open(local_file_path1, 'r') as f:
                     lines1 = f.readlines()
@@ -1098,7 +1098,7 @@ $end
                         except (TypeError, IOError) as e:
                             logger.warning('Got the following error when trying to download {0} for {1}:'.format(
                                 file_name, self.job_name))
-                            logger.warning(e.message)
+                            logger.warning(e)
                     if os.path.isfile(local_file_path):
                         with open(local_file_path, 'r') as f:
                             lines1 = f.readlines()
@@ -1172,8 +1172,9 @@ $end
         """
         Deduce the software to be used based on heuristics.
         """
+        esss = self.ess_settings.keys()
         if self.job_type == 'onedmin':
-            if 'onedmin' not in self.ess_settings.keys():
+            if 'onedmin' not in esss:
                 raise JobError('Could not find the OneDMin software to compute Lennard-Jones parameters.\n'
                                'ess_settings is:\n{0}'.format(self.ess_settings))
             self.software = 'onedmin'
@@ -1185,26 +1186,26 @@ $end
                 raise JobError('Bath gas for OneDMin should be one of the following:\n'
                                'He, Ne, Ar, Kr, H2, N2, O2.\nGot: {0}'.format(self.bath_gas))
         elif self.job_type == 'gromacs':
-            if 'gromacs' not in self.ess_settings.keys():
+            if 'gromacs' not in esss:
                 raise JobError('Could not find the Gromacs software to run the MD job {0}.\n'
                                'ess_settings is:\n{1}'.format(self.method, self.ess_settings))
             self.software = 'gromacs'
         elif self.job_type == 'orbitals':
             # currently we only have a script to print orbitals on QChem,
             # could/should definitely be elaborated to additional ESS
-            if 'qchem' not in self.ess_settings.keys():
+            if 'qchem' not in esss:
                 logger.debug('Could not find the QChem software to compute molecular orbitals.\n'
                              'ess_settings is:\n{0}'.format(self.ess_settings))
                 self.software = None
             else:
                 self.software = 'qchem'
         elif self.job_type == 'composite':
-            if 'gaussian' not in self.ess_settings.keys():
+            if 'gaussian' not in esss:
                 raise JobError('Could not find the Gaussian software to run the composite method {0}.\n'
                                'ess_settings is:\n{1}'.format(self.method, self.ess_settings))
             self.software = 'gaussian'
         elif self.job_type == 'ff_param_fit':
-            if 'gaussian' not in self.ess_settings.keys():
+            if 'gaussian' not in esss:
                 raise JobError('Could not find Gaussian to fit force field parameters.\n'
                                'ess_settings is:\n{0}'.format(self.ess_settings))
             self.software = 'gaussian'
@@ -1219,89 +1220,89 @@ $end
                                      'directed_scan']:
                     if 'b2' in self.method or 'dsd' in self.method or 'pw2' in self.method:
                         # this is a double-hybrid (MP2) DFT method, use Gaussian
-                        if 'gaussian' not in self.ess_settings.keys():
+                        if 'gaussian' not in esss:
                             raise JobError('Could not find the Gaussian software to run the double-hybrid method {0}.\n'
                                            'ess_settings is:\n{1}'.format(self.method, self.ess_settings))
                         self.software = 'gaussian'
                     elif 'ccs' in self.method or 'cis' in self.method:
-                        if 'molpro' in self.ess_settings.keys():
+                        if 'molpro' in esss:
                             self.software = 'molpro'
-                        elif 'gaussian' in self.ess_settings.keys():
+                        elif 'gaussian' in esss:
                             self.software = 'gaussian'
-                        elif 'qchem' in self.ess_settings.keys():
+                        elif 'qchem' in esss:
                             self.software = 'qchem'
                     elif 'b3lyp' in self.method:
-                        if 'gaussian' in self.ess_settings.keys():
+                        if 'gaussian' in esss:
                             self.software = 'gaussian'
-                        elif 'qchem' in self.ess_settings.keys():
+                        elif 'qchem' in esss:
                             self.software = 'qchem'
-                        elif 'molpro' in self.ess_settings.keys():
+                        elif 'molpro' in esss:
                             self.software = 'molpro'
                     elif 'wb97xd' in self.method:
-                        if 'gaussian' not in self.ess_settings.keys():
+                        if 'gaussian' not in esss:
                             raise JobError('Could not find the Gaussian software to run {0}/{1}'.format(
                                 self.method, self.basis_set))
                         self.software = 'gaussian'
                     elif 'wb97x-d3' in self.method or 'wb97m' in self.method:
-                        if 'qchem' not in self.ess_settings.keys():
+                        if 'qchem' not in esss:
                             raise JobError('Could not find the QChem software to run {0}/{1}'.format(
                                 self.method, self.basis_set))
                         self.software = 'qchem'
                     elif 'b97' in self.method or 'def2' in self.basis_set:
-                        if 'gaussian' in self.ess_settings.keys():
+                        if 'gaussian' in esss:
                             self.software = 'gaussian'
-                        elif 'qchem' in self.ess_settings.keys():
+                        elif 'qchem' in esss:
                             self.software = 'qchem'
                     elif 'm062x' in self.method:  # without dash
-                        if 'gaussian' not in self.ess_settings.keys():
+                        if 'gaussian' not in esss:
                             raise JobError('Could not find the Gaussian software to run {0}/{1}'.format(
                                 self.method, self.basis_set))
                         self.software = 'gaussian'
                     elif 'm06-2x' in self.method:  # with dash
-                        if 'qchem' not in self.ess_settings.keys():
+                        if 'qchem' not in esss:
                             raise JobError('Could not find the QChem software to run {0}/{1}'.format(
                                 self.method, self.basis_set))
                         self.software = 'qchem'
                 elif self.job_type == 'scan':
                     if 'wb97xd' in self.method:
-                        if 'gaussian' not in self.ess_settings.keys():
+                        if 'gaussian' not in esss:
                             raise JobError('Could not find the Gaussian software to run {0}/{1}'.format(
                                 self.method, self.basis_set))
                         self.software = 'gaussian'
                     elif 'wb97x-d3' in self.method:
-                        if 'qchem' not in self.ess_settings.keys():
+                        if 'qchem' not in esss:
                             raise JobError('Could not find the QChem software to run {0}/{1}'.format(
                                 self.method, self.basis_set))
                         self.software = 'qchem'
                     elif 'b3lyp' in self.method:
-                        if 'gaussian' in self.ess_settings.keys():
+                        if 'gaussian' in esss:
                             self.software = 'gaussian'
-                        elif 'qchem' in self.ess_settings.keys():
+                        elif 'qchem' in esss:
                             self.software = 'qchem'
                     elif 'b97' in self.method or 'def2' in self.basis_set:
-                        if 'gaussian' in self.ess_settings.keys():
+                        if 'gaussian' in esss:
                             self.software = 'gaussian'
-                        elif 'qchem' in self.ess_settings.keys():
+                        elif 'qchem' in esss:
                             self.software = 'qchem'
                     elif 'm06-2x' in self.method:  # with dash
-                        if 'qchem' not in self.ess_settings.keys():
+                        if 'qchem' not in esss:
                             raise JobError('Could not find the QChem software to run {0}/{1}'.format(
                                 self.method, self.basis_set))
                         self.software = 'qchem'
                     elif 'm062x' in self.method:  # without dash
-                        if 'gaussian' not in self.ess_settings.keys():
+                        if 'gaussian' not in esss:
                             raise JobError('Could not find the Gaussian software to run {0}/{1}'.format(
                                 self.method, self.basis_set))
                         self.software = 'gaussian'
                     elif 'pv' in self.basis_set:
-                        if 'molpro' in self.ess_settings.keys():
+                        if 'molpro' in esss:
                             self.software = 'molpro'
-                        elif 'gaussian' in self.ess_settings.keys():
+                        elif 'gaussian' in esss:
                             self.software = 'gaussian'
-                        elif 'qchem' in self.ess_settings.keys():
+                        elif 'qchem' in esss:
                             self.software = 'qchem'
                 elif self.job_type in ['gsm', 'irc']:
-                    if 'gaussian' not in self.ess_settings.keys():
+                    if 'gaussian' not in esss:
                         raise JobError('Could not find the Gaussian software to run {0}'.format(self.job_type))
                     self.software = 'gaussian'
             if self.software is None:
@@ -1316,16 +1317,16 @@ $end
                 logger.error('method: {0}'.format(self.method))
                 logger.error('basis_set: {0}'.format(self.basis_set))
                 logger.error('Could not determine software for job {0}'.format(self.job_name))
-                if 'gaussian' in self.ess_settings.keys():
+                if 'gaussian' in esss:
                     logger.error('Setting it to Gaussian')
                     self.software = 'gaussian'
-                elif 'orca' in self.ess_settings.keys():
+                elif 'orca' in esss:
                     logger.error('Setting it to Orca')
                     self.software = 'orca'
-                elif 'qchem' in self.ess_settings.keys():
+                elif 'qchem' in esss:
                     logger.error('Setting it to QChem')
                     self.software = 'qchem'
-                elif 'molpro' in self.ess_settings.keys():
+                elif 'molpro' in esss:
                     logger.error('Setting it to Molpro')
                     self.software = 'molpro'
 

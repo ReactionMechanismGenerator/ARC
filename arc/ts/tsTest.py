@@ -5,7 +5,6 @@
 This module contains unit tests for TS guess generation methods
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
 import unittest
 
 from rmgpy.reaction import Reaction
@@ -26,18 +25,18 @@ class TestAutoTST(unittest.TestCase):
         A function run ONCE before all unit tests in this class.
         """
         cls.maxDiff = None
-        cls.spc1 = Species().fromSMILES(str('C'))
-        cls.spc2 = Species().fromSMILES(str('[OH]'))
-        cls.spc3 = Species().fromSMILES(str('[CH3]'))
-        cls.spc4 = Species().fromSMILES(str('O'))
-        cls.spc5 = Species().fromSMILES(str('CCCC'))
-        cls.spc6 = Species().fromSMILES(str('O[O]'))
-        cls.spc7 = Species().fromSMILES(str('[CH2]CCC'))
-        cls.spc8 = Species().fromSMILES(str('OO'))
-        cls.spc9 = Species().fromSMILES(str('CC[O]'))
-        cls.spc10 = Species().fromSMILES(str('[NH2]'))
-        cls.spc11 = Species().fromSMILES(str('[CH2]C[O]'))
-        cls.spc12 = Species().fromSMILES(str('N'))
+        cls.spc1 = Species().from_smiles('C')
+        cls.spc2 = Species().from_smiles('[OH]')
+        cls.spc3 = Species().from_smiles('[CH3]')
+        cls.spc4 = Species().from_smiles('O')
+        cls.spc5 = Species().from_smiles('CCCC')
+        cls.spc6 = Species().from_smiles('O[O]')
+        cls.spc7 = Species().from_smiles('[CH2]CCC')
+        cls.spc8 = Species().from_smiles('OO')
+        cls.spc9 = Species().from_smiles('CC[O]')
+        cls.spc10 = Species().from_smiles('[NH2]')
+        cls.spc11 = Species().from_smiles('[CH2]C[O]')
+        cls.spc12 = Species().from_smiles('N')
         cls.reaction1 = Reaction(reactants=[cls.spc1, cls.spc2], products=[cls.spc3, cls.spc4])
         cls.reaction2 = Reaction(reactants=[cls.spc5, cls.spc6], products=[cls.spc7, cls.spc8])
         cls.reaction3 = Reaction(reactants=[cls.spc9, cls.spc10], products=[cls.spc11, cls.spc12])

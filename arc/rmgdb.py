@@ -5,7 +5,6 @@
 A module for working with the RMG database.
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
 import os
 
 from rmgpy import settings
@@ -38,20 +37,24 @@ def make_rmg_database_object():
 def load_families_only(rmgdb, kinetics_families='default'):
     """
     A helper function for loading kinetic families from RMG's database.
+
+    Args:
+        rmgdb (RMGDatabase): The RMG database instance.
+        kinetics_families (str, optional): Specific kinetics families to load.
     """
     if kinetics_families not in ('default', 'all', 'none'):
         if not isinstance(kinetics_families, list):
-            raise InputError("kineticsFamilies should be either 'default', 'all', 'none', or a list of names, e.g.,"
+            raise InputError("kinetics families should be either 'default', 'all', 'none', or a list of names, e.g.,"
                              " ['H_Abstraction','R_Recombination'] or ['!Intra_Disproportionation'].")
     logger.debug('\n\nLoading only kinetic families from the RMG database...')
     rmgdb.load(
         path=db_path,
-        thermoLibraries=list(),
-        transportLibraries='none',
-        reactionLibraries=list(),
-        seedMechanisms=list(),
-        kineticsFamilies=kinetics_families,
-        kineticsDepositories=['training'],
+        thermo_libraries=list(),
+        transport_libraries='none',
+        reaction_libraries=list(),
+        seed_mechanisms=list(),
+        kinetics_families=kinetics_families,
+        kinetics_depositories=['training'],
         depository=False,
     )
 
@@ -60,19 +63,30 @@ def load_rmg_database(rmgdb, thermo_libraries=None, reaction_libraries=None, kin
                       load_thermo_libs=True, load_kinetic_libs=True, include_nist=False):
     """
     A helper function for loading the RMG database.
+
+    Args:
+        rmgdb (RMGDatabase): The RMG database instance.
+        thermo_libraries (list, optional): Specific thermodynamic libraries to load (``None`` will load all).
+        reaction_libraries (list, optional): Specific kinetics libraries to load (``None`` will load all).
+        kinetics_families (list, str, optional): Specific kinetics families to load
+                                                 (either a list or 'default', 'all', 'none')
+        load_thermo_libs (bool, optional): Whether to load thermodynamic libraries, ``True`` to load.
+        load_kinetic_libs (bool, optional): Whether to load kinetics libraries, ``True`` to load.
+        include_nist (bool, optional): Whether to include the NIST kinetics libraries,
+                                      ``True`` to include, default is ``False``
     """
     thermo_libraries = thermo_libraries if thermo_libraries is not None else list()
     reaction_libraries = reaction_libraries if reaction_libraries is not None else list()
     if isinstance(thermo_libraries, str):
         thermo_libraries.replace(' ', '')
         thermo_libraries = [lib for lib in thermo_libraries.split(',')]
-    if isinstance(reaction_libraries, (str, unicode)):
+    if isinstance(reaction_libraries, str):
         reaction_libraries.replace(' ', '')
         reaction_libraries = [lib for lib in reaction_libraries.split(',')]
         reaction_libraries = [reaction_libraries]
     if kinetics_families not in ('default', 'all', 'none'):
         if not isinstance(kinetics_families, list):
-            raise InputError("kineticsFamilies should be either 'default', 'all', 'none', or a list of names, e.g.,"
+            raise InputError("kinetics_families should be either 'default', 'all', 'none', or a list of names, e.g.,"
                              " ['H_Abstraction','R_Recombination'] or ['!Intra_Disproportionation'].")
     if not thermo_libraries:
         thermo_path = os.path.join(db_path, 'thermo', 'libraries')
@@ -112,10 +126,6 @@ def load_rmg_database(rmgdb, thermo_libraries=None, reaction_libraries=None, kin
                 reaction_libraries.pop(i)
         reaction_libraries.extend(second_level_libraries)
 
-    # set library to be represented by a string rather than a unicode,
-    # this might not be needed after a full migration to Py3
-    thermo_libraries = [str(lib) for lib in thermo_libraries]
-    reaction_libraries = [str(lib) for lib in reaction_libraries]
     if not load_kinetic_libs:
         reaction_libraries = list()
     if not load_thermo_libs:
@@ -126,21 +136,21 @@ def load_rmg_database(rmgdb, thermo_libraries=None, reaction_libraries=None, kin
     kinetics_depositories = ['training', 'NIST'] if include_nist else ['training']
     rmgdb.load(
         path=db_path,
-        thermoLibraries=thermo_libraries,
-        transportLibraries=['PrimaryTransportLibrary', 'NOx2018', 'GRI-Mech'],
-        reactionLibraries=reaction_libraries,
-        seedMechanisms=list(),
-        kineticsFamilies=kinetics_families,
-        kineticsDepositories=kinetics_depositories,
+        thermo_libraries=thermo_libraries,
+        transport_libraries=['PrimaryTransportLibrary', 'NOx2018', 'GRI-Mech'],
+        reaction_libraries=reaction_libraries,
+        seed_mechanisms=list(),
+        kinetics_families=kinetics_families,
+        kinetics_depositories=kinetics_depositories,
         depository=False,
     )
     for family in rmgdb.kinetics.families.values():
         try:
-            family.addKineticsRulesFromTrainingSet(thermoDatabase=rmgdb.thermo)
+            family.add_rules_from_training(thermo_database=rmgdb.thermo)
         except KineticsError:
             logger.info('Could not train family {0}'.format(family))
         else:
-            family.fillKineticsRulesByAveragingUp(verbose=False)
+            family.fill_rules_by_averaging_up(verbose=False)
     logger.info('\n\n')
 
 
@@ -148,11 +158,20 @@ def determine_reaction_family(rmgdb, reaction):
     """
     Determine the RMG kinetic family for a given ARCReaction object.
     Returns None if no family found or more than one family found.
+
+    Args:
+        rmgdb (RMGDatabase): The RMG database instance.
+        reaction (Reaction): The RMG Reaction object.
+
+    Returns:
+        str: The corresponding RMG reaction's family. None if no family was found or more than one family were found.
+    Returns:
+         bool: Whether the family is its own reverse.
     """
     fam_list = loop_families(rmgdb=rmgdb, reaction=reaction)
     families = [fam_l[0] for fam_l in fam_list]
     if len(set(families)) == 1:
-        return families[0], families[0].ownReverse
+        return families[0], families[0].own_reverse
     else:
         return None, False
 
@@ -162,6 +181,13 @@ def loop_families(rmgdb, reaction):
     Loop through kinetic families and return a list of tuples of (family, degenerate_reactions)
     `reaction` is an RMG Reaction object.
     Returns a list of (family, degenerate_reactions) tuples.
+
+    Args:
+        rmgdb (RMGDatabase): The RMG database instance.
+        reaction (Reaction): The RMG Reaction object.
+
+    Returns:
+        list: Entries are corresponding RMG reaction families.
     """
     fam_list = list()
     for family in rmgdb.kinetics.families.values():
@@ -171,23 +197,23 @@ def loop_families(rmgdb, reaction):
 
         if len(reaction.reactants) == 1:
             for reactant0 in reaction.reactants[0].molecule:
-                fam_rxn = family.generateReactions(reactants=[reactant0],
-                                                   products=reaction.products)
+                fam_rxn = family.generate_reactions(reactants=[reactant0],
+                                                    products=reaction.products)
                 if fam_rxn:
                     family_reactions_by_r.extend(fam_rxn)
         elif len(reaction.reactants) == 2:
             for reactant0 in reaction.reactants[0].molecule:
                 for reactant1 in reaction.reactants[1].molecule:
-                    fam_rxn = family.generateReactions(reactants=[reactant0, reactant1],
-                                                       products=reaction.products)
+                    fam_rxn = family.generate_reactions(reactants=[reactant0, reactant1],
+                                                        products=reaction.products)
                     if fam_rxn:
                         family_reactions_by_r.extend(fam_rxn)
         elif len(reaction.reactants) == 3:
             for reactant0 in reaction.reactants[0].molecule:
                 for reactant1 in reaction.reactants[1].molecule:
                     for reactant2 in reaction.reactants[2].molecule:
-                        fam_rxn = family.generateReactions(reactants=[reactant0, reactant1, reactant2],
-                                                           products=reaction.products)
+                        fam_rxn = family.generate_reactions(reactants=[reactant0, reactant1, reactant2],
+                                                            products=reaction.products)
                         if fam_rxn:
                             family_reactions_by_r.extend(fam_rxn)
 
@@ -235,22 +261,22 @@ def determine_rmg_kinetics(rmgdb, reaction, dh_rxn298):
     rmg_reactions = list()
     # Libraries:
     for library in rmgdb.kinetics.libraries.values():
-        library_reactions = library.getLibraryReactions()
+        library_reactions = library.get_library_reactions()
         for library_reaction in library_reactions:
-            if reaction.isIsomorphic(library_reaction):
-                library_reaction.comment = str('Library: {0}'.format(library.label))
+            if reaction.is_isomorphic(library_reaction):
+                library_reaction.comment = 'Library: {0}'.format(library.label)
                 rmg_reactions.append(library_reaction)
                 break
     # Families:
     fam_list = loop_families(rmgdb, reaction)
     for family, degenerate_reactions in fam_list:
         for deg_rxn in degenerate_reactions:
-            template = family.retrieveTemplate(deg_rxn.template)
-            kinetics = family.estimateKineticsUsingRateRules(template)[0]
-            kinetics.changeRate(deg_rxn.degeneracy)
-            kinetics = kinetics.toArrhenius(dh_rxn298)  # Convert ArrheniusEP to Arrhenius using the dHrxn at 298K
+            template = family.retrieve_template(deg_rxn.template)
+            kinetics = family.estimate_kinetics_using_rate_rules(template)[0]
+            kinetics.change_rate(deg_rxn.degeneracy)
+            kinetics = kinetics.to_arrhenius(dh_rxn298)  # Convert ArrheniusEP to Arrhenius using the dHrxn at 298K
             deg_rxn.kinetics = kinetics
-            deg_rxn.comment = str('Family: {0}'.format(deg_rxn.family))
+            deg_rxn.comment = 'Family: {0}'.format(deg_rxn.family)
             deg_rxn.reactants = reaction.reactants
             deg_rxn.products = reaction.products
         rmg_reactions.extend(degenerate_reactions)
@@ -264,8 +290,8 @@ def determine_rmg_kinetics(rmgdb, reaction, dh_rxn298):
                     for entry in depo.entries.values():
                         rxn = entry.item
                         rxn.kinetics = entry.data
-                        rxn.comment = str('NIST: {0}'.format(entry.index))
+                        rxn.comment = 'NIST: {0}'.format(entry.index)
                         if entry.reference is not None:
-                            rxn.comment += str('{0} {1}'.format(entry.reference.authors[0], entry.reference.year))
+                            rxn.comment += '{0} {1}'.format(entry.reference.authors[0], entry.reference.year)
                         rmg_reactions.append(rxn)
     return rmg_reactions

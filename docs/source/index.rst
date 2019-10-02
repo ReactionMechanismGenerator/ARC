@@ -17,7 +17,7 @@ and reactions.
 .. _adj: http://reactionmechanismgenerator.github.io/RMG-Py/reference/molecule/adjlist.html
 __ adj_
 
-ARC is written in Python, and was made open-source under the :ref:`MIT licence <licence>`.
+ARC is written in Python 3.7, and was made open-source under the :ref:`MIT licence <licence>`.
 
 We use ARC to facilitate our research and have made it available
 as a benefit to the community in the hopes that others may find it useful as well.

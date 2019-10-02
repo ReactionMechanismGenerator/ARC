@@ -5,7 +5,6 @@
 A module for performing various species-related format conversions.
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
 import numpy as np
 
 import pybel
@@ -15,7 +14,6 @@ from rdkit.Chem import rdMolTransforms as rdMT
 from arkane.common import symbol_by_number, mass_by_symbol, get_element_mass
 from rmgpy.exceptions import AtomTypeError
 from rmgpy.molecule.molecule import Atom, Bond, Molecule
-from rmgpy.molecule.element import getElement
 from rmgpy.species import Species
 
 from arc.common import get_logger
@@ -57,7 +55,7 @@ def str_to_xyz(xyz_str):
     Raises:
         InputError: If input is not a string or does not have four space-separated entries per non empty line.
     """
-    if not isinstance(xyz_str, (str, unicode)):
+    if not isinstance(xyz_str, str):
         raise InputError('Expected a string input, got {0}'.format(type(xyz_str)))
     xyz_dict = {'symbols': tuple(), 'isotopes': tuple(), 'coords': tuple()}
     if all([len(line.split()) == 6 for line in xyz_str.splitlines() if line.strip()]):
@@ -127,9 +125,11 @@ def xyz_to_str(xyz_dict, isotope_format=None):
     Raises:
         InputError: If input is not a dict or does not have all attributes.
     """
+    xyz_dict = check_xyz_dict(xyz_dict)
+    if xyz_dict is None:
+        logger.warning('Got None for xyz_dict')
+        return None
     recognized_isotope_formats = ['gaussian']
-    if not isinstance(xyz_dict, dict):
-        raise InputError('Expected a dictionary input, got {0}'.format(type(xyz_dict)))
     if any([key not in list(xyz_dict.keys()) for key in ['symbols', 'isotopes', 'coords']]):
         raise InputError('Missing keys in the xyz dictionary. Expected to find "symbols", "isotopes", and "coords", '
                          'but got {0} in\n{1}'.format(list(xyz_dict.keys()), xyz_dict))
@@ -173,6 +173,7 @@ def xyz_to_x_y_z(xyz_dict):
     Returns:
         z (tuple): The Z coordinates.
     """
+    xyz_dict = check_xyz_dict(xyz_dict)
     x, y, z = tuple(), tuple(), tuple()
     for coord in xyz_dict['coords']:
         x += (coord[0],)
@@ -197,8 +198,7 @@ def xyz_to_xyz_file_format(xyz_dict, comment=''):
     Raises:
         InputError: If ``xyz_dict`` is of wrong format or ``comment`` is a multiline string.
     """
-    if not isinstance(xyz_dict, dict):
-        raise InputError('Expected a dictionary input, got {0} which is a {1}'.format(xyz_dict, type(xyz_dict)))
+    xyz_dict = check_xyz_dict(xyz_dict)
     if len(comment.splitlines()) > 1:
         raise InputError('The comment attribute cannot be a multiline string, got:\n{0}'.format(list(comment)))
     return str(len(xyz_dict['symbols'])) + '\n' + comment.strip() + '\n' + xyz_to_str(xyz_dict) + '\n'
@@ -299,13 +299,15 @@ def standardize_xyz_string(xyz_str, isotope_format=None):
     Returns:
         xyz (str): The string xyz format in standardized format.
     """
+    if not isinstance(xyz_str, str):
+        raise TypeError('Expected a string format, got {0}'.format(type(xyz_str)))
     xyz_dict = str_to_xyz(xyz_str)
     return xyz_to_str(xyz_dict=xyz_dict, isotope_format=isotope_format)
 
 
 def check_xyz_dict(xyz):
     """
-    Check that the xyz dictionary entered is valid. If it is a string, correct it.
+    Check that the xyz dictionary entered is valid. If it is a string, convert it.
     If isotopes are not in xyz_dict, common values will be added.
 
     Args:
@@ -315,9 +317,9 @@ def check_xyz_dict(xyz):
         TypeError: If xyz_dict is not a dictionary.
         ValueError: If xyz_dict is missing symbols or coords.
     """
-    xyz_dict = str_to_xyz(xyz) if isinstance(xyz, (str, unicode)) else xyz
+    xyz_dict = str_to_xyz(xyz) if isinstance(xyz, str) else xyz
     if not isinstance(xyz_dict, dict):
-        raise TypeError('Expected a dictionary, got {0}'.format(type(xyz_dict)))
+        raise TypeError(f'Expected a dictionary, got {type(xyz_dict)}')
     if 'symbols' not in list(xyz_dict.keys()):
         raise ValueError('XYZ dictionary is missing symbols. Got:\n{0}'.format(xyz_dict))
     if 'coords' not in list(xyz_dict.keys()):
@@ -370,26 +372,29 @@ def xyz_to_pybel_mol(xyz):
     Raises:
         InputError: If xyz has a wrong format.
     """
-    if not isinstance(xyz, dict):
-        raise InputError('xyz must be in the ARC dictionary format, got type: {0}'.format(type(xyz)))
+    xyz = check_xyz_dict(xyz)
     try:
         pybel_mol = pybel.readstring('xyz', xyz_to_xyz_file_format(xyz))
-    except IOError:
+    except (IOError, InputError):
         return None
     return pybel_mol
 
 
-def pybel_to_inchi(pybel_mol):
+def pybel_to_inchi(pybel_mol, has_h=True):
     """
     Convert an Open Babel molecule object to InChI
 
     Args:
         pybel_mol (OBmol): An Open Babel molecule.
+        has_h (bool): Whether the molecule has hydrogen atoms. ``True`` if it does.
 
     Returns:
         inchi (str): The respective InChI representation of the molecule.
     """
-    inchi = pybel_mol.write('inchi', opt={'F': None}).strip()  # Add fixed H layer
+    if has_h:
+        inchi = pybel_mol.write('inchi', opt={'F': None}).strip()  # Add fixed H layer
+    else:
+        inchi = pybel_mol.write('inchi').strip()
     return inchi
 
 
@@ -404,25 +409,25 @@ def rmg_mol_from_inchi(inchi):
         Molecule: The respective RMG Molecule object.
     """
     try:
-        rmg_mol = Molecule().fromInChI(str(inchi))
+        rmg_mol = Molecule().from_inchi(inchi)
     except (AtomTypeError, ValueError, KeyError) as e:
         logger.warning('Got the following Error when trying to create an RMG Molecule object from InChI:'
-                       '\n{0}'.format(e.message))
+                       '\n{0}'.format(e))
         return None
     return rmg_mol
 
 
 def elementize(atom):
     """
-    Convert the atomType of an RMG:Atom object into its general parent element atomType (e.g., `S4d` into `S`).
+    Convert the atom type of an RMG:Atom object into its general parent element atom type (e.g., `S4d` into `S`).
 
     Args:
         atom (Atom): The atom to process.
     """
-    atom_type = atom.atomType
+    atom_type = atom.atomtype
     atom_type = [at for at in atom_type.generic if at.label != 'R' and at.label != 'R!H' and 'Val' not in at.label]
     if atom_type:
-        atom.atomType = atom_type[0]
+        atom.atomtype = atom_type[0]
 
 
 def molecules_from_xyz(xyz, multiplicity=None, charge=0):
@@ -437,68 +442,73 @@ def molecules_from_xyz(xyz, multiplicity=None, charge=0):
         charge (int, optional): The species net charge.
 
     Returns:
-        s_mol (Molecule): The respective Molecule object with only single bonds.
+        Molecule: The respective Molecule object with only single bonds.
     Returns:
-        b_mol (Molecule): The respective Molecule object with perceived bond orders.
-                          Returns None if unsuccessful to infer bond orders.
-
-    Raises:
-        InputError: If xyz has incorrect format.
+        Molecule: The respective Molecule object with perceived bond orders.
+                  Returns None if unsuccessful to infer bond orders.
     """
     if xyz is None:
         return None, None
-    if not isinstance(xyz, dict):
-        raise InputError('xyz must be a dictionary, got: {0}'.format(type(xyz)))
     xyz = check_xyz_dict(xyz)
+    mol_bo = None
+
+    # 1. Generate a molecule with no bond order information with atoms ordered as in xyz
     mol_graph = MolGraph(symbols=xyz['symbols'], coords=xyz['coords'])
     inferred_connections = mol_graph.infer_connections()
     if inferred_connections:
         mol_s1 = mol_graph.to_rmg_mol()  # An RMG Molecule with single bonds, atom order corresponds to xyz
     else:
-        mol_s1 = s_bonds_mol_from_xyz(xyz)
+        mol_s1 = s_bonds_mol_from_xyz(xyz)  # An RMG Molecule with single bonds, atom order corresponds to xyz
     if mol_s1 is None:
-        logger.error('Could not create a 2D graph representation from xyz:\n{0}'.format(xyz))
+        logger.error(f'Could not create a 2D graph representation from xyz:\n{xyz_to_str(xyz)}')
         return None, None
+    if multiplicity is not None:
+        mol_s1.multiplicity = multiplicity
     mol_s1_updated = update_molecule(mol_s1, to_single_bonds=True)
+
+    # 2. A. Generate a molecule with bond order information using pybel:
     pybel_mol = xyz_to_pybel_mol(xyz)
     if pybel_mol is not None:
-        inchi = pybel_to_inchi(pybel_mol)
+        inchi = pybel_to_inchi(pybel_mol, has_h=bool(len([atom.is_hydrogen() for atom in mol_s1_updated.atoms])))
         mol_bo = rmg_mol_from_inchi(inchi)  # An RMG Molecule with bond orders, but without preserved atom order
-        if mol_bo is not None:
-            if multiplicity is not None:
-                try:
-                    set_multiplicity(mol_bo, multiplicity, charge)
-                except SpeciesError as e:
-                    logger.warning('Cannot infer 2D graph connectivity, failed to set species multiplicity with the '
-                                   'following error:\n{0}'.format(e.message))
-                    return None, None
-            mol_s1_updated.multiplicity = mol_bo.multiplicity
+
+    # TODO 2. B. Deduce bond orders from xyz distances (fallback method)
+    # else:
+    #     mol_bo = deduce_bond_orders_from_distances(xyz)
+
+    if mol_bo is not None:
+        if multiplicity is not None:
             try:
-                order_atoms(ref_mol=mol_s1_updated, mol=mol_bo)
-            except SanitizationError:
-                logger.warning('Could not order atoms for {0}!'.format(mol_s1_updated.toSMILES()))
-            try:
-                set_multiplicity(mol_s1_updated, mol_bo.multiplicity, charge, radical_map=mol_bo)
+                set_multiplicity(mol_bo, multiplicity, charge)
             except SpeciesError as e:
                 logger.warning('Cannot infer 2D graph connectivity, failed to set species multiplicity with the '
-                               'following error:\n{0}'.format(e.message))
+                               'following error:\n{0}'.format(e))
                 return mol_s1_updated, None
-    else:
-        mol_bo = None
-    s_mol, b_mol = mol_s1_updated, mol_bo
-    return s_mol, b_mol
+        mol_s1_updated.multiplicity = mol_bo.multiplicity
+        try:
+            order_atoms(ref_mol=mol_s1_updated, mol=mol_bo)
+        except SanitizationError:
+            logger.warning('Could not order atoms for {0}!'.format(mol_s1_updated.copy(deep=True).to_smiles()))
+        try:
+            set_multiplicity(mol_s1_updated, mol_bo.multiplicity, charge, radical_map=mol_bo)
+        except SpeciesError as e:
+            logger.warning('Cannot infer 2D graph connectivity, failed to set species multiplicity with the '
+                           'following error:\n{0}'.format(e))
+            return mol_s1_updated, mol_bo
+
+    return mol_s1_updated, mol_bo
 
 
 def set_multiplicity(mol, multiplicity, charge, radical_map=None):
     """
-    Set the multiplicity of ``mol`` and change radicals as needed.
+    Set the multiplicity and charge of a molecule.
     If a `radical_map`, which is an RMG Molecule object with the same atom order, is given,
     it'll be used to set radicals (useful if bond orders aren't known for a molecule).
 
     Args:
         mol (Molecule): The RMG Molecule object.
         multiplicity (int) The spin multiplicity.
-        charge (int): THe species net charge.
+        charge (int): The species net charge.
         radical_map (Molecule, optional): An RMG Molecule object with the same atom order to be used as a radical map.
     """
     mol.multiplicity = multiplicity
@@ -507,45 +517,37 @@ def set_multiplicity(mol, multiplicity, charge, radical_map=None):
             raise TypeError('radical_map sent to set_multiplicity() has to be a Molecule object. Got {0}'.format(
                 type(radical_map)))
         set_radicals_by_map(mol, radical_map)
-    radicals = mol.getRadicalCount()
+    radicals = mol.get_radical_count()
     if mol.multiplicity != radicals + 1:
         # this is not the trivial "multiplicity = number of radicals + 1" case
         # either the number of radicals was not identified correctly from the 3D structure (i.e., should be lone pairs),
         # or their spin isn't determined correctly
         if mol.multiplicity > radicals + 1:
-            # there are sites that should have radicals, but were'nt identified as such.
+            # there are sites that should have radicals, but weren't identified as such.
             # try adding radicals according to missing valances
             add_rads_by_atom_valance(mol)
             if mol.multiplicity > radicals + 1:
                 # still problematic, currently there's no automated solution to this case, raise an error
                 raise SpeciesError('A multiplicity of {0} was given, but only {1} radicals were identified. '
                                    'Cannot infer 2D graph representation for this species.\nMore info:{2}\n{3}'.format(
-                                    mol.multiplicity, radicals, mol.toSMILES(), mol.toAdjacencyList()))
-        if len(mol.atoms) == 1 and mol.multiplicity == 1 and mol.atoms[0].radicalElectrons == 4:
-            # This is a singlet atomic C or Si
-            mol.atoms[0].radicalElectrons = 0
-            mol.atoms[0].lonePairs = 2
-        if mol.multiplicity < radicals + 1:
-            # make sure all carbene and nitrene sites, if exist, have lone pairs rather than two unpaired electrons
-            for atom in mol.atoms:
-                if atom.radicalElectrons == 2:
-                    atom.radicalElectrons = 0
-                    atom.lonePairs += 1
+                                    mol.multiplicity, radicals, mol.to_smiles(), mol.to_adjacency_list()))
+    add_lone_pairs_by_atom_valance(mol)
     # final check: an even number of radicals results in an odd multiplicity, and vice versa
     if divmod(mol.multiplicity, 2)[1] == divmod(radicals, 2)[1]:
         if not charge:
             raise SpeciesError('Number of radicals ({0}) and multiplicity ({1}) for {2} do not match.\n{3}'.format(
-                radicals, mol.multiplicity, mol.toSMILES(), mol.toAdjacencyList()))
+                radicals, mol.multiplicity, mol.to_smiles(), mol.to_adjacency_list()))
         else:
-            logger.warning('Number of radicals ({0}) and multiplicity ({1}) for {2} do not match. It might be OK since'
-                           ' this species is charged and charged molecules are currently not perceived well in ARC.'
-                           '\n{3}'.format(radicals, mol.multiplicity, mol.toSMILES(), mol.toAdjacencyList()))
+            logger.warning('Number of radicals ({0}) and multiplicity ({1}) for {2} do not match. It might be OK since '
+                           'this species is charged and charged molecules are currently not perceived well in ARC.'
+                           '\n{3}'.format(radicals, mol.multiplicity, mol.copy(deep=True).to_smiles(),
+                                          mol.copy(deep=True).to_adjacency_list()))
 
 
 def add_rads_by_atom_valance(mol):
     """
     A helper function for assigning radicals if not identified automatically,
-    and they missing according to the given multiplicity.
+    and they are missing according to the given multiplicity.
     We assume here that all partial charges were already set, but this assumption could be wrong.
     Note: This implementation might also be problematic for aromatic species with undefined bond orders.
 
@@ -553,11 +555,66 @@ def add_rads_by_atom_valance(mol):
         mol (Molecule): The Molecule object to process.
     """
     for atom in mol.atoms:
-        if atom.isNonHydrogen():
-            atomic_orbitals = atom.lonePairs + atom.radicalElectrons + atom.getBondOrdersForAtom()
+        if atom.is_non_hydrogen():
+            atomic_orbitals = atom.lone_pairs + atom.radical_electrons + atom.get_total_bond_order()
             missing_electrons = 4 - atomic_orbitals
             if missing_electrons:
-                atom.radicalElectrons = missing_electrons
+                atom.radical_electrons = missing_electrons
+
+
+def add_lone_pairs_by_atom_valance(mol):
+    """
+     helper function for assigning lone pairs instead of carbenes/nitrenes if not identified automatically,
+    and they are missing according to the given multiplicity.
+
+    Args:
+        mol (Molecule): The Molecule object to process.
+    """
+    radicals = mol.get_radical_count()
+    if mol.multiplicity < radicals + 1:
+        carbenes, nitrenes = 0, 0
+        for atom in mol.atoms:
+            if atom.is_carbon() and atom.radical_electrons >= 2:
+                carbenes += 1
+            elif atom.is_nitrogen() and atom.radical_electrons >= 2:
+                nitrenes += 1
+        if 2 * (carbenes + nitrenes) + mol.multiplicity == radicals + 1:
+            # this issue can be solved by converting carbenes/nitrenes to lone pairs:
+            if carbenes:
+                for i in range(len(mol.atoms)):
+                    atom = mol.atoms[i]
+                    if atom.is_carbon() and atom.radical_electrons >= 2:
+                        atom.lone_pairs += 1
+                        atom.radical_electrons -= 2
+            if nitrenes:
+                for i in range(len(mol.atoms)):
+                    atom = mol.atoms[i]
+                    if atom.is_nitrogen() and atom.radical_electrons >= 2:
+                        for atom2, bond12 in atom.edges.items():
+                            if atom2.is_sulfur() and atom2.lone_pairs >= 2 and bond12.is_single():
+                                bond12.set_order_num(3)
+                                atom2.lone_pairs -= 1
+                                break
+                            elif atom2.is_sulfur() and atom2.lone_pairs == 1 and bond12.is_single():
+                                bond12.set_order_num(2)
+                                atom2.lone_pairs -= 1
+                                atom2.charge += 1
+                                atom.charge -= 1
+                                break
+                            elif atom2.is_nitrogen() and atom2.lone_pairs == 1 and bond12.is_single():
+                                bond12.set_order_num(2)
+                                atom2.lone_pairs -= 1
+                                atom.lone_pairs += 1
+                                atom2.charge += 1
+                                atom.charge -= 1
+                                break
+                        else:
+                            atom.lone_pairs += 1
+                        atom.radical_electrons -= 2
+    if len(mol.atoms) == 1 and mol.multiplicity == 1 and mol.atoms[0].radical_electrons == 4:
+        # This is a singlet atomic C or Si, convert all radicals to lone pairs
+        mol.atoms[0].radical_electrons = 0
+        mol.atoms[0].lone_pairs = 2
 
 
 def set_radicals_by_map(mol, radical_map):
@@ -565,7 +622,7 @@ def set_radicals_by_map(mol, radical_map):
     Set radicals in ``mol`` by ``radical_map``.
 
     Args:
-        mol (Molecule): THe RMG Molecule object to process.
+        mol (Molecule): The RMG Molecule object to process.
         radical_map (Molecule): An RMG Molecule object with the same atom order to be used as a radical map.
 
     Raises:
@@ -575,7 +632,7 @@ def set_radicals_by_map(mol, radical_map):
         if atom.element.number != radical_map.atoms[i].element.number:
             raise ValueError('Atom order in mol and radical_map in set_radicals_by_map() do not match. '
                              '{0} is not {1}.'.format(atom.element.symbol, radical_map.atoms[i].symbol))
-        atom.radicalElectrons = radical_map.atoms[i].radicalElectrons
+        atom.radical_electrons = radical_map.atoms[i].radical_electrons
 
 
 def order_atoms_in_mol_list(ref_mol, mol_list):
@@ -595,7 +652,9 @@ def order_atoms_in_mol_list(ref_mol, mol_list):
                 order_atoms(ref_mol, mol)
             except SanitizationError as e:
                 logger.warning('Could not order atoms in\n{0}\nGot the following error:'
-                               '\n{1}'.format(mol.toAdjacencyList, e))
+                               '\n{1}'.format(mol.to_adjacency_list, e))
+    else:
+        logger.warning('Could not order atoms')
 
 
 def order_atoms(ref_mol, mol):
@@ -620,8 +679,8 @@ def order_atoms(ref_mol, mol):
         ref_mol_find_iso_copy = update_molecule(ref_mol_find_iso_copy, to_single_bonds=True)
         mol_find_iso_copy = update_molecule(mol_find_iso_copy, to_single_bonds=True)
 
-        if mol_is_iso_copy.isIsomorphic(ref_mol_is_iso_copy, saveOrder=True):
-            mapping = mol_find_iso_copy.findIsomorphism(ref_mol_find_iso_copy, saveOrder=True)
+        if mol_is_iso_copy.is_isomorphic(ref_mol_is_iso_copy, save_order=True, strict=False):
+            mapping = mol_find_iso_copy.find_isomorphism(ref_mol_find_iso_copy, save_order=True)
             if len(mapping):
                 if isinstance(mapping, list):
                     mapping = mapping[0]
@@ -629,11 +688,15 @@ def order_atoms(ref_mol, mol):
                              for key, val in mapping.items()}
                 mol.atoms = [mol.atoms[index_map[i]] for i, _ in enumerate(mol.atoms)]
             else:
-                raise SanitizationError('Could not map molecules {0}, {1}:\n\n{2}\n\n{3}'.format(
-                    ref_mol.toSMILES(), mol.toSMILES(), ref_mol.toAdjacencyList(), mol.toAdjacencyList()))
+                # logger.debug('Could not map molecules {0}, {1}:\n\n{2}\n\n{3}'.format(
+                #     ref_mol.copy(deep=True).to_smiles(), mol.copy(deep=True).to_smiles(),
+                #     ref_mol.copy(deep=True).to_adjacency_list(), mol.copy(deep=True).to_adjacency_list()))
+                raise SanitizationError('Could not map molecules')
         else:
-            raise SanitizationError('Could not map non isomorphic molecules {0}, {1}:\n\n{2}\n\n{3}'.format(
-                ref_mol.toSMILES(), mol.toSMILES(), ref_mol.toAdjacencyList(), mol.toAdjacencyList()))
+            # logger.debug('Could not map non isomorphic molecules {0}, {1}:\n\n{2}\n\n{3}'.format(
+            #     ref_mol.copy(deep=True).to_smiles(), mol.copy(deep=True).to_smiles(),
+            #     ref_mol.copy(deep=True).to_adjacency_list(), mol.copy(deep=True).to_adjacency_list()))
+            raise SanitizationError('Could not map non isomorphic molecules')
 
 
 def update_molecule(mol, to_single_bonds=False):
@@ -641,11 +704,11 @@ def update_molecule(mol, to_single_bonds=False):
     Updates the molecule, useful for isomorphism comparison.
 
     Args:
-        mol (Molecule): THe RMG Molecule object to process.
-        to_single_bonds (bool, optional): Whether to convert all bonds to single bonds. True to convert.
+        mol (Molecule): The RMG Molecule object to process.
+        to_single_bonds (bool, optional): Whether to convert all bonds to single bonds. ``True`` to convert.
 
     Returns:
-        new_mol (Molecule): The updated molecule..
+        new_mol (Molecule): The updated molecule.
     """
     new_mol = Molecule()
     try:
@@ -653,16 +716,16 @@ def update_molecule(mol, to_single_bonds=False):
     except AttributeError:
         return None
     atom_mapping = dict()
-    for atom1 in atoms:
-        new_atom = new_mol.addAtom(Atom(atom1.element))
-        atom_mapping[atom1] = new_atom
+    for atom in atoms:
+        new_atom = new_mol.add_atom(Atom(atom.element))
+        atom_mapping[atom] = new_atom
     for atom1 in atoms:
         for atom2 in atom1.bonds.keys():
-            bond_order = 1.0 if to_single_bonds else atom1.bonds[atom2].getOrderNum()
+            bond_order = 1.0 if to_single_bonds else atom1.bonds[atom2].get_order_num()
             bond = Bond(atom_mapping[atom1], atom_mapping[atom2], bond_order)
-            new_mol.addBond(bond)
+            new_mol.add_bond(bond)
     try:
-        new_mol.updateAtomTypes()
+        new_mol.update_atomtypes()
     except (AtomTypeError, KeyError):
         pass
     new_mol.multiplicity = mol.multiplicity
@@ -671,25 +734,21 @@ def update_molecule(mol, to_single_bonds=False):
 
 def s_bonds_mol_from_xyz(xyz):
     """
-    Create a single bonded molecule from xyz using RMG's connectTheDots() method.
+    Create a single bonded molecule from xyz using RMG's connect_the_dots() method.
 
     Args:
-        xyz (dict): THe xyz coordinates.
+        xyz (dict): The xyz coordinates.
 
     Returns:
-        Molecule: THe single bonded molecule.
-
-    Raises:
-        InputError: If xyz is in a wrong format.
+        Molecule: The respective molecule with only single bonds.
     """
+    xyz = check_xyz_dict(xyz)
     mol = Molecule()
-    if not isinstance(xyz, dict):
-        raise SpeciesError('xyz must be a dictionary, got: {0}'.format(type(xyz)))
     for symbol, coord in zip(xyz['symbols'], xyz['coords']):
-        atom = Atom(element=str(symbol))
+        atom = Atom(element=symbol)
         atom.coords = np.array([coord[0], coord[1], coord[2]], np.float64)
-        mol.addAtom(atom)
-    mol.connectTheDots()  # only adds single bonds, but we don't care
+        mol.add_atom(atom)
+    mol.connect_the_dots()  # only adds single bonds, but we don't care
     return mol
 
 
@@ -712,13 +771,13 @@ def to_rdkit_mol(mol, remove_h=False, return_mapping=True, sanitize=True):
         dict: An atom mapping dictionary. Keys are Atom objects of 'mol', values are atom indices in the RDKit Mol.
     """
     mol_copy = mol.copy(deep=True)
-    if not mol_copy.atomIDValid():
-        mol_copy.assignAtomIDs()
+    if not mol_copy.atom_ids_valid():
+        mol_copy.assign_atom_ids()
     atom_id_map = dict()
     for i, atom in enumerate(mol_copy.atoms):
         atom_id_map[atom.id] = i
     # Sort the atoms before converting to ensure output is consistent between different runs
-    mol_copy.sortAtoms()
+    mol_copy.sort_atoms()
     atoms = mol_copy.vertices
     rd_atom_indices = {}  # dictionary of RDKit atom indices
     rdkitmol = Chem.rdchem.EditableMol(Chem.rdchem.Mol())
@@ -729,9 +788,9 @@ def to_rdkit_mol(mol, remove_h=False, return_mapping=True, sanitize=True):
             rd_atom = Chem.rdchem.Atom(atom.element.symbol)
         if atom.element.isotope != -1:
             rd_atom.SetIsotope(atom.element.isotope)
-        rd_atom.SetNumRadicalElectrons(atom.radicalElectrons)
+        rd_atom.SetNumRadicalElectrons(atom.radical_electrons)
         rd_atom.SetFormalCharge(atom.charge)
-        if atom.element.symbol == 'C' and atom.lonePairs == 1 and mol_copy.multiplicity == 1:
+        if atom.element.symbol == 'C' and atom.lone_pairs == 1 and mol_copy.multiplicity == 1:
             rd_atom.SetNumRadicalElectrons(2)
         rdkitmol.AddAtom(rd_atom)
         if not (remove_h and atom.symbol == 'H'):
@@ -743,12 +802,12 @@ def to_rdkit_mol(mol, remove_h=False, return_mapping=True, sanitize=True):
     # Add the bonds
     for atom1 in mol_copy.vertices:
         for atom2, bond in atom1.edges.items():
-            if bond.isHydrogenBond():
+            if bond.is_hydrogen_bond():
                 continue
             index1 = atoms.index(atom1)
             index2 = atoms.index(atom2)
             if index1 < index2:
-                order_string = bond.getOrderStr()
+                order_string = bond.get_order_str()
                 order = orders[order_string]
                 rdkitmol.AddBond(index1, index2, order)
 
@@ -859,7 +918,7 @@ def check_isomorphism(mol1, mol2, filter_structures=True):
 
     for molecule1 in spc1.molecule:
         for molecule2 in spc2.molecule:
-            if molecule1.isIsomorphic(molecule2, saveOrder=True):
+            if molecule1.is_isomorphic(molecule2, save_order=True):
                 return True
     return False
 
@@ -877,7 +936,7 @@ def get_center_of_mass(xyz):
     Returns:
         tuple: The center of mass coordinates.
     """
-    masses = [get_element_mass(str(symbol), isotope)[0] for symbol, isotope in zip(xyz['symbols'], xyz['isotopes'])]
+    masses = [get_element_mass(symbol, isotope)[0] for symbol, isotope in zip(xyz['symbols'], xyz['isotopes'])]
     cm_x, cm_y, cm_z = 0, 0, 0
     for coord, mass in zip(xyz['coords'], masses):
         cm_x += coord[0] * mass

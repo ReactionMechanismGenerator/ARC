@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # encoding: utf-8
-from __future__ import print_function
+
 from datetime import datetime
 from shutil import copy2
 from shutil import rmtree
@@ -111,7 +111,7 @@ header = '%s%s%s' % (frameLine, lineHeader, frameLine)
 
 # List of Topology Formats created by acpype so far:
 outTopols = ['gmx', 'cns', 'charmm']
-qDict = {'mopac' : 0, 'divcon' : 1, 'sqm': 2}
+qDict = {'mopac': 0, 'divcon': 1, 'sqm': 2}
 
 # Residues that are not solute, to be avoided when balancing charges in
 # amb2gmx mode
@@ -127,12 +127,12 @@ leapAmberFile = 'leaprc.ff12SB'
 
 cal = 4.184
 Pi = 3.141593
-qConv = 18.222281775 # 18.2223
-radPi = 57.295780 # 180/Pi
+qConv = 18.222281775  # 18.2223
+radPi = 57.295780  # 180/Pi
 maxDist = 3.0
 minDist = 0.5
-maxDist2 = maxDist ** 2 # squared Ang.
-minDist2 = minDist ** 2 # squared Ang.
+maxDist2 = maxDist ** 2  # squared Ang.
+minDist2 = minDist ** 2  # squared Ang.
 diffTol = 0.01
 
 dictAmbAtomType2AmbGmxCode = \
@@ -379,11 +379,6 @@ verList = list(map(int, version))
 if verList < [2, 6, 0]:
     invalidArgs(text = "Python version %s\n       Sorry, you need python 2.6 or higher" % verNum)
 
-try:
-    set()
-except NameError:
-    from sets import Set as set
-
 
 def elapsedTime(seconds, suffixes=None, add_s=False, separator=' '):
     """
@@ -417,10 +412,10 @@ def elapsedTime(seconds, suffixes=None, add_s=False, separator=' '):
     return separator.join(time)
 
 def splitBlock(dat):
-    '''split a amber parm dat file in blocks
+    """split a amber parm dat file in blocks
        0 = mass, 1 = extra + bond, 2 = angle, 3 = dihedral, 4 = improp, 5 = hbond
        6 = equiv nbon, 7 = nbon, 8 = END, 9 = etc.
-    '''
+    """
     dict_ = {}
     count = 0
     for line in dat:
@@ -501,7 +496,7 @@ def parmMerge(fdat1, fdat2, frcmod = False):
         return mname
 
     dat2 = splitBlock(file(fdat2).readlines())
-    for k in dat1.keys()[:8]:
+    for k in list(dat1.keys())[:8]:
         if k == 0:
             lines = dat1[k][1:-1] + dat2[k][1:-1] + ['']
             for line in lines:
@@ -532,10 +527,10 @@ def parmMerge(fdat1, fdat2, frcmod = False):
             lines = dat1[k][:-1] + dat2[k][1:-1] + ['']
             for line in lines:
                 mdat.append(line)
-    for k in dat1.keys()[8:]:
+    for k in list(dat1.keys())[8:]:
         for line in dat1[k]:
             mdat.append(line)
-    for k in dat2.keys()[9:]:
+    for k in list(dat2.keys())[9:]:
         for line in dat2[k]:
             mdat.append(line)
     for line in mdat:
@@ -951,7 +946,7 @@ a        """
             p = sub.Popen(cmd, shell = True, stderr = sub.STDOUT, stdout = sub.PIPE)
             pid = p.pid
 
-            out = str(p.communicate()[0].decode()) # p.stdout.read()
+            out = str(p.communicate()[0].decode())  # p.stdout.read()
             self.acLog = out
 
         if os.path.exists(self.acMol2FileName):
@@ -1048,7 +1043,7 @@ a        """
             signal.signal(signal.SIGALRM, self.signal_handler)
             signal.alarm(self.timeTol)
 
-            out = str(p.communicate()[0].decode()) # p.stdout.read()
+            out = str(p.communicate()[0].decode())  # p.stdout.read()
 
             self.sleapLog = out
             self.checkLeapLog(self.sleapLog)
@@ -1255,7 +1250,7 @@ a        """
                 from acpype import *
                 #import cPickle as pickle
                 import pickle
-                o = pickle.load(open('DDD.pkl','rb'))
+                o = pickle.load(open('DDD.pkl','r'))
                 NB: It fails to restore with ipython in Mac (Linux OK)
         """
         pklFile = self.baseName + ".pkl"
@@ -1270,8 +1265,8 @@ a        """
             mess = "Pickle file %s already present... doing nothing" % pklFile
         self.printMess(mess)
         if dumpFlag:
-            with open(pklFile, "wb") as f: # for python 2.6 or higher
-                # f = open(pklFile, "wb")
+            with open(pklFile, "w") as f: # for python 2.6 or higher
+                # f = open(pklFile, "w")
                 if verList[0] == 3:
                     pickle.dump(self, f, protocol = 2, fix_imports = True)
                 else:
@@ -1594,7 +1589,7 @@ a        """
 
         # Define hydrogen and heavy atom classes.
         def is_hydrogen(atom):
-            return (atom.mass < 1.2)
+            return atom.mass < 1.2
 
         def is_heavy(atom):
             return not is_hydrogen(atom)
@@ -1684,7 +1679,7 @@ a        """
         # self.printDebug(chargeList)
         total = sum(chargeList)
         totalConverted = total / qConv
-        self.printDebug('charge to be balanced: total %13.10f' % (totalConverted))
+        self.printDebug('charge to be balanced: total %13.10f' % totalConverted)
         maxVal = max(chargeList[:FirstNonSoluteId])
         minVal = min(chargeList[:FirstNonSoluteId])
         if abs(maxVal) >= abs(minVal): lim = maxVal
@@ -2628,9 +2623,9 @@ a        """
             if nWat:
                 topText.append(headWater)
 
-        topText.append(headSystem % (self.baseName))
+        topText.append(headSystem % self.baseName)
         topText.append(headMols)
-        otopText.append(headSystem % (self.baseName))
+        otopText.append(headSystem % self.baseName)
         otopText.append(headMols)
 
         if nSolute > 0:

@@ -5,7 +5,6 @@
 A module for parsing information from various files.
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
 import os
 import numpy as np
 
@@ -107,7 +106,7 @@ def parse_xyz_from_file(path):
         path (str): The file path.
 
     Returns:
-        xyz (dict): THe parsed coordinates.
+        xyz (dict): The parsed coordinates.
     """
     lines = _get_lines_from_file(path)
     file_extension = os.path.splitext(path)[1]
@@ -130,8 +129,11 @@ def parse_xyz_from_file(path):
                     start_parsing = True
     elif 'out' in file_extension or 'log' in file_extension:
         log = determine_qm_software(fullpath=path)
-        coords, number, _ = log.loadGeometry()
-        xyz = xyz_from_data(coords=coords, numbers=number)
+        try:
+            coords, number, _ = log.load_geometry()
+            xyz = xyz_from_data(coords=coords, numbers=number)
+        except LogError:
+            xyz = None
     else:
         record = False
         for line in lines:

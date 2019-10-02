@@ -5,8 +5,6 @@
 ARC - Automatic Rate Calculator
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
-
 from arc.job.ssh import delete_all_arc_jobs
 from arc.job.local import delete_all_local_arc_jobs
 from arc.settings import servers

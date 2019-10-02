@@ -5,7 +5,6 @@
 This module contains unit tests for the plotter functions
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
 import os
 import shutil
 import unittest
@@ -23,7 +22,7 @@ class TestPlotter(unittest.TestCase):
 
     def test_save_geo(self):
         """Test saving the geometry files for a species"""
-        spc = ARCSpecies(label='methylamine', smiles=str('CN'), multiplicity=1, charge=0)
+        spc = ARCSpecies(label='methylamine', smiles='CN', multiplicity=1, charge=0)
         spc.final_xyz = str_to_xyz("""N      -0.74566988   -0.11773792    0.00000000
 C       0.70395487    0.03951260    0.00000000
 H       1.12173564   -0.45689176   -0.87930074

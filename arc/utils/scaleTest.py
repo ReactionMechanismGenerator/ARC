@@ -5,7 +5,6 @@
 This module contains unit tests for the arc.utils.scale module
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
 import os
 import shutil
 import unittest
@@ -79,7 +78,7 @@ class TestScale(unittest.TestCase):
         self.assertIn('Level of theory: level1\n', lines)
         self.assertIn('Level of theory: level2\n', lines)
         self.assertIn('The following species from the standard set did not converge at this level:\n', lines)
-        self.assertIn(" [u'CO2']\n", lines)
+        self.assertIn(" ['CO2']\n", lines)
         self.assertIn('Scale Factor for Fundamental Frequencies = 0.955\n', lines)
         self.assertIn('Scale Factor for Harmonic Frequencies    = 0.994\n', lines)
         self.assertIn('Scaling factors calculation for 2 levels of theory completed (elapsed time: 8.5).\n', lines)
@@ -95,7 +94,7 @@ class TestScale(unittest.TestCase):
             self.assertIn(spc.label, labels)
             self.assertTrue(spc.initial_xyz)
         c2h2_xyz = {'symbols': ('C', 'C', 'H', 'H'), 'isotopes': (12, 12, 1, 1),
-                'coords': ((0.0, 0.0, 0.0), (0.0, 0.0, 1.203142), (0.0, -0.0, 2.265747), (-0.0, -0.0, -1.062605))}
+                    'coords': ((0.0, 0.0, 0.0), (0.0, 0.0, 1.203142), (0.0, -0.0, 2.265747), (-0.0, -0.0, -1.062605))}
         self.assertTrue(almost_equal_coords_lists(species_list[0].initial_xyz, c2h2_xyz))
 
     def test_get_zpe(self):

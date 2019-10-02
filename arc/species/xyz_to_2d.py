@@ -3,7 +3,6 @@
 
 # Written by Colin Grambow
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
 import numpy as np
 
 import pybel
@@ -140,14 +139,13 @@ class MolGraph(object):
             elements[symbol] = elements.get(symbol, 0) + 1
 
         # Carbon and hydrogen come first if carbon is present, other
-        # atoms come in alphabetical order (also hydrogen if there is no
-        # carbon)
+        # atoms come in alphabetical order (also hydrogen if there is no carbon)
         formula = ''
-        if 'C' in elements.keys():
+        if 'C' in list(elements.keys()):
             count = elements['C']
             formula += 'C{:d}'.format(count) if count > 1 else 'C'
             del elements['C']
-            if 'H' in elements.keys():
+            if 'H' in list(elements.keys()):
                 count = elements['H']
                 formula += 'H{:d}'.format(count) if count > 1 else 'H'
                 del elements['H']
@@ -162,13 +160,13 @@ class MolGraph(object):
     def to_rmg_mol(self):
         import rmgpy.molecule.molecule as rmg_molecule
 
-        rmg_atoms = [rmg_molecule.Atom(element=str(atom.symbol), coords=atom.coords) for atom in self]
+        rmg_atoms = [rmg_molecule.Atom(element=atom.symbol, coords=atom.coords) for atom in self]
         mapping = {atom: rmg_atom for atom, rmg_atom in zip(self.atoms, rmg_atoms)}
         rmg_bonds = [rmg_molecule.Bond(mapping[connection.atom1], mapping[connection.atom2])
                      for connection in self.get_all_connections()]
         rmg_mol = rmg_molecule.Molecule(atoms=rmg_atoms)
         for bond in rmg_bonds:
-            rmg_mol.addBond(bond)
+            rmg_mol.add_bond(bond)
 
         return rmg_mol
 
@@ -423,7 +421,7 @@ class MolGraph(object):
         """
         self_rmg = self.to_rmg_mol()
         other_rmg = other.to_rmg_mol()
-        return self_rmg.isIsomorphic(other_rmg, saveOrder=True)
+        return self_rmg.is_isomorphic(other_rmg, save_order=True)
 
     def set_coords(self, coords):
         """

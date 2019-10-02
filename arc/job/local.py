@@ -7,7 +7,6 @@ When transitioning to Python 3, use
 `subprocess.run() <https://docs.python.org/3/library/subprocess.html#subprocess.run>`_
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
 import datetime
 import os
 import re
@@ -40,7 +39,7 @@ def execute_command(command, shell=True):
         logger.error('And got the following status (cmd, message, output, returncode, cms:')
         logger.error(e.cmd)
         logger.info('\n')
-        logger.error(e.message)
+        logger.error(e)
         logger.info('\n')
         logger.error(e.output)
         logger.info('\n')
@@ -52,7 +51,7 @@ def execute_command(command, shell=True):
                             '\nTo correct the command, modify settings.py'
                             '\nTips: use "which" command to locate cluster software commands on server.'
                             '\nExample: type "which sbatch" on a server running Slurm to find the correct'
-                            ' sbatch path required in the submit_command dictionary.'.format(command, e.message))
+                            ' sbatch path required in the submit_command dictionary.'.format(command, e))
     return stdout.splitlines(), ''
 
 

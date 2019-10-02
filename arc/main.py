@@ -12,7 +12,6 @@ Where ``spc0``, ``spc1``, and ``spc2`` in the above example are :ref:`ARCSpecies
 
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
 import logging
 import os
 import time
@@ -466,7 +465,7 @@ class ARC(object):
         If `project` name and `ess_settings` are given as well to __init__, they will override the respective values
         in the restart dictionary.
         """
-        if isinstance(input_dict, (str, unicode)):
+        if isinstance(input_dict, str):
             input_dict = read_yaml_file(input_dict)
         if project is None and 'project' not in input_dict:
             raise InputError('A project name must be given')

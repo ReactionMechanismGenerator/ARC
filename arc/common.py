@@ -11,7 +11,6 @@ VERSION is the full ARC version, using `semantic versioning <https://semver.org/
 ATOM_RADII data taken from `DOI 10.1039/b801115j <http://dx.doi.org/10.1039/b801115j>`_.
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
 import datetime
 import logging
 import os
@@ -28,7 +27,7 @@ from arkane.gaussian import GaussianLog
 from arkane.molpro import MolproLog
 from arkane.qchem import QChemLog
 from arkane.statmech import determine_qm_software
-from rmgpy.molecule.element import getElement
+from rmgpy.molecule.element import get_element
 from rmgpy.qm.qmdata import QMData
 from rmgpy.qm.symmetry import PointGroupCalculator
 
@@ -78,11 +77,11 @@ def check_ess_settings(ess_settings=None):
         return dict()
     settings = dict()
     for software, server_list in ess_settings.items():
-        if isinstance(server_list, (str, unicode)):
+        if isinstance(server_list, str):
             settings[software] = [server_list]
         elif isinstance(server_list, list):
             for server in server_list:
-                if not isinstance(server, (str, unicode)):
+                if not isinstance(server, str):
                     raise SettingsError('Server name could only be a string. '
                                         'Got {0} which is {1}'.format(server, type(server)))
                 settings[software.lower()] = server_list
@@ -95,7 +94,7 @@ def check_ess_settings(ess_settings=None):
             raise SettingsError('Recognized ESS software are Gaussian, QChem, Molpro, Orca or OneDMin. '
                                 'Got: {0}'.format(ess))
         for server in server_list:
-            if not isinstance(server, bool) and server.lower() not in servers.keys():
+            if not isinstance(server, bool) and server.lower() not in list(servers.keys()):
                 server_names = [name for name in servers.keys()]
                 raise SettingsError('Recognized servers are {0}. Got: {1}'.format(server_names, server))
     logger.info('\nUsing the following ESS settings:\n{0}\n'.format(settings))
@@ -244,8 +243,8 @@ def get_git_branch():
         except (subprocess.CalledProcessError, OSError):
             return ''
         for branch_name in branch_list:
-            if '*' in branch_name:
-                return branch_name[2:]
+            if '*' in str(branch_name):
+                return str(branch_name[2:])
     else:
         return ''
 
@@ -277,9 +276,8 @@ def save_yaml_file(path, content):
         content (list, dict): The content to save.
     """
     yaml.add_representer(str, string_representer)
-    yaml.add_representer(unicode, unicode_representer)
     logger.debug('Creating a restart file...')
-    content = yaml.dump(data=content, encoding='utf-8', allow_unicode=True)
+    content = yaml.dump(data=content)
     if not os.path.exists(os.path.dirname(path)):
         os.makedirs(os.path.dirname(path))
     with open(path, 'w') as f:
@@ -295,15 +293,6 @@ def string_representer(dumper, data):
     return dumper.represent_scalar(tag='tag:yaml.org,2002:str', value=data)
 
 
-def unicode_representer(dumper, data):
-    """
-    Add a custom unicode representer to use block literals for multiline strings in unicode.
-    """
-    if len(data.splitlines()) > 1:
-        return yaml.ScalarNode(tag='tag:yaml.org,2002:str', value=data, style='|')
-    return yaml.ScalarNode(tag='tag:yaml.org,2002:str', value=data)
-
-
 def get_ordinal_indicator(number):
     """
     Returns the ordinal indicator for an integer.
@@ -317,7 +306,7 @@ def get_ordinal_indicator(number):
     ordinal_dict = {1: 'st', 2: 'nd', 3: 'rd'}
     if number > 13:
         number %= 10
-    if number in ordinal_dict.keys():
+    if number in list(ordinal_dict.keys()):
         return ordinal_dict[number]
     return 'th'
 
@@ -345,7 +334,7 @@ def get_atom_radius(symbol):
     Returns:
         float: The atomic covalent radius (None if not found).
     """
-    if not isinstance(symbol, (str, unicode)):
+    if not isinstance(symbol, str):
         raise InputError('the symbol argument must be string, got {0} which is a {1}'.format(symbol, type(symbol)))
 
     if symbol in ATOM_RADII:
@@ -368,11 +357,11 @@ def determine_symmetry(xyz):
     """
     atom_numbers = list()  # List of atomic numbers
     for symbol in xyz['symbols']:
-        atom_numbers.append(getElement(str(symbol)).number)
+        atom_numbers.append(get_element(symbol).number)
     # coords is an N x 3 numpy.ndarray of atomic coordinates in the same order as `atom_numbers`
     coords = np.array(xyz['coords'], np.float64)
     unique_id = '0'  # Just some name that the SYMMETRY code gives to one of its jobs
-    scr_dir = os.path.join(arc_path, str('scratch'))  # Scratch directory that the SYMMETRY code writes its files in
+    scr_dir = os.path.join(arc_path, 'scratch')  # Scratch directory that the SYMMETRY code writes its files in
     if not os.path.exists(scr_dir):
         os.makedirs(scr_dir)
     symmetry = optical_isomers = 1
@@ -380,14 +369,14 @@ def determine_symmetry(xyz):
         groundStateDegeneracy=1,  # Only needed to check if valid QMData
         numberOfAtoms=len(atom_numbers),
         atomicNumbers=atom_numbers,
-        atomCoords=(coords, str('angstrom')),
-        energy=(0.0, str('kcal/mol'))  # Only needed to avoid error
+        atomCoords=(coords, 'angstrom'),
+        energy=(0.0, 'kcal/mol')  # Only needed to avoid error
     )
-    settings = type(str(''), (), dict(symmetryPath=str('symmetry'), scratchDirectory=scr_dir))()
+    settings = type('', (), dict(symmetryPath='symmetry', scratchDirectory=scr_dir))()
     pgc = PointGroupCalculator(settings, unique_id, qmdata)
     pg = pgc.calculate()
     if pg is not None:
-        symmetry = pg.symmetryNumber
+        symmetry = pg.symmetry_number
         optical_isomers = 2 if pg.chiral else optical_isomers
     return symmetry, optical_isomers
 
@@ -459,7 +448,7 @@ def initialize_job_types(job_types, specific_job_type=''):
             if job_type == '1d_rotors':
                 logging.error("Note: The `1d_rotors` job type was renamed to simply `rotors`. "
                               "Please modify your input accordingly (see ARC's documentation for examples).")
-            raise InputError("Job type '{0}' not supported. Check the job types dictionary "
+            raise InputError("Job type '{0}' is not supported. Check the job types dictionary "
                              "(either in ARC's input or in default_job_types under settings).".format(job_type))
     job_types_report = [job_type for job_type, val in job_types.items() if val]
     logger.info('\nConsidering the following job types: {0}\n'.format(job_types_report))

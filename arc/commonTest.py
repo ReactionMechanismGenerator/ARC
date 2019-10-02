@@ -5,7 +5,6 @@
 This module contains unit tests for ARC's common module
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
 import unittest
 import os
 import time
@@ -67,7 +66,7 @@ class TestARC(unittest.TestCase):
 
     def test_check_ess_settings(self):
         """Test the check_ess_settings function"""
-        server_names = servers.keys()
+        server_names = list(servers.keys())
         ess_settings1 = {'gaussian': [server_names[0]], 'molpro': [server_names[1], server_names[0]],
                          'qchem': [server_names[0]]}
         ess_settings2 = {'gaussian': server_names[0], 'molpro': server_names[1], 'qchem': server_names[0]}
