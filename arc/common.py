@@ -570,12 +570,12 @@ def sort_two_lists_by_the_first(list1, list2):
         InputError: If types are wrong, or lists are not the same length.
     """
     if not isinstance(list1, (list, tuple)) or not isinstance(list2, (list, tuple)):
-        raise InputError(f'Arguments must be lists, got: {type(list1)} and {type(list2)}')
+        raise InputError('Arguments must be lists, got: {type(list1)} and {type(list2)}')
     for entry in list1:
         if not isinstance(entry, (float, int)) and entry is not None:
-            raise InputError(f'Entries of list1 must be either floats or integers, got: {type(entry)}.')
+            raise InputError('Entries of list1 must be either floats or integers, got: {type(entry)}.')
     if len(list1) != len(list2):
-        raise InputError(f'Both lists must be the same length, got {len(list1)} and {len(list2)}')
+        raise InputError('Both lists must be the same length, got {len(list1)} and {len(list2)}')
 
     # remove None entries from list1 and their respective entries from list2:
     new_list1, new_list2 = list(), list()
