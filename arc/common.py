@@ -423,6 +423,10 @@ def initialize_job_types(job_types, specific_job_type=''):
         except KeyError:
             raise InputError('Specified job type "{0}" is not supported'.format(specific_job_type))
 
+    if specific_job_type == 'bde':
+        bde_default = {'opt': True, 'fine_grid': True, 'freq': True, 'sp': True}
+        job_types.update(bde_default)
+
     defaults_to_true = ['conformers', 'opt', 'fine', 'freq', 'sp', 'rotors']
     defaults_to_false = ['onedmin', 'orbitals', 'bde']
     if job_types is None:
