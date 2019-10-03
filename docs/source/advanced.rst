@@ -26,6 +26,23 @@ Currently, ARC supports the following job types: ``conformers``, ``opt``, ``fine
 Notice that ``specific_job_type`` takes higher precedence than ``job_types``. If you specify both attributes, ARC will
 dismiss the given ``job_types`` and will only populate the ``job_types`` dictionary using given ``specific_job_type``.
 
+For bond dissociation energy calculation, the following two ``job_types`` specifications are equivalent::
+
+Specification 1::
+
+    job_types:
+      rotors: false
+      conformers: false
+      fine_grid: true
+      freq: true
+      opt: true
+      sp: true
+      bde: true
+
+Specification 2::
+
+    specific_job_type : bde
+
 Using a fine DFT grid for optimization
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -508,6 +525,31 @@ Below is an example requesting all hydrogen BDEs in ethanol including the `C--O`
       opt: true
       sp: true
       bde: true
+
+    species:
+    - label: ethanol
+      smiles: CCO
+      xyz: |
+        O       1.20823797   -0.43654321    0.79046266
+        C       0.38565457    0.37473766   -0.03466399
+        C      -0.94122817   -0.32248828   -0.24592109
+        H       0.89282946    0.53292877   -0.99112072
+        H       0.23767951    1.34108205    0.45660206
+        H      -0.79278514   -1.30029213   -0.71598886
+        H      -1.43922693   -0.50288055    0.71249177
+        H      -1.60098471    0.27712988   -0.87920708
+        H       2.04982343    0.03632579    0.90734524
+      bdes:
+      - all_h
+      - - 1
+        - 2
+
+Note: In the above example, the BDE calculation is not based on the geometry specified by the given xyz,
+but on the optimal geometry determined by ARC. To calculate the same BDEs in ethanol using specified geometry, use::
+
+    project: ethanol_BDEs_specific_geometry
+
+    specific_job_type : bde
 
     species:
     - label: ethanol
