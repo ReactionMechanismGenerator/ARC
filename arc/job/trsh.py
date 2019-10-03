@@ -1,23 +1,23 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # encoding: utf-8
+
 """
 The ARC troubleshooting ("trsh") module
 """
 
-
-from __future__ import (absolute_import, division, print_function, unicode_literals)
 import logging
 import os
 
 import cclib
 import numpy as np
 
-from arc.exceptions import SpeciesError, TrshError
 from arc.common import get_logger, determine_ess
+from arc.exceptions import SpeciesError, TrshError
+from arc.job.ssh import SSHClient
 from arc.settings import servers, delete_command, list_available_nodes_command, submit_filename, \
     inconsistency_ab, inconsistency_az, maximum_barrier, rotor_scan_resolution
 from arc.species.converter import xyz_from_data
-from arc.job.ssh import SSHClient
+
 
 logger = get_logger()
 
@@ -47,6 +47,9 @@ def determine_ess_status(output_path, species_label, job_type, software=None):
     keywords, error, = list(), ''
     with open(output_path, 'r') as f:
         lines = f.readlines()
+
+        if len(lines) < 5:
+            return 'errored', ['NoOutput'], 'Log file could not be read', ''
 
         if software == 'gaussian':
             for line in lines[-1:-20:-1]:
@@ -552,7 +555,7 @@ def trsh_ess_job(label, level_of_theory, server, job_status, job_type, software,
             # job_status will be for example `'errored: additional memory (mW) required: 996.31'`.
             # The number is the ADDITIONAL memory required
             ess_trsh_methods.append('memory')
-            add_mem = float(job_status.split()[-1])  # parse Molpro's requirement in MW
+            add_mem = float(job_status['error'].split()[-2])  # parse Molpro's requirement in MW
             add_mem = int(np.ceil(add_mem / 100.0)) * 100  # round up to the next hundred
             memory = memory_gb + add_mem / 128. + 5  # convert MW to GB, add 5 extra GB (be conservative)
             logger.info('Troubleshooting {type} job in {software} for {label} using memory: {mem} GB instead of '

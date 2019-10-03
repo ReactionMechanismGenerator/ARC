@@ -1,16 +1,13 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
+# encoding: utf-8
 
 """
 This module contains unit tests of the arc.job.submit module
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
 import unittest
 
 from arc.job.submit import submit_scripts
-
-################################################################################
 
 
 class TestSubmit(unittest.TestCase):
@@ -23,8 +20,6 @@ class TestSubmit(unittest.TestCase):
         for server in submit_scripts.keys():
             self.assertTrue(server in ['pharos', 'c3ddb', 'rmg'])
 
-
-################################################################################
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

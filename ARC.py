@@ -1,19 +1,16 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # encoding: utf-8
 
 """
 ARC - Automatic Rate Calculator
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
 import argparse
-import os
 import logging
+import os
 
-from arc.main import ARC
 from arc.common import read_yaml_file
-
-################################################################################
+from arc.main import ARC
 
 
 def parse_command_line_arguments(command_line_args=None):

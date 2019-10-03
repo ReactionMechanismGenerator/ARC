@@ -1,9 +1,5 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # encoding: utf-8
-
-
-##################################################################
-
 
 """
 parameters for input files:
@@ -115,8 +111,8 @@ table,E_mrci,E_mrci_Davidson;
 
 """,
 
-    'arkane_input_species': """#!/usr/bin/env python
-# -*- coding: utf-8 -*-
+    'arkane_input_species': """#!/usr/bin/env python3
+# encoding: utf-8
 
 {bonds}externalSymmetry = {symmetry}
 

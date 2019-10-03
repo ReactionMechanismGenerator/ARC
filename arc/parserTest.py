@@ -1,21 +1,18 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
+# encoding: utf-8
 
 """
 This module contains unit tests for the parser functions
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
-import unittest
-import os
 import numpy as np
+import os
+import unittest
 
+import arc.parser as parser
 from arc.settings import arc_path
 from arc.species import ARCSpecies
 from arc.species.converter import xyz_to_str
-from arc import parser
-
-################################################################################
 
 
 class TestParser(unittest.TestCase):
@@ -98,6 +95,19 @@ class TestParser(unittest.TestCase):
         e_elect = parser.parse_e_elect(path2, zpe_scale_factor=0.99)
         self.assertEqual(e_elect, -1833127.0939478774)
 
+    def test_parse_zpe(self):
+        """Test the parse_zpe() function for parsing zero point energies"""
+        path1 = os.path.join(arc_path, 'arc', 'testing', 'C2H6_freq_QChem.out')
+        path2 = os.path.join(arc_path, 'arc', 'testing', 'CH2O_freq_molpro.out')
+        path3 = os.path.join(arc_path, 'arc', 'testing', 'NO3_freq_QChem_fails_on_cclib.out')
+        path4 = os.path.join(arc_path, 'arc', 'testing', 'SO2OO_CBS-QB3.log')
+        zpe1, zpe2, zpe3, zpe4 = parser.parse_zpe(path1), parser.parse_zpe(path2), parser.parse_zpe(path3), \
+            parser.parse_zpe(path4)
+        self.assertAlmostEqual(zpe1, 198.08311200000, 5)
+        self.assertAlmostEqual(zpe2, 69.793662734869, 5)
+        self.assertAlmostEqual(zpe3, 25.401064000000, 5)
+        self.assertAlmostEqual(zpe4, 39.368057626223, 5)
+
     def test_parse_dipole_moment(self):
         """Test parsing the dipole moment from an opt job output file"""
         path1 = os.path.join(arc_path, 'arc', 'testing', 'SO2OO_CBS-QB3.log')
@@ -158,8 +168,6 @@ class TestParser(unittest.TestCase):
         self.assertTrue(all([e is not None for e in spc5.conformer_energies]))
         spc6 = ARCSpecies(label='tst6', xyz=path3)
         self.assertEqual(len(spc6.conformers), 4)
-
-################################################################################
 
 
 if __name__ == '__main__':

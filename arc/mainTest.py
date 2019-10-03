@@ -1,27 +1,24 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
+# encoding: utf-8
 
 """
 This module contains unit tests for the arc.main module
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
-import unittest
 import os
 import shutil
+import unittest
 
 from rmgpy import settings
 from rmgpy.data.rmg import RMGDatabase
-from rmgpy.species import Species
 from rmgpy.molecule.molecule import Molecule
+from rmgpy.species import Species
 
-from arc.main import ARC
 from arc.common import read_yaml_file
-from arc.species.species import ARCSpecies
-from arc.settings import arc_path, servers
 from arc.exceptions import InputError
-
-################################################################################
+from arc.main import ARC
+from arc.settings import arc_path, servers
+from arc.species.species import ARCSpecies
 
 
 class TestARC(unittest.TestCase):
@@ -49,10 +46,14 @@ class TestARC(unittest.TestCase):
 
     def test_as_dict(self):
         """Test the as_dict() method of ARC"""
-        spc1 = ARCSpecies(label='spc1', smiles=str('CC'), generate_thermo=False)
+        spc1 = ARCSpecies(label='spc1', smiles='CC', generate_thermo=False)
         arc0 = ARC(project='arc_test', job_types=self.job_types1, initial_trsh='scf=(NDump=30)',
                    arc_species_list=[spc1], level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)')
         restart_dict = arc0.as_dict()
+        long_thermo_description = restart_dict['species'][0]['long_thermo_description']
+        self.assertIn('Bond corrections:', long_thermo_description)
+        self.assertIn("'C-C': 1", long_thermo_description)
+        self.assertIn("'C-H': 6", long_thermo_description)
         expected_dict = {'composite_method': '',
                          'conformer_level': 'b3lyp/6-31g(d,p) empiricaldispersion=gd3bj',
                          'ts_guess_level': 'b3lyp/6-31g(d,p) empiricaldispersion=gd3bj',
@@ -96,12 +97,14 @@ class TestARC(unittest.TestCase):
                                       'generate_thermo': False,
                                       'is_ts': False,
                                       'label': 'spc1',
-                                      'long_thermo_description': "Bond corrections: {'C-C': 1, 'C-H': 6}\n",
-                                      'mol': '1 C u0 p0 c0 {2,S} {3,S} {4,S} {5,S}\n2 C u0 p0 c0 {1,S} {6,S} {7,S} {8,S}\n3 H u0 p0 c0 {1,S}\n4 H u0 p0 c0 {1,S}\n5 H u0 p0 c0 {1,S}\n6 H u0 p0 c0 {2,S}\n7 H u0 p0 c0 {2,S}\n8 H u0 p0 c0 {2,S}\n',
+                                      'long_thermo_description': long_thermo_description,
+                                      'mol': '1 C u0 p0 c0 {2,S} {3,S} {4,S} {5,S}\n2 C u0 p0 c0 {1,S} {6,S} {7,S} '
+                                             '{8,S}\n3 H u0 p0 c0 {1,S}\n4 H u0 p0 c0 {1,S}\n5 H u0 p0 c0 {1,S}\n6 H '
+                                             'u0 p0 c0 {2,S}\n7 H u0 p0 c0 {2,S}\n8 H u0 p0 c0 {2,S}\n',
                                       'multiplicity': 1,
                                       'neg_freqs_trshed': [],
                                       'number_of_rotors': 0,
-                                      'force_field': 'MMFF94',
+                                      'force_field': 'MMFF94s',
                                       't1': None}],
                          }
         self.assertEqual(restart_dict, expected_dict)
@@ -131,7 +134,9 @@ class TestARC(unittest.TestCase):
                                      'generate_thermo': False,
                                      'is_ts': False,
                                      'label': 'testing_spc1',
-                                     'mol': '1 C u0 p0 c0 {2,S} {3,S} {4,S} {5,S}\n2 C u0 p0 c0 {1,S} {6,S} {7,S} {8,S}\n3 H u0 p0 c0 {1,S}\n4 H u0 p0 c0 {1,S}\n5 H u0 p0 c0 {1,S}\n6 H u0 p0 c0 {2,S}\n7 H u0 p0 c0 {2,S}\n8 H u0 p0 c0 {2,S}\n',
+                                     'mol': '1 C u0 p0 c0 {2,S} {3,S} {4,S} {5,S}\n2 C u0 p0 c0 {1,S} {6,S} {7,S} {8,S}'
+                                            '\n3 H u0 p0 c0 {1,S}\n4 H u0 p0 c0 {1,S}\n5 H u0 p0 c0 {1,S}\n6 H u0 p0 '
+                                            'c0 {2,S}\n7 H u0 p0 c0 {2,S}\n8 H u0 p0 c0 {2,S}\n',
                                      'multiplicity': 1,
                                      'neg_freqs_trshed': [],
                                      'number_of_rotors': 0,
@@ -166,129 +171,129 @@ class TestARC(unittest.TestCase):
         with self.assertRaises(InputError):
             ARC(project='ar%c')
 
-    # def test_restart(self):
-    #     """
-    #     Test restarting ARC through the ARC class in main.py via the input_dict argument of the API
-    #     Rather than through ARC.py. Check that all files are in place and the log file content.
-    #     """
-    #     restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart', 'restart(H,H2O2,N2H3,CH3CO2).yml')
-    #     project = 'arc_project_for_testing_delete_after_usage2'
-    #     project_directory = os.path.join(arc_path, 'Projects', project)
-    #     arc1 = ARC(project=project, input_dict=restart_path, project_directory=project_directory)
-    #     arc1.execute()
-    #     self.assertEqual(arc1.freq_scale_factor, 0.988)
-    #
-    #     self.assertTrue(os.path.isfile(os.path.join(project_directory, 'output', 'thermo.info')))
-    #     with open(os.path.join(project_directory, 'output', 'thermo.info'), 'r') as f:
-    #         thermo_dft_ccsdtf12_bac = False
-    #         for line in f.readlines():
-    #             if 'thermo_DFT_CCSDTF12_BAC' in line:
-    #                 thermo_dft_ccsdtf12_bac = True
-    #                 break
-    #     self.assertTrue(thermo_dft_ccsdtf12_bac)
-    #
-    #     with open(os.path.join(project_directory, 'arc_project_for_testing_delete_after_usage2.info'), 'r') as f:
-    #         sts, n2h3, oet, lot, ap = False, False, False, False, False
-    #         for line in f.readlines():
-    #             if 'Considered the following species and TSs:' in line:
-    #                 sts = True
-    #             elif 'Species N2H3' in line:
-    #                 n2h3 = True
-    #             elif 'Overall time since project initiation:' in line:
-    #                 oet = True
-    #             elif 'Levels of theory used:' in line:
-    #                 lot = True
-    #             elif 'ARC project arc_project_for_testing_delete_after_usage2' in line:
-    #                 ap = True
-    #     self.assertTrue(sts)
-    #     self.assertTrue(n2h3)
-    #     self.assertTrue(oet)
-    #     self.assertTrue(lot)
-    #     self.assertTrue(ap)
-    #
-    #     with open(os.path.join(project_directory, 'arc.log'), 'r') as f:
-    #         aei, ver, git, spc, rtm, ldb, therm, src, ter =\
-    #             False, False, False, False, False, False, False, False, False
-    #         for line in f.readlines():
-    #             if 'ARC execution initiated on' in line:
-    #                 aei = True
-    #             elif '#   Version:' in line:
-    #                 ver = True
-    #             elif 'The current git HEAD for ARC is:' in line:
-    #                 git = True
-    #             elif 'Considering species: CH3CO2_rad' in line:
-    #                 spc = True
-    #             elif 'All jobs for species N2H3 successfully converged. Run time' in line:
-    #                 rtm = True
-    #             elif 'Loading the RMG database...' in line:
-    #                 ldb = True
-    #             elif 'Thermodynamics for H2O2' in line:
-    #                 therm = True
-    #             elif 'Sources of thermoproperties determined by RMG for the parity plots:' in line:
-    #                 src = True
-    #             elif 'ARC execution terminated on' in line:
-    #                 ter = True
-    #     self.assertTrue(aei)
-    #     self.assertTrue(ver)
-    #     self.assertTrue(git)
-    #     self.assertTrue(spc)
-    #     self.assertTrue(rtm)
-    #     self.assertTrue(ldb)
-    #     self.assertTrue(therm)
-    #     self.assertTrue(src)
-    #     self.assertTrue(ter)
-    #
-    #     self.assertTrue(os.path.isfile(os.path.join(project_directory, 'output', 'thermo_parity_plots.pdf')))
-    #
-    #     status = read_yaml_file(os.path.join(project_directory, 'output', 'status.yml'))
-    #     self.assertEqual(status['CH3CO2_rad']['isomorphism'],
-    #                      'opt passed isomorphism check; '
-    #                      'Conformers optimized and compared at b3lyp/6-31g(d,p) empiricaldispersion=gd3bj; ')
-    #     self.assertTrue(status['CH3CO2_rad']['job_types']['sp'])
-    #
-    #     with open(os.path.join(project_directory, 'output', 'Species', 'H2O2', 'arkane', 'species_dictionary.txt'),
-    #               'r') as f:
-    #         lines = f.readlines()
-    #     adj_list = ''
-    #     for line in lines:
-    #         if 'H2O2' not in line:
-    #             adj_list += line
-    #         if line == '\n':
-    #             break
-    #     mol1 = Molecule().fromAdjacencyList(str(adj_list))
-    #     self.assertEqual(mol1.toSMILES(), str('OO'))
-    #
-    #     thermo_library_path = os.path.join(project_directory, 'output', 'RMG libraries', 'thermo',
-    #                                        'arc_project_for_testing_delete_after_usage2.py')
-    #     new_thermo_library_path = os.path.join(settings['database.directory'], 'thermo', 'libraries',
-    #                                            'arc_project_for_testing_delete_after_usage2.py')
-    #     # copy the generated library to RMG-database
-    #     shutil.copyfile(thermo_library_path, new_thermo_library_path)
-    #     db = RMGDatabase()
-    #     db.load(
-    #         path=settings['database.directory'],
-    #         thermoLibraries=[str('arc_project_for_testing_delete_after_usage2')],
-    #         transportLibraries=[],
-    #         reactionLibraries=[],
-    #         seedMechanisms=[],
-    #         kineticsFamilies='none',
-    #         kineticsDepositories=[],
-    #         statmechLibraries=None,
-    #         depository=False,
-    #         solvation=False,
-    #         testing=True,
-    #     )
-    #
-    #     spc2 = Species().fromSMILES(str('CC([O])=O'))
-    #     spc2.generate_resonance_structures()
-    #     spc2.thermo = db.thermo.getThermoData(spc2)
-    #     self.assertAlmostEqual(spc2.getEnthalpy(298), -212439.26998495663, 1)
-    #     self.assertAlmostEqual(spc2.getEntropy(298), 283.3972662956835, 1)
-    #     self.assertAlmostEqual(spc2.getHeatCapacity(1000), 118.751379824224, 1)
-    #     self.assertTrue('arc_project_for_testing_delete_after_usage2' in spc2.thermo.comment)
-    #
-    #     # delete the generated library from RMG-database
-    #     os.remove(new_thermo_library_path)
+    def test_restart(self):
+        """
+        Test restarting ARC through the ARC class in main.py via the input_dict argument of the API
+        Rather than through ARC.py. Check that all files are in place and the log file content.
+        """
+        restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart', 'restart(H,H2O2,N2H3,CH3CO2).yml')
+        project = 'arc_project_for_testing_delete_after_usage2'
+        project_directory = os.path.join(arc_path, 'Projects', project)
+        arc1 = ARC(project=project, input_dict=restart_path, project_directory=project_directory)
+        arc1.execute()
+        self.assertEqual(arc1.freq_scale_factor, 0.988)
+
+        self.assertTrue(os.path.isfile(os.path.join(project_directory, 'output', 'thermo.info')))
+        with open(os.path.join(project_directory, 'output', 'thermo.info'), 'r') as f:
+            thermo_dft_ccsdtf12_bac = False
+            for line in f.readlines():
+                if 'thermo_DFT_CCSDTF12_BAC' in line:
+                    thermo_dft_ccsdtf12_bac = True
+                    break
+        self.assertTrue(thermo_dft_ccsdtf12_bac)
+
+        with open(os.path.join(project_directory, 'arc_project_for_testing_delete_after_usage2.info'), 'r') as f:
+            sts, n2h3, oet, lot, ap = False, False, False, False, False
+            for line in f.readlines():
+                if 'Considered the following species and TSs:' in line:
+                    sts = True
+                elif 'Species N2H3' in line:
+                    n2h3 = True
+                elif 'Overall time since project initiation:' in line:
+                    oet = True
+                elif 'Levels of theory used:' in line:
+                    lot = True
+                elif 'ARC project arc_project_for_testing_delete_after_usage2' in line:
+                    ap = True
+        self.assertTrue(sts)
+        self.assertTrue(n2h3)
+        self.assertTrue(oet)
+        self.assertTrue(lot)
+        self.assertTrue(ap)
+
+        with open(os.path.join(project_directory, 'arc.log'), 'r') as f:
+            aei, ver, git, spc, rtm, ldb, therm, src, ter =\
+                False, False, False, False, False, False, False, False, False
+            for line in f.readlines():
+                if 'ARC execution initiated on' in line:
+                    aei = True
+                elif '#   Version:' in line:
+                    ver = True
+                elif 'The current git HEAD for ARC is:' in line:
+                    git = True
+                elif 'Considering species: CH3CO2_rad' in line:
+                    spc = True
+                elif 'All jobs for species N2H3 successfully converged. Run time' in line:
+                    rtm = True
+                elif 'Loading the RMG database...' in line:
+                    ldb = True
+                elif 'Thermodynamics for H2O2' in line:
+                    therm = True
+                elif 'Sources of thermoproperties determined by RMG for the parity plots:' in line:
+                    src = True
+                elif 'ARC execution terminated on' in line:
+                    ter = True
+        self.assertTrue(aei)
+        self.assertTrue(ver)
+        self.assertTrue(git)
+        self.assertTrue(spc)
+        self.assertTrue(rtm)
+        self.assertTrue(ldb)
+        self.assertTrue(therm)
+        self.assertTrue(src)
+        self.assertTrue(ter)
+
+        self.assertTrue(os.path.isfile(os.path.join(project_directory, 'output', 'thermo_parity_plots.pdf')))
+
+        status = read_yaml_file(os.path.join(project_directory, 'output', 'status.yml'))
+        self.assertEqual(status['CH3CO2_rad']['isomorphism'],
+                         'opt passed isomorphism check; '
+                         'Conformers optimized and compared at b3lyp/6-31g(d,p) empiricaldispersion=gd3bj; ')
+        self.assertTrue(status['CH3CO2_rad']['job_types']['sp'])
+
+        with open(os.path.join(project_directory, 'output', 'Species', 'H2O2', 'arkane', 'species_dictionary.txt'),
+                  'r') as f:
+            lines = f.readlines()
+        adj_list = ''
+        for line in lines:
+            if 'H2O2' not in line:
+                adj_list += line
+            if line == '\n':
+                break
+        mol1 = Molecule().from_adjacency_list(adj_list)
+        self.assertEqual(mol1.to_smiles(), 'OO')
+
+        thermo_library_path = os.path.join(project_directory, 'output', 'RMG libraries', 'thermo',
+                                           'arc_project_for_testing_delete_after_usage2.py')
+        new_thermo_library_path = os.path.join(settings['database.directory'], 'thermo', 'libraries',
+                                               'arc_project_for_testing_delete_after_usage2.py')
+        # copy the generated library to RMG-database
+        shutil.copyfile(thermo_library_path, new_thermo_library_path)
+        db = RMGDatabase()
+        db.load(
+            path=settings['database.directory'],
+            thermo_libraries=['arc_project_for_testing_delete_after_usage2'],
+            transport_libraries=[],
+            reaction_libraries=[],
+            seed_mechanisms=[],
+            kinetics_families='none',
+            kinetics_depositories=[],
+            statmech_libraries=None,
+            depository=False,
+            solvation=False,
+            testing=True,
+        )
+
+        spc2 = Species().from_smiles('CC([O])=O')
+        spc2.generate_resonance_structures()
+        spc2.thermo = db.thermo.get_thermo_data(spc2)
+        self.assertAlmostEqual(spc2.get_enthalpy(298), -212439.26998495663, 1)
+        self.assertAlmostEqual(spc2.get_entropy(298), 283.3972662956835, 1)
+        self.assertAlmostEqual(spc2.get_heat_capacity(1000), 118.751379824224, 1)
+        self.assertTrue('arc_project_for_testing_delete_after_usage2' in spc2.thermo.comment)
+
+        # delete the generated library from RMG-database
+        os.remove(new_thermo_library_path)
 
     def test_determine_model_chemistry_and_freq_scale_factor(self):
         """Test determining the model chemistry and the frequency scaling factor"""
@@ -312,26 +317,26 @@ class TestARC(unittest.TestCase):
 
     def test_determine_unique_species_labels(self):
         """Test the determine_unique_species_labels method"""
-        spc0 = ARCSpecies(label='spc0', smiles=str('CC'), generate_thermo=False)
-        spc1 = ARCSpecies(label='spc1', smiles=str('CC'), generate_thermo=False)
-        spc2 = ARCSpecies(label='spc2', smiles=str('CC'), generate_thermo=False)
+        spc0 = ARCSpecies(label='spc0', smiles='CC', generate_thermo=False)
+        spc1 = ARCSpecies(label='spc1', smiles='CC', generate_thermo=False)
+        spc2 = ARCSpecies(label='spc2', smiles='CC', generate_thermo=False)
         arc0 = ARC(project='arc_test', job_types=self.job_types1, arc_species_list=[spc0, spc1, spc2],
                    level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)')
         self.assertEqual(arc0.unique_species_labels, ['spc0', 'spc1', 'spc2'])
-        spc3 = ARCSpecies(label='spc0', smiles=str('CC'), generate_thermo=False)
+        spc3 = ARCSpecies(label='spc0', smiles='CC', generate_thermo=False)
         arc0.arc_species_list.append(spc3)
         with self.assertRaises(ValueError):
             arc0.determine_unique_species_labels()
 
     def test_add_hydrogen_for_bde(self):
         """Test the add_hydrogen_for_bde method"""
-        spc0 = ARCSpecies(label='spc0', smiles=str('CC'), generate_thermo=False)
+        spc0 = ARCSpecies(label='spc0', smiles='CC', generate_thermo=False)
         arc0 = ARC(project='arc_test', job_types=self.job_types1, arc_species_list=[spc0],
                    level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)')
         arc0.add_hydrogen_for_bde()
         self.assertEqual(len(arc0.arc_species_list), 1)
 
-        spc1 = ARCSpecies(label='spc1', smiles=str('CC'), generate_thermo=False, bdes=['all_h'])
+        spc1 = ARCSpecies(label='spc1', smiles='CC', generate_thermo=False, bdes=['all_h'])
         arc1 = ARC(project='arc_test', job_types=self.job_types1, arc_species_list=[spc1],
                    level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)')
         arc1.add_hydrogen_for_bde()
@@ -351,8 +356,6 @@ class TestARC(unittest.TestCase):
         for project in projects:
             project_directory = os.path.join(arc_path, 'Projects', project)
             shutil.rmtree(project_directory)
-
-################################################################################
 
 
 if __name__ == '__main__':

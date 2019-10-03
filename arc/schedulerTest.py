@@ -1,11 +1,10 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
+# encoding: utf-8
 
 """
 This module contains unit tests for the arc.scheduler module
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
 import unittest
 import os
 import shutil
@@ -32,8 +31,8 @@ class TestScheduler(unittest.TestCase):
         cls.maxDiff = None
         cls.ess_settings = {'gaussian': ['server1'], 'molpro': ['server2', 'server1'], 'qchem': ['server1']}
         cls.project_directory = os.path.join(arc_path, 'Projects', 'arc_project_for_testing_delete_after_usage3')
-        cls.spc1 = ARCSpecies(label=str('methylamine'), smiles=str('CN'))
-        cls.spc2 = ARCSpecies(label=str('C2H6'), smiles=str('CC'))
+        cls.spc1 = ARCSpecies(label='methylamine', smiles='CN')
+        cls.spc2 = ARCSpecies(label='C2H6', smiles='CC')
         xyz = {'symbols': ('C',), 'isotopes': (12,), 'coords': ((0.0, 0.0, 0.0),)}
         cls.job1 = Job(project='project_test', ess_settings=cls.ess_settings, species_name='methylamine',
                        xyz=xyz, job_type='conformer', conformer=0, level_of_theory='b97-d3/6-311+g(d,p)',
@@ -129,7 +128,7 @@ class TestScheduler(unittest.TestCase):
         label = 'C2H6'
         self.job3.local_path_to_output_file = os.path.join(arc_path, 'arc', 'testing', 'C2H6_freq_QChem.out')
         self.job3.job_status = ['done', {'status': 'done', 'keywords': list(), 'error': '', 'line': ''}]
-        vibfreqs = parser.parse_frequencies(path=str(self.job3.local_path_to_output_file), software=self.job3.software)
+        vibfreqs = parser.parse_frequencies(path=self.job3.local_path_to_output_file, software=self.job3.software)
         self.assertTrue(self.sched1.check_negative_freq(label=label, job=self.job3, vibfreqs=vibfreqs))
 
     def test_determine_adaptive_level(self):
@@ -248,8 +247,6 @@ class TestScheduler(unittest.TestCase):
             project_directory = os.path.join(arc_path, 'Projects', project)
             shutil.rmtree(project_directory)
 
-
-################################################################################
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

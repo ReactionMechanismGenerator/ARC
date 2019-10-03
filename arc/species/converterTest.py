@@ -1,11 +1,10 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
+# encoding: utf-8
 
 """
 This module contains unit tests of the arc.species.converter module
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
 import unittest
 
 from rdkit.Chem import rdMolTransforms as rdMT, rdchem
@@ -14,8 +13,8 @@ from rmgpy.molecule.molecule import Molecule
 from rmgpy.species import Species
 
 import arc.species.converter as converter
-from arc.species.species import ARCSpecies
 from arc.common import almost_equal_coords_lists
+from arc.species.species import ARCSpecies
 
 
 class TestConverter(unittest.TestCase):
@@ -48,8 +47,14 @@ H       0.63003260   -0.63003260   -0.63003260
                                         (0.6300326, 0.6300326, 0.6300326),
                                         (-0.6300326, -0.6300326, 0.6300326),
                                         (-0.6300326, 0.6300326, -0.6300326),
-                                        (0.6300326, -0.6300326, -0.6300326))}
-                    }
+                                        (0.6300326, -0.6300326, -0.6300326))},
+                    'dict_diff_order': {'symbols': ('H', 'C', 'H', 'H', 'H'),
+                                        'isotopes': (1, 12, 1, 1, 1),
+                                        'coords': ((0.6300326, 0.6300326, 0.6300326),
+                                                   (0.0, 0.0, 0.0),
+                                                   (-0.6300326, -0.6300326, 0.6300326),
+                                                   (-0.6300326, 0.6300326, -0.6300326),
+                                                   (0.6300326, -0.6300326, -0.6300326))}}
 
         cls.xyz2 = {'str': """S       1.02558264   -0.04344404   -0.07343859
 O      -0.25448248    1.10710477    0.18359696
@@ -79,8 +84,7 @@ H      -1.43009127    0.23517346   -1.11797908
                                         (-0.49011438, -1.0370438, 0.15365747),
                                         (-0.6486995, -1.85796321, -0.54773423),
                                         (-0.60359153, -1.37304859, 1.18613964),
-                                        (-1.43009127, 0.23517346, -1.11797908))},
-                    }
+                                        (-1.43009127, 0.23517346, -1.11797908))}}
 
         cls.xyz3 = {'str': """O          -0.25448248    1.10710477    0.18359696
 N          -1.30762173    0.15796567   -0.10489290
@@ -98,8 +102,7 @@ H          -1.43009127    0.23517346   -1.11797908
                                         (-0.6486995, -1.85796321, -0.54773423),
                                         (-0.60359153, -1.37304859, 1.18613964),
                                         (1.02558264, -0.04344404, -0.07343859),
-                                        (-1.43009127, 0.23517346, -1.11797908))},
-                    }
+                                        (-1.43009127, 0.23517346, -1.11797908))}}
 
         cls.xyz4 = {'str': """B 0.0000000 0.0000000 0.0000000
 Br 0.0000000 1.9155570 0.0000000
@@ -111,8 +114,7 @@ Br -1.6589210	-0.9577780	0.0000000
                              'coords': ((0.0, 0.0, 0.0),
                                         (0.0, 1.915557, 0.0),
                                         (1.658921, -0.957778, 0.0),
-                                        (-1.658921, -0.957778, 0.0))},
-                    }
+                                        (-1.658921, -0.957778, 0.0))}}
 
         cls.xyz5 = {'str': """O       1.17464110   -0.15309781    0.00000000
 N       0.06304988    0.35149648    0.00000000
@@ -125,8 +127,7 @@ H      -1.29769464   -1.18742971    0.00000000""",
                                         (0.06304988, 0.35149648, 0.0),
                                         (-1.12708952, -0.11333971, 0.0),
                                         (-1.93800144, 0.60171738, 0.0),
-                                        (-1.29769464, -1.18742971, 0.0))},
-                    }
+                                        (-1.29769464, -1.18742971, 0.0))}}
 
         cls.xyz6 = {'str': """S      -0.06618943   -0.12360663   -0.07631983
 O      -0.79539707    0.86755487    1.02675668
@@ -162,8 +163,7 @@ H      -1.34135876    1.49608206    0.53295071
                                         (2.20318015, -0.14715186, -0.64755729),
                                         (1.59252246, 1.5117895, -0.33908352),
                                         (-0.8785689, -2.02453514, 0.38494433),
-                                        (-1.34135876, 1.49608206, 0.53295071))},
-                    }
+                                        (-1.34135876, 1.49608206, 0.53295071))}}
 
         cls.xyz7 = {'str': """O       2.64631000   -0.59546000    0.29327900
 O       2.64275300    2.05718500   -0.72942300
@@ -211,8 +211,7 @@ H       3.16280800    1.25020800   -0.70346900
                                         (-3.727425, -1.732949, 0.818941), (3.024424, -2.448547, -0.568125),
                                         (4.303415, -1.721276, 0.43646), (2.873186, -2.442366, 1.214649),
                                         (-0.974342, 2.001828, 0.168003), (-1.585813, -2.263447, 0.022644),
-                                        (0.811224, -2.603361, 0.132678), (3.162808, 1.250208, -0.703469))}
-}
+                                        (0.811224, -2.603361, 0.132678), (3.162808, 1.250208, -0.703469))}}
 
         cls.xyz8 = {'str': """N      -1.1997440839    -0.1610052059     0.0274738287
 H      -1.4016624407    -0.6229695533    -0.8487034080
@@ -265,8 +264,9 @@ H       3.88922100   -1.31541600    0.16697100
 O      -3.43304800    0.46172100   -1.53075600
 O      -2.89487900    1.76177800   -1.59155700
 H      -2.12457300    1.65249500   -2.17600500""",
-                    'dict': {'symbols': ('O', 'O', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'H', 'H', 'H',
-                                         'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'O', 'O', 'H'),
+                    'dict': {'symbols': ('O', 'O', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C',
+                                         'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H',
+                                         'H', 'H', 'H', 'O', 'O', 'H'),
                              'isotopes': (16, 16, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1,
                                           1, 1, 1, 1, 1, 1, 1, 16, 16, 1),
                              'coords': ((3.132319, 0.769111, -0.080869),
@@ -338,17 +338,91 @@ H      -2.12457300    1.65249500   -2.17600500""",
         """,
                     }
 
-        nh_s_adj = str("""1 N u0 p2 c0 {2,S}
-                          2 H u0 p0 c0 {1,S}""")
-        nh_s_xyz = str("""N       0.50949998    0.00000000    0.00000000
-                          H      -0.50949998    0.00000000    0.00000000""")
-        cls.spc1 = ARCSpecies(label=str('NH2(S)'), adjlist=nh_s_adj, xyz=nh_s_xyz, multiplicity=1, charge=0)
-        spc = Species().fromAdjacencyList(nh_s_adj)
-        cls.spc2 = ARCSpecies(label=str('NH2(S)'), rmg_species=spc, xyz=nh_s_xyz)
+        cls.xyz10 = {'str': """S       0.35915171    1.99254721    1.18490490
+O       0.40385373   -0.65769862    1.03431374
+O      -1.23178399   -0.59559801   -1.39114493
+O       0.69015560   -1.65712867    0.01239391
+C      -0.04261360    0.49595776    0.40364219
+C      -0.80103934    0.51314044   -0.70610325
+H      -1.17387862    1.41490429   -1.17716515
+H       0.95726719    1.46882836    2.26423536
+H      -0.83008868   -1.36939497   -0.94170868
+H       1.65888059   -1.54205855    0.02674995
+""",
+                     'dict': {'symbols': ('S', 'O', 'O', 'O', 'C', 'C', 'H', 'H', 'H', 'H'),
+                              'isotopes': (32, 16, 16, 16, 12, 12, 1, 1, 1, 1),
+                              'coords': ((0.35915171, 1.99254721, 1.1849049),
+                                         (0.40385373, -0.65769862, 1.03431374),
+                                         (-1.23178399, -0.59559801, -1.39114493),
+                                         (0.6901556, -1.65712867, 0.01239391),
+                                         (-0.0426136, 0.49595776, 0.40364219),
+                                         (-0.80103934, 0.51314044, -0.70610325),
+                                         (-1.17387862, 1.41490429, -1.17716515),
+                                         (0.95726719, 1.46882836, 2.26423536),
+                                         (-0.83008868, -1.36939497, -0.94170868),
+                                         (1.65888059, -1.54205855, 0.02674995))},
+                     'dict_diff_order1': {'symbols': ('C', 'O', 'O', 'O', 'S', 'C', 'H', 'H', 'H', 'H'),
+                                          'isotopes': (12, 16, 16, 16, 32, 12, 1, 1, 1, 1),
+                                          'coords': ((-0.0426136, 0.49595776, 0.40364219),
+                                                     (0.40385373, -0.65769862, 1.03431374),
+                                                     (-1.23178399, -0.59559801, -1.39114493),
+                                                     (0.6901556, -1.65712867, 0.01239391),
+                                                     (0.35915171, 1.99254721, 1.1849049),
+                                                     (-0.80103934, 0.51314044, -0.70610325),
+                                                     (-1.17387862, 1.41490429, -1.17716515),
+                                                     (0.95726719, 1.46882836, 2.26423536),
+                                                     (-0.83008868, -1.36939497, -0.94170868),
+                                                     (1.65888059, -1.54205855, 0.02674995))},
+                     'dict_diff_order2': {'symbols': ('O', 'O', 'O', 'S', 'H', 'C', 'H', 'C', 'H', 'H'),
+                                          'isotopes': (16, 16, 16, 32, 1, 12, 1, 12, 1, 1),
+                                          'coords': ((0.6901556, -1.65712867, 0.01239391),
+                                                     (0.40385373, -0.65769862, 1.03431374),
+                                                     (-1.23178399, -0.59559801, -1.39114493),
+                                                     (0.35915171, 1.99254721, 1.1849049),
+                                                     (0.95726719, 1.46882836, 2.26423536),
+                                                     (-0.80103934, 0.51314044, -0.70610325),
+                                                     (-1.17387862, 1.41490429, -1.17716515),
+                                                     (-0.0426136, 0.49595776, 0.40364219),
+                                                     (-0.83008868, -1.36939497, -0.94170868),
+                                                     (1.65888059, -1.54205855, 0.02674995))}}
 
-        cls.spc3 = ARCSpecies(label=str('NCN(S)'), smiles=str('[N]=C=[N]'), multiplicity=1, charge=0)
+        cls.xyz11 = {'str': """C       0.00000000    0.00000000    0.00000000
+H       0.63003260    0.63003260    0.63003260
+H      -0.63003260   -0.63003260    0.63003260
+H      -0.63003260    0.63003260   -0.63003260
+H       0.63003260   -0.63003260   -0.63003260""",  # no line break at the end on purpose
+                     'file': """5
+test methane xyz conversion
+C       0.00000000    0.00000000    0.00000000
+H       0.63003260    0.63003260    0.63003260
+H      -0.63003260   -0.63003260    0.63003260
+H      -0.63003260    0.63003260   -0.63003260
+H       0.63003260   -0.63003260   -0.63003260
+""",
+                     'dict': {'symbols': ('C', 'H', 'H', 'H'),
+                              'isotopes': (12, 1, 1, 1),
+                              'coords': ((0.0, 0.0, 0.0),
+                                         (0.6300326, 0.6300326, 0.6300326),
+                                         (-0.6300326, -0.6300326, 0.6300326),
+                                         (-0.6300326, 0.6300326, -0.6300326))},
+                     'dict_diff_order': {'symbols': ('H', 'C', 'H', 'H'),
+                                         'isotopes': (1, 12, 1, 1),
+                                         'coords': ((0.6300326, 0.6300326, 0.6300326),
+                                                    (0.0, 0.0, 0.0),
+                                                    (-0.6300326, -0.6300326, 0.6300326),
+                                                    (-0.6300326, 0.6300326, -0.6300326))}}
 
-        cls.spc4 = ARCSpecies(label=str('NCN(T)'), smiles=str('[N]=C=[N]'), multiplicity=3, charge=0)
+        nh_s_adj = """1 N u0 p2 c0 {2,S}
+                          2 H u0 p0 c0 {1,S}"""
+        nh_s_xyz = """N       0.50949998    0.00000000    0.00000000
+                          H      -0.50949998    0.00000000    0.00000000"""
+        cls.spc1 = ARCSpecies(label='NH2(S)', adjlist=nh_s_adj, xyz=nh_s_xyz, multiplicity=1, charge=0)
+        spc = Species().from_adjacency_list(nh_s_adj)
+        cls.spc2 = ARCSpecies(label='NH2(S)', rmg_species=spc, xyz=nh_s_xyz)
+
+        cls.spc3 = ARCSpecies(label='NCN(S)', smiles='[N]=C=[N]', multiplicity=1, charge=0)
+
+        cls.spc4 = ARCSpecies(label='NCN(T)', smiles='[N]=C=[N]', multiplicity=3, charge=0)
 
     def test_str_to_xyz(self):
         """Test converting a string xyz format to the ARC xyz format"""
@@ -383,6 +457,23 @@ H      -2.12457300    1.65249500   -2.17600500""",
         self.assertEqual(x, (0.0, 0.6300326, -0.6300326, -0.6300326, 0.6300326))
         self.assertEqual(y, (0.0, 0.6300326, -0.6300326, 0.6300326, -0.6300326))
         self.assertEqual(z, (0.0, 0.6300326, 0.6300326, -0.6300326, -0.6300326))
+
+    def test_xyz_to_coords_list(self):
+        """Test the xyz_to_coords_list function"""
+        xyz_dict = {'symbols': ('O', 'N', 'C', 'H', 'H'),
+                    'isotopes': (16, 14, 12, 1, 1),
+                    'coords': ((1.1746411, -0.15309781, 0.0),
+                               (0.06304988, 0.35149648, 0.0),
+                               (-1.12708952, -0.11333971, 0.0),
+                               (-1.93800144, 0.60171738, 0.0),
+                               (-1.29769464, -1.18742971, 0.0))}
+        coords = converter.xyz_to_coords_list(xyz_dict)
+        expected_coords = [[1.1746411, -0.15309781, 0.0],
+                           [0.06304988, 0.35149648, 0.0],
+                           [-1.12708952, -0.11333971, 0.0],
+                           [-1.93800144, 0.60171738, 0.0],
+                           [-1.29769464, -1.18742971, 0.0]]
+        self.assertEqual(coords, expected_coords)
 
     def test_xyz_to_xyz_file_format(self):
         """Test generating the XYZ file format from the xyz dictionary"""
@@ -471,6 +562,48 @@ H                 -4.01978712   -0.12970163    0.82103635"""
         new_xyz = converter.standardize_xyz_string(xyz)
         self.assertEqual(new_xyz, converter.standardize_xyz_string(expected_xyz))
 
+    def test_check_xyz_dict(self):
+        """Test the check_xyz_dict function"""
+        xyz1 = converter.check_xyz_dict(self.xyz1['str'])
+        self.assertEqual(xyz1, self.xyz1['dict'])
+
+        xyz2 = {'symbols': ('C', 'H', 'H', 'H', 'H'),
+                'coords': ((0.0, 0.0, 0.0),
+                           (0.6300326, 0.6300326, 0.6300326),
+                           (-0.6300326, -0.6300326, 0.6300326),
+                           (-0.6300326, 0.6300326, -0.6300326),
+                           (0.6300326, -0.6300326, -0.6300326))}
+        xyz2 = converter.check_xyz_dict(xyz2)
+        expected_xyz2 = {'symbols': ('C', 'H', 'H', 'H', 'H'),
+                         'isotopes': (12, 1, 1, 1, 1),
+                         'coords': ((0.0, 0.0, 0.0),
+                                    (0.6300326, 0.6300326, 0.6300326),
+                                    (-0.6300326, -0.6300326, 0.6300326),
+                                    (-0.6300326, 0.6300326, -0.6300326),
+                                    (0.6300326, -0.6300326, -0.6300326))}
+        self.assertEqual(xyz2, expected_xyz2)
+
+        xyz3 = 3.0
+        with self.assertRaises(TypeError):
+            converter.check_xyz_dict(xyz3)
+
+        xyz4 = {'coords': ((0.0, 0.0, 0.0),
+                           (0.6300326, 0.6300326, 0.6300326),
+                           (-0.6300326, -0.6300326, 0.6300326),
+                           (-0.6300326, 0.6300326, -0.6300326),
+                           (0.6300326, -0.6300326, -0.6300326))}
+        with self.assertRaises(ValueError):
+            converter.check_xyz_dict(xyz4)
+
+        xyz5 = {'symbols': ('C', 'H', 'H', 'H', 'H', 'S', 'S', 'S'),
+                'coords': ((0.0, 0.0, 0.0),
+                           (0.6300326, 0.6300326, 0.6300326),
+                           (-0.6300326, -0.6300326, 0.6300326),
+                           (-0.6300326, 0.6300326, -0.6300326),
+                           (0.6300326, -0.6300326, -0.6300326))}
+        with self.assertRaises(ValueError):
+            converter.check_xyz_dict(xyz5)
+
     def test_xyz_to_pybel_mol(self):
         """Test xyz conversion into Open Babel"""
         pbmol1 = converter.xyz_to_pybel_mol(self.xyz1['dict'])
@@ -536,55 +669,52 @@ H                 -4.01978712   -0.12970163    0.82103635"""
         self.assertTrue(isinstance(mol1, Molecule))
         self.assertTrue(isinstance(mol2, Molecule))
 
-        smi1 = mol1.toSMILES()
-        smi2 = mol2.toSMILES()
-
-        self.assertEqual(smi1, '[O]N=O')
-        self.assertEqual(smi2, 'C1NOS1')
+        self.assertEqual(mol1.to_smiles(), '[O]N=O')
+        self.assertEqual(mol2.to_smiles(), 'C1NOS1')
 
     def test_elementize(self):
-        """Test converting an RMG:Atom's atomType to its elemental atomType"""
-        mol = Molecule(SMILES=str('O=C=O'))
+        """Test converting an RMG:Atom's atom type to its elemental atom type"""
+        mol = Molecule(smiles='O=C=O')
         atom1 = mol.atoms[0]
         atom2 = mol.atoms[1]
-        self.assertEqual(atom1.atomType.label, 'O2d')
-        self.assertEqual(atom2.atomType.label, 'Cdd')
+        self.assertEqual(atom1.atomtype.label, 'O2d')
+        self.assertEqual(atom2.atomtype.label, 'Cdd')
         converter.elementize(atom1)
         converter.elementize(atom2)
-        self.assertEqual(atom1.atomType.label, 'O')
-        self.assertEqual(atom2.atomType.label, 'C')
+        self.assertEqual(atom1.atomtype.label, 'O')
+        self.assertEqual(atom2.atomtype.label, 'C')
 
     def test_molecules_from_xyz(self):
         """Tests that atom orders are preserved when converting xyz's into RMG Molecules"""
         s_mol, b_mol = converter.molecules_from_xyz(self.xyz6['dict'])
 
         # check that the atom order is the same
-        self.assertTrue(s_mol.atoms[0].isSulfur())
-        self.assertTrue(b_mol.atoms[0].isSulfur())
-        self.assertTrue(s_mol.atoms[1].isOxygen())
-        self.assertTrue(b_mol.atoms[1].isOxygen())
-        self.assertTrue(s_mol.atoms[2].isOxygen())
-        self.assertTrue(b_mol.atoms[2].isOxygen())
-        self.assertTrue(s_mol.atoms[3].isNitrogen())
-        self.assertTrue(b_mol.atoms[3].isNitrogen())
-        self.assertTrue(s_mol.atoms[4].isCarbon())
-        self.assertTrue(b_mol.atoms[4].isCarbon())
-        self.assertTrue(s_mol.atoms[5].isHydrogen())
-        self.assertTrue(b_mol.atoms[5].isHydrogen())
-        self.assertTrue(s_mol.atoms[6].isHydrogen())
-        self.assertTrue(b_mol.atoms[6].isHydrogen())
-        self.assertTrue(s_mol.atoms[7].isHydrogen())
-        self.assertTrue(b_mol.atoms[7].isHydrogen())
-        self.assertTrue(s_mol.atoms[8].isHydrogen())
-        self.assertTrue(b_mol.atoms[8].isHydrogen())
-        self.assertTrue(s_mol.atoms[9].isHydrogen())
-        self.assertTrue(b_mol.atoms[9].isHydrogen())
+        self.assertTrue(s_mol.atoms[0].is_sulfur())
+        self.assertTrue(b_mol.atoms[0].is_sulfur())
+        self.assertTrue(s_mol.atoms[1].is_oxygen())
+        self.assertTrue(b_mol.atoms[1].is_oxygen())
+        self.assertTrue(s_mol.atoms[2].is_oxygen())
+        self.assertTrue(b_mol.atoms[2].is_oxygen())
+        self.assertTrue(s_mol.atoms[3].is_nitrogen())
+        self.assertTrue(b_mol.atoms[3].is_nitrogen())
+        self.assertTrue(s_mol.atoms[4].is_carbon())
+        self.assertTrue(b_mol.atoms[4].is_carbon())
+        self.assertTrue(s_mol.atoms[5].is_hydrogen())
+        self.assertTrue(b_mol.atoms[5].is_hydrogen())
+        self.assertTrue(s_mol.atoms[6].is_hydrogen())
+        self.assertTrue(b_mol.atoms[6].is_hydrogen())
+        self.assertTrue(s_mol.atoms[7].is_hydrogen())
+        self.assertTrue(b_mol.atoms[7].is_hydrogen())
+        self.assertTrue(s_mol.atoms[8].is_hydrogen())
+        self.assertTrue(b_mol.atoms[8].is_hydrogen())
+        self.assertTrue(s_mol.atoms[9].is_hydrogen())
+        self.assertTrue(b_mol.atoms[9].is_hydrogen())
 
         s_mol, b_mol = converter.molecules_from_xyz(self.xyz7['dict'])
-        self.assertTrue(s_mol.atoms[0].isOxygen())
-        self.assertTrue(b_mol.atoms[0].isOxygen())
-        self.assertTrue(s_mol.atoms[2].isCarbon())
-        self.assertTrue(b_mol.atoms[2].isCarbon())
+        self.assertTrue(s_mol.atoms[0].is_oxygen())
+        self.assertTrue(b_mol.atoms[0].is_oxygen())
+        self.assertTrue(s_mol.atoms[2].is_carbon())
+        self.assertTrue(b_mol.atoms[2].is_carbon())
 
         expected_bonded_adjlist = """multiplicity 2
 1  O u0 p2 c0 {6,S} {10,S}
@@ -616,14 +746,22 @@ H                 -4.01978712   -0.12970163    0.82103635"""
 27 H u0 p0 c0 {13,S}
 28 H u0 p0 c0 {2,S}
 """
-        expected_mol = Molecule().fromAdjacencyList(str(expected_bonded_adjlist))
-        self.assertEqual(b_mol.toAdjacencyList(), expected_bonded_adjlist)
-        # the isIsomorphic test must come after the adjlist test since it changes the atom order
-        self.assertTrue(b_mol.isIsomorphic(expected_mol))
+        expected_mol = Molecule().from_adjacency_list(expected_bonded_adjlist)
+        self.assertEqual(b_mol.to_adjacency_list(), expected_bonded_adjlist)
+        # the is_isomorphic test must come after the adjlist test since it changes the atom order
+        self.assertTrue(b_mol.is_isomorphic(expected_mol))
+
+        s_mol, b_mol = converter.molecules_from_xyz(self.xyz10['dict'], multiplicity=1, charge=0)
+        self.assertIsNotNone(s_mol)
+        self.assertIsNotNone(b_mol)
+        for atom1, atom2 in zip(s_mol.atoms, b_mol.atoms):
+            self.assertEqual(atom1.symbol, atom2.symbol)
+        for atom1, symbol in zip(s_mol.atoms, self.xyz10['dict']['symbols']):
+            self.assertEqual(atom1.symbol, symbol)
 
     def test_unsorted_xyz_mol_from_xyz(self):
         """Test atom order conservation when xyz isn't sorted with heavy atoms first"""
-        n3h5 = ARCSpecies(label=str('N3H5'), xyz=self.xyz8['str'], smiles=str('NNN'))
+        n3h5 = ARCSpecies(label='N3H5', xyz=self.xyz8['str'], smiles='NNN')
         expected_adjlist = """1 N u0 p1 c0 {2,S} {4,S} {5,S}
 2 H u0 p0 c0 {1,S}
 3 H u0 p0 c0 {4,S}
@@ -633,7 +771,7 @@ H                 -4.01978712   -0.12970163    0.82103635"""
 7 H u0 p0 c0 {6,S}
 8 H u0 p0 c0 {6,S}
 """
-        self.assertEqual(n3h5.mol.toAdjacencyList(), expected_adjlist)
+        self.assertEqual(n3h5.mol.to_adjacency_list(), expected_adjlist)
         self.assertEqual(n3h5.conformers[0], self.xyz8['dict'])
 
     def test_xyz_to_smiles(self):
@@ -719,14 +857,14 @@ H      -1.29263300   -1.83308300   -1.80892900"""
 O       0.31656600   -0.00477100   -1.21127600
 O       2.17315400   -0.03069900   -0.09349100"""
 
-#         xyz6 = """S       0.38431300    0.05370100    0.00000000
-# N      -1.13260000    0.07859900    0.00000000
-# H       0.85151800   -1.28998600    0.00000000"""
-#
-#         xyz7 = """N       0.00000000    0.00000000    0.44654700
-# N       0.00000000    0.00000000   -0.77510900
-# H       0.86709400    0.00000000    1.02859700
-# H      -0.86709400    0.00000000    1.02859700"""
+        xyz6 = """S       0.38431300    0.05370100    0.00000000
+N      -1.13260000    0.07859900    0.00000000
+H       0.85151800   -1.28998600    0.00000000"""
+
+        xyz7 = """N       0.00000000    0.00000000    0.44654700
+N       0.00000000    0.00000000   -0.77510900
+H       0.86709400    0.00000000    1.02859700
+H      -0.86709400    0.00000000    1.02859700"""
 
         xyz8 = """N       0.00000000    0.00000000    0.65631400
 C       0.00000000    0.00000000   -0.50136500
@@ -824,14 +962,14 @@ H      -4.07566100   -0.52115800    0.00003300"""
         mol3 = converter.molecules_from_xyz(converter.str_to_xyz(xyz3))[1]
         mol4 = converter.molecules_from_xyz(converter.str_to_xyz(xyz4))[1]
         mol5 = converter.molecules_from_xyz(converter.str_to_xyz(xyz5))[1]
-        # mol6 = converter.molecules_from_xyz(xyz6)[1]
-        # mol7 = converter.molecules_from_xyz(xyz7)[1]
+        mol6 = converter.molecules_from_xyz(converter.str_to_xyz(xyz6), multiplicity=1)[1]
+        mol7 = converter.molecules_from_xyz(converter.str_to_xyz(xyz7), multiplicity=1)[1]
         mol8 = converter.molecules_from_xyz(converter.str_to_xyz(xyz8))[1]
-        # mol9 = converter.molecules_from_xyz(xyz9)[1]
-        # mol10 = converter.molecules_from_xyz(xyz10)[1]
-        # mol11 = converter.molecules_from_xyz(xyz11)[1]
+        # mol9 = converter.molecules_from_xyz(converter.str_to_xyz(xyz9), multiplicity=1)[1]
+        # mol10 = converter.molecules_from_xyz(converter.str_to_xyz(xyz10))[1]
+        # mol11 = converter.molecules_from_xyz(converter.str_to_xyz(xyz11))[1]
         mol12 = converter.molecules_from_xyz(converter.str_to_xyz(xyz12))[1]
-        # mol13 = converter.molecules_from_xyz(xyz13)[1]
+        # mol13 = converter.molecules_from_xyz(converter.str_to_xyz(xyz13))[1]
         mol14 = converter.molecules_from_xyz(converter.str_to_xyz(xyz14))[1]
         mol15 = converter.molecules_from_xyz(converter.str_to_xyz(xyz15))[1]
         mol16 = converter.molecules_from_xyz(converter.str_to_xyz(xyz16))[1]
@@ -840,25 +978,25 @@ H      -4.07566100   -0.52115800    0.00003300"""
         mol19 = converter.molecules_from_xyz(converter.str_to_xyz(xyz19))[1]
         mol20 = converter.molecules_from_xyz(converter.str_to_xyz(xyz20))[1]
 
-        self.assertEqual(mol1.toSMILES(), '[NH-][S+](=O)(O)C')
-        self.assertIn(mol2.toSMILES(), ['COC1=C(CO)C=C([C](C)C)C=C1', 'COC1C=CC(=CC=1CO)[C](C)C'])
-        self.assertEqual(mol3.toSMILES(), '[N]=C=C(C)C')
-        self.assertEqual(mol4.toSMILES(), 'N#CC(N=NC(C#N)(C)C)(C)C')
-        self.assertEqual(mol5.toSMILES(), '[O-][O+]=O')
-        # self.assertEqual(mol6.toSMILES(), 'N#S')  # gives '[N]S', multiplicity 3
-        # self.assertEqual(mol7.toSMILES(), '[NH2+]=[N-]')  # gives '[N]N', multiplicity 3
-        self.assertEqual(mol8.toSMILES(), 'C#N')
-        # self.assertEqual(mol9.toSMILES(), '[N-]=[S+]#N')  # gives [N]S#N, multiplicity 3
-        # self.assertEqual(mol10.toSMILES(), '[N+](=O)(O)[O-]')  # gives None
-        # self.assertEqual(mol11.toSMILES(), 'N(N)[N+](=O)[O-]')  # gives None
-        self.assertEqual(mol12.toSMILES(), '[O]N=O')
-        # self.assertEqual(mol13.toSMILES(), 'C[N+]([NH-])=O')  # gives None
-        self.assertEqual(mol14.toSMILES(), 'OS(=O)[O]')
-        self.assertEqual(mol15.toSMILES(), '[N-]=[N+]=N')
-        self.assertEqual(mol16.toSMILES(), '[O]N=C')
-        self.assertEqual(mol17.toSMILES(), 'OS(=O)(=O)O')
-        self.assertEqual(mol18.toSMILES(), 'O=S(=O)=O')
-        self.assertEqual(mol19.toAdjacencyList(), """multiplicity 2
+        self.assertEqual(mol1.to_smiles(), '[NH-][S+](=O)(O)C')
+        self.assertIn(mol2.to_smiles(), ['COC1=C(CO)C=C([C](C)C)C=C1', 'COC1C=CC(=CC=1CO)[C](C)C'])
+        self.assertEqual(mol3.to_smiles(), '[N]=C=C(C)C')
+        self.assertEqual(mol4.to_smiles(), 'N#CC(N=NC(C#N)(C)C)(C)C')
+        self.assertEqual(mol5.to_smiles(), '[O-][O+]=O')
+        self.assertEqual(mol6.to_smiles(), 'N#S')
+        self.assertEqual(mol7.to_smiles(), '[N-]=[NH2+]')
+        self.assertEqual(mol8.to_smiles(), 'C#N')
+        # self.assertEqual(mol9.to_smiles(), '[N-]=[S+]#N')  # gives [N]S#N, multiplicity 3
+        # self.assertEqual(mol10.to_smiles(), '[N+](=O)(O)[O-]')  # gives None
+        # self.assertEqual(mol11.to_smiles(), 'N(N)[N+](=O)[O-]')  # gives None
+        self.assertEqual(mol12.to_smiles(), '[O]N=O')
+        # self.assertEqual(mol13.to_smiles(), 'C[N+]([NH-])=O')  # gives None
+        self.assertEqual(mol14.to_smiles(), 'OS(=O)[O]')
+        self.assertEqual(mol15.to_smiles(), '[N-]=[N+]=N')
+        self.assertEqual(mol16.to_smiles(), '[O]N=C')
+        self.assertEqual(mol17.to_smiles(), 'OS(=O)(=O)O')
+        self.assertEqual(mol18.to_smiles(), 'O=S(=O)=O')
+        self.assertEqual(mol19.to_adjacency_list(), """multiplicity 2
 1 N u1 p1 c0 {4,S} {5,S}
 2 N u0 p1 c0 {3,S} {5,D}
 3 C u0 p0 c0 {2,S} {4,D} {6,S}
@@ -868,7 +1006,7 @@ H      -4.07566100   -0.52115800    0.00003300"""
 7 H u0 p0 c0 {4,S}
 8 H u0 p0 c0 {5,S}
 """)  # cannot read SMILES 'c1ncc[n]1' (but can generate them)
-        self.assertEqual(mol20.toSMILES(), 'C=C[CH]C=CC')
+        self.assertEqual(mol20.to_smiles(), 'C=C[CH]C=CC')
 
     def test_to_rdkit_mol(self):
         """Test converting an RMG Molecule object to an RDKit Molecule object"""
@@ -880,7 +1018,7 @@ H      -4.07566100   -0.52115800    0.00003300"""
         N       1.1997613019    -0.1609980472     0.0274604887
         H       1.1294795781    -0.8708998550     0.7537444446
         H       1.4015274689    -0.6230592706    -0.8487058662"""
-        spc1 = ARCSpecies(label=str('N3'), xyz=n3_xyz, smiles='NNN')
+        spc1 = ARCSpecies(label='N3', xyz=n3_xyz, smiles='NNN')
         rdkitmol, rd_atom_indices = converter.to_rdkit_mol(spc1.mol)
         for atom, index in rd_atom_indices.items():
             if atom.symbol == 'N':
@@ -1213,16 +1351,117 @@ H      -0.81291200   -0.46933500   -0.31111876"""
     def set_radicals_correctly_from_xyz(self):
         """Test that we determine the number of radicals correctly from given xyz and multiplicity"""
         self.assertEqual(self.spc1.multiplicity, 1)  # NH(S), a nitrene
-        self.assertTrue(all([atom.radicalElectrons == 0 for atom in self.spc1.mol.atoms]))
+        self.assertTrue(all([atom.radical_electrons == 0 for atom in self.spc1.mol.atoms]))
         self.assertEqual(self.spc2.multiplicity, 1)  # NH(S), a nitrene
-        self.assertTrue(all([atom.radicalElectrons == 0 for atom in self.spc2.mol.atoms]))
+        self.assertTrue(all([atom.radical_electrons == 0 for atom in self.spc2.mol.atoms]))
         self.assertEqual(self.spc3.multiplicity, 1)  # NCN(S), a singlet birad
-        self.assertTrue(all([atom.radicalElectrons == 1 for atom in self.spc3.mol.atoms if atom.isNitrogen()]))
+        self.assertTrue(all([atom.radical_electrons == 1 for atom in self.spc3.mol.atoms if atom.is_nitrogen()]))
         self.assertEqual(self.spc3.multiplicity, 3)  # NCN(T)
-        self.assertTrue(all([atom.radicalElectrons == 1 for atom in self.spc3.mol.atoms if atom.isNitrogen()]))
+        self.assertTrue(all([atom.radical_electrons == 1 for atom in self.spc3.mol.atoms if atom.is_nitrogen()]))
 
+    def test_order_atoms(self):
+        """Test the order_atoms function"""
+        mol1 = converter.s_bonds_mol_from_xyz(self.xyz10['dict'])
+        mol2 = converter.s_bonds_mol_from_xyz(self.xyz10['dict_diff_order1'])
+        mol3 = converter.s_bonds_mol_from_xyz(self.xyz10['dict_diff_order2'])
+        converter.order_atoms(ref_mol=mol1, mol=mol2)
+        for atom1, atom2 in zip(mol1.atoms, mol2.atoms):
+            self.assertEqual(atom1.symbol, atom2.symbol)
+        converter.order_atoms(ref_mol=mol3, mol=mol1)
+        for atom1, atom2 in zip(mol3.atoms, mol1.atoms):
+            self.assertEqual(atom1.symbol, atom2.symbol)
 
-################################################################################
+    def test_is_isomorphic(self):
+        """Test the RMG is_isomorphic method"""
+        mol1 = converter.s_bonds_mol_from_xyz(self.xyz1['dict'])
+        mol2 = converter.s_bonds_mol_from_xyz(self.xyz1['dict_diff_order'])
+        self.assertTrue(mol1.is_isomorphic(mol2, save_order=True, strict=False))
+
+        mol1 = converter.s_bonds_mol_from_xyz(self.xyz11['dict'])
+        mol2 = converter.s_bonds_mol_from_xyz(self.xyz11['dict_diff_order'])
+        self.assertTrue(mol1.is_isomorphic(mol2, save_order=True, strict=False))
+
+        mol1 = converter.s_bonds_mol_from_xyz(self.xyz10['dict'])
+        mol2 = converter.s_bonds_mol_from_xyz(self.xyz10['dict_diff_order1'])
+        mol3 = converter.s_bonds_mol_from_xyz(self.xyz10['dict_diff_order2'])
+        self.assertTrue(mol1.is_isomorphic(mol2, save_order=True, strict=False))
+        self.assertTrue(mol1.is_isomorphic(mol3, save_order=True, strict=False))
+
+    def test_add_lone_pairs_by_atom_valance(self):
+        """Test the add_lone_pairs_by_atom_valance function"""
+        adj1 = """multiplicity 3
+1 N u2 p1 c0 {2,S}
+2 S u0 p2 c0 {1,S} {3,S}
+3 H u0 p0 c0 {2,S}"""
+        mol1 = Molecule().from_adjacency_list(adjlist=adj1)
+        converter.add_lone_pairs_by_atom_valance(mol1)
+        self.assertEqual(mol1.to_smiles(), '[N]S')
+        mol1.multiplicity = 1
+        converter.add_lone_pairs_by_atom_valance(mol1)
+        self.assertEqual(mol1.to_smiles(), 'N#S')
+
+        adj2 = """multiplicity 3
+1 N u2 p1 c0 {2,S}
+2 N u0 p1 c0 {1,S} {3,S} {4,S}
+3 H u0 p0 c0 {2,S}
+4 H u0 p0 c0 {2,S}"""
+        mol2 = Molecule().from_adjacency_list(adjlist=adj2)
+        converter.add_lone_pairs_by_atom_valance(mol2)
+        self.assertEqual(mol2.to_smiles(), 'N[N]')
+        mol2.multiplicity = 1
+        converter.add_lone_pairs_by_atom_valance(mol2)
+        self.assertEqual(mol2.to_smiles(), '[N-]=[NH2+]')
+
+        adj3 = """multiplicity 3
+1 C u0 p0 c0 {2,S} {5,S} {6,S} {7,S}
+2 C u0 p0 c0 {1,S} {3,S} {8,S} {9,S}
+3 C u2 p0 c0 {2,S} {4,S}
+4 H u0 p0 c0 {3,S}
+5 H u0 p0 c0 {1,S}
+6 H u0 p0 c0 {1,S}
+7 H u0 p0 c0 {1,S}
+8 H u0 p0 c0 {2,S}
+9 H u0 p0 c0 {2,S}"""
+        mol3 = Molecule().from_adjacency_list(adjlist=adj3)
+        converter.add_lone_pairs_by_atom_valance(mol3)
+        self.assertEqual(mol3.to_smiles(), '[CH]CC')
+        mol3.multiplicity = 1
+        converter.add_lone_pairs_by_atom_valance(mol3)
+        self.assertEqual(mol3.to_adjacency_list(), """1 C u0 p0 c0 {2,S} {3,S} {4,S} {5,S}
+2 C u0 p0 c0 {1,S} {6,S} {7,S} {8,S}
+3 C u0 p1 c0 {1,S} {9,S}
+4 H u0 p0 c0 {1,S}
+5 H u0 p0 c0 {1,S}
+6 H u0 p0 c0 {2,S}
+7 H u0 p0 c0 {2,S}
+8 H u0 p0 c0 {2,S}
+9 H u0 p0 c0 {3,S}
+""")
+
+        adj4 = """multiplicity 3
+1 C u0 p0 c0 {2,S} {4,S} {5,S} {6,S}
+2 C u0 p0 c0 {1,S} {3,S} {7,S} {8,S}
+3 N u2 p1 c0 {2,S}
+4 H u0 p0 c0 {1,S}
+5 H u0 p0 c0 {1,S}
+6 H u0 p0 c0 {1,S}
+7 H u0 p0 c0 {2,S}
+8 H u0 p0 c0 {2,S}"""
+        mol4 = Molecule().from_adjacency_list(adjlist=adj4)
+        converter.add_lone_pairs_by_atom_valance(mol4)
+        self.assertEqual(mol4.to_smiles(), 'CC[N]')
+        mol4.multiplicity = 1
+        converter.add_lone_pairs_by_atom_valance(mol4)
+        self.assertEqual(mol4.to_adjacency_list(), """1 N u0 p2 c0 {3,S}
+2 C u0 p0 c0 {3,S} {4,S} {5,S} {6,S}
+3 C u0 p0 c0 {1,S} {2,S} {7,S} {8,S}
+4 H u0 p0 c0 {2,S}
+5 H u0 p0 c0 {2,S}
+6 H u0 p0 c0 {2,S}
+7 H u0 p0 c0 {3,S}
+8 H u0 p0 c0 {3,S}
+""")
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

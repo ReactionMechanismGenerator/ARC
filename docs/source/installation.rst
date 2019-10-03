@@ -15,7 +15,7 @@ of software installed on the same machine, where the communication isn't done vi
 Clone and setup path
 ^^^^^^^^^^^^^^^^^^^^
 
-- Download and install the `Anaconda Python Platform`__ for Python 2.7 if you haven't already.
+- Download and install the `Anaconda Python Platform`__ for Python 3.7 or higher if you haven't already.
 - Get git if you don't have it already by typing sudo apt-get install git in a terminal.
 - Clone ARC's repository to by typing the following command in the desired folder (e.g., under `~/home/Code/`)::
 
@@ -38,15 +38,15 @@ Install dependencies
   <http://reactionmechanismgenerator.github.io/RMG-Py/users/rmg/installation/index.html
   #for-developers-installation-by-source-using-anaconda-environment>`_ instructions.
   Make sure to add RMG-Py to your PATH and PYTHONPATH variables as explained in RMG's documentation.
-- If you'd like to use `AutoTST <https://github.com/ReactionMechanismGenerator/AutoTST>`_ in ARC,
+- If you'd like to use `AutoTST <https://github.com/ReactionMechanismGenerator/AutoTST>`_ in ARC (optional),
   clone it in a separate folder and add it to your PYTHONPATH just as well.
 - Create the Anaconda environment for ARC::
 
-    conda env create -f environment.yml.
+    conda env create -f environment.yml
 
   Activate the ARC environment every time before you run ARC::
 
-     source activate arc_env.
+     source activate arc_env
 
 
 Generate RSA SSH keys and define servers

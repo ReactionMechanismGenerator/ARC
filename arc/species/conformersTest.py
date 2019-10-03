@@ -1,24 +1,24 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
+# encoding: utf-8
+
 """
 This module contains unit tests of the arc.species.conformers module
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
-import unittest
 import math
+import unittest
 
 from rdkit.Chem import rdMolTransforms as rdMT
 
-from rmgpy.molecule.molecule import Molecule
-from rmgpy.molecule.atomtype import atomTypes
+from rmgpy.molecule.atomtype import ATOMTYPES
 from rmgpy.molecule.group import GroupAtom, GroupBond, Group
+from rmgpy.molecule.molecule import Molecule
 
-import arc.species.converter as converter
 import arc.species.conformers as conformers
-from arc.species.species import ARCSpecies
-from arc.exceptions import ConformerError
+import arc.species.converter as converter
 from arc.common import almost_equal_coords_lists
+from arc.exceptions import ConformerError
+from arc.species.species import ARCSpecies
 
 
 class TestConformers(unittest.TestCase):
@@ -54,7 +54,7 @@ H      -1.22610851    0.40421362    1.35170355"""
 7 H u0 p0 c0 {1,S}
 8 H u0 p0 c0 {2,S}
 9 H u0 p0 c0 {3,S}"""
-        cls.mol1 = Molecule().fromAdjacencyList(str(adj1))
+        cls.mol1 = Molecule().from_adjacency_list(adj1)
 
     def test_CONFS_VS_HEAVY_ATOMS(self):
         """Test that the CONFS_VS_HEAVY_ATOMS dictionary has 0 and 'inf' in its keys"""
@@ -107,7 +107,7 @@ H      -1.22610851    0.40421362    1.35170355"""
                                                  (-1.62427975, 0.88145943, -0.29124479),
                                                  (2.31444818, 1.17921842, 0.63815656))},
                   'torsion_dihedrals': {(9, 4, 2, 3): -61.78942, (4, 2, 3, 1): 63.79634, (2, 3, 1, 12): 179.70585},
-                  'source': 'MMFF94', 'FF energy': -1.5241875152610689},
+                  'source': 'MMFF94s', 'FF energy': -1.5241875152610689},
                  {'index': 1, 'xyz': {'symbols': ('O', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
                                       'isotopes': (16, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1),
                                       'coords': ((2.09496537, -0.68203123, 0.41738811),
@@ -123,7 +123,7 @@ H      -1.22610851    0.40421362    1.35170355"""
                                                  (-1.28838516, 1.04591267, -1.0987324),
                                                  (2.3713817, 0.17954064, 0.77357037))},
                   'torsion_dihedrals': {(9, 4, 2, 3): -179.98511, (4, 2, 3, 1): -179.22951, (2, 3, 1, 12): -60.04260},
-                  'source': 'MMFF94', 'FF energy': -1.641467160999287},
+                  'source': 'MMFF94s', 'FF energy': -1.641467160999287},
                  {'index': 2, 'xyz': {'symbols': ('O', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
                                       'isotopes': (16, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1),
                                       'coords': ((1.68732977, -0.20570878, 0.8604398),
@@ -139,7 +139,7 @@ H      -1.22610851    0.40421362    1.35170355"""
                                                  (-2.22543313, -0.5341506, 0.03344438),
                                                  (1.39952405, -1.13143453, 0.79164182))},
                   'torsion_dihedrals': {(9, 4, 2, 3): -57.02407, (4, 2, 3, 1): -66.21040, (2, 3, 1, 12): 69.65707},
-                  'source': 'MMFF94', 'FF energy': -1.0563449757315282}]
+                  'source': 'MMFF94s', 'FF energy': -1.0563449757315282}]
         torsions = [[9, 4, 2, 3], [4, 2, 3, 1], [2, 3, 1, 12]]
         tops = [[4, 9, 10, 11], [3, 7, 8, 1, 12], [1, 12]]
 
@@ -152,7 +152,7 @@ H      -1.22610851    0.40421362    1.35170355"""
             label='', mol=spc1.mol, base_xyz=base_xyz, hypothetical_num_comb=hypothetical_num_comb,
             multiple_tors=multiple_tors, multiple_sampling_points=multiple_sampling_points, len_conformers=len(confs),
             plot_path=None, torsion_angles=torsion_angles, multiple_sampling_points_dict=multiple_sampling_points_dict,
-            wells_dict=wells_dict, force_field='MMFF94', max_combination_iterations=25, combination_threshold=10)
+            wells_dict=wells_dict, force_field='MMFF94s', max_combination_iterations=25, combination_threshold=10)
 
         self.assertEqual(len(new_conformers), 9)
         self.assertEqual(hypothetical_num_comb, 40)
@@ -269,7 +269,7 @@ H      -1.22610851    0.40421362    1.35170355"""
             {'index': 11, 'dihedral': 154.68, 'FF energy': -1.81,
              'xyz': {'symbols': ('O', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
                      'isotopes': (16, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1),
-                     'coords': ((2.09496537, -0.68203123, 0.41738810999999987),(-0.17540789, 0.11818414, 0.51180976),
+                     'coords': ((2.09496537, -0.68203123, 0.41738810999999987), (-0.17540789, 0.11818414, 0.51180976),
                                 (0.92511172, -0.46810337, -0.36086829), (-1.45486974, 0.34772573, -0.27221056),
                                 (-0.37104415, -0.55290987, 1.35664654), (0.16538089, 1.0635112, 0.95069762),
                                 (0.61854668, -1.431406, -0.78023161), (1.17698645, 0.20191002, -1.18924062),
@@ -285,15 +285,15 @@ H      -1.22610851    0.40421362    1.35170355"""
         self.assertEqual(len(xyzs), 10)
         self.assertEqual(len(energies), 10)
         mol0 = converter.molecules_from_xyz(xyzs[0])[1]
-        self.assertTrue(self.mol0.isIsomorphic(mol0), 'Could not complete a round trip from Molecule to xyz and back '
-                                                      'via RDKit')
+        self.assertTrue(self.mol0.is_isomorphic(mol0), 'Could not complete a round trip from Molecule to xyz and back '
+                                                       'via RDKit')
 
         ch2oh_xyz = converter.str_to_xyz("""O       0.83632835   -0.29575461    0.40459411
 C      -0.43411393   -0.07778692   -0.05635829
 H      -1.16221394   -0.80894238    0.24815765
 H      -0.64965442    0.77699377   -0.67782845
 H       1.40965394    0.40549015    0.08143497""")
-        ch2oh_mol = Molecule(SMILES=str('[CH2]O'))
+        ch2oh_mol = Molecule(smiles='[CH2]O')
         energies = conformers.get_force_field_energies(label='', mol=ch2oh_mol, xyz=ch2oh_xyz, optimize=True)[1]
         self.assertAlmostEqual(energies[0], 13.466911, 5)
 
@@ -328,7 +328,7 @@ H       0.68104300    0.74807180    0.61546062""")]
                                                            num_confs=50)
 
         self.assertEqual(len(confs), 52)
-        self.assertEqual(confs[0]['source'], 'MMFF94')
+        self.assertEqual(confs[0]['source'], 'MMFF94s')
         self.assertEqual(confs[0]['index'], 0)
         self.assertEqual(confs[1]['index'], 1)
         self.assertEqual(confs[-1]['index'], 51)
@@ -391,7 +391,7 @@ O       1.40839617    0.14303696    0.00000000"""
         rd_mol, rd_index_map = conformers.embed_rdkit(label='', mol=spc.mol, num_confs=3, xyz=xyz)
         self.assertEqual(rd_index_map, {0: 0, 1: 1, 2: 2})
         xyzs, energies = conformers.rdkit_force_field(label='', rd_mol=rd_mol, rd_index_map=rd_index_map, mol=spc.mol,
-                                                      force_field='MMFF94', optimize=True)
+                                                      force_field='MMFF94s', optimize=True)
         self.assertEqual(len(energies), 3)
         self.assertAlmostEqual(energies[0], 2.8820960262158292e-11, 5)
         self.assertAlmostEqual(energies[1], 4.496464369416183e-14, 5)
@@ -414,7 +414,7 @@ O       1.40839617    0.14303696    0.00000000"""
 
         self.assertEqual(xyzs, expected_xyzs1)
         xyzs, energies = conformers.rdkit_force_field(label='', rd_mol=rd_mol, rd_index_map=rd_index_map, mol=spc.mol,
-                                                      force_field='MMFF94', optimize=False)
+                                                      force_field='MMFF94s', optimize=False)
         self.assertEqual(len(energies), 0)
         expected_xyzs2 = [{'symbols': ('S', 'O', 'O'),
                            'isotopes': (32, 16, 16),
@@ -435,14 +435,14 @@ O       1.40839617    0.14303696    0.00000000"""
 
     def test_determine_rotors(self):
         """Test determining the rotors"""
-        mol = Molecule(SMILES=str('C=[C]C(=O)O[O]'))
+        mol = Molecule(smiles='C=[C]C(=O)O[O]')
         mol_list = mol.generate_resonance_structures()
         torsions, tops = conformers.determine_rotors(mol_list)
         self.assertEqual(torsions, [[3, 1, 4, 2], [1, 4, 6, 5]])
         self.assertEqual(sum(tops[0]), 4)
         self.assertEqual(sum(tops[1]), 10)
 
-        mol_list = [Molecule(SMILES=str('CCCO'))]
+        mol_list = [Molecule(smiles='CCCO')]
         torsions, tops = conformers.determine_rotors(mol_list)
         self.assertEqual(torsions, [[5, 1, 2, 3], [1, 2, 3, 4], [2, 3, 4, 12]])
         self.assertEqual(sum(tops[0]), 19)
@@ -626,9 +626,9 @@ O       1.40839617    0.14303696    0.00000000"""
 5 H u0 p0 c0 {1,S}
 6 H u0 p0 c0 {1,S}
 7 H u0 p0 c0 {3,S}"""
-        mol0 = Molecule().fromAdjacencyList(str(adj0))
-        mol1 = Molecule().fromAdjacencyList(str(adj1))
-        mol2 = Molecule().fromAdjacencyList(str(adj2))
+        mol0 = Molecule().from_adjacency_list(adj0)
+        mol1 = Molecule().from_adjacency_list(adj1)
+        mol2 = Molecule().from_adjacency_list(adj2)
         non_rotor0 = conformers.check_special_non_rotor_cases(mol=mol0, top1=[2, 1], top2=[3, 4, 5, 6])
         non_rotor1 = conformers.check_special_non_rotor_cases(mol=mol1, top1=[2, 1, 5, 6, 7], top2=[3, 4])
         non_rotor2 = conformers.check_special_non_rotor_cases(mol=mol2, top1=[1, 4, 5, 6], top2=[2, 3, 7])
@@ -655,7 +655,7 @@ O       1.40839617    0.14303696    0.00000000"""
 
     def test_determine_top_group_indices(self):
         """Test determining the top group in a molecule"""
-        mol = Molecule(SMILES=str('c1cc(OC)ccc1OC(CC)SF'))
+        mol = Molecule(smiles='c1cc(OC)ccc1OC(CC)SF')
         atom1 = mol.atoms[9]  # this is the C atom at the S, O, H, and C junction
         atom2a = mol.atoms[10]  # C
         atom2b = mol.atoms[8]  # O
@@ -770,14 +770,14 @@ O       1.40839617    0.14303696    0.00000000"""
 71 H u0 p0 c0 {36,S}
 72 H u0 p0 c0 {36,S}
 """
-        cj_mol = Molecule().fromAdjacencyList(adjlist=str(cj_adj))
+        cj_mol = Molecule().from_adjacency_list(adjlist=cj_adj)
         rotors = conformers.find_internal_rotors(cj_mol)
         for rotor in rotors:
             if rotor['pivots'] == [6, 7]:
                 self.assertEqual(rotor['scan'], [5, 6, 7, 8])
                 self.assertEqual(sum(rotor['top']), 332)  # [7,41,8,44,42,43,9,46,47,45] in non-deterministic order
 
-        mol = Molecule(SMILES=str('CCCO'))
+        mol = Molecule(smiles='CCCO')
         rotors = conformers.find_internal_rotors(mol)
         for rotor in rotors:
             self.assertIn(rotor['scan'], [[5, 1, 2, 3], [1, 2, 3, 4], [2, 3, 4, 12]])
@@ -787,19 +787,19 @@ O       1.40839617    0.14303696    0.00000000"""
         atom_indices = [0, 3, 8]
         group0 = conformers.to_group(mol=self.mol1, atom_indices=atom_indices)
 
-        atom0 = GroupAtom(atomType=[atomTypes[str('Cd')]], radicalElectrons=[0], charge=[0],
-                          label=str(''), lonePairs=[0])
-        atom1 = GroupAtom(atomType=[atomTypes[str('O2s')]], radicalElectrons=[1], charge=[0],
-                          label=str(''), lonePairs=[2])
-        atom2 = GroupAtom(atomType=[atomTypes[str('H')]], radicalElectrons=[0], charge=[0],
-                          label=str(''), lonePairs=[0])
+        atom0 = GroupAtom(atomtype=[ATOMTYPES['Cd']], radical_electrons=[0], charge=[0],
+                          label='', lone_pairs=[0])
+        atom1 = GroupAtom(atomtype=[ATOMTYPES['O2s']], radical_electrons=[1], charge=[0],
+                          label='', lone_pairs=[2])
+        atom2 = GroupAtom(atomtype=[ATOMTYPES['H']], radical_electrons=[0], charge=[0],
+                          label='', lone_pairs=[0])
         group1 = Group(atoms=[atom0, atom1, atom2], multiplicity=[2])
         bond01 = GroupBond(atom0, atom1, order=[1.0])
         bond02 = GroupBond(atom0, atom2, order=[1.0])
-        group1.addBond(bond01)
-        group1.addBond(bond02)
+        group1.add_bond(bond01)
+        group1.add_bond(bond02)
 
-        self.assertTrue(group0.isIsomorphic(group1))
+        self.assertTrue(group0.is_isomorphic(group1))
 
     def test_get_torsion_angles(self):
         """Test determining the torsion angles from all conformers"""
@@ -867,7 +867,7 @@ C	0.0000000	0.0000000	-1.9736270"""  # no colliding atoms
 7 H u0 p0 c0 {3,S}
 8 H u0 p0 c0 {3,S}
 9 H u0 p0 c0 {1,S}"""
-        mol0 = Molecule().fromAdjacencyList(str(adj0))
+        mol0 = Molecule().from_adjacency_list(adj0)
         torsion_scan0 = [-179.5316509266246, -179.5316509266246, -179.5316509266246, -179.5316509266246,
                          -179.5316509266246, -179.5316509266246, -179.5316509266246, -179.5316509266246,
                          -60.11816797679059, -60.11810624433042, -60.11804469757614, -58.18097368133174,
@@ -879,7 +879,7 @@ C	0.0000000	0.0000000	-1.9736270"""  # no colliding atoms
                                                                torsion_scan=torsion_scan0), 3)
 
         # both rotors are symmetric with symmetry numbers of 2 and 3
-        mol1 = Molecule(SMILES=str('CC[N+](=O)[O-]'))
+        mol1 = Molecule(smiles='CC[N+](=O)[O-]')
         mol1.update()
         torsions, tops = conformers.determine_rotors([mol1])
         confs = conformers.generate_force_field_conformers(mol_list=[mol1], label='mol1', num_confs=50,
@@ -894,7 +894,7 @@ C	0.0000000	0.0000000	-1.9736270"""  # no colliding atoms
                                                                torsion_scan=torsion_angles[tuple(torsions[1])]), 3)
 
         # only one rotor is symmetric
-        mol2 = Molecule(SMILES=str('CC[N+](=S)[O-]'))
+        mol2 = Molecule(smiles='CC[N+](=S)[O-]')
         mol2.update()
         torsions, tops = conformers.determine_rotors([mol2])
         confs = conformers.generate_force_field_conformers(mol_list=[mol2], label='mol2', num_confs=50,
@@ -909,7 +909,7 @@ C	0.0000000	0.0000000	-1.9736270"""  # no colliding atoms
                                                                torsion_scan=torsion_angles[tuple(torsions[1])]), 3)
 
         # The COH rotor is symmetric because of the bottom of the molecule
-        mol3 = Molecule(SMILES=str('c1ccccc1C(c1ccccc1)(c1ccccc1)O'))
+        mol3 = Molecule(smiles='c1ccccc1C(c1ccccc1)(c1ccccc1)O')
         mol3.update()
         torsions, tops = conformers.determine_rotors([mol3])
         confs = conformers.generate_force_field_conformers(mol_list=[mol3], label='mol3', num_confs=100,
@@ -923,7 +923,7 @@ C	0.0000000	0.0000000	-1.9736270"""  # no colliding atoms
         self.assertEqual(conformers.determine_torsion_symmetry(label='', top1=tops[3], mol_list=[mol3],
                                                                torsion_scan=torsion_angles[tuple(torsions[3])]), 2)
 
-        mol4 = Molecule(SMILES=str('c1ccccc1CO'))
+        mol4 = Molecule(smiles='c1ccccc1CO')
         mol4.update()
         torsions, tops = conformers.determine_rotors([mol4])
         confs = conformers.generate_force_field_conformers(mol_list=[mol4], label='mol4', num_confs=100,
@@ -934,7 +934,7 @@ C	0.0000000	0.0000000	-1.9736270"""  # no colliding atoms
                                                                    torsion_scan=torsion_angles[tuple(torsions[i])])
                              == 2 for i in range(2)]))
 
-        mol5 = Molecule(SMILES=str('OCC(C)C'))
+        mol5 = Molecule(smiles='OCC(C)C')
         mol5.update()
         torsions, tops = conformers.determine_rotors([mol5])
         confs = conformers.generate_force_field_conformers(mol_list=[mol5], label='mol5', num_confs=100,
@@ -946,7 +946,7 @@ C	0.0000000	0.0000000	-1.9736270"""  # no colliding atoms
                                                                     torsion_scan=torsion_angles[tuple(torsions[i])])
                               for i in range(len(torsions))]), 8)
 
-        mol7 = Molecule(SMILES=str('CC'))
+        mol7 = Molecule(smiles='CC')
         mol7.update()
         torsions, tops = conformers.determine_rotors([mol7])
         confs = conformers.generate_force_field_conformers(mol_list=[mol7], label='mol7', num_confs=50,
@@ -957,7 +957,7 @@ C	0.0000000	0.0000000	-1.9736270"""  # no colliding atoms
         self.assertEqual(conformers.determine_torsion_symmetry(label='', top1=tops[0], mol_list=[mol7],
                                                                torsion_scan=torsion_angles[tuple(torsions[0])]), 9)
 
-        mol8 = Molecule(SMILES=str('C[N+](=O)[O-]'))
+        mol8 = Molecule(smiles='C[N+](=O)[O-]')
         mol8.update()
         torsions, tops = conformers.determine_rotors([mol8])
         confs = conformers.generate_force_field_conformers(mol_list=[mol8], label='mol8', num_confs=200,
@@ -968,7 +968,7 @@ C	0.0000000	0.0000000	-1.9736270"""  # no colliding atoms
         self.assertEqual(conformers.determine_torsion_symmetry(label='', top1=tops[0], mol_list=[mol8],
                                                                torsion_scan=torsion_angles[tuple(torsions[0])]), 6)
 
-        mol9 = Molecule(SMILES=str('Cc1ccccc1'))
+        mol9 = Molecule(smiles='Cc1ccccc1')
         mol9.update()
         torsions, tops = conformers.determine_rotors([mol9])
         confs = conformers.generate_force_field_conformers(mol_list=[mol9], label='mol9', num_confs=50,
@@ -1206,18 +1206,18 @@ C	0.0000000	0.0000000	-1.9736270"""  # no colliding atoms
         self.assertAlmostEqual(energies[0], -6.15026868, 5)
         idx0 = 10
         for i, atom in enumerate(ncc_mol.atoms):
-            if atom.isNitrogen():
+            if atom.is_nitrogen():
                 idx1 = i + 1
-            elif atom.isCarbon():
+            elif atom.is_carbon():
                 for atom2 in atom.edges.keys():
-                    if atom2.isNitrogen():
+                    if atom2.is_nitrogen():
                         idx2 = i + 1
                         break
                 else:
                     idx3 = i + 1
-            elif atom.isHydrogen():
+            elif atom.is_hydrogen():
                 for atom2 in atom.edges.keys():
-                    if atom2.isNitrogen():
+                    if atom2.is_nitrogen():
                         if i + 1 < idx0:
                             idx0 = i + 1
         torsion = (idx0, idx1, idx2, idx3)
@@ -1411,23 +1411,23 @@ H       0.46369194    0.10073248   -1.68500050""")
         self.assertTrue(almost_equal_coords_lists(xyzs, expected_xyzs))
 
     def test_identify_chiral_centers(self):
-        mol1 = Molecule(SMILES=str('OC(N)N'))
+        mol1 = Molecule(smiles='OC(N)N')
         chiral_centers = conformers.identify_chiral_centers(mol1)
         self.assertEqual(chiral_centers, [])
 
-        mol2 = Molecule(SMILES=str('OC(S)N'))
+        mol2 = Molecule(smiles='OC(S)N')
         chiral_centers = conformers.identify_chiral_centers(mol2)
         self.assertEqual(chiral_centers, [1])
         self.assertEqual(mol2.atoms[1].symbol, 'C')
 
-        mol3 = Molecule(SMILES=str('COC1=C(C=C(C(C)C)C=C1)CN[C@H]2C3CCN([C@H]2C(C4=CC=CC=C4)C5=CC=CC=C5)CC3'))
+        mol3 = Molecule(smiles='COC1=C(C=C(C(C)C)C=C1)CN[C@H]2C3CCN([C@H]2C(C4=CC=CC=C4)C5=CC=CC=C5)CC3')
         chiral_centers = conformers.identify_chiral_centers(mol3)
         self.assertEqual(chiral_centers, [19, 13, 12])
         self.assertEqual(mol3.atoms[19].symbol, 'C')
         self.assertEqual(mol3.atoms[12].symbol, 'N')
         self.assertEqual(mol3.atoms[13].symbol, 'C')
 
-        mol4 = Molecule(SMILES=str('C1C(F)CC(F)C1'))
+        mol4 = Molecule(smiles='C1C(F)CC(F)C1')
         # 1,3-Difluoro-cyclopentane has two chiral centers, but the molecule is NOT chiral due to symmetry.
         # This is a false positive!
         chiral_centers = conformers.identify_chiral_centers(mol4)
@@ -1435,32 +1435,32 @@ H       0.46369194    0.10073248   -1.68500050""")
         self.assertEqual(mol4.atoms[1].symbol, 'C')
         self.assertEqual(mol4.atoms[4].symbol, 'C')
 
-        mol5 = Molecule(SMILES=str('C1C(F)CCC1'))  # not chiral due to symmetry
+        mol5 = Molecule(smiles='C1C(F)CCC1')  # not chiral due to symmetry
         chiral_centers = conformers.identify_chiral_centers(mol5)
         self.assertEqual(chiral_centers, [])
 
-        mol6 = Molecule(SMILES=str('C1C(F)C=CC1'))  # chiral, symmetry broke by the double bond
+        mol6 = Molecule(smiles='C1C(F)C=CC1')  # chiral, symmetry broke by the double bond
         chiral_centers = conformers.identify_chiral_centers(mol6)
         self.assertEqual(chiral_centers, [1])
         self.assertEqual(mol6.atoms[1].symbol, 'C')
 
-        mol7 = Molecule(SMILES=str('CC(C)CCc1ccc(C(C)C(=O)O)cc1'))  # ibuprofen, one chiral cunter
+        mol7 = Molecule(smiles='CC(C)CCc1ccc(C(C)C(=O)O)cc1')  # ibuprofen, one chiral cunter
         chiral_centers = conformers.identify_chiral_centers(mol7)
         self.assertEqual(chiral_centers, [9])
         self.assertEqual(mol7.atoms[9].symbol, 'C')
 
-        mol8 = Molecule(SMILES=str('CNCC'))  # simple umbrella mode
+        mol8 = Molecule(smiles='CNCC')  # simple umbrella mode
         chiral_centers = conformers.identify_chiral_centers(mol8)
         self.assertEqual(chiral_centers, [1])
         self.assertEqual(mol8.atoms[1].symbol, 'N')
 
-        mol9 = Molecule(SMILES=str('NNNN'))  # two umbrella modes
+        mol9 = Molecule(smiles='NNNN')  # two umbrella modes
         chiral_centers = conformers.identify_chiral_centers(mol9)
         self.assertEqual(chiral_centers, [1, 2])
         self.assertEqual(mol9.atoms[1].symbol, 'N')
         self.assertEqual(mol9.atoms[2].symbol, 'N')
 
-        mol10 = Molecule(SMILES=str('NCC'))  # no umbrella modes
+        mol10 = Molecule(smiles='NCC')  # no umbrella modes
         chiral_centers = conformers.identify_chiral_centers(mol10)
         self.assertEqual(chiral_centers, [])
 
@@ -1507,11 +1507,11 @@ H      -1.15723190   -0.09458204   -1.23271202""")  # smiles='NC([O])(C)'
 
     def test_rotate_vector(self):
         """Test rotating a vector"""
-        point_a, point_b, normal, theta = [0, 0, 0], [0, 0, 1], [0, 0, 1], 90 * math.pi / 180  # trivial, no rotation
+        point_a, point_b, normal, theta = [0, 0, 0], [0, 0, 1], [0, 0, 1], 90.0 * math.pi / 180  # trivial, no rotation
         new_vector = conformers.rotate_vector(point_a, point_b, normal, theta)
         self.assertEqual(new_vector, [0, 0, 1])
 
-        point_a, point_b, normal, theta = [0, 0, 0], [1, 0, 0], [0, 0, 1], 90 * math.pi / 180  # rotate x to y around z
+        point_a, point_b, normal, theta = [0, 0, 0], [1, 0, 0], [0, 0, 1], 90.0 * math.pi / 180  # rot x to y around z
         new_vector = conformers.rotate_vector(point_a, point_b, normal, theta)
         self.assertAlmostEqual(new_vector[0], 0, 5)
         self.assertAlmostEqual(new_vector[1], 1, 5)
@@ -1575,7 +1575,7 @@ S      -1.45707856   -0.94104506   -0.20275830
 O      -0.03480906    1.11948179   -0.82988874
 C      -0.02416711    0.17703194    0.08644641
 H       0.04093286    0.43199386    1.15013385""")
-        spc2 = ARCSpecies(label='chiral', smiles='[S]C([O])Cl', xyz=xyz2)
+        spc2 = ARCSpecies(label='chiral1', smiles='[S]C([O])Cl', xyz=xyz2)
         vector1 = conformers.unit_vector(conformers.get_vector(pivot=3, anchor=1, xyz=xyz2))
         vector2 = conformers.unit_vector(conformers.get_vector(pivot=3, anchor=2, xyz=xyz2))
         new_xyz2 = conformers.translate_group(mol=spc2.mol, xyz=xyz2, pivot=3, anchor=2, vector=vector1)
@@ -1594,7 +1594,7 @@ H       0.04093286    0.43199386    1.15013385
  O                  1.93561914    0.74741610   -1.16759033
  O                  2.33727805    1.90670710   -1.65453438
  H                  3.25580294    1.83954553   -1.92546105""")
-        spc3 = ARCSpecies(label='chiralOOH', smiles='OO[C](F)Cl', xyz=xyz3)
+        spc3 = ARCSpecies(label='chiral2', smiles='OO[C](F)Cl', xyz=xyz3)
         vector1 = conformers.unit_vector(conformers.get_vector(pivot=0, anchor=1, xyz=xyz3))
         vector2 = conformers.unit_vector(conformers.get_vector(pivot=0, anchor=3, xyz=xyz3))
         new_xyz3 = conformers.translate_group(mol=spc3.mol, xyz=xyz3, pivot=0, anchor=3, vector=vector1)
@@ -1608,7 +1608,37 @@ H      -1.00986076    1.46908426   -0.45574283
 """)
         self.assertTrue(almost_equal_coords_lists(new_xyz3, expected_xyz3))
 
-        xyz4 = converter.str_to_xyz(""" C                  1.18149528   -0.70041459   -0.31471741
+        xyz4 = {'symbols': ('S', 'O', 'O', 'O', 'C', 'C', 'H', 'H', 'H', 'H'),
+                'isotopes': (32, 16, 16, 16, 12, 12, 1, 1, 1, 1),
+                'coords': ((0.35915171, 1.99254721, 1.1849049),
+                           (0.40385373, -0.65769862, 1.03431374),
+                           (-1.23178399, -0.59559801, -1.39114493),
+                           (0.6901556, -1.65712867, 0.01239391),
+                           (-0.0426136, 0.49595776, 0.40364219),
+                           (-0.80103934, 0.51314044, -0.70610325),
+                           (-1.17387862, 1.41490429, -1.17716515),
+                           (0.95726719, 1.46882836, 2.26423536),
+                           (-0.83008868, -1.36939497, -0.94170868),
+                           (1.65888059, -1.54205855, 0.02674995))}
+        spc4 = ARCSpecies(label='chiral3', smiles='SC(OO)=CO', xyz=xyz4)
+        vector1 = conformers.unit_vector(conformers.get_vector(pivot=4, anchor=0, xyz=xyz4))
+        vector2 = conformers.unit_vector(conformers.get_vector(pivot=4, anchor=2, xyz=xyz4))
+        new_xyz4 = conformers.translate_group(mol=spc4.mol, xyz=xyz4, pivot=4, anchor=2, vector=vector1)
+        new_xyz4 = conformers.translate_group(mol=spc4.mol, xyz=new_xyz4, pivot=4, anchor=0, vector=vector2)
+        expected_xyz4 = {'symbols': ('S', 'O', 'O', 'O', 'C', 'C', 'H', 'H', 'H', 'H'),
+                         'isotopes': (32, 16, 16, 16, 12, 12, 1, 1, 1, 1),
+                         'coords': ((-0.8975272666391765, -0.28877919066680047, -0.8866590574065785),
+                                    (0.40385373, -0.65769862, 1.03431374),
+                                    (0.5162351224205494, 2.5776882661021125, 1.4903653502407788),
+                                    (0.6901556, -1.65712867, 0.01239391), (-0.0426136, 0.49595776, 0.40364219),
+                                    (0.6096964210696835, 1.217485186769998, 1.3315051098421813),
+                                    (1.2757172600702331, 0.7966267238977445, 2.0754008550613348),
+                                    (-1.5831217972336848, 0.7805289916315858, -1.3150490129767116),
+                                    (-0.06378382313185912, 2.8994155510586217, 0.7677427813224768),
+                                    (1.65888059, -1.54205855, 0.02674995))}
+        self.assertTrue(almost_equal_coords_lists(new_xyz4, expected_xyz4))
+
+        xyz5 = converter.str_to_xyz(""" C                  1.18149528   -0.70041459   -0.31471741
  C                  0.93123100    0.49135224   -1.25740484
  C                  0.68096672    1.68311908   -2.20009227
  C                  0.90913879    1.54885051   -3.56990280
@@ -1623,12 +1653,12 @@ H      -1.00986076    1.46908426   -0.45574283
  H                  0.04933714    4.69304911   -4.58157919
  F                  0.25569319   -1.42216987   -0.98139560
  Cl                 2.38846685    0.24054066    0.55443324""")
-        spc4 = ARCSpecies(label='chiral_benzene', smiles='ClC(F)=[C]c1ccccc1', xyz=xyz4)
-        vector1 = conformers.unit_vector(conformers.get_vector(pivot=0, anchor=1, xyz=xyz4))
-        vector2 = conformers.unit_vector(conformers.get_vector(pivot=0, anchor=13, xyz=xyz4))
-        new_xyz4 = conformers.translate_group(mol=spc4.mol, xyz=xyz4, pivot=0, anchor=13, vector=vector1)
-        new_xyz4 = conformers.translate_group(mol=spc4.mol, xyz=new_xyz4, pivot=0, anchor=1, vector=vector2)
-        expected_xyz4 = converter.str_to_xyz("""C       1.18149528   -0.70041459   -0.31471741
+        spc5 = ARCSpecies(label='chiral4', smiles='ClC(F)=[C]c1ccccc1', xyz=xyz5)
+        vector1 = conformers.unit_vector(conformers.get_vector(pivot=0, anchor=1, xyz=xyz5))
+        vector2 = conformers.unit_vector(conformers.get_vector(pivot=0, anchor=13, xyz=xyz5))
+        new_xyz5 = conformers.translate_group(mol=spc5.mol, xyz=xyz5, pivot=0, anchor=13, vector=vector1)
+        new_xyz5 = conformers.translate_group(mol=spc5.mol, xyz=new_xyz5, pivot=0, anchor=1, vector=vector2)
+        expected_xyz5 = converter.str_to_xyz("""C       1.18149528   -0.70041459   -0.31471741
 C       0.12539512   -1.52375024   -1.07522438
 C      -0.93070504   -2.34708589   -1.83573135
 C      -0.56553338   -3.53564257   -2.46854578
@@ -1644,9 +1674,9 @@ H      -3.59771174   -4.42692116   -3.75705255
 F       0.96210776    0.34431608   -1.14109925
 Cl      2.38846685    0.24054066    0.55443324
 """)
-        self.assertTrue(almost_equal_coords_lists(new_xyz4, expected_xyz4))
+        self.assertTrue(almost_equal_coords_lists(new_xyz5, expected_xyz5))
 
-    def test_translate_groups(self):
+    def test_convert_chirality(self):
         """Test converting a chiral center"""
         xyz1 = {'coords': ((1.38346248, 1.33352376, 0.05890374),
                            (0.4240511, -0.73855006, 1.08316776),
@@ -1669,8 +1699,6 @@ Cl      2.38846685    0.24054066    0.55443324
                                     (-1.03560134, 0.80870122, 0.40254095), (-1.35373518, -0.66166089, -0.09561187))}
         self.assertEqual(new_xyz1, expected_xyz1)
 
-
-################################################################################
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

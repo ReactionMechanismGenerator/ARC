@@ -1,21 +1,18 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
+# encoding: utf-8
 
 """
 This module contains unit tests of the arc.reaction module
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
 import unittest
 
-from rmgpy.species import Species
 from rmgpy.reaction import Reaction
+from rmgpy.species import Species
 
 import arc.rmgdb as rmgdb
 from arc.reaction import ARCReaction
 from arc.settings import default_ts_methods
-
-################################################################################
 
 
 class TestARCReaction(unittest.TestCase):
@@ -31,15 +28,15 @@ class TestARCReaction(unittest.TestCase):
         cls.rmgdb = rmgdb.make_rmg_database_object()
         rmgdb.load_families_only(cls.rmgdb)
         cls.rxn1 = ARCReaction(reactants=['CH4', 'OH'], products=['CH3', 'H2O'])
-        cls.rxn1.rmg_reaction = Reaction(reactants=[Species().fromSMILES(str('C')), Species().fromSMILES(str('[OH]'))],
-                                         products=[Species().fromSMILES(str('[CH3]')), Species().fromSMILES(str('O'))])
+        cls.rxn1.rmg_reaction = Reaction(reactants=[Species().from_smiles('C'), Species().from_smiles('[OH]')],
+                                         products=[Species().from_smiles('[CH3]'), Species().from_smiles('O')])
         cls.rxn2 = ARCReaction(reactants=['C2H5', 'OH'], products=['C2H4', 'H2O'])
-        cls.rxn2.rmg_reaction = Reaction(reactants=[Species().fromSMILES(str('C[CH2]')),
-                                                    Species().fromSMILES(str('[OH]'))],
-                                         products=[Species().fromSMILES(str('C=C')), Species().fromSMILES(str('O'))])
+        cls.rxn2.rmg_reaction = Reaction(reactants=[Species().from_smiles('C[CH2]'),
+                                                    Species().from_smiles('[OH]')],
+                                         products=[Species().from_smiles('C=C'), Species().from_smiles('O')])
         cls.rxn3 = ARCReaction(reactants=['CH3CH2NH'], products=['CH2CH2NH2'])
-        cls.rxn3.rmg_reaction = Reaction(reactants=[Species().fromSMILES(str('CC[NH]'))],
-                                         products=[Species().fromSMILES(str('[CH2]CN'))])
+        cls.rxn3.rmg_reaction = Reaction(reactants=[Species().from_smiles('CC[NH]')],
+                                         products=[Species().from_smiles('[CH2]CN')])
 
     def test_as_dict(self):
         """Test Species.as_dict()"""
@@ -69,10 +66,10 @@ class TestARCReaction(unittest.TestCase):
 
     def test_rmg_reaction_to_str(self):
         """Test the rmg_reaction_to_str() method and the reaction label generated"""
-        spc1 = Species().fromSMILES(str('CON=O'))
-        spc1.label = str('CONO')
-        spc2 = Species().fromSMILES(str('C[N+](=O)[O-]'))
-        spc2.label = str('CNO2')
+        spc1 = Species().from_smiles('CON=O')
+        spc1.label = 'CONO'
+        spc2 = Species().from_smiles('C[N+](=O)[O-]')
+        spc2.label = 'CNO2'
         rmg_reaction = Reaction(reactants=[spc1], products=[spc2])
         rxn = ARCReaction(rmg_reaction=rmg_reaction)
         rxn_str = rxn.rmg_reaction_to_str()
@@ -106,8 +103,6 @@ class TestARCReaction(unittest.TestCase):
         self.rxn3.determine_rxn_multiplicity()
         self.assertEqual(self.rxn1.multiplicity, 2)
 
-
-################################################################################
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

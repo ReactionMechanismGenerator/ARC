@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # encoding: utf-8
 
 """
@@ -9,32 +9,30 @@ To run ARC through its API, first make an instance of the ARC class, then call t
   arc0.execute()
 
 Where ``spc0``, ``spc1``, and ``spc2`` in the above example are :ref:`ARCSpecies <species>` objects.
-
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
+import datetime
 import logging
 import os
-import time
-import datetime
 import shutil
+import time
 from distutils.spawn import find_executable
 from IPython.display import display
 
-from rmgpy.species import Species
-from rmgpy.reaction import Reaction
 from arkane.statmech import assign_frequency_scale_factor
+from rmgpy.reaction import Reaction
+from rmgpy.species import Species
 
 import arc.rmgdb as rmgdb
-from arc.settings import arc_path, default_levels_of_theory, servers, valid_chars, default_job_types
-from arc.scheduler import Scheduler
 from arc.common import VERSION, read_yaml_file, time_lapse, check_ess_settings, initialize_log, log_footer, get_logger,\
     save_yaml_file, initialize_job_types
 from arc.exceptions import InputError, SettingsError, SpeciesError
-from arc.species.species import ARCSpecies
-from arc.reaction import ARCReaction
-from arc.processor import Processor
 from arc.job.ssh import SSHClient
+from arc.processor import Processor
+from arc.reaction import ARCReaction
+from arc.scheduler import Scheduler
+from arc.settings import arc_path, default_levels_of_theory, servers, valid_chars, default_job_types
+from arc.species.species import ARCSpecies
 from arc.utils.scale import determine_scaling_factors
 
 try:
@@ -42,7 +40,6 @@ try:
 except ImportError:
     global_ess_settings = None
 
-##################################################################
 
 logger = get_logger()
 
@@ -466,7 +463,7 @@ class ARC(object):
         If `project` name and `ess_settings` are given as well to __init__, they will override the respective values
         in the restart dictionary.
         """
-        if isinstance(input_dict, (str, unicode)):
+        if isinstance(input_dict, str):
             input_dict = read_yaml_file(input_dict)
         if project is None and 'project' not in input_dict:
             raise InputError('A project name must be given')

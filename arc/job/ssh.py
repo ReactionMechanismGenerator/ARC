@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # encoding: utf-8
 
 """
@@ -9,20 +9,18 @@ Todo:
     * delete scratch files of a failed job: ssh nodeXX; rm scratch/dhdhdhd/job_number
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
+import datetime
 import logging
 import os
-import time
-import datetime
 import re
+import time
 
 import paramiko
 
 from arc.common import get_logger
-from arc.settings import servers, check_status_command, submit_command, submit_filename, delete_command
 from arc.exceptions import InputError, ServerError
+from arc.settings import servers, check_status_command, submit_command, submit_filename, delete_command
 
-##################################################################
 
 logger = get_logger()
 
@@ -55,7 +53,7 @@ class SSHClient(object):
         """
         Send commands to server. `command` is either a sting or an array of string commands to send.
         If remote_path is not an empty string, the command will be executed in the directory path it points to.
-        Returns lists of stdin, stdout, stderr corresponding to the commands sent.
+        Returns lists of stdout, stderr corresponding to the commands sent.
         """
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -156,7 +154,7 @@ class SSHClient(object):
         """
         sftp, ssh = self.connect()
         full_path = os.path.join(remote_path, filename)
-        with sftp.open(full_path, "r") as f_remote:
+        with sftp.open(full_path, 'r') as f_remote:
             content = f_remote.readlines()
         sftp.close()
         ssh.close()
@@ -311,7 +309,7 @@ def check_job_status_in_stdout(job_id, stdout, server):
 
     Args:
         job_id (int): the job ID recognized by the server.
-        stdout (str): The output of a queue status check.
+        stdout (list, str): The output of a queue status check.
         server (str): The server name.
 
     Returns:

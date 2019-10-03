@@ -13,9 +13,6 @@ pybel
 IPython
 yaml
 
-# required for rmg until new binaries are released
-tensorflow
-
 # For running the unit tests
 nose
 coverage

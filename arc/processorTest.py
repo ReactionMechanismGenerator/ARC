@@ -1,20 +1,16 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
+# encoding: utf-8
 
 """
 This module contains unit tests for the arc.processor module
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
-import unittest
 import os
+import unittest
 
+from arc.common import arc_path
 from arc.processor import Processor
 from arc.species.species import ARCSpecies
-from arc.common import arc_path
-
-
-################################################################################
 
 
 class TestProcessor(unittest.TestCase):
@@ -33,102 +29,98 @@ class TestProcessor(unittest.TestCase):
         ch4 = ARCSpecies(label='CH4', smiles='C')
         nh3 = ARCSpecies(label='NH3', smiles='N')
         h = ARCSpecies(label='H', smiles='[H]')
-        ch4_bde_1_2_A = ARCSpecies(label='CH4_BDE_1_2_A', smiles='[CH3]')
-        ch4.e0, h.e0, ch4_bde_1_2_A.e0 = 10, 25, 35
+        ch4_bde_1_2_a = ARCSpecies(label='CH4_BDE_1_2_A', smiles='[CH3]')
+        ch4.e0, h.e0, ch4_bde_1_2_a.e0 = 10, 25, 35
         ch4.bdes = [(1, 2)]
-        species_dict = {'CH4': ch4, 'NH3': nh3, 'H': h, 'CH4_BDE_1_2_A': ch4_bde_1_2_A}
-        output_dict = {'CH4':
-                           {'conformers': '',
-                            'convergence': True,
-                            'errors': '',
-                            'info': '',
-                            'isomorphism': '',
-                            'job_types': {'rotors': True,
-                                          'composite': False,
-                                          'conformers': True,
-                                          'fine_grid': False,
-                                          'freq': True,
-                                          'lennard_jones': False,
-                                          'onedmin': False,
-                                          'opt': True,
-                                          'orbitals': False,
-                                          'bde': True,
-                                          'sp': True},
-                            'paths': {'composite': '',
-                                      'freq': '',
-                                      'geo': '',
-                                      'sp': ''},
-                            'restart': '',
-                            'warnings': ''},
-                       'NH3':
-                           {'conformers': '',
-                            'convergence': True,
-                            'errors': '',
-                            'info': '',
-                            'isomorphism': '',
-                            'job_types': {'rotors': True,
-                                          'composite': False,
-                                          'conformers': True,
-                                          'fine_grid': False,
-                                          'freq': True,
-                                          'lennard_jones': False,
-                                          'onedmin': False,
-                                          'opt': True,
-                                          'orbitals': False,
-                                          'bde': True,
-                                          'sp': True},
-                            'paths': {'composite': '',
-                                      'freq': '',
-                                      'geo': '',
-                                      'sp': ''},
-                            'restart': '',
-                            'warnings': ''},
-                       'H':
-                           {'conformers': '',
-                            'convergence': True,
-                            'errors': '',
-                            'info': '',
-                            'isomorphism': '',
-                            'job_types': {'rotors': True,
-                                          'composite': False,
-                                          'conformers': True,
-                                          'fine_grid': False,
-                                          'freq': False,
-                                          'lennard_jones': False,
-                                          'onedmin': False,
-                                          'opt': False,
-                                          'orbitals': False,
-                                          'bde': True,
-                                          'sp': True},
-                            'paths': {'composite': '',
-                                      'freq': '',
-                                      'geo': '',
-                                      'sp': ''},
-                            'restart': '',
-                            'warnings': ''},
-                       'CH4_BDE_1_2_A':
-                           {'conformers': '',
-                            'convergence': True,
-                            'errors': '',
-                            'info': '',
-                            'isomorphism': '',
-                            'job_types': {'rotors': True,
-                                          'composite': False,
-                                          'conformers': True,
-                                          'fine_grid': False,
-                                          'freq': True,
-                                          'lennard_jones': False,
-                                          'onedmin': False,
-                                          'opt': True,
-                                          'orbitals': False,
-                                          'bde': True,
-                                          'sp': True},
-                            'paths': {'composite': '',
-                                      'freq': '',
-                                      'geo': '',
-                                      'sp': ''},
-                            'restart': '',
-                            'warnings': ''},
+        species_dict = {'CH4': ch4, 'NH3': nh3, 'H': h, 'CH4_BDE_1_2_A': ch4_bde_1_2_a}
+        output_dict = {'CH4': {'conformers': '',
+                               'convergence': True,
+                               'errors': '',
+                               'info': '',
+                               'isomorphism': '',
+                               'job_types': {'rotors': True,
+                                             'composite': False,
+                                             'conformers': True,
+                                             'fine_grid': False,
+                                             'freq': True,
+                                             'lennard_jones': False,
+                                             'onedmin': False,
+                                             'opt': True,
+                                             'orbitals': False,
+                                             'bde': True,
+                                             'sp': True},
+                               'paths': {'composite': '',
+                                         'freq': '',
+                                         'geo': '',
+                                         'sp': ''},
+                               'restart': '',
+                               'warnings': ''},
+                       'NH3': {'conformers': '',
+                               'convergence': True,
+                               'errors': '',
+                               'info': '',
+                               'isomorphism': '',
+                               'job_types': {'rotors': True,
+                                             'composite': False,
+                                             'conformers': True,
+                                             'fine_grid': False,
+                                             'freq': True,
+                                             'lennard_jones': False,
+                                             'onedmin': False,
+                                             'opt': True,
+                                             'orbitals': False,
+                                             'bde': True,
+                                             'sp': True},
+                               'paths': {'composite': '',
+                                         'freq': '',
+                                         'geo': '',
+                                         'sp': ''},
+                               'restart': '',
+                               'warnings': ''},
+                       'H': {'conformers': '',
+                             'convergence': True,
+                             'errors': '',
+                             'info': '',
+                             'isomorphism': '',
+                             'job_types': {'rotors': True,
+                                           'composite': False,
+                                           'conformers': True,
+                                           'fine_grid': False,
+                                           'freq': False,
+                                           'lennard_jones': False,
+                                           'onedmin': False,
+                                           'opt': False,
+                                           'orbitals': False,
+                                           'bde': True,
+                                           'sp': True},
+                             'paths': {'composite': '',
+                                       'freq': '',
+                                       'geo': '',
+                                       'sp': ''},
+                             'restart': '',
+                             'warnings': ''},
+                       'CH4_BDE_1_2_A': {'conformers': '',
+                                         'convergence': True,
+                                         'errors': '',
+                                         'info': '',
+                                         'isomorphism': '',
+                                         'job_types': {'rotors': True,
+                                                       'composite': False,
+                                                       'conformers': True,
+                                                       'fine_grid': False,
+                                                       'freq': True,
+                                                       'lennard_jones': False,
+                                                       'onedmin': False,
+                                                       'opt': True,
+                                                       'orbitals': False,
+                                                       'bde': True,
+                                                       'sp': True},
+                                         'paths': {'composite': '',
+                                                   'freq': '',
+                                                   'geo': '',
+                                                   'sp': ''},
+                                         'restart': '',
+                                         'warnings': ''},
                        }
         cls.processor0 = Processor(project=project, project_directory=project_directory, species_dict=species_dict,
                                    rxn_list=list(), output=output_dict, use_bac=True,
@@ -138,9 +130,6 @@ class TestProcessor(unittest.TestCase):
         """Test the process_bdes method"""
         bde_report = self.processor0.process_bdes(label='CH4')
         self.assertEqual(bde_report, {(1, 2): 50})
-
-
-################################################################################
 
 
 if __name__ == '__main__':

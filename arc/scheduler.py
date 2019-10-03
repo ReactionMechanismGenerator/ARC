@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # encoding: utf-8
 
 """
@@ -6,22 +6,18 @@ A module for scheduling jobs
 Includes spawning, terminating, checking, and troubleshooting various jobs
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
-import time
-import os
 import datetime
-import numpy as np
-import shutil
-import logging
 import itertools
+import logging
+import os
+import shutil
+import time
 from IPython.display import display
 
-from arkane.statmech import determine_qm_software
-from rmgpy.exceptions import InputError as RMGInputError
 from rmgpy.reaction import Reaction
 
 from arc.common import get_logger, read_yaml_file, save_yaml_file, get_ordinal_indicator, min_list, \
-    calculate_dihedral_angle
+    calculate_dihedral_angle, sort_two_lists_by_the_first
 from arc import plotter
 from arc import parser
 from arc.job.job import Job
@@ -240,7 +236,7 @@ class Scheduler(object):
                 rxn.determine_rxn_multiplicity()
                 rxn.ts_label = rxn.ts_label if rxn.ts_label is not None else 'TS{0}'.format(rxn.index)
                 with open(rxn_info_path, 'a') as f:
-                    f.write(str('{0}: {1}'.format(rxn.ts_label, rxn.label)))
+                    f.write('{0}: {1}'.format(rxn.ts_label, rxn.label))
                     if family_text:
                         family_text = '\n(' + family_text + ')'
                         f.write(str(family_text))
@@ -297,7 +293,7 @@ class Scheduler(object):
                             ts_guess.xyz = autotst(rmg_reaction=ts_guess.rmg_reaction, reaction_family=ts_guess.family)
                         except TSError as e:
                             logger.error('Could not generate an AutoTST guess for reaction {0}.\nGot: {1}'.format(
-                                rxn.label, e.message))
+                                rxn.label, e))
                         ts_guess.success = True if ts_guess.xyz is not None else False
                         ts_guess.execution_time = str(datetime.datetime.now() - ts_guess.t0).split('.')[0]
                     else:
@@ -578,9 +574,9 @@ class Scheduler(object):
                             mmff94_fallback = True
                         if mmff94_fallback:
                             logger.error('Force field parameter fitting job in Gaussian failed. Generating standard '
-                                         'MMFF94 conformers instead of fitting a force field for species {0}, although '
-                                         'its force_field attribute was set to "fit".'.format(label))
-                            self.species_dict[label].force_field = 'MMFF94'
+                                         'MMFF94s conformers instead of fitting a force field for species {0}, '
+                                         'although its force_field attribute was set to "fit".'.format(label))
+                            self.species_dict[label].force_field = 'MMFF94s'
                             self.species_dict[label].generate_conformers(confs_to_dft=self.confs_to_dft,
                                                                          plot_path=os.path.join(self.project_directory,
                                                                                                 'output', 'Species',
@@ -769,7 +765,7 @@ class Scheduler(object):
                     self.run_force_field_fit_job(label)
                 else:
                     if self.species_dict[label].force_field == 'cheap':
-                        # just embed in RDKit and use MMFF94 for opt and energies
+                        # just embed in RDKit and use MMFF94s for opt and energies
                         if self.species_dict[label].initial_xyz is None:
                             self.species_dict[label].initial_xyz = self.species_dict[label].get_xyz()
                     else:
@@ -894,7 +890,7 @@ class Scheduler(object):
                     if int(job_name.split('_a')[-1]) > jobname0:
                         jobname0 = int(job_name.split('_a')[-1])
                         job0 = job
-                with open(job0.local_path_to_output_file, 'rb') as f:
+                with open(job0.local_path_to_output_file, 'r') as f:
                     lines = f.readlines()
                     core = val = 0, 0
                     for line in lines:
@@ -1008,9 +1004,9 @@ class Scheduler(object):
             self.spawn_md_jobs(label)
         elif 'gaussian' not in self.ess_settings:
             logger.error('Cannot execute a force field parameter fitting job in Gaussian. Gaussian  is missing from '
-                         'the ess_settings dictionary. Generating standard MMFF94 conformers instead for '
+                         'the ess_settings dictionary. Generating standard MMFF94s conformers instead for '
                          'species {0}, although its force_field attribute was set to "fit".'.format(label))
-            self.species_dict[label].force_field = 'MMFF94'
+            self.species_dict[label].force_field = 'MMFF94s'
             self.species_dict[label].generate_conformers(confs_to_dft=self.confs_to_dft,
                                                          plot_path=os.path.join(self.project_directory, 'output',
                                                                                 'Species', label, 'geometry',
@@ -1192,14 +1188,8 @@ class Scheduler(object):
                         continue
                 else:
                     modified_xyz = xyz
-
-                    # what's left?
-                    # modify this section so it only changes the correct dihedral according to scan and cont_index[i]:
-                    # change the dihedral at scan by cont_index[i] * increment
-                    # no need for the loop, no need for modified_xyz, just use xyz
-
                     dihedrals = list()
-                    for original_dihedral, scan, pivs in zip(original_dihedrals, scans, pivots):
+                    for original_dihedral, scn, pivs in zip(original_dihedrals, scans, pivots):
                         dihedral = original_dihedral + cont_index * increment
                         dihedral = dihedral if dihedral <= 180.0 else dihedral - 360.0
                         dihedrals.append(dihedral)
@@ -1213,12 +1203,12 @@ class Scheduler(object):
                             # Species.set_dihedral uses .final_xyz to modify the .initial_xyz attribute to the desired
                             # dihedral if xyz is None (first job in the series), the species.final_xyz attribute is used
                             # instead.
-                            self.species_dict[label].set_dihedral(scan=scan, deg_abs=dihedral, count=False,
+                            self.species_dict[label].set_dihedral(scan=scn, deg_abs=dihedral, count=False,
                                                                   xyz=modified_xyz)
                             modified_xyz = self.species_dict[label].initial_xyz
-                    self.run_job(label=label, xyz=modified_xyz, level_of_theory=self.scan_level, job_type='directed_scan',
-                                 directed_scan_type=directed_scan_type, directed_scans=scans, directed_dihedrals=dihedrals,
-                                 rotor_index=rotor_index, pivots=pivots)
+                    self.run_job(label=label, xyz=modified_xyz, level_of_theory=self.scan_level,
+                                 job_type='directed_scan', directed_scan_type=directed_scan_type, directed_scans=scans,
+                                 directed_dihedrals=dihedrals, rotor_index=rotor_index, pivots=pivots)
                     cont_indices[i] += 1
                     break
 
@@ -1246,7 +1236,7 @@ class Scheduler(object):
                 self.species_dict[label].mol_list = [conformers.update_mol(mol)
                                                      for mol in self.species_dict[label].mol_list]
                 number_of_heavy_atoms = len([atom for atom in self.species_dict[label].mol_list[0].atoms
-                                             if atom.isNonHydrogen()])
+                                             if atom.is_non_hydrogen()])
             else:
                 xyz = self.species_dict[label].get_xyz()
                 number_of_heavy_atoms = 0
@@ -1397,7 +1387,7 @@ class Scheduler(object):
                         # we'll optimize the single conformer even if it is not isomorphic to the 2D graph
                         logger.error('The single conformer {0} could not be checked for isomorphism with the 2D graph '
                                      'representation {1}. Optimizing this conformer anyway.'.format(
-                                      label, self.species_dict[label].mol.toSMILES()))
+                                      label, self.species_dict[label].mol.to_smiles()))
                         if self.species_dict[label].charge:
                             logger.warning('Isomorphism check cannot be done for charged species {0}'.format(label))
                         self.output[label]['conformers'] += 'Single conformer could not be checked for isomorphism; '
@@ -1407,7 +1397,7 @@ class Scheduler(object):
                         logger.error('The only conformer for species {0} could not be checked for isomorphism with the '
                                      '2D graph representation {1}. NOT calculating this species. To change this '
                                      'behaviour, pass `allow_nonisomorphic_2d = True` to ARC.'.format(
-                                      label, b_mol.toSMILES()))
+                                      label, b_mol.to_smiles()))
                         self.species_dict[label].conf_is_isomorphic, spawn_jobs = False, False
                 if b_mol is not None:
                     try:
@@ -1421,13 +1411,13 @@ class Scheduler(object):
                                          'following error:\n{1}'.format(label, e))
                     if is_isomorphic:
                         logger.info('The only conformer for species {0} was found to be isomorphic '
-                                    'with the 2D graph representation {1}\n'.format(label, b_mol.toSMILES()))
+                                    'with the 2D graph representation {1}\n'.format(label, b_mol.to_smiles()))
                         self.output[label]['conformers'] += 'single conformer passed isomorphism check; '
                         self.output[label]['job_types']['conformers'] = True
                         self.species_dict[label].conf_is_isomorphic = True
                     else:
                         logger.error('The only conformer for species {0} is not isomorphic '
-                                     'with the 2D graph representation {1}\n'.format(label, b_mol.toSMILES()))
+                                     'with the 2D graph representation {1}\n'.format(label, b_mol.to_smiles()))
                         if self.allow_nonisomorphic_2d:
                             logger.info('Using this conformer anyway (allow_nonisomorphic_2d was set to True)')
                         else:
@@ -1465,20 +1455,25 @@ class Scheduler(object):
             i (int): The conformer index.
         """
         if job.job_status[1]['status'] == 'done':
-            log = determine_qm_software(fullpath=job.local_path_to_output_file)
-            coords, number, _ = log.loadGeometry()
+            xyz = parser.parse_xyz_from_file(path=job.local_path_to_output_file)
+            energy = parser.parse_e_elect(path=job.local_path_to_output_file)
             if self.species_dict[label].is_ts:
-                self.species_dict[label].ts_guesses[i].energy = parser.parse_e_elect(path=job.local_path_to_output_file)
-                self.species_dict[label].ts_guesses[i].opt_xyz = xyz_from_data(coords=coords, numbers=number)
+                self.species_dict[label].ts_guesses[i].energy = energy
+                self.species_dict[label].ts_guesses[i].opt_xyz = xyz
                 self.species_dict[label].ts_guesses[i].index = i
-                logger.debug('Energy for TSGuess {0} of {1} is {2:.2f}'.format(
-                    i, self.species_dict[label].label, self.species_dict[label].ts_guesses[i].energy))
+                if energy is not None:
+                    logger.debug('Energy for TSGuess {0} of {1} is {2:.2f}'.format(i, self.species_dict[label].label,
+                                                                                   energy))
+                else:
+                    logger.debug('Energy for TSGuess {0} of {1} is None'.format(i, self.species_dict[label].label))
             else:
-                self.species_dict[label].conformer_energies[i] = parser.parse_e_elect(
-                    path=job.local_path_to_output_file)
-                self.species_dict[label].conformers[i] = xyz_from_data(coords=coords, numbers=number)
-                logger.debug('Energy for conformer {0} of {1} is {2:.2f}'.format(
-                    i, self.species_dict[label].label, self.species_dict[label].conformer_energies[i]))
+                self.species_dict[label].conformer_energies[i] = energy
+                self.species_dict[label].conformers[i] = xyz
+                if energy is not None:
+                    logger.debug('Energy for conformer {0} of {1} is {2:.2f}'.format(i, self.species_dict[label].label,
+                                                                                     energy))
+                else:
+                    logger.debug('Energy for conformer {0} of {1} is None'.format(i, self.species_dict[label].label))
         else:
             logger.warning('Conformer {i} for {label} did not converge!'.format(i=i, label=label))
 
@@ -1506,16 +1501,9 @@ class Scheduler(object):
                 xyzs = self.species_dict[label].conformers
             else:
                 for job in self.job_dict[label]['conformers'].values():
-                    log = determine_qm_software(fullpath=job.local_path_to_output_file)
-                    try:
-                        coords, number, _ = log.loadGeometry()
-                    except RMGInputError:
-                        xyzs.append(None)
-                    else:
-                        xyzs.append(xyz_from_data(coords=coords, numbers=number))
+                    xyzs.append(parser.parse_xyz_from_file(path=job.local_path_to_output_file))
             xyzs_in_original_order = xyzs
-            energies, xyzs = (list(t) for t in zip(*sorted(zip(self.species_dict[label].conformer_energies, xyzs)))
-                              if t[0] is not None)
+            energies, xyzs = sort_two_lists_by_the_first(self.species_dict[label].conformer_energies, xyzs)
             plotter.save_conformers_file(project_directory=self.project_directory, label=label,
                                          xyzs=self.species_dict[label].conformers, level_of_theory=self.conformer_level,
                                          multiplicity=self.species_dict[label].multiplicity,
@@ -1546,7 +1534,7 @@ class Scheduler(object):
                         if is_isomorphic:
                             if i == 0:
                                 logger.info('Most stable conformer for species {0} was found to be isomorphic '
-                                            'with the 2D graph representation {1}\n'.format(label, b_mol.toSMILES()))
+                                            'with the 2D graph representation {1}\n'.format(label, b_mol.to_smiles()))
                                 conformer_xyz = xyz
                                 self.output[label]['conformers'] += 'most stable conformer ({0}) passed ' \
                                                                     'isomorphism check; '.format(i)
@@ -1558,7 +1546,7 @@ class Scheduler(object):
                                                 'kJ/mol above the most stable one which corresponds to {3} (and is '
                                                 'not isomorphic). Using the isomorphic conformer for further geometry '
                                                 'optimization.'.format(
-                                                 label, self.species_dict[label].mol.toSMILES(),
+                                                 label, self.species_dict[label].mol.to_smiles(),
                                                  (energies[i] - energies[0]) * 0.001,
                                                  molecules_from_xyz(xyzs[0],
                                                                     multiplicity=self.species_dict[label].multiplicity,
@@ -1577,7 +1565,7 @@ class Scheduler(object):
                                 logger.warning('Most stable conformer for species {0} with structure {1} was found to '
                                                'be NON-isomorphic with the 2D graph representation {2}. Searching for '
                                                'a different conformer that is isomorphic...'.format(
-                                                label, b_mol.toSMILES(), self.species_dict[label].mol.toSMILES()))
+                                                label, b_mol.to_smiles(), self.species_dict[label].mol.to_smiles()))
                 else:
                     # all conformers for the species failed isomorphism test
                     smiles_list = list()
@@ -1585,14 +1573,14 @@ class Scheduler(object):
                         try:
                             b_mol = molecules_from_xyz(xyz, multiplicity=self.species_dict[label].multiplicity,
                                                        charge=self.species_dict[label].charge)[1]
-                            smiles_list.append(b_mol.toSMILES())
+                            smiles_list.append(b_mol.to_smiles())
                         except (SanitizationError, AttributeError):
                             smiles_list.append('Could not perceive molecule')
                     if self.allow_nonisomorphic_2d or self.species_dict[label].charge:
                         # we'll optimize the most stable conformer even if it is not isomorphic to the 2D graph
                         logger.error('No conformer for {0} was found to be isomorphic with the 2D graph representation'
                                      ' {1} (got: {2}). Optimizing the most stable conformer anyway.'.format(
-                                      label, self.species_dict[label].mol.toSMILES(), smiles_list))
+                                      label, self.species_dict[label].mol.to_smiles(), smiles_list))
                         self.output[label]['conformers'] += 'No conformer was found to be isomorphic with ' \
                                                             'the 2D graph representation; '
                         if self.species_dict[label].charge:
@@ -1701,9 +1689,7 @@ class Scheduler(object):
         logger.debug('parsing composite geo for {0}'.format(job.job_name))
         freq_ok = False
         if job.job_status[1]['status'] == 'done':
-            log = determine_qm_software(fullpath=job.local_path_to_output_file)
-            coords, number, _ = log.loadGeometry()
-            self.species_dict[label].final_xyz = xyz_from_data(coords=coords, numbers=number)
+            self.species_dict[label].final_xyz = parser.parse_xyz_from_file(path=job.local_path_to_output_file)
             self.output[label]['job_types']['composite'] = True
             self.output[label]['job_types']['opt'] = True
             self.output[label]['job_types']['sp'] = True
@@ -1759,9 +1745,7 @@ class Scheduler(object):
         success = False
         logger.debug('parsing opt geo for {0}'.format(job.job_name))
         if job.job_status[1]['status'] == 'done':
-            log = determine_qm_software(fullpath=job.local_path_to_output_file)
-            coords, number, _ = log.loadGeometry()
-            self.species_dict[label].final_xyz = xyz_from_data(coords=coords, numbers=number)
+            self.species_dict[label].final_xyz = parser.parse_xyz_from_file(path=job.local_path_to_output_file)
             if not job.fine and self.job_types['fine'] and not job.software == 'molpro':
                 # Run opt again using a finer grid.
                 xyz = self.species_dict[label].final_xyz
@@ -1911,7 +1895,8 @@ class Scheduler(object):
         elif job.job_status[1]['status'] == 'done':
             self.output[label]['job_types']['sp'] = True
             self.output[label]['paths']['sp'] = os.path.join(job.local_path, 'output.out')
-            self.species_dict[label].t1 = parser.parse_t1(self.output[label]['paths']['sp'])
+            if 'ccsd' in self.sp_level:
+                self.species_dict[label].t1 = parser.parse_t1(self.output[label]['paths']['sp'])
             zpe_scale_factor = 0.99 if self.composite_method.lower() == 'cbs-qb3' else 1.0
             self.species_dict[label].e_elect = parser.parse_e_elect(self.output[label]['paths']['sp'],
                                                                     zpe_scale_factor=zpe_scale_factor)
@@ -1970,11 +1955,8 @@ class Scheduler(object):
         invalidate, actions, energies = False, list(), list()
         for i in range(self.species_dict[label].number_of_rotors):
             if self.species_dict[label].rotors_dict[i]['pivots'] == job.pivots:
-                # Check whether the log file is readable, get PES scan using Arkane
-                log = determine_qm_software(fullpath=job.local_path_to_output_file)
-                try:
-                    energies, angles = log.loadScanEnergies()
-                except ZeroDivisionError:
+                energies, angles = parser.parse_scan_energies(path=job.local_path_to_output_file)
+                if energies is None:
                     invalidate = True
                     invalidation_reason = 'Could not read energies'
                     message = 'Energies from rotor scan of {label} between pivots {pivots} could not ' \
@@ -2010,7 +1992,7 @@ class Scheduler(object):
                             self.output[label]['errors'] += 'A lower conformer was found for {0} via a torsion mode, ' \
                                                             'but it is not isomorphic with the 2D graph ' \
                                                             'representation {1}. Not calculating this species.'.format(
-                                                             label, self.species_dict[label].mol.toSMILES())
+                                                             label, self.species_dict[label].mol.to_smiles())
                             self.output[label]['conformers'] += 'Unconverged'
                             self.output[label]['convergence'] = False
 
@@ -2096,7 +2078,7 @@ class Scheduler(object):
                     self.output[label]['errors'] += 'A lower conformer was found for {0} via a torsion mode, ' \
                                                     'but it is not isomorphic with the 2D graph representation ' \
                                                     '{1}. Not calculating this species.'.format(
-                                                     label, self.species_dict[label].mol.toSMILES())
+                                                     label, self.species_dict[label].mol.to_smiles())
                     self.output[label]['conformers'] += 'Unconverged'
                     self.output[label]['convergence'] = False
             else:
@@ -2153,9 +2135,7 @@ class Scheduler(object):
             job (Job): The rotor scan job object.
         """
         if job.job_status[1]['status'] == 'done':
-            log = determine_qm_software(fullpath=job.local_path_to_output_file)
-            coords, number, _ = log.loadGeometry()
-            xyz = xyz_from_data(coords=coords, numbers=number)
+            xyz = parser.parse_xyz_from_file(path=job.local_path_to_output_file)
             is_isomorphic = self.species_dict[label].check_xyz_isomorphism(xyz=xyz, verbose=False)
             for rotor_dict in self.species_dict[label].rotors_dict.values():
                 if rotor_dict['pivots'] == job.pivots:
@@ -2265,8 +2245,8 @@ class Scheduler(object):
                 if any([job_type not in ['conformers', 'opt', 'composite']
                         for job_type in self.job_dict[label].keys()]) else zero_delta
             self.species_dict[label].run_time = self.species_dict[label].run_time \
-                                                or (conf_time or zero_delta) + (opt_time or zero_delta) \
-                                                + (comp_time or zero_delta) + (other_time or zero_delta)
+                or (conf_time or zero_delta) + (opt_time or zero_delta) \
+                + (comp_time or zero_delta) + (other_time or zero_delta)
             logger.info('\nAll jobs for species {0} successfully converged.'
                         ' Run time: {1}'.format(label, self.species_dict[label].run_time))
         else:
@@ -2423,7 +2403,7 @@ class Scheduler(object):
                                                      job_status=job.job_status[1], job_type=job.job_type,
                                                      software=job.software, fine=job.fine, memory_gb=job.memory_gb,
                                                      ess_trsh_methods=job.ess_trsh_methods,
-                                                     available_ess=self.ess_settings.keys())
+                                                     available_ess=list(self.ess_settings.keys()))
         for output_error in output_errors:
             self.output[label]['errors'] += output_error
         if remove_checkfile:
@@ -2461,7 +2441,7 @@ class Scheduler(object):
             logger.error('ARC has attempted all built-in conformer isomorphism troubleshoot methods for species'
                          ' {0}. No conformer for this species was found to be isomorphic with the 2D graph'
                          ' representation {1}. NOT optimizing this species.'
-                         .format(label, self.species_dict[label].mol.toSMILES()))
+                         .format(label, self.species_dict[label].mol.to_smiles()))
             self.output[label]['conformers'] += 'Error: No conformer was found to be isomorphic with the 2D' \
                                                 ' graph representation!; '
         else:
@@ -2636,7 +2616,7 @@ class Scheduler(object):
                             self.output[species.label]['paths'][key] = ''
                     if 'job_types' not in self.output[species.label]:
                         self.output[species.label]['job_types'] = dict()
-                    for job_type in list(set(self.job_types.keys() + ['opt', 'freq', 'sp', 'composite', 'onedmin'])):
+                    for job_type in list(set(self.job_types.keys())) + ['opt', 'freq', 'sp', 'composite', 'onedmin']:
                         if job_type in ['rotors', 'bde']:
                             # rotors could be invalidated due to many reasons,
                             # also could be falsely identified in a species that has no torsional modes.

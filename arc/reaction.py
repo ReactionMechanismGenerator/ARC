@@ -1,22 +1,19 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # encoding: utf-8
 
 """
 A module for representing a reaction.
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
-
-from rmgpy.species import Species
 from rmgpy.reaction import Reaction
+from rmgpy.species import Species
 
-from arc.common import get_logger
 import arc.rmgdb as rmgdb
-from arc.species.species import ARCSpecies
+from arc.common import get_logger
 from arc.exceptions import ReactionError, InputError
 from arc.settings import default_ts_methods
+from arc.species.species import ARCSpecies
 
-##################################################################
 
 logger = get_logger()
 
@@ -215,14 +212,14 @@ class ARCReaction(object):
 
     def rmg_reaction_to_str(self):
         """A helper function for dumping the RMG Reaction object as a string for the YAML restart dictionary"""
-        return self.arrow.join([self.plus.join(r.molecule[0].toSMILES() for r in self.rmg_reaction.reactants),
-                                self.plus.join(p.molecule[0].toSMILES() for p in self.rmg_reaction.products)])
+        return self.arrow.join([self.plus.join(r.molecule[0].to_smiles() for r in self.rmg_reaction.reactants),
+                                self.plus.join(p.molecule[0].to_smiles() for p in self.rmg_reaction.products)])
 
     def rmg_reaction_from_str(self, reaction_string):
         """A helper function for regenerating the RMG Reaction object from a string representation"""
         reactants, products = reaction_string.split(self.arrow)
-        reactants = [Species().fromSMILES(str(smiles)) for smiles in reactants.split(self.plus)]
-        products = [Species().fromSMILES(str(smiles)) for smiles in products.split(self.plus)]
+        reactants = [Species().from_smiles(smiles) for smiles in reactants.split(self.plus)]
+        products = [Species().from_smiles(smiles) for smiles in products.split(self.plus)]
         self.rmg_reaction = Reaction(reactants=reactants, products=products)
 
     def rmg_reaction_from_arc_species(self):

@@ -1,20 +1,17 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
+# encoding: utf-8
 
 """
 This module contains unit tests of the arc.job.local module
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
-import unittest
+import datetime
 import os
 import shutil
-import datetime
+import unittest
 
 import arc.job.local as local
 from arc.settings import arc_path
-
-################################################################################
 
 
 class TestLocal(unittest.TestCase):
@@ -29,9 +26,9 @@ class TestLocal(unittest.TestCase):
         self.assertIsInstance(out1, tuple)
         self.assertIsInstance(out1[0], list)
         self.assertEqual(out1[1], '')
-        self.assertIn('arc', out1[0])
-        self.assertIn('ARC.py', out1[0])
-        self.assertIn('environment.yml', out1[0])
+        self.assertIn('arc', [out.decode() for out in out1[0]])
+        self.assertIn('ARC.py', [out.decode() for out in out1[0]])
+        self.assertIn('environment.yml', [out.decode() for out in out1[0]])
 
     def test_get_last_modified_time(self):
         """Test the get_last_modified_time() function"""
@@ -51,8 +48,6 @@ class TestLocal(unittest.TestCase):
         self.assertFalse(os.path.isfile(path1))
         self.assertTrue(os.path.isfile(path2))
         shutil.rmtree(os.path.join(arc_path, 'scratch'))
-
-################################################################################
 
 
 if __name__ == '__main__':

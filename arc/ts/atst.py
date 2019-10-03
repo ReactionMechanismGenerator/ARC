@@ -1,11 +1,10 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # encoding: utf-8
 
 """
 A module for calling AutoTST
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
 import os
 
 from arc.exceptions import TSError
@@ -25,7 +24,7 @@ def autotst(reaction_label=None, rmg_reaction=None, reaction_family=None):
         reaction_family (str): The RMG family corresponding to the RMG Reaction object
 
     Returns:
-        xyz (dict): THe TS guess.
+        xyz (dict): The TS guess.
 
     Raises:
         TSError: if neither ``rmg_reaction`` nor ``reaction_family`` were specified.
@@ -63,12 +62,12 @@ def get_reaction_label(rmg_reaction):
     reactants = rmg_reaction.reactants
     products = rmg_reaction.products
     if len(reactants) > 1:
-        reactants_string = '+'.join([reactant.molecule[0].toSMILES() for reactant in reactants])
+        reactants_string = '+'.join([reactant.molecule[0].to_smiles() for reactant in reactants])
     else:
-        reactants_string = reactants[0].molecule[0].toSMILES()
+        reactants_string = reactants[0].molecule[0].to_smiles()
     if len(products) > 1:
-        products_string = '+'.join([product.molecule[0].toSMILES() for product in products])
+        products_string = '+'.join([product.molecule[0].to_smiles() for product in products])
     else:
-        products_string = products[0].molecule[0].toSMILES()
+        products_string = products[0].molecule[0].to_smiles()
     reaction_label = '_'.join([reactants_string, products_string])
     return reaction_label

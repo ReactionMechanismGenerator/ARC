@@ -1,11 +1,10 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
+# encoding: utf-8
 
 """
 This module contains unit tests of the arc.job.job module
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
 import datetime
 import os
 import shutil
@@ -319,8 +318,6 @@ class TestJob(unittest.TestCase):
             if os.path.isdir(project_directory):
                 shutil.rmtree(project_directory)
 
-
-################################################################################
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

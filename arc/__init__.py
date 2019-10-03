@@ -1,16 +1,16 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
+# encoding: utf-8
 
-import exceptions
-import main
-from main import ARC
-import common
-import parser
-import plotter
-import processor
-import scheduler
-import settings
-import utils
+import arc.exceptions
+import arc.main
+from arc.main import ARC
+import arc.common
+import arc.parser
+import arc.plotter
+import arc.processor
+import arc.scheduler
+import arc.settings
+import arc.utils
 
-import species
-import job
+import arc.species
+import arc.job

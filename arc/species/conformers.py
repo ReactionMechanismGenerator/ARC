@@ -1,5 +1,6 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
+# encoding: utf-8
+
 """
 A module for (non-TS) species conformer generation
 
@@ -37,29 +38,28 @@ Module workflow::
 
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
+from itertools import product, combinations_with_replacement
 import logging
 import math
+import numpy as np
 import sys
 import time
-from itertools import product, combinations_with_replacement
 from heapq import nsmallest
-import numpy as np
 
+import openbabel as ob
+import pybel as pyb
 from rdkit import Chem
 from rdkit.Chem.rdchem import EditableMol as RDMol
 from rdkit.Chem.rdmolops import AssignStereochemistry
-import openbabel as ob
-import pybel as pyb
 
-from rmgpy.molecule.converter import toOBMol
-from rmgpy.molecule.molecule import Molecule
 import rmgpy.molecule.group as gr
+from rmgpy.molecule.converter import to_ob_mol
+from rmgpy.molecule.molecule import Molecule
 
-from arc.exceptions import ConformerError, InputError
 from arc.common import logger, determine_symmetry, calculate_dihedral_angle
-from arc.species import converter
+from arc.exceptions import ConformerError, InputError
 import arc.plotter
+from arc.species import converter
 
 
 # The number of conformers to generate per range of heavy atoms in the molecule
@@ -101,7 +101,7 @@ COMBINATION_THRESHOLD = 1000
 
 def generate_conformers(mol_list, label, xyzs=None, torsions=None, tops=None, charge=0, multiplicity=None,
                         num_confs=None, num_confs_to_return=None, well_tolerance=None, de_threshold=None,
-                        smeared_scan_res=None, combination_threshold=None, force_field='MMFF94',
+                        smeared_scan_res=None, combination_threshold=None, force_field='MMFF94s',
                         max_combination_iterations=None, determine_h_bonds=False, return_all_conformers=False,
                         plot_path=None, print_logs=True):
     """
@@ -310,7 +310,7 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
 
 def generate_conformer_combinations(label, mol, base_xyz, hypothetical_num_comb, multiple_tors,
                                     multiple_sampling_points, combination_threshold=1000, len_conformers=-1,
-                                    force_field='MMFF94', max_combination_iterations=25, plot_path=None,
+                                    force_field='MMFF94s', max_combination_iterations=25, plot_path=None,
                                     torsion_angles=None, multiple_sampling_points_dict=None, wells_dict=None,
                                     de_threshold=None):
     """
@@ -362,7 +362,7 @@ def generate_conformer_combinations(label, mol, base_xyz, hypothetical_num_comb,
 
 
 def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_tors, multiple_sampling_points,
-                                                len_conformers=-1, force_field='MMFF94', max_combination_iterations=25,
+                                                len_conformers=-1, force_field='MMFF94s', max_combination_iterations=25,
                                                 torsion_angles=None, multiple_sampling_points_dict=None,
                                                 wells_dict=None, de_threshold=None, plot_path=False):
     """
@@ -454,7 +454,7 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
 
 
 def generate_all_combinations(label, mol, base_xyz, multiple_tors, multiple_sampling_points, len_conformers=-1,
-                              force_field='MMFF94'):
+                              force_field='MMFF94s'):
     """
     Generate all combinations of torsion wells from a base conformer.
     untested
@@ -498,7 +498,7 @@ def generate_all_combinations(label, mol, base_xyz, multiple_tors, multiple_samp
 
 
 def generate_force_field_conformers(label, mol_list, torsion_num, charge, multiplicity, xyzs=None, num_confs=None,
-                                    force_field='MMFF94'):
+                                    force_field='MMFF94s'):
     """
     Generate conformers using RDKit and Open Babel and optimize them using a force field
     Also consider user guesses in `xyzs`
@@ -520,7 +520,7 @@ def generate_force_field_conformers(label, mol_list, torsion_num, charge, multip
         ConformerError: If xyzs is given and it is not a list, or its entries are not strings.
     """
     conformers = list()
-    number_of_heavy_atoms = len([atom for atom in mol_list[0].atoms if atom.isNonHydrogen()])
+    number_of_heavy_atoms = len([atom for atom in mol_list[0].atoms if atom.is_non_hydrogen()])
     num_confs = num_confs or determine_number_of_conformers_to_generate(label=label, heavy_atoms=number_of_heavy_atoms,
                                                                         torsion_num=torsion_num)
     logger.info('Species {0} has {1} heavy atoms and {2} torsions. Using {3} random conformers.'.format(
@@ -530,7 +530,7 @@ def generate_force_field_conformers(label, mol_list, torsion_num, charge, multip
         try:
             ff_xyzs, ff_energies = get_force_field_energies(label, mol, num_confs=num_confs, force_field=force_field)
         except ValueError as e:
-            logger.warning('Could not generate conformers for {0}, failed with: {1}'.format(label, e.message))
+            logger.warning('Could not generate conformers for {0}, failed with: {1}'.format(label, e))
         if ff_xyzs:
             for xyz, energy in zip(ff_xyzs, ff_energies):
                 conformers.append({'xyz': xyz,
@@ -553,7 +553,7 @@ def generate_force_field_conformers(label, mol_list, torsion_num, charge, multip
     return conformers
 
 
-def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals, optimize=True, force_field='MMFF94'):
+def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals, optimize=True, force_field='MMFF94s'):
     """
     Change dihedrals of specified torsions according to the new dihedrals specified, and get FF energies.
 
@@ -582,7 +582,7 @@ def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals
     Returns:
         list: The conformer xyz geometries corresponding to the list of dihedrals.
     """
-    if isinstance(xyz, (str, unicode)):
+    if isinstance(xyz, str):
         xyz = converter.str_to_xyz(xyz)
 
     if torsions is None or new_dihedrals is None:
@@ -701,7 +701,7 @@ def determine_dihedrals(conformers, torsions):
         list: Entries are conformer dictionaries.
     """
     for conformer in conformers:
-        if isinstance(conformer['xyz'], (str, unicode)):
+        if isinstance(conformer['xyz'], str):
             xyz = converter.str_to_xyz(conformer['xyz'])
         else:
             xyz = conformer['xyz']
@@ -770,13 +770,13 @@ def determine_torsion_symmetry(label, top1, mol_list, torsion_scan):
     top2 = [i + 1 for i in range(len(mol.atoms)) if i + 1 not in top1]
     for j, top in enumerate([top1, top2]):
         # A quick bypass for methyl rotors which are too common:
-        if len(top) == 4 and mol.atoms[top[0] - 1].isCarbon() \
-                and all([mol.atoms[top[i] - 1].isHydrogen() for i in range(1, 4)]):
+        if len(top) == 4 and mol.atoms[top[0] - 1].is_carbon() \
+                and all([mol.atoms[top[i] - 1].is_hydrogen() for i in range(1, 4)]):
             symmetry *= 3
             check_tops[j] = 0
         # A quick bypass for benzene rings:
-        elif len(top) == 11 and sum([mol.atoms[top[i] - 1].isCarbon() for i in range(11)]) == 6 \
-                and sum([mol.atoms[top[i] - 1].isHydrogen() for i in range(11)]) == 5:
+        elif len(top) == 11 and sum([mol.atoms[top[i] - 1].is_carbon() for i in range(11)]) == 6 \
+                and sum([mol.atoms[top[i] - 1].is_hydrogen() for i in range(11)]) == 5:
             symmetry *= 2
             check_tops[j] = 0
     # treat the torsion list as cyclic, search for at least two blank parts of at least 60 degrees each
@@ -806,13 +806,13 @@ def determine_torsion_symmetry(label, top1, mol_list, torsion_scan):
                         groups_indices.append([g + 1 for g in atom_indices])
                 # hard-coding for NO2/NS2 groups, since the two O or S atoms have different atom types in each localized
                 # structure, hence are not isomorphic
-                if len(top) == 3 and mol.atoms[top[0] - 1].atomType.label == 'N5dc' \
-                        and (all([mol.atoms[top[k] - 1].atomType.label in ['O2d', 'O0sc'] for k in [1, 2]])
-                             or all([mol.atoms[top[k] - 1].atomType.label in ['S2d', 'S0sc'] for k in [1, 2]])):
+                if len(top) == 3 and mol.atoms[top[0] - 1].atomtype.label == 'N5dc' \
+                        and (all([mol.atoms[top[k] - 1].atomtype.label in ['O2d', 'O0sc'] for k in [1, 2]])
+                             or all([mol.atoms[top[k] - 1].atomtype.label in ['S2d', 'S0sc'] for k in [1, 2]])):
                     symmetry *= 2
                 # all other groups:
-                elif not mol.atoms[top[0] - 1].lonePairs > 0 and not mol.atoms[top[0] - 1].radicalElectrons > 0 \
-                        and all([groups[0].isIsomorphic(group, saveOrder=True) for group in groups[1:]]):
+                elif not mol.atoms[top[0] - 1].lone_pairs > 0 and not mol.atoms[top[0] - 1].radical_electrons > 0 \
+                        and all([groups[0].is_isomorphic(group, save_order=True) for group in groups[1:]]):
                     symmetry *= len(groups)
     return symmetry
 
@@ -890,7 +890,7 @@ def get_torsion_angles(label, conformers, torsions):
     return torsion_angles
 
 
-def get_force_field_energies(label, mol, num_confs=None, xyz=None, force_field='MMFF94',  optimize=True):
+def get_force_field_energies(label, mol, num_confs=None, xyz=None, force_field='MMFF94s',  optimize=True):
     """
     Determine force field energies using RDKit.
     If num_confs is given, random 3D geometries will be generated. If xyz is given, it will be directly used instead.
@@ -995,7 +995,7 @@ def openbabel_force_field(label, mol, num_confs=None, xyz=None, force_field='GAF
         orders = {1: 1, 2: 2, 3: 3, 4: 4, 1.5: 5}
         for atom1 in mol.vertices:
             for atom2, bond in atom1.edges.items():
-                if bond.isHydrogenBond():
+                if bond.is_hydrogen_bond():
                     continue
                 index1 = atoms.index(atom1)
                 index2 = atoms.index(atom2)
@@ -1020,7 +1020,7 @@ def openbabel_force_field(label, mol, num_confs=None, xyz=None, force_field='GAF
         ff.GetCoordinates(obmol)
 
     elif num_confs is not None:
-        obmol, ob_atom_ids = toOBMol(mol, returnMapping=True)
+        obmol, ob_atom_ids = to_ob_mol(mol, return_mapping=True)
         pybmol = pyb.Molecule(obmol)
         pybmol.make3D()
         ff.Setup(obmol)
@@ -1145,13 +1145,13 @@ def read_rdkit_embedded_conformer_i(rd_mol, i, rd_index_map=None):
     symbols = [rd_atom.GetSymbol() for rd_atom in rd_mol.GetAtoms()]
     if rd_index_map is not None:
         # reorder
-        coords = [coords[rd_index_map[j]] for j in range(len((coords)))]
-        symbols = [symbols[rd_index_map[j]] for j in range(len((symbols)))]
+        coords = [coords[rd_index_map[j]] for j in range(len(coords))]
+        symbols = [symbols[rd_index_map[j]] for j in range(len(symbols))]
     xyz_dict = converter.xyz_from_data(coords=coords, symbols=symbols)
     return xyz_dict
 
 
-def rdkit_force_field(label, rd_mol, rd_index_map=None, mol=None, force_field='MMFF94', optimize=True):
+def rdkit_force_field(label, rd_mol, rd_index_map=None, mol=None, force_field='MMFF94s', optimize=True):
     """
     Optimize RDKit conformers using a force field (MMFF94 or MMFF94s are recommended).
     Fallback to Open Babel if RDKit fails.
@@ -1174,10 +1174,10 @@ def rdkit_force_field(label, rd_mol, rd_index_map=None, mol=None, force_field='M
         if optimize:
             v, j = 1, 0
             while v and j < 200:
-                v = Chem.AllChem.MMFFOptimizeMolecule(rd_mol, mmffVariant=str(force_field), confId=i,
+                v = Chem.AllChem.MMFFOptimizeMolecule(rd_mol, mmffVariant=force_field, confId=i,
                                                       maxIters=500, ignoreInterfragInteractions=False)
                 j += 1
-        mol_properties = Chem.AllChem.MMFFGetMoleculeProperties(rd_mol, mmffVariant=str(force_field))
+        mol_properties = Chem.AllChem.MMFFGetMoleculeProperties(rd_mol, mmffVariant=force_field)
         if mol_properties is not None:
             ff = Chem.AllChem.MMFFGetMoleculeForceField(rd_mol, mol_properties, confId=i)
             if optimize:
@@ -1282,13 +1282,13 @@ def check_special_non_rotor_cases(mol, top1, top2):
     """
     for top in [top1, top2]:
         # check cyano group
-        if len(top) == 2 and mol.atoms[top[0] - 1].isCarbon() and mol.atoms[top[1] - 1].isNitrogen() \
-                and mol.atoms[top[1] - 1].atomType.label == 'N3t':
+        if len(top) == 2 and mol.atoms[top[0] - 1].is_carbon() and mol.atoms[top[1] - 1].is_nitrogen() \
+                and mol.atoms[top[1] - 1].atomtype.label == 'N3t':
             return True
     for tp1, tp2 in [(top1, top2), (top2, top1)]:
         # check azide group
-        if len(tp1) == 2 and mol.atoms[tp1[0] - 1].atomType.label == 'N5tc' \
-                and mol.atoms[tp1[1] - 1].atomType.label == 'N3t' and mol.atoms[tp2[0] - 1].atomType.label == 'N1sc':
+        if len(tp1) == 2 and mol.atoms[tp1[0] - 1].atomtype.label == 'N5tc' \
+                and mol.atoms[tp1[1] - 1].atomtype.label == 'N3t' and mol.atoms[tp2[0] - 1].atomtype.label == 'N1sc':
             return True
     return False
 
@@ -1316,14 +1316,14 @@ def determine_top_group_indices(mol, atom1, atom2, index=1):
         for atom3 in atom_list_to_explore1:
             top.append(mol.vertices.index(atom3) + index)
             for atom4 in atom3.edges.keys():
-                if atom4.isHydrogen():
+                if atom4.is_hydrogen():
                     # append H w/o further exploring
                     top.append(mol.vertices.index(atom4) + index)
                 elif atom4 not in explored_atom_list and atom4 not in atom_list_to_explore2:
                     atom_list_to_explore2.append(atom4)  # explore it further
             explored_atom_list.append(atom3)  # mark as explored
         atom_list_to_explore1, atom_list_to_explore2 = atom_list_to_explore2, []
-    return top, not atom2.isHydrogen()
+    return top, not atom2.is_hydrogen()
 
 
 def find_internal_rotors(mol):
@@ -1338,10 +1338,10 @@ def find_internal_rotors(mol):
     """
     rotors = []
     for atom1 in mol.vertices:
-        if atom1.isNonHydrogen():
+        if atom1.is_non_hydrogen():
             for atom2, bond in atom1.edges.items():
-                if atom2.isNonHydrogen() and mol.vertices.index(atom1) < mol.vertices.index(atom2) \
-                        and (bond.isSingle() or bond.isHydrogenBond()) and not mol.isBondInCycle(bond):
+                if atom2.is_non_hydrogen() and mol.vertices.index(atom1) < mol.vertices.index(atom2) \
+                        and (bond.is_single() or bond.is_hydrogen_bond()) and not mol.is_bond_in_cycle(bond):
                     if len(atom1.edges) > 1 and len(atom2.edges) > 1:  # none of the pivotal atoms are terminal
                         rotor = dict()
                         # pivots:
@@ -1363,7 +1363,7 @@ def find_internal_rotors(mol):
                         heavy_atoms = []
                         hydrogens = []
                         for atom3 in atom1.edges.keys():
-                            if atom3.isHydrogen():
+                            if atom3.is_hydrogen():
                                 hydrogens.append(mol.vertices.index(atom3))
                             elif atom3 is not atom2:
                                 heavy_atoms.append(mol.vertices.index(atom3))
@@ -1381,7 +1381,7 @@ def find_internal_rotors(mol):
                         heavy_atoms = []
                         hydrogens = []
                         for atom3 in atom2.edges.keys():
-                            if atom3.isHydrogen():
+                            if atom3.is_hydrogen():
                                 hydrogens.append(mol.vertices.index(atom3))
                             elif atom3 is not atom1:
                                 heavy_atoms.append(mol.vertices.index(atom3))
@@ -1426,8 +1426,8 @@ def to_group(mol, atom_indices):
     index_map = dict()  # keys are Molecule atom indices, values are Group atom indices
     for i, atom_index in enumerate(atom_indices):
         atom = mol.atoms[atom_index]
-        group_atoms.append(gr.GroupAtom(atomType=[atom.atomType], radicalElectrons=[atom.radicalElectrons],
-                                        charge=[atom.charge], lonePairs=[atom.lonePairs]))
+        group_atoms.append(gr.GroupAtom(atomtype=[atom.atomtype], radical_electrons=[atom.radical_electrons],
+                                        charge=[atom.charge], lone_pairs=[atom.lone_pairs]))
         index_map[atom_index] = i
     group = gr.Group(atoms=group_atoms, multiplicity=[mol.multiplicity])
     for atom in mol.atoms:
@@ -1435,9 +1435,9 @@ def to_group(mol, atom_indices):
         if mol.atoms.index(atom) in atom_indices:
             for bonded_atom, bond in atom.edges.items():
                 if mol.atoms.index(bonded_atom) in atom_indices:
-                    group.addBond(gr.GroupBond(group_atoms[index_map[mol.atoms.index(atom)]],
-                                               group_atoms[index_map[mol.atoms.index(bonded_atom)]],
-                                               order=[bond.order]))
+                    group.add_bond(gr.GroupBond(atom1=group_atoms[index_map[mol.atoms.index(atom)]],
+                                                atom2=group_atoms[index_map[mol.atoms.index(bonded_atom)]],
+                                                order=[bond.order]))
     group.update()
     return group
 
@@ -1454,10 +1454,10 @@ def update_mol(mol):
         Molecule: the updated molecule.
     """
     for atom in mol.atoms:
-        atom.updateCharge()
-    mol.updateAtomTypes(logSpecies=False)
-    mol.updateMultiplicity()
-    mol.identifyRingMembership()
+        atom.update_charge()
+    mol.update_atomtypes(log_species=False)
+    mol.update_multiplicity()
+    mol.identify_ring_membership()
     return mol
 
 
@@ -1545,7 +1545,7 @@ def identify_chiral_centers(mol):
         index = rd_indices[atom]
         rd_index_map[index] = k
     AssignStereochemistry(rd_mol, flagPossibleStereoCenters=True)
-    rd_atom_chirality_flags = [atom.HasProp(str('_ChiralityPossible')) for atom in rd_mol.GetAtoms()]
+    rd_atom_chirality_flags = [atom.HasProp('_ChiralityPossible') for atom in rd_mol.GetAtoms()]
     chiral_centers = list()
     for i, flag in enumerate(rd_atom_chirality_flags):
         if flag:
@@ -1553,13 +1553,13 @@ def identify_chiral_centers(mol):
 
     # nitrogen umbrella modes:
     for atom1 in mol.atoms:
-        if atom1.isNitrogen() and atom1.lonePairs == 1 and len(atom1.edges.keys()) == 3:
+        if atom1.is_nitrogen() and atom1.lone_pairs == 1 and len(list(atom1.edges.keys())) == 3:
             groups = list()
             for atom2 in atom1.edges.keys():
                 top = determine_top_group_indices(mol, atom1, atom2, index=0)[0]
                 groups.append(to_group(mol, top))
-            if all([not groups[0].isIsomorphic(group, saveOrder=True) for group in groups[1:]] +
-                   [not groups[-1].isIsomorphic(group, saveOrder=True) for group in groups[:-1]]):
+            if all([not groups[0].is_isomorphic(group, save_order=True) for group in groups[1:]] +
+                   [not groups[-1].is_isomorphic(group, save_order=True) for group in groups[:-1]]):
                 # if we can say that TWO groups, each separately considered ins't isomorphic to the other two,
                 # then this nitrogen has all different (three) groups.
                 chiral_centers.append(mol.atoms.index(atom1))
@@ -1582,9 +1582,9 @@ def translate_groups(label, mol, xyz, pivot):
     Returns:
         dict: The translated coordinates.
     """
-    mol.identifyRingMembership()  # populates the Atom.props['inRing'] attribute
+    mol.identify_ring_membership()  # populates the Atom.props['inRing'] attribute
     atom1 = mol.atoms[pivot]
-    lp = atom1.lonePairs
+    lp = atom1.lone_pairs
     if lp > 1:
         logger.warning('Cannot translate groups for {0} if the pivotal atom has more than one '
                        'lone electron pair'.format(label))
@@ -1595,7 +1595,7 @@ def translate_groups(label, mol, xyz, pivot):
         groups.append({'atom': atom2, 'protons': sum([mol.atoms[i].number for i in top])})  # a dict per top
         if 'inRing' in atom1.props and atom1.props['inRing'] and 'inRing' in atom2.props and atom2.props['inRing']:
             # check whether atom1 and atom2 belong to the same ring
-            sssr = mol.getSmallestSetOfSmallestRings()
+            sssr = mol.get_deterministic_sssr()
             for ring in sssr:
                 if atom1 in ring and atom2 in ring:
                     dont_translate.append(atom2)
@@ -1653,7 +1653,7 @@ def translate_group(mol, xyz, pivot, anchor, vector):
     # print(theta * 180 / math.pi)  # print theta in degrees when troubleshooting
     # All atoms within the group will be rotated around the same normal vector by theta:
     group = determine_top_group_indices(mol=mol, atom1=mol.atoms[pivot], atom2=mol.atoms[anchor], index=0)[0]
-    coords = list(xyz['coords'])
+    coords = converter.xyz_to_coords_list(xyz)
     for i in group:
         coords[i] = rotate_vector(point_a=coords[pivot], point_b=coords[i], normal=normal, theta=theta)
     new_xyz = converter.xyz_from_data(coords=coords, symbols=xyz['symbols'], isotopes=xyz['isotopes'])
