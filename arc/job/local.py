@@ -50,9 +50,12 @@ def execute_command(command, shell=True):
         raise SettingsError('The command "{0}" is erroneous, got: \n{1}'
                             '\nTo correct the command, modify settings.py'
                             '\nTips: use "which" command to locate cluster software commands on server.'
-                            '\nExample: type "which sbatch" on a server running Slurm to find the correct'
-                            ' sbatch path required in the submit_command dictionary.'.format(command, e))
-    return stdout.splitlines(), ''
+                            '\nExample: type "which sbatch" on a server running Slurm to find the correct '
+                            'sbatch path required in the submit_command dictionary.'.format(command, e))
+    lines, list_of_strs = stdout.splitlines(), list()
+    for line in lines:
+        list_of_strs.append(line.decode())
+    return list_of_strs, ''
 
 
 def check_job_status(job_id):
