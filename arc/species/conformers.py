@@ -357,7 +357,8 @@ def generate_conformer_combinations(label, mol, base_xyz, hypothetical_num_comb,
         # just generate all combinations and get their FF energies
         logger.debug('hypothetical_num_comb for {0} is < {1}'.format(label, combination_threshold))
         new_conformers = generate_all_combinations(label, mol, base_xyz, multiple_tors, multiple_sampling_points,
-                                                   len_conformers=len_conformers, force_field=force_field)
+                                                   len_conformers=len_conformers, force_field=force_field,
+                                                   torsions=list(torsion_angles.keys()))
     return new_conformers
 
 
@@ -454,7 +455,7 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
 
 
 def generate_all_combinations(label, mol, base_xyz, multiple_tors, multiple_sampling_points, len_conformers=-1,
-                              force_field='MMFF94s'):
+                              torsions=None, force_field='MMFF94s'):
     """
     Generate all combinations of torsion wells from a base conformer.
     untested
@@ -468,6 +469,7 @@ def generate_all_combinations(label, mol, base_xyz, multiple_tors, multiple_samp
                                          to torsions in multiple_tors.
         len_conformers (int, optional): The length of the existing conformers list (for consecutive numbering).
         force_field (str, optional): The type of force field to use.
+        torsions (list, optional): A list of all possible torsions in the molecule. Will be determined if not given.
 
     Returns:
         list: New conformer combinations, entries are conformer dictionaries.
@@ -494,6 +496,9 @@ def generate_all_combinations(label, mol, base_xyz, multiple_tors, multiple_samp
                                'xyz': base_xyz,
                                'FF energy': energy,
                                'source': 'Generated all combinations from scan map (trivial case)'})
+    if torsions is None:
+        torsions = determine_rotors([mol])
+    new_conformers = determine_dihedrals(new_conformers, torsions)
     return new_conformers
 
 
