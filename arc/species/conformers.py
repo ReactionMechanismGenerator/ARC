@@ -188,9 +188,9 @@ def generate_conformers(mol_list, label, xyzs=None, torsions=None, tops=None, ch
     conformers.extend(new_conformers)
 
     num_confs_to_return = min(num_confs_to_return, hypothetical_num_comb)  # don't return more than we have
-    lowest_confs = get_lowest_confs(label, conformers, n=num_confs_to_return)
+    lowest_confs = get_lowest_confs(label, new_conformers, n=num_confs_to_return)
 
-    lowest_conf = get_lowest_confs(label, conformers, n=1)[0]
+    lowest_conf = get_lowest_confs(label, new_conformers, n=1)[0]
     enantiomeric_xyzs = generate_all_enantiomers(label=label, mol=mol_list[0], xyz=lowest_conf['xyz'])
 
     for enantiomeric_xyz in enantiomeric_xyzs:
