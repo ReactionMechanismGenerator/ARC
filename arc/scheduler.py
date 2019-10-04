@@ -935,7 +935,8 @@ class Scheduler(object):
             for i in range(self.species_dict[label].number_of_rotors):
                 scans = self.species_dict[label].rotors_dict[i]['scan']
                 pivots = self.species_dict[label].rotors_dict[i]['pivots']
-                directed_scan_type = self.species_dict[label].rotors_dict[i]['directed_scan_type']
+                directed_scan_type = self.species_dict[label].rotors_dict[i]['directed_scan_type'] \
+                    if 'directed_scan_type' in self.species_dict[label].rotors_dict[i] else ''
                 if not self.species_dict[label].rotors_dict[i]['scan_path']:
                     if directed_scan_type:
                         # check this job isn't already running on the server or completed (from a restarted project)
