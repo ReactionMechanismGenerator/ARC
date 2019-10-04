@@ -44,7 +44,6 @@ import math
 import numpy as np
 import sys
 import time
-from heapq import nsmallest
 
 import openbabel as ob
 import pybel as pyb
@@ -859,14 +858,25 @@ def get_lowest_confs(label, confs, n=1, energy='FF energy'):
     """
     if not confs or confs is None:
         raise ConformerError('get_lowest_confs() got no conformers for {0}'.format(label))
-    if isinstance(confs[0], dict):
+    if isinstance(confs[0], list):
+        conformer_list = list()
+        for entry in confs:
+            if entry[1] is not None:
+                conformer_list.append({'xyz': entry[0], energy: entry[1]})
+    elif isinstance(confs[0], dict):
         conformer_list = [conformer for conformer in confs if energy in conformer and conformer[energy] is not None]
-        return nsmallest(n, conformer_list, key=lambda conf: conf[energy])
-    elif isinstance(confs[0], list):
-        return nsmallest(n, confs, key=lambda conf: conf[1])
     else:
         raise ConformerError("confs could either be a list of dictionaries or a list of lists. "
                              "Got a list of {0}'s for {1}".format(type(confs[0]), label))
+    conformer_list.sort(key=lambda conformer: conformer[energy], reverse=False)
+    n_lowest_confs = [conformer_list[0]]
+    index = 1
+    while n - 1 and index < len(conformer_list):
+        if not compare_xyz(n_lowest_confs[-1]['xyz'], conformer_list[index]['xyz']):
+            n_lowest_confs.append(conformer_list[index])
+            n -= 1
+        index += 1
+    return n_lowest_confs
 
 
 def get_torsion_angles(label, conformers, torsions):
@@ -1480,7 +1490,7 @@ def compare_xyz(xyz1, xyz2, precision=0.1):
         bool: Whether the coordinates represent the same conformer within the given ``precision``, ``True`` if they do.
 
     Raises:
-        InputError: If ``xyz1`` and ``xyz2`` arer of wrong type or have different elements (not considering isotopes).
+        InputError: If ``xyz1`` and ``xyz2`` are of wrong type or have different elements (not considering isotopes).
     """
     if not all(isinstance(xyz, dict) for xyz in [xyz1, xyz2]):
         raise InputError('xyz1 and xyz2 must be dictionaries, got {0} and {1}, respectively'.format(
