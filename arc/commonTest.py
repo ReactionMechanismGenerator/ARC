@@ -176,6 +176,15 @@ class TestARC(unittest.TestCase):
                                                                     specific_job_type=specific_job_type)
         self.assertEqual(specific_job_type_expected, specific_job_type_initialized)
 
+    def test_initialize_job_with_specific_bde_job_type(self):
+        """Test the initialize_job_types() function"""
+        specific_job_type = 'bde'
+        bde_default = {'opt': True, 'fine': True, 'freq': True, 'sp': True, 'bde': True}
+        specific_job_type_expected = {job_type: False for job_type in self.default_job_types.keys()}
+        specific_job_type_expected.update(bde_default)
+        specific_job_type_initialized = common.initialize_job_types({}, specific_job_type=specific_job_type)
+        self.assertEqual(specific_job_type_expected, specific_job_type_initialized)
+
     def test_initialize_job_with_not_supported_job_type(self):
         """Test the initialize_job_types() function"""
         with self.assertRaises(InputError):
