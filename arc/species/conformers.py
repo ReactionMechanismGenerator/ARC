@@ -602,22 +602,23 @@ def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals
         new_dihedrals = [new_dihedrals]
 
     for dihedrals in new_dihedrals:
+        xyz_dihedrals = xyz
         for torsion, dihedral in zip(torsions, dihedrals):
-            conf, rd_mol, index_map = converter.rdkit_conf_from_mol(mol, xyz)
+            conf, rd_mol, index_map = converter.rdkit_conf_from_mol(mol, xyz_dihedrals)
             rd_torsion = [index_map[i - 1] for i in torsion]  # convert the atom indices in the torsion to RDKit indices
             xyz_dihedrals = converter.set_rdkit_dihedrals(conf, rd_mol, index_map, rd_torsion, deg_abs=dihedral)
-            if force_field != 'gromacs':
-                xyz_, energy = get_force_field_energies(label, mol=mol, xyz=xyz_dihedrals, optimize=True,
-                                                        force_field=force_field)
-                if energy and xyz_:
-                    energies.append(energy[0])
-                    if optimize:
-                        xyzs.append(xyz_[0])
-                    else:
-                        xyzs.append(xyz_dihedrals)
-            else:
-                energies.append(None)
-                xyzs.append(xyz_dihedrals)
+        if force_field != 'gromacs':
+            xyz_, energy = get_force_field_energies(label, mol=mol, xyz=xyz_dihedrals, optimize=True,
+                                                    force_field=force_field)
+            if energy and xyz_:
+                energies.append(energy[0])
+                if optimize:
+                    xyzs.append(xyz_[0])
+                else:
+                    xyzs.append(xyz_dihedrals)
+        else:
+            energies.append(None)
+            xyzs.append(xyz_dihedrals)
     return xyzs, energies
 
 
