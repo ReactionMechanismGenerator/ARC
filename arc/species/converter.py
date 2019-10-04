@@ -772,7 +772,7 @@ def s_bonds_mol_from_xyz(xyz):
 
 def to_rdkit_mol(mol, remove_h=False, return_mapping=True, sanitize=True):
     """
-    Convert a molecular structure to a RDKit rdmol object. Uses
+    Convert a molecular structure to an RDKit RDMol object. Uses
     `RDKit <http://rdkit.org/>`_ to perform the conversion.
     Perceives aromaticity.
     Adopted from rmgpy/molecule/converter.py
