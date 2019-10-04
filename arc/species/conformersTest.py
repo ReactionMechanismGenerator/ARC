@@ -1250,14 +1250,14 @@ C	0.0000000	0.0000000	-1.9736270"""  # no colliding atoms
         self.assertEqual(len(energies), 1)
 
         xyzs, energies = conformers.change_dihedrals_and_force_field_it(label='NCC', mol=ncc_mol, xyz=ncc_xyz,
-                                                                        torsions=[torsion, torsion],
-                                                                        new_dihedrals=[0, 180])
-        self.assertEqual(len(energies), 2)
+                                                                        torsions=[torsion],
+                                                                        new_dihedrals=[0])
+        self.assertEqual(len(energies), 1)
 
         xyzs, energies = conformers.change_dihedrals_and_force_field_it(label='NCC', mol=ncc_mol, xyz=ncc_xyz,
                                                                         torsions=[torsion, torsion],
                                                                         new_dihedrals=[[0, 180], [90, -120]])
-        self.assertEqual(len(energies), 4)
+        self.assertEqual(len(energies), 2)
 
     def test_determine_well_width_tolerance(self):
         """Test determining well width tolerance"""
@@ -1274,15 +1274,20 @@ C	0.0000000	0.0000000	-1.9736270"""  # no colliding atoms
 
     def test_get_lowest_confs(self):
         """Test getting the n lowest conformers"""
+
         # test a case where confs is a list of dicts:
         confs = [{'index': 0,
-                  'FF energy': 20},
+                  'FF energy': 20,
+                  'xyz': converter.str_to_xyz('C 1 0 0')},
                  {'index': 1,
-                  'FF energy': 30},
-                 {'index': 1,
-                  'FF energy': 40},
-                 {'index': 1,
-                  'some other energy': 10}]
+                  'FF energy': 30,
+                  'xyz': converter.str_to_xyz('C 2 0 0')},
+                 {'index': 2,
+                  'FF energy': 40,
+                  'xyz': converter.str_to_xyz('C 3 0 0')},
+                 {'index': 3,
+                  'some other energy': 10,
+                  'xyz': converter.str_to_xyz('C 4 0 0')}]
         lowest_confs = conformers.get_lowest_confs(label='', confs=confs, n=2, energy='FF energy')
         self.assertEqual(len(lowest_confs), 2)
         for conf in lowest_confs:
@@ -1296,14 +1301,16 @@ C	0.0000000	0.0000000	-1.9736270"""  # no colliding atoms
                  ['C 4 0 0', 5]]
         lowest_confs = conformers.get_lowest_confs(label='', confs=confs)
         self.assertEqual(len(lowest_confs), 1)
-        self.assertEqual(lowest_confs[0][0], 'C 4 0 0')
-        self.assertEqual(lowest_confs[0][1], 5)
+        self.assertEqual(lowest_confs[0]['xyz'], 'C 4 0 0')
+        self.assertEqual(lowest_confs[0]['FF energy'], 5)
 
         # test a case where the number of confs is also the number to return:
         confs = [{'index': 0,
-                  'FF energy': 20},
+                  'FF energy': 20,
+                  'xyz': converter.str_to_xyz('C 1 0 0')},
                  {'index': 1,
-                  'FF energy': 10}]
+                  'FF energy': 10,
+                  'xyz': converter.str_to_xyz('C 2 0 0')}]
         lowest_confs = conformers.get_lowest_confs(label='', confs=confs, n=2, energy='FF energy')
         self.assertEqual(len(lowest_confs), 2)
 
