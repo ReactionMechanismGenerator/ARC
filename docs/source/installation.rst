@@ -165,14 +165,15 @@ Tests
 Add ARC aliases to your .bashrc (for convenience)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Below are optional aliases to make ARC (even) more convenient (make sure to change `~/Path/to/ARC/` accordingly)::
+Below are optional aliases to make ARC (even) more convenient (make sure to change `~/Path/to/ARC/` accordingly).
+Add these to your ``.bashrc`` file (edit it by typing, e.g., ``nano ~/.bashrc``)::
 
-  export arc_path=$HOME'~/Path/to/ARC/'
+  export arc_path=$HOME'/Path/to/ARC/'
   alias arce='source activate arc_env'
-  alias arc='source activate arc_env && python $arc_path/ARC.py input.yml'
-  alias arcrestart='source activate arc_env && python $arc_path/ARC.py restart.yml'
+  alias arc='python $arc_path/ARC.py input.yml'
+  alias arcrestart='python $arc_path/ARC.py restart.yml'
   alias arcode='cd $arc_path'
-  alias j='cd $arc_path/ipython/ && arce && jupyter notebook'
+  alias j='cd $arc_path/ipython/ && jupyter notebook'
 
 
 

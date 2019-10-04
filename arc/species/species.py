@@ -1397,7 +1397,12 @@ class ARCSpecies(object):
             raise SpeciesError('Attempted to remove a nonexistent bond.')
         bond = mol_copy.get_bond(atom1, atom2)
         mol_copy.remove_bond(bond)
-        mol1, mol2 = mol_copy.split()
+        mol_splits = mol_copy.split()
+        if len(mol_splits) == 2:
+            mol1, mol2 = mol_splits
+        else:
+            logger.warning(f'Could not split {self.label} between indices {indices}.')
+            return []
 
         used_a_label = False
         if len(mol1.atoms) == 1 and mol1.atoms[0].is_hydrogen():

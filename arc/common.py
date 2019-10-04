@@ -513,7 +513,7 @@ def calculate_dihedral_angle(coords, torsion):
 
 def almost_equal_coords(xyz1, xyz2):
     """
-    A helper function for checking two xyz's are almost equal.
+    A helper function for checking whether two xyz's are almost equal.
 
     Args:
         xyz1 (dict): Coordinates.

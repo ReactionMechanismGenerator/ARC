@@ -352,30 +352,39 @@ class Scheduler(object):
                     # (check self.output) or whether they are "currently running" (check self.job_dict)
                     # This section takes care of restarting a Species (including a TS), but does not
                     # deal with conformers nor with ts_guesses
-                    if self.composite_method and not self.output[species.label]['job_types']['composite'] \
-                            and 'composite' not in list(self.job_dict[species.label].keys()):
-                        self.run_composite_job(species.label)
-                    elif not self.output[species.label]['job_types']['opt'] \
-                            and 'opt' not in list(self.job_dict[species.label].keys()) and not self.composite_method \
-                            and not self.output[species.label]['paths']['geo']:
-                        self.run_opt_job(species.label)
-                    elif not self.output[species.label]['job_types']['opt']:
-                        if not self.composite_method:
-                            if not self.output[species.label]['job_types']['freq'] \
-                                    and 'freq' not in list(self.job_dict[species.label].keys()):
-                                if self.species_dict[species.label].is_ts \
-                                        or self.species_dict[species.label].number_of_atoms > 1:
-                                    self.run_freq_job(species.label)
-                            if not self.output[species.label]['job_types']['sp'] \
-                                    and 'sp' not in list(self.job_dict[species.label].keys()):
-                                self.run_sp_job(species.label)
+                    if self.composite_method:
+                        # composite-related restart
+                        if not self.output[species.label]['job_types']['composite'] \
+                                and 'composite' not in list(self.job_dict[species.label].keys()):
+                            # doing composite; composite hasn't finished and is not running; spawn composite
+                            self.run_composite_job(species.label)
                         elif not self.output[species.label]['job_types']['freq'] \
                                 and 'freq' not in list(self.job_dict[species.label].keys()) \
-                                and 'composite' not in list(self.job_dict[species.label].keys()):
+                                and (self.species_dict[species.label].is_ts
+                                     or self.species_dict[species.label].number_of_atoms > 1):
                             self.run_freq_job(species.label)
-                        if self.job_types['rotors']:
-                            # restart-related checks are performed in run_scan_jobs()
-                            self.run_scan_jobs(species.label)
+                    else:
+                        # non-composite-related restart
+                        if ('opt' not in list(self.job_dict[species.label].keys()) and not self.job_types['fine']) or \
+                                (self.job_types['fine'] and 'opt' not in list(self.job_dict[species.label].keys())
+                                 and 'fine' not in list(self.job_dict[species.label].keys())):
+                            # opt/fine isn't running
+                            if not self.output[species.label]['paths']['geo']:
+                                # opt/fine hasn't finished (and isn't running), so run it
+                                self.run_opt_job(species.label)
+                            else:
+                                # opt/fine is done, check post-opt job types
+                                if not self.output[species.label]['job_types']['freq'] \
+                                        and 'freq' not in list(self.job_dict[species.label].keys()) \
+                                        and (self.species_dict[species.label].is_ts
+                                             or self.species_dict[species.label].number_of_atoms > 1):
+                                        self.run_freq_job(species.label)
+                                if not self.output[species.label]['job_types']['sp'] \
+                                        and 'sp' not in list(self.job_dict[species.label].keys()):
+                                    self.run_sp_job(species.label)
+                                if self.job_types['rotors']:
+                                    # some restart-related checks are performed within run_scan_jobs()
+                                    self.run_scan_jobs(species.label)
             else:
                 # Species is loaded from an Arkane YAML file (no need to execute any job)
                 self.output[species.label]['convergence'] = True
@@ -926,7 +935,8 @@ class Scheduler(object):
             for i in range(self.species_dict[label].number_of_rotors):
                 scans = self.species_dict[label].rotors_dict[i]['scan']
                 pivots = self.species_dict[label].rotors_dict[i]['pivots']
-                directed_scan_type = self.species_dict[label].rotors_dict[i]['directed_scan_type']
+                directed_scan_type = self.species_dict[label].rotors_dict[i]['directed_scan_type'] \
+                    if 'directed_scan_type' in self.species_dict[label].rotors_dict[i] else ''
                 if not self.species_dict[label].rotors_dict[i]['scan_path']:
                     if directed_scan_type:
                         # check this job isn't already running on the server or completed (from a restarted project)
