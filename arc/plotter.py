@@ -798,7 +798,7 @@ def plot_torsion_angles(torsion_angles, torsions_sampling_points=None, wells_dic
         # Hide x labels and tick labels for all but bottom plot.
         # for ax in axs:
         #     ax.label_outer()
-        axs[0].axes.xaxis.set_ticks(ticks=ticks)
+        plt.setp(axs, xticks=ticks)  # set the x ticks of all subplots
         fig.set_size_inches(8, len(torsions) * 1.5)
     plt.show()
     if plot_path is not None:

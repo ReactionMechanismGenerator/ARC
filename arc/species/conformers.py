@@ -44,7 +44,6 @@ import math
 import numpy as np
 import sys
 import time
-from heapq import nsmallest
 
 import openbabel as ob
 import pybel as pyb
@@ -189,9 +188,9 @@ def generate_conformers(mol_list, label, xyzs=None, torsions=None, tops=None, ch
     conformers.extend(new_conformers)
 
     num_confs_to_return = min(num_confs_to_return, hypothetical_num_comb)  # don't return more than we have
-    lowest_confs = get_lowest_confs(label, conformers, n=num_confs_to_return)
+    lowest_confs = get_lowest_confs(label, new_conformers, n=num_confs_to_return)
 
-    lowest_conf = get_lowest_confs(label, conformers, n=1)[0]
+    lowest_conf = get_lowest_confs(label, new_conformers, n=1)[0]
     enantiomeric_xyzs = generate_all_enantiomers(label=label, mol=mol_list[0], xyz=lowest_conf['xyz'])
 
     for enantiomeric_xyz in enantiomeric_xyzs:
@@ -357,7 +356,8 @@ def generate_conformer_combinations(label, mol, base_xyz, hypothetical_num_comb,
         # just generate all combinations and get their FF energies
         logger.debug('hypothetical_num_comb for {0} is < {1}'.format(label, combination_threshold))
         new_conformers = generate_all_combinations(label, mol, base_xyz, multiple_tors, multiple_sampling_points,
-                                                   len_conformers=len_conformers, force_field=force_field)
+                                                   len_conformers=len_conformers, force_field=force_field,
+                                                   torsions=list(torsion_angles.keys()))
     return new_conformers
 
 
@@ -454,7 +454,7 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
 
 
 def generate_all_combinations(label, mol, base_xyz, multiple_tors, multiple_sampling_points, len_conformers=-1,
-                              force_field='MMFF94s'):
+                              torsions=None, force_field='MMFF94s'):
     """
     Generate all combinations of torsion wells from a base conformer.
     untested
@@ -468,6 +468,7 @@ def generate_all_combinations(label, mol, base_xyz, multiple_tors, multiple_samp
                                          to torsions in multiple_tors.
         len_conformers (int, optional): The length of the existing conformers list (for consecutive numbering).
         force_field (str, optional): The type of force field to use.
+        torsions (list, optional): A list of all possible torsions in the molecule. Will be determined if not given.
 
     Returns:
         list: New conformer combinations, entries are conformer dictionaries.
@@ -494,6 +495,9 @@ def generate_all_combinations(label, mol, base_xyz, multiple_tors, multiple_samp
                                'xyz': base_xyz,
                                'FF energy': energy,
                                'source': 'Generated all combinations from scan map (trivial case)'})
+    if torsions is None:
+        torsions = determine_rotors([mol])
+    new_conformers = determine_dihedrals(new_conformers, torsions)
     return new_conformers
 
 
@@ -597,22 +601,23 @@ def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals
         new_dihedrals = [new_dihedrals]
 
     for dihedrals in new_dihedrals:
+        xyz_dihedrals = xyz
         for torsion, dihedral in zip(torsions, dihedrals):
-            conf, rd_mol, index_map = converter.rdkit_conf_from_mol(mol, xyz)
+            conf, rd_mol, index_map = converter.rdkit_conf_from_mol(mol, xyz_dihedrals)
             rd_torsion = [index_map[i - 1] for i in torsion]  # convert the atom indices in the torsion to RDKit indices
             xyz_dihedrals = converter.set_rdkit_dihedrals(conf, rd_mol, index_map, rd_torsion, deg_abs=dihedral)
-            if force_field != 'gromacs':
-                xyz_, energy = get_force_field_energies(label, mol=mol, xyz=xyz_dihedrals, optimize=True,
-                                                        force_field=force_field)
-                if energy and xyz_:
-                    energies.append(energy[0])
-                    if optimize:
-                        xyzs.append(xyz_[0])
-                    else:
-                        xyzs.append(xyz_dihedrals)
-            else:
-                energies.append(None)
-                xyzs.append(xyz_dihedrals)
+        if force_field != 'gromacs':
+            xyz_, energy = get_force_field_energies(label, mol=mol, xyz=xyz_dihedrals, optimize=True,
+                                                    force_field=force_field)
+            if energy and xyz_:
+                energies.append(energy[0])
+                if optimize:
+                    xyzs.append(xyz_[0])
+                else:
+                    xyzs.append(xyz_dihedrals)
+        else:
+            energies.append(None)
+            xyzs.append(xyz_dihedrals)
     return xyzs, energies
 
 
@@ -853,14 +858,25 @@ def get_lowest_confs(label, confs, n=1, energy='FF energy'):
     """
     if not confs or confs is None:
         raise ConformerError('get_lowest_confs() got no conformers for {0}'.format(label))
-    if isinstance(confs[0], dict):
+    if isinstance(confs[0], list):
+        conformer_list = list()
+        for entry in confs:
+            if entry[1] is not None:
+                conformer_list.append({'xyz': entry[0], energy: entry[1]})
+    elif isinstance(confs[0], dict):
         conformer_list = [conformer for conformer in confs if energy in conformer and conformer[energy] is not None]
-        return nsmallest(n, conformer_list, key=lambda conf: conf[energy])
-    elif isinstance(confs[0], list):
-        return nsmallest(n, confs, key=lambda conf: conf[1])
     else:
         raise ConformerError("confs could either be a list of dictionaries or a list of lists. "
                              "Got a list of {0}'s for {1}".format(type(confs[0]), label))
+    conformer_list.sort(key=lambda conformer: conformer[energy], reverse=False)
+    n_lowest_confs = [conformer_list[0]]
+    index = 1
+    while n - 1 and index < len(conformer_list):
+        if not compare_xyz(n_lowest_confs[-1]['xyz'], conformer_list[index]['xyz']):
+            n_lowest_confs.append(conformer_list[index])
+            n -= 1
+        index += 1
+    return n_lowest_confs
 
 
 def get_torsion_angles(label, conformers, torsions):
@@ -1474,7 +1490,7 @@ def compare_xyz(xyz1, xyz2, precision=0.1):
         bool: Whether the coordinates represent the same conformer within the given ``precision``, ``True`` if they do.
 
     Raises:
-        InputError: If ``xyz1`` and ``xyz2`` arer of wrong type or have different elements (not considering isotopes).
+        InputError: If ``xyz1`` and ``xyz2`` are of wrong type or have different elements (not considering isotopes).
     """
     if not all(isinstance(xyz, dict) for xyz in [xyz1, xyz2]):
         raise InputError('xyz1 and xyz2 must be dictionaries, got {0} and {1}, respectively'.format(
