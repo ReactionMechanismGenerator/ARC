@@ -31,7 +31,7 @@ from rmgpy.data.transport import TransportLibrary
 from rmgpy.quantity import ScalarQuantity
 from rmgpy.species import Species
 
-from arc.common import get_logger, min_list, save_yaml_file
+from arc.common import get_logger, min_list, save_yaml_file, sort_two_lists_by_the_first
 from arc.exceptions import InputError, SanitizationError
 from arc.species.converter import rdkit_conf_from_mol, molecules_from_xyz, check_xyz_dict, str_to_xyz, xyz_to_str, \
     xyz_to_x_y_z, xyz_from_data
@@ -279,14 +279,25 @@ def log_bde_report(path, bde_report, spc_dict):
             content += ' BDE report for {0}:\n'.format(label)
             content += '  Pivots           Atoms        BDE (kJ/mol)\n'
             content += ' --------          -----        ------------\n'
+            bde_list, pivots_list, na_bde_list, na_pivots_list = list(), list(), list(), list()
             for pivots, bde in bde_dict.items():
-                pivots_str = f'({pivots[0]}, {pivots[1]})'
                 if isinstance(bde, str):
-                    # bde is the 'N/A' string, cannot be formatted as a float
-                    content += ' {0:17} {1:2}- {2:2}          {3}\n'.format(pivots_str, spc.mol.atoms[pivots[0] - 1].symbol,
-                                                                     spc.mol.atoms[pivots[1] - 1].symbol, bde)
+                    na_bde_list.append(bde)
+                    na_pivots_list.append(pivots)
                 elif isinstance(bde, float):
-                    content += ' {0:17} {1:2}- {2:2}      {3:10.2f}\n'.format(pivots_str, spc.mol.atoms[pivots[0] - 1].symbol,
+                    bde_list.append(bde)
+                    pivots_list.append(pivots)
+            bde_list, pivots_list = sort_two_lists_by_the_first(list1=bde_list, list2=pivots_list)
+            for pivots, bde in zip(pivots_list, bde_list):
+                pivots_str = f'({pivots[0]}, {pivots[1]})'
+                content += ' {0:17} {1:2}- {2:2}      {3:10.2f}\n'.format(pivots_str,
+                                                                          spc.mol.atoms[pivots[0] - 1].symbol,
+                                                                          spc.mol.atoms[pivots[1] - 1].symbol, bde)
+            for pivots, bde in zip(na_pivots_list, na_bde_list):
+                pivots_str = f'({pivots[0]}, {pivots[1]})'
+                # bde is an 'N/A' string, it cannot be formatted as a float
+                content += ' {0:17} {1:2}- {2:2}          {3}\n'.format(pivots_str,
+                                                                        spc.mol.atoms[pivots[0] - 1].symbol,
                                                                         spc.mol.atoms[pivots[1] - 1].symbol, bde)
             content += '\n\n'
         logger.info('\n\n')
