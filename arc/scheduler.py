@@ -799,7 +799,7 @@ class Scheduler(object):
             label (str): The TS species label.
         """
         plotter.save_conformers_file(project_directory=self.project_directory, label=label,
-                                     xyzs=[tsg.xyz for tsg in self.species_dict[label].ts_guesses],
+                                     xyzs=[tsg.initial_xyz for tsg in self.species_dict[label].ts_guesses],
                                      level_of_theory=self.ts_guess_level,
                                      multiplicity=self.species_dict[label].multiplicity,
                                      charge=self.species_dict[label].charge, is_ts=True,
@@ -808,7 +808,7 @@ class Scheduler(object):
         if len(successful_tsgs) > 1:
             self.job_dict[label]['conformers'] = dict()
             for i, tsg in enumerate(successful_tsgs):
-                self.run_job(label=label, xyz=tsg.xyz, level_of_theory=self.ts_guess_level, job_type='conformer',
+                self.run_job(label=label, xyz=tsg.initial_xyz, level_of_theory=self.ts_guess_level, job_type='conformer',
                              conformer=i)
         elif len(successful_tsgs) == 1:
             if 'opt' not in self.job_dict[label] and 'composite' not in self.job_dict[label]:
@@ -1667,13 +1667,13 @@ class Scheduler(object):
                 if tsg.index == i_min:
                     self.species_dict[label].chosen_ts = i_min  # change this if selecting a better TS later
                     self.species_dict[label].chosen_ts_method = tsg.method  # change if selecting a better TS later
-                    self.species_dict[label].initial_xyz = tsg.xyz
+                    self.species_dict[label].initial_xyz = tsg.initial_xyz
                 if tsg.success and tsg.energy is not None:  # guess method and ts_level opt were both successful
                     tsg.energy -= e_min
                     logger.info('TS guess {0} for {1}. Method: {2}, relative energy: {3:.2f} kJ/mol, guess execution '
                                 'time: {4}'.format(tsg.index, label, tsg.method, tsg.energy, tsg.execution_time))
                     # for TSs, only use `draw_3d()`, not `show_sticks()` which gets connectivity wrong:
-                    plotter.draw_structure(xyz=tsg.xyz, method='draw_3d')
+                    plotter.draw_structure(xyz=tsg.initial_xyz, method='draw_3d')
             if self.species_dict[label].chosen_ts is None:
                 raise SpeciesError('Could not pair most stable conformer {0} of {1} to a respective '
                                    'TS guess'.format(i_min, label))
