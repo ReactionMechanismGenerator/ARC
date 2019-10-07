@@ -192,7 +192,7 @@ You may pass an ESS settings dictionary to direct ARC where to find each softwar
 Troubleshooting
 ^^^^^^^^^^^^^^^
 
-ARC is has fairly good auto-troubleshooting methods.
+ARC has fairly good auto-troubleshooting methods.
 
 However, at times a user might know in advance that a particular additional keyword
 is required for the calculation. In such cases, simply pass the relevant keyword
