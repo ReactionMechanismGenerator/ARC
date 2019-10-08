@@ -428,7 +428,7 @@ def rmg_mol_from_inchi(inchi):
     """
     try:
         rmg_mol = Molecule().from_inchi(inchi)
-    except (AtomTypeError, ValueError, KeyError) as e:
+    except (AtomTypeError, ValueError, KeyError, TypeError) as e:
         logger.warning('Got the following Error when trying to create an RMG Molecule object from InChI:'
                        '\n{0}'.format(e))
         return None
@@ -793,13 +793,13 @@ def to_rdkit_mol(mol, remove_h=False, return_mapping=True, sanitize=True):
         mol_copy.assign_atom_ids()
     atom_id_map = dict()
     for i, atom in enumerate(mol_copy.atoms):
-        atom_id_map[atom.id] = i
+        atom_id_map[atom.id] = i  # keeps the original atom order before sorting
     # Sort the atoms before converting to ensure output is consistent between different runs
     mol_copy.sort_atoms()
     atoms = mol_copy.vertices
-    rd_atom_indices = {}  # dictionary of RDKit atom indices
-    rdkitmol = Chem.rdchem.EditableMol(Chem.rdchem.Mol())
-    for index, atom in enumerate(mol_copy.vertices):
+    rd_atom_indices = dict()  # a mapping dictionary of RDKit atom indices
+    rd_mol = Chem.rdchem.EditableMol(Chem.rdchem.Mol())
+    for index, atom in enumerate(atoms):
         if atom.element.symbol == 'X':
             rd_atom = Chem.rdchem.Atom('Pt')  # not sure how to do this with linear scaling when this might not be Pt
         else:
@@ -810,34 +810,32 @@ def to_rdkit_mol(mol, remove_h=False, return_mapping=True, sanitize=True):
         rd_atom.SetFormalCharge(atom.charge)
         if atom.element.symbol == 'C' and atom.lone_pairs == 1 and mol_copy.multiplicity == 1:
             rd_atom.SetNumRadicalElectrons(2)
-        rdkitmol.AddAtom(rd_atom)
         if not (remove_h and atom.symbol == 'H'):
+            rd_mol.AddAtom(rd_atom)
             rd_atom_indices[mol.atoms[atom_id_map[atom.id]]] = index
 
     rd_bonds = Chem.rdchem.BondType
     orders = {'S': rd_bonds.SINGLE, 'D': rd_bonds.DOUBLE, 'T': rd_bonds.TRIPLE, 'B': rd_bonds.AROMATIC,
               'Q': rd_bonds.QUADRUPLE}
     # Add the bonds
-    for atom1 in mol_copy.vertices:
-        for atom2, bond in atom1.edges.items():
-            if bond.is_hydrogen_bond():
+    for atom1 in atoms:
+        for atom2, bond12 in atom1.edges.items():
+            if bond12.is_hydrogen_bond():
                 continue
-            index1 = atoms.index(atom1)
-            index2 = atoms.index(atom2)
-            if index1 < index2:
-                order_string = bond.get_order_str()
-                order = orders[order_string]
-                rdkitmol.AddBond(index1, index2, order)
+            if atoms.index(atom1) < atoms.index(atom2):
+                rd_mol.AddBond(rd_atom_indices[mol.atoms[atom_id_map[atom1.id]]],
+                               rd_atom_indices[mol.atoms[atom_id_map[atom2.id]]],
+                               orders[bond12.get_order_str()])
 
     # Make editable mol and rectify the molecule
-    rdkitmol = rdkitmol.GetMol()
+    rd_mol = rd_mol.GetMol()
     if sanitize:
-        Chem.SanitizeMol(rdkitmol)
+        Chem.SanitizeMol(rd_mol)
     if remove_h:
-        rdkitmol = Chem.RemoveHs(rdkitmol, sanitize=sanitize)
+        rd_mol = Chem.RemoveHs(rd_mol, sanitize=sanitize)
     if return_mapping:
-        return rdkitmol, rd_atom_indices
-    return rdkitmol
+        return rd_mol, rd_atom_indices
+    return rd_mol
 
 
 def rdkit_conf_from_mol(mol, xyz):
