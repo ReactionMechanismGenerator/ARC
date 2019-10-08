@@ -514,8 +514,7 @@ class ARC(object):
         self.job_types = initialize_job_types(self.job_types)
         self.use_bac = input_dict['use_bac'] if 'use_bac' in input_dict else True
         self.calc_freq_factor = input_dict['calc_freq_factor'] if 'calc_freq_factor' in input_dict else True
-        self.model_chemistry = input_dict['model_chemistry'] if 'use_bac' in input_dict\
-                                                                and input_dict['use_bac'] else ''
+        self.model_chemistry = input_dict['model_chemistry'] if 'model_chemistry' in input_dict else ''
         ess_settings = input_dict['ess_settings'] if 'ess_settings' in input_dict else global_ess_settings
         self.ess_settings = check_ess_settings(ess_settings)
         self.dont_gen_confs = input_dict['dont_gen_confs'] if 'dont_gen_confs' in input_dict else list()
