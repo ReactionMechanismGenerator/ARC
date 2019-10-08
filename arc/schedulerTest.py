@@ -117,7 +117,6 @@ class TestScheduler(unittest.TestCase):
         self.assertTrue(os.path.isfile(c2h6_conf_path))
         with open(c2h6_conf_path, 'r') as f:
             lines = f.readlines()
-        print(''.join(lines))
         self.assertEqual(lines[0], 'conformer 0:\n')
         self.assertEqual(lines[1][0], 'C')
         self.assertEqual(lines[9], '\n')
