@@ -116,3 +116,10 @@ class TSError(Exception):
     An exception class for exceptional behavior that occurs while working with transition states.
     """
     pass
+
+
+class VectorsError(Exception):
+    """
+    An exception class for exceptional behavior that occurs while working with vectors.
+    """
+    pass
