@@ -6,6 +6,7 @@ A module for performing various species-related format conversions.
 """
 
 import numpy as np
+import os
 
 import pybel
 from rdkit import Chem
@@ -26,7 +27,9 @@ logger = get_logger()
 
 def str_to_xyz(xyz_str):
     """
-    Convert a string xyz format with optional Gaussian-style isotope specification, e.g.::
+    Convert a string xyz format to the ARC dict xyz style.
+    Note: The ``xyz_str`` argument could also direct to a file path to parse the data from.
+    The xyz string format may have optional Gaussian-style isotope specification, e.g.::
 
         C(Iso=13)    0.6616514836    0.4027481525   -0.4847382281
         N           -0.6039793084    0.6637270105    0.0671637135
@@ -35,7 +38,7 @@ def str_to_xyz(xyz_str):
         H           -2.2115796924   -0.4529256762    0.4144516252
         H           -1.8113671395   -0.3268900681   -1.1468957003
 
-    into the ARC xyz dictionary format, e.g.::
+    which will also be parsed into the ARC xyz dictionary format, e.g.::
 
         {'symbols': ('C', 'N', 'H', 'H', 'H', 'H'),
          'isotopes': (13, 14, 1, 1, 1, 1),
@@ -57,6 +60,9 @@ def str_to_xyz(xyz_str):
     """
     if not isinstance(xyz_str, str):
         raise InputError('Expected a string input, got {0}'.format(type(xyz_str)))
+    if os.path.isfile(xyz_str):
+        from arc.parser import parse_xyz_from_file
+        return parse_xyz_from_file(xyz_str)
     xyz_dict = {'symbols': tuple(), 'isotopes': tuple(), 'coords': tuple()}
     if all([len(line.split()) == 6 for line in xyz_str.splitlines() if line.strip()]):
         # Convert Gaussian output format, e.g., "      1          8           0        3.132319    0.769111   -0.080869"
