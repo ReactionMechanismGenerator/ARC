@@ -821,8 +821,8 @@ class ARCSpecies(object):
         if xyz is None:
             if self.is_ts:
                 for ts_guess in self.ts_guesses:
-                    if ts_guess.xyz is not None:
-                        xyz = ts_guess.xyz
+                    if ts_guess.initial_xyz is not None:
+                        xyz = ts_guess.initial_xyz
                         return xyz
                 return None
             elif generate:
@@ -1576,6 +1576,7 @@ class TSGuess(object):
         self.index = ts_dict['index'] if 'index' in ts_dict else None
         self.initial_xyz = ts_dict['initial_xyz'] if 'initial_xyz' in ts_dict else None
         self.process_xyz(self.initial_xyz)  # re-populates self.initial_xyz
+        self.opt_xyz = ts_dict['opt_xyz'] if 'opt_xyz' in ts_dict else None
         self.success = ts_dict['success'] if 'success' in ts_dict else None
         self.energy = ts_dict['energy'] if 'energy' in ts_dict else None
         self.execution_time = ts_dict['execution_time'] if 'execution_time' in ts_dict else None

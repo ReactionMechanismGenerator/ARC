@@ -818,7 +818,7 @@ class Scheduler(object):
                     rxn = ' of reaction ' + self.species_dict[label].rxn_label
                 logger.info('Only one TS guess is available for species {0}{1},'
                             ' using it for geometry optimization'.format(label, rxn))
-                self.species_dict[label].initial_xyz = successful_tsgs[0].xyz
+                self.species_dict[label].initial_xyz = successful_tsgs[0].initial_xyz
                 if not self.composite_method:
                     self.run_opt_job(label)
                 else:
