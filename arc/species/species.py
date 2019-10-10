@@ -821,8 +821,8 @@ class ARCSpecies(object):
         if xyz is None:
             if self.is_ts:
                 for ts_guess in self.ts_guesses:
-                    if ts_guess.xyz is not None:
-                        xyz = ts_guess.xyz
+                    if ts_guess.initial_xyz is not None:
+                        xyz = ts_guess.initial_xyz
                         return xyz
                 return None
             elif generate:
