@@ -82,6 +82,8 @@ class ARCReaction(object):
         self.ts_label = ts_label
         self.dh_rxn298 = None
         self.rmg_reactions = None
+        if ts_xyz_guess is not None and not isinstance(ts_xyz_guess, list):
+            ts_xyz_guess = [ts_xyz_guess]
         if reaction_dict is not None:
             # Reading from a dictionary
             self.from_dict(reaction_dict=reaction_dict)
