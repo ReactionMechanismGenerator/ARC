@@ -260,6 +260,8 @@ class Scheduler(object):
                                             ts_methods=rxn.ts_methods, ts_number=rxn.index)
                     ts_species.number_of_atoms = sum(reactant.number_of_atoms for reactant in rxn.r_species)
                     self.species_list.append(ts_species)
+                    self.species_dict[rxn.ts_label] = ts_species
+                    self.initialize_output_dict(label=rxn.ts_label)
                 else:
                     # The TS species was already loaded from a restart dict or an Arkane YAML file
                     for spc in self.species_list:
@@ -284,7 +286,7 @@ class Scheduler(object):
                         ts_species.ts_guesses.append(TSGuess(method=tsm, family=family, rmg_reaction=rmg_reaction))
                 for ts_guess in ts_species.ts_guesses:
                     # Execute the TS guess methods that don't require optimized reactants and products
-                    if 'autotst' in ts_guess.method and ts_guess.xyz is None:
+                    if 'autotst' in ts_guess.method and ts_guess.initial_xyz is None:
                         reverse = ' in the reverse direction' if 'reverse' in ts_guess.method else ''
                         logger.info('Trying to generating a TS guess for {0} reaction {1} using AutoTST{2}...'.format(
                             ts_guess.family, rxn.label, reverse))
@@ -2652,7 +2654,7 @@ class Scheduler(object):
             for key0, val0 in species_output_dict.items():
                 if key0 in ['paths', 'job_types']:
                     for key1, val1 in species_output_dict[key0].items():
-                        if val1 and key1 != 'rotors':
+                        if val1 and key1 not in ['rotors', 'bde']:
                             return True
                 else:
                     if val0:
