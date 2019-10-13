@@ -190,9 +190,9 @@ def log_header(project, level=logging.INFO):
     branch_name = get_git_branch()
     if head != '' and date != '':
         logger.log(level, 'The current git HEAD for ARC is:')
-        logger.log(level, '    {0}\n    {1}'.format(head, date))
+        logger.log(level, f'    {head}\n    {date}')
     if branch_name and branch_name != 'master':
-        logger.log(level, '    (running on the {0} branch)\n'.format(branch_name))
+        logger.log(level, f'    (running on the {branch_name} branch)\n')
     else:
         logger.log(level, '\n')
     logger.info('Starting project {0}'.format(project))
@@ -221,13 +221,14 @@ def get_git_commit():
     Returns:
         tuple: The git HEAD commit hash and the git HEAD commit date, each as a string.
     """
+    head, date = '', ''
     if os.path.exists(os.path.join(arc_path, '.git')):
         try:
-            return subprocess.check_output(['git', 'log', '--format=%H%n%cd', '-1'], cwd=arc_path).splitlines()
+            head, date = subprocess.check_output(['git', 'log', '--format=%H%n%cd', '-1'], cwd=arc_path).splitlines()
+            head, date = head.decode(), date.decode()
         except (subprocess.CalledProcessError, OSError):
-            return '', ''
-    else:
-        return '', ''
+            return head, date
+    return head, date
 
 
 def get_git_branch():
@@ -243,8 +244,8 @@ def get_git_branch():
         except (subprocess.CalledProcessError, OSError):
             return ''
         for branch_name in branch_list:
-            if '*' in str(branch_name):
-                return str(branch_name[2:])
+            if '*' in branch_name.decode():
+                return branch_name.decode()[2:]
     else:
         return ''
 

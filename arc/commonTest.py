@@ -57,6 +57,13 @@ class TestARC(unittest.TestCase):
         # output format: ['fafdb957049917ede565cebc58b29899f597fb5a', 'Fri Mar 29 11:09:50 2019 -0400']
         self.assertEqual(len(git_commit[0]), 40)
         self.assertEqual(len(git_commit[1].split()), 6)
+        self.assertIsInstance(git_commit[0], str)
+        self.assertIsInstance(git_commit[1], str)
+
+    def test_get_git_branch(self):
+        """Test the get_git_branch() function"""
+        git_branch = common.get_git_branch()
+        self.assertIsInstance(git_branch, str)
 
     def test_time_lapse(self):
         """Test the time_lapse() function"""
