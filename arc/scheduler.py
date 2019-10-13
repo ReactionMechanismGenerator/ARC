@@ -2228,7 +2228,7 @@ class Scheduler(object):
         all_converged = True
         for job_type, spawn_job_type in self.job_types.items():
             if spawn_job_type and not self.output[label]['job_types'][job_type] \
-                    and not((self.species_dict[label].is_ts and job_type == 'scan')
+                    and not((self.species_dict[label].is_ts and job_type in ['scan', 'conformers'])
                             or (self.species_dict[label].number_of_atoms == 1
                                 and job_type in ['conformers', 'opt', 'fine', 'freq', 'rotors', 'bde'])
                             or job_type == 'bde' and self.species_dict[label].bdes is None
@@ -2261,7 +2261,7 @@ class Scheduler(object):
         else:
             job_type_status = {key: val for key, val in self.output[label]['job_types'].items()
                                if key in self.job_types and self.job_types[key]}
-            logger.error('Species {0} did not converge. Job type status is: {1}'.format(label, job_type_status))
+            logger.error(f'Species {label} did not converge. Job type status is: {job_type_status}')
         # Update restart dictionary and save the yaml restart file:
         self.save_restart_dict()
 
