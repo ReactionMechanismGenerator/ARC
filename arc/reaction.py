@@ -229,7 +229,7 @@ class ARCReaction(object):
         A helper function for generating the RMG Reaction object from ARCSpecies
         Used for determining the family
         """
-        if self.rmg_reaction is None and len(self.r_species) and len(self.p_species) and\
+        if self.rmg_reaction is None and len(self.r_species) and len(self.p_species) and \
                 all([arc_spc.mol is not None for arc_spc in self.r_species + self.p_species]):
             reactants = [Species(molecule=[r.mol]) for r in self.r_species]
             for i, reac in enumerate(self.r_species):
@@ -250,57 +250,112 @@ class ARCReaction(object):
     def determine_rxn_multiplicity(self):
         """A helper function for determining the surface multiplicity"""
         if self.multiplicity is None:
-            ordered_multiplicity_list = list()
+            ordered_r_mult_list, ordered_p_mult_list = list(), list()
             if len(self.r_species):
                 if len(self.r_species) == 1:
                     self.multiplicity = self.r_species[0].multiplicity
                 elif len(self.r_species) == 2:
-                    ordered_multiplicity_list = sorted([self.r_species[0].multiplicity,
-                                                        self.r_species[1].multiplicity])
+                    ordered_r_mult_list = sorted([self.r_species[0].multiplicity,
+                                                  self.r_species[1].multiplicity])
                 elif len(self.r_species) == 3:
-                    ordered_multiplicity_list = sorted([self.r_species[0].multiplicity,
-                                                        self.r_species[1].multiplicity,
-                                                        self.r_species[2].multiplicity])
+                    ordered_r_mult_list = sorted([self.r_species[0].multiplicity,
+                                                  self.r_species[1].multiplicity,
+                                                  self.r_species[2].multiplicity])
+                if len(self.p_species) == 1:
+                    self.multiplicity = self.p_species[0].multiplicity
+                elif len(self.p_species) == 2:
+                    ordered_p_mult_list = sorted([self.p_species[0].multiplicity,
+                                                  self.p_species[1].multiplicity])
+                elif len(self.p_species) == 3:
+                    ordered_p_mult_list = sorted([self.p_species[0].multiplicity,
+                                                  self.p_species[1].multiplicity,
+                                                  self.p_species[2].multiplicity])
             elif self.rmg_reaction is not None:
                 if len(self.rmg_reaction.reactants) == 1:
                     self.multiplicity = self.rmg_reaction.reactants[0].molecule[0].multiplicity
                 elif len(self.rmg_reaction.reactants) == 2:
-                    ordered_multiplicity_list = sorted([self.rmg_reaction.reactants[0].molecule[0].multiplicity,
-                                                        self.rmg_reaction.reactants[1].molecule[0].multiplicity])
+                    ordered_r_mult_list = sorted([self.rmg_reaction.reactants[0].molecule[0].multiplicity,
+                                                  self.rmg_reaction.reactants[1].molecule[0].multiplicity])
                 elif len(self.rmg_reaction.reactants) == 3:
-                    ordered_multiplicity_list = sorted([self.rmg_reaction.reactants[0].molecule[0].multiplicity,
-                                                        self.rmg_reaction.reactants[1].molecule[0].multiplicity,
-                                                        self.rmg_reaction.reactants[2].molecule[0].multiplicity])
+                    ordered_r_mult_list = sorted([self.rmg_reaction.reactants[0].molecule[0].multiplicity,
+                                                  self.rmg_reaction.reactants[1].molecule[0].multiplicity,
+                                                  self.rmg_reaction.reactants[2].molecule[0].multiplicity])
+                if len(self.rmg_reaction.products) == 1:
+                    self.multiplicity = self.rmg_reaction.products[0].molecule[0].multiplicity
+                elif len(self.rmg_reaction.products) == 2:
+                    ordered_p_mult_list = sorted([self.rmg_reaction.products[0].molecule[0].multiplicity,
+                                                  self.rmg_reaction.products[1].molecule[0].multiplicity])
+                elif len(self.rmg_reaction.products) == 3:
+                    ordered_p_mult_list = sorted([self.rmg_reaction.products[0].molecule[0].multiplicity,
+                                                  self.rmg_reaction.products[1].molecule[0].multiplicity,
+                                                  self.rmg_reaction.products[2].molecule[0].multiplicity])
             if self.multiplicity is None:
-                if ordered_multiplicity_list == [1, 1]:
+                if ordered_r_mult_list == [1, 1]:
                     self.multiplicity = 1  # S + S = D
-                elif ordered_multiplicity_list == [1, 2]:
+                elif ordered_r_mult_list == [1, 2]:
                     self.multiplicity = 2  # S + D = D
-                elif ordered_multiplicity_list == [2, 2]:
-                    self.multiplicity = 1  # D + D = S or T
-                    logger.warning('ASSUMING a multiplicity of 1 (singlet) for reaction {0}'.format(self.label))
-                elif ordered_multiplicity_list == [1, 3]:
+                elif ordered_r_mult_list == [2, 2]:
+                    # D + D = S or T
+                    if ordered_p_mult_list in [[1, 1], [1, 1, 1]]:
+                        self.multiplicity = 1
+                    elif ordered_p_mult_list in [[1, 3], [1, 1, 3]]:
+                        self.multiplicity = 3
+                    else:
+                        self.multiplicity = 1
+                        logger.warning('ASSUMING a multiplicity of 1 (singlet) for reaction {0}'.format(self.label))
+                elif ordered_r_mult_list == [1, 3]:
                     self.multiplicity = 3  # S + T = T
-                elif ordered_multiplicity_list == [2, 3]:
-                    self.multiplicity = 2  # D + T = D or Q
-                    logger.warning('ASSUMING a multiplicity of 2 (doublet) for reaction {0}'.format(self.label))
-                elif ordered_multiplicity_list == [3, 3]:
-                    self.multiplicity = 3  # T + T = S or T or quintet
-                    logger.warning('ASSUMING a multiplicity of 3 (triplet) for reaction {0}'.format(self.label))
-                elif ordered_multiplicity_list == [1, 1, 1]:
+                elif ordered_r_mult_list == [2, 3]:
+                    # D + T = D or Q
+                    if ordered_p_mult_list in [[1, 2], [1, 1, 2]]:
+                        self.multiplicity = 2
+                    elif ordered_p_mult_list in [[1, 4], [1, 1, 4]]:
+                        self.multiplicity = 4
+                    else:
+                        self.multiplicity = 2
+                        logger.warning('ASSUMING a multiplicity of 2 (doublet) for reaction {0}'.format(self.label))
+                elif ordered_r_mult_list == [3, 3]:
+                    # T + T = S or T or quintet
+                    if ordered_p_mult_list in [[1, 1], [1, 1, 1]]:
+                        self.multiplicity = 1
+                    elif ordered_p_mult_list in [[1, 3], [1, 1, 3]]:
+                        self.multiplicity = 3
+                    elif ordered_p_mult_list in [[1, 5], [1, 1, 5]]:
+                        self.multiplicity = 5
+                    else:
+                        self.multiplicity = 3
+                        logger.warning('ASSUMING a multiplicity of 3 (triplet) for reaction {0}'.format(self.label))
+                elif ordered_r_mult_list == [1, 1, 1]:
                     self.multiplicity = 1  # S + S + S = S
-                elif ordered_multiplicity_list == [1, 1, 2]:
+                elif ordered_r_mult_list == [1, 1, 2]:
                     self.multiplicity = 2  # S + S + D = D
-                elif ordered_multiplicity_list == [1, 1, 3]:
+                elif ordered_r_mult_list == [1, 1, 3]:
                     self.multiplicity = 3  # S + S + T = T
-                elif ordered_multiplicity_list == [1, 2, 2]:
-                    self.multiplicity = 1  # S + D + D = S or T
-                    logger.warning('ASSUMING a multiplicity of 1 (singlet) for reaction {0}'.format(self.label))
-                elif ordered_multiplicity_list == [2, 2, 2]:
-                    self.multiplicity = 2  # D + D + D = D or T or Q
-                    logger.warning('ASSUMING a multiplicity of 2 (doublet) for reaction {0}'.format(self.label))
-                elif ordered_multiplicity_list == [1, 2, 3]:
-                    self.multiplicity = 2  # S + D + T = D or T
+                elif ordered_r_mult_list == [1, 2, 2]:
+                    # S + D + D = S or T
+                    if ordered_p_mult_list in [[1, 1], [1, 1, 1]]:
+                        self.multiplicity = 1
+                    elif ordered_p_mult_list in [[1, 3], [1, 1, 3]]:
+                        self.multiplicity = 3
+                    else:
+                        self.multiplicity = 1
+                        logger.warning('ASSUMING a multiplicity of 1 (singlet) for reaction {0}'.format(self.label))
+                elif ordered_r_mult_list == [2, 2, 2]:
+                    # D + D + D = D or Q
+                    if ordered_p_mult_list in [[1, 2], [1, 1, 2]]:
+                        self.multiplicity = 2
+                    elif ordered_p_mult_list in [[1, 4], [1, 1, 4]]:
+                        self.multiplicity = 4
+                    else:
+                        self.multiplicity = 2
+                        logger.warning('ASSUMING a multiplicity of 2 (doublet) for reaction {0}'.format(self.label))
+                elif ordered_r_mult_list == [1, 2, 3]:
+                    # S + D + T = D or Q
+                    if ordered_p_mult_list in [[1, 2], [1, 1, 2]]:
+                        self.multiplicity = 2
+                    elif ordered_p_mult_list in [[1, 4], [1, 1, 4]]:
+                        self.multiplicity = 4
+                    self.multiplicity = 2
                     logger.warning('ASSUMING a multiplicity of 2 (doublet) for reaction {0}'.format(self.label))
                 else:
                     raise ReactionError('Could not determine multiplicity for reaction {0}, please input it.'.format(
