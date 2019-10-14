@@ -92,6 +92,7 @@ class TestARC(unittest.TestCase):
                          'species': [{'bond_corrections': {'C-C': 1, 'C-H': 6},
                                       'arkane_file': None,
                                       'charge': 0,
+                                      'consider_all_diastereomers': True,
                                       'external_symmetry': None,
                                       'optical_isomers': None,
                                       'generate_thermo': False,

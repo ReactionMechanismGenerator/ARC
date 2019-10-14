@@ -1020,15 +1020,10 @@ H      -4.07566100   -0.52115800    0.00003300"""
         H       1.1294795781    -0.8708998550     0.7537444446
         H       1.4015274689    -0.6230592706    -0.8487058662"""
         spc1 = ARCSpecies(label='N3', xyz=n3_xyz, smiles='NNN')
-        rd_mol, rd_atom_indices = converter.to_rdkit_mol(spc1.mol)
-        for atom, index in rd_atom_indices.items():
-            if atom.symbol == 'N':
-                self.assertIn(index, [0, 1, 2])
-            else:
-                self.assertIn(index, [3, 4, 5, 6, 7])
+        rd_mol = converter.to_rdkit_mol(spc1.mol)
         self.assertIsInstance(rd_mol, rdchem.Mol)
         rd_mol_block = Chem.MolToMolBlock(rd_mol).splitlines()
-        self.check_atom_connectivity_in_rd_mol_block(rd_mol_block, rd_atom_indices)
+        self.check_atom_connectivity_in_rd_mol_block(spc1.mol, rd_mol_block)
 
         xyz = {'symbols': ('O', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
                'isotopes': (16, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
@@ -1048,10 +1043,10 @@ H      -4.07566100   -0.52115800    0.00003300"""
                           (2.6742044088059282, 0.07526334279898257, -0.368290381462353),
                           (-1.5117230038532052, -1.8311440682580218, 0.49312739388548754))}
         spc2 = ARCSpecies(label='OC(C)CC', xyz=xyz, smiles='OC(C)CC')
-        rd_mol, rd_atom_indices = converter.to_rdkit_mol(spc2.mol)
+        rd_mol = converter.to_rdkit_mol(spc2.mol)
         self.assertIsInstance(rd_mol, rdchem.Mol)
         rd_mol_block = Chem.MolToMolBlock(rd_mol).splitlines()
-        self.check_atom_connectivity_in_rd_mol_block(rd_mol_block, rd_atom_indices)
+        self.check_atom_connectivity_in_rd_mol_block(spc2.mol, rd_mol_block)
 
         xyz = {'symbols': ('N', 'N', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C',
                            'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H',
@@ -1104,34 +1099,25 @@ H      -4.07566100   -0.52115800    0.00003300"""
                           (-3.1892599113493763, 4.977310741601497, 0.1827136615195785),
                           (-4.170376142277848, 2.927767012302581, 1.1140032113287763))}
         spc3 = ARCSpecies(label='imipramine', xyz=xyz, smiles='c1cc3c(cc1)CCc2c(cccc2)N3CCCN(C)C')
-        rd_mol, rd_atom_indices = converter.to_rdkit_mol(spc3.mol)
+        rd_mol = converter.to_rdkit_mol(spc3.mol)
         self.assertIsInstance(rd_mol, rdchem.Mol)
         rd_mol_block = Chem.MolToMolBlock(rd_mol).splitlines()
-        self.check_atom_connectivity_in_rd_mol_block(rd_mol_block, rd_atom_indices)
+        self.check_atom_connectivity_in_rd_mol_block(spc3.mol, rd_mol_block)
 
-    def check_atom_connectivity_in_rd_mol_block(self, rd_mol_block, rd_atom_indices):
+    def check_atom_connectivity_in_rd_mol_block(self, rmg_mol, rd_mol_block):
         """A helper function for testing"""
         for line in rd_mol_block:
             splits = line.split()
             if len(splits) == 4:
-                rd_atom_1_index, rd_atom_2_index = int(splits[0]) - 1, int(splits[1]) - 1
-                atom1, atom2 = None, None
-                for atom, rd_index in rd_atom_indices.items():
-                    if rd_index == rd_atom_1_index:
-                        atom1 = atom
-                    elif rd_index == rd_atom_2_index:
-                        atom2 = atom
-                    if atom1 is not None and atom2 is not None:
-                        break
-                self.assertIn(atom2, list(atom1.edges.keys()))
+                index1, index2 = int(splits[0]) - 1, int(splits[1]) - 1
+                self.assertIn(rmg_mol.atoms[index1], list(rmg_mol.atoms[index2].edges.keys()))
 
     def test_rdkit_conf_from_mol(self):
         """Test rdkit_conf_from_mol"""
         b_mol = converter.molecules_from_xyz(self.xyz5['dict'])[1]
-        conf, rd_mol, index_map = converter.rdkit_conf_from_mol(mol=b_mol, xyz=self.xyz5['dict'])
+        conf, rd_mol = converter.rdkit_conf_from_mol(mol=b_mol, xyz=self.xyz5['dict'])
         self.assertTrue(conf.Is3D())
         self.assertEqual(rd_mol.GetNumAtoms(), 5)
-        self.assertEqual(index_map, {0: 0, 1: 1, 2: 2, 3: 3, 4: 4})
 
     def test_s_bonds_mol_from_xyz(self):
         """Test creating a molecule with only single bonds from xyz"""
@@ -1243,16 +1229,15 @@ H       2.12529871   -0.70387223    0.11849858""")
         mol0 = spc0.mol
 
         torsion0 = (3, 2, 1, 9)  # the OH rotor
+        torsion0_list = [tor - 1 for tor in torsion0]
         new_dihedral = -60
         deg_increment = 240  # -180 + 240 = +60
 
-        conf, rd_mol, index_map = converter.rdkit_conf_from_mol(mol0, xyz0)
-        rd_tor_map = [index_map[i - 1] for i in torsion0]  # convert the atom indices in the torsion to RDKit indices
-        new_xyz1 = converter.set_rdkit_dihedrals(conf, rd_mol, index_map, rd_tor_map, deg_abs=new_dihedral)
+        conf, rd_mol = converter.rdkit_conf_from_mol(mol0, xyz0)
+        new_xyz1 = converter.set_rdkit_dihedrals(conf, rd_mol, torsion0_list, deg_abs=new_dihedral)
 
-        conf, rd_mol, index_map = converter.rdkit_conf_from_mol(mol0, xyz0)  # convert again to init the conf object
-        rd_tor_map = [index_map[i - 1] for i in torsion0]  # convert the atom indices in the torsion to RDKit indices
-        new_xyz2 = converter.set_rdkit_dihedrals(conf, rd_mol, index_map, rd_tor_map, deg_increment=deg_increment)
+        conf, rd_mol = converter.rdkit_conf_from_mol(mol0, xyz0)  # convert again to init the conf object
+        new_xyz2 = converter.set_rdkit_dihedrals(conf, rd_mol, torsion0_list, deg_increment=deg_increment)
 
         expected_xyz1 = """O       1.17961475   -0.92725986    0.15472373
 C       0.45858928    0.27919340   -0.04589251
@@ -1306,11 +1291,11 @@ H       1.80713611    1.81979843   -1.31138136""")
         mol1 = spc1.mol
 
         torsion1 = (1, 2, 6, 9)
+        torsion1_list = [tor - 1 for tor in torsion1]
         new_dihedral = 118.2
 
-        conf, rd_mol, index_map = converter.rdkit_conf_from_mol(mol1, xyz1)
-        rd_tor_map = [index_map[i - 1] for i in torsion1]  # convert the atom indices in the torsion to RDKit indices
-        new_xyz3 = converter.set_rdkit_dihedrals(conf, rd_mol, index_map, rd_tor_map, deg_abs=new_dihedral)
+        conf, rd_mol = converter.rdkit_conf_from_mol(mol1, xyz1)
+        new_xyz3 = converter.set_rdkit_dihedrals(conf, rd_mol, torsion1_list, deg_abs=new_dihedral)
 
         expected_xyz3 = """N      -0.29070308    0.26322835    0.48770927
 N       0.29070351   -0.26323281   -0.48771096
@@ -1340,9 +1325,8 @@ H       1.74954927    1.65592664    0.73932447
 
         self.assertTrue(almost_equal_coords_lists(new_xyz3, converter.str_to_xyz(expected_xyz3)))
 
-        rd_conf, rd_mol, index_map = converter.rdkit_conf_from_mol(mol1, converter.str_to_xyz(expected_xyz3))
-        rd_scan = [index_map[i - 1] for i in torsion1]  # convert the atom indices to RDKit indices
-        angle = rdMT.GetDihedralDeg(rd_conf, rd_scan[0], rd_scan[1], rd_scan[2], rd_scan[3])
+        rd_conf, rd_mol = converter.rdkit_conf_from_mol(mol1, converter.str_to_xyz(expected_xyz3))
+        angle = rdMT.GetDihedralDeg(rd_conf, torsion1_list[0], torsion1_list[1], torsion1_list[2], torsion1_list[3])
 
         self.assertAlmostEqual(angle, 118.2, 5)
 
@@ -1356,10 +1340,10 @@ H      -1.69760597   -0.38642828   -1.16478035
 H      -1.34010718    0.43408610    0.37373771
 H       2.16336803    0.09985803    0.03295192"""
         spc4 = ARCSpecies(label='ethanol', smiles='CCO', xyz=xyz4)
-        rd_conf, rd_mol, index_map = converter.rdkit_conf_from_mol(mol=spc4.mol, xyz=converter.str_to_xyz(xyz4))
+        rd_conf, rd_mol = converter.rdkit_conf_from_mol(mol=spc4.mol, xyz=converter.str_to_xyz(xyz4))
         torsion4 = [9, 1, 2, 3]
-        rd_tor_map = [index_map[i - 1] for i in torsion4]  # convert the atom indices to RDKit indices
-        new_xyz4 = converter.set_rdkit_dihedrals(rd_conf, rd_mol, index_map, rd_tor_map, deg_abs=60)
+        torsion4_list = [tor - 1 for tor in torsion4]
+        new_xyz4 = converter.set_rdkit_dihedrals(rd_conf, rd_mol, torsion4_list, deg_abs=60)
         expected_xyz4 = """O       1.28706525    0.52121353    0.04219198
 C       0.39745682   -0.35265044   -0.63649234
 C       0.36441173   -1.68197093    0.08682400

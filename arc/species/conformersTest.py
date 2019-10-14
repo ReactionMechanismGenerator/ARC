@@ -5,7 +5,6 @@
 This module contains unit tests of the arc.species.conformers module
 """
 
-import math
 import unittest
 
 from rdkit.Chem import rdMolTransforms as rdMT
@@ -56,6 +55,41 @@ H      -1.22610851    0.40421362    1.35170355"""
 8 H u0 p0 c0 {2,S}
 9 H u0 p0 c0 {3,S}"""
         cls.mol1 = Molecule().from_adjacency_list(adj1)
+
+        cls.cj_xyz = {'symbols': ('C', 'O', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'N', 'C', 'C', 'C', 'C', 'N', 'C', 'C',
+                                  'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C',
+                                  'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H',
+                                  'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H',
+                                  'H', 'H', 'H', 'H'),
+                      'isotopes': (12, 16, 12, 12, 12, 12, 12, 12, 12, 14, 12, 12, 12, 12, 14, 12, 12, 12, 12, 12, 12,
+                                   12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+                                   1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                      'coords': (
+                      (5.675, 2.182, 1.81), (4.408, 1.923, 1.256), (4.269, 0.813, 0.479), (5.303, -0.068, 0.178),
+                      (5.056, -1.172, -0.639), (3.794, -1.414, -1.169), (2.77, -0.511, -0.851),
+                      (2.977, 0.59, -0.032), (1.872, 1.556, 0.318), (0.557, 1.029, -0.009),
+                      (-0.537, 1.879, 0.448), (-0.535, 3.231, -0.298), (-1.831, 3.983, 0.033),
+                      (-3.003, 3.199, -0.61), (-2.577, 1.854, -0.99), (-1.64, 1.962, -2.111),
+                      (-0.501, 2.962, -1.805), (-1.939, 1.236, 0.178), (-1.971, -0.305, 0.069),
+                      (-3.385, -0.794, -0.209), (-4.336, -0.893, 0.81), (-5.631, -1.324, 0.539),
+                      (-5.997, -1.673, -0.759), (-5.056, -1.584, -1.781), (-3.764, -1.147, -1.505),
+                      (-1.375, -1.024, 1.269), (-1.405, -0.508, 2.569), (-0.871, -1.226, 3.638),
+                      (-0.296, -2.475, 3.429), (-0.259, -3.003, 2.14), (-0.794, -2.285, 1.078),
+                      (3.533, -2.614, -2.056), (2.521, -3.574, -1.424), (3.087, -2.199, -3.461),
+                      (5.569, 3.097, 2.395), (6.433, 2.338, 1.031), (6.003, 1.368, 2.47), (6.302, 0.091, 0.57),
+                      (5.874, -1.854, -0.864), (1.772, -0.654, -1.257), (1.963, 1.832, 1.384),
+                      (2.033, 2.489, -0.239), (0.469, 0.13, 0.461), (-0.445, 2.089, 1.532), (0.328, 3.83, 0.012),
+                      (-1.953, 4.059, 1.122), (-1.779, 5.008, -0.352), (-3.365, 3.702, -1.515),
+                      (-3.856, 3.118, 0.074), (-1.226, 0.969, -2.31), (-2.211, 2.259, -2.999),
+                      (-0.639, 3.906, -2.348), (0.466, 2.546, -2.105), (-2.586, 1.501, 1.025),
+                      (-1.36, -0.582, -0.799), (-4.057, -0.647, 1.831), (-6.355, -1.396, 1.347),
+                      (-7.006, -2.015, -0.97), (-5.329, -1.854, -2.798), (-3.038, -1.07, -2.311),
+                      (-1.843, 0.468, 2.759), (-0.904, -0.802, 4.638), (0.125, -3.032, 4.262),
+                      (0.189, -3.977, 1.961), (-0.772, -2.708, 0.075), (4.484, -3.155, -2.156),
+                      (1.543, -3.093, -1.308), (2.383, -4.464, -2.049), (2.851, -3.899, -0.431),
+                      (3.826, -1.542, -3.932), (2.134, -1.659, -3.429), (2.951, -3.078, -4.102))}
+        cls.cj_spc = ARCSpecies(label='CJ', xyz=cls.cj_xyz,
+                                smiles='COC1=C(CN[C@H]2C3CCN(CC3)[C@H]2C(C2=CC=CC=C2)C2=CC=CC=C2)C=C(C=C1)C(C)C')
 
     def test_CONFS_VS_HEAVY_ATOMS(self):
         """Test that the CONFS_VS_HEAVY_ATOMS dictionary has 0 and 'inf' in its keys"""
@@ -402,10 +436,10 @@ H       0.68104300    0.74807180    0.61546062""")]
                           (-1.779032202163809, 1.7365703107348773, 1.363680443883325),
                           (-2.0569288708039766, 1.130024400459187, -2.059052520249386))}
         self.assertEqual(conformers.determine_number_of_conformers_to_generate(heavy_atoms=30, torsion_num=10,
-                                                                               label='', xyz=xyz), (2000, 4))
+                                                                               label='', xyz=xyz), (4000, 4))
         mol = Molecule(smiles='CNC(O)(S)C=CO')
         self.assertEqual(conformers.determine_number_of_conformers_to_generate(heavy_atoms=30, torsion_num=10,
-                                                                               label='', mol=mol), (1500, 3))
+                                                                               label='', mol=mol), (3000, 3))
 
     def test_openbabel_force_field(self):
         """Test Open Babel force field"""
@@ -418,14 +452,21 @@ O       1.40839617    0.14303696    0.00000000"""
         self.assertEqual(len(xyzs), 1)
         self.assertAlmostEqual(energies[0], 2.9310163, 3)
 
+    def test_embed_rdkit(self):
+        """Test embedding in RDKit"""
+        rd_mol = conformers.embed_rdkit(label='CJ', mol=self.cj_spc.mol, num_confs=1)
+        xyzs, energies = conformers.rdkit_force_field(label='CJ', rd_mol=rd_mol, mol=self.cj_spc.mol)
+        for atom, symbol in zip(self.cj_spc.mol.atoms, xyzs[0]['symbols']):
+            self.assertEqual(atom.symbol, symbol)
+
     def test_read_rdkit_embedded_conformers(self):
         """Test reading coordinates from embedded RDKit conformers"""
         xyz = """S      -0.19093478    0.57933906    0.00000000
 O      -1.21746139   -0.72237602    0.00000000
 O       1.40839617    0.14303696    0.00000000"""
         spc = ARCSpecies(label='SO2', smiles='O=S=O', xyz=xyz)
-        rd_mol, rd_index_map = conformers.embed_rdkit(label='', mol=spc.mol, num_confs=3, xyz=xyz)
-        xyzs = conformers.read_rdkit_embedded_conformers(label='', rd_mol=rd_mol, rd_index_map=rd_index_map)
+        rd_mol = conformers.embed_rdkit(label='', mol=spc.mol, num_confs=3, xyz=xyz)
+        xyzs = conformers.read_rdkit_embedded_conformers(label='', rd_mol=rd_mol)
         expected_xyzs = [{'symbols': ('S', 'O', 'O'),
                           'isotopes': (32, 16, 16),
                           'coords': ((-0.0007230118849883151, 0.4313717594780365, -0.0),
@@ -449,9 +490,8 @@ O       1.40839617    0.14303696    0.00000000"""
 O      -1.21746139   -0.72237602    0.00000000
 O       1.40839617    0.14303696    0.00000000"""
         spc = ARCSpecies(label='SO2', smiles='O=S=O', xyz=xyz)
-        rd_mol, rd_index_map = conformers.embed_rdkit(label='', mol=spc.mol, num_confs=3, xyz=xyz)
-        self.assertEqual(rd_index_map, {0: 0, 1: 1, 2: 2})
-        xyzs, energies = conformers.rdkit_force_field(label='', rd_mol=rd_mol, rd_index_map=rd_index_map, mol=spc.mol,
+        rd_mol = conformers.embed_rdkit(label='', mol=spc.mol, num_confs=3, xyz=xyz)
+        xyzs, energies = conformers.rdkit_force_field(label='', rd_mol=rd_mol, mol=spc.mol,
                                                       force_field='MMFF94s', optimize=True)
         self.assertEqual(len(energies), 3)
         self.assertAlmostEqual(energies[0], 2.8820960262158292e-11, 5)
@@ -474,7 +514,7 @@ O       1.40839617    0.14303696    0.00000000"""
                            'symbols': ('S', 'O', 'O')}]
 
         self.assertEqual(xyzs, expected_xyzs1)
-        xyzs, energies = conformers.rdkit_force_field(label='', rd_mol=rd_mol, rd_index_map=rd_index_map, mol=spc.mol,
+        xyzs, energies = conformers.rdkit_force_field(label='', rd_mol=rd_mol, mol=spc.mol,
                                                       force_field='MMFF94s', optimize=False)
         self.assertEqual(len(energies), 0)
         expected_xyzs2 = [{'symbols': ('S', 'O', 'O'),
@@ -1283,9 +1323,8 @@ C	0.0000000	0.0000000	-1.9736270"""  # no colliding atoms
                             idx0 = i + 1
         torsion = (idx0, idx1, idx2, idx3)
 
-        rd_conf, _, index_map = converter.rdkit_conf_from_mol(ncc_mol, ncc_xyz)
-        rd_scan = [index_map[i - 1] for i in torsion]  # convert the atom indices to RDKit indices
-        angle = rdMT.GetDihedralDeg(rd_conf, rd_scan[0], rd_scan[1], rd_scan[2], rd_scan[3])
+        rd_conf = converter.rdkit_conf_from_mol(ncc_mol, ncc_xyz)[0]
+        angle = rdMT.GetDihedralDeg(rd_conf, torsion[0] - 1, torsion[1] - 1, torsion[2] - 1, torsion[3] - 1)
 
         self.assertAlmostEqual(angle, 62.9431377, 5)
 
@@ -1742,8 +1781,44 @@ Cl      2.38846685    0.24054066    0.55443324
         self.assertEqual(confs[1]['chirality'], {(2,): 'NR'})
 
         # one chiral N center
-        confs = [{'xyz': {'symbols': ('O', 'N', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'), 'isotopes': (16, 14, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1), 'coords': ((-1.1260113581472435, 1.3761961818488566, 0.09344599103558728), (-1.007935513086041, -0.060277862163366974, -0.09993420755804434), (0.151358859843175, -0.27030737367364815, -0.9795144959896613), (1.4906256072798636, 0.2796855525759796, -0.4957720189189826), (-0.8225472029133591, -0.6198916544114855, 1.236450696209674), (-0.07761195961803313, 0.17763805874443062, -1.9544637548276826), (0.25834932156021245, -1.3457949407658736, -1.167089042946175), (1.4403695778627317, 1.355537171420406, -0.3016073959171323), (1.8300405092867553, -0.22342396900707007, 0.41456530364965505), (2.2550119159612887, 0.11755528333371892, -1.2631875084858506), (-1.7453782035104, -0.5017121642006336, 1.8148154521877977), (-0.6160862591652101, -1.6939507925721629, 1.1803550095576598), (-0.015633065127377256, -0.1348394230710416, 1.7958114555334979), (-2.0145522302265086, 1.5435859319421577, -0.273875483530568))}, 'index': 2, 'FF energy': 20.2904299980655, 'source': 'MMFF94', 'torsion_dihedrals': {(14, 1, 2, 3): 119.43272880797798, (1, 2, 5, 11): 68.37929823399126, (1, 2, 3, 4): 57.86935830901248, (2, 3, 4, 8): 302.8320372319507}},
-                 {'xyz': {'symbols': ('O', 'N', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'), 'isotopes': (16, 14, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1), 'coords': ((1.5655272732117604, 0.741879169647508, -1.2062846243961904), (0.5633566474165278, -0.15418061414647216, -0.6423115896914202), (-0.511769740850912, 0.7358672851934527, -0.1798524588971155), (-1.7120688384845566, -0.0308203921710982, 0.3615285164098966), (1.2502841581658586, -0.8126642623570183, 0.4701156007474357), (-0.8587852733983324, 1.3329637132185015, -1.032484205031793), (-0.14921730987267087, 1.4422219078982466, 0.5776055526573312), (-2.528543982683172, 0.6639594124604079, 0.5846376708253733), (-1.4713883777486563, -0.5640772542627065, 1.2861373160467724), (-2.080774893369899, -0.7563091230479586, -0.371287616932611), (0.5938202155462396, -1.5340729192591642, 0.9662682005139577), (1.6156617273425515, -0.09806062247169192, 1.21637578375925), (2.1088944673719134, -1.3798450282247212, 0.09354820894490706), (1.6150039273574184, 0.4131387275224817, -2.1239963549485936))}, 'index': 1, 'FF energy': 19.516538133934294, 'source': 'MMFF94', 'torsion_dihedrals': {(14, 1, 2, 3): 239.0576218005308, (1, 2, 5, 11): 181.0950382395368, (1, 2, 3, 4): 175.97347188945042, (2, 3, 4, 8): 186.5196017991176}}]
+        confs = [{'xyz': {'symbols': ('O', 'N', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
+                          'isotopes': (16, 14, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1), 'coords': (
+            (-1.1260113581472435, 1.3761961818488566, 0.09344599103558728),
+            (-1.007935513086041, -0.060277862163366974, -0.09993420755804434),
+            (0.151358859843175, -0.27030737367364815, -0.9795144959896613),
+            (1.4906256072798636, 0.2796855525759796, -0.4957720189189826),
+            (-0.8225472029133591, -0.6198916544114855, 1.236450696209674),
+            (-0.07761195961803313, 0.17763805874443062, -1.9544637548276826),
+            (0.25834932156021245, -1.3457949407658736, -1.167089042946175),
+            (1.4403695778627317, 1.355537171420406, -0.3016073959171323),
+            (1.8300405092867553, -0.22342396900707007, 0.41456530364965505),
+            (2.2550119159612887, 0.11755528333371892, -1.2631875084858506),
+            (-1.7453782035104, -0.5017121642006336, 1.8148154521877977),
+            (-0.6160862591652101, -1.6939507925721629, 1.1803550095576598),
+            (-0.015633065127377256, -0.1348394230710416, 1.7958114555334979),
+            (-2.0145522302265086, 1.5435859319421577, -0.273875483530568))}, 'index': 2, 'FF energy': 20.2904299980655,
+                  'source': 'MMFF94',
+                  'torsion_dihedrals': {(14, 1, 2, 3): 119.43272880797798, (1, 2, 5, 11): 68.37929823399126,
+                                        (1, 2, 3, 4): 57.86935830901248, (2, 3, 4, 8): 302.8320372319507}},
+                 {'xyz': {'symbols': ('O', 'N', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
+                          'isotopes': (16, 14, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1), 'coords': (
+                     (1.5655272732117604, 0.741879169647508, -1.2062846243961904),
+                     (0.5633566474165278, -0.15418061414647216, -0.6423115896914202),
+                     (-0.511769740850912, 0.7358672851934527, -0.1798524588971155),
+                     (-1.7120688384845566, -0.0308203921710982, 0.3615285164098966),
+                     (1.2502841581658586, -0.8126642623570183, 0.4701156007474357),
+                     (-0.8587852733983324, 1.3329637132185015, -1.032484205031793),
+                     (-0.14921730987267087, 1.4422219078982466, 0.5776055526573312),
+                     (-2.528543982683172, 0.6639594124604079, 0.5846376708253733),
+                     (-1.4713883777486563, -0.5640772542627065, 1.2861373160467724),
+                     (-2.080774893369899, -0.7563091230479586, -0.371287616932611),
+                     (0.5938202155462396, -1.5340729192591642, 0.9662682005139577),
+                     (1.6156617273425515, -0.09806062247169192, 1.21637578375925),
+                     (2.1088944673719134, -1.3798450282247212, 0.09354820894490706),
+                     (1.6150039273574184, 0.4131387275224817, -2.1239963549485936))}, 'index': 1,
+                  'FF energy': 19.516538133934294, 'source': 'MMFF94',
+                  'torsion_dihedrals': {(14, 1, 2, 3): 239.0576218005308, (1, 2, 5, 11): 181.0950382395368,
+                                        (1, 2, 3, 4): 175.97347188945042, (2, 3, 4, 8): 186.5196017991176}}]
         mol = ARCSpecies(label='ON(C)CC', smiles='ON(C)CC', xyz=confs[0]['xyz']).mol  # preserves atom order
         confs = conformers.determine_chirality(conformers=confs, label='ON(C)CC', mol=mol)
         self.assertEqual(confs[0]['chirality'], {(1,): 'NR'})
@@ -1867,8 +1942,7 @@ Cl      2.38846685    0.24054066    0.55443324
                   'index': 2, 'FF energy': -68.39144685068642, 'source': 'MMFF94',
                   'torsion_dihedrals': {(13, 1, 5, 2): 51.469450566143024, (12, 2, 5, 1): 93.78019119118923,
                                         (14, 3, 7, 6): 184.5102421075699, (6, 4, 5, 1): 167.16203608651372,
-                                        (5, 4, 6, 7): 204.57856732311797}},
-                  ]
+                                        (5, 4, 6, 7): 204.57856732311797}}]
         mol = ARCSpecies(label='C(O)(S)NC=CO', smiles='C(O)(S)NC=CO', xyz=confs[0]['xyz']).mol  # preserves atom order
         confs = conformers.determine_chirality(conformers=confs, label='C(O)(S)NC=CO', mol=mol)
         self.assertEqual(confs[0]['chirality'], {(3,): 'NR', (4,): 'S', (5, 6): 'E'})
@@ -2141,8 +2215,8 @@ Cl      2.38846685    0.24054066    0.55443324
         chiral_nitrogen_centers = conformers.identify_chiral_nitrogen_centers(spc.mol)
         elements_to_insert = conformers.replace_n_with_c_in_mol(spc.mol, chiral_nitrogen_centers)[1]
         new_xyz = conformers.replace_n_with_c_in_xyz(label=spc.label, mol=spc.mol, xyz=xyz,
-                                                      chiral_nitrogen_centers=chiral_nitrogen_centers,
-                                                      elements_to_insert=elements_to_insert)
+                                                     chiral_nitrogen_centers=chiral_nitrogen_centers,
+                                                     elements_to_insert=elements_to_insert)
         expected_xyz = {'symbols': ('C', 'C', 'C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H',
                                     'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
                         'isotopes': (12, 12, 12, 12, 12, 12, 12, 1, 1, 1, 1,
@@ -2175,7 +2249,7 @@ Cl      2.38846685    0.24054066    0.55443324
     def test_get_top_element_count(self):
         """Test getting an element and isotope count for top atoms in a molecule"""
         mol = Molecule(smiles='[2H]N[3H]CCCS')
-        top = range(10)
+        top = list(range(10))
         top_element_count = conformers.get_top_element_count(mol, top)
         expected_top_element_count = {('C', -1): 3, ('H', -1): 3, ('H', 2): 1, ('H', 3): 1, ('N', -1): 1, ('S', -1): 1}
         self.assertEqual(top_element_count, expected_top_element_count)
