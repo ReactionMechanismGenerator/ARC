@@ -1251,13 +1251,10 @@ class Scheduler(object):
                                              if atom.is_non_hydrogen()])
             else:
                 xyz = self.species_dict[label].get_xyz()
-                number_of_heavy_atoms = 0
-                for line in xyz.splitlines():
-                    if line and line.split()[0] != 'H':
-                        number_of_heavy_atoms += 1
-            num_confs = num_confs\
+                number_of_heavy_atoms = sum([1 for symbol in xyz['symbols'] if symbol != 'H'])
+            num_confs = num_confs \
                 or conformers.determine_number_of_conformers_to_generate(heavy_atoms=number_of_heavy_atoms,
-                                                                         torsion_num=len(torsions), label=label)
+                                                                         torsion_num=len(torsions), label=label)[0]
             coords = list()
             for mol in self.species_dict[label].mol_list:
                 # embed conformers (but don't optimize)
@@ -1286,9 +1283,9 @@ class Scheduler(object):
             save_yaml_file(path=confs_path, content=confs)  # save for the next iteration and for archiving
 
             confs = conformers.determine_dihedrals(confs, torsions)
-            new_conformers, _ = conformers.deduce_new_conformers(label=label, conformers=confs, torsions=torsions,
-                                                                 tops=tops, mol_list=self.species_dict[label].mol_list,
-                                                                 plot_path=False)
+            new_conformers = conformers.deduce_new_conformers(label=label, conformers=confs, torsions=torsions,
+                                                              tops=tops, mol_list=self.species_dict[label].mol_list,
+                                                              plot_path=False)[0]
             new_confs_path = os.path.join(self.project_directory, 'calcs', 'Species', label,
                                           'ff_param_fit', 'new_conformers.yml')  # list of lists
             coords = [new_conf['xyz'] for new_conf in new_conformers]
