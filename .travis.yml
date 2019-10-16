@@ -15,7 +15,8 @@ before_install:
   - bash miniconda.sh -b -p $HOME/miniconda
   - export PATH=$HOME/miniconda/bin:$PATH
   # Update conda
-  - conda update --yes conda
+  # - conda update --yes conda
+  - conda update -y -n base conda setuptools
   - conda info -a
   # Set git info
   - git config --global user.name "Travis Deploy"
