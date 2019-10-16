@@ -299,6 +299,40 @@ Open the resulting FCheck file using `IQMol <http://iqmol.org/>`_
 to post process and save images.
 
 
+Consider a specific diaestereomer
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+ARC's conformer generation module will consider by default all non-enantiomeric (non-mirror) diaestereomers,
+using chiral (tetrahedral) carbon atoms, chiral inversion modes in nitrogen atoms, and cis/trans double bonds.
+To consider a specific diaestereomer, pass the 3D xyz coordinates when defining the species, and set the
+``consider_all_diastereomers`` species flag to ``False`` (it is ``True`` by default). For example, the following code
+will cause ARC to only consider the R-Z diaestereomer of the following hypothetical species::
+
+    spc1_xyz = """Cl      1.47566594   -2.36900082   -0.86260264
+                  O      -1.34833561    1.76407680    0.29252133
+                  C       1.46682130   -0.58010226   -0.70920153
+                  C       0.81289268   -0.14477878    0.61006147
+                  C       2.90276866   -0.07697610   -0.80213588
+                  C      -3.09903967    0.08314581    0.61641835
+                  C      -1.64512811    0.43845470    0.53602810
+                  C      -0.65975628   -0.45946534    0.67414755
+                  H       0.89577875   -0.19512286   -1.56141944
+                  H       0.97218270    0.93173379    0.74977707
+                  H       1.30829197   -0.62970434    1.46110152
+                  H       3.36555034   -0.38002993   -1.74764205
+                  H       3.51837776   -0.46405162    0.01733990
+                  H       2.93198350    1.01693209   -0.75630452
+                  H      -3.57828825    0.63692499    1.43000638
+                  H      -3.60256180    0.33896163   -0.32130952
+                  H      -3.25218225   -0.98524107    0.80024046
+                  H      -0.91263085   -1.50255031    0.85455686
+                  H      -2.18255121    2.26238957    0.24010821"""
+    spc1 = ARCSpecies(label='CC(Cl)CC=C(C)O', smiles='CC(Cl)CC=C(C)O', xyz=spc1_xyz, consider_all_diastereomers=False)
+
+Note that the specified xyz don't have to be the lowest energy conformer (the goal is of course to find it),
+but just be an arbitrary conformer with the required chiralities to be preserved.
+
+
 Don't generate conformers for specific species
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
