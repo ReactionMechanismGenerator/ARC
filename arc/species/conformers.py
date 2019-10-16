@@ -38,27 +38,27 @@ Module workflow::
 
 """
 
-from itertools import product, combinations_with_replacement
+import copy
 import logging
-import math
-import numpy as np
 import sys
 import time
+from itertools import product
 
 import openbabel as ob
 import pybel as pyb
 from rdkit import Chem
 from rdkit.Chem.rdchem import EditableMol as RDMol
-from rdkit.Chem.rdmolops import AssignStereochemistry
 
 import rmgpy.molecule.group as gr
 from rmgpy.molecule.converter import to_ob_mol
-from rmgpy.molecule.molecule import Molecule
+from rmgpy.molecule.molecule import Atom, Bond, Molecule
+from rmgpy.molecule.element import C as C_ELEMENT, H as H_ELEMENT, F as F_ELEMENT, Cl as Cl_ELEMENT, I as I_ELEMENT
 
-from arc.common import logger, determine_symmetry, calculate_dihedral_angle
+from arc.common import logger, calculate_dihedral_angle
 from arc.exceptions import ConformerError, InputError
 import arc.plotter
 from arc.species import converter
+from arc.species import vectors
 
 
 # The number of conformers to generate per range of heavy atoms in the molecule
@@ -101,7 +101,7 @@ COMBINATION_THRESHOLD = 1000
 def generate_conformers(mol_list, label, xyzs=None, torsions=None, tops=None, charge=0, multiplicity=None,
                         num_confs=None, num_confs_to_return=None, well_tolerance=None, de_threshold=None,
                         smeared_scan_res=None, combination_threshold=None, force_field='MMFF94s',
-                        max_combination_iterations=None, determine_h_bonds=False, return_all_conformers=False,
+                        max_combination_iterations=None, diastereomers=None, return_all_conformers=False,
                         plot_path=None, print_logs=True):
     """
     Generate conformers for (non-TS) species starting from a list of RMG Molecules.
@@ -125,7 +125,8 @@ def generate_conformers(mol_list, label, xyzs=None, torsions=None, tops=None, ch
                                      'fit' will first run MMFF94, than fit a custom Amber FF to the species.
         max_combination_iterations (int, optional): The maximum number of times to iteratively search
                                                     for the lowest conformer.
-        determine_h_bonds (bool, optional): Whether to determine add. conformers w/ hydrogen bonds from the lowest one.
+        diastereomers (list, optional): Entries are xyz's in a dictionary format or conformer structures
+                                        representing specific diastereomers to keep.
         return_all_conformers (bool, optional): Whether to return the full conformers list of conformer dictionaries
                                                 In addition to the lowest conformers list. Tru to return it.
         plot_path (str, optional): A folder path in which the plot will be saved.
@@ -168,46 +169,26 @@ def generate_conformers(mol_list, label, xyzs=None, torsions=None, tops=None, ch
 
     if torsions is None or tops is None:
         torsions, tops = determine_rotors(mol_list)
-    conformers = generate_force_field_conformers(mol_list=mol_list, label=label, xyzs=xyzs, torsion_num=len(torsions),
-                                                 charge=charge, multiplicity=multiplicity, num_confs=num_confs,
-                                                 force_field=force_field)
+    conformers = generate_force_field_conformers(
+        mol_list=mol_list, label=label, xyzs=xyzs, torsion_num=len(torsions), charge=charge, multiplicity=multiplicity,
+        num_confs=num_confs, force_field=force_field)
 
     conformers = determine_dihedrals(conformers, torsions)
 
-    base_xyz, multiple_tors, multiple_sampling_points, conformers, torsion_angles, multiple_sampling_points_dict,\
-        wells_dict, hypothetical_num_comb = deduce_new_conformers(label, conformers, torsions, tops, mol_list,
-                                                                  smeared_scan_res, plot_path=plot_path)
+    new_conformers = deduce_new_conformers(
+        label, conformers, torsions, tops, mol_list, smeared_scan_res, plot_path=plot_path,
+        combination_threshold=combination_threshold, force_field=force_field,
+        max_combination_iterations=max_combination_iterations, diastereomers=diastereomers, de_threshold=de_threshold)
 
-    new_conformers = generate_conformer_combinations(
-        label=label, mol=mol_list[0], base_xyz=base_xyz, hypothetical_num_comb=hypothetical_num_comb,
-        multiple_tors=multiple_tors, multiple_sampling_points=multiple_sampling_points,
-        combination_threshold=combination_threshold, len_conformers=len(conformers), force_field=force_field,
-        max_combination_iterations=max_combination_iterations, plot_path=plot_path, torsion_angles=torsion_angles,
-        multiple_sampling_points_dict=multiple_sampling_points_dict, wells_dict=wells_dict, de_threshold=de_threshold)
+    new_conformers = determine_chirality(conformers=new_conformers, label=label, mol=mol_list[0])
 
-    conformers.extend(new_conformers)
-
-    num_confs_to_return = min(num_confs_to_return, hypothetical_num_comb)  # don't return more than we have
+    num_confs_to_return = min(num_confs_to_return, len(new_conformers))  # don't return more than we have
     lowest_confs = get_lowest_confs(label, new_conformers, n=num_confs_to_return)
-
-    lowest_conf = get_lowest_confs(label, new_conformers, n=1)[0]
-    enantiomeric_xyzs = generate_all_enantiomers(label=label, mol=mol_list[0], xyz=lowest_conf['xyz'])
-
-    for enantiomeric_xyz in enantiomeric_xyzs:
-        new_conformers = generate_conformer_combinations(
-            label=label, mol=mol_list[0], base_xyz=enantiomeric_xyz, hypothetical_num_comb=hypothetical_num_comb,
-            multiple_tors=multiple_tors, multiple_sampling_points=multiple_sampling_points,
-            combination_threshold=combination_threshold, len_conformers=len(conformers), force_field=force_field,
-            max_combination_iterations=max_combination_iterations, plot_path=plot_path, torsion_angles=torsion_angles,
-            multiple_sampling_points_dict=multiple_sampling_points_dict, wells_dict=wells_dict,
-            de_threshold=de_threshold)
-        conformers.extend(new_conformers)
-        lowest_confs.extend(get_lowest_confs(label, new_conformers, n=num_confs_to_return))
 
     lowest_confs.sort(key=lambda x: x['FF energy'], reverse=False)  # sort by output confs from lowest to highest energy
     indices_to_pop = list()
     for i, conf in enumerate(lowest_confs):
-        if i != 0 and compare_xyz(conf['xyz'], lowest_confs[i-1]['xyz']):
+        if i and compare_xyz(conf['xyz'], lowest_confs[i-1]['xyz']):
             indices_to_pop.append(i)
     for i in reversed(range(len(lowest_confs))):  # pop from the end, so other indices won't change
         if i in indices_to_pop:
@@ -219,7 +200,7 @@ def generate_conformers(mol_list, label, xyzs=None, torsions=None, tops=None, ch
     d, h = divmod(t, 24)
     days = '{0} days and '.format(int(d)) if d else ''
     time_str = '{days}{hrs:02d}:{min:02d}:{sec:02d}'.format(days=days, hrs=int(h), min=int(m), sec=int(s))
-    if execution_time > 30:
+    if execution_time > 10:
         logger.info('Conformer execution time using {0}: {1}'.format(force_field, time_str))
 
     if not return_all_conformers:
@@ -228,7 +209,9 @@ def generate_conformers(mol_list, label, xyzs=None, torsions=None, tops=None, ch
         return lowest_confs, conformers
 
 
-def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_scan_res=None, plot_path=None):
+def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_scan_res=None, plot_path=None,
+                          combination_threshold=1000, force_field='MMFF94s', max_combination_iterations=25,
+                          diastereomers=None, de_threshold=None):
     """
     By knowing the existing torsion wells, get the geometries of all important conformers.
     Validate that atoms don't collide in the generated conformers (don't consider ones where they do).
@@ -241,10 +224,17 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
         mol_list (list): A list of RMG Molecule objects.
         smeared_scan_res (float, optional): The resolution (in degrees) for scanning smeared wells.
         plot_path (str, optional): A folder path in which the plot will be saved.
-                                     If None, the plot will not be shown (nor saved).
+                                   If None, the plot will not be shown (nor saved).
+        combination_threshold (int, optional): A threshold below which all combinations will be generated.
+        force_field (str, optional): The type of force field to use.
+        max_combination_iterations (int, optional): The max num of times to iteratively search for the lowest conformer.
+        diastereomers (list, optional): Entries are xyz's in a dictionary format or conformer structures
+                                        representing specific diastereomers to keep.
+        de_threshold (float, optional): An energy threshold (in kJ/mol) above which wells in a torsion
+                                        will not be considered.
 
     Returns:
-        many inter-level variables.
+        list: The deduced conformers.
     """
     smeared_scan_res = smeared_scan_res or SMEARED_SCAN_RESOLUTIONS
     if not any(['torsion_dihedrals' in conformer for conformer in conformers]):
@@ -261,7 +251,7 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
 
     torsions_sampling_points, wells_dict = dict(), dict()
     for tor, tor_angles in torsion_angles.items():
-        torsions_sampling_points[tor], wells_dict[tor] =\
+        torsions_sampling_points[tor], wells_dict[tor] = \
             determine_torsion_sampling_points(label, tor_angles, smeared_scan_res=smeared_scan_res,
                                               symmetry=symmetries[tor])
 
@@ -272,14 +262,14 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
     hypothetical_num_comb = 1
     for points in torsions_sampling_points.values():
         hypothetical_num_comb *= len(points)
+    number_of_chiral_centers = get_number_of_chiral_centers(label, mol, conformer=conformers[0],
+                                                            just_get_the_number=True)
+    hypothetical_num_comb *= 2 ** number_of_chiral_centers
     if hypothetical_num_comb > 1000:
         hypothetical_num_comb_str = '{0:.2E}'.format(hypothetical_num_comb)
     else:
         hypothetical_num_comb_str = str(hypothetical_num_comb)
-    logger.info('\nHypothetical number of conformer combinations for {0}: {1}'.format(label, hypothetical_num_comb_str))
-
-    # get the lowest conformer as the base xyz for further processing
-    lowest_conf = get_lowest_confs(label, conformers, n=1)[0]
+    logger.info(f'\nHypothetical number of conformer combinations for {label}: {hypothetical_num_comb_str}')
 
     # split torsions_sampling_points into two lists, use combinations only for those with multiple sampling points
     single_tors, multiple_tors, single_sampling_point, multiple_sampling_points = list(), list(), list(), list()
@@ -293,18 +283,37 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
             multiple_tors.append(tor)
             multiple_sampling_points.append(points)
 
-    # set symmetric (single well) torsions to the mean of the well
-    base_xyz = lowest_conf['xyz']  # base_xyz is modified within the loop in each iteration
-    if plot_path is not None:
-        logger.info('original lowest conformer for {0}:'.format(label))
-        arc.plotter.show_sticks(base_xyz)
-    for torsion, dihedral in zip(single_tors, single_sampling_point):
-        conf, rd_mol, index_map = converter.rdkit_conf_from_mol(mol, base_xyz)
-        rd_tor_map = [index_map[i - 1] for i in torsion]  # convert the atom indices in the torsion to RDKit indices
-        base_xyz = converter.set_rdkit_dihedrals(conf, rd_mol, index_map, rd_tor_map, deg_abs=dihedral)
+    diastereomeric_conformers = get_lowest_diastereomers(label=label, mol=mol, conformers=conformers,
+                                                         diastereomers=diastereomers)
+    new_conformers = list()
+    for diastereomeric_conformer in diastereomeric_conformers:
+        # set symmetric (single well) torsions to the mean of the well
+        if 'chirality' in diastereomeric_conformer and diastereomeric_conformer['chirality'] != dict():
+            logger.info(f"Considering diastereomer {diastereomeric_conformer['chirality']}")
+        base_xyz = diastereomeric_conformer['xyz']  # base_xyz is modified within the loop below
+        for torsion, dihedral in zip(single_tors, single_sampling_point):
+            conf, rd_mol, index_map = converter.rdkit_conf_from_mol(mol, base_xyz)
+            rd_tor_map = [index_map[i - 1] for i in torsion]  # convert the atom indices in the torsion to RDKit indices
+            base_xyz = converter.set_rdkit_dihedrals(conf, rd_mol, index_map, rd_tor_map, deg_abs=dihedral)
 
-    return base_xyz, multiple_tors, multiple_sampling_points, conformers, torsion_angles,\
-        multiple_sampling_points_dict, wells_dict, hypothetical_num_comb
+        new_conformers.extend(generate_conformer_combinations(
+            label=label, mol=mol_list[0], base_xyz=base_xyz, hypothetical_num_comb=hypothetical_num_comb,
+            multiple_tors=multiple_tors, multiple_sampling_points=multiple_sampling_points,
+            combination_threshold=combination_threshold, len_conformers=len(conformers), force_field=force_field,
+            max_combination_iterations=max_combination_iterations, plot_path=plot_path, torsion_angles=torsion_angles,
+            multiple_sampling_points_dict=multiple_sampling_points_dict, wells_dict=wells_dict,
+            de_threshold=de_threshold))
+
+    if plot_path is not None:
+        lowest_conf = get_lowest_confs(label=label, confs=new_conformers, n=1)[0]
+        lowest_conf = determine_chirality([lowest_conf], label, mol, force=False)[0]
+        diastereomer = f" (diastereomer: {lowest_conf['chirality']})" if 'chirality' in lowest_conf \
+                                                                         and lowest_conf['chirality'] else ''
+        logger.info(f'Lowest force field conformer for {label}{diastereomer}:')
+        logger.info(converter.xyz_to_str(lowest_conf['xyz']))
+        arc.plotter.draw_structure(xyz=lowest_conf['xyz'])
+
+    return new_conformers
 
 
 def generate_conformer_combinations(label, mol, base_xyz, hypothetical_num_comb, multiple_tors,
@@ -366,9 +375,8 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
                                                 torsion_angles=None, multiple_sampling_points_dict=None,
                                                 wells_dict=None, de_threshold=None, plot_path=False):
     """
-    Iteratively modify dihedrals in the lowest conformer (each iteration deduce the new lowest conformer),
+    Iteratively modify dihedrals in the lowest conformer (each iteration deduce a new lowest conformer),
     until convergence.
-    untested
 
     Args:
         label (str): The species' label.
@@ -397,7 +405,6 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
     new_conformers = list()  # will be returned
     lowest_conf_i = None
     for i in range(max_combination_iterations):
-        logger.debug('iteration {0} for {1}'.format(i, label))
         newest_conformers_dict, newest_conformer_list = dict(), list()  # conformers from the current iteration
         for tor, sampling_points in zip(multiple_tors, multiple_sampling_points):
             xyzs, energies = change_dihedrals_and_force_field_it(label, mol, xyz=base_xyz, torsions=[tor],
@@ -437,6 +444,7 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
             elif lowest_conf_i['FF energy'] < base_energy:
                 base_energy = lowest_conf_i['FF energy']
     if plot_path is not None:
+        logger.info(converter.xyz_to_str(lowest_conf_i['xyz']))
         arc.plotter.show_sticks(lowest_conf_i['xyz'])
         num_comb = arc.plotter.plot_torsion_angles(torsion_angles, multiple_sampling_points_dict,
                                                    wells_dict=wells_dict, e_conformers=newest_conformers_dict,
@@ -457,7 +465,6 @@ def generate_all_combinations(label, mol, base_xyz, multiple_tors, multiple_samp
                               torsions=None, force_field='MMFF94s'):
     """
     Generate all combinations of torsion wells from a base conformer.
-    untested
 
     Args:
         label (str): The species' label.
@@ -525,10 +532,15 @@ def generate_force_field_conformers(label, mol_list, torsion_num, charge, multip
     """
     conformers = list()
     number_of_heavy_atoms = len([atom for atom in mol_list[0].atoms if atom.is_non_hydrogen()])
-    num_confs = num_confs or determine_number_of_conformers_to_generate(label=label, heavy_atoms=number_of_heavy_atoms,
-                                                                        torsion_num=torsion_num)
-    logger.info('Species {0} has {1} heavy atoms and {2} torsions. Using {3} random conformers.'.format(
-        label, number_of_heavy_atoms, torsion_num, num_confs))
+    if num_confs is None:
+        num_confs, num_chiral_centers = determine_number_of_conformers_to_generate(
+            label=label, heavy_atoms=number_of_heavy_atoms, torsion_num=torsion_num, mol=mol_list[0],
+            xyz=xyzs[0] if xyzs is not None else None)
+    else:
+        num_chiral_centers = ''
+    chiral_centers = '' if not num_chiral_centers else f', {num_chiral_centers} chiral centers,'
+    logger.info(f'Species {label} has {number_of_heavy_atoms} heavy atoms{chiral_centers} and {torsion_num} torsions. '
+                f'Using {num_confs} random conformers.')
     for mol in mol_list:
         ff_xyzs, ff_energies = list(), list()
         try:
@@ -646,7 +658,7 @@ def determine_rotors(mol_list):
     return torsions, tops
 
 
-def determine_number_of_conformers_to_generate(label, heavy_atoms, torsion_num, minimalist=False):
+def determine_number_of_conformers_to_generate(label, heavy_atoms, torsion_num, mol=None, xyz=None, minimalist=False):
     """
     Determine the number of conformers to generate using molecular mechanics
 
@@ -654,11 +666,15 @@ def determine_number_of_conformers_to_generate(label, heavy_atoms, torsion_num, 
         label (str): The species' label.
         heavy_atoms (int): The number of heavy atoms in the molecule.
         torsion_num (int): The number of potential torsions in the molecule.
+        mol (Molecule, optional): The RMG Molecule object.
+        xyz (dict, optional): The xyz coordinates.
         minimalist (bool, optional): Whether to return a small number of conformers, useful when this is just a guess
                                      before fitting a force field. True to be minimalistic.
 
     Returns:
-        int: number of conformers to generate.
+        int: The number of conformers to generate.
+    Returns:
+        int: The number of chiral centers.
 
     Raises:
         ConformerError: If the number of conformers to generate cannot be determined.
@@ -691,7 +707,18 @@ def determine_number_of_conformers_to_generate(label, heavy_atoms, torsion_num, 
     else:
         num_confs = max(num_confs_1, num_confs_2)
 
-    return num_confs
+    # increase the number of conformers if there are more than two chiral centers
+    num_chiral_centers = 0
+    if mol is None and xyz is not None:
+        mol = converter.molecules_from_xyz(xyz)[1]
+    if mol is not None and xyz is None:
+        xyz = get_force_field_energies(label, mol, num_confs=1)[0][0]
+    if mol is not None and xyz is not None:
+        num_chiral_centers = get_number_of_chiral_centers(label, mol, xyz=xyz, just_get_the_number=True)
+    if num_chiral_centers > 2:
+        num_confs = int(num_confs * num_chiral_centers)
+
+    return num_confs, num_chiral_centers
 
 
 def determine_dihedrals(conformers, torsions):
@@ -1076,7 +1103,7 @@ def openbabel_force_field(label, mol, num_confs=None, xyz=None, force_field='GAF
 
 def embed_rdkit(label, mol, num_confs=None, xyz=None):
     """
-    Generate random conformers (unoptimized) in RDKit
+    Generate unoptimized conformers in RDKit. If ``xyz`` is not given, random conformers will be generated.
 
     Args:
         label (str): The species' label.
@@ -1097,19 +1124,17 @@ def embed_rdkit(label, mol, num_confs=None, xyz=None):
     elif isinstance(mol, Molecule):
         rd_mol, rd_indices = converter.to_rdkit_mol(mol=mol, remove_h=False, return_mapping=True)
         for k, atom in enumerate(mol.atoms):
-            index = rd_indices[atom]
-            rd_index_map[index] = k
+            rd_index_map[rd_indices[atom]] = k  # keys are rdkit atom indices, values are RMG mol atom indices
     else:
         raise ConformerError('Argument mol can be either an RMG Molecule or an RDKit RDMol object. '
                              'Got {0} for {1}'.format(type(mol), label))
     if num_confs is not None:
-        Chem.AllChem.EmbedMultipleConfs(rd_mol, numConfs=num_confs, randomSeed=1)
+        Chem.AllChem.EmbedMultipleConfs(rd_mol, numConfs=num_confs, randomSeed=1, enforceChirality=True)
         # Chem.AllChem.EmbedMultipleConfs(rd_mol, numConfs=num_confs, randomSeed=15, enforceChirality=False)
     elif xyz is not None:
         rd_conf = Chem.Conformer(rd_mol.GetNumAtoms())
-        coords = xyz['coords']
         for i in range(rd_mol.GetNumAtoms()):
-            rd_conf.SetAtomPosition(i, coords[i])
+            rd_conf.SetAtomPosition(i, xyz['coords'][rd_index_map[i]])
         rd_mol.AddConformer(rd_conf)
     return rd_mol, rd_index_map
 
@@ -1461,7 +1486,6 @@ def to_group(mol, atom_indices):
 def update_mol(mol):
     """
     Update atom types, multiplicity, and atom charges in the molecule.
-    *untested*
 
     Args:
         mol (Molecule): The molecule to update.
@@ -1505,84 +1529,6 @@ def compare_xyz(xyz1, xyz2, precision=0.1):
     return True
 
 
-def generate_all_enantiomers(label, mol, xyz):
-    """
-    Generate all combinations of enantiomers for a given conformer's coordinates.
-
-    Args:
-        label (str): The species' label.
-        mol (Molecule): The 2D graph representation of the molecule.
-        xyz (dict): The 3D coordinates of the molecule with the same atom order as in ``mol``.
-
-    Returns:
-        list: A list of string-format coordinates of all enantiomer combinations.
-
-    Todo:
-        - Consider cases where the chiral center has three or four of its groups in a ring, e.g.,
-          'CC12C[CH]C(CC1)C(C)(C)O2'
-    """
-    optical_isomers = determine_symmetry(xyz)[1]
-    if optical_isomers == 1:
-        return []
-    pivots = identify_chiral_centers(mol)
-    pivot_combinations = list(combinations_with_replacement(pivots, len(pivots)))  # e.g., [(5, 5), (5, 6), (6, 6)]
-    pivot_combinations = [list(set(comb)) for comb in pivot_combinations]  # remove dups, i.e., convert (6, 6) to [6]
-    if pivot_combinations == [[]]:
-        pivot_combinations = []
-    if len(pivot_combinations):
-        logger.info('Identified {0} enantiomeric combinations for {1}'.format(len(pivot_combinations) + 1, label))
-    xyzs = list()
-    for pivots in pivot_combinations:
-        new_xyz = xyz
-        for pivot in pivots:
-            try:
-                new_xyz = translate_groups(label=label, mol=mol, xyz=new_xyz, pivot=pivot)
-            except ConformerError:
-                logger.warning('Could not translate all groups of species {0} (perhaps there are too many groups '
-                               'bound in rings), cannot generate all enantiomers.'.format(label))
-        xyzs.append(new_xyz)
-    return xyzs
-
-
-def identify_chiral_centers(mol):
-    """
-    Identify the atom indices corresponding to chiral centers in a molecule
-
-    Args:
-        mol (Molecule): The molecule to be analyzed.
-
-    Returns:
-        list: Atom numbers (0-indexed) representing chiral centers in the molecule.
-    """
-    # legacy chirality:
-    rd_index_map = dict()
-    rd_mol, rd_indices = converter.to_rdkit_mol(mol=mol, remove_h=False, return_mapping=True)
-    for k, atom in enumerate(mol.atoms):
-        index = rd_indices[atom]
-        rd_index_map[index] = k
-    AssignStereochemistry(rd_mol, flagPossibleStereoCenters=True)
-    rd_atom_chirality_flags = [atom.HasProp('_ChiralityPossible') for atom in rd_mol.GetAtoms()]
-    chiral_centers = list()
-    for i, flag in enumerate(rd_atom_chirality_flags):
-        if flag:
-            chiral_centers.append(rd_index_map[i])
-
-    # nitrogen umbrella modes:
-    for atom1 in mol.atoms:
-        if atom1.is_nitrogen() and atom1.lone_pairs == 1 and len(list(atom1.edges.keys())) == 3:
-            groups = list()
-            for atom2 in atom1.edges.keys():
-                top = determine_top_group_indices(mol, atom1, atom2, index=0)[0]
-                groups.append(to_group(mol, top))
-            if all([not groups[0].is_isomorphic(group, save_order=True) for group in groups[1:]] +
-                   [not groups[-1].is_isomorphic(group, save_order=True) for group in groups[:-1]]):
-                # if we can say that TWO groups, each separately considered ins't isomorphic to the other two,
-                # then this nitrogen has all different (three) groups.
-                chiral_centers.append(mol.atoms.index(atom1))
-
-    return chiral_centers
-
-
 def translate_groups(label, mol, xyz, pivot):
     """
     Exchange between two groups in a molecule. The groups cannot share a ring with the pivotal atom.
@@ -1623,14 +1569,15 @@ def translate_groups(label, mol, xyz, pivot):
             translate.append(groups[i])
         i += 1
     if len(translate) == 1 and lp:
-        vector = get_lp_vector(label, mol=mol, xyz=xyz, pivot=pivot)
+        vector = vectors.get_lp_vector(label, mol=mol, xyz=xyz, pivot=pivot)
         new_xyz = translate_group(mol=mol, xyz=xyz, pivot=pivot,
                                   anchor=mol.atoms.index(translate[0]['atom']), vector=vector)
     elif len(translate) == 2 and not lp:
-        vector = get_vector(pivot=pivot, anchor=mol.atoms.index(translate[1]['atom']), xyz=xyz)
+        vector = vectors.get_vector(pivot=pivot, anchor=mol.atoms.index(translate[1]['atom']), xyz=xyz)
         new_xyz = translate_group(mol=mol, xyz=xyz, pivot=pivot,
                                   anchor=mol.atoms.index(translate[0]['atom']), vector=vector)
-        vector = get_vector(pivot=pivot, anchor=mol.atoms.index(translate[0]['atom']), xyz=xyz)  # keep original xyz
+        # keep original xyz:
+        vector = vectors.get_vector(pivot=pivot, anchor=mol.atoms.index(translate[0]['atom']), xyz=xyz)
         new_xyz = translate_group(mol=mol, xyz=new_xyz, pivot=pivot,
                                   anchor=mol.atoms.index(translate[1]['atom']), vector=vector)
     else:
@@ -1662,145 +1609,448 @@ def translate_group(mol, xyz, pivot, anchor, vector):
         dict: The translated coordinates.
     """
     # v1 = unit_vector([-vector[0], -vector[1], -vector[2]])  # reverse the direction to get the correct angle
-    v1 = unit_vector(vector)
-    v2 = unit_vector(get_vector(pivot=pivot, anchor=anchor, xyz=xyz))
-    normal = get_normal(v2, v1)
-    theta = get_theta(v1, v2)
+    v1 = vectors.unit_vector(vector)
+    v2 = vectors.unit_vector(vectors.get_vector(pivot=pivot, anchor=anchor, xyz=xyz))
+    normal = vectors.get_normal(v2, v1)
+    theta = vectors.get_theta(v1, v2)
     # print(theta * 180 / math.pi)  # print theta in degrees when troubleshooting
     # All atoms within the group will be rotated around the same normal vector by theta:
     group = determine_top_group_indices(mol=mol, atom1=mol.atoms[pivot], atom2=mol.atoms[anchor], index=0)[0]
     coords = converter.xyz_to_coords_list(xyz)
     for i in group:
-        coords[i] = rotate_vector(point_a=coords[pivot], point_b=coords[i], normal=normal, theta=theta)
+        coords[i] = vectors.rotate_vector(point_a=coords[pivot], point_b=coords[i], normal=normal, theta=theta)
     new_xyz = converter.xyz_from_data(coords=coords, symbols=xyz['symbols'], isotopes=xyz['isotopes'])
     return new_xyz
 
 
-def get_normal(v1, v2):
+def get_number_of_chiral_centers(label, mol, conformer=None, xyz=None, just_get_the_number=True):
     """
-    Calculate a normal vector using cross multiplication.
+    Determine the number of chiral centers by type. Either ``conformer`` or ``xyz`` must be given.
 
     Args:
-         v1 (list): Vector 1.
-         v2 (list): Vector 2.
+        label (str): The species label.
+        mol (Molecule): The RMG Molecule object.
+        conformer (dict, optional): A conformer dictionary.
+        xyz (dict, optional): The xyz coordinates.
+        just_get_the_number (bool, optional): Return the number of chiral centers regardless of their type.
 
     Returns:
-        list: A normal unit vector to v1 and v2.
+        dict, int : Keys are types of chiral sites ('C' for carbon, 'N' for nitrogen, 'D' for double bond),
+                    values are the number of chiral centers of each type. If ``just_get_the_number`` is ``True``,
+                    just returns the number of chiral centers (integer).
+
+    Raises:
+        InputError: If neither ``conformer`` nor ``xyz`` were given.
     """
-    normal = [v1[1] * v2[2] - v2[1] * v1[2], - v1[0] * v2[2] + v2[0] * v1[2], v1[0] * v2[1] - v2[0] * v1[1]]
-    return unit_vector(normal)
+    if conformer is None and xyz is None:
+        raise InputError('Must get either conformer or xyz.')
+    if conformer is None:
+        conformer = {'xyz': xyz}
+    conformer = determine_chirality(conformers=[conformer], label=label, mol=mol)[0]
+    result = {'C': 0, 'N': 0, 'D': 0}
+    for symbol in conformer['chirality'].values():
+        if symbol in ['R', 'S']:
+            result['C'] += 1
+        elif symbol in ['NR', 'NS']:
+            result['N'] += 1
+        elif symbol in ['E', 'Z']:
+            result['D'] += 1
+        else:
+            raise ConformerError(f"Chiral symbols must be either `R`, `S`, `NR`, `NS`, `E`, `Z`, got: {symbol}.")
+    if just_get_the_number:
+        return sum([val for val in result.values()])
+    return result
 
 
-def get_theta(v1, v2):
+def get_lowest_diastereomers(label, mol, conformers, diastereomers=None):
     """
-    Calculate the angle in radians between two vectors.
-
-    Args:
-         v1 (list): Vector 1.
-         v2 (list): Vector 2.
-
-    Returns:
-        float: The angle in radians between v1 and v2.
-    """
-    return np.arccos(np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2)))
-
-
-def unit_vector(vector):
-    """
-    Calculate a unit vector in the same direction as the input vector.
-
-    Args:
-        vector (list): The input vector.
-
-    Returns:
-        list: The unit vector.
-    """
-    length = sum([v ** 2 for v in vector]) ** 0.5
-    unit_vector_ = [v / length for v in vector]
-    return unit_vector_
-
-
-def rotate_vector(point_a, point_b, normal, theta):
-    """
-    Rotate a vector in 3D space around a given axis by a certain angle.
-
-    Inspired by https://stackoverflow.com/questions/6802577/rotation-of-3d-vector
-
-    Args:
-        point_a (list): The 3D coordinates of the starting point (point A) of the vector to be rotated.
-        point_b (list): The 3D coordinates of the ending point (point B) of the vector to be rotated.
-        normal (list): The axis to be rotated around.
-        theta (float): The degree in radians by which to rotate.
-
-    Returns:
-        list: The rotated vector (the new coordinates for point B).
-    """
-    normal = np.asarray(normal)
-    normal = normal / math.sqrt(np.dot(normal, normal))
-    a = math.cos(theta / 2.0)
-    b, c, d = -normal * math.sin(theta / 2.0)
-    aa, bb, cc, dd = a * a, b * b, c * c, d * d
-    bc, ad, ac, ab, bd, cd = b * c, a * d, a * c, a * b, b * d, c * d
-    rotation_matrix = np.array([[aa + bb - cc - dd, 2 * (bc + ad), 2 * (bd - ac)],
-                                [2 * (bc - ad), aa + cc - bb - dd, 2 * (cd + ab)],
-                                [2 * (bd + ac), 2 * (cd - ab), aa + dd - bb - cc]])
-    vector = [b - a for b, a in zip(point_b, point_a)]
-    new_vector = np.dot(rotation_matrix, vector).tolist()
-    new_vector = [n_v + a for n_v, a in zip(new_vector, point_a)]  # root the vector at the original starting point
-    return new_vector
-
-
-def get_vector(pivot, anchor, xyz):
-    """
-    Get a vector between two atoms in the molecule (pointing from pivot to anchor).
-
-    Args:
-        pivot (int): The 0-index of the pivotal atom around which groups are to be translated.
-        anchor (int): The 0-index of an additional atom in the molecule.
-        xyz (dict): The 3D coordinates of the molecule with the same atom order as in mol.
-
-    Returns:
-         list: A vector pointing from the pivotal atom towards the anchor atom.
-    """
-    x, y, z = converter.xyz_to_x_y_z(xyz)
-    dx = x[anchor] - x[pivot]
-    dy = y[anchor] - y[pivot]
-    dz = z[anchor] - z[pivot]
-    return [dx, dy, dz]
-
-
-def get_lp_vector(label, mol, xyz, pivot):
-    """
-    Get a vector from the pivotal atom in the molecule towards its lone electron pairs.
-    The approach is to reverse the average of the three unit vectors between the pivotal atom and its neighbors.
+    Get the 2^(n-1) diastereomers with the lowest energy (where n is the number of chiral centers in the molecule).
+    We exclude enantiomers (mirror images where ALL chiral centers invert).
+    If a specific diasteromer is given (in an xyz dict form), then only the lowest conformer with the same chirality
+    will be returned.
+    * untested *
 
     Args:
         label (str): The species' label.
         mol (Molecule): The 2D graph representation of the molecule.
-        xyz (dict): The 3D coordinates of the molecule with the same atom order as in mol.
-        pivot (int): The 0-index of the pivotal atom around which groups are to be translated.
+        conformers (list): Entries are conformer dictionaries.
+        diastereomers (list, optional): Entries are xyz's in a dictionary format or conformer structures
+                                        representing specific diastereomers to keep.
 
     Returns:
-        list: A vector pointing from the pivotal atom towards its lone electron pairs orbital.
+        list: Entries are lowest energy diastereomeric conformer dictionaries to consider.
+
+    Raises:
+        ConformerError: If diastereomers is not None and is of wrong type,
+                        or if conformers with the requested chirality combination could not be generated.
     """
-    neighbors, vectors = list(), list()
-    for atom in mol.atoms[pivot].edges.keys():
-        neighbors.append(mol.atoms.index(atom))
-    if len(neighbors) < 3:
-        # N will have 3, S may have more.
-        raise ConformerError('Can only get lp vector if the pivotal atom has at least three neighbors. '
-                             'Atom {0} in {1} has only {2}.'.format(mol.atoms[pivot], label, len(neighbors)))
-    x, y, z = converter.xyz_to_x_y_z(xyz)
-    for neighbor in neighbors:
-        dx = x[pivot] - x[neighbor]  # already taken in "reverse", pointing towards the lone pair
-        dy = y[pivot] - y[neighbor]
-        dz = z[pivot] - z[neighbor]
-        vectors.append(unit_vector([dx, dy, dz]))
-    x = sum(vector[0] for vector in vectors) / 3  # average
-    y = sum(vector[1] for vector in vectors) / 3
-    z = sum(vector[2] for vector in vectors) / 3
-    vector = [x, y, z]
-    return vector
+    # assign chirality properties to all conformers
+    conformers = determine_chirality(conformers, label, mol)
+    # initialize the enantiomeric dictionary (includes enantiomers and diastereomers)
+    # keys are chiral combinations, values are lowest conformers
+    enantiomers_dict = dict()
+    for conformer in conformers:
+        if conformer['FF energy'] is not None:
+            chirality_tuple = chirality_dict_to_tuple(conformer['chirality'])
+            if chirality_tuple not in list(enantiomers_dict.keys()):
+                # this is a new enantiomer, consider it
+                enantiomers_dict[chirality_tuple] = conformer
+            elif conformer['FF energy'] < enantiomers_dict[chirality_tuple]['FF energy']:
+                # found a lower energy conformer with the same chirality, replace
+                enantiomers_dict[chirality_tuple] = conformer
+    if diastereomers is None:
+        # no specific diastereomers were requested
+        pruned_enantiomers_dict = prune_enantiomers_dict(label, enantiomers_dict)
+    else:
+        if isinstance(diastereomers, list):
+            # make sure entries are conformers, convert if needed
+            modified_diastereomers = list()
+            for diastereomer in diastereomers:
+                if isinstance(diastereomer, str) or isinstance(diastereomer, dict) and 'coords' in diastereomer:
+                    # we'll also accept string format xyz
+                    modified_diastereomers.append({'xyz': converter.check_xyz_dict(diastereomer)})
+                elif isinstance(diastereomer, dict) and 'xyz' in diastereomer:
+                    modified_diastereomers.append(diastereomer)
+                else:
+                    raise ConformerError(f'diastereomers entries must be either xyz or conformer dictionaries, '
+                                         f'got {type(diastereomer)} for {label}')
+            diastereomer_confs = [{'xyz': converter.check_xyz_dict(diastereomer)} for diastereomer in diastereomers]
+            diastereomer_confs = determine_chirality(diastereomer_confs, label, mol)
+        else:
+            raise ConformerError(f'diastereomers must be a list of xyz coordinates, got: {type(diastereomers)}')
+        chirality_tuples = [chirality_dict_to_tuple(conformer['chirality']) for conformer in diastereomer_confs]
+        new_enantiomers_dict = dict()
+        for chirality_tuple, conformer in enantiomers_dict.items():
+            if chirality_tuple in chirality_tuples:
+                new_enantiomers_dict[chirality_tuple] = conformer
+        if not new_enantiomers_dict:
+            raise ConformerError(f'Could not generate conformers with chirality combination:\n{chirality_tuples}')
+        pruned_enantiomers_dict = prune_enantiomers_dict(label, new_enantiomers_dict)
+        if len(list(pruned_enantiomers_dict.keys())) and list(pruned_enantiomers_dict.keys())[0] != tuple():
+            logger.info(f'Considering the following enantiomeric combinations for {label}:\n'
+                        f'{list(pruned_enantiomers_dict.keys())}')
+    return list(pruned_enantiomers_dict.values())
+
+
+def prune_enantiomers_dict(label, enantiomers_dict):
+    """
+    A helper function for screening out enantiomers from the enantiomers_dict, leaving only diastereomers
+    (so removing all exact mirror images). Note that double bond chiralities 'E' and 'Z' are not mirror images of each
+    other, and are not pruned out.
+
+    Args:
+        label (str): The species' label.
+        enantiomers_dict (dict): Keys are chirality tuples, values are conformer structures.
+
+    Returns:
+        dict: The pruned enantiomers_dict.
+    """
+    pruned_enantiomers_dict = dict()
+    for chirality_tuples, conformer in enantiomers_dict.items():
+        inversed_chirality_tuples = tuple([(chirality_tuple[0], inverse_chirality_symbol(chirality_tuple[1]))
+                                           for chirality_tuple in chirality_tuples])
+        if chirality_tuples not in list(pruned_enantiomers_dict.keys()) \
+                and inversed_chirality_tuples not in list(pruned_enantiomers_dict.keys()):
+            # this combination (or its exact mirror image) was not considered yet
+            if inversed_chirality_tuples in list(enantiomers_dict.keys()):
+                # the mirror image exists, check which has a lower energy
+                inversed_conformer = enantiomers_dict[inversed_chirality_tuples]
+                if inversed_conformer['FF energy'] is None and conformer['FF energy'] is None:
+                    logger.warning(f'Could not get energies of enantiomers {chirality_tuples} '
+                                   f'nor its mirror image {inversed_chirality_tuples} for species {label}')
+                    continue
+                elif inversed_conformer['FF energy'] is None:
+                    pruned_enantiomers_dict[chirality_tuples] = conformer
+                elif conformer['FF energy'] is None:
+                    pruned_enantiomers_dict[inversed_chirality_tuples] = inversed_conformer
+                elif conformer['FF energy'] <= inversed_conformer['FF energy']:
+                    pruned_enantiomers_dict[chirality_tuples] = conformer
+                else:
+                    pruned_enantiomers_dict[inversed_chirality_tuples] = inversed_conformer
+            else:
+                # the mirror image does not exist
+                pruned_enantiomers_dict[chirality_tuples] = conformer
+    return pruned_enantiomers_dict
+
+
+def inverse_chirality_symbol(symbol):
+    """
+    Inverses a chirality symbol, e.g., the 'R' character to 'S', or 'NS' to 'NR'.
+    Note that chiral double bonds ('E' and 'Z') must not be inversed (they are not mirror images of each other).
+
+    Args:
+        symbol (str): The chirality symbol.
+
+    Returns:
+        str: The inverse chirality symbol.
+
+    Raises:
+        InputError: If ``symbol`` could not be recognized.
+    """
+    inversion_dict = {'R': 'S', 'S': 'R', 'NR': 'NS', 'NS': 'NR', 'E': 'E', 'Z': 'Z'}
+    if symbol not in list(inversion_dict.keys()):
+        raise InputError(f"Recognized chirality symbols are 'R', 'S', 'NR', 'NS', 'E', and 'Z', got {symbol}.")
+    return inversion_dict[symbol]
+
+
+def chirality_dict_to_tuple(chirality_dict):
+    """
+    A helper function for using the chirality dictionary of a conformer as a key in the enantiomers_dict
+    by converting it to a tuple deterministically.
+
+    Args:
+        chirality_dict (dict): The chirality dictionary of a conformer.
+
+    Returns:
+        tuple: A deterministic tuple representation of the chirality dictionary.
+
+    Raises:
+        ConformerError: If the chirality values are wrong.
+    """
+    # extract carbon sites (values are either 'R' or 'S'), nitrogen sites (values are either 'NR' or 'NS')
+    # and chiral double bonds (values are either 'E' or 'Z')
+    c_sites, n_sites, bonds, result = list(), list(), list(), list()
+    for site, chirality in chirality_dict.items():
+        if chirality in ['R', 'S']:
+            c_sites.append((site, chirality))
+        elif chirality in ['NR', 'NS']:
+            n_sites.append((site, chirality))
+        elif chirality in ['E', 'Z']:
+            bond_site = site if site[0] < site[1] else (site[1], site[0])
+            bonds.append((bond_site, chirality))
+        else:
+            raise ConformerError(f'Chiralities could either be R, S, NR, NS, E, or Z. Got: {chirality}.')
+    # sort the lists
+    c_sites.sort(key=lambda entry: entry[0])
+    n_sites.sort(key=lambda entry: entry[0])
+    bonds.sort(key=lambda entry: entry[0])
+    # combine by order
+    for entry in c_sites + n_sites + bonds:
+        result.append(entry)
+    return tuple(result)
+
+
+def determine_chirality(conformers, label, mol, force=False):
+    """
+    Determines the Cahn–Ingold–Prelog (CIP) chirality (R or S) of atoms in the conformer,
+    as well as the CIP chirality of double bonds (E or Z).
+
+    Args:
+        conformers (list): Entries are conformer dictionaries.
+        label (str): The species' label.
+        mol (RMG Molecule or RDKit RDMol): The molecule object with connectivity and bond order information.
+        force (bool, optional): Whether to override data, ``True`` to override, default is ``False``.
+
+    Returns:
+        list: Conformer dictionaries with updated with 'chirality'. ``conformer['chirality']`` is a dictionary.
+              Keys are either a 1-length tuple of atom indices (for chiral atom centers) or a 2-length tuple of atom
+              indices (for chiral double bonds), values are either 'R' or 'S' for chiral atom centers
+              (or 'NR' or 'NS' for chiral nitrogen centers), or 'E' or 'Z' for chiral double bonds.
+              All atom indices are 0-indexed.
+    """
+    chiral_nitrogen_centers = identify_chiral_nitrogen_centers(mol)
+    new_mol, elements_to_insert = replace_n_with_c_in_mol(mol, chiral_nitrogen_centers)
+    for conformer in conformers:
+        if 'chirality' not in conformer:
+            # keys are either 1-length atom indices (for chiral atom centers)
+            # or 2-length atom indices (for chiral double bonds)
+            # values are either 'R', 'S', 'NR', 'NS', 'E', or 'Z'
+            conformer['chirality'] = dict()
+        elif conformer['chirality'] != dict() and not force:
+            # don't override data
+            continue
+        new_xyz = replace_n_with_c_in_xyz(label, mol, conformer['xyz'], chiral_nitrogen_centers, elements_to_insert)
+        rd_mol, rd_index_map = embed_rdkit(label, new_mol, xyz=new_xyz)
+        Chem.rdmolops.AssignStereochemistryFrom3D(rd_mol, 0)
+        for i, rd_atom in enumerate(rd_mol.GetAtoms()):
+            rd_atom_props_dict = rd_atom.GetPropsAsDict()
+            if '_CIPCode' in list(rd_atom_props_dict.keys()):
+                if mol.atoms[rd_index_map[i]].is_nitrogen():
+                    # this is a nitrogen site in the original molecule, mark accordingly
+                    conformer['chirality'][(rd_index_map[i],)] = 'N' + rd_atom_props_dict['_CIPCode']
+                else:
+                    conformer['chirality'][(rd_index_map[i],)] = rd_atom_props_dict['_CIPCode']
+        for rd_bond in rd_mol.GetBonds():
+            stereo = str(rd_bond.GetStereo())
+            if stereo in ['STEREOE', 'STEREOZ']:
+                # possible values are 'STEREOANY', 'STEREOCIS', 'STEREOE', 'STEREONONE', 'STEREOTRANS', and 'STEREOZ'
+                rd_atoms = [rd_bond.GetBeginAtomIdx(), rd_bond.GetEndAtomIdx()]  # indices of atoms bonded by this bond
+                conformer['chirality'][tuple(rd_index_map[rd_atom] for rd_atom in rd_atoms)] = stereo[-1]
+    return conformers
+
+
+def identify_chiral_nitrogen_centers(mol):
+    """
+    Identify the atom indices corresponding to a chiral nitrogen centers in a molecule (umbrella modes).
+
+    Args:
+        mol (Molecule): The molecule to be analyzed.
+
+    Returns:
+        list: Atom numbers (0-indexed) representing chiral nitrogen centers in the molecule (umbrella modes).
+
+    Raises:
+        TypeError: If ``mol`` is of wrong type.
+    """
+    if not isinstance(mol, Molecule):
+        raise TypeError(f'mol must be a Molecule instance, got: {type(mol)}')
+    chiral_nitrogen_centers = list()
+    for atom1 in mol.atoms:
+        if atom1.is_nitrogen() and atom1.lone_pairs == 1 and atom1.radical_electrons == 0 \
+                and (len(list(atom1.edges.keys())) == 3
+                     or (atom1.radical_electrons == 1 and len(list(atom1.edges.keys())) == 2)):
+            groups, tops, top_element_counts = list(), list(), list()
+            for atom2 in atom1.edges.keys():
+                top = determine_top_group_indices(mol, atom1, atom2, index=0)[0]
+                tops.append(top)
+                top_element_counts.append(get_top_element_count(mol, top))
+                groups.append(to_group(mol, top))
+            if (top_element_counts[0] != top_element_counts[1] and top_element_counts[1] != top_element_counts[2]) \
+                    or all([not groups[0].is_isomorphic(group, save_order=True) for group in groups[1:]] +
+                           [not groups[-1].is_isomorphic(group, save_order=True) for group in groups[:-1]]):
+                # if we can say that TWO groups, each separately considered, isn't isomorphic to the others,
+                # then this nitrogen has all different groups.
+                chiral_nitrogen_centers.append(mol.atoms.index(atom1))
+    return chiral_nitrogen_centers
+
+
+def replace_n_with_c_in_mol(mol, chiral_nitrogen_centers):
+    """
+    Replace nitrogen atoms (pre-identified as chiral centers) with carbon atoms, replacing the lone electron pair
+    (assuming just one exists) with a hydrogen or a halogen atom, preserving any radical electrons on the nitrogen atom.
+
+    Args:
+        mol (Molecule): The molecule to be analyzed.
+        chiral_nitrogen_centers (list): The 0-index of chiral (umbrella mode) nitrogen atoms in the molecule.
+
+    Returns:
+        Molecule: A copy of the molecule with replaced N atoms.
+    Returns:
+        list: Elements inserted in addition to the C atom, ordered as in ``chiral_nitrogen_centers``.
+
+    Raises:
+        ConformerError: If any of the atoms indicated by ``chiral_nitrogen_centers`` could not be a chiral nitrogen atom
+    """
+    new_mol = mol.copy(deep=True)
+    inserted_elements = list()
+    for n_index in chiral_nitrogen_centers:
+        if not mol.atoms[n_index].is_nitrogen():
+            raise ConformerError(f'Cannot replace a nitrogen atom index {n_index} if it is not a nitrogen element.')
+        if mol.atoms[n_index].lone_pairs != 1:
+            raise ConformerError(f'Cannot replace a nitrogen atom index {n_index} with number of lone pairs '
+                                 f'different than one (got: {mol.atoms[n_index].lone_pairs}).')
+        if mol.atoms[n_index].radical_electrons > 1:
+            raise ConformerError(f'Cannot replace a nitrogen atom index {n_index} if it has more than one radical '
+                                 f'electrons (got: {mol.atoms[n_index].radical_electrons}).')
+        if any([not bond.is_single() for bond in mol.atoms[n_index].edges.values()]):
+            raise ConformerError(f'Cannot replace a nitrogen atom index {n_index} if not all of its bonds are single '
+                                 f'(got: {[bond.order for bond in mol.atoms[n_index].edges.values()]}).')
+        new_c_atom = Atom(element=C_ELEMENT, radical_electrons=mol.atoms[n_index].radical_electrons,
+                        charge=mol.atoms[n_index].charge, lone_pairs=0, id=mol.atoms[n_index].id)
+        new_c_atom.edges = dict()
+        for atom2 in mol.atoms[n_index].edges.keys():
+            # delete bonds from all other atoms connected to the atom represented by n_index
+            del new_mol.atoms[mol.atoms.index(atom2)].edges[new_mol.atoms[n_index]]
+        new_mol.vertices[n_index] = new_c_atom
+        h, f, cl = False, False, False  # mark hydrogen, fluorine, and chlorine neighbors of the original atom
+        for atom2 in mol.atoms[n_index].edges.keys():
+            new_mol.add_bond(Bond(atom1=new_c_atom, atom2=new_mol.atoms[mol.atoms.index(atom2)], order=1))
+            if atom2.is_hydrogen():
+                h = True
+            elif atom2.is_fluorine():
+                f = True
+            elif atom2.is_chlorine():
+                cl = True
+        if not h:
+            additional_element = H_ELEMENT
+            inserted_elements.append('H')
+        elif not f:
+            additional_element = F_ELEMENT
+            inserted_elements.append('F')
+        elif not cl:
+            additional_element = Cl_ELEMENT
+            inserted_elements.append('Cl')
+        else:
+            # this can only happen if the molecule is NHFCl (ammonia substituted with one F and one Cl), use iodine
+            additional_element = I_ELEMENT
+            inserted_elements.append('I')
+        new_atom = Atom(element=additional_element, radical_electrons=0, charge=0,
+                        lone_pairs=0 if additional_element.number == 1 else 3)
+        new_atom.edges = dict()
+        # new_mol.add_atom(new_atom)
+
+        new_mol.vertices.append(new_atom)
+        new_bond = Bond(atom1=new_c_atom, atom2=new_atom, order=1)
+        new_mol.add_bond(new_bond)
+    return new_mol, inserted_elements
+
+
+def replace_n_with_c_in_xyz(label, mol, xyz, chiral_nitrogen_centers, elements_to_insert):
+    """
+    Replace nitrogen atoms (pre-identified as chiral centers) with carbon atoms, replacing the lone electron pair
+    (assuming just one exists) with a hydrogen or a halogen atom.
+
+    Args:
+        label (str): The species label.
+        mol (Molecule): The respective molecule object.
+        xyz (dict): The 3D coordinates to process.
+        chiral_nitrogen_centers (list): The 0-index of chiral (umbrella mode) nitrogen atoms in the molecule.
+        elements_to_insert (list): The element (H/F/Cl/I) to insert in addition to C per nitrogen center.
+
+    Returns:
+        dict: The coordinates with replaced N atoms.
+    """
+    symbols = list(copy.copy(xyz['symbols']))
+    isotopes = list(copy.copy(xyz['isotopes'])) if 'isotopes' in xyz else None
+    coords = converter.xyz_to_coords_list(xyz)
+    for n_index, element_to_insert in zip(chiral_nitrogen_centers, elements_to_insert):
+        symbols[n_index] = 'C'
+        if isotopes is not None:
+            isotopes[n_index] = 12
+        if element_to_insert == 'H':
+            symbol, isotope, distance = 'H', 1, 1.1
+        elif element_to_insert == 'F':
+            symbol, isotope, distance = 'F', 19, 2.0
+        elif element_to_insert == 'Cl':
+            symbol, isotope, distance = 'Cl', 35, 1.77
+        elif element_to_insert == 'I':
+            symbol, isotope, distance = 'I', 127, 2.14
+        else:
+            raise ConformerError(f'Element to insert must be either H, F, Cl, or I. Got: {element_to_insert}')
+        symbols.append(symbol)
+        if isotopes is not None:
+            isotopes.append(isotope)
+        lp_vector = vectors.set_vector_length(vectors.get_lp_vector(label, mol, xyz, n_index), distance)
+        lp_vector[0] += coords[n_index][0]
+        lp_vector[1] += coords[n_index][1]
+        lp_vector[2] += coords[n_index][2]
+        coords.append(lp_vector)
+    new_xyz = converter.xyz_from_data(coords=coords, symbols=symbols, isotopes=isotopes)
+    return new_xyz
+
+
+def get_top_element_count(mol, top):
+    """
+    Returns the element count for the molecule considering only the atom indices in ``top``.
+
+    Args:
+        mol (Molecule): THe molecule to consider.
+        top (list): The atom indices to consider.
+
+    Returns:
+        dict: The element count, keys are tuples of (element symbol, isotope number), values are counts.
+    """
+    if not isinstance(top, list):
+        top = list(top)
+    element_count = {}
+    for i, atom in enumerate(mol.atoms):
+        if i in top:
+            key = (atom.element.symbol, atom.element.isotope)
+            if key in element_count:
+                element_count[key] += 1
+            else:
+                element_count[key] = 1
+    return element_count
 
 
 def initialize_log(verbose=logging.INFO):
