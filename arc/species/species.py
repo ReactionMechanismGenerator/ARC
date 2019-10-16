@@ -109,9 +109,9 @@ class ARCSpecies(object):
                                      and the "old" RDKit embedding method will be used.
         svpfit_output_file (str, optional): The path to a Gaussian output file of an SVP Fit job if previously ran
                                             (otherwise, this job will be spawned if running Gromacs).
-        bdes (list): Specifying for which bonds should bond dissociation energies be calculated.
-                     Entries are bonded atom indices tuples (1-indexed). An 'all_h' string entry is also allowed,
-                     triggering BDE calculations for all hydrogen atoms in the molecule.
+        bdes (list, optional): Specifying for which bonds should bond dissociation energies be calculated.
+                               Entries are bonded atom indices tuples (1-indexed). An 'all_h' string entry is also
+                               allowed, triggering BDE calculations for all hydrogen atoms in the molecule.
         directed_rotors (dict): Execute a directed internal rotation scan (i.e., a series of sp or constrained opt jobs)
                                 for the pivots of interest. The optional primary keys are:
                                 - 'brute_force_sp'
@@ -141,6 +141,12 @@ class ARCSpecies(object):
                                 attribute must be specified by the user.
                                 An additional supported key is 'ess', in which case ARC will allow the ESS to take care
                                 of spawning the ND continuous constrained optimizations (not yet implemented).
+        consider_all_diastereomers (bool, optional): Whether to consider all different chiralities (tetrahydral carbon
+                                                     centers, nitrogen inversions, and cis/trans double bonds) when
+                                                     generating conformers. ``True`` to consider all. If no 3D
+                                                     coordinates are given for the species, all diaestereomers will be
+                                                     considered, otherwise the chirality specified by the given
+                                                     coordinates will be preserved.
 
     Attributes:
         label (str): The species' label.
@@ -220,12 +226,15 @@ class ARCSpecies(object):
                      triggering BDE calculations for all hydrogen atoms in the molecule.
         directed_rotors (dict): Execute a directed internal rotation scan (i.e., a series of constrained optimizations).
                                 Data is in 3 levels of nested lists, converted from pivots to four-atom scan indices.
+        consider_all_diastereomers (bool, optional): Whether to consider all different chiralities (tetrahydral carbon
+                                                     centers, nitrogen inversions, and cis/trans double bonds) when
+                                                     generating conformers. ``True`` to consider all.
     """
     def __init__(self, label=None, is_ts=False, rmg_species=None, mol=None, xyz=None, multiplicity=None, charge=None,
                  smiles='', adjlist='', inchi='', bond_corrections=None, generate_thermo=True, species_dict=None,
                  yml_path=None, ts_methods=None, ts_number=None, rxn_label=None, external_symmetry=None,
                  optical_isomers=None, run_time=None, checkfile=None, number_of_radicals=None, force_field='MMFF94s',
-                 svpfit_output_file=None, bdes=None, directed_rotors=None):
+                 svpfit_output_file=None, bdes=None, directed_rotors=None, consider_all_diastereomers=True):
         self.t1 = None
         self.ts_number = ts_number
         self.conformers = list()
@@ -268,6 +277,7 @@ class ARCSpecies(object):
             self.conf_is_isomorphic = None
             self.bdes = bdes
             self.directed_rotors = directed_rotors if directed_rotors is not None else dict()
+            self.consider_all_diastereomers = consider_all_diastereomers
             if self.bdes is not None and not isinstance(self.bdes, list):
                 raise SpeciesError('The .bdes argument must be a list, got {0} which is a {1}'.format(
                                     self.bdes, type(self.bdes)))
@@ -310,13 +320,13 @@ class ARCSpecies(object):
             elif self.rmg_species is not None:
                 # an RMG Species was given
                 if not isinstance(self.rmg_species, Species):
-                    raise SpeciesError('The rmg_species parameter has to be a valid RMG Species object.'
-                                       ' Got: {0}'.format(type(self.rmg_species)))
+                    raise SpeciesError(f'The rmg_species parameter has to be a valid RMG Species object. '
+                                       f'Got: {type(self.rmg_species)}')
                 if not self.rmg_species.molecule:
                     raise SpeciesError('If an RMG Species given, it must have a non-empty molecule list')
                 if not self.rmg_species.label and not label:
-                    raise SpeciesError('If an RMG Species given, it must have a label or a label must be given'
-                                       ' separately')
+                    raise SpeciesError('If an RMG Species given, it must have a label or a label must be given '
+                                       'separately')
                 if label:
                     self.label = label
                 else:
@@ -329,9 +339,9 @@ class ARCSpecies(object):
                             keep_isomorphic=False, filter_structures=True)
                     self.mol_list = self.rmg_species.molecule
                     if len(self.mol_list) > 1:
-                        logger.info('Using localized structure {0} of species {1} for BAC determination. To use a'
-                                    ' different structure, pass the RMG:Molecule object in the `mol` parameter'.format(
-                                      self.mol.to_smiles(), self.label))
+                        logger.info(f'Using localized structure {self.mol.to_smiles()} of species {self.label} for BAC '
+                                    f'determination. To use a different structure, pass the RMG:Molecule object in '
+                                    f'the `mol` parameter')
                 self.multiplicity = self.rmg_species.molecule[0].multiplicity
                 self.charge = self.rmg_species.molecule[0].get_net_charge()
 
@@ -489,6 +499,7 @@ class ARCSpecies(object):
         species_dict['optical_isomers'] = self.optical_isomers
         species_dict['neg_freqs_trshed'] = self.neg_freqs_trshed
         species_dict['arkane_file'] = self.arkane_file
+        species_dict['consider_all_diastereomers'] = self.consider_all_diastereomers
         if self.is_ts:
             species_dict['ts_methods'] = self.ts_methods
             species_dict['ts_guesses'] = [tsg.as_dict() for tsg in self.ts_guesses]
@@ -680,6 +691,8 @@ class ARCSpecies(object):
             # Only TS species are allowed to be loaded w/o a structure
             raise SpeciesError('Must have either mol or xyz for species {0}'.format(self.label))
         self.directed_rotors = species_dict['directed_rotors'] if 'directed_rotors' in species_dict else dict()
+        self.consider_all_diastereomers = species_dict['consider_all_diastereomers'] \
+            if 'consider_all_diastereomers' in species_dict else True
         self.bdes = species_dict['bdes'] if 'bdes' in species_dict else None
         if self.bdes is not None and not isinstance(self.bdes, list):
             raise SpeciesError('The .bdes argument must be a list, got {0} which is a {1}'.format(
@@ -762,18 +775,23 @@ class ARCSpecies(object):
             confs_to_dft (int, optional): The number of conformers to store in the .conformers attribute of the species
                                           that will later be DFT'ed at the conformers_level.
             plot_path (str, optional): A folder path in which the plot will be saved.
-                                                If None, the plot will not be shown (nor saved).
+                                       If None, the plot will not be shown (nor saved).
         """
         if not self.is_ts:
             if not self.charge:
                 mol_list = self.mol_list
             else:
                 mol_list = [self.mol]
+            if self.consider_all_diastereomers:
+                diastereomers = None
+            else:
+                xyz = self.get_xyz(generate=False)
+                diastereomers = [xyz] if xyz is not None else None
             lowest_confs = conformers.generate_conformers(mol_list=mol_list, label=self.label,
                                                           charge=self.charge, multiplicity=self.multiplicity,
                                                           force_field=self.force_field, print_logs=False,
                                                           num_confs_to_return=confs_to_dft, return_all_conformers=False,
-                                                          plot_path=plot_path)
+                                                          plot_path=plot_path, diastereomers=diastereomers)
             if lowest_confs is not None:
                 self.conformers.extend([conf['xyz'] for conf in lowest_confs])
                 self.conformer_energies.extend([None] * len(lowest_confs))
@@ -806,7 +824,9 @@ class ARCSpecies(object):
 
     def get_xyz(self, generate=True):
         """
-        Get the highest quality xyz the species has. If it doesn't have any 3D information, cheaply generate it.
+        Get the highest quality xyz the species has.
+        If it doesn't have any 3D information, and if ``generate`` is ``True``, cheaply generate it.
+        Returns ``None`` if no xyz can be retrieved nor generated.
 
         Args:
             generate (bool, optional): Whether to cheaply generate an FF conformer if no xyz is found.
@@ -1141,9 +1161,9 @@ class ARCSpecies(object):
 
         Args:
             xyz_list (list, str, dict): Entries are either string-format, dict-format coordinates or file paths.
-                                       (If there's only one entry, it could be given directly, not in a list)
-                                       The file paths could direct to either a .xyz file, ARC conformers (w/ or w/o
-                                       energies), or an ESS log/input files, making this method extremely flexible.
+                                        (If there's only one entry, it could be given directly, not in a list)
+                                        The file paths could direct to either a .xyz file, ARC conformers (w/ or w/o
+                                        energies), or an ESS log/input files, making this method extremely flexible.
         """
         if xyz_list is not None:
             if not isinstance(xyz_list, list):
