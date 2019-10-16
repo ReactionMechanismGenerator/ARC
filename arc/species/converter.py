@@ -6,6 +6,7 @@ A module for performing various species-related format conversions.
 """
 
 import numpy as np
+import os
 
 import pybel
 from rdkit import Chem
@@ -26,7 +27,9 @@ logger = get_logger()
 
 def str_to_xyz(xyz_str):
     """
-    Convert a string xyz format with optional Gaussian-style isotope specification, e.g.::
+    Convert a string xyz format to the ARC dict xyz style.
+    Note: The ``xyz_str`` argument could also direct to a file path to parse the data from.
+    The xyz string format may have optional Gaussian-style isotope specification, e.g.::
 
         C(Iso=13)    0.6616514836    0.4027481525   -0.4847382281
         N           -0.6039793084    0.6637270105    0.0671637135
@@ -35,7 +38,7 @@ def str_to_xyz(xyz_str):
         H           -2.2115796924   -0.4529256762    0.4144516252
         H           -1.8113671395   -0.3268900681   -1.1468957003
 
-    into the ARC xyz dictionary format, e.g.::
+    which will also be parsed into the ARC xyz dictionary format, e.g.::
 
         {'symbols': ('C', 'N', 'H', 'H', 'H', 'H'),
          'isotopes': (13, 14, 1, 1, 1, 1),
@@ -57,6 +60,9 @@ def str_to_xyz(xyz_str):
     """
     if not isinstance(xyz_str, str):
         raise InputError('Expected a string input, got {0}'.format(type(xyz_str)))
+    if os.path.isfile(xyz_str):
+        from arc.parser import parse_xyz_from_file
+        return parse_xyz_from_file(xyz_str)
     xyz_dict = {'symbols': tuple(), 'isotopes': tuple(), 'coords': tuple()}
     if all([len(line.split()) == 6 for line in xyz_str.splitlines() if line.strip()]):
         # Convert Gaussian output format, e.g., "      1          8           0        3.132319    0.769111   -0.080869"
@@ -428,7 +434,7 @@ def rmg_mol_from_inchi(inchi):
     """
     try:
         rmg_mol = Molecule().from_inchi(inchi)
-    except (AtomTypeError, ValueError, KeyError) as e:
+    except (AtomTypeError, ValueError, KeyError, TypeError) as e:
         logger.warning('Got the following Error when trying to create an RMG Molecule object from InChI:'
                        '\n{0}'.format(e))
         return None
@@ -770,7 +776,7 @@ def s_bonds_mol_from_xyz(xyz):
     return mol
 
 
-def to_rdkit_mol(mol, remove_h=False, return_mapping=True, sanitize=True):
+def to_rdkit_mol(mol, remove_h=False, sanitize=True):
     """
     Convert a molecular structure to an RDKit RDMol object. Uses
     `RDKit <http://rdkit.org/>`_ to perform the conversion.
@@ -779,65 +785,54 @@ def to_rdkit_mol(mol, remove_h=False, return_mapping=True, sanitize=True):
 
     Args:
         mol (Molecule): An RMG Molecule object for the conversion.
-        remove_h (bool, optional): Whether to remove hydrogen atoms from the molecule, True to remove.
-        return_mapping (bool, optional): Whether to return the atom mapping, True to return.
-        sanitize (bool, optional): Whether to sanitize the RDKit molecule, True to sanitize.
+        remove_h (bool, optional): Whether to remove hydrogen atoms from the molecule, ``True`` to remove.
+        sanitize (bool, optional): Whether to sanitize the RDKit molecule, ``True`` to sanitize.
 
     Returns:
         RDMol: An RDKit molecule object corresponding to the input RMG Molecule object.
-    Returns:
-        dict: An atom mapping dictionary. Keys are Atom objects of 'mol', values are atom indices in the RDKit Mol.
     """
+    atom_id_map = dict()
+
+    # only manipulate a copy of ``mol``
     mol_copy = mol.copy(deep=True)
     if not mol_copy.atom_ids_valid():
         mol_copy.assign_atom_ids()
-    atom_id_map = dict()
     for i, atom in enumerate(mol_copy.atoms):
-        atom_id_map[atom.id] = i
-    # Sort the atoms before converting to ensure output is consistent between different runs
-    mol_copy.sort_atoms()
-    atoms = mol_copy.vertices
-    rd_atom_indices = {}  # dictionary of RDKit atom indices
-    rdkitmol = Chem.rdchem.EditableMol(Chem.rdchem.Mol())
-    for index, atom in enumerate(mol_copy.vertices):
-        if atom.element.symbol == 'X':
-            rd_atom = Chem.rdchem.Atom('Pt')  # not sure how to do this with linear scaling when this might not be Pt
-        else:
-            rd_atom = Chem.rdchem.Atom(atom.element.symbol)
-        if atom.element.isotope != -1:
-            rd_atom.SetIsotope(atom.element.isotope)
-        rd_atom.SetNumRadicalElectrons(atom.radical_electrons)
-        rd_atom.SetFormalCharge(atom.charge)
-        if atom.element.symbol == 'C' and atom.lone_pairs == 1 and mol_copy.multiplicity == 1:
+        atom_id_map[atom.id] = i  # keeps the original atom order before sorting
+    # mol_copy.sort_atoms()  # Sort the atoms before converting to ensure output is consistent between different runs
+    atoms_copy = mol_copy.vertices
+
+    rd_mol = Chem.rdchem.EditableMol(Chem.rdchem.Mol())
+    for rmg_atom in atoms_copy:
+        rd_atom = Chem.rdchem.Atom(rmg_atom.element.symbol)
+        if rmg_atom.element.isotope != -1:
+            rd_atom.SetIsotope(rmg_atom.element.isotope)
+        rd_atom.SetNumRadicalElectrons(rmg_atom.radical_electrons)
+        rd_atom.SetFormalCharge(rmg_atom.charge)
+        if rmg_atom.element.symbol == 'C' and rmg_atom.lone_pairs == 1 and mol_copy.multiplicity == 1:
+            # hard coding for carbenes
             rd_atom.SetNumRadicalElectrons(2)
-        rdkitmol.AddAtom(rd_atom)
-        if not (remove_h and atom.symbol == 'H'):
-            rd_atom_indices[mol.atoms[atom_id_map[atom.id]]] = index
+        if not (remove_h and rmg_atom.symbol == 'H'):
+            rd_mol.AddAtom(rd_atom)
 
     rd_bonds = Chem.rdchem.BondType
     orders = {'S': rd_bonds.SINGLE, 'D': rd_bonds.DOUBLE, 'T': rd_bonds.TRIPLE, 'B': rd_bonds.AROMATIC,
               'Q': rd_bonds.QUADRUPLE}
     # Add the bonds
-    for atom1 in mol_copy.vertices:
-        for atom2, bond in atom1.edges.items():
-            if bond.is_hydrogen_bond():
+    for atom1 in atoms_copy:
+        for atom2, bond12 in atom1.edges.items():
+            if bond12.is_hydrogen_bond():
                 continue
-            index1 = atoms.index(atom1)
-            index2 = atoms.index(atom2)
-            if index1 < index2:
-                order_string = bond.get_order_str()
-                order = orders[order_string]
-                rdkitmol.AddBond(index1, index2, order)
+            if atoms_copy.index(atom1) < atoms_copy.index(atom2):
+                rd_mol.AddBond(atom_id_map[atom1.id], atom_id_map[atom2.id], orders[bond12.get_order_str()])
 
     # Make editable mol and rectify the molecule
-    rdkitmol = rdkitmol.GetMol()
+    rd_mol = rd_mol.GetMol()
     if sanitize:
-        Chem.SanitizeMol(rdkitmol)
+        Chem.SanitizeMol(rd_mol)
     if remove_h:
-        rdkitmol = Chem.RemoveHs(rdkitmol, sanitize=sanitize)
-    if return_mapping:
-        return rdkitmol, rd_atom_indices
-    return rdkitmol
+        rd_mol = Chem.RemoveHs(rd_mol, sanitize=sanitize)
+    return rd_mol
 
 
 def rdkit_conf_from_mol(mol, xyz):
@@ -852,24 +847,19 @@ def rdkit_conf_from_mol(mol, xyz):
         Conformer: An RDKit Conformer object.
     Returns:
         RDMol: An RDKit Molecule object.
-    Returns:
-        dict: Atom index map. Keys are atom indices in the RMG Molecule, values are atom indices in the RDKit Molecule.
     """
     if not isinstance(xyz, dict):
         raise InputError('The xyz argument seem to be of wrong type. Expected a dictionary, '
                          'got\n{0}\nwhich is a {1}'.format(xyz, type(xyz)))
-    rd_mol, rd_indices = to_rdkit_mol(mol=mol, remove_h=False, return_mapping=True)
+    rd_mol = to_rdkit_mol(mol=mol, remove_h=False)
     Chem.AllChem.EmbedMolecule(rd_mol)
-    index_map = dict()
-    for xyz_index, atom in enumerate(mol.atoms):  # generate an atom index mapping dictionary
-        index_map[xyz_index] = rd_indices[atom]
     conf = rd_mol.GetConformer(id=0)
     for i in range(rd_mol.GetNumAtoms()):
-        conf.SetAtomPosition(index_map[i], xyz['coords'][i])  # reset atom coordinates
-    return conf, rd_mol, index_map
+        conf.SetAtomPosition(i, xyz['coords'][i])  # reset atom coordinates
+    return conf, rd_mol
 
 
-def set_rdkit_dihedrals(conf, rd_mol, index_map, rd_scan, deg_increment=None, deg_abs=None):
+def set_rdkit_dihedrals(conf, rd_mol, torsion, deg_increment=None, deg_abs=None):
     """
     A helper function for setting dihedral angles using RDKit.
     Either ``deg_increment`` or ``deg_abs`` must be specified.
@@ -877,8 +867,7 @@ def set_rdkit_dihedrals(conf, rd_mol, index_map, rd_scan, deg_increment=None, de
     Args:
         conf: The RDKit conformer with the current xyz information.
         rd_mol: The respective RDKit molecule.
-        index_map (dict): An atom index mapping dictionary, keys are xyz_index, values are rd_index.
-        rd_scan (list): The four-atom torsion scan indices corresponding to the RDKit conformer indices.
+        torsion (list, tuple): The 0-indexed atom indices of the four atoms defining the torsion.
         deg_increment (float, optional): The required dihedral increment in degrees.
         deg_abs (float, optional): The required dihedral in degrees.
 
@@ -888,16 +877,15 @@ def set_rdkit_dihedrals(conf, rd_mol, index_map, rd_scan, deg_increment=None, de
     if deg_increment is None and deg_abs is None:
         raise SpeciesError('Cannot set dihedral without either a degree increment or an absolute degree')
     if deg_increment is not None:
-        deg0 = rdMT.GetDihedralDeg(conf, rd_scan[0], rd_scan[1], rd_scan[2], rd_scan[3])  # get original dihedral
+        deg0 = rdMT.GetDihedralDeg(conf, torsion[0], torsion[1], torsion[2], torsion[3])  # get original dihedral
         deg = deg0 + deg_increment
     else:
         deg = deg_abs
-    rdMT.SetDihedralDeg(conf, rd_scan[0], rd_scan[1], rd_scan[2], rd_scan[3], deg)
+    rdMT.SetDihedralDeg(conf, torsion[0], torsion[1], torsion[2], torsion[3], deg)
     coords = list()
     symbols = list()
     for i, atom in enumerate(list(rd_mol.GetAtoms())):
-        coords.append([conf.GetAtomPosition(index_map[i]).x, conf.GetAtomPosition(index_map[i]).y,
-                       conf.GetAtomPosition(index_map[i]).z])
+        coords.append([conf.GetAtomPosition(i).x, conf.GetAtomPosition(i).y, conf.GetAtomPosition(i).z])
         symbols.append(atom.GetSymbol())
     new_xyz = xyz_from_data(coords=coords, symbols=symbols)
     return new_xyz

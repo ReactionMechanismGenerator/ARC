@@ -260,6 +260,8 @@ class Scheduler(object):
                                             ts_methods=rxn.ts_methods, ts_number=rxn.index)
                     ts_species.number_of_atoms = sum(reactant.number_of_atoms for reactant in rxn.r_species)
                     self.species_list.append(ts_species)
+                    self.species_dict[rxn.ts_label] = ts_species
+                    self.initialize_output_dict(label=rxn.ts_label)
                 else:
                     # The TS species was already loaded from a restart dict or an Arkane YAML file
                     for spc in self.species_list:
@@ -284,7 +286,7 @@ class Scheduler(object):
                         ts_species.ts_guesses.append(TSGuess(method=tsm, family=family, rmg_reaction=rmg_reaction))
                 for ts_guess in ts_species.ts_guesses:
                     # Execute the TS guess methods that don't require optimized reactants and products
-                    if 'autotst' in ts_guess.method and ts_guess.xyz is None:
+                    if 'autotst' in ts_guess.method and ts_guess.initial_xyz is None:
                         reverse = ' in the reverse direction' if 'reverse' in ts_guess.method else ''
                         logger.info('Trying to generating a TS guess for {0} reaction {1} using AutoTST{2}...'.format(
                             ts_guess.family, rxn.label, reverse))
@@ -1249,24 +1251,19 @@ class Scheduler(object):
                                              if atom.is_non_hydrogen()])
             else:
                 xyz = self.species_dict[label].get_xyz()
-                number_of_heavy_atoms = 0
-                for line in xyz.splitlines():
-                    if line and line.split()[0] != 'H':
-                        number_of_heavy_atoms += 1
-            num_confs = num_confs\
+                number_of_heavy_atoms = sum([1 for symbol in xyz['symbols'] if symbol != 'H'])
+            num_confs = num_confs \
                 or conformers.determine_number_of_conformers_to_generate(heavy_atoms=number_of_heavy_atoms,
-                                                                         torsion_num=len(torsions), label=label)
+                                                                         torsion_num=len(torsions), label=label)[0]
             coords = list()
             for mol in self.species_dict[label].mol_list:
                 # embed conformers (but don't optimize)
-                rd_mol, rd_index_map = conformers.embed_rdkit(label=label, mol=mol, num_confs=num_confs, xyz=None)
+                rd_mol = conformers.embed_rdkit(label=label, mol=mol, num_confs=num_confs, xyz=None)
                 for i in range(rd_mol.GetNumConformers()):
                     conf, coord = rd_mol.GetConformer(i), list()
                     for j in range(conf.GetNumAtoms()):
                         pt = conf.GetAtomPosition(j)
                         coord.append([pt.x, pt.y, pt.z])
-                    if rd_index_map is not None:
-                        coord = [coord[rd_index_map[j]] for j, _ in enumerate(coord)]  # reorder
                     coords.append(coord)
             embedded_confs_path = os.path.join(self.project_directory, 'calcs', 'Species', label,
                                                'ff_param_fit', 'embedded_conformers.yml')  # list of lists
@@ -1284,9 +1281,9 @@ class Scheduler(object):
             save_yaml_file(path=confs_path, content=confs)  # save for the next iteration and for archiving
 
             confs = conformers.determine_dihedrals(confs, torsions)
-            new_conformers, _ = conformers.deduce_new_conformers(label=label, conformers=confs, torsions=torsions,
-                                                                 tops=tops, mol_list=self.species_dict[label].mol_list,
-                                                                 plot_path=False)
+            new_conformers = conformers.deduce_new_conformers(label=label, conformers=confs, torsions=torsions,
+                                                              tops=tops, mol_list=self.species_dict[label].mol_list,
+                                                              plot_path=False)
             new_confs_path = os.path.join(self.project_directory, 'calcs', 'Species', label,
                                           'ff_param_fit', 'new_conformers.yml')  # list of lists
             coords = [new_conf['xyz'] for new_conf in new_conformers]
@@ -2229,7 +2226,7 @@ class Scheduler(object):
         all_converged = True
         for job_type, spawn_job_type in self.job_types.items():
             if spawn_job_type and not self.output[label]['job_types'][job_type] \
-                    and not((self.species_dict[label].is_ts and job_type == 'scan')
+                    and not((self.species_dict[label].is_ts and job_type in ['scan', 'conformers'])
                             or (self.species_dict[label].number_of_atoms == 1
                                 and job_type in ['conformers', 'opt', 'fine', 'freq', 'rotors', 'bde'])
                             or job_type == 'bde' and self.species_dict[label].bdes is None
@@ -2262,7 +2259,7 @@ class Scheduler(object):
         else:
             job_type_status = {key: val for key, val in self.output[label]['job_types'].items()
                                if key in self.job_types and self.job_types[key]}
-            logger.error('Species {0} did not converge. Job type status is: {1}'.format(label, job_type_status))
+            logger.error(f'Species {label} did not converge. Job type status is: {job_type_status}')
         # Update restart dictionary and save the yaml restart file:
         self.save_restart_dict()
 
@@ -2652,7 +2649,7 @@ class Scheduler(object):
             for key0, val0 in species_output_dict.items():
                 if key0 in ['paths', 'job_types']:
                     for key1, val1 in species_output_dict[key0].items():
-                        if val1 and key1 != 'rotors':
+                        if val1 and key1 not in ['rotors', 'bde']:
                             return True
                 else:
                     if val0:

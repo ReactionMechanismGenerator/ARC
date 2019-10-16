@@ -137,15 +137,15 @@ class TestARCSpecies(unittest.TestCase):
 
         self.spc11.conformers = list()
         self.spc11.generate_conformers(confs_to_dft=1)
-        self.assertEqual(len(self.spc11.conformers), 2)  # has more confs due to chiral center
+        self.assertEqual(len(self.spc11.conformers), 1)
 
         self.spc11.conformers = list()
         self.spc11.generate_conformers(confs_to_dft=2)
-        self.assertEqual(len(self.spc11.conformers), 4)
+        self.assertEqual(len(self.spc11.conformers), 2)
 
         self.spc11.conformers = list()
         self.spc11.generate_conformers(confs_to_dft=3)
-        self.assertIn(len(self.spc11.conformers), [5, 6])
+        self.assertEqual(len(self.spc11.conformers), 3)
 
         xyz12 = """C       0.00000000    0.00000000    0.00000000
 H       1.07008000   -0.14173100    0.00385900
@@ -406,6 +406,7 @@ H      -1.67091600   -1.35164600   -0.93286400"""
                          'label': 'methylamine',
                          'long_thermo_description': spc_dict['long_thermo_description'],
                          'charge': 0,
+                         'consider_all_diastereomers': True,
                          'force_field': 'MMFF94s',
                          'is_ts': False,
                          't1': None,

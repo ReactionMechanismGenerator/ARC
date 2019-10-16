@@ -7,6 +7,7 @@ This module contains unit tests of the arc.species.converter module
 
 import unittest
 
+from rdkit import Chem
 from rdkit.Chem import rdMolTransforms as rdMT, rdchem
 
 from rmgpy.molecule.molecule import Molecule
@@ -1019,21 +1020,104 @@ H      -4.07566100   -0.52115800    0.00003300"""
         H       1.1294795781    -0.8708998550     0.7537444446
         H       1.4015274689    -0.6230592706    -0.8487058662"""
         spc1 = ARCSpecies(label='N3', xyz=n3_xyz, smiles='NNN')
-        rdkitmol, rd_atom_indices = converter.to_rdkit_mol(spc1.mol)
-        for atom, index in rd_atom_indices.items():
-            if atom.symbol == 'N':
-                self.assertIn(index, [0, 1, 2])
-            else:
-                self.assertIn(index, [3, 4, 5, 6, 7])
-        self.assertIsInstance(rdkitmol, rdchem.Mol)
+        rd_mol = converter.to_rdkit_mol(spc1.mol)
+        self.assertIsInstance(rd_mol, rdchem.Mol)
+        rd_mol_block = Chem.MolToMolBlock(rd_mol).splitlines()
+        self.check_atom_connectivity_in_rd_mol_block(spc1.mol, rd_mol_block)
+
+        xyz = {'symbols': ('O', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
+               'isotopes': (16, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+               'coords': ((-1.3435816539552077, -1.2858724378615196, 1.2807152578949395),
+                          (-0.5822124260876973, -0.14929764421455033, 0.8718857581393893),
+                          (0.7537245479964255, -0.6372399190517054, 0.3052879204747593),
+                          (-1.4102384848438956, 0.6526250305631552, -0.12325722014803946),
+                          (1.710012180202608, 0.48782666699333677, -0.05422674317489915),
+                          (-0.40628319987777656, 0.4559748941241954, 1.7677829999416865),
+                          (0.5793528665379145, -1.2676871411265647, -0.575605173641588),
+                          (1.233146425434121, -1.2920781144004214, 1.0439600784740728),
+                          (-0.9212156176546785, 1.592222200131885, -0.3946484666070579),
+                          (-2.3924481790072454, 0.8873667498492314, 0.30150058029243965),
+                          (-1.5933662659692818, 0.07549770612318436, -1.0362629940245036),
+                          (1.8859973684778586, 1.143203203580941, 0.8045438318837316),
+                          (1.3246310337941618, 1.0933395307478435, -0.8797197423637577),
+                          (2.6742044088059282, 0.07526334279898257, -0.368290381462353),
+                          (-1.5117230038532052, -1.8311440682580218, 0.49312739388548754))}
+        spc2 = ARCSpecies(label='OC(C)CC', xyz=xyz, smiles='OC(C)CC')
+        rd_mol = converter.to_rdkit_mol(spc2.mol)
+        self.assertIsInstance(rd_mol, rdchem.Mol)
+        rd_mol_block = Chem.MolToMolBlock(rd_mol).splitlines()
+        self.check_atom_connectivity_in_rd_mol_block(spc2.mol, rd_mol_block)
+
+        xyz = {'symbols': ('N', 'N', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C',
+                           'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H',
+                           'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
+               'isotopes': (14, 14, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 1, 1,
+                            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+               'coords': ((3.499179325102147, -0.42638916597187926, 0.9003242990840908),
+                          (-0.6499415889484702, 0.340724799540206, -0.5661251309627103),
+                          (1.819277292737819, 0.21344385159685897, -0.8793317468230418),
+                          (3.1899052719474628, 0.45760852306308153, -0.23533246027504112),
+                          (0.6706268264374187, 0.3217004114789208, 0.13002243103982766),
+                          (-2.4215521499877974, -0.7371655416066899, 1.5076456703036578),
+                          (-3.296693026864579, 0.43179444760158664, 1.0714158151237858),
+                          (4.726657868928066, 0.020800041839839727, 1.5650469546751138),
+                          (3.6447406115527494, -1.8243635218409306, 0.48593167588088443),
+                          (-1.998316391739874, -1.5449807522537653, 0.31438572491218525),
+                          (-2.5853175909775765, 1.6051926872800064, 0.4350094041727361),
+                          (-1.1792740587338528, -0.9714655711015325, -0.6681683390125535),
+                          (-1.3745799868854869, 1.532697175622535, -0.28051044496804023),
+                          (-2.4413535353650957, -2.8713104903122058, 0.17049853057640718),
+                          (-3.224764479819963, 2.8596947190744824, 0.5783248286620434),
+                          (-0.8418089989578232, -1.7415946226832655, -1.7942299137645301),
+                          (-0.8463723241331488, 2.7360148761091194, -0.8074146437047873),
+                          (-1.2889052838118953, -3.0557546346353797, -1.935683056992735),
+                          (-2.0855458766909853, -3.622896502075492, -0.9481584984095942),
+                          (-1.4805030849471914, 3.9671406108815273, -0.6400741779998904),
+                          (-2.6770015730057284, 4.028135675598927, 0.05383697598559641),
+                          (1.8064679324039714, -0.7639497261514713, -1.3723796694870831),
+                          (1.6813862693297632, 0.9524422087112238, -1.6780926341588518),
+                          (-1.5437907205240609, -0.40187562179668984, 2.073060928715998),
+                          (-3.000681584394112, -1.370413857452276, 2.191633391758093),
+                          (-3.802708903003739, 0.7938156999014608, 1.9769065802517534),
+                          (-4.083218454719305, 0.0921672466341461, 0.3845421896814606),
+                          (0.7205760738282427, -0.5084403674087968, 0.8481146496474586),
+                          (0.8137318609885368, 1.228521112122053, 0.7344513830359622),
+                          (3.9659220576062326, 0.37759691873732143, -1.0080567380485763),
+                          (3.2028295058114855, 1.4998398600598792, 0.11065670648152448),
+                          (4.9396611843328895, -0.6020814332203606, 2.4410957064978063),
+                          (4.6138917667452395, 1.0465788985703077, 1.9334989414975443),
+                          (5.594732850928261, -0.013502693683424412, 0.8966982307044372),
+                          (3.9023968247424343, -2.4543964342196722, 1.3451296915324813),
+                          (2.703699879345195, -2.222228719009132, 0.09348746737228847),
+                          (4.42204732050457, -1.950360623873533, -0.2762863825368319),
+                          (-1.0170018414296815, -3.629781944004243, -2.8167686619675725),
+                          (-0.23010568646070212, -1.302240691051647, -2.578005038420773),
+                          (-3.0760107679117197, -3.3234878910133863, 0.9290540461318536),
+                          (-2.4381827291700913, -4.645359950791348, -1.0519238202482728),
+                          (0.07119294770223425, 2.7066721369647406, -1.3899371573958255),
+                          (-1.045656978872603, 4.8663811008631175, -1.0662281652857586),
+                          (-3.1892599113493763, 4.977310741601497, 0.1827136615195785),
+                          (-4.170376142277848, 2.927767012302581, 1.1140032113287763))}
+        spc3 = ARCSpecies(label='imipramine', xyz=xyz, smiles='c1cc3c(cc1)CCc2c(cccc2)N3CCCN(C)C')
+        rd_mol = converter.to_rdkit_mol(spc3.mol)
+        self.assertIsInstance(rd_mol, rdchem.Mol)
+        rd_mol_block = Chem.MolToMolBlock(rd_mol).splitlines()
+        self.check_atom_connectivity_in_rd_mol_block(spc3.mol, rd_mol_block)
+
+    def check_atom_connectivity_in_rd_mol_block(self, rmg_mol, rd_mol_block):
+        """A helper function for testing"""
+        for line in rd_mol_block:
+            splits = line.split()
+            if len(splits) == 4:
+                index1, index2 = int(splits[0]) - 1, int(splits[1]) - 1
+                self.assertIn(rmg_mol.atoms[index1], list(rmg_mol.atoms[index2].edges.keys()))
 
     def test_rdkit_conf_from_mol(self):
         """Test rdkit_conf_from_mol"""
-        _, b_mol = converter.molecules_from_xyz(self.xyz5['dict'])
-        conf, rd_mol, index_map = converter.rdkit_conf_from_mol(mol=b_mol, xyz=self.xyz5['dict'])
+        b_mol = converter.molecules_from_xyz(self.xyz5['dict'])[1]
+        conf, rd_mol = converter.rdkit_conf_from_mol(mol=b_mol, xyz=self.xyz5['dict'])
         self.assertTrue(conf.Is3D())
         self.assertEqual(rd_mol.GetNumAtoms(), 5)
-        self.assertEqual(index_map, {0: 0, 1: 1, 2: 2, 3: 3, 4: 4})
 
     def test_s_bonds_mol_from_xyz(self):
         """Test creating a molecule with only single bonds from xyz"""
@@ -1145,16 +1229,15 @@ H       2.12529871   -0.70387223    0.11849858""")
         mol0 = spc0.mol
 
         torsion0 = (3, 2, 1, 9)  # the OH rotor
+        torsion0_list = [tor - 1 for tor in torsion0]
         new_dihedral = -60
         deg_increment = 240  # -180 + 240 = +60
 
-        conf, rd_mol, index_map = converter.rdkit_conf_from_mol(mol0, xyz0)
-        rd_tor_map = [index_map[i - 1] for i in torsion0]  # convert the atom indices in the torsion to RDKit indices
-        new_xyz1 = converter.set_rdkit_dihedrals(conf, rd_mol, index_map, rd_tor_map, deg_abs=new_dihedral)
+        conf, rd_mol = converter.rdkit_conf_from_mol(mol0, xyz0)
+        new_xyz1 = converter.set_rdkit_dihedrals(conf, rd_mol, torsion0_list, deg_abs=new_dihedral)
 
-        conf, rd_mol, index_map = converter.rdkit_conf_from_mol(mol0, xyz0)  # convert again to init the conf object
-        rd_tor_map = [index_map[i - 1] for i in torsion0]  # convert the atom indices in the torsion to RDKit indices
-        new_xyz2 = converter.set_rdkit_dihedrals(conf, rd_mol, index_map, rd_tor_map, deg_increment=deg_increment)
+        conf, rd_mol = converter.rdkit_conf_from_mol(mol0, xyz0)  # convert again to init the conf object
+        new_xyz2 = converter.set_rdkit_dihedrals(conf, rd_mol, torsion0_list, deg_increment=deg_increment)
 
         expected_xyz1 = """O       1.17961475   -0.92725986    0.15472373
 C       0.45858928    0.27919340   -0.04589251
@@ -1208,11 +1291,11 @@ H       1.80713611    1.81979843   -1.31138136""")
         mol1 = spc1.mol
 
         torsion1 = (1, 2, 6, 9)
+        torsion1_list = [tor - 1 for tor in torsion1]
         new_dihedral = 118.2
 
-        conf, rd_mol, index_map = converter.rdkit_conf_from_mol(mol1, xyz1)
-        rd_tor_map = [index_map[i - 1] for i in torsion1]  # convert the atom indices in the torsion to RDKit indices
-        new_xyz3 = converter.set_rdkit_dihedrals(conf, rd_mol, index_map, rd_tor_map, deg_abs=new_dihedral)
+        conf, rd_mol = converter.rdkit_conf_from_mol(mol1, xyz1)
+        new_xyz3 = converter.set_rdkit_dihedrals(conf, rd_mol, torsion1_list, deg_abs=new_dihedral)
 
         expected_xyz3 = """N      -0.29070308    0.26322835    0.48770927
 N       0.29070351   -0.26323281   -0.48771096
@@ -1242,9 +1325,8 @@ H       1.74954927    1.65592664    0.73932447
 
         self.assertTrue(almost_equal_coords_lists(new_xyz3, converter.str_to_xyz(expected_xyz3)))
 
-        rd_conf, rd_mol, index_map = converter.rdkit_conf_from_mol(mol1, converter.str_to_xyz(expected_xyz3))
-        rd_scan = [index_map[i - 1] for i in torsion1]  # convert the atom indices to RDKit indices
-        angle = rdMT.GetDihedralDeg(rd_conf, rd_scan[0], rd_scan[1], rd_scan[2], rd_scan[3])
+        rd_conf, rd_mol = converter.rdkit_conf_from_mol(mol1, converter.str_to_xyz(expected_xyz3))
+        angle = rdMT.GetDihedralDeg(rd_conf, torsion1_list[0], torsion1_list[1], torsion1_list[2], torsion1_list[3])
 
         self.assertAlmostEqual(angle, 118.2, 5)
 
@@ -1258,10 +1340,10 @@ H      -1.69760597   -0.38642828   -1.16478035
 H      -1.34010718    0.43408610    0.37373771
 H       2.16336803    0.09985803    0.03295192"""
         spc4 = ARCSpecies(label='ethanol', smiles='CCO', xyz=xyz4)
-        rd_conf, rd_mol, index_map = converter.rdkit_conf_from_mol(mol=spc4.mol, xyz=converter.str_to_xyz(xyz4))
+        rd_conf, rd_mol = converter.rdkit_conf_from_mol(mol=spc4.mol, xyz=converter.str_to_xyz(xyz4))
         torsion4 = [9, 1, 2, 3]
-        rd_tor_map = [index_map[i - 1] for i in torsion4]  # convert the atom indices to RDKit indices
-        new_xyz4 = converter.set_rdkit_dihedrals(rd_conf, rd_mol, index_map, rd_tor_map, deg_abs=60)
+        torsion4_list = [tor - 1 for tor in torsion4]
+        new_xyz4 = converter.set_rdkit_dihedrals(rd_conf, rd_mol, torsion4_list, deg_abs=60)
         expected_xyz4 = """O       1.28706525    0.52121353    0.04219198
 C       0.39745682   -0.35265044   -0.63649234
 C       0.36441173   -1.68197093    0.08682400

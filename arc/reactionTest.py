@@ -37,6 +37,9 @@ class TestARCReaction(unittest.TestCase):
         cls.rxn3 = ARCReaction(reactants=['CH3CH2NH'], products=['CH2CH2NH2'])
         cls.rxn3.rmg_reaction = Reaction(reactants=[Species().from_smiles('CC[NH]')],
                                          products=[Species().from_smiles('[CH2]CN')])
+        cls.rxn4 = ARCReaction(reactants=['[NH2]', 'N[NH]'], products=['N', 'N[N]'])
+        cls.rxn4.rmg_reaction = Reaction(reactants=[Species().from_smiles('[NH2]'), Species().from_smiles('N[NH]')],
+                                         products=[Species().from_smiles('N'), Species().from_smiles('N[N]')])
 
     def test_as_dict(self):
         """Test Species.as_dict()"""
@@ -97,11 +100,16 @@ class TestARCReaction(unittest.TestCase):
         """Test determine multiplicity"""
         self.rxn1.determine_rxn_multiplicity()
         self.assertEqual(self.rxn1.multiplicity, 2)
+
         self.rxn2.arc_species_from_rmg_reaction()
         self.rxn2.determine_rxn_multiplicity()
         self.assertEqual(self.rxn2.multiplicity, 1)
+
         self.rxn3.determine_rxn_multiplicity()
-        self.assertEqual(self.rxn1.multiplicity, 2)
+        self.assertEqual(self.rxn3.multiplicity, 2)
+
+        self.rxn4.determine_rxn_multiplicity()
+        self.assertEqual(self.rxn4.multiplicity, 3)
 
 
 if __name__ == '__main__':

@@ -995,7 +995,6 @@ def save_nd_rotor_yaml(results, path):
         results (dict): The respective scan dictionary to save.
         path (str): The path of the file to be saved.
     """
-    print('save_nd_rotor_yaml')
     if not os.path.isdir(os.path.dirname(path)):
         os.makedirs(os.path.dirname(path))
     modified_results = results.copy()  # don't dump floats into a YAML file, it's buggy
