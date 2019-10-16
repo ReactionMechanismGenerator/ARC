@@ -292,9 +292,9 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
             logger.info(f"Considering diastereomer {diastereomeric_conformer['chirality']}")
         base_xyz = diastereomeric_conformer['xyz']  # base_xyz is modified within the loop below
         for torsion, dihedral in zip(single_tors, single_sampling_point):
-            conf, rd_mol, index_map = converter.rdkit_conf_from_mol(mol, base_xyz)
-            rd_tor_map = [index_map[i - 1] for i in torsion]  # convert the atom indices in the torsion to RDKit indices
-            base_xyz = converter.set_rdkit_dihedrals(conf, rd_mol, index_map, rd_tor_map, deg_abs=dihedral)
+            torsion_0_indexed = [tor - 1 for tor in torsion]
+            conf, rd_mol = converter.rdkit_conf_from_mol(mol, base_xyz)
+            base_xyz = converter.set_rdkit_dihedrals(conf, rd_mol, torsion_0_indexed, deg_abs=dihedral)
 
         new_conformers.extend(generate_conformer_combinations(
             label=label, mol=mol_list[0], base_xyz=base_xyz, hypothetical_num_comb=hypothetical_num_comb,
@@ -438,7 +438,7 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
             newest_conformer_list = [lowest_conf_i]
         if force_field != 'gromacs':
             lowest_conf_i = get_lowest_confs(label, newest_conformer_list, n=1)[0]
-            if lowest_conf_i['FF energy'] == base_energy\
+            if lowest_conf_i['FF energy'] == base_energy \
                     and compare_xyz(lowest_conf_i['xyz'], base_xyz):
                 break
             elif lowest_conf_i['FF energy'] < base_energy:
@@ -615,9 +615,9 @@ def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals
     for dihedrals in new_dihedrals:
         xyz_dihedrals = xyz
         for torsion, dihedral in zip(torsions, dihedrals):
-            conf, rd_mol, index_map = converter.rdkit_conf_from_mol(mol, xyz_dihedrals)
-            rd_torsion = [index_map[i - 1] for i in torsion]  # convert the atom indices in the torsion to RDKit indices
-            xyz_dihedrals = converter.set_rdkit_dihedrals(conf, rd_mol, index_map, rd_torsion, deg_abs=dihedral)
+            conf, rd_mol = converter.rdkit_conf_from_mol(mol, xyz_dihedrals)
+            torsion_0_indexed = [tor -1 for tor in torsion]
+            xyz_dihedrals = converter.set_rdkit_dihedrals(conf, rd_mol, torsion_0_indexed, deg_abs=dihedral)
         if force_field != 'gromacs':
             xyz_, energy = get_force_field_energies(label, mol=mol, xyz=xyz_dihedrals, optimize=True,
                                                     force_field=force_field)
@@ -953,9 +953,8 @@ def get_force_field_energies(label, mol, num_confs=None, xyz=None, force_field='
         list: Entries are the FF energies (in kJ/mol).
     """
     if force_field.lower() in ['mmff94', 'mmff94s', 'uff']:
-        rd_mol, rd_index_map = embed_rdkit(label, mol, num_confs=num_confs, xyz=xyz)
-        xyzs, energies = rdkit_force_field(label, rd_mol, rd_index_map=rd_index_map, mol=mol, force_field=force_field,
-                                           optimize=optimize)
+        rd_mol = embed_rdkit(label, mol, num_confs=num_confs, xyz=xyz)
+        xyzs, energies = rdkit_force_field(label, rd_mol, mol=mol, force_field=force_field, optimize=optimize)
     elif force_field.lower() in ['gaff', 'mmff94', 'mmff94s', 'uff', 'ghemical']:
         xyzs, energies = mix_rdkit_and_openbabel_force_field(label, mol, num_confs=num_confs, xyz=xyz,
                                                              force_field=force_field)
@@ -984,14 +983,14 @@ def mix_rdkit_and_openbabel_force_field(label, mol, num_confs=None, xyz=None, fo
         list: Entries are float numbers representing the energies in kJ/mol.
     """
     xyzs, energies = list(), list()
-    rd_mol, rd_index_map = embed_rdkit(label, mol, num_confs=num_confs, xyz=xyz)
+    rd_mol = embed_rdkit(label, mol, num_confs=num_confs, xyz=xyz)
     unoptimized_xyzs = list()
     for i in range(rd_mol.GetNumConformers()):
         conf, xyz = rd_mol.GetConformer(i), list()
         for j in range(conf.GetNumAtoms()):
             pt = conf.GetAtomPosition(j)
             xyz.append([pt.x, pt.y, pt.z])
-        xyz = [xyz[rd_index_map[j]] for j, _ in enumerate(xyz)]  # reorder
+        xyz = [xyz[j] for j, _ in enumerate(xyz)]  # reorder
         unoptimized_xyzs.append(xyz)  # in array form
 
     for xyz in unoptimized_xyzs:
@@ -1113,18 +1112,13 @@ def embed_rdkit(label, mol, num_confs=None, xyz=None):
 
     Returns:
         RDMol: An RDKIt molecule with embedded conformers.
-    Returns:
-        dict: The atom mapping dictionary.
     """
-    rd_index_map = dict()
     if num_confs is None and xyz is None:
         raise ConformerError('Either num_confs or xyz must be set when calling embed_rdkit() for {0}'.format(label))
     if isinstance(mol, RDMol):
         rd_mol = mol
     elif isinstance(mol, Molecule):
-        rd_mol, rd_indices = converter.to_rdkit_mol(mol=mol, remove_h=False, return_mapping=True)
-        for k, atom in enumerate(mol.atoms):
-            rd_index_map[rd_indices[atom]] = k  # keys are rdkit atom indices, values are RMG mol atom indices
+        rd_mol = converter.to_rdkit_mol(mol=mol, remove_h=False)
     else:
         raise ConformerError('Argument mol can be either an RMG Molecule or an RDKit RDMol object. '
                              'Got {0} for {1}'.format(type(mol), label))
@@ -1134,9 +1128,9 @@ def embed_rdkit(label, mol, num_confs=None, xyz=None):
     elif xyz is not None:
         rd_conf = Chem.Conformer(rd_mol.GetNumAtoms())
         for i in range(rd_mol.GetNumAtoms()):
-            rd_conf.SetAtomPosition(i, xyz['coords'][rd_index_map[i]])
+            rd_conf.SetAtomPosition(i, xyz['coords'][i])
         rd_mol.AddConformer(rd_conf)
-    return rd_mol, rd_index_map
+    return rd_mol
 
 
 def read_rdkit_embedded_conformers(label, rd_mol, i=None, rd_index_map=None):
@@ -1173,7 +1167,8 @@ def read_rdkit_embedded_conformer_i(rd_mol, i, rd_index_map=None):
     Args:
         rd_mol (RDKit RDMol): The RDKit molecule with embedded conformers to optimize.
         i (int): The conformer index from rd_mol to read.
-        rd_index_map (list, optional): An atom map dictionary to reorder the xyz. Requires mol to not be None.
+        rd_index_map (list, optional): An atom map dictionary to reorder the xyz.
+                                       Keys are rdkit atom indices, values are RMG mol atom indices
 
     Returns:
         dict: xyz coordinates.
@@ -1192,7 +1187,7 @@ def read_rdkit_embedded_conformer_i(rd_mol, i, rd_index_map=None):
     return xyz_dict
 
 
-def rdkit_force_field(label, rd_mol, rd_index_map=None, mol=None, force_field='MMFF94s', optimize=True):
+def rdkit_force_field(label, rd_mol, mol=None, force_field='MMFF94s', optimize=True):
     """
     Optimize RDKit conformers using a force field (MMFF94 or MMFF94s are recommended).
     Fallback to Open Babel if RDKit fails.
@@ -1200,7 +1195,6 @@ def rdkit_force_field(label, rd_mol, rd_index_map=None, mol=None, force_field='M
     Args:
         label (str): The species' label.
         rd_mol (RDKit RDMol): The RDKit molecule with embedded conformers to optimize.
-        rd_index_map (list, optional): An atom map dictionary to reorder the xyz. Requires mol to not be None.
         mol (Molecule, optional): The RMG molecule object with connectivity and bond order information.
         force_field (str, optional): The type of force field to use.
         optimize (bool, optional): Whether to first optimize the conformer using FF. True to optimize.
@@ -1223,11 +1217,11 @@ def rdkit_force_field(label, rd_mol, rd_index_map=None, mol=None, force_field='M
             ff = Chem.AllChem.MMFFGetMoleculeForceField(rd_mol, mol_properties, confId=i)
             if optimize:
                 energies.append(ff.CalcEnergy())
-            xyzs.append(read_rdkit_embedded_conformer_i(rd_mol, i, rd_index_map=rd_index_map))
+            xyzs.append(read_rdkit_embedded_conformer_i(rd_mol, i))
     if not len(xyzs):
         # RDKit failed, try Open Babel
         energies = list()
-        xyzs = read_rdkit_embedded_conformers(label, rd_mol, rd_index_map=rd_index_map)
+        xyzs = read_rdkit_embedded_conformers(label, rd_mol)
         for xyz in xyzs:
             energies.append(openbabel_force_field(label, mol, xyz=xyz, force_field=force_field)[1][0])
     return xyzs, energies
@@ -1860,22 +1854,22 @@ def determine_chirality(conformers, label, mol, force=False):
             # don't override data
             continue
         new_xyz = replace_n_with_c_in_xyz(label, mol, conformer['xyz'], chiral_nitrogen_centers, elements_to_insert)
-        rd_mol, rd_index_map = embed_rdkit(label, new_mol, xyz=new_xyz)
+        rd_mol = embed_rdkit(label, new_mol, xyz=new_xyz)
         Chem.rdmolops.AssignStereochemistryFrom3D(rd_mol, 0)
         for i, rd_atom in enumerate(rd_mol.GetAtoms()):
             rd_atom_props_dict = rd_atom.GetPropsAsDict()
             if '_CIPCode' in list(rd_atom_props_dict.keys()):
-                if mol.atoms[rd_index_map[i]].is_nitrogen():
+                if mol.atoms[i].is_nitrogen():
                     # this is a nitrogen site in the original molecule, mark accordingly
-                    conformer['chirality'][(rd_index_map[i],)] = 'N' + rd_atom_props_dict['_CIPCode']
+                    conformer['chirality'][(i,)] = 'N' + rd_atom_props_dict['_CIPCode']
                 else:
-                    conformer['chirality'][(rd_index_map[i],)] = rd_atom_props_dict['_CIPCode']
+                    conformer['chirality'][(i,)] = rd_atom_props_dict['_CIPCode']
         for rd_bond in rd_mol.GetBonds():
             stereo = str(rd_bond.GetStereo())
             if stereo in ['STEREOE', 'STEREOZ']:
                 # possible values are 'STEREOANY', 'STEREOCIS', 'STEREOE', 'STEREONONE', 'STEREOTRANS', and 'STEREOZ'
                 rd_atoms = [rd_bond.GetBeginAtomIdx(), rd_bond.GetEndAtomIdx()]  # indices of atoms bonded by this bond
-                conformer['chirality'][tuple(rd_index_map[rd_atom] for rd_atom in rd_atoms)] = stereo[-1]
+                conformer['chirality'][tuple(rd_atom for rd_atom in rd_atoms)] = stereo[-1]
     return conformers
 
 

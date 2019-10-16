@@ -809,8 +809,8 @@ class ARCSpecies(object):
         this could very well not be the best (lowest) one.
         """
         num_confs = min(500, max(50, len(self.mol.atoms) * 3))
-        rd_mol, rd_index_map = conformers.embed_rdkit(label=self.label, mol=self.mol, num_confs=num_confs)
-        xyzs, energies = conformers.rdkit_force_field(label=self.label, rd_mol=rd_mol, rd_index_map=rd_index_map,
+        rd_mol = conformers.embed_rdkit(label=self.label, mol=self.mol, num_confs=num_confs)
+        xyzs, energies = conformers.rdkit_force_field(label=self.label, rd_mol=rd_mol,
                                                       mol=self.mol, force_field='MMFF94s')
         if energies:
             min_energy = min(energies)
@@ -1002,7 +1002,7 @@ class ARCSpecies(object):
         All bonded atoms are moved accordingly. The result is saved in self.initial_xyz.
 
         Args:
-            scan (list): The atom indices representing the dihedral.
+            scan (list): The atom indices (1-indexed) representing the dihedral.
             deg_increment (float, optional): The dihedral angle increment.
             deg_abs (float, optional): The absolute desired dihedral angle.
             count (bool, optional): Whether to increment the rotor's times_dihedral_set parameter. `True` to increment.
@@ -1033,9 +1033,9 @@ class ARCSpecies(object):
                             i=i, pivots=rotor['pivots'], times=rotor['times_dihedral_set']))
                     raise RotorError('Rotors were set beyond the maximal number of times without converging')
             mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
-            conf, rd_mol, indx_map = rdkit_conf_from_mol(mol, xyz)
-            rd_scan = [indx_map[i - 1] for i in scan]  # convert the atom indices in `scan` to RDKit indices
-            new_xyz = set_rdkit_dihedrals(conf, rd_mol, indx_map, rd_scan, deg_increment=deg_increment, deg_abs=deg_abs)
+            conf, rd_mol = rdkit_conf_from_mol(mol, xyz)
+            torsion_0_indexed = [tor - 1 for tor in scan]
+            new_xyz = set_rdkit_dihedrals(conf, rd_mol, torsion_0_indexed, deg_increment=deg_increment, deg_abs=deg_abs)
             self.initial_xyz = new_xyz
 
     def determine_symmetry(self):

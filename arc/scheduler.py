@@ -1258,14 +1258,12 @@ class Scheduler(object):
             coords = list()
             for mol in self.species_dict[label].mol_list:
                 # embed conformers (but don't optimize)
-                rd_mol, rd_index_map = conformers.embed_rdkit(label=label, mol=mol, num_confs=num_confs, xyz=None)
+                rd_mol = conformers.embed_rdkit(label=label, mol=mol, num_confs=num_confs, xyz=None)
                 for i in range(rd_mol.GetNumConformers()):
                     conf, coord = rd_mol.GetConformer(i), list()
                     for j in range(conf.GetNumAtoms()):
                         pt = conf.GetAtomPosition(j)
                         coord.append([pt.x, pt.y, pt.z])
-                    if rd_index_map is not None:
-                        coord = [coord[rd_index_map[j]] for j, _ in enumerate(coord)]  # reorder
                     coords.append(coord)
             embedded_confs_path = os.path.join(self.project_directory, 'calcs', 'Species', label,
                                                'ff_param_fit', 'embedded_conformers.yml')  # list of lists
@@ -1285,7 +1283,7 @@ class Scheduler(object):
             confs = conformers.determine_dihedrals(confs, torsions)
             new_conformers = conformers.deduce_new_conformers(label=label, conformers=confs, torsions=torsions,
                                                               tops=tops, mol_list=self.species_dict[label].mol_list,
-                                                              plot_path=False)[0]
+                                                              plot_path=False)
             new_confs_path = os.path.join(self.project_directory, 'calcs', 'Species', label,
                                           'ff_param_fit', 'new_conformers.yml')  # list of lists
             coords = [new_conf['xyz'] for new_conf in new_conformers]
