@@ -331,9 +331,29 @@ def determine_ess_status(output_path, species_label, job_type, software=None):
                     break
             error = error if error else 'Molpro job terminated for an unknown reason.'
             keywords = keywords if keywords else ['Unknown']
-            if keywords:
-                return 'errored', keywords, error, line
-            return 'done', list(), '', ''
+            return 'errored', keywords, error, line
+
+        elif software == 'terachem':
+            for line in lines[::-1]:
+                if 'Job finished:' in line:
+                    return 'done', list(), '', ''
+                elif 'incorrect method' in line.lower():
+                    keywords = ['IncorrectMethod']
+                    error = 'incorrect method'
+                    break
+                elif 'error: ' in line.lower():
+                    # e.g.: "ERROR: Closed shell calculations can't have spin multiplicity 0."
+                    keywords = ['Unknown']  # Todo
+                    error = line.split()[1]
+                    break
+                elif 'unable to open file: ' in line.lower() and 'basis' in line.lower():
+                    # e.g.: "Unable to open file /<..path..>/TeraChem/basis/6-311++g[d,p]"
+                    keywords = ['MissingBasisSet']
+                    error = 'Could not find basis set {0} in TeraChem'.format(
+                             line.split('/')[-1].replace('[', '(').replace(']', ')'))
+            error = error if error else 'TeraChem job terminated for an unknown reason.'
+            keywords = keywords if keywords else ['Unknown']
+            return 'errored', keywords, error, line
 
 
 def trsh_negative_freq(label, log_file, neg_freqs_trshed=None, job_types=None):
@@ -820,6 +840,8 @@ def trsh_conformer_isomorphism(software, ess_trsh_methods=None):
         conformer_trsh_methods = ['wb97x-d3/def2-TZVP']
     elif software == 'orca':
         conformer_trsh_methods = ['wB97X-D3/def2-TZVP']
+    elif software == 'terachem':
+        conformer_trsh_methods = ['wb97xd3/def2-TZVP']
     else:
         raise TrshError('The troubleshoot_conformer_isomorphism() method is not implemented for {0}.'.format(software))
 
@@ -858,43 +880,47 @@ def trsh_job_on_server(server, job_name, job_id, job_server_status, remote_path,
     if servers[server]['cluster_soft'].lower() == 'oge':
 
         logger.error('Troubleshooting by changing node.')
-        ssh = SSHClient(server)
-        ssh.send_command_to_server(command=delete_command[servers[server]['cluster_soft']] + ' ' + str(job_id))
-        # find available nodes
-        stdout = ssh.send_command_to_server(command=list_available_nodes_command[servers[server]['cluster_soft']])[0]
-        for line in stdout:
-            node = line.split()[0].split('.')[0].split('node')[1]
-            if servers[server]['cluster_soft'] == 'OGE' and '0/0/8' in line and node not in server_nodes:
-                server_nodes.append(node)
-                break
-        else:
-            logger.error('Could not find an available node on the server {0}'.format(server))
-            # TODO: continue troubleshooting; if all else fails, put the job to sleep,
-            #       and try again searching for a node
-            return None, False
+        if server != 'local':
+            ssh = SSHClient(server)
+            ssh.send_command_to_server(command=delete_command[servers[server]['cluster_soft']] + ' ' + str(job_id))
+            # find available nodes
+            stdout = ssh.send_command_to_server(command=list_available_nodes_command[servers[server]['cluster_soft']])[0]
+            for line in stdout:
+                node = line.split()[0].split('.')[0].split('node')[1]
+                if servers[server]['cluster_soft'] == 'OGE' and '0/0/8' in line and node not in server_nodes:
+                    server_nodes.append(node)
+                    break
+            else:
+                logger.error('Could not find an available node on the server {0}'.format(server))
+                # TODO: continue troubleshooting; if all else fails, put the job to sleep,
+                #       and try again searching for a node
+                return None, False
 
-        # modify the submit file
-        content = ssh.read_remote_file(remote_path=remote_path,
-                                       filename=submit_filename[servers[server]['cluster_soft']])
-        for i, line in enumerate(content):
-            if '#$ -l h=node' in line:
-                content[i] = '#$ -l h=node{0}.cluster'.format(node)
-                break
-        else:
-            content.insert(7, '#$ -l h=node{0}.cluster'.format(node))
-        content = ''.join(content)  # convert list into a single string, not to upset paramiko
-        # resubmit
-        ssh.upload_file(remote_file_path=os.path.join(remote_path,
-                        submit_filename[servers[server]['cluster_soft']]), file_string=content)
-        return node, True
+            # modify the submit file
+            content = ssh.read_remote_file(remote_path=remote_path,
+                                           filename=submit_filename[servers[server]['cluster_soft']])
+            for i, line in enumerate(content):
+                if '#$ -l h=node' in line:
+                    content[i] = '#$ -l h=node{0}.cluster'.format(node)
+                    break
+            else:
+                content.insert(7, '#$ -l h=node{0}.cluster'.format(node))
+            content = ''.join(content)  # convert list into a single string, not to upset paramiko
+            # resubmit
+            ssh.upload_file(remote_file_path=os.path.join(remote_path,
+                            submit_filename[servers[server]['cluster_soft']]), file_string=content)
+            return node, True
+        return None, False
 
     elif servers[server]['cluster_soft'].lower() == 'slurm':
         # TODO: change node on Slurm
-        logger.error('Re-submitting job {0} on {1}'.format(job_name, server))
-        # delete current server run
-        ssh = SSHClient(server)
-        ssh.send_command_to_server(command=delete_command[servers[server]['cluster_soft']] + ' ' + str(job_id))
-        return None, True
+        if server != 'local':
+            logger.error('Re-submitting job {0} on {1}'.format(job_name, server))
+            # delete current server run
+            ssh = SSHClient(server)
+            ssh.send_command_to_server(command=delete_command[servers[server]['cluster_soft']] + ' ' + str(job_id))
+            return None, True
+        return None, False
 
 
 def scan_quality_check(label, pivots, energies, scan_res=rotor_scan_resolution, used_methods=None):
