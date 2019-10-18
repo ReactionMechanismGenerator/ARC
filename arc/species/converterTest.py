@@ -1441,6 +1441,28 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         self.assertEqual(self.spc3.multiplicity, 3)  # NCN(T)
         self.assertTrue(all([atom.radical_electrons == 1 for atom in self.spc3.mol.atoms if atom.is_nitrogen()]))
 
+    def test_order_atoms_in_mol_list(self):
+        """Test reordering atoms in a molecule list using a reference molecule"""
+        ref_mol = Molecule(smiles='[CH](CC[CH]c1ccccc1)c1ccccc1')
+        mol_list = ref_mol.copy(deep=True).generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
+        success = converter.order_atoms_in_mol_list(ref_mol=ref_mol, mol_list=mol_list)
+        self.assertTrue(success)
+        bond_dict = dict()
+        for index1, atom1 in enumerate(ref_mol.atoms):
+            for atom2 in atom1.edges.keys():
+                index2 = ref_mol.atoms.index(atom2)
+                if index1 < index2:
+                    if index1 not in bond_dict:
+                        bond_dict[index1] = [index2]
+                    else:
+                        bond_dict[index1].append(index2)
+        for mol in mol_list:
+            for index1, atom1 in enumerate(mol.atoms):
+                for atom2 in atom1.edges.keys():
+                    index2 = mol.atoms.index(atom2)
+                    if index1 < index2:
+                        self.assertIn(index2, bond_dict[index1])  # check that these atoms are connected in all mols
+
     def test_order_atoms(self):
         """Test the order_atoms function"""
         mol1 = converter.s_bonds_mol_from_xyz(self.xyz10['dict'])
@@ -1452,6 +1474,25 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         converter.order_atoms(ref_mol=mol3, mol=mol1)
         for atom1, atom2 in zip(mol3.atoms, mol1.atoms):
             self.assertEqual(atom1.symbol, atom2.symbol)
+
+        ref_mol = Molecule(smiles='[CH](CC[CH]c1ccccc1)c1ccccc1')
+        mol_list = ref_mol.copy(deep=True).generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
+        for mol in mol_list:
+            converter.order_atoms(ref_mol=ref_mol, mol=mol)
+            bond_dict = dict()
+            for index1, atom1 in enumerate(ref_mol.atoms):
+                for atom2 in atom1.edges.keys():
+                    index2 = ref_mol.atoms.index(atom2)
+                    if index1 < index2:
+                        if index1 not in bond_dict:
+                            bond_dict[index1] = [index2]
+                        else:
+                            bond_dict[index1].append(index2)
+            for index1, atom1 in enumerate(mol.atoms):
+                for atom2 in atom1.edges.keys():
+                    index2 = mol.atoms.index(atom2)
+                    if index1 < index2:
+                        self.assertIn(index2, bond_dict[index1])  # check that these atoms are connected in all mols
 
     def test_is_isomorphic(self):
         """Test the RMG is_isomorphic method"""
