@@ -133,24 +133,23 @@ H      -1.22610851    0.40421362    1.35170355"""
                                                       force_field='MMFF94s', print_logs=False, diastereomers=None,
                                                       num_confs_to_return=1, return_all_conformers=False)
         self.assertEqual(len(lowest_confs), 1)
-        lowest_confs = conformers.determine_chirality(lowest_confs, spc1.label, spc1.mol)
-        self.assertEqual(lowest_confs[0]['chirality'], {(5,): 'S', (4,): 'NR', (6, 7): 'Z'})
+        self.assertEqual(lowest_confs[0]['chirality'], {(3,): 'S', (6,): 'NR', (1, 2): 'Z'})
 
-        diastereomers = ["""S      -1.42770699   -1.75746463    0.77929957
-                            O       0.78078015   -0.48067242    0.11758389
-                            O       0.01887281    1.90513317    0.65031702
-                            O       0.94480811   -0.67919145   -2.52011361
-                            N      -0.96795128    0.85823015    0.88987091
-                            C      -0.62070660   -0.30156964    0.08149649
-                            C      -1.07600739   -0.12837632   -1.33621312
-                            C      -0.36564639   -0.29525949   -2.46080510
-                            H      -2.11628333    0.17107021   -1.45105241
-                            H      -0.80191717    0.59338234    1.86328810
-                            H      -0.77270530   -0.14739942   -3.45397587
-                            H       1.06237764    0.39510247    0.44353226
-                            H      -0.55867442   -1.89765623    1.78858625
-                            H       1.26031032   -0.80862066   -1.59933646
-                            H      -0.54815429    2.65925765    0.38632605"""]
+        diastereomers = ["""O       2.20267987    0.56608573   -1.37853919
+                            C       2.17100280   -0.41142659   -0.42356122
+                            C       1.15495878   -0.63541622    0.42251629
+                            C      -0.14666220    0.10185195    0.52370691
+                            O      -0.23739529    1.04657516   -0.52389796
+                            S      -0.22219888    0.93583811    2.12354604
+                            N      -1.25594856   -0.83952182    0.39598255
+                            O      -1.25199891   -1.39280291   -0.95563188
+                            H       1.35133076    1.05409174   -1.31966345
+                            H       3.08488795   -0.99271719   -0.43176723
+                            H       1.28496441   -1.45360230    1.12791775
+                            H      -1.19031498    1.00521851   -0.71326815
+                            H      -1.36025220    1.58726808    1.85798585
+                            H      -2.10287899   -0.26523375    0.39647812
+                            H      -1.49384474   -2.32818643   -0.78944944"""]
         lowest_confs = conformers.generate_conformers(mol_list=spc1.mol_list, label=spc1.label,
                                                       charge=spc1.charge, multiplicity=spc1.multiplicity,
                                                       force_field='MMFF94s', print_logs=False,
@@ -158,7 +157,7 @@ H      -1.22610851    0.40421362    1.35170355"""
                                                       diastereomers=diastereomers)
         self.assertEqual(len(lowest_confs), 1)
         lowest_confs = conformers.determine_chirality(lowest_confs, spc1.label, spc1.mol)
-        self.assertEqual(lowest_confs[0]['chirality'], {(5,): 'S', (4,): 'NS', (6, 7): 'Z'})
+        self.assertEqual(lowest_confs[0]['chirality'], {(1, 2): 'Z', (3,): 'S', (6,): 'NS'})
 
     def test_deduce_new_conformers(self):
         """Test deducing new conformers"""
@@ -401,7 +400,7 @@ H       0.68104300    0.74807180    0.61546062""")]
     def test_determine_number_of_conformers_to_generate(self):
         """Test that the correct number of conformers to generate is determined"""
         self.assertEqual(conformers.determine_number_of_conformers_to_generate(heavy_atoms=0, torsion_num=0,
-                                                                               label=''), (10, 0))
+                                                                               label=''), (100, 0))
         self.assertEqual(conformers.determine_number_of_conformers_to_generate(heavy_atoms=15, torsion_num=0,
                                                                                label=''), (500, 0))
         self.assertEqual(conformers.determine_number_of_conformers_to_generate(heavy_atoms=5, torsion_num=31,
@@ -1984,8 +1983,8 @@ Cl      2.38846685    0.24054066    0.55443324
             if conf['chirality'] not in diastereomers:
                 diastereomers.append(conf['chirality'])
         self.assertEqual(len(diastereomers), 2)
-        self.assertIn({(2,): 'R', (3,): 'R'}, diastereomers)
-        self.assertIn({(2,): 'R', (3,): 'S'}, diastereomers)
+        self.assertIn({(0,): 'R', (2,): 'R'}, diastereomers)
+        self.assertIn({(0,): 'R', (2,): 'S'}, diastereomers)
 
         smiles = 'CC(Cl)C(Cl)CCC'  # test chiralities not in a ring
         spc1 = ARCSpecies(label=smiles, smiles=smiles)
@@ -1998,8 +1997,8 @@ Cl      2.38846685    0.24054066    0.55443324
             if conf['chirality'] not in diastereomers:
                 diastereomers.append(conf['chirality'])
         self.assertEqual(len(diastereomers), 2)
-        self.assertIn({(2,): 'R', (4,): 'R'}, diastereomers)
-        self.assertIn({(2,): 'R', (4,): 'S'}, diastereomers)
+        self.assertIn({(1,): 'S', (3,): 'S'}, diastereomers)
+        self.assertIn({(1,): 'R', (3,): 'S'}, diastereomers)
 
     def test_prune_enantiomers_dict(self):
         """Test pruning the enantiomers_dict, removing exact mirror images"""
