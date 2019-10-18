@@ -125,7 +125,7 @@ H      -1.22610851    0.40421362    1.35170355"""
         self.assertTrue(found_inf, "The CONFS_VS_TORSIONS dictionary has to have a key that ends with 'inf'. "
                                    "got:\n{0}".format(conformers.CONFS_VS_TORSIONS))
 
-    def test_generate_conformers_with_specific_diaestereomers(self):
+    def test_generate_conformers_with_specific_diastereomers(self):
         """Test the main conformer generation function"""
         spc1 = ARCSpecies(label='spc1', smiles='OC=CC(O)(S)N(O)')
         lowest_confs = conformers.generate_conformers(mol_list=spc1.mol_list, label=spc1.label,
@@ -136,26 +136,26 @@ H      -1.22610851    0.40421362    1.35170355"""
         lowest_confs = conformers.determine_chirality(lowest_confs, spc1.label, spc1.mol)
         self.assertEqual(lowest_confs[0]['chirality'], {(5,): 'S', (4,): 'NR', (6, 7): 'Z'})
 
-        diaestereomers = ["""S      -1.42770699   -1.75746463    0.77929957
-                             O       0.78078015   -0.48067242    0.11758389
-                             O       0.01887281    1.90513317    0.65031702
-                             O       0.94480811   -0.67919145   -2.52011361
-                             N      -0.96795128    0.85823015    0.88987091
-                             C      -0.62070660   -0.30156964    0.08149649
-                             C      -1.07600739   -0.12837632   -1.33621312
-                             C      -0.36564639   -0.29525949   -2.46080510
-                             H      -2.11628333    0.17107021   -1.45105241
-                             H      -0.80191717    0.59338234    1.86328810
-                             H      -0.77270530   -0.14739942   -3.45397587
-                             H       1.06237764    0.39510247    0.44353226
-                             H      -0.55867442   -1.89765623    1.78858625
-                             H       1.26031032   -0.80862066   -1.59933646
-                             H      -0.54815429    2.65925765    0.38632605"""]
+        diastereomers = ["""S      -1.42770699   -1.75746463    0.77929957
+                            O       0.78078015   -0.48067242    0.11758389
+                            O       0.01887281    1.90513317    0.65031702
+                            O       0.94480811   -0.67919145   -2.52011361
+                            N      -0.96795128    0.85823015    0.88987091
+                            C      -0.62070660   -0.30156964    0.08149649
+                            C      -1.07600739   -0.12837632   -1.33621312
+                            C      -0.36564639   -0.29525949   -2.46080510
+                            H      -2.11628333    0.17107021   -1.45105241
+                            H      -0.80191717    0.59338234    1.86328810
+                            H      -0.77270530   -0.14739942   -3.45397587
+                            H       1.06237764    0.39510247    0.44353226
+                            H      -0.55867442   -1.89765623    1.78858625
+                            H       1.26031032   -0.80862066   -1.59933646
+                            H      -0.54815429    2.65925765    0.38632605"""]
         lowest_confs = conformers.generate_conformers(mol_list=spc1.mol_list, label=spc1.label,
                                                       charge=spc1.charge, multiplicity=spc1.multiplicity,
                                                       force_field='MMFF94s', print_logs=False,
                                                       num_confs_to_return=1, return_all_conformers=False,
-                                                      diastereomers=diaestereomers)
+                                                      diastereomers=diastereomers)
         self.assertEqual(len(lowest_confs), 1)
         lowest_confs = conformers.determine_chirality(lowest_confs, spc1.label, spc1.mol)
         self.assertEqual(lowest_confs[0]['chirality'], {(5,): 'S', (4,): 'NS', (6, 7): 'Z'})

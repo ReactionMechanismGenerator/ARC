@@ -144,7 +144,7 @@ class ARCSpecies(object):
         consider_all_diastereomers (bool, optional): Whether to consider all different chiralities (tetrahydral carbon
                                                      centers, nitrogen inversions, and cis/trans double bonds) when
                                                      generating conformers. ``True`` to consider all. If no 3D
-                                                     coordinates are given for the species, all diaestereomers will be
+                                                     coordinates are given for the species, all diastereomers will be
                                                      considered, otherwise the chirality specified by the given
                                                      coordinates will be preserved.
 
