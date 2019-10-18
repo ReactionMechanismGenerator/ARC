@@ -667,6 +667,9 @@ def order_atoms_in_mol_list(ref_mol, mol_list):
         ref_mol (Molecule): The reference Molecule object.
         mol_list (list): Entries are Molecule objects whos atoms will be reordered according to the reference.
 
+    Returns:
+        bool: Whether the reordering was successful, ``True`` if it was.
+
     Raises:
         SanitizationError: If atoms could not be re-ordered.
     """
@@ -677,8 +680,11 @@ def order_atoms_in_mol_list(ref_mol, mol_list):
             except SanitizationError as e:
                 logger.warning('Could not order atoms in\n{0}\nGot the following error:'
                                '\n{1}'.format(mol.to_adjacency_list, e))
+                return False
     else:
         logger.warning('Could not order atoms')
+        return False
+    return True
 
 
 def order_atoms(ref_mol, mol):
