@@ -40,7 +40,7 @@ class ARCSpecies(object):
     """
     A class for representing stationary points.
 
-    Dictionary structure (initialized in conformers.find_internal_rotors)::
+    Structures (rotors_dict is initialized in conformers.find_internal_rotors; pivots/scan/top values are 1-indexed)::
 
             rotors_dict: {1: {'pivots': ``list``,
                               'top': ``list``,
@@ -144,7 +144,7 @@ class ARCSpecies(object):
         consider_all_diastereomers (bool, optional): Whether to consider all different chiralities (tetrahydral carbon
                                                      centers, nitrogen inversions, and cis/trans double bonds) when
                                                      generating conformers. ``True`` to consider all. If no 3D
-                                                     coordinates are given for the species, all diaestereomers will be
+                                                     coordinates are given for the species, all diastereomers will be
                                                      considered, otherwise the chirality specified by the given
                                                      coordinates will be preserved.
 
@@ -331,17 +331,8 @@ class ARCSpecies(object):
                     self.label = label
                 else:
                     self.label = self.rmg_species.label
-                self.mol_list = self.rmg_species.molecule
                 if self.mol is None:
                     self.mol = self.rmg_species.molecule[0]
-                    if len(self.rmg_species.molecule) == 1:
-                        self.mol_list = self.rmg_species.generate_resonance_structures(
-                            keep_isomorphic=False, filter_structures=True)
-                    self.mol_list = self.rmg_species.molecule
-                    if len(self.mol_list) > 1:
-                        logger.info(f'Using localized structure {self.mol.to_smiles()} of species {self.label} for BAC '
-                                    f'determination. To use a different structure, pass the RMG:Molecule object in '
-                                    f'the `mol` parameter')
                 self.multiplicity = self.rmg_species.molecule[0].multiplicity
                 self.charge = self.rmg_species.molecule[0].get_net_charge()
 
@@ -359,8 +350,8 @@ class ARCSpecies(object):
                 elif smiles:
                     self.mol = Molecule(smiles=smiles)
             if not self.is_ts:
-                # Perceive molecule from xyz coordinates. This also populates mol and mol_list.
-                # It overrides self.mol from adjlist or smiles so that xyz and mol have the same atom ordering.
+                # Perceive molecule from xyz coordinates. This also populates the .mol attribute of the Species.
+                # It overrides self.mol generated from adjlist or smiles so xyz and mol will have the same atom order.
                 if self.final_xyz or self.initial_xyz or self.most_stable_conformer or self.conformers:
                     self.mol_from_xyz(get_cheap=False)
                 if self.mol is None:
@@ -375,9 +366,6 @@ class ARCSpecies(object):
                         if self.bond_corrections:
                             self.long_thermo_description += 'Bond corrections: {0}\n'.format(self.bond_corrections)
 
-            if self.mol is not None and self.mol_list is None:
-                mol_copy = self.mol.copy(deep=True)
-                self.mol_list = mol_copy.generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
             elif not self.bond_corrections and self.generate_thermo:
                 logger.warning('Cannot determine bond additivity corrections (BAC) for species {0} based on xyz '
                                'coordinates only. For better thermoproperties, provide bond corrections.'.format(
@@ -416,6 +404,9 @@ class ARCSpecies(object):
             if key not in allowed_keys:
                 raise SpeciesError('Allowed keys for directed_rotors are {0}. Got for species {1}: {2}'.format(
                     allowed_keys, key, self.label))
+
+        if self.mol is not None and self.mol_list is None:
+            self.set_mol_list()
 
     @property
     def number_of_atoms(self):
@@ -676,10 +667,6 @@ class ARCSpecies(object):
                 self.multiplicity = self.mol.multiplicity
             if self.charge is None:
                 self.charge = self.mol.get_net_charge()
-            if self.mol_list is None:
-                if not self.charge:
-                    self.mol_list = self.mol.generate_resonance_structures(keep_isomorphic=False,
-                                                                           filter_structures=True)
         if 'conformers' in species_dict:
             self.conformers = [str_to_xyz(conf) for conf in species_dict['conformers']]
             self.conformer_energies = species_dict['conformer_energies'] if 'conformer_energies' in species_dict \
@@ -747,7 +734,6 @@ class ARCSpecies(object):
         elif arkane_spc.smiles is not None:
             self.mol = Molecule().from_smiles(arkane_spc.smiles)
         if self.mol is not None:
-            self.mol_list = self.mol.generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
             self.multiplicity = self.mol.multiplicity
             self.charge = self.mol.get_net_charge()
         if self.multiplicity is None:
@@ -766,6 +752,31 @@ class ARCSpecies(object):
             self.mol_from_xyz()
         if self.e_elect is None:  # TODO: this is actually the E0, not e_elect! be consistent!
             self.e_elect = arkane_spc.conformer.E0.value_si * 0.001  # convert to kJ/mol
+
+    def set_mol_list(self):
+        """
+        Set the .mol_list attribute from self.mol by generating resonance structures, preserving atom order.
+        The mol_list attribute is used for identifying rotors and generating conformers,
+        """
+        if self.mol is not None:
+            self.mol_list = list()
+            self.mol.assign_atom_ids()
+            self.mol_list = self.mol.copy(deep=True).generate_resonance_structures(keep_isomorphic=False,
+                                                                                   filter_structures=True)
+            success = order_atoms_in_mol_list(ref_mol=self.mol.copy(deep=True), mol_list=self.mol_list)
+            if not success:
+                # try sorting by IDs, repeat object creation to make sure the are unchanged
+                mol_copy = self.mol.copy(deep=True)
+                mol_copy.assign_atom_ids()
+                mol_list = mol_copy.generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
+                for i in range(len(mol_list)):
+                    mol = mol_list[i]  # not looping with mol so the iterator won't change within the loop
+                    atoms = list()
+                    for atom1 in mol_copy.atoms:
+                        for atom2 in mol.atoms:
+                            if atom1.id == atom2.id:
+                                atoms.append(atom2)
+                    mol.atoms = atoms
 
     def generate_conformers(self, confs_to_dft=5, plot_path=None):
         """
@@ -1115,8 +1126,7 @@ class ARCSpecies(object):
 
         This works by generating a molecule from xyz and using the
         2D structure to confirm that the perceived molecule is correct.
-        Resonance structures are generated and saved to self.mol_list.
-        If ``xyz`` is not given, the species xyz will be used.
+        If ``xyz`` is not given, the species xyz attribute will be used.
 
         Args:
             xyz (dict, optional): Alternative coordinates to use.
@@ -1145,15 +1155,6 @@ class ARCSpecies(object):
                 self.mol = original_mol  # todo: Atom order will not be correct, need fix
         else:
             self.mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
-
-        if self.mol_list is None and self.mol is not None:
-            # Assign atom ids first, so they carry through to the resonance structures
-            self.mol.assign_atom_ids()
-            # The generate_resonance_structures method changes atom order
-            # Make a copy so we don't disturb the original order from xyz
-            self.mol_list = self.mol.copy(deep=True).generate_resonance_structures(keep_isomorphic=False,
-                                                                                   filter_structures=True)
-        order_atoms_in_mol_list(ref_mol=self.mol, mol_list=self.mol_list)
 
     def process_xyz(self, xyz_list):
         """

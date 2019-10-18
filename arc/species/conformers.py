@@ -62,9 +62,7 @@ from arc.species import vectors
 
 
 # The number of conformers to generate per range of heavy atoms in the molecule
-CONFS_VS_HEAVY_ATOMS = {(0, 1): 1,
-                        (2, 2): 5,
-                        (3, 9): 100,
+CONFS_VS_HEAVY_ATOMS = {(0, 9): 100,
                         (10, 29): 500,
                         (30, 59): 1000,
                         (60, 99): 5000,
@@ -72,8 +70,7 @@ CONFS_VS_HEAVY_ATOMS = {(0, 1): 1,
                         }
 
 # The number of conformers to generate per range of potential torsions in the molecule
-CONFS_VS_TORSIONS = {(0, 1): 10,
-                     (2, 5): 50,
+CONFS_VS_TORSIONS = {(0, 5): 100,
                      (5, 24): 500,
                      (25, 49): 5000,
                      (50, 'inf'): 10000,

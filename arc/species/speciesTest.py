@@ -85,6 +85,25 @@ class TestARCSpecies(unittest.TestCase):
 
         cls.spc10 = ARCSpecies(label='CCCCC', smiles='CCCCC')
         cls.spc11 = ARCSpecies(label='CCCNO', smiles='CCCNO')  # has chiral N
+        cls.spc12 = ARCSpecies(label='[CH](CC[CH]c1ccccc1)c1ccccc1', smiles='[CH](CC[CH]c1ccccc1)c1ccccc1')
+
+    def test_set_mol_list(self):
+        """Test preserving atom order in the .mol_list attribute"""
+        bond_dict = dict()
+        for index1, atom1 in enumerate(self.spc12.mol.atoms):
+            for atom2 in atom1.edges.keys():
+                index2 = self.spc12.mol.atoms.index(atom2)
+                if index1 < index2:
+                    if index1 not in bond_dict:
+                        bond_dict[index1] = [index2]
+                    else:
+                        bond_dict[index1].append(index2)
+        for mol in self.spc12.mol_list:
+            for index1, atom1 in enumerate(mol.atoms):
+                for atom2 in atom1.edges.keys():
+                    index2 = mol.atoms.index(atom2)
+                    if index1 < index2:
+                        self.assertIn(index2, bond_dict[index1])  # check that these atoms are connected in all mols
 
     def test_conformers(self):
         """Test conformer generation"""
@@ -105,11 +124,11 @@ class TestARCSpecies(unittest.TestCase):
 
         self.spc4.conformers = list()
         self.spc4.generate_conformers()
-        self.assertIn(len(self.spc4.conformers), [3, 4, 5])
+        self.assertEqual(len(self.spc4.conformers), 3)
 
         self.spc5.conformers = list()
         self.spc5.generate_conformers()
-        self.assertEqual(len(self.spc5.conformers), 4)
+        self.assertEqual(len(self.spc5.conformers), 5)
 
         self.spc6.conformers = list()
         self.spc6.generate_conformers()
@@ -180,12 +199,12 @@ H      -0.41231900    0.99757300    0.00391900"""
         self.assertEqual(len(self.spc5.rotors_dict), 1)
         self.assertEqual(len(self.spc6.rotors_dict), 2)
 
-        self.assertEqual(self.spc1.rotors_dict[0][str('pivots')], [2, 3])
-        self.assertEqual(self.spc1.rotors_dict[0][str('scan')], [4, 2, 3, 1])
-        self.assertTrue(all([t in [2, 4, 5] for t in self.spc1.rotors_dict[0][str('top')]]))
+        self.assertEqual(self.spc1.rotors_dict[0][str('pivots')], [1, 2])
+        self.assertEqual(self.spc1.rotors_dict[0][str('scan')], [4, 1, 2, 3])
+        self.assertTrue(all([t in [1, 4, 5] for t in self.spc1.rotors_dict[0][str('top')]]))
         self.assertEqual(self.spc1.rotors_dict[0][str('times_dihedral_set')], 0)
         self.assertEqual(self.spc3.rotors_dict[0][str('pivots')], [1, 2])
-        self.assertEqual(self.spc4.rotors_dict[0][str('pivots')], [1, 2])
+        self.assertEqual(self.spc4.rotors_dict[0][str('pivots')], [2, 3])
         self.assertEqual(self.spc5.rotors_dict[0][str('pivots')], [1, 2])
         self.assertEqual(self.spc6.rotors_dict[0][str('pivots')], [1, 4])
         self.assertEqual(self.spc6.rotors_dict[0][str('scan')], [2, 1, 4, 6])
@@ -232,7 +251,7 @@ H      -1.97060638    1.29922153   -0.25658392"""
 
         spc2 = ARCSpecies(label='propanol', smiles='CCO', directed_rotors={'brute_force_sp': [['all']]})
         spc2.determine_rotors()  # also initializes directed_rotors
-        self.assertEqual(spc2.directed_rotors, {'brute_force_sp': [[[9, 1, 2, 3], [1, 2, 3, 6]]]})
+        self.assertEqual(spc2.directed_rotors, {'brute_force_sp': [[[4, 1, 2, 3], [1, 2, 3, 9]]]})
         self.assertEqual(len(spc2.rotors_dict), 1)
         self.assertEqual(spc2.rotors_dict[0]['dimensions'], 2)
 
