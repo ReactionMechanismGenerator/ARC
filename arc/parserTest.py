@@ -97,8 +97,9 @@ class TestParser(unittest.TestCase):
         path5 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'qchem.in')
         path6 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'qchem_output.out')
         path7 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'TS.gjf')
-        path8 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'optim_traj_terachem.xyz')
+        path8 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'optim_traj_terachem.xyz')  # test trajectories
         path9 = os.path.join(arc_path, 'arc', 'testing', 'orca_example_opt.log')
+        path10 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'formaldehyde_coords.xyz')
 
         xyz1 = parser.parse_xyz_from_file(path1)
         xyz2 = parser.parse_xyz_from_file(path2)
@@ -109,6 +110,7 @@ class TestParser(unittest.TestCase):
         xyz7 = parser.parse_xyz_from_file(path7)
         xyz8 = parser.parse_xyz_from_file(path8)
         xyz9 = parser.parse_xyz_from_file(path9)
+        xyz10 = parser.parse_xyz_from_file(path10)
 
         self.assertEqual(xyz1, xyz2)
         xyz1_str = xyz_to_str(xyz1)
@@ -119,6 +121,8 @@ class TestParser(unittest.TestCase):
         xyz6_str = xyz_to_str(xyz6)
         xyz8_str = xyz_to_str(xyz8)
         xyz9_str = xyz_to_str(xyz9)
+        xyz10_str = xyz_to_str(xyz10)
+
         self.assertTrue('C       1.40511900    0.21728200    0.07675200' in xyz1_str)
         self.assertTrue('O      -0.79314200    1.04818800    0.18134200' in xyz1_str)
         self.assertTrue('H      -0.43701200   -1.34990600    0.92900600' in xyz2_str)
@@ -144,6 +148,7 @@ O       1.20814900   -0.00000000    0.00000000
 H      -0.59436200    0.94730400    0.00000000
 H      -0.59436200   -0.94730400    0.00000000"""
         self.assertEqual(xyz9_str, expected_xyz_9)
+        self.assertEqual(len(xyz10['symbols']), 4)
 
     def test_parse_t1(self):
         """Test T1 diagnostic parsing"""
