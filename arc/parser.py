@@ -136,6 +136,25 @@ def parse_normal_displacement_modes(path, software=None):
     return freqs, normal_disp_modes
 
 
+def parse_geometry(path):
+    """
+    Parse the xyz geometry from an ESS log file.
+
+    Args:
+        path (str): The ESS log file to parse from
+
+    Returns:
+        xyz (dict): The geometry.
+    """
+    log = determine_qm_software(fullpath=path)
+    try:
+        coords, number, _ = log.load_geometry()
+    except LogError:
+        logger.debug(f'Could not parse xyz from {path}')
+        return None
+    return xyz_from_data(coords=coords, numbers=number)
+
+
 def parse_t1(path):
     """
     Parse the T1 parameter from a Molpro or Orca coupled cluster calculation.
@@ -402,7 +421,7 @@ def parse_xyz_from_file(path):
     Parse xyz coordinated from:
     - .xyz: XYZ file
     - .gjf: Gaussian input file
-    - .out or .log: ESS output file (Gaussian, QChem, Molpro, Orca)
+    - .out or .log: ESS output file (Gaussian, Molpro, Orca, QChem, TeraChem) - calls parse_geometry()
     - other: Molpro or QChem input file
 
     Args:
@@ -443,12 +462,7 @@ def parse_xyz_from_file(path):
                 if len(splits) == 2 and all([s.isdigit() for s in splits]):
                     start_parsing = True
     elif 'out' in file_extension or 'log' in file_extension:
-        log = determine_qm_software(fullpath=path)
-        try:
-            coords, number, _ = log.load_geometry()
-            xyz = xyz_from_data(coords=coords, numbers=number)
-        except LogError:
-            xyz = None
+        xyz = parse_geometry(path)
     else:
         record = False
         for line in lines:
@@ -545,10 +559,10 @@ def _get_lines_from_file(path):
         path (str): The file path.
 
     Returns:
-        list: The lines read from the file.
+        list: Entries are lines from the file.
 
     Raises:
-        InputError: If ``path`` is an invalid file path.
+        InputError: If the file could not be read.
     """
     if os.path.isfile(path):
         with open(path, 'r') as f:
