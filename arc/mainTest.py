@@ -107,6 +107,7 @@ class TestARC(unittest.TestCase):
                                       'number_of_rotors': 0,
                                       'force_field': 'MMFF94s',
                                       't1': None}],
+                         'specific_job_type': '',
                          }
         self.assertEqual(restart_dict, expected_dict)
 
@@ -161,6 +162,17 @@ class TestARC(unittest.TestCase):
         self.assertFalse(arc1.arc_species_list[0].is_ts)
         self.assertEqual(arc1.arc_species_list[0].charge, 1)
 
+    def test_from_dict_specific_job(self):
+        """Test the from_dict() method of ARC"""
+        restart_dict = {'specific_job_type': 'bde'}
+        project = 'unit_test_specific_job'
+        project_directory = os.path.join(arc_path, 'Projects', project)
+        arc1 = ARC(project=project)
+        arc1.from_dict(input_dict=restart_dict, project=project, project_directory=project_directory)
+        job_type_expected = {'conformers': False, 'opt': True, 'freq': True, 'sp': True, 'rotors': False,
+                             'orbitals': False, 'bde': True, 'onedmin': False, 'fine': True}
+        self.assertEqual(arc1.job_types, job_type_expected)
+        
     def test_check_project_name(self):
         """Test project name invalidity"""
         with self.assertRaises(InputError):

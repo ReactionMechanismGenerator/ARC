@@ -453,6 +453,7 @@ class ARC(object):
         restart_dict['ess_settings'] = self.ess_settings
         restart_dict['job_memory'] = self.memory
         restart_dict['confs_to_dft'] = self.confs_to_dft
+        restart_dict['specific_job_type'] = self.specific_job_type
         if self.keep_checks:
             restart_dict['keep_checks'] = self.keep_checks
         return restart_dict
@@ -510,8 +511,9 @@ class ARC(object):
         self.t_count = input_dict['t_count'] if 't_count' in input_dict else None
 
         self.initial_trsh = input_dict['initial_trsh'] if 'initial_trsh' in input_dict else dict()
+        self.specific_job_type = input_dict['specific_job_type'] if 'specific_job_type' in input_dict else None
         self.job_types = input_dict['job_types'] if 'job_types' in input_dict else default_job_types
-        self.job_types = initialize_job_types(self.job_types)
+        self.job_types = initialize_job_types(self.job_types, specific_job_type=self.specific_job_type)
         self.use_bac = input_dict['use_bac'] if 'use_bac' in input_dict else True
         self.calc_freq_factor = input_dict['calc_freq_factor'] if 'calc_freq_factor' in input_dict else True
         self.model_chemistry = input_dict['model_chemistry'] if 'model_chemistry' in input_dict else ''
