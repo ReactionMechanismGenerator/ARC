@@ -176,6 +176,56 @@ H      -0.56460509    0.87663914    1.25780346""")
         self.assertAlmostEqual((sum([vi ** 2 for vi in vector])) ** 0.5, 1)
         # puts the following dummy atom in xyz1: 'Cl     -1.1132 1.666732 -0.09329'
 
+    def test_get_vector_length(self):
+        """Test getting a vector's length"""
+        
+        # unit vector
+        v1 = [1, 0, 0]
+        self.assertEqual(vectors.get_vector_length(v1), 1)
+        
+        # a vector with 0 entries
+        v1 = [0, 0, 0]
+        self.assertEqual(vectors.get_vector_length(v1), 0)
+        
+        # 10D vector
+        v1 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        self.assertAlmostEqual(vectors.get_vector_length(v1), 19.6214169)   # default: places=7
+        
+        # 1D vector
+        v1 = [2]
+        self.assertEqual(vectors.get_vector_length(v1), 2)
+        
+        # a vector with small entries
+        v1 = [0.0000001, 0.0000002, 0.0000003]
+        self.assertAlmostEqual(vectors.get_vector_length(v1), 0.000000374165739, places=15)
+        
+        # a vector with large entries
+        v1 = [100, 200, 300]
+        self.assertAlmostEqual(vectors.get_vector_length(v1), 374.165738677394000)  # default: places=7
+        
+        # a real example borrowed from test_set_vector_length
+        label = 'CNCC'
+        pivot = 0
+        xyz = {'symbols': ('N', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
+               'isotopes': (14, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+               'coords': ((0.7419854952964929, -0.18588322859265055, -0.8060295165375653),
+                          (-0.38476668007897186, -0.8774643553523614, -0.1815530887172187),
+                          (-1.4977348513273125, 0.05995564693605262, 0.26652181022311233),
+                          (1.5633235727172392, 0.5360966415350092, 0.15477859056711452),
+                          (-0.04458112063725271, -1.4936027355391557, 0.6589418973690523),
+                          (-0.7986335015469359, -1.5715787743431335, -0.9219907626214912),
+                          (-2.348455608682208, -0.5210498432021002, 0.6375394558854425),
+                          (-1.8523669868240424, 0.6790455638159553, -0.5642494434208211),
+                          (-1.170505453235269, 0.7210016856743618, 1.0746899133307615),
+                          (2.4283037770451084, 0.9651590522064675, -0.36083882142892065),
+                          (1.945994527876002, -0.1322800197070601, 0.9328203647772167),
+                          (1.0178974719106297, 1.3595978302624294, 0.6250164549219148),
+                          (0.39953935748654607, 0.4610025363062083, -1.5156468543485933))}
+        mol = ARCSpecies(label='CNCC', xyz=xyz).mol
+        v1 = vectors.get_lp_vector(label, mol, xyz, pivot)
+        # --> Returns a unit vector pointing from the pivotal (nitrogen) atom towards its lone electron pairs orbital.
+        self.assertAlmostEqual(vectors.get_vector_length(v1), 1)
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
