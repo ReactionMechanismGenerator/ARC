@@ -415,6 +415,7 @@ def initialize_job_types(job_types, specific_job_type=''):
     """
 
     if specific_job_type:
+        logger.info(f'Specific_job_type {specific_job_type} is given by user.')
         if job_types:
             logger.warning('Both job_types and specific_job_type are given, ARC will only use specific_job_type to '
                            'populate the job_types dictionary.')
@@ -422,7 +423,7 @@ def initialize_job_types(job_types, specific_job_type=''):
         try:
             job_types[specific_job_type] = True
         except KeyError:
-            raise InputError('Specified job type "{0}" is not supported'.format(specific_job_type))
+            raise InputError(f'Specified job type {specific_job_type} is not supported.')
 
     if specific_job_type == 'bde':
         bde_default = {'opt': True, 'fine_grid': True, 'freq': True, 'sp': True}
@@ -432,6 +433,9 @@ def initialize_job_types(job_types, specific_job_type=''):
     defaults_to_false = ['onedmin', 'orbitals', 'bde']
     if job_types is None:
         job_types = default_job_types
+        logger.info('Job types were not specified, using default values from ARC settings')
+    else:
+        logger.info(f'the following job types were specified: {job_types}.')
     if 'lennard_jones' in job_types:
         # rename lennard_jones to OneDMin
         job_types['onedmin'] = job_types['lennard_jones']
@@ -453,10 +457,10 @@ def initialize_job_types(job_types, specific_job_type=''):
             if job_type == '1d_rotors':
                 logging.error("Note: The `1d_rotors` job type was renamed to simply `rotors`. "
                               "Please modify your input accordingly (see ARC's documentation for examples).")
-            raise InputError("Job type '{0}' is not supported. Check the job types dictionary "
-                             "(either in ARC's input or in default_job_types under settings).".format(job_type))
+            raise InputError(f"Job type '{job_type}' is not supported. Check the job types dictionary "
+                             "(either in ARC's input or in default_job_types under settings).")
     job_types_report = [job_type for job_type, val in job_types.items() if val]
-    logger.info('\nConsidering the following job types: {0}\n'.format(job_types_report))
+    logger.info(f'\nConsidering the following job types: {job_types_report}\n')
     return job_types
 
 
