@@ -750,8 +750,8 @@ class ARCSpecies(object):
                 self.external_symmetry = external_symmetry_mode.symmetry
         if self.initial_xyz is not None:
             self.mol_from_xyz()
-        if self.e_elect is None:  # TODO: this is actually the E0, not e_elect! be consistent!
-            self.e_elect = arkane_spc.conformer.E0.value_si * 0.001  # convert to kJ/mol
+        if self.e0 is None:
+            self.e0 = arkane_spc.conformer.E0.value_si * 0.001  # convert to kJ/mol
 
     def set_mol_list(self):
         """
