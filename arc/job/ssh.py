@@ -42,7 +42,7 @@ class SSHClient(object):
         if server == '':
             raise ValueError('A server name must be specified')
         if server not in servers.keys():
-            raise ValueError('Server name invalid. Currently defined servers are: {0}'.format(servers.keys()))
+            raise ValueError(f'Server name invalid. Currently defined servers are: {servers.keys()}')
         self.server = server
         self.address = servers[server]['address']
         self.un = servers[server]['un']
@@ -67,7 +67,7 @@ class SSHClient(object):
         if remote_path != '':
             # execute command in remote_path directory.
             # Since each `.exec_command()` is a single session, `cd` has to be added to all commands.
-            command = 'cd {0}'.format(remote_path) + '; ' + command
+            command = f'cd {remote_path}; {command}'
         try:
             _, stdout, stderr = ssh.exec_command(command)
         except:  # SSHException: Timeout opening channel.
@@ -86,8 +86,8 @@ class SSHClient(object):
         Either `file_string` or `local_file_path` must be given.
         """
         if local_file_path and not os.path.isfile(local_file_path):
-            raise InputError('Cannot upload a non-existing file.'
-                             ' Check why file in path {0} is missing.'.format(local_file_path))
+            raise InputError(f'Cannot upload a non-existing file. '
+                             f'Check why file in path {local_file_path} is missing.')
         sftp, ssh = self.connect()
         i, max_times_to_try = 1, 30
         success = False
@@ -96,9 +96,9 @@ class SSHClient(object):
             try:
                 write_file(sftp, remote_file_path, local_file_path, file_string)
             except IOError:
-                logger.error('Could not upload file {0} to {1}!'.format(local_file_path, self.server))
-                logger.error('ARC is sleeping for {0} seconds before re-trying,'
-                             ' please check your connectivity.'.format(sleep_time * i))
+                logger.error(f'Could not upload file {local_file_path} to {self.server}!')
+                logger.error(f'ARC is sleeping for {sleep_time * i} seconds before re-trying, '
+                             f'please check your connectivity.')
                 logger.info('ZZZZZ..... ZZZZZ.....')
                 time.sleep(sleep_time * i)  # in seconds
             else:
@@ -106,8 +106,8 @@ class SSHClient(object):
                 i = 1000
             i += 1
         if not success:
-            raise ServerError('Could not write file {0} on {1}. Tried {2} times.'.format(
-                remote_file_path, self.server, max_times_to_try))
+            raise ServerError(f'Could not write file {remote_file_path} on {self.server}. '
+                              f'Tried {max_times_to_try} times.')
         sftp.close()
         ssh.close()
 
@@ -124,15 +124,15 @@ class SSHClient(object):
                 success = True
                 i = 1000
             else:
-                logger.error('Could not download file {0} from {1}!'.format(remote_file_path, self.server))
-                logger.error('ARC is sleeping for {0} seconds before re-trying,'
-                             ' please check your connectivity.'.format(sleep_time * i))
+                logger.error(f'Could not download file {remote_file_path} from {self.server}!')
+                logger.error(f'ARC is sleeping for {sleep_time * i} seconds before re-trying, '
+                             f'please check your connectivity.')
                 logger.info('ZZZZZ..... ZZZZZ.....')
                 time.sleep(sleep_time * i)  # in seconds
             i += 1
         if not success:
-            raise ServerError('Could not download file {0} from {1}. Tried {2} times.'.format(
-                remote_file_path, self.server, max_times_to_try))
+            raise ServerError(f'Could not download file {remote_file_path} from {self.server}. '
+                              f'Tried {max_times_to_try} times.')
 
     def _download_file(self, remote_file_path, local_file_path):
         """
@@ -142,8 +142,7 @@ class SSHClient(object):
         try:
             sftp.get(remotepath=remote_file_path, localpath=local_file_path)
         except IOError:
-            logger.debug('Got an IOError when trying to download file {0} from {1}'.format(remote_file_path,
-                                                                                           self.server))
+            logger.debug(f'Got an IOError when trying to download file {remote_file_path} from {self.server}')
         sftp.close()
         ssh.close()
 
@@ -169,8 +168,8 @@ class SSHClient(object):
         while i < 30:
             result = self._check_job_status(job_id)
             if result == 'connection error':
-                logger.error('ARC is sleeping for {0} min before re-trying,'
-                             ' please check your connectivity.'.format(sleep_time * i))
+                logger.error(f'ARC is sleeping for {sleep_time * i} min before re-trying, '
+                             f'please check your connectivity.')
                 logger.info('ZZZZZ..... ZZZZZ.....')
                 time.sleep(sleep_time * i * 60)  # in seconds
             else:
@@ -189,7 +188,7 @@ class SSHClient(object):
         stdout, stderr = self.send_command_to_server(cmd)
         if stderr:
             logger.info('\n\n')
-            logger.error('Could not check status of job {0} due to {1}'.format(job_id, stderr))
+            logger.error(f'Could not check status of job {job_id} due to {stderr}')
             return 'connection error'
         return check_job_status_in_stdout(job_id=job_id, stdout=stdout, server=self.server)
 
@@ -221,7 +220,7 @@ class SSHClient(object):
             + submit_filename[servers[self.server]['cluster_soft']]
         stdout, stderr = self.send_command_to_server(cmd, remote_path)
         if len(stderr) > 0 or len(stdout) == 0:
-            logger.warning('Got stderr when submitting job:\n{0}'.format(stderr))
+            logger.warning(f'Got stderr when submitting job:\n{stderr}')
             job_status = 'errored'
         elif 'submitted' in stdout[0].lower():
             job_status = 'running'
@@ -230,7 +229,7 @@ class SSHClient(object):
             elif servers[self.server]['cluster_soft'].lower() == 'slurm':
                 job_id = int(stdout[0].split()[3])
             else:
-                raise ValueError('Unrecognized cluster software {0}'.format(servers[self.server]['cluster_soft']))
+                raise ValueError(f'Unrecognized cluster software {servers[self.server]["cluster_soft"]}')
         return job_status, job_id
 
     def connect(self):
@@ -245,14 +244,14 @@ class SSHClient(object):
             except:
                 pass
             else:
-                logger.debug('Successfully connected to {0} at the {1} trial.'.format(self.server, times_tried))
+                logger.debug(f'Successfully connected to {self.server} at the {times_tried} trial.')
                 return sftp, ssh
             if not times_tried % 10:
-                logger.info('Tried connecting to {0} {1} times with no success....'.format(self.server, times_tried))
+                logger.info(f'Tried connecting to {self.server} {times_tried} times with no success....')
             else:
-                print('Tried connecting to {0} {1} times with no success....'.format(self.server, times_tried))
+                print(f'Tried connecting to {self.server} {times_tried} times with no success....')
             time.sleep(interval)
-        raise ServerError('Could not connect to server {0} even after {1} trials.'.format(self.server, times_tried))
+        raise ServerError(f'Could not connect to server {self.server} even after {times_tried} trials.')
 
     def try_connecting(self):
         """A helper function for connecting via paramiko, returns the `sftp` and `ssh` objects"""
@@ -337,7 +336,7 @@ def check_job_status_in_stdout(job_id, stdout, server):
         elif servers[server]['cluster_soft'].lower() == 'slurm':
             return 'errored on node ' + status_line.split()[-1][-2:]
         else:
-            raise ValueError('Unknown cluster software {0}'.format(servers[server]['cluster_soft']))
+            raise ValueError(f'Unknown cluster software {servers[server]["cluster_soft"]}')
 
 
 def delete_all_arc_jobs(server_list):
@@ -353,7 +352,7 @@ def delete_all_arc_jobs(server_list):
     if isinstance(server_list, str):
         server_list = [server_list]
     for server in server_list:
-        print('\nDeleting all ARC jobs from {0}...'.format(server))
+        print(f'\nDeleting all ARC jobs from {server}...')
         cmd = check_status_command[servers[server]['cluster_soft']] + ' -u ' + servers[server]['un']
         ssh = SSHClient(server)
         stdout = ssh.send_command_to_server(cmd)[0]
@@ -364,10 +363,10 @@ def delete_all_arc_jobs(server_list):
                     job_id = s.group()[1:]
                     server_job_id = status_line.split()[0]
                     ssh.delete_job(server_job_id)
-                    print('deleted job {0} ({1} on server)'.format(job_id, server_job_id))
+                    print(f'deleted job {job_id} ({server_job_id} on server)')
                 elif servers[server]['cluster_soft'].lower() == 'oge':
                     job_id = s.group()[1:]
                     ssh.delete_job(job_id)
-                    print('deleted job {0}'.format(job_id))
+                    print(f'deleted job {job_id}')
     if server_list:
         print('\ndone.')
