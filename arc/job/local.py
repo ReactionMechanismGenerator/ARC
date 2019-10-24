@@ -12,6 +12,7 @@ import os
 import re
 import shutil
 import subprocess
+import time
 
 from arc.common import get_logger
 from arc.exceptions import SettingsError
@@ -31,27 +32,40 @@ def execute_command(command, shell=True):
     """
     if not isinstance(command, list) and not shell:
         command = [command]
-    try:
-        stdout = subprocess.check_output(command, shell=shell)
-    except subprocess.CalledProcessError as e:
-        logger.error('The server command is erroneous.')
-        logger.error('Tried to submit the following command:\n{0}'.format(command))
-        logger.error('And got the following status (cmd, message, output, returncode, cms:')
-        logger.error(e.cmd)
-        logger.info('\n')
-        logger.error(e)
-        logger.info('\n')
-        logger.error(e.output)
-        logger.info('\n')
-        logger.error(e.returncode)
-        logger.info('\n')
-        logger.error(e.cmd)
-        logger.info('\n')
-        raise SettingsError('The command "{0}" is erroneous, got: \n{1}'
-                            '\nTo correct the command, modify settings.py'
-                            '\nTips: use "which" command to locate cluster software commands on server.'
-                            '\nExample: type "which sbatch" on a server running Slurm to find the correct '
-                            'sbatch path required in the submit_command dictionary.'.format(command, e))
+    i, max_times_to_try = 1, 30
+    success = False
+    sleep_time = 60  # seconds
+    while i < max_times_to_try:
+        try:
+            stdout = subprocess.check_output(command, shell=shell)
+        except subprocess.CalledProcessError as e:
+            logger.error('The server command is erroneous.')
+            logger.error(f'Tried to submit the following command:\n{command}')
+            logger.error('And got the following status (cmd, message, output, return code)')
+            logger.error(e.cmd)
+            logger.info('\n')
+            logger.error(e)
+            logger.info('\n')
+            logger.error(e.output)
+            logger.info('\n')
+            logger.error(e.returncode)
+            logger.info('\n')
+            logger.error(f'ARC is sleeping for {sleep_time * i} seconds before re-trying,'
+                         f' please check if this is a server issue by executing the command manually on server.')
+            logger.info('ZZZZZ..... ZZZZZ.....')
+            time.sleep(sleep_time * i)  # in seconds
+            i += 1
+        else:
+            success = True
+            break
+    if not success:
+        raise SettingsError(f'The command "{command}" is erroneous, got: \n{e}'
+                            f'\nThis maybe either a server issue or the command is wrong.'
+                            f'\nTo check if this is a server issue, please run the command on server and restart ARC.'
+                            f'\nTo correct the command, modify settings.py'
+                            f'\nTips: use "which" command to locate cluster software commands on server.'
+                            f'\nExample: type "which sbatch" on a server running Slurm to find the correct '
+                            f'sbatch path required in the submit_command dictionary.')
     lines, list_of_strs = stdout.splitlines(), list()
     for line in lines:
         list_of_strs.append(line.decode())
