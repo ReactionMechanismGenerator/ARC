@@ -75,7 +75,7 @@ def read_yaml(path):
     if not os.path.isfile(path):
         raise IOError('The file {0} was not found and cannot be read.'.format(path))
     with open(path, 'r') as f:
-        content = yaml.load(stream=f, Loader=yaml.FullLoader)
+        content = yaml.load(stream=f, Loader=yaml.Loader)
     return content
 
 
@@ -232,7 +232,7 @@ def main():
     size = args.size[0]
     mdp_filename = args.mdp[0]
     with open('coords.yml', 'r') as f:
-        coords = yaml.load(stream=f, Loader=yaml.FullLoader)
+        coords = yaml.load(stream=f, Loader=yaml.Loader)
 
     output = list()
     for i, coord in enumerate(coords):

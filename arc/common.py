@@ -264,7 +264,7 @@ def read_yaml_file(path):
     if not os.path.isfile(path):
         raise InputError('Could not find the YAML file {0}'.format(path))
     with open(path, 'r') as f:
-        content = yaml.load(stream=f, Loader=yaml.FullLoader)
+        content = yaml.load(stream=f, Loader=yaml.Loader)
     return content
 
 
