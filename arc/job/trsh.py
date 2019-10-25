@@ -807,6 +807,10 @@ def trsh_ess_job(label, level_of_theory_dict, server, job_status, job_type, soft
         else:
             couldnt_trsh = True
 
+    else:
+        logger.error(f'Troubleshooting methods are not implemented for {software}')
+        couldnt_trsh = True
+
     if couldnt_trsh:
         logger.error('Could not troubleshoot geometry optimization for {label}! '
                      'Tried troubleshooting with the following methods: {methods}'.format(
