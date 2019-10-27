@@ -1442,7 +1442,6 @@ def get_center_of_mass(xyz):
     Get the center of mass of xyz coordinates.
     Assumes arc.converter.standardize_xyz_string() was already called for xyz.
     Note that xyz from ESS output is usually already centered at the center of mass (to some precision).
-    Either xyz or coords and symbols must be given.
 
     Args:
         xyz (dict): The xyz coordinates.
