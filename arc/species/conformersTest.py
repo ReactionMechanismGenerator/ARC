@@ -133,7 +133,7 @@ H      -1.22610851    0.40421362    1.35170355"""
                                                       force_field='MMFF94s', print_logs=False, diastereomers=None,
                                                       num_confs_to_return=1, return_all_conformers=False)
         self.assertEqual(len(lowest_confs), 1)
-        self.assertEqual(lowest_confs[0]['chirality'], {(3,): 'S', (6,): 'NR', (1, 2): 'Z'})
+        self.assertEqual(lowest_confs[0]['chirality'], {(3,): 'R', (6,): 'NS', (1, 2): 'Z'})
 
         diastereomers = ["""O       2.20267987    0.56608573   -1.37853919
                             C       2.17100280   -0.41142659   -0.42356122
@@ -1983,7 +1983,7 @@ Cl      2.38846685    0.24054066    0.55443324
             if conf['chirality'] not in diastereomers:
                 diastereomers.append(conf['chirality'])
         self.assertEqual(len(diastereomers), 2)
-        self.assertIn({(0,): 'R', (2,): 'R'}, diastereomers)
+        self.assertIn({(0,): 'S', (2,): 'S'}, diastereomers)
         self.assertIn({(0,): 'R', (2,): 'S'}, diastereomers)
 
         smiles = 'CC(Cl)C(Cl)CCC'  # test chiralities not in a ring
