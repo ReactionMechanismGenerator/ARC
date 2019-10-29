@@ -821,7 +821,7 @@ class ARC(object):
             if self.model_chemistry.split('//')[0] not in [
                     'cbs-qb3', 'cbs-qb3-paraskevas', 'ccsd(t)-f12/cc-pvdz-f12', 'ccsd(t)-f12/cc-pvtz-f12',
                     'ccsd(t)-f12/cc-pvqz-f12', 'b3lyp/cbsb7', 'b3lyp/6-311g(2d,d,p)', 'b3lyp/6-311+g(3df,2p)',
-                    'b3lyp/6-31g**']:
+                    'b3lyp/6-31g(d,p)']:
                 logger.warning('No bond additivity corrections (BAC) are available in Arkane for "model chemistry"'
                                ' {0}. As a result, thermodynamic parameters are expected to be inaccurate. Make sure'
                                ' that atom energy corrections (AEC) were supplied or are available in Arkane to avoid'
@@ -839,7 +839,7 @@ class ARC(object):
                         sp_level + '-f12', sp_level))
                     sp_level += '-f12'
                 if sp_level not in ['ccsd(t)-f12/cc-pvdz-f12', 'ccsd(t)-f12/cc-pvtz-f12', 'ccsd(t)-f12/cc-pvqz-f12',
-                                    'b3lyp/cbsb7', 'b3lyp/6-311g(2d,d,p)', 'b3lyp/6-311+g(3df,2p)', 'b3lyp/6-31g**']\
+                                    'b3lyp/cbsb7', 'b3lyp/6-311g(2d,d,p)', 'b3lyp/6-311+g(3df,2p)', 'b3lyp/6-31g(d,p)']\
                         and self.use_bac:
                     logger.info('\n\n')
                     logger.warning('Could not determine appropriate Model Chemistry to be used in Arkane for '
@@ -857,8 +857,8 @@ class ARC(object):
                                       'b-ccsd(t)-f12/aug-cc-pvtz', 'b-ccsd(t)-f12/aug-cc-pvqz', 'mp2_rmp2_pvdz',
                                       'mp2_rmp2_pvtz', 'mp2_rmp2_pvqz', 'ccsd-f12/cc-pvdz-f12',
                                       'ccsd(t)-f12/cc-pvdz-f12_noscale', 'g03_pbepbe_6-311++g_d_p', 'fci/cc-pvdz',
-                                      'fci/cc-pvtz', 'fci/cc-pvqz', 'bmk/cbsb7', 'bmk/6-311g(2d,d,p)', 'b3lyp/6-31g**',
-                                      'b3lyp/6-311+g(3df,2p)', 'MRCI+Davidson/aug-cc-pV(T+d)Z']:
+                                      'fci/cc-pvtz', 'fci/cc-pvqz', 'bmk/cbsb7', 'bmk/6-311g(2d,d,p)',
+                                      'b3lyp/6-31g(d,p)', 'b3lyp/6-311+g(3df,2p)', 'MRCI+Davidson/aug-cc-pV(T+d)Z']:
                     logger.warning('Could not determine a Model Chemistry to be used in Arkane, '
                                    'NOT calculating thermodata')
                     for spc in self.arc_species_list:
