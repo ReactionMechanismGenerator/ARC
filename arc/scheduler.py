@@ -1452,14 +1452,16 @@ class Scheduler(object):
                         self.output[label]['job_types']['conformers'] = True
                         self.species_dict[label].conf_is_isomorphic = True
                     else:
-                        logger.error('The only conformer for species {0} is not isomorphic '
-                                     'with the 2D graph representation {1}\n'.format(label, b_mol.to_smiles()))
+                        logger.error(f'The only conformer for species {label} is not isomorphic '
+                                     f'with the 2D graph representation {b_mol.to_smiles()}\n')
+                        self.species_dict[label].conf_is_isomorphic = False
                         if self.allow_nonisomorphic_2d:
                             logger.info('Using this conformer anyway (allow_nonisomorphic_2d was set to True)')
+                            spawn_jobs = True
                         else:
                             logger.info('Not using this conformer (to change this behavior, set allow_nonisomorphic_2d '
                                         'to True)')
-                        self.species_dict[label].conf_is_isomorphic, spawn_jobs = False, False
+                            spawn_jobs = False, False
                 if spawn_jobs:
                     if not self.composite_method:
                         if self.job_types['opt']:
