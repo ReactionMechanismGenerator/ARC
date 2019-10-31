@@ -1037,7 +1037,7 @@ H       1.11582953    0.94384729   -0.10134685"""
         self.assertEqual(len(spc_list), 14)  # 11 H's, one H species, two non-H cut fragments
         for spc in spc_list:
             self.assertTrue(check_isomorphism(mol1=spc.mol,
-                                              mol2=molecules_from_xyz(xyz=spc.initial_xyz,
+                                              mol2=molecules_from_xyz(xyz=spc.conformers[0],
                                                                       multiplicity=spc.multiplicity,
                                                                       charge=spc.charge)[1]))
         self.assertTrue(any(spc.mol.to_smiles() == 'CO[NH]' for spc in spc_list))
