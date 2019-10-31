@@ -774,14 +774,20 @@ class Scheduler(object):
                      directed_scan_type=job.directed_scan_type, directed_scans=job.directed_scans,
                      directed_dihedrals=job.directed_dihedrals, rotor_index=job.rotor_index)
 
-    def run_conformer_jobs(self):
+    def run_conformer_jobs(self, labels=None):
         """
         Select the most stable conformer for each species using molecular dynamics (force fields) and subsequently
         spawning opt jobs at the conformer level of theory, usually a reasonable yet cheap DFT, e.g., b97d3/6-31+g(d,p).
         The resulting conformer is saved in a string format xyz in the Species initial_xyz attribute.
+
+        Args:
+            labels (list): Labels of specific species to run conformer jobs for.
+                           If None, conformer jobs will be spawned for all species corresponding to labels in
+                           self.unique_species_labels.
         """
+        labels_to_consider = labels if labels is not None else self.unique_species_labels
         log_info_printed = False
-        for label in self.unique_species_labels:
+        for label in labels_to_consider:
             if not self.species_dict[label].is_ts and not self.output[label]['job_types']['opt'] \
                     and 'opt' not in self.job_dict[label] and 'composite' not in self.job_dict[label] \
                     and all([e is None for e in self.species_dict[label].conformer_energies]) \
@@ -1116,12 +1122,9 @@ class Scheduler(object):
                             self.run_composite_job(bde_species.label)
                         else:
                             self.run_sp_job(label=bde_species.label)
-                    else:
-                        # bde_species is not monoatomic
-                        if self.composite_method:
-                            self.run_composite_job(bde_species.label)
-                        else:
-                            self.run_opt_job(bde_species.label)
+            # determine the lowest energy conformation of radicals generated in BDE calculations
+            self.run_conformer_jobs(labels=[species.label for species in bde_species_list
+                                            if species.number_of_atoms > 1])
 
     def spawn_directed_scan_jobs(self, label, rotor_index, xyz=None):
         """

@@ -1480,10 +1480,10 @@ class ARCSpecies(object):
 
         spc1 = ARCSpecies(label=label1, mol=mol1, xyz=xyz1, multiplicity=mol1.multiplicity,
                           charge=mol1.get_net_charge(), generate_thermo=False)
-        spc1.initial_xyz = xyz1
+        spc1.generate_conformers()
         spc2 = ARCSpecies(label=label2, mol=mol2, xyz=xyz2, multiplicity=mol2.multiplicity,
                           charge=mol2.get_net_charge(), generate_thermo=False)
-        spc2.initial_xyz = xyz2
+        spc2.generate_conformers()
 
         return [spc1, spc2]
 
