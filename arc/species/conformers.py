@@ -1299,28 +1299,22 @@ def check_atom_collisions(xyz):
 
 def check_special_non_rotor_cases(mol, top1, top2):
     """
-    Check whether one of the tops correspond to a special case which could not be rotated
-    `mol` is the RMG Molecule to diagnose
-    `top1` and `top2` are indices of atoms on each side of the pivots, the first index corresponds to one of the pivots
+    Check whether one of the tops correspond to a special case which does not have a torsional mode.
+    Checking for ``R-[C,N]#[N,[CH],[C]]`` groups, such as: in cyano groups (`R-C#N``),
+    C#C groups (``R-C#CH`` or ``R-C#[C]``), and azide groups: (``R-N#N``).
 
-    Special cases considered are:
+    Args:
+        mol (Molecule): The RMG molecule.
+        top1 (list): Entries are atom indices (1-indexed) on one side of the torsion, inc. one of the pivotal atoms.
+        top2 (list): Entries are atom indices (1-indexed) on the other side of the torsion, inc. the other pivotal atom.
 
-    - cyano groups: ``R-C#N``
-    - azide groups: ``N-N#N``
-
-    These cases have a 180 degree angle and torsion is meaningless, but they are identified by our methods since they
-    have a single bond
-    Returns `True` if this is indeed a special case which should not be treated as a rotor
+    Returns:
+        bool: ``True`` if this is indeed a special case which should **not** be treated as a torsional mode.
     """
     for top in [top1, top2]:
-        # check cyano group
-        if len(top) == 2 and mol.atoms[top[0] - 1].is_carbon() and mol.atoms[top[1] - 1].is_nitrogen() \
-                and mol.atoms[top[1] - 1].atomtype.label == 'N3t':
-            return True
-    for tp1, tp2 in [(top1, top2), (top2, top1)]:
-        # check azide group
-        if len(tp1) == 2 and mol.atoms[tp1[0] - 1].atomtype.label == 'N5tc' \
-                and mol.atoms[tp1[1] - 1].atomtype.label == 'N3t' and mol.atoms[tp2[0] - 1].atomtype.label == 'N1sc':
+        if mol.atoms[top[0] - 1].atomtype.label in ['Ct', 'N3t', 'N5tc'] \
+                and mol.atoms[top[1] - 1].atomtype.label in ['Ct', 'N3t'] and \
+                (len(top) == 2 or (len(top) == 3 and mol.atoms[top[2] - 1].is_hydrogen())):
             return True
     return False
 
