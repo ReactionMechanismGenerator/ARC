@@ -13,7 +13,7 @@ import os
 import rmgpy.molecule.element as elements
 from arkane.common import ArkaneSpecies, symbol_by_number
 from arkane.statmech import is_linear
-from rmgpy.exceptions import InvalidAdjacencyListError
+from rmgpy.exceptions import InvalidAdjacencyListError, ILPSolutionError, ResonanceError
 from rmgpy.molecule.molecule import Atom, Molecule
 from rmgpy.molecule.resonance import generate_kekule_structure
 from rmgpy.reaction import Reaction
@@ -761,8 +761,11 @@ class ARCSpecies(object):
         if self.mol is not None:
             self.mol_list = list()
             self.mol.assign_atom_ids()
-            self.mol_list = self.mol.copy(deep=True).generate_resonance_structures(keep_isomorphic=False,
-                                                                                   filter_structures=True)
+            try:
+                self.mol_list = self.mol.copy(deep=True).generate_resonance_structures(keep_isomorphic=False,
+                                                                                       filter_structures=True)
+            except (ValueError, ILPSolutionError, ResonanceError) as e:
+                logger.warning(f'Could not generate resonance structures for species {self.label}. Got: {e}')
             success = order_atoms_in_mol_list(ref_mol=self.mol.copy(deep=True), mol_list=self.mol_list)
             if not success:
                 # try sorting by IDs, repeat object creation to make sure the are unchanged
