@@ -373,12 +373,12 @@ class ARCSpecies(object):
 
             self.neg_freqs_trshed = list()
 
-        if self.multiplicity is None:
-            self.determine_multiplicity(smiles, adjlist, self.mol)
-            logger.debug('No multiplicity specified for {0}, assuming {1}.'.format(self.label, self.multiplicity))
         if self.charge is None:
             logger.debug('No charge specified for {0}, assuming charge 0.'.format(self.label))
             self.charge = 0
+        if self.multiplicity is None:
+            self.determine_multiplicity(smiles, adjlist, self.mol)
+            logger.debug('No multiplicity specified for {0}, assuming {1}.'.format(self.label, self.multiplicity))
         if self.multiplicity is not None and self.multiplicity < 1:
             raise SpeciesError('Multiplicity for species {0} is lower than 1. Got: {1}'.format(
                 self.label, self.multiplicity))
@@ -1074,17 +1074,21 @@ class ARCSpecies(object):
         """
         Determine the spin multiplicity of the species
         """
-        if mol is not None and mol.multiplicity >= 1:
-            self.multiplicity = mol.multiplicity
-        elif adjlist:
-            mol = Molecule().from_adjacency_list(adjlist)
-            self.multiplicity = mol.multiplicity
-        elif self.mol is not None and self.mol.multiplicity >= 1:
-            self.multiplicity = self.mol.multiplicity
-        elif smiles:
-            mol = Molecule(smiles=smiles)
-            self.multiplicity = mol.multiplicity
-        else:
+        get_mul_from_xyz = True if self.charge != 0 else False
+        if not get_mul_from_xyz:
+            if mol is not None and mol.multiplicity >= 1:
+                self.multiplicity = mol.multiplicity
+            elif adjlist:
+                mol = Molecule().from_adjacency_list(adjlist)
+                self.multiplicity = mol.multiplicity
+            elif self.mol is not None and self.mol.multiplicity >= 1:
+                self.multiplicity = self.mol.multiplicity
+            elif smiles:
+                mol = Molecule(smiles=smiles)
+                self.multiplicity = mol.multiplicity
+            else:
+                get_mul_from_xyz = True
+        if get_mul_from_xyz:
             xyz = self.get_xyz()
             if xyz is None and len(self.conformers):
                 xyz = self.conformers[0]
@@ -1097,6 +1101,7 @@ class ARCSpecies(object):
                             break
                     else:
                         raise SpeciesError('Could not identify atom symbol {0}'.format(symbol))
+                electrons -= self.charge
                 if electrons % 2 == 1:
                     self.multiplicity = 2
                     logger.warning('\nMultiplicity not specified for {0}, assuming a value of 2'.format(self.label))
