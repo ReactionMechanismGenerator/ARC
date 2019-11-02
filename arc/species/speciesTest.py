@@ -1042,6 +1042,39 @@ H       1.11582953    0.94384729   -0.10134685"""
                                                                       charge=spc.charge)[1]))
         self.assertTrue(any(spc.mol.to_smiles() == 'CO[NH]' for spc in spc_list))
 
+    def test_net_charged_species(self):
+        """Test that we can define and manipulate ions"""
+        nh4 = ARCSpecies(label='NH4', smiles='[NH4+]', charge=1)
+        nh4.determine_multiplicity(smiles='', adjlist='', mol=None)
+        self.assertEqual(nh4.multiplicity, 1)
+
+        cation = ARCSpecies(label='OCCCOH2', smiles='OCCC[OH2+]', charge=1)
+        cation.determine_multiplicity(smiles='', adjlist='', mol=None)
+        self.assertEqual(cation.multiplicity, 1)
+        cation.generate_conformers()
+        self.assertTrue(len(cation.conformers))
+
+        anion = ARCSpecies(label='CCC(=O)[O-]', smiles='CCC(=O)[O-]', charge=-1)
+        anion.determine_multiplicity(smiles='', adjlist='', mol=None)
+        self.assertEqual(anion.multiplicity, 1)
+        anion.generate_conformers()
+        self.assertTrue(len(anion.conformers))
+
+        anion_rad = ARCSpecies(label='[CH2]CC(=O)[O-]', smiles='[CH2]CC(=O)[O-]', charge=-1)
+        anion_rad.determine_multiplicity(smiles='', adjlist='', mol=None)
+        self.assertEqual(anion_rad.multiplicity, 2)
+        self.assertEqual(anion_rad.charge, -1)
+        anion_rad.generate_conformers()
+        self.assertTrue(len(anion_rad.conformers))
+
+        cation_rad = ARCSpecies(label='C1=[C]C=C([NH3])C=C1', smiles='C1=[C]C=C([NH3+])C=C1', charge=1)
+        cation_rad.determine_multiplicity(smiles='', adjlist='', mol=None)
+        self.assertEqual(cation_rad.multiplicity, 2)
+        self.assertEqual(cation_rad.charge, 1)
+        cation_rad.generate_conformers()
+        self.assertTrue(len(cation_rad.conformers))
+
+
     @classmethod
     def tearDownClass(cls):
         """
