@@ -9,10 +9,9 @@
 
 <img src="https://github.com/ReactionMechanismGenerator/ARC/blob/master/logo/ARC-logo-small.jpg" alt="arc logo"/>
 
-**ARC - Automated Rate Calculator** is a software for automating
-electronic structure calculations relevant for chemical kinetic modeling.
-
-ARC's mission is to provide the kinetics community with a well-documented and extensible code base for automatically calculating species thermochemistry and reaction rate coefficients.
+The **A**utomated **R**ate **C**alculator (**ARC**) software is a tool for automating
+electronic structure calculations and attaining thermo-kinetic data
+relevant for chemical kinetic modeling.
 
 ARC has many <a href="https://reactionmechanismgenerator.github.io/ARC/advanced.html">advanced features</a>,
 yet at its core it is simple: It accepts 2D graph representations of chemical species (i.e.,
@@ -20,13 +19,30 @@ yet at its core it is simple: It accepts 2D graph representations of chemical sp
 <a href="https://www.inchi-trust.org/">InChI</a>,
 or <a href="https://rmg.mit.edu/">RMG</a>'s
 <a href="https://reactionmechanismgenerator.github.io/RMG-Py/reference/molecule/adjlist.html">adjacency list</a>),
-and  automatically executes, tracks, and processes relevant electronic structure
-jobs on user-defined servers. The principal outputs of ARC are thermodynamic properties
-(H, S, Cp) and high-pressure limit kinetic rate coefficients for the defined species
-and reactions.
+and  automatically executes, tracks, and processes relevant electronic structure calculation
+jobs on user-defined server\s. The principal outputs of ARC are thermodynamic properties
+(H, S, Cp) and high-pressure limit kinetic rate coefficients of species and reactions of interest.
 
-Make sure to visit <a href="https://reactionmechanismgenerator.github.io/ARC/index.html">ARC's Documentation</a> page.
+## Mission
+
+ARC's mission is to provide the kinetics community with a well-documented and extensible code base for automatically calculating species thermochemistry and reaction rate coefficients.
+
+## Documentation
+
+Visit out <a href="https://reactionmechanismgenerator.github.io/ARC/index.html">documentation</a> pages for installation instructions, examples, API, advanced features and more.
+
+## Licence
+
+This project is licensed under the MIT License - see the <a href="https://github.com/ReactionMechanismGenerator/ARC/blob/master/LICENSE">LICENSE</a> file for details.
+
+## Contributing
 
 Developers and contributors: Visit
 <a href="https://github.com/ReactionMechanismGenerator/ARC/wiki">ARC's Developer's Guide</a>
 on the wiki page.
+
+If you have a suggestion or find a bug, please post to our <a href="https://github.com/ReactionMechanismGenerator/ARC/issues">Issues</a> page.
+
+## Questions
+
+If you are having issues, please post to our <a href="https://github.com/ReactionMechanismGenerator/ARC/issues">Issues</a> page. We will do our best to assist.
