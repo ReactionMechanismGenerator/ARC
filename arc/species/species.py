@@ -42,7 +42,7 @@ class ARCSpecies(object):
 
     Structures (rotors_dict is initialized in conformers.find_internal_rotors; pivots/scan/top values are 1-indexed)::
 
-            rotors_dict: {1: {'pivots': ``list``,
+            rotors_dict: {0: {'pivots': ``list``,
                               'top': ``list``,
                               'scan': ``list``,
                               'number_of_running_jobs': ``int``,
@@ -59,7 +59,7 @@ class ARCSpecies(object):
                               'directed_scan': ``dict``,  # keys: tuples of dihedrals as strings,
                                                           # values: dicts of energy, xyz, is_isomorphic, trsh
                              }
-                          2: {}, ...
+                          1: {}, ...
                          }
 
     Args:
