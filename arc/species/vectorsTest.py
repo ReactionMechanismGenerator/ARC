@@ -41,13 +41,27 @@ class TestVectors(unittest.TestCase):
         for ni, expected_ni in zip(n, expected_n):
             self.assertEqual(ni, expected_ni)
 
-    def test_get_theta(self):
+    def test_get_angle(self):
         """Test calculating the angle between two vectors"""
         v1 = [-1.45707856 + 0.02416711, -0.94104506 - 0.17703194, -0.20275830 - 0.08644641]
         v2 = [-0.03480906 + 0.02416711, 1.11948179 - 0.17703194, -0.82988874 - 0.08644641]
-        theta = vectors.get_theta(v1, v2)
+        theta = vectors.get_angle(v1, v2)
         self.assertAlmostEqual(theta, 1.8962295, 5)
         self.assertAlmostEqual(theta * 180 / math.pi, 108.6459, 3)
+
+        v1, v2 = [1, 0, 0], [0, 1, 0]
+        theta_rads = vectors.get_angle(v1, v2)
+        theta_degs = vectors.get_angle(v1, v2, units='degs')
+        self.assertEqual(theta_degs / theta_rads, 180 / math.pi)
+        self.assertAlmostEqual(theta_rads, 1.5707963)
+
+        v1, v2 = [1, 0, 0], [1, 0, 0]
+        theta = vectors.get_angle(v1, v2)
+        self.assertAlmostEqual(theta, 0)
+
+        v1, v2 = [1, 0, 0], [-1, 0, 0]
+        theta = vectors.get_angle(v1, v2)
+        self.assertAlmostEqual(theta, math.pi)
 
     def test_unit_vector(self):
         """Test calculating a unit vector"""
