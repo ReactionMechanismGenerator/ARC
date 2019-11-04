@@ -156,6 +156,9 @@ def parse_xyz_from_file(path):
 
     Returns:
         xyz (dict): The parsed coordinates.
+
+    Raises:
+        ParserError: If the coordinates could not be parsed.
     """
     lines = _get_lines_from_file(path)
     file_extension = os.path.splitext(path)[1]
@@ -164,7 +167,16 @@ def parse_xyz_from_file(path):
     relevant_lines = list()
 
     if file_extension == '.xyz':
-        relevant_lines = lines[2:]
+        for i, line in enumerate(reversed(lines)):
+            splits = line.strip().split()
+            if len(splits) == 1 and all([c.isdigit() for c in splits[0]]):
+                # this is the last number of atoms line (important when parsing trajectories)
+                num_of_atoms = int(splits[0])
+                break
+        else:
+            raise ParserError(f'Could not identify the number of atoms line in the xyz file {path}')
+        index = len(lines) - i - 1
+        relevant_lines = lines[index + 2: index + 2 + num_of_atoms]
     elif file_extension == '.gjf':
         start_parsing = False
         for line in lines:
@@ -195,7 +207,7 @@ def parse_xyz_from_file(path):
             elif 'geometry={' in line:
                 record = True
         if not relevant_lines:
-            raise ParserError('Could not parse xyz coordinates from file {0}'.format(path))
+            raise ParserError(f'Could not parse xyz coordinates from file {path}')
     if xyz is None and relevant_lines:
         xyz = str_to_xyz(''.join([line for line in relevant_lines if line]))
     return xyz
