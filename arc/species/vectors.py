@@ -30,18 +30,26 @@ def get_normal(v1, v2):
     return unit_vector(normal)
 
 
-def get_theta(v1, v2):
+def get_angle(v1, v2, units='rads'):
     """
     Calculate the angle in radians between two vectors.
 
     Args:
          v1 (list): Vector 1.
          v2 (list): Vector 2.
+         units (str): The desired units, either 'rads' for radians, or 'degs' for degrees.
 
     Returns:
-        float: The angle in radians between v1 and v2.
+        float: The angle in radians between ``v1`` and ``v2`` in the desired units.
+
+    Raises:
+        VectorsError: If ``v1`` and ``v2`` are of different lengths.
     """
-    return np.arccos(np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2)))
+    if len(v1) != len(v2):
+        raise VectorsError(f'v1 and v2 must be the same length, got {len(v1)} and {len(v2)}.')
+    v1_u, v2_u = unit_vector(v1), unit_vector(v2)
+    conversion = 180 / math.pi if 'degs' in units else 1
+    return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0)) * conversion
 
 
 def unit_vector(vector):
@@ -54,7 +62,7 @@ def unit_vector(vector):
     Returns:
         list: The unit vector.
     """
-    length = sum([vi ** 2 for vi in vector]) ** 0.5
+    length = get_vector_length(vector)
     return [vi / length for vi in vector]
 
 
@@ -168,4 +176,4 @@ def get_vector_length(v):
     Returns:
         float: The vector's length.
     """
-    return sum([vi ** 2 for vi in v]) ** 0.5
+    return np.dot(v, v) ** 0.5
