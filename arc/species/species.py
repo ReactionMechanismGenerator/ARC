@@ -53,6 +53,7 @@ class ARCSpecies(object):
                               'max_e': ``float``,  # in kJ/mol,
                               'symmetry': ``int``,
                               'dimensions': ``int``,
+                              'in_ring': ``bool``,
                               'original_dihedrals': ``list``,
                               'cont_indices': ``list``,
                               'directed_scan_type': ``str``,
@@ -879,6 +880,9 @@ class ARCSpecies(object):
             for mol in mol_list:
                 rotors = conformers.find_internal_rotors(mol)
                 for new_rotor in rotors:
+                    if new_rotor['in_ring']:
+                        # don't consider single bonds in rings
+                        continue
                     for existing_rotor in self.rotors_dict.values():
                         if existing_rotor['pivots'] == new_rotor['pivots']:
                             break

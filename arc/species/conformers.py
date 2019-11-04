@@ -165,7 +165,7 @@ def generate_conformers(mol_list, label, xyzs=None, torsions=None, tops=None, ch
     mol_list = [update_mol(mol) for mol in mol_list]
 
     if torsions is None or tops is None:
-        torsions, tops = determine_rotors(mol_list)
+        torsions, tops, ring_torsions = determine_rotors(mol_list)
     conformers = generate_force_field_conformers(
         mol_list=mol_list, label=label, xyzs=xyzs, torsion_num=len(torsions), charge=charge, multiplicity=multiplicity,
         num_confs=num_confs, force_field=force_field)
@@ -500,7 +500,7 @@ def generate_all_combinations(label, mol, base_xyz, multiple_tors, multiple_samp
                                'FF energy': energy,
                                'source': 'Generated all combinations from scan map (trivial case)'})
     if torsions is None:
-        torsions = determine_rotors([mol])
+        torsions = determine_rotors([mol])[0]
     new_conformers = determine_dihedrals(new_conformers, torsions)
     return new_conformers
 
@@ -642,7 +642,7 @@ def determine_rotors(mol_list):
     Returns:
         list: A list of indices of top atoms (including one of the pivotal atoms) corresponding to the torsions.
     """
-    torsions, tops = list(), list()
+    torsions, tops, ring_torsions = list(), list(), list()
     for mol in mol_list:
         rotors = find_internal_rotors(mol)
         for new_rotor in rotors:
@@ -650,9 +650,12 @@ def determine_rotors(mol_list):
                 if existing_torsion == new_rotor['scan']:
                     break
             else:
-                torsions.append(new_rotor['scan'])
-                tops.append(new_rotor['top'])
-    return torsions, tops
+                if new_rotor['in_ring']:
+                    ring_torsions.append(new_rotor['scan'])
+                else:
+                    torsions.append(new_rotor['scan'])
+                    tops.append(new_rotor['top'])
+    return torsions, tops, ring_torsions
 
 
 def determine_number_of_conformers_to_generate(label, heavy_atoms, torsion_num, mol=None, xyz=None, minimalist=False):
@@ -1371,9 +1374,9 @@ def find_internal_rotors(mol):
     rotors = []
     for atom1 in mol.vertices:
         if atom1.is_non_hydrogen():
-            for atom2, bond in atom1.edges.items():
+            for atom2, bond12 in atom1.edges.items():
                 if atom2.is_non_hydrogen() and mol.vertices.index(atom1) < mol.vertices.index(atom2) \
-                        and (bond.is_single() or bond.is_hydrogen_bond()) and not mol.is_bond_in_cycle(bond):
+                        and (bond12.is_single() or bond12.is_hydrogen_bond()):
                     if len(atom1.edges) > 1 and len(atom2.edges) > 1:  # none of the pivotal atoms are terminal
                         rotor = dict()
                         # pivots:
@@ -1436,6 +1439,7 @@ def find_internal_rotors(mol):
                         rotor['directed_scan_type'] = ''
                         rotor['directed_scan'] = dict()
                         rotor['dimensions'] = 1
+                        rotor['in_ring'] = mol.is_bond_in_cycle(bond12)
                         rotor['original_dihedrals'] = list()
                         rotor['cont_indices'] = list()
                         rotors.append(rotor)
