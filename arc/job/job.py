@@ -1059,19 +1059,19 @@ end
                 scan_string = '\n$scan\n'
                 for scan in scans:
                     scan_string += f'tors {scan} {dihedral1} {dihedral1 + 360.0} {self.scan_res}\n'
-                scan_string += '$end'
+                scan_string += '$end\n'
             elif self.software == 'terachem':
                 if self.is_ts:
                     job_type_1 = 'ts\nnew_minimizer yes'
                 else:
                     job_type_1 = 'minimize\nnew_minimizer yes'
                 dihedral1 = int(calculate_dihedral_angle(coords=self.xyz['coords'], torsion=self.scan))
-                scan = '_'.join([str(num) for num in self.scan])
-                scan_string = f"""
-$constraint_scan
-    dihedral {dihedral1} {dihedral1 + 360.0} {int(360.0 / self.scan_res) + 1} {scan}
-$end
-            """
+                scan_string = '\n$constraint_scan\n'
+                for scan in scans:
+                    scan_ = '_'.join([str(num) for num in self.scan])
+                    num_points = int(360.0 / self.scan_res) + 1
+                    scan_string += f'    dihedral {dihedral1} {dihedral1 + 360.0} {num_points} {scan_}\n'
+                scan_string += '$end\n'
             else:
                 raise JobError(f'Currently rotor scan is only supported in Gaussian, QChem, and TeraChem. Got:\n'
                                f'job type: {self.job_type}\n'
