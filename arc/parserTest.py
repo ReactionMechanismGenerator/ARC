@@ -19,6 +19,12 @@ class TestParser(unittest.TestCase):
     """
     Contains unit tests for the parser functions
     """
+    @classmethod
+    def setUpClass(cls):
+        """
+        A method that is run before all unit tests in this class.
+        """
+        cls.maxDiff = None
 
     def test_parse_frequencies(self):
         """Test frequency parsing"""
@@ -51,6 +57,7 @@ class TestParser(unittest.TestCase):
         path5 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'qchem.in')
         path6 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'qchem_output.out')
         path7 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'TS.gjf')
+        path8 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'optim_traj_terachem.xyz')
 
         xyz1 = parser.parse_xyz_from_file(path1)
         xyz2 = parser.parse_xyz_from_file(path2)
@@ -59,6 +66,7 @@ class TestParser(unittest.TestCase):
         xyz5 = parser.parse_xyz_from_file(path5)
         xyz6 = parser.parse_xyz_from_file(path6)
         xyz7 = parser.parse_xyz_from_file(path7)
+        xyz8 = parser.parse_xyz_from_file(path8)
 
         self.assertEqual(xyz1, xyz2)
         xyz1_str = xyz_to_str(xyz1)
@@ -67,6 +75,7 @@ class TestParser(unittest.TestCase):
         xyz4_str = xyz_to_str(xyz4)
         xyz5_str = xyz_to_str(xyz5)
         xyz6_str = xyz_to_str(xyz6)
+        xyz8_str = xyz_to_str(xyz8)
         self.assertTrue('C       1.40511900    0.21728200    0.07675200' in xyz1_str)
         self.assertTrue('O      -0.79314200    1.04818800    0.18134200' in xyz1_str)
         self.assertTrue('H      -0.43701200   -1.34990600    0.92900600' in xyz2_str)
@@ -78,6 +87,15 @@ class TestParser(unittest.TestCase):
         self.assertTrue('N      -1.99742564    0.38106573    0.09139807' in xyz5_str)
         self.assertTrue('N      -1.17538406    0.34366165    0.03265021' in xyz6_str)
         self.assertEqual(len(xyz7['symbols']), 34)
+        expected_xyz_8 = """N      -0.67665958    0.74524340   -0.41319355
+H      -1.26179357    1.52577220   -0.13687665
+H       0.28392722    1.06723640   -0.44163375
+N      -0.75345799   -0.33268278    0.51180786
+H      -0.97153041   -0.02416219    1.45398654
+H      -1.48669570   -0.95874053    0.20627423
+N       2.28178508   -0.42455356    0.14404399
+H       1.32677989   -0.80557411    0.33156013"""
+        self.assertEqual(xyz8_str, expected_xyz_8)
 
     def test_parse_t1(self):
         """Test T1 diagnostic parsing"""
