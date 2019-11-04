@@ -726,15 +726,26 @@ O       1.40839617    0.14303696    0.00000000"""
 5 H u0 p0 c0 {1,S}
 6 H u0 p0 c0 {1,S}
 7 H u0 p0 c0 {3,S}"""
+        adj3 = """1 C u0 p0 c0 {2,S} {3,S} {4,S} {5,S}
+2 C u0 p0 c0 {1,S} {6,S} {7,S} {8,S}
+3 H u0 p0 c0 {1,S}
+4 H u0 p0 c0 {1,S}
+5 H u0 p0 c0 {1,S}
+6 H u0 p0 c0 {2,S}
+7 H u0 p0 c0 {2,S}
+8 H u0 p0 c0 {2,S}"""
         mol0 = Molecule().from_adjacency_list(adj0)
         mol1 = Molecule().from_adjacency_list(adj1)
         mol2 = Molecule().from_adjacency_list(adj2)
-        non_rotor0 = conformers.check_special_non_rotor_cases(mol=mol0, top1=[2, 1], top2=[3, 4, 5, 6])
+        mol3 = Molecule().from_adjacency_list(adj3)
+        non_rotor0 = conformers.check_special_non_rotor_cases(mol=mol0, top1=[3, 1], top2=[2, 4, 5, 6])
         non_rotor1 = conformers.check_special_non_rotor_cases(mol=mol1, top1=[2, 1, 5, 6, 7], top2=[3, 4])
         non_rotor2 = conformers.check_special_non_rotor_cases(mol=mol2, top1=[1, 4, 5, 6], top2=[2, 3, 7])
+        rotor3 = conformers.check_special_non_rotor_cases(mol=mol3, top1=[1, 3, 4, 5], top2=[2, 6, 7, 8])
         self.assertTrue(non_rotor0)
         self.assertTrue(non_rotor1)
-        self.assertFalse(non_rotor2)
+        self.assertTrue(non_rotor2)
+        self.assertFalse(rotor3)
 
         spc0 = ARCSpecies(label='spc0', mol=mol0)
         spc1 = ARCSpecies(label='spc1', mol=mol1)
@@ -748,10 +759,18 @@ O       1.40839617    0.14303696    0.00000000"""
         self.assertFalse(torsions0)
 
         torsions1 = [rotor_dict['scan'] for rotor_dict in spc1.rotors_dict.values()]
-        self.assertTrue(len(torsions1) == 1)  # expecting only the CH3 rotor
+        self.assertEqual(len(torsions1), 1)  # expecting only the CH3 rotor
 
         torsions2 = [rotor_dict['scan'] for rotor_dict in spc2.rotors_dict.values()]
-        self.assertTrue(len(torsions2) == 1)  # expecting only the CH3 rotor
+        self.assertFalse(len(torsions2))
+
+        mol4 = Molecule(smiles='c1ccccc1C#C')
+        rotors = conformers.find_internal_rotors(mol4)
+        self.assertFalse(len(rotors))
+
+        mol5 = Molecule(smiles='N#CCC')
+        rotors = conformers.find_internal_rotors(mol5)
+        self.assertEqual(len(rotors), 1)
 
     def test_determine_top_group_indices(self):
         """Test determining the top group in a molecule"""
