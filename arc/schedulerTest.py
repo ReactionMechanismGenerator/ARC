@@ -33,14 +33,20 @@ class TestScheduler(unittest.TestCase):
         cls.project_directory = os.path.join(arc_path, 'Projects', 'arc_project_for_testing_delete_after_usage3')
         cls.spc1 = ARCSpecies(label='methylamine', smiles='CN')
         cls.spc2 = ARCSpecies(label='C2H6', smiles='CC')
-        xyz = {'symbols': ('C',), 'isotopes': (12,), 'coords': ((0.0, 0.0, 0.0),)}
+        xyz1 = """C       1.11424367   -0.01231165   -0.11493630
+C      -0.07257945   -0.17830906   -0.16010022
+O      -1.38500471   -0.36381519   -0.20928090
+H       2.16904830    0.12689206   -0.07152274
+H      -1.82570782    0.42754384   -0.56130718"""
+        cls.spc3 = ARCSpecies(label='CtripCO', smiles='C#CO', xyz=xyz1)
+        xyz2 = {'symbols': ('C',), 'isotopes': (12,), 'coords': ((0.0, 0.0, 0.0),)}
         cls.job1 = Job(project='project_test', ess_settings=cls.ess_settings, species_name='methylamine',
-                       xyz=xyz, job_type='conformer', conformer=0, level_of_theory='b97-d3/6-311+g(d,p)',
+                       xyz=xyz2, job_type='conformer', conformer=0, level_of_theory='b97-d3/6-311+g(d,p)',
                        multiplicity=1, project_directory=cls.project_directory, job_num=101)
         cls.job2 = Job(project='project_test', ess_settings=cls.ess_settings, species_name='methylamine',
-                       xyz=xyz, job_type='conformer', conformer=1, level_of_theory='b97-d3/6-311+g(d,p)',
+                       xyz=xyz2, job_type='conformer', conformer=1, level_of_theory='b97-d3/6-311+g(d,p)',
                        multiplicity=1, project_directory=cls.project_directory, job_num=102)
-        cls.job3 = Job(project='project_test', ess_settings=cls.ess_settings, species_name='C2H6', xyz=xyz,
+        cls.job3 = Job(project='project_test', ess_settings=cls.ess_settings, species_name='C2H6', xyz=xyz2,
                        job_type='freq', level_of_theory='wb97x-d3/6-311+g(d,p)', multiplicity=1,
                        project_directory=cls.project_directory, software='qchem', job_num=103)
         cls.rmgdb = rmgdb.make_rmg_database_object()
@@ -53,7 +59,8 @@ class TestScheduler(unittest.TestCase):
                           'orbitals': False,
                           'lennard_jones': False,
                           }
-        cls.sched1 = Scheduler(project='project_test', ess_settings=cls.ess_settings, species_list=[cls.spc1, cls.spc2],
+        cls.sched1 = Scheduler(project='project_test', ess_settings=cls.ess_settings,
+                               species_list=[cls.spc1, cls.spc2, cls.spc3],
                                composite_method='', conformer_level=default_levels_of_theory['conformer'],
                                opt_level=default_levels_of_theory['opt'], freq_level=default_levels_of_theory['freq'],
                                sp_level=default_levels_of_theory['sp'], scan_level=default_levels_of_theory['scan'],
@@ -199,6 +206,24 @@ class TestScheduler(unittest.TestCase):
                                                   'sp': ''},
                                         'restart': '',
                                         'warnings': ''},
+                                   'CtripCO': {'conformers': '',
+                                               'convergence': False,
+                                               'errors': '',
+                                               'info': '',
+                                               'isomorphism': '',
+                                               'job_types': {'composite': False,
+                                                             'conformers': False,
+                                                             'fine_grid': False,
+                                                             'freq': False,
+                                                             'lennard_jones': False,
+                                                             'onedmin': False,
+                                                             'opt': False,
+                                                             'orbitals': False,
+                                                             'rotors': True,
+                                                             'sp': False},
+                                               'paths': {'composite': '', 'freq': '', 'geo': '', 'sp': ''},
+                                               'restart': '',
+                                               'warnings': ''},
                                    'methylamine':
                                        {'conformers': '',
                                         'convergence': False,
@@ -234,6 +259,20 @@ class TestScheduler(unittest.TestCase):
         self.sched1.output['C2H6']['job_types']['freq'] = True
         self.sched1.output['C2H6']['paths']['sp'] = 'some/path/out.out'
         self.assertTrue(self.sched1._does_output_dict_contain_info())
+
+    def test_non_rotor(self):
+        """Test that a 180 degree angle on either side of a torsion is not considered as a rotor"""
+        self.sched1.species_dict['CtripCO'].rotors_dict = {
+            0: {'pivots': [2, 3], 'top': [3, 5], 'scan': [1, 2, 3, 5], 'number_of_running_jobs': 0, 'success': None,
+                'invalidation_reason': '', 'times_dihedral_set': 0, 'trsh_methods': [], 'scan_path': '',
+                'directed_scan_type': '', 'directed_scan': {}, 'dimensions': 1, 'original_dihedrals': [],
+                'cont_indices': []}}
+        self.sched1.species_dict['CtripCO'].number_of_rotors = 1
+        self.sched1.job_types['rotors'] = True
+        self.sched1.run_scan_jobs(label='CtripCO')
+        self.assertEqual(self.sched1.species_dict['CtripCO'].rotors_dict[0]['invalidation_reason'],
+                         'not a torsional mode (angles = 179.91, 110.38 degrees)')
+        self.assertFalse(self.sched1.species_dict['CtripCO'].rotors_dict[0]['success'])
 
     @classmethod
     def tearDownClass(cls):
