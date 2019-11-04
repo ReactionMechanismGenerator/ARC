@@ -537,19 +537,37 @@ O       1.40839617    0.14303696    0.00000000"""
         """Test determining the rotors"""
         mol = Molecule(smiles='C=[C]C(=O)O[O]')
         mol_list = mol.generate_resonance_structures()
-        torsions, tops = conformers.determine_rotors(mol_list)
+        torsions, tops, ring_torsions = conformers.determine_rotors(mol_list)
+        self.assertFalse(len(ring_torsions))
         self.assertEqual(torsions, [[3, 1, 4, 2], [1, 4, 6, 5]])
         self.assertEqual(sum(tops[0]), 4)
         self.assertEqual(sum(tops[1]), 10)
 
         mol_list = [Molecule(smiles='CCCO')]
-        torsions, tops = conformers.determine_rotors(mol_list)
+        torsions, tops, ring_torsions = conformers.determine_rotors(mol_list)
+        self.assertFalse(len(ring_torsions))
         self.assertEqual(torsions, [[5, 1, 2, 3], [1, 2, 3, 4], [2, 3, 4, 12]])
         self.assertEqual(sum(tops[0]), 19)
         self.assertEqual(sum(tops[1]), 40)
 
+        mol_list = [Molecule(smiles='c1cc3c(cc1)CCc2c(cccc2)N3CCCN(C)C')]  # imipramine, 2 benzene, 1 7-member ring
+        torsions, tops, ring_torsions = conformers.determine_rotors(mol_list)
+        self.assertEqual(len(ring_torsions), 11)
+        self.assertEqual(torsions, [[3, 15, 16, 17], [15, 16, 17, 18], [16, 17, 18, 19],
+                                    [17, 18, 19, 20], [18, 19, 20, 40], [18, 19, 21, 43]])
+        self.assertEqual(len(tops), 6)
+
+        mol = Molecule(smiles='c1ccccc1C(c1ccccc1)(c1ccccc1)O')
+        torsions1, tops1, ring_torsions1 = conformers.determine_rotors([mol])
+        aromatic = mol.generate_resonance_structures()[0]
+        torsions2, tops2, ring_torsions2 = conformers.determine_rotors([aromatic])
+        self.assertEqual(len(torsions1), len(torsions2))
+        self.assertEqual(len(tops1), len(tops2))
+        self.assertEqual(len(ring_torsions1), 9)
+        self.assertEqual(len(ring_torsions2), 0)
+
     def test_get_wells(self):
-        """Test determining wells characteristics from a list of angles"""
+        """Test determining well characteristics from a list of angles"""
         scan = [-179, -178, -175, -170, -61, -59, -58, -50, -40, -30, -20, -10, 0, 10, 150, 160]
         wells = conformers.get_wells(label='', angles=scan)
         self.assertEqual(wells, [{'angles': [-179, -178, -175, -170],
@@ -981,7 +999,8 @@ C	0.0000000	0.0000000	-1.9736270"""  # no colliding atoms
         # both rotors are symmetric with symmetry numbers of 2 and 3
         mol1 = Molecule(smiles='CC[N+](=O)[O-]')
         mol1.update()
-        torsions, tops = conformers.determine_rotors([mol1])
+        torsions, tops, ring_torsions = conformers.determine_rotors([mol1])
+        self.assertFalse(len(ring_torsions))
         confs = conformers.generate_force_field_conformers(mol_list=[mol1], label='mol1', num_confs=50,
                                                            torsion_num=len(torsions), charge=0, multiplicity=1)
         with self.assertRaises(ConformerError):
@@ -996,7 +1015,8 @@ C	0.0000000	0.0000000	-1.9736270"""  # no colliding atoms
         # only one rotor is symmetric
         mol2 = Molecule(smiles='CC[N+](=S)[O-]')
         mol2.update()
-        torsions, tops = conformers.determine_rotors([mol2])
+        torsions, tops, ring_torsions = conformers.determine_rotors([mol2])
+        self.assertFalse(len(ring_torsions))
         confs = conformers.generate_force_field_conformers(mol_list=[mol2], label='mol2', num_confs=50,
                                                            torsion_num=len(torsions), charge=0, multiplicity=1)
         confs = conformers.determine_dihedrals(conformers=confs, torsions=torsions)
@@ -1011,7 +1031,8 @@ C	0.0000000	0.0000000	-1.9736270"""  # no colliding atoms
         # The COH rotor is symmetric because of the bottom of the molecule
         mol3 = Molecule(smiles='c1ccccc1C(c1ccccc1)(c1ccccc1)O')
         mol3.update()
-        torsions, tops = conformers.determine_rotors([mol3])
+        torsions, tops, ring_torsions = conformers.determine_rotors([mol3])
+        self.assertEqual(len(ring_torsions), 9)
         confs = conformers.generate_force_field_conformers(mol_list=[mol3], label='mol3', num_confs=100,
                                                            torsion_num=len(torsions), charge=0, multiplicity=1)
         confs = conformers.determine_dihedrals(conformers=confs, torsions=torsions)
@@ -1025,7 +1046,8 @@ C	0.0000000	0.0000000	-1.9736270"""  # no colliding atoms
 
         mol4 = Molecule(smiles='c1ccccc1CO')
         mol4.update()
-        torsions, tops = conformers.determine_rotors([mol4])
+        torsions, tops, ring_torsions = conformers.determine_rotors([mol4])
+        self.assertEqual(ring_torsions, [[2, 3, 4, 6], [3, 5, 8, 7], [4, 6, 7, 8]])
         confs = conformers.generate_force_field_conformers(mol_list=[mol4], label='mol4', num_confs=100,
                                                            torsion_num=len(torsions), charge=0, multiplicity=1)
         confs = conformers.determine_dihedrals(conformers=confs, torsions=torsions)
@@ -1036,7 +1058,8 @@ C	0.0000000	0.0000000	-1.9736270"""  # no colliding atoms
 
         mol5 = Molecule(smiles='OCC(C)C')
         mol5.update()
-        torsions, tops = conformers.determine_rotors([mol5])
+        torsions, tops, ring_torsions = conformers.determine_rotors([mol5])
+        self.assertFalse(len(ring_torsions))
         confs = conformers.generate_force_field_conformers(mol_list=[mol5], label='mol5', num_confs=100,
                                                            torsion_num=len(torsions), charge=0, multiplicity=1)
         confs = conformers.determine_dihedrals(conformers=confs, torsions=torsions)
@@ -1048,7 +1071,8 @@ C	0.0000000	0.0000000	-1.9736270"""  # no colliding atoms
 
         mol7 = Molecule(smiles='CC')
         mol7.update()
-        torsions, tops = conformers.determine_rotors([mol7])
+        torsions, tops, ring_torsions = conformers.determine_rotors([mol7])
+        self.assertFalse(len(ring_torsions))
         confs = conformers.generate_force_field_conformers(mol_list=[mol7], label='mol7', num_confs=50,
                                                            torsion_num=len(torsions), charge=0, multiplicity=1)
         confs = conformers.determine_dihedrals(conformers=confs, torsions=torsions)
@@ -1059,7 +1083,8 @@ C	0.0000000	0.0000000	-1.9736270"""  # no colliding atoms
 
         mol8 = Molecule(smiles='C[N+](=O)[O-]')
         mol8.update()
-        torsions, tops = conformers.determine_rotors([mol8])
+        torsions, tops, ring_torsions = conformers.determine_rotors([mol8])
+        self.assertFalse(len(ring_torsions))
         confs = conformers.generate_force_field_conformers(mol_list=[mol8], label='mol8', num_confs=200,
                                                            torsion_num=len(torsions), charge=0, multiplicity=1)
         confs = conformers.determine_dihedrals(conformers=confs, torsions=torsions)
@@ -1070,7 +1095,8 @@ C	0.0000000	0.0000000	-1.9736270"""  # no colliding atoms
 
         mol9 = Molecule(smiles='Cc1ccccc1')
         mol9.update()
-        torsions, tops = conformers.determine_rotors([mol9])
+        torsions, tops, ring_torsions = conformers.determine_rotors([mol9])
+        self.assertEqual(len(ring_torsions), 3)
         confs = conformers.generate_force_field_conformers(mol_list=[mol9], label='mol9', num_confs=50,
                                                            torsion_num=len(torsions), charge=0, multiplicity=1)
         confs = conformers.determine_dihedrals(conformers=confs, torsions=torsions)
@@ -1951,7 +1977,8 @@ Cl      2.38846685    0.24054066    0.55443324
         """Test the getting the lowest diasteroemrs from a given conformers list"""
         smiles = 'N=N'  # test chirality of a double bond between nitrogen atoms
         mol = Molecule(smiles=smiles)
-        torsions, tops = conformers.determine_rotors([mol])
+        torsions, tops, ring_torsions = conformers.determine_rotors([mol])
+        self.assertFalse(len(ring_torsions))
         confs = conformers.generate_force_field_conformers(mol_list=[mol], label=smiles, torsion_num=len(torsions),
                                                            charge=0, multiplicity=mol.multiplicity, num_confs=10)
         confs = conformers.determine_dihedrals(confs, torsions)
@@ -1963,7 +1990,8 @@ Cl      2.38846685    0.24054066    0.55443324
 
         smiles = 'C=C'  # test no chirality of a double bond with trivial identical groups
         mol = Molecule(smiles=smiles)
-        torsions, tops = conformers.determine_rotors([mol])
+        torsions, tops, ring_torsions = conformers.determine_rotors([mol])
+        self.assertFalse(len(ring_torsions))
         confs = conformers.generate_force_field_conformers(mol_list=[mol], label=smiles, torsion_num=len(torsions),
                                                            charge=0, multiplicity=mol.multiplicity, num_confs=10)
         confs = conformers.determine_dihedrals(confs, torsions)
