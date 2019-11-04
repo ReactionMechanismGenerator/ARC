@@ -241,15 +241,16 @@ class SSHClient(object):
             times_tried += 1
             try:
                 sftp, ssh = self.try_connecting()
-            except:
-                pass
+            except Exception as e:
+                if not times_tried % 10:
+                    logger.info(f'Tried connecting to {self.server} {times_tried} times with no success...'
+                                f'\nGot: {e}')
+                else:
+                    print(f'Tried connecting to {self.server} {times_tried} times with no success...'
+                          f'\nGot: {e}')
             else:
                 logger.debug(f'Successfully connected to {self.server} at the {times_tried} trial.')
                 return sftp, ssh
-            if not times_tried % 10:
-                logger.info(f'Tried connecting to {self.server} {times_tried} times with no success....')
-            else:
-                print(f'Tried connecting to {self.server} {times_tried} times with no success....')
             time.sleep(interval)
         raise ServerError(f'Could not connect to server {self.server} even after {times_tried} trials.')
 
