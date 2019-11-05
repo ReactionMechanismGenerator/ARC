@@ -278,9 +278,9 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
 
     def test_determine_ess(self):
         """Test the determine_ess function"""
-        gaussian = os.path.join(arc_path, 'arc', 'testing', 'SO2OO_CBS-QB3.log')
-        qchem = os.path.join(arc_path, 'arc', 'testing', 'C2H6_freq_QChem.out')
-        molpro = os.path.join(arc_path, 'arc', 'testing', 'CH2O_freq_molpro.out')
+        gaussian = os.path.join(arc_path, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
+        qchem = os.path.join(arc_path, 'arc', 'testing', 'freq', 'C2H6_freq_QChem.out')
+        molpro = os.path.join(arc_path, 'arc', 'testing', 'freq', 'CH2O_freq_molpro.out')
 
         self.assertEqual(common.determine_ess(gaussian), 'gaussian')
         self.assertEqual(common.determine_ess(qchem), 'qchem')
