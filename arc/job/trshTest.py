@@ -52,9 +52,8 @@ class TestTrsh(unittest.TestCase):
         status, keywords, error, line = trsh.determine_ess_status(
             output_path=path, species_label='Zr2O4H', job_type='opt')
         self.assertEqual(status, 'errored')
-        self.assertEqual(keywords, ['GL301', 'InputError'])
-        self.assertEqual(error, 'Either charge, multiplicity, or basis set was not specified correctly. '
-                                'Alternatively, a specified atom does not match any standard atomic symbol.')
+        self.assertEqual(keywords, ['GL301', 'BasisSet'])
+        self.assertEqual(error, 'The basis set 6-311G is not appropriate for the this chemistry.')
         self.assertIn('Error termination via Lnk1e', line)
         self.assertIn('g16/l301.exe', line)
 
@@ -86,6 +85,16 @@ class TestTrsh(unittest.TestCase):
         self.assertEqual(keywords, list())
         self.assertEqual(error, '')
         self.assertEqual(line, '')
+
+        # Molpro
+
+        path = os.path.join(self.base_path['molpro'], 'unrecognized_basis_set.out')
+        status, keywords, error, line = trsh.determine_ess_status(
+            output_path=path, species_label='I', job_type='sp')
+        self.assertEqual(status, 'errored')
+        self.assertEqual(keywords, ['BasisSet'])
+        self.assertEqual(error, 'Unrecognized basis set 6-311G**')
+        self.assertIn(' ? Basis library exhausted', line)  # line includes '\n'
 
 
 if __name__ == '__main__':
