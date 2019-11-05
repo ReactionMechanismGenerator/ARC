@@ -561,11 +561,6 @@ geometry={{angstrom;
 
 basis=cc-pVDZ
 int;
-{{hf;wf,spin={spin},charge={charge};}}
-{restricted}{method};
-
-basis={basis}
-int;
 {{hf;{shift}
 maxit,1000;
 wf,spin={spin},charge={charge};}}
