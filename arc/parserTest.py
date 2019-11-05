@@ -269,6 +269,10 @@ H      -0.59436200   -0.94730400    0.00000000"""
         dm4 = parser.parse_dipole_moment(path4)
         self.assertEqual(dm4, 2.11328)
 
+        path5 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'ethane_minimize_terachem_output.out')
+        dm5 = parser.parse_dipole_moment(path5)
+        self.assertAlmostEqual(dm5, 0.000179036, 4)
+
     def test_parse_polarizability(self):
         """Test parsing the polarizability moment from a freq job output file"""
         path1 = os.path.join(arc_path, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
