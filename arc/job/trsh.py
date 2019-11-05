@@ -100,10 +100,15 @@ def determine_ess_status(output_path, species_label, job_type, software=None):
                             keywords = ['CheckFile']
                             error = additional_info.rstrip()
                         elif 'GL301' in keywords:
-                            keywords.append('InputError')
-                            error = 'Either charge, multiplicity, or basis set was not ' \
-                                    'specified correctly. Alternatively, a specified atom does not match any ' \
-                                    'standard atomic symbol.'
+                            if 'Atomic number out of range for' in lines[len(lines) - i - 2]:
+                                keywords.append('BasisSet')
+                                error = f'The basis set {lines[len(lines) - i - 2].split()[6]} ' \
+                                        f'is not appropriate for the this chemistry.'
+                            else:
+                                keywords.append('InputError')
+                                error = 'Either charge, multiplicity, or basis set was not ' \
+                                        'specified correctly. Alternatively, a specified atom does not match any ' \
+                                        'standard atomic symbol.'
                         elif 'GL401' in keywords:
                             keywords.append('BasisSet')
                             error = 'The projection from the old to the new basis set has failed.'
@@ -197,6 +202,26 @@ def determine_ess_status(output_path, species_label, job_type, software=None):
                     # add_mem = (float(line.split()[-2]) - float(prev_line.split()[0])) / 1e6
                     keywords = ['Memory']
                     error = 'Additional memory required: {0} MW'.format(float(line.split()[-2]) / 1e6)
+                    break
+                elif 'Basis library exhausted' in line:
+                    # e.g.:
+                    # ` SETTING BASIS          =    6-311G**
+                    #
+                    #
+                    #  Using spherical harmonics
+                    #
+                    #  LIBRARY EXHAUSTED
+                    #   Searching for I  S 6-311G
+                    #   Library contains the following bases:
+                    #  ? Error
+                    #  ? Basis library exhausted
+                    #  ? The problem occurs in Binput`
+                    keywords = ['BasisSet']
+                    basis_set = None
+                    for line0 in lines[::-1]:
+                        if 'SETTING BASIS' in line0:
+                            basis_set = line0.split()[-1]
+                    error = f'Unrecognized basis set {basis_set}'
                     break
                 elif 'the problem occurs' in line:
                     keywords = ['Unknown']
@@ -405,11 +430,16 @@ def trsh_ess_job(label, level_of_theory, server, job_status, job_type, software,
     memory = memory_gb
 
     if 'DiskSpace' in job_status['keywords']:
-        output_errors.append('Error: Could not troubleshoot {job_type} for {label}! '
-                             'The job ran out of disc space on {server}; '.format(
-                              job_type=job_type, label=label, server=server))
+        output_errors.append(f'Error: Could not troubleshoot {job_type} for {label}! '
+                             f'The job ran out of disc space on {server}; ')
         logger.error('Could not troubleshoot {job_type} for {label}! The job ran out of disc space on '
                      '{server}'.format(job_type=job_type, label=label, server=server))
+        couldnt_trsh = True
+    elif 'BasisSet' in job_status['keywords']\
+            and ('Unrecognized basis set' in job_status['error']
+                 or 'is not appropriate for the this chemistry' in job_status['error']):
+        output_errors.append(f'Error: Could not recognize basis set {job_status["error"].split()[-1]} in {software}; ')
+        couldnt_trsh = True
 
     elif software == 'gaussian':
         if 'CheckFile' in job_status['keywords'] and 'checkfie=None' not in ess_trsh_methods:
