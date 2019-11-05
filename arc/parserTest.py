@@ -173,6 +173,14 @@ H      -0.59436200    0.94730400    0.00000000
 H      -0.59436200   -0.94730400    0.00000000"""
         self.assertEqual(xyz11_str, expected_xyz_11)
 
+    def test_parse_trajectory(self):
+        """Test parsing trajectories"""
+        path = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'scan_optim.xyz')
+        trajectory = parser.parse_trajectory(path)
+        self.assertEqual(len(trajectory), 46)
+        self.assertIsInstance(trajectory[0], dict)
+        self.assertEqual(len(trajectory[0]['symbols']), 9)
+
     def test_parse_t1(self):
         """Test T1 diagnostic parsing"""
         path = os.path.join(arc_path, 'arc', 'testing', 'sp', 'mehylamine_CCSD(T).out')
