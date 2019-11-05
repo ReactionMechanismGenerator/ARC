@@ -807,6 +807,18 @@ def trsh_ess_job(label, level_of_theory_dict, server, job_status, job_type, soft
         else:
             couldnt_trsh = True
 
+    elif 'terachem' in software:
+        """
+        scf diis+a
+        maxit 50
+        
+        solve in freq:
+        Maximum gradient component at reference geometry: 2.19e-02
+        Maximum component of gradient is too large
+        Optimize the geometry and try again
+        """
+        couldnt_trsh = True
+
     else:
         logger.error(f'Troubleshooting methods are not implemented for {software}')
         couldnt_trsh = True
@@ -951,6 +963,9 @@ def scan_quality_check(label, pivots, energies, scan_res=rotor_scan_resolution, 
         message (str): Error or warning message.
     Returns:
         actions (list): Troubleshooting methods to apply, including conformational changes.
+
+    Todo:
+        - adjust to ND
     """
     message, invalidation_reason = '', ''
     invalidate = False
