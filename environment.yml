@@ -12,7 +12,7 @@ dependencies:
   - cairo
   - cairocffi
   - cantera >=2.3.0
-  - cclib
+  - cclib >=1.6
   - chemprop
   - coolprop
   - coverage
@@ -25,14 +25,14 @@ dependencies:
   - jupyter
   - lpsolve55
   - markupsafe
-  - matplotlib >=1.5
+  - matplotlib >=2.2.2
   - mock
   - mopac
   - mpmath
   - networkx
   - nose
   - numdifftools
-  - numpy >=1.10.0
+  - numpy >=1.15.4
   - openbabel
   - psutil
   - pydas >=1.0.1
@@ -44,7 +44,7 @@ dependencies:
   - python >=3.7
   - pyyaml
   - quantities
-  - rdkit >=2018
+  - rdkit >=2019.09.1
   - scikit-learn
   - scipy
   - symmetry
