@@ -291,7 +291,8 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
         for torsion, dihedral in zip(single_tors, single_sampling_point):
             torsion_0_indexed = [tor - 1 for tor in torsion]
             conf, rd_mol = converter.rdkit_conf_from_mol(mol, base_xyz)
-            base_xyz = converter.set_rdkit_dihedrals(conf, rd_mol, torsion_0_indexed, deg_abs=dihedral)
+            if conf is not None:
+                base_xyz = converter.set_rdkit_dihedrals(conf, rd_mol, torsion_0_indexed, deg_abs=dihedral)
 
         new_conformers.extend(generate_conformer_combinations(
             label=label, mol=mol_list[0], base_xyz=base_xyz, hypothetical_num_comb=hypothetical_num_comb,
@@ -613,8 +614,9 @@ def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals
         xyz_dihedrals = xyz
         for torsion, dihedral in zip(torsions, dihedrals):
             conf, rd_mol = converter.rdkit_conf_from_mol(mol, xyz_dihedrals)
-            torsion_0_indexed = [tor -1 for tor in torsion]
-            xyz_dihedrals = converter.set_rdkit_dihedrals(conf, rd_mol, torsion_0_indexed, deg_abs=dihedral)
+            if conf is not None:
+                torsion_0_indexed = [tor -1 for tor in torsion]
+                xyz_dihedrals = converter.set_rdkit_dihedrals(conf, rd_mol, torsion_0_indexed, deg_abs=dihedral)
         if force_field != 'gromacs':
             xyz_, energy = get_force_field_energies(label, mol=mol, xyz=xyz_dihedrals, optimize=True,
                                                     force_field=force_field)
@@ -709,7 +711,8 @@ def determine_number_of_conformers_to_generate(label, heavy_atoms, torsion_num, 
     if mol is None and xyz is not None:
         mol = converter.molecules_from_xyz(xyz)[1]
     if mol is not None and xyz is None:
-        xyz = get_force_field_energies(label, mol, num_confs=1)[0][0]
+        xyzs = get_force_field_energies(label, mol, num_confs=1)[0]
+        xyz = xyzs[0] if len(xyzs) else None
     if mol is not None and xyz is not None:
         num_chiral_centers = get_number_of_chiral_centers(label, mol, xyz=xyz, just_get_the_number=True)
     if num_chiral_centers > 2:
@@ -916,9 +919,9 @@ def get_torsion_angles(label, conformers, torsions):
         dict: The torsion angles. Keys are torsion tuples, values are lists of all corresponding angles from conformers.
     """
     torsion_angles = dict()
-    if not any(['torsion_dihedrals' in conformer for conformer in conformers]):
-        raise ConformerError('Could not determine dihedral torsion angles for {0}. '
-                             'Consider calling `determine_dihedrals()` first.'.format(label))
+    if len(conformers) and not any(['torsion_dihedrals' in conformer for conformer in conformers]):
+        raise ConformerError(f'Could not determine dihedral torsion angles for {label}. '
+                             f'Consider calling `determine_dihedrals()` first.')
     for conformer in conformers:
         if 'torsion_dihedrals' in conformer and conformer['torsion_dihedrals']:
             for torsion in torsions:
@@ -948,16 +951,22 @@ def get_force_field_energies(label, mol, num_confs=None, xyz=None, force_field='
         list: Entries are xyz coordinates, each in a dict format.
     Returns:
         list: Entries are the FF energies (in kJ/mol).
+
+    Raises:
+        ConformerError: If conformers could not be generated.
     """
+    xyzs, energies = list(), list()
     if force_field.lower() in ['mmff94', 'mmff94s', 'uff']:
         rd_mol = embed_rdkit(label, mol, num_confs=num_confs, xyz=xyz)
         xyzs, energies = rdkit_force_field(label, rd_mol, mol=mol, force_field=force_field, optimize=optimize)
-    elif force_field.lower() in ['gaff', 'mmff94', 'mmff94s', 'uff', 'ghemical']:
+    if not len(xyzs) and force_field.lower() in ['gaff', 'mmff94', 'mmff94s', 'uff', 'ghemical']:
         xyzs, energies = mix_rdkit_and_openbabel_force_field(label, mol, num_confs=num_confs, xyz=xyz,
                                                              force_field=force_field)
-    else:
-        raise ConformerError('Unrecognized force field for {0}. Should be either MMFF94, MMFF94s, UFF, Ghemical, '
-                             'or GAFF. Got: {1}'.format(label, force_field))
+    if not len(xyzs):
+        if force_field.lower() not in ['mmff94', 'mmff94s', 'uff', 'gaff', 'ghemical']:
+            raise ConformerError(f'Unrecognized force field for {label}. Should be either MMFF94, MMFF94s, UFF, '
+                                 f'Ghemical, or GAFF. Got: {force_field}.')
+        raise ConformerError(f'Could not generate conformers for species {label}.')
     return xyzs, energies
 
 
@@ -988,12 +997,19 @@ def mix_rdkit_and_openbabel_force_field(label, mol, num_confs=None, xyz=None, fo
             pt = conf.GetAtomPosition(j)
             xyz.append([pt.x, pt.y, pt.z])
         xyz = [xyz[j] for j, _ in enumerate(xyz)]  # reorder
-        unoptimized_xyzs.append(xyz)  # in array form
+        unoptimized_xyzs.append(xyz)
 
-    for xyz in unoptimized_xyzs:
-        xyzs_, energies_ = openbabel_force_field(label, mol, num_confs, xyz=xyz, force_field=force_field)
-        xyzs.extend(xyzs_)
-        energies.extend(energies_)
+    if not len(unoptimized_xyzs):
+        # use OB as the fall back method
+        logger.warning(f'Using OpenBable instead of RDKit as a fall back method to generate conformers for {label}. '
+                       f'This is often slower, and prohibits ARC from using all features of the conformers module.')
+        xyzs, energies = openbabel_force_field(label, mol, num_confs, force_field=force_field)
+
+    else:
+        for xyz in unoptimized_xyzs:
+            xyzs_, energies_ = openbabel_force_field(label, mol, num_confs, xyz=xyz, force_field=force_field)
+            xyzs.extend(xyzs_)
+            energies.extend(energies_)
     return xyzs, energies
 
 
@@ -1062,6 +1078,7 @@ def openbabel_force_field(label, mol, num_confs=None, xyz=None, force_field='GAF
         obmol, ob_atom_ids = to_ob_mol(mol, return_mapping=True)
         pybmol = pyb.Molecule(obmol)
         pybmol.make3D()
+        obmol = pybmol.OBMol
         ff.Setup(obmol)
 
         if method.lower() == 'weighted':
@@ -1264,9 +1281,10 @@ def get_wells(label, angles, blank=20):
             wells[-1]['end_idx'] = i
             wells[-1]['end_angle'] = new_angles[i]
             new_well = True
-    wells[-1]['end_idx'] = len(new_angles) - 1
-    wells[-1]['end_angle'] = new_angles[-1]
-    wells[-1]['angles'].append(new_angles[-1])
+    if len(wells):
+        wells[-1]['end_idx'] = len(new_angles) - 1
+        wells[-1]['end_angle'] = new_angles[-1]
+        wells[-1]['angles'].append(new_angles[-1])
     return wells
 
 

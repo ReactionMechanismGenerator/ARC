@@ -859,9 +859,11 @@ def rdkit_conf_from_mol(mol, xyz):
                          'got\n{0}\nwhich is a {1}'.format(xyz, type(xyz)))
     rd_mol = to_rdkit_mol(mol=mol, remove_h=False)
     Chem.AllChem.EmbedMolecule(rd_mol)
-    conf = rd_mol.GetConformer(id=0)
-    for i in range(rd_mol.GetNumAtoms()):
-        conf.SetAtomPosition(i, xyz['coords'][i])  # reset atom coordinates
+    conf = None
+    if rd_mol.GetNumConformers():
+        conf = rd_mol.GetConformer(id=0)
+        for i in range(rd_mol.GetNumAtoms()):
+            conf.SetAtomPosition(i, xyz['coords'][i])  # reset atom coordinates
     return conf, rd_mol
 
 
