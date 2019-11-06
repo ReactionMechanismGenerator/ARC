@@ -84,8 +84,10 @@ def show_sticks(xyz=None, species=None, project_directory=None):
     else:
         mol = species.mol
     try:
-        rd_mol = rdkit_conf_from_mol(mol, xyz)[1]
+        conf, rd_mol = rdkit_conf_from_mol(mol, xyz)
     except (ValueError, AttributeError):
+        return False
+    if conf is None:
         return False
     mb = Chem.MolToMolBlock(rd_mol)
     p = p3D.view(width=400, height=400)
