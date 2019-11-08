@@ -1,21 +1,31 @@
 # .coveragerc to control coverage.py
 [run]
 branch = True
-source = ARC
-omit = *Test.py, *.out, *.log
+source = arc
+omit =
+    *Test.py
+    */scripts/*
+    */testing/*
+    */docs/*
+    */examples/*
+    */ipython/*
+    */logo/*
 
 [report]
 show_missing = False
 exclude_lines =
     pragma: no cover
     def __repr__
-    if self.debug:
-    if settings.DEBUG
-    raise AssertionError
-    raise NotImplementedError
-    if 0:
+    logger.warning
     if __name__ == .__main__.:
-omit = *Test.py, *.out, *.log
+omit =
+    *Test.py
+    */scripts/*
+    */testing/*
+    */docs/*
+    */examples/*
+    */ipython/*
+    */logo/*
 
 [html]
 directory = testing/coverage
