@@ -399,6 +399,24 @@ def min_list(lst):
     return min([entry for entry in lst if entry is not None])
 
 
+def key_by_val(dictionary, value):
+    """
+    A helper function for getting a key from a dictionary corresponding to a certain value.
+    Does not check for value unicity.
+
+    Args:
+        dictionary (dict): The dictionary.
+        value: The value.
+
+    Returns:
+        The key.
+    """
+    for key, val in dictionary.items():
+        if val == value:
+            return key
+    raise ValueError(f'Could not find value {value} in the dictionary\n{dictionary}')
+
+
 def initialize_job_types(job_types, specific_job_type=''):
     """
     A helper function for initializing job_types.
