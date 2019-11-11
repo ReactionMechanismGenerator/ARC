@@ -18,6 +18,11 @@ from arc.species.converter import xyz_from_data, xyz_to_coords_list
 from arc.species.species import determine_rotor_symmetry
 from arc.parser import parse_normal_displacement_modes, parse_xyz_from_file
 
+from arkane.statmech import determine_qm_software
+import collections
+import matplotlib.pyplot as plt
+import pandas as pd
+import re
 
 logger = get_logger()
 
@@ -845,3 +850,723 @@ def scan_quality_check(label, pivots, energies, scan_res=rotor_scan_resolution, 
                            f'torsional mode.')
 
     return invalidate, invalidation_reason, message, actions
+
+
+class ScanInfo(object):
+    """A class for representing information about scan job"""
+
+    def __init__(self, logfile=None, str1=None, str2=None, str2count=None, initoffset=None, column=None,savecsv=False,plot=False):
+        """parse gaussian san job
+        Arg:
+            logfile(str, compulsory): path to gaussian log file
+        Attribute:
+            lines(list): log file as a list
+            log(arkaneobject): arkane object created by parsing gaussian output file.
+            gic(list): list of general internal coordinates
+            para_dic(dic): a dictionary of gic and atoms corresponding to gic
+            blocks(list): a list of blocks each block contain list of lines for gic parsed from gaussian outfile
+            pivot(list): list of atoms which dihedral corresponding to the rotation
+            gic_to_remove(list): gic related to rotor atoms. these will be remove so we can figure out other bond changes.
+            optimized_var(list): list of values for each gic
+            scans(df): data frame contains gic name and the value of each optimized step.
+            rows_to_remove(list): corresponding row for gic related to rotor scan
+            scans_reduce(df): data frame after removing row related to rotor scan
+        """
+        self.logfile = logfile
+        if os.path.isfile(logfile):
+            with open(self.logfile, 'r') as f:
+                lines = f.readlines()
+        else:
+            raise InputError('Could not find file {0}'.format(self.logfile))
+        self.lines = lines
+        self.log = determine_qm_software(fullpath=self.logfile)
+        self.gic = None
+        self.para_dic = None
+        self.blocks = None
+        self.pivot = None
+        self.gic_to_remove = None
+        self.optimized_var = None
+        self.scans = None
+        self.rows_to_remove = None
+        self.scans_reduce = None
+        self.savecsv=savecsv
+        self.plot=plot
+
+        if str1 is None:
+            str1 = 'Optimized Parameters'
+        if str2 is None:
+            str2 = '--------------------------------------------------------------------------------'
+        if str2count is None:
+            str2count = 2
+        if initoffset is None:
+            initoffset = 5
+        if column is None:
+            column = 3
+
+        self.str1 = str1
+        self.str2 = str2
+        self.str2count = str2count
+
+        self.initoffset = initoffset
+        self.column = column
+
+        if self.scans is None:
+            self.get_scan_df()
+        if self.blocks is None:
+            self.get_block()
+        if self.optimized_var is None:
+            self.get_var()
+
+    def get_scan_energies(self):
+        """obtain energies form scans
+
+        Returns:
+            list: energy in j/mol for each pes scan point
+        Returns:
+            list: angle of the dihedral
+        """
+
+        # log = determine_qm_software(fullpath=self.logfile)
+        energy, angle = self.log.load_scan_energies()
+        if self.plot:
+            plt.plot(range(len(energy)), energy)
+            plt.show()
+        return energy, angle
+
+    def get_block(self, str1=None, str2=None, str2count=0):
+        """Parse a file and return block of lines between two regular expression
+            specially useful wen parsing tables
+
+        Args:
+            str1(str, compulsory): regular expression to start collecting lines
+            str2(str, compulsory): regular expression to stop collecting lines
+            str2count(int, optional): number of time second regular expression appear this is to skip ---- lines in a table
+
+        returns: list: if the first regular expression appear multiple times this will be a list of list contains
+        blocks of lines
+        """
+
+        if str1 is None:
+            str1 = self.str1
+        if str2 is None:
+            str2 = self.str2
+        if str2count is None:
+            str2count = self.str2count
+
+        startcopy = False
+        count = 0
+        blocks = []
+        block = []
+        for line in self.lines:
+            if str1 in line:
+                # print('found'+ str(str1))
+                startcopy = True
+                # stat reading parameters
+            if (str2 in line and
+                    startcopy is True and count <= str2count):
+                # print ('found end of the block')
+                count = count + 1
+                # print(line)
+                if count == str2count:
+                    startcopy = False
+                    blocks.append(block)
+                    block = []
+                    count = 0
+            if startcopy is True:
+                # print(line)
+                block.append(line)
+        self.blocks = blocks
+        return blocks
+
+    def get_para_dic(self, blocks=None):
+        """parse a array of lines contains information about general intresnsic coordinates(gic)
+        and corresponding atoms into a dictionary
+                                    !    Initial Parameters    !
+                                   ! (Angstroms and Degrees)  !
+         --------------------------                            --------------------------
+         ! Name  Definition              Value          Derivative Info.                !
+         --------------------------------------------------------------------------------
+         ! R1    R(1,2)                  1.3581         estimate D2E/DX2                !
+         ! R2    R(1,4)                  1.0837         estimate D2E/DX2                !
+
+         Args:
+             blocks(list,optional): array that containing gic information
+
+        Returns:
+            dic: dictionary contains name of the gic variable(name), corresponding atoms(definition)
+        """
+
+        if blocks is None:
+            blocks = self.get_block(str1='Initial Parameters',
+                                    str2='--------------------------------------------------------------------------------',
+                                    str2count=2)
+        para_dic = {}
+        gic = list()
+        for l in blocks[0][5:]:
+            atoms = re.split('\(|\)|,', l.split()[2])[1:-1]
+            atom = []
+            for x in atoms:
+                atom.append(int(x))
+            # print atom
+            var = l.split()[1:5]
+            gic.append(var[0])
+            para_dic[var[0]] = [atom, var[3]]
+        self.gic = gic
+        self.para_dic = para_dic
+        return para_dic
+
+    def get_var(self, parameters=None, initoffset=None, column=None):
+        """parse a array of lines contains information and return a particular column as a list
+                                   !    Initial Parameters    !
+                                   ! (Angstroms and Degrees)  !
+         --------------------------                            --------------------------
+         ! Name  Definition              Value          Derivative Info.                !
+         --------------------------------------------------------------------------------
+         ! R1    R(1,2)                  1.3581         estimate D2E/DX2                !
+         ! R2    R(1,4)                  1.0837         estimate D2E/DX2                !
+
+         Args:
+             parameters(list,optional): array need o be parse
+             initoffset(int,optional):  number of lines need to be skip at the beginning.
+             column(int,optional): which column in the table to need to be parse
+
+        Returns:
+           list: array of values
+        """
+
+        if parameters is None:
+            parameters = self.blocks[0]
+        coordinates = list()
+        for l in parameters[initoffset:]:
+            # print(l.split())
+            if l.split()[1][0] == 'd' and float(l.split()[column]) < 0.0:
+                # print(l.split()[column])
+                var = 360.0 + float(l.split()[column])
+            if l.split()[1][0] == 'd' and float(l.split()[column]) > 180.0:
+                # print(l.split()[column])
+                var = 360.0 - float(l.split()[column])
+                coordinates.append(var)
+            else:
+                var = float(l.split()[column])
+                coordinates.append(var)
+        return coordinates
+
+    def get_pivot_atoms(self):
+        """get pivot atoms or atoms in the dihedral scan corresponding to the rotor scan
+
+         Returns:
+             list: size 4 contain index for 4 atoms
+        """
+
+        d = self.log.load_scan_pivot_atoms()
+        self.pivot = d
+        return d
+
+    def find_gic_to_remove(self, para_dic=None, d=None):
+        """ find which gic associated with the rotor scan and put the gic into an array
+
+        Args:
+            para_dic(dict,optional): dictionary contains gic and corresponding atoms
+            d(list,optional): atoms belong to rotor dihedral
+
+        Returns:
+            list: gic associated with a rotor scans
+
+        """
+        if para_dic is None:
+            para_dic = self.get_para_dic()
+        if d is None:
+            d = self.get_pivot_atoms()
+        gic_to_remove = list()
+        for i, x in enumerate(para_dic):
+            if int(d[2]) in para_dic[x][0]:
+                # compare 3th element in dihiral
+                if len(para_dic[x][0]) == 4:
+                    if int(d[2]) == int(para_dic[x][0][2]) and int(d[2]) == int(para_dic[x][0][1]):
+                        print('gic dihidral associate with scan:', x, para_dic[x][0])
+                        gic_to_remove.append(x)
+                # compare 2th element in angle
+                if len(para_dic[x][0]) == 3:
+                    if int(d[2]) == int(para_dic[x][0][1]):
+                        print('gic angle associate with scan:', x, para_dic[x][0])
+                        gic_to_remove.append(x)
+                if len(para_dic[x][0]) == 2:
+                    if int(d[2]) == int(para_dic[x][0][0]):
+                        print('gic bond associate with scan:', x, para_dic[x][0])
+                        gic_to_remove.append(x)
+        self.gic_to_remove = gic_to_remove
+        return gic_to_remove
+
+    def get_optimized_gics(self):
+        """obtain gics values associate with each scan points and append to self.optimized_var
+        """
+
+        optimized_var = list()
+        # appending initial values for the gics
+        optimized_var.append(self.get_var(self.blocks[0], initoffset=5, column=3))
+        # append optimized gics to self.blocks
+        self.get_block(str1='Optimized Parameters',
+                                        str2='--------------------------------------------------------------------------------',
+                                        str2count=2)
+
+        for x in self.blocks:
+            optimized_var.append(self.get_var(x, initoffset=5, column=3))
+        self.optimized_var = optimized_var
+
+    def get_scan_df(self):
+        """put scan gic values to panda df
+
+        Return:
+            df: containing gic values
+        """
+
+        newdf = list()
+        if self.gic is None:
+            self.get_para_dic()
+        if self.optimized_var is None:
+            self.get_optimized_gics()
+        # append names of gic
+        newdf.append(pd.DataFrame(self.gic))
+        # append values of gics
+        for x in self.optimized_var:
+            newdf.append(pd.DataFrame(x))
+
+        scans = pd.concat(newdf, axis=1, ignore_index=True)
+        if self.savecsv:
+            scans.to_csv(str(self.logfile) + '.csv')
+
+        self.scans = scans
+        return scans
+
+    def cal_corr_colums(self, scans=None, colums=None):
+        """calculate correlation between adjacent scan points
+
+        Args:
+            scans(df): list gic values
+            colums(int): number of scan points
+
+        Returns:
+            list: correlation between adjust columns
+            """
+        if scans is None:
+            scans = self.get_scan_df()
+        if colums is None:
+            rows, colums = scans.shape
+        column_corr = list()
+        for i in range(1, colums - 1):
+            column_corr.append([i, scans[i].abs().corr(scans[i + 1].abs())])
+        return column_corr
+
+    def get_rows_to_drop(self, scans=None, gic_to_remove=None):
+        """dropping rows associate the pivot
+
+        Args:
+            scans(df): data frame containing gic values
+            gic_to_remove(array): list of names of GIC associate with rotor scan
+
+        Returns:
+            list: index of rows in  scans need t be removed
+            """
+        if scans is None:
+            scans = self.get_scan_df()
+        if gic_to_remove is None:
+            gic_to_remove = self.find_gic_to_remove()
+        rows_to_remove = []
+        print('Following GIC will be removed from the scan')
+        for i, x in enumerate(scans[0]):
+            if x in gic_to_remove:
+                print(i, x)
+                rows_to_remove.append(i)
+
+        self.rows_to_remove = rows_to_remove
+        return rows_to_remove
+
+    def get_reduce_scan_df(self, scans=None, rows_to_remove=None, colums=None):
+        """remove selected rows form a data frame and return new df
+
+        Args:
+            colums(int): number of point in the scan
+            scans(df): data frame containing gic values
+            rows_to_remove(array): list of index of row to be removed
+
+        Returns:
+            list:  correlation between adjust columns for the reduce scan
+
+        """
+
+        if scans is None:
+            scans = self.get_scan_df()
+        if rows_to_remove is None:
+            self.rows_to_remove = self.get_rows_to_drop()
+        if colums is None:
+            rows, colums = scans.shape
+
+        self.scans_reduce = scans.drop(self.rows_to_remove)
+        corr_reduce = self.cal_corr_colums(scans.drop(self.rows_to_remove), colums)
+        return corr_reduce
+
+    def get_discontinuity_points(self, corr_reduce=None, trsh=0.97):
+        """find adjacent column with less than the trsh hold this is to find out which point PES broke
+
+        Args:
+            corr_reduce(list): list contains correlation between adjacent column
+            trsh(float): threshold correlation less than the value wil be returned
+
+        Returns:
+            list: column where correlation less than the threshold
+            """
+        if corr_reduce is None:
+            corr_reduce = self.get_reduce_scan_df()
+        corr_97 = []
+        print('colums less than the ', trsh, ' threshold')
+        for i, x in corr_reduce:
+            if x < trsh and i > 1:
+                print(i, x)
+                corr_97.append(i)
+        return corr_97
+
+
+def combine_plots(switch, dic_forward, dic_reverse, npoint):
+    """combine reverse adn forward rotor angles
+
+    Args:
+        switch(int,compulsory): point/angle to combine two rotor scans
+        dic_forward(dic,compulsory):  angles gong forward direction
+        dic_reverse(dic,compulsory): angles going reverse direction
+        npoint(int): number of points requested in the rotor scan
+
+    Returns:
+        list: angles which can be used to combine two PES
+    """
+
+    combine = list()
+    for i, angle in enumerate(np.linspace(0, 360, npoint)):
+        if angle < switch:
+            combine.append(dic_forward[angle])
+            # combine.append(forward[i])
+        else:
+            combine.append(dic_reverse[angle])
+            # combine.append(reverse[i])
+    return combine
+
+
+def combine_r_f(gaussian_out_f, gaussian_out_r, npoint=37,plot=False):
+    """
+    take two rotor scans and find the best way to combine them
+
+    Args:
+        gaussian_out_f(object):class scan_info contain information about forward scan
+        gaussian_out_r(object): class scan_info contain information about reverse scan
+        npoint(int,compulsory): number of step in the rotor scan
+        plot(bool,optional): plot the scan PES
+
+    Returns:
+        list: energies correspond to rotor PES
+
+    """
+
+    # Find the discontinuity points in the PES
+    f = ScanInfo(logfile=gaussian_out_f)
+    dis_f = f.get_discontinuity_points()
+    energy_f, angle_f = f.get_scan_energies(plot=True)
+
+    r = ScanInfo(logfile=gaussian_out_r)
+    dis_r = r.get_discontinuity_points()
+    energy_r, angle_r = r.get_scan_energies(plot=True)
+
+    # Duminda prefer to use angles instead of points
+    angle_f = np.linspace(0, 360, npoint)
+    angle_r = np.linspace(360, 0, npoint)
+
+    forward, reverse = list()
+    dic_forward = {}
+    dic_reverse = {}
+    for x in zip(angle_f, energy_f):
+        # print (x)
+        forward.append(x)
+        dic_forward[x[0]] = x[1]
+    for x in zip(angle_r, energy_r):
+        # print (x)
+        reverse.append(x)
+        dic_reverse[x[0]] = x[1]
+
+    print('dis_f:', dis_f)
+    print('dis_r:', dis_r)
+    if len(dis_f) == 0:
+        offset = 3
+        switch = np.linspace(0, 360, npoint)[dis_r[0] - offset]
+    else:
+        offset = 3
+        switch = np.linspace(0, 360, npoint)[dis_f[0] - offset]
+    foward_reverse = combine_plots(switch, dic_forward, dic_reverse, npoint)
+
+    if plot:
+        plt.plot(np.linspace(0, 360, npoint), foward_reverse)
+        plt.show()
+
+    return foward_reverse
+
+
+def diff_ab(scan):
+    """ calculate energy difference between two adjacent scan points
+
+    Args:
+        scan(list, compulsory): rotor PES
+    Returns:
+        list: energy difference between two adjacent scan points
+
+    """
+
+    ab = list()
+    for i in range(len(scan) - 1):
+        ab.append(abs(scan[i] - scan[i + 1]))
+
+    return ab
+
+
+def pick_best(gaussian_out_f, gaussian_out_r, npoint=37,plot=False):
+    """
+    determine which combination of reverse and forward scan produce the best PES
+
+    Args:
+        gaussian_out_f(object):class scan_info contain information about forward scan
+        gaussian_out_r(object): class scan_info contain information about reverse scan
+        npoint(int,compulsory): number of step in the rotor scan
+
+    Returns:
+        list: combined rotor PES
+    """
+
+    f_r = combine_r_f(gaussian_out_f, gaussian_out_r, npoint)
+    print('switching flies')
+    r_f = combine_r_f(gaussian_out_r, gaussian_out_f, npoint)
+
+    # If there are discontinues in PES sum of difference between adjacent point will be larger
+    sum_f_r = sum(diff_ab(f_r))
+    sum_r_f = sum(diff_ab(r_f))
+
+    print('best possible fit')
+    if sum_f_r < sum_r_f:
+        if plot:
+             plt.plot(np.linspace(0, 360, npoint), f_r)
+             plt.show()
+        return f_r
+    else:
+        if plot:
+            plt.plot(np.linspace(0, 360, npoint), r_f)
+            plt.show()
+        return f_r
+
+
+def count_frequency(arr):
+    """
+    returns how may times each element in the array appear
+
+    Args:
+        arr(list): array you like to get frequency
+
+    Returns:
+        list: frequency of each element
+    """
+
+    return collections.Counter(arr)
+
+
+def unique(list1):
+    """function to get unique values
+
+    Args:
+        list1(list,compulsory): array you like to find unique entries
+
+    Returns:
+        list: list with unique values
+
+    """
+    # initialize a null list
+    unique_list = list()
+    # traverse for all elements
+    for x in list1:
+        # check if exists in unique_list or not
+        if x not in unique_list:
+            unique_list.append(x)
+    return unique_list
+
+
+def remove_elements(array, lst):
+    """ remove entries from a array for matching indexes
+
+    Args:
+        array(list,compulsory): full list
+        lst(list,compulsory): list indexes need to be removed
+
+    Returns:
+        list: with matched index removed
+    """
+
+    for i in sorted(lst, reverse=True):
+        del array[i]
+    return array
+
+
+def freeze_gics(scan=None, normthresh=0.1, ifprint=True, aggressive=False):
+    """
+    this routine will identify atoms, bonds, dihedral responsible for discontinuities in a rotor scan.
+    information about discontinuity points, and reduced rotor scan gic values as data frame are included in ScanInfo class.
+
+    Args:
+     scan(object, compulsory): class scan_info contain information about the rotor scan
+     normthresh(float, optional): threshold where normalized error between two columns will be consider as a problamatic gic.
+     ifprint(bool, optional): provide additional printing
+     aggressive(bool, optional): if ture try to freeze all the problematic dihedral else only consider unique pivots
+
+    Returns:
+        list: dihedral to be freeze
+        list: bond need to be freeze
+    """
+
+    scan.cal_corr_colums()
+    scan.get_reduce_scan_df()
+    discontinuity_points = scan.get_discontinuity_points()
+
+    # find normalized error between two adjacent scan points
+    nerror = list()
+    for i in scan.scans_reduce[0].index:
+        if ifprint:
+            print(i)
+        n = list()
+        n.append(i)
+        n.append(scan.scans_reduce[0][i])
+        if ifprint:
+            print(n)
+        for j in discontinuity_points:
+            if ifprint:
+                print(j)
+            n.append(
+                abs(abs(scan.scans_reduce[j][i]) - abs(scan.scans_reduce[j + 1][i])) / abs(scan.scans_reduce[j][i]))
+        nerror.append(n)
+    # find the gics with largest error
+    sorted_col = pd.DataFrame(nerror).sort_values(by=[2], ascending=False)
+    srows, scolums = sorted_col.shape
+
+    # find problematic gics
+    problamatic_gic = list()
+    for c in range(scolums - 2):
+        for x in sorted_col[1].index:
+            if sorted_col[2 + c][x] > normthresh:
+                if ifprint:
+                    print(sorted_col[1][x])
+                if sorted_col[1][x] not in problamatic_gic:
+                    problamatic_gic.append(sorted_col[1][x])
+
+    # find problamatic atom to useful in determining which bonds going to break
+    problamaitc_atoms = list()
+    for x in problamatic_gic:
+        if 'calculate' in scan.para_dic[x] or 'estimate' in scan.para_dic[x]:
+            if ifprint:
+                print(scan.para_dic[x])
+            problamaitc_atoms.append(scan.para_dic[x][0])
+
+    y = list()
+    for x in problamaitc_atoms:
+        y = y + x
+
+    freq = count_frequency(y)
+    freq.items()
+
+    most_problamtic_atom = []
+    for key, value in freq.items():
+        if ifprint:
+            print(key, "->", value)
+        if value > 1:
+            most_problamtic_atom.append(key)
+
+    # find the most problematic atom
+    df_most_problamtic_atom = pd.DataFrame(freq.items())
+    patoms = df_most_problamtic_atom.sort_values(by=[1], ascending=False).head(n=1)[0]
+
+    freeze_bond = []
+    for key, value in scan.para_dic.items():
+        if len(value[0]) == 2 and patoms.values in value[0]:
+            if ifprint:
+                print(value[0])
+            freeze_bond.append(value[0])
+
+    union = unique(y)
+    # find which dihedral to freeze
+    freeze_dihdral = []
+    for dihidral in problamaitc_atoms:
+        if ifprint:
+            print(dihidral)
+        if len(list(set(dihidral) & set(union))) == 4:
+            if ifprint:
+                print(dihidral)
+            if dihidral not in freeze_dihdral:
+                freeze_dihdral.append(dihidral)
+
+    # some of the dihidrals might be associated with rotor scan here we remove them.
+    d = scan.get_pivot_atoms()
+    print("rotor scan:", d)
+
+    rotor_atom, remove_dihidral, remove_bond = list()
+    for i in scan.gic_to_remove:
+        # find if there are atoms connected to pivot
+        if ifprint:
+            print(scan.para_dic[i][0])
+        if len(scan.para_dic[i][0]) == 2:
+            if ifprint:
+                print(scan.para_dic[i][0][1])
+            rotor_atom.append(scan.para_dic[i][0][1])
+
+    print('rotor atoms', rotor_atom)
+    for i in rotor_atom:
+        for j, x in enumerate(freeze_dihdral):
+            if ifprint:
+                print(i, x)
+            if i in x:
+                if ifprint:
+                    print('found dihidral should not freeze')
+                if ifprint:
+                    print(i, x)
+                # freeze_dihedral.pop(j)
+                if j not in remove_dihidral:
+                    remove_dihidral.append(j)
+
+        # some of the bonds might be associated with rotor scan here we remove them.
+        for k, y in enumerate(freeze_bond):
+            if i in y:
+                if ifprint:
+                    print(i, y)
+                if ifprint:
+                    print('found bond should not freeze')
+                    print([int(d[2]), int(d[3])])
+                if y == [int(d[2]), int(d[3])] or y == [int(d[2]), int(d[3])]:
+                    print('freezing bond', y)
+                else:
+                    if k not in remove_bond:
+                        remove_bond.append(k)
+
+    remove_elements(freeze_dihdral, remove_dihidral)
+    remove_elements(freeze_bond, remove_bond)
+
+    # number of dihedral recommend by the algorithm is bit aggressive, so at first we consider unique pivot.
+    freeze_dihdral_reduce = list()
+    if aggressive:
+        return freeze_dihdral, freeze_bond
+    else:
+        for i, d in enumerate(freeze_dihdral):
+            if len(freeze_dihdral_reduce) > 0:
+
+                for j in range(len(freeze_dihdral_reduce)):
+                    #print('length freeze_dihdral_reduce', len(freeze_dihdral_reduce))
+                    if [freeze_dihdral_reduce[j][1], freeze_dihdral_reduce[j][2]] == [int(d[1]), int(d[2])] or [
+                        freeze_dihdral_reduce[j][2], freeze_dihdral_reduce[j][1]] == [int(d[1]), int(d[2])]:
+                        #print('skipping this', d)
+                        break
+                else:
+                    #print('adding this', d)
+                    freeze_dihdral_reduce.append(d)
+
+            else:
+                freeze_dihdral_reduce.append(d)
+
+        return freeze_dihdral_reduce, freeze_bond
