@@ -34,30 +34,19 @@ import string
 #    },
 # }
 servers = {
-    'pharos': {
-        'cluster_soft': 'OGE',  # Oracle Grid Engine
-        'address': 'pharos.mit.edu',
-        'un': 'duminda',
-        'key': '/home/dranasinghe/.ssh/known_hosts',
-        'precedence': 'molpro',
-        'cpus': 48,
-        'memory': 32,
+    'server1': {
+        'cluster_soft': 'OGE',
+        'address': 'server1.host.edu',
+        'un': '<username>',
+        'key': 'path_to_rsa_key',
     },
-    'c3ddb': {
-        'cluster_soft': 'Slurm',  # Simple Linux Utility for Resource Management
-        'address': 'c3ddb01.mit.edu',
-        'un': 'duminda',
-        'key': '/home/dranasinghe/.ssh/id_rsa',
-        'cpus': 16,
-        'memory': 32,
-    },
-    'rmg': {
-        'cluster_soft': 'Slurm',  # Simple Linux Utility for Resource Management
-        'address': 'rmg.mit.edu',
-        'un': 'duminda',
-        'key': '/home/dranasinghe/.ssh/id_rsa',
-        'cpus': 16,
-        'memory': 32,
+    'server2': {
+        'cluster_soft': 'Slurm',
+        'address': 'server2.host.edu',
+        'un': '<username>',
+        'key': 'path_to_rsa_key',
+        'cpus': 48,  # number of cpu's per node, optional (default: 8)
+        'memory': 128,  # amount of memory per node in GB, optional (default: 16)
     },
     'local': {
         'cluster_soft': 'OGE',
@@ -69,10 +58,10 @@ servers = {
 # An ordered list of servers indicates priority
 # Keeping this dictionary empty will cause ARC to scan for software on the servers defined above
 global_ess_settings = {
-    'gaussian': ['c3ddb', 'rmg'],
-    'molpro': 'rmg',
-    'qchem': 'pharos',
-    'onedmin': 'rmg',
+    'gaussian': ['local', 'server2'],
+    'molpro': 'server2',
+    'qchem': 'server1',
+    'onedmin': 'server1',
 }
 
 # List here job types to execute by default
