@@ -62,6 +62,7 @@ global_ess_settings = {
     'molpro': 'server2',
     'qchem': 'server1',
     'onedmin': 'server1',
+    'orca': 'local',
 }
 
 # List here job types to execute by default
@@ -76,7 +77,7 @@ default_job_types = {'conformers': True,      # defaults to True if not specifie
                      'bde': False,            # defaults to False if not specified
                      }
 
-supported_ess = ['gaussian', 'molpro', 'qchem']  # use lowercase when adding new ones
+supported_ess = ['gaussian', 'molpro', 'qchem', 'orca']  # use lowercase when adding new ones
 
 # List here (complete or partial) phrases of methods or basis sets you'd like to associate to specific ESS
 # Avoid ascribing the same phrase to more than one software, this may cause undeterministic assignment of software
@@ -84,7 +85,8 @@ supported_ess = ['gaussian', 'molpro', 'qchem']  # use lowercase when adding new
 levels_ess = {
     'gaussian': ['apfd', 'b3lyp', 'm062x'],
     'molpro': ['ccsd', 'cisd', 'vpz'],
-    'qchem': ['m06-2x']
+    'qchem': ['m06-2x'],
+    'orca': ['dlpno'],
 }
 
 check_status_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat',
@@ -109,13 +111,15 @@ input_filename = {'gaussian': 'input.gjf',
                   'qchem': 'input.in',
                   'molpro': 'input.in',
                   'onedmin': 'input.in',
+                  'orca': 'input.in',
                   }
 
 output_filename = {'gaussian': 'input.log',
                    'qchem': 'output.out',
                    'molpro': 'input.out',
                    'onedmin': 'output.out',
-                   'gromacs': 'output.yml'
+                   'gromacs': 'output.yml',
+                   'orca': 'input.log',
                    }
 
 default_levels_of_theory = {'conformer': 'b3lyp/6-31g(d,p) EmpiricalDispersion=GD3BJ',
