@@ -1,4 +1,4 @@
-# RMG Code of Conduct
+# ARC Code of Conduct
 
 ## Our Pledge
 
