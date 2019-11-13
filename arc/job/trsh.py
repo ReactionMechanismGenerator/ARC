@@ -381,7 +381,7 @@ def trsh_scan_job(label, scan_res, scan, species_scan_lists, methods):
 
 
 def trsh_ess_job(label, level_of_theory, server, job_status, job_type, software, fine, memory_gb,
-                 ess_trsh_methods=None, available_ess=None):
+                 ess_trsh_methods, available_ess=None):
     """
     Troubleshoot issues related to the electronic structure software, such as conversion.
 
