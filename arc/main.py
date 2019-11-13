@@ -900,8 +900,8 @@ class ARC(object):
             qchem = find_executable('qchem')
             if qchem:
                 self.ess_settings['qchem'] = ['local']
-            qchem = find_executable('orca')
-            if qchem:
+            orca = find_executable('orca')
+            if orca:
                 self.ess_settings['orca'] = ['local']
             molpro = find_executable('molpro')
             if molpro:
