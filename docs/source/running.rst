@@ -51,7 +51,7 @@ All the parameters of `arc.main.ARC`__ class are allowed input file keywords.
 Specifying species and reactions lists define :ref:`ARCSpecies <species>` and :ref:`ARCReaction <reaction>`
 object. See ARC's API for a complete and updated list of keywords along with their allowed types.
 
-__ api/main_
+__ api/main.html
 
 
 Additional input file examples are available in the examples folder.
