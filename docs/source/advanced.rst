@@ -17,7 +17,7 @@ See :ref:`the examples <examples>`.
 __ xyz_format_
 
 Specify a particular job type
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 To run ARC with a particular job type, set ``specific_job_type`` to the job type you want.
 Currently, ARC supports the following job types: ``conformers``, ``opt``, ``fine``, ``freq``,
@@ -42,6 +42,18 @@ Specification 1::
 Specification 2::
 
     specific_job_type : bde
+
+Control job memory allocation
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+To specify the amount of memory for all jobs in an ARC project, set ``job_memory`` with positive integer values in GB.
+
+Notice that user can change the total memory per node by setting the value of ``memory`` key in the servers dictionary
+under settings.py. This value will be treated as the maximum allowable memory, and memory-related troubleshooting
+methods will not be allowed to request more than this value.
+
+If ``job_memory`` is not defined, ARC will initialize each job using 14 GB memory by default. In case a job crashes due
+to insufficient memory, ARC will try to resubmit that job asking for a higher memory allocation up to the specified
+maximal node ``memory``.
 
 Using a fine DFT grid for optimization
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

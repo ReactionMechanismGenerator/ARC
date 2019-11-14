@@ -7,6 +7,7 @@ The ARC Job module
 
 import csv
 import datetime
+import math
 import os
 import shutil
 
@@ -49,7 +50,7 @@ class Job(object):
                               (e.g., "2 1 3 5" as a string or [2, 1, 3, 5] as a list of integers).
         pivots (list, optional): The rotor scan pivots, if the job type is scan. Not used directly in these methods,
                                  but used to identify the rotor.
-        memory (int, optional): The total job allocated memory in GB.
+        total_job_memory_gb (int, optional): The total job allocated memory in GB (14 by default).
         comments (str, optional): Job comments (archived, not used).
         trsh (str, optional): A troubleshooting keyword to be used in input files.
         scan_trsh (str, optional): A troubleshooting method for rotor scans.
@@ -80,6 +81,7 @@ class Job(object):
         rotor_index (int): The 0-indexed rotor number (key) in the species.rotors_dict dictionary.
         job_dict (dict, optional): A dictionary to create this object from (used when restarting ARC).
         testing (bool, optional): Whether the object is generated for testing purposes, True if it is.
+        cpu_cores (int): The total number of cpu cores requested for a job.
 
     Attributes:
         project (str): The project's name. Used for naming the directory.
@@ -105,8 +107,18 @@ class Job(object):
         scan_res (int): The rotor scan resolution in degrees.
         software (str): The electronic structure software to be used.
         server_nodes (list): A list of nodes this job was submitted to (for troubleshooting).
-        memory_gb (int): The total job allocated memory in GB (14 by default).
-        memory (int): The total job allocated memory in appropriate units per ESS.
+        cpu_cores (int): The total number of cpu cores requested for a job.
+                         ARC adopts the following naming system to describe computing hardware hierarchy
+                         node > cpu > cpu_cores > cpu_threads
+        input_file_memory (int): The memory ARC writes to job input files in appropriate formats per ESS.
+                                 In software like Gaussian, this varible is total memory for all cpu cores.
+                                 In software like Orca, this varible is memory per cpu core.
+        submit_script_memory (int): The memory ARC writes to submit script in appropriate formats per cluster system.
+                                    In system like Sun Grid Engine, this varible is total memory for all cpu cores.
+                                    In system like Slurm, this varible is memory per cpu core.
+                                    Notice that submit_script_memory > input_file_memory because additional memory is
+                                    needed to execute a job on server properly
+        total_job_memory_gb (int): The total memory ARC specifies for a job in GB.
         method (str): The calculation method (e.g., 'B3LYP', 'CCSD(T)', 'CBS-QB3'...).
         basis_set (str): The basis set (e.g., '6-311++G(d,p)', 'aug-cc-pVTZ'...).
         fine (bool): Whether to use fine geometry optimization parameters.
@@ -152,11 +164,12 @@ class Job(object):
     """
     def __init__(self, project='', ess_settings=None, species_name='', xyz=None, job_type='', level_of_theory='',
                  multiplicity=None, project_directory='', charge=0, conformer=-1, fine=False, shift='', software=None,
-                 is_ts=False, scan=None, pivots=None, memory=14, comments='', trsh='', scan_trsh='', job_dict=None,
-                 ess_trsh_methods=None, bath_gas=None, initial_trsh=None, job_num=None, job_server_name=None,
-                 job_name=None, job_id=None, server=None, initial_time=None, occ=None, max_job_time=120, scan_res=None,
-                 checkfile=None, number_of_radicals=None, conformers=None, radius=None, directed_scan_type=None,
-                 directed_scans=None, directed_dihedrals=None, rotor_index=None, testing=False):
+                 is_ts=False, scan=None, pivots=None, total_job_memory_gb=14, comments='', trsh='', scan_trsh='',
+                 job_dict=None, ess_trsh_methods=None, bath_gas=None, initial_trsh=None, job_num=None,
+                 job_server_name=None, job_name=None, job_id=None, server=None, initial_time=None, occ=None,
+                 max_job_time=120, scan_res=None, checkfile=None, number_of_radicals=None, conformers=None, radius=None,
+                 directed_scan_type=None, directed_scans=None, directed_dihedrals=None, rotor_index=None, testing=False,
+                 cpu_cores=None):
         if job_dict is not None:
             self.from_dict(job_dict)
         else:
@@ -216,6 +229,8 @@ class Job(object):
             self.level_of_theory = level_of_theory.lower()
             self.server = server
             self.software = software
+            self.cpu_cores = cpu_cores
+            self.total_job_memory_gb = total_job_memory_gb
         # allowed job types:
         job_types = ['conformer', 'opt', 'freq', 'optfreq', 'sp', 'composite', 'bde', 'scan', 'directed_scan',
                      'gsm', 'irc', 'ts_guess', 'orbitals', 'onedmin', 'ff_param_fit', 'gromacs']
@@ -259,8 +274,9 @@ class Job(object):
         self.n_atoms = len(self.xyz['symbols']) if self.xyz is not None else None
         self.submit = ''
         self.input = ''
-        self.mem_per_cpu, self.cpus, self.memory_gb, self.memory = None, None, None, None
-        self.set_cpu_and_mem(memory=memory)
+        self.submit_script_memory = None
+        self.input_file_memory = None
+        self.set_cpu_and_mem()
         self.determine_run_time()
 
         self.set_file_paths()
@@ -289,7 +305,8 @@ class Job(object):
         job_dict['xyz'] = xyz_to_str(self.xyz)
         job_dict['fine'] = self.fine
         job_dict['job_status'] = self.job_status
-        job_dict['memory'] = self.memory_gb
+        job_dict['cpu_cores'] = self.cpu_cores
+        job_dict['total_job_memory_gb'] = self.total_job_memory_gb
         job_dict['job_id'] = self.job_id
         job_dict['scan_res'] = self.scan_res
         job_dict['is_ts'] = self.is_ts
@@ -371,7 +388,8 @@ class Job(object):
         self.is_ts = job_dict['is_ts'] if 'is_ts' in job_dict else False
         self.scan = job_dict['scan'] if 'scan' in job_dict else None
         self.pivots = job_dict['pivots'] if 'pivots' in job_dict else list()
-        self.memory = job_dict['memory'] if 'memory' in job_dict else 14
+        self.total_job_memory_gb = job_dict['total_job_memory_gb'] if 'total_job_memory_gb' in job_dict else 14
+        self.cpu_cores = job_dict['cpu_cores'] if 'cpu_cores' in job_dict else None
         self.comments = job_dict['comments'] if 'comments' in job_dict else ''
         self.trsh = job_dict['trsh'] if 'trsh' in job_dict else ''
         self.scan_trsh = job_dict['scan_trsh'] if 'scan_trsh' in job_dict else ''
@@ -430,7 +448,7 @@ class Job(object):
             writer = csv.writer(f, dialect='excel')
             row = [self.job_num, self.project, self.species_name, conformer, self.is_ts, self.charge,
                    self.multiplicity, self.job_type, self.job_name, self.job_id, self.server, self.software,
-                   self.memory, self.method, self.basis_set, self.comments]
+                   self.total_job_memory_gb, self.method, self.basis_set, self.comments]
             writer.writerow(row)
 
     def write_completed_job_to_csv_file(self):
@@ -461,7 +479,7 @@ class Job(object):
                 job_type += ' (fine)'
             row = [self.job_num, self.project, self.species_name, conformer, self.is_ts, self.charge,
                    self.multiplicity, job_type, self.job_name, self.job_id, self.server, self.software,
-                   self.memory, self.method, self.basis_set, self.initial_time, self.final_time, self.run_time,
+                   self.total_job_memory_gb, self.method, self.basis_set, self.initial_time, self.final_time, self.run_time,
                    self.job_status[0], self.job_status[1]['status'], self.ess_trsh_methods, self.comments]
             writer.writerow(row)
 
@@ -488,13 +506,13 @@ class Job(object):
         if self.server.lower() == 'pharos':
             # here we're hard-coding ARC for Pharos, a Green Group server
             # If your server has different node architectures, implement something similar
-            if self.cpus <= 8:
+            if self.cpu_cores <= 8:
                 architecture = '\n#$ -l harpertown'
             else:
                 architecture = '\n#$ -l magnycours'
         try:
             self.submit = submit_scripts[self.server][self.software.lower()].format(
-                name=self.job_server_name, un=un, t_max=t_max, mem_per_cpu=int(self.mem_per_cpu), cpus=self.cpus,
+                name=self.job_server_name, un=un, t_max=t_max, memory=int(self.submit_script_memory), cpus=self.cpu_cores,
                 architecture=architecture, size=size)
         except KeyError:
             submit_scripts_for_printing = dict()
@@ -827,7 +845,7 @@ $end
                                'Selective occ, closed, core, frozen keyword still not implemented.')
             else:
                 try:
-                    self.input = input_files['mrci'].format(memory=self.memory, xyz=xyz_to_str(self.xyz),
+                    self.input = input_files['mrci'].format(memory=self.input_file_memory, xyz=xyz_to_str(self.xyz),
                                                             basis=self.basis_set, spin=self.spin, charge=self.charge,
                                                             trsh=self.trsh)
                 except KeyError:
@@ -835,8 +853,8 @@ $end
                     raise
         else:
             try:
-                self.input = self.input.format(memory=int(self.memory), method=self.method, slash=slash,
-                                               basis=self.basis_set, charge=self.charge, cpus=self.cpus,
+                self.input = self.input.format(memory=int(self.input_file_memory), method=self.method, slash=slash,
+                                               basis=self.basis_set, charge=self.charge, cpus=self.cpu_cores,
                                                multiplicity=self.multiplicity, spin=self.spin, xyz=xyz_to_str(self.xyz),
                                                job_type_1=job_type_1, job_type_2=job_type_2, scan=scan_string,
                                                restricted=restricted, fine=fine, shift=self.shift, trsh=self.trsh,
@@ -1325,44 +1343,46 @@ $end
                     logger.error('Setting it to Molpro')
                     self.software = 'molpro'
 
-    def set_cpu_and_mem(self, memory):
+    def set_cpu_and_mem(self):
         """
-        Set the number of cpu's and the job's memory.
-        self.memory is the actual memory allocated to the ESS.
-        self.mem_per_cpu is the cluster software allocated memory.
-        (self.mem_per_cpu should be slightly larger than self.memory when considering all cpus).
+        Set the amount of cpus and memory based on ESS and cluster software.
         """
-        self.cpus = servers[self.server].get('cpus', 8)  # set to 8 by default
-        max_mem = servers[self.server].get('memory', None)  # max memory per node
-        if max_mem is not None and memory > max_mem * 0.9:
-            logger.warning('The memory for job {0} using {1} ({2} GB) exceeds 90% of the the maximum node memory on '
-                           '{3}. Setting it to 90% * {4} GB.'.format(self.job_name, self.software,
-                                                                     memory, self.server, max_mem))
-            memory = 0.9 * max_mem
-            self.mem_per_cpu = memory * 1024 * 1.05 / self.cpus
-        else:
-            self.mem_per_cpu = memory * 1024 * 1.1 / self.cpus  # The `#SBATCH --mem-per-cpu` directive is in MB
+        self.cpu_cores = 8 if self.cpu_cores is None else servers[self.server].get('cpus', 8)  # set to 8 by default
 
-        self.memory_gb = memory  # store the memory in GB for troubleshooting (when re-running the job)
-        if self.software == 'molpro':
-            # Molpro's memory is per cpu and in MW (mega word; 1 MW ~= 8 MB; 1 GB = 128 MW)
-            self.memory = memory * 128 / self.cpus
-        if self.software == 'terachem':
-            # TeraChem's memory is per cpu and in MW (mega word; 1 MW ~= 8 MB; 1 GB = 128 MW)
-            self.memory = memory * 128 / self.cpus
-        elif self.software == 'gaussian':
-            # Gaussian's memory is in MB, total for all cpus
-            self.memory = memory * 1000
-        elif self.software == 'orca':
-            # Orca's memory is per cpu and in MB
-            self.memory = memory * 1000 / self.cpus
-        elif self.software == 'qchem':
+        max_mem = servers[self.server].get('memory', None)  # max memory per node in GB
+        if max_mem is not None and self.total_job_memory_gb > max_mem * 0.9:
+            logger.warning(f'The memory for job {self.job_name} using {self.software} ({self.total_job_memory_gb} GB) '
+                           f'exceeds 90% of the the maximum node memory on {self.server}. '
+                           f'Setting it to 90% * {max_mem} GB.')
+            self.total_job_memory_gb = 0.9 * max_mem
+            total_submit_script_memory = self.total_job_memory_gb * 1024 * 1.05  # MB
+        else:
+            total_submit_script_memory = self.total_job_memory_gb * 1024 * 1.1  # MB
+
+        # determine amount of memory in submit script based on cluster job scheduling system
+        cluster_software = servers[self.server].get('cluster_soft').lower()
+        if cluster_software in ['oge', 'sge']:
+            # In SGE, `-l h_vmem=5000M` specify the amount of maximum memory required per cpu (all cores) to be 5000 MB.
+            self.submit_script_memory = math.ceil(total_submit_script_memory)  # MB
+        elif cluster_software in ['slurm']:
+            # In Slurm, `#SBATCH --mem-per-cpu={2000}` specify the amount of memory required per cpu core to be 2000 MB.
+            self.submit_script_memory = math.ceil(total_submit_script_memory / self.cpu_cores)  # MB
+
+        # determine amount of memory in job input file based on ESS
+        if self.software.lower() in ['molpro', 'terachem']:
+            # Molpro's and TeraChem's memory is per cpu core and in MW (mega word; 1 MW ~= 8 MB; 1 GB = 128 MW)
+            self.input_file_memory = math.ceil(self.total_job_memory_gb * 128 / self.cpu_cores)
+        elif self.software.lower() in ['gaussian']:
+            # Gaussian's memory is in MB, total for all cpu cores
+            self.input_file_memory = math.ceil(self.total_job_memory_gb * 1024)
+        elif self.software.lower() in ['orca']:
+            # Orca's memory is per cpu core and in MB
+            self.input_file_memory = math.ceil(self.total_job_memory_gb * 1024 / self.cpu_cores)
+        elif self.software.lower() in ['qchem', 'gromacs']:
             # QChem manages its memory automatically, for now ARC will not intervene
             # see http://www.q-chem.com/qchem-website/manual/qchem44_manual/CCparallel.html
-            self.memory = memory  # dummy
-        elif self.software == 'gromacs':
-            # not managing memory for Gromacs
-            self.memory = memory  # dummy
+            # Also not managing memory for Gromacs
+            self.input_file_memory = math.ceil(self.total_job_memory_gb)
 
     def set_file_paths(self):
         """
