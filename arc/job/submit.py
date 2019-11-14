@@ -16,7 +16,7 @@ submit_scripts = {
 #SBATCH -N 1
 #SBATCH -n {cpus}
 #SBATCH --time={t_max}
-#SBATCH --mem-per-cpu {mem_per_cpu}
+#SBATCH --mem-per-cpu={memory}
 
 module add c3ddb/gaussian/09.d01
 which g09
@@ -60,7 +60,7 @@ rm -rf $WorkDir
 #SBATCH -N 1
 #SBATCH -n {cpus}
 #SBATCH --time={t_max}
-#SBATCH --mem-per-cpu {mem_per_cpu}
+#SBATCH --mem-per-cpu={memory}
 
 module add c3ddb/orca/4.1.2
 module add c3ddb/openmpi/3.1.3
@@ -104,7 +104,7 @@ rm -rf $WorkDir
 #SBATCH -N 1
 #SBATCH -n {cpus}
 #SBATCH --time={t_max}
-#SBATCH --mem-per-cpu={mem_per_cpu}
+#SBATCH --mem-per-cpu={memory}
 
 which 16
 
@@ -146,7 +146,7 @@ rm -rf $WorkDir
 #SBATCH -N 1
 #SBATCH -n {cpus}
 #SBATCH --time={t_max}
-#SBATCH --mem-per-cpu={mem_per_cpu}
+#SBATCH --mem-per-cpu={memory}
 
 export PATH=/opt/molpro/molprop_2015_1_linux_x86_64_i8/bin:$PATH
 
@@ -201,6 +201,7 @@ python mdconf.py -s {size}
 #$ -N {name}
 #$ -l long{architecture}
 #$ -l h_rt={t_max}
+#$ -l h_vmem={memory}M
 #$ -pe singlenode {cpus}
 #$ -cwd
 #$ -o out.txt
@@ -226,6 +227,7 @@ rm -r /scratch/{un}/{name}
 #$ -N {name}
 #$ -l long{architecture}
 #$ -l h_rt={t_max}
+#$ -l h_vmem={memory}M
 #$ -pe singlenode {cpus}
 #$ -l h=!node60.cluster
 #$ -cwd
