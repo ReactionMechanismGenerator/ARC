@@ -976,5 +976,9 @@ def translate_to_center_of_mass(xyz):
     x = [coord[0] - cm_x for coord in xyz['coords']]
     y = [coord[1] - cm_y for coord in xyz['coords']]
     z = [coord[2] - cm_z for coord in xyz['coords']]
+    for i in range(len(x)):
+        x[i] = x[i] if abs(x[i]) > 1e-10 else 0.0
+        y[i] = y[i] if abs(y[i]) > 1e-10 else 0.0
+        z[i] = z[i] if abs(z[i]) > 1e-10 else 0.0
     translated_coords = tuple((xi, yi, zi) for xi, yi, zi in zip(x, y, z))
     return xyz_from_data(coords=translated_coords, symbols=xyz['symbols'], isotopes=xyz['isotopes'])
