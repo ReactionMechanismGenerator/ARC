@@ -679,7 +679,7 @@ class Scheduler(object):
                                                             heavy_atoms=self.species_dict[label].number_of_heavy_atoms)
         job = Job(project=self.project, ess_settings=self.ess_settings, species_name=label, xyz=xyz, job_type=job_type,
                   level_of_theory=level_of_theory, multiplicity=species.multiplicity, charge=species.charge, fine=fine,
-                  shift=shift, software=software, is_ts=species.is_ts, memory=memory, trsh=trsh,
+                  shift=shift, software=software, is_ts=species.is_ts, total_job_memory_gb=memory, trsh=trsh,
                   ess_trsh_methods=ess_trsh_methods, scan=scan, pivots=pivots, occ=occ, initial_trsh=self.initial_trsh,
                   project_directory=self.project_directory, max_job_time=max_job_time, scan_trsh=scan_trsh,
                   scan_res=scan_res, conformer=conformer, checkfile=checkfile, bath_gas=self.bath_gas,
@@ -768,7 +768,7 @@ class Scheduler(object):
             label (str): The species label.
         """
         self.run_job(label=label, xyz=job.xyz, level_of_theory=job.level_of_theory, job_type=job.job_type,
-                     fine=job.fine, software=job.software, shift=job.shift, trsh=job.trsh, memory=job.memory_gb,
+                     fine=job.fine, software=job.software, shift=job.shift, trsh=job.trsh, memory=job.total_job_memory_gb,
                      conformer=job.conformer, ess_trsh_methods=job.ess_trsh_methods, scan=job.scan,
                      pivots=job.pivots, occ=job.occ, scan_trsh=job.scan_trsh, scan_res=job.scan_res,
                      max_job_time=job.max_job_time, confs=job.conformers, radius=job.radius,
@@ -2453,8 +2453,8 @@ class Scheduler(object):
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
             memory, shift, dont_rerun = trsh_ess_job(label=label, level_of_theory=level_of_theory, server=job.server,
                                                      job_status=job.job_status[1], job_type=job.job_type,
-                                                     software=job.software, fine=job.fine, memory_gb=job.memory_gb,
-                                                     num_heavy_atoms=num_heavy_atoms,
+                                                     num_heavy_atoms=num_heavy_atoms, software=job.software,
+                                                     fine=job.fine, memory_gb=job.total_job_memory_gb,
                                                      ess_trsh_methods=job.ess_trsh_methods,
                                                      available_ess=list(self.ess_settings.keys()))
         for output_error in output_errors:
