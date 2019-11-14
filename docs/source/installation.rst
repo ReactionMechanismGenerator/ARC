@@ -67,9 +67,15 @@ The first two directives are only required if you'd like ARC to access remote se
     mandatory.
   * A remote server has no limitations for naming. ``cluster_soft``, ``address``, username (``un``), and ``key``
     (the path to the local RSA SSH key) are mandatory.
-  * Optional parameters for both local and remote servers are ``cpus`` and ``memory``. The number of CPUs ARC will use
-    when spawning ESS jobs defaults to 8 unless otherwise specified under ``cpus``.
-    Likewise, the default memory is 16 GB. ARC will not use more than 90% of the node memory specified under ``memory``.
+  * Optional parameters for both local and remote servers are ``cpus`` and ``memory``. The number of CPU cores ARC
+    will use when spawning ESS jobs defaults to 8 unless otherwise specified under ``cpus``.
+    The ``memory`` parameter stands for the maximum amount of memory available to a node. By default, ARC will use 14 GB
+    of memory for each ESS job. If a job crashes due to insufficient memory, ARC will automatically re-run the job with
+    increased memory. However, ARC will not use more than 90% of the maximum node memory specified under ``memory``.
+  * Although ARC currently does not allocate computing resources dynamically based on system size or ESS, the user can
+    manually control memory specifications for each project. See :ref:`Advanced Features <advanced>` for details.
+  * In certain ESS, the maximum number of CPU cores allowed for a calculation depends on system size. If a job crashes
+    for this reason, ARC will attempt to re-run the job with fewer CPU cores.
 
 - Update the submit scripts in `ARC/arc/job/submit.py
   <https://github.com/ReactionMechanismGenerator/ARC/blob/master/arc/job/submit.py>`_
