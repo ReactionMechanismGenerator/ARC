@@ -6,6 +6,7 @@ This module contains unit tests of the arc.job.job module
 """
 
 import datetime
+import math
 import os
 import shutil
 import unittest
@@ -43,6 +44,7 @@ class TestJob(unittest.TestCase):
         final_time = job_dict['final_time']
         expected_dict = {'initial_time': initial_time,
                          'final_time': final_time,
+                         'cpu_cores': 8,
                          'ess_settings': {'gaussian': ['server1', 'server2'],
                                           'molpro': [u'server2'], 'onedmin': [u'server1'], 'qchem': [u'server1']},
                          'species_name': 'tst_spc',
@@ -56,7 +58,7 @@ class TestJob(unittest.TestCase):
                                         {'status': 'initializing', 'keywords': list(), 'error': '', 'line': ''}],
                          'job_type': 'opt',
                          'level_of_theory': 'b3lyp/6-31+g(d)',
-                         'memory': 14,
+                         'total_job_memory_gb': 14,
                          'multiplicity': 1,
                          'project': 'arc_project_for_testing_delete_after_usage3',
                          'project_directory': os.path.join(arc_path, 'Projects', 'project_test'),
@@ -129,7 +131,7 @@ class TestJob(unittest.TestCase):
                    project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'qchem')
 
-        self.assertEqual(job0.memory_gb, 14)
+        self.assertEqual(job0.total_job_memory_gb, 14)
         self.assertEqual(job0.max_job_time, 120)
 
     def test_bath_gas(self):
@@ -194,54 +196,62 @@ class TestJob(unittest.TestCase):
 
     def test_set_cpu_and_mem(self):
         """Test assigning number of cpu's and memory"""
-        self.job1.cpus = None
-        self.job1.memory = None
-        self.job1.mem_per_cpu = None
+        self.job1.cpu_cores = None
+        self.job1.total_job_memory_gb = 14
+        self.job1.input_file_memory = None
+        self.job1.submit_script_memory = None
         self.job1.server = 'server2'
         self.job1.software = 'molpro'
-        self.job1.set_cpu_and_mem(memory=14)
-        self.assertEqual(self.job1.cpus, 48)
-        self.assertEqual(self.job1.memory, 14 * 128 / self.job1.cpus)
-        self.job1.server = 'server1'
-        self.job1.set_cpu_and_mem(memory=14)
-        self.assertEqual(self.job1.cpus, 8)
-        self.assertEqual(self.job1.memory, 14 * 128 / self.job1.cpus)
+        self.job1.set_cpu_and_mem()
+        self.assertEqual(self.job1.cpu_cores, 8)
+        expected_memory = math.ceil(14 * 128 / 8)
+        self.assertEqual(self.job1.input_file_memory, expected_memory)
 
-        self.job1.cpus = None
-        self.job1.memory = None
-        self.job1.mem_per_cpu = None
+        self.job1.server = 'server1'
+        self.job1.cpu_cores = None
+        self.job1.set_cpu_and_mem()
+        self.assertEqual(self.job1.cpu_cores, 8)
+        expected_memory = math.ceil(14 * 128 / 8)
+        self.assertEqual(self.job1.input_file_memory, expected_memory)
+
+        self.job1.cpu_cores = None
+        self.job1.input_file_memory = None
+        self.job1.submit_script_memory = None
         self.job1.server = 'server2'
         self.job1.software = 'terachem'
-        self.job1.set_cpu_and_mem(memory=14)
-        self.assertEqual(self.job1.cpus, 48)
-        self.assertEqual(self.job1.memory, 14 * 128 / self.job1.cpus)
+        self.job1.set_cpu_and_mem()
+        self.assertEqual(self.job1.cpu_cores, 8)
+        expected_memory = math.ceil(14 * 128 / 8)
+        self.assertEqual(self.job1.input_file_memory, expected_memory)
 
-        self.job1.cpus = None
-        self.job1.memory = None
-        self.job1.mem_per_cpu = None
+        self.job1.cpu_cores = None
+        self.job1.input_file_memory = None
+        self.job1.submit_script_memory = None
         self.job1.server = 'server2'
         self.job1.software = 'gaussian'
-        self.job1.set_cpu_and_mem(memory=14)
-        self.assertEqual(self.job1.cpus, 48)
-        self.assertEqual(self.job1.memory, 14 * 1000)
+        self.job1.set_cpu_and_mem()
+        self.assertEqual(self.job1.cpu_cores, 8)
+        expected_memory = math.ceil(14 * 1024)
+        self.assertEqual(self.job1.input_file_memory, expected_memory)
 
-        self.job1.cpus = None
-        self.job1.memory = None
-        self.job1.mem_per_cpu = None
+        self.job1.cpu_cores = None
+        self.job1.input_file_memory = None
+        self.job1.submit_script_memory = None
         self.job1.server = 'server2'
         self.job1.software = 'orca'
-        self.job1.set_cpu_and_mem(memory=14)
-        self.assertEqual(self.job1.cpus, 48)
-        self.assertEqual(self.job1.memory, 14 * 1000 / self.job1.cpus)
+        self.job1.set_cpu_and_mem()
+        self.assertEqual(self.job1.cpu_cores, 8)
+        expected_memory = math.ceil(14 * 1024 / 8)
+        self.assertEqual(self.job1.input_file_memory, expected_memory)
 
-        self.job1.cpus = None
-        self.job1.memory = None
-        self.job1.mem_per_cpu = None
+        self.job1.cpu_cores = None
+        self.job1.input_file_memory = None
+        self.job1.submit_script_memory = None
         self.job1.server = 'server2'
         self.job1.software = 'qchem'
-        self.job1.set_cpu_and_mem(memory=14)
-        self.assertEqual(self.job1.cpus, 48)
-        self.assertEqual(self.job1.memory, 14)
+        self.job1.set_cpu_and_mem()
+        self.assertEqual(self.job1.cpu_cores, 8)
+        self.assertEqual(self.job1.input_file_memory, 14)
 
     def test_set_file_paths(self):
         """Test setting file paths"""
