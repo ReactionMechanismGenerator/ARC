@@ -7,6 +7,7 @@ The ARC Job module
 
 import csv
 import datetime
+import math
 import os
 import shutil
 
@@ -1342,44 +1343,46 @@ $end
                     logger.error('Setting it to Molpro')
                     self.software = 'molpro'
 
-    def set_cpu_and_mem(self, memory):
+    def set_cpu_and_mem(self):
         """
-        Set the number of cpu's and the job's memory.
-        self.memory is the actual memory allocated to the ESS.
-        self.mem_per_cpu is the cluster software allocated memory.
-        (self.mem_per_cpu should be slightly larger than self.memory when considering all cpus).
+        Set the amount of cpus and memory based on ESS and cluster software.
         """
-        self.cpus = servers[self.server].get('cpus', 8)  # set to 8 by default
-        max_mem = servers[self.server].get('memory', None)  # max memory per node
-        if max_mem is not None and memory > max_mem * 0.9:
-            logger.warning('The memory for job {0} using {1} ({2} GB) exceeds 90% of the the maximum node memory on '
-                           '{3}. Setting it to 90% * {4} GB.'.format(self.job_name, self.software,
-                                                                     memory, self.server, max_mem))
-            memory = 0.9 * max_mem
-            self.mem_per_cpu = memory * 1024 * 1.05 / self.cpus
-        else:
-            self.mem_per_cpu = memory * 1024 * 1.1 / self.cpus  # The `#SBATCH --mem-per-cpu` directive is in MB
+        self.cpu_cores = 8 if self.cpu_cores is None else servers[self.server].get('cpus', 8)  # set to 8 by default
 
-        self.memory_gb = memory  # store the memory in GB for troubleshooting (when re-running the job)
-        if self.software == 'molpro':
-            # Molpro's memory is per cpu and in MW (mega word; 1 MW ~= 8 MB; 1 GB = 128 MW)
-            self.memory = memory * 128 / self.cpus
-        if self.software == 'terachem':
-            # TeraChem's memory is per cpu and in MW (mega word; 1 MW ~= 8 MB; 1 GB = 128 MW)
-            self.memory = memory * 128 / self.cpus
-        elif self.software == 'gaussian':
-            # Gaussian's memory is in MB, total for all cpus
-            self.memory = memory * 1000
-        elif self.software == 'orca':
-            # Orca's memory is per cpu and in MB
-            self.memory = memory * 1000 / self.cpus
-        elif self.software == 'qchem':
+        max_mem = servers[self.server].get('memory', None)  # max memory per node in GB
+        if max_mem is not None and self.total_job_memory_gb > max_mem * 0.9:
+            logger.warning(f'The memory for job {self.job_name} using {self.software} ({self.total_job_memory_gb} GB) '
+                           f'exceeds 90% of the the maximum node memory on {self.server}. '
+                           f'Setting it to 90% * {max_mem} GB.')
+            self.total_job_memory_gb = 0.9 * max_mem
+            total_submit_script_memory = self.total_job_memory_gb * 1024 * 1.05  # MB
+        else:
+            total_submit_script_memory = self.total_job_memory_gb * 1024 * 1.1  # MB
+
+        # determine amount of memory in submit script based on cluster job scheduling system
+        cluster_software = servers[self.server].get('cluster_soft').lower()
+        if cluster_software in ['oge', 'sge']:
+            # In SGE, `-l h_vmem=5000M` specify the amount of maximum memory required per cpu (all cores) to be 5000 MB.
+            self.submit_script_memory = math.ceil(total_submit_script_memory)  # MB
+        elif cluster_software in ['slurm']:
+            # In Slurm, `#SBATCH --mem-per-cpu={2000}` specify the amount of memory required per cpu core to be 2000 MB.
+            self.submit_script_memory = math.ceil(total_submit_script_memory / self.cpu_cores)  # MB
+
+        # determine amount of memory in job input file based on ESS
+        if self.software.lower() in ['molpro', 'terachem']:
+            # Molpro's and TeraChem's memory is per cpu core and in MW (mega word; 1 MW ~= 8 MB; 1 GB = 128 MW)
+            self.input_file_memory = math.ceil(self.total_job_memory_gb * 128 / self.cpu_cores)
+        elif self.software.lower() in ['gaussian']:
+            # Gaussian's memory is in MB, total for all cpu cores
+            self.input_file_memory = math.ceil(self.total_job_memory_gb * 1024)
+        elif self.software.lower() in ['orca']:
+            # Orca's memory is per cpu core and in MB
+            self.input_file_memory = math.ceil(self.total_job_memory_gb * 1024 / self.cpu_cores)
+        elif self.software.lower() in ['qchem', 'gromacs']:
             # QChem manages its memory automatically, for now ARC will not intervene
             # see http://www.q-chem.com/qchem-website/manual/qchem44_manual/CCparallel.html
-            self.memory = memory  # dummy
-        elif self.software == 'gromacs':
-            # not managing memory for Gromacs
-            self.memory = memory  # dummy
+            # Also not managing memory for Gromacs
+            self.input_file_memory = math.ceil(self.total_job_memory_gb)
 
     def set_file_paths(self):
         """
