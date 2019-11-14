@@ -380,8 +380,8 @@ def trsh_scan_job(label, scan_res, scan, species_scan_lists, methods):
     return scan_trsh, scan_res
 
 
-def trsh_ess_job(label, level_of_theory, server, job_status, job_type, software, fine, memory_gb,
-                 ess_trsh_methods=None, available_ess=None):
+def trsh_ess_job(label, level_of_theory, server, job_status, job_type, software, fine, memory_gb, num_heavy_atoms,
+                 ess_trsh_methods, available_ess=None):
     """
     Troubleshoot issues related to the electronic structure software, such as conversion.
 
@@ -492,7 +492,9 @@ def trsh_ess_job(label, level_of_theory, server, job_status, job_type, software,
                 type=job_type, software=software, label=label))
             ess_trsh_methods.append('int=(Acc2E=14)')
             trsh_keyword = 'int=(Acc2E=14)'
-        elif 'cbs-qb3' not in ess_trsh_methods and level_of_theory != 'cbs-qb3' and 'scan' not in job_type:
+        # suggest spwaning a cbs-qb3 job if there are not many heavy atoms
+        elif 'cbs-qb3' not in ess_trsh_methods and level_of_theory != 'cbs-qb3' \
+                and 'scan' not in job_type and num_heavy_atoms <= 10:
             # try running CBS-QB3, which is relatively robust.
             logger.info('Troubleshooting {type} job in {software} for {label} using CBS-QB3'.format(
                 type=job_type, software=software, label=label))
@@ -582,8 +584,9 @@ def trsh_ess_job(label, level_of_theory, server, job_status, job_type, software,
     elif 'molpro' in software:
         if 'Memory' in job_status['keywords']:
             # Increase memory allocation.
-            # job_status will be for example `'errored: additional memory (mW) required: 996.31'`.
-            # The number is the ADDITIONAL memory required
+            # molpro gives something like `'errored: additional memory (mW) required: 996.31'`.
+            # job_status standardizes the format to be:  `'Additional memory required: {0} MW'`
+            # The number is the ADDITIONAL memory required in GB
             ess_trsh_methods.append('memory')
             add_mem = float(job_status['error'].split()[-2])  # parse Molpro's requirement in MW
             add_mem = int(np.ceil(add_mem / 100.0)) * 100  # round up to the next hundred

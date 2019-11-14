@@ -97,5 +97,87 @@ class TestTrsh(unittest.TestCase):
         self.assertIn(' ? Basis library exhausted', line)  # line includes '\n'
 
 
+    def test_trsh_ess_job(self):
+        """Test the trsh_ess_job() function"""
+
+        #### test gaussian ####
+        label = 'ethanol'
+        level_of_theory = 'ccsd/vdz'
+        server = 'server1'
+        job_type = 'opt'
+        software = 'gaussian'
+        fine = False
+        memory_gb = 16
+        num_heavy_atoms = 2
+        ess_trsh_methods = ['change_node', 'int=(Acc2E=14)']
+
+        ## gaussian: test 1 ##
+        job_status = {'keywords': ['CheckFile']}
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword,\
+        memory, shift, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status, job_type, software,
+                                                        fine, memory_gb,num_heavy_atoms, ess_trsh_methods)
+
+        self.assertTrue(remove_checkfile)
+        self.assertEqual(software, 'gaussian')
+        self.assertEqual(memory, 16)
+        self.assertFalse(couldnt_trsh)
+
+        ## gaussian: test 2 ##
+        job_status = {'keywords': ['InternalCoordinateError']}
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+        memory, shift, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status, job_type, software,
+                                                        fine, memory_gb, num_heavy_atoms, ess_trsh_methods)
+
+        self.assertFalse(remove_checkfile)
+        self.assertEqual(trsh_keyword, 'opt=(cartesian,nosymm)')
+
+        ## gaussian: test 3 ##
+        job_status = {'keywords': ['tmp']}
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+        memory, shift, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status, job_type, software,
+                                                        fine, memory_gb, num_heavy_atoms, ess_trsh_methods)
+
+        self.assertIn('cbs-qb3', ess_trsh_methods)
+        self.assertEqual(level_of_theory, 'cbs-qb3')
+        self.assertEqual(job_type, 'composite')
+
+        #### test qchem ####
+        software = 'qchem'
+        ess_trsh_methods = ['change_node']
+        job_status = {'keywords': ['MaxOptCycles', 'Unconverged']}
+        ## qchem: test 1 ##
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+        memory, shift, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status, job_type, software,
+                                                        fine, memory_gb, num_heavy_atoms, ess_trsh_methods)
+        self.assertIn('max_cycles', ess_trsh_methods)
+
+        ## qchem: test 2 ##
+        job_status = {'keywords': ['SCF']}
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+        memory, shift, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status, job_type, software,
+                                                        fine, memory_gb, num_heavy_atoms, ess_trsh_methods)
+        self.assertIn('DIIS_GDM', ess_trsh_methods)
+
+        #### test molpro ####
+        software = 'molpro'
+
+        ## molpro: test ##
+        path = os.path.join(self.base_path['molpro'], 'insufficient_memory.out')
+        label = 'TS'
+        level_of_theory = 'mrci/aug-cc-pV(T+d)Z'
+        server = 'server1'
+        status, keywords, error, line = trsh.determine_ess_status(output_path=path, species_label='TS', job_type='sp')
+        job_status = {'keywords': keywords, 'error': error}
+        job_type = 'sp'
+        fine = True
+        memory_gb = 32.0
+        ess_trsh_methods = ['change_node']
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+        memory, shift, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status, job_type, software,
+                                                        fine, memory_gb, num_heavy_atoms, ess_trsh_methods)
+
+        self.assertIn('memory', ess_trsh_methods)
+        self.assertAlmostEqual(memory, 222.15625)
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
