@@ -316,6 +316,13 @@ class TestJob(unittest.TestCase):
         self.assertIn('mdp.mdp', self.job1.additional_files_to_upload[5]['remote'])
         self.assertIn('mdp.mdp', self.job1.additional_files_to_upload[5]['local'])
 
+    def test_format_max_job_time(self):
+        """Test that the maximum job time can be formatted properly, including days, minutes, and seconds"""
+        test_job = Job.__new__(Job)
+        test_job.max_job_time = 59.888
+        self.assertEqual(test_job.format_max_job_time('days'), '2-11:53:16')
+        self.assertEqual(test_job.format_max_job_time('hours'), '59:53:16')
+
     @classmethod
     def tearDownClass(cls):
         """
