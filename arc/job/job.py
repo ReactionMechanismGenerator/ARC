@@ -66,7 +66,7 @@ class Job(object):
         server (str, optional): Server's name.
         initial_time (datetime, optional): The date-time this job was initiated.
         occ (int, optional): The number of occupied orbitals (core + val) from a molpro CCSD sp calc.
-        max_job_time (int, optional): The maximal allowed job time on the server in hours.
+        max_job_time (float, optional): The maximal allowed job time on the server in hours (can be fractional).
         scan_res (int, optional): The rotor scan resolution in degrees.
         checkfile (str, optional): The path to a previous Gaussian checkfile to be used in the current job.
         number_of_radicals (int, optional): The number of radicals (inputted by the user, ARC won't attempt to
@@ -154,7 +154,7 @@ class Job(object):
         scan_trsh (str): A troubleshooting method for rotor scans.
         occ (int): The number of occupied orbitals (core + val) from a molpro CCSD sp calc.
         project_directory (str): The path to the project directory.
-        max_job_time (int): The maximal allowed job time on the server in hours.
+        max_job_time (float): The maximal allowed job time on the server in hours (can be fractional).
         bath_gas (str): A bath gas. Currently used in OneDMin to calc L-J parameters.
                         Allowed values are He, Ne, Ar, Kr, H2, N2, O2.
         directed_scans (list): Entries are lists of four-atom dihedral scan indices to constrain during a directed scan.
@@ -483,6 +483,31 @@ class Job(object):
                    self.job_status[0], self.job_status[1]['status'], self.ess_trsh_methods, self.comments]
             writer.writerow(row)
 
+    def format_max_job_time(self, time_format):
+        """
+        Convert the max_job_time attribute into the format supported by the server submission script
+
+        Args:
+            time_format (str): Either 'days' (e.g., 5-0:00:00) or 'hours' (e.g., 120:00:00)
+
+        Returns:
+            str: The formatted maximum job time string
+        """
+        t_delta = datetime.timedelta(hours=self.max_job_time)
+        if time_format == 'days':
+            # e.g., 5-0:00:00
+            t_max = '{0}-{1}'.format(t_delta.days, str(datetime.timedelta(seconds=t_delta.seconds)))
+        elif time_format == 'hours':
+            # e.g., 120:00:00
+            h, s = divmod(t_delta.seconds, 3600)
+            h += t_delta.days * 24
+            t_max = '{0}:{1}'.format(h, ':'.join(str(datetime.timedelta(seconds=s)).split(':')[1:]))
+        else:
+            raise JobError('Could not determine format for maximal job time.\n Format is determined by {0}, but '
+                           'got {1} for {2}'.format(t_max_format, servers[self.server]['cluster_soft'], self.server))
+
+        return t_max
+
     def write_submit_script(self):
         """
         Write the Job's submit script.
@@ -492,16 +517,7 @@ class Job(object):
         if self.max_job_time > 9999 or self.max_job_time <= 0:
             logger.debug('Setting max_job_time to 120 hours')
             self.max_job_time = 120
-        if t_max_format[servers[self.server]['cluster_soft']] == 'days':
-            # e.g., 5-0:00:00
-            d, h = divmod(self.max_job_time, 24)
-            t_max = '{0}-{1}:00:00'.format(d, h)
-        elif t_max_format[servers[self.server]['cluster_soft']] == 'hours':
-            # e.g., 120:00:00
-            t_max = '{0}:00:00'.format(self.max_job_time)
-        else:
-            raise JobError('Could not determine format for maximal job time.\n Format is determined by {0}, but '
-                           'got {1} for {2}'.format(t_max_format, servers[self.server]['cluster_soft'], self.server))
+        t_max = self.format_max_job_time(time_format=t_max_format[servers[self.server]['cluster_soft']])
         architecture = ''
         if self.server.lower() == 'pharos':
             # here we're hard-coding ARC for Pharos, a Green Group server

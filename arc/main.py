@@ -74,7 +74,7 @@ class ARC(object):
         t_count (int, optional): The number of temperature points between t_min and t_max for kinetics computations.
         verbose (int, optional): The logging level to use.
         project_directory (str, optional): The path to the project directory.
-        max_job_time (int, optional): The maximal allowed job time on the server in hours.
+        max_job_time (float, optional): The maximal allowed job time on the server in hours (can be fractional).
         allow_nonisomorphic_2d (bool, optional): Whether to optimize species even if they do not have a 3D conformer
                                                  that is isomorphic to the 2D graph representation.
         job_memory (int, optional): The total allocated job memory in GB (14 by default to be lower than 90% * 16 GB).
@@ -131,7 +131,7 @@ class ARC(object):
         t_min (tuple): The minimum temperature for kinetics computations, e.g., (500, str('K')).
         t_max (tuple): The maximum temperature for kinetics computations, e.g., (3000, str('K')).
         t_count (int): The number of temperature points between t_min and t_max for kinetics computations.
-        max_job_time (int): The maximal allowed job time on the server in hours.
+        max_job_time (float): The maximal allowed job time on the server in hours (can be fractional).
         rmgdb (RMGDatabase): The RMG database object.
         allow_nonisomorphic_2d (bool): Whether to optimize species even if they do not have a 3D conformer that is
                                        isomorphic to the 2D graph representation.

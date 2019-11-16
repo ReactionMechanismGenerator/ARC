@@ -109,7 +109,7 @@ class Scheduler(object):
         bath_gas (str, optional): A bath gas. Currently used in OneDMin to calc L-J parameters.
                                   Allowed values are He, Ne, Ar, Kr, H2, N2, O2.
         restart_dict (dict, optional): A restart dictionary parsed from a YAML restart file.
-        max_job_time (int, optional): The maximal allowed job time on the server in hours.
+        max_job_time (float, optional): The maximal allowed job time on the server in hours (can be fractional).
         allow_nonisomorphic_2d (bool, optional): Whether to optimize species even if they do not have a 3D conformer
                                                  that is isomorphic to the 2D graph representation.
         memory (int, optional): The total allocated job memory in GB (14 by default).
@@ -142,7 +142,7 @@ class Scheduler(object):
         save_restart (bool): Whether to start saving a restart file. ``True`` only after all species are loaded
                              (otherwise saves a partial file and may cause loss of information).
         restart_path (str): Path to the `restart.yml` file to be saved.
-        max_job_time (int): The maximal allowed job time on the server in hours.
+        max_job_time (float): The maximal allowed job time on the server in hours (can be fractional).
         testing (bool): Used for internal ARC testing (generating the object w/o executing it).
         rmgdb (RMGDatabase): The RMG database object.
         allow_nonisomorphic_2d (bool): Whether to optimize species even if they do not have a 3D conformer that is
