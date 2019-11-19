@@ -8,7 +8,7 @@ project: BDE_example_ibuprofen
 
 specific_job_type: bde
 
-level_of_theory: apfd/svp
+level_of_theory: apfd/def2svp
 model_chemistry: bmk/cbsb7 # a dummy model_chemistry required for Arkane processing
                            # this setting will not affect the BDE result which is a relative calculation
 use_bac: false
