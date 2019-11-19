@@ -13,6 +13,13 @@ class ConformerError(Exception):
     pass
 
 
+class ConverterError(Exception):
+    """
+    An exception raised when converting molecular representations.
+    """
+    pass
+
+
 class InputError(Exception):
     """
     An exception raised when parsing an input file for any module.
@@ -121,5 +128,12 @@ class TSError(Exception):
 class VectorsError(Exception):
     """
     An exception class for exceptional behavior that occurs while working with vectors.
+    """
+    pass
+
+
+class ZMatError(Exception):
+    """
+    An exception class for exceptional behavior that occurs while working with z matrices.
     """
     pass
