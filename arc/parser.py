@@ -9,9 +9,9 @@ import numpy as np
 import os
 
 from arkane.exceptions import LogError
-from arkane.gaussian import GaussianLog
-from arkane.molpro import MolproLog
-from arkane.qchem import QChemLog
+from arkane.logs.gaussian import GaussianLog
+from arkane.logs.molpro import MolproLog
+from arkane.logs.qchem import QChemLog
 from arkane.util import determine_qm_software
 
 from arc.common import get_logger
