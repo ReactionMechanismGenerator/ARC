@@ -19,7 +19,7 @@ gaussian:
                 'scf=(tight,direct) int=finegrid irc=(rcfc,reverse,maxpoints=100,stepsize=10) geom=check' for irc r
     scan: '\nD 3 1 5 8 S 36 10.000000' (with the line break)
     restricted: '' or 'u' for restricted / unrestricted
-    `iop(2/9=2000)` makes Gaussian print the geometry nn eee input orientation even for molecules with more
+    `iop(2/9=2000)` makes Gaussian print the geometry in the input orientation even for molecules with more
       than 50 atoms (important so it matches the hessian, and so that Arkane can parse the geometry)
     job_options_keywords: input keywords that control the job
 
