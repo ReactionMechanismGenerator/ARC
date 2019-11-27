@@ -50,6 +50,7 @@ from rdkit import Chem
 from rdkit.Chem.rdchem import EditableMol as RDMol
 
 import rmgpy.molecule.group as gr
+from rmgpy.exceptions import ILPSolutionError, ResonanceError
 from rmgpy.molecule.converter import to_ob_mol
 from rmgpy.molecule.molecule import Atom, Bond, Molecule
 from rmgpy.molecule.element import C as C_ELEMENT, H as H_ELEMENT, F as F_ELEMENT, Cl as Cl_ELEMENT, I as I_ELEMENT
@@ -154,7 +155,18 @@ def generate_conformers(mol_list, label, xyzs=None, torsions=None, tops=None, ch
     combination_threshold = combination_threshold or COMBINATION_THRESHOLD
 
     if isinstance(mol_list, Molecule):
-        mol_list = [mol for mol in mol_list.generate_resonance_structures() if mol.reactive]
+        # try generating resonance structures, but strictly keep atom order
+        success = False
+        try:
+            new_mol_list = mol_list.copy(deep=True).generate_resonance_structures(keep_isomorphic=False,
+                                                                                  filter_structures=True)
+            success = converter.order_atoms_in_mol_list(ref_mol=mol_list[0].copy(deep=True), mol_list=new_mol_list)
+        except (ValueError, ILPSolutionError, ResonanceError) as e:
+            logger.warning(f'Could not generate resonance structures for species {label}. Got: {e}')
+        if success:
+            mol_list = new_mol_list
+        else:
+            mol_list = [mol_list]
     if not isinstance(mol_list, list):
         logger.error('The `mol_list` argument must be a list, got {0}'.format(type(mol_list)))
         return None
@@ -373,7 +385,7 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
                                                 torsion_angles=None, multiple_sampling_points_dict=None,
                                                 wells_dict=None, de_threshold=None, plot_path=False):
     """
-    Iteratively modify dihedrals in the lowest conformer (each iteration deduce a new lowest conformer),
+    Iteratively modify dihedrals in the lowest conformer (each iteration deduces a new lowest conformer),
     until convergence.
 
     Args:
@@ -2037,7 +2049,7 @@ def get_top_element_count(mol, top):
     Returns the element count for the molecule considering only the atom indices in ``top``.
 
     Args:
-        mol (Molecule): THe molecule to consider.
+        mol (Molecule): The molecule to consider.
         top (list): The atom indices to consider.
 
     Returns:

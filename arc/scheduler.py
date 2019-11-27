@@ -232,7 +232,7 @@ class Scheduler(object):
                 if family_text:
                     logger.info('({0})'.format(family_text))
                 if rxn.rmg_reaction is not None:
-                    display(rxn.rmg_reaction)
+                    display(rxn.rmg_reaction.copy(deep=True))
                 rxn.determine_rxn_charge()
                 rxn.determine_rxn_multiplicity()
                 rxn.ts_label = rxn.ts_label if rxn.ts_label is not None else 'TS{0}'.format(rxn.index)
@@ -970,17 +970,19 @@ class Scheduler(object):
             for i in range(self.species_dict[label].number_of_rotors):
                 scan = self.species_dict[label].rotors_dict[i]['scan']
                 pivots = self.species_dict[label].rotors_dict[i]['pivots']
-                coords = xyz_to_coords_list(self.species_dict[label].get_xyz())
-                v1 = [c1 - c2 for c1, c2 in zip(coords[scan[0] - 1], coords[scan[1] - 1])]
-                v2 = [c2 - c1 for c1, c2 in zip(coords[scan[1] - 1], coords[scan[2] - 1])]
-                v3 = [c1 - c2 for c1, c2 in zip(coords[scan[2] - 1], coords[scan[3] - 1])]
-                angle1, angle2 = get_angle(v1, v2, units='degs'), get_angle(v2, v3, units='degs')
-                if any([abs(angle - 180.0) < 0.15 for angle in [angle1, angle2]]):
-                    # this is not a torsional mode, invalidate rotor
-                    self.species_dict[label].rotors_dict[i]['success'] = False
-                    self.species_dict[label].rotors_dict[i]['invalidation_reason'] = \
-                        f'not a torsional mode (angles = {angle1:.2f}, {angle2:.2f} degrees)'
-                    return
+                if not isinstance(scan[0], list):
+                    # check that a 1D rotors is not linear
+                    coords = xyz_to_coords_list(self.species_dict[label].get_xyz())
+                    v1 = [c1 - c2 for c1, c2 in zip(coords[scan[0] - 1], coords[scan[1] - 1])]
+                    v2 = [c2 - c1 for c1, c2 in zip(coords[scan[1] - 1], coords[scan[2] - 1])]
+                    v3 = [c1 - c2 for c1, c2 in zip(coords[scan[2] - 1], coords[scan[3] - 1])]
+                    angle1, angle2 = get_angle(v1, v2, units='degs'), get_angle(v2, v3, units='degs')
+                    if any([abs(angle - 180.0) < 0.15 for angle in [angle1, angle2]]):
+                        # this is not a torsional mode, invalidate rotor
+                        self.species_dict[label].rotors_dict[i]['success'] = False
+                        self.species_dict[label].rotors_dict[i]['invalidation_reason'] = \
+                            f'not a torsional mode (angles = {angle1:.2f}, {angle2:.2f} degrees)'
+                        return
                 directed_scan_type = self.species_dict[label].rotors_dict[i]['directed_scan_type'] \
                     if 'directed_scan_type' in self.species_dict[label].rotors_dict[i] else ''
                 if not self.species_dict[label].rotors_dict[i]['scan_path']:
@@ -1750,9 +1752,8 @@ class Scheduler(object):
             rxn_str = ''
             if self.species_dict[label].is_ts:
                 rxn_str = ' of reaction {0}'.format(self.species_dict[label].rxn_label)
-            logger.info('\nOptimized geometry for {label}{rxn} at {level}:\n{xyz}'.format(
-                label=label, rxn=rxn_str, level=job.level_of_theory,
-                xyz=xyz_to_str(xyz_dict=self.species_dict[label].final_xyz)))
+            logger.info(f'\nOptimized geometry for {label}{rxn_str} at {job.level_of_theory}:\n'
+                        f'{xyz_to_str(xyz_dict=self.species_dict[label].final_xyz)}')
             if not job.is_ts:
                 plotter.draw_structure(species=self.species_dict[label], project_directory=self.project_directory)
             else:
