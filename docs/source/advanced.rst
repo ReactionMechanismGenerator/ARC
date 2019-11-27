@@ -109,44 +109,44 @@ ARC also supports ND (N dimensional, N >= 1) rotor scans. There are seven differ
 - B. Derive the geometry from the previous point (continuous constrained optimization)
 
 Each of the options above can be either "nested" (considering all ND dihedral combinations) or "diagonal"
-(resulting in a unique 1D rotor scan across several dimensions). THe last option is to allow the ESS to control
-the ND scan, which is similar to option B.
+(resulting in a unique 1D rotor scan across several dimensions). The seventh option is to allow the ESS to control
+the ND scan, which is similar in principal to option B.
 
 The optional primary keys are:
 
-- `brute_force_sp`
-- `brute_force_opt`
-- `cont_opt`
+- ``brute_force_sp``
+- ``brute_force_opt``
+- ``cont_opt``
 
 The brute force methods will generate all the geometries in advance and submit all relevant jobs simultaneously.
 The continuous method will wait for the previous job to terminate, and use its geometry as the initial guess for
 the next job.
 
-Another set of three keys is allowed, adding `_diagonal` to each of the above keys. the secondary keys are therefore:
+Another set of three keys is allowed, adding ``_diagonal`` to each of the above keys. the secondary keys are therefore:
 
-- `brute_force_sp_diagonal`
-- `brute_force_opt_diagonal`
-- `cont_opt_diagonal`
+- ``brute_force_sp_diagonal``
+- ``brute_force_opt_diagonal``
+- ``cont_opt_diagonal``
 
-Specifying `_diagonal` will increment all the respective dihedrals together, resulting in a 1D scan instead of
-an ND scan. Values are nested lists. Each value is a list where the entries are either pivot lists (e.g., [1,5])
-or lists of pivot lists (e.g., [[1,5], [6,8]]), or a mix (e.g., [[4,8], [[6,9], [3, 4]]). The requested directed
-scan type will be executed separately for each list entry in the value. A list entry that contains only two pivots
+Specifying ``_diagonal`` will increment all the respective dihedrals together, resulting in a 1D scan instead of
+an ND scan. Values are nested lists. Each value is a list where the entries are either pivot lists (e.g., ``[1, 5]``)
+or lists of pivot lists (e.g., ``[[1, 5], [6, 8]]``), or a mix (e.g., ``[[4, 8], [[6, 9], [3, 4]]``). The requested
+directed scan type will be executed separately for each list entry. A list entry that contains only two pivots
 will result in a 1D scan, while a list entry with N pivots will consider all of them, and will result in an ND scan
-if '_diagonal' is not specified.
+(if ``_diagonal`` is not specified).
 
-ARC will generate geometries using the ``rotor_scan_resolution`` argument in settings.py
+ARC will generate geometries using the ``rotor_scan_resolution`` argument in ``settings.py``.
 
-Note: An 'all' string entry is also allowed in the value list, triggering a directed internal rotation scan for all
-torsions in the molecule. If 'all' is specified within a second level list, then all the dihedrals will be considered
+Note: An ``'all'`` string entry is also allowed in the value list, triggering a directed internal rotation scan for all
+torsions in the molecule. If ``'all'`` is specified within a second level list, then all the dihedrals will be considered
 together. Currently ARC does not automatically identify torsions to be treated as ND, and this attribute must be
 specified by the user. An additional supported key is 'ess', in which case ARC will allow the ESS to take care of
 spawning the ND continuous constrained optimizations.
 
-To execute ND rotor scans, first set the ```rotors`` job type to ``True``.
+To execute ND rotor scans, first set the ``rotors`` job type to ``True``.
 Next, set the ``directed_rotors`` attribute of the relevant species. Below are several examples.
 
-To run all dihedral scans of a species separately (each as 1D)::
+To run all dihedral scans of a species separately using brute force sp (each as 1D)::
 
     spc1 = ARCSpecies(label='some_label', smiles='species_smiles', directed_rotors={'brute_force_sp': ['all']})
 
@@ -154,18 +154,19 @@ To run all dihedral scans of a species as a conjugated scan (ND, N = the number 
 
     spc1 = ARCSpecies(label='some_label', smiles='species_smiles', directed_rotors={'cont_opt': [['all']]})
 
-Note in the above example the change in list level (``all`` is either within one or two nested lists).
+Note the change in list level (``all`` is either within one or two nested lists) in the above examples.
 
 To run specific dihedrals as ND (here all 2D combinations for a species with 3 torsions)::
 
     spc1 = ARCSpecies(label='C4O2', smiles='[O]CCCC=O', xyz=xyz,
                       directed_rotors={'brute_force_opt': [[[5, 3], [3, 4]], [[3, 4], [4, 6]], [[5, 3], [4, 6]]]})
 
+
 - Note: ND rotors are still **not** incorporated into the molecular partition function,
-so currently will not affect thermo or rates.
+  so currently will not affect thermo or rates.
 - Note: Any torsion defined as part of an ND rotor scan will **not** be spawned for that species as a separate 1D scan.
 - Warning: Job arrays have not been incorporated into ARC yet. Spawning ND rotor scans will result in **many**
-individual jobs being submit to your server queue system.
+  individual jobs being submit to your server queue system.
 
 
 Electronic Structure Software Settings
