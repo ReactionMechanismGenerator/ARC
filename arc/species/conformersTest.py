@@ -2272,6 +2272,19 @@ Cl      2.38846685    0.24054066    0.55443324
         expected_top_element_count = {('C', -1): 3, ('H', -1): 3, ('H', 2): 1, ('H', 3): 1, ('N', -1): 1, ('S', -1): 1}
         self.assertEqual(top_element_count, expected_top_element_count)
 
+    def test_preserve_atom_order(self):
+        """Test that atom order is being preserved when generating conformers"""
+        spc1 = ARCSpecies(label='formic_acid', smiles='O=CO')
+        lowest_confs = conformers.generate_conformers(mol_list=spc1.mol_list, label=spc1.label, charge=spc1.charge,
+                                                      multiplicity=spc1.multiplicity, print_logs=False,
+                                                      num_confs_to_return=1)
+        for mol_atom, conf_atom in zip(spc1.mol.atoms, lowest_confs[0]['xyz']['symbols']):
+            self.assertEqual(mol_atom.element.symbol, conf_atom)
+
+        spc1.generate_conformers(confs_to_dft=1, plot_path=None)
+        for mol_atom, conf_atom in zip(spc1.mol.atoms, spc1.conformers[0]['symbols']):
+            self.assertEqual(mol_atom.element.symbol, conf_atom)
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
