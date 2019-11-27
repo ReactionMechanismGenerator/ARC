@@ -23,9 +23,7 @@ import yaml
 
 import numpy as np
 
-from arkane.logs.gaussian import GaussianLog
-from arkane.logs.molpro import MolproLog
-from arkane.logs.qchem import QChemLog
+from arkane.ess import GaussianLog, MolproLog, QChemLog
 from arkane.util import determine_qm_software
 from rmgpy.molecule.element import get_element
 from rmgpy.qm.qmdata import QMData
