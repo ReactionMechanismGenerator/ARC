@@ -970,17 +970,19 @@ class Scheduler(object):
             for i in range(self.species_dict[label].number_of_rotors):
                 scan = self.species_dict[label].rotors_dict[i]['scan']
                 pivots = self.species_dict[label].rotors_dict[i]['pivots']
-                coords = xyz_to_coords_list(self.species_dict[label].get_xyz())
-                v1 = [c1 - c2 for c1, c2 in zip(coords[scan[0] - 1], coords[scan[1] - 1])]
-                v2 = [c2 - c1 for c1, c2 in zip(coords[scan[1] - 1], coords[scan[2] - 1])]
-                v3 = [c1 - c2 for c1, c2 in zip(coords[scan[2] - 1], coords[scan[3] - 1])]
-                angle1, angle2 = get_angle(v1, v2, units='degs'), get_angle(v2, v3, units='degs')
-                if any([abs(angle - 180.0) < 0.15 for angle in [angle1, angle2]]):
-                    # this is not a torsional mode, invalidate rotor
-                    self.species_dict[label].rotors_dict[i]['success'] = False
-                    self.species_dict[label].rotors_dict[i]['invalidation_reason'] = \
-                        f'not a torsional mode (angles = {angle1:.2f}, {angle2:.2f} degrees)'
-                    return
+                if not isinstance(scan[0], list):
+                    # check that a 1D rotors is not linear
+                    coords = xyz_to_coords_list(self.species_dict[label].get_xyz())
+                    v1 = [c1 - c2 for c1, c2 in zip(coords[scan[0] - 1], coords[scan[1] - 1])]
+                    v2 = [c2 - c1 for c1, c2 in zip(coords[scan[1] - 1], coords[scan[2] - 1])]
+                    v3 = [c1 - c2 for c1, c2 in zip(coords[scan[2] - 1], coords[scan[3] - 1])]
+                    angle1, angle2 = get_angle(v1, v2, units='degs'), get_angle(v2, v3, units='degs')
+                    if any([abs(angle - 180.0) < 0.15 for angle in [angle1, angle2]]):
+                        # this is not a torsional mode, invalidate rotor
+                        self.species_dict[label].rotors_dict[i]['success'] = False
+                        self.species_dict[label].rotors_dict[i]['invalidation_reason'] = \
+                            f'not a torsional mode (angles = {angle1:.2f}, {angle2:.2f} degrees)'
+                        return
                 directed_scan_type = self.species_dict[label].rotors_dict[i]['directed_scan_type'] \
                     if 'directed_scan_type' in self.species_dict[label].rotors_dict[i] else ''
                 if not self.species_dict[label].rotors_dict[i]['scan_path']:
