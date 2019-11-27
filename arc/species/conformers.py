@@ -1448,11 +1448,12 @@ def determine_top_group_indices(mol, atom1, atom2, index=1):
         for atom3 in atom_list_to_explore1:
             top.append(mol.vertices.index(atom3) + index)
             for atom4 in atom3.edges.keys():
-                if atom4.is_hydrogen():
-                    # append H w/o further exploring
-                    top.append(mol.vertices.index(atom4) + index)
-                elif atom4 not in explored_atom_list and atom4 not in atom_list_to_explore2:
-                    atom_list_to_explore2.append(atom4)  # explore it further
+                if atom4 not in explored_atom_list and atom4 not in atom_list_to_explore2:
+                    if atom4.is_hydrogen():
+                        # append H w/o further exploring
+                        top.append(mol.vertices.index(atom4) + index)
+                    else:
+                        atom_list_to_explore2.append(atom4)  # explore it further
             explored_atom_list.append(atom3)  # mark as explored
         atom_list_to_explore1, atom_list_to_explore2 = atom_list_to_explore2, []
     return top, not atom2.is_hydrogen()
