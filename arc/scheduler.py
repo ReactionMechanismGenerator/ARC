@@ -232,7 +232,7 @@ class Scheduler(object):
                 if family_text:
                     logger.info('({0})'.format(family_text))
                 if rxn.rmg_reaction is not None:
-                    display(rxn.rmg_reaction)
+                    display(rxn.rmg_reaction.copy(deep=True))
                 rxn.determine_rxn_charge()
                 rxn.determine_rxn_multiplicity()
                 rxn.ts_label = rxn.ts_label if rxn.ts_label is not None else 'TS{0}'.format(rxn.index)
@@ -1752,9 +1752,8 @@ class Scheduler(object):
             rxn_str = ''
             if self.species_dict[label].is_ts:
                 rxn_str = ' of reaction {0}'.format(self.species_dict[label].rxn_label)
-            logger.info('\nOptimized geometry for {label}{rxn} at {level}:\n{xyz}'.format(
-                label=label, rxn=rxn_str, level=job.level_of_theory,
-                xyz=xyz_to_str(xyz_dict=self.species_dict[label].final_xyz)))
+            logger.info(f'\nOptimized geometry for {label}{rxn_str} at {job.level_of_theory}:\n'
+                        f'{xyz_to_str(xyz_dict=self.species_dict[label].final_xyz)}')
             if not job.is_ts:
                 plotter.draw_structure(species=self.species_dict[label], project_directory=self.project_directory)
             else:

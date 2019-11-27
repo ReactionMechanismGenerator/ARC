@@ -701,7 +701,7 @@ class ARC(object):
             else:
                 logger.info('Considering species: {0}'.format(species.label))
                 if species.mol is not None:
-                    display(species.mol)
+                    display(species.mol.copy(deep=True))
         logger.info('\n')
         for rxn in self.arc_rxn_list:
             if not isinstance(rxn, ARCReaction):
