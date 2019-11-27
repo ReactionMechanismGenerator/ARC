@@ -88,7 +88,7 @@ def get_dihedral(v1, v2, v3, units='degs'):
 
 def calculate_distance(coords, atoms, index=0):
     """
-    Calculate an angle.
+    Calculate a distance.
 
     Args:
         coords (list, tuple): The array-format or tuple-format coordinates.
@@ -107,9 +107,17 @@ def calculate_distance(coords, atoms, index=0):
         raise VectorsError(f'distance atom list must be of length two, got {len(atoms)}')
     if len(set(atoms)) < 2:
         raise VectorsError(f'some atoms are repetitive: {atoms}')
-    atoms = [a - index for a in atoms]  # convert 1-index to 0-index
+    new_atoms = list()
+    for atom in atoms:
+        if isinstance(atom, str) and 'X' in atom:
+            new_atoms.append(int(atom[1:]))
+        else:
+            new_atoms.append(atom)
+    if not all([isinstance(a, int) for a in new_atoms]):
+        raise VectorsError(f'all entries in atoms must be integers, got: {new_atoms} ({[type(a) for a in new_atoms]})')
+    new_atoms = [a - index for a in new_atoms]  # convert 1-index to 0-index
     coords = np.asarray(coords, dtype=np.float32)
-    vector = coords[atoms[1]] - coords[atoms[0]]
+    vector = coords[new_atoms[1]] - coords[new_atoms[0]]
     return get_vector_length(vector)
 
 
@@ -135,10 +143,18 @@ def calculate_angle(coords, atoms, index=0, units='degs'):
         raise VectorsError(f'angle atom list must be of length three, got {len(atoms)}')
     if len(set(atoms)) < 3:
         raise VectorsError(f'some atoms are repetitive: {atoms}')
-    atoms = [a - index for a in atoms]  # convert 1-index to 0-index
+    new_atoms = list()
+    for atom in atoms:
+        if isinstance(atom, str) and 'X' in atom:
+            new_atoms.append(int(atom[1:]))
+        else:
+            new_atoms.append(atom)
+    if not all([isinstance(a, int) for a in new_atoms]):
+        raise VectorsError(f'all entries in atoms must be integers, got: {new_atoms} ({[type(a) for a in new_atoms]})')
+    new_atoms = [a - index for a in new_atoms]  # convert 1-index to 0-index
     coords = np.asarray(coords, dtype=np.float32)
-    v1 = coords[atoms[1]] - coords[atoms[0]]
-    v2 = coords[atoms[1]] - coords[atoms[2]]
+    v1 = coords[new_atoms[1]] - coords[new_atoms[0]]
+    v2 = coords[new_atoms[1]] - coords[new_atoms[2]]
     return get_angle(v1, v2, units=units)
 
 
@@ -164,11 +180,20 @@ def calculate_dihedral_angle(coords, torsion, index=0, units='degs'):
         raise VectorsError(f'torsion atom list must be of length four, got {len(torsion)}')
     if len(set(torsion)) < 4:
         raise VectorsError(f'some indices in torsion are repetitive: {torsion}')
-    torsion = [t - index for t in torsion]  # convert 1-index to 0-index if needed
+    new_torsion = list()
+    for atom in torsion:
+        if isinstance(atom, str) and 'X' in atom:
+            new_torsion.append(int(atom[1:]))
+        else:
+            new_torsion.append(atom)
+    if not all([isinstance(t, int) for t in new_torsion]):
+        raise VectorsError(f'all entries in torsion must be integers, got: {new_torsion} '
+                           f'({[type(t) for t in new_torsion]})')
+    new_torsion = [t - index for t in new_torsion]  # convert 1-index to 0-index if needed
     coords = np.asarray(coords, dtype=np.float32)
-    v1 = coords[torsion[1]] - coords[torsion[0]]
-    v2 = coords[torsion[2]] - coords[torsion[1]]
-    v3 = coords[torsion[3]] - coords[torsion[2]]
+    v1 = coords[new_torsion[1]] - coords[new_torsion[0]]
+    v2 = coords[new_torsion[2]] - coords[new_torsion[1]]
+    v3 = coords[new_torsion[3]] - coords[new_torsion[2]]
     return get_dihedral(v1, v2, v3, units=units)
 
 
