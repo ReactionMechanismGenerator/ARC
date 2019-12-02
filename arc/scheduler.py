@@ -1371,7 +1371,7 @@ class Scheduler(object):
             confs = conformers.determine_dihedrals(confs, torsions)
             new_conformers = conformers.deduce_new_conformers(label=label, conformers=confs, torsions=torsions,
                                                               tops=tops, mol_list=self.species_dict[label].mol_list,
-                                                              plot_path=False)
+                                                              plot_path=False)[0]
             new_confs_path = os.path.join(self.project_directory, 'calcs', 'Species', label,
                                           'ff_param_fit', 'new_conformers.yml')  # list of lists
             coords = [new_conf['xyz'] for new_conf in new_conformers]
