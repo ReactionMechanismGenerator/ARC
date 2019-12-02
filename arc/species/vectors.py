@@ -169,7 +169,7 @@ def calculate_dihedral_angle(coords, torsion, index=0, units='degs'):
         units (str, optional): The desired units, either 'rads' for radians, or 'degs' for degrees.
 
     Returns:
-        float: The dihedral angle.
+        float: The dihedral angle in a 0-360 degrees range.
 
     Raises:
         VectorsError: If ``index`` is out of range, or ``torsion`` is of wrong length or has repeating indices.
