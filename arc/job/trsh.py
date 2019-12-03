@@ -17,6 +17,7 @@ from arc.job.ssh import SSHClient
 from arc.settings import servers, delete_command, list_available_nodes_command, submit_filename, \
     inconsistency_ab, inconsistency_az, maximum_barrier, rotor_scan_resolution
 from arc.species.converter import xyz_from_data
+from arc.species.species import determine_rotor_symmetry
 
 
 logger = get_logger()
@@ -830,14 +831,25 @@ def scan_quality_check(label, pivots, energies, scan_res=rotor_scan_resolution, 
     # 3. Check the barrier height
     if (np.max(energies) - np.min(energies)) > maximum_barrier:
         # The barrier for the internal rotation is higher than `maximum_barrier`
-        invalidate = True
-        invalidation_reason = 'The rotor scan has a barrier of {0} kJ/mol, which is higher than the maximal ' \
-                              'barrier for rotation ({1} kJ/mol)'.format(
-                               np.max(energies) - np.min(energies), maximum_barrier)
-        message = 'Rotor scan of {label} between pivots {pivots} has a barrier ' \
-                  'larger than {max_barrier:.2f} kJ/mol. Invalidating rotor.'.format(
-                   label=label, pivots=pivots, max_barrier=maximum_barrier)
-        logger.warning(message)
-        return invalidate, invalidation_reason, message, actions
+        num_wells = determine_rotor_symmetry(label=label, pivots=pivots, rotor_path='', energies=energies,
+                                             return_num_wells=True)[-1]
+        if num_wells == 1:
+            invalidate = True
+            invalidation_reason = 'The rotor scan has a barrier of {0} kJ/mol, which is higher than the maximal ' \
+                                  'barrier for rotation ({1} kJ/mol)'.format(
+                                   np.max(energies) - np.min(energies), maximum_barrier)
+            message = 'Rotor scan of {label} between pivots {pivots} has a barrier ' \
+                      'larger than {max_barrier:.2f} kJ/mol. Invalidating rotor.'.format(
+                       label=label, pivots=pivots, max_barrier=maximum_barrier)
+            logger.warning(message)
+            return invalidate, invalidation_reason, message, actions
+        else:
+            logger.warning(f'The maximal barrier for rotor {pivots} of {label} is '
+                           f'{(np.max(energies) - np.min(energies))} kJ/mol, which is higher than the set threshold '
+                           f'of {maximum_barrier} kJ/mol. Since this mode when treated as torsion has {num_wells}, '
+                           f'this mode is not invalidated: treating it as a vibrational mode will be less accurate than'
+                           f'the a hindered rotor treatment, since the entropy contribution from the population of '
+                           f'this species at the higher wells will not be taken into account. NOT invalidating this '
+                           f'torsional mode.')
 
     return invalidate, invalidation_reason, message, actions
