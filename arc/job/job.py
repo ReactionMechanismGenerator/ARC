@@ -992,17 +992,15 @@ $end
         Execute the Job.
         """
         if self.fine:
-            logger.info('Running job {name} for {label} (fine opt)'.format(
-                name=self.job_name, label=self.species_name))
+            logger.info(f'Running job {self.job_name} for {self.species_name} (fine opt)')
         elif self.directed_dihedrals is not None and self.directed_scans is not None:
             dihedrals = ['{0:.2f}'.format(dihedral) for dihedral in self.directed_dihedrals]
-            logger.info('Running job {name} for {label} (pivots: {pivots}, dihedrals: {dihedrals})'.format(
-                name=self.job_name, label=self.species_name, pivots=self.directed_scans, dihedrals=dihedrals))
+            logger.info(f'Running job {self.job_name} for {self.species_name} (pivots: {self.directed_scans}, '
+                        f'dihedrals: {dihedrals})')
         elif self.pivots:
-            logger.info('Running job {name} for {label} (pivots: {pivots})'.format(
-                name=self.job_name, label=self.species_name, pivots=self.pivots))
+            logger.info(f'Running job {self.job_name} for {self.species_name} (pivots: {self.pivots})')
         else:
-            logger.info('Running job {name} for {label}'.format(name=self.job_name, label=self.species_name))
+            logger.info(f'Running job {self.job_name} for {self.species_name}')
         logger.debug('writing submit script...')
         self.write_submit_script()
         logger.debug('writing input file...')
