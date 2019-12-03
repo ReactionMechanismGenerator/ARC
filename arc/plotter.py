@@ -819,7 +819,8 @@ def plot_torsion_angles(torsion_angles, torsions_sampling_points=None, wells_dic
     return num_comb
 
 
-def plot_1d_rotor_scan(angles=None, energies=None, results=None, path=None, pivots=None, comment='', units='degrees'):
+def plot_1d_rotor_scan(angles=None, energies=None, results=None, path=None, scan=None, comment='', units='degrees',
+                       original_dihedral=None, label=None):
     """
     Plots a 1D rotor PES for energy vs. angles. Either ``angles`` and ``energies`` or ``results`` must be given.
 
@@ -828,15 +829,18 @@ def plot_1d_rotor_scan(angles=None, energies=None, results=None, path=None, pivo
         energies (list, tuple, np.array, optional): The energies in kJ/mol.
         results (dict, optional): The results dictionary, dihedrals are assumed to be in degrees (not radians).
         path (str, optional): The folder path for saving the rotor scan image and comments.
-        pivots (list, tuple, optional): The pivotal atoms of the scan.
+        scan (list, tuple, optional): The pivotal atoms of the scan.
         comment (str, optional): Reason for invalidating this rotor.
         units (str, optional): The ``angle`` units, either 'degrees' or 'radians'.
+        original_dihedral (float, optional): The actual dihedral angle of this torsion before the scan.
+        label (str, optional): The species label.
 
     Raises:
         InputError: If neither `angles`` and ``energies`` nor ``results`` were given.
     """
     if (angles is None or energies is None) and results is None:
-        raise InputError('Either angles and energies or results must be given')
+        raise InputError(f'Either angles and energies or results must be given, got:\nangles={angles},'
+                         f'\nenergies={energies},\nresults={results}')
     if results is not None:
         energies = np.zeros(shape=(len(results['directed_scan'].keys())), dtype=np.float64)
         for i, key in enumerate(results['directed_scan'].keys()):
@@ -850,20 +854,26 @@ def plot_1d_rotor_scan(angles=None, energies=None, results=None, path=None, pivo
         if units == 'radians':
             angles = angles * 180 / np.pi  # convert radians to degree
         energies = np.array(energies, np.float64)  # in kJ/mol
+    if isinstance(original_dihedral, list) and len(original_dihedral) == 1:
+        original_dihedral = original_dihedral[0]
     marker_color, line_color = plt.cm.viridis([0.1, 0.9])
     plt.figure(figsize=(4, 3), dpi=120)
     plt.subplot(1, 1, 1)
     plt.plot(angles, energies, '.-', markerfacecolor=marker_color,
              markeredgecolor=marker_color, color=line_color)
-    plt.xlabel('Dihedral angle (degrees)')
+    plt.xlabel('Dihedral angle increment (degrees)')
     min_angle = int(np.ceil(min(angles) / 10.0)) * 10
     plt.xlim = (min_angle, min_angle + 360)
     plt.xticks(np.arange(min_angle, min_angle + 361, step=60))
     plt.ylabel('Electronic energy (kJ/mol)')
+    if label is not None:
+        original_dihedral_str = f'from {original_dihedral} deg' if original_dihedral is not None else ''
+        plt.title(f'{label} 1D scan of {scan}{original_dihedral_str}')
     plt.tight_layout()
     plt.show()
 
-    if path is not None and pivots is not None:
+    if path is not None and scan is not None:
+        pivots = scan[1:3]
         if not os.path.exists(path):
             os.makedirs(path)
         if comment:

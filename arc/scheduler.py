@@ -1394,7 +1394,9 @@ class Scheduler(object):
                                     label, rotor_dict['pivots'], trshed_points))
                 rotor_path = os.path.join(self.project_directory, 'output', folder_name, label, 'rotors')
                 if len(results['scans']) == 1:  # plot 1D rotor
-                    plotter.plot_1d_rotor_scan(results=results, path=rotor_path)
+                    plotter.plot_1d_rotor_scan(
+                        results=results, path=rotor_path, scan=rotor_dict['scan'], label=label,
+                        original_dihedral=self.species_dict[label].rotors_dict[rotor_dict_index]['original_dihedrals'])
                 elif len(results['scans']) == 2:  # plot 2D rotor
                     plotter.plot_2d_rotor_scan(results=results, path=rotor_path)
                 else:
@@ -2081,7 +2083,8 @@ class Scheduler(object):
             folder_name = 'rxns' if job.is_ts else 'Species'
             rotor_path = os.path.join(self.project_directory, 'output', folder_name, job.species_name, 'rotors')
             plotter.plot_1d_rotor_scan(angles=angles, energies=energies, path=rotor_path,
-                                       pivots=job.pivots, comment=message)
+                                       scan=job.scan, comment=message, label=label,
+                                       original_dihedral=self.species_dict[label].rotors_dict[i]['original_dihedrals'])
         # Save the Restart dictionary
         self.save_restart_dict()
 
