@@ -2017,9 +2017,10 @@ class Scheduler(object):
                     logger.error(message)
                     break
                 invalidate, invalidation_reason, message, actions = scan_quality_check(
-                    label=label, pivots=job.pivots, energies=energies, scan_res=job.scan_res)
+                    label=label, pivots=job.pivots, energies=energies, scan_res=job.scan_res,
+                    used_methods=self.species_dict[label].rotors_dict[i]['trsh_methods'])
 
-                if actions:
+                if len(actions):
                     # the rotor scan is problematic, troubleshooting is required
                     if 'change conformer' in actions:
                         # a lower conformation was found
@@ -2041,20 +2042,16 @@ class Scheduler(object):
                             self.run_opt_job(label)  # run opt on the new initial_xyz with the desired dihedral
                         else:
                             # The conformer is wrong, and changing the dihedral resulted in a non-isomorphic species.
-                            self.output[label]['errors'] += 'A lower conformer was found for {0} via a torsion mode, ' \
-                                                            'but it is not isomorphic with the 2D graph ' \
-                                                            'representation {1}. Not calculating this species.'.format(
-                                                             label, self.species_dict[label].mol.to_smiles())
+                            self.output[label]['errors'] += \
+                                f'A lower conformer was found for {label} via a torsion mode, but it is not ' \
+                                f'isomorphic with the 2D graph representation ' \
+                                f'{self.species_dict[label].mol.to_smiles()}. Not calculating this species.'
                             self.output[label]['conformers'] += 'Unconverged'
                             self.output[label]['convergence'] = False
 
-                    methods_to_try = [method for method in actions
-                                      if method not in self.species_dict[label].rotors_dict[i]['trsh_methods']]
-                    if len(methods_to_try):
                         # apply the troubleshooting methods in the `actions` list if they weren't already tried out
-                        logger.info('Trying to troubleshoot rotor {0} of {1} using {2}...'.format(
-                            job.pivots, label, methods_to_try))
-                        self.species_dict[label].rotors_dict[i]['trsh_methods'].extend(methods_to_try)
+                        logger.info(f'Trying to troubleshoot rotor {job.pivots} of {label} using {actions}...')
+                        self.species_dict[label].rotors_dict[i]['trsh_methods'].append(actions)
                         self.troubleshoot_scan_job(job=job, methods=actions)
 
                 if not invalidate:
@@ -2360,14 +2357,14 @@ class Scheduler(object):
             methods (list): The troubleshooting method/s to try. Optional values: 'freeze', 'inc_res'.
         """
         label = job.species_name
-        if 'troubleshoot_scan_job' in job.ess_trsh_methods:
-            logger.error('Will not troubleshoot a rotor scan for {0} more than once.'.format(label))
+        scan_trsh_str = '_'.join([str(method) for method in methods])
+        if scan_trsh_str in job.ess_trsh_methods:
+            logger.error(f'Will not troubleshoot a rotor scan for {label} more than once with the exact '
+                         f'same methods ({scan_trsh_str}).')
         else:
             species_scan_lists = [rotor_dict['scan'] for rotor_dict in self.species_dict[label].rotors_dict.values()]
             scan_trsh, scan_res = trsh_scan_job(label=label, scan_res=job.scan_res, scan=job.scan,
                                                 species_scan_lists=species_scan_lists, methods=methods)
-
-            job.ess_trsh_methods.append('troubleshoot_scan_job')
             self.run_job(label=label, xyz=job.xyz, level_of_theory=job.level_of_theory, job_type='scan',
                          scan=job.scan, pivots=job.pivots, scan_trsh=scan_trsh, scan_res=scan_res)
 

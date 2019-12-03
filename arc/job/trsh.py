@@ -361,7 +361,7 @@ def trsh_scan_job(label, scan_res, scan, species_scan_lists, methods):
         TrshError: If troubleshooted dihedral is not found.
     """
     if methods is None:
-        raise TrshError('Called troubleshoot_scan_job() with no method.')
+        raise TrshError('Expected to get a list of methods, got None.')
     scan_trsh = ''
     if 'freeze' in methods:
         if scan not in species_scan_lists:
@@ -748,7 +748,7 @@ def trsh_job_on_server(server, job_name, job_id, job_server_status, remote_path,
         return None, True
 
 
-def scan_quality_check(label, pivots, energies, scan_res=rotor_scan_resolution):
+def scan_quality_check(label, pivots, energies, scan_res=rotor_scan_resolution, used_methods=None):
     """
     Checks the scan's quality:
     - Whether the initial and final points are consistent
@@ -761,7 +761,8 @@ def scan_quality_check(label, pivots, energies, scan_res=rotor_scan_resolution):
         label (str): The species label.
         pivots (list): The rotor pivots.
         energies (list): The scan energies in kJ/mol.
-        scan_res (float): The scan resolution in degrees.
+        scan_res (float, optional): The scan resolution in degrees.
+        used_methods (list, optional): Troubleshooting methods already tried out.
 
     Returns:
         invalidate (bool): Whether to invalidate this rotor, ``True`` to invalidate.
@@ -775,6 +776,7 @@ def scan_quality_check(label, pivots, energies, scan_res=rotor_scan_resolution):
     message, invalidation_reason = '', ''
     invalidate = False
     actions = list()
+    used_methods = used_methods or list()
     energies = np.array(energies, np.float64)
 
     # 1. Check rotor scan curve
@@ -783,13 +785,10 @@ def scan_quality_check(label, pivots, energies, scan_res=rotor_scan_resolution):
         # initial and final points differ by more than `inconsistency_az` kJ/mol.
         # seems like this rotor broke the conformer. Invalidate
         invalidate = True
-        invalidation_reason = 'initial and final points are inconsistent by more than {0:.2f} ' \
-                              'kJ/mol'.format(inconsistency_az)
-        message = 'Rotor scan of {label} between pivots {pivots} is inconsistent by more ' \
-                  'than {incons_az:.2f} kJ/mol between initial and final positions. ' \
-                  'Invalidating rotor.\nenergies[0] = {e_first}, energies[-1] = {e_last}'.format(
-                   label=label, pivots=pivots, incons_az=inconsistency_az,
-                   e_first=energies[0], e_last=energies[-1])
+        invalidation_reason = f'initial and final points are inconsistent by more than {inconsistency_az:.2f} kJ/mol'
+        message = f'Rotor scan of {label} between pivots {pivots} is inconsistent by more ' \
+                  f'than {inconsistency_az:.2f} kJ/mol between initial and final positions. ' \
+                  f'Invalidating rotor.\nenergies[0] = {energies[0]}, energies[-1] = {energies[-1]}'
         logger.error(message)
         actions = ['inc_res', 'freeze']
         return invalidate, invalidation_reason, message, actions
@@ -807,7 +806,10 @@ def scan_quality_check(label, pivots, energies, scan_res=rotor_scan_resolution):
                       'points. Invalidating rotor.'.format(
                        label=label, pivots=pivots, incons_ab=inconsistency_ab * max(energies))
             logger.error(message)
-            actions = ['inc_res', 'freeze']
+            if ['inc_res'] not in used_methods:
+                actions = ['inc_res']
+            elif ['inc_res', 'freeze'] not in used_methods:
+                actions = ['inc_res', 'freeze']
             return invalidate, invalidation_reason, message, actions
 
     # 2. Check conformation:
