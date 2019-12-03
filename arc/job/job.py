@@ -757,8 +757,8 @@ $end
                 raise JobError('Currently composite methods are only supported in gaussian')
 
         if self.job_type == 'scan':
-            if not divmod(360, self.scan_res):
-                raise JobError('Scan job got an illegal rotor scan resolution of {0}'.format(self.scan_res))
+            if divmod(360, self.scan_res)[1]:
+                raise JobError(f'Scan job got an illegal rotor scan resolution of {self.scan_res}')
             scan = ' '.join([str(num) for num in self.scan])
             if self.software == 'gaussian':
                 if self.is_ts:
