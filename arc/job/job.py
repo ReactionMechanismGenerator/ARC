@@ -1245,7 +1245,14 @@ $end
             if self.software is None:
                 if self.job_type in ['conformer', 'opt', 'freq', 'optfreq', 'sp',
                                      'directed_scan']:
-                    if 'b2' in self.method or 'dsd' in self.method or 'pw2' in self.method:
+                    if self.method == 'hf':
+                        if 'gaussian' in esss:
+                            self.software = 'gaussian'
+                        elif 'qchem' in esss:
+                            self.software = 'qchem'
+                        elif 'molpro' in esss:
+                            self.software = 'molpro'
+                    elif 'b2' in self.method or 'dsd' in self.method or 'pw2' in self.method:
                         # this is a double-hybrid (MP2) DFT method, use Gaussian
                         if 'gaussian' not in esss:
                             raise JobError('Could not find the Gaussian software to run the double-hybrid method {0}.\n'
