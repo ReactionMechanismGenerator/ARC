@@ -2006,7 +2006,7 @@ class Scheduler(object):
         invalidate, actions, energies = False, list(), list()
         for i in range(self.species_dict[label].number_of_rotors):
             if self.species_dict[label].rotors_dict[i]['pivots'] == job.pivots:
-                energies, angles = parser.parse_scan_energies(path=job.local_path_to_output_file)
+                energies, angles = parser.parse_scan_energies(path=job.local_path_to_output_file)  # in kJ/mol
                 if energies is None:
                     invalidate = True
                     invalidation_reason = 'Could not read energies'
@@ -2014,7 +2014,6 @@ class Scheduler(object):
                               'be read. Invalidating rotor.'.format(label=label, pivots=job.pivots)
                     logger.error(message)
                     break
-                energies *= 0.001  # convert to kJ/mol
                 invalidate, invalidation_reason, message, actions = scan_quality_check(
                     label=label, pivots=job.pivots, energies=energies, scan_res=job.scan_res)
 
