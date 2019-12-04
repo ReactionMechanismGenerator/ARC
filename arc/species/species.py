@@ -1784,10 +1784,10 @@ def determine_rotor_symmetry(label, pivots, rotor_path='', energies=None, return
         raise InputError('Expected either rotor_path or energies, got neither')
     if rotor_path and energies is not None:
         raise InputError('Expected either rotor_path or energies, got both')
-    if not os.path.isfile(rotor_path):
-        raise InputError(f'Could not find the file {rotor_path}')
 
     if energies is None:
+        if not os.path.isfile(rotor_path):
+            raise InputError(f'Could not find the path to the rotor file for species {label} {rotor_path}')
         energies = parse_1d_scan_energies(path=rotor_path)[0]
 
     symmetry = None
