@@ -1752,7 +1752,7 @@ def nearly_equal(a, b, sig_fig=5):
     return a == b or int(a*10**sig_fig) == int(b*10**sig_fig)
 
 
-def determine_rotor_symmetry(label, pivots, rotor_path='', energies=None):
+def determine_rotor_symmetry(label, pivots, rotor_path='', energies=None, return_num_wells=False):
     """
     Determine the rotor symmetry number from a potential energy scan.
     The *worst* resolution for each peak and valley is determined.
@@ -1766,11 +1766,15 @@ def determine_rotor_symmetry(label, pivots, rotor_path='', energies=None):
         label (str): The species label (used for error messages).
         pivots (list, optional): A list of two atom indices representing the torsion pivots.
         energies (list, optional): The list of energies in the scan in kJ/mol.
+        return_num_wells (bool, optional): Whether to also return the number of wells, ``True`` to return,
+                                           default is ``False``.
 
     Returns:
         int: The symmetry number (int)
     Returns:
         float: The highest torsional energy barrier in kJ/mol.
+    Returns:
+        int (optional): The number of peaks, only returned if ``return_len_peaks`` is ``True``.
 
     Raises:
         InputError: If both or none of the rotor_path and energy arguments are given,
@@ -1781,7 +1785,7 @@ def determine_rotor_symmetry(label, pivots, rotor_path='', energies=None):
     if rotor_path and energies is not None:
         raise InputError('Expected either rotor_path or energies, got both')
     if not os.path.isfile(rotor_path):
-        raise InputError('Could not find the file {0}'.format(rotor_path))
+        raise InputError(f'Could not find the file {rotor_path}')
 
     if energies is None:
         energies = parse_scan_energies(path=rotor_path)[0]
@@ -1806,8 +1810,7 @@ def determine_rotor_symmetry(label, pivots, rotor_path='', energies=None):
         if i == 0 and energies[im1] == e:
             # If the first and last scan points have same energy, change im1
             im1 -= 1
-            logger.debug('im1: {0}, ip1: {1}, em1: {2}, e: {3}, ep1: {4}'.format(
-                im1, ip1, energies[im1], e, energies[ip1]))
+            logger.debug(f'im1: {im1}, ip1: {ip1}, em1: {energies[im1]}, e: {e}, ep1: {energies[ip1]}')
         if e > energies[im1] and e > energies[ip1]:
             # this is a local peak
             if any([diff > worst_peak_resolution for diff in [e - energies[im1], e - energies[ip1]]]):
@@ -1821,9 +1824,12 @@ def determine_rotor_symmetry(label, pivots, rotor_path='', energies=None):
     # The number of peaks and valley must always be the same (what goes up must come down), if it isn't then there's
     # something seriously wrong with the scan
     if len(peaks) != len(valleys):
-        logger.error('Rotor of species {0} between pivots {1} does not have the same number'
-                     ' of peaks ({2}) and valleys ({3}).'.format(label, pivots, len(peaks), len(valleys)))
-        return len(peaks), max_e  # this works for CC(=O)[O]
+        logger.error(f'Rotor of species {label} between pivots {pivots} does not have the same number '
+                     f'of peaks ({len(peaks)}) and valleys ({len(valleys)}).')
+        if return_num_wells:
+            return len(peaks), max_e, len(peaks)  # this works for CC(=O)[O]
+        else:
+            return len(peaks), max_e  # this works for CC(=O)[O]
     min_peak = min(peaks)
     max_peak = max(peaks)
     min_valley = min(valleys)
@@ -1847,12 +1853,15 @@ def determine_rotor_symmetry(label, pivots, rotor_path='', energies=None):
         symmetry = len(peaks)
         reason = 'number of peaks and valleys, all within the determined resolution criteria'
     if symmetry not in [1, 2, 3]:
-        logger.info('Determined symmetry number {0} for rotor of species {1} between pivots {2};'
-                    ' you should make sure this makes sense'.format(symmetry, label, pivots))
+        logger.info(f'Determined symmetry number {symmetry} for rotor of species {label} between pivots {pivots}; '
+                    f'you should make sure this makes sense')
     else:
-        logger.info('Determined a symmetry number of {0} for rotor of species {1} between pivots {2}'
-                    ' based on the {3}.'.format(symmetry, label, pivots, reason))
-    return symmetry, max_e
+        logger.info(f'Determined a symmetry number of {symmetry} for rotor of species {label} between pivots {pivots} '
+                    f'based on the {reason}.')
+    if return_num_wells:
+        return symmetry, max_e, len(peaks)
+    else:
+        return symmetry, max_e
 
 
 def cyclic_index_i_plus_1(i, length):

@@ -97,10 +97,9 @@ COMBINATION_THRESHOLD = 1000
 
 
 def generate_conformers(mol_list, label, xyzs=None, torsions=None, tops=None, charge=0, multiplicity=None,
-                        num_confs=None, num_confs_to_return=None, well_tolerance=None, de_threshold=None,
-                        smeared_scan_res=None, combination_threshold=None, force_field='MMFF94s',
-                        max_combination_iterations=None, diastereomers=None, return_all_conformers=False,
-                        plot_path=None, print_logs=True):
+                        num_confs=None, num_confs_to_return=None, de_threshold=None, smeared_scan_res=None,
+                        combination_threshold=None, force_field='MMFF94s', max_combination_iterations=None,
+                        diastereomers=None, return_all_conformers=False, plot_path=None, print_logs=True):
     """
     Generate conformers for (non-TS) species starting from a list of RMG Molecules.
     (resonance structures are assumed to have already been generated and included in the molecule list)
@@ -139,6 +138,23 @@ def generate_conformers(mol_list, label, xyzs=None, torsions=None, tops=None, ch
         ConformerError: If something goes wrong.
         TypeError: If xyzs has entries of a wrong type.
     """
+    if len(mol_list[0].atoms) == 1:
+        # this is a mono-atomic species
+        element_symbol = mol_list[0].atoms[0].element.symbol
+        confs = [{'xyz': {'symbols': (element_symbol,),
+                          'isotopes': (converter.get_most_common_isotope_for_element(element_symbol),),
+                          'coords': ((0.0, 0.0, 0.0),)},
+                  'zmat': {'symbols': (element_symbol,), 'coords': ((None, None, None),), 'vars': {}, 'map': {0: 0}},
+                  'index': 0,
+                  'FF energy': 0.0,
+                  'chirality': None,
+                  'source': 'mono atomic species',
+                  'torsion_dihedrals': None,
+                   }]
+        if not return_all_conformers:
+            return confs
+        else:
+            return confs, confs
     if xyzs is not None and any([not isinstance(xyz, dict) for xyz in xyzs]):
         raise TypeError("xyz entries of xyzs must be dictionaries, e.g.:\n\n"
                         "{{'symbols': ('O', 'C', 'H', 'H'),\n'isotopes': (16, 12, 1, 1),\n"

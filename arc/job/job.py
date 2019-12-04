@@ -757,8 +757,8 @@ $end
                 raise JobError('Currently composite methods are only supported in gaussian')
 
         if self.job_type == 'scan':
-            if not divmod(360, self.scan_res):
-                raise JobError('Scan job got an illegal rotor scan resolution of {0}'.format(self.scan_res))
+            if divmod(360, self.scan_res)[1]:
+                raise JobError(f'Scan job got an illegal rotor scan resolution of {self.scan_res}')
             scan = ' '.join([str(num) for num in self.scan])
             if self.software == 'gaussian':
                 if self.is_ts:
@@ -992,17 +992,15 @@ $end
         Execute the Job.
         """
         if self.fine:
-            logger.info('Running job {name} for {label} (fine opt)'.format(
-                name=self.job_name, label=self.species_name))
+            logger.info(f'Running job {self.job_name} for {self.species_name} (fine opt)')
         elif self.directed_dihedrals is not None and self.directed_scans is not None:
             dihedrals = ['{0:.2f}'.format(dihedral) for dihedral in self.directed_dihedrals]
-            logger.info('Running job {name} for {label} (pivots: {pivots}, dihedrals: {dihedrals})'.format(
-                name=self.job_name, label=self.species_name, pivots=self.directed_scans, dihedrals=dihedrals))
+            logger.info(f'Running job {self.job_name} for {self.species_name} (pivots: {self.directed_scans}, '
+                        f'dihedrals: {dihedrals})')
         elif self.pivots:
-            logger.info('Running job {name} for {label} (pivots: {pivots})'.format(
-                name=self.job_name, label=self.species_name, pivots=self.pivots))
+            logger.info(f'Running job {self.job_name} for {self.species_name} (pivots: {self.pivots})')
         else:
-            logger.info('Running job {name} for {label}'.format(name=self.job_name, label=self.species_name))
+            logger.info(f'Running job {self.job_name} for {self.species_name}')
         logger.debug('writing submit script...')
         self.write_submit_script()
         logger.debug('writing input file...')
@@ -1247,7 +1245,14 @@ $end
             if self.software is None:
                 if self.job_type in ['conformer', 'opt', 'freq', 'optfreq', 'sp',
                                      'directed_scan']:
-                    if 'b2' in self.method or 'dsd' in self.method or 'pw2' in self.method:
+                    if self.method == 'hf':
+                        if 'gaussian' in esss:
+                            self.software = 'gaussian'
+                        elif 'qchem' in esss:
+                            self.software = 'qchem'
+                        elif 'molpro' in esss:
+                            self.software = 'molpro'
+                    elif 'b2' in self.method or 'dsd' in self.method or 'pw2' in self.method:
                         # this is a double-hybrid (MP2) DFT method, use Gaussian
                         if 'gaussian' not in esss:
                             raise JobError('Could not find the Gaussian software to run the double-hybrid method {0}.\n'

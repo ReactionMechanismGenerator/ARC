@@ -457,17 +457,24 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         path4 = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'sBuOH.out')  # symmetry = 3
         path5 = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'CH3C(O)O_FreeRotor.out')  # symmetry = 6
 
-        symmetry1, _ = determine_rotor_symmetry(label='label', pivots=[3, 4], rotor_path=path1)
-        symmetry2, _ = determine_rotor_symmetry(label='label', pivots=[3, 4], rotor_path=path2)
-        symmetry3, _ = determine_rotor_symmetry(label='label', pivots=[3, 4], rotor_path=path3)
-        symmetry4, _ = determine_rotor_symmetry(label='label', pivots=[3, 4], rotor_path=path4)
-        symmetry5, _ = determine_rotor_symmetry(label='label', pivots=[3, 4], rotor_path=path5)
+        sym1, e1 = determine_rotor_symmetry(label='label', pivots=[3, 4], rotor_path=path1)
+        sym2, e2 = determine_rotor_symmetry(label='label', pivots=[3, 4], rotor_path=path2)
+        sym3, e3, n3 = determine_rotor_symmetry(label='label', pivots=[3, 4], rotor_path=path3, return_num_wells=True)
+        sym4, e4 = determine_rotor_symmetry(label='label', pivots=[3, 4], rotor_path=path4)
+        sym5, e5, n5 = determine_rotor_symmetry(label='label', pivots=[3, 4], rotor_path=path5, return_num_wells=True)
 
-        self.assertEqual(symmetry1, 1)
-        self.assertEqual(symmetry2, 1)
-        self.assertEqual(symmetry3, 2)
-        self.assertEqual(symmetry4, 3)
-        self.assertEqual(symmetry5, 6)
+        self.assertEqual(sym1, 1)
+        self.assertAlmostEqual(e1, 20.87723711)
+        self.assertEqual(sym2, 1)
+        self.assertAlmostEqual(e2, 35.40014232)
+        self.assertEqual(sym3, 2)
+        self.assertAlmostEqual(e3, 18.26215261)
+        self.assertEqual(n3, 2)
+        self.assertEqual(sym4, 3)
+        self.assertAlmostEqual(e4, 11.14737880)
+        self.assertEqual(sym5, 6)
+        self.assertAlmostEqual(e5, 0.099359417)
+        self.assertEqual(n5, 6)
 
     def test_xyz_from_file(self):
         """Test parsing xyz from a file and saving it in the .initial_xyz attribute"""

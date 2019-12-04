@@ -17,6 +17,7 @@ from arc.job.ssh import SSHClient
 from arc.settings import servers, delete_command, list_available_nodes_command, submit_filename, \
     inconsistency_ab, inconsistency_az, maximum_barrier, rotor_scan_resolution
 from arc.species.converter import xyz_from_data
+from arc.species.species import determine_rotor_symmetry
 
 
 logger = get_logger()
@@ -361,7 +362,7 @@ def trsh_scan_job(label, scan_res, scan, species_scan_lists, methods):
         TrshError: If troubleshooted dihedral is not found.
     """
     if methods is None:
-        raise TrshError('Called troubleshoot_scan_job() with no method.')
+        raise TrshError('Expected to get a list of methods, got None.')
     scan_trsh = ''
     if 'freeze' in methods:
         if scan not in species_scan_lists:
@@ -748,7 +749,7 @@ def trsh_job_on_server(server, job_name, job_id, job_server_status, remote_path,
         return None, True
 
 
-def scan_quality_check(label, pivots, energies, scan_res=rotor_scan_resolution):
+def scan_quality_check(label, pivots, energies, scan_res=rotor_scan_resolution, used_methods=None):
     """
     Checks the scan's quality:
     - Whether the initial and final points are consistent
@@ -761,7 +762,8 @@ def scan_quality_check(label, pivots, energies, scan_res=rotor_scan_resolution):
         label (str): The species label.
         pivots (list): The rotor pivots.
         energies (list): The scan energies in kJ/mol.
-        scan_res (float): The scan resolution in degrees.
+        scan_res (float, optional): The scan resolution in degrees.
+        used_methods (list, optional): Troubleshooting methods already tried out.
 
     Returns:
         invalidate (bool): Whether to invalidate this rotor, ``True`` to invalidate.
@@ -775,6 +777,7 @@ def scan_quality_check(label, pivots, energies, scan_res=rotor_scan_resolution):
     message, invalidation_reason = '', ''
     invalidate = False
     actions = list()
+    used_methods = used_methods or list()
     energies = np.array(energies, np.float64)
 
     # 1. Check rotor scan curve
@@ -783,13 +786,10 @@ def scan_quality_check(label, pivots, energies, scan_res=rotor_scan_resolution):
         # initial and final points differ by more than `inconsistency_az` kJ/mol.
         # seems like this rotor broke the conformer. Invalidate
         invalidate = True
-        invalidation_reason = 'initial and final points are inconsistent by more than {0:.2f} ' \
-                              'kJ/mol'.format(inconsistency_az)
-        message = 'Rotor scan of {label} between pivots {pivots} is inconsistent by more ' \
-                  'than {incons_az:.2f} kJ/mol between initial and final positions. ' \
-                  'Invalidating rotor.\nenergies[0] = {e_first}, energies[-1] = {e_last}'.format(
-                   label=label, pivots=pivots, incons_az=inconsistency_az,
-                   e_first=energies[0], e_last=energies[-1])
+        invalidation_reason = f'initial and final points are inconsistent by more than {inconsistency_az:.2f} kJ/mol'
+        message = f'Rotor scan of {label} between pivots {pivots} is inconsistent by more ' \
+                  f'than {inconsistency_az:.2f} kJ/mol between initial and final positions. ' \
+                  f'Invalidating rotor.\nenergies[0] = {energies[0]}, energies[-1] = {energies[-1]}'
         logger.error(message)
         actions = ['inc_res', 'freeze']
         return invalidate, invalidation_reason, message, actions
@@ -807,7 +807,10 @@ def scan_quality_check(label, pivots, energies, scan_res=rotor_scan_resolution):
                       'points. Invalidating rotor.'.format(
                        label=label, pivots=pivots, incons_ab=inconsistency_ab * max(energies))
             logger.error(message)
-            actions = ['inc_res', 'freeze']
+            if ['inc_res'] not in used_methods:
+                actions = ['inc_res']
+            elif ['inc_res', 'freeze'] not in used_methods:
+                actions = ['inc_res', 'freeze']
             return invalidate, invalidation_reason, message, actions
 
     # 2. Check conformation:
@@ -828,14 +831,25 @@ def scan_quality_check(label, pivots, energies, scan_res=rotor_scan_resolution):
     # 3. Check the barrier height
     if (np.max(energies) - np.min(energies)) > maximum_barrier:
         # The barrier for the internal rotation is higher than `maximum_barrier`
-        invalidate = True
-        invalidation_reason = 'The rotor scan has a barrier of {0} kJ/mol, which is higher than the maximal ' \
-                              'barrier for rotation ({1} kJ/mol)'.format(
-                               np.max(energies) - np.min(energies), maximum_barrier)
-        message = 'Rotor scan of {label} between pivots {pivots} has a barrier ' \
-                  'larger than {max_barrier:.2f} kJ/mol. Invalidating rotor.'.format(
-                   label=label, pivots=pivots, max_barrier=maximum_barrier)
-        logger.warning(message)
-        return invalidate, invalidation_reason, message, actions
+        num_wells = determine_rotor_symmetry(label=label, pivots=pivots, rotor_path='', energies=energies,
+                                             return_num_wells=True)[-1]
+        if num_wells == 1:
+            invalidate = True
+            invalidation_reason = 'The rotor scan has a barrier of {0} kJ/mol, which is higher than the maximal ' \
+                                  'barrier for rotation ({1} kJ/mol)'.format(
+                                   np.max(energies) - np.min(energies), maximum_barrier)
+            message = 'Rotor scan of {label} between pivots {pivots} has a barrier ' \
+                      'larger than {max_barrier:.2f} kJ/mol. Invalidating rotor.'.format(
+                       label=label, pivots=pivots, max_barrier=maximum_barrier)
+            logger.warning(message)
+            return invalidate, invalidation_reason, message, actions
+        else:
+            logger.warning(f'The maximal barrier for rotor {pivots} of {label} is '
+                           f'{(np.max(energies) - np.min(energies))} kJ/mol, which is higher than the set threshold '
+                           f'of {maximum_barrier} kJ/mol. Since this mode when treated as torsion has {num_wells}, '
+                           f'this mode is not invalidated: treating it as a vibrational mode will be less accurate than'
+                           f'the a hindered rotor treatment, since the entropy contribution from the population of '
+                           f'this species at the higher wells will not be taken into account. NOT invalidating this '
+                           f'torsional mode.')
 
     return invalidate, invalidation_reason, message, actions
