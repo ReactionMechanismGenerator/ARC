@@ -29,7 +29,7 @@ from arc.settings import default_ts_methods, valid_chars, minimum_barrier
 from arc.species import conformers
 from arc.species.converter import rdkit_conf_from_mol, xyz_from_data, molecules_from_xyz, rmg_mol_from_inchi, \
     order_atoms_in_mol_list, check_isomorphism, set_rdkit_dihedrals, translate_to_center_of_mass, \
-    str_to_xyz, xyz_to_str, check_xyz_dict, xyz_to_x_y_z
+    str_to_xyz, xyz_to_str, check_xyz_dict, check_zmat_dict, xyz_to_x_y_z
 from arc.ts import atst
 
 
@@ -230,6 +230,7 @@ class ARCSpecies(object):
         consider_all_diastereomers (bool, optional): Whether to consider all different chiralities (tetrahydral carbon
                                                      centers, nitrogen inversions, and cis/trans double bonds) when
                                                      generating conformers. ``True`` to consider all.
+        zmat (dict): The species internal coordinates (Z Matrix).
     """
     def __init__(self, label=None, is_ts=False, rmg_species=None, mol=None, xyz=None, multiplicity=None, charge=None,
                  smiles='', adjlist='', inchi='', bond_corrections=None, generate_thermo=True, species_dict=None,
@@ -279,6 +280,7 @@ class ARCSpecies(object):
             self.bdes = bdes
             self.directed_rotors = directed_rotors if directed_rotors is not None else dict()
             self.consider_all_diastereomers = consider_all_diastereomers
+            self.zmat = None
             if self.bdes is not None and not isinstance(self.bdes, list):
                 raise SpeciesError('The .bdes argument must be a list, got {0} which is a {1}'.format(
                                     self.bdes, type(self.bdes)))
@@ -526,6 +528,8 @@ class ARCSpecies(object):
             species_dict['initial_xyz'] = xyz_to_str(self.initial_xyz)
         if self.final_xyz is not None:
             species_dict['final_xyz'] = xyz_to_str(self.final_xyz)
+        if self.zmat is not None:
+            species_dict['zmat'] = self.zmat
         if self.checkfile is not None:
             species_dict['checkfile'] = self.checkfile
         if self.most_stable_conformer is not None:
@@ -595,6 +599,7 @@ class ARCSpecies(object):
         self.initial_xyz = str_to_xyz(species_dict['initial_xyz']) if 'initial_xyz' in species_dict else None
         self.final_xyz = str_to_xyz(species_dict['final_xyz']) if 'final_xyz' in species_dict else None
         self.conf_is_isomorphic = species_dict['conf_is_isomorphic'] if 'conf_is_isomorphic' in species_dict else None
+        self.zmat = check_zmat_dict(species_dict['zmat']) if 'zmat' in species_dict else None
         self.is_ts = species_dict['is_ts'] if 'is_ts' in species_dict else False
         if self.is_ts:
             self.ts_conf_spawned = species_dict['ts_conf_spawned'] if 'ts_conf_spawned' in species_dict else False
@@ -1172,6 +1177,8 @@ class ARCSpecies(object):
                                         (If there's only one entry, it could be given directly, not in a list)
                                         The file paths could direct to either a .xyz file, ARC conformers (w/ or w/o
                                         energies), or an ESS log/input files, making this method extremely flexible.
+                                        Internal coordinates (either string or dict) are also allowed and will be
+                                        converted into cartesian coordinates.
         """
         if xyz_list is not None:
             if not isinstance(xyz_list, list):
