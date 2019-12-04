@@ -1197,13 +1197,16 @@ class Scheduler(object):
         pivots = self.species_dict[label].rotors_dict[rotor_index]['pivots']
         directed_scan_type = self.species_dict[label].rotors_dict[rotor_index]['directed_scan_type']
         xyz = xyz or self.species_dict[label].get_xyz(generate=True)
+
         if 'cont' not in directed_scan_type and 'brute' not in directed_scan_type and 'ess' not in directed_scan_type:
             raise InputError(f'directed_scan_type must be either continuous or brute force, got: {directed_scan_type}')
+
         if 'ess' in directed_scan_type:
             # allow the ESS to control the scan
             self.run_job(label=label, xyz=xyz, level_of_theory=self.scan_level, job_type='scan',
                          directed_scan_type=directed_scan_type, directed_scans=scans, rotor_index=rotor_index,
                          pivots=pivots)
+
         elif 'brute' in directed_scan_type:
             # spawn jobs all at once
             dihedrals = dict()
@@ -1241,13 +1244,14 @@ class Scheduler(object):
                                  job_type='directed_scan', directed_scan_type=directed_scan_type,
                                  directed_scans=scans, directed_dihedrals=directed_dihedrals,
                                  rotor_index=rotor_index, pivots=pivots)
+
         elif 'cont' in directed_scan_type:
             # spawn jobs one by one
             if not len(self.species_dict[label].rotors_dict[rotor_index]['cont_indices']):
                 self.species_dict[label].rotors_dict[rotor_index]['cont_indices'] = [0] * len(scans)
             if not len(self.species_dict[label].rotors_dict[rotor_index]['original_dihedrals']):
                 self.species_dict[label].rotors_dict[rotor_index]['original_dihedrals'] = \
-                    ['{0:.2f}'.format(calculate_dihedral_angle(coords=xyz['coords'], torsion=scan))
+                    ['{0:.2f}'.format(calculate_dihedral_angle(coords=xyz['coords'], torsion=scan, index=1))
                      for scan in self.species_dict[label].rotors_dict[rotor_index]['scan']]  # stores as str for YAML
             rotor_dict = self.species_dict[label].rotors_dict[rotor_index]
             scans = rotor_dict['scan']
@@ -1257,57 +1261,58 @@ class Scheduler(object):
             for dihedral in rotor_dict['original_dihedrals']:
                 f_dihedral = float(dihedral)
                 original_dihedrals.append(f_dihedral if f_dihedral < 180.0 else f_dihedral - 360.0)
-            if any(self.species_dict[label].rotors_dict[rotor_index]['cont_indices']):
-                # this is NOT the first call for this cont_opt directed rotor, check that ``xyz`` was given.
-                if xyz is None:
-                    # xyz is None only at the first time cont opt is spawned, where cont_index is [0, 0,... 0].
-                    raise InputError('xyz argument must be given for a continuous scan job')
-            else:
+            if not any(self.species_dict[label].rotors_dict[rotor_index]['cont_indices']):
                 # this is the first call for this cont_opt directed rotor, spawn the first job w/o changing dihedrals
                 self.run_job(label=label, xyz=self.species_dict[label].final_xyz, level_of_theory=self.scan_level,
                              job_type='directed_scan', directed_scan_type=directed_scan_type, directed_scans=scans,
                              directed_dihedrals=original_dihedrals, rotor_index=rotor_index, pivots=pivots)
                 self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][0] += 1
                 return
-            for i, scan in enumerate(scans):
-                if self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][i] == max_num - 1:  # 0-index
-                    if i + 1 == len(scans):
-                        # no more counters to increment, all done!
-                        logger.info(f'Completed all jobs for the continuous directed rotor scan for species {label} '
-                                    f'between pivots {pivots}')
-                        self.process_directed_scans(label, pivots)
+            else:
+                # this is NOT the first call for this cont_opt directed rotor, check that ``xyz`` was given.
+                if xyz is None:
+                    # xyz is None only at the first time cont opt is spawned, where cont_index is [0, 0,... 0].
+                    raise InputError('xyz argument must be given for a continuous scan job')
+                # check whether this rotor is done
+                if self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][-1] == max_num - 1:  # 0-indexed
+                    # no more counters to increment, all done!
+                    logger.info(f'Completed all jobs for the continuous directed rotor scan for species {label} '
+                                f'between pivots {pivots}')
+                    self.process_directed_scans(label, pivots)
+                    return
+
+            modified_xyz = xyz
+            dihedrals = list()
+            for index, (original_dihedral, scan_) in enumerate(zip(original_dihedrals, scans)):
+                dihedral = original_dihedral + \
+                        self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][index] * increment
+                # change the original dihedral so we won't end up with two calcs for 180.0, but none for -180.0
+                # (it only matters for plotting, the geometry is of course the same)
+                dihedral = dihedral if dihedral <= 180.0 else dihedral - 360.0
+                dihedrals.append(dihedral)
+                # Only change the dihedrals in the xyz if this torsion corresponds to the current index,
+                # or if this is a diagonal scan.
+                # Species.set_dihedral() uses .final_xyz or the given xyz to modify the .initial_xyz
+                # attribute to the desired dihedral.
+                self.species_dict[label].set_dihedral(scan=scan_, deg_abs=dihedral, count=False, xyz=modified_xyz)
+                modified_xyz = self.species_dict[label].initial_xyz
+            self.run_job(label=label, xyz=modified_xyz, level_of_theory=self.scan_level,
+                         job_type='directed_scan', directed_scan_type=directed_scan_type, directed_scans=scans,
+                         directed_dihedrals=dihedrals, rotor_index=rotor_index, pivots=pivots)
+
+            if 'diagonal' in directed_scan_type:
+                # increment ALL counters for a diagonal scan
+                self.species_dict[label].rotors_dict[rotor_index]['cont_indices'] = \
+                    [self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][0] + 1] * len(scans)
+            else:
+                # increment the counter sequentially (non-diagonal scan)
+                for index in range(len(scans)):
+                    if self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][index] < max_num -1:
+                        self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][index] += 1
                         break
-                    else:
-                        continue
-                else:
-                    modified_xyz = xyz
-                    dihedrals = list()
-                    for j, (original_dihedral, scan_) in enumerate(zip(original_dihedrals, scans)):
-                        dihedral = original_dihedral + \
-                                   self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][j] * increment
-                        # change the original dihedral so we won't end up with two calcs for 180.0, but none for -180.0
-                        # (it only matters for plotting, the geometry is of course the same)
-                        dihedral = dihedral if dihedral <= 180.0 else dihedral - 360.0
-                        dihedrals.append(dihedral)
-                        if i == j or 'diagonal' in directed_scan_type:
-                            # Only change the dihedrals in the xyz if this torsion corresponds to the current index,
-                            # or if this is a diagonal scan.
-                            # Species.set_dihedral() uses .final_xyz or the given xyz to modify the .initial_xyz
-                            # attribute to the desired dihedral.
-                            self.species_dict[label].set_dihedral(scan=scan_, deg_abs=dihedral, count=False,
-                                                                  xyz=modified_xyz)
-                            modified_xyz = self.species_dict[label].initial_xyz
-                    self.run_job(label=label, xyz=modified_xyz, level_of_theory=self.scan_level,
-                                 job_type='directed_scan', directed_scan_type=directed_scan_type, directed_scans=scans,
-                                 directed_dihedrals=dihedrals, rotor_index=rotor_index, pivots=pivots)
-                    if 'diagonal' in directed_scan_type:
-                        # increment all counters for a diagonal scan
-                        self.species_dict[label].rotors_dict[rotor_index]['cont_indices'] = \
-                            [self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][0] + 1] * len(scans)
-                    else:
-                        # increment just the i'th counter
-                        self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][i] += 1
-                    break
+                    elif (self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][index] == max_num -1
+                            and index < len(scans) - 1):
+                        self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][index] = 0
 
     def spawn_md_jobs(self, label, prev_conf_list=None, num_confs=None):
         """
