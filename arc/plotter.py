@@ -34,7 +34,7 @@ from rmgpy.species import Species
 from arc.common import get_logger, min_list, save_yaml_file, sort_two_lists_by_the_first, is_notebook
 from arc.exceptions import InputError, SanitizationError
 from arc.species.converter import rdkit_conf_from_mol, molecules_from_xyz, check_xyz_dict, str_to_xyz, xyz_to_str, \
-    xyz_to_x_y_z, xyz_from_data
+    xyz_to_x_y_z, xyz_from_data, remove_dummies
 from arc.species.species import ARCSpecies
 
 
@@ -206,7 +206,7 @@ def check_xyz_species_for_drawing(xyz=None, species=None):
             xyz = str_to_xyz(xyz)
     else:
         xyz = species.get_xyz(generate=True)
-    return check_xyz_dict(xyz)
+    return check_xyz_dict(remove_dummies(xyz))
 
 
 # *** Logging output ***
