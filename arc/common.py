@@ -687,3 +687,22 @@ def format_level_of_theory_for_logging(level_of_theory_dict):
     level_of_theory_log_str = ' '.join([level_of_theory_log_str, dispersion]) if dispersion\
         else level_of_theory_log_str
     return level_of_theory_log_str
+
+
+def is_notebook():
+    """
+    Check whether ARC was called from an IPython notebook.
+
+    Returns:
+        bool: ``True`` if ARC was called from a notebook, ``False`` otherwise.
+    """
+    try:
+        shell = get_ipython().__class__.__name__
+        if shell == 'ZMQInteractiveShell':
+            return True  # Jupyter notebook or qtconsole
+        elif shell == 'TerminalInteractiveShell':
+            return False  # Terminal running IPython
+        else:
+            return False  # Other type (?)
+    except NameError:
+        return False  # Probably standard Python interpreter
