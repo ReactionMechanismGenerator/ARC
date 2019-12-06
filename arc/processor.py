@@ -374,7 +374,19 @@ class Processor(object):
         except Exception as e:
             logger.error('Arkane statmech job for species {0} failed with the error message:\n{1}'.format(
                 arkane_spc.label, e))
-            success = False
+            if stat_mech_job.applyBondEnergyCorrections \
+                    and 'missing' in str(e).lower() and 'bac parameters for model chemistry' in str(e).lower():
+                # try executing Arkane w/o BACs
+                logger.warning('Trying to run Arkane without BACs')
+                stat_mech_job.applyBondEnergyCorrections = False
+                try:
+                    stat_mech_job.execute(output_directory=output_path, plot=plot)
+                except Exception as e:
+                    logger.error('Arkane statmech job for species {0} failed with the error message:\n{1}'.format(
+                        arkane_spc.label, e))
+                    success = False
+            else:
+                success = False
         return success
 
     def process_bdes(self, label):
