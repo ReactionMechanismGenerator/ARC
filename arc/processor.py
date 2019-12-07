@@ -252,7 +252,7 @@ class Processor(object):
             if species.bdes is not None:
                 bde_report[species.label] = self.process_bdes(species.label)
         if bde_report:
-            bde_path = os.path.join(self.project_directory, 'output', 'BDE_report.yml')
+            bde_path = os.path.join(self.project_directory, 'output', 'BDE_report.txt')
             plotter.log_bde_report(path=bde_path, bde_report=bde_report, spc_dict=self.species_dict)
 
         # Kinetics:
