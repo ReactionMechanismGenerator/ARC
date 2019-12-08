@@ -337,7 +337,7 @@ def trsh_negative_freq(label, log_file, neg_freqs_trshed=None, job_types=None):
     return current_neg_freqs_trshed, conformers, output_errors, output_warnings
 
 
-def trsh_scan_job(label, scan_res, scan, species_scan_lists, methods):
+def trsh_scan_job(label, scan_res, scan, species_scan_lists, methods, job=None):
     """
     Troubleshooting rotor scans
     Using the following methods: freezing all dihedrals other than the scan's pivots for this job,
@@ -349,6 +349,7 @@ def trsh_scan_job(label, scan_res, scan, species_scan_lists, methods):
         scan (list): The four atom indices representing the torsion to be troubleshooted.
         species_scan_lists (list): Entries are lists of four atom indices each representing a torsion.
         methods (list): The troubleshooting method/s to try. Accepted values: 'freeze' and/or 'inc_res'.
+        job(object) : scan job object contain information aout the job
 
     Returns:
         scan_trsh (str): The scan troubleshooting keywords to be appended to the Gaussian input file.
@@ -361,15 +362,32 @@ def trsh_scan_job(label, scan_res, scan, species_scan_lists, methods):
     if methods is None:
         raise TrshError('Expected to get a list of methods, got None.')
     scan_trsh = ''
+    if 'reverse' in methods:
+        scan_res = scan_res * -1
     if 'freeze' in methods:
         if scan not in species_scan_lists:
             raise TrshError('Could not find the dihedral to troubleshoot for in the scan list of species '
                             '{0}'.format(label))
-        species_scan_lists.pop(species_scan_lists.index(scan))
-        if len(species_scan_lists):
-            scan_trsh = '\n'
-            for scan in species_scan_lists:
-                scan_trsh += 'D ' + ''.join([str(num) + ' ' for num in scan]) + 'F\n'
+
+        else:
+            logger.error("try to troubleshoot by freezing bonds and dihidrals")
+            scanobj = ScanInfo(logfile=job.local_path_to_output_file)
+            trsh = freeze_gics(scan=scanobj, ifprint=False)
+            if trsh is None:
+                logging.error("could n't find any discontinuity in the scan. Increasing the resolution")
+                scan_res = min(4, int(scan_res / 2))
+                # make sure mod(360, scan res) is 0:
+                if scan_res not in [4, 2, 1]:
+                    scan_res = min([4, 2, 1], key=lambda x: abs(x - scan_res))
+            else:
+                scan_trsh = '\n'
+                for scan in trsh:
+                    if len(scan) == 4:
+                        scan_trsh += 'D ' + ''.join([str(num) + ' ' for num in scan]) + 'F\n'
+                    elif len(scan) == 2:
+                        scan_trsh += 'B ' + ''.join([str(num) + ' ' for num in scan]) + 'F\n'
+                logger.error("Following {0} bonds dihedrals will be frozen".format(scan_trsh))
+
     if 'inc_res' in methods:
         scan_res = min(4, int(scan_res / 2))
         # make sure mod(360, scan res) is 0:
@@ -433,7 +451,7 @@ def trsh_ess_job(label, level_of_theory, server, job_status, job_type, software,
         logger.error('Could not troubleshoot {job_type} for {label}! The job ran out of disc space on '
                      '{server}'.format(job_type=job_type, label=label, server=server))
         couldnt_trsh = True
-    elif 'BasisSet' in job_status['keywords']\
+    elif 'BasisSet' in job_status['keywords'] \
             and ('Unrecognized basis set' in job_status['error']
                  or 'is not appropriate for the this chemistry' in job_status['error']):
         output_errors.append(f'Error: Could not recognize basis set {job_status["error"].split()[-1]} in {software}; ')
@@ -444,11 +462,11 @@ def trsh_ess_job(label, level_of_theory, server, job_status, job_type, software,
             # The checkfile doesn't match the new basis set, remove it and rerun the job.
             logger.info('Troubleshooting {type} job in {software} for {label} that failed with '
                         '"Basis set data is not on the checkpoint file" by removing the checkfile.'.format(
-                         type=job_type, software=software, label=label))
+                type=job_type, software=software, label=label))
             ess_trsh_methods.append('checkfie=None')
             remove_checkfile = True
         elif 'InternalCoordinateError' in job_status['keywords'] \
-                and 'cartesian' not in ess_trsh_methods and job_type == 'opt':
+                and 'cartesian' not in ess_trsh_methods and job_type == 'opt' and job_type != 'scan':
             # try both cartesian and nosymm
             logger.info('Troubleshooting {type} job in {software} for {label} using opt=cartesian with '
                         'nosyym'.format(type=job_type, software=software, label=label))
@@ -460,31 +478,31 @@ def trsh_ess_job(label, level_of_theory, server, job_status, job_type, software,
                 type=job_type, software=software, label=label))
             ess_trsh_methods.append('fine')
             fine = True
-        elif 'SCF' in job_status['keywords'] and 'scf=(qc,nosymm)' not in ess_trsh_methods:
+        elif 'SCF' in job_status['keywords'] and 'scf=(qc,nosymm)' not in ess_trsh_methods and job_type != 'scan':
             # try both qc and nosymm
             logger.info('Troubleshooting {type} job in {software} for {label} using scf=(qc,nosymm)'.format(
                 type=job_type, software=software, label=label))
             ess_trsh_methods.append('scf=(qc,nosymm)')
             trsh_keyword = 'scf=(qc,nosymm)'
-        elif 'SCF' in job_status['keywords'] and 'scf=(NDump=30)' not in ess_trsh_methods:
+        elif 'SCF' in job_status['keywords'] and 'scf=(NDump=30)' not in ess_trsh_methods and job_type != 'scan':
             # Allows dynamic dumping for up to N SCF iterations (slower conversion)
             logger.info('Troubleshooting {type} job in {software} for {label} using scf=(NDump=30)'.format(
                 type=job_type, software=software, label=label))
             ess_trsh_methods.append('scf=(NDump=30)')
             trsh_keyword = 'scf=(NDump=30)'
-        elif 'SCF' in job_status['keywords'] and 'scf=NoDIIS' not in ess_trsh_methods:
+        elif 'SCF' in job_status['keywords'] and 'scf=NoDIIS' not in ess_trsh_methods and job_type != 'scan':
             # Switching off Pulay's Direct Inversion
             logger.info('Troubleshooting {type} job in {software} for {label} using scf=NoDIIS'.format(
                 type=job_type, software=software, label=label))
             ess_trsh_methods.append('scf=NoDIIS')
             trsh_keyword = 'scf=NoDIIS'
-        elif 'SCF' in job_status['keywords'] and 'scf=nosymm' not in ess_trsh_methods:
+        elif 'SCF' in job_status['keywords'] and 'scf=nosymm' not in ess_trsh_methods and job_type != 'scan':
             # try running w/o considering symmetry
             logger.info('Troubleshooting {type} job in {software} for {label} using scf=nosymm'.format(
                 type=job_type, software=software, label=label))
             ess_trsh_methods.append('scf=nosymm')
             trsh_keyword = 'scf=nosymm'
-        elif 'int=(Acc2E=14)' not in ess_trsh_methods:  # does not work in g03
+        elif 'int=(Acc2E=14)' not in ess_trsh_methods and job_type != 'scan':  # does not work in g03
             # Change integral accuracy (skip everything up to 1E-14 instead of 1E-12)
             logger.info('Troubleshooting {type} job in {software} for {label} using int=(Acc2E=14)'.format(
                 type=job_type, software=software, label=label))
@@ -507,14 +525,14 @@ def trsh_ess_job(label, level_of_theory, server, job_status, job_type, software,
                         '{old} GB'.format(type=job_type, software=software, mem=memory, old=memory_gb,
                                           label=label))
             ess_trsh_methods.append('memory')
-        elif level_of_theory != 'cbs-qb3' and 'scf=(qc,nosymm) & CBS-QB3' not in ess_trsh_methods:
+        elif level_of_theory != 'cbs-qb3' and 'scf=(qc,nosymm) & CBS-QB3' not in ess_trsh_methods and job_type != 'scan':
             # try both qc and nosymm with CBS-QB3
             logger.info('Troubleshooting {type} job in {software} for {label} using scf=(qc,nosymm) with '
                         'CBS-QB3'.format(type=job_type, software=software, label=label))
             ess_trsh_methods.append('scf=(qc,nosymm) & CBS-QB3')
             level_of_theory = 'cbs-qb3'
             trsh_keyword = 'scf=(qc,nosymm)'
-        elif 'qchem' not in ess_trsh_methods and job_type != 'composite' and \
+        elif 'qchem' not in ess_trsh_methods and job_type not in ['composite', 'scan'] and \
                 (available_ess is None or 'qchem' in [ess.lower() for ess in available_ess]):
             # Try QChem
             logger.info('Troubleshooting {type} job using qchem instead of {software} for {label}'.format(
@@ -621,14 +639,14 @@ def trsh_ess_job(label, level_of_theory, server, job_status, job_type, software,
                         '{old} GB'.format(type=job_type, software=software, mem=memory, old=memory_gb,
                                           label=label))
             shift = 'shift,-1.0,-0.5;'
-        elif 'gaussian' not in ess_trsh_methods\
+        elif 'gaussian' not in ess_trsh_methods \
                 and (available_ess is None or 'gaussian' in [ess.lower() for ess in available_ess]):
             # Try Gaussian
             logger.info('Troubleshooting {type} job using gaussian instead of {software} for {label}'.format(
                 type=job_type, software=software, label=label))
             ess_trsh_methods.append('gaussian')
             software = 'gaussian'
-        elif 'qchem' not in ess_trsh_methods\
+        elif 'qchem' not in ess_trsh_methods \
                 and (available_ess is None or 'qchem' in [ess.lower() for ess in available_ess]):
             # Try QChem
             logger.info('Troubleshooting {type} job using qchem instead of {software} for {label}'.format(
@@ -641,12 +659,12 @@ def trsh_ess_job(label, level_of_theory, server, job_status, job_type, software,
     if couldnt_trsh:
         logger.error('Could not troubleshoot geometry optimization for {label}! '
                      'Tried troubleshooting with the following methods: {methods}'.format(
-                      label=label, methods=ess_trsh_methods))
+            label=label, methods=ess_trsh_methods))
         output_errors.append('Error: Could not troubleshoot {job_type} for {label}! '
                              'Tried troubleshooting with the following methods: {methods}; '.format(
-                              job_type=job_type, label=label, methods=ess_trsh_methods))
+            job_type=job_type, label=label, methods=ess_trsh_methods))
     return output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, \
-        trsh_keyword, memory, shift, couldnt_trsh
+           trsh_keyword, memory, shift, couldnt_trsh
 
 
 def trsh_conformer_isomorphism(software, ess_trsh_methods=None):
@@ -734,7 +752,8 @@ def trsh_job_on_server(server, job_name, job_id, job_server_status, remote_path,
         content = ''.join(content)  # convert list into a single string, not to upset paramiko
         # resubmit
         ssh.upload_file(remote_file_path=os.path.join(remote_path,
-                        submit_filename[servers[server]['cluster_soft']]), file_string=content)
+                                                      submit_filename[servers[server]['cluster_soft']]),
+                        file_string=content)
         return node, True
 
     elif servers[server]['cluster_soft'].lower() == 'slurm':
@@ -782,18 +801,19 @@ def scan_quality_check(label, pivots, energies, scan_res=rotor_scan_resolution, 
     if abs(energies[-1] - energies[0]) > inconsistency_az:
         # initial and final points differ by more than `inconsistency_az` kJ/mol.
         # seems like this rotor broke the conformer. Invalidate
+        # let's try to do the scan  in the reverse direction and try to combine
         invalidate = True
         invalidation_reason = f'initial and final points are inconsistent by more than {inconsistency_az:.2f} kJ/mol'
         message = f'Rotor scan of {label} between pivots {pivots} is inconsistent by more ' \
                   f'than {inconsistency_az:.2f} kJ/mol between initial and final positions. ' \
                   f'Invalidating rotor.\nenergies[0] = {energies[0]}, energies[-1] = {energies[-1]}'
         logger.error(message)
-        actions = ['inc_res', 'freeze']
+        actions = ['freeze']  # duminda remved 'inc_res' to save time
         return invalidate, invalidation_reason, message, actions
 
     # 1.2. Check consistency between consecutive points
     for j in range(len(energies) - 1):
-        if abs(energies[j] - energies[j + 1]) > inconsistency_ab * np.max(energies):
+        if abs(energies[j] - energies[j + 1]) > abs(inconsistency_ab * np.max(energies)):
             # Two consecutive points on the scan differ by more than `inconsistency_ab` kJ/mol.
             # This is a serious inconsistency. Invalidate
             invalidate = True
@@ -802,7 +822,7 @@ def scan_quality_check(label, pivots, energies, scan_res=rotor_scan_resolution, 
             message = 'Rotor scan of {label} between pivots {pivots} is inconsistent ' \
                       'by more than {incons_ab:.2f} kJ/mol between two consecutive ' \
                       'points. Invalidating rotor.'.format(
-                       label=label, pivots=pivots, incons_ab=inconsistency_ab * max(energies))
+                label=label, pivots=pivots, incons_ab=inconsistency_ab * max(energies))
             logger.error(message)
             if ['inc_res'] not in used_methods:
                 actions = ['inc_res']
@@ -815,7 +835,7 @@ def scan_quality_check(label, pivots, energies, scan_res=rotor_scan_resolution, 
     if energy_diff >= 2 or energy_diff > 0.5 * (max(energies) - min(energies)):
         invalidate = True
         invalidation_reason = 'Another conformer for {0} exists which is {1:.2f} kJ/mol lower.'.format(
-                               label, energy_diff)
+            label, energy_diff)
         message = 'Species {label} is not oriented correctly around pivots {pivots}, ' \
                   'searching for a better conformation...'.format(label=label, pivots=pivots)
         logger.info(message)
@@ -855,7 +875,8 @@ def scan_quality_check(label, pivots, energies, scan_res=rotor_scan_resolution, 
 class ScanInfo(object):
     """A class for representing information about scan job"""
 
-    def __init__(self, logfile=None, str1=None, str2=None, str2count=None, initoffset=None, column=None,savecsv=False,plot=False):
+    def __init__(self, logfile=None, str1=None, str2=None, str2count=None, initoffset=None, column=None, savecsv=False,
+                 plot=False, ifprint=False):
         """parse gaussian san job
         Arg:
             logfile(str, compulsory): path to gaussian log file
@@ -871,13 +892,14 @@ class ScanInfo(object):
             scans(df): data frame contains gic name and the value of each optimized step.
             rows_to_remove(list): corresponding row for gic related to rotor scan
             scans_reduce(df): data frame after removing row related to rotor scan
+            self.ifprint(boolian): switch on printing
         """
         self.logfile = logfile
         if os.path.isfile(logfile):
             with open(self.logfile, 'r') as f:
                 lines = f.readlines()
         else:
-            raise InputError('Could not find file {0}'.format(self.logfile))
+            raise logging.error('Could not find file {0}'.format(self.logfile))
         self.lines = lines
         self.log = determine_qm_software(fullpath=self.logfile)
         self.gic = None
@@ -889,8 +911,9 @@ class ScanInfo(object):
         self.scans = None
         self.rows_to_remove = None
         self.scans_reduce = None
-        self.savecsv=savecsv
-        self.plot=plot
+        self.savecsv = savecsv
+        self.plot = plot
+        self.ifprint = ifprint
 
         if str1 is None:
             str1 = 'Optimized Parameters'
@@ -917,18 +940,21 @@ class ScanInfo(object):
         if self.optimized_var is None:
             self.get_var()
 
-    def get_scan_energies(self):
+    def get_scan_energies(self, plot=None):
         """obtain energies form scans
-
+        Args:
+            plot(bool) : plot the scan pes
         Returns:
             list: energy in j/mol for each pes scan point
         Returns:
             list: angle of the dihedral
         """
+        if plot is None:
+            plot = self.plot
 
         # log = determine_qm_software(fullpath=self.logfile)
         energy, angle = self.log.load_scan_energies()
-        if self.plot:
+        if plot:
             plt.plot(range(len(energy)), energy)
             plt.show()
         return energy, angle
@@ -1038,13 +1064,17 @@ class ScanInfo(object):
             parameters = self.blocks[0]
         coordinates = list()
         for l in parameters[initoffset:]:
-            # print(l.split())
-            if l.split()[1][0] == 'd' and float(l.split()[column]) < 0.0:
+            # print(l.split()[1][0])
+            if l.split()[1][0] == 'D' and float(l.split()[column]) < 0.0:
                 # print(l.split()[column])
-                var = 360.0 + float(l.split()[column])
-            if l.split()[1][0] == 'd' and float(l.split()[column]) > 180.0:
-                # print(l.split()[column])
+                # var = 360.0 + float(l.split()[column])
+                var = abs(float(l.split()[column]))
+                # var = float(l.split()[column])
+                coordinates.append(var)
+            elif l.split()[1][0] == 'D' and float(l.split()[column]) > 180.0:
+                print(l.split()[column])
                 var = 360.0 - float(l.split()[column])
+                # var = float(l.split()[column])
                 coordinates.append(var)
             else:
                 var = float(l.split()[column])
@@ -1078,21 +1108,29 @@ class ScanInfo(object):
         if d is None:
             d = self.get_pivot_atoms()
         gic_to_remove = list()
+
         for i, x in enumerate(para_dic):
-            if int(d[2]) in para_dic[x][0]:
+            if d in para_dic[x][0]:
+                if self.ifprint:
+                    print('gic dihidral associate with scan:', x, para_dic[x][0])
+                    gic_to_remove.append(x)
+            if int(d[2]) in para_dic[x][0]:  # compare anything connected to pivot atom 2
                 # compare 3th element in dihiral
                 if len(para_dic[x][0]) == 4:
-                    if int(d[2]) == int(para_dic[x][0][2]) and int(d[2]) == int(para_dic[x][0][1]):
-                        print('gic dihidral associate with scan:', x, para_dic[x][0])
+                    if int(d[2]) == int(para_dic[x][0][2]) and int(d[1]) == int(para_dic[x][0][1]):
+                        if self.ifprint:
+                            print('gic dihidral associate with scan:', x, para_dic[x][0])
                         gic_to_remove.append(x)
                 # compare 2th element in angle
                 if len(para_dic[x][0]) == 3:
                     if int(d[2]) == int(para_dic[x][0][1]):
-                        print('gic angle associate with scan:', x, para_dic[x][0])
+                        if self.ifprint:
+                            print('gic angle associate with scan:', x, para_dic[x][0])
                         gic_to_remove.append(x)
                 if len(para_dic[x][0]) == 2:
                     if int(d[2]) == int(para_dic[x][0][0]):
-                        print('gic bond associate with scan:', x, para_dic[x][0])
+                        if self.ifprint:
+                            print('gic bond associate with scan:', x, para_dic[x][0])
                         gic_to_remove.append(x)
         self.gic_to_remove = gic_to_remove
         return gic_to_remove
@@ -1106,8 +1144,8 @@ class ScanInfo(object):
         optimized_var.append(self.get_var(self.blocks[0], initoffset=5, column=3))
         # append optimized gics to self.blocks
         self.get_block(str1='Optimized Parameters',
-                                        str2='--------------------------------------------------------------------------------',
-                                        str2count=2)
+                       str2='--------------------------------------------------------------------------------',
+                       str2count=2)
 
         for x in self.blocks:
             optimized_var.append(self.get_var(x, initoffset=5, column=3))
@@ -1172,10 +1210,12 @@ class ScanInfo(object):
         if gic_to_remove is None:
             gic_to_remove = self.find_gic_to_remove()
         rows_to_remove = []
-        print('Following GIC will be removed from the scan')
+        if self.ifprint:
+            print('Following GIC will be removed from the scan')
         for i, x in enumerate(scans[0]):
             if x in gic_to_remove:
-                print(i, x)
+                if self.ifprint:
+                    print(i, x)
                 rows_to_remove.append(i)
 
         self.rows_to_remove = rows_to_remove
@@ -1205,7 +1245,7 @@ class ScanInfo(object):
         corr_reduce = self.cal_corr_colums(scans.drop(self.rows_to_remove), colums)
         return corr_reduce
 
-    def get_discontinuity_points(self, corr_reduce=None, trsh=0.97):
+    def get_discontinuity_points(self, corr_reduce=None, trsh=0.986):
         """find adjacent column with less than the trsh hold this is to find out which point PES broke
 
         Args:
@@ -1218,10 +1258,12 @@ class ScanInfo(object):
         if corr_reduce is None:
             corr_reduce = self.get_reduce_scan_df()
         corr_97 = []
-        print('colums less than the ', trsh, ' threshold')
+        if self.ifprint:
+            print('colums less than the ', trsh, ' threshold')
         for i, x in corr_reduce:
             if x < trsh and i > 1:
-                print(i, x)
+                if self.ifprint:
+                    print(i, x)
                 corr_97.append(i)
         return corr_97
 
@@ -1250,7 +1292,7 @@ def combine_plots(switch, dic_forward, dic_reverse, npoint):
     return combine
 
 
-def combine_r_f(gaussian_out_f, gaussian_out_r, npoint=37,plot=False):
+def combine_r_f(gaussian_out_f, gaussian_out_r, npoint=37, plot=False):
     """
     take two rotor scans and find the best way to combine them
 
@@ -1324,11 +1366,12 @@ def diff_ab(scan):
     return ab
 
 
-def pick_best(gaussian_out_f, gaussian_out_r, npoint=37,plot=False):
+def pick_best(gaussian_out_f, gaussian_out_r, npoint=37, plot=False):
     """
     determine which combination of reverse and forward scan produce the best PES
 
     Args:
+        plot:
         gaussian_out_f(object):class scan_info contain information about forward scan
         gaussian_out_r(object): class scan_info contain information about reverse scan
         npoint(int,compulsory): number of step in the rotor scan
@@ -1348,8 +1391,8 @@ def pick_best(gaussian_out_f, gaussian_out_r, npoint=37,plot=False):
     print('best possible fit')
     if sum_f_r < sum_r_f:
         if plot:
-             plt.plot(np.linspace(0, 360, npoint), f_r)
-             plt.show()
+            plt.plot(np.linspace(0, 360, npoint), f_r)
+            plt.show()
         return f_r
     else:
         if plot:
@@ -1415,7 +1458,7 @@ def freeze_gics(scan=None, normthresh=0.1, ifprint=True, aggressive=False):
 
     Args:
      scan(object, compulsory): class scan_info contain information about the rotor scan
-     normthresh(float, optional): threshold where normalized error between two columns will be consider as a problamatic gic.
+     normthresh(float, optional): threshold where normalized error between two columns will be consider as a problamatic gic default is 0.3 can use as a toubleshoot method by increasing the threshold .
      ifprint(bool, optional): provide additional printing
      aggressive(bool, optional): if ture try to freeze all the problematic dihedral else only consider unique pivots
 
@@ -1427,146 +1470,154 @@ def freeze_gics(scan=None, normthresh=0.1, ifprint=True, aggressive=False):
     scan.cal_corr_colums()
     scan.get_reduce_scan_df()
     discontinuity_points = scan.get_discontinuity_points()
-
-    # find normalized error between two adjacent scan points
-    nerror = list()
-    for i in scan.scans_reduce[0].index:
-        if ifprint:
-            print(i)
-        n = list()
-        n.append(i)
-        n.append(scan.scans_reduce[0][i])
-        if ifprint:
-            print(n)
-        for j in discontinuity_points:
+    if len(discontinuity_points) == 0:
+        return None
+    else:
+        # find normalized error between two adjacent scan points
+        nerror = list()
+        for i in scan.scans_reduce[0].index:
             if ifprint:
-                print(j)
-            n.append(
-                abs(abs(scan.scans_reduce[j][i]) - abs(scan.scans_reduce[j + 1][i])) / abs(scan.scans_reduce[j][i]))
-        nerror.append(n)
-    # find the gics with largest error
-    sorted_col = pd.DataFrame(nerror).sort_values(by=[2], ascending=False)
-    srows, scolums = sorted_col.shape
-
-    # find problematic gics
-    problamatic_gic = list()
-    for c in range(scolums - 2):
-        for x in sorted_col[1].index:
-            if sorted_col[2 + c][x] > normthresh:
+                print(i)
+            n = list()
+            n.append(i)
+            n.append(scan.scans_reduce[0][i])
+            if ifprint:
+                print(n)
+            for j in discontinuity_points:
                 if ifprint:
-                    print(sorted_col[1][x])
-                if sorted_col[1][x] not in problamatic_gic:
-                    problamatic_gic.append(sorted_col[1][x])
+                    print(j)
+                n.append(
+                    abs(abs(scan.scans_reduce[j][i]) - abs(scan.scans_reduce[j + 1][i])) / abs(scan.scans_reduce[j][i]))
+            nerror.append(n)
+        # find the gics with largest error
+        sorted_col = pd.DataFrame(nerror).sort_values(by=[2], ascending=False)
+        srows, scolums = sorted_col.shape
 
-    # find problamatic atom to useful in determining which bonds going to break
-    problamaitc_atoms = list()
-    for x in problamatic_gic:
-        if 'calculate' in scan.para_dic[x] or 'estimate' in scan.para_dic[x]:
+        # find problematic gics
+        problamatic_gic = list()
+        for c in range(scolums - 2):
+            for x in sorted_col[1].index:
+                if sorted_col[2 + c][x] > normthresh:
+                    if ifprint:
+                        print(sorted_col[1][x])
+                    if sorted_col[1][x] not in problamatic_gic:
+                        problamatic_gic.append(sorted_col[1][x])
+
+        # find problamatic atom to useful in determining which bonds going to break
+        problamaitc_atoms = list()
+        for x in problamatic_gic:
+            if 'calculate' in scan.para_dic[x] or 'estimate' in scan.para_dic[x]:
+                if ifprint:
+                    print(scan.para_dic[x])
+                problamaitc_atoms.append(scan.para_dic[x][0])
+
+        y = list()
+        for x in problamaitc_atoms:
+            y = y + x
+
+        freq = count_frequency(y)
+        freq.items()
+
+        most_problamtic_atom = []
+        for key, value in freq.items():
             if ifprint:
-                print(scan.para_dic[x])
-            problamaitc_atoms.append(scan.para_dic[x][0])
+                print(key, "->", value)
+            if value > 1:
+                most_problamtic_atom.append(key)
 
-    y = list()
-    for x in problamaitc_atoms:
-        y = y + x
+        # find the most problematic atom
+        df_most_problamtic_atom = pd.DataFrame(freq.items())
+        patoms = df_most_problamtic_atom.sort_values(by=[1], ascending=False).head(n=1)[0]
 
-    freq = count_frequency(y)
-    freq.items()
+        freeze_bond = []
+        for key, value in scan.para_dic.items():
+            if len(value[0]) == 2 and patoms.values in value[0]:
+                if ifprint:
+                    print(value[0])
+                freeze_bond.append(value[0])
 
-    most_problamtic_atom = []
-    for key, value in freq.items():
-        if ifprint:
-            print(key, "->", value)
-        if value > 1:
-            most_problamtic_atom.append(key)
-
-    # find the most problematic atom
-    df_most_problamtic_atom = pd.DataFrame(freq.items())
-    patoms = df_most_problamtic_atom.sort_values(by=[1], ascending=False).head(n=1)[0]
-
-    freeze_bond = []
-    for key, value in scan.para_dic.items():
-        if len(value[0]) == 2 and patoms.values in value[0]:
-            if ifprint:
-                print(value[0])
-            freeze_bond.append(value[0])
-
-    union = unique(y)
-    # find which dihedral to freeze
-    freeze_dihdral = []
-    for dihidral in problamaitc_atoms:
-        if ifprint:
-            print(dihidral)
-        if len(list(set(dihidral) & set(union))) == 4:
+        union = unique(y)
+        # find which dihedral to freeze
+        freeze_dihdral = []
+        for dihidral in problamaitc_atoms:
             if ifprint:
                 print(dihidral)
-            if dihidral not in freeze_dihdral:
-                freeze_dihdral.append(dihidral)
-
-    # some of the dihidrals might be associated with rotor scan here we remove them.
-    d = scan.get_pivot_atoms()
-    print("rotor scan:", d)
-
-    rotor_atom, remove_dihidral, remove_bond = list()
-    for i in scan.gic_to_remove:
-        # find if there are atoms connected to pivot
-        if ifprint:
-            print(scan.para_dic[i][0])
-        if len(scan.para_dic[i][0]) == 2:
-            if ifprint:
-                print(scan.para_dic[i][0][1])
-            rotor_atom.append(scan.para_dic[i][0][1])
-
-    print('rotor atoms', rotor_atom)
-    for i in rotor_atom:
-        for j, x in enumerate(freeze_dihdral):
-            if ifprint:
-                print(i, x)
-            if i in x:
+            if len(list(set(dihidral) & set(union))) == 4:
                 if ifprint:
-                    print('found dihidral should not freeze')
+                    print(dihidral)
+                if dihidral not in freeze_dihdral:
+                    freeze_dihdral.append(dihidral)
+
+        # some of the dihidrals might be associated with rotor scan here we remove them.
+        d = scan.get_pivot_atoms()
+        print("rotor scan:", d)
+
+        rotor_atom = list()
+        remove_dihidral = list()
+        remove_bond = list()
+        for i in scan.gic_to_remove:
+            # find if there are atoms connected to pivot
+            if ifprint:
+                print(scan.para_dic[i][0])
+            if len(scan.para_dic[i][0]) == 2:
+                if ifprint:
+                    print(scan.para_dic[i][0][1])
+                rotor_atom.append(scan.para_dic[i][0][1])
+
+        print('rotor atoms', rotor_atom)
+        for i in rotor_atom:
+            for j, x in enumerate(freeze_dihdral):
                 if ifprint:
                     print(i, x)
-                # freeze_dihedral.pop(j)
-                if j not in remove_dihidral:
-                    remove_dihidral.append(j)
+                if i in x:
+                    if ifprint:
+                        print('found dihidral should not freeze')
+                    if ifprint:
+                        print(i, x)
+                    # freeze_dihedral.pop(j)
+                    if j not in remove_dihidral:
+                        remove_dihidral.append(j)
 
-        # some of the bonds might be associated with rotor scan here we remove them.
-        for k, y in enumerate(freeze_bond):
-            if i in y:
-                if ifprint:
-                    print(i, y)
-                if ifprint:
-                    print('found bond should not freeze')
-                    print([int(d[2]), int(d[3])])
-                if y == [int(d[2]), int(d[3])] or y == [int(d[2]), int(d[3])]:
-                    print('freezing bond', y)
+            # some of the bonds might be associated with rotor scan here we remove them.
+            for k, y in enumerate(freeze_bond):
+                if i in y:
+                    if ifprint:
+                        print(i, y)
+                    if ifprint:
+                        print('found bond should not freeze')
+                        print([int(d[2]), int(d[3])])
+                    if y == [int(d[2]), int(d[3])] or y == [int(d[2]), int(d[3])]:
+                        print('freezing bond', y)
+                    else:
+                        if k not in remove_bond:
+                            remove_bond.append(k)
+
+        remove_elements(freeze_dihdral, remove_dihidral)
+        remove_elements(freeze_bond, remove_bond)
+
+        # number of dihedral recommend by the algorithm is bit aggressive, so at first we consider unique pivot.
+        freeze_dihdral_reduce = list()
+        if aggressive:
+            print("freezing dihedral:", freeze_dihdral)
+            print("freezing bond:", freeze_bond)
+            return [x for x in freeze_dihdral + freeze_bond]
+        else:
+            for i, d in enumerate(freeze_dihdral):
+                if len(freeze_dihdral_reduce) > 0:
+
+                    for j in range(len(freeze_dihdral_reduce)):
+                        # print('length freeze_dihdral_reduce', len(freeze_dihdral_reduce))
+                        if [freeze_dihdral_reduce[j][1], freeze_dihdral_reduce[j][2]] == [int(d[1]), int(d[2])] or [
+                            freeze_dihdral_reduce[j][2], freeze_dihdral_reduce[j][1]] == [int(d[1]), int(d[2])]:
+                            # print('skipping this', d)
+                            break
+                    else:
+                        # print('adding this', d)
+                        freeze_dihdral_reduce.append(d)
+
                 else:
-                    if k not in remove_bond:
-                        remove_bond.append(k)
-
-    remove_elements(freeze_dihdral, remove_dihidral)
-    remove_elements(freeze_bond, remove_bond)
-
-    # number of dihedral recommend by the algorithm is bit aggressive, so at first we consider unique pivot.
-    freeze_dihdral_reduce = list()
-    if aggressive:
-        return freeze_dihdral, freeze_bond
-    else:
-        for i, d in enumerate(freeze_dihdral):
-            if len(freeze_dihdral_reduce) > 0:
-
-                for j in range(len(freeze_dihdral_reduce)):
-                    #print('length freeze_dihdral_reduce', len(freeze_dihdral_reduce))
-                    if [freeze_dihdral_reduce[j][1], freeze_dihdral_reduce[j][2]] == [int(d[1]), int(d[2])] or [
-                        freeze_dihdral_reduce[j][2], freeze_dihdral_reduce[j][1]] == [int(d[1]), int(d[2])]:
-                        #print('skipping this', d)
-                        break
-                else:
-                    #print('adding this', d)
                     freeze_dihdral_reduce.append(d)
+            print("freezing dihedral:", freeze_dihdral_reduce)
+            print("freezing bond:", freeze_bond)
 
-            else:
-                freeze_dihdral_reduce.append(d)
-
-        return freeze_dihdral_reduce, freeze_bond
+            return [x for x in freeze_dihdral_reduce + freeze_bond]
