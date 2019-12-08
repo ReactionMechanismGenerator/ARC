@@ -12,6 +12,24 @@ import arc.job.trsh as trsh
 from arc.settings import arc_path, supported_ess
 
 
+class DummyJob:
+    def __init__(self, path=None):
+        self.local_path_to_output_file = path
+
+
+class SetArguments:
+    def __init__(self, path=None):
+        self.label = path.split('/')[-2]
+        r = trsh.ScanInfo(logfile=path)
+        self.scaninfo = r
+        self.scan = r.get_pivot_atoms()
+        self.pivots = r.get_pivot_atoms()[1:3]
+        self.energies = r.get_scan_energies()[0]
+        self.scan_res = 8
+        self.job = DummyJob(path=path)
+        self.species_scan_lists = [self.scan]
+
+
 class TestTrsh(unittest.TestCase):
     """
     Contains unit tests for the job.trsh module
@@ -95,6 +113,76 @@ class TestTrsh(unittest.TestCase):
         self.assertEqual(keywords, ['BasisSet'])
         self.assertEqual(error, 'Unrecognized basis set 6-311G**')
         self.assertIn(' ? Basis library exhausted', line)  # line includes '\n'
+
+    def test_scan_quality_check(self):
+        """
+        this method check scan_quality_check
+        Returns:
+            invalidate (bool): Whether to invalidate this rotor, ``True`` to invalidate.
+        Returns:
+            invalidation_reason (str): Reason for invalidating this rotor.
+        Returns:
+            message (str): Error or warning message.
+        Returns:
+            actions (list): Troubleshooting methods to apply, including conformational changes.
+        """
+
+        path1 = os.path.join(arc_path, 'arc', 'testing', 'trsh', 'rotor troubleshoot/CH2OCCOO/output.out')
+        scan_test1 = SetArguments(path=path1)
+
+        invalidate1, invalidation_reason1, message1, actions1 = trsh.scan_quality_check(scan_test1.label,
+                                                                                        scan_test1.pivots,
+                                                                                        scan_test1.energies,
+                                                                                        scan_res=scan_test1.scan_res,)
+        self.assertEqual(invalidate1, True)
+        self.assertEqual(invalidation_reason1, 'initial and final points are inconsistent by more than 5.00 kJ/mol')
+        self.assertIn('freeze', actions1)
+
+        path2 = os.path.join(arc_path, 'arc', 'testing', 'trsh', 'rotor troubleshoot/CH3OOCH2/scan_a4777/output.out')
+        scan_test2 = SetArguments(path=path2)
+
+        invalidate2, invalidation_reason2, message2, actions2 = trsh.scan_quality_check(scan_test2.label,
+                                                                                        scan_test2.pivots,
+                                                                                        scan_test2.energies,
+                                                                                        scan_res=scan_test2.scan_res,)
+        self.assertEqual(invalidate2, True)
+        self.assertEqual(invalidation_reason2, 'initial and final points are inconsistent by more than 5.00 kJ/mol')
+        self.assertIn('freeze', actions1)
+
+    def test_trsh_scan_job(self):
+        """
+        this mehod check whether trsh_scan_job freese correct GIC
+        Returns:
+            scan_trsh (str): The scan troubleshooting keywords to be appended to the Gaussian input file.
+        Returns:
+            scan_res (int): The new scan resolution in degrees.
+
+        Raises:
+            TrshError: If troubleshooted dihedral is not found.
+        """
+        path1 = os.path.join(arc_path, 'arc', 'testing', 'trsh', 'rotor troubleshoot/CH2OCCOO/output.out')
+        scan_test1 = SetArguments(path=path1)
+        invalidate1, invalidation_reason1, message1, actions1 = trsh.scan_quality_check(scan_test1.label,
+                                                                                        scan_test1.pivots,
+                                                                                        scan_test1.energies,
+                                                                                        scan_res=scan_test1.scan_res,)
+        scan_trsh1, scan_res1 = trsh.trsh_scan_job(scan_test1.label, scan_test1.scan_res, scan_test1.scan,
+                                                   scan_test1.species_scan_lists, actions1,
+                                                   job=scan_test1.job)
+        self.assertEqual(scan_trsh1, '\nD 4 2 3 10 F\nD 4 1 5 9 F\nB 1 4 F\nB 2 4 F\n')
+        self.assertEqual(scan_res1, 8.0)
+
+        path2 = os.path.join(arc_path, 'arc', 'testing', 'trsh', 'rotor troubleshoot/CH3OOCH2/scan_a4777/output.out')
+        scan_test2 = SetArguments(path=path2)
+        invalidate2, invalidation_reason2, message2, actions2 = trsh.scan_quality_check(scan_test2.label,
+                                                                                        scan_test2.pivots,
+                                                                                        scan_test2.energies,
+                                                                                        scan_res=scan_test2.scan_res,)
+        scan_trsh2, scan_res2 = trsh.trsh_scan_job(scan_test2.label, scan_test2.scan_res, scan_test2.scan,
+                                                   scan_test2.species_scan_lists, actions2,
+                                                   job=scan_test2.job)
+        self.assertEqual(scan_trsh2, '\nB 2 3 F\n')
+        self.assertEqual(scan_res2, 8.0)
 
 
     def test_trsh_ess_job(self):
