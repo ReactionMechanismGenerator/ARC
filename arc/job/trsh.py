@@ -5,10 +5,8 @@
 The ARC troubleshooting ("trsh") module
 """
 
-import logging
 import os
 
-import cclib
 import numpy as np
 
 from arc.common import get_logger, determine_ess
@@ -16,8 +14,9 @@ from arc.exceptions import SpeciesError, TrshError
 from arc.job.ssh import SSHClient
 from arc.settings import servers, delete_command, list_available_nodes_command, submit_filename, \
     inconsistency_ab, inconsistency_az, maximum_barrier, rotor_scan_resolution
-from arc.species.converter import xyz_from_data
+from arc.species.converter import xyz_from_data, xyz_to_coords_list
 from arc.species.species import determine_rotor_symmetry
+from arc.parser import parse_normal_displacement_modes, parse_xyz_from_file
 
 
 logger = get_logger()
@@ -252,7 +251,6 @@ def trsh_negative_freq(label, log_file, neg_freqs_trshed=None, job_types=None):
           determine torsions with unique PIVOTS where these atoms are in the "scan" and "top" but not pivotal
           generate a 360 scan using 30 deg increments and append all 12 results as conformers
           (consider rotor symmetry to append less conformers?)
-        * Write our own frequencies parsers
 
     Returns:
         current_neg_freqs_trshed (list): The current troubleshooted negative frequencies.
@@ -270,18 +268,11 @@ def trsh_negative_freq(label, log_file, neg_freqs_trshed=None, job_types=None):
     job_types = job_types if job_types is not None else ['rotors']
     output_errors, output_warnings, conformers, current_neg_freqs_trshed = list(), list(), list(), list()
     factor = 1.1
-    ccparser = cclib.io.ccopen(str(log_file), logging.CRITICAL)
     try:
-        data = ccparser.parse()
-    except AttributeError:
-        # see https://github.com/cclib/cclib/issues/754
-        logger.error('Could not troubleshoot negative frequency for species {0}'.format(label))
-        output_errors.append('Error: Could not troubleshoot negative frequency; ')
+        freqs, normal_disp_modes = parse_normal_displacement_modes(path=log_file)
+    except NotImplementedError as e:
+        logger.error(f'Could not troubleshoot negative frequency for species {label}, got:\n{e}')
         return [], [], output_errors, []
-    vibfreqs = data.vibfreqs
-    vibdisps = data.vibdisps
-    atomnos = data.atomnos
-    atomcoords = data.atomcoords
     if len(neg_freqs_trshed) > 10:
         logger.error('Species {0} was troubleshooted for negative frequencies too many times.'.format(label))
         if 'rotors' not in job_types:
@@ -293,50 +284,51 @@ def trsh_negative_freq(label, log_file, neg_freqs_trshed=None, job_types=None):
     else:
         neg_freqs_idx = list()  # store indices w.r.t. vibfreqs
         largest_neg_freq_idx = 0  # index in vibfreqs
-        for i, freq in enumerate(vibfreqs):
+        for i, freq in enumerate(freqs):
             if freq < 0:
                 neg_freqs_idx.append(i)
-                if vibfreqs[i] < vibfreqs[largest_neg_freq_idx]:
+                if freqs[i] < freqs[largest_neg_freq_idx]:
                     largest_neg_freq_idx = i
             else:
                 # assuming frequencies are ordered, break after the first positive freq encountered
                 break
-        if vibfreqs[largest_neg_freq_idx] >= 0 or len(neg_freqs_idx) == 0:
+        if freqs[largest_neg_freq_idx] >= 0 or len(neg_freqs_idx) == 0:
             raise TrshError('Could not determine a negative frequency for species {0} '
                             'while troubleshooting for it.'.format(label))
         if len(neg_freqs_idx) == 1 and not len(neg_freqs_trshed):
             # species has one negative frequency, and has not been troubleshooted for it before
             logger.info('Species {0} has a negative frequency ({1}). Perturbing its geometry using the respective '
-                        'vibrational displacements'.format(label, vibfreqs[largest_neg_freq_idx]))
+                        'vibrational displacements'.format(label, freqs[largest_neg_freq_idx]))
             neg_freqs_idx = [largest_neg_freq_idx]  # indices of the negative frequencies to troubleshoot for
-        elif len(neg_freqs_idx) == 1 and any([np.allclose(vibfreqs[0], vf, rtol=1e-04, atol=1e-02)
+        elif len(neg_freqs_idx) == 1 and any([np.allclose(freqs[0], vf, rtol=1e-04, atol=1e-02)
                                               for vf in neg_freqs_trshed]):
             # species has one negative frequency, and has been troubleshooted for it before
             factor = 1 + 0.1 * (len(neg_freqs_trshed) + 1)
             logger.info('Species {0} has a negative frequency ({1}) for the {2} time. Perturbing its geometry using '
                         'the respective vibrational displacements, this time using a larger factor (x {3})'.format(
-                         label, vibfreqs[largest_neg_freq_idx], len(neg_freqs_trshed), factor))
+                         label, freqs[largest_neg_freq_idx], len(neg_freqs_trshed), factor))
             neg_freqs_idx = [largest_neg_freq_idx]  # indices of the negative frequencies to troubleshoot for
-        elif len(neg_freqs_idx) > 1 and not any([np.allclose(vibfreqs[0], vf, rtol=1e-04, atol=1e-02)
+        elif len(neg_freqs_idx) > 1 and not any([np.allclose(freqs[0], vf, rtol=1e-04, atol=1e-02)
                                                  for vf in neg_freqs_trshed]):
             # species has more than one negative frequency, and has not been troubleshooted for it before
             logger.info('Species {0} has {1} negative frequencies. Perturbing its geometry using the vibrational '
                         'displacements of its largest negative frequency, {2}'.format(label, len(neg_freqs_idx),
-                                                                                      vibfreqs[largest_neg_freq_idx]))
+                                                                                      freqs[largest_neg_freq_idx]))
             neg_freqs_idx = [largest_neg_freq_idx]  # indices of the negative frequencies to troubleshoot for
-        elif len(neg_freqs_idx) > 1 and any([np.allclose(vibfreqs[0], vf, rtol=1e-04, atol=1e-02)
+        elif len(neg_freqs_idx) > 1 and any([np.allclose(freqs[0], vf, rtol=1e-04, atol=1e-02)
                                              for vf in neg_freqs_trshed]):
             # species has more than one negative frequency, and has been troubleshooted for it before
             logger.info('Species {0} has {1} negative frequencies. Perturbing its geometry using the vibrational'
                         ' displacements of ALL negative frequencies'.format(label, len(neg_freqs_idx)))
-        current_neg_freqs_trshed = [round(vibfreqs[i], 2) for i in neg_freqs_idx]  # record trshed negative freqs
-        atomcoords = atomcoords[-1]  # it's a list within a list, take the last geometry
+        current_neg_freqs_trshed = [round(freqs[i], 2) for i in neg_freqs_idx]  # record trshed negative freqs
+        xyz = parse_xyz_from_file(log_file)
+        coords = np.array(xyz_to_coords_list(xyz), np.float64)
         for neg_freq_idx in neg_freqs_idx:
-            displacement = vibdisps[neg_freq_idx]
-            xyz1 = atomcoords + factor * displacement
-            xyz2 = atomcoords - factor * displacement
-            conformers.append(xyz_from_data(coords=xyz1, numbers=atomnos))
-            conformers.append(xyz_from_data(coords=xyz2, numbers=atomnos))
+            displacement = normal_disp_modes[neg_freq_idx]
+            coords1 = coords + factor * displacement
+            coords2 = coords - factor * displacement
+            conformers.append(xyz_from_data(coords=coords1, symbols=xyz['symbols']))
+            conformers.append(xyz_from_data(coords=coords2, symbols=xyz['symbols']))
     return current_neg_freqs_trshed, conformers, output_errors, output_warnings
 
 
