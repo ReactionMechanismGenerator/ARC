@@ -765,14 +765,14 @@ $end
                     job_type_1 = 'opt=(ts, modredundant, calcfc, noeigentest, maxStep=5) scf=(tight, direct) ' \
                                  'integral=(grid=ultrafine, Acc2E=12)'
                 else:
-                    job_type_1 = 'opt=(modredundant, calcfc, noeigentest, maxStep=5) scf=(tight, direct) ' \
+                    job_type_1 = 'opt=(modredundant) ' \
                                  'integral=(grid=ultrafine, Acc2E=12)'
                 if self.checkfile is not None:
                     job_type_1 += ' guess=read'
                 else:
                     job_type_1 += ' guess=mix'
                 scan_string = 'D {scan} S {steps} {increment:.1f}'.format(scan=scan,
-                                                                          steps=str(int(360 / self.scan_res)),
+                                                                          steps=str(int(360 / abs(self.scan_res))),
                                                                           increment=float(self.scan_res))
             elif self.software == 'qchem':
                 if self.is_ts:
