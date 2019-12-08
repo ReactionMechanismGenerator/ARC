@@ -12,7 +12,7 @@ from arkane.exceptions import LogError
 from arkane.ess import GaussianLog, MolproLog, QChemLog
 from arkane.util import determine_qm_software
 
-from arc.common import get_logger
+from arc.common import get_logger, determine_ess
 from arc.exceptions import InputError, ParserError
 from arc.species.converter import xyz_from_data, str_to_xyz
 
@@ -57,6 +57,63 @@ def parse_frequencies(path, software):
                           ' got {0}'.format(software))
     logger.debug('Using parser.parse_frequencies. Determined frequencies are: {0}'.format(freqs))
     return freqs
+
+
+def parse_normal_displacement_modes(path, software=None):
+    """
+    Parse frequencies and normal displacement modes.
+
+    Args:
+        path (str): The path to the log file.
+        software (str, optional): The software to used to generate the log file.
+
+    Returns:
+        np.ndarray: The frequencies (cm^-1)
+    Returns:
+        np.ndarray: The normal displacement modes
+
+    Raises:
+        NotImplementedError: If the parser is not implemented for the ESS this log file belongs to.
+    """
+    software = software or determine_ess(path)
+    freqs, normal_disp_modes = list(), list()
+    num_of_freqs_per_line = 3
+    with open(path, 'r') as f:
+        lines = f.readlines()
+    if software == 'gaussian':
+        parse, parse_normal_disp_modes = False, False
+        for line in lines:
+            if 'Harmonic frequencies (cm**-1)' in line:
+                # e.g.:  Harmonic frequencies (cm**-1), IR intensities (KM/Mole), Raman scattering
+                parse = True
+            if parse and len(line.split()) in [0, 3]:
+                parse_normal_disp_modes = False
+            if parse and 'Frequencies --' in line:
+                # e.g.:  Frequencies --    -18.0696               127.6948               174.9499
+                splits = line.split()
+                freqs.extend(float(freq) for freq in splits[2:])
+                num_of_freqs_per_line = len(splits) - 2
+                normal_disp_modes_entries = list()
+            elif parse_normal_disp_modes:
+                # parsing, e.g.:
+                #   Atom  AN      X      Y      Z        X      Y      Z        X      Y      Z
+                #      1   6    -0.00   0.00  -0.09    -0.00   0.00  -0.18     0.00  -0.00  -0.16
+                #      2   7    -0.00   0.00  -0.10     0.00  -0.00   0.02     0.00  -0.00   0.26
+                splits = line.split()[2:]
+                for i in range(num_of_freqs_per_line):
+                    if len(normal_disp_modes_entries) < i + 1:
+                        normal_disp_modes_entries.append(list())
+                    normal_disp_modes_entries[i].append(splits[3 * i: 3 * i + 3])
+                normal_disp_modes.extend(normal_disp_modes_entries)
+            elif parse and 'Atom  AN      X      Y      Z        X      Y      Z        X      Y      Z' in line:
+                parse_normal_disp_modes = True
+            elif parse and not line or '-------------------' in line:
+                parse = False
+    else:
+        raise NotImplementedError(f'parse_normal_displacement_modes is currently not implemented for {software}.')
+    freqs = np.array(freqs, np.float64)
+    normal_disp_modes = np.array(normal_disp_modes, np.float64)
+    return freqs, normal_disp_modes
 
 
 def parse_t1(path):
