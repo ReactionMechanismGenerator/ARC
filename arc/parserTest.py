@@ -48,6 +48,26 @@ class TestParser(unittest.TestCase):
         self.assertTrue(np.array_equal(ch2o_freqs,
                                        np.array([1181.01, 1261.34, 1529.25, 1764.47, 2932.15, 3000.10], np.float64)))
 
+    def test_parse_normal_displacement_modes(self):
+        """Test parsing frequencies and normal displacement modes"""
+        gaussian_neg_freq_path = os.path.join(arc_path, 'arc', 'testing', 'Gaussian_neg_freq.out')
+        freqs, normal_disp_modes = parser.parse_normal_displacement_modes(path=gaussian_neg_freq_path)
+        expected_freqs = np.array([-18.0696, 127.6948, 174.9499, 207.585, 228.8421, 281.2939, 292.4101,
+                                   308.0345, 375.4493, 486.8396, 498.6986, 537.6196, 564.0223, 615.3762,
+                                   741.8843, 749.3428, 777.1524, 855.3031, 871.055, 962.7075, 977.6181,
+                                   1050.3147, 1051.8134, 1071.7234, 1082.0731, 1146.8729, 1170.0212, 1179.6722,
+                                   1189.1581, 1206.0905, 1269.8371, 1313.4043, 1355.1081, 1380.155, 1429.7095,
+                                   1464.5357, 1475.5996, 1493.6501, 1494.3533, 1500.9964, 1507.5851, 1532.7927,
+                                   1587.7095, 1643.0702, 2992.7203, 3045.3662, 3068.6577, 3123.9646, 3158.2579,
+                                   3159.3532, 3199.1684, 3211.4927, 3223.942, 3233.9201], np.float64)
+        np.testing.assert_almost_equal(freqs, expected_freqs)
+        expected_normal_disp_modes_0 = np.array(
+            [[-0.0, 0.0, -0.09], [-0.0, 0.0, -0.1], [0.0, 0.0, -0.01], [0.0, 0.0, -0.07], [0.0, 0.0, -0.2],
+             [-0.0, -0.0, 0.28], [0.0, -0.0, -0.08], [0.0, -0.0, 0.01], [0.0, -0.0, 0.12], [0.0, -0.0, 0.12],
+             [0.08, -0.02, -0.04], [-0.08, 0.02, -0.04], [-0.0, 0.0, -0.18], [-0.3, -0.03, 0.41], [-0.0, -0.0, 0.4],
+             [0.3, 0.03, 0.41], [0.0, 0.0, -0.15], [0.0, -0.0, 0.01], [0.0, -0.0, 0.21], [0.0, -0.0, 0.19]], np.float64)
+        np.testing.assert_almost_equal(normal_disp_modes[0], expected_normal_disp_modes_0)
+
     def test_parse_xyz_from_file(self):
         """Test parsing xyz from a file"""
         path1 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'CH3C(O)O.gjf')
