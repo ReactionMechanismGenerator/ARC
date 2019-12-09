@@ -117,6 +117,7 @@ class ARCSpecies(object):
                                 - 'brute_force_sp'
                                 - 'brute_force_opt'
                                 - 'cont_opt'
+                                - 'ess'
                                 The brute force methods will generate all the geometries in advance and submit all
                                 relevant jobs simultaneously. The continuous method will wait for the previous job
                                 to terminate, and use its geometry as the initial guess for the next job.
@@ -402,8 +403,7 @@ class ARCSpecies(object):
                         'brute_force_sp_diagonal', 'brute_force_opt_diagonal', 'cont_opt_diagonal']
         for key in self.directed_rotors.keys():
             if key not in allowed_keys:
-                raise SpeciesError('Allowed keys for directed_rotors are {0}. Got for species {1}: {2}'.format(
-                    allowed_keys, key, self.label))
+                raise SpeciesError(f'Allowed keys for directed_rotors are {allowed_keys}. Got {key} for {self.label}')
 
         if self.mol is not None and self.mol_list is None:
             self.set_mol_list()
