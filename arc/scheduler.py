@@ -1168,9 +1168,14 @@ class Scheduler(object):
         pivots = self.species_dict[label].rotors_dict[rotor_index]['pivots']
         directed_scan_type = self.species_dict[label].rotors_dict[rotor_index]['directed_scan_type']
         xyz = xyz or self.species_dict[label].get_xyz(generate=True)
-        if 'cont' not in directed_scan_type and 'brute' not in directed_scan_type:
+        if 'cont' not in directed_scan_type and 'brute' not in directed_scan_type and 'ess' not in directed_scan_type:
             raise InputError(f'directed_scan_type must be either continuous or brute force, got: {directed_scan_type}')
-        if 'brute' in directed_scan_type:
+        if 'ess' in directed_scan_type:
+            # allow the ESS to control the scan
+            self.run_job(label=label, xyz=xyz, level_of_theory=self.scan_level, job_type='scan',
+                         directed_scan_type=directed_scan_type, directed_scans=scans, rotor_index=rotor_index,
+                         pivots=pivots)
+        elif 'brute' in directed_scan_type:
             # spawn jobs all at once
             dihedrals = dict()
             for scan in scans:

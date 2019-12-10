@@ -103,26 +103,28 @@ ND Rotor scans
 ^^^^^^^^^^^^^^
 ARC also supports ND (N dimensional, N >= 1) rotor scans. There are seven different ND types to execute:
 
-- A. Generate all geometries in advance (brute force)
-- - A1. Just calculate single point energies
-- - A2. Constraint optimization
-- B. Derive the geometry from the previous point (continuous constrained optimization)
+A. Generate all geometries in advance (brute force)
+- A1. Just calculate single point energies (nested or diagonalized)
+- A2. Constraint optimization (nested or diagonalized)
+B. Derive the geometry from the previous point (continuous constrained optimization) (nested or diagonalized)
+C. ESS
 
-Each of the options above can be either "nested" (considering all ND dihedral combinations) or "diagonal"
-(resulting in a unique 1D rotor scan across several dimensions). The seventh option is to allow the ESS to control
-the ND scan, which is similar in principal to option B.
+Each of the options above (A or B) can be either "nested" (considering all ND dihedral combinations) or "diagonal"
+(resulting in a unique 1D rotor scan across several dimensions). The seventh option (C) allows the ESS to control
+the ND scan, which is similar in principal to option B, but not directly controlled by ARC.
 
 The optional primary keys are:
 
 - ``brute_force_sp``
 - ``brute_force_opt``
 - ``cont_opt``
+- ``ess``
 
 The brute force methods will generate all the geometries in advance and submit all relevant jobs simultaneously.
 The continuous method will wait for the previous job to terminate, and use its geometry as the initial guess for
 the next job.
 
-Another set of three keys is allowed, adding ``_diagonal`` to each of the above keys. the secondary keys are therefore:
+Another set of three keys is allowed, adding ``_diagonal`` to each of the above keys. The secondary keys are therefore:
 
 - ``brute_force_sp_diagonal``
 - ``brute_force_opt_diagonal``

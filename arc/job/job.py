@@ -759,14 +759,20 @@ $end
         if self.job_type == 'scan':
             if divmod(360, self.scan_res)[1]:
                 raise JobError(f'Scan job got an illegal rotor scan resolution of {self.scan_res}')
-            scan = ' '.join([str(num) for num in self.scan])
+            if self.scan is not None and self.scan:
+                scans = [' '.join([str(num) for num in self.scan])]
+            elif self.directed_scans is not None:
+                scans = list()
+                for directed_scan in self.directed_scans:
+                    scans.append(' '.join([str(num) for num in directed_scan]))
+            else:
+                raise JobError(f'A scan job must either get a `scan` or a `directed_scans` argument.\n'
+                               f'Got neither for job {self.job_name} of {self.species_name}.')
             if self.software == 'gaussian':
-                if self.is_ts:
-                    job_type_1 = 'opt=(ts, modredundant, calcfc, noeigentest, maxStep=5) scf=(tight, direct) ' \
-                                 'integral=(grid=ultrafine, Acc2E=12)'
-                else:
-                    job_type_1 = 'opt=(modredundant) ' \
-                                 'integral=(grid=ultrafine, Acc2E=12)'
+
+                ts = 'ts, ' if self.is_ts else ''
+                job_type_1 = f'opt=({ts}modredundant, calcfc, noeigentest, maxStep=5) scf=(tight, direct) ' \
+                             f'integral=(grid=ultrafine, Acc2E=12)'
                 if self.checkfile is not None:
                     job_type_1 += ' guess=read'
                 else:
@@ -780,17 +786,13 @@ $end
                 else:
                     job_type_1 = 'opt'
                 dihedral1 = int(calculate_dihedral_angle(coords=self.xyz['coords'], torsion=self.scan))
-                dihedral2 = dihedral1 - self.scan_res
-                if dihedral2 < -180:
-                    dihedral2 += 360
-                scan_string = """
-$scan
-    tors {scan} {dihedral1} {dihedral2} {increment}
-$end
-""".format(scan=scan, dihedral1=0, dihedral2=0, increment=self.scan_res)
+                scan_string = '\n$scan\n'
+                for scan in scans:
+                    scan_string += f'tors {scan} {dihedral1} {dihedral1 + 360.0} {self.scan_res}\n'
+                scan_string += '$end'
             else:
-                raise ValueError('Currently rotor scan is only supported in Gaussian and QChem. Got: {0} using the '
-                                 '{1} level of theory'.format(self.software, self.method + '/' + self.basis_set))
+                raise JobError(f'Currently rotor scan is only supported in Gaussian and QChem. Got: {self.software} '
+                               f'using the {self.method + "/" + self.basis_set} level of theory')
 
         elif self.job_type == 'directed_scan':
             # this is either a constrained opt job or an sp job (depends on self.directed_scan_type).

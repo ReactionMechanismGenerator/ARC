@@ -248,7 +248,7 @@ g03 input.gjf
 rm -r /scratch/{un}/{name}
 
 """,
-        # QChem 4.4
+        # QChem 5.2
         'qchem': """#!/bin/bash -l
 
 #$ -N {name}
@@ -262,6 +262,8 @@ rm -r /scratch/{un}/{name}
 
 echo "Running on node:"
 hostname
+
+source /opt/qchem/qcenv.sh
 
 export QC=/opt/qchem
 export QCSCRATCH=/scratch/{un}/{name}
