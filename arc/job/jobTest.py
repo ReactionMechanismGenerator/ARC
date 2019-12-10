@@ -28,7 +28,7 @@ class TestJob(unittest.TestCase):
         """
         cls.maxDiff = None
         cls.ess_settings = {'gaussian': ['server1', 'server2'], 'molpro': ['server2'],
-                            'qchem': ['server1'], 'onedmin': ['server1']}
+                            'qchem': ['server1'], 'onedmin': ['server1'], 'orca': ['server1']}
         cls.xyz_c = {'symbols': ('C',), 'isotopes': (12,), 'coords': ((0.0, 0.0, 0.0),)}
         cls.job1 = Job(project='arc_project_for_testing_delete_after_usage3', ess_settings=cls.ess_settings,
                        species_name='tst_spc', xyz=cls.xyz_c, job_type='opt',
@@ -48,7 +48,8 @@ class TestJob(unittest.TestCase):
                          'final_time': final_time,
                          'cpu_cores': 8,
                          'ess_settings': {'gaussian': ['server1', 'server2'],
-                                          'molpro': [u'server2'], 'onedmin': [u'server1'], 'qchem': [u'server1']},
+                                          'molpro': [u'server2'], 'onedmin': [u'server1'], 'qchem': [u'server1'],
+                                          'orca': ['server1']},
                          'species_name': 'tst_spc',
                          'is_ts': False,
                          'fine': True,
@@ -141,6 +142,12 @@ class TestJob(unittest.TestCase):
                    multiplicity=1, testing=True,
                    project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'qchem')
+        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
+                   job_type='sp', job_level_of_theory_dict={'method': 'dlpno-ccsd(t)', 'basis': 'aug-cc-pvtz',
+                                                            'auxiliary_basis':'aug-cc-pvtz/c'}, multiplicity=1,
+                   testing=True, project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True,
+                   job_num=100)
+        self.assertEqual(job0.software, 'orca')
 
         self.assertEqual(job0.total_job_memory_gb, 14)
         self.assertEqual(job0.max_job_time, 120)
