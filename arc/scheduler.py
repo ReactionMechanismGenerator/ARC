@@ -2545,47 +2545,54 @@ class Scheduler(object):
         Important for the restart feature so long jobs won't be ran twice.
         """
         jobs = self.restart_dict['running_jobs']
-        for spc_label in jobs.keys():
-            if spc_label not in self.running_jobs:
-                self.running_jobs[spc_label] = list()
-            for job_description in jobs[spc_label]:
-                if 'conformer' not in job_description or job_description['conformer'] < 0:
-                    self.running_jobs[spc_label].append(job_description['job_name'])
-                else:
-                    self.running_jobs[spc_label].append('conformer{0}'.format(job_description['conformer']))
-                for species in self.species_list:
-                    if species.label == spc_label:
-                        break
-                else:
-                    raise SchedulerError('Could not find species {0} in the restart file'.format(spc_label))
-                job = Job(job_dict=job_description)
-                if spc_label not in self.job_dict:
-                    self.job_dict[spc_label] = dict()
-                if job_description['job_type'] not in self.job_dict[spc_label]:
+        if not jobs:
+            del self.restart_dict['running_jobs']
+            self.running_jobs = dict()
+            logger.info('It seems that there are no running jobs specified in the ARC restart file. Assuming all jobs '
+                        'have finished.')
+        else:
+            logger.info(f"ARC's restart files indicate the following jobs are still running. {list(jobs.keys())}")
+            for spc_label in jobs.keys():
+                if spc_label not in self.running_jobs:
+                    self.running_jobs[spc_label] = list()
+                for job_description in jobs[spc_label]:
                     if 'conformer' not in job_description or job_description['conformer'] < 0:
-                        self.job_dict[spc_label][job_description['job_type']] = dict()
-                    elif 'conformers' not in self.job_dict[spc_label]:
-                        self.job_dict[spc_label]['conformers'] = dict()
-                if 'conformer' not in job_description or job_description['conformer'] < 0:
-                    self.job_dict[spc_label][job_description['job_type']][job_description['job_name']] = job
-                else:
-                    self.job_dict[spc_label]['conformers'][int(job_description['conformer'])] = job
-                    # don't generate additional conformers for this species
-                    self.dont_gen_confs.append(spc_label)
-                self.servers_jobs_ids.append(job.job_id)
-        if self.job_dict:
-            content = 'Restarting ARC, tracking the following jobs spawned in a previous session:'
-            for spc_label in self.job_dict.keys():
-                content += '\n' + spc_label + ': '
-                for job_type in self.job_dict[spc_label].keys():
-                    for job_name in self.job_dict[spc_label][job_type].keys():
-                        if job_type != 'conformers':
-                            content += job_name + ', '
-                        else:
-                            content += self.job_dict[spc_label][job_type][job_name].job_name\
-                                       + ' (conformer' + str(job_name) + ')' + ', '
-            content += '\n\n'
-            logger.info(content)
+                        self.running_jobs[spc_label].append(job_description['job_name'])
+                    else:
+                        self.running_jobs[spc_label].append('conformer{0}'.format(job_description['conformer']))
+                    for species in self.species_list:
+                        if species.label == spc_label:
+                            break
+                    else:
+                        raise SchedulerError('Could not find species {0} in the restart file'.format(spc_label))
+                    job = Job(job_dict=job_description)
+                    if spc_label not in self.job_dict:
+                        self.job_dict[spc_label] = dict()
+                    if job_description['job_type'] not in self.job_dict[spc_label]:
+                        if 'conformer' not in job_description or job_description['conformer'] < 0:
+                            self.job_dict[spc_label][job_description['job_type']] = dict()
+                        elif 'conformers' not in self.job_dict[spc_label]:
+                            self.job_dict[spc_label]['conformers'] = dict()
+                    if 'conformer' not in job_description or job_description['conformer'] < 0:
+                        self.job_dict[spc_label][job_description['job_type']][job_description['job_name']] = job
+                    else:
+                        self.job_dict[spc_label]['conformers'][int(job_description['conformer'])] = job
+                        # don't generate additional conformers for this species
+                        self.dont_gen_confs.append(spc_label)
+                    self.servers_jobs_ids.append(job.job_id)
+            if self.job_dict:
+                content = 'Restarting ARC, tracking the following jobs spawned in a previous session:'
+                for spc_label in self.job_dict.keys():
+                    content += '\n' + spc_label + ': '
+                    for job_type in self.job_dict[spc_label].keys():
+                        for job_name in self.job_dict[spc_label][job_type].keys():
+                            if job_type != 'conformers':
+                                content += job_name + ', '
+                            else:
+                                content += self.job_dict[spc_label][job_type][job_name].job_name\
+                                           + ' (conformer' + str(job_name) + ')' + ', '
+                content += '\n\n'
+                logger.info(content)
 
     def save_restart_dict(self):
         """
