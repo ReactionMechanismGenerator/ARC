@@ -323,6 +323,90 @@ class TestJob(unittest.TestCase):
         self.assertEqual(test_job.format_max_job_time('days'), '2-11:53:16')
         self.assertEqual(test_job.format_max_job_time('hours'), '59:53:16')
 
+    def test_determine_model_chemistry_class(self):
+        """Test that the type (e.g., DFT, wavefunction ...) of a model chemistry can be determined properly."""
+        test_job = Job.__new__(Job)
+
+        # The special case: has `hf` keyword but is a DFT method
+        test_job.method = 'm06-hf'
+        model_chemistry_class = test_job.determine_model_chemistry_class()
+        model_chemistry_class_expected = 'dft'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        # Test family of wavefunction methods
+        test_job.method = 'hf'
+        model_chemistry_class = test_job.determine_model_chemistry_class()
+        model_chemistry_class_expected = 'wavefunction'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        test_job.method = 'DLPNO-CCSD(T)'
+        model_chemistry_class = test_job.determine_model_chemistry_class()
+        model_chemistry_class_expected = 'wavefunction'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        test_job.method = 'DLPNO-MP2-F12'
+        model_chemistry_class = test_job.determine_model_chemistry_class()
+        model_chemistry_class_expected = 'wavefunction'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        test_job.method = 'QCISD'
+        model_chemistry_class = test_job.determine_model_chemistry_class()
+        model_chemistry_class_expected = 'wavefunction'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        # Test family of force field (a.k.a molecular dynamics) methods
+        test_job.method = 'ANI-1x'
+        model_chemistry_class = test_job.determine_model_chemistry_class()
+        model_chemistry_class_expected = 'force_field'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        test_job.method = 'MMFF94'
+        model_chemistry_class = test_job.determine_model_chemistry_class()
+        model_chemistry_class_expected = 'force_field'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        # Test family of semi-empirical methods
+        test_job.method = 'ZINDO/S'
+        model_chemistry_class = test_job.determine_model_chemistry_class()
+        model_chemistry_class_expected = 'semiempirical'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        test_job.method = 'pm7'
+        model_chemistry_class = test_job.determine_model_chemistry_class()
+        model_chemistry_class_expected = 'semiempirical'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        # Test family of DFT methods
+        test_job.method = 'mPW1PW'
+        model_chemistry_class = test_job.determine_model_chemistry_class()
+        model_chemistry_class_expected = 'dft'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        test_job.method = 'b3lyp'
+        model_chemistry_class = test_job.determine_model_chemistry_class()
+        model_chemistry_class_expected = 'dft'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        test_job.method = 'wb97x-d3'
+        model_chemistry_class = test_job.determine_model_chemistry_class()
+        model_chemistry_class_expected = 'dft'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        test_job.method = 'apfd'
+        model_chemistry_class = test_job.determine_model_chemistry_class()
+        model_chemistry_class_expected = 'dft'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        test_job.method = 'M06-2X'
+        model_chemistry_class = test_job.determine_model_chemistry_class()
+        model_chemistry_class_expected = 'dft'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        test_job.method = 'B2PLYP'
+        model_chemistry_class = test_job.determine_model_chemistry_class()
+        model_chemistry_class_expected = 'dft'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
     @classmethod
     def tearDownClass(cls):
         """
