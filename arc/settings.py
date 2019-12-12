@@ -122,8 +122,14 @@ output_filename = {'gaussian': 'input.log',
                    'orca': 'input.log',
                    }
 
-default_levels_of_theory = {'conformer': 'b3lyp/6-31g(d,p) EmpiricalDispersion=GD3BJ',
-                            'ts_guesses': 'b3lyp/6-31g(d,p) EmpiricalDispersion=GD3BJ',
+default_levels_of_theory = {'conformer': {'auxiliary_basis': '',
+                                          'basis': '6-31g(d,p)',
+                                          'method': 'b3lyp',
+                                          'dispersion': 'empiricaldispersion=gd3bj'},
+                            'ts_guesses': {'auxiliary_basis': '',
+                                           'basis': '6-31g(d,p)',
+                                           'method': 'b3lyp',
+                                           'dispersion': 'empiricaldispersion=gd3bj'},
                             'opt': 'wb97xd/def2TZVP',  # used for IRC as well
                             'freq': 'wb97xd/def2TZVP',  # should be the same level as opt (to calc freq at min E)
                             'scan': 'wb97xd/def2TZVP',  # should be the same level as freq (to project out rotors)
@@ -132,6 +138,8 @@ default_levels_of_theory = {'conformer': 'b3lyp/6-31g(d,p) EmpiricalDispersion=G
                             'orbitals': 'wb97x-d3/6-311++g(d,p)',  # save orbitals for visualization
                             'scan_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of the CBS-QB3 method
                             'freq_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of the CBS-QB3 method
+                            'orbitals_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of the CBS-QB3 method
+                                                                      # Currently only supported for QChem
                             }
 
 # default_ts_methods = ['QST2', 'DEGSM', 'NEB', 'Kinbot', 'AutoTST']
