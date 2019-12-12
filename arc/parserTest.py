@@ -32,10 +32,14 @@ class TestParser(unittest.TestCase):
         c2h6_path = os.path.join(arc_path, 'arc', 'testing', 'C2H6_freq_QChem.out')
         so2oo_path = os.path.join(arc_path, 'arc', 'testing', 'SO2OO_CBS-QB3.log')
         ch2o_path = os.path.join(arc_path, 'arc', 'testing', 'CH2O_freq_molpro.out')
+        orca_path = os.path.join(arc_path, 'arc', 'testing', 'orca_example_freq.log')
         no3_freqs = parser.parse_frequencies(path=no3_path, software='QChem')
         c2h6_freqs = parser.parse_frequencies(path=c2h6_path, software='QChem')
         so2oo_freqs = parser.parse_frequencies(path=so2oo_path, software='Gaussian')
         ch2o_freqs = parser.parse_frequencies(path=ch2o_path, software='Molpro')
+        orca_freqs = parser.parse_frequencies(path=orca_path, software='orca')
+        self.assertTrue(np.array_equal(orca_freqs,
+                                       np.array([1151.03, 1250.19, 1526.12, 1846.4, 3010.49, 3070.82], np.float64)))
         self.assertTrue(np.array_equal(no3_freqs,
                                        np.array([-390.08, -389.96, 822.75, 1113.23, 1115.24, 1195.35], np.float64)))
         self.assertTrue(np.array_equal(c2h6_freqs,
@@ -94,6 +98,7 @@ class TestParser(unittest.TestCase):
         path6 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'qchem_output.out')
         path7 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'TS.gjf')
         path8 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'optim_traj_terachem.xyz')
+        path9 = os.path.join(arc_path, 'arc', 'testing', 'orca_example_opt.log')
 
         xyz1 = parser.parse_xyz_from_file(path1)
         xyz2 = parser.parse_xyz_from_file(path2)
@@ -103,6 +108,7 @@ class TestParser(unittest.TestCase):
         xyz6 = parser.parse_xyz_from_file(path6)
         xyz7 = parser.parse_xyz_from_file(path7)
         xyz8 = parser.parse_xyz_from_file(path8)
+        xyz9 = parser.parse_xyz_from_file(path9)
 
         self.assertEqual(xyz1, xyz2)
         xyz1_str = xyz_to_str(xyz1)
@@ -112,6 +118,7 @@ class TestParser(unittest.TestCase):
         xyz5_str = xyz_to_str(xyz5)
         xyz6_str = xyz_to_str(xyz6)
         xyz8_str = xyz_to_str(xyz8)
+        xyz9_str = xyz_to_str(xyz9)
         self.assertTrue('C       1.40511900    0.21728200    0.07675200' in xyz1_str)
         self.assertTrue('O      -0.79314200    1.04818800    0.18134200' in xyz1_str)
         self.assertTrue('H      -0.43701200   -1.34990600    0.92900600' in xyz2_str)
@@ -132,6 +139,11 @@ H      -1.48669570   -0.95874053    0.20627423
 N       2.28178508   -0.42455356    0.14404399
 H       1.32677989   -0.80557411    0.33156013"""
         self.assertEqual(xyz8_str, expected_xyz_8)
+        expected_xyz_9 = """C       0.00917900   -0.00000000   -0.00000000
+O       1.20814900   -0.00000000    0.00000000
+H      -0.59436200    0.94730400    0.00000000
+H      -0.59436200   -0.94730400    0.00000000"""
+        self.assertEqual(xyz9_str, expected_xyz_9)
 
     def test_parse_t1(self):
         """Test T1 diagnostic parsing"""
@@ -208,6 +220,10 @@ H       1.32677989   -0.80557411    0.33156013"""
         path3 = os.path.join(arc_path, 'arc', 'testing', 'CH2O_freq_molpro.out')
         dm3 = parser.parse_dipole_moment(path3)
         self.assertAlmostEqual(dm3, 2.8840, 4)
+
+        path4 = os.path.join(arc_path, 'arc', 'testing', 'orca_example_opt.log')
+        dm4 = parser.parse_dipole_moment(path4)
+        self.assertEqual(dm4, 2.11328)
 
     def test_parse_polarizability(self):
         """Test parsing the polarizability moment from a freq job output file"""
