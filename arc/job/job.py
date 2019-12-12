@@ -988,6 +988,36 @@ $end
                 logger.warning('Could not download Molpro log file for {0} '
                                '(this is not the output file)'.format(self.job_name))
 
+    def determine_model_chemistry_class(self):
+        """
+        Determine the class of a model chemistry (e.g., DFT, wavefunction, force field, semi-empirical).
+
+        Returns:
+            model_chemistry_class (str): class of model chemistry.
+        """
+        given_method = self.method.lower()
+        wave_function_methods = ['hf', 'cc', 'ci', 'mp2', 'mp3', 'cp', 'cep', 'nevpt', 'dmrg', 'ri', 'cas', 'ic', 'mr',
+                                 'bd', 'mbpt']
+        semiempirical_methods = ['am', 'pm', 'zindo', 'mndo', 'xtb', 'nddo']
+        force_field_methods = ['amber', 'mmff', 'dreiding', 'uff', 'qmdff', 'gfn', 'gaff', 'ghemical', 'charmm', 'ani']
+
+        # Special cases
+        if given_method in ['m06hf', 'm06-hf']:
+            model_chemistry_class = 'dft'
+            return model_chemistry_class
+
+        # General cases
+        if any(method in given_method for method in wave_function_methods):
+            model_chemistry_class = 'wavefunction'
+        elif any(method in given_method for method in semiempirical_methods):
+            model_chemistry_class = 'semiempirical'
+        elif any(method in given_method for method in force_field_methods):
+            model_chemistry_class = 'force_field'   # a.k.a molecular dynamics
+        else:
+            logger.debug(f'Assuming {given_method} is a DFT method.')
+            model_chemistry_class = 'dft'
+        return model_chemistry_class
+
     def run(self):
         """
         Execute the Job.
