@@ -21,6 +21,7 @@ gaussian:
     restricted: '' or 'u' for restricted / unrestricted
     `iop(2/9=2000)` makes Gaussian print the geometry nn eee input orientation even for molecules with more
       than 50 atoms (important so it matches the hessian, and so that Arkane can parse the geometry)
+    job_options_keywords: input keywords that control the job
 
 qchem:
     job_type_1: 'opt', 'ts', 'sp'
@@ -46,7 +47,7 @@ input_files = {
 %mem={memory}mb
 %NProcShared={cpus}
 
-#P {job_type_1} {restricted}{method}{slash}{basis} {job_type_2} {fine} {trsh} iop(2/9=2000)
+#P {job_type_1} {restricted}{method}{slash}{basis}{slash_2}{auxiliary_basis} {job_type_2} {fine} {trsh} iop(2/9=2000) {job_options_keywords} {shortcut_keywords}
 
 name
 
