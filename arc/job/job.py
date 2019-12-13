@@ -1662,11 +1662,11 @@ end
             self.cpu_cores = servers[self.server].get('cpus', 8)
 
         max_mem = servers[self.server].get('memory', None)  # max memory per node in GB
-        if max_mem is not None and self.total_job_memory_gb > max_mem * 0.9:
+        if max_mem is not None and self.total_job_memory_gb > max_mem * 0.8:
             logger.warning(f'The memory for job {self.job_name} using {self.software} ({self.total_job_memory_gb} GB) '
-                           f'exceeds 90% of the the maximum node memory on {self.server}. '
-                           f'Setting it to 90% * {max_mem} GB.')
-            self.total_job_memory_gb = 0.9 * max_mem
+                           f'exceeds 80% of the the maximum node memory on {self.server}. '
+                           f'Setting it to 80% * {max_mem} GB.')
+            self.total_job_memory_gb = 0.8 * max_mem
             total_submit_script_memory = self.total_job_memory_gb * 1024 * 1.05  # MB
             self.job_status[1]['keywords'].append('max_total_job_memory')  # useful info when trouble shoot
         else:
