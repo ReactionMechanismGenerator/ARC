@@ -2477,7 +2477,7 @@ class Scheduler(object):
             self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=software, memory=memory,
                          job_type=job_type, fine=fine, ess_trsh_methods=ess_trsh_methods, trsh=trsh_keyword,
                          conformer=conformer, scan=job.scan, pivots=job.pivots, scan_res=job.scan_res, shift=shift,
-                         directed_dihedrals=job.directed_dihedrals)
+                         directed_dihedrals=job.directed_dihedrals, directed_scans=job.directed_scans)
         self.save_restart_dict()
 
     def troubleshoot_conformer_isomorphism(self, label):
