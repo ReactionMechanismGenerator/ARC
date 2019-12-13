@@ -475,14 +475,14 @@ def trsh_scan_job(label, scan_res, scan, species_scan_lists, methods):
     return scan_trsh, scan_res
 
 
-def trsh_ess_job(label, level_of_theory, server, job_status, job_type, software, fine, memory_gb, num_heavy_atoms,
+def trsh_ess_job(label, level_of_theory_dict, server, job_status, job_type, software, fine, memory_gb, num_heavy_atoms,
                  cpu_cores, ess_trsh_methods, available_ess=None):
     """
     Troubleshoot issues related to the electronic structure software, such as convergence.
 
     Args:
         label (str): The species label.
-        level_of_theory (str): The level of theory to use.
+        level_of_theory_dict (dict): The original level of theory dictionary of the problmatic job.
         server (str): The server used for this job.
         job_status (dict): The ESS job status dictionary with standardized error keywords
                            as generated using the `determine_ess_status` function.
@@ -505,7 +505,7 @@ def trsh_ess_job(label, level_of_theory, server, job_status, job_type, software,
     Returns:
         remove_checkfile (bool): Whether to remove the checkfile from the job, `True` to remove.
     Returns:
-        level_of_theory (str): The new level of theory to use.
+        level_of_theory_dict (dict): The new level of theory dictionary to use.
     Returns:
         software (str, optional): The new ESS software to use.
     Returns:
@@ -591,13 +591,13 @@ def trsh_ess_job(label, level_of_theory, server, job_status, job_type, software,
             ess_trsh_methods.append('int=(Acc2E=14)')
             trsh_keyword = 'int=(Acc2E=14)'
         # suggest spwaning a cbs-qb3 job if there are not many heavy atoms
-        elif 'cbs-qb3' not in ess_trsh_methods and level_of_theory != 'cbs-qb3' \
+        elif 'cbs-qb3' not in ess_trsh_methods and level_of_theory_dict['method'] != 'cbs-qb3' \
                 and 'scan' not in job_type and num_heavy_atoms <= 10:
             # try running CBS-QB3, which is relatively robust.
             logger.info('Troubleshooting {type} job in {software} for {label} using CBS-QB3'.format(
                 type=job_type, software=software, label=label))
             ess_trsh_methods.append('cbs-qb3')
-            level_of_theory = 'cbs-qb3'
+            level_of_theory_dict['method'] = 'cbs-qb3'
             job_type = 'composite'
         elif 'Memory' in job_status['keywords'] and 'memory' not in ess_trsh_methods:
             # Increase memory allocation
@@ -607,12 +607,12 @@ def trsh_ess_job(label, level_of_theory, server, job_status, job_type, software,
                         '{old} GB'.format(type=job_type, software=software, mem=memory, old=memory_gb,
                                           label=label))
             ess_trsh_methods.append('memory')
-        elif level_of_theory != 'cbs-qb3' and 'scf=(qc,nosymm) & CBS-QB3' not in ess_trsh_methods:
+        elif level_of_theory_dict['method'] != 'cbs-qb3' and 'scf=(qc,nosymm) & CBS-QB3' not in ess_trsh_methods:
             # try both qc and nosymm with CBS-QB3
             logger.info('Troubleshooting {type} job in {software} for {label} using scf=(qc,nosymm) with '
                         'CBS-QB3'.format(type=job_type, software=software, label=label))
             ess_trsh_methods.append('scf=(qc,nosymm) & CBS-QB3')
-            level_of_theory = 'cbs-qb3'
+            level_of_theory_dict['method'] = 'cbs-qb3'
             trsh_keyword = 'scf=(qc,nosymm)'
         elif 'qchem' not in ess_trsh_methods and job_type != 'composite' and \
                 (available_ess is None or 'qchem' in [ess.lower() for ess in available_ess]):
@@ -655,13 +655,13 @@ def trsh_ess_job(label, level_of_theory, server, job_status, job_type, software,
                 type=job_type, software=software, label=label))
             ess_trsh_methods.append('wB97X-D3/def2-TZVP')
             # try converging with wB97X-D3/def2-TZVP
-            level_of_theory = 'wb97x-d3/def2-tzvp'
+            level_of_theory_dict = {'method': 'wb97x-d3', 'basis': 'def2-tzvp'}
         elif 'b3lyp/6-311++g(d,p)' not in ess_trsh_methods:
             logger.info('Troubleshooting {type} job in {software} for {label} using b3lyp/6-311++g(d,p)'.format(
                 type=job_type, software=software, label=label))
             ess_trsh_methods.append('b3lyp/6-311++g(d,p)')
             # try converging with B3LYP
-            level_of_theory = 'b3lyp/6-311++g(d,p)'
+            level_of_theory_dict = {'method': 'b3lyp', 'basis': '6-311++g(d,p)'}
         elif 'gaussian' not in ess_trsh_methods \
                 and (available_ess is None or 'gaussian' in [ess.lower() for ess in available_ess]):
             # Try Gaussian
@@ -790,7 +790,7 @@ def trsh_ess_job(label, level_of_theory, server, job_status, job_type, software,
         output_errors.append('Error: Could not troubleshoot {job_type} for {label}! '
                              'Tried troubleshooting with the following methods: {methods}; '.format(
                               job_type=job_type, label=label, methods=ess_trsh_methods))
-    return output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, \
+    return output_errors, ess_trsh_methods, remove_checkfile, level_of_theory_dict, software, job_type, fine, \
         trsh_keyword, memory, shift, cpu_cores, couldnt_trsh
 
 

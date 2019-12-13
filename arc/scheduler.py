@@ -2479,19 +2479,12 @@ class Scheduler(object):
         if job.software == 'gaussian':
             if self.species_dict[label].checkfile is None:
                 self.species_dict[label].checkfile = job.checkfile
-
-        level_of_theory_str = ''
-        if isinstance(level_of_theory, dict):
-            method = level_of_theory.get('method', '')
-            basis = level_of_theory.get('basis', '')
-            level_of_theory_str = method if not basis else '/'.join([method, basis])
-
-        level_of_theory = level_of_theory_str or self.composite_method
+        level_of_theory = _format_level_of_theory_inputs(level_of_theory)
         # make a temporary list of ones just to count the number of heavy atoms in the molecule
         num_heavy_atoms = len([1 for atom in self.species_dict[label].mol.atoms if atom.is_non_hydrogen()])
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
             memory, shift, cpu_cores, dont_rerun = \
-            trsh_ess_job(label=label, level_of_theory=level_of_theory, server=job.server, job_status=job.job_status[1],
+            trsh_ess_job(label=label, level_of_theory_dict=level_of_theory, server=job.server, job_status=job.job_status[1],
                          job_type=job.job_type, num_heavy_atoms=num_heavy_atoms, software=job.software, fine=job.fine,
                          memory_gb=job.total_job_memory_gb, cpu_cores=job.cpu_cores,
                          ess_trsh_methods=job.ess_trsh_methods, available_ess=list(self.ess_settings.keys()))
