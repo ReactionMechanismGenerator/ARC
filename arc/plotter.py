@@ -892,16 +892,33 @@ def plot_1d_rotor_scan(angles=None, energies=None, results=None, path=None, scan
                     format='png', transparent=False, bbox_inches=None, pad_inches=0.1, metadata=None)
 
 
-def plot_2d_rotor_scan(results, path=None, label='', cmap='Blues', resolution=90):
+def plot_2d_rotor_scan(results, path=None, label='', cmap='Blues', resolution=90,
+                       mark_lowest_conformations=True, original_dihedrals=None):
     """
     Plot a 2D rotor scan.
 
     Args:
         results (dict): The results dictionary, dihedrals are assumed to be in degrees (not radians).
+                        This dictionary has the following structure::
+
+                        results = {'directed_scan_type': <str, used for the fig name>,
+                                   'scans': <list, entries are lists of torsion indices>,
+                                   'directed_scan': <dict, keys are tuples of '{0:.2f}' formatted dihedrals,
+                                                     values are dictionaries with the following keys and values:
+                                                     {'energy': <float, energy in kJ/mol>,  * only this is used here
+                                                      'xyz': <dict>,
+                                                      'is_isomorphic': <bool>,
+                                                      'trsh': <list, job.ess_trsh_methods>}>
+                                   }
+
         path (str, optional): The folder path to save this 2D image.
         label (str, optional): The species label.
         cmap (str, optional): The color map to use. See optional arguments below.
         resolution (int, optional): The image resolution to produce.
+        mark_lowest_conformations (bool, optional): Whether to add a marker at the lowest conformers.
+                                                    ``True`` to add, default is ``True``.
+        original_dihedrals (list, optional): Entries are dihedral degrees of the conformer used for the scan.
+                                             If given, the conformer will be marked on the plot with a red dot.
 
     Raises:
         TypeError: If ``results`` if of wrong type.
@@ -924,25 +941,51 @@ def plot_2d_rotor_scan(results, path=None, label='', cmap='Blues', resolution=90
         tab20b, tab20b_r, tab20c, tab20c_r, terrain, terrain_r, viridis, viridis_r, winter, winter_r
     """
     if not isinstance(results, dict):
-        raise TypeError('results must be a dictionary, got {0}'.format(type(results)))
+        raise TypeError(f'results must be a dictionary, got {type(results)}')
     if len(results['scans']) != 2:
-        raise InputError('results must represent a 2D rotor, got {0}D'.format(len(results['scans'])))
+        raise InputError(f'results must represent a 2D rotor, got {len(results["scans"])}D')
 
     # phis0 and phis1 correspond to columns and rows in energies, respectively
     phis0 = np.array(sorted(list(set([float(key[0]) for key in results['directed_scan'].keys()]))), np.float64)
     phis1 = np.array(sorted(list(set([float(key[1]) for key in results['directed_scan'].keys()]))), np.float64)
-    # If the last phi equals to the first, it is removed by the abive set() call. Bring it back:
-    if phis0.size < 360 / (phis0[1] - phis0[0]) + 1:
-        phis0 = np.append(phis0, phis0[0])
-    if phis1.size < 360 / (phis1[1] - phis1[0]) + 1:
-        phis1 = np.append(phis1, phis1[0])
+    # If the last phi equals to the first, it is removed by the above set() call. Bring it back:
+    res0, res1 = phis0[1] - phis0[0], phis1[1] - phis1[0]
+    if phis0.size < 360 / res0 + 1:
+        if abs(phis0[0] + 180.0) >= abs(phis0[-1] - 180.0):
+            phis0 = np.insert(phis0, 0, phis0[0] - res0)
+        elif abs(phis0[0] + 180.0) <= abs(phis0[-1] - 180.0):
+            phis0 = np.append(phis0, phis0[-1] + res0)
+    if phis1.size < 360 / res1 + 1:
+        if abs(phis1[0] + 180.0) >= abs(phis1[-1] - 180.0):
+            phis1 = np.insert(phis1, 0, phis1[0] - res1)
+        elif abs(phis1[0] + 180.0) <= abs(phis1[-1] - 180.0):
+            phis1 = np.append(phis1, phis1[-1] + res1)
     zero_phi0, zero_phi1 = list(), list()
     energies = np.zeros(shape=(phis0.size, phis1.size), dtype=np.float64)
+    keys_list = list(results['directed_scan'].keys())
     for i, phi0 in enumerate(phis0):
         for j, phi1 in enumerate(phis1):
             key = tuple('{0:.2f}'.format(dihedral) for dihedral in [phi0, phi1])
-            energies[i, j] = results['directed_scan'][key]['energy']
-            if energies[i, j] == 0:
+            if key in keys_list:
+                energies[i, j] = results['directed_scan'][key]['energy']
+            else:
+                key1 = tuple('{0:.2f}'.format(dihedral) for dihedral in [360.0 - phi0, phi1])
+                key2 = tuple('{0:.2f}'.format(dihedral) for dihedral in [phi0, 360.0 - phi1])
+                key3 = tuple('{0:.2f}'.format(dihedral) for dihedral in [360.0 + phi0, phi1])
+                key4 = tuple('{0:.2f}'.format(dihedral) for dihedral in [phi0, 360.0 + phi1])
+                key5 = tuple('{0:.2f}'.format(dihedral) for dihedral in [360.0 + phi0, 360.0 + phi1])
+                key6 = tuple('{0:.2f}'.format(dihedral) for dihedral in [360.0 - phi0, 360.0 - phi1])
+                key7 = tuple('{0:.2f}'.format(dihedral) for dihedral in [-phi0, phi1])
+                key8 = tuple('{0:.2f}'.format(dihedral) for dihedral in [phi0, -phi1])
+                key9 = tuple('{0:.2f}'.format(dihedral) for dihedral in [-phi0, -phi1])
+                for key_ in [key1, key2, key3, key4, key5, key6, key7, key8, key9]:
+                    if key_ in keys_list:
+                        energies[i, j] = results['directed_scan'][key_]['energy']
+                        break
+                else:
+                    logger.warning(f'Could not replace {key} when plotting 2D scan for {label} ({path}).\n'
+                                   f'Tried: {[key1, key2, key3, key4, key5, key6, key7, key8, key9]}.')
+            if mark_lowest_conformations and energies[i, j] == 0:
                 zero_phi0.append(phi0)
                 zero_phi1.append(phi1)
 
@@ -953,10 +996,10 @@ def plot_2d_rotor_scan(results, path=None, label='', cmap='Blues', resolution=90
     contours = plt.contour(phis0, phis1, energies, 4, colors='black')
     plt.clabel(contours, inline=True, fontsize=8)
 
-    plt.xlabel('Dihedral 1 for {scan} (degrees)'.format(scan=results['scans'][0]))
-    plt.ylabel('Dihedral 2 for {scan} (degrees)'.format(scan=results['scans'][1]))
+    plt.xlabel(f'Dihedral 1 for {results["scans"][0]} (degrees)')
+    plt.ylabel(f'Dihedral 2 for {results["scans"][1]} (degrees)')
     label = ' for ' + label if label else ''
-    plt.title('2D scan energies (kJ/mol){label}'.format(label=label))
+    plt.title(f'2D scan energies (kJ/mol){label}')
     min_x = int(np.ceil(np.min(phis0) / 10.0)) * 10
     plt.xlim = (min_x, min_x + 360)
     plt.xticks(np.arange(min_x, min_x + 361, step=60))
@@ -964,10 +1007,15 @@ def plot_2d_rotor_scan(results, path=None, label='', cmap='Blues', resolution=90
     plt.ylim = (min_y, min_y + 360)
     plt.yticks(np.arange(min_y, min_y + 361, step=60))
 
-    plt.plot(zero_phi0, zero_phi1, color='k', marker='D', markersize=12, linewidth=0)  # mark the lowest conformations
+    if mark_lowest_conformations:
+        # mark the lowest conformations
+        plt.plot(zero_phi0, zero_phi1, color='k', marker='D', markersize=8, linewidth=0)
+    if original_dihedrals is not None:
+        # mark the original conformation
+        plt.plot(original_dihedrals[0], original_dihedrals[1], color='r', marker='.', markersize=15, linewidth=0)
 
     if path is not None:
-        fig_name = '{0}_{1}.png'.format(results['directed_scan_type'], results['scans'])
+        fig_name = f'{results["directed_scan_type"]}_{results["scans"]}.png'
         fig_path = os.path.join(path, fig_name)
         plt.savefig(fig_path, dpi=120, facecolor='w', edgecolor='w', orientation='portrait', papertype=None,
                     format='png', transparent=False, bbox_inches=None, pad_inches=0.1, metadata=None)
