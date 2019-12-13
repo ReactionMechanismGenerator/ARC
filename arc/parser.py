@@ -174,9 +174,9 @@ def parse_zpe(path):
     return zpe
 
 
-def parse_scan_energies(path):
+def parse_1d_scan_energies(path):
     """
-    Parse the torsion scan energies from an ESS log file.
+    Parse the 1D torsion scan energies from an ESS log file.
 
     Args:
         path (str): The ESS log file to parse from.
@@ -184,16 +184,19 @@ def parse_scan_energies(path):
     Returns:
         energies (list): The electronic energy in kJ/mol.
         angles (list): The scan angles in degrees.
+
+    Raises:
+        InputError: If ``path`` is invalid.
     """
     if not os.path.isfile(path):
-        raise InputError('Could not find file {0}'.format(path))
+        raise InputError(f'Could not find file {path}')
     log = determine_qm_software(fullpath=path)
     try:
         energies, angles = log.load_scan_energies()
         energies *= 0.001  # convert to kJ/mol
         angles *= 180 / np.pi  # convert to degrees
     except (LogError, NotImplementedError):
-        logger.warning('Could not read energies from {0}'.format(path))
+        logger.warning(f'Could not read energies from {path}')
         energies, angles = None, None
     return energies, angles
 
