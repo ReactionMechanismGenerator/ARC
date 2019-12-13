@@ -106,7 +106,8 @@ rm -rf $WorkDir
 #SBATCH --time={t_max}
 #SBATCH --mem-per-cpu={memory}
 
-which 16
+export g16root=/opt
+which g16
 
 echo "============================================================"
 echo "Job ID : $SLURM_JOB_ID"
