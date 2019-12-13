@@ -503,8 +503,9 @@ class Job(object):
                 job_type += ' (fine)'
             row = [self.job_num, self.project, self.species_name, conformer, self.is_ts, self.charge,
                    self.multiplicity, job_type, self.job_name, self.job_id, self.server, self.software,
-                   self.total_job_memory_gb, self.method, self.basis_set, self.initial_time, self.final_time, self.run_time,
-                   self.job_status[0], self.job_status[1]['status'], self.ess_trsh_methods, self.comments]
+                   self.total_job_memory_gb, self.method, self.basis_set, self.initial_time, self.final_time,
+                   self.run_time, self.job_status[0], self.job_status[1]['status'], self.ess_trsh_methods,
+                   self.comments]
             writer.writerow(row)
 
     def format_max_job_time(self, time_format):
@@ -552,8 +553,8 @@ class Job(object):
                 architecture = '\n#$ -l magnycours'
         try:
             self.submit = submit_scripts[self.server][self.software.lower()].format(
-                name=self.job_server_name, un=un, t_max=t_max, memory=int(self.submit_script_memory), cpus=self.cpu_cores,
-                architecture=architecture, size=size)
+                name=self.job_server_name, un=un, t_max=t_max, memory=int(self.submit_script_memory),
+                cpus=self.cpu_cores, architecture=architecture, size=size)
         except KeyError:
             submit_scripts_for_printing = dict()
             for server, values in submit_scripts.items():
@@ -960,7 +961,7 @@ end
             elif self.software == 'orca':
                 job_type_1 = 'sp'
 
-        if self.job_type == 'composite':
+        elif self.job_type == 'composite':
             if self.software == 'gaussian':
                 if self.fine:
                     fine = 'scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
@@ -979,7 +980,7 @@ end
             else:
                 raise JobError('Currently composite methods are only supported in gaussian')
 
-        if self.job_type == 'scan':
+        elif self.job_type == 'scan':
             if divmod(360, self.scan_res)[1]:
                 raise JobError(f'Scan job got an illegal rotor scan resolution of {self.scan_res}')
             if self.scan is not None and self.scan:
@@ -1057,14 +1058,7 @@ end
                                  'Got: {0} using the {1} level of theory'.format(
                                   self.software, self.method + '/' + self.basis_set))
 
-        if self.software == 'gaussian' and not self.trsh:
-            if self.level_of_theory[:2] == 'ro':
-                self.trsh = 'use=L506'
-            else:
-                # xqc will do qc (quadratic convergence) if the job fails w/o it, so use by default
-                self.trsh = 'scf=xqc'
-
-        if self.job_type == 'irc':  # TODO
+        elif self.job_type == 'irc':  # TODO
             if self.fine:
                 # Note that the Acc2E argument is not available in Gaussian03
                 fine = 'scf=(direct) integral=(grid=ultrafine, Acc2E=12)'
@@ -1074,7 +1068,7 @@ end
             else:
                 job_type_1 += ' guess=mix'
 
-        if self.job_type == 'gsm':  # TODO
+        elif self.job_type == 'gsm':  # TODO
             pass
 
         if 'mrci' in self.method:
@@ -1343,6 +1337,7 @@ end
         """
         Download the additional information of stdout and stderr from the server.
         """
+        ssh = None
         lines1, lines2 = list(), list()
         content = ''
         cluster_soft = servers[self.server]['cluster_soft'].lower()
@@ -1615,16 +1610,17 @@ end
                     self.software = 'gaussian'
             if self.software is None:
                 # if still no software was determined, just try by order, if exists
-                logger.error('job_num: {0}'.format(self.job_num))
-                logger.error('ess_trsh_methods: {0}'.format(self.ess_trsh_methods))
-                logger.error('trsh: {0}'.format(self.trsh))
-                logger.error('job_type: {0}'.format(self.job_type))
-                logger.error('job_name: {0}'.format(self.job_name))
-                logger.error('level_of_theory: {0}'.format(self.level_of_theory))
-                logger.error('software: {0}'.format(self.software))
-                logger.error('method: {0}'.format(self.method))
-                logger.error('basis_set: {0}'.format(self.basis_set))
-                logger.error('Could not determine software for job {0}'.format(self.job_name))
+                logger.error(f'job_num: {self.job_num}')
+                logger.error(f'ess_trsh_methods: {self.ess_trsh_methods}')
+                logger.error(f'trsh: {self.trsh}')
+                logger.error(f'job_type: {self.job_type}')
+                logger.error(f'job_name: {self.job_name}')
+                logger.error(f'level_of_theory: {self.job_level_of_theory_dict}')
+                logger.error(f'software: {self.software}')
+                logger.error(f'method: {self.method}')
+                logger.error(f'basis_set: {self.basis_set}')
+                logger.error(f'auxiliary_basis_set: {self.auxiliary_basis_set}')
+                logger.error(f'Could not determine software for job {self.job_name}')
                 if 'gaussian' in esss:
                     logger.error('Setting it to Gaussian')
                     self.software = 'gaussian'
