@@ -5,6 +5,7 @@
 The ARC troubleshooting ("trsh") module
 """
 
+import math
 import os
 
 import numpy as np
@@ -47,15 +48,16 @@ def determine_ess_status(output_path, species_label, job_type, software=None):
     keywords, error, = list(), ''
     with open(output_path, 'r') as f:
         lines = f.readlines()
-
         if len(lines) < 5:
             return 'errored', ['NoOutput'], 'Log file could not be read', ''
+        forward_lines = tuple(lines)
+        reverse_lines = tuple(lines[::-1])
 
         if software == 'gaussian':
-            for line in lines[-1:-20:-1]:
+            for line in forward_lines[-1:-20:-1]:
                 if 'Normal termination' in line:
                     return 'done', list(), '', ''
-            for i, line in enumerate(lines[::-1]):
+            for i, line in enumerate(reverse_lines):
                 if 'termination' in line:
                     if 'l9999.exe' in line or 'link 9999' in line:
                         keywords = ['Unconverged', 'GL9999']  # GL stand for Gaussian Link
@@ -94,15 +96,15 @@ def determine_ess_status(output_path, species_label, job_type, software=None):
                         keywords = ['MaxOptCycles', 'GL913']
                         error = 'Maximum optimization cycles reached.'
                     if any([keyword in ['GL301', 'GL401'] for keyword in keywords]):
-                        additional_info = lines[len(lines) - i - 2]
+                        additional_info = forward_lines[len(forward_lines) - i - 2]
                         if 'No data on chk file' in additional_info \
                                 or 'Basis set data is not on the checkpoint file' in additional_info:
                             keywords = ['CheckFile']
                             error = additional_info.rstrip()
                         elif 'GL301' in keywords:
-                            if 'Atomic number out of range for' in lines[len(lines) - i - 2]:
+                            if 'Atomic number out of range for' in forward_lines[len(forward_lines) - i - 2]:
                                 keywords.append('BasisSet')
-                                error = f'The basis set {lines[len(lines) - i - 2].split()[6]} ' \
+                                error = f'The basis set {forward_lines[len(forward_lines) - i - 2].split()[6]} ' \
                                         f'is not appropriate for the this chemistry.'
                             else:
                                 keywords.append('InputError')
@@ -145,7 +147,7 @@ def determine_ess_status(output_path, species_label, job_type, software=None):
 
         elif software == 'qchem':
             done = False
-            for line in lines[::-1]:
+            for line in reverse_lines:
                 if 'Thank you very much for using Q-Chem' in line:
                     done = True
                     # if this is an opt job, we must also check that the max num of cycles hasn't been reached,
@@ -180,8 +182,108 @@ def determine_ess_status(output_path, species_label, job_type, software=None):
             keywords = keywords if keywords else ['Unknown']
             return 'errored', keywords, error, line
 
+        elif software == 'orca':
+            done = False
+            for i, line in enumerate(reverse_lines):
+                if 'ORCA TERMINATED NORMALLY' in line:
+                    # not done yet, things can still go wrong (e.g., SCF energy might blow up)
+                    for j, info in enumerate(forward_lines):
+                        if 'Starting incremental Fock matrix formation' in info:
+                            scf_energy_initial_iteration = float(forward_lines[j + 1].split()[1])
+                        if 'TOTAL SCF ENERGY' in info:
+                            # this value is very close to the scf energy at last iteration and is easier to parse
+                            scf_energy_last_iteration = float(forward_lines[j + 3].split()[3])
+                            break
+                    # Check if final SCF energy makes sense
+                    scf_energy_ratio = scf_energy_last_iteration / scf_energy_initial_iteration
+                    scf_energy_ratio_threshold = 2  # it is rare that this ratio > 2
+                    if scf_energy_ratio > scf_energy_ratio_threshold:
+                        keywords = ['SCF']
+                        error = f'The SCF energy seems diverged during iterations. SCF energy after initial ' \
+                                f'iteration is {scf_energy_initial_iteration}. SCF energy after final iteration ' \
+                                f'is {scf_energy_last_iteration}. The ratio between final and initial SCF energy ' \
+                                f'is {scf_energy_ratio}. This ratio is greater than the default threshold of ' \
+                                f'{scf_energy_ratio_threshold}. Please consider using alternative methods or larger ' \
+                                f'basis sets.'
+                        line = ''
+                    else:
+                        done = True
+                    break
+                elif 'ORCA finished by error termination in SCF' in line:
+                    keywords = ['SCF']
+                    for j, info in enumerate(reverse_lines):
+                        if 'Please increase MaxCore' in info:
+                            estimated_mem = info.split()[-2]  # e.g., Please increase MaxCore to more than: 289 MB
+                            keywords.append('Memory')
+                            line = reverse_lines[j + 3].rstrip()  # e.g., Error (ORCA_SCF): Not enough memory available!
+                            error = f'Orca suggests to increase per cpu core memory to {estimated_mem} MB.'
+                            break
+                    else:
+                        error = f'SCF error in Orca.'
+                    break
+                elif 'ORCA finished by error termination in MDCI' in line:
+                    keywords = ['MDCI']
+                    for j, info in enumerate(reverse_lines):
+                        if 'Please increase MaxCore' in info:
+                            # e.g., Please increase MaxCore - by at least ( 9717.9 MB)
+                            # This message appears multiple times, and suggest different memory at each appearance
+                            # Need to store all suggested memory values, and then pick the largest one
+                            estimated_mem_list = []
+                            for message in reverse_lines:
+                                if 'Please increase MaxCore' in message:
+                                    estimated_mem = math.ceil(float(message.split()[-2]))
+                                    estimated_mem_list.append(estimated_mem)
+                            keywords.append('Memory')
+                            estimated_max_mem = np.max(estimated_mem_list)
+                            error = f'Orca suggests to increase per cpu core memory to {estimated_max_mem} MB.'
+                            line = info
+                            break
+                        elif 'parallel calculation exceeds number of pairs' in info:
+                            # e.g., Error (ORCA_MDCI): Number of processes (16) in parallel calculation exceeds
+                            # number of pairs (10)
+                            max_core = int(info.split()[-1].strip('()'))
+                            keywords.append('cpu')
+                            error = f'Orca cannot utilize cpu cores more than electron pairs in a molecule. The ' \
+                                    f'maximum number of cpu cores can be used for this job is {max_core}.'
+                            line = info
+                            break
+                    else:
+                        error = f'MDCI error in Orca.'
+                    break
+                elif 'Error : multiplicity' in line:
+                    keywords = ['Input']
+                    error = f'The multiplicity and charge combination for species {species_label} are wrong.'
+                    break
+                elif 'UNRECOGNIZED OR DUPLICATED KEYWORD' in line:
+                    # e.g., UNRECOGNIZED OR DUPLICATED KEYWORD(S) IN SIMPLE INPUT LINE
+                    keywords = ['Syntax']
+                    line = reverse_lines[i - 1]  # this line in the log file suggests which keyword might be problematic
+                    problematic_keyword = line.split()[0]
+                    error = f'There was keyword syntax error in the Orca input file. In particular, keywords ' \
+                            f'{problematic_keyword} can either be duplicated or illegal. Please check your Orca ' \
+                            f'input file template under arc/job/inputs.py. Alternatively, perhaps the level of ' \
+                            f'theory or the job option is not supported by Orca in the format it was given.'
+                    break
+                elif 'There are no CABS' in line:
+                    # e.g., ** There are no CABS   basis functions on atom number   2 (Br) **
+                    keywords = ['Basis']
+                    problematic_atom = line.split()[-2].strip('()')
+                    error = f'There was a basis set error in the Orca input file. In particular, basis for atom type ' \
+                            f'{problematic_atom} is missing. Please check if specified basis set supports this atom.'
+                    break
+                elif 'This wavefunction IS NOT FULLY CONVERGED!' in line:
+                    keywords = ['Convergence']
+                    error = f'Specified wavefunction method is not converged. Please restart calculation with larger ' \
+                            f'max iterations or with different convergence flags.'
+                    break
+            if done:
+                return 'done', keywords, '', ''
+            error = error if error else 'Orca job terminated for an unknown reason.'
+            keywords = keywords if keywords else ['Unknown']
+            return 'errored', keywords, error, line
+
         elif software == 'molpro':
-            for line in lines[::-1]:
+            for line in reverse_lines:
                 if 'molpro calculation terminated' in line.lower() \
                         or 'variable memory released' in line.lower():
                     return 'done', list(), '', ''
@@ -218,7 +320,7 @@ def determine_ess_status(output_path, species_label, job_type, software=None):
                     #  ? The problem occurs in Binput`
                     keywords = ['BasisSet']
                     basis_set = None
-                    for line0 in lines[::-1]:
+                    for line0 in reverse_lines:
                         if 'SETTING BASIS' in line0:
                             basis_set = line0.split()[-1]
                     error = f'Unrecognized basis set {basis_set}'
@@ -441,9 +543,8 @@ def trsh_ess_job(label, level_of_theory, server, job_status, job_type, software,
     elif software == 'gaussian':
         if 'CheckFile' in job_status['keywords'] and 'checkfie=None' not in ess_trsh_methods:
             # The checkfile doesn't match the new basis set, remove it and rerun the job.
-            logger.info('Troubleshooting {type} job in {software} for {label} that failed with '
-                        '"Basis set data is not on the checkpoint file" by removing the checkfile.'.format(
-                         type=job_type, software=software, label=label))
+            logger.info(f'Troubleshooting {job_type} job in {software} for {label} that failed with '
+                        '"Basis set data is not on the checkpoint file" by removing the checkfile.')
             ess_trsh_methods.append('checkfie=None')
             remove_checkfile = True
         elif 'InternalCoordinateError' in job_status['keywords'] \
@@ -578,6 +679,51 @@ def trsh_ess_job(label, level_of_theory, server, job_status, job_type, software,
         else:
             couldnt_trsh = True
 
+    elif 'orca' in software:
+        if 'Memory' in job_status['keywords']:
+            # Increase memory allocation.
+            # job_status will be for example
+            # `Error  (ORCA_SCF): Not enough memory available! Please increase MaxCore to more than: 289 MB`.
+            if 'memory' not in ess_trsh_methods:
+                ess_trsh_methods.append('memory')
+            estimated_mem_per_core = float(job_status['error'].split()[-2])  # parse Orca's memory requirement in MB
+            estimated_mem_per_core = int(np.ceil(estimated_mem_per_core / 100.0)) * 100  # round up to the next hundred
+            if 'max_total_job_memory' in job_status['keywords']:
+                per_cpu_core_memory = np.ceil(memory_gb / cpu_cores * 1024)
+                logger.info(f'The crashed Orca job {label} was ran with {cpu_cores} cpu cores and '
+                            f'{per_cpu_core_memory} MB memory per cpu core. It requires at least '
+                            f'{estimated_mem_per_core} MB per cpu core. Since the job had already requested the '
+                            f'maximum amount of available total node memory, ARC will attempt to reduce the number '
+                            f'of cpu cores to increase memory per cpu core.')
+                if 'cpu' not in ess_trsh_methods:
+                    ess_trsh_methods.append('cpu')
+                cpu_cores = math.floor(cpu_cores * per_cpu_core_memory / estimated_mem_per_core) - 2  # be conservative
+                if cpu_cores > 1:
+                    logger.info(f'Troubleshooting job {label} using {cpu_cores} cpu cores.')
+                elif cpu_cores == 1:  # last resort
+                    logger.info(f'Troubleshooting job {label} using only {cpu_cores} cpu core. Notice that the '
+                                f'required job time may be unrealistically long or exceed limits on servers.')
+                else:
+                    logger.info(f'Not enough computational resource to accomplish job {label}. Please consider cheaper '
+                                f'methods or allocate more resources if possible.')
+                    couldnt_trsh = True
+            if not couldnt_trsh:
+                memory = estimated_mem_per_core * cpu_cores  # total memory for all cpu cores
+                memory = np.ceil(memory / 1024 + 5)  # convert MB to GB, add 5 extra GB (be conservative)
+                logger.info(f'Troubleshooting {job_type} job in {software} for {label} using {memory} GB total memory '
+                            f'and {cpu_cores} cpu cores.')
+        elif 'cpu' in job_status['keywords']:
+            # Reduce cpu allocation.
+            # job_status will be for example
+            # Error (ORCA_MDCI): Number of processes (16) in parallel calculation exceeds number of pairs (10)
+            cpu_cores = int(job_status['error'].split()[-1].strip('.'))  # max_cpu_cores_allowed
+            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using {cpu_cores} cpu cores '
+                        f'(reduced).')
+            if 'cpu' not in ess_trsh_methods:
+                ess_trsh_methods.append('cpu')
+        else:
+            couldnt_trsh = True
+
     elif 'molpro' in software:
         if 'Memory' in job_status['keywords']:
             # Increase memory allocation.
@@ -668,6 +814,8 @@ def trsh_conformer_isomorphism(software, ess_trsh_methods=None):
         conformer_trsh_methods = ['wb97xd/def2TZVP', 'apfd/def2TZVP']
     elif software == 'qchem':
         conformer_trsh_methods = ['wb97x-d3/def2-TZVP']
+    elif software == 'orca':
+        conformer_trsh_methods = ['wB97X-D3/def2-TZVP']
     else:
         raise TrshError('The troubleshoot_conformer_isomorphism() method is not implemented for {0}.'.format(software))
 
