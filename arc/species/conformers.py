@@ -63,18 +63,23 @@ from arc.species import vectors
 
 
 # The number of conformers to generate per range of heavy atoms in the molecule
-CONFS_VS_HEAVY_ATOMS = {(0, 9): 100,
-                        (10, 29): 500,
-                        (30, 59): 1000,
+# (will be increased if there are chiral centers)
+CONFS_VS_HEAVY_ATOMS = {(0, 3): 75,
+                        (4, 9): 500,
+                        (10, 29): 1000,
+                        (30, 59): 2500,
                         (60, 99): 5000,
-                        (100, 'inf'): 10000,
+                        (100, 'inf'): 7500,
                         }
 
 # The number of conformers to generate per range of potential torsions in the molecule
-CONFS_VS_TORSIONS = {(0, 5): 100,
-                     (5, 24): 500,
-                     (25, 49): 5000,
-                     (50, 'inf'): 10000,
+# (will be increased if there are chiral centers)
+CONFS_VS_TORSIONS = {(0, 1): 75,
+                     (2, 5): 500,
+                     (5, 19): 1000,
+                     (20, 34): 2500,
+                     (35, 49): 5000,
+                     (50, 'inf'): 7500,
                      }
 
 # The resolution (in degrees) for scanning smeared wells

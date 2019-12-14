@@ -133,7 +133,7 @@ H      -1.22610851    0.40421362    1.35170355"""
                                                       force_field='MMFF94s', print_logs=False, diastereomers=None,
                                                       num_confs_to_return=1, return_all_conformers=False)
         self.assertEqual(len(lowest_confs), 1)
-        self.assertEqual(lowest_confs[0]['chirality'], {(3,): 'R', (6,): 'NS', (1, 2): 'Z'})
+        self.assertEqual(lowest_confs[0]['chirality'], {(3,): 'S', (6,): 'NR', (1, 2): 'Z'})
 
         diastereomers = ["""O       2.20267987    0.56608573   -1.37853919
                             C       2.17100280   -0.41142659   -0.42356122
@@ -400,13 +400,13 @@ H       0.68104300    0.74807180    0.61546062""")]
     def test_determine_number_of_conformers_to_generate(self):
         """Test that the correct number of conformers to generate is determined"""
         self.assertEqual(conformers.determine_number_of_conformers_to_generate(heavy_atoms=0, torsion_num=0,
-                                                                               label=''), (100, 0))
+                                                                               label=''), (75, 0))
         self.assertEqual(conformers.determine_number_of_conformers_to_generate(heavy_atoms=15, torsion_num=0,
-                                                                               label=''), (500, 0))
+                                                                               label=''), (1000, 0))
         self.assertEqual(conformers.determine_number_of_conformers_to_generate(heavy_atoms=5, torsion_num=31,
-                                                                               label=''), (5000, 0))
+                                                                               label=''), (2500, 0))
         self.assertEqual(conformers.determine_number_of_conformers_to_generate(heavy_atoms=150, torsion_num=0,
-                                                                               label=''), (10000, 0))
+                                                                               label=''), (7500, 0))
         xyz = {'symbols': ('S', 'O', 'O', 'N', 'N', 'C', 'C', 'C', 'C', 'C',
                            'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
                'isotopes': (32, 16, 16, 14, 14, 12, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
@@ -435,10 +435,10 @@ H       0.68104300    0.74807180    0.61546062""")]
                           (-1.779032202163809, 1.7365703107348773, 1.363680443883325),
                           (-2.0569288708039766, 1.130024400459187, -2.059052520249386))}
         self.assertEqual(conformers.determine_number_of_conformers_to_generate(heavy_atoms=30, torsion_num=10,
-                                                                               label='', xyz=xyz), (4000, 4))
+                                                                               label='', xyz=xyz), (10000, 4))
         mol = Molecule(smiles='CNC(O)(S)C=CO')
         self.assertEqual(conformers.determine_number_of_conformers_to_generate(heavy_atoms=30, torsion_num=10,
-                                                                               label='', mol=mol), (3000, 3))
+                                                                               label='', mol=mol), (7500, 3))
 
     def test_openbabel_force_field(self):
         """Test Open Babel force field"""
