@@ -2018,7 +2018,7 @@ class Scheduler(object):
         invalidate, actions, energies = False, list(), list()
         for i in range(self.species_dict[label].number_of_rotors):
             if self.species_dict[label].rotors_dict[i]['pivots'] == job.pivots:
-                energies, angles = parser.parse_scan_energies(path=job.local_path_to_output_file)  # in kJ/mol
+                energies, angles = parser.parse_1d_scan_energies(path=job.local_path_to_output_file)  # in kJ/mol
                 if energies is None:
                     invalidate = True
                     invalidation_reason = 'Could not read energies'
@@ -2199,7 +2199,7 @@ class Scheduler(object):
             is_isomorphic = self.species_dict[label].check_xyz_isomorphism(xyz=xyz, verbose=False)
             for rotor_dict in self.species_dict[label].rotors_dict.values():
                 if rotor_dict['pivots'] == job.pivots:
-                    key = tuple('{0:.2f}'.format(dihedral) for dihedral in job.directed_dihedrals)
+                    key = tuple(f'{dihedral:.2f}' for dihedral in job.directed_dihedrals)
                     rotor_dict['directed_scan'][key] = {'energy': parser.parse_e_elect(
                                                                   path=job.local_path_to_output_file),
                                                         'xyz': xyz,
@@ -2477,7 +2477,7 @@ class Scheduler(object):
             self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=software, memory=memory,
                          job_type=job_type, fine=fine, ess_trsh_methods=ess_trsh_methods, trsh=trsh_keyword,
                          conformer=conformer, scan=job.scan, pivots=job.pivots, scan_res=job.scan_res, shift=shift,
-                         directed_dihedrals=job.directed_dihedrals)
+                         directed_dihedrals=job.directed_dihedrals, directed_scans=job.directed_scans)
         self.save_restart_dict()
 
     def troubleshoot_conformer_isomorphism(self, label):

@@ -146,6 +146,39 @@ H       1.32677989   -0.80557411    0.33156013"""
         self.assertAlmostEqual(zpe3, 25.401064000000, 5)
         self.assertAlmostEqual(zpe4, 39.368057626223, 5)
 
+    def test_parse_1d_scan_energies(self):
+        """Test parsing a 1D scan output file"""
+        path1 = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'sBuOH.out')
+        energies, angles = parser.parse_1d_scan_energies(path=path1)
+        expected_energies = np.array([1.57530564e-05, 3.98826556e-01, 1.60839959e+00, 3.49030801e+00,
+                                      5.74358812e+00, 8.01124810e+00, 9.87649510e+00, 1.10079306e+01,
+                                      1.11473788e+01, 1.02373175e+01, 8.49330826e+00, 6.23697731e+00,
+                                      3.89294941e+00, 1.87096796e+00, 5.13009545e-01, 1.86410533e-04,
+                                      4.16146979e-01, 1.66269755e+00, 3.59565619e+00, 5.90306099e+00,
+                                      8.19668453e+00, 1.00329329e+01, 1.10759678e+01, 1.10923247e+01,
+                                      1.00763770e+01, 8.28078980e+00, 6.04456755e+00, 3.77500671e+00,
+                                      1.83344694e+00, 5.20014378e-01, 2.21067093e-03, 3.70723206e-01,
+                                      1.56091218e+00, 3.44323279e+00, 5.73505787e+00, 8.04497265e+00,
+                                      9.93330041e+00, 1.10426686e+01, 1.11168469e+01, 1.01271857e+01,
+                                      8.32729265e+00, 6.06336876e+00, 3.76108631e+00, 1.80461632e+00,
+                                      4.94715062e-01, 0.00000000e+00], np.float64)
+        expected_angles = np.array([0., 8., 16., 24., 32., 40., 48., 56., 64., 72., 80., 88., 96., 104.,
+                                    112., 120., 128., 136., 144., 152., 160., 168., 176., 184., 192., 200., 208., 216.,
+                                    224., 232., 240., 248., 256., 264., 272., 280., 288., 296., 304., 312., 320., 328.,
+                                    336., 344., 352., 360.], np.float64)
+        np.testing.assert_almost_equal(energies, expected_energies)
+        np.testing.assert_almost_equal(angles, expected_angles)
+
+    def test_parse_nd_scan_energies(self):
+        """Test parsing an ND scan output file"""
+        path1 = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'scan_2D_relaxed_OCdOO.log')
+        results = parser.parse_nd_scan_energies(path=path1, software='gaussian')
+        self.assertEqual(results['directed_scan_type'], 'ess_gaussian')
+        self.assertEqual(results['scans'], [(4, 1, 2, 5), (4, 1, 3, 6)])
+        self.assertEqual(len(list(results.keys())), 3)
+        self.assertEqual(len(list(results['directed_scan'].keys())), 36 * 36 + 1)  # 1297
+        self.assertAlmostEqual(results['directed_scan']['170.00', '40.00']['energy'], 26.09747088)
+
     def test_parse_dipole_moment(self):
         """Test parsing the dipole moment from an opt job output file"""
         path1 = os.path.join(arc_path, 'arc', 'testing', 'SO2OO_CBS-QB3.log')

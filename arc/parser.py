@@ -174,9 +174,9 @@ def parse_zpe(path):
     return zpe
 
 
-def parse_scan_energies(path):
+def parse_1d_scan_energies(path):
     """
-    Parse the torsion scan energies from an ESS log file.
+    Parse the 1D torsion scan energies from an ESS log file.
 
     Args:
         path (str): The ESS log file to parse from.
@@ -184,18 +184,197 @@ def parse_scan_energies(path):
     Returns:
         energies (list): The electronic energy in kJ/mol.
         angles (list): The scan angles in degrees.
+
+    Raises:
+        InputError: If ``path`` is invalid.
     """
     if not os.path.isfile(path):
-        raise InputError('Could not find file {0}'.format(path))
+        raise InputError(f'Could not find file {path}')
     log = determine_qm_software(fullpath=path)
     try:
         energies, angles = log.load_scan_energies()
         energies *= 0.001  # convert to kJ/mol
         angles *= 180 / np.pi  # convert to degrees
     except (LogError, NotImplementedError):
-        logger.warning('Could not read energies from {0}'.format(path))
+        logger.warning(f'Could not read energies from {path}')
         energies, angles = None, None
     return energies, angles
+
+
+def parse_nd_scan_energies(path, software='gaussian', return_original_dihedrals=False):
+    """
+    Parse the ND torsion scan energies from an ESS log file.
+
+    Args:
+        path (str): The ESS log file to parse from.
+        software (str, optional): The software used to run this scan, default is 'gaussian'.
+        return_original_dihedrals (bool, optional): Whether to return the dihedral angles of the original conformer.
+                                                    ``True`` to return, default is ``False``.
+
+    Returns:
+        dict: The "results" dictionary, which has the following structure::
+
+              results = {'directed_scan_type': <str, used for the fig name>,
+                         'scans': <list, entries are lists of torsion indices>,
+                         'directed_scan': <dict, keys are tuples of '{0:.2f}' formatted dihedrals,
+                                           values are dictionaries with the following keys and values:
+                                           {'energy': <float, energy in kJ/mol>,  * only this is used here
+                                            'xyz': <dict>,
+                                            'is_isomorphic': <bool>,
+                                            'trsh': <list, job.ess_trsh_methods>}>
+                         }
+    Returns:
+        list, optional: The dihedrals angles of the original conformer.
+
+    Raises:
+        InputError: If ``path`` is invalid.
+    """
+    results = {'directed_scan_type': f'ess_{software}',
+               'scans': list(),
+               'directed_scan': dict(),
+               }
+    if software == 'gaussian':
+        # internal variables:
+        # - scan_d_dict (dict): keys are scanning dihedral names (e.g., 'D2', or 'D4'), values are the corresponding
+        #                       torsion indices tuples (e.g., (4, 1, 2, 5), or (4, 1, 3, 6)).
+        # - dihedrals_dict (dict): keys are torsion tuples (e.g., (4, 1, 2, 5), or (4, 1, 3, 6)),
+        #                          values are lists of dihedral angles in degrees corresponding to the torsion
+        #                          (e.g., [-159.99700, -149.99690, -139.99694, -129.99691, -119.99693]).
+        # - torsions (list): entries are torsion indices that are scanned, e.g.: [(4, 1, 2, 5), (4, 1, 3, 6)]
+        with open(path, 'r', buffering=8192) as f:
+            line = f.readline()
+            symbols, torsions, shape, resolution, original_dihedrals = list(), list(), list(), list(), list()
+            scan_d_dict = dict()
+            min_e = None
+            while line:
+                line = f.readline()
+                if 'The following ModRedundant input section has been read:' in line:
+                    # ' The following ModRedundant input section has been read:'
+                    # ' D       4       1       2       5 S  36 10.000'
+                    # ' D       4       1       3       6 S  36 10.000'
+                    line = f.readline()
+                    while True:
+                        splits = line.split()
+                        if len(splits) == 8:
+                            torsions.append(tuple([int(index) for index in splits[1:5]]))
+                            shape.append(int(splits[6]) + 1)  # the last point is repeated
+                            resolution.append(float(splits[7]))
+                        else:
+                            break
+                        line = f.readline()
+                    results['scans'] = torsions
+                    if 'Symbolic Z-matrix:' in line:
+                        #  ---------------------
+                        #  HIR calculation by AI
+                        #  ---------------------
+                        #  Symbolic Z-matrix:
+                        #  Charge =  0 Multiplicity = 1
+                        #  c
+                        #  o                    1    oc2
+                        #  o                    1    oc3      2    oco3
+                        #  o                    1    oc4      2    oco4     3    dih4     0
+                        #  h                    2    ho5      1    hoc5     3    dih5     0
+                        #  h                    3    ho6      1    hoc6     4    dih6     0
+                        #        Variables:
+                        #   oc2                   1.36119
+                        #   oc3                   1.36119
+                        #   oco3                114.896
+                        #   oc4                   1.18581
+                        #   oco4                122.552
+                        #   dih4                180.
+                        #   ho5                   0.9637
+                        #   hoc5                111.746
+                        #   dih5                 20.003
+                        #   ho6                   0.9637
+                        #   hoc6                111.746
+                        #   dih6               -160.
+                        for i in range(2):
+                            f.readline()
+                        while 'Variables' not in line:
+                            symbols.append(line.split()[0].upper())
+                            line = f.readline()
+                if 'Initial Parameters' in line:
+                    #                            ----------------------------
+                    #                            !    Initial Parameters    !
+                    #                            ! (Angstroms and Degrees)  !
+                    #  --------------------------                            --------------------------
+                    #  ! Name  Definition              Value          Derivative Info.                !
+                    #  --------------------------------------------------------------------------------
+                    #  ! R1    R(1,2)                  1.3612         calculate D2E/DX2 analytically  !
+                    #  ! R2    R(1,3)                  1.3612         calculate D2E/DX2 analytically  !
+                    #  ! R3    R(1,4)                  1.1858         calculate D2E/DX2 analytically  !
+                    #  ! R4    R(2,5)                  0.9637         calculate D2E/DX2 analytically  !
+                    #  ! R5    R(3,6)                  0.9637         calculate D2E/DX2 analytically  !
+                    #  ! A1    A(2,1,3)              114.896          calculate D2E/DX2 analytically  !
+                    #  ! A2    A(2,1,4)              122.552          calculate D2E/DX2 analytically  !
+                    #  ! A3    A(3,1,4)              122.552          calculate D2E/DX2 analytically  !
+                    #  ! A4    A(1,2,5)              111.746          calculate D2E/DX2 analytically  !
+                    #  ! A5    A(1,3,6)              111.746          calculate D2E/DX2 analytically  !
+                    #  ! D1    D(3,1,2,5)             20.003          calculate D2E/DX2 analytically  !
+                    #  ! D2    D(4,1,2,5)           -159.997          Scan                            !
+                    #  ! D3    D(2,1,3,6)             20.0            calculate D2E/DX2 analytically  !
+                    #  ! D4    D(4,1,3,6)           -160.0            Scan                            !
+                    #  --------------------------------------------------------------------------------
+                    for i in range(5):
+                        line = f.readline()
+                    # original_zmat = {'symbols': list(), 'coords': list(), 'vars': dict()}
+                    while '--------------------------' not in line:
+                        splits = line.split()
+                        # key = splits[2][:-1].replace('(', '_').replace(',', '_')
+                        # val = float(splits[3])
+                        # original_zmat['symbols'].append(symbols[len(original_zmat['symbols'])])
+                        # original_zmat['vars'][key] = val
+                        if 'Scan' in line:
+                            scan_d_dict[splits[1]] = \
+                                tuple([int(index) for index in splits[2][2:].replace(')', '').split(',')])
+                            original_dihedrals.append(float(splits[3]))
+                        line = f.readline()
+
+                elif 'Summary of Optimized Potential Surface Scan' in line:
+                    # ' Summary of Optimized Potential Surface Scan (add -264.0 to energies):'
+                    base_e = float(line.split('(add ')[1].split()[0])
+                    energies, dihedrals_dict = list(), dict()
+                    dihedral_num = 0
+                    while 'Grad' not in line:
+                        line = f.readline()
+                        splits = line.split()
+                        if 'Eigenvalues --' in line:
+                            # convert Hartree energy to kJ/mol
+                            energies = [(base_e + float(e)) * 4.3597447222071e-18 * 6.02214179e23 * 1e-3
+                                        for e in splits[2:]]
+                            min_es = min(energies)
+                            min_e = min_es if min_e is None else min(min_e, min_es)
+                            dihedral_num = 0
+                        if splits[0] in list(scan_d_dict.keys()) \
+                                and scan_d_dict[splits[0]] not in list(dihedrals_dict.keys()):
+                            # parse the dihedral information
+                            # '           D1          20.00308  30.00361  40.05829  50.36777  61.07341'
+                            # '           D2        -159.99700-149.99690-139.99694-129.99691-119.99693'
+                            # '           D3          19.99992  19.99959  19.94509  19.63805  18.93967'
+                            # '           D4        -160.00000-159.99990-159.99994-159.99991-159.99993'
+                            dihedrals = [float(dihedral) for dihedral in line.replace('-', ' -').split()[1:]]
+                            for i in range(len(dihedrals)):
+                                if 0 > dihedrals[i] >= -0.0049999:
+                                    dihedrals[i] = 0.0
+                            dihedrals_dict[scan_d_dict[splits[0]]] = dihedrals
+                            dihedral_num += 1
+                        if len(list(dihedrals_dict.keys())) == len(list(scan_d_dict.keys())):
+                            # we have all the data for this block, pass to ``results`` and initialize ``dihedrals_dict``
+                            for i, energy in enumerate(energies):
+                                dihedral_list = [dihedrals_dict[torsion][i] for torsion in torsions]  # ordered
+                                key = tuple(f'{dihedral:.2f}' for dihedral in dihedral_list)
+                                results['directed_scan'][key] = {'energy': energy}
+                            dihedrals_dict = dict()  # keys are torsion tuples, values are dihedral angles
+                    break
+            line = f.readline()
+    else:
+        raise NotImplementedError(f'parse_nd_scan_energies is currently only implemented for Gaussian, got {software}.')
+    for key in results['directed_scan'].keys():
+        results['directed_scan'][key] = {'energy': results['directed_scan'][key]['energy'] - min_e}
+    if return_original_dihedrals:
+        return results, original_dihedrals
+    else:
+        return results
 
 
 def parse_xyz_from_file(path):
@@ -334,13 +513,22 @@ def parse_polarizability(path):
 
 def _get_lines_from_file(path):
     """
-    A helper function for getting a list of lines from the file at `path`.
+    A helper function for getting a list of lines from a file.
+
+    Args:
+        path (str): The file path.
+
+    Returns:
+        list: The lines read from the file.
+
+    Raises:
+        InputError: If ``path`` is an invalid file path.
     """
     if os.path.isfile(path):
         with open(path, 'r') as f:
             lines = f.readlines()
     else:
-        raise InputError('Could not find file {0}'.format(path))
+        raise InputError(f'Could not find file {path}')
     return lines
 
 

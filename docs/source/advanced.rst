@@ -103,11 +103,10 @@ ND Rotor scans
 ^^^^^^^^^^^^^^
 ARC also supports ND (N dimensional, N >= 1) rotor scans. There are seven different ND types to execute:
 
-A. Generate all geometries in advance (brute force)
-- A1. Just calculate single point energies (nested or diagonalized)
-- A2. Constraint optimization (nested or diagonalized)
-B. Derive the geometry from the previous point (continuous constrained optimization) (nested or diagonalized)
-C. ESS
+- A1. Generate all geometries in advance (brute force), and calculate single point energies (nested or diagonalized).
+- A2. Generate all geometries in advance (brute force), and run constraint optimizations (nested or diagonalized).
+- B. Derive the geometry from the previous point (continuous) and run constraint optimizations (nested or diagonalized).
+- C. Let the ESS guide the optimizations.
 
 Each of the options above (A or B) can be either "nested" (considering all ND dihedral combinations) or "diagonal"
 (resulting in a unique 1D rotor scan across several dimensions). The seventh option (C) allows the ESS to control
