@@ -213,7 +213,7 @@ class TestTrsh(unittest.TestCase):
 
         #### test gaussian ####
         label = 'ethanol'
-        level_of_theory = 'ccsd/vdz'
+        level_of_theory_dict = {'method': 'ccsd', 'basis': 'vdz'}
         server = 'server1'
         job_type = 'opt'
         software = 'gaussian'
@@ -225,8 +225,9 @@ class TestTrsh(unittest.TestCase):
 
         ## gaussian: test 1 ##
         job_status = {'keywords': ['CheckFile']}
-        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
-        memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status, job_type,
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory_dict, software, job_type, fine, trsh_keyword, \
+        memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory_dict, server, job_status,
+                                                                   job_type,
                                                                    software, fine, memory_gb, num_heavy_atoms,
                                                                    cpu_cores, ess_trsh_methods)
 
@@ -237,8 +238,9 @@ class TestTrsh(unittest.TestCase):
 
         ## gaussian: test 2 ##
         job_status = {'keywords': ['InternalCoordinateError']}
-        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
-        memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status, job_type,
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory_dict, software, job_type, fine, trsh_keyword, \
+        memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory_dict, server, job_status,
+                                                                   job_type,
                                                                    software, fine, memory_gb, num_heavy_atoms,
                                                                    cpu_cores, ess_trsh_methods)
 
@@ -247,13 +249,14 @@ class TestTrsh(unittest.TestCase):
 
         ## gaussian: test 3 ##
         job_status = {'keywords': ['tmp']}
-        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
-        memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status, job_type,
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory_dict, software, job_type, fine, trsh_keyword, \
+        memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory_dict, server, job_status,
+                                                                   job_type,
                                                                    software, fine, memory_gb, num_heavy_atoms,
                                                                    cpu_cores, ess_trsh_methods)
 
         self.assertIn('cbs-qb3', ess_trsh_methods)
-        self.assertEqual(level_of_theory, 'cbs-qb3')
+        self.assertEqual(level_of_theory_dict['method'], 'cbs-qb3')
         self.assertEqual(job_type, 'composite')
 
         #### test qchem ####
@@ -261,16 +264,18 @@ class TestTrsh(unittest.TestCase):
         ess_trsh_methods = ['change_node']
         job_status = {'keywords': ['MaxOptCycles', 'Unconverged']}
         ## qchem: test 1 ##
-        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
-        memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status, job_type,
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory_dict, software, job_type, fine, trsh_keyword, \
+        memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory_dict, server, job_status,
+                                                                   job_type,
                                                                    software, fine, memory_gb, num_heavy_atoms,
                                                                    cpu_cores, ess_trsh_methods)
         self.assertIn('max_cycles', ess_trsh_methods)
 
         ## qchem: test 2 ##
         job_status = {'keywords': ['SCF']}
-        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
-        memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status, job_type,
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory_dict, software, job_type, fine, trsh_keyword, \
+        memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory_dict, server, job_status,
+                                                                   job_type,
                                                                    software, fine, memory_gb, num_heavy_atoms,
                                                                    cpu_cores, ess_trsh_methods)
         self.assertIn('DIIS_GDM', ess_trsh_methods)
@@ -281,7 +286,7 @@ class TestTrsh(unittest.TestCase):
         ## molpro: test ##
         path = os.path.join(self.base_path['molpro'], 'insufficient_memory.out')
         label = 'TS'
-        level_of_theory = 'mrci/aug-cc-pV(T+d)Z'
+        level_of_theory_dict = {'method': 'mrci', 'basis': 'aug-cc-pV(T+d)Z'}
         server = 'server1'
         status, keywords, error, line = trsh.determine_ess_status(output_path=path, species_label='TS', job_type='sp')
         job_status = {'keywords': keywords, 'error': error}
@@ -289,8 +294,9 @@ class TestTrsh(unittest.TestCase):
         fine = True
         memory_gb = 32.0
         ess_trsh_methods = ['change_node']
-        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
-        memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status, job_type,
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory_dict, software, job_type, fine, trsh_keyword, \
+        memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory_dict, server, job_status,
+                                                                   job_type,
                                                                    software, fine, memory_gb, num_heavy_atoms,
                                                                    cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
@@ -301,7 +307,7 @@ class TestTrsh(unittest.TestCase):
         # Test troubleshooting insufficient memory issue
         # Automatically increase memory provided not exceeding maximum available memory
         label = 'test'
-        level_of_theory = 'DLPNO ccsd(T)'
+        level_of_theory_dict = {'method': 'dlpno-ccsd(T)'}
         server = 'server1'
         job_type = 'sp'
         software = 'orca'
@@ -314,8 +320,9 @@ class TestTrsh(unittest.TestCase):
         status, keywords, error, line = trsh.determine_ess_status(output_path=path, species_label='TS', job_type='sp',
                                                                   software=software)
         job_status = {'keywords': keywords, 'error': error}
-        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
-        memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status, job_type,
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory_dict, software, job_type, fine, trsh_keyword, \
+        memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory_dict, server, job_status,
+                                                                   job_type,
                                                                    software, fine, memory_gb, num_heavy_atoms,
                                                                    cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
@@ -326,7 +333,7 @@ class TestTrsh(unittest.TestCase):
         # Test troubleshooting insufficient memory issue
         # Automatically reduce cpu cores to ensure enough memory per core when maximum available memory is limited
         label = 'test'
-        level_of_theory = 'DLPNO ccsd(T)'
+        level_of_theory_dict = {'method': 'dlpno-ccsd(T)'}
         server = 'server1'
         job_type = 'sp'
         software = 'orca'
@@ -340,19 +347,20 @@ class TestTrsh(unittest.TestCase):
                                                                   software=software)
         keywords.append('max_total_job_memory')
         job_status = {'keywords': keywords, 'error': error}
-        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
-        memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status, job_type,
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory_dict, software, job_type, fine, trsh_keyword, \
+        memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory_dict, server, job_status,
+                                                                   job_type,
                                                                    software, fine, memory_gb, num_heavy_atoms,
                                                                    cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
-        self.assertEqual(cpu_cores, 25)
-        self.assertAlmostEqual(memory, 245)
+        self.assertEqual(cpu_cores, 24)
+        self.assertAlmostEqual(memory, 235)
 
         ## orca: test 3 ##
         # Test troubleshooting insufficient memory issue
         # Stop troubleshooting when ARC determined there is not enough computational resource to accomplish the job
         label = 'test'
-        level_of_theory = 'DLPNO ccsd(T)'
+        level_of_theory_dict = {'method': 'dlpno-ccsd(T)'}
         server = 'server1'
         job_type = 'sp'
         software = 'orca'
@@ -366,19 +374,20 @@ class TestTrsh(unittest.TestCase):
                                                                   software=software)
         keywords.append('max_total_job_memory')
         job_status = {'keywords': keywords, 'error': error}
-        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
-        memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status, job_type,
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory_dict, software, job_type, fine, trsh_keyword, \
+        memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory_dict, server, job_status,
+                                                                   job_type,
                                                                    software, fine, memory_gb, num_heavy_atoms,
                                                                    cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
         self.assertEqual(couldnt_trsh, True)
-        self.assertLess(cpu_cores, 1)    # can't really run job with less than 1 cpu ^o^
+        self.assertLess(cpu_cores, 1)  # can't really run job with less than 1 cpu ^o^
 
         ## orca: test 4 ##
         # Test troubleshooting too many cpu cores
         # Automatically reduce cpu cores
         label = 'test'
-        level_of_theory = 'DLPNO ccsd(T)'
+        level_of_theory_dict = {'method': 'dlpno-ccsd(T)'}
         server = 'server1'
         job_type = 'sp'
         software = 'orca'
@@ -391,8 +400,9 @@ class TestTrsh(unittest.TestCase):
         status, keywords, error, line = trsh.determine_ess_status(output_path=path, species_label='TS', job_type='sp',
                                                                   software=software)
         job_status = {'keywords': keywords, 'error': error}
-        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
-        memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status, job_type,
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory_dict, software, job_type, fine, trsh_keyword, \
+        memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory_dict, server, job_status,
+                                                                   job_type,
                                                                    software, fine, memory_gb, num_heavy_atoms,
                                                                    cpu_cores, ess_trsh_methods)
         self.assertIn('cpu', ess_trsh_methods)
