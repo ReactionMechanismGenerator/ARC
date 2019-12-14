@@ -211,7 +211,7 @@ class TestTrsh(unittest.TestCase):
     def test_trsh_ess_job(self):
         """Test the trsh_ess_job() function"""
 
-        #### test gaussian ####
+        # test gaussian
         label = 'ethanol'
         level_of_theory_dict = {'method': 'ccsd', 'basis': 'vdz'}
         server = 'server1'
@@ -223,7 +223,7 @@ class TestTrsh(unittest.TestCase):
         ess_trsh_methods = ['change_node', 'int=(Acc2E=14)']
         cpu_cores = 8
 
-        ## gaussian: test 1 ##
+        # gaussian: test 1
         job_status = {'keywords': ['CheckFile']}
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory_dict, software, job_type, fine, trsh_keyword, \
         memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory_dict, server, job_status,
@@ -236,7 +236,7 @@ class TestTrsh(unittest.TestCase):
         self.assertEqual(memory, 16)
         self.assertFalse(couldnt_trsh)
 
-        ## gaussian: test 2 ##
+        # gaussian: test 2
         job_status = {'keywords': ['InternalCoordinateError']}
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory_dict, software, job_type, fine, trsh_keyword, \
         memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory_dict, server, job_status,
@@ -247,7 +247,7 @@ class TestTrsh(unittest.TestCase):
         self.assertFalse(remove_checkfile)
         self.assertEqual(trsh_keyword, 'opt=(cartesian,nosymm)')
 
-        ## gaussian: test 3 ##
+        # gaussian: test 3
         job_status = {'keywords': ['tmp']}
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory_dict, software, job_type, fine, trsh_keyword, \
         memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory_dict, server, job_status,
@@ -259,11 +259,11 @@ class TestTrsh(unittest.TestCase):
         self.assertEqual(level_of_theory_dict['method'], 'cbs-qb3')
         self.assertEqual(job_type, 'composite')
 
-        #### test qchem ####
+        # test qchem
         software = 'qchem'
         ess_trsh_methods = ['change_node']
         job_status = {'keywords': ['MaxOptCycles', 'Unconverged']}
-        ## qchem: test 1 ##
+        # qchem: test 1
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory_dict, software, job_type, fine, trsh_keyword, \
         memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory_dict, server, job_status,
                                                                    job_type,
@@ -271,7 +271,7 @@ class TestTrsh(unittest.TestCase):
                                                                    cpu_cores, ess_trsh_methods)
         self.assertIn('max_cycles', ess_trsh_methods)
 
-        ## qchem: test 2 ##
+        # qchem: test 2
         job_status = {'keywords': ['SCF']}
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory_dict, software, job_type, fine, trsh_keyword, \
         memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory_dict, server, job_status,
@@ -280,10 +280,10 @@ class TestTrsh(unittest.TestCase):
                                                                    cpu_cores, ess_trsh_methods)
         self.assertIn('DIIS_GDM', ess_trsh_methods)
 
-        #### test molpro ####
+        # test molpro
         software = 'molpro'
 
-        ## molpro: test ##
+        # molpro: test
         path = os.path.join(self.base_path['molpro'], 'insufficient_memory.out')
         label = 'TS'
         level_of_theory_dict = {'method': 'mrci', 'basis': 'aug-cc-pV(T+d)Z'}
@@ -302,8 +302,8 @@ class TestTrsh(unittest.TestCase):
         self.assertIn('memory', ess_trsh_methods)
         self.assertAlmostEqual(memory, 222.15625)
 
-        #### test orca ####
-        ## orca: test 1 ##
+        # test orca
+        # orca: test 1
         # Test troubleshooting insufficient memory issue
         # Automatically increase memory provided not exceeding maximum available memory
         label = 'test'
@@ -329,7 +329,7 @@ class TestTrsh(unittest.TestCase):
         self.assertEqual(cpu_cores, 32)
         self.assertAlmostEqual(memory, 312)
 
-        ## orca: test 2 ##
+        # orca: test 2
         # Test troubleshooting insufficient memory issue
         # Automatically reduce cpu cores to ensure enough memory per core when maximum available memory is limited
         label = 'test'
@@ -356,7 +356,7 @@ class TestTrsh(unittest.TestCase):
         self.assertEqual(cpu_cores, 24)
         self.assertAlmostEqual(memory, 235)
 
-        ## orca: test 3 ##
+        # orca: test 3
         # Test troubleshooting insufficient memory issue
         # Stop troubleshooting when ARC determined there is not enough computational resource to accomplish the job
         label = 'test'
@@ -383,7 +383,7 @@ class TestTrsh(unittest.TestCase):
         self.assertEqual(couldnt_trsh, True)
         self.assertLess(cpu_cores, 1)  # can't really run job with less than 1 cpu ^o^
 
-        ## orca: test 4 ##
+        # orca: test 4
         # Test troubleshooting too many cpu cores
         # Automatically reduce cpu cores
         label = 'test'
