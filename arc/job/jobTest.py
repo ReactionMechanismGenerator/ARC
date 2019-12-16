@@ -196,7 +196,7 @@ class TestJob(unittest.TestCase):
 
     def test_set_cpu_and_mem(self):
         """Test assigning number of cpu's and memory"""
-        self.job1.cpu_cores = None
+        self.job1.cpu_cores = 8
         self.job1.total_job_memory_gb = 14
         self.job1.input_file_memory = None
         self.job1.submit_script_memory = None
@@ -220,11 +220,11 @@ class TestJob(unittest.TestCase):
         self.job1.server = 'server2'
         self.job1.software = 'terachem'
         self.job1.set_cpu_and_mem()
-        self.assertEqual(self.job1.cpu_cores, 8)
-        expected_memory = math.ceil(14 * 128 / 8)
+        self.assertEqual(self.job1.cpu_cores, 48)
+        expected_memory = math.ceil(14 * 128 / 48)
         self.assertEqual(self.job1.input_file_memory, expected_memory)
 
-        self.job1.cpu_cores = None
+        self.job1.cpu_cores = 8
         self.job1.input_file_memory = None
         self.job1.submit_script_memory = None
         self.job1.server = 'server2'
@@ -240,8 +240,8 @@ class TestJob(unittest.TestCase):
         self.job1.server = 'server2'
         self.job1.software = 'orca'
         self.job1.set_cpu_and_mem()
-        self.assertEqual(self.job1.cpu_cores, 8)
-        expected_memory = math.ceil(14 * 1024 / 8)
+        self.assertEqual(self.job1.cpu_cores, 48)
+        expected_memory = math.ceil(14 * 1024 / 48)
         self.assertEqual(self.job1.input_file_memory, expected_memory)
 
         self.job1.cpu_cores = None
@@ -250,7 +250,7 @@ class TestJob(unittest.TestCase):
         self.job1.server = 'server2'
         self.job1.software = 'qchem'
         self.job1.set_cpu_and_mem()
-        self.assertEqual(self.job1.cpu_cores, 8)
+        self.assertEqual(self.job1.cpu_cores, 48)
         self.assertEqual(self.job1.input_file_memory, 14)
 
     def test_set_file_paths(self):

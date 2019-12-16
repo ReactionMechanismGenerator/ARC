@@ -374,9 +374,9 @@ def trsh_scan_job(label, scan_res, scan, species_scan_lists, methods):
 
 
 def trsh_ess_job(label, level_of_theory, server, job_status, job_type, software, fine, memory_gb, num_heavy_atoms,
-                 ess_trsh_methods, available_ess=None):
+                 cpu_cores, ess_trsh_methods, available_ess=None):
     """
-    Troubleshoot issues related to the electronic structure software, such as conversion.
+    Troubleshoot issues related to the electronic structure software, such as convergence.
 
     Args:
         label (str): The species label.
@@ -388,8 +388,10 @@ def trsh_ess_job(label, level_of_theory, server, job_status, job_type, software,
         software (str, optional): The ESS software.
         fine (bool): Whether the job used an ultrafine grid, `True` if it did.
         memory_gb (float): The memory in GB used for the job.
+        cpu_cores (int): The total number of cpu cores requested for a job.
         ess_trsh_methods (list, optional): The troubleshooting methods tried for this job.
         available_ess (list, optional): Entries are string representations of available ESS.
+        num_heavy_atoms (int): Number of heavy atoms in a molecule.
 
     Todo:
         * Change server to one that has the same ESS if running out of disk space.
@@ -414,6 +416,8 @@ def trsh_ess_job(label, level_of_theory, server, job_status, job_type, software,
         memory (float): The new memory in GB to use for the job.
     Returns:
         shift (str): The shift to use (only in Molpro).
+    Returns:
+        cpus (int): The total number of cpu cores requested for a job.
     Returns:
         couldnt_trsh (bool): Whether a troubleshooting solution was found. `True` if it was not found.
     """
@@ -641,7 +645,7 @@ def trsh_ess_job(label, level_of_theory, server, job_status, job_type, software,
                              'Tried troubleshooting with the following methods: {methods}; '.format(
                               job_type=job_type, label=label, methods=ess_trsh_methods))
     return output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, \
-        trsh_keyword, memory, shift, couldnt_trsh
+        trsh_keyword, memory, shift, cpu_cores, couldnt_trsh
 
 
 def trsh_conformer_isomorphism(software, ess_trsh_methods=None):

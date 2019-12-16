@@ -81,7 +81,7 @@ class Job(object):
         rotor_index (int): The 0-indexed rotor number (key) in the species.rotors_dict dictionary.
         job_dict (dict, optional): A dictionary to create this object from (used when restarting ARC).
         testing (bool, optional): Whether the object is generated for testing purposes, True if it is.
-        cpu_cores (int): The total number of cpu cores requested for a job.
+        cpu_cores (int, optional): The total number of cpu cores requested for a job.
 
     Attributes:
         project (str): The project's name. Used for naming the directory.
@@ -1399,7 +1399,9 @@ $end
         """
         Set the amount of cpus and memory based on ESS and cluster software.
         """
-        self.cpu_cores = 8 if self.cpu_cores is None else servers[self.server].get('cpus', 8)  # set to 8 by default
+        if self.cpu_cores is None:
+            # set to 8 if user did not specify cpu in settings and in ARC input file
+            self.cpu_cores = servers[self.server].get('cpus', 8)
 
         max_mem = servers[self.server].get('memory', None)  # max memory per node in GB
         if max_mem is not None and self.total_job_memory_gb > max_mem * 0.9:
@@ -1408,6 +1410,7 @@ $end
                            f'Setting it to 90% * {max_mem} GB.')
             self.total_job_memory_gb = 0.9 * max_mem
             total_submit_script_memory = self.total_job_memory_gb * 1024 * 1.05  # MB
+            self.job_status[1]['keywords'].append('max_total_job_memory')  # useful info when trouble shoot
         else:
             total_submit_script_memory = self.total_job_memory_gb * 1024 * 1.1  # MB
 

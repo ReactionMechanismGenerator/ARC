@@ -637,7 +637,7 @@ class Scheduler(object):
     def run_job(self, label, xyz, level_of_theory, job_type, fine=False, software=None, shift='', trsh='', memory=None,
                 conformer=-1, ess_trsh_methods=None, scan='', pivots=None, occ=None, scan_trsh='', scan_res=None,
                 max_job_time=None, confs=None, radius=None, directed_scan_type=None, directed_scans=None,
-                directed_dihedrals=None, rotor_index=None):
+                directed_dihedrals=None, rotor_index=None, cpu_cores=None):
         """
         A helper function for running (all) jobs.
 
@@ -667,6 +667,7 @@ class Scheduler(object):
             directed_scans (list): Entries are lists of four-atom dihedral scan indices to constrain.
             directed_dihedrals (list): The dihedral angles of a directed scan job corresponding to ``directed_scans``.
             rotor_index (int): The 0-indexed rotor number (key) in the species.rotors_dict dictionary.
+            cpu_cores (int, optional): The total number of cpu cores requested for a job.
         """
         max_job_time = max_job_time or self.max_job_time  # if it's None, set to default
         ess_trsh_methods = ess_trsh_methods if ess_trsh_methods is not None else list()
@@ -685,7 +686,7 @@ class Scheduler(object):
                   scan_res=scan_res, conformer=conformer, checkfile=checkfile, bath_gas=self.bath_gas,
                   number_of_radicals=species.number_of_radicals, conformers=confs, radius=radius,
                   directed_scan_type=directed_scan_type, directed_scans=directed_scans, rotor_index=rotor_index,
-                  directed_dihedrals=directed_dihedrals)
+                  directed_dihedrals=directed_dihedrals, cpu_cores=cpu_cores)
         if job.software is not None:
             if conformer < 0:
                 # this is NOT a conformer DFT job
@@ -773,7 +774,7 @@ class Scheduler(object):
                      pivots=job.pivots, occ=job.occ, scan_trsh=job.scan_trsh, scan_res=job.scan_res,
                      max_job_time=job.max_job_time, confs=job.conformers, radius=job.radius,
                      directed_scan_type=job.directed_scan_type, directed_scans=job.directed_scans,
-                     directed_dihedrals=job.directed_dihedrals, rotor_index=job.rotor_index)
+                     directed_dihedrals=job.directed_dihedrals, rotor_index=job.rotor_index, cpu_cores=job.cpu_cores)
 
     def run_conformer_jobs(self, labels=None):
         """
@@ -2461,12 +2462,11 @@ class Scheduler(object):
         # make a temporary list of ones just to count the number of heavy atoms in the molecule
         num_heavy_atoms = len([1 for atom in self.species_dict[label].mol.atoms if atom.is_non_hydrogen()])
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
-            memory, shift, dont_rerun = trsh_ess_job(label=label, level_of_theory=level_of_theory, server=job.server,
-                                                     job_status=job.job_status[1], job_type=job.job_type,
-                                                     num_heavy_atoms=num_heavy_atoms, software=job.software,
-                                                     fine=job.fine, memory_gb=job.total_job_memory_gb,
-                                                     ess_trsh_methods=job.ess_trsh_methods,
-                                                     available_ess=list(self.ess_settings.keys()))
+            memory, shift, cpu_cores, dont_rerun = \
+            trsh_ess_job(label=label, level_of_theory=level_of_theory, server=job.server, job_status=job.job_status[1],
+                         job_type=job.job_type, num_heavy_atoms=num_heavy_atoms, software=job.software, fine=job.fine,
+                         memory_gb=job.total_job_memory_gb, cpu_cores=job.cpu_cores, ess_trsh_methods=job.ess_trsh_methods,
+                         available_ess=list(self.ess_settings.keys()))
         for output_error in output_errors:
             self.output[label]['errors'] += output_error
         if remove_checkfile:
@@ -2477,7 +2477,8 @@ class Scheduler(object):
             self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=software, memory=memory,
                          job_type=job_type, fine=fine, ess_trsh_methods=ess_trsh_methods, trsh=trsh_keyword,
                          conformer=conformer, scan=job.scan, pivots=job.pivots, scan_res=job.scan_res, shift=shift,
-                         directed_dihedrals=job.directed_dihedrals, directed_scans=job.directed_scans)
+                         directed_dihedrals=job.directed_dihedrals, directed_scans=job.directed_scans,
+                         cpu_cores=cpu_cores)
         self.save_restart_dict()
 
     def troubleshoot_conformer_isomorphism(self, label):
