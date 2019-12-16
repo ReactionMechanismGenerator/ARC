@@ -11,6 +11,7 @@ import os
 import shutil
 import unittest
 
+from arc.exceptions import InputError
 from arc.job.job import Job
 from arc.settings import arc_path
 
@@ -30,7 +31,8 @@ class TestJob(unittest.TestCase):
                             'qchem': ['server1'], 'onedmin': ['server1']}
         cls.xyz_c = {'symbols': ('C',), 'isotopes': (12,), 'coords': ((0.0, 0.0, 0.0),)}
         cls.job1 = Job(project='arc_project_for_testing_delete_after_usage3', ess_settings=cls.ess_settings,
-                       species_name='tst_spc', xyz=cls.xyz_c, job_type='opt', level_of_theory='b3lyp/6-31+g(d)',
+                       species_name='tst_spc', xyz=cls.xyz_c, job_type='opt',
+                       job_level_of_theory_dict={'method': 'b3lyp', 'basis': '6-31+g(d)'},
                        multiplicity=1, fine=True, job_num=100,
                        testing=True, project_directory=os.path.join(arc_path, 'Projects', 'project_test'))
         cls.job1.initial_time = datetime.datetime(2019, 3, 15, 19, 53, 7, 0)
@@ -57,7 +59,7 @@ class TestJob(unittest.TestCase):
                          'job_status': ['initializing',
                                         {'status': 'initializing', 'keywords': list(), 'error': '', 'line': ''}],
                          'job_type': 'opt',
-                         'level_of_theory': 'b3lyp/6-31+g(d)',
+                         'job_level_of_theory_dict': {'method': 'b3lyp', 'basis': '6-31+g(d)'},
                          'total_job_memory_gb': 14,
                          'multiplicity': 1,
                          'project': 'arc_project_for_testing_delete_after_usage3',
@@ -77,7 +79,7 @@ class TestJob(unittest.TestCase):
         self.assertEqual(job.charge, 0)
         self.assertEqual(job.species_name, 'tst_spc')
         self.assertEqual(job.server, 'server1')
-        self.assertEqual(job.level_of_theory, 'm062x/6-311g')
+        self.assertEqual(job.job_level_of_theory_dict, {'method': 'm062x', 'basis': '6-311g'})
         self.assertEqual(job.job_type, 'scan')
         self.assertEqual(job.project_directory.split('/')[-1], 'project_test')
         self.assertEqual(job.method, 'm062x')
@@ -87,47 +89,56 @@ class TestJob(unittest.TestCase):
     def test_automatic_ess_assignment(self):
         """Test that the Job module correctly assigns a software for specific methods and basis sets"""
         job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
-                   job_type='opt', level_of_theory='b3lyp/6-311++G(d,p)', multiplicity=1, testing=True,
+                   job_type='opt', job_level_of_theory_dict={'method': 'b3lyp', 'basis': '6-311++G(d,p)'},
+                   multiplicity=1, testing=True,
                    project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'gaussian')
 
         job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
-                   job_type='opt', level_of_theory='ccsd(t)/avtz', multiplicity=1, testing=True,
+                   job_type='opt', job_level_of_theory_dict={'method': 'ccsd(t)', 'basis': 'avtz'},
+                   multiplicity=1, testing=True,
                    project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'molpro')
 
         job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
-                   job_type='opt', level_of_theory='wb97xd/6-311++g(d,p)', multiplicity=1, testing=True,
+                   job_type='opt', job_level_of_theory_dict={'method': 'wb97xd', 'basis': '6-311++g(d,p)'},
+                   multiplicity=1, testing=True,
                    project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'gaussian')
 
         job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
-                   job_type='opt', level_of_theory='wb97x-d3/6-311++g(d,p)', multiplicity=1, testing=True,
+                   job_type='opt', job_level_of_theory_dict={'method': 'wb97x-d3', 'basis': '6-311++g(d,p)'},
+                   multiplicity=1, testing=True,
                    project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'qchem')
 
         job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
-                   job_type='opt', level_of_theory='b97/6-311++g(d,p)', multiplicity=1, testing=True,
+                   job_type='opt', job_level_of_theory_dict={'method': 'b97', 'basis': '6-311++g(d,p)'},
+                   multiplicity=1, testing=True,
                    project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'gaussian')
 
         job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
-                   job_type='opt', level_of_theory='m062x/6-311++g(d,p)', multiplicity=1, testing=True,
+                   job_type='opt', job_level_of_theory_dict={'method': 'm062x', 'basis': '6-311++g(d,p)'},
+                   multiplicity=1, testing=True,
                    project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'gaussian')
 
         job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
-                   job_type='opt', level_of_theory='m06-2x/6-311++g(d,p)', multiplicity=1, testing=True,
+                   job_type='opt', job_level_of_theory_dict={'method': 'm06-2x', 'basis': '6-311++g(d,p)'},
+                   multiplicity=1, testing=True,
                    project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'qchem')
 
         job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
-                   job_type='scan', level_of_theory='m062x/6-311++g(d,p)', multiplicity=1, testing=True,
+                   job_type='scan', job_level_of_theory_dict={'method': 'm062x', 'basis': '6-311++g(d,p)'},
+                   multiplicity=1, testing=True,
                    project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'gaussian')
 
         job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
-                   job_type='scan', level_of_theory='m06-2x/6-311++g(d,p)', multiplicity=1, testing=True,
+                   job_type='scan', job_level_of_theory_dict={'method': 'm06-2x', 'basis': '6-311++g(d,p)'},
+                   multiplicity=1, testing=True,
                    project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'qchem')
 
@@ -139,13 +150,15 @@ class TestJob(unittest.TestCase):
         self.assertIsNone(self.job1.bath_gas)
 
         job2 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc',
-                   xyz=self.xyz_c, job_type='onedmin', level_of_theory='b3lyp/6-31+g(d)', multiplicity=1,
+                   xyz=self.xyz_c, job_type='onedmin',
+                   job_level_of_theory_dict={'method': 'b3lyp', 'basis': '6-31+g(d)'}, multiplicity=1,
                    testing=True, project_directory=os.path.join(arc_path, 'Projects', 'project_test'),
                    fine=True, job_num=100)
         self.assertEqual(job2.bath_gas, 'N2')
 
         job2 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc',
-                   xyz=self.xyz_c, job_type='onedmin', level_of_theory='b3lyp/6-31+g(d)', multiplicity=1,
+                   xyz=self.xyz_c, job_type='onedmin',
+                   job_level_of_theory_dict={'method': 'b3lyp', 'basis': '6-31+g(d)'}, multiplicity=1,
                    testing=True, project_directory=os.path.join(arc_path, 'Projects', 'project_test'),
                    fine=True, job_num=100, bath_gas='Ar')
         self.assertEqual(job2.bath_gas, 'Ar')
@@ -167,28 +180,29 @@ class TestJob(unittest.TestCase):
         self.job1.deduce_software()
         self.assertEqual(self.job1.software, 'gaussian')
 
+        # test the levels_ess dict from settings
         self.job1.job_type = 'opt'
-        self.job1.level_of_theory = 'm06-2x/6-311g'  # test the levels_ess dict from settings
+        self.job1.job_level_of_theory_dict = {'method': 'm06-2x', 'basis': '6-311g'}
         self.job1.software = None
         self.job1.deduce_software()
         self.assertEqual(self.job1.software, 'qchem')
 
         self.job1.job_type = 'opt'
-        self.job1.level_of_theory = 'ccsd(t)/cc-pvtz'
+        self.job1.job_level_of_theory_dict = {'method': 'ccsd(t)', 'basis': 'cc-pvtz'}
         self.job1.method = 'ccsd(t)'
         self.job1.software = None
         self.job1.deduce_software()
         self.assertEqual(self.job1.software, 'molpro')
 
         self.job1.job_type = 'opt'
-        self.job1.level_of_theory = 'wb97xd/6-311g'
+        self.job1.job_level_of_theory_dict = {'method': 'wb97xd', 'basis': '6-311g'}
         self.job1.method = 'wb97xd'
         self.job1.software = None
         self.job1.deduce_software()
         self.assertEqual(self.job1.software, 'gaussian')
 
         self.job1.job_type = 'scan'
-        self.job1.level_of_theory = 'm062x/6-311g'
+        self.job1.job_level_of_theory_dict = {'method': 'm062x', 'basis': '6-311g'}
         self.job1.method = 'm062x'
         self.job1.software = None
         self.job1.deduce_software()
@@ -322,6 +336,63 @@ class TestJob(unittest.TestCase):
         test_job.max_job_time = 59.888
         self.assertEqual(test_job.format_max_job_time('days'), '2-11:53:16')
         self.assertEqual(test_job.format_max_job_time('hours'), '59:53:16')
+
+    def test_determine_model_chemistry(self):
+        """Test that model chemistry method (e.g., b3lyp), basis set (e.g. def2-svp), and auxiliary basis set
+        (e.g., def2-svp/c) can be correctly determined from level of theory (e.g. b3lyp/def2-svp def2-svp/c)."""
+        test_job = Job.__new__(Job)
+
+        # raise when encounter illegal inputs
+        with self.assertRaises(InputError):
+            test_job.job_level_of_theory_dict = 'b3lyp/6-31g'
+            test_job.determine_model_chemistry()
+
+        # raise when method is empty
+        with self.assertRaises(InputError):
+            test_job.job_level_of_theory_dict = {'basis': 'def2-tzvp'}
+            test_job.determine_model_chemistry()
+
+        # with auxiliary basis and DFT dispersion
+        test_job.job_level_of_theory_dict = {'method': 'b3lyp', 'basis': 'def2-svp', 'auxiliary_basis': 'def2-svp/c',
+                                             'dispersion': 'gd3bj'}
+        method_expected, basis_expected, auxillary_expected, dispersion_expected = \
+            'b3lyp', 'def2-svp', 'def2-svp/c', 'gd3bj'
+        test_job.method, test_job.basis_set, test_job.auxiliary_basis_set, test_job.dispersion = '', '', '', ''
+        test_job.determine_model_chemistry()
+        self.assertEqual(test_job.method, method_expected)
+        self.assertEqual(test_job.basis_set, basis_expected)
+        self.assertEqual(test_job.auxiliary_basis_set, auxillary_expected)
+        self.assertEqual(test_job.dispersion, dispersion_expected)
+
+        # basic method and basis case
+        test_job.job_level_of_theory_dict = {'method': 'wb97x-d3', 'basis': 'def2-tzvp'}
+        method_expected, basis_expected, auxillary_expected, dispersion_expected = 'wb97x-d3', 'def2-tzvp', '', ''
+        test_job.method, test_job.basis_set, test_job.auxiliary_basis_set, test_job.dispersion = '', '', '', ''
+        test_job.determine_model_chemistry()
+        self.assertEqual(test_job.method, method_expected)
+        self.assertEqual(test_job.basis_set, basis_expected)
+        self.assertEqual(test_job.auxiliary_basis_set, auxillary_expected)
+        self.assertEqual(test_job.dispersion, dispersion_expected)
+
+        # composite method
+        test_job.job_level_of_theory_dict = {'method': 'cbs-qb3'}
+        method_expected, basis_expected, auxillary_expected, dispersion_expected = 'cbs-qb3', '', '', ''
+        test_job.method, test_job.basis_set, test_job.auxiliary_basis_set, test_job.dispersion = '', '', '', ''
+        test_job.determine_model_chemistry()
+        self.assertEqual(test_job.method, method_expected)
+        self.assertEqual(test_job.basis_set, basis_expected)
+        self.assertEqual(test_job.auxiliary_basis_set, auxillary_expected)
+        self.assertEqual(test_job.dispersion, dispersion_expected)
+
+        # method with speical characters (e.g., parentheses, slashes, stars)
+        test_job.job_level_of_theory_dict = {'method': 'dlpno-CCSD(T)-F12a', 'basis': 'ma-DKH-def2-TZVP(-f)',
+                                             'auxiliary_basis': '6-311G**'}
+        method_expected, basis_expected, auxillary_expected = 'dlpno-CCSD(T)-F12a', 'ma-DKH-def2-TZVP(-f)', '6-311G**'
+        test_job.method, test_job.basis_set, test_job.auxiliary_basis_set = '', '', ''
+        test_job.determine_model_chemistry()
+        self.assertEqual(test_job.method, method_expected)
+        self.assertEqual(test_job.basis_set, basis_expected)
+        self.assertEqual(test_job.auxiliary_basis_set, auxillary_expected)
 
     def test_determine_model_chemistry_class(self):
         """Test that the type (e.g., DFT, wavefunction ...) of a model chemistry can be determined properly."""
