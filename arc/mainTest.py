@@ -55,10 +55,28 @@ class TestARC(unittest.TestCase):
         self.assertIn("'C-C': 1", long_thermo_description)
         self.assertIn("'C-H': 6", long_thermo_description)
         expected_dict = {'composite_method': '',
-                         'conformer_level': 'b3lyp/6-31g(d,p) empiricaldispersion=gd3bj',
-                         'ts_guess_level': 'b3lyp/6-31g(d,p) empiricaldispersion=gd3bj',
-                         'opt_level': 'b3lyp/6-311+g(3df,2p)',
-                         'freq_level': 'b3lyp/6-311+g(3df,2p)',
+                         'conformer_level': {'auxiliary_basis': '',
+                                             'basis': '6-31g(d,p)',
+                                             'method': 'b3lyp',
+                                             'dispersion': 'empiricaldispersion=gd3bj'},
+                         'ts_guess_level': {'auxiliary_basis': '',
+                                            'basis': '6-31g(d,p)',
+                                            'method': 'b3lyp',
+                                            'dispersion': 'empiricaldispersion=gd3bj'},
+                         'opt_level': {'auxiliary_basis': '',
+                                       'basis': '6-311+g(3df,2p)',
+                                       'method': 'b3lyp',
+                                       'dispersion': ''},
+                         'freq_level': {'auxiliary_basis': '',
+                                        'basis': '6-311+g(3df,2p)',
+                                        'method': 'b3lyp',
+                                        'dispersion': ''},
+                         'scan_level': {'auxiliary_basis': '', 'basis': '', 'method': '', 'dispersion': ''},
+                         'orbitals_level': {'auxiliary_basis': '', 'basis': '', 'method': '', 'dispersion': ''},
+                         'sp_level': {'auxiliary_basis': '',
+                                      'basis': 'cc-pvdz-f12',
+                                      'method': 'ccsd(t)-f12',
+                                      'dispersion': ''},
                          'freq_scale_factor': 0.967,
                          'initial_trsh': 'scf=(NDump=30)',
                          'max_job_time': 120,
@@ -67,8 +85,6 @@ class TestARC(unittest.TestCase):
                          'project': 'arc_test',
                          'running_jobs': {},
                          'reactions': [],
-                         'scan_level': '',
-                         'sp_level': 'ccsd(t)-f12/cc-pvdz-f12',
                          'job_memory': 14,
                          'job_types': {'rotors': False,
                                        'conformers': True,
@@ -79,7 +95,7 @@ class TestARC(unittest.TestCase):
                                        'orbitals': False,
                                        'bde': True,
                                        'sp': True},
-
+                         'level_of_theory': '',
                          't_min': None,
                          't_max': None,
                          't_count': None,
@@ -88,7 +104,7 @@ class TestARC(unittest.TestCase):
                          'allow_nonisomorphic_2d': False,
                          'calc_freq_factor': True,
                          'ess_settings': {'gaussian': ['local', 'server2'], 'onedmin': ['server1'],
-                                          'molpro': ['server2'], 'qchem': ['server1']},
+                                          'molpro': ['server2'], 'qchem': ['server1'], 'orca': ['local']},
                          'species': [{'bond_corrections': {'C-C': 1, 'C-H': 6},
                                       'arkane_file': None,
                                       'charge': 0,
@@ -158,6 +174,7 @@ class TestARC(unittest.TestCase):
         self.assertTrue(arc1.job_types['fine'])
         self.assertTrue(arc1.job_types['rotors'])
         self.assertEqual(arc1.sp_level, 'ccsdt-f12/cc-pvqz-f12')
+        self.assertEqual(arc1.level_of_theory, '')
         self.assertEqual(arc1.arc_species_list[0].label, 'testing_spc1')
         self.assertFalse(arc1.arc_species_list[0].is_ts)
         self.assertEqual(arc1.arc_species_list[0].charge, 1)
@@ -317,16 +334,166 @@ class TestARC(unittest.TestCase):
         arc1 = ARC(project='arc_model_chemistry_test_1', level_of_theory='CBS-QB3-Paraskevas')
         self.assertEqual(arc1.model_chemistry, 'cbs-qb3-paraskevas')
         self.assertEqual(arc1.freq_scale_factor, 1.00386)  # 0.99 * 1.014 = 1.00386
+        self.assertEqual(arc1.use_bac, True)
 
         arc2 = ARC(project='arc_model_chemistry_test_2',
                    level_of_theory='ccsd(t)-f12/cc-pvtz-f12//m06-2x/cc-pvtz')
         self.assertEqual(arc2.model_chemistry, 'ccsd(t)-f12/cc-pvtz-f12//m06-2x/cc-pvtz')
         self.assertEqual(arc2.freq_scale_factor, 0.955)
 
-        arc3 = ARC(project='arc_model_chemistry_test_2',
+        arc3 = ARC(project='arc_model_chemistry_test_3',
                    sp_level='ccsd(t)-f12/cc-pvtz-f12', opt_level='wb97x-d/aug-cc-pvtz')
         self.assertEqual(arc3.model_chemistry, 'ccsd(t)-f12/cc-pvtz-f12//wb97x-d/aug-cc-pvtz')
         self.assertEqual(arc3.freq_scale_factor, 0.988)
+
+    def test_determine_model_chemistry_for_job_types(self):
+        """Test determining the model chemistry specification dictionary for job types"""
+        # Test conflicted inputs: specify both level_of_theory and composite_method
+        with self.assertRaises(InputError):
+            ARC(project='test', level_of_theory='ccsd(t)-f12/cc-pvtz-f12//wb97x-d/aug-cc-pvtz',
+                composite_method='cbs-qb3')
+
+        # Test illegal level of theory specification (method contains multiple slashes)
+        with self.assertRaises(InputError):
+            ARC(project='test', level_of_theory='dlpno-mp2-f12/D/cc-pVDZ(fi/sf/fw)//b3lyp/G/def2svp')
+
+        # Test illegal job level specification (method contains multiple slashes)
+        with self.assertRaises(InputError):
+            ARC(project='test', opt_level='b3lyp/d/def2tzvp/def2tzvp/c')
+
+        # Test illegal job level specification (method contains empty space)
+        with self.assertRaises(InputError):
+            ARC(project='test', opt_level='b3lyp/def2tzvp def2tzvp/c')
+
+        # Test direct job level specification conflicts with level of theory specification
+        with self.assertRaises(InputError):
+            ARC(project='test', level_of_theory='b3lyp/sto-3g', opt_level='wb97xd/def2tzvp')
+
+        # Test deduce formatted levels from default method from settings.py
+        arc1 = ARC(project='test')
+        expected_opt_level = {'method': 'wb97xd', 'basis': 'def2tzvp', 'auxiliary_basis': '', 'dispersion': ''}
+        expected_freq_level = {'method': 'wb97xd', 'basis': 'def2tzvp', 'auxiliary_basis': '', 'dispersion': ''}
+        expected_sp_level = {'method': 'ccsd(t)-f12', 'basis': 'cc-pvtz-f12', 'auxiliary_basis': '', 'dispersion': ''}
+        self.assertEqual(arc1.opt_level, expected_opt_level)
+        self.assertEqual(arc1.freq_level, expected_freq_level)
+        self.assertEqual(arc1.sp_level, expected_sp_level)
+
+        # Test deduce formatted levels from composite method specification
+        arc2 = ARC(project='test', composite_method='cbs-qb3')
+        expected_opt_level = {'method': '', 'basis': '', 'auxiliary_basis': '', 'dispersion': ''}
+        expected_freq_level = {'method': 'b3lyp', 'basis': 'cbsb7', 'auxiliary_basis': '', 'dispersion': ''}
+        expected_sp_level = {'method': '', 'basis': '', 'auxiliary_basis': '', 'dispersion': ''}
+        expected_scan_level = {'method': 'b3lyp', 'basis': 'cbsb7', 'auxiliary_basis': '', 'dispersion': ''}
+        expected_orbitals_level = {'method': '', 'basis': '', 'auxiliary_basis': '', 'dispersion': ''}
+        expected_composite_method = 'cbs-qb3'
+        self.assertEqual(arc2.opt_level, expected_opt_level)
+        self.assertEqual(arc2.freq_level, expected_freq_level)
+        self.assertEqual(arc2.sp_level, expected_sp_level)
+        self.assertEqual(arc2.scan_level, expected_scan_level)
+        self.assertEqual(arc2.orbitals_level, expected_orbitals_level)
+        self.assertEqual(arc2.composite_method, expected_composite_method)
+
+        # Test deduce formatted levels from level of theory specification
+        arc3 = ARC(project='test', level_of_theory='ccsd(t)-f12/cc-pvtz-f12//wb97x-d/aug-cc-pvtz')
+        expected_opt_level = {'method': 'wb97x-d', 'basis': 'aug-cc-pvtz', 'auxiliary_basis': '', 'dispersion': ''}
+        expected_freq_level = {'method': 'wb97x-d', 'basis': 'aug-cc-pvtz', 'auxiliary_basis': '', 'dispersion': ''}
+        expected_sp_level = {'method': 'ccsd(t)-f12', 'basis': 'cc-pvtz-f12', 'auxiliary_basis': '', 'dispersion': ''}
+        expected_scan_level = {'method': 'wb97xd', 'basis': 'def2tzvp', 'auxiliary_basis': '', 'dispersion': ''}
+        expected_orbitals_level = {'method': '', 'basis': '', 'auxiliary_basis': '', 'dispersion': ''}
+        self.assertEqual(arc3.opt_level, expected_opt_level)
+        self.assertEqual(arc3.freq_level, expected_freq_level)
+        self.assertEqual(arc3.sp_level, expected_sp_level)
+        self.assertEqual(arc3.scan_level, expected_scan_level)
+        self.assertEqual(arc3.orbitals_level, expected_orbitals_level)
+
+        # Test deduce formatted levels from job level specification with complex names
+        arc4 = ARC(project='test', opt_level='wb97x-d3/6-311++G(3df,3pd)', freq_level='wb97M/6-311+G*-J',
+                   sp_level='DLPNO-CCSD(T)-F12/cc-pVTZ-F12', calc_freq_factor=False)
+        expected_opt_level = {'method': 'wb97x-d3', 'basis': '6-311++g(3df,3pd)', 'auxiliary_basis': '',
+                              'dispersion': ''}
+        expected_freq_level = {'method': 'wb97m', 'basis': '6-311+g*-j', 'auxiliary_basis': '', 'dispersion': ''}
+        expected_sp_level = {'method': 'dlpno-ccsd(t)-f12', 'basis': 'cc-pvtz-f12', 'auxiliary_basis': '',
+                             'dispersion': ''}
+        self.assertEqual(arc4.opt_level, expected_opt_level)
+        self.assertEqual(arc4.freq_level, expected_freq_level)
+        self.assertEqual(arc4.sp_level, expected_sp_level)
+
+        # Test deduce formatted levels from incomplete level of theory specification
+        # e.g., if level_of_theory = b3lyp/sto-3g, assume user meant to run opt, freq, sp all at this level
+        arc5 = ARC(project='test', level_of_theory='b3lyp/sto-3g', calc_freq_factor=False)
+        expected_opt_level = {'method': 'b3lyp', 'basis': 'sto-3g', 'auxiliary_basis': '', 'dispersion': ''}
+        expected_freq_level = {'method': 'b3lyp', 'basis': 'sto-3g', 'auxiliary_basis': '', 'dispersion': ''}
+        expected_sp_level = {'method': 'b3lyp', 'basis': 'sto-3g', 'auxiliary_basis': '', 'dispersion': ''}
+        self.assertEqual(arc5.opt_level, expected_opt_level)
+        self.assertEqual(arc5.freq_level, expected_freq_level)
+        self.assertEqual(arc5.sp_level, expected_sp_level)
+
+        # Test direct job level specification does NOT conflict with level of theory specification
+        arc6 = ARC(project='test', level_of_theory='b3lyp/sto-3g', opt_level='b3lyp/sto-3g', calc_freq_factor=False)
+        expected_opt_level = {'method': 'b3lyp', 'basis': 'sto-3g', 'auxiliary_basis': '', 'dispersion': ''}
+        expected_freq_level = {'method': 'b3lyp', 'basis': 'sto-3g', 'auxiliary_basis': '', 'dispersion': ''}
+        expected_sp_level = {'method': 'b3lyp', 'basis': 'sto-3g', 'auxiliary_basis': '', 'dispersion': ''}
+        self.assertEqual(arc6.opt_level, expected_opt_level)
+        self.assertEqual(arc6.freq_level, expected_freq_level)
+        self.assertEqual(arc6.sp_level, expected_sp_level)
+
+        # Test deduce freq level from opt level
+        arc7 = ARC(project='test', opt_level='b3lyp/sto-3g', calc_freq_factor=False)
+        expected_opt_level = {'method': 'b3lyp', 'basis': 'sto-3g', 'auxiliary_basis': '', 'dispersion': ''}
+        expected_freq_level = {'method': 'b3lyp', 'basis': 'sto-3g', 'auxiliary_basis': '', 'dispersion': ''}
+        self.assertEqual(arc7.opt_level, expected_opt_level)
+        self.assertEqual(arc7.freq_level, expected_freq_level)
+
+        # Test dictionary format specification with auxiliary basis and DFT dispersion
+        arc8 = ARC(project='test', opt_level={},
+                   freq_level={'method': 'B3LYP/G', 'basis': 'cc-pVDZ(fi/sf/fw)', 'auxiliary_basis': 'def2-svp/C'},
+                   sp_level={'method': 'DLPNO-CCSD(T)-F12', 'basis': 'cc-pVTZ-F12',
+                             'auxiliary_basis': 'aug-cc-pVTZ/C cc-pVTZ-F12-CABS',
+                             'dispersion': 'DEF2-tzvp/c'},
+                   calc_freq_factor=False)
+        expected_opt_level = {'method': 'wb97xd', 'basis': 'def2tzvp', 'auxiliary_basis': '', 'dispersion': ''}
+        expected_freq_level = {'method': 'b3lyp/g', 'basis': 'cc-pvdz(fi/sf/fw)', 'auxiliary_basis': 'def2-svp/c',
+                               'dispersion': ''}
+        expected_sp_level = {'method': 'dlpno-ccsd(t)-f12', 'basis': 'cc-pvtz-f12',
+                             'auxiliary_basis': 'aug-cc-pvtz/c cc-pvtz-f12-cabs', 'dispersion': 'def2-tzvp/c'}
+        self.assertEqual(arc8.opt_level, expected_opt_level)
+        self.assertEqual(arc8.freq_level, expected_freq_level)
+        self.assertEqual(arc8.sp_level, expected_sp_level)
+
+        # Test using default frequency and orbital level for composite job, also forbid rotors job
+        arc9 = ARC(project='test', composite_method='cbs-qb3', calc_freq_factor=False,
+                   job_types={'rotors': False, 'orbitals': True})
+        expected_freq_level = {'method': 'b3lyp', 'basis': 'cbsb7', 'auxiliary_basis': '', 'dispersion': ''}
+        expected_scan_level = {'method': '', 'basis': '', 'auxiliary_basis': '', 'dispersion': ''}
+        expected_orbitals_level = {'method': 'b3lyp', 'basis': 'cbsb7', 'auxiliary_basis': '', 'dispersion': ''}
+        self.assertEqual(arc9.freq_level, expected_freq_level)
+        self.assertEqual(arc9.scan_level, expected_scan_level)
+        self.assertEqual(arc9.orbitals_level, expected_orbitals_level)
+
+        # Test using specified frequency, scan, and orbital for composite job
+        arc10 = ARC(project='test', composite_method='cbs-qb3', freq_level='wb97xd/6-311g', scan_level='apfd/def2svp',
+                    orbitals_level='hf/sto-3g', job_types={'orbitals': True}, calc_freq_factor=False)
+        expected_scan_level = {'method': 'apfd', 'basis': 'def2svp', 'auxiliary_basis': '', 'dispersion': ''}
+        expected_freq_level = {'method': 'wb97xd', 'basis': '6-311g', 'auxiliary_basis': '', 'dispersion': ''}
+        expected_orbitals_level = {'method': 'hf', 'basis': 'sto-3g', 'auxiliary_basis': '', 'dispersion': ''}
+        self.assertEqual(arc10.scan_level, expected_scan_level)
+        self.assertEqual(arc10.freq_level, expected_freq_level)
+        self.assertEqual(arc10.orbitals_level, expected_orbitals_level)
+
+        # Test using default frequency and orbital level for job specified from level of theory, also forbid rotors job
+        arc11 = ARC(project='test', level_of_theory='b3lyp/sto-3g', calc_freq_factor=False,
+                    job_types={'rotors': False, 'orbitals': True})
+        expected_scan_level = {'method': '', 'basis': '', 'auxiliary_basis': '', 'dispersion': ''}
+        expected_orbitals_level = {'method': 'wb97x-d3', 'basis': '6-311++g(d,p)', 'auxiliary_basis': '',
+                                   'dispersion': ''}
+        self.assertEqual(arc11.scan_level, expected_scan_level)
+        self.assertEqual(arc11.orbitals_level, expected_orbitals_level)
+
+        # Test using specified scan level
+        arc12 = ARC(project='test', level_of_theory='b3lyp/sto-3g', calc_freq_factor=False, scan_level='apfd/def2svp',
+                    job_types={'rotors': True})
+        expected_scan_level = {'method': 'apfd', 'basis': 'def2svp', 'auxiliary_basis': '', 'dispersion': ''}
+        self.assertEqual(arc12.scan_level, expected_scan_level)
 
     def test_determine_unique_species_labels(self):
         """Test the determine_unique_species_labels method"""
