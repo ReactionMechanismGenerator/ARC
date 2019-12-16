@@ -476,7 +476,7 @@ def trsh_scan_job(label, scan_res, scan, species_scan_lists, methods):
 
 
 def trsh_ess_job(label, level_of_theory_dict, server, job_status, job_type, software, fine, memory_gb, num_heavy_atoms,
-                 cpu_cores, ess_trsh_methods, available_ess=None):
+                 cpu_cores, ess_trsh_methods, available_ess=None, is_h=False):
     """
     Troubleshoot issues related to the electronic structure software, such as convergence.
 
@@ -494,6 +494,7 @@ def trsh_ess_job(label, level_of_theory_dict, server, job_status, job_type, soft
         ess_trsh_methods (list, optional): The troubleshooting methods tried for this job.
         available_ess (list, optional): Entries are string representations of available ESS.
         num_heavy_atoms (int): Number of heavy atoms in a molecule.
+        is_h (bool): Whether the species is a hydrogen atom (or its isotope). e.g., H, D, T.
 
     Todo:
         * Change server to one that has the same ESS if running out of disk space.
@@ -721,6 +722,9 @@ def trsh_ess_job(label, level_of_theory_dict, server, job_status, job_type, soft
                         f'(reduced).')
             if 'cpu' not in ess_trsh_methods:
                 ess_trsh_methods.append('cpu')
+        elif 'dlpno' in level_of_theory_dict['method'] and is_h:
+            logger.error(f'DLPNO method is not supported for H atom (or its isotope D or T) in Orca.')
+            couldnt_trsh = True
         else:
             couldnt_trsh = True
 
