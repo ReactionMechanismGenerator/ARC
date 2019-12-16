@@ -16,7 +16,7 @@ from rmgpy.species import Species
 
 from arc.common import read_yaml_file
 from arc.exceptions import InputError
-from arc.main import ARC
+from arc.main import ARC, _format_model_chemistry_inputs
 from arc.settings import arc_path, servers
 from arc.species.species import ARCSpecies
 
@@ -494,6 +494,108 @@ class TestARC(unittest.TestCase):
                     job_types={'rotors': True})
         expected_scan_level = {'method': 'apfd', 'basis': 'def2svp', 'auxiliary_basis': '', 'dispersion': ''}
         self.assertEqual(arc12.scan_level, expected_scan_level)
+
+    def test_format_model_chemistry_inputs(self):
+        """Test formatting the job model chemistry inputs"""
+        # Test illegal input (list)
+        with self.assertRaises(InputError):
+            _format_model_chemistry_inputs(['b3lyp', 'def2tzvp'])
+
+        # Test illegal input (not exactly three pipes)
+        with self.assertRaises(InputError):
+            _format_model_chemistry_inputs('b3lyp|def2tzvp')
+        with self.assertRaises(InputError):
+            _format_model_chemistry_inputs('wb97xd|def2tzvp|||')
+
+        # Test illegal input (empty space)
+        with self.assertRaises(InputError):
+            _format_model_chemistry_inputs('b3 lyp')
+        with self.assertRaises(InputError):
+            _format_model_chemistry_inputs('dlpno-ccsd(t)/def2-svp def2-svp/c')
+        with self.assertRaises(InputError):
+            _format_model_chemistry_inputs('dlpno-ccsd(t)/def2-svp aug-def2-svp')
+
+        # Test illegal input (multiple slashes)
+        with self.assertRaises(InputError):
+            _format_model_chemistry_inputs('dlpno-ccsd(t)/def2-svp/def2-svp/c')
+        with self.assertRaises(InputError):
+            _format_model_chemistry_inputs('b3lyp/def2-svp/aug-def2-svp')
+
+        # Test illegal input ('method' is not a key)
+        with self.assertRaises(InputError):
+            _format_model_chemistry_inputs({'basis': '6-31g'})
+
+        # Test illegal input (illegal key)
+        with self.assertRaises(InputError):
+            _format_model_chemistry_inputs({'random': 'something'})
+
+        # Test parsing string inputs
+        output_dict_1, output_str_1 = _format_model_chemistry_inputs('b3lyp/def2-TZVP')
+        expected_dict_1 = {'method': 'b3lyp', 'basis': 'def2-tzvp', 'auxiliary_basis': '', 'dispersion': ''}
+        expected_str_1 = 'b3lyp|def2-tzvp||'
+        self.assertEqual(output_dict_1, expected_dict_1)
+        self.assertEqual(output_str_1, expected_str_1)
+
+        output_dict_2, output_str_2 = _format_model_chemistry_inputs('|||')
+        expected_dict_2 = {'method': '', 'basis': '', 'auxiliary_basis': '', 'dispersion': ''}
+        expected_str_2 = '|||'
+        self.assertEqual(output_dict_2, expected_dict_2)
+        self.assertEqual(output_str_2, expected_str_2)
+
+        output_dict_3, output_str_3 = _format_model_chemistry_inputs('b3lyp|def2tzvp||')
+        expected_dict_3 = {'method': 'b3lyp', 'basis': 'def2tzvp', 'auxiliary_basis': '', 'dispersion': ''}
+        expected_str_3 = 'b3lyp|def2tzvp||'
+        self.assertEqual(output_dict_3, expected_dict_3)
+        self.assertEqual(output_str_3, expected_str_3)
+
+        output_dict_4, output_str_4 = _format_model_chemistry_inputs('b3lyp|def2tzvp|aug-def2-svp|gd3bj')
+        expected_dict_4 = {'method': 'b3lyp', 'basis': 'def2tzvp', 'auxiliary_basis': 'aug-def2-svp',
+                           'dispersion': 'gd3bj'}
+        expected_str_4 = 'b3lyp|def2tzvp|aug-def2-svp|gd3bj'
+        self.assertEqual(output_dict_4, expected_dict_4)
+        self.assertEqual(output_str_4, expected_str_4)
+
+        output_dict_5, output_str_5 = _format_model_chemistry_inputs('b3lyp|def2tzvp||gd3bj')
+        expected_dict_5 = {'method': 'b3lyp', 'basis': 'def2tzvp', 'auxiliary_basis': '', 'dispersion': 'gd3bj'}
+        expected_str_5 = 'b3lyp|def2tzvp||gd3bj'
+        self.assertEqual(output_dict_5, expected_dict_5)
+        self.assertEqual(output_str_5, expected_str_5)
+
+        # Test parsing dictionary inputs
+        output_dict_6, output_str_6 = _format_model_chemistry_inputs({'method': 'wb97xd', 'basis': '6-31g'})
+        expected_dict_6 = {'method': 'wb97xd', 'basis': '6-31g', 'auxiliary_basis': '', 'dispersion': ''}
+        expected_str_6 = 'wb97xd|6-31g||'
+        self.assertEqual(output_dict_6, expected_dict_6)
+        self.assertEqual(output_str_6, expected_str_6)
+
+        output_dict_7, output_str_7 = _format_model_chemistry_inputs({'method': 'b3lyp', 'basis': 'def2tzvp',
+                                                                      'auxiliary_basis': 'aug-def2-svp',
+                                                                      'dispersion': 'gd3bj'})
+        expected_dict_7 = {'method': 'b3lyp', 'basis': 'def2tzvp', 'auxiliary_basis': 'aug-def2-svp',
+                           'dispersion': 'gd3bj'}
+        expected_str_7 = 'b3lyp|def2tzvp|aug-def2-svp|gd3bj'
+        self.assertEqual(output_dict_7, expected_dict_7)
+        self.assertEqual(output_str_7, expected_str_7)
+
+        # Test parsing empty inputs
+        output_dict_8, output_str_8 = _format_model_chemistry_inputs('')
+        expected_dict_8 = {'method': '', 'basis': '', 'auxiliary_basis': '', 'dispersion': ''}
+        expected_str_8 = ''
+        self.assertEqual(output_dict_8, expected_dict_8)
+        self.assertEqual(output_str_8, expected_str_8)
+
+        output_dict_9, output_str_9 = _format_model_chemistry_inputs({'method': '', 'basis': '',
+                                                                      'auxiliary_basis': '', 'dispersion': ''})
+        expected_dict_9 = {}
+        expected_str_9 = ''
+        self.assertEqual(output_dict_9, expected_dict_9)
+        self.assertEqual(output_str_9, expected_str_9)
+
+        output_dict_10, output_str_10 = _format_model_chemistry_inputs({})
+        expected_dict_10 = {'method': '', 'basis': '', 'auxiliary_basis': '', 'dispersion': ''}
+        expected_str_10 = ''
+        self.assertEqual(output_dict_10, expected_dict_10)
+        self.assertEqual(output_str_10, expected_str_10)
 
     def test_determine_unique_species_labels(self):
         """Test the determine_unique_species_labels method"""
