@@ -395,6 +395,89 @@ H 	2.951	-3.078	-4.102""")
         self.assertEqual(list1, [])
         self.assertEqual(list2, [])
 
+    def test_determine_model_chemistry_type(self):
+        """Test that the type (e.g., DFT, wavefunction ...) of a model chemistry can be determined properly."""
+
+        # The special case: has `hf` keyword but is a DFT method
+        method = 'm06-hf'
+        model_chemistry_class = common.determine_model_chemistry_type(method)
+        model_chemistry_class_expected = 'dft'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        # Test family of wavefunction methods
+        method = 'hf'
+        model_chemistry_class = common.determine_model_chemistry_type(method)
+        model_chemistry_class_expected = 'wavefunction'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        method = 'DLPNO-CCSD(T)'
+        model_chemistry_class = common.determine_model_chemistry_type(method)
+        model_chemistry_class_expected = 'wavefunction'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        method = 'DLPNO-MP2-F12'
+        model_chemistry_class = common.determine_model_chemistry_type(method)
+        model_chemistry_class_expected = 'wavefunction'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        method = 'QCISD'
+        model_chemistry_class = common.determine_model_chemistry_type(method)
+        model_chemistry_class_expected = 'wavefunction'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        # Test family of force field (a.k.a molecular dynamics) methods
+        method = 'ANI-1x'
+        model_chemistry_class = common.determine_model_chemistry_type(method)
+        model_chemistry_class_expected = 'force_field'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        method = 'MMFF94'
+        model_chemistry_class = common.determine_model_chemistry_type(method)
+        model_chemistry_class_expected = 'force_field'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        # Test family of semi-empirical methods
+        method = 'ZINDO/S'
+        model_chemistry_class = common.determine_model_chemistry_type(method)
+        model_chemistry_class_expected = 'semiempirical'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        method = 'pm7'
+        model_chemistry_class = common.determine_model_chemistry_type(method)
+        model_chemistry_class_expected = 'semiempirical'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        # Test family of DFT methods
+        method = 'mPW1PW'
+        model_chemistry_class = common.determine_model_chemistry_type(method)
+        model_chemistry_class_expected = 'dft'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        method = 'b3lyp'
+        model_chemistry_class = common.determine_model_chemistry_type(method)
+        model_chemistry_class_expected = 'dft'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        method = 'wb97x-d3'
+        model_chemistry_class = common.determine_model_chemistry_type(method)
+        model_chemistry_class_expected = 'dft'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        method = 'apfd'
+        model_chemistry_class = common.determine_model_chemistry_type(method)
+        model_chemistry_class_expected = 'dft'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        method = 'M06-2X'
+        model_chemistry_class = common.determine_model_chemistry_type(method)
+        model_chemistry_class_expected = 'dft'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        method = 'B2PLYP'
+        model_chemistry_class = common.determine_model_chemistry_type(method)
+        model_chemistry_class_expected = 'dft'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

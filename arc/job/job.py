@@ -12,7 +12,7 @@ import os
 import shutil
 import yaml
 
-from arc.common import get_logger, calculate_dihedral_angle
+from arc.common import get_logger, calculate_dihedral_angle, determine_model_chemistry_type
 from arc.exceptions import JobError, InputError
 from arc.job.inputs import input_files
 from arc.job.local import get_last_modified_time, submit_job, delete_job, execute_command, check_job_status, \
@@ -680,7 +680,7 @@ wf,spin={spin},charge={charge};}}
 
             # Orca requires different job_options_blocks to wavefunction methods and DFTs
             # determine model chemistry type
-            model_chemistry_class = self.determine_model_chemistry_class()
+            model_chemistry_class = determine_model_chemistry_type(self.method)
             if model_chemistry_class == 'dft':
                 method_class = 'KS'
                 # DFT grid must be the same for both opt and freq
@@ -740,7 +740,7 @@ wf,spin={spin},charge={charge};}}
                     job_type_1 = 'opt'
                 if self.fine:
                     fine = '\n   GEOM_OPT_TOL_GRADIENT 15\n   GEOM_OPT_TOL_DISPLACEMENT 60\n   GEOM_OPT_TOL_ENERGY 5'
-                    if self.determine_model_chemistry_class() == 'dft':
+                    if determine_model_chemistry_type(self.method) == 'dft':
                         # Try to capture DFT levels, and use a fine DFT grid
                         # See 4.4.5.2 Standard Quadrature Grids, S in
                         # http://www.q-chem.com/qchem-website/manual/qchem50_manual/sect-DFT.html
@@ -1218,36 +1218,6 @@ end
             if not os.path.isfile(local_log_file_path):
                 logger.warning('Could not download Molpro log file for {0} '
                                '(this is not the output file)'.format(self.job_name))
-
-    def determine_model_chemistry_class(self):
-        """
-        Determine the class of a model chemistry (e.g., DFT, wavefunction, force field, semi-empirical).
-
-        Returns:
-            model_chemistry_class (str): class of model chemistry.
-        """
-        given_method = self.method.lower()
-        wave_function_methods = ['hf', 'cc', 'ci', 'mp2', 'mp3', 'cp', 'cep', 'nevpt', 'dmrg', 'ri', 'cas', 'ic', 'mr',
-                                 'bd', 'mbpt']
-        semiempirical_methods = ['am', 'pm', 'zindo', 'mndo', 'xtb', 'nddo']
-        force_field_methods = ['amber', 'mmff', 'dreiding', 'uff', 'qmdff', 'gfn', 'gaff', 'ghemical', 'charmm', 'ani']
-
-        # Special cases
-        if given_method in ['m06hf', 'm06-hf']:
-            model_chemistry_class = 'dft'
-            return model_chemistry_class
-
-        # General cases
-        if any(method in given_method for method in wave_function_methods):
-            model_chemistry_class = 'wavefunction'
-        elif any(method in given_method for method in semiempirical_methods):
-            model_chemistry_class = 'semiempirical'
-        elif any(method in given_method for method in force_field_methods):
-            model_chemistry_class = 'force_field'   # a.k.a molecular dynamics
-        else:
-            logger.debug(f'Assuming {given_method} is a DFT method.')
-            model_chemistry_class = 'dft'
-        return model_chemistry_class
 
     def run(self):
         """

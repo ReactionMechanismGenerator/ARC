@@ -605,3 +605,37 @@ def sort_two_lists_by_the_first(list1, list2):
     for counter, index in enumerate(sorted_indices):
         sorted_list2[counter] = new_list2[index]
     return sorted_list1, sorted_list2
+
+
+def determine_model_chemistry_type(method):
+    """
+    Determine the type of a model chemistry (e.g., DFT, wavefunction, force field, semi-empirical).
+
+    Args:
+        method (str): method in a model chemistry. e.g., b3lyp, cbs-qb3, am1, dlpno-ccsd(T)
+
+    Returns:
+        model_chemistry_type (str): class of model chemistry.
+    """
+    given_method = method.lower()
+    wave_function_methods = ['hf', 'cc', 'ci', 'mp2', 'mp3', 'cp', 'cep', 'nevpt', 'dmrg', 'ri', 'cas', 'ic', 'mr',
+                             'bd', 'mbpt']
+    semiempirical_methods = ['am', 'pm', 'zindo', 'mndo', 'xtb', 'nddo']
+    force_field_methods = ['amber', 'mmff', 'dreiding', 'uff', 'qmdff', 'gfn', 'gaff', 'ghemical', 'charmm', 'ani']
+
+    # Special cases
+    if given_method in ['m06hf', 'm06-hf']:
+        model_chemistry_class = 'dft'
+        return model_chemistry_class
+
+    # General cases
+    if any(wf_method in given_method for wf_method in wave_function_methods):
+        model_chemistry_class = 'wavefunction'
+    elif any(sm_method in given_method for sm_method in semiempirical_methods):
+        model_chemistry_class = 'semiempirical'
+    elif any(ff_method in given_method for ff_method in force_field_methods):
+        model_chemistry_class = 'force_field'   # a.k.a molecular dynamics
+    else:
+        logger.debug(f'Assuming {given_method} is a DFT method.')
+        model_chemistry_class = 'dft'
+    return model_chemistry_class
