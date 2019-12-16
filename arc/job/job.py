@@ -38,7 +38,11 @@ class Job(object):
         species_name (str): The species/TS name. Used for naming the directory.
         xyz (dict): The xyz geometry. Used for the calculation.
         job_type (str): The job's type.
-        level_of_theory (str): Level of theory, e.g. 'CBS-QB3', 'CCSD(T)-F12a/aug-cc-pVTZ', 'B3LYP/6-311++G(3df,3pd)'...
+        job_level_of_theory_dict (dict): A dictionary that specifies the level of theory for a job.
+                                         e.g., {'auxiliary_basis': '',
+                                                'basis': '6-31g(d,p)',
+                                                'method': 'b3lyp',
+                                                'dispersion': 'empiricaldispersion=gd3bj'}
         multiplicity (int): The species multiplicity.
         charge (int, optional): The species net charge. Default is 0.
         conformer (int, optional): Conformer number if optimizing conformers.
@@ -99,7 +103,7 @@ class Job(object):
         conformer (int): Conformer number if optimizing conformers.
         conformers (str): A path to the YAML file conformer coordinates for a Gromacs MD job.
         is_ts (bool): Whether this species represents a transition structure.
-        level_of_theory (str): Level of theory, e.g. 'CBS-QB3', 'CCSD(T)-F12a/aug-cc-pVTZ', 'B3LYP/6-311++G(3df,3pd)'...
+        job_level_of_theory_dict (dict): A dictionary that specifies the level of theory for a job.
         job_type (str): The job's type.
         scan (list): A list representing atom labels for the dihedral scan (e.g., [2, 1, 3, 5]).
         pivots (list): The rotor scan pivots, if the job type is scan. Not used directly in these methods,
@@ -121,6 +125,8 @@ class Job(object):
         total_job_memory_gb (int): The total memory ARC specifies for a job in GB.
         method (str): The calculation method (e.g., 'B3LYP', 'CCSD(T)', 'CBS-QB3'...).
         basis_set (str): The basis set (e.g., '6-311++G(d,p)', 'aug-cc-pVTZ'...).
+        auxiliary_basis_set (str): The auxiliary basis set.
+        dispersion (str): DFT dispersion.
         fine (bool): Whether to use fine geometry optimization parameters.
         shift (str): A string representation alpha- and beta-spin orbitals shifts (molpro only).
         comments (str): Job comments (archived, not used).
@@ -162,7 +168,8 @@ class Job(object):
         directed_scan_type (str): The type of the directed scan.
         rotor_index (int): The 0-indexed rotor number (key) in the species.rotors_dict dictionary.
     """
-    def __init__(self, project='', ess_settings=None, species_name='', xyz=None, job_type='', level_of_theory='',
+    def __init__(self, project='', ess_settings=None, species_name='', xyz=None, job_type='',
+                 job_level_of_theory_dict=None,
                  multiplicity=None, project_directory='', charge=0, conformer=-1, fine=False, shift='', software=None,
                  is_ts=False, scan=None, pivots=None, total_job_memory_gb=14, comments='', trsh='', scan_trsh='',
                  job_dict=None, ess_trsh_methods=None, bath_gas=None, initial_trsh=None, job_num=None,
@@ -179,8 +186,8 @@ class Job(object):
                 raise InputError('species_name must be specified')
             if not job_type:
                 raise InputError('job_type must be specified')
-            if not level_of_theory:
-                raise InputError('level_of_theory must be specified')
+            if job_level_of_theory_dict is None:
+                raise InputError('job_level_of_theory_dict must be specified')
             if ess_settings is None:
                 raise InputError('ess_settings must be specified')
             if multiplicity is None:
@@ -226,7 +233,7 @@ class Job(object):
             self.job_type = job_type
             self.job_server_name = job_server_name
             self.job_name = job_name
-            self.level_of_theory = level_of_theory.lower()
+            self.job_level_of_theory_dict = job_level_of_theory_dict
             self.server = server
             self.software = software
             self.cpu_cores = cpu_cores
@@ -255,14 +262,8 @@ class Job(object):
         self.job_name = self.job_name if self.job_name is not None else self.job_type + '_' + self.job_server_name
 
         # determine the level of theory and software to use:
-        self.method, self.basis_set = '', ''
-        if '/' in self.level_of_theory:
-            splits = self.level_of_theory.split('/')
-            self.method = splits[0]
-            self.basis_set = '/'.join(splits[1:])  # there are two '/' symbols in a ff_param_fit job's l.o.t, keep both
-        else:  # this is a composite job
-            self.method, self.basis_set = self.level_of_theory, ''
-
+        self.method, self.basis_set, self.auxiliary_basis_set, self.dispersion = '', '', '', ''
+        self.determine_model_chemistry()
         if self.software is not None:
             self.software = self.software.lower()
         else:
@@ -301,7 +302,7 @@ class Job(object):
         job_dict['job_type'] = self.job_type
         job_dict['job_server_name'] = self.job_server_name
         job_dict['job_name'] = self.job_name
-        job_dict['level_of_theory'] = self.level_of_theory
+        job_dict['job_level_of_theory_dict'] = self.job_level_of_theory_dict
         job_dict['xyz'] = xyz_to_str(self.xyz)
         job_dict['fine'] = self.fine
         job_dict['job_status'] = self.job_status
@@ -373,7 +374,7 @@ class Job(object):
         self.ess_settings = job_dict['ess_settings']
         self.species_name = job_dict['species_name']
         self.job_type = job_dict['job_type']
-        self.level_of_theory = job_dict['level_of_theory'].lower()
+        self.job_level_of_theory_dict = job_dict['job_level_of_theory_dict']
         self.multiplicity = job_dict['multiplicity']
         # optional attributes:
         self.xyz = str_to_xyz(job_dict['xyz']) if 'xyz' in job_dict else None
@@ -628,8 +629,8 @@ wf,spin={spin},charge={charge};}}
                     job_type_1 = 'opt'
                 if self.fine:
                     fine = '\n   GEOM_OPT_TOL_GRADIENT 15\n   GEOM_OPT_TOL_DISPLACEMENT 60\n   GEOM_OPT_TOL_ENERGY 5'
-                    if 'b' in self.level_of_theory:
-                        # Try to capture DFT levels (containing the letter 'b'?), and det a fine DFT grid
+                    if self.determine_model_chemistry_class() == 'dft':
+                        # Try to capture DFT levels, and use a fine DFT grid
                         # See 4.4.5.2 Standard Quadrature Grids, S in
                         # http://www.q-chem.com/qchem-website/manual/qchem50_manual/sect-DFT.html
                         fine += '\n   XC_GRID 3'
@@ -744,7 +745,7 @@ $end
                 if self.is_ts:
                     job_type_1 = 'opt=(ts, calcfc, noeigentest, tight, maxstep=5)'
                 else:
-                    if self.level_of_theory in ['rocbs-qb3']:
+                    if self.job_level_of_theory_dict['method'] in ['rocbs-qb3']:
                         # No analytic 2nd derivatives (FC) for these methods
                         job_type_1 = 'opt=(noeigentest, tight)'
                     else:
@@ -1271,7 +1272,7 @@ $end
             # First check the levels_ess dictionary from settings.py:
             for ess, phrase_list in levels_ess.items():
                 for phrase in phrase_list:
-                    if phrase in self.level_of_theory:
+                    if phrase in self.job_level_of_theory_dict['method']:
                         self.software = ess.lower()
             if self.software is None:
                 if self.job_type in ['conformer', 'opt', 'freq', 'optfreq', 'sp',
@@ -1394,6 +1395,21 @@ $end
                 elif 'molpro' in esss:
                     logger.error('Setting it to Molpro')
                     self.software = 'molpro'
+
+    def determine_model_chemistry(self):
+        """
+        Determine method (e.g., b3lyp), basis set (e.g., def2-svp), auxiliary basis set (e.g., def2-svp/c), and
+        DFT dispersion (e.g., empiricaldispersion=gd3bj) from job level of theory dict.
+        """
+        if not isinstance(self.job_level_of_theory_dict, dict):
+            raise InputError(f'job_level_of_theory_dict must be a dictionary. '
+                             f'Got {type(self.job_level_of_theory_dict)}.')
+        self.method = self.job_level_of_theory_dict.get('method', '')
+        self.basis_set = self.job_level_of_theory_dict.get('basis', '')
+        self.auxiliary_basis_set = self.job_level_of_theory_dict.get('auxiliary_basis', '')
+        self.dispersion = self.job_level_of_theory_dict.get('dispersion', '')
+        if not self.method:
+            raise InputError(f'Got empty job method specification.')
 
     def set_cpu_and_mem(self):
         """
