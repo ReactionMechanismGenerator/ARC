@@ -560,6 +560,19 @@ class TestCommon(unittest.TestCase):
         is_notebook = common.is_notebook()
         self.assertFalse(is_notebook)
 
+    def test_is_str_float(self):
+        """Test the is_str_float() function"""
+        self.assertTrue(common.is_str_float('123'))
+        self.assertTrue(common.is_str_float('.2'))
+        self.assertTrue(common.is_str_float('125.84'))
+        self.assertTrue(common.is_str_float('6e02'))
+        self.assertTrue(common.is_str_float('+1e1'))
+        self.assertFalse(common.is_str_float('+1e1e'))
+        self.assertFalse(common.is_str_float('text 34'))
+        self.assertFalse(common.is_str_float(' '))
+        self.assertFalse(common.is_str_float('R1'))
+        self.assertFalse(common.is_str_float('D_3_5_7_4'))
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
