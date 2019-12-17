@@ -41,7 +41,112 @@ Specification 1::
 
 Specification 2::
 
-    specific_job_type : bde
+    specific_job_type: bde
+
+Specify job level of theory
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+After specifying job types, it is optional to specify job level of theory in the input file. By default, ARC uses
+default level of theory for each job type stored in the ``default_levels_of_theory`` dictionary in the settings.py.
+
+ARC has the flexibility of accepting various types of job level of theory specification in an input file. The most
+general syntax is a dictionary::
+
+    job_type: {'method': 'method_string', 'basis': 'basis_string', 'auxiliary_basis': 'auxiliary_basis_string', 'dispersion': 'DFT_dispersion_string'}
+
+For example::
+
+    conformer_level: {'method': 'b3lyp', 'basis': '6-31g(d,p)', 'dispersion': 'empiricaldispersion=gd3bj'}
+
+specifies ``b3lyp/6-31g(d,p)`` model chemistry along with the `D3 version of Grimme’s dispersion with Becke-Johnson
+damping <https://onlinelibrary.wiley.com/doi/full/10.1002/jcc.21759>`_ for optimizing conformers.
+Notice that ``empiricaldispersion=gd3bj`` is the format required by ``Gaussian``. In general, different ESS has varied
+formats for specifying model chemistry. Please ensure parsing the correct format to ARC based on the intended
+ESS to use.
+
+Another example::
+
+    sp_level: {'method': 'DLPNO-CCSD(T)-F12', 'basis': 'cc-pVTZ-F12', 'auxiliary_basis': 'aug-cc-pVTZ/C cc-pVTZ-F12-CABS'}
+
+specifies ``DLPNO-CCSD(T)-F12/cc-pVTZ-F12`` model chemistry along with two auxiliary basis sets ``aug-cc-pVTZ/C`` and
+``cc-pVTZ-F12-CABS`` for single point calculation.
+
+In summary, the following variables related to job level of theory specification in the input file accepts a
+dictionary input: ``conformer_level``, ``opt_level``, ``freq_level``, ``sp_level``, ``scan_level``, ``ts_guess_level``,
+``orbitals_level``.
+
+Using dictionary to specify job level of theory is always recommended due to its clarity and flexibility. In addition,
+ARC supports several shortcuts.
+
+The job level of theory also accepts a string input with format ``method`` or ``method/basis`` if the level contains
+neither ``auxiliary_basis`` nor ``dispersion``.
+
+For example::
+
+    opt_level = 'apfd/def2tzvp'
+
+is a shortcut for::
+
+    opt_level = {'method': 'apfd', 'basis': 'def2tzvp'}
+
+Another example::
+
+    conformer_level = 'PM6'
+
+is a shortcut for::
+
+    conformer_level = {'method': 'PM6'}
+
+ARC also supports a single line shortcut to simultaneously specify ``opt_level``, ``freq_level``, ``sp_level``, and
+``scan_level``.
+
+For example::
+
+    level_of_theory: 'dlpno-ccsd(T)/def2tzvp//apfd/def2svp'
+
+is a shortcut for::
+
+    opt_level = {'method': 'apfd', 'basis': 'def2svp'}
+    freq_level = {'method': 'apfd', 'basis': 'def2svp'}
+    scan_level = {'method': 'apfd', 'basis': 'def2svp'}
+    sp_level = {'method': 'dlpno-ccsd(T)', 'basis': 'def2tzvp'}
+
+Notice that if ``level_of_theory`` does not contain deliminator ``//`` but contains ``\/``, then it is interpreted that
+the given method is intended for opt, freq, scan, and sp jobs.
+
+For example::
+
+    level_of_theory: 'wb97xd/def2svp'
+
+is equivalent to::
+
+    opt_level = {'method': 'wb97xd', 'basis': 'def2svp'}
+    freq_level = {'method': 'wb97xd', 'basis': 'def2svp'}
+    sp_level = {'method': 'wb97xd', 'basis': 'def2svp'}
+
+Notice that if ``level_of_theory`` does not contain any deliminator (``//`` nor ``\/``), then it is interpreted as a composite
+method.
+
+For example::
+
+    level_of_theory: 'cbs-qb3'
+
+is interpreted as::
+
+    composite_method: 'cbs-qb3'
+
+To specify a semi-empirical method such as ``AM1``, please avoid using ``level_of_theory``, for otherwise ARC will
+interpret the semi-empirical method as a composite method. The correct way to specify a semi-empirical method is to use
+the dictionary input format.
+
+For example, to specify ``AM1`` as the geometry optimization method, please use::
+
+    opt_level = {'method': 'AM1'}
+
+To avoid conflicts and confusion, ARC will raise an ``InputError`` if both ``level_of_theory`` and ``composite_method``
+are specified in the input file. Also, it is not good practice to specify ``level_of_theory`` along with ``opt_level``,
+``freq_level``, and ``sp_level``. If these arguments are specified simultaneously, ARC will overwrite
+``level_of_theory`` with the values given in ``opt_level``, ``freq_level``, and ``sp_level``.
+
 
 Control job memory allocation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

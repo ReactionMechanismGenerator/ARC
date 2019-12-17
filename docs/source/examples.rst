@@ -73,8 +73,8 @@ Multiple species are defined using SMILES / an XYZ list / InChI::
       inchi: InChI=1S/C3H8O/c1-2-3-4/h4H,2-3H2,1H3
 
 In the above example, ``level_of_theory`` is a directive that specifies in one line the
-`sp_method/sp_basis_set//opt_method/opt_basis_set`. Specifying the ``level_of_theory``
-also sets the ``freq_level`` as equal to the ``opt_level``. Note that the ``scan_level``
+``sp_method/sp_basis_set//opt_method/opt_basis_set``. Specifying the ``level_of_theory``
+also sets the ``freq_level`` as equal to the ``opt_level``. Note that if the ``scan_level``
 isn't set, and ARC will use the default in settings.py unless directed otherwise.
 
 To specify a composite method, simply define something like::
@@ -85,6 +85,9 @@ Note that for composite methods the default ``freq_level`` and ``scan_level`` ma
 default values than for non-composite methods (defined in settings.py). Yes, an independent
 frequencies calculation job is executed after a composite job just so that the Hamiltonian will
 be outputted.
+
+For detailed discussion on specifying job level of theory (e.g., including auxiliary basis sets and DFT dispersions),
+see see :ref:`Specify job level of theory`.
 
 The same example as above ran via the API (e.g., in `Jupyter notebooks`__) would look like the following::
 
