@@ -10,6 +10,7 @@ import datetime
 import math
 import os
 import shutil
+import yaml
 
 from arc.common import get_logger, calculate_dihedral_angle
 from arc.exceptions import JobError, InputError
@@ -30,6 +31,22 @@ logger = get_logger()
 class Job(object):
     """
     ARC's Job class.
+
+    Dictionary structures::
+
+    job_additional_options = {'Orca': {'sp':        {'keyword': {'dlpno_threshold': 'normalPNO'}},
+
+                                       'freq':      {'block': {'geometry': '''%geom
+                                                                      Calc_Hess true
+                                                                 end'''},
+
+                                       <job_type>:  <option_format>: {<option_category>: <option_specification>}
+                                      },
+
+                              'Gaussian': {'global':   {'keyword': {'wildcard': 'iop(7/33=1)'}},
+
+                              <ESS>: {...}
+                             }
 
     Args:
         project (str): The project's name. Used for naming the directory.
@@ -61,8 +78,6 @@ class Job(object):
         ess_trsh_methods (list, optional): A list of troubleshooting methods already tried out for ESS convergence.
         bath_gas (str, optional): A bath gas. Currently used in OneDMin to calc L-J parameters.
                                   Allowed values are He, Ne, Ar, Kr, H2, N2, O2
-        initial_trsh (dict, optional): Troubleshooting methods to try by default. Keys are ESS software,
-                                       values are trshs.
         job_num (int, optional): Used as the entry number in the database, as well as the job name on the server.
         job_server_name (str, optional): Job's name on the server (e.g., 'a103').
         job_name (str, optional): Job's name for internal usage (e.g., 'opt_a103').
@@ -86,6 +101,8 @@ class Job(object):
         job_dict (dict, optional): A dictionary to create this object from (used when restarting ARC).
         testing (bool, optional): Whether the object is generated for testing purposes, True if it is.
         cpu_cores (int, optional): The total number of cpu cores requested for a job.
+        job_additional_options (dict, optional): Additional specifications to control the execution of a job.
+        job_shortcut_keywords (str, optional): Shortcut keyword specifications to control the execution of a job.
 
     Attributes:
         project (str): The project's name. Used for naming the directory.
@@ -144,6 +161,8 @@ class Job(object):
         job_name (str): Job's name for internal usage (e.g., 'opt_a103').
         job_id (int): The job's ID determined by the server.
         job_num (int): Used as the entry number in the database, as well as the job name on the server.
+        job_additional_options (dict): Additional specifications to control the execution of a job.
+        job_shortcut_keywords (str): Shortcut keyword specifications to control the execution of a job.
         local_path (str): Local path to job's folder.
         local_path_to_output_file (str): The local path to the output.out file.
         local_path_to_orbitals_file (str): The local path to the orbitals.fchk file (only for orbitals jobs).
@@ -156,7 +175,6 @@ class Job(object):
         server (str): Server's name.
         trsh (str): A troubleshooting keyword to be used in input files.
         ess_trsh_methods (list): A list of troubleshooting methods already tried out for ESS convergence.
-        initial_trsh (dict): Troubleshooting methods to try by default. Keys are ESS software, values are trshs.
         scan_trsh (str): A troubleshooting method for rotor scans.
         occ (int): The number of occupied orbitals (core + val) from a molpro CCSD sp calc.
         project_directory (str): The path to the project directory.
@@ -172,11 +190,11 @@ class Job(object):
                  job_level_of_theory_dict=None,
                  multiplicity=None, project_directory='', charge=0, conformer=-1, fine=False, shift='', software=None,
                  is_ts=False, scan=None, pivots=None, total_job_memory_gb=14, comments='', trsh='', scan_trsh='',
-                 job_dict=None, ess_trsh_methods=None, bath_gas=None, initial_trsh=None, job_num=None,
+                 job_dict=None, ess_trsh_methods=None, bath_gas=None, job_num=None,
                  job_server_name=None, job_name=None, job_id=None, server=None, initial_time=None, occ=None,
                  max_job_time=120, scan_res=None, checkfile=None, number_of_radicals=None, conformers=None, radius=None,
                  directed_scan_type=None, directed_scans=None, directed_dihedrals=None, rotor_index=None, testing=False,
-                 cpu_cores=None):
+                 cpu_cores=None, job_additional_options=None, job_shortcut_keywords=None):
         if job_dict is not None:
             self.from_dict(job_dict)
         else:
@@ -214,7 +232,8 @@ class Job(object):
             self.is_ts = is_ts
             self.ess_trsh_methods = ess_trsh_methods if ess_trsh_methods is not None else list()
             self.trsh = trsh
-            self.initial_trsh = initial_trsh if initial_trsh is not None else dict()
+            self.job_additional_options = job_additional_options if job_additional_options is not None else dict()
+            self.job_shortcut_keywords = job_shortcut_keywords if job_shortcut_keywords is not None else ''
             self.scan_trsh = scan_trsh
             self.scan_res = scan_res if scan_res is not None else rotor_scan_resolution
             self.scan = scan
@@ -324,8 +343,10 @@ class Job(object):
             job_dict['ess_trsh_methods'] = self.ess_trsh_methods
         if self.trsh:
             job_dict['trsh'] = self.trsh
-        if self.initial_trsh:
-            job_dict['initial_trsh'] = self.initial_trsh
+        if self.job_additional_options:
+            job_dict['job_additional_options'] = self.job_additional_options
+        if self.job_shortcut_keywords:
+            job_dict['job_shortcut_keywords'] = self.job_shortcut_keywords
         if self.shift:
             job_dict['shift'] = self.shift
         if self.software is not None:
@@ -394,7 +415,9 @@ class Job(object):
         self.comments = job_dict['comments'] if 'comments' in job_dict else ''
         self.trsh = job_dict['trsh'] if 'trsh' in job_dict else ''
         self.scan_trsh = job_dict['scan_trsh'] if 'scan_trsh' in job_dict else ''
-        self.initial_trsh = job_dict['initial_trsh'] if 'initial_trsh' in job_dict else dict()
+        self.job_additional_options = job_dict['job_additional_options'] if 'job_additional_options' \
+                                                                            in job_dict else dict()
+        self.job_shortcut_keywords = job_dict['job_shortcut_keywords'] if 'job_shortcut_keywords' in job_dict else ''
         self.ess_trsh_methods = job_dict['ess_trsh_methods'] if 'ess_trsh_methods' in job_dict else list()
         self.bath_gas = job_dict['bath_gas'] if 'bath_gas' in job_dict else None
         self.job_num = job_dict['job_num'] if 'job_num' in job_dict else -1

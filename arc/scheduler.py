@@ -104,8 +104,8 @@ class Scheduler(object):
                                           dictionaries with 'optfreq' and 'sp' as keys and levels of theory as values.
         rmgdatabase (RMGDatabase, optional): The RMG database object.
         job_types (dict, optional): A dictionary of job types to execute. Keys are job types, values are boolean.
-        initial_trsh (dict, optional): Troubleshooting methods to try by default. Keys are ESS software,
-                                       values are trshs.
+        job_additional_options (dict, optional): Additional specifications to control the execution of a job.
+        job_shortcut_keywords (str, optional): Shortcut keyword specifications to control the execution of a job.
         bath_gas (str, optional): A bath gas. Currently used in OneDMin to calc L-J parameters.
                                   Allowed values are He, Ne, Ar, Kr, H2, N2, O2.
         restart_dict (dict, optional): A restart dictionary parsed from a YAML restart file.
@@ -136,7 +136,8 @@ class Scheduler(object):
         servers_jobs_ids (list): A list of relevant job IDs currently running on the server.
         output (dict): Output dictionary with status per job type and final QM file paths for all species.
         ess_settings (dict): A dictionary of available ESS and a corresponding server list.
-        initial_trsh (dict): Troubleshooting methods to try by default. Keys are ESS software, values are trshs.
+        job_additional_options (dict): Additional specifications to control the execution of a job.
+        job_shortcut_keywords (str): Shortcut keyword specifications to control the execution of a job.
         restart_dict (dict): A restart dictionary parsed from a YAML restart file.
         project_directory (str): Folder path for the project: the input file path or ARC/Projects/project-name.
         save_restart (bool): Whether to start saving a restart file. ``True`` only after all species are loaded
@@ -168,9 +169,9 @@ class Scheduler(object):
     """
     def __init__(self, project, ess_settings, species_list, project_directory, composite_method='', conformer_level='',
                  opt_level='', freq_level='', sp_level='', scan_level='', ts_guess_level='', orbitals_level='',
-                 adaptive_levels=None, rmgdatabase=None, job_types=None, initial_trsh=None, rxn_list=None, bath_gas=None,
-                 restart_dict=None, max_job_time=120, allow_nonisomorphic_2d=False, memory=14, testing=False,
-                 dont_gen_confs=None, confs_to_dft=5):
+                 adaptive_levels=None, rmgdatabase=None, job_types=None, job_additional_options=None,
+                 job_shortcut_keywords=None, rxn_list=None, bath_gas=None, restart_dict=None, max_job_time=120,
+                 allow_nonisomorphic_2d=False, memory=14, testing=False, dont_gen_confs=None, confs_to_dft=5):
         self.rmgdb = rmgdatabase
         self.restart_dict = restart_dict
         self.species_list = species_list
@@ -213,7 +214,8 @@ class Scheduler(object):
         self.scan_level = scan_level
         self.orbitals_level = orbitals_level
         self.unique_species_labels = list()
-        self.initial_trsh = initial_trsh if initial_trsh is not None else dict()
+        self.job_additional_options = job_additional_options if job_additional_options is not None else dict()
+        self.job_shortcut_keywords = job_shortcut_keywords if job_shortcut_keywords is not None else ''
         self.save_restart = False
 
         if len(self.rxn_list):
@@ -698,7 +700,8 @@ class Scheduler(object):
                   job_level_of_theory_dict=job_level_of_theory_dict, multiplicity=species.multiplicity,
                   charge=species.charge, fine=fine,
                   shift=shift, software=software, is_ts=species.is_ts, total_job_memory_gb=memory, trsh=trsh,
-                  ess_trsh_methods=ess_trsh_methods, scan=scan, pivots=pivots, occ=occ, initial_trsh=self.initial_trsh,
+                  ess_trsh_methods=ess_trsh_methods, scan=scan, pivots=pivots, occ=occ,
+                  job_additional_options=self.job_additional_options, job_shortcut_keywords=self.job_shortcut_keywords,
                   project_directory=self.project_directory, max_job_time=max_job_time, scan_trsh=scan_trsh,
                   scan_res=scan_res, conformer=conformer, checkfile=checkfile, bath_gas=self.bath_gas,
                   number_of_radicals=species.number_of_radicals, conformers=confs, radius=radius,

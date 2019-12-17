@@ -16,6 +16,7 @@ import logging
 import os
 import shutil
 import time
+import yaml
 from distutils.spawn import find_executable
 from IPython.display import display
 
@@ -72,8 +73,8 @@ class ARC(object):
         job_types (dict, optional): A dictionary of job types to execute. Keys are job types, values are boolean.
         model_chemistry (str, optional): The model chemistry in Arkane for energy corrections (AE, BAC) and
                                          frequencies/ZPE scaling factor. Can usually be determined automatically.
-        initial_trsh (dict, optional): Troubleshooting methods to try by default. Keys are ESS software, values are
-                                       trshs.
+        job_additional_options (dict, optional): Additional specifications to control the execution of a job.
+        job_shortcut_keywords (str, optional): Shortcut keyword specifications to control the execution of a job.
         t_min (tuple, optional): The minimum temperature for kinetics computations, e.g., (500, str('K')).
         t_max (tuple, optional): The maximum temperature for kinetics computations, e.g., (3000, str('K')).
         t_count (int, optional): The number of temperature points between t_min and t_max for kinetics computations.
@@ -129,7 +130,8 @@ class ARC(object):
                                  not given by the user and could not be determined by Arkane. True to calculate, False
                                  to use user input / Arkane's value / Arkane's default.
         ess_settings (dict): A dictionary of available ESS (keys) and a corresponding server list (values).
-        initial_trsh (dict): Troubleshooting methods to try by default. Keys are ESS software, values are trshs.
+        job_additional_options (dict): Additional specifications to control the execution of a job.
+        job_shortcut_keywords (str): Shortcut keyword specifications to control the execution of a job.
         t0 (float): Initial time when the project was spawned.
         confs_to_dft (int): The number of lowest MD conformers to DFT at the conformers_level.
         execution_time (str): Overall execution time.
@@ -155,11 +157,11 @@ class ARC(object):
 
     def __init__(self, input_dict=None, project=None, arc_species_list=None, arc_rxn_list=None, level_of_theory='',
                  conformer_level='', composite_method='', opt_level='', freq_level='', sp_level='', scan_level='',
-                 ts_guess_level='', use_bac=True, job_types=None, model_chemistry='', initial_trsh=None, t_min=None,
-                 t_max=None, t_count=None, verbose=logging.INFO, project_directory=None, max_job_time=120,
-                 allow_nonisomorphic_2d=False, job_memory=14, ess_settings=None, bath_gas=None,
-                 adaptive_levels=None, freq_scale_factor=None, calc_freq_factor=True, confs_to_dft=5,
-                 keep_checks=False, dont_gen_confs=None, specific_job_type='', orbitals_level=''):
+                 ts_guess_level='', use_bac=True, job_types=None, model_chemistry='', job_additional_options=None,
+                 job_shortcut_keywords=None, t_min=None, t_max=None, t_count=None, verbose=logging.INFO,
+                 project_directory=None, max_job_time=120, allow_nonisomorphic_2d=False, job_memory=14,
+                 ess_settings=None, bath_gas=None, adaptive_levels=None, freq_scale_factor=None, calc_freq_factor=True,
+                 confs_to_dft=5, keep_checks=False, dont_gen_confs=None, specific_job_type='', orbitals_level=''):
         self.__version__ = VERSION
         self.verbose = verbose
         self.output = dict()
@@ -195,7 +197,8 @@ class ARC(object):
             self.dont_gen_confs = dont_gen_confs if dont_gen_confs is not None else list()
             self.t0 = time.time()  # init time
             self.execution_time = None
-            self.initial_trsh = initial_trsh if initial_trsh is not None else dict()
+            self.job_additional_options = job_additional_options if job_additional_options is not None else dict()
+            self.job_shortcut_keywords = job_shortcut_keywords if job_shortcut_keywords is not None else ''
             self.use_bac = use_bac
             self.model_chemistry = model_chemistry
             self.freq_scale_factor = freq_scale_factor
@@ -331,8 +334,10 @@ class ARC(object):
             self.level_of_theory = ''
         restart_dict['level_of_theory'] = self.level_of_theory
 
-        if self.initial_trsh:
-            restart_dict['initial_trsh'] = self.initial_trsh
+        if self.job_additional_options:
+            restart_dict['job_additional_options'] = self.job_additional_options
+        if self.job_shortcut_keywords:
+            restart_dict['job_shortcut_keywords'] = self.job_shortcut_keywords
         if self.freq_scale_factor is not None:
             restart_dict['freq_scale_factor'] = self.freq_scale_factor
         restart_dict['calc_freq_factor'] = self.calc_freq_factor
@@ -406,8 +411,10 @@ class ARC(object):
         self.t_min = input_dict['t_min'] if 't_min' in input_dict else None
         self.t_max = input_dict['t_max'] if 't_max' in input_dict else None
         self.t_count = input_dict['t_count'] if 't_count' in input_dict else None
-
-        self.initial_trsh = input_dict['initial_trsh'] if 'initial_trsh' in input_dict else dict()
+        self.job_additional_options = input_dict['job_additional_options'] if 'job_additional_options' \
+                                                                              in input_dict else dict()
+        self.job_shortcut_keywords = input_dict['job_shortcut_keywords'] if 'job_shortcut_keywords'\
+                                                                            in input_dict else ''
         self.specific_job_type = input_dict['specific_job_type'] if 'specific_job_type' in input_dict else None
         self.job_types = input_dict['job_types'] if 'job_types' in input_dict else default_job_types
         self.job_types = initialize_job_types(self.job_types, specific_job_type=self.specific_job_type)
@@ -506,7 +513,8 @@ class ARC(object):
                                    opt_level=self.opt_level, freq_level=self.freq_level, sp_level=self.sp_level,
                                    scan_level=self.scan_level, ts_guess_level=self.ts_guess_level,
                                    ess_settings=self.ess_settings, job_types=self.job_types, bath_gas=self.bath_gas,
-                                   initial_trsh=self.initial_trsh, rmgdatabase=self.rmgdb,
+                                   job_additional_options=self.job_additional_options,
+                                   job_shortcut_keywords=self.job_shortcut_keywords, rmgdatabase=self.rmgdb,
                                    restart_dict=self.restart_dict, project_directory=self.project_directory,
                                    max_job_time=self.max_job_time, allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
                                    memory=self.memory, orbitals_level=self.orbitals_level,
@@ -562,8 +570,12 @@ class ARC(object):
             txt += 'Using bond additivity corrections for thermo\n'
         else:
             txt += 'NOT using bond additivity corrections for thermo\n'
-        if self.initial_trsh:
-            txt += 'Using an initial troubleshooting method "{0}"'.format(self.initial_trsh)
+        if self.job_additional_options:
+            txt += 'Using additional job options "{0}"'\
+                .format(yaml.dump(self.job_additional_options, default_flow_style=False))
+        if self.job_shortcut_keywords:
+            txt += 'Using additional job keywords "{0}"'\
+                .format(yaml.dump(self.job_shortcut_keywords, default_flow_style=False))
         txt += '\nUsing the following ESS settings: {0}\n'.format(self.ess_settings)
         txt += '\nConsidered the following species and TSs:\n'
         for species in self.arc_species_list:
