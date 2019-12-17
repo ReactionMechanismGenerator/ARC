@@ -773,3 +773,20 @@ def is_notebook():
             return False  # Other type (?)
     except NameError:
         return False  # Probably standard Python interpreter
+
+
+def is_str_float(value):
+    """
+    Check whether a string represents a number.
+
+    Args:
+        value (str): The string to check.
+
+    Returns:
+        bool: ``True`` if it does, ``False`` otherwise.
+    """
+    try:
+        float(value)
+        return True
+    except ValueError:
+        return False
