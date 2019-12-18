@@ -34,7 +34,7 @@ from rmgpy.species import Species
 from arc.common import get_logger, min_list, save_yaml_file, sort_two_lists_by_the_first, is_notebook
 from arc.exceptions import InputError, SanitizationError
 from arc.species.converter import rdkit_conf_from_mol, molecules_from_xyz, check_xyz_dict, str_to_xyz, xyz_to_str, \
-    xyz_to_x_y_z, xyz_from_data, remove_dummies
+    xyz_to_x_y_z, xyz_from_data, remove_dummies, get_xyz_radius
 from arc.species.species import ARCSpecies
 
 
@@ -51,8 +51,10 @@ def draw_structure(xyz=None, species=None, project_directory=None, method='show_
         xyz (str, optional): The xyz coordinates to plot in string format.
         species (ARCSpecies, optional): A species from which to extract the xyz coordinates to plot.
         project_directory (str, optional): A directory for saving the image (only supported for draw_3d).
-        method (str, optional): The method to use, either show_sticks or draw_3d.
+        method (str, optional): The method to use, either 'show_sticks', 'draw_3d', or 'scatter'.
     """
+    if method not in ['show_sticks', 'draw_3d', 'scatter']:
+        raise InputError(f"Recognized methods are 'show_sticks', 'draw_3d', or 'scatter', got: {method}")
     success = False
     notebook = is_notebook()
     xyz = check_xyz_species_for_drawing(xyz, species)
@@ -61,8 +63,11 @@ def draw_structure(xyz=None, species=None, project_directory=None, method='show_
             success = show_sticks(xyz=xyz, species=species, project_directory=project_directory)
         except (IndexError, InputError):
             pass
-    if not success or method == 'draw_3d' or not notebook:
+    if method == 'draw_3d' or (method == 'show_sticks' and (not success or not notebook)):
         draw_3d(xyz=xyz, species=species, project_directory=project_directory, save_only=not notebook)
+    elif method == 'scatter':
+        label = '' if species is None else species.label
+        plot_3d_mol_as_scatter(xyz, path=project_directory, plot_h=True, show_plot=True, name=label, index=0)
 
 
 def show_sticks(xyz=None, species=None, project_directory=None):
@@ -128,7 +133,7 @@ def draw_3d(xyz=None, species=None, project_directory=None, save_only=False):
         ase_write(filename=os.path.join(geo_path, 'geometry.png'), images=ase_mol, scale=100)
 
 
-def plot_3d_mol_as_scatter(xyz, path=None, plot_h=True, show_plot=True, name=''):
+def plot_3d_mol_as_scatter(xyz, path=None, plot_h=True, show_plot=True, name='', index=0):
     """
     Draws the molecule as scattered balls in space according to the supplied xyz coordinates.
 
@@ -138,14 +143,16 @@ def plot_3d_mol_as_scatter(xyz, path=None, plot_h=True, show_plot=True, name='')
         plot_h (bool, optional): Whether to plot hydrogen atoms as well. ``True`` to plot them.
         show_plot (bool, optional): Whether to show the plot. ``True`` to show.
         name (str, optional): A name to be added to the saved file name.
+        index (int, optional): The index type (0 or 1) for printing atom numbers. Pass None to avoid printing numbers.
     """
     xyz = check_xyz_species_for_drawing(xyz=xyz)
+    radius = get_xyz_radius(xyz)
     coords, symbols, colors, sizes = list(), list(), list(), list()
     for symbol, coord in zip(xyz['symbols'], xyz['coords']):
-        size = 500
+        size = 10000 / radius
         if symbol == 'H':
             color = 'gray'
-            size = 250
+            size = 2000 / radius
         elif symbol == 'C':
             color = 'k'
         elif symbol == 'N':
@@ -169,7 +176,8 @@ def plot_3d_mol_as_scatter(xyz, path=None, plot_h=True, show_plot=True, name='')
     ax = Axes3D(fig)
     ax.scatter(xs=x, ys=y, zs=z, s=sizes, c=colors, depthshade=True)
     for i, symbol in enumerate(symbols):
-        ax.text(x[i]+0.01, y[i]+0.01, z[i]+0.01, symbol, size=7)
+        text = symbol if index is None else symbol + ' ' + str(i + index)
+        ax.text(x[i]+0.01, y[i]+0.01, z[i]+0.01, text, size=10)
     plt.axis('off')
     if show_plot:
         plt.show()
