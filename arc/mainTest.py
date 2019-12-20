@@ -47,7 +47,7 @@ class TestARC(unittest.TestCase):
     def test_as_dict(self):
         """Test the as_dict() method of ARC"""
         spc1 = ARCSpecies(label='spc1', smiles='CC', generate_thermo=False)
-        arc0 = ARC(project='arc_test', job_types=self.job_types1, job_shortcut_keywords='scf=(NDump=30)',
+        arc0 = ARC(project='arc_test', job_types=self.job_types1, job_shortcut_keywords={'gaussian': 'scf=(NDump=30)'},
                    arc_species_list=[spc1], level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)')
         restart_dict = arc0.as_dict()
         long_thermo_description = restart_dict['species'][0]['long_thermo_description']
@@ -78,7 +78,7 @@ class TestARC(unittest.TestCase):
                                       'method': 'ccsd(t)-f12',
                                       'dispersion': ''},
                          'freq_scale_factor': 0.967,
-                         'job_shortcut_keywords': 'scf=(NDump=30)',
+                         'job_shortcut_keywords': {'gaussian': 'scf=(NDump=30)'},
                          'max_job_time': 120,
                          'model_chemistry': 'ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)',
                          'output': {},
@@ -135,7 +135,7 @@ class TestARC(unittest.TestCase):
                         'freq_level': 'wb97x-d3/6-311+g(d,p)',
                         'freq_scale_factor': 0.96,
                         'generate_conformers': True,
-                        'job_shortcut_keywords': 'scf=(NDump=30)',
+                        'job_shortcut_keywords': {'gaussian': 'scf=(NDump=30)'},
                         'model_chemistry': 'ccsd(t)-f12/cc-pvtz-f12',
                         'opt_level': 'wb97x-d3/6-311+g(d,p)',
                         'output': {},

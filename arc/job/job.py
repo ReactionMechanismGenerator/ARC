@@ -102,7 +102,7 @@ class Job(object):
         testing (bool, optional): Whether the object is generated for testing purposes, True if it is.
         cpu_cores (int, optional): The total number of cpu cores requested for a job.
         job_additional_options (dict, optional): Additional specifications to control the execution of a job.
-        job_shortcut_keywords (str, optional): Shortcut keyword specifications to control the execution of a job.
+        job_shortcut_keywords (dict, optional): Shortcut keyword specifications to control the execution of a job.
 
     Attributes:
         project (str): The project's name. Used for naming the directory.
@@ -162,7 +162,7 @@ class Job(object):
         job_id (int): The job's ID determined by the server.
         job_num (int): Used as the entry number in the database, as well as the job name on the server.
         job_additional_options (dict): Additional specifications to control the execution of a job.
-        job_shortcut_keywords (str): Shortcut keyword specifications to control the execution of a job.
+        job_shortcut_keywords (dict): Shortcut keyword specifications to control the execution of a job.
         local_path (str): Local path to job's folder.
         local_path_to_output_file (str): The local path to the output.out file.
         local_path_to_orbitals_file (str): The local path to the orbitals.fchk file (only for orbitals jobs).
@@ -233,7 +233,7 @@ class Job(object):
             self.ess_trsh_methods = ess_trsh_methods if ess_trsh_methods is not None else list()
             self.trsh = trsh
             self.job_additional_options = job_additional_options if job_additional_options is not None else dict()
-            self.job_shortcut_keywords = job_shortcut_keywords if job_shortcut_keywords is not None else ''
+            self.job_shortcut_keywords = job_shortcut_keywords if job_shortcut_keywords is not None else dict()
             self.scan_trsh = scan_trsh
             self.scan_res = scan_res if scan_res is not None else rotor_scan_resolution
             self.scan = scan
@@ -417,7 +417,8 @@ class Job(object):
         self.scan_trsh = job_dict['scan_trsh'] if 'scan_trsh' in job_dict else ''
         self.job_additional_options = job_dict['job_additional_options'] if 'job_additional_options' \
                                                                             in job_dict else dict()
-        self.job_shortcut_keywords = job_dict['job_shortcut_keywords'] if 'job_shortcut_keywords' in job_dict else ''
+        self.job_shortcut_keywords = job_dict['job_shortcut_keywords'] if 'job_shortcut_keywords'\
+                                                                          in job_dict else dict()
         self.ess_trsh_methods = job_dict['ess_trsh_methods'] if 'ess_trsh_methods' in job_dict else list()
         self.bath_gas = job_dict['bath_gas'] if 'bath_gas' in job_dict else None
         self.job_num = job_dict['job_num'] if 'job_num' in job_dict else -1
@@ -591,7 +592,7 @@ class Job(object):
                            f'\n'
                            f'{yaml.dump(self.job_shortcut_keywords.get(self.software, ""), default_flow_style=False)}')
             self.job_additional_options = dict()
-            self.job_shortcut_keywords = ''
+            self.job_shortcut_keywords = dict()
 
         self.input = input_files.get(self.software, None)
 
@@ -646,6 +647,7 @@ wf,spin={spin},charge={charge};}}
 
         # Software specific global job options
         if self.software == 'orca':
+            shortcut_keywords = self.job_shortcut_keywords.get(self.software, '')
             orca_options_keywords_dict = dict()
             orca_options_blocks_dict = dict()
             user_scf_convergence = ''
@@ -708,12 +710,14 @@ wf,spin={spin},charge={charge};}}
                     orca_options_keywords_dict['dlpno_threshold'] = dlpno_threshold
             else:
                 logger.debug(f'Running {self.method} method in Orca.')
-        elif self.software == 'gaussian' and not self.trsh:
-            if self.job_level_of_theory_dict['method'][:2] == 'ro':
-                self.trsh = 'use=L506'
-            else:
-                # xqc will do qc (quadratic convergence) if the job fails w/o it, so use by default
-                self.trsh = 'scf=xqc'
+        elif self.software == 'gaussian':
+            shortcut_keywords = self.job_shortcut_keywords.get(self.software, '')
+            if not self.trsh:
+                if self.job_level_of_theory_dict['method'][:2] == 'ro':
+                    self.trsh = 'use=L506'
+                else:
+                    # xqc will do qc (quadratic convergence) if the job fails w/o it, so use by default
+                    self.trsh = 'scf=xqc'
 
         # Job type specific options
         if self.job_type in ['conformer', 'opt']:
@@ -1097,7 +1101,7 @@ end
                                                job_options_blocks=job_options_blocks,
                                                job_options_keywords=job_options_keywords,
                                                method_class=method_class, auxiliary_basis=self.auxiliary_basis_set,
-                                               shortcut_keywords=self.job_shortcut_keywords) \
+                                               shortcut_keywords=shortcut_keywords) \
                     if self.input is not None else None
             except KeyError:
                 logger.error('Could not interpret all input file keys in\n{0}'.format(self.input))

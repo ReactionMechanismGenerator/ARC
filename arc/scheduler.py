@@ -104,7 +104,7 @@ class Scheduler(object):
         rmgdatabase (RMGDatabase, optional): The RMG database object.
         job_types (dict, optional): A dictionary of job types to execute. Keys are job types, values are boolean.
         job_additional_options (dict, optional): Additional specifications to control the execution of a job.
-        job_shortcut_keywords (str, optional): Shortcut keyword specifications to control the execution of a job.
+        job_shortcut_keywords (dict, optional): Shortcut keyword specifications to control the execution of a job.
         bath_gas (str, optional): A bath gas. Currently used in OneDMin to calc L-J parameters.
                                   Allowed values are He, Ne, Ar, Kr, H2, N2, O2.
         restart_dict (dict, optional): A restart dictionary parsed from a YAML restart file.
@@ -136,7 +136,7 @@ class Scheduler(object):
         output (dict): Output dictionary with status per job type and final QM file paths for all species.
         ess_settings (dict): A dictionary of available ESS and a corresponding server list.
         job_additional_options (dict): Additional specifications to control the execution of a job.
-        job_shortcut_keywords (str): Shortcut keyword specifications to control the execution of a job.
+        job_shortcut_keywords (dict): Shortcut keyword specifications to control the execution of a job.
         restart_dict (dict): A restart dictionary parsed from a YAML restart file.
         project_directory (str): Folder path for the project: the input file path or ARC/Projects/project-name.
         save_restart (bool): Whether to start saving a restart file. ``True`` only after all species are loaded
@@ -215,7 +215,7 @@ class Scheduler(object):
         self.orbitals_level = orbitals_level
         self.unique_species_labels = list()
         self.job_additional_options = job_additional_options if job_additional_options is not None else dict()
-        self.job_shortcut_keywords = job_shortcut_keywords if job_shortcut_keywords is not None else ''
+        self.job_shortcut_keywords = job_shortcut_keywords if job_shortcut_keywords is not None else dict()
         self.save_restart = False
 
         if len(self.rxn_list):

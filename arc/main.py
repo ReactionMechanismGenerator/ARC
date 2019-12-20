@@ -56,9 +56,9 @@ class ARC(object):
         arc_species_list (list, optional): A list of :ref:`ARCSpecies <species>` objects.
         arc_rxn_list (list, optional): A list of :ref:`ARCReaction <reaction>` objects.
         level_of_theory (str, optional): A shortcut representing either sp//geometry levels or a composite method.
-                                         e.g. 'CBS-QB3', 'CCSD(T)-F12a/aug-cc-pVTZ//B3LYP/6-311++G(3df,3pd)'...
+                                         e.g., 'CBS-QB3', 'CCSD(T)-F12a/aug-cc-pVTZ//B3LYP/6-311++G(3df,3pd)'...
                                          Notice that this argument does NOT support levels with slashes in the name.
-                                         e.g. 'ZINDO/2', 'DLPNO-MP2-F12/D'
+                                         e.g., 'ZINDO/2', 'DLPNO-MP2-F12/D'
                                          For these cases, use the dictionary-type job-specific level of theory arguments
                                          instead (e.g., ``opt_level``).
         composite_method (str, optional): Composite method.
@@ -74,7 +74,9 @@ class ARC(object):
         model_chemistry (str, optional): The model chemistry in Arkane for energy corrections (AE, BAC) and
                                          frequencies/ZPE scaling factor. Can usually be determined automatically.
         job_additional_options (dict, optional): Additional specifications to control the execution of a job.
-        job_shortcut_keywords (str, optional): Shortcut keyword specifications to control the execution of a job.
+        job_shortcut_keywords (dict, optional): Shortcut keyword specifications to control the execution of a job.
+                                                keys are ESS, values are keywords
+                                                e.g., {'gaussian': 'iop(99/33=1)'}
         t_min (tuple, optional): The minimum temperature for kinetics computations, e.g., (500, str('K')).
         t_max (tuple, optional): The maximum temperature for kinetics computations, e.g., (3000, str('K')).
         t_count (int, optional): The number of temperature points between t_min and t_max for kinetics computations.
@@ -131,7 +133,7 @@ class ARC(object):
                                  to use user input / Arkane's value / Arkane's default.
         ess_settings (dict): A dictionary of available ESS (keys) and a corresponding server list (values).
         job_additional_options (dict): Additional specifications to control the execution of a job.
-        job_shortcut_keywords (str): Shortcut keyword specifications to control the execution of a job.
+        job_shortcut_keywords (dict): Shortcut keyword specifications to control the execution of a job.
         t0 (float): Initial time when the project was spawned.
         confs_to_dft (int): The number of lowest MD conformers to DFT at the conformers_level.
         execution_time (str): Overall execution time.
@@ -198,12 +200,13 @@ class ARC(object):
             self.t0 = time.time()  # init time
             self.execution_time = None
             self.job_additional_options = job_additional_options if job_additional_options is not None else dict()
-            self.job_shortcut_keywords = job_shortcut_keywords if job_shortcut_keywords is not None else ''
+            self.job_shortcut_keywords = job_shortcut_keywords if job_shortcut_keywords is not None else dict()
             if self.job_additional_options:
                 logger.info(f'Use the following user-specified additional job options\n'
                             f'{yaml.dump(self.job_additional_options, default_flow_style=False)}')
             if self.job_shortcut_keywords:
-                logger.info(f'Use the following user-specified additional job keywords {self.job_shortcut_keywords}')
+                logger.info(f'Use the following user-specified additional job keywords\n'
+                            f'{yaml.dump(self.job_shortcut_keywords, default_flow_style=False)}')
             self.use_bac = use_bac
             self.model_chemistry = model_chemistry
             self.freq_scale_factor = freq_scale_factor
@@ -419,7 +422,7 @@ class ARC(object):
         self.job_additional_options = input_dict['job_additional_options'] if 'job_additional_options' \
                                                                               in input_dict else dict()
         self.job_shortcut_keywords = input_dict['job_shortcut_keywords'] if 'job_shortcut_keywords'\
-                                                                            in input_dict else ''
+                                                                            in input_dict else dict()
         self.specific_job_type = input_dict['specific_job_type'] if 'specific_job_type' in input_dict else None
         self.job_types = input_dict['job_types'] if 'job_types' in input_dict else default_job_types
         self.job_types = initialize_job_types(self.job_types, specific_job_type=self.specific_job_type)
