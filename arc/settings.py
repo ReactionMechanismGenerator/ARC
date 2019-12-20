@@ -142,6 +142,17 @@ default_levels_of_theory = {'conformer': {'auxiliary_basis': '',
                                                                       # Currently only supported for QChem
                             }
 
+# Software specific default settings
+# Orca
+# ARC accepts all the Orca options listed in the dictionary below. For specifying additional Orca options, please see
+# documentation and Orca manual.
+orca_default_options_dict = {'opt': {'keyword': {'opt_convergence': 'NormalOpt',
+                                                 'fine_opt_convergence': 'TightOpt'}},
+                             'freq': {'keyword': {'use_num_freq': False}},
+                             'global': {'keyword': {'scf_convergence': 'TightSCF',
+                                                    'dlpno_threshold': 'normalPNO'}}
+                             }
+
 # default_ts_methods = ['QST2', 'DEGSM', 'NEB', 'Kinbot', 'AutoTST']
 default_ts_methods = ['AutoTST']
 
