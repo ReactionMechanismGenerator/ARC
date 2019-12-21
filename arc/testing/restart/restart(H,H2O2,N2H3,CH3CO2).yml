@@ -1,7 +1,10 @@
 allow_nonisomorphic_2d: false
 calc_freq_factor: true
 composite_method: ''
-conformer_level: b3lyp/6-31g(d,p) empiricaldispersion=gd3bj
+conformer_level:
+  method: b3lyp
+  basis: 6-31g(d,p)
+  dispersion: empiricaldispersion=gd3bj
 confs_to_dft: 5
 ess_settings:
   gaussian:
@@ -420,5 +423,8 @@ species:
 t_count: null
 t_max: null
 t_min: null
-ts_guess_level: b3lyp/6-31g(d,p) empiricaldispersion=gd3bj
+ts_guess_level:
+  method: b3lyp
+  basis: 6-31g(d,p)
+  dispersion: empiricaldispersion=gd3bj
 use_bac: true
