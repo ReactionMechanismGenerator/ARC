@@ -543,22 +543,27 @@ def determine_ess(log_file):
     raise InputError(f'Could not identify the log file in {log_file} as belonging to Gaussian, QChem, Molpro, or Orca.')
 
 
-def almost_equal_coords(xyz1, xyz2):
+def almost_equal_coords(xyz1, xyz2, rtol=1.0000000000000001e-05, atol=1e-08):
     """
     A helper function for checking whether two xyz's are almost equal.
 
     Args:
-        xyz1 (dict): Coordinates.
-        xyz2 (dict): Coordinates.
+        xyz1 (dict): Cartesian coordinates.
+        xyz2 (dict): Cartesian coordinates.
+        rtol (float, optional): The relative tolerance parameter.
+        atol (float, optional): The absolute tolerance parameter.
+
+    Returns:
+        bool: ``True`` if they are almost equal, ``False`` otherwise.
     """
     for xyz_coord1, xyz_coord2 in zip(xyz1['coords'], xyz2['coords']):
         for xyz1_c, xyz2_c in zip(xyz_coord1, xyz_coord2):
-            if not np.isclose([xyz1_c], [xyz2_c]):
+            if not np.isclose([xyz1_c], [xyz2_c], rtol=rtol, atol=atol):
                 return False
     return True
 
 
-def almost_equal_coords_lists(xyz1, xyz2):
+def almost_equal_coords_lists(xyz1, xyz2, rtol=1.0000000000000001e-05, atol=1e-08):
     """
     A helper function for checking two lists of xyz's has at least one entry in each that is almost equal.
     Useful for comparing xyz's in unit tests.
@@ -566,6 +571,8 @@ def almost_equal_coords_lists(xyz1, xyz2):
     Args:
         xyz1 (list, dict): Either a dict-format xyz, or a list of them.
         xyz2 (list, dict): Either a dict-format xyz, or a list of them.
+        rtol (float, optional): The relative tolerance parameter.
+        atol (float, optional): The absolute tolerance parameter.
 
     Returns:
         bool: Whether at least one entry in each input xyz's is almost equal to an entry in the other xyz.
@@ -578,7 +585,7 @@ def almost_equal_coords_lists(xyz1, xyz2):
         for xyz2_entry in xyz2:
             if xyz1_entry['symbols'] != xyz2_entry['symbols']:
                 return False
-            if almost_equal_coords(xyz1_entry, xyz2_entry):
+            if almost_equal_coords(xyz1_entry, xyz2_entry, rtol=rtol, atol=atol):
                 break
         else:
             return False
