@@ -56,7 +56,7 @@ from rmgpy.molecule.converter import to_ob_mol
 from rmgpy.molecule.molecule import Atom, Bond, Molecule
 from rmgpy.molecule.element import C as C_ELEMENT, H as H_ELEMENT, F as F_ELEMENT, Cl as Cl_ELEMENT, I as I_ELEMENT
 
-from arc.common import logger
+from arc.common import logger, determine_top_group_indices
 from arc.exceptions import ConformerError, InputError
 import arc.plotter
 from arc.species import converter, vectors, zmat
@@ -1425,40 +1425,6 @@ def check_special_non_rotor_cases(mol, top1, top2):
     return False
 
 
-def determine_top_group_indices(mol, atom1, atom2, index=1):
-    """
-    Determine the indices of a "top group" in a molecule.
-    The top is defined as all atoms connected to atom2, including atom2, excluding the direction of atom1.
-    Two ``atom_list_to_explore`` are used so the list the loop iterates through isn't changed within the loop.
-
-    Args:
-        mol (Molecule): The Molecule object to explore.
-        atom1 (Atom): The pivotal atom in mol.
-        atom2 (Atom): The beginning of the top relative to atom1 in mol.
-        index (bool, optional): Whether to return 1-index or 0-index conventions. 1 for 1-index.
-
-    Returns:
-        list: The indices of the atoms in the top (either 0-index or 1-index, as requested).
-    Returns:
-        bool: Whether the top has heavy atoms (is not just a hydrogen atom). True if it has heavy atoms.
-    """
-    top = list()
-    explored_atom_list, atom_list_to_explore1, atom_list_to_explore2 = [atom1], [atom2], []
-    while len(atom_list_to_explore1 + atom_list_to_explore2):
-        for atom3 in atom_list_to_explore1:
-            top.append(mol.vertices.index(atom3) + index)
-            for atom4 in atom3.edges.keys():
-                if atom4 not in explored_atom_list and atom4 not in atom_list_to_explore2:
-                    if atom4.is_hydrogen():
-                        # append H w/o further exploring
-                        top.append(mol.vertices.index(atom4) + index)
-                    else:
-                        atom_list_to_explore2.append(atom4)  # explore it further
-            explored_atom_list.append(atom3)  # mark as explored
-        atom_list_to_explore1, atom_list_to_explore2 = atom_list_to_explore2, []
-    return top, not atom2.is_hydrogen()
-
-
 def find_internal_rotors(mol):
     """
     Locates the sets of indices corresponding to every internal rotor (1-indexed).
@@ -1480,8 +1446,8 @@ def find_internal_rotors(mol):
                         # pivots:
                         rotor['pivots'] = [mol.vertices.index(atom1) + 1, mol.vertices.index(atom2) + 1]
                         # top:
-                        top1, top1_has_heavy_atoms = determine_top_group_indices(mol, atom2, atom1)
-                        top2, top2_has_heavy_atoms = determine_top_group_indices(mol, atom1, atom2)
+                        top1, top1_has_heavy_atoms = determine_top_group_indices(mol, atom2, atom1, index=1)
+                        top2, top2_has_heavy_atoms = determine_top_group_indices(mol, atom1, atom2, index=1)
                         non_rotor = check_special_non_rotor_cases(mol, top1, top2)
                         if non_rotor:
                             continue

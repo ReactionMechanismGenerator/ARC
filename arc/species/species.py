@@ -21,7 +21,7 @@ from rmgpy.species import Species
 from rmgpy.statmech import NonlinearRotor, LinearRotor
 from rmgpy.transport import TransportData
 
-from arc.common import get_logger, get_atom_radius, determine_symmetry
+from arc.common import get_logger, determine_symmetry, determine_top_group_indices
 from arc.exceptions import SpeciesError, RotorError, InputError, TSError, SanitizationError
 from arc.parser import parse_xyz_from_file, parse_dipole_moment, parse_polarizability, process_conformers_file, \
     parse_1d_scan_energies
@@ -1407,8 +1407,8 @@ class ARCSpecies(object):
         else:
             # for robustness, only use the smaller top,
             # determine_top_group_indices() might get confused for (large) convolved tops.
-            top1 = conformers.determine_top_group_indices(self.mol, atom1, atom2, index=0)[0]
-            top2 = conformers.determine_top_group_indices(self.mol, atom2, atom1, index=0)[0]
+            top1 = determine_top_group_indices(self.mol, atom1, atom2, index=0)[0]
+            top2 = determine_top_group_indices(self.mol, atom2, atom1, index=0)[0]
             if len(top1) > len(top2):
                 top1 = [i for i in range(len(self.mol.atoms)) if i not in top2]
             elif len(top2) > len(top1):

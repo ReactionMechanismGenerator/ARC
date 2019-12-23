@@ -1058,31 +1058,6 @@ O       1.40839617    0.14303696    0.00000000"""
         rotors = conformers.find_internal_rotors(mol5)
         self.assertEqual(len(rotors), 1)
 
-    def test_determine_top_group_indices(self):
-        """Test determining the top group in a molecule"""
-        mol = Molecule(smiles='c1cc(OC)ccc1OC(CC)SF')
-        atom1 = mol.atoms[9]  # this is the C atom at the S, O, H, and C junction
-        atom2a = mol.atoms[10]  # C
-        atom2b = mol.atoms[8]  # O
-        atom2c = mol.atoms[12]  # S
-        atom2d = mol.atoms[21]  # H
-
-        top, top_has_heavy_atoms = conformers.determine_top_group_indices(mol, atom1, atom2a)
-        self.assertEqual(len(top), 7)
-        self.assertTrue(top_has_heavy_atoms)
-
-        top, top_has_heavy_atoms = conformers.determine_top_group_indices(mol, atom1, atom2b)
-        self.assertEqual(len(top), 16)
-        self.assertTrue(top_has_heavy_atoms)
-
-        top, top_has_heavy_atoms = conformers.determine_top_group_indices(mol, atom1, atom2c)
-        self.assertEqual(len(top), 2)
-        self.assertTrue(top_has_heavy_atoms)
-
-        top, top_has_heavy_atoms = conformers.determine_top_group_indices(mol, atom1, atom2d)
-        self.assertEqual(top, [22])
-        self.assertFalse(top_has_heavy_atoms)  # H
-
     def test_find_internal_rotors(self):
         """Test finding internal rotors in a molecule list"""
         mol_list = self.mol1.generate_resonance_structures()

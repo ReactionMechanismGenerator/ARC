@@ -384,6 +384,40 @@ def determine_symmetry(xyz):
     return symmetry, optical_isomers
 
 
+def determine_top_group_indices(mol, atom1, atom2, index=1):
+    """
+    Determine the indices of a "top group" in a molecule.
+    The top is defined as all atoms connected to atom2, including atom2, excluding the direction of atom1.
+    Two ``atom_list_to_explore`` are used so the list the loop iterates through isn't changed within the loop.
+
+    Args:
+        mol (Molecule): The Molecule object to explore.
+        atom1 (Atom): The pivotal atom in mol.
+        atom2 (Atom): The beginning of the top relative to atom1 in mol.
+        index (bool, optional): Whether to return 1-index or 0-index conventions. 1 for 1-index.
+
+    Returns:
+        list: The indices of the atoms in the top (either 0-index or 1-index, as requested).
+    Returns:
+        bool: Whether the top has heavy atoms (is not just a hydrogen atom). True if it has heavy atoms.
+    """
+    top = list()
+    explored_atom_list, atom_list_to_explore1, atom_list_to_explore2 = [atom1], [atom2], []
+    while len(atom_list_to_explore1 + atom_list_to_explore2):
+        for atom3 in atom_list_to_explore1:
+            top.append(mol.vertices.index(atom3) + index)
+            for atom4 in atom3.edges.keys():
+                if atom4 not in explored_atom_list and atom4 not in atom_list_to_explore2:
+                    if atom4.is_hydrogen():
+                        # append H w/o further exploring
+                        top.append(mol.vertices.index(atom4) + index)
+                    else:
+                        atom_list_to_explore2.append(atom4)  # explore it further
+            explored_atom_list.append(atom3)  # mark as explored
+        atom_list_to_explore1, atom_list_to_explore2 = atom_list_to_explore2, []
+    return top, not atom2.is_hydrogen()
+
+
 def min_list(lst):
     """
     A helper function for finding the minimum of a list of integers where some of the entries might be None.
