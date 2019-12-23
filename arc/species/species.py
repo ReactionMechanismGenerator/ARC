@@ -29,7 +29,7 @@ from arc.settings import default_ts_methods, valid_chars, minimum_barrier
 from arc.species import conformers
 from arc.species.converter import rdkit_conf_from_mol, xyz_from_data, molecules_from_xyz, rmg_mol_from_inchi, \
     order_atoms_in_mol_list, check_isomorphism, set_rdkit_dihedrals, translate_to_center_of_mass, \
-    str_to_xyz, xyz_to_str, check_xyz_dict, check_zmat_dict, get_xyz_radius
+    str_to_xyz, xyz_to_str, check_xyz_dict, check_zmat_dict, get_xyz_radius, remove_dummies
 from arc.ts import atst
 
 
@@ -1177,22 +1177,22 @@ class ARCSpecies(object):
                     raise InputError('Each xyz entry in xyz_list must be either a string or a dictionary. '
                                      'Got:\n{0}\nwhich is a {1}'.format(xyz, type(xyz)))
                 if isinstance(xyz, dict):
-                    xyzs.append(check_xyz_dict(xyz))
+                    xyzs.append(remove_dummies(check_xyz_dict(xyz)))
                     energies.append(None)  # dummy (lists should be the same length)
                 elif os.path.isfile(xyz):
                     file_extension = os.path.splitext(xyz)[1]
                     if 'txt' in file_extension:
                         # assume this is an ARC conformer file
                         xyzs_, energies_ = process_conformers_file(conformers_path=xyz)
-                        xyzs.extend(xyzs_)
+                        xyzs.extend([remove_dummies(xyz_) for xyz_ in xyzs_])
                         energies.extend(energies_)
                     else:
                         # assume this is an ESS log file
-                        xyzs.append(parse_xyz_from_file(xyz))  # also calls standardize_xyz_string()
+                        xyzs.append(remove_dummies(parse_xyz_from_file(xyz)))  # also calls standardize_xyz_string()
                         energies.append(None)  # dummy (lists should be the same length)
                 elif isinstance(xyz, str):
                     # string which does not represent a (valid) path, treat as a string representation of xyz
-                    xyzs.append(str_to_xyz(xyz))
+                    xyzs.append(remove_dummies(str_to_xyz(xyz)))
                     energies.append(None)  # dummy (lists should be the same length)
             if not self.is_ts:
                 self.conformers.extend(xyzs)
@@ -1205,7 +1205,8 @@ class ARCSpecies(object):
                     #     if xyz == tsg.xyz:
                     #         break
                     # else:
-                    self.ts_guesses.append(TSGuess(method='user guess {0}'.format(tsg_index), xyz=xyz, energy=energy))
+                    self.ts_guesses.append(TSGuess(method='user guess {0}'.format(tsg_index),
+                                                   xyz=remove_dummies(xyz), energy=energy))
                     # user guesses are always successful in generating a *guess*:
                     self.ts_guesses[tsg_index].success = True
                     tsg_index += 1
