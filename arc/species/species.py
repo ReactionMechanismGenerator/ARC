@@ -29,7 +29,7 @@ from arc.settings import default_ts_methods, valid_chars, minimum_barrier
 from arc.species import conformers
 from arc.species.converter import rdkit_conf_from_mol, xyz_from_data, molecules_from_xyz, rmg_mol_from_inchi, \
     order_atoms_in_mol_list, check_isomorphism, set_rdkit_dihedrals, translate_to_center_of_mass, \
-    str_to_xyz, xyz_to_str, check_xyz_dict, check_zmat_dict, xyz_to_x_y_z
+    str_to_xyz, xyz_to_str, check_xyz_dict, check_zmat_dict, get_xyz_radius
 from arc.ts import atst
 
 
@@ -452,23 +452,11 @@ class ARCSpecies(object):
         atoms in 3D space.
 
         Returns:
-            float: Radius in are Angstrom.
+            float: The radius in Angstrom.
         """
         if self._radius is None:
-            translated_xyz = translate_to_center_of_mass(self.get_xyz())
-            border_elements = list()  # a list of the farthest element/s
-            r = 0
-            x, y, z = xyz_to_x_y_z(translated_xyz)
-            for si, xi, yi, zi in zip(translated_xyz['symbols'], x, y, z):
-                ri = xi ** 2 + yi ** 2 + zi ** 2
-                if ri == r:
-                    border_elements.append(si)
-                elif ri > r:
-                    r = ri
-                    border_elements = [si]
-            atom_r = max([get_atom_radius(si) if get_atom_radius(si) is not None else 1.50 for si in border_elements])
-            self._radius = r ** 0.5 + atom_r
-            logger.info('Determined a radius of {0:.2f} Angstrom for {1}'.format(self._radius, self.label))
+            self._radius = get_xyz_radius(self.get_xyz())
+            logger.info(f'Determined a radius of {self._radius:.2f} Angstrom for {self.label}')
         return self._radius
 
     @radius.setter

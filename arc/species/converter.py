@@ -1477,3 +1477,27 @@ def translate_to_center_of_mass(xyz):
         z[i] = z[i] if abs(z[i]) > 1e-10 else 0.0
     translated_coords = tuple((xi, yi, zi) for xi, yi, zi in zip(x, y, z))
     return xyz_from_data(coords=translated_coords, symbols=xyz['symbols'], isotopes=xyz['isotopes'])
+
+
+def get_xyz_radius(xyz):
+    """
+    Determine the largest distance from the coordinate system origin attributed to one of the atoms in 3D space.
+
+    Returns:
+        float: The radius in Angstrom.
+    """
+    translated_xyz = translate_to_center_of_mass(xyz)
+    border_elements = list()  # a list of the farthest element/s
+    r = 0
+    x, y, z = xyz_to_x_y_z(translated_xyz)
+    for si, xi, yi, zi in zip(translated_xyz['symbols'], x, y, z):
+        ri = xi ** 2 + yi ** 2 + zi ** 2
+        if ri == r:
+            border_elements.append(si)
+        elif ri > r:
+            r = ri
+            border_elements = [si]
+    # also consider the atom's radius:
+    atom_r = max([get_atom_radius(si) if get_atom_radius(si) is not None else 1.50 for si in border_elements])
+    radius = r ** 0.5 + atom_r
+    return radius
