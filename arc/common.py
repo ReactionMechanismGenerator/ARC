@@ -259,8 +259,10 @@ def read_yaml_file(path):
     Returns:
         dict or list: The content read from the file.
     """
+    if not isinstance(path, str):
+        raise InputError(f'path must be a string, got {path} which is a {type(path)}')
     if not os.path.isfile(path):
-        raise InputError('Could not find the YAML file {0}'.format(path))
+        raise InputError(f'Could not find the YAML file {path}')
     with open(path, 'r') as f:
         content = yaml.load(stream=f, Loader=yaml.FullLoader)
     return content
@@ -274,6 +276,8 @@ def save_yaml_file(path, content):
         path (str): The YAML file path to save.
         content (list, dict): The content to save.
     """
+    if not isinstance(path, str):
+        raise InputError(f'path must be a string, got {path} which is a {type(path)}')
     yaml.add_representer(str, string_representer)
     logger.debug('Creating a restart file...')
     content = yaml.dump(data=content)
