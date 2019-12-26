@@ -2402,6 +2402,7 @@ class Scheduler(object):
                     self.species_dict[label].initial_xyz = xyz  # save for troubleshooting, since trsh goes by initial
                     self.run_job(label=label, xyz=xyz, level_of_theory=self.opt_level, job_type='opt', fine=True)
             else:
+                trsh_opt = True
                 # job passed on the server, but failed in ESS calculation
                 if previous_job_num >= 0 and job.fine:
                     previous_job = self.job_dict[label]['opt']['opt_a' + str(previous_job_num)]
@@ -2414,7 +2415,8 @@ class Scheduler(object):
                                      f'on the server, but crashed during calculation. NOT running with fine '
                                      f'grid again.')
                         self.parse_opt_geo(label=label, job=previous_job)
-                else:
+                        trsh_opt = False
+                if trsh_opt:
                     self.troubleshoot_ess(label=label, job=job, level_of_theory=self.opt_level)
         else:
             job.troubleshoot_server()
