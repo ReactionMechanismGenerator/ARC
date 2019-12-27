@@ -76,7 +76,7 @@ def parse_normal_displacement_modes(path, software=None):
         NotImplementedError: If the parser is not implemented for the ESS this log file belongs to.
     """
     software = software or determine_ess(path)
-    freqs, normal_disp_modes = list(), list()
+    freqs, normal_disp_modes, normal_disp_modes_entries = list(), list(), list()
     num_of_freqs_per_line = 3
     with open(path, 'r') as f:
         lines = f.readlines()
@@ -86,7 +86,7 @@ def parse_normal_displacement_modes(path, software=None):
             if 'Harmonic frequencies (cm**-1)' in line:
                 # e.g.:  Harmonic frequencies (cm**-1), IR intensities (KM/Mole), Raman scattering
                 parse = True
-            if parse and len(line.split()) in [0, 3]:
+            if parse and len(line.split()) in [0, 1, 3]:
                 parse_normal_disp_modes = False
             if parse and 'Frequencies --' in line:
                 # e.g.:  Frequencies --    -18.0696               127.6948               174.9499
