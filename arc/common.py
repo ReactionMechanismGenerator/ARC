@@ -609,7 +609,7 @@ def sort_two_lists_by_the_first(list1, list2):
 
 def determine_model_chemistry_type(method):
     """
-    Determine the type of a model chemistry (e.g., DFT, wavefunction, force field, semi-empirical).
+    Determine the type of a model chemistry (e.g., DFT, wavefunction, force field, semi-empirical, composite).
 
     Args:
         method (str): method in a model chemistry. e.g., b3lyp, cbs-qb3, am1, dlpno-ccsd(T)
@@ -622,6 +622,14 @@ def determine_model_chemistry_type(method):
                              'bd', 'mbpt']
     semiempirical_methods = ['am', 'pm', 'zindo', 'mndo', 'xtb', 'nddo']
     force_field_methods = ['amber', 'mmff', 'dreiding', 'uff', 'qmdff', 'gfn', 'gaff', 'ghemical', 'charmm', 'ani']
+    # all composite methods supported by Gaussian
+    composite_methods = ['cbs-4m', 'cbs-qb3', 'rocbs-qb3', 'cbs-apno', 'w1u', 'w1ro', 'w1bd', 'g1', 'g2', 'g3', 'g4',
+                         'g2mp2', 'g3mp2', 'g3b3', 'g3mp2b3', 'g4mp2', 'cbs-qb3-paraskevas']
+
+    # Composite methods
+    if given_method in composite_methods:
+        model_chemistry_class = 'composite'
+        return model_chemistry_class
 
     # Special cases
     if given_method in ['m06hf', 'm06-hf']:

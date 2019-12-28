@@ -2801,7 +2801,7 @@ def _format_level_of_theory_inputs(level_of_theory):
                 formatted_job_level_of_theory_dict['method'] = level_of_theory.split('/')[0]
                 formatted_job_level_of_theory_dict['basis'] = level_of_theory.split('/')[1]
         else:
-            # cbs-qb3
+            # cbs-qb3, AM1
             formatted_job_level_of_theory_dict['method'] = level_of_theory
     elif isinstance(level_of_theory, dict):
         formatted_job_level_of_theory_dict = level_of_theory

@@ -369,6 +369,10 @@ class TestARC(unittest.TestCase):
         with self.assertRaises(InputError):
             ARC(project='test', level_of_theory='b3lyp/sto-3g', opt_level='wb97xd/def2tzvp')
 
+        # Test illegal level of theory specification (semi-empirical method)
+        with self.assertRaises(InputError):
+            ARC(project='test', level_of_theory='AM1')
+
         # Test deduce formatted levels from default method from settings.py
         arc1 = ARC(project='test')
         expected_opt_level = {'method': 'wb97xd', 'basis': 'def2tzvp', 'auxiliary_basis': '', 'dispersion': ''}
@@ -494,6 +498,16 @@ class TestARC(unittest.TestCase):
                     job_types={'rotors': True})
         expected_scan_level = {'method': 'apfd', 'basis': 'def2svp', 'auxiliary_basis': '', 'dispersion': ''}
         self.assertEqual(arc12.scan_level, expected_scan_level)
+
+        # Test specifying semi-empirical and force-field methods using dictionary
+        arc13 = ARC(project='test', opt_level={'method': 'AM1'}, freq_level={'method': 'PM6'},
+                    sp_level={'method': 'AMBER'}, calc_freq_factor=False)
+        expected_opt_level = {'method': 'am1', 'basis': '', 'auxiliary_basis': '', 'dispersion': ''}
+        expected_freq_level = {'method': 'pm6', 'basis': '', 'auxiliary_basis': '', 'dispersion': ''}
+        expected_sp_level = {'method': 'amber', 'basis': '', 'auxiliary_basis': '', 'dispersion': ''}
+        self.assertEqual(arc13.opt_level, expected_opt_level)
+        self.assertEqual(arc13.freq_level, expected_freq_level)
+        self.assertEqual(arc13.sp_level, expected_sp_level)
 
     def test_format_model_chemistry_inputs(self):
         """Test formatting the job model chemistry inputs"""

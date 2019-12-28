@@ -1084,12 +1084,19 @@ class ARC(object):
 
             further_check = True
             standard_level_of_theory_format = True  # e.g., wb97xd/def2tzvp//b3lyp/def2svp
-            if '/' not in self.level_of_theory:  # assume this is a composite method
-                self.composite_method = self.level_of_theory.lower()
-                logger.info(f'Given level_of_theory {self.level_of_theory} is not in standard format. Because '
-                            f'no single slash (/) appear in the name, ARC assumes this is a composite method.')
-                self.level_of_theory = ''  # it will cause conflict with composite method at restart without reset here
-                further_check = False
+            if '/' not in self.level_of_theory:
+                if determine_model_chemistry_type(self.level_of_theory) == 'composite':
+                    self.composite_method = self.level_of_theory.lower()
+                    logger.info(f'Given level_of_theory {self.level_of_theory} seems to be a composite method.')
+                    # it will cause conflict with composite method at restart without reset level_of_theory here
+                    self.level_of_theory = ''
+                    further_check = False
+                else:
+                    raise InputError(f"Given level_of_theory {self.level_of_theory} is not in standard format (no "
+                                     f"single slash '/' appears in the name) and seems not to be a composite method. "
+                                     f"Please first check the spelling. For example, cbs-qb3 has a dash. If you "
+                                     f"intended to specify a semi-empirical method such as AM1, please use the "
+                                     f"dictionary-style job level format as described in the documentation.")
             elif '//' not in self.level_of_theory:
                 # assume this is not a composite method, and the user meant to run opt, freq and sp at this level.
                 logger.info(f'Given level_of_theory {self.level_of_theory} is not in standard format. Because '
@@ -1249,7 +1256,10 @@ def _format_model_chemistry_inputs(model_chem_input):
                              f'to specify method, basis, auxiliary basis, and dispersion in this case. '
                              f'See documentation for more details.')
         elif '/' not in model_chem_input:
-            # e.g., 'AM1', 'XTB'
+            # e.g., 'AM1', 'XTB', 'CBS-QB3'
+            # Notice that this function is not designed to distinguish composite methods and
+            # semi-empirical methods. If such differentiation is needed elsewhere in the codebase, please use
+            # `determine_model_chemistry_type` in common.py
             formatted_model_chemistry_dict['method'] = model_chem_input.lower()
         elif model_chem_input.count('/') >= 2:
             # illegal inputs like 'dlpno-ccsd(t)/def2-svp/def2-svp/c'

@@ -478,6 +478,15 @@ H 	2.951	-3.078	-4.102""")
         model_chemistry_class_expected = 'dft'
         self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
 
+        method = 'CBS-QB3'
+        model_chemistry_class = common.determine_model_chemistry_type(method)
+        model_chemistry_class_expected = 'composite'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        method = 'G4'
+        model_chemistry_class = common.determine_model_chemistry_type(method)
+        model_chemistry_class_expected = 'composite'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
