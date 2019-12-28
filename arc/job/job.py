@@ -21,7 +21,7 @@ from arc.job.submit import submit_scripts
 from arc.job.ssh import SSHClient
 from arc.job.trsh import determine_ess_status, trsh_job_on_server
 from arc.settings import arc_path, servers, submit_filename, t_max_format, input_filename, output_filename, \
-    rotor_scan_resolution, levels_ess
+    rotor_scan_resolution, levels_ess, orca_default_options_dict
 from arc.species.converter import xyz_to_str, str_to_xyz, check_xyz_dict
 
 
@@ -579,18 +579,30 @@ class Job(object):
         Write a software-specific, job-specific input file.
         Save the file locally and also upload it to the server.
         """
-        if self.initial_trsh and not self.trsh:
-            # use the default trshs defined by the user in the initial_trsh dictionary
-            if self.software in self.initial_trsh:
-                self.trsh = self.initial_trsh[self.software]
+        # Initialize variables
+        orca_options_keywords_dict, orca_options_blocks_dict, restricted, method_class = (None for _ in range(4))
+        job_options_keywords, job_options_blocks, shortcut_keywords = '', '', ''
+
+        # Ignore user specified additional job job_options_keywords when troubleshoot
+        if self.trsh:
+            logger.warning(f'When troubleshooting {self.job_name}, ARC ignores user-specified additional job options \n'
+                           f'{yaml.dump(self.job_additional_options.get(self.software, ""), default_flow_style=False)}'
+                           f'\n'
+                           f'{yaml.dump(self.job_shortcut_keywords.get(self.software, ""), default_flow_style=False)}')
+            self.job_additional_options = dict()
+            self.job_shortcut_keywords = ''
 
         self.input = input_files.get(self.software, None)
 
-        slash, scan_string, constraint = '', '', ''
-        if self.software == 'gaussian' and '/' in self.level_of_theory:
+        slash, slash_2, scan_string, constraint = '', '', '', ''
+        if self.software == 'gaussian' and self.basis_set:
+            # assume method without basis set is composite method or force field
             slash = '/'
+            if self.auxiliary_basis_set:
+                slash_2 = '/'
 
-        if (self.multiplicity > 1 and '/' in self.level_of_theory) \
+        # Determine HF/DFT restriction type
+        if (self.multiplicity > 1 and self.basis_set) \
                 or (self.number_of_radicals is not None and self.number_of_radicals > 1):
             # don't add 'u' to composite jobs. Do add 'u' for bi-rad singlets if `number_of_radicals` > 1
             if self.number_of_radicals is not None and self.number_of_radicals > 1:
@@ -598,13 +610,16 @@ class Job(object):
                             'multiplicity {2}'.format(self.species_name, self.number_of_radicals, self.multiplicity))
             if self.software == 'qchem':
                 restricted = 'True'  # In QChem this attribute is "unrestricted"
-            else:
+            elif self.software in ['gaussian', 'orca', 'molpro']:
                 restricted = 'u'
         else:
             if self.software == 'qchem':
                 restricted = 'False'  # In QChem this attribute is "unrestricted"
-            else:
+            elif self.software == 'orca':
+                restricted = 'r'
+            else:  # gaussian, molpro
                 restricted = ''
+
 
         job_type_1, job_type_2, fine = '', '', ''
 
@@ -628,6 +643,78 @@ wf,spin={spin},charge={charge};}}
 {job_type_2}
 ---;"""
 
+        # Software specific global job options
+        if self.software == 'orca':
+            orca_options_keywords_dict = dict()
+            orca_options_blocks_dict = dict()
+            user_scf_convergence = ''
+            if self.job_additional_options:
+                try:
+                    user_block_keywords = self.job_additional_options[self.software]['global']['block']\
+                        .get('generic', '')
+                except KeyError:
+                    user_block_keywords = ''
+                if user_block_keywords:
+                    orca_options_blocks_dict['global_generic'] = user_block_keywords
+
+                try:
+                    user_keywords = self.job_additional_options[self.software]['global']['keyword']\
+                        .get('generic', '')
+                except KeyError:
+                    user_keywords = ''
+                if user_keywords:
+                    orca_options_keywords_dict['global_generic'] = user_keywords
+
+                try:
+                    user_scf_convergence = self.job_additional_options[self.software]['global']['keyword']\
+                        .get('scf_convergence', '')
+                except KeyError:
+                    user_scf_convergence = ''
+            scf_convergence = user_scf_convergence.lower() or\
+                              orca_default_options_dict['global']['keyword'].get('scf_convergence', '').lower()
+            if not scf_convergence:
+                raise InputError('Orca SCF convergence is not specified. Please specify this variable either in the '
+                                 'settings.py as default options or in the input file as additional options.')
+            orca_options_keywords_dict['scf_convergence'] = scf_convergence
+
+            # Orca requires different job_options_blocks to wavefunction methods and DFTs
+            # determine model chemistry type
+            model_chemistry_class = self.determine_model_chemistry_class()
+            if model_chemistry_class == 'dft':
+                method_class = 'KS'
+                # DFT grid must be the same for both opt and freq
+                orca_options_keywords_dict['dft_final_grid'] = 'NoFinalGrid'
+                if self.fine:
+                    orca_options_keywords_dict['dft_grid'] = 'Grid6'
+                else:
+                    orca_options_keywords_dict['dft_grid'] = 'Grid5'
+            elif model_chemistry_class == 'wavefunction':
+                method_class = 'HF'
+                if 'dlpno' in self.method.lower():
+                    user_dlpno_threshold = ''
+                    if self.job_additional_options:
+                        try:
+                            user_dlpno_threshold = self.job_additional_options[self.software]['global']['keyword'] \
+                                .get('dlpno_threshold', '')
+                        except KeyError:
+                            user_dlpno_threshold = ''
+                    dlpno_threshold = user_dlpno_threshold.lower() if user_dlpno_threshold \
+                        else orca_default_options_dict['global']['keyword'].get('dlpno_threshold', '').lower()
+                    if not dlpno_threshold:
+                        raise InputError(
+                            'Orca DLPNO threshold is not specified. Please specify this variable either in the '
+                            'settings.py as default options or in the input file as additional options.')
+                    orca_options_keywords_dict['dlpno_threshold'] = dlpno_threshold
+            else:
+                logger.debug(f'Running {self.method} method in Orca.')
+        elif self.software == 'gaussian' and not self.trsh:
+            if self.job_level_of_theory_dict['method'][:2] == 'ro':
+                self.trsh = 'use=L506'
+            else:
+                # xqc will do qc (quadratic convergence) if the job fails w/o it, so use by default
+                self.trsh = 'scf=xqc'
+
+        # Job type specific options
         if self.job_type in ['conformer', 'opt']:
             if self.software == 'gaussian':
                 if self.is_ts:
@@ -662,6 +749,48 @@ wf,spin={spin},charge={charge};}}
                     job_type_1 = "\noptg, root=2, method=qsd, readhess, savexyz='geometry.xyz'"
                 else:
                     job_type_1 = "\noptg, savexyz='geometry.xyz'"
+            elif self.software == 'orca':
+                if self.fine:
+                    user_fine_opt_convergence = ''
+                    if self.job_additional_options:
+                        try:
+                            user_fine_opt_convergence = self.job_additional_options[self.software]['opt']['keyword'] \
+                                .get('fine_opt_convergence', '')
+                        except KeyError:
+                            user_fine_opt_convergence = ''
+                    fine_opt_convergence = user_fine_opt_convergence.lower() if user_fine_opt_convergence \
+                        else orca_default_options_dict['opt']['keyword'].get('fine_opt_convergence', '').lower()
+                    if not fine_opt_convergence:
+                        raise InputError(
+                            'Orca fine optimization convergence is not specified. Please specify this variable either '
+                            'in the settings.py as default options or in the input file as additional options.')
+                    orca_options_keywords_dict['fine_opt_convergence'] = fine_opt_convergence
+                else:
+                    user_opt_convergence = ''
+                    if self.job_additional_options:
+                        try:
+                            user_opt_convergence = self.job_additional_options[self.software]['opt']['keyword'] \
+                                .get('opt_convergence', '')
+                        except KeyError:
+                            user_opt_convergence = ''
+                    opt_convergence = user_opt_convergence.lower() if user_opt_convergence \
+                        else orca_default_options_dict['opt']['keyword'].get('opt_convergence', '').lower()
+                    if not opt_convergence:
+                        raise InputError(
+                            'Orca optimization convergence is not specified. Please specify this variable either in '
+                            'the settings.py as default options or in the input file as additional options.')
+                    orca_options_keywords_dict['opt_convergence'] = opt_convergence
+                if self.is_ts:
+                    job_type_1 = 'OptTS'
+                    orca_options_blocks_dict['Calc_Hess'] = """
+%geom
+    Calc_Hess true # calculation of the exact Hessian before the first opt step
+end               
+"""
+                else:
+                    job_type_1 = 'Opt'
+                job_options_keywords = ' '.join(orca_options_keywords_dict.values())
+                job_options_blocks = '\n'.join(orca_options_blocks_dict.values())
 
         elif self.job_type == 'orbitals' and self.software == 'qchem':
             if self.is_ts:
@@ -701,6 +830,20 @@ name
                 job_type_1 = 'freq'
             elif self.software == 'molpro':
                 job_type_1 = '\n{frequencies;\nthermo;\nprint,HESSIAN,thermo;}'
+            elif self.software == 'orca':
+                job_type_1 = 'Freq'
+                use_num_freq = orca_default_options_dict['freq']['keyword'].get('use_num_freq', False)
+                if self.job_additional_options:
+                    try:
+                        use_num_freq = self.job_additional_options[self.software]['freq']['keyword'] \
+                            .get('use_num_freq', False)
+                    except KeyError:
+                        use_num_freq = False
+                if use_num_freq:
+                    orca_options_keywords_dict['freq_type'] = 'NumFreq'
+                    logger.info(f'Using numerical frequencies calculation in Orca. Note: This job might therefore be '
+                                f'time-consuming.')
+                job_options_keywords = ' '.join(orca_options_keywords_dict.values())
 
         elif self.job_type == 'optfreq':
             if self.software == 'gaussian':
@@ -748,8 +891,62 @@ $end
                 else:
                     job_type_1 = "\noptg,savexyz='geometry.xyz"
                 job_type_2 = '\n{frequencies;\nthermo;\nprint,HESSIAN,thermo;}'
+            elif self.software == 'orca':
+                if self.is_ts:
+                    job_type_1 = 'OptTS'
+                    orca_options_blocks_dict['Calc_Hess'] = """
+%geom
+    Calc_Hess true # calculation of the exact Hessian before the first opt step
+end               
+"""
+                else:
+                    job_type_1 = 'Opt'
+                job_type_2 = '!Freq'
+                if self.fine:
+                    user_fine_opt_convergence = ''
+                    if self.job_additional_options:
+                        try:
+                            user_fine_opt_convergence = self.job_additional_options[self.software]['opt']['keyword'] \
+                                .get('fine_opt_convergence', '')
+                        except KeyError:
+                            user_fine_opt_convergence = ''
+                    fine_opt_convergence = user_fine_opt_convergence.lower() if user_fine_opt_convergence \
+                        else orca_default_options_dict['opt']['keyword'].get('fine_opt_convergence', '').lower()
+                    if not fine_opt_convergence:
+                        raise InputError(
+                            'Orca fine optimization convergence is not specified. Please specify this variable either '
+                            'in the settings.py as default options or in the input file as additional options.')
+                    orca_options_keywords_dict['fine_opt_convergence'] = fine_opt_convergence
+                else:
+                    user_opt_convergence = ''
+                    if self.job_additional_options:
+                        try:
+                            user_opt_convergence = self.job_additional_options[self.software]['opt']['keyword'] \
+                                .get('opt_convergence', '')
+                        except KeyError:
+                            user_opt_convergence = ''
+                    opt_convergence = user_opt_convergence.lower() if user_opt_convergence \
+                        else orca_default_options_dict['opt']['keyword'].get('opt_convergence', '').lower()
+                    if not opt_convergence:
+                        raise InputError(
+                            'Orca optimization convergence is not specified. Please specify this variable either in '
+                            'the settings.py as default options or in the input file as additional options.')
+                    orca_options_keywords_dict['opt_convergence'] = opt_convergence
+                use_num_freq = orca_default_options_dict['freq']['keyword'].get('use_num_freq', False)
+                if self.job_additional_options:
+                    try:
+                        use_num_freq = self.job_additional_options[self.software]['freq']['keyword'] \
+                            .get('use_num_freq', False)
+                    except KeyError:
+                        use_num_freq = False
+                if use_num_freq:
+                    orca_options_keywords_dict['freq_type'] = 'NumFreq'
+                    logger.info(f'Using numeric frequencies calculation in Orca. Notice that this job will be '
+                                f'very time consuming.')
+                job_options_keywords = ' '.join(orca_options_keywords_dict.values())
+                job_options_blocks = '\n'.join(orca_options_blocks_dict.values())
 
-        if self.job_type == 'sp':
+        elif self.job_type == 'sp':
             if self.software == 'gaussian':
                 job_type_1 = 'scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
                 if self.checkfile is not None:
@@ -760,6 +957,8 @@ $end
                 job_type_1 = 'sp'
             elif self.software == 'molpro':
                 pass
+            elif self.software == 'orca':
+                job_type_1 = 'sp'
 
         if self.job_type == 'composite':
             if self.software == 'gaussian':
@@ -895,15 +1094,21 @@ $end
         else:
             try:
                 self.input = self.input.format(memory=int(self.input_file_memory), method=self.method, slash=slash,
+                                               slash_2=slash_2,
                                                basis=self.basis_set, charge=self.charge, cpus=self.cpu_cores,
                                                multiplicity=self.multiplicity, spin=self.spin, xyz=xyz_to_str(self.xyz),
                                                job_type_1=job_type_1, job_type_2=job_type_2, scan=scan_string,
                                                restricted=restricted, fine=fine, shift=self.shift, trsh=self.trsh,
-                                               scan_trsh=self.scan_trsh, bath=self.bath_gas, constraint=constraint) \
+                                               scan_trsh=self.scan_trsh, bath=self.bath_gas, constraint=constraint,
+                                               job_options_blocks=job_options_blocks,
+                                               job_options_keywords=job_options_keywords,
+                                               method_class=method_class, auxiliary_basis=self.auxiliary_basis_set,
+                                               shortcut_keywords=self.job_shortcut_keywords) \
                     if self.input is not None else None
             except KeyError:
                 logger.error('Could not interpret all input file keys in\n{0}'.format(self.input))
                 raise
+
         if not self.testing:
             if not os.path.exists(self.local_path):
                 os.makedirs(self.local_path)
@@ -995,6 +1200,14 @@ $end
             ssh.download_file(remote_file_path=remote_check_file_path, local_file_path=self.local_path_to_check_file)
             if not os.path.isfile(self.local_path_to_check_file):
                 logger.warning('Gaussian check file for {0} was not downloaded properly'.format(self.job_name))
+
+        # download Orca .hess hessian file generated by frequency calculations
+        # Hessian is useful when the user would like to project rotors
+        if self.software.lower() == 'orca' and self.job_type == 'freq':
+            remote_hess_file_path = os.path.join(self.remote_path, 'input.hess')
+            ssh.download_file(remote_file_path=remote_hess_file_path, local_file_path=self.local_path_to_hess_file)
+            if not os.path.isfile(self.local_path_to_hess_file):
+                logger.warning(f'Orca hessian file for {self.job_name} was not downloaded properly')
 
         # download Lennard_Jones data file
         if self.software.lower() == 'onedmin':
@@ -1352,6 +1565,12 @@ $end
                             raise JobError('Could not find the QChem software to run {0}/{1}'.format(
                                 self.method, self.basis_set))
                         self.software = 'qchem'
+                    elif 'dlpno' in self.method:
+                        # this is a DLPNO method, use Orca
+                        if 'orca' not in esss:
+                            raise JobError(f'Could not find the Orca software to run the DLPNO method {self.method}.\n'
+                                           f'ess_settings is:\n{self.ess_settings}')
+                        self.software = 'orca'
                 elif self.job_type == 'scan':
                     if 'wb97xd' in self.method:
                         if 'gaussian' not in esss:
@@ -1490,6 +1709,7 @@ $end
         self.local_path_to_orbitals_file = os.path.join(self.local_path, 'orbitals.fchk')
         self.local_path_to_lj_file = os.path.join(self.local_path, 'lj.dat')
         self.local_path_to_check_file = os.path.join(self.local_path, 'check.chk')
+        self.local_path_to_hess_file = os.path.join(self.local_path, 'input.hess')
 
         # parentheses don't play well in folder names:
         species_name_for_remote_path = self.species_name.replace('(', '_').replace(')', '_')

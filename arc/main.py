@@ -199,6 +199,11 @@ class ARC(object):
             self.execution_time = None
             self.job_additional_options = job_additional_options if job_additional_options is not None else dict()
             self.job_shortcut_keywords = job_shortcut_keywords if job_shortcut_keywords is not None else ''
+            if self.job_additional_options:
+                logger.info(f'Use the following user-specified additional job options\n'
+                            f'{yaml.dump(self.job_additional_options, default_flow_style=False)}')
+            if self.job_shortcut_keywords:
+                logger.info(f'Use the following user-specified additional job keywords {self.job_shortcut_keywords}')
             self.use_bac = use_bac
             self.model_chemistry = model_chemistry
             self.freq_scale_factor = freq_scale_factor
