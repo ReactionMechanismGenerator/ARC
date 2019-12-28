@@ -92,13 +92,13 @@ class Scheduler(object):
         rxn_list (list): Contains input :ref:`ARCReaction <reaction>` objects.
         project_directory (str): Folder path for the project: the input file path or ARC/Projects/project-name.
         composite_method (str, optional): A composite method to use.
-        conformer_level (str, optional): The level of theory to use for conformer comparisons.
-        opt_level (str, optional): The level of theory to use for geometry optimizations.
-        freq_level (str, optional): The level of theory to use for frequency calculations.
-        sp_level (str, optional): The level of theory to use for single point energy calculations.
-        scan_level (str, optional): The level of theory to use for torsion scans.
-        ts_guess_level (str, optional): The level of theory to use for TS guess comparisons.
-        orbitals_level (str, optional): The level of theory to use for calculating MOs (for plotting).
+        conformer_level (str or dict, optional): The level of theory to use for conformer comparisons.
+        opt_level (str or dict, optional): The level of theory to use for geometry optimizations.
+        freq_level (str or dict, optional): The level of theory to use for frequency calculations.
+        sp_level (str or dict, optional): The level of theory to use for single point energy calculations.
+        scan_level (str or dict, optional): The level of theory to use for torsion scans.
+        ts_guess_level (str or dict, optional): The level of theory to use for TS guess comparisons.
+        orbitals_level (str or dict, optional): The level of theory to use for calculating MOs (for plotting).
         adaptive_levels (dict, optional): A dictionary of levels of theory for ranges of the number of heavy atoms in
                                           the molecule. Keys are tuples of (min_num_atoms, max_num_atoms), values are
                                           dictionaries with 'optfreq' and 'sp' as keys and levels of theory as values.
@@ -155,7 +155,16 @@ class Scheduler(object):
         bath_gas (str): A bath gas. Currently used in OneDMin to calc L-J parameters.
                         Allowed values are He, Ne, Ar, Kr, H2, N2, O2.
         composite_method (str): A composite method to use.
-
+        conformer_level (dict): The level of theory to use for conformer comparisons.
+        opt_level (dict): The level of theory to use for geometry optimizations.
+        freq_level (dict): The level of theory to use for frequency calculations.
+        sp_level (dict): The level of theory to use for single point energy calculations.
+        scan_level (dict): The level of theory to use for torsion scans.
+        ts_guess_level (dict): The level of theory to use for TS guess comparisons.
+        orbitals_level (dict): The level of theory to use for calculating MOs (for plotting).
+        adaptive_levels (dict): A dictionary of levels of theory for ranges of the number of heavy atoms in
+                                  the molecule. Keys are tuples of (min_num_atoms, max_num_atoms), values are
+                                  dictionaries with 'optfreq' and 'sp' as keys and levels of theory as values.
     """
     def __init__(self, project, ess_settings, species_list, project_directory, composite_method='', conformer_level='',
                  opt_level='', freq_level='', sp_level='', scan_level='', ts_guess_level='', orbitals_level='',
@@ -644,7 +653,13 @@ class Scheduler(object):
         Args:
             label (str): The species label.
             xyz (dict): The 3D coordinates for the species.
-            level_of_theory (str): The level of theory to use.
+            level_of_theory (str or dict): The level of theory to use.
+                                           String format only supports two simple cases:
+                                           (1) method (e.g., cbs-qb3, pm6)
+                                           (2) method/basis (e.g, apfd/def2-tzvp)
+                                           Dictionary format supports more options like dispersion and auxiliary basis
+                                           {'method': 'b3lyp', 'basis': 'def2-svp', 'auxiliary_basis': 'def2-svp/c',
+                                            'dispersion': 'gd3bj'}
             job_type (str): The type of job to run.
             fine (bool, optional): Whether to run an optimization job with a fine grid. `True` to use fine.
             software (str, optional): An ESS software to use.
@@ -678,8 +693,10 @@ class Scheduler(object):
         if self.adaptive_levels is not None:
             level_of_theory = self.determine_adaptive_level(original_level_of_theory=level_of_theory, job_type=job_type,
                                                             heavy_atoms=self.species_dict[label].number_of_heavy_atoms)
+        job_level_of_theory_dict = _format_level_of_theory_inputs(level_of_theory)
         job = Job(project=self.project, ess_settings=self.ess_settings, species_name=label, xyz=xyz, job_type=job_type,
-                  level_of_theory=level_of_theory, multiplicity=species.multiplicity, charge=species.charge, fine=fine,
+                  job_level_of_theory_dict=job_level_of_theory_dict, multiplicity=species.multiplicity,
+                  charge=species.charge, fine=fine,
                   shift=shift, software=software, is_ts=species.is_ts, total_job_memory_gb=memory, trsh=trsh,
                   ess_trsh_methods=ess_trsh_methods, scan=scan, pivots=pivots, occ=occ, initial_trsh=self.initial_trsh,
                   project_directory=self.project_directory, max_job_time=max_job_time, scan_trsh=scan_trsh,
@@ -768,10 +785,10 @@ class Scheduler(object):
             job (Job): The job object.
             label (str): The species label.
         """
-        self.run_job(label=label, xyz=job.xyz, level_of_theory=job.level_of_theory, job_type=job.job_type,
-                     fine=job.fine, software=job.software, shift=job.shift, trsh=job.trsh, memory=job.total_job_memory_gb,
-                     conformer=job.conformer, ess_trsh_methods=job.ess_trsh_methods, scan=job.scan,
-                     pivots=job.pivots, occ=job.occ, scan_trsh=job.scan_trsh, scan_res=job.scan_res,
+        self.run_job(label=label, xyz=job.xyz, level_of_theory=job.job_level_of_theory_dict, job_type=job.job_type,
+                     fine=job.fine, software=job.software, shift=job.shift, trsh=job.trsh,
+                     memory=job.total_job_memory_gb, conformer=job.conformer, ess_trsh_methods=job.ess_trsh_methods,
+                     scan=job.scan, pivots=job.pivots, occ=job.occ, scan_trsh=job.scan_trsh, scan_res=job.scan_res,
                      max_job_time=job.max_job_time, confs=job.conformers, radius=job.radius,
                      directed_scan_type=job.directed_scan_type, directed_scans=job.directed_scans,
                      directed_dihedrals=job.directed_dihedrals, rotor_index=job.rotor_index, cpu_cores=job.cpu_cores)
@@ -1075,6 +1092,7 @@ class Scheduler(object):
             if 'ff_param_fit' not in self.job_dict[label]:
                 self.run_job(label=label, xyz=self.species_dict[label].get_xyz(), job_type='ff_param_fit',
                              level_of_theory='blyp/svp/svpfit')
+                # todo: this level and theory format (two /) is not compatible with current job level treatment
 
     def run_gromacs_job(self, label, confs):
         """
@@ -1558,7 +1576,7 @@ class Scheduler(object):
             logger.error('No conformer converged for species {0}! Trying to troubleshoot conformer jobs...'.format(
                 label))
             for i, job in self.job_dict[label]['conformers'].items():
-                self.troubleshoot_ess(label, job, level_of_theory=job.level_of_theory, conformer=job.conformer)
+                self.troubleshoot_ess(label, job, level_of_theory=job.job_level_of_theory_dict, conformer=job.conformer)
         else:
             conformer_xyz = None
             xyzs = list()
@@ -1765,7 +1783,7 @@ class Scheduler(object):
             rxn_str = ''
             if self.species_dict[label].is_ts:
                 rxn_str = ' of reaction {0}'.format(self.species_dict[label].rxn_label)
-            logger.info(f'\nOptimized geometry for {label}{rxn_str} at {job.level_of_theory}:\n'
+            logger.info(f'\nOptimized geometry for {label}{rxn_str} at {job.job_level_of_theory_dict}:\n'
                         f'{xyz_to_str(xyz_dict=self.species_dict[label].final_xyz)}')
             if not job.is_ts:
                 plotter.draw_structure(species=self.species_dict[label], project_directory=self.project_directory)
@@ -1792,7 +1810,7 @@ class Scheduler(object):
             elif not self.species_dict[label].is_ts:
                 self.troubleshoot_negative_freq(label=label, job=job)
         if job.job_status[1]['status'] != 'done' or not freq_ok:
-            self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level_of_theory)
+            self.troubleshoot_ess(label=label, job=job, level_of_theory=job.job_level_of_theory_dict)
         return False  # return ``False``, so no freq / scan jobs are initiated for this unoptimized geometry
 
     def parse_opt_geo(self, label, job):
@@ -1814,7 +1832,7 @@ class Scheduler(object):
                 # Run opt again using a finer grid.
                 xyz = self.species_dict[label].final_xyz
                 self.species_dict[label].initial_xyz = xyz  # save for troubleshooting, since trsh goes by initial
-                self.run_job(label=label, xyz=xyz, level_of_theory=job.level_of_theory, job_type='opt', fine=True)
+                self.run_job(label=label, xyz=xyz, level_of_theory=job.job_level_of_theory_dict, job_type='opt', fine=True)
             else:
                 success = True
                 if 'optfreq' in job.job_name:
@@ -1849,7 +1867,7 @@ class Scheduler(object):
                                     # and its geometry wasn't saved in the TSGuess objects
                                     tsg.products_xyz.append((label, self.species_dict[label].final_xyz))
                 logger.info('\nOptimized geometry for {label}{rxn} at {level}:\n{xyz}'.format(
-                    label=label, rxn=rxn_str, level=job.level_of_theory,
+                    label=label, rxn=rxn_str, level=job.job_level_of_theory_dict,
                     xyz=xyz_to_str(self.species_dict[label].final_xyz)))
                 self.save_restart_dict()
                 self.output[label]['paths']['geo'] = job.local_path_to_output_file  # will be overwritten with freq
@@ -1905,7 +1923,7 @@ class Scheduler(object):
                         self.species_dict[label].transport_data.comment =\
                             str('Polarizability calculated at the {0} level of theory'.format(self.freq_level))
         else:
-            self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level_of_theory)
+            self.troubleshoot_ess(label=label, job=job, level_of_theory=job.job_level_of_theory_dict)
 
     def check_negative_freq(self, label, job, vibfreqs):
         """
@@ -1953,7 +1971,7 @@ class Scheduler(object):
             label (str): The species label.
             job (Job): The single point job object.
         """
-        if 'mrci' in self.sp_level and 'mrci' not in job.level_of_theory:
+        if 'mrci' in self.sp_level and 'mrci' not in job.job_level_of_theory_dict:
             # This is a CCSD job ran before MRCI. Spawn MRCI
             self.run_sp_job(label)
         elif job.job_status[1]['status'] == 'done':
@@ -1979,7 +1997,7 @@ class Scheduler(object):
                 # save the geometry from the sp job for monoatomic species for which no opt/freq jobs will be spawned
                 self.output[label]['paths']['geo'] = job.local_path_to_output_file
         else:
-            self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level_of_theory)
+            self.troubleshoot_ess(label=label, job=job, level_of_theory=job.job_level_of_theory_dict)
 
     def check_scan_job(self, label, job):
         """
@@ -2014,7 +2032,7 @@ class Scheduler(object):
         """
         # If the job has not converged, troubleshoot
         if job.job_status[1]['status'] != 'done':
-            self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level_of_theory)
+            self.troubleshoot_ess(label=label, job=job, level_of_theory=job.job_level_of_theory_dict)
             return None
         invalidate, actions, energies = False, list(), list()
         for i in range(self.species_dict[label].number_of_rotors):
@@ -2376,7 +2394,7 @@ class Scheduler(object):
             species_scan_lists = [rotor_dict['scan'] for rotor_dict in self.species_dict[label].rotors_dict.values()]
             scan_trsh, scan_res = trsh_scan_job(label=label, scan_res=job.scan_res, scan=job.scan,
                                                 species_scan_lists=species_scan_lists, methods=methods)
-            self.run_job(label=label, xyz=job.xyz, level_of_theory=job.level_of_theory, job_type='scan',
+            self.run_job(label=label, xyz=job.xyz, level_of_theory=job.job_level_of_theory_dict, job_type='scan',
                          scan=job.scan, pivots=job.pivots, scan_trsh=scan_trsh, scan_res=scan_res)
 
     def troubleshoot_opt_jobs(self, label):
@@ -2436,7 +2454,7 @@ class Scheduler(object):
         Args:
             label (str): The species label.
             job (Job): The job object to troubleshoot.
-            level_of_theory (str): The level of theory to use.
+            level_of_theory (str or dict): The level of theory to use.
             conformer (str, optional): The conformer index.
         """
         logger.info('\n')
@@ -2458,15 +2476,22 @@ class Scheduler(object):
         if job.software == 'gaussian':
             if self.species_dict[label].checkfile is None:
                 self.species_dict[label].checkfile = job.checkfile
-        level_of_theory = level_of_theory or self.composite_method
+
+        level_of_theory_str = ''
+        if isinstance(level_of_theory, dict):
+            method = level_of_theory.get('method', '')
+            basis = level_of_theory.get('basis', '')
+            level_of_theory_str = method if not basis else '/'.join([method, basis])
+
+        level_of_theory = level_of_theory_str or self.composite_method
         # make a temporary list of ones just to count the number of heavy atoms in the molecule
         num_heavy_atoms = len([1 for atom in self.species_dict[label].mol.atoms if atom.is_non_hydrogen()])
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
             memory, shift, cpu_cores, dont_rerun = \
             trsh_ess_job(label=label, level_of_theory=level_of_theory, server=job.server, job_status=job.job_status[1],
                          job_type=job.job_type, num_heavy_atoms=num_heavy_atoms, software=job.software, fine=job.fine,
-                         memory_gb=job.total_job_memory_gb, cpu_cores=job.cpu_cores, ess_trsh_methods=job.ess_trsh_methods,
-                         available_ess=list(self.ess_settings.keys()))
+                         memory_gb=job.total_job_memory_gb, cpu_cores=job.cpu_cores,
+                         ess_trsh_methods=job.ess_trsh_methods, available_ess=list(self.ess_settings.keys()))
         for output_error in output_errors:
             self.output[label]['errors'] += output_error
         if remove_checkfile:
@@ -2733,3 +2758,50 @@ def sum_time_delta(timedelta_list):
         if timedelta is not None:
             result += timedelta
     return result
+
+
+def _format_level_of_theory_inputs(level_of_theory):
+    """
+    A helper function to format level of theory inputs for internal use in ARC.
+
+    Notice that this function is not designed to distinguish composite methods and semi-empirical methods.
+    If such differentiation is needed elsewhere in the codebase, please use `determine_model_chemistry_type` in
+    common.py
+
+    Args:
+        level_of_theory (str or dict): The level of theory to use for a job.
+                                       String format only supports two simple cases:
+                                       (1) method (e.g., cbs-qb3, pm6)
+                                       (2) method/basis (e.g, apfd/def2-tzvp)
+                                       Dictionary format supports more options like dispersion and auxiliary basis
+                                       {'method': 'b3lyp', 'basis': 'def2-svp', 'auxiliary_basis': 'def2-svp/c',
+                                        'dispersion': 'gd3bj'}
+
+    Returns:
+        formatted_job_level_of_theory_dict (dict): The formatted model chemistry dictionary.
+
+    Raises:
+        InputError: If ``level_of_theory`` contains illegal specifications.
+    """
+    formatted_job_level_of_theory_dict = dict()
+    if isinstance(level_of_theory, str):
+        if ' ' in level_of_theory:  # apfd/def2tzvp def2svp, b3lyp sto-3g
+            raise InputError(f'Level of theory seems wrong. It should not contain empty spaces.\n'
+                             f'Got: "{level_of_theory}"\n'
+                             f'See documentation if you intended to include an auxiliary basis set.')
+        if '/' in level_of_theory:
+            if level_of_theory.count('/') > 1:
+                raise InputError(f'Level of theory seems wrong. It should not contain multiple slashes.\n'
+                                 f'Got: "{level_of_theory}"\n'
+                                 f'See documentation if you intended to include an auxiliary basis set.')
+            else:  # apfd/def2tzvp
+                formatted_job_level_of_theory_dict['method'] = level_of_theory.split('/')[0]
+                formatted_job_level_of_theory_dict['basis'] = level_of_theory.split('/')[1]
+        else:
+            # cbs-qb3
+            formatted_job_level_of_theory_dict['method'] = level_of_theory
+    elif isinstance(level_of_theory, dict):
+        formatted_job_level_of_theory_dict = level_of_theory
+    else:
+        raise InputError(f'level_of_theory must be a string or a dictionary. Got {type(level_of_theory)}')
+    return formatted_job_level_of_theory_dict
