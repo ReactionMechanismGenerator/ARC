@@ -8,6 +8,30 @@ sorted in a dictionary with server names as keys
 
 
 submit_scripts = {
+    'fukui': """#!/bin/bash -l
+#SBATCH -p medium
+#SBATCH -J {name}
+#SBATCH --time=0-24:00:00
+#SBATCH -e err.txt
+#SBATCH -o out.txt
+#SBATCH -n 1
+#SBATCH --mem-per-cpu=8000
+
+
+echo "============================================================"
+echo "Job ID : $SLURM_JOB_ID"
+echo "Job Name : $SLURM_JOB_NAME"
+echo "Starting on : $(date)"
+echo "Running on node : $SLURMD_NODENAME"
+echo "Current directory : $(pwd)"
+echo "============================================================"
+
+
+conda activate arc_env
+
+python input.py
+
+""",
     'c3ddb': {
         # Gaussian 09
         'gaussian': """#!/bin/bash -l
