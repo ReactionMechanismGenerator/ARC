@@ -636,9 +636,9 @@ class Scheduler(object):
             if self.timer and job_list:
                 time.sleep(30)  # wait 30 sec before bugging the servers again.
             t = time.time() - self.report_time
-            if t > 3600:
+            if t > 3600 and self.running_jobs:
                 self.report_time = time.time()
-                logger.info('Currently running jobs:\n{0}'.format(self.running_jobs))
+                logger.info(f'Currently running jobs:\n{self.running_jobs}')
 
         # After exiting the Scheduler while loop, append all YAML species not directly calculated to the species_dict:
         for spc in self.species_list:
