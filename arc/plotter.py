@@ -31,7 +31,7 @@ from rmgpy.data.transport import TransportLibrary
 from rmgpy.quantity import ScalarQuantity
 from rmgpy.species import Species
 
-from arc.common import get_logger, min_list, save_yaml_file, sort_two_lists_by_the_first
+from arc.common import get_logger, min_list, save_yaml_file, sort_two_lists_by_the_first, is_notebook
 from arc.exceptions import InputError, SanitizationError
 from arc.species.converter import rdkit_conf_from_mol, molecules_from_xyz, check_xyz_dict, str_to_xyz, xyz_to_str, \
     xyz_to_x_y_z, xyz_from_data
@@ -54,13 +54,15 @@ def draw_structure(xyz=None, species=None, project_directory=None, method='show_
         method (str, optional): The method to use, either show_sticks or draw_3d.
     """
     success = False
-    if method == 'show_sticks':
+    notebook = is_notebook()
+    xyz = check_xyz_species_for_drawing(xyz, species)
+    if method == 'show_sticks' and notebook:
         try:
             success = show_sticks(xyz=xyz, species=species, project_directory=project_directory)
         except (IndexError, InputError):
             pass
-    if not success or method == 'draw_3d':
-        draw_3d(xyz=xyz, species=species, project_directory=project_directory)
+    if not success or method == 'draw_3d' or not notebook:
+        draw_3d(xyz=xyz, species=species, project_directory=project_directory, save_only=not notebook)
 
 
 def show_sticks(xyz=None, species=None, project_directory=None):
@@ -75,14 +77,14 @@ def show_sticks(xyz=None, species=None, project_directory=None):
         project_directory (str): ARC's project directory to save a draw_3d image in.
 
     Returns:
-        bool: Whether the show_sticks drawing was successfull. ``True`` if it was.
+        bool: Whether the show_sticks drawing was successful. ``True`` if it was.
     """
     xyz = check_xyz_species_for_drawing(xyz, species)
     if species is None:
         s_mol, b_mol = molecules_from_xyz(xyz)
         mol = b_mol if b_mol is not None else s_mol
     else:
-        mol = species.mol
+        mol = species.mol.copy(deep=True)
     try:
         conf, rd_mol = rdkit_conf_from_mol(mol, xyz)
     except (ValueError, AttributeError):
@@ -112,7 +114,6 @@ def draw_3d(xyz=None, species=None, project_directory=None, save_only=False):
         project_directory (str): ARC's project directory to save the image in.
         save_only (bool): Whether to only save an image without plotting it, ``True`` to only save.
     """
-    xyz = check_xyz_species_for_drawing(xyz, species)
     ase_atoms = list()
     for symbol, coord in zip(xyz['symbols'], xyz['coords']):
         ase_atoms.append(Atom(symbol=symbol, position=coord))
@@ -367,7 +368,8 @@ def draw_parity_plot(var_arc, var_rmg, var_label, var_units, labels, pp):
     plt.tight_layout()
     if pp is not None:
         plt.savefig(pp, format='pdf')
-    plt.show()
+    if is_notebook():
+        plt.show()
 
 
 def draw_kinetics_plots(rxn_list, path=None, t_min=(300, 'K'), t_max=(3000, 'K'), t_count=50):
@@ -460,7 +462,8 @@ def _draw_kinetics_plots(rxn_label, arc_k, temperature, rmg_rxns, units, pp, max
     plt.tight_layout()
     if pp is not None:
         plt.savefig(pp, format='pdf')
-    plt.show()
+    if is_notebook():
+        plt.show()
 
 
 def get_text_positions(x_data, y_data, txt_width, txt_height):
@@ -802,7 +805,8 @@ def plot_torsion_angles(torsion_angles, torsions_sampling_points=None, wells_dic
         #     ax.label_outer()
         plt.setp(axs, xticks=ticks)  # set the x ticks of all subplots
         fig.set_size_inches(8, len(torsions) * 1.5)
-    plt.show()
+    if is_notebook():
+        plt.show()
     if plot_path is not None:
         if not os.path.isdir(plot_path):
             os.makedirs(plot_path)
@@ -870,7 +874,8 @@ def plot_1d_rotor_scan(angles=None, energies=None, results=None, path=None, scan
         original_dihedral_str = f'from {original_dihedral} deg' if original_dihedral is not None else ''
         plt.title(f'{label} 1D scan of {scan}{original_dihedral_str}')
     plt.tight_layout()
-    plt.show()
+    if is_notebook():
+        plt.show()
 
     if path is not None and scan is not None:
         pivots = scan[1:3]
