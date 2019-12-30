@@ -2592,8 +2592,8 @@ class Scheduler(object):
         if not jobs:
             del self.restart_dict['running_jobs']
             self.running_jobs = dict()
-            logger.info('It seems that there are no running jobs specified in the ARC restart file. Assuming all jobs '
-                        'have finished.')
+            logger.debug('It seems that there are no running jobs specified in the ARC restart file. Assuming all jobs '
+                         'have finished.')
         else:
             logger.info(f"ARC's restart files indicate the following jobs are still running. {list(jobs.keys())}")
             for spc_label in jobs.keys():
