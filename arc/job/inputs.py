@@ -42,8 +42,8 @@ from arc.species.conformers import generate_conformers
 import time
 
 
-yml_path = 'yml/input.yml'
-yml_save_path = 'yml/fukui_confs.yml'
+yml_path = 'input.yml'
+yml_save_path = 'fukui_confs.yml'
 
 data = read_yaml_file(yml_path)
 

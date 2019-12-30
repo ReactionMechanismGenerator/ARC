@@ -11,6 +11,7 @@ import arc.processor
 import arc.scheduler
 import arc.settings
 import arc.utils
+import arc.fukui
 
 import arc.species
 import arc.job
