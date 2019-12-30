@@ -737,7 +737,7 @@ def determine_number_of_conformers_to_generate(label, heavy_atoms, torsion_num, 
     if minimalist:
         num_confs = min(num_confs_1, num_confs_2, 250)
     else:
-        num_confs = max(num_confs_1, num_confs_2)
+        num_confs = min(max(num_confs_1, num_confs_2), 1000)
 
     # increase the number of conformers if there are more than two chiral centers
     num_chiral_centers = 0
@@ -749,7 +749,7 @@ def determine_number_of_conformers_to_generate(label, heavy_atoms, torsion_num, 
     if mol is not None and xyz is not None:
         num_chiral_centers = get_number_of_chiral_centers(label, mol, xyz=xyz, just_get_the_number=True)
     if num_chiral_centers > 2:
-        num_confs = int(num_confs * num_chiral_centers)
+        num_confs = min(int(num_confs * num_chiral_centers), 1000)
 
     return num_confs, num_chiral_centers
 
