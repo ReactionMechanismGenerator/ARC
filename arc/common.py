@@ -277,7 +277,7 @@ def save_yaml_file(path, content):
     yaml.add_representer(str, string_representer)
     logger.debug('Creating a restart file...')
     content = yaml.dump(data=content)
-    if not os.path.exists(os.path.dirname(path)):
+    if os.path.dirname(path) and not os.path.exists(os.path.dirname(path)):
         os.makedirs(os.path.dirname(path))
     with open(path, 'w') as f:
         f.write(content)
