@@ -539,6 +539,11 @@ H 	2.951	-3.078	-4.102""")
         formatted_str = common.format_level_of_theory_for_logging(level_of_theory_dict)
         self.assertEqual(expected_str, formatted_str)
 
+    def test_is_notebook(self):
+        """Test whether ARC is being called from an IPython notebook"""
+        is_notebook = common.is_notebook()
+        self.assertFalse(is_notebook)
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
