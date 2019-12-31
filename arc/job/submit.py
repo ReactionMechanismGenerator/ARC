@@ -12,10 +12,10 @@ submit_scripts = {
 #SBATCH -p medium
 #SBATCH -J {name}
 #SBATCH --time=0-24:00:00
-#SBATCH -e err.txt
-#SBATCH -o out.txt
+#SBATCH -o slurm.%j.out
+#SBATCH -e slurm.%j.err
 #SBATCH -n 1
-#SBATCH --mem-per-cpu=8000
+#SBATCH --mem-per-cpu=160000
 
 
 echo "============================================================"
