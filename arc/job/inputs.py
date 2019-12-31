@@ -93,8 +93,10 @@ for i, label in enumerate(data.keys()):
             data[label]['final_xyz'] = xyz_to_str(lowest_confs[0]['xyz'])
             data[label]['conf_run_time_(s)'] = time.time() - t0
             save_yaml_file(yml_save_path, data)
+    print('')
+    print('')
+    print('')
 
-print('')
 print('all done!')
 
 """,
