@@ -30,7 +30,8 @@ qchem:
 """
 
 input_files = {
-    'fukui': """#!/usr/bin/env python
+    'fukui': """
+#!/usr/bin/env python
 # encoding: utf-8
 
 import os
@@ -70,13 +71,6 @@ for i, label in enumerate(data.keys()):
     lowest_confs = None
     xyz = str_to_xyz(data[label]['original_xyz'])
     replace_with = ''
-    if 'Br' in xyz['symbols']:
-        replace_with = 'Cl' if 'Cl' not in xyz['symbols'] else 'I'
-        new_symbols = list()
-        for i, symbol in enumerate(xyz['symbols']):
-            new_symbols.append(symbol if symbol != 'Br' else replace_with)
-        xyz['symbols'] = new_symbols
-        print(f'replaced {i} Br atoms with {replace_with}')
 
     try:
         spc = ARCSpecies(label=label, smiles=data[label]['smiles'], xyz=xyz)
@@ -89,12 +83,6 @@ for i, label in enumerate(data.keys()):
     if lowest_confs is None:
         print('Could not generate confs, got None')
     else:
-        if replace_with:
-            new_symbols = list()
-            for symbol in lowest_confs[0]['xyz']['symbols']:
-                new_symbols.append(symbol if symbol != replace_with else 'Br')
-            lowest_confs[0]['xyz']['symbols'] = new_symbols
-            print('Returning original Br atoms')
         save_xyz(xyz_str=xyz_to_str(lowest_confs[0]['xyz']), comment=f'{label}', xyz_path=xyz_path)
         print(f'wrote {label} (number {i})')
     print('')
@@ -239,7 +227,7 @@ show[1,e25.15],molpro_energy
 ---
 """,
 }
-
+#
 # #!/usr/bin/env python
 # # encoding: utf-8
 #
@@ -280,13 +268,6 @@ show[1,e25.15],molpro_energy
 #     lowest_confs = None
 #     xyz = str_to_xyz(data[label]['original_xyz'])
 #     replace_with = ''
-#     if 'Br' in xyz['symbols']:
-#         replace_with = 'Cl' if 'Cl' not in xyz['symbols'] else 'I'
-#         new_symbols = list()
-#         for i, symbol in enumerate(xyz['symbols']):
-#             new_symbols.append(symbol if symbol != 'Br' else replace_with)
-#         xyz['symbols'] = new_symbols
-#         print(f'replaced {i} Br atoms with {replace_with}')
 #
 #     try:
 #         spc = ARCSpecies(label=label, smiles=data[label]['smiles'], xyz=xyz)
@@ -299,12 +280,6 @@ show[1,e25.15],molpro_energy
 #     if lowest_confs is None:
 #         print('Could not generate confs, got None')
 #     else:
-#         if replace_with:
-#             new_symbols = list()
-#             for symbol in lowest_confs[0]['xyz']['symbols']:
-#                 new_symbols.append(symbol if symbol != replace_with else 'Br')
-#             lowest_confs[0]['xyz']['symbols'] = new_symbols
-#             print('Returning original Br atoms')
 #         save_xyz(xyz_str=xyz_to_str(lowest_confs[0]['xyz']), comment=f'{label}', xyz_path=xyz_path)
 #         print(f'wrote {label} (number {i})')
 #     print('')
@@ -312,4 +287,4 @@ show[1,e25.15],molpro_energy
 #     print('')
 #
 # print(f'all {i} confs completed!')
-#
+
