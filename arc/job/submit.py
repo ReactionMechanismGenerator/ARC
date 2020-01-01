@@ -15,7 +15,7 @@ submit_scripts = {
 #SBATCH -o slurm.%j.out
 #SBATCH -e slurm.%j.err
 #SBATCH -n 1
-#SBATCH --mem-per-cpu=160000
+#SBATCH --mem-per-cpu=180000
 
 
 echo "============================================================"
