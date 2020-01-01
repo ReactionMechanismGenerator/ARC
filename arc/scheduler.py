@@ -2089,7 +2089,11 @@ class Scheduler(object):
                                 rotor['invalidation_reason'] = ''
                                 rotor['success'] = None
                                 rotor.pop('symmetry', None)
-                            self.run_opt_job(label)  # run opt on the new initial_xyz with the desired dihedral
+                            # re-run opt (or composite) on the new initial_xyz with the desired dihedral
+                            if not self.composite_method:
+                                self.run_opt_job(label)
+                            else:
+                                self.run_composite_job(label)
                         else:
                             # The conformer is wrong, and changing the dihedral resulted in a non-isomorphic species.
                             self.output[label]['errors'] += \
@@ -2172,7 +2176,11 @@ class Scheduler(object):
                         rotor_dict['invalidation_reason'] = ''
                         rotor_dict['success'] = None
                         rotor_dict.pop('symmetry', None)
-                    self.run_opt_job(label)  # run opt on the new initial_xyz with the desired dihedral
+                    # re-run opt (or composite) on the new initial_xyz with the desired dihedral
+                    if not self.composite_method:
+                        self.run_opt_job(label)
+                    else:
+                        self.run_composite_job(label)
                 else:
                     # The conformer is wrong, and changing the dihedral resulted in a non-isomorphic species.
                     self.output[label]['errors'] += 'A lower conformer was found for {0} via a torsion mode, ' \
