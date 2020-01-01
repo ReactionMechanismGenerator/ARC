@@ -780,7 +780,7 @@ def determine_dihedrals(conformers, torsions):
 
 def determine_torsion_sampling_points(label, torsion_angles, smeared_scan_res=None, symmetry=1):
     """
-    Determine how many points to consider in each well of a torsion for conformer combinations
+    Determine how many points to consider in each well of a torsion for conformer combinations.
 
     Args:
         label (str): The species' label.
