@@ -25,8 +25,8 @@ from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 
 import arc.rmgdb as rmgdb
-from arc.common import VERSION, read_yaml_file, time_lapse, check_ess_settings, initialize_log, log_footer, get_logger,\
-    save_yaml_file, initialize_job_types, determine_model_chemistry_type
+from arc.common import VERSION, format_level_of_theory_for_logging, read_yaml_file, time_lapse, check_ess_settings, \
+    initialize_log, log_footer, get_logger, save_yaml_file, initialize_job_types, determine_model_chemistry_type
 from arc.exceptions import InputError, SettingsError, SpeciesError
 from arc.job.ssh import SSHClient
 from arc.processor import Processor
@@ -561,17 +561,17 @@ class ARC(object):
         txt = ''
         txt += 'ARC v{0}\n'.format(self.__version__)
         txt += 'ARC project {0}\n\nLevels of theory used:\n\n'.format(self.project)
-        txt += 'Conformers:       {0}\n'.format(self.conformer_level)
-        txt += 'TS guesses:       {0}\n'.format(self.ts_guess_level)
+        txt += 'Conformers:       {0}\n'.format(format_level_of_theory_for_logging(self.conformer_level))
+        txt += 'TS guesses:       {0}\n'.format(format_level_of_theory_for_logging(self.ts_guess_level))
         if self.composite_method:
             txt += 'Composite method: {0} {1}\n'.format(self.composite_method, fine_txt)
-            txt += 'Frequencies:      {0}\n'.format(self.freq_level)
+            txt += 'Frequencies:      {0}\n'.format(format_level_of_theory_for_logging(self.freq_level))
         else:
-            txt += 'Optimization:     {0} {1}\n'.format(self.opt_level, fine_txt)
-            txt += 'Frequencies:      {0}\n'.format(self.freq_level)
-            txt += 'Single point:     {0}\n'.format(self.sp_level)
+            txt += 'Optimization:     {0} {1}\n'.format(format_level_of_theory_for_logging(self.opt_level), fine_txt)
+            txt += 'Frequencies:      {0}\n'.format(format_level_of_theory_for_logging(self.freq_level))
+            txt += 'Single point:     {0}\n'.format(format_level_of_theory_for_logging(self.sp_level))
         if 'rotors' in self.job_types:
-            txt += 'Rotor scans:      {0}\n'.format(self.scan_level)
+            txt += 'Rotor scans:      {0}\n'.format(format_level_of_theory_for_logging(self.scan_level))
         else:
             txt += 'Not scanning rotors\n'
         if self.use_bac:

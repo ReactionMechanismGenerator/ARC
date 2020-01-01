@@ -647,3 +647,25 @@ def determine_model_chemistry_type(method):
         logger.debug(f'Assuming {given_method} is a DFT method.')
         model_chemistry_class = 'dft'
     return model_chemistry_class
+
+
+def format_level_of_theory_for_logging(level_of_theory_dict):
+    """
+    Format level of theory dictionary to string for logging purposes.
+
+    Args:
+        level_of_theory_dict (dict): level of theory dictionary.
+
+    Returns:
+        level_of_theory_log_str (str): level of theory string for logging.
+    """
+    method = level_of_theory_dict.get('method', '')
+    basis = level_of_theory_dict.get('basis', '')
+    auxiliary_basis = level_of_theory_dict.get('auxiliary_basis', '')
+    dispersion = level_of_theory_dict.get('dispersion', '')
+    level_of_theory_log_str = '/'.join([method, basis]) if basis else method
+    level_of_theory_log_str = '/'.join([level_of_theory_log_str, auxiliary_basis]) if auxiliary_basis\
+        else level_of_theory_log_str
+    level_of_theory_log_str = ' '.join([level_of_theory_log_str, dispersion]) if dispersion\
+        else level_of_theory_log_str
+    return level_of_theory_log_str

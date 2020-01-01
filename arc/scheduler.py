@@ -16,8 +16,8 @@ from IPython.display import display
 
 from rmgpy.reaction import Reaction
 
-from arc.common import get_logger, read_yaml_file, save_yaml_file, get_ordinal_indicator, min_list, \
-    calculate_dihedral_angle, sort_two_lists_by_the_first
+from arc.common import format_level_of_theory_for_logging, get_logger, read_yaml_file, save_yaml_file, \
+    get_ordinal_indicator, min_list, calculate_dihedral_angle, sort_two_lists_by_the_first
 from arc import plotter
 from arc import parser
 from arc.job.job import Job
@@ -1788,7 +1788,8 @@ class Scheduler(object):
             rxn_str = ''
             if self.species_dict[label].is_ts:
                 rxn_str = ' of reaction {0}'.format(self.species_dict[label].rxn_label)
-            logger.info(f'\nOptimized geometry for {label}{rxn_str} at {job.job_level_of_theory_dict}:\n'
+            logger.info(f'\nOptimized geometry for {label}{rxn_str} at '
+                        f'{format_level_of_theory_for_logging(job.job_level_of_theory_dict)}:\n'
                         f'{xyz_to_str(xyz_dict=self.species_dict[label].final_xyz)}')
             if not job.is_ts:
                 plotter.draw_structure(species=self.species_dict[label], project_directory=self.project_directory)
@@ -1846,7 +1847,7 @@ class Scheduler(object):
                 self.output[label]['job_types']['opt'] = True
                 if self.job_types['fine']:
                     self.output[label]['job_types']['fine'] = True
-                self.species_dict[label].opt_level = self.opt_level
+                self.species_dict[label].opt_level = format_level_of_theory_for_logging(self.opt_level)
                 plotter.save_geo(species=self.species_dict[label], project_directory=self.project_directory)
                 if self.species_dict[label].is_ts:
                     rxn_str = ' of reaction {0}'.format(self.species_dict[label].rxn_label)
@@ -1873,7 +1874,7 @@ class Scheduler(object):
                                     # and its geometry wasn't saved in the TSGuess objects
                                     tsg.products_xyz.append((label, self.species_dict[label].final_xyz))
                 logger.info('\nOptimized geometry for {label}{rxn} at {level}:\n{xyz}'.format(
-                    label=label, rxn=rxn_str, level=job.job_level_of_theory_dict,
+                    label=label, rxn=rxn_str, level=format_level_of_theory_for_logging(job.job_level_of_theory_dict),
                     xyz=xyz_to_str(self.species_dict[label].final_xyz)))
                 self.save_restart_dict()
                 self.output[label]['paths']['geo'] = job.local_path_to_output_file  # will be overwritten with freq
