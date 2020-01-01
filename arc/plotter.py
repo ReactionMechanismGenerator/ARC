@@ -527,6 +527,14 @@ def save_geo(species, project_directory):
         f.write(gv)
 
 
+def save_xyz(xyz_str, comment, xyz_path):
+    xyz = f'{len([line for line in xyz_str.splitlines() if line])}\n'  # number of atoms
+    xyz += f'{comment}\n'
+    xyz += f'{xyz_str}\n'
+    with open(xyz_path, 'w') as f:
+        f.write(xyz)
+
+
 # *** Files (libraries, xyz, conformers) ***
 
 def save_thermo_lib(species_list, path, name, lib_long_desc):
