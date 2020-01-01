@@ -38,66 +38,70 @@ from arc.common import read_yaml_file, save_yaml_file
 from arc.species.converter import xyz_to_str, str_to_xyz
 from arc.species.species import ARCSpecies
 from arc.species.conformers import generate_conformers
-import time
+from arc.plotter import save_xyz
 
 
 yml_path = 'input.yml'
-yml_save_path = 'fukui_confs.yml'
+old_yml_save_path = 'fukui_confs.yml'
+output_path = 'output'
+
+if not os.path.isdir(output_path):
+    os.mkdir(output_path)
 
 data = read_yaml_file(yml_path)
 
-if os.path.isfile(yml_save_path):
-    results = read_yaml_file(yml_save_path)
+# restore previous efforts from fukui_confs.yml which is no longer functioning
+if os.path.isfile(old_yml_save_path):
+    results = read_yaml_file(old_yml_save_path)
     for i, (label, val) in enumerate(results.items()):
-        if 'final_xyz' in list(val.keys()) or 'error' in list(val.keys()):
-            data[label] = val
-            print(f'copied {label} (number {i}) from {yml_save_path}')
+        if 'final_xyz' in list(val.keys()):
+            xyz_path = os.path.join(output_path, f'{label}.xyz')
+            if not os.path.isfile(xyz_path):
+                save_xyz(xyz_str=val['final_xyz'], comment=f'{label}', xyz_path=xyz_path)
+                print(f'wrote {label} (number {i}) from {old_yml_save_path}')
     results = dict()
 
 for i, label in enumerate(data.keys()):
-    if 'final_xyz' in list(data[label].keys()):
+    xyz_path = os.path.join(output_path, f'{label}.xyz')
+    if os.path.isfile(xyz_path):
         print(f'skipping {label}, data already exists')
-    elif 'error' not in list(data[label].keys()):
-        t0 = time.time()
-        print(f'processing {label}, number {i}, smiles: {data[label]["smiles"]}')
-        data[label]['error'] = ''
-        lowest_confs = None
-        xyz = str_to_xyz(data[label]['original_xyz'])
-        replace_with = ''
-        if 'Br' in xyz['symbols']:
-            replace_with = 'Cl' if 'Cl' not in xyz['symbols'] else 'I'
+        continue
+    print(f'processing {label}, number {i}, smiles: {data[label]["smiles"]}')
+    lowest_confs = None
+    xyz = str_to_xyz(data[label]['original_xyz'])
+    replace_with = ''
+    if 'Br' in xyz['symbols']:
+        replace_with = 'Cl' if 'Cl' not in xyz['symbols'] else 'I'
+        new_symbols = list()
+        for i, symbol in enumerate(xyz['symbols']):
+            new_symbols.append(symbol if symbol != 'Br' else replace_with)
+        xyz['symbols'] = new_symbols
+        print(f'replaced {i} Br atoms with {replace_with}')
+
+    try:
+        spc = ARCSpecies(label=label, smiles=data[label]['smiles'], xyz=xyz)
+        lowest_confs = generate_conformers(mol_list=spc.mol_list, label=spc.label,
+                                           charge=spc.charge, multiplicity=spc.multiplicity,
+                                           num_confs_to_return=1, diastereomers=[spc.get_xyz()])
+    except Exception as e:
+        print('Could not generate confs, got:')
+        print(str(e))
+    if lowest_confs is None:
+        print('Could not generate confs, got None')
+    else:
+        if replace_with:
             new_symbols = list()
-            for symbol in xyz['symbols']:
-                new_symbols.append(symbol if symbol != 'Br' else replace_with)
-            xyz['symbols'] = new_symbols
-
-        try:
-            spc = ARCSpecies(label=label, smiles=data[label]['smiles'], xyz=xyz)
-            lowest_confs = generate_conformers(mol_list=spc.mol_list, label=spc.label,
-            charge = spc.charge, multiplicity = spc.multiplicity,
-            num_confs_to_return = 1, diastereomers = [spc.get_xyz()])
-        except Exception as e:
-            data[label]['error'] = str(e)
-            print(str(e))
-        if lowest_confs is None:
-            data[label]['error'] = 'Could not generate confs, got None'
-            data[label]['conf_run_time_(s)'] = time.time() - t0
-            print('Could not generate confs, got None')
-        else:
-            data[label]['FF_energy'] = lowest_confs[0]['FF energy']
-            if replace_with:
-                new_symbols = list()
-                for symbol in lowest_confs[0]['xyz']['symbols']:
-                    new_symbols.append(symbol if symbol != replace_with else 'Br')
-                lowest_confs[0]['xyz']['symbols'] = new_symbols
-            data[label]['final_xyz'] = xyz_to_str(lowest_confs[0]['xyz'])
-            data[label]['conf_run_time_(s)'] = time.time() - t0
-            save_yaml_file(yml_save_path, data)
+            for symbol in lowest_confs[0]['xyz']['symbols']:
+                new_symbols.append(symbol if symbol != replace_with else 'Br')
+            lowest_confs[0]['xyz']['symbols'] = new_symbols
+            print('Returning original Br atoms')
+        save_xyz(xyz_str=xyz_to_str(lowest_confs[0]['xyz']), comment=f'{label}', xyz_path=xyz_path)
+        print(f'wrote {label} (number {i})')
     print('')
     print('')
     print('')
 
-print('all done!')
+print(f'all {i} confs completed!')
 
 """,
     'gaussian': """%chk=check.chk
@@ -235,3 +239,77 @@ show[1,e25.15],molpro_energy
 ---
 """,
 }
+
+# #!/usr/bin/env python
+# # encoding: utf-8
+#
+# import os
+# from arc.common import read_yaml_file, save_yaml_file
+# from arc.species.converter import xyz_to_str, str_to_xyz
+# from arc.species.species import ARCSpecies
+# from arc.species.conformers import generate_conformers
+# from arc.plotter import save_xyz
+#
+#
+# yml_path = 'input.yml'
+# old_yml_save_path = 'fukui_confs.yml'
+# output_path = 'output'
+#
+# if not os.path.isdir(output_path):
+#     os.mkdir(output_path)
+#
+# data = read_yaml_file(yml_path)
+#
+# # restore previous efforts from fukui_confs.yml which is no longer functioning
+# if os.path.isfile(old_yml_save_path):
+#     results = read_yaml_file(old_yml_save_path)
+#     for i, (label, val) in enumerate(results.items()):
+#         if 'final_xyz' in list(val.keys()):
+#             xyz_path = os.path.join(output_path, f'{label}.xyz')
+#             if not os.path.isfile(xyz_path):
+#                 save_xyz(xyz_str=val['final_xyz'], comment=f'{label}', xyz_path=xyz_path)
+#                 print(f'wrote {label} (number {i}) from {old_yml_save_path}')
+#     results = dict()
+#
+# for i, label in enumerate(data.keys()):
+#     xyz_path = os.path.join(output_path, f'{label}.xyz')
+#     if os.path.isfile(xyz_path):
+#         print(f'skipping {label}, data already exists')
+#         continue
+#     print(f'processing {label}, number {i}, smiles: {data[label]["smiles"]}')
+#     lowest_confs = None
+#     xyz = str_to_xyz(data[label]['original_xyz'])
+#     replace_with = ''
+#     if 'Br' in xyz['symbols']:
+#         replace_with = 'Cl' if 'Cl' not in xyz['symbols'] else 'I'
+#         new_symbols = list()
+#         for i, symbol in enumerate(xyz['symbols']):
+#             new_symbols.append(symbol if symbol != 'Br' else replace_with)
+#         xyz['symbols'] = new_symbols
+#         print(f'replaced {i} Br atoms with {replace_with}')
+#
+#     try:
+#         spc = ARCSpecies(label=label, smiles=data[label]['smiles'], xyz=xyz)
+#         lowest_confs = generate_conformers(mol_list=spc.mol_list, label=spc.label,
+#                                            charge=spc.charge, multiplicity=spc.multiplicity,
+#                                            num_confs_to_return=1, diastereomers=[spc.get_xyz()])
+#     except Exception as e:
+#         print('Could not generate confs, got:')
+#         print(str(e))
+#     if lowest_confs is None:
+#         print('Could not generate confs, got None')
+#     else:
+#         if replace_with:
+#             new_symbols = list()
+#             for symbol in lowest_confs[0]['xyz']['symbols']:
+#                 new_symbols.append(symbol if symbol != replace_with else 'Br')
+#             lowest_confs[0]['xyz']['symbols'] = new_symbols
+#             print('Returning original Br atoms')
+#         save_xyz(xyz_str=xyz_to_str(lowest_confs[0]['xyz']), comment=f'{label}', xyz_path=xyz_path)
+#         print(f'wrote {label} (number {i})')
+#     print('')
+#     print('')
+#     print('')
+#
+# print(f'all {i} confs completed!')
+#
