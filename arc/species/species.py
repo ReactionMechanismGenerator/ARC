@@ -1145,22 +1145,22 @@ class ARCSpecies(object):
 
         if self.mol is not None:
             # self.mol should have come from another source, e.g., SMILES or yml
-            original_mol = self.mol.copy(deep=True)
+            # original_mol = self.mol.copy(deep=True)
             self.mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
-            if self.mol is not None and not check_isomorphism(original_mol, self.mol):
-                if original_mol.multiplicity in [1, 2]:
-                    raise SpeciesError('XYZ and the 2D graph representation for {0} are not isomorphic.\n'
-                                       'Got xyz:\n{1}\n\nwhich corresponds to {2}\n{3}\n\nand: {4}\n{5}'.format(
-                                        self.label, xyz, self.mol.to_smiles(), self.mol.to_adjacency_list(),
-                                        original_mol.to_smiles(), original_mol.to_adjacency_list()))
-                else:
-                    logger.warning('XYZ and the 2D graph representation for {0} are not isomorphic.\n'
-                                   'Got xyz:\n{1}\n\nwhich corresponds to {2}\n{3}\n\nand: {4}\n{5}'.format(
-                                    self.label, xyz, self.mol.to_smiles(), self.mol.to_adjacency_list(),
-                                    original_mol.to_smiles(), original_mol.to_adjacency_list()))
-            elif self.mol is None:
-                # molecules_from_xyz() returned None for b_mol
-                self.mol = original_mol  # todo: Atom order will not be correct, need fix
+            # if self.mol is not None and not check_isomorphism(original_mol, self.mol):
+            #     if original_mol.multiplicity in [1, 2]:
+            #         raise SpeciesError('XYZ and the 2D graph representation for {0} are not isomorphic.\n'
+            #                            'Got xyz:\n{1}\n\nwhich corresponds to {2}\n{3}\n\nand: {4}\n{5}'.format(
+            #                             self.label, xyz, self.mol.to_smiles(), self.mol.to_adjacency_list(),
+            #                             original_mol.to_smiles(), original_mol.to_adjacency_list()))
+            #     else:
+            #         logger.warning('XYZ and the 2D graph representation for {0} are not isomorphic.\n'
+            #                        'Got xyz:\n{1}\n\nwhich corresponds to {2}\n{3}\n\nand: {4}\n{5}'.format(
+            #                         self.label, xyz, self.mol.to_smiles(), self.mol.to_adjacency_list(),
+            #                         original_mol.to_smiles(), original_mol.to_adjacency_list()))
+            # elif self.mol is None:
+            #     # molecules_from_xyz() returned None for b_mol
+            #     self.mol = original_mol  # todo: Atom order will not be correct, need fix
         else:
             self.mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
 
