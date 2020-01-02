@@ -81,7 +81,7 @@ The first two directives are only required if you'd like ARC to access remote se
   <https://github.com/ReactionMechanismGenerator/ARC/blob/master/arc/job/submit.py>`_
   according to your servers' definitions.
   * See the given template examples, and follow the structure of nested dictionaries (by server name, then by ESS name).
-  * Preserve the variables in curly braces (e.g., ``{mem_per_cpu}``), so that ARC is able to auto-complete them.
+  * Preserve the variables in curly braces (e.g., ``{memory}``), so that ARC is able to auto-complete them.
 
 
 Associating software with servers

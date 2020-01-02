@@ -76,12 +76,15 @@ class TestARC(unittest.TestCase):
         """Test the check_ess_settings function"""
         server_names = list(servers.keys())
         ess_settings1 = {'gaussian': [server_names[0]], 'molpro': [server_names[1], server_names[0]],
-                         'qchem': [server_names[0]]}
-        ess_settings2 = {'gaussian': server_names[0], 'molpro': server_names[1], 'qchem': server_names[0]}
+                         'qchem': [server_names[0]], 'orca': [server_names[0]]}
+        ess_settings2 = {'gaussian': server_names[0], 'molpro': server_names[1], 'qchem': server_names[0],
+                         'orca': [server_names[1]]}
         ess_settings3 = {'gaussian': server_names[0], 'molpro': [server_names[1], server_names[0]],
-                         'qchem': server_names[0]}
-        ess_settings4 = {'gaussian': server_names[0], 'molpro': server_names[1], 'qchem': server_names[0]}
-        ess_settings5 = {'gaussian': 'local', 'molpro': server_names[1], 'qchem': server_names[0]}
+                         'qchem': server_names[0], 'orca': 'local'}
+        ess_settings4 = {'gaussian': server_names[0], 'molpro': server_names[1], 'qchem': server_names[0],
+                         'orca': [server_names[1], server_names[0]]}
+        ess_settings5 = {'gaussian': 'local', 'molpro': server_names[1], 'qchem': server_names[0],
+                         'orca': [server_names[0]]}
 
         ess_settings1 = common.check_ess_settings(ess_settings1)
         ess_settings2 = common.check_ess_settings(ess_settings2)
@@ -93,7 +96,7 @@ class TestARC(unittest.TestCase):
 
         for ess in ess_list:
             for soft, server_list in ess.items():
-                self.assertTrue(soft in ['gaussian', 'molpro', 'qchem'])
+                self.assertTrue(soft in ['gaussian', 'molpro', 'qchem', 'orca'])
                 self.assertIsInstance(server_list, list)
 
         with self.assertRaises(SettingsError):
@@ -391,6 +394,132 @@ H 	2.951	-3.078	-4.102""")
         list1, list2 = common.sort_two_lists_by_the_first(list1, list2)
         self.assertEqual(list1, [])
         self.assertEqual(list2, [])
+
+    def test_determine_model_chemistry_type(self):
+        """Test that the type (e.g., DFT, wavefunction ...) of a model chemistry can be determined properly."""
+
+        # The special case: has `hf` keyword but is a DFT method
+        method = 'm06-hf'
+        model_chemistry_class = common.determine_model_chemistry_type(method)
+        model_chemistry_class_expected = 'dft'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        # Test family of wavefunction methods
+        method = 'hf'
+        model_chemistry_class = common.determine_model_chemistry_type(method)
+        model_chemistry_class_expected = 'wavefunction'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        method = 'DLPNO-CCSD(T)'
+        model_chemistry_class = common.determine_model_chemistry_type(method)
+        model_chemistry_class_expected = 'wavefunction'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        method = 'DLPNO-MP2-F12'
+        model_chemistry_class = common.determine_model_chemistry_type(method)
+        model_chemistry_class_expected = 'wavefunction'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        method = 'QCISD'
+        model_chemistry_class = common.determine_model_chemistry_type(method)
+        model_chemistry_class_expected = 'wavefunction'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        # Test family of force field (a.k.a molecular dynamics) methods
+        method = 'ANI-1x'
+        model_chemistry_class = common.determine_model_chemistry_type(method)
+        model_chemistry_class_expected = 'force_field'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        method = 'MMFF94'
+        model_chemistry_class = common.determine_model_chemistry_type(method)
+        model_chemistry_class_expected = 'force_field'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        # Test family of semi-empirical methods
+        method = 'ZINDO/S'
+        model_chemistry_class = common.determine_model_chemistry_type(method)
+        model_chemistry_class_expected = 'semiempirical'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        method = 'pm7'
+        model_chemistry_class = common.determine_model_chemistry_type(method)
+        model_chemistry_class_expected = 'semiempirical'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        # Test family of DFT methods
+        method = 'mPW1PW'
+        model_chemistry_class = common.determine_model_chemistry_type(method)
+        model_chemistry_class_expected = 'dft'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        method = 'b3lyp'
+        model_chemistry_class = common.determine_model_chemistry_type(method)
+        model_chemistry_class_expected = 'dft'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        method = 'wb97x-d3'
+        model_chemistry_class = common.determine_model_chemistry_type(method)
+        model_chemistry_class_expected = 'dft'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        method = 'apfd'
+        model_chemistry_class = common.determine_model_chemistry_type(method)
+        model_chemistry_class_expected = 'dft'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        method = 'M06-2X'
+        model_chemistry_class = common.determine_model_chemistry_type(method)
+        model_chemistry_class_expected = 'dft'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        method = 'B2PLYP'
+        model_chemistry_class = common.determine_model_chemistry_type(method)
+        model_chemistry_class_expected = 'dft'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        method = 'CBS-QB3'
+        model_chemistry_class = common.determine_model_chemistry_type(method)
+        model_chemistry_class_expected = 'composite'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+        method = 'G4'
+        model_chemistry_class = common.determine_model_chemistry_type(method)
+        model_chemistry_class_expected = 'composite'
+        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
+
+    def test_format_level_of_theory_for_logging(self):
+        """Test format level of theory dictionary to string for logging purposes."""
+        level_of_theory_dict = {}
+        expected_str = ''
+        formatted_str = common.format_level_of_theory_for_logging(level_of_theory_dict)
+        self.assertEqual(expected_str, formatted_str)
+
+        level_of_theory_dict = {'method': 'cbs-qb3'}
+        expected_str = 'cbs-qb3'
+        formatted_str = common.format_level_of_theory_for_logging(level_of_theory_dict)
+        self.assertEqual(expected_str, formatted_str)
+
+        level_of_theory_dict = {'method': 'cbs-qb3', 'basis': '', 'auxiliary_basis': '', 'dispersion': ''}
+        expected_str = 'cbs-qb3'
+        formatted_str = common.format_level_of_theory_for_logging(level_of_theory_dict)
+        self.assertEqual(expected_str, formatted_str)
+
+        level_of_theory_dict = {'method': 'apfd', 'basis': 'def2svp', 'auxiliary_basis': '', 'dispersion': ''}
+        expected_str = 'apfd/def2svp'
+        formatted_str = common.format_level_of_theory_for_logging(level_of_theory_dict)
+        self.assertEqual(expected_str, formatted_str)
+
+        level_of_theory_dict = {'method': 'b3lyp', 'basis': '6-31g', 'auxiliary_basis': '', 'dispersion': 'gd3bj'}
+        expected_str = 'b3lyp/6-31g gd3bj'
+        formatted_str = common.format_level_of_theory_for_logging(level_of_theory_dict)
+        self.assertEqual(expected_str, formatted_str)
+
+        level_of_theory_dict = {'method': 'DLPNO-CCSD(T)-F12', 'basis': 'cc-pVTZ-F12',
+                                'auxiliary_basis': 'aug-cc-pVTZ/C cc-pVTZ-F12-CABS', 'dispersion': ''}
+        expected_str = 'DLPNO-CCSD(T)-F12/cc-pVTZ-F12/aug-cc-pVTZ/C cc-pVTZ-F12-CABS'
+        formatted_str = common.format_level_of_theory_for_logging(level_of_theory_dict)
+        self.assertEqual(expected_str, formatted_str)
 
 
 if __name__ == '__main__':

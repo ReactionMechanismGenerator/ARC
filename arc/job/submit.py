@@ -106,7 +106,8 @@ rm -rf $WorkDir
 #SBATCH --time={t_max}
 #SBATCH --mem-per-cpu={memory}
 
-which 16
+export g16root=/opt
+which g16
 
 echo "============================================================"
 echo "Job ID : $SLURM_JOB_ID"
@@ -191,6 +192,46 @@ echo "============================================================"
 
 python mdconf.py -s {size}
 
+""",
+        # Orca
+        'orca': """#!/bin/bash -l
+#SBATCH -p long
+#SBATCH -J {name}
+#SBATCH -N 1
+#SBATCH -n {cpus}
+#SBATCH --time={t_max}
+#SBATCH --mem-per-cpu {memory}
+
+export PATH=/opt/orca_4_2_1_linux_x86-64_openmpi314/:/opt/openmpi-3.1.4/bin/:$PATH
+export  LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/openmpi-3.1.4/lib/:/opt/openmpi-3.1.4/etc
+which orca
+
+echo 'PATH:' $PATH
+echo 'LD_LIBRARY_PATH:' $LD_LIBRARY_PATH
+
+echo "============================================================"
+echo "Job ID : $SLURM_JOB_ID"
+echo "Job Name : $SLURM_JOB_NAME"
+echo "Starting on : $(date)"
+echo "Running on node : $SLURMD_NODENAME"
+echo "Current directory : $(pwd)"
+echo "============================================================"
+
+WorkDir=/scratch/{un}/$SLURM_JOB_NAME-$SLURM_JOB_ID
+SubmitDir=`pwd`
+
+
+mkdir -p $WorkDir
+
+cd $WorkDir
+
+cp $SubmitDir/input.in .
+
+/opt/orca_4_2_1_linux_x86-64_openmpi314/orca input.in > input.log
+
+cp input.log $SubmitDir/input.log
+
+rm -rf $WorkDir    
 """,
     },
 

@@ -23,7 +23,7 @@ import yaml
 
 import numpy as np
 
-from arkane.ess import GaussianLog, MolproLog, QChemLog
+from arkane.ess import GaussianLog, MolproLog, QChemLog, OrcaLog
 from arkane.util import determine_qm_software
 from rmgpy.molecule.element import get_element
 from rmgpy.qm.qmdata import QMData
@@ -471,6 +471,9 @@ def determine_ess(log_file):
 
     Returns:
         str: The ESS (either 'gaussian', 'qchem', or 'molpro').
+
+    Raises:
+        InputError: If the log file could not be identified.
     """
     log = determine_qm_software(log_file)
     if isinstance(log, GaussianLog):
@@ -479,7 +482,9 @@ def determine_ess(log_file):
         return 'qchem'
     if isinstance(log, MolproLog):
         return 'molpro'
-    raise InputError('Could not identify the log file in {0} as belonging to Gaussian, QChem, or Molpro.')
+    if isinstance(log, OrcaLog):
+        return 'orca'
+    raise InputError(f'Could not identify the log file in {log_file} as belonging to Gaussian, QChem, Molpro, or Orca.')
 
 
 def calculate_dihedral_angle(coords, torsion):
@@ -600,3 +605,67 @@ def sort_two_lists_by_the_first(list1, list2):
     for counter, index in enumerate(sorted_indices):
         sorted_list2[counter] = new_list2[index]
     return sorted_list1, sorted_list2
+
+
+def determine_model_chemistry_type(method):
+    """
+    Determine the type of a model chemistry (e.g., DFT, wavefunction, force field, semi-empirical, composite).
+
+    Args:
+        method (str): method in a model chemistry. e.g., b3lyp, cbs-qb3, am1, dlpno-ccsd(T)
+
+    Returns:
+        model_chemistry_type (str): class of model chemistry.
+    """
+    given_method = method.lower()
+    wave_function_methods = ['hf', 'cc', 'ci', 'mp2', 'mp3', 'cp', 'cep', 'nevpt', 'dmrg', 'ri', 'cas', 'ic', 'mr',
+                             'bd', 'mbpt']
+    semiempirical_methods = ['am', 'pm', 'zindo', 'mndo', 'xtb', 'nddo']
+    force_field_methods = ['amber', 'mmff', 'dreiding', 'uff', 'qmdff', 'gfn', 'gaff', 'ghemical', 'charmm', 'ani']
+    # all composite methods supported by Gaussian
+    composite_methods = ['cbs-4m', 'cbs-qb3', 'rocbs-qb3', 'cbs-apno', 'w1u', 'w1ro', 'w1bd', 'g1', 'g2', 'g3', 'g4',
+                         'g2mp2', 'g3mp2', 'g3b3', 'g3mp2b3', 'g4mp2', 'cbs-qb3-paraskevas']
+
+    # Composite methods
+    if given_method in composite_methods:
+        model_chemistry_class = 'composite'
+        return model_chemistry_class
+
+    # Special cases
+    if given_method in ['m06hf', 'm06-hf']:
+        model_chemistry_class = 'dft'
+        return model_chemistry_class
+
+    # General cases
+    if any(wf_method in given_method for wf_method in wave_function_methods):
+        model_chemistry_class = 'wavefunction'
+    elif any(sm_method in given_method for sm_method in semiempirical_methods):
+        model_chemistry_class = 'semiempirical'
+    elif any(ff_method in given_method for ff_method in force_field_methods):
+        model_chemistry_class = 'force_field'   # a.k.a molecular dynamics
+    else:
+        logger.debug(f'Assuming {given_method} is a DFT method.')
+        model_chemistry_class = 'dft'
+    return model_chemistry_class
+
+
+def format_level_of_theory_for_logging(level_of_theory_dict):
+    """
+    Format level of theory dictionary to string for logging purposes.
+
+    Args:
+        level_of_theory_dict (dict): level of theory dictionary.
+
+    Returns:
+        level_of_theory_log_str (str): level of theory string for logging.
+    """
+    method = level_of_theory_dict.get('method', '')
+    basis = level_of_theory_dict.get('basis', '')
+    auxiliary_basis = level_of_theory_dict.get('auxiliary_basis', '')
+    dispersion = level_of_theory_dict.get('dispersion', '')
+    level_of_theory_log_str = '/'.join([method, basis]) if basis else method
+    level_of_theory_log_str = '/'.join([level_of_theory_log_str, auxiliary_basis]) if auxiliary_basis\
+        else level_of_theory_log_str
+    level_of_theory_log_str = ' '.join([level_of_theory_log_str, dispersion]) if dispersion\
+        else level_of_theory_log_str
+    return level_of_theory_log_str

@@ -9,8 +9,10 @@ import unittest
 import os
 import shutil
 
+from arc.exceptions import InputError
 import arc.rmgdb as rmgdb
 from arc.scheduler import Scheduler
+from arc.scheduler import _format_level_of_theory_inputs
 from arc.job.job import Job
 from arc.species.species import ARCSpecies
 import arc.parser as parser
@@ -41,14 +43,16 @@ H      -1.82570782    0.42754384   -0.56130718"""
         cls.spc3 = ARCSpecies(label='CtripCO', smiles='C#CO', xyz=xyz1)
         xyz2 = {'symbols': ('C',), 'isotopes': (12,), 'coords': ((0.0, 0.0, 0.0),)}
         cls.job1 = Job(project='project_test', ess_settings=cls.ess_settings, species_name='methylamine',
-                       xyz=xyz2, job_type='conformer', conformer=0, level_of_theory='b97-d3/6-311+g(d,p)',
+                       xyz=xyz2, job_type='conformer', conformer=0,
+                       job_level_of_theory_dict={'method': 'b97-d3', 'basis': '6-311+g(d,p)'},
                        multiplicity=1, project_directory=cls.project_directory, job_num=101)
         cls.job2 = Job(project='project_test', ess_settings=cls.ess_settings, species_name='methylamine',
-                       xyz=xyz2, job_type='conformer', conformer=1, level_of_theory='b97-d3/6-311+g(d,p)',
+                       xyz=xyz2, job_type='conformer', conformer=1,
+                       job_level_of_theory_dict={'method': 'b97-d3', 'basis': '6-311+g(d,p)'},
                        multiplicity=1, project_directory=cls.project_directory, job_num=102)
         cls.job3 = Job(project='project_test', ess_settings=cls.ess_settings, species_name='C2H6', xyz=xyz2,
-                       job_type='freq', level_of_theory='wb97x-d3/6-311+g(d,p)', multiplicity=1,
-                       project_directory=cls.project_directory, software='qchem', job_num=103)
+                       job_type='freq', job_level_of_theory_dict={'method': 'wb97x-d3', 'basis': '6-311+g(d,p)'},
+                       multiplicity=1, project_directory=cls.project_directory, software='qchem', job_num=103)
         cls.rmgdb = rmgdb.make_rmg_database_object()
         cls.job_types1 = {'conformers': True,
                           'opt': True,
@@ -101,7 +105,8 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.assertTrue(os.path.isfile(methylamine_conf_path))
         with open(methylamine_conf_path, 'r') as f:
             lines = f.readlines()
-        self.assertTrue('Conformers for methylamine, optimized at the b3lyp/6-31g(d,p) EmpiricalDispersion=GD3BJ level'
+        self.assertTrue("Conformers for methylamine, optimized at the {'auxiliary_basis': '', 'basis': '6-31g(d,p)', "
+                        "'method': 'b3lyp', 'dispersion': 'empiricaldispersion=gd3bj'} level"
                         in lines[0])
         self.assertEqual(lines[11], 'SMILES: CN\n')
         self.assertTrue('Relative Energy:' in lines[12])
@@ -273,6 +278,34 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.assertEqual(self.sched1.species_dict['CtripCO'].rotors_dict[0]['invalidation_reason'],
                          'not a torsional mode (angles = 179.91, 110.38 degrees)')
         self.assertFalse(self.sched1.species_dict['CtripCO'].rotors_dict[0]['success'])
+
+    def test_format_level_of_theory_inputs(self):
+        """Test formatting level of theory inputs."""
+        # illegal inputs: multiple slashes
+        with self.assertRaises(InputError):
+            _format_level_of_theory_inputs('apfd/def2tzvp/def2svp')
+        with self.assertRaises(InputError):
+            _format_level_of_theory_inputs('apfd/def2tzvp/def2tzvp/c')
+        # illegal inputs: empty space
+        with self.assertRaises(InputError):
+            _format_level_of_theory_inputs('apfd def2tzvp')
+        with self.assertRaises(InputError):
+            _format_level_of_theory_inputs('apfd/def2tzvp def2svp')
+        # illegal inputs: wrong typt
+        with self.assertRaises(InputError):
+            _format_level_of_theory_inputs(['apfd/def2tzvp', 'wb97xd/6-31g'])
+        # test parse string inputs
+        formatted_job_level_of_theory_dict = _format_level_of_theory_inputs('cbs-qb3')
+        expected_formatted_job_level_of_theory_dict = {'method': 'cbs-qb3'}
+        self.assertEqual(formatted_job_level_of_theory_dict, expected_formatted_job_level_of_theory_dict)
+        formatted_job_level_of_theory_dict = _format_level_of_theory_inputs('b3lyp/sto-3g')
+        expected_formatted_job_level_of_theory_dict = {'method': 'b3lyp', 'basis': 'sto-3g'}
+        self.assertEqual(formatted_job_level_of_theory_dict, expected_formatted_job_level_of_theory_dict)
+        # test parse dict inputs
+        formatted_job_level_of_theory_dict = _format_level_of_theory_inputs({'method': 'hf', 'basis': '6-31g'})
+        expected_formatted_job_level_of_theory_dict = {'method': 'hf', 'basis': '6-31g'}
+        self.assertEqual(formatted_job_level_of_theory_dict, expected_formatted_job_level_of_theory_dict)
+
 
     @classmethod
     def tearDownClass(cls):

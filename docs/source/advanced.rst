@@ -41,10 +41,167 @@ Specification 1::
 
 Specification 2::
 
-    specific_job_type : bde
+    specific_job_type: bde
+
+Specify job level of theory
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+It is possible to specify a level of theory to be used in specific job types (e.g., optimization, single point, etc.).
+If not specified, ARC will use the defaults in the ``default_levels_of_theory`` dictionary in settings.py.
+
+ARC has the flexibility of accepting various types of job level of theory specification in an input file. The most
+general syntax is a dictionary::
+
+    <job_type>_level: {'method': 'method_string', 'basis': 'basis_string', 'auxiliary_basis': 'auxiliary_basis_string', 'dispersion': 'DFT_dispersion_string'}
+
+For example::
+
+    conformer_level: {'method': 'b3lyp', 'basis': '6-31g(d,p)', 'dispersion': 'empiricaldispersion=gd3bj'}
+
+specifies ``b3lyp/6-31g(d,p)`` model chemistry along with the `D3 version of Grimme’s dispersion with Becke-Johnson
+damping <https://onlinelibrary.wiley.com/doi/full/10.1002/jcc.21759>`_ for optimizing conformers.
+Notice that ``empiricaldispersion=gd3bj`` is the format required by ``Gaussian``. In general, different ESS have various
+formats for specifying model chemistry. Make sure to pass the correct format based on the intended ESS that should be
+used.
+
+Another example::
+
+    sp_level: {'method': 'DLPNO-CCSD(T)-F12', 'basis': 'cc-pVTZ-F12', 'auxiliary_basis': 'aug-cc-pVTZ/C cc-pVTZ-F12-CABS'}
+
+specifies ``DLPNO-CCSD(T)-F12/cc-pVTZ-F12`` model chemistry along with two auxiliary basis sets ``aug-cc-pVTZ/C`` and
+``cc-pVTZ-F12-CABS`` for single point calculation.
+
+The following job-specific level of theory arguments accept either a simple string (see "shortcuts" below) or the
+above-detailed dictionary specification: ``conformer_level``, ``opt_level``, ``freq_level``, ``sp_level``,
+``scan_level``, ``ts_guess_level``, ``orbitals_level``.
+
+Using dictionary to specify job level of theory is always recommended due to its clarity and flexibility. In addition,
+ARC supports several shortcuts.
+
+The job level of theory also accepts a string input with format ``method`` or ``method/basis``. You may use this option
+only if the level of theory specification contains neither ``auxiliary_basis`` nor ``dispersion``.
+
+For example::
+
+    opt_level = 'apfd/def2tzvp'
+
+is a shortcut for::
+
+    opt_level = {'method': 'apfd', 'basis': 'def2tzvp'}
+
+Another example::
+
+    conformer_level = 'PM6'
+
+is a shortcut for::
+
+    conformer_level = {'method': 'PM6'}
+
+ARC also supports an additional argument (``level_of_theory``) as a shortcut to simultaneously specify ``opt_level``,
+``freq_level``, ``sp_level``, and ``scan_level``.
+
+For example::
+
+    level_of_theory: 'dlpno-ccsd(T)/def2tzvp//apfd/def2svp'
+
+is a shortcut for::
+
+    opt_level = {'method': 'apfd', 'basis': 'def2svp'}
+    freq_level = {'method': 'apfd', 'basis': 'def2svp'}
+    scan_level = {'method': 'apfd', 'basis': 'def2svp'}
+    sp_level = {'method': 'dlpno-ccsd(T)', 'basis': 'def2tzvp'}
+
+Note: If ``level_of_theory`` does not contain the ``//`` deliminator but does contain ``\/``, it is interpreted as intended
+for running all opt, freq, scan, and sp job types at that level.
+
+For example::
+
+    level_of_theory: 'wb97xd/def2svp'
+
+is equivalent to::
+
+    opt_level = {'method': 'wb97xd', 'basis': 'def2svp'}
+    freq_level = {'method': 'wb97xd', 'basis': 'def2svp'}
+    scan_level = {'method': 'wb97xd', 'basis': 'def2svp'}
+    sp_level = {'method': 'wb97xd', 'basis': 'def2svp'}
+
+Note: If ``level_of_theory`` does not contain any deliminator (neither ``//`` nor ``\/``), it is interpreted as a
+composite method.
+
+For example::
+
+    level_of_theory: 'cbs-qb3'
+
+is interpreted as::
+
+    composite_method: 'cbs-qb3'
+
+If a semi-empirical method was meant to be used (e.g., ``AM1``), it must be set using the job-specific level of theory
+arguments (e.g., ``opt_level``, etc.) using the dictionary format, rather than the ``level_of_theory`` shortcut
+argument.
+
+For example, to specify ``AM1`` as the geometry optimization method, please use::
+
+    opt_level = {'method': 'AM1'}
+
+To avoid conflicts and confusion, ARC will raise an ``InputError`` if both ``level_of_theory`` and ``composite_method``
+are specified. Also, it is not good practice to specify ``level_of_theory`` along with ``opt_level``,
+``freq_level``, and ``sp_level``. If these arguments are specified simultaneously, ARC will overwrite
+``level_of_theory`` with the values given in ``opt_level``, ``freq_level``, and ``sp_level``.
+
+Additional job options
+^^^^^^^^^^^^^^^^^^^^^^
+
+Note: this feature currently has limited support for ESS other than ``Orca``.
+
+ARC allows specification of job options (e.g., SCF convergence) at ease. By default, ARC uses default job options for
+each ESS and job type stored in the ``ESS_default_options_dict`` dictionary in the settings.py.
+
+ARC has the flexibility of accepting various types of job option specification in an input file. The most general
+syntax is a dictionary::
+
+    job_additional_options = {ESS: {job_type:  {option_format: {option_category: option_specification}}}}
+
+For example::
+
+    job_additional_options = {'orca': {'opt': {'keyword' :{'opt_convergence': 'TightOpt'}}}}
+
+sets the optimization convergence to ``TightOpt`` for geometry optimization jobs in Orca.
+
+Another example::
+
+    job_additional_options = {'orca': {'global': {'block' :{'generic': '%scf DryRun true \n end'}}}}
+
+instructs ``Orca`` to run a test job for determining the memory needed for the SCF module.
+
+Notice that ARC supports two kinds of ``option_format``, which are ``keyword`` and ``block``, because many ESS have
+these two methods to specify job options (e.g., ``Orca``). Make sure to read the manual of the ESS that is intended to
+use to ensure correct format for specifying job options.
+
+Using dictionary to specify job option is always recommended due to its clarity and flexibility. The
+``ESS_default_options_dict`` dictionary in the settings.py contains default ``option_category``
+(e.g., ``opt_convergence``, ``scf_convergence``) that ARC use. Make sure to read the manual of the ESS that is
+intended to use to obtain a list of possible options. For example, ``opt_convergence`` can take values like
+``NormalOpt`` and ``TightOpt`` as specified in the ``Orca`` `manual <https://cec.mpg.de/fileadmin/media/Forschung/ORCA/orca_manual_4_0_1.pdf>`_.
+
+Use ``generic`` as a key for ``option_category`` that is not default in ARC.
+
+For example::
+
+    job_additional_options = {'gaussian': {'global': {'keyword' :{'generic': 'iop(99/33=1)'}}}}
+
+will append ``iop(99/33=1)`` to all ``Gaussian`` job input scripts. In addition, ARC supports a shortcut.
+``job_shortcut_keywords`` is a dictionary with ESS string as keys and job option keyword string as values.
+
+For example::
+
+    job_shortcut_keywords = {'gaussian': 'iop(99/33=1)'}
+
+is a shortcut of the previous example.
 
 Control job memory allocation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 To specify the amount of memory for all jobs in an ARC project, set ``job_memory`` with positive integer values in GB.
 
 Notice that user can change the total memory per node by setting the value of ``memory`` key in the servers dictionary
@@ -101,6 +258,7 @@ All of the above settings can be modified in the settings.py file.
 
 ND Rotor scans
 ^^^^^^^^^^^^^^
+
 ARC also supports ND (N dimensional, N >= 1) rotor scans. There are seven different ND types to execute:
 
 - A1. Generate all geometries in advance (brute force), and calculate single point energies (nested or diagonalized).

@@ -10,8 +10,9 @@ import datetime
 import math
 import os
 import shutil
+import yaml
 
-from arc.common import get_logger, calculate_dihedral_angle
+from arc.common import get_logger, calculate_dihedral_angle, determine_model_chemistry_type
 from arc.exceptions import JobError, InputError
 from arc.job.inputs import input_files
 from arc.job.local import get_last_modified_time, submit_job, delete_job, execute_command, check_job_status, \
@@ -20,7 +21,7 @@ from arc.job.submit import submit_scripts
 from arc.job.ssh import SSHClient
 from arc.job.trsh import determine_ess_status, trsh_job_on_server
 from arc.settings import arc_path, servers, submit_filename, t_max_format, input_filename, output_filename, \
-    rotor_scan_resolution, levels_ess
+    rotor_scan_resolution, levels_ess, orca_default_options_dict
 from arc.species.converter import xyz_to_str, str_to_xyz, check_xyz_dict
 
 
@@ -31,6 +32,22 @@ class Job(object):
     """
     ARC's Job class.
 
+    Dictionary structures::
+
+    job_additional_options = {'Orca': {'sp':        {'keyword': {'dlpno_threshold': 'normalPNO'}},
+
+                                       'freq':      {'block': {'geometry': '''%geom
+                                                                      Calc_Hess true
+                                                                 end'''},
+
+                                       <job_type>:  <option_format>: {<option_category>: <option_specification>}
+                                      },
+
+                              'Gaussian': {'global':   {'keyword': {'wildcard': 'iop(7/33=1)'}},
+
+                              <ESS>: {...}
+                             }
+
     Args:
         project (str): The project's name. Used for naming the directory.
         project_directory (str): The path to the project directory.
@@ -38,7 +55,11 @@ class Job(object):
         species_name (str): The species/TS name. Used for naming the directory.
         xyz (dict): The xyz geometry. Used for the calculation.
         job_type (str): The job's type.
-        level_of_theory (str): Level of theory, e.g. 'CBS-QB3', 'CCSD(T)-F12a/aug-cc-pVTZ', 'B3LYP/6-311++G(3df,3pd)'...
+        job_level_of_theory_dict (dict): A dictionary that specifies the level of theory for a job.
+                                         e.g., {'auxiliary_basis': '',
+                                                'basis': '6-31g(d,p)',
+                                                'method': 'b3lyp',
+                                                'dispersion': 'empiricaldispersion=gd3bj'}
         multiplicity (int): The species multiplicity.
         charge (int, optional): The species net charge. Default is 0.
         conformer (int, optional): Conformer number if optimizing conformers.
@@ -57,8 +78,6 @@ class Job(object):
         ess_trsh_methods (list, optional): A list of troubleshooting methods already tried out for ESS convergence.
         bath_gas (str, optional): A bath gas. Currently used in OneDMin to calc L-J parameters.
                                   Allowed values are He, Ne, Ar, Kr, H2, N2, O2
-        initial_trsh (dict, optional): Troubleshooting methods to try by default. Keys are ESS software,
-                                       values are trshs.
         job_num (int, optional): Used as the entry number in the database, as well as the job name on the server.
         job_server_name (str, optional): Job's name on the server (e.g., 'a103').
         job_name (str, optional): Job's name for internal usage (e.g., 'opt_a103').
@@ -81,7 +100,9 @@ class Job(object):
         rotor_index (int): The 0-indexed rotor number (key) in the species.rotors_dict dictionary.
         job_dict (dict, optional): A dictionary to create this object from (used when restarting ARC).
         testing (bool, optional): Whether the object is generated for testing purposes, True if it is.
-        cpu_cores (int): The total number of cpu cores requested for a job.
+        cpu_cores (int, optional): The total number of cpu cores requested for a job.
+        job_additional_options (dict, optional): Additional specifications to control the execution of a job.
+        job_shortcut_keywords (dict, optional): Shortcut keyword specifications to control the execution of a job.
 
     Attributes:
         project (str): The project's name. Used for naming the directory.
@@ -99,7 +120,7 @@ class Job(object):
         conformer (int): Conformer number if optimizing conformers.
         conformers (str): A path to the YAML file conformer coordinates for a Gromacs MD job.
         is_ts (bool): Whether this species represents a transition structure.
-        level_of_theory (str): Level of theory, e.g. 'CBS-QB3', 'CCSD(T)-F12a/aug-cc-pVTZ', 'B3LYP/6-311++G(3df,3pd)'...
+        job_level_of_theory_dict (dict): A dictionary that specifies the level of theory for a job.
         job_type (str): The job's type.
         scan (list): A list representing atom labels for the dihedral scan (e.g., [2, 1, 3, 5]).
         pivots (list): The rotor scan pivots, if the job type is scan. Not used directly in these methods,
@@ -121,6 +142,8 @@ class Job(object):
         total_job_memory_gb (int): The total memory ARC specifies for a job in GB.
         method (str): The calculation method (e.g., 'B3LYP', 'CCSD(T)', 'CBS-QB3'...).
         basis_set (str): The basis set (e.g., '6-311++G(d,p)', 'aug-cc-pVTZ'...).
+        auxiliary_basis_set (str): The auxiliary basis set.
+        dispersion (str): DFT dispersion.
         fine (bool): Whether to use fine geometry optimization parameters.
         shift (str): A string representation alpha- and beta-spin orbitals shifts (molpro only).
         comments (str): Job comments (archived, not used).
@@ -138,6 +161,8 @@ class Job(object):
         job_name (str): Job's name for internal usage (e.g., 'opt_a103').
         job_id (int): The job's ID determined by the server.
         job_num (int): Used as the entry number in the database, as well as the job name on the server.
+        job_additional_options (dict): Additional specifications to control the execution of a job.
+        job_shortcut_keywords (dict): Shortcut keyword specifications to control the execution of a job.
         local_path (str): Local path to job's folder.
         local_path_to_output_file (str): The local path to the output.out file.
         local_path_to_orbitals_file (str): The local path to the orbitals.fchk file (only for orbitals jobs).
@@ -150,7 +175,6 @@ class Job(object):
         server (str): Server's name.
         trsh (str): A troubleshooting keyword to be used in input files.
         ess_trsh_methods (list): A list of troubleshooting methods already tried out for ESS convergence.
-        initial_trsh (dict): Troubleshooting methods to try by default. Keys are ESS software, values are trshs.
         scan_trsh (str): A troubleshooting method for rotor scans.
         occ (int): The number of occupied orbitals (core + val) from a molpro CCSD sp calc.
         project_directory (str): The path to the project directory.
@@ -162,14 +186,15 @@ class Job(object):
         directed_scan_type (str): The type of the directed scan.
         rotor_index (int): The 0-indexed rotor number (key) in the species.rotors_dict dictionary.
     """
-    def __init__(self, project='', ess_settings=None, species_name='', xyz=None, job_type='', level_of_theory='',
+    def __init__(self, project='', ess_settings=None, species_name='', xyz=None, job_type='',
+                 job_level_of_theory_dict=None,
                  multiplicity=None, project_directory='', charge=0, conformer=-1, fine=False, shift='', software=None,
                  is_ts=False, scan=None, pivots=None, total_job_memory_gb=14, comments='', trsh='', scan_trsh='',
-                 job_dict=None, ess_trsh_methods=None, bath_gas=None, initial_trsh=None, job_num=None,
+                 job_dict=None, ess_trsh_methods=None, bath_gas=None, job_num=None,
                  job_server_name=None, job_name=None, job_id=None, server=None, initial_time=None, occ=None,
                  max_job_time=120, scan_res=None, checkfile=None, number_of_radicals=None, conformers=None, radius=None,
                  directed_scan_type=None, directed_scans=None, directed_dihedrals=None, rotor_index=None, testing=False,
-                 cpu_cores=None):
+                 cpu_cores=None, job_additional_options=None, job_shortcut_keywords=None):
         if job_dict is not None:
             self.from_dict(job_dict)
         else:
@@ -179,8 +204,8 @@ class Job(object):
                 raise InputError('species_name must be specified')
             if not job_type:
                 raise InputError('job_type must be specified')
-            if not level_of_theory:
-                raise InputError('level_of_theory must be specified')
+            if job_level_of_theory_dict is None:
+                raise InputError('job_level_of_theory_dict must be specified')
             if ess_settings is None:
                 raise InputError('ess_settings must be specified')
             if multiplicity is None:
@@ -207,7 +232,8 @@ class Job(object):
             self.is_ts = is_ts
             self.ess_trsh_methods = ess_trsh_methods if ess_trsh_methods is not None else list()
             self.trsh = trsh
-            self.initial_trsh = initial_trsh if initial_trsh is not None else dict()
+            self.job_additional_options = job_additional_options if job_additional_options is not None else dict()
+            self.job_shortcut_keywords = job_shortcut_keywords if job_shortcut_keywords is not None else dict()
             self.scan_trsh = scan_trsh
             self.scan_res = scan_res if scan_res is not None else rotor_scan_resolution
             self.scan = scan
@@ -226,7 +252,7 @@ class Job(object):
             self.job_type = job_type
             self.job_server_name = job_server_name
             self.job_name = job_name
-            self.level_of_theory = level_of_theory.lower()
+            self.job_level_of_theory_dict = job_level_of_theory_dict
             self.server = server
             self.software = software
             self.cpu_cores = cpu_cores
@@ -255,14 +281,8 @@ class Job(object):
         self.job_name = self.job_name if self.job_name is not None else self.job_type + '_' + self.job_server_name
 
         # determine the level of theory and software to use:
-        self.method, self.basis_set = '', ''
-        if '/' in self.level_of_theory:
-            splits = self.level_of_theory.split('/')
-            self.method = splits[0]
-            self.basis_set = '/'.join(splits[1:])  # there are two '/' symbols in a ff_param_fit job's l.o.t, keep both
-        else:  # this is a composite job
-            self.method, self.basis_set = self.level_of_theory, ''
-
+        self.method, self.basis_set, self.auxiliary_basis_set, self.dispersion = '', '', '', ''
+        self.determine_model_chemistry()
         if self.software is not None:
             self.software = self.software.lower()
         else:
@@ -301,7 +321,7 @@ class Job(object):
         job_dict['job_type'] = self.job_type
         job_dict['job_server_name'] = self.job_server_name
         job_dict['job_name'] = self.job_name
-        job_dict['level_of_theory'] = self.level_of_theory
+        job_dict['job_level_of_theory_dict'] = self.job_level_of_theory_dict
         job_dict['xyz'] = xyz_to_str(self.xyz)
         job_dict['fine'] = self.fine
         job_dict['job_status'] = self.job_status
@@ -323,8 +343,10 @@ class Job(object):
             job_dict['ess_trsh_methods'] = self.ess_trsh_methods
         if self.trsh:
             job_dict['trsh'] = self.trsh
-        if self.initial_trsh:
-            job_dict['initial_trsh'] = self.initial_trsh
+        if self.job_additional_options:
+            job_dict['job_additional_options'] = self.job_additional_options
+        if self.job_shortcut_keywords:
+            job_dict['job_shortcut_keywords'] = self.job_shortcut_keywords
         if self.shift:
             job_dict['shift'] = self.shift
         if self.software is not None:
@@ -373,7 +395,7 @@ class Job(object):
         self.ess_settings = job_dict['ess_settings']
         self.species_name = job_dict['species_name']
         self.job_type = job_dict['job_type']
-        self.level_of_theory = job_dict['level_of_theory'].lower()
+        self.job_level_of_theory_dict = job_dict['job_level_of_theory_dict']
         self.multiplicity = job_dict['multiplicity']
         # optional attributes:
         self.xyz = str_to_xyz(job_dict['xyz']) if 'xyz' in job_dict else None
@@ -393,7 +415,10 @@ class Job(object):
         self.comments = job_dict['comments'] if 'comments' in job_dict else ''
         self.trsh = job_dict['trsh'] if 'trsh' in job_dict else ''
         self.scan_trsh = job_dict['scan_trsh'] if 'scan_trsh' in job_dict else ''
-        self.initial_trsh = job_dict['initial_trsh'] if 'initial_trsh' in job_dict else dict()
+        self.job_additional_options = job_dict['job_additional_options'] if 'job_additional_options' \
+                                                                            in job_dict else dict()
+        self.job_shortcut_keywords = job_dict['job_shortcut_keywords'] if 'job_shortcut_keywords'\
+                                                                          in job_dict else dict()
         self.ess_trsh_methods = job_dict['ess_trsh_methods'] if 'ess_trsh_methods' in job_dict else list()
         self.bath_gas = job_dict['bath_gas'] if 'bath_gas' in job_dict else None
         self.job_num = job_dict['job_num'] if 'job_num' in job_dict else -1
@@ -479,8 +504,9 @@ class Job(object):
                 job_type += ' (fine)'
             row = [self.job_num, self.project, self.species_name, conformer, self.is_ts, self.charge,
                    self.multiplicity, job_type, self.job_name, self.job_id, self.server, self.software,
-                   self.total_job_memory_gb, self.method, self.basis_set, self.initial_time, self.final_time, self.run_time,
-                   self.job_status[0], self.job_status[1]['status'], self.ess_trsh_methods, self.comments]
+                   self.total_job_memory_gb, self.method, self.basis_set, self.initial_time, self.final_time,
+                   self.run_time, self.job_status[0], self.job_status[1]['status'], self.ess_trsh_methods,
+                   self.comments]
             writer.writerow(row)
 
     def format_max_job_time(self, time_format):
@@ -528,8 +554,8 @@ class Job(object):
                 architecture = '\n#$ -l magnycours'
         try:
             self.submit = submit_scripts[self.server][self.software.lower()].format(
-                name=self.job_server_name, un=un, t_max=t_max, memory=int(self.submit_script_memory), cpus=self.cpu_cores,
-                architecture=architecture, size=size)
+                name=self.job_server_name, un=un, t_max=t_max, memory=int(self.submit_script_memory),
+                cpus=self.cpu_cores, architecture=architecture, size=size)
         except KeyError:
             submit_scripts_for_printing = dict()
             for server, values in submit_scripts.items():
@@ -555,18 +581,30 @@ class Job(object):
         Write a software-specific, job-specific input file.
         Save the file locally and also upload it to the server.
         """
-        if self.initial_trsh and not self.trsh:
-            # use the default trshs defined by the user in the initial_trsh dictionary
-            if self.software in self.initial_trsh:
-                self.trsh = self.initial_trsh[self.software]
+        # Initialize variables
+        orca_options_keywords_dict, orca_options_blocks_dict, restricted, method_class = (None for _ in range(4))
+        job_options_keywords, job_options_blocks, shortcut_keywords = '', '', ''
+
+        # Ignore user specified additional job job_options_keywords when troubleshoot
+        if self.trsh:
+            logger.warning(f'When troubleshooting {self.job_name}, ARC ignores user-specified additional job options \n'
+                           f'{yaml.dump(self.job_additional_options.get(self.software, ""), default_flow_style=False)}'
+                           f'\n'
+                           f'{yaml.dump(self.job_shortcut_keywords.get(self.software, ""), default_flow_style=False)}')
+            self.job_additional_options = dict()
+            self.job_shortcut_keywords = dict()
 
         self.input = input_files.get(self.software, None)
 
-        slash, scan_string, constraint = '', '', ''
-        if self.software == 'gaussian' and '/' in self.level_of_theory:
+        slash, slash_2, scan_string, constraint = '', '', '', ''
+        if self.software == 'gaussian' and self.basis_set:
+            # assume method without basis set is composite method or force field
             slash = '/'
+            if self.auxiliary_basis_set:
+                slash_2 = '/'
 
-        if (self.multiplicity > 1 and '/' in self.level_of_theory) \
+        # Determine HF/DFT restriction type
+        if (self.multiplicity > 1 and self.basis_set) \
                 or (self.number_of_radicals is not None and self.number_of_radicals > 1):
             # don't add 'u' to composite jobs. Do add 'u' for bi-rad singlets if `number_of_radicals` > 1
             if self.number_of_radicals is not None and self.number_of_radicals > 1:
@@ -574,13 +612,16 @@ class Job(object):
                             'multiplicity {2}'.format(self.species_name, self.number_of_radicals, self.multiplicity))
             if self.software == 'qchem':
                 restricted = 'True'  # In QChem this attribute is "unrestricted"
-            else:
+            elif self.software in ['gaussian', 'orca', 'molpro']:
                 restricted = 'u'
         else:
             if self.software == 'qchem':
                 restricted = 'False'  # In QChem this attribute is "unrestricted"
-            else:
+            elif self.software == 'orca':
+                restricted = 'r'
+            else:  # gaussian, molpro
                 restricted = ''
+
 
         job_type_1, job_type_2, fine = '', '', ''
 
@@ -604,6 +645,81 @@ wf,spin={spin},charge={charge};}}
 {job_type_2}
 ---;"""
 
+        # Software specific global job options
+        if self.software == 'orca':
+            shortcut_keywords = self.job_shortcut_keywords.get(self.software, '')
+            orca_options_keywords_dict = dict()
+            orca_options_blocks_dict = dict()
+            user_scf_convergence = ''
+            if self.job_additional_options:
+                try:
+                    user_block_keywords = self.job_additional_options[self.software]['global']['block']\
+                        .get('generic', '')
+                except KeyError:
+                    user_block_keywords = ''
+                if user_block_keywords:
+                    orca_options_blocks_dict['global_generic'] = user_block_keywords
+
+                try:
+                    user_keywords = self.job_additional_options[self.software]['global']['keyword']\
+                        .get('generic', '')
+                except KeyError:
+                    user_keywords = ''
+                if user_keywords:
+                    orca_options_keywords_dict['global_generic'] = user_keywords
+
+                try:
+                    user_scf_convergence = self.job_additional_options[self.software]['global']['keyword']\
+                        .get('scf_convergence', '')
+                except KeyError:
+                    user_scf_convergence = ''
+            scf_convergence = user_scf_convergence.lower() or\
+                              orca_default_options_dict['global']['keyword'].get('scf_convergence', '').lower()
+            if not scf_convergence:
+                raise InputError('Orca SCF convergence is not specified. Please specify this variable either in the '
+                                 'settings.py as default options or in the input file as additional options.')
+            orca_options_keywords_dict['scf_convergence'] = scf_convergence
+
+            # Orca requires different job_options_blocks to wavefunction methods and DFTs
+            # determine model chemistry type
+            model_chemistry_class = determine_model_chemistry_type(self.method)
+            if model_chemistry_class == 'dft':
+                method_class = 'KS'
+                # DFT grid must be the same for both opt and freq
+                orca_options_keywords_dict['dft_final_grid'] = 'NoFinalGrid'
+                if self.fine:
+                    orca_options_keywords_dict['dft_grid'] = 'Grid6'
+                else:
+                    orca_options_keywords_dict['dft_grid'] = 'Grid5'
+            elif model_chemistry_class == 'wavefunction':
+                method_class = 'HF'
+                if 'dlpno' in self.method.lower():
+                    user_dlpno_threshold = ''
+                    if self.job_additional_options:
+                        try:
+                            user_dlpno_threshold = self.job_additional_options[self.software]['global']['keyword'] \
+                                .get('dlpno_threshold', '')
+                        except KeyError:
+                            user_dlpno_threshold = ''
+                    dlpno_threshold = user_dlpno_threshold.lower() if user_dlpno_threshold \
+                        else orca_default_options_dict['global']['keyword'].get('dlpno_threshold', '').lower()
+                    if not dlpno_threshold:
+                        raise InputError(
+                            'Orca DLPNO threshold is not specified. Please specify this variable either in the '
+                            'settings.py as default options or in the input file as additional options.')
+                    orca_options_keywords_dict['dlpno_threshold'] = dlpno_threshold
+            else:
+                logger.debug(f'Running {self.method} method in Orca.')
+        elif self.software == 'gaussian':
+            shortcut_keywords = self.job_shortcut_keywords.get(self.software, '')
+            if not self.trsh:
+                if self.job_level_of_theory_dict['method'][:2] == 'ro':
+                    self.trsh = 'use=L506'
+                else:
+                    # xqc will do qc (quadratic convergence) if the job fails w/o it, so use by default
+                    self.trsh = 'scf=xqc'
+
+        # Job type specific options
         if self.job_type in ['conformer', 'opt']:
             if self.software == 'gaussian':
                 if self.is_ts:
@@ -628,8 +744,8 @@ wf,spin={spin},charge={charge};}}
                     job_type_1 = 'opt'
                 if self.fine:
                     fine = '\n   GEOM_OPT_TOL_GRADIENT 15\n   GEOM_OPT_TOL_DISPLACEMENT 60\n   GEOM_OPT_TOL_ENERGY 5'
-                    if 'b' in self.level_of_theory:
-                        # Try to capture DFT levels (containing the letter 'b'?), and det a fine DFT grid
+                    if determine_model_chemistry_type(self.method) == 'dft':
+                        # Try to capture DFT levels, and use a fine DFT grid
                         # See 4.4.5.2 Standard Quadrature Grids, S in
                         # http://www.q-chem.com/qchem-website/manual/qchem50_manual/sect-DFT.html
                         fine += '\n   XC_GRID 3'
@@ -638,6 +754,48 @@ wf,spin={spin},charge={charge};}}
                     job_type_1 = "\noptg, root=2, method=qsd, readhess, savexyz='geometry.xyz'"
                 else:
                     job_type_1 = "\noptg, savexyz='geometry.xyz'"
+            elif self.software == 'orca':
+                if self.fine:
+                    user_fine_opt_convergence = ''
+                    if self.job_additional_options:
+                        try:
+                            user_fine_opt_convergence = self.job_additional_options[self.software]['opt']['keyword'] \
+                                .get('fine_opt_convergence', '')
+                        except KeyError:
+                            user_fine_opt_convergence = ''
+                    fine_opt_convergence = user_fine_opt_convergence.lower() if user_fine_opt_convergence \
+                        else orca_default_options_dict['opt']['keyword'].get('fine_opt_convergence', '').lower()
+                    if not fine_opt_convergence:
+                        raise InputError(
+                            'Orca fine optimization convergence is not specified. Please specify this variable either '
+                            'in the settings.py as default options or in the input file as additional options.')
+                    orca_options_keywords_dict['fine_opt_convergence'] = fine_opt_convergence
+                else:
+                    user_opt_convergence = ''
+                    if self.job_additional_options:
+                        try:
+                            user_opt_convergence = self.job_additional_options[self.software]['opt']['keyword'] \
+                                .get('opt_convergence', '')
+                        except KeyError:
+                            user_opt_convergence = ''
+                    opt_convergence = user_opt_convergence.lower() if user_opt_convergence \
+                        else orca_default_options_dict['opt']['keyword'].get('opt_convergence', '').lower()
+                    if not opt_convergence:
+                        raise InputError(
+                            'Orca optimization convergence is not specified. Please specify this variable either in '
+                            'the settings.py as default options or in the input file as additional options.')
+                    orca_options_keywords_dict['opt_convergence'] = opt_convergence
+                if self.is_ts:
+                    job_type_1 = 'OptTS'
+                    orca_options_blocks_dict['Calc_Hess'] = """
+%geom
+    Calc_Hess true # calculation of the exact Hessian before the first opt step
+end               
+"""
+                else:
+                    job_type_1 = 'Opt'
+                job_options_keywords = ' '.join(orca_options_keywords_dict.values())
+                job_options_blocks = '\n'.join(orca_options_blocks_dict.values())
 
         elif self.job_type == 'orbitals' and self.software == 'qchem':
             if self.is_ts:
@@ -677,6 +835,20 @@ name
                 job_type_1 = 'freq'
             elif self.software == 'molpro':
                 job_type_1 = '\n{frequencies;\nthermo;\nprint,HESSIAN,thermo;}'
+            elif self.software == 'orca':
+                job_type_1 = 'Freq'
+                use_num_freq = orca_default_options_dict['freq']['keyword'].get('use_num_freq', False)
+                if self.job_additional_options:
+                    try:
+                        use_num_freq = self.job_additional_options[self.software]['freq']['keyword'] \
+                            .get('use_num_freq', False)
+                    except KeyError:
+                        use_num_freq = False
+                if use_num_freq:
+                    orca_options_keywords_dict['freq_type'] = 'NumFreq'
+                    logger.info(f'Using numerical frequencies calculation in Orca. Note: This job might therefore be '
+                                f'time-consuming.')
+                job_options_keywords = ' '.join(orca_options_keywords_dict.values())
 
         elif self.job_type == 'optfreq':
             if self.software == 'gaussian':
@@ -724,8 +896,62 @@ $end
                 else:
                     job_type_1 = "\noptg,savexyz='geometry.xyz"
                 job_type_2 = '\n{frequencies;\nthermo;\nprint,HESSIAN,thermo;}'
+            elif self.software == 'orca':
+                if self.is_ts:
+                    job_type_1 = 'OptTS'
+                    orca_options_blocks_dict['Calc_Hess'] = """
+%geom
+    Calc_Hess true # calculation of the exact Hessian before the first opt step
+end               
+"""
+                else:
+                    job_type_1 = 'Opt'
+                job_type_2 = '!Freq'
+                if self.fine:
+                    user_fine_opt_convergence = ''
+                    if self.job_additional_options:
+                        try:
+                            user_fine_opt_convergence = self.job_additional_options[self.software]['opt']['keyword'] \
+                                .get('fine_opt_convergence', '')
+                        except KeyError:
+                            user_fine_opt_convergence = ''
+                    fine_opt_convergence = user_fine_opt_convergence.lower() if user_fine_opt_convergence \
+                        else orca_default_options_dict['opt']['keyword'].get('fine_opt_convergence', '').lower()
+                    if not fine_opt_convergence:
+                        raise InputError(
+                            'Orca fine optimization convergence is not specified. Please specify this variable either '
+                            'in the settings.py as default options or in the input file as additional options.')
+                    orca_options_keywords_dict['fine_opt_convergence'] = fine_opt_convergence
+                else:
+                    user_opt_convergence = ''
+                    if self.job_additional_options:
+                        try:
+                            user_opt_convergence = self.job_additional_options[self.software]['opt']['keyword'] \
+                                .get('opt_convergence', '')
+                        except KeyError:
+                            user_opt_convergence = ''
+                    opt_convergence = user_opt_convergence.lower() if user_opt_convergence \
+                        else orca_default_options_dict['opt']['keyword'].get('opt_convergence', '').lower()
+                    if not opt_convergence:
+                        raise InputError(
+                            'Orca optimization convergence is not specified. Please specify this variable either in '
+                            'the settings.py as default options or in the input file as additional options.')
+                    orca_options_keywords_dict['opt_convergence'] = opt_convergence
+                use_num_freq = orca_default_options_dict['freq']['keyword'].get('use_num_freq', False)
+                if self.job_additional_options:
+                    try:
+                        use_num_freq = self.job_additional_options[self.software]['freq']['keyword'] \
+                            .get('use_num_freq', False)
+                    except KeyError:
+                        use_num_freq = False
+                if use_num_freq:
+                    orca_options_keywords_dict['freq_type'] = 'NumFreq'
+                    logger.info(f'Using numeric frequencies calculation in Orca. Notice that this job will be '
+                                f'very time consuming.')
+                job_options_keywords = ' '.join(orca_options_keywords_dict.values())
+                job_options_blocks = '\n'.join(orca_options_blocks_dict.values())
 
-        if self.job_type == 'sp':
+        elif self.job_type == 'sp':
             if self.software == 'gaussian':
                 job_type_1 = 'scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
                 if self.checkfile is not None:
@@ -736,15 +962,17 @@ $end
                 job_type_1 = 'sp'
             elif self.software == 'molpro':
                 pass
+            elif self.software == 'orca':
+                job_type_1 = 'sp'
 
-        if self.job_type == 'composite':
+        elif self.job_type == 'composite':
             if self.software == 'gaussian':
                 if self.fine:
                     fine = 'scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
                 if self.is_ts:
                     job_type_1 = 'opt=(ts, calcfc, noeigentest, tight, maxstep=5)'
                 else:
-                    if self.level_of_theory in ['rocbs-qb3']:
+                    if self.job_level_of_theory_dict['method'] in ['rocbs-qb3']:
                         # No analytic 2nd derivatives (FC) for these methods
                         job_type_1 = 'opt=(noeigentest, tight)'
                     else:
@@ -756,7 +984,7 @@ $end
             else:
                 raise JobError('Currently composite methods are only supported in gaussian')
 
-        if self.job_type == 'scan':
+        elif self.job_type == 'scan':
             if divmod(360, self.scan_res)[1]:
                 raise JobError(f'Scan job got an illegal rotor scan resolution of {self.scan_res}')
             if self.scan is not None and self.scan:
@@ -834,14 +1062,7 @@ $end
                                  'Got: {0} using the {1} level of theory'.format(
                                   self.software, self.method + '/' + self.basis_set))
 
-        if self.software == 'gaussian' and not self.trsh:
-            if self.level_of_theory[:2] == 'ro':
-                self.trsh = 'use=L506'
-            else:
-                # xqc will do qc (quadratic convergence) if the job fails w/o it, so use by default
-                self.trsh = 'scf=xqc'
-
-        if self.job_type == 'irc':  # TODO
+        elif self.job_type == 'irc':  # TODO
             if self.fine:
                 # Note that the Acc2E argument is not available in Gaussian03
                 fine = 'scf=(direct) integral=(grid=ultrafine, Acc2E=12)'
@@ -851,7 +1072,7 @@ $end
             else:
                 job_type_1 += ' guess=mix'
 
-        if self.job_type == 'gsm':  # TODO
+        elif self.job_type == 'gsm':  # TODO
             pass
 
         if 'mrci' in self.method:
@@ -871,15 +1092,21 @@ $end
         else:
             try:
                 self.input = self.input.format(memory=int(self.input_file_memory), method=self.method, slash=slash,
+                                               slash_2=slash_2,
                                                basis=self.basis_set, charge=self.charge, cpus=self.cpu_cores,
                                                multiplicity=self.multiplicity, spin=self.spin, xyz=xyz_to_str(self.xyz),
                                                job_type_1=job_type_1, job_type_2=job_type_2, scan=scan_string,
                                                restricted=restricted, fine=fine, shift=self.shift, trsh=self.trsh,
-                                               scan_trsh=self.scan_trsh, bath=self.bath_gas, constraint=constraint) \
+                                               scan_trsh=self.scan_trsh, bath=self.bath_gas, constraint=constraint,
+                                               job_options_blocks=job_options_blocks,
+                                               job_options_keywords=job_options_keywords,
+                                               method_class=method_class, auxiliary_basis=self.auxiliary_basis_set,
+                                               shortcut_keywords=shortcut_keywords) \
                     if self.input is not None else None
             except KeyError:
                 logger.error('Could not interpret all input file keys in\n{0}'.format(self.input))
                 raise
+
         if not self.testing:
             if not os.path.exists(self.local_path):
                 os.makedirs(self.local_path)
@@ -971,6 +1198,14 @@ $end
             ssh.download_file(remote_file_path=remote_check_file_path, local_file_path=self.local_path_to_check_file)
             if not os.path.isfile(self.local_path_to_check_file):
                 logger.warning('Gaussian check file for {0} was not downloaded properly'.format(self.job_name))
+
+        # download Orca .hess hessian file generated by frequency calculations
+        # Hessian is useful when the user would like to project rotors
+        if self.software.lower() == 'orca' and self.job_type == 'freq':
+            remote_hess_file_path = os.path.join(self.remote_path, 'input.hess')
+            ssh.download_file(remote_file_path=remote_hess_file_path, local_file_path=self.local_path_to_hess_file)
+            if not os.path.isfile(self.local_path_to_hess_file):
+                logger.warning(f'Orca hessian file for {self.job_name} was not downloaded properly')
 
         # download Lennard_Jones data file
         if self.software.lower() == 'onedmin':
@@ -1076,6 +1311,7 @@ $end
         """
         Download the additional information of stdout and stderr from the server.
         """
+        ssh = None
         lines1, lines2 = list(), list()
         content = ''
         cluster_soft = servers[self.server]['cluster_soft'].lower()
@@ -1241,7 +1477,7 @@ $end
             # First check the levels_ess dictionary from settings.py:
             for ess, phrase_list in levels_ess.items():
                 for phrase in phrase_list:
-                    if phrase in self.level_of_theory:
+                    if phrase in self.job_level_of_theory_dict['method']:
                         self.software = ess.lower()
             if self.software is None:
                 if self.job_type in ['conformer', 'opt', 'freq', 'optfreq', 'sp',
@@ -1298,6 +1534,12 @@ $end
                             raise JobError('Could not find the QChem software to run {0}/{1}'.format(
                                 self.method, self.basis_set))
                         self.software = 'qchem'
+                    elif 'dlpno' in self.method:
+                        # this is a DLPNO method, use Orca
+                        if 'orca' not in esss:
+                            raise JobError(f'Could not find the Orca software to run the DLPNO method {self.method}.\n'
+                                           f'ess_settings is:\n{self.ess_settings}')
+                        self.software = 'orca'
                 elif self.job_type == 'scan':
                     if 'wb97xd' in self.method:
                         if 'gaussian' not in esss:
@@ -1342,16 +1584,17 @@ $end
                     self.software = 'gaussian'
             if self.software is None:
                 # if still no software was determined, just try by order, if exists
-                logger.error('job_num: {0}'.format(self.job_num))
-                logger.error('ess_trsh_methods: {0}'.format(self.ess_trsh_methods))
-                logger.error('trsh: {0}'.format(self.trsh))
-                logger.error('job_type: {0}'.format(self.job_type))
-                logger.error('job_name: {0}'.format(self.job_name))
-                logger.error('level_of_theory: {0}'.format(self.level_of_theory))
-                logger.error('software: {0}'.format(self.software))
-                logger.error('method: {0}'.format(self.method))
-                logger.error('basis_set: {0}'.format(self.basis_set))
-                logger.error('Could not determine software for job {0}'.format(self.job_name))
+                logger.error(f'job_num: {self.job_num}')
+                logger.error(f'ess_trsh_methods: {self.ess_trsh_methods}')
+                logger.error(f'trsh: {self.trsh}')
+                logger.error(f'job_type: {self.job_type}')
+                logger.error(f'job_name: {self.job_name}')
+                logger.error(f'level_of_theory: {self.job_level_of_theory_dict}')
+                logger.error(f'software: {self.software}')
+                logger.error(f'method: {self.method}')
+                logger.error(f'basis_set: {self.basis_set}')
+                logger.error(f'auxiliary_basis_set: {self.auxiliary_basis_set}')
+                logger.error(f'Could not determine software for job {self.job_name}')
                 if 'gaussian' in esss:
                     logger.error('Setting it to Gaussian')
                     self.software = 'gaussian'
@@ -1365,19 +1608,37 @@ $end
                     logger.error('Setting it to Molpro')
                     self.software = 'molpro'
 
+    def determine_model_chemistry(self):
+        """
+        Determine method (e.g., b3lyp), basis set (e.g., def2-svp), auxiliary basis set (e.g., def2-svp/c), and
+        DFT dispersion (e.g., empiricaldispersion=gd3bj) from job level of theory dict.
+        """
+        if not isinstance(self.job_level_of_theory_dict, dict):
+            raise InputError(f'job_level_of_theory_dict must be a dictionary. '
+                             f'Got {type(self.job_level_of_theory_dict)}.')
+        self.method = self.job_level_of_theory_dict.get('method', '')
+        self.basis_set = self.job_level_of_theory_dict.get('basis', '')
+        self.auxiliary_basis_set = self.job_level_of_theory_dict.get('auxiliary_basis', '')
+        self.dispersion = self.job_level_of_theory_dict.get('dispersion', '')
+        if not self.method:
+            raise InputError(f'Got empty job method specification.')
+
     def set_cpu_and_mem(self):
         """
         Set the amount of cpus and memory based on ESS and cluster software.
         """
-        self.cpu_cores = 8 if self.cpu_cores is None else servers[self.server].get('cpus', 8)  # set to 8 by default
+        if self.cpu_cores is None:
+            # set to 8 if user did not specify cpu in settings and in ARC input file
+            self.cpu_cores = servers[self.server].get('cpus', 8)
 
         max_mem = servers[self.server].get('memory', None)  # max memory per node in GB
-        if max_mem is not None and self.total_job_memory_gb > max_mem * 0.9:
+        if max_mem is not None and self.total_job_memory_gb > max_mem * 0.8:
             logger.warning(f'The memory for job {self.job_name} using {self.software} ({self.total_job_memory_gb} GB) '
-                           f'exceeds 90% of the the maximum node memory on {self.server}. '
-                           f'Setting it to 90% * {max_mem} GB.')
-            self.total_job_memory_gb = 0.9 * max_mem
+                           f'exceeds 80% of the the maximum node memory on {self.server}. '
+                           f'Setting it to 80% * {max_mem} GB.')
+            self.total_job_memory_gb = 0.8 * max_mem
             total_submit_script_memory = self.total_job_memory_gb * 1024 * 1.05  # MB
+            self.job_status[1]['keywords'].append('max_total_job_memory')  # useful info when trouble shoot
         else:
             total_submit_script_memory = self.total_job_memory_gb * 1024 * 1.1  # MB
 
@@ -1418,6 +1679,7 @@ $end
         self.local_path_to_orbitals_file = os.path.join(self.local_path, 'orbitals.fchk')
         self.local_path_to_lj_file = os.path.join(self.local_path, 'lj.dat')
         self.local_path_to_check_file = os.path.join(self.local_path, 'check.chk')
+        self.local_path_to_hess_file = os.path.join(self.local_path, 'input.hess')
 
         # parentheses don't play well in folder names:
         species_name_for_remote_path = self.species_name.replace('(', '_').replace(')', '_')

@@ -62,6 +62,7 @@ global_ess_settings = {
     'molpro': 'server2',
     'qchem': 'server1',
     'onedmin': 'server1',
+    'orca': 'local',
 }
 
 # List here job types to execute by default
@@ -76,7 +77,7 @@ default_job_types = {'conformers': True,      # defaults to True if not specifie
                      'bde': False,            # defaults to False if not specified
                      }
 
-supported_ess = ['gaussian', 'molpro', 'qchem']  # use lowercase when adding new ones
+supported_ess = ['gaussian', 'molpro', 'qchem', 'orca']  # use lowercase when adding new ones
 
 # List here (complete or partial) phrases of methods or basis sets you'd like to associate to specific ESS
 # Avoid ascribing the same phrase to more than one software, this may cause undeterministic assignment of software
@@ -84,7 +85,8 @@ supported_ess = ['gaussian', 'molpro', 'qchem']  # use lowercase when adding new
 levels_ess = {
     'gaussian': ['apfd', 'b3lyp', 'm062x'],
     'molpro': ['ccsd', 'cisd', 'vpz'],
-    'qchem': ['m06-2x']
+    'qchem': ['m06-2x'],
+    'orca': ['dlpno'],
 }
 
 check_status_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat',
@@ -109,17 +111,25 @@ input_filename = {'gaussian': 'input.gjf',
                   'qchem': 'input.in',
                   'molpro': 'input.in',
                   'onedmin': 'input.in',
+                  'orca': 'input.in',
                   }
 
 output_filename = {'gaussian': 'input.log',
                    'qchem': 'output.out',
                    'molpro': 'input.out',
                    'onedmin': 'output.out',
-                   'gromacs': 'output.yml'
+                   'gromacs': 'output.yml',
+                   'orca': 'input.log',
                    }
 
-default_levels_of_theory = {'conformer': 'b3lyp/6-31g(d,p) EmpiricalDispersion=GD3BJ',
-                            'ts_guesses': 'b3lyp/6-31g(d,p) EmpiricalDispersion=GD3BJ',
+default_levels_of_theory = {'conformer': {'auxiliary_basis': '',
+                                          'basis': '6-31g(d,p)',
+                                          'method': 'b3lyp',
+                                          'dispersion': 'empiricaldispersion=gd3bj'},
+                            'ts_guesses': {'auxiliary_basis': '',
+                                           'basis': '6-31g(d,p)',
+                                           'method': 'b3lyp',
+                                           'dispersion': 'empiricaldispersion=gd3bj'},
                             'opt': 'wb97xd/def2TZVP',  # used for IRC as well
                             'freq': 'wb97xd/def2TZVP',  # should be the same level as opt (to calc freq at min E)
                             'scan': 'wb97xd/def2TZVP',  # should be the same level as freq (to project out rotors)
@@ -128,7 +138,20 @@ default_levels_of_theory = {'conformer': 'b3lyp/6-31g(d,p) EmpiricalDispersion=G
                             'orbitals': 'wb97x-d3/6-311++g(d,p)',  # save orbitals for visualization
                             'scan_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of the CBS-QB3 method
                             'freq_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of the CBS-QB3 method
+                            'orbitals_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of the CBS-QB3 method
+                                                                      # Currently only supported for QChem
                             }
+
+# Software specific default settings
+# Orca
+# ARC accepts all the Orca options listed in the dictionary below. For specifying additional Orca options, please see
+# documentation and Orca manual.
+orca_default_options_dict = {'opt': {'keyword': {'opt_convergence': 'NormalOpt',
+                                                 'fine_opt_convergence': 'TightOpt'}},
+                             'freq': {'keyword': {'use_num_freq': False}},
+                             'global': {'keyword': {'scf_convergence': 'TightSCF',
+                                                    'dlpno_threshold': 'normalPNO'}}
+                             }
 
 # default_ts_methods = ['QST2', 'DEGSM', 'NEB', 'Kinbot', 'AutoTST']
 default_ts_methods = ['AutoTST']
