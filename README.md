@@ -25,7 +25,7 @@ jobs on user-defined server\s. The principal outputs of ARC are thermodynamic pr
 
 ## Mission
 
-ARC's mission is to provide the kinetics community with a well-documented and extensible code base for automatically calculating species thermochemistry and reaction rate coefficients.
+ARC's mission is to provide the kinetics community with a well-documented and extensible codebase for automatically calculating species thermochemistry and reaction rate coefficients.
 
 ## Documentation
 
