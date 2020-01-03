@@ -150,8 +150,30 @@ def generate_conformers(mol_list, label, xyzs=None, torsions=None, tops=None, ch
         ConformerError: If something goes wrong.
         TypeError: If xyzs has entries of a wrong type.
     """
+    if isinstance(mol_list, Molecule):
+        # try generating resonance structures, but strictly keep atom order
+        success = False
+        try:
+            new_mol_list = mol_list.copy(deep=True).generate_resonance_structures(keep_isomorphic=False,
+                                                                                  filter_structures=True)
+            success = converter.order_atoms_in_mol_list(ref_mol=mol_list.copy(deep=True), mol_list=new_mol_list)
+        except (ValueError, ILPSolutionError, ResonanceError) as e:
+            logger.warning(f'Could not generate resonance structures for species {label}. Got: {e}')
+        if success:
+            mol_list = new_mol_list
+        else:
+            mol_list = [mol_list]
+    if not isinstance(mol_list, list):
+        logger.error(f'The `mol_list` argument must be a list, got {type(mol_list)}')
+        return None
+    for mol in mol_list:
+        if not isinstance(mol, Molecule):
+            raise ConformerError(f'Each entry in the `mol_list` argument must be an RMG Molecule object, '
+                                 f'got {type(mol)}')
+    mol_list = [update_mol(mol) for mol in mol_list]
+
+    # a quick bypass for mono-atomic species:
     if len(mol_list[0].atoms) == 1:
-        # this is a mono-atomic species
         element_symbol = mol_list[0].atoms[0].element.symbol
         confs = [{'xyz': {'symbols': (element_symbol,),
                           'isotopes': (converter.get_most_common_isotope_for_element(element_symbol),),
@@ -181,28 +203,6 @@ def generate_conformers(mol_list, label, xyzs=None, torsions=None, tops=None, ch
     num_confs_to_return = num_confs_to_return or NUM_CONFS_TO_RETURN
     max_combination_iterations = max_combination_iterations or MAX_COMBINATION_ITERATIONS
     combination_threshold = combination_threshold or COMBINATION_THRESHOLD
-
-    if isinstance(mol_list, Molecule):
-        # try generating resonance structures, but strictly keep atom order
-        success = False
-        try:
-            new_mol_list = mol_list.copy(deep=True).generate_resonance_structures(keep_isomorphic=False,
-                                                                                  filter_structures=True)
-            success = converter.order_atoms_in_mol_list(ref_mol=mol_list[0].copy(deep=True), mol_list=new_mol_list)
-        except (ValueError, ILPSolutionError, ResonanceError) as e:
-            logger.warning(f'Could not generate resonance structures for species {label}. Got: {e}')
-        if success:
-            mol_list = new_mol_list
-        else:
-            mol_list = [mol_list]
-    if not isinstance(mol_list, list):
-        logger.error('The `mol_list` argument must be a list, got {0}'.format(type(mol_list)))
-        return None
-    for mol in mol_list:
-        if not isinstance(mol, Molecule):
-            raise ConformerError('Each entry in the `mol_list` argument must be an RMG Molecule object, '
-                                 'got {0}'.format(type(mol)))
-    mol_list = [update_mol(mol) for mol in mol_list]
 
     if torsions is None or tops is None:
         torsions, tops = determine_rotors(mol_list)
