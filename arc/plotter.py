@@ -31,7 +31,8 @@ from rmgpy.data.transport import TransportLibrary
 from rmgpy.quantity import ScalarQuantity
 from rmgpy.species import Species
 
-from arc.common import get_logger, min_list, save_yaml_file, sort_two_lists_by_the_first, is_notebook
+from arc.common import format_level_of_theory_for_logging, get_logger, is_notebook, min_list, save_yaml_file, \
+    sort_two_lists_by_the_first
 from arc.exceptions import InputError, SanitizationError
 from arc.species.converter import rdkit_conf_from_mol, molecules_from_xyz, check_xyz_dict, str_to_xyz, xyz_to_str, \
     xyz_to_x_y_z, xyz_from_data, remove_dummies, get_xyz_radius
@@ -661,7 +662,7 @@ def save_conformers_file(project_directory, label, xyzs, level_of_theory, multip
         project_directory (str): The path to the project's directory.
         label (str): The species label.
         xyzs (list): Entries are dict-format xyz coordinates of conformers.
-        level_of_theory (str): The level of theory used for the conformers optimization.
+        level_of_theory (dict): The level of theory used for the conformers optimization.
         multiplicity (int, optional): The species multiplicity, used for perceiving the molecule.
         charge (int, optional): The species charge, used for perceiving the molecule.
         is_ts (bool, optional): Whether the species represents a TS. True if it does.
@@ -683,9 +684,10 @@ def save_conformers_file(project_directory, label, xyzs, level_of_theory, multip
     with open(conf_path, 'w') as f:
         content = ''
         if optimized:
-            content += 'Conformers for {0}, optimized at the {1} level:\n\n'.format(label, level_of_theory)
+            content += f'Conformers for {label}, optimized at the ' \
+                       f'{format_level_of_theory_for_logging(level_of_theory)} level:\n\n'
         for i, xyz in enumerate(xyzs):
-            content += 'conformer {0}:\n'.format(i)
+            content += f'conformer {i}:\n'
             if xyz is not None:
                 content += xyz_to_str(xyz) + '\n'
                 if not is_ts:
@@ -694,14 +696,14 @@ def save_conformers_file(project_directory, label, xyzs, level_of_theory, multip
                     except SanitizationError:
                         b_mol = None
                     smiles = b_mol.to_smiles() if b_mol is not None else 'Could not perceive molecule'
-                    content += '\nSMILES: {0}\n'.format(smiles)
+                    content += f'\nSMILES: {smiles}\n'
                 elif ts_methods is not None:
-                    content += 'TS guess method: {0}\n'.format(ts_methods[i])
+                    content += f'TS guess method: {ts_methods[i]}\n'
                 if optimized:
                     if energies[i] == min_e:
                         content += 'Relative Energy: 0 kJ/mol (lowest)'
                     elif energies[i] is not None:
-                        content += 'Relative Energy: {0:.3f} kJ/mol'.format(energies[i] - min_e)
+                        content += f'Relative Energy: {energies[i] - min_e:.3f} kJ/mol'
             else:
                 # Failed to converge
                 if is_ts and ts_methods is not None:
