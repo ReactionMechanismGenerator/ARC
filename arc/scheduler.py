@@ -941,6 +941,15 @@ class Scheduler(object):
             label (str): The species label.
         """
         # determine_occ(xyz=self.xyz, charge=self.charge)
+        if self.sp_level == self.opt_level and not self.composite_method \
+                and 'paths' in self.output[label] and 'geo' in self.output[label]['paths'] \
+                and self.output[label]['paths']['geo']:
+            logger.info(f'Not running an sp job for {label} at {format_level_of_theory_for_logging(self.sp_level)}, '
+                        f'since the optimization was done at the same level of theory. '
+                        f'Using the optimization output for parsing the sp energy.')
+            self.output[label]['paths']['sp'] = self.output[label]['paths']['geo']
+            self.output[label]['job_types']['sp'] = True
+            return
         if 'sp' not in self.job_dict[label]:  # Check whether or not single point jobs have been spawned yet
             # we're spawning the first sp job for this species
             self.job_dict[label]['sp'] = dict()
