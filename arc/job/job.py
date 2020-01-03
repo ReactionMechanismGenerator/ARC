@@ -606,10 +606,13 @@ class Job(object):
         # Determine HF/DFT restriction type
         if (self.multiplicity > 1 and self.basis_set) \
                 or (self.number_of_radicals is not None and self.number_of_radicals > 1):
-            # don't add 'u' to composite jobs. Do add 'u' for bi-rad singlets if `number_of_radicals` > 1
+            # run an unrestricted electronic structure calculation if the spin multiplicity is greater than one,
+            # or if it is one but the number of radicals is greater than one (e.g., bi-rad singlet)
+            # don't run unrestricted for composite methods such as CBS-QB3, it'll be done automatically if the
+            # multiplicity is greater than one, but do specify uCBS-QB3 for example for bi-rad singlets.
             if self.number_of_radicals is not None and self.number_of_radicals > 1:
-                logger.info('Using an unrestricted method for species {0} which has {1} radicals and '
-                            'multiplicity {2}'.format(self.species_name, self.number_of_radicals, self.multiplicity))
+                logger.info(f'Using an unrestricted method for species {self.species_name} which has '
+                            f'{self.number_of_radicals} radicals and multiplicity {self.multiplicity}')
             if self.software == 'qchem':
                 restricted = 'True'  # In QChem this attribute is "unrestricted"
             elif self.software in ['gaussian', 'orca', 'molpro']:

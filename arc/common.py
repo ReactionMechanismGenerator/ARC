@@ -259,8 +259,10 @@ def read_yaml_file(path):
     Returns:
         dict or list: The content read from the file.
     """
+    if not isinstance(path, str):
+        raise InputError(f'path must be a string, got {path} which is a {type(path)}')
     if not os.path.isfile(path):
-        raise InputError('Could not find the YAML file {0}'.format(path))
+        raise InputError(f'Could not find the YAML file {path}')
     with open(path, 'r') as f:
         content = yaml.load(stream=f, Loader=yaml.FullLoader)
     return content
@@ -274,10 +276,12 @@ def save_yaml_file(path, content):
         path (str): The YAML file path to save.
         content (list, dict): The content to save.
     """
+    if not isinstance(path, str):
+        raise InputError(f'path must be a string, got {path} which is a {type(path)}')
     yaml.add_representer(str, string_representer)
     logger.debug('Creating a restart file...')
     content = yaml.dump(data=content)
-    if not os.path.exists(os.path.dirname(path)):
+    if os.path.dirname(path) and not os.path.exists(os.path.dirname(path)):
         os.makedirs(os.path.dirname(path))
     with open(path, 'w') as f:
         f.write(content)
@@ -397,6 +401,24 @@ def min_list(lst):
     elif all([entry is None for entry in lst]):
         return None
     return min([entry for entry in lst if entry is not None])
+
+
+def key_by_val(dictionary, value):
+    """
+    A helper function for getting a key from a dictionary corresponding to a certain value.
+    Does not check for value unicity.
+
+    Args:
+        dictionary (dict): The dictionary.
+        value: The value.
+
+    Returns:
+        The key.
+    """
+    for key, val in dictionary.items():
+        if val == value:
+            return key
+    raise ValueError(f'Could not find value {value} in the dictionary\n{dictionary}')
 
 
 def initialize_job_types(job_types, specific_job_type=''):
@@ -669,3 +691,22 @@ def format_level_of_theory_for_logging(level_of_theory_dict):
     level_of_theory_log_str = ' '.join([level_of_theory_log_str, dispersion]) if dispersion\
         else level_of_theory_log_str
     return level_of_theory_log_str
+
+
+def is_notebook():
+    """
+    Check whether ARC was called from an IPython notebook.
+
+    Returns:
+        bool: ``True`` if ARC was called from a notebook, ``False`` otherwise.
+    """
+    try:
+        shell = get_ipython().__class__.__name__
+        if shell == 'ZMQInteractiveShell':
+            return True  # Jupyter notebook or qtconsole
+        elif shell == 'TerminalInteractiveShell':
+            return False  # Terminal running IPython
+        else:
+            return False  # Other type (?)
+    except NameError:
+        return False  # Probably standard Python interpreter

@@ -9,7 +9,7 @@ import os
 import shutil
 from random import randint
 
-from arkane.input import species as arkane_input_species, transitionState as arkane_transition_state,\
+from arkane.input import species as arkane_input_species, transitionState as arkane_transition_state, \
     reaction as arkane_reaction, process_model_chemistry
 from arkane.kinetics import KineticsJob
 from arkane.statmech import StatMechJob, assign_frequency_scale_factor
@@ -111,7 +111,7 @@ class Processor(object):
         species.determine_symmetry()
         sp_path = self.output[species.label]['paths']['composite'] or self.output[species.label]['paths']['sp']
         if not sp_path:
-            raise SchedulerError('Could not find path to sp calculation for species {0}'.format(species.label))
+            raise SchedulerError(f'Could not find path to sp calculation for species {species.label}')
         if species.number_of_atoms == 1:
             freq_path = sp_path
             opt_path = sp_path
@@ -119,11 +119,11 @@ class Processor(object):
             freq_path = self.output[species.label]['paths']['freq']
             opt_path = self.output[species.label]['paths']['freq']
         if not os.path.isfile(freq_path):
-            logger.error('Could not find the freq file in path {0}'.format(freq_path))
+            logger.error(f'Could not find the freq file in path {freq_path}')
         if not os.path.isfile(opt_path):
-            logger.error('Could not find the opt file in path {0}'.format(opt_path))
+            logger.error(f'Could not find the opt file in path {opt_path}')
         if not os.path.isfile(sp_path):
-            logger.error('Could not find the sp file in path {0}'.format(sp_path))
+            logger.error(f'Could not find the sp file in path {sp_path}')
         rotors, rotors_description = '', ''
         if any([i_r_dict['success'] for i_r_dict in species.rotors_dict.values()]):
             rotors = '\n\nrotors = ['
@@ -138,12 +138,11 @@ class Processor(object):
                     try:
                         rotor_symmetry, max_e = determine_rotor_symmetry(species.label, pivots, rotor_path)
                     except RotorError:
-                        logger.error('Could not determine rotor symmetry for species {0} between pivots {1}.'
-                                     ' Setting the rotor symmetry to 1, which is probably WRONG.'.format(
-                                      species.label, pivots))
+                        logger.error(f'Could not determine rotor symmetry for species {species.label} between '
+                                     f'pivots {pivots}. Setting the rotor symmetry to 1, which is probably WRONG.')
                         rotor_symmetry = 1
                         max_e = None
-                    max_e = ', max scan energy: {0:.2f} kJ/mol'.format(max_e) if max_e is not None else ''
+                    max_e = f', max scan energy: {max_e:.2f} kJ/mol' if max_e is not None else ''
                     free = ' (set as a FreeRotor)' if rotor_type == 'FreeRotor' else ''
                     rotors_description += 'pivots: ' + str(pivots) + ', dihedral: ' + str(scan) +\
                         ', rotor symmetry: ' + str(rotor_symmetry) + max_e + free + '\n'
@@ -164,13 +163,13 @@ class Processor(object):
             species.long_thermo_description += rotors_description + '\n'
         # write the Arkane species input file
         input_file_path = os.path.join(self.project_directory, 'output', folder_name, species.label,
-                                       '{0}_arkane_input.py'.format(species.label))
+                                       f'{species.label}_arkane_input.py')
         input_file = input_files['arkane_input_species']
         if self.use_bac and not species.is_ts:
-            logger.info('Using the following BAC for {0}: {1}'.format(species.label, species.bond_corrections))
-            bonds = 'bonds = {0}\n\n'.format(species.bond_corrections)
+            logger.info(f'Using the following BAC for {species.label}: {species.bond_corrections}')
+            bonds = f'bonds = {species.bond_corrections}\n\n'
         else:
-            logger.debug('NOT using BAC for {0}'.format(species.label))
+            logger.debug(f'NOT using BAC for {species.label}')
             bonds = ''
         input_file = input_file.format(bonds=bonds, symmetry=species.external_symmetry,
                                        multiplicity=species.multiplicity, optical=species.optical_isomers,
@@ -192,7 +191,7 @@ class Processor(object):
         try:
             self.load_rmg_db()
         except Exception as e:
-            logger.error('Could not load the RMG database! Got:\n{0}'.format(e))
+            logger.error(f'Could not load the RMG database! Got:\n{e}')
         # Thermo:
         species_list_for_thermo_parity = list()
         species_for_thermo_lib = list()
@@ -217,11 +216,11 @@ class Processor(object):
                 statmech_success = self._run_statmech(arkane_spc, species.arkane_file, output_path,
                                                       use_bac=self.use_bac)
                 if not statmech_success:
-                    logger.error('Could not run statmech job for species {0}'.format(species.label))
+                    logger.error(f'Could not run statmech job for species {species.label}')
                     continue
 
                 species.e0 = arkane_spc.conformer.E0.value_si * 0.001  # convert to kJ/mol
-                logger.debug('Assigned E0 to {0}: {1} kJ/mol'.format(species.label, species.e0))
+                logger.debug(f'Assigned E0 to {species.label}: {species.e0} kJ/mol')
                 if species.generate_thermo:
                     thermo_job = ThermoJob(arkane_spc, 'NASA')
                     thermo_job.execute(output_directory=output_path, plot=False)
@@ -231,9 +230,9 @@ class Processor(object):
                 try:
                     species.rmg_thermo = self.rmgdb.thermo.get_thermo_data(species.rmg_species)
                 except (ValueError, AttributeError) as e:
-                    logger.info('Could not retrieve RMG thermo for species {0}, possibly due to missing 2D structure '
-                                '(bond orders). Not including this species in the parity plots.'
-                                '\nGot: {1}'.format(species.label, e))
+                    logger.info(f'Could not retrieve RMG thermo for species {species.label}, possibly due to missing '
+                                f'2D structure (bond orders). Not including this species in the parity plots.'
+                                f'\nGot: {e}')
                 else:
                     if species.generate_thermo:
                         species_list_for_thermo_parity.append(species)
@@ -252,7 +251,7 @@ class Processor(object):
             if species.bdes is not None:
                 bde_report[species.label] = self.process_bdes(species.label)
         if bde_report:
-            bde_path = os.path.join(self.project_directory, 'output', 'BDE_report.yml')
+            bde_path = os.path.join(self.project_directory, 'output', 'BDE_report.txt')
             plotter.log_bde_report(path=bde_path, bde_report=bde_report, spc_dict=self.species_dict)
 
         # Kinetics:
@@ -287,21 +286,21 @@ class Processor(object):
                                                        if label in rxn.products],
                                              transitionState=rxn.ts_label, tunneling='Eckart')
                 kinetics_job = KineticsJob(reaction=arkane_rxn, Tmin=self.t_min, Tmax=self.t_max, Tcount=self.t_count)
-                logger.info('Calculating rate for reaction {0}'.format(rxn.label))
+                logger.info(f'Calculating rate for reaction {rxn.label}')
                 try:
                     kinetics_job.execute(output_directory=output_path, plot=False)
                 except (ValueError, OverflowError) as e:
                     # ValueError: One or both of the barrier heights of -9.3526 and 62.683 kJ/mol encountered in Eckart
                     # method are invalid.
                     #
-                    #   File "/home/alongd/Code/RMG-Py/arkane/kinetics.py", line 136, in execute
+                    #   File "RMG-Py/arkane/kinetics.py", line 136, in execute
                     #     self.generateKinetics(self.Tlist.value_si)
-                    #   File "/home/alongd/Code/RMG-Py/arkane/kinetics.py", line 179, in generateKinetics
+                    #   File "RMG-Py/arkane/kinetics.py", line 179, in generateKinetics
                     #     klist[i] = self.reaction.calculateTSTRateCoefficient(Tlist[i])
                     #   File "rmgpy/reaction.py", line 818, in rmgpy.reaction.Reaction.calculateTSTRateCoefficient
                     #   File "rmgpy/reaction.py", line 844, in rmgpy.reaction.Reaction.calculateTSTRateCoefficient
                     # OverflowError: math range error
-                    logger.error('Failed to generate kinetics for {0} with message:\n{1}'.format(rxn.label, e))
+                    logger.error(f'Failed to generate kinetics for {rxn.label} with message:\n{e}')
                     success = False
                 if success:
                     rxn.kinetics = kinetics_job.reaction.kinetics
@@ -335,9 +334,9 @@ class Processor(object):
                 for spc in unconverged_species:
                     f.write(spc.label)
                     if spc.is_ts:
-                        f.write(str(' rxn: {0}'.format(spc.rxn_label)))
+                        f.write(f' rxn: {spc.rxn_label}')
                     elif spc.mol is not None:
-                        f.write(str(' SMILES: {0}'.format(spc.mol.to_smiles())))
+                        f.write(f' SMILES: {spc.mol.to_smiles()}')
                     f.write(str('\n'))
 
     def _run_statmech(self, arkane_spc, arkane_file, output_path=None, use_bac=False, kinetics=False, plot=False):
@@ -345,7 +344,7 @@ class Processor(object):
         A helper function for running an Arkane statmech job.
 
         Args:
-            arkane_spc (arkane_input_species): An Arkane species() function representor.
+            arkane_spc (arkane_input_species): An instance of an Arkane species() object.
             arkane_file (str): The path to the Arkane species file (either in .py or YAML form).
             output_path (str): The path to the folder in which the Arkane output.py file will be saved.
             use_bac (bool): A flag indicating whether or not to use bond additivity corrections (True to use).
@@ -372,9 +371,20 @@ class Processor(object):
         try:
             stat_mech_job.execute(output_directory=output_path, plot=plot)
         except Exception as e:
-            logger.error('Arkane statmech job for species {0} failed with the error message:\n{1}'.format(
-                arkane_spc.label, e))
-            success = False
+            logger.error(f'Arkane statmech job for species {arkane_spc.label} failed with the error message:\n{e}')
+            if stat_mech_job.applyBondEnergyCorrections \
+                    and 'missing' in str(e).lower() and 'bac parameters for model chemistry' in str(e).lower():
+                # try executing Arkane w/o BACs
+                logger.warning('Trying to run Arkane without BACs')
+                stat_mech_job.applyBondEnergyCorrections = False
+                try:
+                    stat_mech_job.execute(output_directory=output_path, plot=plot)
+                except Exception as e:
+                    logger.error(f'Arkane statmech job for species {arkane_spc.label} failed with the error message:\n'
+                                 f'{e}')
+                    success = False
+            else:
+                success = False
         return success
 
     def process_bdes(self, label):
@@ -390,8 +400,8 @@ class Processor(object):
         source = self.species_dict[label]
         bde_report = dict()
         if source.e0 is None:
-            logger.error('Cannot calculate BDEs without E0 for {0}. Make sure freq and sp jobs ran successfully '
-                         'for this species.'.format(label))
+            logger.error(f'Cannot calculate BDEs without E0 for {label}. Make sure freq and sp jobs ran successfully '
+                         f'for this species.')
             return bde_report
         for bde_indices in source.bdes:
             found_a_label = False
@@ -401,7 +411,7 @@ class Processor(object):
             else:
                 bde_label = label + '_BDE_' + str(bde_indices[0]) + '_' + str(bde_indices[1]) + '_A'
                 if bde_label not in self.species_dict:
-                    raise ProcessorError('Could not find BDE species {0} for processing'.format(bde_label))
+                    raise ProcessorError(f'Could not find BDE species {bde_label} for processing')
                 found_a_label = True
                 e1 = self.species_dict[bde_label].e0
             # index 1 of the tuple:
@@ -411,15 +421,15 @@ class Processor(object):
                 letter = 'B' if found_a_label else 'A'
                 bde_label = label + '_BDE_' + str(bde_indices[0]) + '_' + str(bde_indices[1]) + '_' + letter
                 if bde_label not in self.species_dict:
-                    raise ProcessorError('Could not find BDE species {0} for processing'.format(bde_label))
+                    raise ProcessorError(f'Could not find BDE species {bde_label} for processing')
                 e2 = self.species_dict[bde_label].e0
             if e1 is not None and e2 is not None:
                 bde_report[bde_indices] = e1 + e2 - source.e0  # products - reactant
             else:
                 bde_report[bde_indices] = 'N/A'
-                logger.error('could not calculate BDE for {0} between atoms {1} ({2}) and {3} ({4})'.format(
-                              label, bde_indices[0], source.mol.atoms[bde_indices[0] - 1].element.symbol,
-                              bde_indices[1], source.mol.atoms[bde_indices[1] - 1].element.symbol))
+                logger.error(f'could not calculate BDE for {label} between atoms '
+                             f'{bde_indices[0]} ({source.mol.atoms[bde_indices[0] - 1].element.symbol}) '
+                             f'and {bde_indices[1]} ({source.mol.atoms[bde_indices[1] - 1].element.symbol})')
         return bde_report
 
     def _clean_output_directory(self):

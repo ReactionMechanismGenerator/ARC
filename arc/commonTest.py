@@ -16,7 +16,7 @@ from arc.settings import arc_path, servers
 from arc.species.converter import str_to_xyz
 
 
-class TestARC(unittest.TestCase):
+class TestCommon(unittest.TestCase):
     """
     Contains unit tests for ARC's common module
     """
@@ -143,6 +143,24 @@ class TestARC(unittest.TestCase):
         lst = [-8, None, None, 100, -79, None]
         min_lst = common.min_list(lst)
         self.assertEqual(min_lst, -79)
+
+    def test_key_by_val(self):
+        d = {1: 5, 2: 8}
+        self.assertEqual(common.key_by_val(d, 8), 2)
+
+        d = {1: 5, 2: 8, 5: 8}
+        self.assertIn(common.key_by_val(d, 8), [2, 5])
+
+        d = {1: 5, 2: None, 3: 9}
+        self.assertEqual(common.key_by_val(d, 9), 3)
+        self.assertEqual(common.key_by_val(d, None), 2)
+
+        d = {1: 5, 2: 'X', 3: 9}
+        self.assertEqual(common.key_by_val(d, 9), 3)
+        self.assertEqual(common.key_by_val(d, 'X'), 2)
+
+        with self.assertRaises(ValueError):
+            common.key_by_val(d, 10)
 
     def test_initialize_job_with_given_job_type(self):
         """Test the initialize_job_types() function"""
@@ -520,6 +538,11 @@ H 	2.951	-3.078	-4.102""")
         expected_str = 'DLPNO-CCSD(T)-F12/cc-pVTZ-F12/aug-cc-pVTZ/C cc-pVTZ-F12-CABS'
         formatted_str = common.format_level_of_theory_for_logging(level_of_theory_dict)
         self.assertEqual(expected_str, formatted_str)
+
+    def test_is_notebook(self):
+        """Test whether ARC is being called from an IPython notebook"""
+        is_notebook = common.is_notebook()
+        self.assertFalse(is_notebook)
 
 
 if __name__ == '__main__':

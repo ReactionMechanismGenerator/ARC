@@ -810,12 +810,11 @@ class ARCSpecies(object):
                 self.conformers.extend([conf['xyz'] for conf in lowest_confs])
                 self.conformer_energies.extend([None] * len(lowest_confs))
                 lowest_conf = conformers.get_lowest_confs(label=self.label, confs=lowest_confs, n=1)[0]
-                logger.info('Most stable force field conformer for {label}:\n{xyz}\n'.format(
-                    label=self.label, xyz=xyz_to_str(lowest_conf['xyz'])))
+                logger.debug(f'Most stable force field conformer for {self.label}:\n{xyz_to_str(lowest_conf["xyz"])}\n')
             else:
-                logger.error('Could not generate conformers for {0}'.format(self.label))
+                logger.error(f'Could not generate conformers for {self.label}')
                 if not self.get_xyz(generate=False):
-                    logger.warning('No 3D coordinates available for species {0}!'.format(self.label))
+                    logger.error(f'No 3D coordinates available for species {self.label}!')
 
     def get_cheap_conformer(self):
         """
@@ -1784,10 +1783,10 @@ def determine_rotor_symmetry(label, pivots, rotor_path='', energies=None, return
         raise InputError('Expected either rotor_path or energies, got neither')
     if rotor_path and energies is not None:
         raise InputError('Expected either rotor_path or energies, got both')
-    if not os.path.isfile(rotor_path):
-        raise InputError(f'Could not find the file {rotor_path}')
 
     if energies is None:
+        if not os.path.isfile(rotor_path):
+            raise InputError(f'Could not find the path to the rotor file for species {label} {rotor_path}')
         energies = parse_1d_scan_energies(path=rotor_path)[0]
 
     symmetry = None
