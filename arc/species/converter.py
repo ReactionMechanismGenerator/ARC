@@ -1153,9 +1153,15 @@ def order_atoms_in_mol_list(ref_mol, mol_list):
 
     Raises:
         SanitizationError: If atoms could not be re-ordered.
+        TypeError: If ``ref_mol`` or the entries in ``mol_list`` have a wrong type.
     """
+    if not isinstance(ref_mol, Molecule):
+        raise TypeError(f'expected mol to be a Molecule instance, got {ref_mol} which is a {type(ref_mol)}.')
     if mol_list is not None:
         for mol in mol_list:
+            if not isinstance(mol, Molecule):
+                raise TypeError(f'expected enrties of mol_list to be Molecule instances, got {mol} '
+                                f'which is a {type(mol)}.')
             try:  # TODO: flag as unordered (or solve)
                 order_atoms(ref_mol, mol)
             except SanitizationError as e:
@@ -1178,7 +1184,10 @@ def order_atoms(ref_mol, mol):
 
     Raises:
         SanitizationError: If atoms could not be re-ordered.
+        TypeError: If ``mol`` has a wrong type.
     """
+    if not isinstance(mol, Molecule):
+        raise TypeError(f'expected mol to be a Molecule instance, got {mol} which is a {type(mol)}.')
     if ref_mol is not None and mol is not None:
         ref_mol_is_iso_copy = ref_mol.copy(deep=True)
         mol_is_iso_copy = mol.copy(deep=True)
