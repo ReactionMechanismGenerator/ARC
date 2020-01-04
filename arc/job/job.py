@@ -586,7 +586,8 @@ class Job(object):
         job_options_keywords, job_options_blocks, shortcut_keywords = '', '', ''
 
         # Ignore user specified additional job job_options_keywords when troubleshoot
-        if self.trsh:
+        if self.trsh and (self.job_additional_options.get(self.software, "") or
+                          self.job_shortcut_keywords.get(self.software, "")):
             logger.warning(f'When troubleshooting {self.job_name}, ARC ignores user-specified additional job options \n'
                            f'{yaml.dump(self.job_additional_options.get(self.software, ""), default_flow_style=False)}'
                            f'\n'
