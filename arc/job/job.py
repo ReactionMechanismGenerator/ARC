@@ -279,7 +279,12 @@ class Job(object):
         if self.job_num < 0:
             self._set_job_number()
         self.job_server_name = self.job_server_name if self.job_server_name is not None else 'a' + str(self.job_num)
-        self.job_name = self.job_name if self.job_name is not None else self.job_type + '_' + self.job_server_name
+        if conformer >= 0 and (self.job_name is None or 'conformer_a' in self.job_name):
+            if self.job_name is not None:
+                logger.warning(f'replacing job name {self.job_name} with conformer_{conformer}')
+            self.job_name = f'conformer{conformer}'
+        elif self.job_name is None:
+            self.job_name = self.job_type + '_' + self.job_server_name
 
         # determine the level of theory and software to use:
         self.method, self.basis_set, self.auxiliary_basis_set, self.dispersion = '', '', '', ''
