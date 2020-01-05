@@ -616,35 +616,45 @@ H 	2.951	-3.078	-4.102""")
 
     def test_format_level_of_theory_for_logging(self):
         """Test format level of theory dictionary to string for logging purposes."""
-        level_of_theory_dict = {}
+        level_of_theory = {}
         expected_str = ''
-        formatted_str = common.format_level_of_theory_for_logging(level_of_theory_dict)
+        formatted_str = common.format_level_of_theory_for_logging(level_of_theory)
         self.assertEqual(expected_str, formatted_str)
 
-        level_of_theory_dict = {'method': 'cbs-qb3'}
+        level_of_theory = {'method': 'cbs-qb3'}
         expected_str = 'cbs-qb3'
-        formatted_str = common.format_level_of_theory_for_logging(level_of_theory_dict)
+        formatted_str = common.format_level_of_theory_for_logging(level_of_theory)
         self.assertEqual(expected_str, formatted_str)
 
-        level_of_theory_dict = {'method': 'cbs-qb3', 'basis': '', 'auxiliary_basis': '', 'dispersion': ''}
+        level_of_theory = {'method': 'cbs-qb3', 'basis': '', 'auxiliary_basis': '', 'dispersion': ''}
         expected_str = 'cbs-qb3'
-        formatted_str = common.format_level_of_theory_for_logging(level_of_theory_dict)
+        formatted_str = common.format_level_of_theory_for_logging(level_of_theory)
         self.assertEqual(expected_str, formatted_str)
 
-        level_of_theory_dict = {'method': 'apfd', 'basis': 'def2svp', 'auxiliary_basis': '', 'dispersion': ''}
+        level_of_theory = {'method': 'apfd', 'basis': 'def2svp', 'auxiliary_basis': '', 'dispersion': ''}
         expected_str = 'apfd/def2svp'
-        formatted_str = common.format_level_of_theory_for_logging(level_of_theory_dict)
+        formatted_str = common.format_level_of_theory_for_logging(level_of_theory)
         self.assertEqual(expected_str, formatted_str)
 
-        level_of_theory_dict = {'method': 'b3lyp', 'basis': '6-31g', 'auxiliary_basis': '', 'dispersion': 'gd3bj'}
+        level_of_theory = {'method': 'b3lyp', 'basis': '6-31g', 'auxiliary_basis': '', 'dispersion': 'gd3bj'}
         expected_str = 'b3lyp/6-31g gd3bj'
-        formatted_str = common.format_level_of_theory_for_logging(level_of_theory_dict)
+        formatted_str = common.format_level_of_theory_for_logging(level_of_theory)
         self.assertEqual(expected_str, formatted_str)
 
-        level_of_theory_dict = {'method': 'DLPNO-CCSD(T)-F12', 'basis': 'cc-pVTZ-F12',
-                                'auxiliary_basis': 'aug-cc-pVTZ/C cc-pVTZ-F12-CABS', 'dispersion': ''}
-        expected_str = 'DLPNO-CCSD(T)-F12/cc-pVTZ-F12/aug-cc-pVTZ/C cc-pVTZ-F12-CABS'
-        formatted_str = common.format_level_of_theory_for_logging(level_of_theory_dict)
+        level_of_theory = {'method': 'DLPNO-CCSD(T)-F12', 'basis': 'cc-pVTZ-F12',
+                           'auxiliary_basis': 'aug-cc-pVTZ/C cc-pVTZ-F12-CABS', 'dispersion': ''}
+        expected_str = 'dlpno-ccsd(t)-f12/cc-pvtz-f12/aug-cc-pvtz/c cc-pvtz-f12-cabs'
+        formatted_str = common.format_level_of_theory_for_logging(level_of_theory)
+        self.assertEqual(expected_str, formatted_str)
+
+        level_of_theory = 'PM6'
+        expected_str = 'pm6'
+        formatted_str = common.format_level_of_theory_for_logging(level_of_theory)
+        self.assertEqual(expected_str, formatted_str)
+
+        level_of_theory = 'wb97xd3/6-31G+'
+        expected_str = 'wb97xd3/6-31g+'
+        formatted_str = common.format_level_of_theory_for_logging(level_of_theory)
         self.assertEqual(expected_str, formatted_str)
 
     def test_is_notebook(self):

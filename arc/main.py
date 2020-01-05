@@ -906,8 +906,8 @@ class ARC(object):
         else:
             default_flag = ''
         self.conformer_level, level = format_level_of_theory_inputs(self.conformer_level)
-        logger.info(f'Using{default_flag} level {level} for refined conformer searches (after filtering via force '
-                    f'fields).')
+        logger.info(f'Using{default_flag} level {format_level_of_theory_for_logging(level)} for refined conformer '
+                    f'searches (after filtering via force fields).')
 
         if not self.ts_guess_level:
             self.ts_guess_level = default_levels_of_theory['ts_guesses']
@@ -915,8 +915,8 @@ class ARC(object):
         else:
             default_flag = ''
         self.ts_guess_level, level = format_level_of_theory_inputs(self.ts_guess_level)
-        logger.info(f'Using{default_flag} level {level} for optimizing all TS initial guesses (before a refined '
-                    f'TS search at a higher level.')
+        logger.info(f'Using{default_flag} level {format_level_of_theory_for_logging(level)} for optimizing all TS '
+                    f'initial guesses (before a refined TS search at a higher level.')
 
         if self.level_of_theory:
             # For composite methods self.level_of_theory is an empty string set by calling
@@ -942,7 +942,8 @@ class ARC(object):
             else:
                 default_flag = ''
             self.freq_level, level = format_level_of_theory_inputs(self.freq_level)
-            logger.info(f'Using{default_flag} level {level} for frequency calculations after composite jobs.')
+            logger.info(f'Using{default_flag} level {format_level_of_theory_for_logging(level)} for frequency '
+                        f'calculations after composite jobs.')
 
             if self.job_types['rotors']:
                 if not self.scan_level:
@@ -951,7 +952,8 @@ class ARC(object):
                 else:
                     default_flag = ''
                 self.scan_level, level = format_level_of_theory_inputs(self.scan_level)
-                logger.info(f'Using{default_flag} level {level} for rotor scans after composite jobs.')
+                logger.info(f'Using{default_flag} level {format_level_of_theory_for_logging(level)} for rotor scans '
+                            f'after composite jobs.')
             else:
                 self.scan_level, _ = format_level_of_theory_inputs('')
                 logger.warning("Not running rotor scans, for it is not requested by the user. This might compromise "
@@ -965,8 +967,8 @@ class ARC(object):
                 else:
                     default_flag = ''
                 self.orbitals_level, level = format_level_of_theory_inputs(self.orbitals_level)
-                logger.info(f'Using{default_flag} level {level} for visualizing molecular orbitals after '
-                            f'composite jobs.')
+                logger.info(f'Using{default_flag} level {format_level_of_theory_for_logging(level)} for visualizing '
+                            f'molecular orbitals after composite jobs.')
             else:
                 self.orbitals_level, _ = format_level_of_theory_inputs('')
                 logger.debug("Not running molecular orbitals visualization, for it is not requested by the user.")
@@ -979,7 +981,8 @@ class ARC(object):
                 else:
                     default_flag = ''
                 self.opt_level, level = format_level_of_theory_inputs(self.opt_level)
-                logger.info(f'Using{default_flag} level {level} for geometry optimizations.')
+                logger.info(f'Using{default_flag} level {format_level_of_theory_for_logging(level)} for geometry '
+                            f'optimizations.')
             else:
                 self.opt_level, _ = format_level_of_theory_inputs('')
                 logger.warning("Not running geometry optimization, for it is not requested by the user.")
@@ -997,7 +1000,8 @@ class ARC(object):
                 else:
                     info, default_flag = '', ''
                 self.freq_level, level = format_level_of_theory_inputs(self.freq_level)
-                logger.info(f'Using{info}{default_flag} level {level} for frequency calculations.')
+                logger.info(f'Using{info}{default_flag} level {format_level_of_theory_for_logging(level)} for frequency '
+                            f'calculations.')
             else:
                 self.freq_level, _ = format_level_of_theory_inputs('')
                 logger.warning("Not running frequency calculation, for it is not requested by the user.")
@@ -1009,7 +1013,8 @@ class ARC(object):
                 else:
                     default_flag = ''
                 self.sp_level, level = format_level_of_theory_inputs(self.sp_level)
-                logger.info(f'Using{default_flag} level {level} for single point calculations.')
+                logger.info(f'Using{default_flag} level {format_level_of_theory_for_logging(level)} for single point '
+                            f'calculations.')
             else:
                 self.sp_level, _ = format_level_of_theory_inputs('')
                 logger.warning("Not running single point calculation, for it is not requested by the user.")
@@ -1021,7 +1026,7 @@ class ARC(object):
                 else:
                     default_flag = ''
                 self.scan_level, level = format_level_of_theory_inputs(self.scan_level)
-                logger.info(f'Using{default_flag} level {level} for rotor scans.')
+                logger.info(f'Using{default_flag} level {format_level_of_theory_for_logging(level)} for rotor scans.')
             else:
                 self.scan_level, _ = format_level_of_theory_inputs('')
                 logger.warning("Not running rotor scans, for it is not requested by the user. This might compromise "
@@ -1035,7 +1040,8 @@ class ARC(object):
                 else:
                     default_flag = ''
                 self.orbitals_level, level = format_level_of_theory_inputs(self.orbitals_level)
-                logger.info(f'Using{default_flag} level {level} for visualizing molecular orbitals.')
+                logger.info(f'Using{default_flag} level {format_level_of_theory_for_logging(level)} for visualizing '
+                            f'molecular orbitals.')
             else:
                 self.orbitals_level, _ = format_level_of_theory_inputs('')
                 logger.debug("Not running molecular orbitals visualization, for it is not requested by the user.")

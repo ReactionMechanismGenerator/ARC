@@ -759,16 +759,23 @@ def format_level_of_theory_inputs(level_of_theory):
     return formatted_model_chemistry_dict, formatted_model_chemistry_str
 
 
-def format_level_of_theory_for_logging(level_of_theory_dict):
+def format_level_of_theory_for_logging(level_of_theory):
     """
     Format level of theory dictionary to string for logging purposes.
 
+    Examples: input -> output
+        {'method': 'cbs-qb3'} -> 'cbs-qb3'
+        {'method': 'b3lyp', 'basis': '6-31g', 'auxiliary_basis': '', 'dispersion': 'gd3bj'} -> 'b3lyp/6-31g gd3bj'
+        'apfd/def2-tzvp' -> 'apfd/def2-tzvp'
+        More examples can be found from `test_format_level_of_theory_for_logging` in commonTest.
+
     Args:
-        level_of_theory_dict (dict): level of theory dictionary.
+        level_of_theory (str or dict): job level of theory.
 
     Returns:
         level_of_theory_log_str (str): level of theory string for logging.
     """
+    level_of_theory_dict, _ = format_level_of_theory_inputs(level_of_theory)
     method = level_of_theory_dict.get('method', '')
     basis = level_of_theory_dict.get('basis', '')
     auxiliary_basis = level_of_theory_dict.get('auxiliary_basis', '')
