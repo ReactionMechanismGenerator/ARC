@@ -9,10 +9,8 @@ import unittest
 import os
 import shutil
 
-from arc.exceptions import InputError
 import arc.rmgdb as rmgdb
 from arc.scheduler import Scheduler
-from arc.scheduler import _format_level_of_theory_inputs
 from arc.job.job import Job
 from arc.species.species import ARCSpecies
 import arc.parser as parser
@@ -278,34 +276,6 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.assertEqual(self.sched1.species_dict['CtripCO'].rotors_dict[0]['invalidation_reason'],
                          'not a torsional mode (angles = 179.91, 110.38 degrees)')
         self.assertFalse(self.sched1.species_dict['CtripCO'].rotors_dict[0]['success'])
-
-    def test_format_level_of_theory_inputs(self):
-        """Test formatting level of theory inputs."""
-        # illegal inputs: multiple slashes
-        with self.assertRaises(InputError):
-            _format_level_of_theory_inputs('apfd/def2tzvp/def2svp')
-        with self.assertRaises(InputError):
-            _format_level_of_theory_inputs('apfd/def2tzvp/def2tzvp/c')
-        # illegal inputs: empty space
-        with self.assertRaises(InputError):
-            _format_level_of_theory_inputs('apfd def2tzvp')
-        with self.assertRaises(InputError):
-            _format_level_of_theory_inputs('apfd/def2tzvp def2svp')
-        # illegal inputs: wrong typt
-        with self.assertRaises(InputError):
-            _format_level_of_theory_inputs(['apfd/def2tzvp', 'wb97xd/6-31g'])
-        # test parse string inputs
-        formatted_job_level_of_theory_dict = _format_level_of_theory_inputs('cbs-qb3')
-        expected_formatted_job_level_of_theory_dict = {'method': 'cbs-qb3'}
-        self.assertEqual(formatted_job_level_of_theory_dict, expected_formatted_job_level_of_theory_dict)
-        formatted_job_level_of_theory_dict = _format_level_of_theory_inputs('b3lyp/sto-3g')
-        expected_formatted_job_level_of_theory_dict = {'method': 'b3lyp', 'basis': 'sto-3g'}
-        self.assertEqual(formatted_job_level_of_theory_dict, expected_formatted_job_level_of_theory_dict)
-        # test parse dict inputs
-        formatted_job_level_of_theory_dict = _format_level_of_theory_inputs({'method': 'hf', 'basis': '6-31g'})
-        expected_formatted_job_level_of_theory_dict = {'method': 'hf', 'basis': '6-31g'}
-        self.assertEqual(formatted_job_level_of_theory_dict, expected_formatted_job_level_of_theory_dict)
-
 
     @classmethod
     def tearDownClass(cls):
