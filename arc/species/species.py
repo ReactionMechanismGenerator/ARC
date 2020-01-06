@@ -30,6 +30,7 @@ from arc.species import conformers
 from arc.species.converter import rdkit_conf_from_mol, xyz_from_data, molecules_from_xyz, rmg_mol_from_inchi, \
     order_atoms_in_mol_list, check_isomorphism, set_rdkit_dihedrals, translate_to_center_of_mass, \
     str_to_xyz, xyz_to_str, check_xyz_dict, xyz_to_x_y_z
+from arc.species.vectors import calculate_dihedral_angle
 from arc.ts import atst
 
 
@@ -1009,25 +1010,32 @@ class ARCSpecies(object):
 
     def set_dihedral(self, scan, deg_increment=None, deg_abs=None, count=True, xyz=None):
         """
-        Generated an RDKit molecule object from either self.final_xyz or ``xyz``.
-        Increments the current dihedral angle between atoms i, j, k, l in the `scan` list by 'deg_increment` in degrees.
-        Alternatively, specifying deg_abs will rotate to this desired dihedral.
+        Set a dihedral angle to a desired value.
         All bonded atoms are moved accordingly. The result is saved in self.initial_xyz.
 
         Args:
             scan (list): The atom indices (1-indexed) representing the dihedral.
-            deg_increment (float, optional): The dihedral angle increment.
-            deg_abs (float, optional): The absolute desired dihedral angle.
-            count (bool, optional): Whether to increment the rotor's times_dihedral_set parameter. `True` to increment.
+            deg_increment (float, optional): The dihedral angle increment in degrees.
+            deg_abs (float, optional): The absolute desired dihedral angle in degrees.
+            count (bool, optional): Whether to increment the rotor times_dihedral_set parameter. ``True`` to increment.
             xyz (dict, optional): An alternative xyz to use instead of self.final_xyz.
+
+        Raises:
+            InputError: If neither ``deg_increment`` nor ``deg_abs`` were given, or if 0 is in ``scan``.
+            RotorError: If ``count`` is ``True`` and this dihedral was set too many times.
         """
         pivots = scan[1:3]
-        xyz = xyz or self.final_xyz
+        if xyz is None:
+            xyz = self.final_xyz
+            mol = self.mol
+        else:
+            mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
         if deg_increment is None and deg_abs is None:
             raise InputError('Either deg_increment or deg_abs must be given.')
+        if 0 in scan:
+            raise InputError(f'scan must be 1-indexed, got {scan}')
         if deg_increment == 0 and deg_abs is None:
-            logger.warning('set_dihedral was called with zero increment for {label} with pivots {pivots}'.format(
-                label=self.label, pivots=pivots))
+            logger.warning(f'set_dihedral was called with zero increment for {self.label} with pivots {pivots}')
             if count:
                 for rotor in self.rotors_dict.values():  # penalize this rotor to avoid inf. looping
                     if rotor['pivots'] == pivots:
@@ -1042,14 +1050,20 @@ class ARCSpecies(object):
                 else:
                     logger.info('\n\n')
                     for i, rotor in self.rotors_dict.items():
-                        logger.error('Rotor {i} with pivots {pivots} was set {times} times'.format(
-                            i=i, pivots=rotor['pivots'], times=rotor['times_dihedral_set']))
+                        logger.error(f'Rotor {i} with pivots {rotor["pivots"]} was set '
+                                     f'{rotor["times_dihedral_set"]} times')
                     raise RotorError('Rotors were set beyond the maximal number of times without converging')
-            mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
-            conf, rd_mol = rdkit_conf_from_mol(mol, xyz)
-            torsion_0_indexed = [tor - 1 for tor in scan]
-            new_xyz = set_rdkit_dihedrals(conf, rd_mol, torsion_0_indexed, deg_increment=deg_increment, deg_abs=deg_abs)
-            self.initial_xyz = new_xyz
+            torsion = [i - 1 for i in scan]
+            new_value = deg_abs or calculate_dihedral_angle(coords=xyz['coords'],
+                                                            torsion=torsion,
+                                                            index=0,
+                                                            units='degs') \
+                        + deg_increment
+            self.initial_xyz = modify_coords(coords=xyz,
+                                             indices=torsion,  # 0-indexed
+                                             new_value=new_value,
+                                             modification_type='groups',
+                                             mol=mol)
 
     def determine_symmetry(self):
         """
@@ -1060,14 +1074,14 @@ class ARCSpecies(object):
             symmetry, optical_isomers = determine_symmetry(xyz)
             self.optical_isomers = self.optical_isomers if self.optical_isomers is not None else optical_isomers
             if self.optical_isomers != optical_isomers:
-                logger.warning("User input of optical isomers for {0} and ARC's calculation differ: {1} and {2},"
-                               " respectively. Using the user input of {1}"
-                               .format(self.label, self.optical_isomers, optical_isomers))
+                logger.warning(f"User input of optical isomers for {self.label} and ARC's calculation differ: "
+                               f"{self.optical_isomers} and {optical_isomers}, respectively. "
+                               f"Using the user input of {self.optical_isomers}.")
             self.external_symmetry = self.external_symmetry if self.external_symmetry is not None else symmetry
             if self.external_symmetry != symmetry:
-                logger.warning("User input of external symmetry for {0} and ARC's calculation differ: {1} and {2},"
-                               " respectively. Using the user input of {1}"
-                               .format(self.label, self.external_symmetry, symmetry))
+                logger.warning(f"User input of external symmetry for {self.label} and ARC's calculation differ: "
+                               f"{self.external_symmetry} and {symmetry}, respectively. "
+                               f"Using the user input of {self.external_symmetry}.")
 
     def determine_multiplicity(self, smiles, adjlist, mol):
         """
