@@ -189,16 +189,19 @@ def generate_conformers(mol_list, label, xyzs=None, torsions=None, tops=None, ch
             return confs
         else:
             return confs, confs
+
     if xyzs is not None and any([not isinstance(xyz, dict) for xyz in xyzs]):
-        raise TypeError("xyz entries of xyzs must be dictionaries, e.g.:\n\n"
-                        "{{'symbols': ('O', 'C', 'H', 'H'),\n'isotopes': (16, 12, 1, 1),\n"
-                        "'coords': ((0.0, 0.0, 0.678514),\n           (0.0, 0.0, -0.532672),\n"
-                        "           (0.0, 0.935797, -1.116041),\n           (0.0, -0.935797, -1.116041))}}\n\n"
-                        "Got {0}".format([type(xyz) for xyz in xyzs]))
+        raise TypeError(f"xyz entries of xyzs must be dictionaries, e.g.:\n\n"
+                        f"{{'symbols': ('O', 'C', 'H', 'H'),\n'isotopes': (16, 12, 1, 1),\n"
+                        f"'coords': ((0.0, 0.0, 0.678514),\n           (0.0, 0.0, -0.532672),\n"
+                        f"           (0.0, 0.935797, -1.116041),\n           (0.0, -0.935797, -1.116041))}}\n\n"
+                        f"Got {[type(xyz) for xyz in xyzs]}")
+
     if print_logs:
         initialize_log()
+
     t0 = time.time()
-    logger.info('Generating conformers for {0}'.format(label))
+    logger.info(f'Generating conformers for {label}')
 
     num_confs_to_return = num_confs_to_return or NUM_CONFS_TO_RETURN
     max_combination_iterations = max_combination_iterations or MAX_COMBINATION_ITERATIONS
@@ -228,10 +231,9 @@ def generate_conformers(mol_list, label, xyzs=None, torsions=None, tops=None, ch
     t, s = divmod(execution_time, 60)
     t, m = divmod(t, 60)
     d, h = divmod(t, 24)
-    days = '{0} days and '.format(int(d)) if d else ''
-    time_str = '{days}{hrs:02d}:{min:02d}:{sec:02d}'.format(days=days, hrs=int(h), min=int(m), sec=int(s))
+    days = f'{int(d)} days and ' if d else ''
     if execution_time > 10:
-        logger.info('Conformer execution time using {0}: {1}'.format(force_field, time_str))
+        logger.info(f'Conformer execution time using {force_field}: {days}{int(h):02d}:{int(m):02d}:{int(s):02d}')
 
     if not return_all_conformers:
         return lowest_confs
@@ -282,7 +284,7 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
         # identify symmetric torsions so we don't bother considering them in the conformational combinations
         symmetry = determine_torsion_symmetry(label, top, mol_list, torsion_angles[tuple(torsion)])
         symmetries[tuple(torsion)] = symmetry
-    logger.debug('Identified {0} symmetric wells for {1}'.format(len([s for s in symmetries.values() if s > 1]), label))
+    logger.debug(f'Identified {len([s for s in symmetries.values() if s > 1])} symmetric wells for {label}')
 
     torsions_sampling_points, wells_dict = dict(), dict()
     for tor, tor_angles in torsion_angles.items():
@@ -395,7 +397,7 @@ def generate_conformer_combinations(label, mol, base_xyz, hypothetical_num_comb,
     if hypothetical_num_comb > combination_threshold:
         # don't generate all combinations, there are simply too many
         # iteratively modify the lowest conformer until it converges.
-        logger.debug('hypothetical_num_comb for {0} is > {1}'.format(label, combination_threshold))
+        logger.debug(f'hypothetical_num_comb for {label} is > {combination_threshold}')
         new_conformers = conformers_combinations_by_lowest_conformer(
             label, mol=mol, base_xyz=base_xyz, multiple_tors=multiple_tors,
             multiple_sampling_points=multiple_sampling_points, len_conformers=len_conformers, force_field=force_field,
@@ -404,7 +406,7 @@ def generate_conformer_combinations(label, mol, base_xyz, hypothetical_num_comb,
             wells_dict=wells_dict, symmetries=symmetries, use_zmats=use_zmats)
     else:
         # just generate all combinations and get their FF energies
-        logger.debug('hypothetical_num_comb for {0} is < {1}'.format(label, combination_threshold))
+        logger.debug(f'hypothetical_num_comb for {label} is < {combination_threshold}')
         new_conformers = generate_all_combinations(label, mol, base_xyz, multiple_tors, multiple_sampling_points,
                                                    len_conformers=len_conformers, force_field=force_field,
                                                    torsions=list(torsion_angles.keys()), use_zmats=use_zmats)
@@ -475,7 +477,7 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
                                  'xyz': xyz,
                                  'zmat': zmat,
                                  'FF energy': round(energy, 3),
-                                 'source': 'Changing dihedrals on most stable conformer, iteration {0}'.format(i),
+                                 'source': f'Changing dihedrals on most stable conformer, iteration {i}',
                                  'torsion': tor,
                                  'dihedral': round(dihedral, 2)}
                     newest_conformers_dict[tor].append(conformer)
@@ -483,8 +485,7 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
                         newest_conformer_list.append(conformer)
                 else:
                     # if xyz is None, atoms have collided
-                    logger.debug('\n\natoms colliding in {0} for torsion {1} and dihedral {2}:'.format(
-                        label, tor, dihedral))
+                    logger.debug(f'\n\natoms colliding in {label} for torsion {tor} and dihedral {dihedral}:')
                     logger.debug(xyz)
                     logger.debug('\n\n')
         new_conformers.extend(newest_conformer_list)
@@ -509,10 +510,10 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
                                                    de_threshold=de_threshold, plot_path=plot_path)
         if num_comb is not None:
             if num_comb > 1000:
-                num_comb_str = '{0:.2E}'.format(num_comb)
+                num_comb_str = f'{num_comb:.2E}'
             else:
                 num_comb_str = str(num_comb)
-            logger.info('Number of conformer combinations for {0} after reduction: {1}'.format(label, num_comb_str))
+            logger.info(f'Number of conformer combinations for {label} after reduction: {num_comb_str}')
     if de_threshold is not None:
         min_e = min([conf['FF energy'] for conf in new_conformers])
         new_conformers = [conf for conf in new_conformers if conf['FF energy'] - min_e < de_threshold]
@@ -616,7 +617,7 @@ def generate_force_field_conformers(label, mol_list, torsion_num, charge, multip
         try:
             ff_xyzs, ff_energies = get_force_field_energies(label, mol, num_confs=num_confs, force_field=force_field)
         except ValueError as e:
-            logger.warning('Could not generate conformers for {0}, failed with: {1}'.format(label, e))
+            logger.warning(f'Could not generate conformers for {label}, failed with: {e}')
         if ff_xyzs:
             for xyz, energy in zip(ff_xyzs, ff_energies):
                 zmat = converter.zmat_from_xyz(xyz=xyz, mol=mol_list[0], consolidation_tols=CONSOLIDATION_TOLS) \
@@ -765,9 +766,9 @@ def determine_number_of_conformers_to_generate(label, heavy_atoms, torsion_num, 
         elif heavy_range[1] >= heavy_atoms >= heavy_range[0]:
             break
     else:
-        raise ConformerError('Could not determine the number of conformers to generate according to the number '
-                             'of heavy atoms ({heavy}) in {label}. The CONFS_VS_HEAVY_ATOMS dictionary might be '
-                             'corrupt, got:\n {d}'.format(heavy=heavy_atoms, label=label, d=CONFS_VS_HEAVY_ATOMS))
+        raise ConformerError(f'Could not determine the number of conformers to generate according to the number '
+                             f'of heavy atoms ({heavy_atoms}) in {label}. The CONFS_VS_HEAVY_ATOMS dictionary might be '
+                             f'corrupt, got:\n {CONFS_VS_HEAVY_ATOMS}')
 
     for torsion_range, num_confs_2 in CONFS_VS_TORSIONS.items():
         if torsion_range[1] == 'inf' and torsion_num >= torsion_range[0]:
@@ -775,9 +776,9 @@ def determine_number_of_conformers_to_generate(label, heavy_atoms, torsion_num, 
         elif torsion_range[1] >= torsion_num >= torsion_range[0]:
             break
     else:
-        raise ConformerError('Could not determine the number of conformers to generate according to the number '
-                             'of torsions ({torsion_num}) in {label}. The CONFS_VS_TORSIONS dictionary might be '
-                             'corrupt, got:\n {d}'.format(torsion_num=torsion_num, label=label, d=CONFS_VS_TORSIONS))
+        raise ConformerError(f'Could not determine the number of conformers to generate according to the number '
+                             f'of torsions ({torsion_num}) in {label}. The CONFS_VS_TORSIONS dictionary might be '
+                             f'corrupt, got:\n {CONFS_VS_TORSIONS}')
 
     if minimalist:
         num_confs = min(num_confs_1, num_confs_2, 250)
@@ -978,8 +979,8 @@ def get_lowest_confs(label, confs, n=1, energy='FF energy', symmetries=None):
     elif isinstance(confs[0], dict):
         conformer_list = [conformer for conformer in confs if energy in conformer and conformer[energy] is not None]
     else:
-        raise ConformerError("confs could either be a list of dictionaries or a list of lists. "
-                             "Got a list of {0}'s for {1}".format(type(confs[0]), label))
+        raise ConformerError(f"confs could either be a list of dictionaries or a list of lists. "
+                             f"Got a list of {type(confs[0])}'s for {label}")
     conformer_list.sort(key=lambda conformer: conformer[energy], reverse=False)
     n_lowest_confs = [conformer_list[0]]
     index = 1
@@ -1158,8 +1159,7 @@ def openbabel_force_field(label, mol, num_confs=None, xyz=None, force_field='GAF
         while v:
             v = ff.SteepestDescentTakeNSteps(1)  # ConjugateGradientsTakeNSteps
             if ff.DetectExplosion():
-                raise ConformerError('Force field {0} exploded with method {1} for {2}'.format(
-                    force_field, 'SteepestDescent', label))
+                raise ConformerError(f'Force field {force_field} exploded with method SteepestDescent for {label}')
         ff.GetCoordinates(obmol)
 
     elif num_confs is not None:
@@ -1181,9 +1181,9 @@ def openbabel_force_field(label, mol, num_confs=None, xyz=None, force_field='GAF
         elif method.lower() == 'systematic':
             ff.SystematicRotorSearch(num_confs)
         else:
-            raise ConformerError('Could not identify method {0} for {1}'.format(method, label))
+            raise ConformerError(f'Could not identify method {method} for {label}')
     else:
-        raise ConformerError('Either num_confs or xyz should be given for {0}'.format(label))
+        raise ConformerError(f'Either num_confs or xyz should be given for {label}')
 
     ff.GetConformers(obmol)
     obconversion = ob.OBConversion()
@@ -1216,14 +1216,14 @@ def embed_rdkit(label, mol, num_confs=None, xyz=None):
         RDMol: An RDKIt molecule with embedded conformers.
     """
     if num_confs is None and xyz is None:
-        raise ConformerError('Either num_confs or xyz must be set when calling embed_rdkit() for {0}'.format(label))
+        raise ConformerError(f'Either num_confs or xyz must be set when calling embed_rdkit() for {label}')
     if isinstance(mol, RDMol):
         rd_mol = mol
     elif isinstance(mol, Molecule):
         rd_mol = converter.to_rdkit_mol(mol=mol, remove_h=False)
     else:
-        raise ConformerError('Argument mol can be either an RMG Molecule or an RDKit RDMol object. '
-                             'Got {0} for {1}'.format(type(mol), label))
+        raise ConformerError(f'Argument mol can be either an RMG Molecule or an RDKit RDMol object. '
+                             f'Got {type(mol)} for {label}')
     if num_confs is not None:
         Chem.AllChem.EmbedMultipleConfs(rd_mol, numConfs=num_confs, randomSeed=1, enforceChirality=True)
         # Chem.AllChem.EmbedMultipleConfs(rd_mol, numConfs=num_confs, randomSeed=15, enforceChirality=False)
@@ -1257,8 +1257,8 @@ def read_rdkit_embedded_conformers(label, rd_mol, i=None, rd_index_map=None):
         # read only conformer i:
         xyzs.append(read_rdkit_embedded_conformer_i(rd_mol, i, rd_index_map=rd_index_map))
     else:
-        raise ConformerError('Cannot read conformer number "{0}" out of {1} RDKit conformers for {2}'.format(
-            i, rd_mol.GetNumConformers(), label))
+        raise ConformerError(f'Cannot read conformer number "{i}" out of {rd_mol.GetNumConformers()} RDKit '
+                             f'conformers for {label}')
     return xyzs
 
 
@@ -1342,7 +1342,7 @@ def get_wells(label, angles, blank=20):
         list: Entry are well dicts with keys: ``start_idx``, ``end_idx``, ``start_angle``, ``end_angle``, ``angles``.
     """
     if not angles:
-        raise ConformerError('Cannot determine wells without angles for {0}'.format(label))
+        raise ConformerError(f'Cannot determine wells without angles for {label}')
     new_angles = angles
     if angles[0] < 0 + blank and angles[-1] > 360 - blank:
         # relocate the first chunk of data at the end, the well seems to include the  +180/-180 degrees point
@@ -1643,8 +1643,8 @@ def translate_groups(label, mol, xyz, pivot):
     atom1 = mol.atoms[pivot]
     lp = atom1.lone_pairs
     if lp > 1:
-        logger.warning('Cannot translate groups for {0} if the pivotal atom has more than one '
-                       'lone electron pair'.format(label))
+        logger.warning(f'Cannot translate groups for {label} if the pivotal atom has more than one '
+                       f'lone electron pair')
         return xyz
     groups, translate, dont_translate = list(), list(), list()
     for atom2 in mol.atoms[pivot].edges.keys():
@@ -1677,11 +1677,10 @@ def translate_groups(label, mol, xyz, pivot):
                                   anchor=mol.atoms.index(translate[1]['atom']), vector=vector)
     else:
         if lp:
-            raise ConformerError('The number of groups to translate is {0}, expected 1 (with a lone pair) '
-                                 'for {1}.'.format(len(translate), label))
+            raise ConformerError(f'The number of groups to translate is {len(translate)}, expected 1 '
+                                 f'(with a lone pair) for {label}.')
         else:
-            raise ConformerError('The number of groups to translate is {0}, expected 2 for {1}.'.format(
-                len(translate), label))
+            raise ConformerError(f'The number of groups to translate is {len(translate)}, expected 2 for {label}.')
     return new_xyz
 
 
@@ -1760,10 +1759,9 @@ def get_number_of_chiral_centers(label, mol, conformer=None, xyz=None, just_get_
 def get_lowest_diastereomers(label, mol, conformers, diastereomers=None):
     """
     Get the 2^(n-1) diastereomers with the lowest energy (where n is the number of chiral centers in the molecule).
-    We exclude enantiomers (mirror images where ALL chiral centers invert).
-    If a specific diasteromer is given (in an xyz dict form), then only the lowest conformer with the same chirality
+    We exclude enantiomers (mirror images where ALL chiral centers simultaneously invert).
+    If a specific diastereomer is given (in an xyz dict form), then only the lowest conformer with the same chirality
     will be returned.
-    * untested *
 
     Args:
         label (str): The species' label.
@@ -1844,8 +1842,7 @@ def prune_enantiomers_dict(label, enantiomers_dict):
     for chirality_tuples, conformer in enantiomers_dict.items():
         inversed_chirality_tuples = tuple([(chirality_tuple[0], inverse_chirality_symbol(chirality_tuple[1]))
                                            for chirality_tuple in chirality_tuples])
-        if chirality_tuples not in list(pruned_enantiomers_dict.keys()) \
-                and inversed_chirality_tuples not in list(pruned_enantiomers_dict.keys()):
+        if chirality_tuples not in pruned_enantiomers_dict and inversed_chirality_tuples not in pruned_enantiomers_dict:
             # this combination (or its exact mirror image) was not considered yet
             if inversed_chirality_tuples in list(enantiomers_dict.keys()):
                 # the mirror image exists, check which has a lower energy
