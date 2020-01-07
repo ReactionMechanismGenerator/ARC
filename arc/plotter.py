@@ -525,17 +525,17 @@ def save_geo(species, project_directory):
     xyz_str = xyz_to_str(species.final_xyz)
 
     # xyz
-    xyz = '{0}\n'.format(species.number_of_atoms)
-    xyz += '{0} optimized at {1}\n'.format(species.label, species.opt_level)
-    xyz += '{0}\n'.format(xyz_str)
-    with open(os.path.join(geo_path, '{0}.xyz'.format(species.label)), 'w') as f:
+    xyz = f'{species.number_of_atoms}\n'
+    xyz += f'{species.label} optimized at {species.opt_level}\n'
+    xyz += f'{xyz_str}\n'
+    with open(os.path.join(geo_path, f'{species.label}.xyz'), 'w') as f:
         f.write(xyz)
 
     # GaussView file
-    gv = '# hf/3-21g\n\n{0} optimized at {1}\n\n'.format(species.label, species.opt_level)
-    gv += '{0} {1}\n'.format(species.charge, species.multiplicity)
-    gv += '{0}\n'.format(xyz_str)
-    with open(os.path.join(geo_path, '{0}.gjf'.format(species.label)), 'w') as f:
+    gv = f'# hf/3-21g\n\n{species.label} optimized at {species.opt_level}\n\n'
+    gv += f'{species.charge} {species.multiplicity}\n'
+    gv += f'{xyz_str}\n'
+    with open(os.path.join(geo_path, f'{species.label}.gjf'), 'w') as f:
         f.write(gv)
 
 
@@ -548,13 +548,13 @@ def save_thermo_lib(species_list, path, name, lib_long_desc):
     `long_desc` is a multiline string with level of theory description.
     """
     if species_list:
-        lib_path = os.path.join(path, 'thermo', '{0}.py'.format(name))
+        lib_path = os.path.join(path, 'thermo', f'{name}.py')
         thermo_library = ThermoLibrary(name=name, long_desc=lib_long_desc)
         for i, spc in enumerate(species_list):
             if spc.thermo is not None:
-                spc.long_thermo_description += '\nExternal symmetry: {0}, optical isomers: {1}\n'.format(
-                    spc.external_symmetry, spc.optical_isomers)
-                spc.long_thermo_description += '\nGeometry:\n{0}'.format(spc.final_xyz)
+                spc.long_thermo_description += f'\nExternal symmetry: {spc.external_symmetry}, ' \
+                                               f'optical isomers: {spc.optical_isomers}\n'
+                spc.long_thermo_description += f'\nGeometry:\n{xyz_to_str(spc.final_xyz)}'
                 thermo_library.load_entry(index=i,
                                           label=spc.label,
                                           molecule=spc.mol_list[0].to_adjacency_list(),
@@ -562,8 +562,8 @@ def save_thermo_lib(species_list, path, name, lib_long_desc):
                                           shortDesc=spc.thermo.comment,
                                           longDesc=spc.long_thermo_description)
             else:
-                logger.warning('Species {0} did not contain any thermo data and was omitted from the thermo '
-                               'library.'.format(spc.label))
+                logger.warning(f'Species {spc.label} did not contain any thermo data and was omitted from the thermo '
+                               f'library.')
 
         thermo_library.save(lib_path)
 
@@ -575,28 +575,28 @@ def save_transport_lib(species_list, path, name, lib_long_desc=''):
     `long_desc` is a multiline string with level of theory description.
     """
     if species_list:
-        lib_path = os.path.join(path, 'transport', '{0}.py'.format(name))
+        lib_path = os.path.join(path, f'transport', '{name}.py')
         transport_library = TransportLibrary(name=name, long_desc=lib_long_desc)
         for i, spc in enumerate(species_list):
             if spc.transport_data is not None:
-                description = '\nGeometry:\n{0}'.format(spc.final_xyz)
+                description = f'\nGeometry:\n{xyz_to_str(spc.final_xyz)}'
                 transport_library.load_entry(index=i,
                                              label=spc.label,
                                              molecule=spc.mol_list[0].to_adjacency_list(),
                                              transport=spc.transport_data,
                                              shortDesc=spc.thermo.comment,
                                              longDesc=description)
-                logger.info('\n\nTransport properties for {0}:'.format(spc.label))
-                logger.info('  Shape index: {0}'.format(spc.transport_data.shapeIndex))
-                logger.info('  Epsilon: {0}'.format(spc.transport_data.epsilon))
-                logger.info('  Sigma: {0}'.format(spc.transport_data.sigma))
-                logger.info('  Dipole moment: {0}'.format(spc.transport_data.dipoleMoment))
-                logger.info('  Polarizability: {0}'.format(spc.transport_data.polarizability))
-                logger.info('  Rotational relaxation collision number: {0}'.format(spc.transport_data.rotrelaxcollnum))
-                logger.info('  Comment: {0}'.format(spc.transport_data.comment))
+                logger.info(f'\n\nTransport properties for {spc.label}:')
+                logger.info(f'  Shape index: {spc.transport_data.shapeIndex}')
+                logger.info(f'  Epsilon: {spc.transport_data.epsilon}')
+                logger.info(f'  Sigma: {spc.transport_data.sigma}')
+                logger.info(f'  Dipole moment: {spc.transport_data.dipoleMoment}')
+                logger.info(f'  Polarizability: {spc.transport_data.polarizability}')
+                logger.info(f'  Rotational relaxation collision number: {spc.transport_data.rotrelaxcollnum}')
+                logger.info(f'  Comment: {spc.transport_data.comment}')
             else:
-                logger.warning('Species {0} did not contain any thermo data and was omitted from the thermo '
-                               'library.'.format(spc.label))
+                logger.warning(f'Species {spc.label} did not contain any thermo data and was omitted from the thermo '
+                               f'library.')
 
         transport_library.save(lib_path)
 
@@ -632,13 +632,14 @@ def save_kinetics_lib(rxn_list, path, name, lib_long_desc):
                     data=rxn.kinetics,
                     label=rxn.label)
                 rxn.ts_species.make_ts_report()
-                entry.long_desc = rxn.ts_species.ts_report + '\n\nOptimized TS geometry:\n' + rxn.ts_species.final_xyz
+                entry.long_desc = rxn.ts_species.ts_report + '\n\nOptimized TS geometry:\n' + \
+                                  xyz_to_str(rxn.ts_species.final_xyz)
                 rxn.rmg_reaction.kinetics = rxn.kinetics
                 rxn.rmg_reaction.kinetics.comment = ''
                 entries[i+1] = entry
             else:
-                logger.warning('Reaction {0} did not contain any kinetic data and was omitted from the kinetics'
-                               ' library.'.format(rxn.label))
+                logger.warning(f'Reaction {rxn.label} did not contain any kinetic data and was omitted from the '
+                               f'kinetics library.')
         kinetics_library = KineticsLibrary(name=name, long_desc=lib_long_desc, auto_generated=True)
         kinetics_library.entries = entries
         lib_path = os.path.join(path, 'kinetics', '')
