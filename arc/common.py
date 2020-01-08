@@ -671,16 +671,111 @@ def determine_model_chemistry_type(method):
     return model_chemistry_class
 
 
-def format_level_of_theory_for_logging(level_of_theory_dict):
+def format_level_of_theory_inputs(level_of_theory):
+    """
+    A helper function to format level of theory inputs for internal use in ARC.
+
+    Examples: input -> output
+        'cbs-qb3' -> {'method': 'cbs-qb3', 'basis': '', 'auxiliary_basis': '', 'dispersion': ''}
+        'b3lyp/def2-TZVP' -> {'method': 'b3lyp', 'basis': 'def2-tzvp', 'auxiliary_basis': '', 'dispersion': ''}
+        {'method': 'wb97xd', 'basis': '6-31g'} -> {'method': 'wb97xd', 'basis': '6-31g', 'auxiliary_basis': '',
+                                                   'dispersion': ''}
+        More examples can be found from `test_format_model_chemistry_inputs` in commonTest.
+
+    Args:
+        level_of_theory (str or dict): job level of theory specification
+                                       e.g., 'b3lyp/def2-svp'
+                                       e.g., {'method': 'DLPNO-CCSD(T)-F12', 'basis': 'cc-pVTZ-F12',
+                                              'auxiliary_basis': 'aug-cc-pVTZ/C cc-pVTZ-F12-CABS'}
+
+    Returns:
+        formatted_model_chemistry_dict (dict): The formatted model chemistry dictionary.
+                                               Default keys: 'method', 'basis', 'auxiliary_basis', 'dispersion'
+        formatted_model_chemistry_str (str): The formatted model chemistry string.
+                                             Format: method|basis|auxiliary_basis|dispersion
+
+    Raises:
+        InputError: If ``level_of_theory`` contains illegal specifications.
+    """
+    formatted_model_chemistry_dict = {'method': '', 'basis': '', 'auxiliary_basis': '', 'dispersion': ''}
+    if not level_of_theory:
+        formatted_model_chemistry_str = ''
+        return formatted_model_chemistry_dict, formatted_model_chemistry_str
+    if isinstance(level_of_theory, str):
+        if '|' in level_of_theory:
+            if level_of_theory.count('|') != 3:
+                raise InputError(f'{level_of_theory} contains {level_of_theory.count("|")} pipes "|" in its name. '
+                                 f'The standard job model chemistry format used internally in ARC should contain '
+                                 f'exactly three pipes (method|basis|auxiliary_basis|dispersion).')
+            else:
+                formatted_model_chemistry_dict['method'], formatted_model_chemistry_dict['basis'],\
+                    formatted_model_chemistry_dict['auxiliary_basis'], formatted_model_chemistry_dict['dispersion']\
+                    = level_of_theory.lower().split('|')
+        elif ' ' in level_of_theory:
+            # illegal inputs like 'dlpno-ccsd(t)/def2-svp def2-svp/c' or 'b3 lyp'
+            raise InputError(f'{level_of_theory} has empty space in its name. Please use a dictionary format '
+                             f'to specify method, basis, auxiliary basis, and dispersion in this case. '
+                             f'See documentation for more details.')
+        elif '/' not in level_of_theory:
+            # e.g., 'AM1', 'XTB', 'CBS-QB3'
+            # Notice that this function is not designed to distinguish composite methods and
+            # semi-empirical methods. If such differentiation is needed elsewhere in the codebase, please use
+            # `determine_model_chemistry_type` in common.py
+            formatted_model_chemistry_dict['method'] = level_of_theory.lower()
+        elif level_of_theory.count('/') >= 2:
+            # illegal inputs like 'dlpno-ccsd(t)/def2-svp/def2-svp/c'
+            raise InputError(f'{level_of_theory} has multiple slashes in its name. Please use a dictionary format '
+                             f'to specify method, basis, auxiliary basis, and dispersion in this case. '
+                             f'See documentation for more details.')
+        else:
+            # e.g., 'b3lyp/def2-svp'
+            formatted_model_chemistry_dict['method'] = level_of_theory.split('/')[0].lower()
+            formatted_model_chemistry_dict['basis'] = level_of_theory.split('/')[1].lower()
+    elif isinstance(level_of_theory, dict):
+        if level_of_theory == formatted_model_chemistry_dict:
+            # This usually occurs in a restarted job (because ARC writes formatted model chemistry specifications into
+            # the restart dictionary). To ensure `if level_of_theory:` evaluates to `False` so that the function
+            # `determine_model_chemistry_for_job_types` behaves properly as if the job was a new job instead of a
+            # restarted one, in this case we return formatted_model_chemistry_dict = {} so that expressions like
+            # if self.sp_level evaluates to false
+            return dict(), ''
+
+        if 'method' not in level_of_theory.keys():
+            raise InputError(f'{level_of_theory} must at least have "method" as a key.')
+
+        for key in level_of_theory.keys():
+            if key in formatted_model_chemistry_dict:
+                formatted_model_chemistry_dict[key] = level_of_theory[key].lower()
+            else:
+                raise InputError(f'{level_of_theory} has illegal key {key}. The standard model chemistry input '
+                                 f'dictionary has four keys: method, basis, auxiliary_basis, and dispersion.')
+    else:
+        raise InputError(f'{level_of_theory} must be either a string or a dictionary. Got: {type(level_of_theory)}.')
+
+    formatted_model_chemistry_str = "|".join([formatted_model_chemistry_dict['method'],
+                                              formatted_model_chemistry_dict['basis'],
+                                              formatted_model_chemistry_dict['auxiliary_basis'],
+                                              formatted_model_chemistry_dict['dispersion']])
+    return formatted_model_chemistry_dict, formatted_model_chemistry_str
+
+
+def format_level_of_theory_for_logging(level_of_theory):
     """
     Format level of theory dictionary to string for logging purposes.
 
+    Examples: input -> output
+        {'method': 'cbs-qb3'} -> 'cbs-qb3'
+        {'method': 'b3lyp', 'basis': '6-31g', 'auxiliary_basis': '', 'dispersion': 'gd3bj'} -> 'b3lyp/6-31g gd3bj'
+        'apfd/def2-tzvp' -> 'apfd/def2-tzvp'
+        More examples can be found from `test_format_level_of_theory_for_logging` in commonTest.
+
     Args:
-        level_of_theory_dict (dict): level of theory dictionary.
+        level_of_theory (str or dict): job level of theory.
 
     Returns:
         level_of_theory_log_str (str): level of theory string for logging.
     """
+    level_of_theory_dict, _ = format_level_of_theory_inputs(level_of_theory)
     method = level_of_theory_dict.get('method', '')
     basis = level_of_theory_dict.get('basis', '')
     auxiliary_basis = level_of_theory_dict.get('auxiliary_basis', '')

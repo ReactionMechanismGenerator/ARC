@@ -16,8 +16,8 @@ from IPython.display import display
 
 from rmgpy.reaction import Reaction
 
-from arc.common import format_level_of_theory_for_logging, get_logger, read_yaml_file, save_yaml_file, \
-    get_ordinal_indicator, min_list, calculate_dihedral_angle, sort_two_lists_by_the_first
+from arc.common import format_level_of_theory_inputs, format_level_of_theory_for_logging, get_logger, read_yaml_file, \
+    save_yaml_file, get_ordinal_indicator, min_list, calculate_dihedral_angle, sort_two_lists_by_the_first
 from arc import plotter
 from arc import parser
 from arc.job.job import Job
@@ -694,7 +694,7 @@ class Scheduler(object):
         if self.adaptive_levels is not None:
             level_of_theory = self.determine_adaptive_level(original_level_of_theory=level_of_theory, job_type=job_type,
                                                             heavy_atoms=self.species_dict[label].number_of_heavy_atoms)
-        job_level_of_theory_dict = _format_level_of_theory_inputs(level_of_theory)
+        job_level_of_theory_dict, _ = format_level_of_theory_inputs(level_of_theory)
         job = Job(project=self.project, ess_settings=self.ess_settings, species_name=label, xyz=xyz, job_type=job_type,
                   job_level_of_theory_dict=job_level_of_theory_dict, multiplicity=species.multiplicity,
                   charge=species.charge, fine=fine,
@@ -2503,7 +2503,7 @@ class Scheduler(object):
         if job.software == 'gaussian':
             if self.species_dict[label].checkfile is None:
                 self.species_dict[label].checkfile = job.checkfile
-        level_of_theory = _format_level_of_theory_inputs(level_of_theory)
+        level_of_theory, _ = format_level_of_theory_inputs(level_of_theory)
         # make a temporary list of ones just to count the number of heavy atoms in the molecule
         num_heavy_atoms = len([1 for atom in self.species_dict[label].mol.atoms if atom.is_non_hydrogen()])
         # determine if the species is a hydrogen (or its isotope) atom
@@ -2780,50 +2780,3 @@ def sum_time_delta(timedelta_list):
         if timedelta is not None:
             result += timedelta
     return result
-
-
-def _format_level_of_theory_inputs(level_of_theory):
-    """
-    A helper function to format level of theory inputs for internal use in ARC.
-
-    Notice that this function is not designed to distinguish composite methods and semi-empirical methods.
-    If such differentiation is needed elsewhere in the codebase, please use `determine_model_chemistry_type` in
-    common.py
-
-    Args:
-        level_of_theory (str or dict): The level of theory to use for a job.
-                                       String format only supports two simple cases:
-                                       (1) method (e.g., cbs-qb3, pm6)
-                                       (2) method/basis (e.g, apfd/def2-tzvp)
-                                       Dictionary format supports more options like dispersion and auxiliary basis
-                                       {'method': 'b3lyp', 'basis': 'def2-svp', 'auxiliary_basis': 'def2-svp/c',
-                                        'dispersion': 'gd3bj'}
-
-    Returns:
-        formatted_job_level_of_theory_dict (dict): The formatted model chemistry dictionary.
-
-    Raises:
-        InputError: If ``level_of_theory`` contains illegal specifications.
-    """
-    formatted_job_level_of_theory_dict = dict()
-    if isinstance(level_of_theory, str):
-        if ' ' in level_of_theory:  # apfd/def2tzvp def2svp, b3lyp sto-3g
-            raise InputError(f'Level of theory seems wrong. It should not contain empty spaces.\n'
-                             f'Got: "{level_of_theory}"\n'
-                             f'See documentation if you intended to include an auxiliary basis set.')
-        if '/' in level_of_theory:
-            if level_of_theory.count('/') > 1:
-                raise InputError(f'Level of theory seems wrong. It should not contain multiple slashes.\n'
-                                 f'Got: "{level_of_theory}"\n'
-                                 f'See documentation if you intended to include an auxiliary basis set.')
-            else:  # apfd/def2tzvp
-                formatted_job_level_of_theory_dict['method'] = level_of_theory.split('/')[0]
-                formatted_job_level_of_theory_dict['basis'] = level_of_theory.split('/')[1]
-        else:
-            # cbs-qb3, AM1
-            formatted_job_level_of_theory_dict['method'] = level_of_theory
-    elif isinstance(level_of_theory, dict):
-        formatted_job_level_of_theory_dict = level_of_theory
-    else:
-        raise InputError(f'level_of_theory must be a string or a dictionary. Got {type(level_of_theory)}')
-    return formatted_job_level_of_theory_dict
