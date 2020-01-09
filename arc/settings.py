@@ -122,14 +122,8 @@ output_filename = {'gaussian': 'input.log',
                    'orca': 'input.log',
                    }
 
-default_levels_of_theory = {'conformer': {'auxiliary_basis': '',
-                                          'basis': '6-31g(d,p)',
-                                          'method': 'b3lyp',
-                                          'dispersion': 'empiricaldispersion=gd3bj'},
-                            'ts_guesses': {'auxiliary_basis': '',
-                                           'basis': '6-31g(d,p)',
-                                           'method': 'b3lyp',
-                                           'dispersion': 'empiricaldispersion=gd3bj'},
+default_levels_of_theory = {'conformer': 'apfd/def2svp',  # it's recommended to choose a method with dispersion
+                            'ts_guesses': 'apfd/def2svp',
                             'opt': 'wb97xd/def2TZVP',  # used for IRC as well
                             'freq': 'wb97xd/def2TZVP',  # should be the same level as opt (to calc freq at min E)
                             'scan': 'wb97xd/def2TZVP',  # should be the same level as freq (to project out rotors)
