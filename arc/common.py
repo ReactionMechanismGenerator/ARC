@@ -783,16 +783,24 @@ def format_level_of_theory_for_logging(level_of_theory):
 
     Returns:
         level_of_theory_log_str (str): level of theory string for logging.
+
+    Raises:
+        TypeError: If level_of_theory_dict is of wrong type.
     """
-    level_of_theory_dict, _ = format_level_of_theory_inputs(level_of_theory)
+    if isinstance(level_of_theory, str):
+        return level_of_theory.lower()
+    if not isinstance(level_of_theory, dict):
+        raise TypeError(f'level_of_theory_dict must be a dictionary, got: {level_of_theory} '
+                        f'which is a {type(level_of_theory)}.')
+    level_of_theory_dict = format_level_of_theory_inputs(level_of_theory)[0]
     method = level_of_theory_dict.get('method', '')
     basis = level_of_theory_dict.get('basis', '')
     auxiliary_basis = level_of_theory_dict.get('auxiliary_basis', '')
     dispersion = level_of_theory_dict.get('dispersion', '')
     level_of_theory_log_str = '/'.join([method, basis]) if basis else method
-    level_of_theory_log_str = '/'.join([level_of_theory_log_str, auxiliary_basis]) if auxiliary_basis\
+    level_of_theory_log_str = '/'.join([level_of_theory_log_str, auxiliary_basis]) if auxiliary_basis \
         else level_of_theory_log_str
-    level_of_theory_log_str = ' '.join([level_of_theory_log_str, dispersion]) if dispersion\
+    level_of_theory_log_str = ' '.join([level_of_theory_log_str, dispersion]) if dispersion \
         else level_of_theory_log_str
     return level_of_theory_log_str
 
