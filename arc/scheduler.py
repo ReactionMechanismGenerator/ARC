@@ -16,12 +16,12 @@ from IPython.display import display
 
 from rmgpy.reaction import Reaction
 
-from arc.common import format_level_of_theory_inputs, format_level_of_theory_for_logging, get_logger, read_yaml_file, \
-    save_yaml_file, get_ordinal_indicator, min_list, calculate_dihedral_angle, sort_two_lists_by_the_first
+from arc.common import format_level_of_theory_for_logging, format_level_of_theory_inputs, get_logger, \
+    get_ordinal_indicator, min_list, read_yaml_file, save_yaml_file, sort_two_lists_by_the_first
 from arc import plotter
 from arc import parser
 from arc.job.job import Job
-from arc.exceptions import SpeciesError, SchedulerError, TSError, SanitizationError, InputError
+from arc.exceptions import InputError, SanitizationError, SchedulerError, SpeciesError, TSError
 from arc.job.local import check_running_jobs_ids
 from arc.job.ssh import SSHClient
 from arc.job.trsh import trsh_negative_freq, trsh_scan_job, trsh_ess_job, trsh_conformer_isomorphism, scan_quality_check
@@ -32,7 +32,7 @@ from arc.ts.atst import autotst
 from arc.settings import default_job_types, rotor_scan_resolution
 import arc.rmgdb as rmgdb
 import arc.species.conformers as conformers  # import after importing plotter to avoid circular import
-from arc.species.vectors import get_angle
+from arc.species.vectors import get_angle, calculate_dihedral_angle
 
 logger = get_logger()
 
@@ -1371,7 +1371,7 @@ class Scheduler(object):
             confs = conformers.determine_dihedrals(confs, torsions)
             new_conformers = conformers.deduce_new_conformers(label=label, conformers=confs, torsions=torsions,
                                                               tops=tops, mol_list=self.species_dict[label].mol_list,
-                                                              plot_path=False)
+                                                              plot_path=False)[0]
             new_confs_path = os.path.join(self.project_directory, 'calcs', 'Species', label,
                                           'ff_param_fit', 'new_conformers.yml')  # list of lists
             coords = [new_conf['xyz'] for new_conf in new_conformers]
@@ -2504,17 +2504,15 @@ class Scheduler(object):
             if self.species_dict[label].checkfile is None:
                 self.species_dict[label].checkfile = job.checkfile
         level_of_theory, _ = format_level_of_theory_inputs(level_of_theory)
-        # make a temporary list of ones just to count the number of heavy atoms in the molecule
-        num_heavy_atoms = len([1 for atom in self.species_dict[label].mol.atoms if atom.is_non_hydrogen()])
         # determine if the species is a hydrogen (or its isotope) atom
         is_h = len(self.species_dict[label].mol.atoms) == 1 and \
-               self.species_dict[label].mol.atoms[0].element.symbol in ['H', 'D', 'T']
+            self.species_dict[label].mol.atoms[0].element.symbol in ['H', 'D', 'T']
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
         memory, shift, cpu_cores, dont_rerun = \
             trsh_ess_job(label=label, level_of_theory_dict=level_of_theory, server=job.server,
-                         job_status=job.job_status[1], is_h=is_h,
-                         job_type=job.job_type, num_heavy_atoms=num_heavy_atoms, software=job.software, fine=job.fine,
-                         memory_gb=job.total_job_memory_gb, cpu_cores=job.cpu_cores,
+                         job_status=job.job_status[1], is_h=is_h, job_type=job.job_type,
+                         num_heavy_atoms=self.species_dict[label].number_of_heavy_atoms, software=job.software,
+                         fine=job.fine, memory_gb=job.total_job_memory_gb, cpu_cores=job.cpu_cores,
                          ess_trsh_methods=job.ess_trsh_methods, available_ess=list(self.ess_settings.keys()))
         for output_error in output_errors:
             self.output[label]['errors'] += output_error

@@ -10,10 +10,11 @@ import os
 import time
 import unittest
 
+from rmgpy.molecule.molecule import Molecule
+
 import arc.common as common
 from arc.exceptions import InputError, SettingsError
 from arc.settings import arc_path, servers
-from arc.species.converter import str_to_xyz
 
 
 class TestCommon(unittest.TestCase):
@@ -105,6 +106,31 @@ class TestCommon(unittest.TestCase):
         with self.assertRaises(SettingsError):
             ess_settings7 = {'gaussian': ['noserver']}
             common.check_ess_settings(ess_settings7)
+
+    def test_determine_top_group_indices(self):
+        """Test determining the top group in a molecule"""
+        mol = Molecule(smiles='c1cc(OC)ccc1OC(CC)SF')
+        atom1 = mol.atoms[9]  # this is the C atom at the S, O, H, and C junction
+        atom2a = mol.atoms[10]  # C
+        atom2b = mol.atoms[8]  # O
+        atom2c = mol.atoms[12]  # S
+        atom2d = mol.atoms[21]  # H
+
+        top, top_has_heavy_atoms = common.determine_top_group_indices(mol, atom1, atom2a)
+        self.assertEqual(len(top), 7)
+        self.assertTrue(top_has_heavy_atoms)
+
+        top, top_has_heavy_atoms = common.determine_top_group_indices(mol, atom1, atom2b)
+        self.assertEqual(len(top), 16)
+        self.assertTrue(top_has_heavy_atoms)
+
+        top, top_has_heavy_atoms = common.determine_top_group_indices(mol, atom1, atom2c)
+        self.assertEqual(len(top), 2)
+        self.assertTrue(top_has_heavy_atoms)
+
+        top, top_has_heavy_atoms = common.determine_top_group_indices(mol, atom1, atom2d)
+        self.assertEqual(top, [22])
+        self.assertFalse(top_has_heavy_atoms)  # H
 
     def test_min_list(self):
         """Test the min_list() function"""
@@ -221,107 +247,6 @@ class TestCommon(unittest.TestCase):
         with self.assertRaises(InputError):
             specific_job_type = 'fake_job_type'
             common.initialize_job_types({}, specific_job_type=specific_job_type)
-
-    def test_calculate_dihedral_angle(self):
-        """Test calculating a dihedral angle"""
-        propene = str_to_xyz("""C       1.22905000   -0.16449200    0.00000000
-C      -0.13529200    0.45314000    0.00000000
-C      -1.27957200   -0.21983000    0.00000000
-H       1.17363000   -1.25551200    0.00000000
-H       1.79909600    0.15138400    0.87934300
-H       1.79909600    0.15138400   -0.87934300
-H      -0.16831500    1.54137600    0.00000000
-H      -2.23664600    0.28960500    0.00000000
-H      -1.29848800   -1.30626200    0.00000000""")
-        hydrazine = str_to_xyz("""N       0.70683700   -0.07371000   -0.21400700
-N      -0.70683700    0.07371000   -0.21400700
-H       1.11984200    0.81113900   -0.47587600
-H       1.07456200   -0.35127300    0.68988300
-H      -1.11984200   -0.81113900   -0.47587600
-H      -1.07456200    0.35127300    0.68988300""")
-        cj_11974 = str_to_xyz("""C 	5.675	2.182	1.81
-O 	4.408	1.923	1.256
-C 	4.269	0.813	0.479
-C 	5.303	-0.068	0.178
-C 	5.056	-1.172	-0.639
-C 	3.794	-1.414	-1.169
-C 	2.77	-0.511	-0.851
-C 	2.977	0.59	-0.032
-C 	1.872	1.556	0.318
-N 	0.557	1.029	-0.009
-C 	-0.537	1.879	0.448
-C 	-0.535	3.231	-0.298
-C 	-1.831	3.983	0.033
-C 	-3.003	3.199	-0.61
-N 	-2.577	1.854	-0.99
-C 	-1.64	1.962	-2.111
-C 	-0.501	2.962	-1.805
-C 	-1.939	1.236	0.178
-C 	-1.971	-0.305	0.069
-C 	-3.385	-0.794	-0.209
-C 	-4.336	-0.893	0.81
-C 	-5.631	-1.324	0.539
-C 	-5.997	-1.673	-0.759
-C 	-5.056	-1.584	-1.781
-C 	-3.764	-1.147	-1.505
-C 	-1.375	-1.024	1.269
-C 	-1.405	-0.508	2.569
-C 	-0.871	-1.226	3.638
-C 	-0.296	-2.475	3.429
-C 	-0.259	-3.003	2.14
-C 	-0.794	-2.285	1.078
-C 	3.533	-2.614	-2.056
-C 	2.521	-3.574	-1.424
-C 	3.087	-2.199	-3.461
-H 	5.569	3.097	2.395
-H 	6.433	2.338	1.031
-H 	6.003	1.368	2.47
-H 	6.302	0.091	0.57
-H 	5.874	-1.854	-0.864
-H 	1.772	-0.654	-1.257
-H 	1.963	1.832	1.384
-H 	2.033	2.489	-0.239
-H 	0.469	0.13	0.461
-H 	-0.445	2.089	1.532
-H 	0.328	3.83	0.012
-H 	-1.953	4.059	1.122
-H 	-1.779	5.008	-0.352
-H 	-3.365	3.702	-1.515
-H 	-3.856	3.118	0.074
-H 	-1.226	0.969	-2.31
-H 	-2.211	2.259	-2.999
-H 	-0.639	3.906	-2.348
-H 	0.466	2.546	-2.105
-H 	-2.586	1.501	1.025
-H 	-1.36	-0.582	-0.799
-H 	-4.057	-0.647	1.831
-H 	-6.355	-1.396	1.347
-H 	-7.006	-2.015	-0.97
-H 	-5.329	-1.854	-2.798
-H 	-3.038	-1.07	-2.311
-H 	-1.843	0.468	2.759
-H 	-0.904	-0.802	4.638
-H 	0.125	-3.032	4.262
-H 	0.189	-3.977	1.961
-H 	-0.772	-2.708	0.075
-H 	4.484	-3.155	-2.156
-H 	1.543	-3.093	-1.308
-H 	2.383	-4.464	-2.049
-H 	2.851	-3.899	-0.431
-H 	3.826	-1.542	-3.932
-H 	2.134	-1.659	-3.429
-H 	2.951	-3.078	-4.102""")
-
-        dihedral0 = common.calculate_dihedral_angle(coords=propene['coords'], torsion=[9, 3, 2, 7])
-        dihedral1 = common.calculate_dihedral_angle(coords=propene['coords'], torsion=[5, 1, 2, 7])
-        self.assertAlmostEqual(dihedral0, 180, 2)
-        self.assertAlmostEqual(dihedral1, 59.26447, 2)
-
-        dihedral2 = common.calculate_dihedral_angle(coords=hydrazine['coords'], torsion=[3, 1, 2, 5])
-        self.assertAlmostEqual(dihedral2, 148.31829, 2)
-
-        dihedral3 = common.calculate_dihedral_angle(coords=cj_11974['coords'], torsion=[15, 18, 19, 20])
-        self.assertAlmostEqual(dihedral3, 308.04758, 2)
 
     def test_determine_ess(self):
         """Test the determine_ess function"""
@@ -506,7 +431,7 @@ H 	2.951	-3.078	-4.102""")
         model_chemistry_class_expected = 'composite'
         self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
 
-    def test_format_model_chemistry_inputs(self):
+    def test_format_level_of_theory_inputs(self):
         """Test formatting the job model chemistry inputs"""
         # Test illegal input (list)
         with self.assertRaises(InputError):
@@ -661,6 +586,19 @@ H 	2.951	-3.078	-4.102""")
         """Test whether ARC is being called from an IPython notebook"""
         is_notebook = common.is_notebook()
         self.assertFalse(is_notebook)
+
+    def test_is_str_float(self):
+        """Test the is_str_float() function"""
+        self.assertTrue(common.is_str_float('123'))
+        self.assertTrue(common.is_str_float('.2'))
+        self.assertTrue(common.is_str_float('125.84'))
+        self.assertTrue(common.is_str_float('6e02'))
+        self.assertTrue(common.is_str_float('+1e1'))
+        self.assertFalse(common.is_str_float('+1e1e'))
+        self.assertFalse(common.is_str_float('text 34'))
+        self.assertFalse(common.is_str_float(' '))
+        self.assertFalse(common.is_str_float('R1'))
+        self.assertFalse(common.is_str_float('D_3_5_7_4'))
 
 
 if __name__ == '__main__':

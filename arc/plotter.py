@@ -31,10 +31,11 @@ from rmgpy.data.transport import TransportLibrary
 from rmgpy.quantity import ScalarQuantity
 from rmgpy.species import Species
 
-from arc.common import get_logger, min_list, save_yaml_file, sort_two_lists_by_the_first, is_notebook
+from arc.common import format_level_of_theory_for_logging, get_logger, is_notebook, min_list, save_yaml_file, \
+    sort_two_lists_by_the_first
 from arc.exceptions import InputError, SanitizationError
 from arc.species.converter import rdkit_conf_from_mol, molecules_from_xyz, check_xyz_dict, str_to_xyz, xyz_to_str, \
-    xyz_to_x_y_z, xyz_from_data
+    xyz_to_x_y_z, xyz_from_data, remove_dummies, get_xyz_radius
 from arc.species.species import ARCSpecies
 
 
@@ -51,8 +52,10 @@ def draw_structure(xyz=None, species=None, project_directory=None, method='show_
         xyz (str, optional): The xyz coordinates to plot in string format.
         species (ARCSpecies, optional): A species from which to extract the xyz coordinates to plot.
         project_directory (str, optional): A directory for saving the image (only supported for draw_3d).
-        method (str, optional): The method to use, either show_sticks or draw_3d.
+        method (str, optional): The method to use, either 'show_sticks', 'draw_3d', or 'scatter'.
     """
+    if method not in ['show_sticks', 'draw_3d', 'scatter']:
+        raise InputError(f"Recognized methods are 'show_sticks', 'draw_3d', or 'scatter', got: {method}")
     success = False
     notebook = is_notebook()
     xyz = check_xyz_species_for_drawing(xyz, species)
@@ -61,8 +64,11 @@ def draw_structure(xyz=None, species=None, project_directory=None, method='show_
             success = show_sticks(xyz=xyz, species=species, project_directory=project_directory)
         except (IndexError, InputError):
             pass
-    if not success or method == 'draw_3d' or not notebook:
+    if method == 'draw_3d' or (method == 'show_sticks' and (not success or not notebook)):
         draw_3d(xyz=xyz, species=species, project_directory=project_directory, save_only=not notebook)
+    elif method == 'scatter':
+        label = '' if species is None else species.label
+        plot_3d_mol_as_scatter(xyz, path=project_directory, plot_h=True, show_plot=True, name=label, index=0)
 
 
 def show_sticks(xyz=None, species=None, project_directory=None):
@@ -128,7 +134,7 @@ def draw_3d(xyz=None, species=None, project_directory=None, save_only=False):
         ase_write(filename=os.path.join(geo_path, 'geometry.png'), images=ase_mol, scale=100)
 
 
-def plot_3d_mol_as_scatter(xyz, path=None, plot_h=True, show_plot=True, name=''):
+def plot_3d_mol_as_scatter(xyz, path=None, plot_h=True, show_plot=True, name='', index=0):
     """
     Draws the molecule as scattered balls in space according to the supplied xyz coordinates.
 
@@ -138,14 +144,16 @@ def plot_3d_mol_as_scatter(xyz, path=None, plot_h=True, show_plot=True, name='')
         plot_h (bool, optional): Whether to plot hydrogen atoms as well. ``True`` to plot them.
         show_plot (bool, optional): Whether to show the plot. ``True`` to show.
         name (str, optional): A name to be added to the saved file name.
+        index (int, optional): The index type (0 or 1) for printing atom numbers. Pass None to avoid printing numbers.
     """
     xyz = check_xyz_species_for_drawing(xyz=xyz)
+    radius = get_xyz_radius(xyz)
     coords, symbols, colors, sizes = list(), list(), list(), list()
     for symbol, coord in zip(xyz['symbols'], xyz['coords']):
-        size = 500
+        size = 10000 / radius
         if symbol == 'H':
             color = 'gray'
-            size = 250
+            size = 2000 / radius
         elif symbol == 'C':
             color = 'k'
         elif symbol == 'N':
@@ -169,7 +177,8 @@ def plot_3d_mol_as_scatter(xyz, path=None, plot_h=True, show_plot=True, name='')
     ax = Axes3D(fig)
     ax.scatter(xs=x, ys=y, zs=z, s=sizes, c=colors, depthshade=True)
     for i, symbol in enumerate(symbols):
-        ax.text(x[i]+0.01, y[i]+0.01, z[i]+0.01, symbol, size=7)
+        text = symbol if index is None else symbol + ' ' + str(i + index)
+        ax.text(x[i]+0.01, y[i]+0.01, z[i]+0.01, text, size=10)
     plt.axis('off')
     if show_plot:
         plt.show()
@@ -206,7 +215,7 @@ def check_xyz_species_for_drawing(xyz=None, species=None):
             xyz = str_to_xyz(xyz)
     else:
         xyz = species.get_xyz(generate=True)
-    return check_xyz_dict(xyz)
+    return check_xyz_dict(remove_dummies(xyz))
 
 
 # *** Logging output ***
@@ -516,17 +525,17 @@ def save_geo(species, project_directory):
     xyz_str = xyz_to_str(species.final_xyz)
 
     # xyz
-    xyz = '{0}\n'.format(species.number_of_atoms)
-    xyz += '{0} optimized at {1}\n'.format(species.label, species.opt_level)
-    xyz += '{0}\n'.format(xyz_str)
-    with open(os.path.join(geo_path, '{0}.xyz'.format(species.label)), 'w') as f:
+    xyz = f'{species.number_of_atoms}\n'
+    xyz += f'{species.label} optimized at {species.opt_level}\n'
+    xyz += f'{xyz_str}\n'
+    with open(os.path.join(geo_path, f'{species.label}.xyz'), 'w') as f:
         f.write(xyz)
 
     # GaussView file
-    gv = '# hf/3-21g\n\n{0} optimized at {1}\n\n'.format(species.label, species.opt_level)
-    gv += '{0} {1}\n'.format(species.charge, species.multiplicity)
-    gv += '{0}\n'.format(xyz_str)
-    with open(os.path.join(geo_path, '{0}.gjf'.format(species.label)), 'w') as f:
+    gv = f'# hf/3-21g\n\n{species.label} optimized at {species.opt_level}\n\n'
+    gv += f'{species.charge} {species.multiplicity}\n'
+    gv += f'{xyz_str}\n'
+    with open(os.path.join(geo_path, f'{species.label}.gjf'), 'w') as f:
         f.write(gv)
 
 
@@ -539,13 +548,13 @@ def save_thermo_lib(species_list, path, name, lib_long_desc):
     `long_desc` is a multiline string with level of theory description.
     """
     if species_list:
-        lib_path = os.path.join(path, 'thermo', '{0}.py'.format(name))
+        lib_path = os.path.join(path, 'thermo', f'{name}.py')
         thermo_library = ThermoLibrary(name=name, long_desc=lib_long_desc)
         for i, spc in enumerate(species_list):
             if spc.thermo is not None:
-                spc.long_thermo_description += '\nExternal symmetry: {0}, optical isomers: {1}\n'.format(
-                    spc.external_symmetry, spc.optical_isomers)
-                spc.long_thermo_description += '\nGeometry:\n{0}'.format(spc.final_xyz)
+                spc.long_thermo_description += f'\nExternal symmetry: {spc.external_symmetry}, ' \
+                                               f'optical isomers: {spc.optical_isomers}\n'
+                spc.long_thermo_description += f'\nGeometry:\n{xyz_to_str(spc.final_xyz)}'
                 thermo_library.load_entry(index=i,
                                           label=spc.label,
                                           molecule=spc.mol_list[0].to_adjacency_list(),
@@ -553,8 +562,8 @@ def save_thermo_lib(species_list, path, name, lib_long_desc):
                                           shortDesc=spc.thermo.comment,
                                           longDesc=spc.long_thermo_description)
             else:
-                logger.warning('Species {0} did not contain any thermo data and was omitted from the thermo '
-                               'library.'.format(spc.label))
+                logger.warning(f'Species {spc.label} did not contain any thermo data and was omitted from the thermo '
+                               f'library.')
 
         thermo_library.save(lib_path)
 
@@ -566,28 +575,28 @@ def save_transport_lib(species_list, path, name, lib_long_desc=''):
     `long_desc` is a multiline string with level of theory description.
     """
     if species_list:
-        lib_path = os.path.join(path, 'transport', '{0}.py'.format(name))
+        lib_path = os.path.join(path, f'transport', '{name}.py')
         transport_library = TransportLibrary(name=name, long_desc=lib_long_desc)
         for i, spc in enumerate(species_list):
             if spc.transport_data is not None:
-                description = '\nGeometry:\n{0}'.format(spc.final_xyz)
+                description = f'\nGeometry:\n{xyz_to_str(spc.final_xyz)}'
                 transport_library.load_entry(index=i,
                                              label=spc.label,
                                              molecule=spc.mol_list[0].to_adjacency_list(),
                                              transport=spc.transport_data,
                                              shortDesc=spc.thermo.comment,
                                              longDesc=description)
-                logger.info('\n\nTransport properties for {0}:'.format(spc.label))
-                logger.info('  Shape index: {0}'.format(spc.transport_data.shapeIndex))
-                logger.info('  Epsilon: {0}'.format(spc.transport_data.epsilon))
-                logger.info('  Sigma: {0}'.format(spc.transport_data.sigma))
-                logger.info('  Dipole moment: {0}'.format(spc.transport_data.dipoleMoment))
-                logger.info('  Polarizability: {0}'.format(spc.transport_data.polarizability))
-                logger.info('  Rotational relaxation collision number: {0}'.format(spc.transport_data.rotrelaxcollnum))
-                logger.info('  Comment: {0}'.format(spc.transport_data.comment))
+                logger.info(f'\n\nTransport properties for {spc.label}:')
+                logger.info(f'  Shape index: {spc.transport_data.shapeIndex}')
+                logger.info(f'  Epsilon: {spc.transport_data.epsilon}')
+                logger.info(f'  Sigma: {spc.transport_data.sigma}')
+                logger.info(f'  Dipole moment: {spc.transport_data.dipoleMoment}')
+                logger.info(f'  Polarizability: {spc.transport_data.polarizability}')
+                logger.info(f'  Rotational relaxation collision number: {spc.transport_data.rotrelaxcollnum}')
+                logger.info(f'  Comment: {spc.transport_data.comment}')
             else:
-                logger.warning('Species {0} did not contain any thermo data and was omitted from the thermo '
-                               'library.'.format(spc.label))
+                logger.warning(f'Species {spc.label} did not contain any thermo data and was omitted from the thermo '
+                               f'library.')
 
         transport_library.save(lib_path)
 
@@ -623,13 +632,14 @@ def save_kinetics_lib(rxn_list, path, name, lib_long_desc):
                     data=rxn.kinetics,
                     label=rxn.label)
                 rxn.ts_species.make_ts_report()
-                entry.long_desc = rxn.ts_species.ts_report + '\n\nOptimized TS geometry:\n' + rxn.ts_species.final_xyz
+                entry.long_desc = rxn.ts_species.ts_report + '\n\nOptimized TS geometry:\n' + \
+                                  xyz_to_str(rxn.ts_species.final_xyz)
                 rxn.rmg_reaction.kinetics = rxn.kinetics
                 rxn.rmg_reaction.kinetics.comment = ''
                 entries[i+1] = entry
             else:
-                logger.warning('Reaction {0} did not contain any kinetic data and was omitted from the kinetics'
-                               ' library.'.format(rxn.label))
+                logger.warning(f'Reaction {rxn.label} did not contain any kinetic data and was omitted from the '
+                               f'kinetics library.')
         kinetics_library = KineticsLibrary(name=name, long_desc=lib_long_desc, auto_generated=True)
         kinetics_library.entries = entries
         lib_path = os.path.join(path, 'kinetics', '')
@@ -653,7 +663,7 @@ def save_conformers_file(project_directory, label, xyzs, level_of_theory, multip
         project_directory (str): The path to the project's directory.
         label (str): The species label.
         xyzs (list): Entries are dict-format xyz coordinates of conformers.
-        level_of_theory (str): The level of theory used for the conformers optimization.
+        level_of_theory (dict): The level of theory used for the conformers optimization.
         multiplicity (int, optional): The species multiplicity, used for perceiving the molecule.
         charge (int, optional): The species charge, used for perceiving the molecule.
         is_ts (bool, optional): Whether the species represents a TS. True if it does.
@@ -675,9 +685,10 @@ def save_conformers_file(project_directory, label, xyzs, level_of_theory, multip
     with open(conf_path, 'w') as f:
         content = ''
         if optimized:
-            content += 'Conformers for {0}, optimized at the {1} level:\n\n'.format(label, level_of_theory)
+            content += f'Conformers for {label}, optimized at the ' \
+                       f'{format_level_of_theory_for_logging(level_of_theory)} level:\n\n'
         for i, xyz in enumerate(xyzs):
-            content += 'conformer {0}:\n'.format(i)
+            content += f'conformer {i}:\n'
             if xyz is not None:
                 content += xyz_to_str(xyz) + '\n'
                 if not is_ts:
@@ -686,14 +697,14 @@ def save_conformers_file(project_directory, label, xyzs, level_of_theory, multip
                     except SanitizationError:
                         b_mol = None
                     smiles = b_mol.to_smiles() if b_mol is not None else 'Could not perceive molecule'
-                    content += '\nSMILES: {0}\n'.format(smiles)
+                    content += f'\nSMILES: {smiles}\n'
                 elif ts_methods is not None:
-                    content += 'TS guess method: {0}\n'.format(ts_methods[i])
+                    content += f'TS guess method: {ts_methods[i]}\n'
                 if optimized:
                     if energies[i] == min_e:
                         content += 'Relative Energy: 0 kJ/mol (lowest)'
                     elif energies[i] is not None:
-                        content += 'Relative Energy: {0:.3f} kJ/mol'.format(energies[i] - min_e)
+                        content += f'Relative Energy: {energies[i] - min_e:.3f} kJ/mol'
             else:
                 # Failed to converge
                 if is_ts and ts_methods is not None:

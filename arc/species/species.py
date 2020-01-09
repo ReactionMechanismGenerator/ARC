@@ -21,7 +21,7 @@ from rmgpy.species import Species
 from rmgpy.statmech import NonlinearRotor, LinearRotor
 from rmgpy.transport import TransportData
 
-from arc.common import get_logger, get_atom_radius, determine_symmetry
+from arc.common import get_logger, determine_symmetry, determine_top_group_indices
 from arc.exceptions import SpeciesError, RotorError, InputError, TSError, SanitizationError
 from arc.parser import parse_xyz_from_file, parse_dipole_moment, parse_polarizability, process_conformers_file, \
     parse_1d_scan_energies
@@ -29,7 +29,7 @@ from arc.settings import default_ts_methods, valid_chars, minimum_barrier
 from arc.species import conformers
 from arc.species.converter import rdkit_conf_from_mol, xyz_from_data, molecules_from_xyz, rmg_mol_from_inchi, \
     order_atoms_in_mol_list, check_isomorphism, set_rdkit_dihedrals, translate_to_center_of_mass, \
-    str_to_xyz, xyz_to_str, check_xyz_dict, xyz_to_x_y_z
+    str_to_xyz, xyz_to_str, check_xyz_dict, check_zmat_dict, get_xyz_radius, remove_dummies
 from arc.ts import atst
 
 
@@ -230,6 +230,7 @@ class ARCSpecies(object):
         consider_all_diastereomers (bool, optional): Whether to consider all different chiralities (tetrahydral carbon
                                                      centers, nitrogen inversions, and cis/trans double bonds) when
                                                      generating conformers. ``True`` to consider all.
+        zmat (dict): The species internal coordinates (Z Matrix).
     """
     def __init__(self, label=None, is_ts=False, rmg_species=None, mol=None, xyz=None, multiplicity=None, charge=None,
                  smiles='', adjlist='', inchi='', bond_corrections=None, generate_thermo=True, species_dict=None,
@@ -279,6 +280,7 @@ class ARCSpecies(object):
             self.bdes = bdes
             self.directed_rotors = directed_rotors if directed_rotors is not None else dict()
             self.consider_all_diastereomers = consider_all_diastereomers
+            self.zmat = None
             if self.bdes is not None and not isinstance(self.bdes, list):
                 raise SpeciesError('The .bdes argument must be a list, got {0} which is a {1}'.format(
                                     self.bdes, type(self.bdes)))
@@ -450,23 +452,11 @@ class ARCSpecies(object):
         atoms in 3D space.
 
         Returns:
-            float: Radius in are Angstrom.
+            float: The radius in Angstrom.
         """
         if self._radius is None:
-            translated_xyz = translate_to_center_of_mass(self.get_xyz())
-            border_elements = list()  # a list of the farthest element/s
-            r = 0
-            x, y, z = xyz_to_x_y_z(translated_xyz)
-            for si, xi, yi, zi in zip(translated_xyz['symbols'], x, y, z):
-                ri = xi ** 2 + yi ** 2 + zi ** 2
-                if ri == r:
-                    border_elements.append(si)
-                elif ri > r:
-                    r = ri
-                    border_elements = [si]
-            atom_r = max([get_atom_radius(si) if get_atom_radius(si) is not None else 1.50 for si in border_elements])
-            self._radius = r ** 0.5 + atom_r
-            logger.info('Determined a radius of {0:.2f} Angstrom for {1}'.format(self._radius, self.label))
+            self._radius = get_xyz_radius(self.get_xyz())
+            logger.info(f'Determined a radius of {self._radius:.2f} Angstrom for {self.label}')
         return self._radius
 
     @radius.setter
@@ -526,6 +516,8 @@ class ARCSpecies(object):
             species_dict['initial_xyz'] = xyz_to_str(self.initial_xyz)
         if self.final_xyz is not None:
             species_dict['final_xyz'] = xyz_to_str(self.final_xyz)
+        if self.zmat is not None:
+            species_dict['zmat'] = self.zmat
         if self.checkfile is not None:
             species_dict['checkfile'] = self.checkfile
         if self.most_stable_conformer is not None:
@@ -595,6 +587,7 @@ class ARCSpecies(object):
         self.initial_xyz = str_to_xyz(species_dict['initial_xyz']) if 'initial_xyz' in species_dict else None
         self.final_xyz = str_to_xyz(species_dict['final_xyz']) if 'final_xyz' in species_dict else None
         self.conf_is_isomorphic = species_dict['conf_is_isomorphic'] if 'conf_is_isomorphic' in species_dict else None
+        self.zmat = check_zmat_dict(species_dict['zmat']) if 'zmat' in species_dict else None
         self.is_ts = species_dict['is_ts'] if 'is_ts' in species_dict else False
         if self.is_ts:
             self.ts_conf_spawned = species_dict['ts_conf_spawned'] if 'ts_conf_spawned' in species_dict else False
@@ -1172,6 +1165,8 @@ class ARCSpecies(object):
                                         (If there's only one entry, it could be given directly, not in a list)
                                         The file paths could direct to either a .xyz file, ARC conformers (w/ or w/o
                                         energies), or an ESS log/input files, making this method extremely flexible.
+                                        Internal coordinates (either string or dict) are also allowed and will be
+                                        converted into cartesian coordinates.
         """
         if xyz_list is not None:
             if not isinstance(xyz_list, list):
@@ -1182,22 +1177,22 @@ class ARCSpecies(object):
                     raise InputError('Each xyz entry in xyz_list must be either a string or a dictionary. '
                                      'Got:\n{0}\nwhich is a {1}'.format(xyz, type(xyz)))
                 if isinstance(xyz, dict):
-                    xyzs.append(check_xyz_dict(xyz))
+                    xyzs.append(remove_dummies(check_xyz_dict(xyz)))
                     energies.append(None)  # dummy (lists should be the same length)
                 elif os.path.isfile(xyz):
                     file_extension = os.path.splitext(xyz)[1]
                     if 'txt' in file_extension:
                         # assume this is an ARC conformer file
                         xyzs_, energies_ = process_conformers_file(conformers_path=xyz)
-                        xyzs.extend(xyzs_)
+                        xyzs.extend([remove_dummies(xyz_) for xyz_ in xyzs_])
                         energies.extend(energies_)
                     else:
                         # assume this is an ESS log file
-                        xyzs.append(parse_xyz_from_file(xyz))  # also calls standardize_xyz_string()
+                        xyzs.append(remove_dummies(parse_xyz_from_file(xyz)))  # also calls standardize_xyz_string()
                         energies.append(None)  # dummy (lists should be the same length)
                 elif isinstance(xyz, str):
                     # string which does not represent a (valid) path, treat as a string representation of xyz
-                    xyzs.append(str_to_xyz(xyz))
+                    xyzs.append(remove_dummies(str_to_xyz(xyz)))
                     energies.append(None)  # dummy (lists should be the same length)
             if not self.is_ts:
                 self.conformers.extend(xyzs)
@@ -1210,7 +1205,8 @@ class ARCSpecies(object):
                     #     if xyz == tsg.xyz:
                     #         break
                     # else:
-                    self.ts_guesses.append(TSGuess(method='user guess {0}'.format(tsg_index), xyz=xyz, energy=energy))
+                    self.ts_guesses.append(TSGuess(method='user guess {0}'.format(tsg_index),
+                                                   xyz=remove_dummies(xyz), energy=energy))
                     # user guesses are always successful in generating a *guess*:
                     self.ts_guesses[tsg_index].success = True
                     tsg_index += 1
@@ -1400,8 +1396,8 @@ class ARCSpecies(object):
         else:
             # for robustness, only use the smaller top,
             # determine_top_group_indices() might get confused for (large) convolved tops.
-            top1 = conformers.determine_top_group_indices(self.mol, atom1, atom2, index=0)[0]
-            top2 = conformers.determine_top_group_indices(self.mol, atom2, atom1, index=0)[0]
+            top1 = determine_top_group_indices(self.mol, atom1, atom2, index=0)[0]
+            top2 = determine_top_group_indices(self.mol, atom2, atom1, index=0)[0]
             if len(top1) > len(top2):
                 top1 = [i for i in range(len(self.mol.atoms)) if i not in top2]
             elif len(top2) > len(top1):

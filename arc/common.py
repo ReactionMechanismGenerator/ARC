@@ -384,6 +384,40 @@ def determine_symmetry(xyz):
     return symmetry, optical_isomers
 
 
+def determine_top_group_indices(mol, atom1, atom2, index=1):
+    """
+    Determine the indices of a "top group" in a molecule.
+    The top is defined as all atoms connected to atom2, including atom2, excluding the direction of atom1.
+    Two ``atom_list_to_explore`` are used so the list the loop iterates through isn't changed within the loop.
+
+    Args:
+        mol (Molecule): The Molecule object to explore.
+        atom1 (Atom): The pivotal atom in mol.
+        atom2 (Atom): The beginning of the top relative to atom1 in mol.
+        index (bool, optional): Whether to return 1-index or 0-index conventions. 1 for 1-index.
+
+    Returns:
+        list: The indices of the atoms in the top (either 0-index or 1-index, as requested).
+    Returns:
+        bool: Whether the top has heavy atoms (is not just a hydrogen atom). True if it has heavy atoms.
+    """
+    top = list()
+    explored_atom_list, atom_list_to_explore1, atom_list_to_explore2 = [atom1], [atom2], []
+    while len(atom_list_to_explore1 + atom_list_to_explore2):
+        for atom3 in atom_list_to_explore1:
+            top.append(mol.vertices.index(atom3) + index)
+            for atom4 in atom3.edges.keys():
+                if atom4 not in explored_atom_list and atom4 not in atom_list_to_explore2:
+                    if atom4.is_hydrogen():
+                        # append H w/o further exploring
+                        top.append(mol.vertices.index(atom4) + index)
+                    else:
+                        atom_list_to_explore2.append(atom4)  # explore it further
+            explored_atom_list.append(atom3)  # mark as explored
+        atom_list_to_explore1, atom_list_to_explore2 = atom_list_to_explore2, []
+    return top, not atom2.is_hydrogen()
+
+
 def min_list(lst):
     """
     A helper function for finding the minimum of a list of integers where some of the entries might be None.
@@ -509,54 +543,27 @@ def determine_ess(log_file):
     raise InputError(f'Could not identify the log file in {log_file} as belonging to Gaussian, QChem, Molpro, or Orca.')
 
 
-def calculate_dihedral_angle(coords, torsion):
-    """
-    Calculate a dihedral angle. Inspired by ASE Atoms.get_dihedral().
-
-    Args:
-        coords (list, tuple): The array-format or tuple-format coordinates.
-        torsion (list): The 4 atoms defining the dihedral angle, 1-indexed.
-
-    Returns:
-        float: The dihedral angle.
-    """
-    torsion = [t - 1 for t in torsion]  # convert 1-index to 0-index
-    coords = np.asarray(coords, dtype=np.float32)
-    a = coords[torsion[1]] - coords[torsion[0]]
-    b = coords[torsion[2]] - coords[torsion[1]]
-    c = coords[torsion[3]] - coords[torsion[2]]
-    bxa = np.cross(b, a)
-    bxa /= np.linalg.norm(bxa)
-    cxb = np.cross(c, b)
-    cxb /= np.linalg.norm(cxb)
-    angle = np.vdot(bxa, cxb)
-    # check for numerical trouble due to finite precision:
-    if angle < -1:
-        angle = -1
-    elif angle > 1:
-        angle = 1
-    angle = np.arccos(angle)
-    if np.vdot(bxa, c) > 0:
-        angle = 2 * np.pi - angle
-    return angle * 180 / np.pi
-
-
-def almost_equal_coords(xyz1, xyz2):
+def almost_equal_coords(xyz1, xyz2, rtol=1.0000000000000001e-05, atol=1e-08):
     """
     A helper function for checking whether two xyz's are almost equal.
 
     Args:
-        xyz1 (dict): Coordinates.
-        xyz2 (dict): Coordinates.
+        xyz1 (dict): Cartesian coordinates.
+        xyz2 (dict): Cartesian coordinates.
+        rtol (float, optional): The relative tolerance parameter.
+        atol (float, optional): The absolute tolerance parameter.
+
+    Returns:
+        bool: ``True`` if they are almost equal, ``False`` otherwise.
     """
     for xyz_coord1, xyz_coord2 in zip(xyz1['coords'], xyz2['coords']):
         for xyz1_c, xyz2_c in zip(xyz_coord1, xyz_coord2):
-            if not np.isclose([xyz1_c], [xyz2_c]):
+            if not np.isclose([xyz1_c], [xyz2_c], rtol=rtol, atol=atol):
                 return False
     return True
 
 
-def almost_equal_coords_lists(xyz1, xyz2):
+def almost_equal_coords_lists(xyz1, xyz2, rtol=1.0000000000000001e-05, atol=1e-08):
     """
     A helper function for checking two lists of xyz's has at least one entry in each that is almost equal.
     Useful for comparing xyz's in unit tests.
@@ -564,6 +571,8 @@ def almost_equal_coords_lists(xyz1, xyz2):
     Args:
         xyz1 (list, dict): Either a dict-format xyz, or a list of them.
         xyz2 (list, dict): Either a dict-format xyz, or a list of them.
+        rtol (float, optional): The relative tolerance parameter.
+        atol (float, optional): The absolute tolerance parameter.
 
     Returns:
         bool: Whether at least one entry in each input xyz's is almost equal to an entry in the other xyz.
@@ -576,7 +585,7 @@ def almost_equal_coords_lists(xyz1, xyz2):
         for xyz2_entry in xyz2:
             if xyz1_entry['symbols'] != xyz2_entry['symbols']:
                 return False
-            if almost_equal_coords(xyz1_entry, xyz2_entry):
+            if almost_equal_coords(xyz1_entry, xyz2_entry, rtol=rtol, atol=atol):
                 break
         else:
             return False
@@ -774,16 +783,24 @@ def format_level_of_theory_for_logging(level_of_theory):
 
     Returns:
         level_of_theory_log_str (str): level of theory string for logging.
+
+    Raises:
+        TypeError: If level_of_theory_dict is of wrong type.
     """
-    level_of_theory_dict, _ = format_level_of_theory_inputs(level_of_theory)
+    if isinstance(level_of_theory, str):
+        return level_of_theory.lower()
+    if not isinstance(level_of_theory, dict):
+        raise TypeError(f'level_of_theory_dict must be a dictionary, got: {level_of_theory} '
+                        f'which is a {type(level_of_theory)}.')
+    level_of_theory_dict = format_level_of_theory_inputs(level_of_theory)[0]
     method = level_of_theory_dict.get('method', '')
     basis = level_of_theory_dict.get('basis', '')
     auxiliary_basis = level_of_theory_dict.get('auxiliary_basis', '')
     dispersion = level_of_theory_dict.get('dispersion', '')
     level_of_theory_log_str = '/'.join([method, basis]) if basis else method
-    level_of_theory_log_str = '/'.join([level_of_theory_log_str, auxiliary_basis]) if auxiliary_basis\
+    level_of_theory_log_str = '/'.join([level_of_theory_log_str, auxiliary_basis]) if auxiliary_basis \
         else level_of_theory_log_str
-    level_of_theory_log_str = ' '.join([level_of_theory_log_str, dispersion]) if dispersion\
+    level_of_theory_log_str = ' '.join([level_of_theory_log_str, dispersion]) if dispersion \
         else level_of_theory_log_str
     return level_of_theory_log_str
 
@@ -805,3 +822,20 @@ def is_notebook():
             return False  # Other type (?)
     except NameError:
         return False  # Probably standard Python interpreter
+
+
+def is_str_float(value):
+    """
+    Check whether a string represents a number.
+
+    Args:
+        value (str): The string to check.
+
+    Returns:
+        bool: ``True`` if it does, ``False`` otherwise.
+    """
+    try:
+        float(value)
+        return True
+    except ValueError:
+        return False

@@ -12,7 +12,7 @@ import os
 import shutil
 import yaml
 
-from arc.common import get_logger, calculate_dihedral_angle, determine_model_chemistry_type
+from arc.common import determine_model_chemistry_type, get_logger
 from arc.exceptions import JobError, InputError
 from arc.job.inputs import input_files
 from arc.job.local import get_last_modified_time, submit_job, delete_job, execute_command, check_job_status, \
@@ -23,6 +23,7 @@ from arc.job.trsh import determine_ess_status, trsh_job_on_server
 from arc.settings import arc_path, servers, submit_filename, t_max_format, input_filename, output_filename, \
     rotor_scan_resolution, levels_ess, orca_default_options_dict
 from arc.species.converter import xyz_to_str, str_to_xyz, check_xyz_dict
+from arc.species.vectors import calculate_dihedral_angle
 
 
 logger = get_logger()
@@ -278,7 +279,12 @@ class Job(object):
         if self.job_num < 0:
             self._set_job_number()
         self.job_server_name = self.job_server_name if self.job_server_name is not None else 'a' + str(self.job_num)
-        self.job_name = self.job_name if self.job_name is not None else self.job_type + '_' + self.job_server_name
+        if conformer >= 0 and (self.job_name is None or 'conformer_a' in self.job_name):
+            if self.job_name is not None:
+                logger.warning(f'replacing job name {self.job_name} with conformer_{conformer}')
+            self.job_name = f'conformer{conformer}'
+        elif self.job_name is None:
+            self.job_name = self.job_type + '_' + self.job_server_name
 
         # determine the level of theory and software to use:
         self.method, self.basis_set, self.auxiliary_basis_set, self.dispersion = '', '', '', ''

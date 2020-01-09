@@ -52,3 +52,5 @@ dependencies:
   - paramiko >=2.6.0
   - py3dmol >= 0.8.0
   - ase >=3.15.0
+  - ipython
+  - sphinx

@@ -111,7 +111,7 @@ class TestARCSpecies(unittest.TestCase):
         self.spc1.conformer_energies = list()
         self.assertEqual(len(self.spc1.conformers), len(self.spc1.conformer_energies))
         self.spc1.generate_conformers()
-        self.assertIn(len(self.spc1.conformers), [2, 3])
+        self.assertEqual(len(self.spc1.conformers), 1)
         self.assertEqual(len(self.spc1.conformers), len(self.spc1.conformer_energies))
 
         self.spc2.conformers = list()
@@ -124,11 +124,11 @@ class TestARCSpecies(unittest.TestCase):
 
         self.spc4.conformers = list()
         self.spc4.generate_conformers()
-        self.assertEqual(len(self.spc4.conformers), 3)
+        self.assertEqual(len(self.spc4.conformers), 1)
 
         self.spc5.conformers = list()
         self.spc5.generate_conformers()
-        self.assertEqual(len(self.spc5.conformers), 5)
+        self.assertEqual(len(self.spc5.conformers), 3)
 
         self.spc6.conformers = list()
         self.spc6.generate_conformers()
@@ -136,7 +136,7 @@ class TestARCSpecies(unittest.TestCase):
 
         self.spc8.conformers = list()
         self.spc8.generate_conformers()
-        self.assertEqual(len(self.spc8.conformers), 4)
+        self.assertEqual(len(self.spc8.conformers), 2)
 
         self.spc9.conformers = list()
         self.spc9.generate_conformers()

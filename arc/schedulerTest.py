@@ -10,13 +10,13 @@ import os
 import shutil
 
 import arc.rmgdb as rmgdb
-from arc.scheduler import Scheduler
-from arc.job.job import Job
-from arc.species.species import ARCSpecies
 import arc.parser as parser
+from arc.common import almost_equal_coords_lists, format_level_of_theory_inputs
+from arc.job.job import Job
 from arc.plotter import save_conformers_file
+from arc.scheduler import Scheduler
 from arc.settings import arc_path, default_levels_of_theory
-from arc.common import almost_equal_coords_lists
+from arc.species.species import ARCSpecies
 
 
 class TestScheduler(unittest.TestCase):
@@ -63,12 +63,16 @@ H      -1.82570782    0.42754384   -0.56130718"""
                           }
         cls.sched1 = Scheduler(project='project_test', ess_settings=cls.ess_settings,
                                species_list=[cls.spc1, cls.spc2, cls.spc3],
-                               composite_method='', conformer_level=default_levels_of_theory['conformer'],
-                               opt_level=default_levels_of_theory['opt'], freq_level=default_levels_of_theory['freq'],
-                               sp_level=default_levels_of_theory['sp'], scan_level=default_levels_of_theory['scan'],
-                               ts_guess_level=default_levels_of_theory['ts_guesses'], rmgdatabase=cls.rmgdb,
-                               project_directory=cls.project_directory, testing=True, job_types=cls.job_types1,
-                               orbitals_level=default_levels_of_theory['orbitals'], adaptive_levels=None)
+                               composite_method='',
+                               conformer_level=format_level_of_theory_inputs(default_levels_of_theory['conformer'])[0],
+                               opt_level=format_level_of_theory_inputs(default_levels_of_theory['opt'])[0],
+                               freq_level=format_level_of_theory_inputs(default_levels_of_theory['freq'])[0],
+                               sp_level=format_level_of_theory_inputs(default_levels_of_theory['sp'])[0],
+                               scan_level=format_level_of_theory_inputs(default_levels_of_theory['scan'])[0],
+                               ts_guess_level=format_level_of_theory_inputs(default_levels_of_theory['ts_guesses'])[0],
+                               rmgdatabase=cls.rmgdb, project_directory=cls.project_directory, testing=True,
+                               job_types=cls.job_types1, orbitals_level=default_levels_of_theory['orbitals'],
+                               adaptive_levels=None)
 
     def test_conformers(self):
         """Test the parse_conformer_energy() and determine_most_stable_conformer() methods"""
@@ -103,9 +107,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.assertTrue(os.path.isfile(methylamine_conf_path))
         with open(methylamine_conf_path, 'r') as f:
             lines = f.readlines()
-        self.assertTrue("Conformers for methylamine, optimized at the {'auxiliary_basis': '', 'basis': '6-31g(d,p)', "
-                        "'method': 'b3lyp', 'dispersion': 'empiricaldispersion=gd3bj'} level"
-                        in lines[0])
+        self.assertTrue('Conformers for methylamine, optimized at the apfd/def2svp level' in lines[0])
         self.assertEqual(lines[11], 'SMILES: CN\n')
         self.assertTrue('Relative Energy:' in lines[12])
         self.assertEqual(lines[16][0], 'N')
