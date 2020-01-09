@@ -2504,17 +2504,15 @@ class Scheduler(object):
             if self.species_dict[label].checkfile is None:
                 self.species_dict[label].checkfile = job.checkfile
         level_of_theory, _ = format_level_of_theory_inputs(level_of_theory)
-        # make a temporary list of ones just to count the number of heavy atoms in the molecule
-        num_heavy_atoms = len([1 for atom in self.species_dict[label].mol.atoms if atom.is_non_hydrogen()])
         # determine if the species is a hydrogen (or its isotope) atom
         is_h = len(self.species_dict[label].mol.atoms) == 1 and \
-               self.species_dict[label].mol.atoms[0].element.symbol in ['H', 'D', 'T']
+            self.species_dict[label].mol.atoms[0].element.symbol in ['H', 'D', 'T']
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
         memory, shift, cpu_cores, dont_rerun = \
             trsh_ess_job(label=label, level_of_theory_dict=level_of_theory, server=job.server,
-                         job_status=job.job_status[1], is_h=is_h,
-                         job_type=job.job_type, num_heavy_atoms=num_heavy_atoms, software=job.software, fine=job.fine,
-                         memory_gb=job.total_job_memory_gb, cpu_cores=job.cpu_cores,
+                         job_status=job.job_status[1], is_h=is_h, job_type=job.job_type,
+                         num_heavy_atoms=self.species_dict[label].number_of_heavy_atoms, software=job.software,
+                         fine=job.fine, memory_gb=job.total_job_memory_gb, cpu_cores=job.cpu_cores,
                          ess_trsh_methods=job.ess_trsh_methods, available_ess=list(self.ess_settings.keys()))
         for output_error in output_errors:
             self.output[label]['errors'] += output_error
