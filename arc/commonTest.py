@@ -109,7 +109,7 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
         ess_settings4 = {'gaussian': server_names[0], 'molpro': server_names[1], 'qchem': server_names[0],
                          'orca': [server_names[1], server_names[0]]}
         ess_settings5 = {'gaussian': 'local', 'molpro': server_names[1], 'qchem': server_names[0],
-                         'orca': [server_names[0]]}
+                         'orca': [server_names[0]], 'terachem': server_names[0]}
 
         ess_settings1 = common.check_ess_settings(ess_settings1)
         ess_settings2 = common.check_ess_settings(ess_settings2)
@@ -121,7 +121,7 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
 
         for ess in ess_list:
             for soft, server_list in ess.items():
-                self.assertTrue(soft in ['gaussian', 'molpro', 'qchem', 'orca'])
+                self.assertTrue(soft in ['gaussian', 'molpro', 'orca', 'qchem', 'terachem'])
                 self.assertIsInstance(server_list, list)
 
         with self.assertRaises(SettingsError):
