@@ -12,7 +12,7 @@ import os
 import shutil
 import yaml
 
-from arc.common import get_logger, calculate_dihedral_angle, determine_model_chemistry_type
+from arc.common import determine_model_chemistry_type, get_logger
 from arc.exceptions import JobError, InputError
 from arc.job.inputs import input_files
 from arc.job.local import get_last_modified_time, submit_job, delete_job, execute_command, check_job_status, \
@@ -23,6 +23,7 @@ from arc.job.trsh import determine_ess_status, trsh_job_on_server
 from arc.settings import arc_path, servers, submit_filename, t_max_format, input_filename, output_filename, \
     rotor_scan_resolution, levels_ess, orca_default_options_dict
 from arc.species.converter import xyz_to_str, str_to_xyz, check_xyz_dict
+from arc.species.vectors import calculate_dihedral_angle
 
 
 logger = get_logger()

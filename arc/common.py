@@ -509,38 +509,6 @@ def determine_ess(log_file):
     raise InputError(f'Could not identify the log file in {log_file} as belonging to Gaussian, QChem, Molpro, or Orca.')
 
 
-def calculate_dihedral_angle(coords, torsion):
-    """
-    Calculate a dihedral angle. Inspired by ASE Atoms.get_dihedral().
-
-    Args:
-        coords (list, tuple): The array-format or tuple-format coordinates.
-        torsion (list): The 4 atoms defining the dihedral angle, 1-indexed.
-
-    Returns:
-        float: The dihedral angle.
-    """
-    torsion = [t - 1 for t in torsion]  # convert 1-index to 0-index
-    coords = np.asarray(coords, dtype=np.float32)
-    a = coords[torsion[1]] - coords[torsion[0]]
-    b = coords[torsion[2]] - coords[torsion[1]]
-    c = coords[torsion[3]] - coords[torsion[2]]
-    bxa = np.cross(b, a)
-    bxa /= np.linalg.norm(bxa)
-    cxb = np.cross(c, b)
-    cxb /= np.linalg.norm(cxb)
-    angle = np.vdot(bxa, cxb)
-    # check for numerical trouble due to finite precision:
-    if angle < -1:
-        angle = -1
-    elif angle > 1:
-        angle = 1
-    angle = np.arccos(angle)
-    if np.vdot(bxa, c) > 0:
-        angle = 2 * np.pi - angle
-    return angle * 180 / np.pi
-
-
 def almost_equal_coords(xyz1, xyz2):
     """
     A helper function for checking whether two xyz's are almost equal.

@@ -16,12 +16,12 @@ from IPython.display import display
 
 from rmgpy.reaction import Reaction
 
-from arc.common import format_level_of_theory_inputs, format_level_of_theory_for_logging, get_logger, read_yaml_file, \
-    save_yaml_file, get_ordinal_indicator, min_list, calculate_dihedral_angle, sort_two_lists_by_the_first
+from arc.common import format_level_of_theory_for_logging, format_level_of_theory_inputs, get_logger, \
+    get_ordinal_indicator, min_list, read_yaml_file, save_yaml_file, sort_two_lists_by_the_first
 from arc import plotter
 from arc import parser
 from arc.job.job import Job
-from arc.exceptions import SpeciesError, SchedulerError, TSError, SanitizationError, InputError
+from arc.exceptions import InputError, SanitizationError, SchedulerError, SpeciesError, TSError
 from arc.job.local import check_running_jobs_ids
 from arc.job.ssh import SSHClient
 from arc.job.trsh import trsh_negative_freq, trsh_scan_job, trsh_ess_job, trsh_conformer_isomorphism, scan_quality_check
@@ -32,7 +32,7 @@ from arc.ts.atst import autotst
 from arc.settings import default_job_types, rotor_scan_resolution
 import arc.rmgdb as rmgdb
 import arc.species.conformers as conformers  # import after importing plotter to avoid circular import
-from arc.species.vectors import get_angle
+from arc.species.vectors import get_angle, calculate_dihedral_angle
 
 logger = get_logger()
 

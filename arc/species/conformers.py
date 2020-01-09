@@ -55,7 +55,7 @@ from rmgpy.molecule.converter import to_ob_mol
 from rmgpy.molecule.molecule import Atom, Bond, Molecule
 from rmgpy.molecule.element import C as C_ELEMENT, H as H_ELEMENT, F as F_ELEMENT, Cl as Cl_ELEMENT, I as I_ELEMENT
 
-from arc.common import logger, calculate_dihedral_angle
+from arc.common import logger
 from arc.exceptions import ConformerError, InputError
 import arc.plotter
 from arc.species import converter
@@ -773,8 +773,8 @@ def determine_dihedrals(conformers, torsions):
         if 'torsion_dihedrals' not in conformer or not conformer['torsion_dihedrals']:
             conformer['torsion_dihedrals'] = dict()
             for torsion in torsions:
-                angle = calculate_dihedral_angle(coords=xyz['coords'], torsion=torsion)
-                conformer['torsion_dihedrals'][tuple(torsion)] = angle
+                dihedral = vectors.calculate_dihedral_angle(coords=xyz['coords'], torsion=torsion, index=1)
+                conformer['torsion_dihedrals'][tuple(torsion)] = dihedral
     return conformers
 
 
