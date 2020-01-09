@@ -431,7 +431,7 @@ class TestCommon(unittest.TestCase):
         model_chemistry_class_expected = 'composite'
         self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
 
-    def test_format_model_chemistry_inputs(self):
+    def test_format_level_of_theory_inputs(self):
         """Test formatting the job model chemistry inputs"""
         # Test illegal input (list)
         with self.assertRaises(InputError):
