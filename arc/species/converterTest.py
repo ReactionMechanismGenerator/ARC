@@ -3941,5 +3941,34 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         self.assertTrue(almost_equal_coords_lists(new_xyz, expected_xyz))
         self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol4), new_val, 5)
 
+    def test_dmat_generation(self):
+        species = ARCSpecies(label='methane', smiles='C', multiplicity=1, charge=0)
+        dmat = converter.xyz_to_dmat(species.get_xyz())
+        expected_dmat = {'isotopes': (12, 1, 1, 1, 1),
+                         'matrix': [[0.0, 1.09, 1.09, 1.09, 1.09],
+                                    [1.09, 0.0, 1.78, 1.78, 1.78],
+                                    [1.09, 1.78, 0.0, 1.78, 1.78],
+                                    [1.09, 1.78, 1.78, 0.0, 1.78],
+                                    [1.09, 1.78, 1.78, 1.78, 0.0]],
+                         'symbols': ('C', 'H', 'H', 'H', 'H')}
+        self.assertTrue(dmat == expected_dmat)
+
+        species = ARCSpecies(label='OCCO', smiles='OCCO', multiplicity=1, charge=0)
+        dmat = converter.xyz_to_dmat(species.get_xyz())
+        expected_dmat = {'isotopes': (16, 12, 12, 16, 1, 1, 1, 1, 1, 1),
+                         'matrix': [[0.0, 1.43, 2.41, 2.79, 0.98, 2.04, 2.06, 3.36, 2.67, 3.66],
+                                    [1.43, 0.0, 1.52, 2.4, 1.92, 1.09, 1.09, 2.17, 2.17, 3.23],
+                                    [2.41, 1.52, 0.0, 1.43, 2.43, 2.17, 2.17, 1.09, 1.09, 1.95],
+                                    [2.79, 2.4, 1.43, 0.0, 2.27, 2.66, 3.36, 2.06, 2.05, 0.97],
+                                    [0.98, 1.92, 2.43, 2.27, 0.0, 2.33, 2.83, 3.44, 2.75, 3.13],
+                                    [2.04, 1.09, 2.17, 2.66, 2.33, 0.0, 1.78, 2.52, 3.08, 3.55],
+                                    [2.06, 1.09, 2.17, 3.36, 2.83, 1.78, 0.0, 2.53, 2.53, 4.08],
+                                    [3.36, 2.17, 1.09, 2.06, 3.44, 2.52, 2.53, 0.0, 1.79, 2.29],
+                                    [2.67, 2.17, 1.09, 2.05, 2.75, 3.08, 2.53, 1.79, 0.0, 2.26],
+                                    [3.66, 3.23, 1.95, 0.97, 3.13, 3.55, 4.08, 2.29, 2.26, 0.0]],
+                         'symbols': ('O', 'C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'H')}
+        self.assertTrue(dmat == expected_dmat)
+
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

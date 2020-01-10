@@ -22,6 +22,7 @@ from arc.exceptions import ConverterError, InputError, SanitizationError, Specie
 from arc.species.xyz_to_2d import MolGraph
 from arc.species.zmat import zmat_to_coords, get_atom_indices_from_zmat_parameter, xyz_to_zmat, KEY_FROM_LEN, \
     get_parameter_from_atom_indices, get_all_neighbors
+from arc.species.vectors import calculate_distance
 
 
 logger = get_logger()
@@ -1510,3 +1511,29 @@ def get_xyz_radius(xyz):
     atom_r = max([get_atom_radius(si) if get_atom_radius(si) is not None else 1.50 for si in border_elements])
     radius = r ** 0.5 + atom_r
     return radius
+
+
+def xyz_to_dmat(xyz_dict: dict) -> dict:
+    """
+    Converts xyz to distance matrix
+
+    Args:
+        xyz_dict (dict): The 3D coordinates in xyz format.
+
+    Returns:
+        dict: dictionary of the distance matrix.
+    """
+    dmat_dict = dict()
+    atoms = xyz_dict.get('symbols')
+    coods = xyz_dict.get('coords')
+    dmat_matrix = [[0.0 for _ in range(len(coods))] for _ in range(len(coods))]
+    for i in range(0, len(coods) - 1):
+        for j in range(i + 1, len(coods)):
+            dist = calculate_distance([coods[i], coods[j]], [0, 1])
+            dmat_matrix[i][j] = round(dist, 2)
+            dmat_matrix[j][i] = round(dist, 2)
+    dmat_dict['symbols'] = xyz_dict.get('symbols')
+    dmat_dict['isotopes'] = xyz_dict.get('isotopes')
+    dmat_dict['matrix'] = dmat_matrix
+
+    return dmat_dict
