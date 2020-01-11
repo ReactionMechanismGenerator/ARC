@@ -1494,7 +1494,16 @@ end
                     if phrase in self.job_level_of_theory_dict['method']:
                         self.software = ess.lower()
             if self.software is None:
-                if self.job_type in ['conformer', 'opt', 'freq', 'optfreq', 'sp',
+                if determine_model_chemistry_type(self.job_level_of_theory_dict) in ['semiempirical', 'force_field']:
+                    if 'gaussian' in esss:
+                        self.software = 'gaussian'
+                    elif 'orca' in esss:
+                        self.software = 'orca'
+                    elif 'qchem' in esss:
+                        self.software = 'qchem'
+                    elif 'terachem' in esss:
+                        self.software = 'terachem'
+                elif self.job_type in ['conformer', 'opt', 'freq', 'optfreq', 'sp',
                                      'directed_scan']:
                     if self.method == 'hf':
                         if 'gaussian' in esss:
