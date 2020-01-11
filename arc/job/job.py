@@ -610,6 +610,10 @@ class Job(object):
             if self.auxiliary_basis_set:
                 slash_2 = '/'
 
+        if self.software == 'gaussian' and determine_model_chemistry_type(self.job_level_of_theory_dict) \
+                in ['semiempirical', 'force_field']:
+            self.checkfile = None
+
         # Determine HF/DFT restriction type
         if (self.multiplicity > 1 and self.basis_set) \
                 or (self.number_of_radicals is not None and self.number_of_radicals > 1):
