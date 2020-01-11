@@ -792,13 +792,13 @@ def format_level_of_theory_for_logging(level_of_theory):
         level_of_theory_log_str (str): level of theory string for logging.
 
     Raises:
-        TypeError: If level_of_theory_dict is of wrong type.
+        TypeError: If ``level_of_theory`` is of wrong type.
     """
-    if isinstance(level_of_theory, str):
-        return level_of_theory.lower()
-    if not isinstance(level_of_theory, dict):
-        raise TypeError(f'level_of_theory_dict must be a dictionary, got: {level_of_theory} '
+    if not isinstance(level_of_theory, (dict, str)):
+        raise TypeError(f'level_of_theory_dict must be either a dictionary or a string, got: {level_of_theory} '
                         f'which is a {type(level_of_theory)}.')
+    if isinstance(level_of_theory, str) and '|' not in level_of_theory:
+        return level_of_theory.lower()
     level_of_theory_dict = format_level_of_theory_inputs(level_of_theory)[0]
     method = level_of_theory_dict.get('method', '')
     basis = level_of_theory_dict.get('basis', '')
