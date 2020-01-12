@@ -949,7 +949,7 @@ def plot_1d_rotor_scan(angles=None, energies=None, results=None, path=None, scan
 
 
 def plot_2d_rotor_scan(results, path=None, label='', cmap='Blues', resolution=90,
-                       mark_lowest_conformations=True, original_dihedrals=None):
+                       mark_lowest_conformations=False, original_dihedrals=None):
     """
     Plot a 2D rotor scan.
 
