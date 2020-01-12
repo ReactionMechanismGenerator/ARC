@@ -1786,10 +1786,13 @@ end
         """
         Set local and remote job file paths.
         """
-        conformer_folder = '' if self.conformer < 0 else os.path.join('conformers', str(self.conformer))
         folder_name = 'TSs' if self.is_ts else 'Species'
-        self.local_path = os.path.join(self.project_directory, 'calcs', folder_name,
-                                       self.species_name, conformer_folder, self.job_name)
+        if self.conformer < 0:
+            self.local_path = os.path.join(self.project_directory, 'calcs', folder_name,
+                                           self.species_name, self.job_name)
+        else:
+            self.local_path = os.path.join(self.project_directory, 'calcs', folder_name,
+                                           self.species_name, 'conformers', self.job_name)
         self.local_path_to_output_file = os.path.join(self.local_path, 'output.out')
         self.local_path_to_orbitals_file = os.path.join(self.local_path, 'orbitals.fchk')
         self.local_path_to_lj_file = os.path.join(self.local_path, 'lj.dat')
@@ -1799,8 +1802,12 @@ end
 
         # parentheses don't play well in folder names:
         species_name_for_remote_path = self.species_name.replace('(', '_').replace(')', '_')
-        self.remote_path = os.path.join('runs', 'ARC_Projects', self.project,
-                                        species_name_for_remote_path, conformer_folder, self.job_name)
+        if self.conformer < 0:
+            self.remote_path = os.path.join('runs', 'ARC_Projects', self.project,
+                                            species_name_for_remote_path, self.job_name)
+        else:
+            self.remote_path = os.path.join('runs', 'ARC_Projects', self.project,
+                                            species_name_for_remote_path, 'conformers', self.job_name)
 
         self.additional_files_to_upload = list()
         # self.additional_files_to_upload is a list of dictionaries, each with the following keys:
