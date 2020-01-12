@@ -875,22 +875,25 @@ class ARCSpecies(object):
                 mol_list = self.mol_list
             else:
                 mol_list = [self.mol]
-            for mol in mol_list:
-                rotors = conformers.find_internal_rotors(mol)
-                for new_rotor in rotors:
-                    for existing_rotor in self.rotors_dict.values():
-                        if existing_rotor['pivots'] == new_rotor['pivots']:
-                            break
-                    else:
-                        self.rotors_dict[self.number_of_rotors] = new_rotor
-                        self.number_of_rotors += 1
+            if mol_list:
+                for mol in mol_list:
+                    rotors = conformers.find_internal_rotors(mol)
+                    for new_rotor in rotors:
+                        for existing_rotor in self.rotors_dict.values():
+                            if existing_rotor['pivots'] == new_rotor['pivots']:
+                                break
+                        else:
+                            self.rotors_dict[self.number_of_rotors] = new_rotor
+                            self.number_of_rotors += 1
+            else:
+                logger.error(f'Could not determine rotors for {self.label} without a 2D graph structure')
             if self.number_of_rotors == 1:
-                logger.info('\nFound one possible rotor for {0}'.format(self.label))
+                logger.info(f'\nFound one possible rotor for {self.label}')
             elif self.number_of_rotors > 1:
-                logger.info('\nFound {0} possible rotors for {1}'.format(self.number_of_rotors, self.label))
+                logger.info(f'\nFound {self.number_of_rotors} possible rotors for {self.label}')
             if self.number_of_rotors > 0:
-                logger.info('Pivot list(s) for {0}: {1}\n'.format(
-                    self.label, [self.rotors_dict[i]['pivots'] for i in range(self.number_of_rotors)]))
+                logger.info(f'Pivot list(s) for {self.label}: '
+                            f'{[self.rotors_dict[i]["pivots"] for i in range(self.number_of_rotors)]}\n')
         self.initialize_directed_rotors()
 
     def initialize_directed_rotors(self):
