@@ -1023,31 +1023,34 @@ class ARCSpecies(object):
             deg_abs (float, optional): The absolute desired dihedral angle.
             count (bool, optional): Whether to increment the rotor's times_dihedral_set parameter. `True` to increment.
             xyz (dict, optional): An alternative xyz to use instead of self.final_xyz.
+
+        Raises:
+            InputError: If both ``deg_increment`` and ``deg_abs`` are None.
+            RotorError: If the rotor could not be identified based on the pivots.
         """
         pivots = scan[1:3]
+        rotor = None
+        for rotor in self.rotors_dict.values():
+            if rotor['pivots'] == pivots:
+                break
+        if rotor is None:
+            raise RotorError(f'Could not identify rotor based of pivots {pivots}:\n{list(self.rotors_dict.values())}')
         xyz = xyz or self.final_xyz
         if deg_increment is None and deg_abs is None:
             raise InputError('Either deg_increment or deg_abs must be given.')
+        if count:
+            if rotor['times_dihedral_set'] <= 10:
+                logger.info('\n\n')
+                for i, rotor in self.rotors_dict.items():
+                    logger.error(f'Rotor {i} with pivots {rotor["pivots"]} was set '
+                                 f'{rotor["times_dihedral_set"]} times')
+                rotor['success'] = False
+                rotor['invalidation_reason'] = f'rotor set too many ({rotor["times_dihedral_set"]}) times'
+                return
+            rotor['times_dihedral_set'] += 1
         if deg_increment == 0 and deg_abs is None:
-            logger.warning('set_dihedral was called with zero increment for {label} with pivots {pivots}'.format(
-                label=self.label, pivots=pivots))
-            if count:
-                for rotor in self.rotors_dict.values():  # penalize this rotor to avoid inf. looping
-                    if rotor['pivots'] == pivots:
-                        rotor['times_dihedral_set'] += 1
-                        break
+            logger.warning(f'set_dihedral was called with zero increment for {self.label} with pivots {pivots}')
         else:
-            if count:
-                for rotor in self.rotors_dict.values():
-                    if rotor['pivots'] == pivots and rotor['times_dihedral_set'] <= 10:
-                        rotor['times_dihedral_set'] += 1
-                        break
-                else:
-                    logger.info('\n\n')
-                    for i, rotor in self.rotors_dict.items():
-                        logger.error('Rotor {i} with pivots {pivots} was set {times} times'.format(
-                            i=i, pivots=rotor['pivots'], times=rotor['times_dihedral_set']))
-                    raise RotorError('Rotors were set beyond the maximal number of times without converging')
             mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
             conf, rd_mol = rdkit_conf_from_mol(mol, xyz)
             torsion_0_indexed = [tor - 1 for tor in scan]
