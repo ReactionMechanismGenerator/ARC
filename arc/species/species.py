@@ -478,7 +478,8 @@ class ARCSpecies(object):
         species_dict['number_of_rotors'] = self.number_of_rotors
         species_dict['external_symmetry'] = self.external_symmetry
         species_dict['optical_isomers'] = self.optical_isomers
-        species_dict['neg_freqs_trshed'] = self.neg_freqs_trshed
+        species_dict['neg_freqs_trshed'] = self.neg_freqs_trshed.tolist() \
+            if isinstance(self.neg_freqs_trshed, np.ndarray) else self.neg_freqs_trshed
         species_dict['arkane_file'] = self.arkane_file
         species_dict['consider_all_diastereomers'] = self.consider_all_diastereomers
         if self.is_ts:
