@@ -488,7 +488,7 @@ R1=1.0912"""
                                     (0.0, 1.0287933571691315, -0.3637330327013464),
                                     (0.8909611825531454, -0.5143966785845655, -0.3637330327013464),
                                     (-0.8909611825531449, -0.5143966785845662, -0.3637330327013464))}
-        self.assertEqual(xyz5, expected_xyz5)
+        self.assertTrue(almost_equal_coords_lists(xyz5, expected_xyz5))
 
     def test_xyz_to_str(self):
         """Test converting an ARC xyz format to a string xyz format"""

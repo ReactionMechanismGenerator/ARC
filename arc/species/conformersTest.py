@@ -767,7 +767,7 @@ O       1.40839617    0.14303696    0.00000000"""
                           'coords': ((-0.0021414150293084812, 0.42384518006634525, -0.0),
                                      (-1.176450577057819, -0.21250387455074374, -0.0),
                                      (1.1785919920871275, -0.21134130551560104, 0.0))}]
-        self.assertEqual(xyzs, expected_xyzs)
+        self.assertTrue(almost_equal_coords_lists(xyzs, expected_xyzs))
 
     def test_rdkit_force_field(self):
         """Test embedding molecule and applying force field using RDKit"""
@@ -798,7 +798,7 @@ O       1.40839617    0.14303696    0.00000000"""
                            'isotopes': (32, 16, 16),
                            'symbols': ('S', 'O', 'O')}]
 
-        self.assertEqual(xyzs, expected_xyzs1)
+        self.assertTrue(almost_equal_coords_lists(xyzs, expected_xyzs1))
         xyzs, energies = conformers.rdkit_force_field(label='', rd_mol=rd_mol, mol=spc.mol,
                                                       force_field='MMFF94s', optimize=False)
         self.assertEqual(len(energies), 0)
@@ -817,7 +817,7 @@ O       1.40839617    0.14303696    0.00000000"""
                            'coords': ((0.07722439890127433, 0.6050837187112847, 0.0),
                                       (-1.4098847335098195, -0.12753188106391833, 0.0),
                                       (1.3326603346085464, -0.4775518376473646, 0.0))}]
-        self.assertEqual(xyzs, expected_xyzs2)
+        self.assertTrue(almost_equal_coords_lists(xyzs, expected_xyzs2))
 
     def test_determine_rotors(self):
         """Test determining the rotors"""
