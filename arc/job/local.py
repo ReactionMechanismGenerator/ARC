@@ -23,53 +23,86 @@ from arc.settings import servers, check_status_command, submit_command, submit_f
 logger = get_logger()
 
 
-def execute_command(command, shell=True):
+def execute_command(command, shell=True, no_fail=False):
     """
-    Execute a command. `command` is an array of string commands to send.
-    If path is not an empty string, the command will be executed in the directory path it points to.
-    Returns lists of stdin, stdout, stderr corresponding to the commands sent.
-    `shell` specifies whether the command should be executed using bash instead of Python
+    Execute a command.
+
+    Notes:
+        If `no_fail` == True, then a warning is logged and `False` is returned so that the calling function can debug
+        the situation.
+
+    Args:
+        command: An array of string commands to send.
+        shell (bool): Specifies whether the command should be executed using bash instead of Python
+        no_fail (bool): If `True` then ARC will not crash if an error is encountered.
+
+    Returns:
+        lists of stdin, stdout, stderr corresponding to the commands sent
     """
+    # Initialize variables
+    error = None
+
     if not isinstance(command, list) and not shell:
         command = [command]
     i, max_times_to_try = 1, 30
-    success = False
     sleep_time = 60  # seconds
     while i < max_times_to_try:
         try:
             stdout = subprocess.check_output(command, shell=shell)
+            return _format_command_stdout(stdout), ''
         except subprocess.CalledProcessError as e:
-            logger.error('The server command is erroneous.')
-            logger.error(f'Tried to submit the following command:\n{command}')
-            logger.error('And got the following status (cmd, message, output, return code)')
-            logger.error(e.cmd)
-            logger.info('\n')
-            logger.error(e)
-            logger.info('\n')
-            logger.error(e.output)
-            logger.info('\n')
-            logger.error(e.returncode)
-            logger.info('\n')
-            logger.error(f'ARC is sleeping for {sleep_time * i} seconds before re-trying,'
-                         f' please check if this is a server issue by executing the command manually on server.')
-            logger.info('ZZZZZ..... ZZZZZ.....')
-            time.sleep(sleep_time * i)  # in seconds
-            i += 1
-        else:
-            success = True
-            break
-    if not success:
-        raise SettingsError(f'The command "{command}" is erroneous, got: \n{e}'
-                            f'\nThis maybe either a server issue or the command is wrong.'
-                            f'\nTo check if this is a server issue, please run the command on server and restart ARC.'
-                            f'\nTo correct the command, modify settings.py'
-                            f'\nTips: use "which" command to locate cluster software commands on server.'
-                            f'\nExample: type "which sbatch" on a server running Slurm to find the correct '
-                            f'sbatch path required in the submit_command dictionary.')
+            error = e  # Store the error so we can raise the SettingsError if need be
+            if no_fail:
+                _output_command_error_message(command, e, logger.warning)
+                return False
+            else:
+                _output_command_error_message(command, e, logger.error)
+                logger.error(f'ARC is sleeping for {sleep_time * i} seconds before re-trying,'
+                             f' please check if this is a server issue by executing the command manually on server.')
+                logger.info('ZZZZZ..... ZZZZZ.....')
+                time.sleep(sleep_time * i)  # in seconds
+                i += 1
+
+    # If not success
+    raise SettingsError(f'The command "{command}" is erroneous, got: \n{error}'
+                        f'\nThis maybe either a server issue or the command is wrong.'
+                        f'\nTo check if this is a server issue, please run the command on server and restart ARC.'
+                        f'\nTo correct the command, modify settings.py'
+                        f'\nTips: use "which" command to locate cluster software commands on server.'
+                        f'\nExample: type "which sbatch" on a server running Slurm to find the correct '
+                        f'sbatch path required in the submit_command dictionary.')
+
+
+def _output_command_error_message(command, error, logging_func):
+    """
+    Formats and logs the error message returned from a command at the desired logging level
+
+    Args:
+        command: Command that threw the error
+        error: Exception caught by python from subprocess
+        logging_func: `logging.warning` or `logging.error` as a python function object
+    """
+    logging_func('The server command is erroneous.')
+    logging_func(f'Tried to submit the following command:\n{command}')
+    logging_func('And got the following status (cmd, message, output, return code)')
+    logging_func(error.cmd)
+    logger.info('\n')
+    logging_func(error)
+    logger.info('\n')
+    logging_func(error.output)
+    logger.info('\n')
+    logging_func(error.returncode)
+
+
+def _format_command_stdout(stdout):
+    """
+    Formats the output from stdout returned from subprocess
+    """
     lines, list_of_strs = stdout.splitlines(), list()
     for line in lines:
         list_of_strs.append(line.decode())
-    return list_of_strs, ''
+
+    return list_of_strs
 
 
 def check_job_status(job_id):
@@ -97,7 +130,17 @@ def delete_job(job_id):
     Deletes a running job
     """
     cmd = delete_command[servers['local']['cluster_soft']] + ' ' + str(job_id)
-    execute_command(cmd)
+    success = bool(execute_command(cmd, no_fail=True))
+    if not success:  # Check if the job is still running. If not then this failure does not matter
+        logger.warning(f'Detected possible error when trying to delete job {job_id}. Checking to see if the job is '
+                       f'still running...')
+        running_jobs = check_running_jobs_ids()
+        if job_id in running_jobs:
+            logger.error(f'Job {job_id} was scheduled for deletion, but the deletion command has appeared to errored, '
+                         f'and is still running')
+            raise RuntimeError(f'Could not delete job {job_id}')
+        else:  # The job seems to have been deleted.
+            logger.warning(f'Job {job_id} is no longer running, so we can continue.')
 
 
 def check_running_jobs_ids():
