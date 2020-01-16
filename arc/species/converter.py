@@ -279,9 +279,13 @@ def xyz_from_data(coords, numbers=None, symbols=None, isotopes=None):
         ConverterError: If neither ``numbers`` nor ``symbols`` are specified, if both are specified,
                         or if the input lengths aren't consistent.
     """
-    if isinstance(coords, (list, np.ndarray)):
+    if isinstance(coords, np.ndarray):
+        coords = tuple(tuple(coord.tolist()) for coord in coords)
+    elif isinstance(coords, list):
         coords = tuple(tuple(coord) for coord in coords)
-    if numbers is not None and isinstance(numbers, (list, np.ndarray)):
+    if numbers is not None and isinstance(numbers, np.ndarray):
+        numbers = tuple(numbers.tolist())
+    elif numbers is not None and isinstance(numbers, list):
         numbers = tuple(numbers)
     if symbols is not None and isinstance(symbols, list):
         symbols = tuple(symbols)

@@ -5,6 +5,7 @@
 This module contains unit tests of the arc.species.converter module
 """
 
+import numpy as np
 import unittest
 
 from rdkit import Chem
@@ -565,6 +566,18 @@ R1=1.0912"""
                   [0.6300326, -0.6300326, -0.6300326]]
         xyz_dict2 = converter.xyz_from_data(coords=coords, numbers=numbers)
         self.assertEqual(xyz_dict2, self.xyz1['dict'])
+
+        numbers = [6, 1, 1, 1, 1]
+        coords = [[0.0, 0.0, 0.0],
+                  [0.6300326, 0.6300326, 0.6300326],
+                  [-0.6300326, -0.6300326, 0.6300326],
+                  [-0.6300326, 0.6300326, -0.6300326],
+                  [0.6300326, -0.6300326, -0.6300326]]
+        coords = np.array([np.array(coord, np.float64) for coord in coords], np.float64)
+        xyz_dict2 = converter.xyz_from_data(coords=coords, numbers=numbers)
+        self.assertEqual(xyz_dict2, self.xyz1['dict'])
+        self.assertIsInstance(xyz_dict2['coords'], tuple)
+        self.assertIsInstance(xyz_dict2['coords'][0], tuple)
 
     def test_get_most_common_isotope_for_element(self):
         """Test the get_most_common_isotope_for_element function"""
