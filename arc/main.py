@@ -20,7 +20,7 @@ import yaml
 from distutils.spawn import find_executable
 from IPython.display import display
 
-from arkane.statmech import assign_frequency_scale_factor
+from arkane.encorr import assign_frequency_scale_factor, freq_dict
 from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 
@@ -824,10 +824,10 @@ class ARC(object):
                 level = self.freq_level['method'] + '/' + self.freq_level['basis']
             else:
                 level = self.composite_method
-            freq_scale_factor = assign_frequency_scale_factor(level)
-            if freq_scale_factor != 1:
-                # Arkane has this harmonic frequencies scaling factor (if not found, the factor is set to exactly 1)
-                self.freq_scale_factor = freq_scale_factor
+
+            if level.lower() in freq_dict:
+                # Arkane has this harmonic frequencies scaling factor
+                self.freq_scale_factor = assign_frequency_scale_factor(level)
             else:
                 logger.info('Could not determine the harmonic frequencies scaling factor for {0} from '
                             'Arkane.'.format(level))
