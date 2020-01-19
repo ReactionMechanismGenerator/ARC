@@ -890,7 +890,6 @@ class ARC(object):
         Determine method (e.g., b3lyp), basis set (e.g. def2-svp), and auxiliary basis set (e.g., def2-svp/c) for
         supported ARC job types (e.g., opt, freq, sp, scan, conformer, ts_guesses) from user inputs or defaults.
         """
-        # initialization (see comments below for expected outcomes)
         self._initialize_model_chemistry_inputs()
         # examples of expected job level formats after calling this initialization (other formats will raise an error)
         # level_of_theory = wb97xd/def2tzvp//b3lyp/def2svp or wb97xd/def2tzvp or ''
@@ -922,19 +921,19 @@ class ARC(object):
             # For composite methods self.level_of_theory is an empty string set by calling
             # initialize_model_chemistry_inputs.
             if '//' in self.level_of_theory:
-                self.opt_level, _ = format_level_of_theory_inputs(self.level_of_theory.split('//')[1])
-                self.freq_level, _ = format_level_of_theory_inputs(self.level_of_theory.split('//')[1])
-                self.sp_level, _ = format_level_of_theory_inputs(self.level_of_theory.split('//')[0])
+                self.opt_level = format_level_of_theory_inputs(self.level_of_theory.split('//')[1])[0]
+                self.freq_level = format_level_of_theory_inputs(self.level_of_theory.split('//')[1])[0]
+                self.sp_level = format_level_of_theory_inputs(self.level_of_theory.split('//')[0])[0]
             else:
                 # assume this is not a composite method, and the user meant to run opt, freq and sp at this level.
-                self.opt_level, _ = format_level_of_theory_inputs(self.level_of_theory)
-                self.freq_level, _ = format_level_of_theory_inputs(self.level_of_theory)
-                self.sp_level, _ = format_level_of_theory_inputs(self.level_of_theory)
+                self.opt_level = format_level_of_theory_inputs(self.level_of_theory)[0]
+                self.freq_level = format_level_of_theory_inputs(self.level_of_theory)[0]
+                self.sp_level = format_level_of_theory_inputs(self.level_of_theory)[0]
 
         if self.composite_method:
             logger.info(f'Using composite method {self.composite_method}')
-            self.opt_level, _ = format_level_of_theory_inputs('')
-            self.sp_level, _ = format_level_of_theory_inputs('')
+            self.opt_level = format_level_of_theory_inputs('')[0]
+            self.sp_level = format_level_of_theory_inputs('')[0]
 
             if not self.freq_level:
                 self.freq_level = default_levels_of_theory['freq_for_composite']
@@ -955,7 +954,7 @@ class ARC(object):
                 logger.info(f'Using{default_flag} level {format_level_of_theory_for_logging(level)} for rotor scans '
                             f'after composite jobs.')
             else:
-                self.scan_level, _ = format_level_of_theory_inputs('')
+                self.scan_level = format_level_of_theory_inputs('')[0]
                 logger.warning("Not running rotor scans, for it is not requested by the user. This might compromise "
                                "finding the best conformer, as dihedral angles won't be corrected. "
                                "Also, entropy won't be accurate.")
@@ -970,10 +969,11 @@ class ARC(object):
                 logger.info(f'Using{default_flag} level {format_level_of_theory_for_logging(level)} for visualizing '
                             f'molecular orbitals after composite jobs.')
             else:
-                self.orbitals_level, _ = format_level_of_theory_inputs('')
-                logger.debug("Not running molecular orbitals visualization, for it is not requested by the user.")
+                self.orbitals_level = format_level_of_theory_inputs('')[0]
+                logger.debug("Not running molecular orbitals visualization.")
 
-        else:   # not composite method
+        else:
+            # this is not a composite method
             if self.job_types['opt']:
                 if not self.opt_level:
                     self.opt_level = default_levels_of_theory['opt']
@@ -984,26 +984,24 @@ class ARC(object):
                 logger.info(f'Using{default_flag} level {format_level_of_theory_for_logging(level)} for geometry '
                             f'optimizations.')
             else:
-                self.opt_level, _ = format_level_of_theory_inputs('')
+                self.opt_level = format_level_of_theory_inputs('')[0]
                 logger.warning("Not running geometry optimization, for it is not requested by the user.")
 
             if self.job_types['freq']:
                 if not self.freq_level:
                     if self.opt_level:
                         self.freq_level = self.opt_level
-                        info = ' user-defined opt'
-                        default_flag = ''
+                        info, default_flag = ' user-defined opt', ''
                     else:
                         self.freq_level = default_levels_of_theory['freq']
-                        info = ''
-                        default_flag = ' default'
+                        info, default_flag = '', ' default'
                 else:
                     info, default_flag = '', ''
                 self.freq_level, level = format_level_of_theory_inputs(self.freq_level)
                 logger.info(f'Using{info}{default_flag} level {format_level_of_theory_for_logging(level)} for frequency '
                             f'calculations.')
             else:
-                self.freq_level, _ = format_level_of_theory_inputs('')
+                self.freq_level = format_level_of_theory_inputs('')[0]
                 logger.warning("Not running frequency calculation, for it is not requested by the user.")
 
             if self.job_types['sp']:
@@ -1016,19 +1014,23 @@ class ARC(object):
                 logger.info(f'Using{default_flag} level {format_level_of_theory_for_logging(level)} for single point '
                             f'calculations.')
             else:
-                self.sp_level, _ = format_level_of_theory_inputs('')
+                self.sp_level = format_level_of_theory_inputs('')[0]
                 logger.warning("Not running single point calculation, for it is not requested by the user.")
 
             if self.job_types['rotors']:
                 if not self.scan_level:
-                    self.scan_level = default_levels_of_theory['scan']
-                    default_flag = ' default'
+                    if self.opt_level:
+                        self.scan_level = self.opt_level
+                        info, default_flag = ' user-defined opt', ''
+                    else:
+                        self.scan_level = default_levels_of_theory['scan']
+                        info, default_flag = '', ' default'
                 else:
-                    default_flag = ''
+                    info, default_flag = '', ''
                 self.scan_level, level = format_level_of_theory_inputs(self.scan_level)
-                logger.info(f'Using{default_flag} level {format_level_of_theory_for_logging(level)} for rotor scans.')
+                logger.info(f'Using{info}{default_flag} level {format_level_of_theory_for_logging(level)} for rotor scans.')
             else:
-                self.scan_level, _ = format_level_of_theory_inputs('')
+                self.scan_level = format_level_of_theory_inputs('')[0]
                 logger.warning("Not running rotor scans, for it is not requested by the user. This might compromise "
                                "finding the best conformer, as dihedral angles won't be corrected. "
                                "Also, entropy won't be accurate.")
@@ -1043,7 +1045,7 @@ class ARC(object):
                 logger.info(f'Using{default_flag} level {format_level_of_theory_for_logging(level)} for visualizing '
                             f'molecular orbitals.')
             else:
-                self.orbitals_level, _ = format_level_of_theory_inputs('')
+                self.orbitals_level = format_level_of_theory_inputs('')[0]
                 logger.debug("Not running molecular orbitals visualization, for it is not requested by the user.")
 
     def _initialize_model_chemistry_inputs(self):
