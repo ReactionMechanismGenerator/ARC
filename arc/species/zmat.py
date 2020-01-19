@@ -174,13 +174,14 @@ def determine_r_atoms(zmat, xyz, connectivity, n, atom_index, r_constraint=None,
             while len(atom_list_to_explore1 + atom_list_to_explore2):
                 for atom3 in atom_list_to_explore1:
                     top.append(atom3)
-                    for atom4 in connectivity[atom3]:
-                        if atom4 not in explored_atom_list and atom4 not in atom_list_to_explore2:
-                            if xyz['symbols'][atom4] in ['H', 'F', 'Cl', 'Br', 'I', 'X']:
-                                # append w/o further exploration
-                                top.append(atom4)
-                            else:
-                                atom_list_to_explore2.append(atom4)  # explore it further
+                    if atom3 in connectivity:
+                        for atom4 in connectivity[atom3]:
+                            if atom4 not in explored_atom_list and atom4 not in atom_list_to_explore2:
+                                if xyz['symbols'][atom4] in ['H', 'F', 'Cl', 'Br', 'I', 'X']:
+                                    # append w/o further exploration
+                                    top.append(atom4)
+                                else:
+                                    atom_list_to_explore2.append(atom4)  # explore it further
                     explored_atom_list.append(atom3)  # mark as explored
                 atom_list_to_explore1, atom_list_to_explore2 = atom_list_to_explore2, []
                 if len(top) >= 2:
