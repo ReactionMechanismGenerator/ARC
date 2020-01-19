@@ -402,7 +402,7 @@ class TestARC(unittest.TestCase):
         expected_opt_level = {'method': 'wb97x-d', 'basis': 'aug-cc-pvtz', 'auxiliary_basis': '', 'dispersion': ''}
         expected_freq_level = {'method': 'wb97x-d', 'basis': 'aug-cc-pvtz', 'auxiliary_basis': '', 'dispersion': ''}
         expected_sp_level = {'method': 'ccsd(t)-f12', 'basis': 'cc-pvtz-f12', 'auxiliary_basis': '', 'dispersion': ''}
-        expected_scan_level = {'method': 'wb97xd', 'basis': 'def2tzvp', 'auxiliary_basis': '', 'dispersion': ''}
+        expected_scan_level = {'method': 'wb97x-d', 'basis': 'aug-cc-pvtz', 'auxiliary_basis': '', 'dispersion': ''}
         expected_orbitals_level = {'method': '', 'basis': '', 'auxiliary_basis': '', 'dispersion': ''}
         self.assertEqual(arc3.opt_level, expected_opt_level)
         self.assertEqual(arc3.freq_level, expected_freq_level)
