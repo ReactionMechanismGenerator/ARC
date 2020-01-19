@@ -487,9 +487,9 @@ def initialize_job_types(job_types, specific_job_type=''):
     defaults_to_false = ['onedmin', 'orbitals', 'bde']
     if job_types is None:
         job_types = default_job_types
-        logger.info('Job types were not specified, using default values from ARC settings')
+        logger.info("Job types were not specified, using ARC's defaults")
     else:
-        logger.info(f'the following job types were specified: {job_types}.')
+        logger.debug(f'The following job types were specified: {job_types}.')
     if 'lennard_jones' in job_types:
         # rename lennard_jones to OneDMin
         job_types['onedmin'] = job_types['lennard_jones']
