@@ -1220,22 +1220,6 @@ O       1.40839617    0.14303696    0.00000000"""
         self.assertTrue(all([int(round(angle / 5.0) * 5.0) in [60, 300]
                              for angle in torsion_angles[tuple(torsions[1])]]))  # batch check almost equal
 
-    def test_check_atom_collisions(self):
-        """Check that we correctly determine when atoms collide in xyz"""
-        xyz0 = """C	0.0000000	0.0000000	0.6505570
-C	0.0000000	0.0000000	-0.6505570
-C	0.0000000	0.0000000	1.9736270
-C	0.0000000	0.0000000	-1.9736270"""  # no colliding atoms
-        xyz1 = """ C                 -2.09159210   -1.05731582   -0.12426100
- H                 -2.49607181   -1.61463460   -0.94322229
- H                 -1.03488175   -1.21696026   -0.07152162
- H                 -2.54731584   -1.38200055    0.78777873
- N                 -2.36156239    0.37373413   -0.32458326
- N                 -2.10618543   -0.96914562   -0.62731730
- N                 -1.23618386   -0.31836000   -0.51825841"""  # colliding atoms
-        self.assertFalse(conformers.check_atom_collisions(converter.str_to_xyz(xyz0)))
-        self.assertTrue(conformers.check_atom_collisions(converter.str_to_xyz(xyz1)))
-
     def test_determine_torsion_symmetry(self):
         """Test that we correctly determine the torsion symmetry"""
         adj0 = """1 O u0 p2 c0 {2,S} {9,S}
