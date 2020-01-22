@@ -31,7 +31,7 @@ from rmgpy.data.transport import TransportLibrary
 from rmgpy.quantity import ScalarQuantity
 from rmgpy.species import Species
 
-from arc.common import format_level_of_theory_for_logging, get_logger, is_notebook, min_list, save_yaml_file, \
+from arc.common import format_level_of_theory_for_logging, get_logger, is_notebook, extermum_list, save_yaml_file, \
     sort_two_lists_by_the_first
 from arc.exceptions import InputError, SanitizationError
 from arc.species.converter import rdkit_conf_from_mol, molecules_from_xyz, check_xyz_dict, str_to_xyz, xyz_to_str, \
@@ -677,7 +677,7 @@ def save_conformers_file(project_directory, label, xyzs, level_of_theory, multip
         os.makedirs(geo_dir)
     if energies is not None and any(e is not None for e in energies):
         optimized = True
-        min_e = min_list(energies)
+        min_e = extermum_list(energies, return_min=True)
         conf_path = os.path.join(geo_dir, 'conformers_after_optimization.txt')
     else:
         optimized = False
@@ -1053,7 +1053,7 @@ def save_rotor_text_file(angles, energies, path):
         raise InputError('energies and angles must be the same length')
     if not os.path.isdir(os.path.dirname(path)):
         os.makedirs(os.path.dirname(path))
-    min_angle = min_list(angles)
+    min_angle = extermum_list(angles, return_min=True)
     angles = [angle - min_angle for angle in angles]  # set first angle to 0
     if energies:
         lines = ['Angle (degrees)        Energy (kJ/mol)\n']

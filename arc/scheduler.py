@@ -17,7 +17,7 @@ from IPython.display import display
 from rmgpy.reaction import Reaction
 
 from arc.common import format_level_of_theory_for_logging, format_level_of_theory_inputs, get_logger, \
-    get_ordinal_indicator, min_list, read_yaml_file, save_yaml_file, sort_two_lists_by_the_first
+    get_ordinal_indicator, extermum_list, read_yaml_file, save_yaml_file, sort_two_lists_by_the_first
 from arc import plotter
 from arc import parser
 from arc.job.job import Job
@@ -1415,8 +1415,9 @@ class Scheduler(object):
                 dihedrals = [[float(dihedral) for dihedral in dihedral_string_tuple]
                              for dihedral_string_tuple in rotor_dict['directed_scan'].keys()]
                 sorted_dihedrals = sorted(dihedrals)
-                min_energy = min_list([directed_scan_dihedral['energy']
-                                       for directed_scan_dihedral in rotor_dict['directed_scan'].values()])
+                min_energy = extermum_list([directed_scan_dihedral['energy']
+                                            for directed_scan_dihedral in rotor_dict['directed_scan'].values()],
+                                           return_min=True)
                 trshed_points = 0
                 results = {'directed_scan_type': rotor_dict['directed_scan_type'],
                            'scans': rotor_dict['scan'],
@@ -1749,7 +1750,7 @@ class Scheduler(object):
             rxn_txt = '' if self.species_dict[label].rxn_label is None \
                 else f' of reaction {self.species_dict[label].rxn_label}'
             logger.info(f'\n\nGeometry *guesses* of successful TS guesses for {label}{rxn_txt}:')
-            e_min = min_list([tsg.energy for tsg in self.species_dict[label].ts_guesses])
+            e_min = extermum_list([tsg.energy for tsg in self.species_dict[label].ts_guesses], return_min=True)
             i_min = None
             for tsg in self.species_dict[label].ts_guesses:
                 if tsg.energy is not None and tsg.energy == e_min:
