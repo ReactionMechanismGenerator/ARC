@@ -2342,15 +2342,16 @@ class Scheduler(object):
                 self.species_dict[label].make_ts_report()
                 logger.info(self.species_dict[label].ts_report + '\n')
             zero_delta = datetime.timedelta(0)
-            conf_time = max([job.run_time for job in self.job_dict[label]['conformers'].values()]) \
+            conf_time = extermum_list([job.run_time for job in self.job_dict[label]['conformers'].values()],
+                                      return_min=False) \
                 if 'conformers' in self.job_dict[label] else zero_delta
             opt_time = sum_time_delta([job.run_time for job in self.job_dict[label]['opt'].values()]) \
                 if 'opt' in self.job_dict[label] else zero_delta
             comp_time = sum_time_delta([job.run_time for job in self.job_dict[label]['composite'].values()]) \
                 if 'composite' in self.job_dict[label] else zero_delta
-            other_time = max([sum_time_delta([job.run_time for job in job_dictionary.values()])
-                              for job_type, job_dictionary in self.job_dict[label].items()
-                              if job_type not in ['conformers', 'opt', 'composite']]) \
+            other_time = extermum_list([sum_time_delta([job.run_time for job in job_dictionary.values()])
+                                        for job_type, job_dictionary in self.job_dict[label].items()
+                                        if job_type not in ['conformers', 'opt', 'composite']], return_min=False) \
                 if any([job_type not in ['conformers', 'opt', 'composite']
                         for job_type in self.job_dict[label].keys()]) else zero_delta
             self.species_dict[label].run_time = self.species_dict[label].run_time \
