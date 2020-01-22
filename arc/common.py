@@ -418,12 +418,14 @@ def determine_top_group_indices(mol, atom1, atom2, index=1):
     return top, not atom2.is_hydrogen()
 
 
-def min_list(lst):
+def extermum_list(lst, return_min=True):
     """
-    A helper function for finding the minimum of a list of integers where some of the entries might be None.
+    A helper function for finding the minimum of a list of numbers (int/float) where some of the entries might be None.
 
     Args:
         lst (list): The list.
+        return_min (bool, optional): Whether to return the minimum or the maximum.
+                                    ``True`` for minimum, ``False`` for maximum, ``True`` by default.
 
     Returns:
         int: The entry with the minimal value.
@@ -434,7 +436,10 @@ def min_list(lst):
         return lst[0]
     elif all([entry is None for entry in lst]):
         return None
-    return min([entry for entry in lst if entry is not None])
+    if return_min:
+        return min([entry for entry in lst if entry is not None])
+    else:
+        return max([entry for entry in lst if entry is not None])
 
 
 def key_by_val(dictionary, value):
