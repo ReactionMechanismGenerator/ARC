@@ -54,3 +54,4 @@ dependencies:
   - ase >=3.15.0
   - ipython
   - sphinx
+  - qcelemental
