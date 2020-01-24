@@ -628,6 +628,16 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
         self.assertFalse(common.is_str_float('R1'))
         self.assertFalse(common.is_str_float('D_3_5_7_4'))
 
+    def test_get_atom_radius(self):
+        """Test determining the covalent radius of an atom"""
+        self.assertEqual(common.get_atom_radius('C'), 0.76)
+        self.assertEqual(common.get_atom_radius('S'), 1.05)
+        self.assertEqual(common.get_atom_radius('O'), 0.66)
+        self.assertEqual(common.get_atom_radius('H'), 0.31)
+        self.assertEqual(common.get_atom_radius('N'), 0.71)
+        self.assertIsNone(common.get_atom_radius('wrong'))
+
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
