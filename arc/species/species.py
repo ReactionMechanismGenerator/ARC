@@ -21,7 +21,7 @@ from rmgpy.species import Species
 from rmgpy.statmech import NonlinearRotor, LinearRotor
 from rmgpy.transport import TransportData
 
-from arc.common import get_logger, determine_symmetry, determine_top_group_indices
+from arc.common import get_logger, get_single_bond_length, determine_symmetry, determine_top_group_indices
 from arc.exceptions import SpeciesError, RotorError, InputError, TSError, SanitizationError
 from arc.parser import parse_xyz_from_file, parse_dipole_moment, parse_polarizability, process_conformers_file, \
     parse_1d_scan_energies
@@ -30,6 +30,7 @@ from arc.species import conformers
 from arc.species.converter import check_isomorphism, check_xyz_dict, check_zmat_dict, get_xyz_radius, \
     molecules_from_xyz, order_atoms_in_mol_list, rdkit_conf_from_mol, remove_dummies, rmg_mol_from_inchi, \
     set_rdkit_dihedrals, str_to_xyz, translate_to_center_of_mass, xyz_from_data, xyz_to_str
+from arc.species.vectors import calculate_distance
 from arc.ts import atst
 
 
@@ -1927,3 +1928,30 @@ def check_xyz(xyz, multiplicity, charge):
     if electrons % 2 ^ multiplicity % 2:
         return True
     return False
+
+
+def are_coords_compliant_with_graph(xyz, mol):
+    """
+    Check whether the Cartesian coordinates represent the same 2D connectivity as the graph.
+    Bond orders are not considered here, this function checks whether the coordinates represent a bond length
+    below 120% of the single bond length of the respective elements.
+
+    Args:
+        xyz (dict): The Cartesian coordinates.
+        mol (Molecule): The 2D graph connectivity information.
+
+    Returns:
+        bool: Whether the coordinates are compliant with the 2D connectivity graph. ``True`` if they are.
+    """
+    checked_atoms = list()
+    for atom_index_1, atom1 in enumerate(mol.atoms):
+        for atom2 in atom1.edges.keys():
+            atom_index_2 = mol.atoms.index(atom2)
+            if atom_index_2 not in checked_atoms:
+                r = calculate_distance(coords=xyz['coords'], atoms=[atom_index_1, atom_index_2])
+                single_bond_r = get_single_bond_length(atom1.element.symbol, atom2.element.symbol)
+                if r > single_bond_r * 1.2:
+                    return False
+        checked_atoms.append(atom_index_1)
+    return True
+
