@@ -18,7 +18,8 @@ from arc.common import almost_equal_coords_lists
 from arc.plotter import save_conformers_file
 from arc.settings import arc_path
 from arc.species.converter import molecules_from_xyz, check_isomorphism, str_to_xyz, xyz_to_str, xyz_to_x_y_z
-from arc.species.species import ARCSpecies, TSGuess, determine_rotor_type, determine_rotor_symmetry, check_xyz
+from arc.species.species import ARCSpecies, TSGuess, are_coords_compliant_with_graph, check_xyz, \
+    determine_rotor_symmetry, determine_rotor_type
 
 
 class TestARCSpecies(unittest.TestCase):
@@ -1080,6 +1081,60 @@ H       1.11582953    0.94384729   -0.10134685"""
         self.assertEqual(cation_rad.charge, 1)
         cation_rad.generate_conformers()
         self.assertTrue(len(cation_rad.conformers))
+
+    def test_are_coords_compliant_with_graph(self):
+        """Test coordinates compliant with 2D graph connectivity"""
+        self.assertTrue(are_coords_compliant_with_graph(xyz=self.spc6.get_xyz(), mol=self.spc6.mol))
+
+        xyz_non_split = str_to_xyz(""" O                 -1.77782500    0.16383000   -1.00470900
+ O                  2.82634100   -0.49758800   -0.22053900
+ O                 -3.00549000    0.30995600   -0.63994200
+ O                  3.40372500    0.73816600   -0.00411700
+ N                  1.58283100   -0.44410100   -0.22685100
+ C                 -0.87680000   -0.04688100    0.15263000
+ C                 -0.91300400    1.19079300    1.04397100
+ C                 -1.28190800   -1.33133800    0.86726200
+ C                  0.45671000   -0.17198800   -0.46072100
+ H                 -0.57829200    2.08105700    0.49410300
+ H                 -1.94993600    1.34102100    1.37594600
+ H                 -0.26515400    1.04703000    1.91910800
+ H                 -0.63490800   -1.49884100    1.73900500
+ H                 -2.32291100   -1.22406700    1.20286200
+ H                 -1.21261900   -2.19592900    0.19252600""")
+        xyz_split = str_to_xyz(""" O                  0.07716500   -0.35216600   -0.85343400
+ O                  2.62355500    1.10632700    0.00977500
+ O                  0.76150400   -1.46024200   -0.66136400
+ O                  3.11333100   -0.00414700    0.06703600
+ N                 -2.16062200    2.08015200   -0.47197200
+ C                 -1.01293500   -0.20025800    0.17009400
+ C                 -1.99168200   -1.36471200    0.01039700
+ C                 -0.37657800   -0.11697600    1.55811500
+ C                 -1.64082800    1.07802900   -0.20550900
+ H                 -2.40531700   -1.38599900   -1.00008100
+ H                 -1.45900400   -2.29793500    0.20302000
+ H                 -2.81142200   -1.26290200    0.72553300
+ H                 -1.15306500    0.01609000    2.31512700
+ H                  0.16104500   -1.04691100    1.75262900
+ H                  0.31981100    0.72190400    1.61289000""")
+        adj_list = """multiplicity 2
+    1  O u0 p2 c0 {3,S} {6,S}
+    2  O u0 p2 c0 {4,S} {5,S}
+    3  O u1 p2 c0 {1,S}
+    4  O u0 p3 c-1 {2,S}
+    5  N u0 p0 c+1 {2,S} {9,T}
+    6  C u0 p0 c0 {1,S} {7,S} {8,S} {9,S}
+    7  C u0 p0 c0 {6,S} {10,S} {11,S} {12,S}
+    8  C u0 p0 c0 {6,S} {13,S} {14,S} {15,S}
+    9  C u0 p0 c0 {5,T} {6,S}
+    10 H u0 p0 c0 {7,S}
+    11 H u0 p0 c0 {7,S}
+    12 H u0 p0 c0 {7,S}
+    13 H u0 p0 c0 {8,S}
+    14 H u0 p0 c0 {8,S}
+    15 H u0 p0 c0 {8,S}"""
+        mol = Molecule().from_adjacency_list(adj_list)
+        self.assertTrue(are_coords_compliant_with_graph(xyz=xyz_non_split, mol=mol))
+        self.assertFalse(are_coords_compliant_with_graph(xyz=xyz_split, mol=mol))
 
 
     @classmethod
