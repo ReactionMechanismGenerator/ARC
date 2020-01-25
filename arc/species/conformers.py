@@ -174,17 +174,7 @@ def generate_conformers(mol_list, label, xyzs=None, torsions=None, tops=None, ch
 
     # a quick bypass for mono-atomic species:
     if len(mol_list[0].atoms) == 1:
-        element_symbol = mol_list[0].atoms[0].element.symbol
-        confs = [{'xyz': {'symbols': (element_symbol,),
-                          'isotopes': (converter.get_most_common_isotope_for_element(element_symbol),),
-                          'coords': ((0.0, 0.0, 0.0),)},
-                  'zmat': {'symbols': (element_symbol,), 'coords': ((None, None, None),), 'vars': {}, 'map': {0: 0}},
-                  'index': 0,
-                  'FF energy': 0.0,
-                  'chirality': None,
-                  'source': 'mono atomic species',
-                  'torsion_dihedrals': None,
-                   }]
+        confs = [generate_monoatomic_conformer(symbol=mol_list[0].atoms[0].element.symbol)]
         if not return_all_conformers:
             return confs
         else:
@@ -1571,6 +1561,29 @@ def update_mol(mol):
     mol.update_multiplicity()
     mol.identify_ring_membership()
     return mol
+
+
+def generate_monoatomic_conformer(symbol):
+    """
+    Generate a conformer for a monoatomic species.
+
+    Args:
+        symbol (str): The atomic symbol.
+
+    Returns:
+        dict: The monoatomic conformer.
+    """
+    conf = {'xyz': {'symbols': (symbol,),
+                    'isotopes': (converter.get_most_common_isotope_for_element(symbol),),
+                    'coords': ((0.0, 0.0, 0.0),)},
+            'zmat': {'symbols': (symbol,), 'coords': ((None, None, None),), 'vars': {}, 'map': {0: 0}},
+            'index': 0,
+            'FF energy': 0.0,
+            'chirality': None,
+            'source': 'monoatomic species',
+            'torsion_dihedrals': None,
+            }
+    return conf
 
 
 def compare_zmats(z1, z2, r_tol=0.01, a_tol=2, d_tol=2, verbose=False, symmetric_torsions=None, index=1):
