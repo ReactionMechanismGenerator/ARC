@@ -637,6 +637,12 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
         self.assertEqual(common.get_atom_radius('N'), 0.71)
         self.assertIsNone(common.get_atom_radius('wrong'))
 
+    def test_get_single_bond_length(self):
+        """Test getting an approximation for a single bond length"""
+        self.assertEqual(common.get_single_bond_length('C', 'C'), 1.54)
+        self.assertEqual(common.get_single_bond_length('C', 'O'), 1.43)
+        self.assertEqual(common.get_single_bond_length('O', 'C'), 1.43)
+        self.assertEqual(common.get_single_bond_length('P', 'Si'), 2.5)
 
 
 if __name__ == '__main__':
