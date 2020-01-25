@@ -2585,5 +2585,15 @@ Cl      2.38846685    0.24054066    0.55443324
             self.assertEqual(mol_atom.element.symbol, conf_atom)
 
 
+    def test_generate_monoatomic_conformer(self):
+        """Test generating a monoatomic conformer"""
+        conf = conformers.generate_monoatomic_conformer('N')
+        expected_conf = {'xyz': {'symbols': ('N',), 'isotopes': (14,), 'coords': ((0.0, 0.0, 0.0),)},
+                         'zmat': {'symbols': ('N',), 'coords': ((None, None, None),), 'vars': {}, 'map': {0: 0}},
+                         'index': 0, 'FF energy': 0.0, 'chirality': None,
+                         'source': 'monoatomic species', 'torsion_dihedrals': None}
+        self.assertEqual(conf, expected_conf)
+
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

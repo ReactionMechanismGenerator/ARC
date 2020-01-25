@@ -27,9 +27,9 @@ from arc.parser import parse_xyz_from_file, parse_dipole_moment, parse_polarizab
     parse_1d_scan_energies
 from arc.settings import default_ts_methods, valid_chars, minimum_barrier
 from arc.species import conformers
-from arc.species.converter import rdkit_conf_from_mol, xyz_from_data, molecules_from_xyz, rmg_mol_from_inchi, \
-    order_atoms_in_mol_list, check_isomorphism, set_rdkit_dihedrals, translate_to_center_of_mass, \
-    str_to_xyz, xyz_to_str, check_xyz_dict, check_zmat_dict, get_xyz_radius, remove_dummies
+from arc.species.converter import check_isomorphism, check_xyz_dict, check_zmat_dict, get_xyz_radius, \
+    molecules_from_xyz, order_atoms_in_mol_list, rdkit_conf_from_mol, remove_dummies, rmg_mol_from_inchi, \
+    set_rdkit_dihedrals, str_to_xyz, translate_to_center_of_mass, xyz_from_data, xyz_to_str
 from arc.ts import atst
 
 
@@ -815,19 +815,24 @@ class ARCSpecies(object):
         Cheaply (limiting the number of possible conformers) get a reasonable conformer,
         this could very well not be the best (lowest) one.
         """
-        num_confs = min(500, max(50, len(self.mol.atoms) * 3))
-        rd_mol = conformers.embed_rdkit(label=self.label, mol=self.mol, num_confs=num_confs)
-        xyzs, energies = conformers.rdkit_force_field(label=self.label, rd_mol=rd_mol,
-                                                      mol=self.mol, force_field='MMFF94s')
-        if energies:
-            min_energy = min(energies)
-            min_energy_index = energies.index(min_energy)
-            self.cheap_conformer = xyzs[min_energy_index]
-        elif xyzs:
-            self.cheap_conformer = xyzs[0]
+        # a quick bypass for mono-atomic species:
+        if self.number_of_atoms == 1:
+            self.cheap_conformer = \
+                conformers.generate_monoatomic_conformer(symbol=self.mol_list[0].atoms[0].element.symbol)['xyz']
         else:
-            logger.warning('Could not generate a cheap conformer for {0}'.format(self.label))
-            self.cheap_conformer = None
+            num_confs = min(500, max(50, len(self.mol.atoms) * 3))
+            rd_mol = conformers.embed_rdkit(label=self.label, mol=self.mol, num_confs=num_confs)
+            xyzs, energies = conformers.rdkit_force_field(label=self.label, rd_mol=rd_mol,
+                                                          mol=self.mol, force_field='MMFF94s')
+            if energies:
+                min_energy = min(energies)
+                min_energy_index = energies.index(min_energy)
+                self.cheap_conformer = xyzs[min_energy_index]
+            elif xyzs:
+                self.cheap_conformer = xyzs[0]
+            else:
+                logger.warning('Could not generate a cheap conformer for {0}'.format(self.label))
+                self.cheap_conformer = None
 
     def get_xyz(self, generate=True):
         """

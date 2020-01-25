@@ -141,7 +141,7 @@ def generate_conformers(mol_list, label, xyzs=None, torsions=None, tops=None, ch
                                      Useful when run outside of ARC. True to print.
         use_zmats (bool, optional): Whether to assign a Z Matrix to each conformer which will be used for detecting
                                     similar conformers to a certain tolerance. It might be memory-intensive to large
-                                    species, though.  ``True`` to use Z Matrices. ``True`` by default.
+                                    species, though. ``True`` to use Z Matrices. ``True`` by default.
 
     Returns:
         list: Lowest conformers (number of entries is num_confs_to_return times the number of enantiomer combinations)
@@ -174,17 +174,7 @@ def generate_conformers(mol_list, label, xyzs=None, torsions=None, tops=None, ch
 
     # a quick bypass for mono-atomic species:
     if len(mol_list[0].atoms) == 1:
-        element_symbol = mol_list[0].atoms[0].element.symbol
-        confs = [{'xyz': {'symbols': (element_symbol,),
-                          'isotopes': (converter.get_most_common_isotope_for_element(element_symbol),),
-                          'coords': ((0.0, 0.0, 0.0),)},
-                  'zmat': {'symbols': (element_symbol,), 'coords': ((None, None, None),), 'vars': {}, 'map': {0: 0}},
-                  'index': 0,
-                  'FF energy': 0.0,
-                  'chirality': None,
-                  'source': 'mono atomic species',
-                  'torsion_dihedrals': None,
-                   }]
+        confs = [generate_monoatomic_conformer(symbol=mol_list[0].atoms[0].element.symbol)]
         if not return_all_conformers:
             return confs
         else:
@@ -213,27 +203,33 @@ def generate_conformers(mol_list, label, xyzs=None, torsions=None, tops=None, ch
         mol_list=mol_list, label=label, xyzs=xyzs, torsion_num=len(torsions), charge=charge, multiplicity=multiplicity,
         num_confs=num_confs, force_field=force_field, use_zmats=use_zmats)
 
-    conformers = determine_dihedrals(conformers, torsions)
+    if len(conformers):
+        conformers = determine_dihedrals(conformers, torsions)
 
-    new_conformers, symmetries = deduce_new_conformers(
-        label, conformers, torsions, tops, mol_list, smeared_scan_res, plot_path=plot_path,
-        combination_threshold=combination_threshold, force_field=force_field, use_zmats=use_zmats,
-        max_combination_iterations=max_combination_iterations, diastereomers=diastereomers, de_threshold=de_threshold)
+        new_conformers, symmetries = deduce_new_conformers(
+            label, conformers, torsions, tops, mol_list, smeared_scan_res, plot_path=plot_path,
+            combination_threshold=combination_threshold, force_field=force_field, use_zmats=use_zmats,
+            max_combination_iterations=max_combination_iterations, diastereomers=diastereomers,
+            de_threshold=de_threshold)
 
-    new_conformers = determine_chirality(conformers=new_conformers, label=label, mol=mol_list[0])
+        new_conformers = determine_chirality(conformers=new_conformers, label=label, mol=mol_list[0])
 
-    num_confs_to_return = min(num_confs_to_return, len(new_conformers))  # don't return more than we have
-    lowest_confs = get_lowest_confs(label, new_conformers, n=num_confs_to_return, symmetries=symmetries)
+        num_confs_to_return = min(num_confs_to_return, len(new_conformers))  # don't return more than we have
+        lowest_confs = get_lowest_confs(label, new_conformers, n=num_confs_to_return, symmetries=symmetries)
 
-    lowest_confs.sort(key=lambda x: x['FF energy'], reverse=False)  # sort by output confs from lowest to highest energy
+        lowest_confs.sort(key=lambda x: x['FF energy'], reverse=False)  # sort by output confs, lowest to highest energy
 
-    execution_time = time.time() - t0
-    t, s = divmod(execution_time, 60)
-    t, m = divmod(t, 60)
-    d, h = divmod(t, 24)
-    days = f'{int(d)} days and ' if d else ''
-    if execution_time > 10:
-        logger.info(f'Conformer execution time using {force_field}: {days}{int(h):02d}:{int(m):02d}:{int(s):02d}')
+        execution_time = time.time() - t0
+        t, s = divmod(execution_time, 60)
+        t, m = divmod(t, 60)
+        d, h = divmod(t, 24)
+        days = f'{int(d)} days and ' if d else ''
+        if execution_time > 10:
+            logger.info(f'Conformer execution time using {force_field}: {days}{int(h):02d}:{int(m):02d}:{int(s):02d}')
+
+    else:
+        logger.error(f'Could not generate conformers for {label}: {mol_list[0].to_smiles()}')
+        lowest_confs, new_conformers = list(), list()
 
     if not return_all_conformers:
         return lowest_confs
@@ -449,7 +445,11 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
         list: New conformer combinations, entries are conformer dictionaries.
     """
     base_energy = get_force_field_energies(label, mol, num_confs=None, xyz=base_xyz,
-                                           force_field=force_field, optimize=True)[1][0]
+                                           force_field=force_field, optimize=True)[1]
+    if len(base_energy) == 0:
+        return list()
+    else:
+        base_energy = base_energy[0]
     new_conformers = list()  # will be returned
     lowest_conf_i = None
     for i in range(max_combination_iterations):
@@ -579,7 +579,7 @@ def generate_all_combinations(label, mol, base_xyz, multiple_tors, multiple_samp
 def generate_force_field_conformers(label, mol_list, torsion_num, charge, multiplicity, xyzs=None, num_confs=None,
                                     force_field='MMFF94s', use_zmats=True):
     """
-    Generate conformers using RDKit and Open Babel and optimize them using a force field
+    Generate conformers using RDKit and OpenBabel and optimize them using a force field
     Also consider user guesses in `xyzs`
 
     Args:
@@ -1022,7 +1022,7 @@ def get_torsion_angles(label, conformers, torsions):
     return torsion_angles
 
 
-def get_force_field_energies(label, mol, num_confs=None, xyz=None, force_field='MMFF94s',  optimize=True):
+def get_force_field_energies(label, mol, num_confs=None, xyz=None, force_field='MMFF94s',  optimize=True, try_ob=False):
     """
     Determine force field energies using RDKit.
     If num_confs is given, random 3D geometries will be generated. If xyz is given, it will be directly used instead.
@@ -1035,6 +1035,7 @@ def get_force_field_energies(label, mol, num_confs=None, xyz=None, force_field='
         xyz (dict, optional): The 3D coordinates guess.
         force_field (str, optional): The type of force field to use.
         optimize (bool, optional): Whether to first optimize the conformer using FF. True to optimize.
+        try_ob (bool, optional): Whether to try OpenBabel if RDKit fails. ``True`` to try, ``False`` by default.
 
     Returns:
         list: Entries are xyz coordinates, each in a dict format.
@@ -1047,23 +1048,24 @@ def get_force_field_energies(label, mol, num_confs=None, xyz=None, force_field='
     xyzs, energies = list(), list()
     if force_field.lower() in ['mmff94', 'mmff94s', 'uff']:
         rd_mol = embed_rdkit(label, mol, num_confs=num_confs, xyz=xyz)
-        xyzs, energies = rdkit_force_field(label, rd_mol, mol=mol, force_field=force_field, optimize=optimize)
-    if not len(xyzs) and force_field.lower() in ['gaff', 'mmff94', 'mmff94s', 'uff', 'ghemical']:
+        xyzs, energies = rdkit_force_field(label, rd_mol, mol=mol, force_field=force_field, optimize=optimize,
+                                           try_ob=try_ob)
+    if not len(xyzs) and force_field.lower() in ['gaff', 'mmff94', 'mmff94s', 'uff', 'ghemical'] and try_ob:
         xyzs, energies = mix_rdkit_and_openbabel_force_field(label, mol, num_confs=num_confs, xyz=xyz,
-                                                             force_field=force_field)
+                                                             force_field=force_field, try_ob=try_ob)
     if not len(xyzs):
         if force_field.lower() not in ['mmff94', 'mmff94s', 'uff', 'gaff', 'ghemical']:
             raise ConformerError(f'Unrecognized force field for {label}. Should be either MMFF94, MMFF94s, UFF, '
                                  f'Ghemical, or GAFF. Got: {force_field}.')
-        raise ConformerError(f'Could not generate conformers for species {label}.')
+        # raise ConformerError(f'Could not generate conformers for species {label}.')
     return xyzs, energies
 
 
-def mix_rdkit_and_openbabel_force_field(label, mol, num_confs=None, xyz=None, force_field='GAFF'):
+def mix_rdkit_and_openbabel_force_field(label, mol, num_confs=None, xyz=None, force_field='GAFF', try_ob=False):
     """
     Optimize conformers using a force field (GAFF, MMFF94s, MMFF94, UFF, Ghemical)
-    Use RDKit to generate the random conformers (open babel isn't good enough),
-    but use open babel to optimize them (RDKit doesn't have GAFF)
+    Use RDKit to generate the random conformers (OpenBabel isn't good enough),
+    but use OpenBabel to optimize them (RDKit doesn't have GAFF)
 
     Args:
         label (str): The species' label.
@@ -1071,6 +1073,7 @@ def mix_rdkit_and_openbabel_force_field(label, mol, num_confs=None, xyz=None, fo
         num_confs (int, optional): The number of random 3D conformations to generate.
         xyz (string or list, optional): The 3D coordinates in either a string or an array format.
         force_field (str, optional): The type of force field to use.
+        try_ob (bool, optional): Whether to try OpenBabel if RDKit fails. ``True`` to try, ``False`` by default.
 
     Returns:
         list: Entries are optimized xyz's in a list format.
@@ -1088,9 +1091,9 @@ def mix_rdkit_and_openbabel_force_field(label, mol, num_confs=None, xyz=None, fo
         xyz = [xyz[j] for j, _ in enumerate(xyz)]  # reorder
         unoptimized_xyzs.append(xyz)
 
-    if not len(unoptimized_xyzs):
+    if not len(unoptimized_xyzs) and try_ob:
         # use OB as the fall back method
-        logger.warning(f'Using OpenBable instead of RDKit as a fall back method to generate conformers for {label}. '
+        logger.warning(f'Using OpenBabel instead of RDKit as a fall back method to generate conformers for {label}. '
                        f'This is often slower, and prohibits ARC from using all features of the conformers module.')
         xyzs, energies = openbabel_force_field(label, mol, num_confs, force_field=force_field)
 
@@ -1112,8 +1115,8 @@ def openbabel_force_field(label, mol, num_confs=None, xyz=None, force_field='GAF
         num_confs (int, optional): The number of random 3D conformations to generate.
         xyz (dict, optional): The 3D coordinates.
         force_field (str, optional): The type of force field to use.
-        method (str, optional): The conformer searching method to use in open babel.
-                                         For method description, see http://openbabel.org/dev-api/group__conformer.shtml
+        method (str, optional): The conformer searching method to use in OpenBabel.
+                                For method description, see http://openbabel.org/dev-api/group__conformer.shtml
 
     Returns:
         list: Entries are optimized xyz's in a list format.
@@ -1124,7 +1127,7 @@ def openbabel_force_field(label, mol, num_confs=None, xyz=None, force_field='GAF
     ff = ob.OBForceField.FindForceField(force_field)
 
     if xyz is not None:
-        # generate an open babel molecule
+        # generate an OpenBabel molecule
         obmol = ob.OBMol()
         atoms = mol.vertices
         ob_atom_ids = dict()  # dictionary of OB atom IDs
@@ -1289,10 +1292,10 @@ def read_rdkit_embedded_conformer_i(rd_mol, i, rd_index_map=None):
     return xyz_dict
 
 
-def rdkit_force_field(label, rd_mol, mol=None, force_field='MMFF94s', optimize=True):
+def rdkit_force_field(label, rd_mol, mol=None, force_field='MMFF94s', optimize=True, try_ob=False):
     """
     Optimize RDKit conformers using a force field (MMFF94 or MMFF94s are recommended).
-    Fallback to Open Babel if RDKit fails.
+    Fallback to OpenBabel if RDKit fails.
 
     Args:
         label (str): The species' label.
@@ -1300,6 +1303,7 @@ def rdkit_force_field(label, rd_mol, mol=None, force_field='MMFF94s', optimize=T
         mol (Molecule, optional): The RMG molecule object with connectivity and bond order information.
         force_field (str, optional): The type of force field to use.
         optimize (bool, optional): Whether to first optimize the conformer using FF. True to optimize.
+        try_ob (bool, optional): Whether to try OpenBabel if RDKit fails. ``True`` to try, ``False`` by default.
 
     Returns:
         list: Entries are optimized xyz's in a dictionary format.
@@ -1320,8 +1324,8 @@ def rdkit_force_field(label, rd_mol, mol=None, force_field='MMFF94s', optimize=T
             if optimize:
                 energies.append(ff.CalcEnergy())
             xyzs.append(read_rdkit_embedded_conformer_i(rd_mol, i))
-    if not len(xyzs):
-        # RDKit failed, try Open Babel
+    if not len(xyzs) and try_ob:
+        # RDKit failed, try OpenBabel
         energies = list()
         xyzs = read_rdkit_embedded_conformers(label, rd_mol)
         for xyz in xyzs:
@@ -1557,6 +1561,29 @@ def update_mol(mol):
     mol.update_multiplicity()
     mol.identify_ring_membership()
     return mol
+
+
+def generate_monoatomic_conformer(symbol):
+    """
+    Generate a conformer for a monoatomic species.
+
+    Args:
+        symbol (str): The atomic symbol.
+
+    Returns:
+        dict: The monoatomic conformer.
+    """
+    conf = {'xyz': {'symbols': (symbol,),
+                    'isotopes': (converter.get_most_common_isotope_for_element(symbol),),
+                    'coords': ((0.0, 0.0, 0.0),)},
+            'zmat': {'symbols': (symbol,), 'coords': ((None, None, None),), 'vars': {}, 'map': {0: 0}},
+            'index': 0,
+            'FF energy': 0.0,
+            'chirality': None,
+            'source': 'monoatomic species',
+            'torsion_dihedrals': None,
+            }
+    return conf
 
 
 def compare_zmats(z1, z2, r_tol=0.01, a_tol=2, d_tol=2, verbose=False, symmetric_torsions=None, index=1):
