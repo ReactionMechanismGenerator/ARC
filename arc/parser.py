@@ -9,7 +9,7 @@ import numpy as np
 import os
 
 from arkane.exceptions import LogError
-from arkane.ess import GaussianLog, MolproLog, QChemLog, OrcaLog
+from arkane.ess import GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
 from arkane.util import determine_qm_software
 
 from arc.common import get_logger, determine_ess
@@ -72,10 +72,29 @@ def parse_frequencies(path, software):
                     break
                 else:
                     line = f.readline()
+    elif software.lower() == 'terachem':
+        read_output = False
+        for line in lines:
+            if '=== Mode' in line:
+                # example: '=== Mode 1: 1198.526 cm^-1 ==='
+                freqs = np.append(freqs, [float(line.split()[3])])
+            elif 'Vibrational Frequencies/Thermochemical Analysis After Removing Rotation and Translation' in line:
+                read_output = True
+                continue
+            elif read_output:
+                if 'Temperature (Kelvin):' in line or 'Frequency(cm-1)' in line:
+                    continue
+                if not line.strip():
+                    break
+                # example:
+                # 'Mode  Eigenvalue(AU)  Frequency(cm-1)  Intensity(km/mol)   Vib.Temp(K)      ZPE(AU) ...'
+                # '  1     0.0331810528   170.5666870932      52.2294230772  245.3982965841   0.0003885795 ...'
+                freqs = np.append(freqs, [float(line.split()[2])])
+
     else:
-        raise ParserError(f'parse_frequencies() can currently only parse Orca, Molpro, QChem and Gaussian files,'
-                          f' got {software}')
-    logger.debug(f'Using parser.parse_frequencies. Determined frequencies are: {freqs}')
+        raise ParserError(f'parse_frequencies() can currently only parse Gaussian, Molpro, Orca, QChem and TeraChem '
+                          f'files, got {software}')
+    logger.debug(f'Using parser.parse_frequencies(). Determined frequencies are: {freqs}')
     return freqs
 
 
