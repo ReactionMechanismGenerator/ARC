@@ -21,7 +21,7 @@ from rmgpy.species import Species
 from rmgpy.statmech import NonlinearRotor, LinearRotor
 from rmgpy.transport import TransportData
 
-from arc.common import get_logger, determine_symmetry, determine_top_group_indices
+from arc.common import get_logger, get_single_bond_length, determine_symmetry, determine_top_group_indices
 from arc.exceptions import SpeciesError, RotorError, InputError, TSError, SanitizationError
 from arc.parser import parse_xyz_from_file, parse_dipole_moment, parse_polarizability, process_conformers_file, \
     parse_1d_scan_energies
@@ -30,6 +30,7 @@ from arc.species import conformers
 from arc.species.converter import check_isomorphism, check_xyz_dict, check_zmat_dict, get_xyz_radius, \
     molecules_from_xyz, order_atoms_in_mol_list, rdkit_conf_from_mol, remove_dummies, rmg_mol_from_inchi, \
     set_rdkit_dihedrals, str_to_xyz, translate_to_center_of_mass, xyz_from_data, xyz_to_str
+from arc.species.vectors import calculate_distance
 from arc.ts import atst
 
 
@@ -219,8 +220,8 @@ class ARCSpecies(object):
                            heteroatoms). Another option is specifying 'cheap', and the "old" RDKit embedding method
                            will be used.
         conf_is_isomorphic (bool): Whether the lowest conformer is isomorphic with the 2D graph representation
-                                   of the species. `True` if it is. Defaults to `None`. If `True`, an isomorphism check
-                                   will be strictly enforced for the final optimized coordinates.
+                                   of the species. ``True`` if it is. Defaults to ``None``. If ``True``, an isomorphism
+                                   check will be strictly enforced for the final optimized coordinates.
         conformers_before_opt (tuple): Conformers XYZs of a species before optimization.
         bdes (list): Specifying for which bonds should bond dissociation energies be calculated.
                      Entries are bonded atom indices tuples (1-indexed). An 'all_h' string entry is also allowed,
@@ -1146,16 +1147,12 @@ class ARCSpecies(object):
             original_mol = self.mol.copy(deep=True)
             self.mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
             if self.mol is not None and not check_isomorphism(original_mol, self.mol):
-                if original_mol.multiplicity in [1, 2]:
-                    raise SpeciesError('XYZ and the 2D graph representation for {0} are not isomorphic.\n'
-                                       'Got xyz:\n{1}\n\nwhich corresponds to {2}\n{3}\n\nand: {4}\n{5}'.format(
-                                        self.label, xyz, self.mol.to_smiles(), self.mol.to_adjacency_list(),
-                                        original_mol.to_smiles(), original_mol.to_adjacency_list()))
-                else:
-                    logger.warning('XYZ and the 2D graph representation for {0} are not isomorphic.\n'
-                                   'Got xyz:\n{1}\n\nwhich corresponds to {2}\n{3}\n\nand: {4}\n{5}'.format(
-                                    self.label, xyz, self.mol.to_smiles(), self.mol.to_adjacency_list(),
-                                    original_mol.to_smiles(), original_mol.to_adjacency_list()))
+                logger.warning('XYZ and the 2D graph representation for {0} are not isomorphic.\n'
+                               'Got xyz:\n{1}\n\nwhich corresponds to {2}\n{3}\n\nand: {4}\n{5}'.format(
+                                self.label, xyz, self.mol.to_smiles(), self.mol.to_adjacency_list(),
+                                original_mol.to_smiles(), original_mol.to_adjacency_list()))
+                if not are_coords_compliant_with_graph(xyz=xyz, mol=self.mol):
+                    raise SpeciesError(f'XYZ and the 2D graph representation for {self.label} are not compliant')
             elif self.mol is None:
                 # molecules_from_xyz() returned None for b_mol
                 self.mol = original_mol  # todo: Atom order will not be correct, need fix
@@ -1283,6 +1280,8 @@ class ARCSpecies(object):
     def check_xyz_isomorphism(self, allow_nonisomorphic_2d=False, xyz=None, verbose=True):
         """
         Check whether the perception of self.final_xyz or ``xyz`` is isomorphic with self.mol.
+        If it is not isomorphic, compliant coordinates will be checked (equivalent to checking isomorphism without
+        bond order information, only does not necessitates a molecule object, directly checks bond lengths)
 
         Args:
             allow_nonisomorphic_2d (bool, optional): Whether to continue spawning jobs for the species even if this
@@ -1294,45 +1293,46 @@ class ARCSpecies(object):
             bool: Whether the perception of self.final_xyz is isomorphic with self.mol, ``True`` if it is.
         """
         xyz = xyz or self.final_xyz
-        passed_test, return_value = False, False
+        result = False
         if self.mol is not None:
             try:
                 b_mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
             except SanitizationError:
                 b_mol = None
+                if verbose:
+                    logger.error(f'Could not perceive the Cartesian coordinates of species {self.label}')
             if b_mol is not None:
-                is_isomorphic = check_isomorphism(self.mol, b_mol)
-            else:
-                is_isomorphic = False
-            if is_isomorphic:
-                passed_test, return_value = True, True
-            else:
-                # isomorphism test failed
-                passed_test = False
-                if self.conf_is_isomorphic:
-                    if allow_nonisomorphic_2d:
-                        # conformer was isomorphic, we **do** allow nonisomorphism, and the optimized structure isn't
-                        return_value = True
-                    else:
-                        # conformer was isomorphic, we don't allow nonisomorphism, but the optimized structure isn't
-                        return_value = False
+                result = check_isomorphism(self.mol, b_mol)
+                if not result and verbose:
+                    logger.error(f'The Cartesian coordinates of species {self.label} are not isomorphic with the 2D '
+                                 f'structure {self.mol.to_smiles()}')
+            if b_mol is None or not result:
+                result = are_coords_compliant_with_graph(xyz=xyz, mol=self.mol)
+                if not result and verbose:
+                    logger.error(f'The Cartesian coordinates of species {self.label} are not compliant with the 2D '
+                                 f'structure {self.mol.to_smiles()}')
+            if not result and self.conf_is_isomorphic:
+                if allow_nonisomorphic_2d:
+                    # conformer was isomorphic, we **do** allow nonisomorphism, and the optimized structure isn't
+                    result = True
+                    if verbose:
+                        logger.warning('allowing nonisomorphic 2D')
                 else:
-                    # conformer was not isomorphic, don't strictly enforce isomorphism here
-                    return_value = True
-            if not passed_test and verbose:
-                logger.error('The optimized geometry of species {0} is not isomorphic with the 2D structure {1}'.format(
-                    self.label, self.mol.to_smiles()))
-                if not return_value:
-                    logger.error('Not spawning additional jobs for this species!')
-            elif verbose:
-                logger.info('Species {0} was found to be isomorphic with the perception '
-                            'of its optimized coordinates.'.format(self.label))
+                    # conformer was isomorphic, we don't allow nonisomorphism, but the optimized structure isn't
+                    result = False
+                    if verbose:
+                        logger.warning('not allowing nonisomorphic 2D')
+            elif not result and verbose:
+                logger.warning('not allowing nonisomorphic 2D')
         else:
             if verbose:
-                logger.error('Cannot check isomorphism for species {0}'.format(self.label))
+                logger.error(f'Cannot check isomorphism for species {self.label} '
+                             f'without the 2D graph connectivity information.')
             if allow_nonisomorphic_2d:
-                return_value = True
-        return return_value
+                result = True
+                if verbose:
+                    logger.warning('allowing nonisomorphic 2D')
+        return result
 
     def scissors(self):
         """
@@ -1927,3 +1927,34 @@ def check_xyz(xyz, multiplicity, charge):
     if electrons % 2 ^ multiplicity % 2:
         return True
     return False
+
+
+def are_coords_compliant_with_graph(xyz, mol):
+    """
+    Check whether the Cartesian coordinates represent the same 2D connectivity as the graph.
+    Bond orders are not considered here, this function checks whether the coordinates represent a bond length
+    below 120% of the single bond length of the respective elements.
+
+    Args:
+        xyz (dict): The Cartesian coordinates.
+        mol (Molecule): The 2D graph connectivity information.
+
+    Returns:
+        bool: Whether the coordinates are compliant with the 2D connectivity graph. ``True`` if they are.
+    """
+    checked_atoms = list()
+    for atom_index_1, atom1 in enumerate(mol.atoms):
+        if atom1.element.symbol != xyz['symbols'][atom_index_1]:
+            logger.warning(f'Element order in xyz ({xyz["symbols"]}) differs from mol '
+                           f'({[atom.element.symbol for atom in mol.atoms]})')
+            return False
+        for atom2 in atom1.edges.keys():
+            atom_index_2 = mol.atoms.index(atom2)
+            if atom_index_2 not in checked_atoms:
+                r = calculate_distance(coords=xyz['coords'], atoms=[atom_index_1, atom_index_2])
+                single_bond_r = get_single_bond_length(atom1.element.symbol, atom2.element.symbol)
+                if r > single_bond_r * 1.2:
+                    return False
+        checked_atoms.append(atom_index_1)
+    return True
+

@@ -15,6 +15,7 @@ from rmgpy.molecule.molecule import Molecule
 import arc.common as common
 from arc.exceptions import InputError, SettingsError
 from arc.settings import arc_path, servers
+import arc.species.converter as converter
 
 
 class TestCommon(unittest.TestCase):
@@ -72,6 +73,29 @@ class TestCommon(unittest.TestCase):
         time.sleep(2)
         lap = common.time_lapse(t0)
         self.assertEqual(lap, '00:00:02')
+
+    def test_colliding_atoms(self):
+        """Check that we correctly determine when atoms collide in xyz"""
+        xyz0 = """C	0.0000000	0.0000000	0.6505570"""  # monoatomic
+        xyz1 = """C      -0.84339557   -0.03079260   -0.13110478
+N       0.53015060    0.44534713   -0.25006000
+O       1.33245258   -0.55134720    0.44204567
+H      -1.12632103   -0.17824612    0.91628291
+H      -1.52529493    0.70480833   -0.56787044
+H      -0.97406455   -0.97317212   -0.67214713
+H       0.64789210    1.26863944    0.34677470
+H       1.98414750   -0.79355889   -0.24492049"""  # no colliding atoms
+        xyz2 = """C      -0.84339557   -0.03079260   -0.13110478
+N       0.53015060    0.44534713   -0.25006000
+O       1.33245258   -0.55134720    0.44204567
+H      -1.12632103   -0.17824612    0.91628291
+H      -1.52529493    0.70480833   -0.56787044
+H      -0.97406455   -0.97317212   -0.67214713
+H       1.33245258   -0.55134720    0.48204567
+H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
+        self.assertFalse(common.colliding_atoms(converter.str_to_xyz(xyz0)))
+        self.assertFalse(common.colliding_atoms(converter.str_to_xyz(xyz1)))
+        self.assertTrue(common.colliding_atoms(converter.str_to_xyz(xyz2)))
 
     def test_check_ess_settings(self):
         """Test the check_ess_settings function"""
@@ -603,6 +627,22 @@ class TestCommon(unittest.TestCase):
         self.assertFalse(common.is_str_float(' '))
         self.assertFalse(common.is_str_float('R1'))
         self.assertFalse(common.is_str_float('D_3_5_7_4'))
+
+    def test_get_atom_radius(self):
+        """Test determining the covalent radius of an atom"""
+        self.assertEqual(common.get_atom_radius('C'), 0.76)
+        self.assertEqual(common.get_atom_radius('S'), 1.05)
+        self.assertEqual(common.get_atom_radius('O'), 0.66)
+        self.assertEqual(common.get_atom_radius('H'), 0.31)
+        self.assertEqual(common.get_atom_radius('N'), 0.71)
+        self.assertIsNone(common.get_atom_radius('wrong'))
+
+    def test_get_single_bond_length(self):
+        """Test getting an approximation for a single bond length"""
+        self.assertEqual(common.get_single_bond_length('C', 'C'), 1.54)
+        self.assertEqual(common.get_single_bond_length('C', 'O'), 1.43)
+        self.assertEqual(common.get_single_bond_length('O', 'C'), 1.43)
+        self.assertEqual(common.get_single_bond_length('P', 'Si'), 2.5)
 
 
 if __name__ == '__main__':
