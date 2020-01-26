@@ -951,10 +951,6 @@ H       1.11582953    0.94384729   -0.10134685"""
         is_isomorphic3 = spc2.check_xyz_isomorphism(allow_nonisomorphic_2d=True)
         self.assertTrue(is_isomorphic3)
 
-        spc2.conf_is_isomorphic = False  # set to False so that isomorphism is not strictly enforced
-        is_isomorphic4 = spc2.check_xyz_isomorphism()
-        self.assertTrue(is_isomorphic4)
-
     def test_scissors(self):
         """Test the scissors method in Species"""
         ch3oc2h5_xyz = """C  1.3324310  1.2375310  0.0000000
