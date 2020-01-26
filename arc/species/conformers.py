@@ -504,7 +504,7 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
                 base_energy = lowest_conf_i['FF energy']
     if plot_path is not None:
         logger.info(converter.xyz_to_str(lowest_conf_i['xyz']))
-        arc.plotter.show_sticks(lowest_conf_i['xyz'])
+        arc.plotter.draw_structure(xyz=lowest_conf_i['xyz'])
         num_comb = arc.plotter.plot_torsion_angles(torsion_angles, multiple_sampling_points_dict,
                                                    wells_dict=wells_dict, e_conformers=newest_conformers_dict,
                                                    de_threshold=de_threshold, plot_path=plot_path)
@@ -1378,33 +1378,6 @@ def get_wells(label, angles, blank=20):
         wells[-1]['end_angle'] = new_angles[-1]
         wells[-1]['angles'].append(new_angles[-1])
     return wells
-
-
-def check_atom_collisions(xyz):
-    """
-    Check whether atoms are too close to each other.
-
-    Args:
-        xyz (dict): The 3D geometry.
-
-    Returns:
-         bool: True if they are colliding, False otherwise.
-
-    Todo:
-        - Consider atomic radius for the different elements
-    """
-    coords = xyz['coords']
-    symbols = xyz['symbols']
-    if symbols == ('H', 'H'):
-        # hard-code for H2:
-        if sum((coords[0][k] - coords[1][k]) ** 2 for k in range(3)) ** 0.5 < 0.5:
-            return True
-    for i, coord1 in enumerate(coords):
-        if i < len(coords) - 1:
-            for coord2 in coords[i+1:]:
-                if sum((coord1[k] - coord2[k]) ** 2 for k in range(3)) ** 0.5 < 0.9:
-                    return True
-    return False
 
 
 def check_special_non_rotor_cases(mol, top1, top2):

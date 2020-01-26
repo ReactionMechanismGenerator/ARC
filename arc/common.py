@@ -335,6 +335,35 @@ def get_atom_radius(symbol):
     return r
 
 
+def colliding_atoms(xyz):
+    """
+    Check whether atoms are too close to each other.
+
+    Args:
+        xyz (dict): The Cartesian coordinates.
+
+    Returns:
+         bool: ``True`` if they are colliding, ``False`` otherwise.
+    """
+    if len(xyz['symbols']) == 1:
+        # monoatomic
+        return False
+    coords = xyz['coords']
+    symbols = xyz['symbols']
+    atom_radaii = [get_atom_radius(symbol) for symbol in symbols]
+    for i, coord1 in enumerate(coords):
+        if i < len(coords) - 1:
+            for j, coord2 in enumerate(coords[i+1:]):
+                if sum((coord1[k] - coord2[k]) ** 2 for k in range(3)) ** 0.5 < \
+                        0.9 * (atom_radaii[i] + atom_radaii[j + i + 1]):  # take a 10% confidence value
+                    logger.debug(f'atom {symbols[i]} with coords {coord1} is distant '
+                                 f'{sum((coord1[k] - coord2[k]) ** 2 for k in range(3)) ** 0.5} '
+                                 f'from atom {symbols[i + j + 1]} with coords {coord2}, '
+                                 f'should be more than {atom_radaii[i] + atom_radaii[j + i + 1]}')
+                    return True
+    return False
+
+
 def determine_symmetry(xyz):
     """
     Determine external symmetry and chirality (optical isomers) of the species.
