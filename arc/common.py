@@ -22,7 +22,7 @@ import yaml
 import numpy as np
 import qcelemental as qcel
 
-from arkane.ess import GaussianLog, MolproLog, QChemLog, OrcaLog
+from arkane.ess import GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
 from arkane.util import determine_qm_software
 from rmgpy.molecule.element import get_element
 from rmgpy.qm.qmdata import QMData
@@ -37,25 +37,91 @@ logger = logging.getLogger('arc')
 VERSION = '1.1.0'
 
 
-def time_lapse(t0):
+def initialize_job_types(job_types, specific_job_type=''):
     """
-    A helper function returning the elapsed time since t0.
+    A helper function for initializing job_types.
+    Returns the comprehensive (default values for missing job types) job types for ARC.
 
     Args:
-        t0 (time.pyi): The initial time the count starts from.
+        job_types (dict): Keys are job types, values are booleans of whether or not to consider this job type.
+        specific_job_type (str): Specific job type to execute. Legal strings are job types (keys of job_types dict).
 
     Returns:
-        str: A "D HH:MM:SS" formatted time difference between now and t0.
+        job_types (dict): An updated (comprehensive) job type dictionary.
     """
-    t = time.time() - t0
-    m, s = divmod(t, 60)
-    h, m = divmod(m, 60)
-    d, h = divmod(h, 24)
-    if d > 0:
-        d = str(d) + ' days, '
+    if specific_job_type:
+        logger.info(f'Specific_job_type {specific_job_type} was requested by the user.')
+        if job_types:
+            logger.warning('Both job_types and specific_job_type were given, use only specific_job_type to '
+                           'populate the job_types dictionary.')
+        job_types = {job_type: False for job_type in default_job_types.keys()}
+        try:
+            job_types[specific_job_type] = True
+        except KeyError:
+            raise InputError(f'Specified job type {specific_job_type} is not supported.')
+
+    if specific_job_type == 'bde':
+        bde_default = {'opt': True, 'fine_grid': True, 'freq': True, 'sp': True}
+        job_types.update(bde_default)
+
+    defaults_to_true = ['conformers', 'opt', 'fine', 'freq', 'sp', 'rotors']
+    defaults_to_false = ['onedmin', 'orbitals', 'bde']
+    if job_types is None:
+        job_types = default_job_types
+        logger.info('Job types were not specified, using default values from ARC settings')
     else:
-        d = ''
-    return '{0}{1:02.0f}:{2:02.0f}:{3:02.0f}'.format(d, h, m, s)
+        logger.debug(f'the following job types were specified: {job_types}.')
+    if 'lennard_jones' in job_types:
+        # rename lennard_jones to OneDMin
+        job_types['onedmin'] = job_types['lennard_jones']
+        del job_types['lennard_jones']
+    if 'fine_grid' in job_types:
+        # rename fine_grid to fine
+        job_types['fine'] = job_types['fine_grid']
+        del job_types['fine_grid']
+    for job_type in defaults_to_true:
+        if job_type not in job_types:
+            # set default value to True if this job type key is missing
+            job_types[job_type] = True
+    for job_type in defaults_to_false:
+        if job_type not in job_types:
+            # set default value to False if this job type key is missing
+            job_types[job_type] = False
+    for job_type in job_types.keys():
+        if job_type not in defaults_to_true and job_type not in defaults_to_false:
+            if job_type == '1d_rotors':
+                logging.error("Note: The `1d_rotors` job type was renamed to simply `rotors`. "
+                              "Please modify your input accordingly (see ARC's documentation for examples).")
+            raise InputError(f"Job type '{job_type}' is not supported. Check the job types dictionary "
+                             "(either in ARC's input or in default_job_types under settings).")
+    job_types_report = [job_type for job_type, val in job_types.items() if val]
+    logger.info(f'\nConsidering the following job types: {job_types_report}\n')
+    return job_types
+
+
+def determine_ess(log_file):
+    """
+    Determine the ESS to which the log file belongs.
+
+    Args:
+        log_file (str): The ESS log file path.
+
+    Returns:
+        str: The ESS log class from Arkane.
+    """
+    log = determine_qm_software(log_file)
+    if isinstance(log, GaussianLog):
+        return 'gaussian'
+    if isinstance(log, MolproLog):
+        return 'molpro'
+    if isinstance(log, OrcaLog):
+        return 'orca'
+    if isinstance(log, QChemLog):
+        return 'qchem'
+    if isinstance(log, TeraChemLog):
+        return 'terachem'
+    raise InputError(f'Could not identify the log file in {log_file} as belonging to '
+                     f'Gaussian, Molpro, Orca, QChem, or TeraChem.')
 
 
 def check_ess_settings(ess_settings=None):
@@ -88,7 +154,7 @@ def check_ess_settings(ess_settings=None):
     # run checks:
     for ess, server_list in settings.items():
         if ess.lower() not in ['gaussian', 'qchem', 'molpro', 'orca', 'terachem', 'onedmin', 'gromacs']:
-            raise SettingsError('Recognized ESS software are Gaussian, QChem, Molpro, Orca or OneDMin. '
+            raise SettingsError('Recognized ESS software are Gaussian, QChem, Molpro, Orca, TeraChem or OneDMin. '
                                 'Got: {0}'.format(ess))
         for server in server_list:
             if not isinstance(server, bool) and server.lower() not in list(servers.keys()):
@@ -364,6 +430,43 @@ def colliding_atoms(xyz):
     return False
 
 
+# a bond length dictionary of single bonds, Angstrom
+# https://sites.google.com/site/chempendix/bond-lengths
+# https://courses.lumenlearning.com/suny-potsdam-organicchemistry/chapter/1-3-basics-of-bonding/
+SINGLE_BOND_LENGTH = {'Br-Br': 2.29, 'Br-Cr': 1.94, 'Br-H': 1.41,
+                      'C-C': 1.54, 'C-Cl': 1.77, 'C-F': 1.35, 'C-H': 1.09, 'C-I': 2.13,
+                      'C-N': 1.47, 'C-O': 1.43, 'C-P': 1.87, 'C-S': 1.81, 'C-Si': 1.86,
+                      'Cl-Cl': 1.99, 'Cl-H': 1.27, 'Cl-N': 1.75, 'Cl-Si': 2.03, 'Cl-P': 2.03, 'Cl-S': 2.07,
+                      'F-F': 1.42, 'F-H': 0.92, 'F-P': 1.57, 'F-S': 1.56, 'F-Si': 1.56, 'F-Xe': 1.90,
+                      'H-H': 0.74, 'H-I': 1.61, 'H-N': 1.04, 'H-O': 0.96, 'H-P': 1.42, 'H-S': 1.34, 'H-Si': 1.48,
+                      'I-I': 2.66,
+                      'N-N': 1.45,
+                      'O-O': 1.48, 'O-P': 1.63, 'O-S': 1.58, 'O-Si': 1.66,
+                      'P-P': 2.21,
+                      'S-S': 2.05,
+                      'Si-Si': 2.35,
+                      }
+
+
+def get_single_bond_length(symbol1, symbol2):
+    """
+    Get the an approximate for a single bond length between two elements.
+
+    Args:
+        symbol1 (str): Symbol 1.
+        symbol2 (str): Symbol 2.
+
+    Returns:
+        float: The estimated single bond length in Angstrom.
+    """
+    bond1, bond2 = '-'.join([symbol1, symbol2]), '-'.join([symbol2, symbol1])
+    if bond1 in SINGLE_BOND_LENGTH.keys():
+        return SINGLE_BOND_LENGTH[bond1]
+    if bond2 in SINGLE_BOND_LENGTH.keys():
+        return SINGLE_BOND_LENGTH[bond2]
+    return 2.5
+
+
 def determine_symmetry(xyz):
     """
     Determine external symmetry and chirality (optical isomers) of the species.
@@ -460,6 +563,52 @@ def extermum_list(lst, return_min=True):
         return max([entry for entry in lst if entry is not None])
 
 
+def sort_two_lists_by_the_first(list1, list2):
+    """
+    Sort two lists in increasing order by the values of the first list.
+    Ignoring None entries from list1 and their respective entries in list2.
+    The function was written in this format rather the more pytonic ``zip(*sorted(zip(list1, list2)))`` style
+    to accommodate for dictionaries as entries of list2, otherwise a
+    ``TypeError: '<' not supported between instances of 'dict' and 'dict'`` error is raised.
+
+    Args:
+        list1 (list, tuple): Entries are floats or ints (could also be None).
+        list2 (list, tuple): Entries could be anything.
+
+    Returns:
+        list: Sorted values from list1, ignoring None entries.
+    Returns:
+        list: Respective entries from list2.
+
+    Raises:
+        InputError: If types are wrong, or lists are not the same length.
+    """
+    if not isinstance(list1, (list, tuple)) or not isinstance(list2, (list, tuple)):
+        raise InputError(f'Arguments must be lists, got: {type(list1)} and {type(list2)}')
+    for entry in list1:
+        if not isinstance(entry, (float, int)) and entry is not None:
+            raise InputError(f'Entries of list1 must be either floats or integers, got: {type(entry)}.')
+    if len(list1) != len(list2):
+        raise InputError(f'Both lists must be the same length, got {len(list1)} and {len(list2)}')
+
+    # remove None entries from list1 and their respective entries from list2:
+    new_list1, new_list2 = list(), list()
+    for entry1, entry2 in zip(list1, list2):
+        if entry1 is not None:
+            new_list1.append(entry1)
+            new_list2.append(entry2)
+    indices = list(range(len(new_list1)))
+
+    zipped_lists = zip(new_list1, indices)
+    sorted_lists = sorted(zipped_lists)
+    sorted_list1 = [x for x, _ in sorted_lists]
+    sorted_indices = [x for _, x in sorted_lists]
+    sorted_list2 = [0] * len(new_list2)
+    for counter, index in enumerate(sorted_indices):
+        sorted_list2[counter] = new_list2[index]
+    return sorted_list1, sorted_list2
+
+
 def key_by_val(dictionary, value):
     """
     A helper function for getting a key from a dictionary corresponding to a certain value.
@@ -479,94 +628,6 @@ def key_by_val(dictionary, value):
         if val == value:
             return key
     raise ValueError(f'Could not find value {value} in the dictionary\n{dictionary}')
-
-
-def initialize_job_types(job_types, specific_job_type=''):
-    """
-    A helper function for initializing job_types.
-    Returns the comprehensive (default values for missing job types) job types for ARC.
-
-    Args:
-        job_types (dict): Keys are job types, values are booleans of whether or not to consider this job type.
-        specific_job_type (str): Specific job type to execute. Legal strings are job types (keys of job_types dict).
-
-    Returns:
-        job_types (dict): An updated (comprehensive) job type dictionary.
-    """
-
-    if specific_job_type:
-        logger.info(f'Specific_job_type {specific_job_type} is given by user.')
-        if job_types:
-            logger.warning('Both job_types and specific_job_type are given, ARC will only use specific_job_type to '
-                           'populate the job_types dictionary.')
-        job_types = {job_type: False for job_type in default_job_types.keys()}
-        try:
-            job_types[specific_job_type] = True
-        except KeyError:
-            raise InputError(f'Specified job type {specific_job_type} is not supported.')
-
-    if specific_job_type == 'bde':
-        bde_default = {'opt': True, 'fine_grid': True, 'freq': True, 'sp': True}
-        job_types.update(bde_default)
-
-    defaults_to_true = ['conformers', 'opt', 'fine', 'freq', 'sp', 'rotors']
-    defaults_to_false = ['onedmin', 'orbitals', 'bde']
-    if job_types is None:
-        job_types = default_job_types
-        logger.info("Job types were not specified, using ARC's defaults")
-    else:
-        logger.debug(f'The following job types were specified: {job_types}.')
-    if 'lennard_jones' in job_types:
-        # rename lennard_jones to OneDMin
-        job_types['onedmin'] = job_types['lennard_jones']
-        del job_types['lennard_jones']
-    if 'fine_grid' in job_types:
-        # rename fine_grid to fine
-        job_types['fine'] = job_types['fine_grid']
-        del job_types['fine_grid']
-    for job_type in defaults_to_true:
-        if job_type not in job_types:
-            # set default value to True if this job type key is missing
-            job_types[job_type] = True
-    for job_type in defaults_to_false:
-        if job_type not in job_types:
-            # set default value to False if this job type key is missing
-            job_types[job_type] = False
-    for job_type in job_types.keys():
-        if job_type not in defaults_to_true and job_type not in defaults_to_false:
-            if job_type == '1d_rotors':
-                logging.error("Note: The `1d_rotors` job type was renamed to simply `rotors`. "
-                              "Please modify your input accordingly (see ARC's documentation for examples).")
-            raise InputError(f"Job type '{job_type}' is not supported. Check the job types dictionary "
-                             "(either in ARC's input or in default_job_types under settings).")
-    job_types_report = [job_type for job_type, val in job_types.items() if val]
-    logger.info(f'\nConsidering the following job types: {job_types_report}\n')
-    return job_types
-
-
-def determine_ess(log_file):
-    """
-    Determine the ESS to which the log file belongs.
-
-    Args:
-        log_file (str): The ESS log file path.
-
-    Returns:
-        str: The ESS (either 'gaussian', 'qchem', or 'molpro').
-
-    Raises:
-        InputError: If the log file could not be identified.
-    """
-    log = determine_qm_software(log_file)
-    if isinstance(log, GaussianLog):
-        return 'gaussian'
-    if isinstance(log, QChemLog):
-        return 'qchem'
-    if isinstance(log, MolproLog):
-        return 'molpro'
-    if isinstance(log, OrcaLog):
-        return 'orca'
-    raise InputError(f'Could not identify the log file in {log_file} as belonging to Gaussian, QChem, Molpro, or Orca.')
 
 
 def almost_equal_coords(xyz1, xyz2, rtol=1.0000000000000001e-05, atol=1e-08):
@@ -616,52 +677,6 @@ def almost_equal_coords_lists(xyz1, xyz2, rtol=1.0000000000000001e-05, atol=1e-0
         else:
             return False
     return True
-
-
-def sort_two_lists_by_the_first(list1, list2):
-    """
-    Sort two lists in increasing order by the values of the first list.
-    Ignoring None entries from list1 and their respective entries in list2.
-    The function was written in this format rather the more pytonic ``zip(*sorted(zip(list1, list2)))`` style
-    to accommodate for dictionaries as entries of list2, otherwise a
-    ``TypeError: '<' not supported between instances of 'dict' and 'dict'`` error is raised.
-
-    Args:
-        list1 (list, tuple): Entries are floats or ints (could also be None).
-        list2 (list, tuple): Entries could be anything.
-
-    Returns:
-        list: Sorted values from list1, ignoring None entries.
-    Returns:
-        list: Respective entries from list2.
-
-    Raises:
-        InputError: If types are wrong, or lists are not the same length.
-    """
-    if not isinstance(list1, (list, tuple)) or not isinstance(list2, (list, tuple)):
-        raise InputError(f'Arguments must be lists, got: {type(list1)} and {type(list2)}')
-    for entry in list1:
-        if not isinstance(entry, (float, int)) and entry is not None:
-            raise InputError(f'Entries of list1 must be either floats or integers, got: {type(entry)}.')
-    if len(list1) != len(list2):
-        raise InputError(f'Both lists must be the same length, got {len(list1)} and {len(list2)}')
-
-    # remove None entries from list1 and their respective entries from list2:
-    new_list1, new_list2 = list(), list()
-    for entry1, entry2 in zip(list1, list2):
-        if entry1 is not None:
-            new_list1.append(entry1)
-            new_list2.append(entry2)
-    indices = list(range(len(new_list1)))
-
-    zipped_lists = zip(new_list1, indices)
-    sorted_lists = sorted(zipped_lists)
-    sorted_list1 = [x for x, _ in sorted_lists]
-    sorted_indices = [x for _, x in sorted_lists]
-    sorted_list2 = [0] * len(new_list2)
-    for counter, index in enumerate(sorted_indices):
-        sorted_list2[counter] = new_list2[index]
-    return sorted_list1, sorted_list2
 
 
 def determine_model_chemistry_type(method):
@@ -874,39 +889,22 @@ def is_str_float(value):
         return False
 
 
-# a bond length dictionary of single bonds, Angstrom
-# https://sites.google.com/site/chempendix/bond-lengths
-# https://courses.lumenlearning.com/suny-potsdam-organicchemistry/chapter/1-3-basics-of-bonding/
-SINGLE_BOND_LENGTH = {'Br-Br': 2.29, 'Br-Cr': 1.94, 'Br-H': 1.41,
-                      'C-C': 1.54, 'C-Cl': 1.77, 'C-F': 1.35, 'C-H': 1.09, 'C-I': 2.13,
-                      'C-N': 1.47, 'C-O': 1.43, 'C-P': 1.87, 'C-S': 1.81, 'C-Si': 1.86,
-                      'Cl-Cl': 1.99, 'Cl-H': 1.27, 'Cl-N': 1.75, 'Cl-Si': 2.03, 'Cl-P': 2.03, 'Cl-S': 2.07,
-                      'F-F': 1.42, 'F-H': 0.92, 'F-P': 1.57, 'F-S': 1.56, 'F-Si': 1.56, 'F-Xe': 1.90,
-                      'H-H': 0.74, 'H-I': 1.61, 'H-N': 1.04, 'H-O': 0.96, 'H-P': 1.42, 'H-S': 1.34, 'H-Si': 1.48,
-                      'I-I': 2.66,
-                      'N-N': 1.45,
-                      'O-O': 1.48, 'O-P': 1.63, 'O-S': 1.58, 'O-Si': 1.66,
-                      'P-P': 2.21,
-                      'S-S': 2.05,
-                      'Si-Si': 2.35,
-                      }
-
-
-def get_single_bond_length(symbol1, symbol2):
+def time_lapse(t0):
     """
-    Get the an approximate for a single bond length between two elements.
+    A helper function returning the elapsed time since t0.
 
     Args:
-        symbol1 (str): Symbol 1.
-        symbol2 (str): Symbol 2.
+        t0 (time.pyi): The initial time the count starts from.
 
     Returns:
-        float: The estimated single bond length in Angstrom.
+        str: A "D HH:MM:SS" formatted time difference between now and t0.
     """
-    bond1, bond2 = '-'.join([symbol1, symbol2]), '-'.join([symbol2, symbol1])
-    if bond1 in SINGLE_BOND_LENGTH.keys():
-        return SINGLE_BOND_LENGTH[bond1]
-    if bond2 in SINGLE_BOND_LENGTH.keys():
-        return SINGLE_BOND_LENGTH[bond2]
-    return 2.5
-
+    t = time.time() - t0
+    m, s = divmod(t, 60)
+    h, m = divmod(m, 60)
+    d, h = divmod(h, 24)
+    if d > 0:
+        d = str(d) + ' days, '
+    else:
+        d = ''
+    return f'{d}{h:02.0f}:{m:02.0f}:{s:02.0f}'
