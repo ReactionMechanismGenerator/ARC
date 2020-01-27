@@ -114,6 +114,28 @@ wf,spin={spin},charge={charge};}}
 
 """,
 
+    'terachem': """chkfile teracheck.chk
+jobname output
+run {job_type_1}
+{trsh}
+coordinates coord.xyz
+gpumem {memory}
+
+charge {charge}
+spinmult {multiplicity}
+
+basis {basis}
+method {restricted}{method}
+dispersion {dispersion}
+
+dftgrid {fine}
+
+scrdir scr
+
+end{scan}
+
+""",
+
     'mrci': """***,name
 memory,{memory},m;
 geometry={{angstrom;

@@ -755,10 +755,10 @@ H       1.32129900    0.71837500    0.38017700
         """Test the set_transport_data method"""
         self.assertIsInstance(self.spc1.transport_data, TransportData)
         lj_path = os.path.join(arc_path, 'arc', 'testing', 'NH3_oneDMin.dat')
-        opt_path = os.path.join(arc_path, 'arc', 'testing', 'SO2OO_CBS-QB3.log')
+        opt_path = os.path.join(arc_path, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
         bath_gas = 'N2'
         opt_level = 'CBS-QB3'
-        freq_path = os.path.join(arc_path, 'arc', 'testing', 'SO2OO_CBS-QB3.log')
+        freq_path = os.path.join(arc_path, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
         freq_level = 'CBS-QB3'
         self.spc1.set_transport_data(lj_path, opt_path, bath_gas, opt_level, freq_path, freq_level)
         self.assertIsInstance(self.spc1.transport_data, TransportData)

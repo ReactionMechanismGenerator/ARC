@@ -606,22 +606,22 @@ class ARC(object):
         """
         Report status and data of all species / reactions.
         """
-        logger.info('\n\n\nAll jobs terminated. Summary for project {0}:\n'.format(self.project))
+        logger.info(f'\n\n\nAll jobs terminated. Summary for project {self.project}:\n')
         for label, output in self.scheduler.output.items():
             if output['convergence']:
-                logger.info('Species {0} converged successfully\n'.format(label))
+                logger.info(f'Species {label} converged successfully\n')
             else:
                 job_type_status = {key: val for key, val in self.output[label]['job_types'].items()
                                    if key in self.job_types and self.job_types[key]}
-                logger.info('Species {0} failed with status:\n  {1}'.format(label, job_type_status))
+                logger.info(f'  Species {label} failed with status:\n  {job_type_status}')
                 keys = ['conformers', 'isomorphism', 'info']
                 for key in keys:
                     if key in output and output[key]:
                         logger.info(output[key])
                 if 'warnings' in output and output['warnings']:
-                    logger.info('\n and warnings: {0}'.format(output['warnings']))
+                    logger.info(f'  and warnings: {output["warnings"]}')
                 if 'errors' in output and output['errors']:
-                    logger.info('\n and errors: {0}'.format(output['errors']))
+                    logger.info(f'  and errors: {output["errors"]}')
                 logger.info('\n')
 
     def determine_model_chemistry(self):
@@ -682,7 +682,7 @@ class ARC(object):
                         spc.generate_thermo = False
                 self.model_chemistry = sp_level + '//' + freq_level
         if self.model_chemistry:
-            logger.info('Using {0} as a model chemistry in Arkane'.format(self.model_chemistry))
+            logger.info(f'Using {self.model_chemistry} as a model chemistry in Arkane')
 
     def determine_ess_settings(self, diagnostics=False):
         """
@@ -697,9 +697,7 @@ class ARC(object):
             t0 = time.time()
             logger.info('\n\n\n ***** Running ESS diagnostics: *****\n')
 
-        # os.system('. ~/.bashrc')  # TODO This might be a security risk - rethink it
-
-        for software in ['gaussian', 'molpro', 'qchem', 'orca', 'onedmin']:
+        for software in ['gaussian', 'molpro', 'onedmin', 'orca', 'qchem', 'terachem']:
             self.ess_settings[software] = list()
 
         # first look for ESS locally (e.g., when running ARC itself on a server)
@@ -722,6 +720,9 @@ class ARC(object):
                 self.ess_settings['orca'] = ['local']
             molpro = find_executable('molpro')
             if molpro:
+                self.ess_settings['molpro'] = ['local']
+            terachem = find_executable('terachem')
+            if terachem:
                 self.ess_settings['molpro'] = ['local']
             if any([val for val in self.ess_settings.values()]):
                 if diagnostics:
@@ -772,6 +773,15 @@ class ARC(object):
                 self.ess_settings['orca'].append(server)
             elif diagnostics:
                 logger.info('  Did NOT find Orca on {0}'.format(server))
+
+            cmd = '. ~/.bashrc; which terachem'
+            terachem = ssh.send_command_to_server(cmd)[0]
+            if terachem:
+                if diagnostics:
+                    logging.info('  Found TeraChem on {0}'.format(server))
+                self.ess_settings['terachem'].append(server)
+            elif diagnostics:
+                logging.info('  Did NOT find TeraChem on {0}'.format(server))
 
             cmd = '. .bashrc; which molpro'
             molpro = ssh.send_command_to_server(cmd)[0]
@@ -840,16 +850,17 @@ class ARC(object):
 
     def delete_check_files(self):
         """
-        Delete the Gaussian checkfiles, the usually take up lots of space and are not needed after ARC terminates.
-        Pass True to the keep_checks flag to avoid deleting check files.
+        Delete Gaussian and TeraChem checkfiles. They usually take up lots of space
+        and are not needed after ARC terminates.
+        Pass ``True`` to the ``keep_checks`` flag in ARC to avoid deleting check files.
         """
         logged = False
         calcs_path = os.path.join(self.project_directory, 'calcs')
         for (root, _, files) in os.walk(calcs_path):
             for file_ in files:
-                if file_ == 'check.chk' and os.path.isfile(os.path.join(root, file_)):
+                if os.path.splitext(file_)[1] == '.chk' and os.path.isfile(os.path.join(root, file_)):
                     if not logged:
-                        logger.info('deleting all Gaussian check files...')
+                        logger.info('deleting all check files...')
                         logged = True
                     os.remove(os.path.join(root, file_))
 

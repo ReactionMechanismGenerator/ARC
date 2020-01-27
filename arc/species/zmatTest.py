@@ -5,7 +5,6 @@
 This module contains unit tests of the arc.species.species module
 """
 
-from __future__ import (absolute_import, division, print_function, unicode_literals)
 import unittest
 
 import arc.species.zmat as zmat

@@ -1558,7 +1558,7 @@ class Scheduler(object):
             i (int): The conformer index.
         """
         if job.job_status[1]['status'] == 'done':
-            xyz = parser.parse_xyz_from_file(path=job.local_path_to_output_file)
+            xyz = parser.parse_geometry(path=job.local_path_to_output_file)
             energy = parser.parse_e_elect(path=job.local_path_to_output_file)
             if self.species_dict[label].is_ts:
                 self.species_dict[label].ts_guesses[i].energy = energy
@@ -1851,7 +1851,8 @@ class Scheduler(object):
         success = False
         logger.debug(f'parsing opt geo for {job.job_name}')
         if job.job_status[1]['status'] == 'done':
-            self.species_dict[label].final_xyz = parser.parse_xyz_from_file(path=job.local_path_to_output_file)
+            self.species_dict[label].final_xyz = parser.parse_xyz_from_file(
+                path=job.local_path_to_xyz or job.local_path_to_output_file)
             if not job.fine and self.job_types['fine'] and not job.software == 'molpro':
                 # Run opt again using a finer grid.
                 xyz = self.species_dict[label].final_xyz
@@ -2248,7 +2249,7 @@ class Scheduler(object):
             job (Job): The rotor scan job object.
         """
         if job.job_status[1]['status'] == 'done':
-            xyz = parser.parse_xyz_from_file(path=job.local_path_to_output_file)
+            xyz = parser.parse_geometry(path=job.local_path_to_output_file)
             is_isomorphic = self.species_dict[label].check_xyz_isomorphism(xyz=xyz, verbose=False)
             for rotor_dict in self.species_dict[label].rotors_dict.values():
                 if rotor_dict['pivots'] == job.pivots:
@@ -2492,10 +2493,12 @@ class Scheduler(object):
             conformer (str, optional): The conformer index.
         """
         logger.info('\n')
-        logger.warning(f'Troubleshooting {label} job {job.job_name} which failed with status '
-                       f'"{job.job_status[1]["status"]}" with keywords {job.job_status[1]["keywords"]} in '
-                       f'{job.software}. The error "{job.job_status[1]["error"]}" was derived from the following line '
-                       f'in the log file: "{job.job_status[1]["line"]}".')
+        logger.warning(f'Troubleshooting {label} job {job.job_name} which failed with status: '
+                       f'"{job.job_status[1]["status"]},"\n'
+                       f'with keywords: {job.job_status[1]["keywords"]}\n'
+                       f'in {job.software}.\n'
+                       f'The error "{job.job_status[1]["error"]}" was derived from the following line in the log '
+                       f'file:\n"{job.job_status[1]["line"]}".')
         if conformer != -1:
             xyz = self.species_dict[label].conformers[conformer]
         else:

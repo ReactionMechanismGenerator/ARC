@@ -9,7 +9,7 @@ import numpy as np
 import os
 
 from arkane.exceptions import LogError
-from arkane.ess import GaussianLog, MolproLog, QChemLog, OrcaLog
+from arkane.ess import GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
 from arkane.util import determine_qm_software
 
 from arc.common import get_logger, determine_ess
@@ -72,10 +72,29 @@ def parse_frequencies(path, software):
                     break
                 else:
                     line = f.readline()
+    elif software.lower() == 'terachem':
+        read_output = False
+        for line in lines:
+            if '=== Mode' in line:
+                # example: '=== Mode 1: 1198.526 cm^-1 ==='
+                freqs = np.append(freqs, [float(line.split()[3])])
+            elif 'Vibrational Frequencies/Thermochemical Analysis After Removing Rotation and Translation' in line:
+                read_output = True
+                continue
+            elif read_output:
+                if 'Temperature (Kelvin):' in line or 'Frequency(cm-1)' in line:
+                    continue
+                if not line.strip():
+                    break
+                # example:
+                # 'Mode  Eigenvalue(AU)  Frequency(cm-1)  Intensity(km/mol)   Vib.Temp(K)      ZPE(AU) ...'
+                # '  1     0.0331810528   170.5666870932      52.2294230772  245.3982965841   0.0003885795 ...'
+                freqs = np.append(freqs, [float(line.split()[2])])
+
     else:
-        raise ParserError(f'parse_frequencies() can currently only parse Orca, Molpro, QChem and Gaussian files,'
-                          f' got {software}')
-    logger.debug(f'Using parser.parse_frequencies. Determined frequencies are: {freqs}')
+        raise ParserError(f'parse_frequencies() can currently only parse Gaussian, Molpro, Orca, QChem and TeraChem '
+                          f'files, got {software}')
+    logger.debug(f'Using parser.parse_frequencies(). Determined frequencies are: {freqs}')
     return freqs
 
 
@@ -134,6 +153,25 @@ def parse_normal_displacement_modes(path, software=None):
     freqs = np.array(freqs, np.float64)
     normal_disp_modes = np.array(normal_disp_modes, np.float64)
     return freqs, normal_disp_modes
+
+
+def parse_geometry(path):
+    """
+    Parse the xyz geometry from an ESS log file.
+
+    Args:
+        path (str): The ESS log file to parse from
+
+    Returns:
+        xyz (dict): The geometry.
+    """
+    log = determine_qm_software(fullpath=path)
+    try:
+        coords, number, _ = log.load_geometry()
+    except LogError:
+        logger.debug(f'Could not parse xyz from {path}')
+        return None
+    return xyz_from_data(coords=coords, numbers=number)
 
 
 def parse_t1(path):
@@ -402,7 +440,7 @@ def parse_xyz_from_file(path):
     Parse xyz coordinated from:
     - .xyz: XYZ file
     - .gjf: Gaussian input file
-    - .out or .log: ESS output file (Gaussian, QChem, Molpro, Orca)
+    - .out or .log: ESS output file (Gaussian, Molpro, Orca, QChem, TeraChem) - calls parse_geometry()
     - other: Molpro or QChem input file
 
     Args:
@@ -443,12 +481,7 @@ def parse_xyz_from_file(path):
                 if len(splits) == 2 and all([s.isdigit() for s in splits]):
                     start_parsing = True
     elif 'out' in file_extension or 'log' in file_extension:
-        log = determine_qm_software(fullpath=path)
-        try:
-            coords, number, _ = log.load_geometry()
-            xyz = xyz_from_data(coords=coords, numbers=number)
-        except LogError:
-            xyz = None
+        xyz = parse_geometry(path)
     else:
         record = False
         for line in lines:
@@ -465,6 +498,52 @@ def parse_xyz_from_file(path):
     if xyz is None and relevant_lines:
         xyz = str_to_xyz(''.join([line for line in relevant_lines if line]))
     return xyz
+
+
+def parse_trajectory(path):
+    """
+    Parse all geometries from an xyz trajectory file.
+
+    Args:
+        path (str): The file path.
+
+    Returns:
+        list: Entries are xyz's on the trajectory.
+
+    Raises:
+        ParserError: If the trajectory could not be read.
+    """
+    lines = _get_lines_from_file(path)
+    skip_line = False
+    num_of_atoms = 0
+    trajectory, xyz_lines = list(), list()
+    for line in lines:
+        splits = line.strip().split()
+        if len(splits) == 1 and all([c.isdigit() for c in splits[0]]):
+            if len(xyz_lines):
+                if len(xyz_lines) != num_of_atoms:
+                    raise ParserError(f'Could not parse trajectory, expected {num_of_atoms} atoms, '
+                                      f'but got {len(xyz_lines)} for point {len(trajectory) + 1} in the trajectory.')
+                trajectory.append(str_to_xyz(''.join([xyz_line for xyz_line in xyz_lines])))
+            num_of_atoms = int(splits[0])
+            skip_line = True
+            xyz_lines = list()
+        elif skip_line:
+            # skip the comment line
+            skip_line = False
+            continue
+        else:
+            xyz_lines.append(line)
+
+    if len(xyz_lines):
+        # add the last point in the trajectory
+        if len(xyz_lines) != num_of_atoms:
+            raise ParserError(f'Could not parse trajectory, expected {num_of_atoms} atoms, '
+                              f'but got {len(xyz_lines)} for point {len(trajectory) + 1} in the trajectory.')
+        trajectory.append(str_to_xyz(''.join([xyz_line for xyz_line in xyz_lines])))
+    if not len(trajectory):
+        raise ParserError(f'Could not parse trajectory from {path}')
+    return trajectory
 
 
 def parse_dipole_moment(path):
@@ -485,6 +564,18 @@ def parse_dipole_moment(path):
             elif read:
                 dipole_moment = float(line.split()[-1])
                 read = False
+    elif isinstance(log, MolproLog):
+        # example: ' Dipole moment /Debye                   2.96069859     0.00000000     0.00000000'
+        for line in lines:
+            if 'dipole moment' in line.lower() and '/debye' in line.lower():
+                splits = line.split()
+                dm_x, dm_y, dm_z = float(splits[-3]), float(splits[-2]), float(splits[-1])
+                dipole_moment = (dm_x ** 2 + dm_y ** 2 + dm_z ** 2) ** 0.5
+    elif isinstance(log, OrcaLog):
+        # example: 'Magnitude (Debye)      :      2.11328'
+        for line in lines:
+            if 'Magnitude (Debye)' in line:
+                dipole_moment = float(line.split()[-1])
     elif isinstance(log, QChemLog):
         # example:
         #     Dipole Moment (Debye)
@@ -501,23 +592,16 @@ def parse_dipole_moment(path):
             elif read:
                 dipole_moment = float(line.split()[-1])
                 read = False
-    elif isinstance(log, MolproLog):
-        # example:
-        #  Dipole moment /Debye                   2.96069859     0.00000000     0.00000000
+    elif isinstance(log, TeraChemLog):
+        # example: 'DIPOLE MOMENT: {-0.000178, -0.000003, -0.000019} (|D| = 0.000179) DEBYE'
         for line in lines:
-            if 'dipole moment' in line.lower() and '/debye' in line.lower():
-                splits = line.split()
-                dm_x, dm_y, dm_z = float(splits[-3]), float(splits[-2]), float(splits[-1])
+            if 'dipole moment' in line.lower() and 'debye' in line.lower():
+                splits = line.split('{')[1].split('}')[0].replace(',', '').split()
+                dm_x, dm_y, dm_z = float(splits[0]), float(splits[1]), float(splits[2])
                 dipole_moment = (dm_x ** 2 + dm_y ** 2 + dm_z ** 2) ** 0.5
-    elif isinstance(log, OrcaLog):
-        # example:
-        # Magnitude (Debye)      :      2.11328
-        for line in lines:
-            if 'Magnitude (Debye)' in line:
-                dipole_moment = float(line.split()[-1])
     else:
-        raise ParserError('Currently dipole moments can only be parsed from either Orca, Gaussian, Molpro, or QChem '
-                          'optimization output files')
+        raise ParserError('Currently dipole moments can only be parsed from either Gaussian, Molpro, Orca, QChem, '
+                          'or TeraChem optimization output files')
     if dipole_moment is None:
         raise ParserError('Could not parse the dipole moment')
     return dipole_moment
@@ -545,10 +629,10 @@ def _get_lines_from_file(path):
         path (str): The file path.
 
     Returns:
-        list: The lines read from the file.
+        list: Entries are lines from the file.
 
     Raises:
-        InputError: If ``path`` is an invalid file path.
+        InputError: If the file could not be read.
     """
     if os.path.isfile(path):
         with open(path, 'r') as f:

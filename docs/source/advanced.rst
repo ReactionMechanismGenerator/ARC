@@ -8,23 +8,24 @@ Advanced Features
 Flexible coordinates (xyz) input
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The xyz attribute of an :ref:`ARCSpecies <species>` objects (whether TS or not) is extremely flexible.
-It could be a multiline string containing the coordinates, or a list of several multiline strings.
+The xyz attribute of an :ref:`ARCSpecies <species>` object (whether a TS or not) is extremely flexible.
+It could be a multiline string containing the coordinates, or a list of several such multiline strings.
 It could also contain valid file paths to ESS input files, output files,
 `XYZ format`__ files, or ARC's conformers (before/after optimization) files.
 See :ref:`the examples <examples>`.
 
 __ xyz_format_
 
-Specify a particular job type
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Specify a specific job type to execute
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 To run ARC with a particular job type, set ``specific_job_type`` to the job type you want.
 Currently, ARC supports the following job types: ``conformers``, ``opt``, ``fine``, ``freq``,
 ``sp``, ``rotors``, ``onedmin``, ``orbitals``, ``bde``.
 
-Notice that ``specific_job_type`` takes higher precedence than ``job_types``. If you specify both attributes, ARC will
-dismiss the given ``job_types`` and will only populate the ``job_types`` dictionary using given ``specific_job_type``.
+Note: ``specific_job_type`` takes higher precedence than ``job_types``. If you specify both attributes, ARC will
+dismiss the given ``job_types`` and will only populate the ``job_types`` dictionary using the given
+``specific_job_type``.
 
 For bond dissociation energy calculation, the following two ``job_types`` specifications are equivalent::
 
@@ -238,6 +239,11 @@ In QChem, this will add the following directives::
    GEOM_OPT_TOL_ENERGY       5
    XC_GRID                   3
 
+In TeraChem, this will add the following directive::
+
+   dftgrid 4
+   dynamicgrid yes
+
 
 Rotor scans
 ^^^^^^^^^^^
@@ -335,7 +341,9 @@ ARC currently supports the following electronic structure software (ESS):
 
     - `Gaussian`__
     - `Molpro <https://www.molpro.net/>`_
+    - `Orca <https://sites.google.com/site/orcainputlibrary/>`_
     - `QChem <https://www.q-chem.com/>`_
+    - `TeraChem <http://www.petachem.com/products.html>`_
 
 __ gaussian_
 
@@ -380,13 +388,14 @@ in the ``initial_trsh`` (`trsh` stands for `troubleshooting`) dictionary passed 
 
 
 
-Gaussian check files
-^^^^^^^^^^^^^^^^^^^^
+ESS check files
+^^^^^^^^^^^^^^^
 
-ARC copies check files from previous `Gaussian`__ jobs, and uses them when spawning additional
-jobs for the same species. When ARC terminates it will attempt to delete all downloaded checkfiles
-(remote copies remain). To keep the check files set the ``keep_checks`` attribute to ``True`` (it is
-``False`` by default).
+ARC copies check files from previous `Gaussian`__ and `TeraChem <http://www.petachem.com/products.html>`_ jobs,
+and uses them when spawning additional jobs for the same species.
+When ARC terminates, it will attempt to delete all downloaded checkfiles (remote copies remain).
+To change this behaviour and keep the check files, set the ``keep_checks`` attribute to ``True``
+(it is ``False`` by default).
 
 __ gaussian_
 

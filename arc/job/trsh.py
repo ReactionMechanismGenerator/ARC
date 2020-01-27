@@ -166,8 +166,8 @@ def determine_ess_status(output_path, species_label, job_type, software=None):
                     error = 'SCF failed'
                     break
                 elif 'Invalid charge/multiplicity combination' in line:
-                    raise SpeciesError('The multiplicity and charge combination for species {0} are wrong.'.format(
-                        species_label))
+                    raise SpeciesError(f'The multiplicity and charge combination for species '
+                                       f'{species_label} are wrong.')
                 if 'opt' in job_type or 'conformer' in job_type or 'ts' in job_type:
                     if 'MAXIMUM OPTIMIZATION CYCLES REACHED' in line:
                         keywords = ['MaxOptCycles']
@@ -295,7 +295,7 @@ def determine_ess_status(output_path, species_label, job_type, software=None):
                     # e.g.: `A further 246.03 Mwords of memory are needed for the triples to run.
                     # Increase memory to 996.31 Mwords.` (w/o the line break)
                     keywords = ['Memory']
-                    error = 'Additional memory required: {0} MW'.format(line.split()[2])
+                    error = f'Additional memory required: {line.split()[2]} MW'
                     break
                 elif 'insufficient memory available - require' in line:
                     # e.g.: `insufficient memory available - require              228765625  have
@@ -303,7 +303,7 @@ def determine_ess_status(output_path, species_label, job_type, software=None):
                     #        the request was for real words`
                     # add_mem = (float(line.split()[-2]) - float(prev_line.split()[0])) / 1e6
                     keywords = ['Memory']
-                    error = 'Additional memory required: {0} MW'.format(float(line.split()[-2]) / 1e6)
+                    error = f'Additional memory required: {float(line.split()[-2]) / 1e6} MW'
                     break
                 elif 'Basis library exhausted' in line:
                     # e.g.:
@@ -331,9 +331,29 @@ def determine_ess_status(output_path, species_label, job_type, software=None):
                     break
             error = error if error else 'Molpro job terminated for an unknown reason.'
             keywords = keywords if keywords else ['Unknown']
-            if keywords:
-                return 'errored', keywords, error, line
-            return 'done', list(), '', ''
+            return 'errored', keywords, error, line
+
+        elif software == 'terachem':
+            for line in lines[::-1]:
+                if 'Job finished:' in line:
+                    return 'done', list(), '', ''
+                elif 'incorrect method' in line.lower():
+                    keywords = ['IncorrectMethod']
+                    error = 'incorrect method'
+                    break
+                elif 'error: ' in line.lower():
+                    # e.g.: "ERROR: Closed shell calculations can't have spin multiplicity 0."
+                    keywords = ['Unknown']  # Todo
+                    error = line.split()[1]
+                    break
+                elif 'unable to open file: ' in line.lower() and 'basis' in line.lower():
+                    # e.g.: "Unable to open file /<..path..>/TeraChem/basis/6-311++g[d,p]"
+                    keywords = ['MissingBasisSet']
+                    error = 'Could not find basis set {0} in TeraChem'.format(
+                             line.split('/')[-1].replace('[', '(').replace(']', ')'))
+            error = error if error else 'TeraChem job terminated for an unknown reason.'
+            keywords = keywords if keywords else ['Unknown']
+            return 'errored', keywords, error, line
 
 
 def trsh_negative_freq(label, log_file, neg_freqs_trshed=None, job_types=None):
@@ -376,7 +396,7 @@ def trsh_negative_freq(label, log_file, neg_freqs_trshed=None, job_types=None):
         logger.error(f'Could not troubleshoot negative frequency for species {label}, got:\n{e}')
         return [], [], output_errors, []
     if len(neg_freqs_trshed) > 10:
-        logger.error('Species {0} was troubleshooted for negative frequencies too many times.'.format(label))
+        logger.error(f'Species {label} was troubleshooted for negative frequencies too many times.')
         if 'rotors' not in job_types:
             logger.error('The rotor scans feature is turned off, '
                          'cannot troubleshoot geometry using dihedral modifications.')
@@ -395,8 +415,8 @@ def trsh_negative_freq(label, log_file, neg_freqs_trshed=None, job_types=None):
                 # assuming frequencies are ordered, break after the first positive freq encountered
                 break
         if freqs[largest_neg_freq_idx] >= 0 or len(neg_freqs_idx) == 0:
-            raise TrshError('Could not determine a negative frequency for species {0} '
-                            'while troubleshooting for it.'.format(label))
+            raise TrshError(f'Could not determine a negative frequency for species {label} '
+                            f'while troubleshooting for it.')
         if len(neg_freqs_idx) == 1 and not len(neg_freqs_trshed):
             # species has one negative frequency, and has not been troubleshooted for it before
             logger.info('Species {0} has a negative frequency ({1}). Perturbing its geometry using the respective '
@@ -406,22 +426,21 @@ def trsh_negative_freq(label, log_file, neg_freqs_trshed=None, job_types=None):
                                               for vf in neg_freqs_trshed]):
             # species has one negative frequency, and has been troubleshooted for it before
             factor = 1 + 0.1 * (len(neg_freqs_trshed) + 1)
-            logger.info('Species {0} has a negative frequency ({1}) for the {2} time. Perturbing its geometry using '
-                        'the respective vibrational displacements, this time using a larger factor (x {3})'.format(
-                         label, freqs[largest_neg_freq_idx], len(neg_freqs_trshed), factor))
+            logger.info(f'Species {label} has a negative frequency ({freqs[largest_neg_freq_idx]}) for the '
+                        f'{len(neg_freqs_trshed)} time. Perturbing its geometry using the respective vibrational '
+                        f'displacements, this time using a larger factor (x {factor})')
             neg_freqs_idx = [largest_neg_freq_idx]  # indices of the negative frequencies to troubleshoot for
         elif len(neg_freqs_idx) > 1 and not any([np.allclose(freqs[0], vf, rtol=1e-04, atol=1e-02)
                                                  for vf in neg_freqs_trshed]):
             # species has more than one negative frequency, and has not been troubleshooted for it before
-            logger.info('Species {0} has {1} negative frequencies. Perturbing its geometry using the vibrational '
-                        'displacements of its largest negative frequency, {2}'.format(label, len(neg_freqs_idx),
-                                                                                      freqs[largest_neg_freq_idx]))
+            logger.info(f'Species {label} has {len(neg_freqs_idx)} negative frequencies. Perturbing its geometry using the vibrational '
+                        f'displacements of its largest negative frequency, {freqs[largest_neg_freq_idx]}')
             neg_freqs_idx = [largest_neg_freq_idx]  # indices of the negative frequencies to troubleshoot for
         elif len(neg_freqs_idx) > 1 and any([np.allclose(freqs[0], vf, rtol=1e-04, atol=1e-02)
                                              for vf in neg_freqs_trshed]):
             # species has more than one negative frequency, and has been troubleshooted for it before
-            logger.info('Species {0} has {1} negative frequencies. Perturbing its geometry using the vibrational'
-                        ' displacements of ALL negative frequencies'.format(label, len(neg_freqs_idx)))
+            logger.info(f'Species {label} has {len(neg_freqs_idx)} negative frequencies. Perturbing its geometry '
+                        f'using the vibrational displacements of ALL negative frequencies')
         current_neg_freqs_trshed = [round(freqs[i], 2) for i in neg_freqs_idx]  # record trshed negative freqs
         xyz = parse_xyz_from_file(log_file)
         coords = np.array(xyz_to_coords_list(xyz), np.float64)
@@ -460,8 +479,7 @@ def trsh_scan_job(label, scan_res, scan, species_scan_lists, methods):
     scan_trsh = ''
     if 'freeze' in methods:
         if scan not in species_scan_lists:
-            raise TrshError('Could not find the dihedral to troubleshoot for in the scan list of species '
-                            '{0}'.format(label))
+            raise TrshError(f'Could not find the dihedral to troubleshoot for in the scan list of species {label}')
         species_scan_lists.pop(species_scan_lists.index(scan))
         if len(species_scan_lists):
             scan_trsh = '\n'
@@ -787,13 +805,27 @@ def trsh_ess_job(label, level_of_theory_dict, server, job_status, job_type, soft
         else:
             couldnt_trsh = True
 
+    elif 'terachem' in software:
+        """
+        scf diis+a
+        maxit 50
+        
+        solve in freq:
+        Maximum gradient component at reference geometry: 2.19e-02
+        Maximum component of gradient is too large
+        Optimize the geometry and try again
+        """
+        couldnt_trsh = True
+
+    else:
+        logger.error(f'Troubleshooting methods are not implemented for {software}')
+        couldnt_trsh = True
+
     if couldnt_trsh:
-        logger.error('Could not troubleshoot geometry optimization for {label}! '
-                     'Tried troubleshooting with the following methods: {methods}'.format(
-                      label=label, methods=ess_trsh_methods))
-        output_errors.append('Error: Could not troubleshoot {job_type} for {label}! '
-                             'Tried troubleshooting with the following methods: {methods}; '.format(
-                              job_type=job_type, label=label, methods=ess_trsh_methods))
+        logger.error(f'Could not troubleshoot geometry optimization for {label}! '
+                     f'Tried troubleshooting with the following methods: {ess_trsh_methods}')
+        output_errors.append(f'Error: Could not troubleshoot {job_type} for {label}! '
+                             f'Tried troubleshooting with the following methods: {ess_trsh_methods}; ')
     return output_errors, ess_trsh_methods, remove_checkfile, level_of_theory_dict, software, job_type, fine, \
         trsh_keyword, memory, shift, cpu_cores, couldnt_trsh
 
@@ -820,6 +852,8 @@ def trsh_conformer_isomorphism(software, ess_trsh_methods=None):
         conformer_trsh_methods = ['wb97x-d3/def2-TZVP']
     elif software == 'orca':
         conformer_trsh_methods = ['wB97X-D3/def2-TZVP']
+    elif software == 'terachem':
+        conformer_trsh_methods = ['wb97xd3/def2-TZVP']
     else:
         raise TrshError('The troubleshoot_conformer_isomorphism() method is not implemented for {0}.'.format(software))
 
@@ -858,43 +892,47 @@ def trsh_job_on_server(server, job_name, job_id, job_server_status, remote_path,
     if servers[server]['cluster_soft'].lower() == 'oge':
 
         logger.error('Troubleshooting by changing node.')
-        ssh = SSHClient(server)
-        ssh.send_command_to_server(command=delete_command[servers[server]['cluster_soft']] + ' ' + str(job_id))
-        # find available nodes
-        stdout = ssh.send_command_to_server(command=list_available_nodes_command[servers[server]['cluster_soft']])[0]
-        for line in stdout:
-            node = line.split()[0].split('.')[0].split('node')[1]
-            if servers[server]['cluster_soft'] == 'OGE' and '0/0/8' in line and node not in server_nodes:
-                server_nodes.append(node)
-                break
-        else:
-            logger.error('Could not find an available node on the server {0}'.format(server))
-            # TODO: continue troubleshooting; if all else fails, put the job to sleep,
-            #       and try again searching for a node
-            return None, False
+        if server != 'local':
+            ssh = SSHClient(server)
+            ssh.send_command_to_server(command=delete_command[servers[server]['cluster_soft']] + ' ' + str(job_id))
+            # find available nodes
+            stdout = ssh.send_command_to_server(command=list_available_nodes_command[servers[server]['cluster_soft']])[0]
+            for line in stdout:
+                node = line.split()[0].split('.')[0].split('node')[1]
+                if servers[server]['cluster_soft'] == 'OGE' and '0/0/8' in line and node not in server_nodes:
+                    server_nodes.append(node)
+                    break
+            else:
+                logger.error('Could not find an available node on the server {0}'.format(server))
+                # TODO: continue troubleshooting; if all else fails, put the job to sleep,
+                #       and try again searching for a node
+                return None, False
 
-        # modify the submit file
-        content = ssh.read_remote_file(remote_path=remote_path,
-                                       filename=submit_filename[servers[server]['cluster_soft']])
-        for i, line in enumerate(content):
-            if '#$ -l h=node' in line:
-                content[i] = '#$ -l h=node{0}.cluster'.format(node)
-                break
-        else:
-            content.insert(7, '#$ -l h=node{0}.cluster'.format(node))
-        content = ''.join(content)  # convert list into a single string, not to upset paramiko
-        # resubmit
-        ssh.upload_file(remote_file_path=os.path.join(remote_path,
-                        submit_filename[servers[server]['cluster_soft']]), file_string=content)
-        return node, True
+            # modify the submit file
+            content = ssh.read_remote_file(remote_path=remote_path,
+                                           filename=submit_filename[servers[server]['cluster_soft']])
+            for i, line in enumerate(content):
+                if '#$ -l h=node' in line:
+                    content[i] = '#$ -l h=node{0}.cluster'.format(node)
+                    break
+            else:
+                content.insert(7, '#$ -l h=node{0}.cluster'.format(node))
+            content = ''.join(content)  # convert list into a single string, not to upset paramiko
+            # resubmit
+            ssh.upload_file(remote_file_path=os.path.join(remote_path,
+                            submit_filename[servers[server]['cluster_soft']]), file_string=content)
+            return node, True
+        return None, False
 
     elif servers[server]['cluster_soft'].lower() == 'slurm':
         # TODO: change node on Slurm
-        logger.error('Re-submitting job {0} on {1}'.format(job_name, server))
-        # delete current server run
-        ssh = SSHClient(server)
-        ssh.send_command_to_server(command=delete_command[servers[server]['cluster_soft']] + ' ' + str(job_id))
-        return None, True
+        if server != 'local':
+            logger.error('Re-submitting job {0} on {1}'.format(job_name, server))
+            # delete current server run
+            ssh = SSHClient(server)
+            ssh.send_command_to_server(command=delete_command[servers[server]['cluster_soft']] + ' ' + str(job_id))
+            return None, True
+        return None, False
 
 
 def scan_quality_check(label, pivots, energies, scan_res=rotor_scan_resolution, used_methods=None):
@@ -921,6 +959,9 @@ def scan_quality_check(label, pivots, energies, scan_res=rotor_scan_resolution, 
         message (str): Error or warning message.
     Returns:
         actions (list): Troubleshooting methods to apply, including conformational changes.
+
+    Todo:
+        - adjust to ND
     """
     message, invalidation_reason = '', ''
     invalidate = False

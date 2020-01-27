@@ -195,19 +195,21 @@ python mdconf.py -s {size}
 """,
         # Orca
         'orca': """#!/bin/bash -l
-#SBATCH -p long
+#SBATCH -p normal
 #SBATCH -J {name}
 #SBATCH -N 1
 #SBATCH -n {cpus}
 #SBATCH --time={t_max}
-#SBATCH --mem-per-cpu {memory}
+#SBATCH --mem-per-cpu={memory}
 
 export PATH=/opt/orca_4_2_1_linux_x86-64_openmpi314/:/opt/openmpi-3.1.4/bin/:$PATH
-export  LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/openmpi-3.1.4/lib/:/opt/openmpi-3.1.4/etc
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/openmpi-3.1.4/lib/:/opt/openmpi-3.1.4/etc
 which orca
 
-echo 'PATH:' $PATH
-echo 'LD_LIBRARY_PATH:' $LD_LIBRARY_PATH
+export ORCA_DIR=/cm/shared/modulefiles/c3ddb/orca/4.1.2/
+export OMPI_DIR=/cm/shared/modulefiles/c3ddb/openmpi/3.1.3/
+export PATH=$PATH:$ORCA_DIR
+export PATH=$PATH:$OMPI_DIR
 
 echo "============================================================"
 echo "Job ID : $SLURM_JOB_ID"
@@ -217,21 +219,45 @@ echo "Running on node : $SLURMD_NODENAME"
 echo "Current directory : $(pwd)"
 echo "============================================================"
 
-WorkDir=/scratch/{un}/$SLURM_JOB_NAME-$SLURM_JOB_ID
+WorkDir=/scratch/users/{un}/$SLURM_JOB_NAME-$SLURM_JOB_ID
 SubmitDir=`pwd`
 
-
 mkdir -p $WorkDir
-
 cd $WorkDir
 
-cp $SubmitDir/input.in .
+cp $SubmitDir/input.inp .
 
-/opt/orca_4_2_1_linux_x86-64_openmpi314/orca input.in > input.log
+${ORCA_DIR}/orca input.inp > input.log
+cp * $SubmitDir/
 
-cp input.log $SubmitDir/input.log
+rm -rf $WorkDir
 
-rm -rf $WorkDir    
+""",
+        # TeraChem
+        'terachem': """#!/bin/bash -l
+#SBATCH -J {name}
+#SBATCH -e err.txt
+#SBATCH -o out.txt
+#SBATCH -t {t_max}
+#SBATCH --cpus-per-task=1
+#SBATCH --ntasks-per-node=4
+#SBATCH --gres=gpu:2
+#SBATCH --mem-per-cpu={mem_per_cpu}
+
+echo "============================================================"
+echo "Job ID : $SLURM_JOB_ID"
+echo "Job Name : $SLURM_JOB_NAME"
+echo "Starting on : $(date)"
+echo "Running on node : $SLURMD_NODENAME"
+echo "Current directory : $(pwd)"
+echo "============================================================"
+
+module load cuda92/toolkit
+module load medsci
+module load terachem
+
+terachem input.in > output.out
+
 """,
     },
 
