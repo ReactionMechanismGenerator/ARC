@@ -606,22 +606,22 @@ class ARC(object):
         """
         Report status and data of all species / reactions.
         """
-        logger.info('\n\n\nAll jobs terminated. Summary for project {0}:\n'.format(self.project))
+        logger.info(f'\n\n\nAll jobs terminated. Summary for project {self.project}:\n')
         for label, output in self.scheduler.output.items():
             if output['convergence']:
-                logger.info('Species {0} converged successfully\n'.format(label))
+                logger.info(f'Species {label} converged successfully\n')
             else:
                 job_type_status = {key: val for key, val in self.output[label]['job_types'].items()
                                    if key in self.job_types and self.job_types[key]}
-                logger.info('Species {0} failed with status:\n  {1}'.format(label, job_type_status))
+                logger.info(f'  Species {label} failed with status:\n  {job_type_status}')
                 keys = ['conformers', 'isomorphism', 'info']
                 for key in keys:
                     if key in output and output[key]:
                         logger.info(output[key])
                 if 'warnings' in output and output['warnings']:
-                    logger.info('\n and warnings: {0}'.format(output['warnings']))
+                    logger.info(f'  and warnings: {output["warnings"]}')
                 if 'errors' in output and output['errors']:
-                    logger.info('\n and errors: {0}'.format(output['errors']))
+                    logger.info(f'  and errors: {output["errors"]}')
                 logger.info('\n')
 
     def determine_model_chemistry(self):
