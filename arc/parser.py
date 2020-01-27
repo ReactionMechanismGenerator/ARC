@@ -564,6 +564,18 @@ def parse_dipole_moment(path):
             elif read:
                 dipole_moment = float(line.split()[-1])
                 read = False
+    elif isinstance(log, MolproLog):
+        # example: ' Dipole moment /Debye                   2.96069859     0.00000000     0.00000000'
+        for line in lines:
+            if 'dipole moment' in line.lower() and '/debye' in line.lower():
+                splits = line.split()
+                dm_x, dm_y, dm_z = float(splits[-3]), float(splits[-2]), float(splits[-1])
+                dipole_moment = (dm_x ** 2 + dm_y ** 2 + dm_z ** 2) ** 0.5
+    elif isinstance(log, OrcaLog):
+        # example: 'Magnitude (Debye)      :      2.11328'
+        for line in lines:
+            if 'Magnitude (Debye)' in line:
+                dipole_moment = float(line.split()[-1])
     elif isinstance(log, QChemLog):
         # example:
         #     Dipole Moment (Debye)
@@ -580,23 +592,16 @@ def parse_dipole_moment(path):
             elif read:
                 dipole_moment = float(line.split()[-1])
                 read = False
-    elif isinstance(log, MolproLog):
-        # example:
-        #  Dipole moment /Debye                   2.96069859     0.00000000     0.00000000
+    elif isinstance(log, TeraChemLog):
+        # example: 'DIPOLE MOMENT: {-0.000178, -0.000003, -0.000019} (|D| = 0.000179) DEBYE'
         for line in lines:
-            if 'dipole moment' in line.lower() and '/debye' in line.lower():
-                splits = line.split()
-                dm_x, dm_y, dm_z = float(splits[-3]), float(splits[-2]), float(splits[-1])
+            if 'dipole moment' in line.lower() and 'debye' in line.lower():
+                splits = line.split('{')[1].split('}')[0].replace(',', '').split()
+                dm_x, dm_y, dm_z = float(splits[0]), float(splits[1]), float(splits[2])
                 dipole_moment = (dm_x ** 2 + dm_y ** 2 + dm_z ** 2) ** 0.5
-    elif isinstance(log, OrcaLog):
-        # example:
-        # Magnitude (Debye)      :      2.11328
-        for line in lines:
-            if 'Magnitude (Debye)' in line:
-                dipole_moment = float(line.split()[-1])
     else:
-        raise ParserError('Currently dipole moments can only be parsed from either Orca, Gaussian, Molpro, or QChem '
-                          'optimization output files')
+        raise ParserError('Currently dipole moments can only be parsed from either Gaussian, Molpro, Orca, QChem, '
+                          'or TeraChem optimization output files')
     if dipole_moment is None:
         raise ParserError('Could not parse the dipole moment')
     return dipole_moment
