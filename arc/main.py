@@ -682,7 +682,7 @@ class ARC(object):
                         spc.generate_thermo = False
                 self.model_chemistry = sp_level + '//' + freq_level
         if self.model_chemistry:
-            logger.info('Using {0} as a model chemistry in Arkane'.format(self.model_chemistry))
+            logger.info(f'Using {self.model_chemistry} as a model chemistry in Arkane')
 
     def determine_ess_settings(self, diagnostics=False):
         """
@@ -850,16 +850,17 @@ class ARC(object):
 
     def delete_check_files(self):
         """
-        Delete the Gaussian checkfiles, the usually take up lots of space and are not needed after ARC terminates.
-        Pass True to the keep_checks flag to avoid deleting check files.
+        Delete Gaussian and TeraChem checkfiles. They usually take up lots of space
+        and are not needed after ARC terminates.
+        Pass ``True`` to the ``keep_checks`` flag in ARC to avoid deleting check files.
         """
         logged = False
         calcs_path = os.path.join(self.project_directory, 'calcs')
         for (root, _, files) in os.walk(calcs_path):
             for file_ in files:
-                if file_ == 'check.chk' and os.path.isfile(os.path.join(root, file_)):
+                if os.path.splitext(file_)[1] == '.chk' and os.path.isfile(os.path.join(root, file_)):
                     if not logged:
-                        logger.info('deleting all Gaussian check files...')
+                        logger.info('deleting all check files...')
                         logged = True
                     os.remove(os.path.join(root, file_))
 
