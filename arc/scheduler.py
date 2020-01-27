@@ -770,13 +770,17 @@ class Scheduler(object):
                                                                                     time=job.run_time))
             if job.job_status[0] != 'done':
                 return False
-            self.save_restart_dict()
             if job.software.lower() == 'gaussian' and os.path.isfile(os.path.join(job.local_path, 'check.chk')) \
                     and job.job_type in ['conformer', 'opt', 'optfreq', 'composite']:
                 check_path = os.path.join(job.local_path, 'check.chk')
                 if os.path.isfile(check_path):
                     if job.job_type != 'conformer':
                         self.species_dict[label].checkfile = check_path
+            if job.job_type == 'scan' and job.directed_scan_type == 'ess':
+                for rotors_dict in self.species_dict[label].rotors_dict.values():
+                    if rotors_dict['pivots'] == job.pivots:
+                        rotors_dict['scan_path'] = job.local_path_to_output_file
+            self.save_restart_dict()
             return True
 
     def _run_a_job(self, job, label):
@@ -1419,16 +1423,20 @@ class Scheduler(object):
                                             for directed_scan_dihedral in rotor_dict['directed_scan'].values()],
                                            return_min=True)
                 trshed_points = 0
-                results = {'directed_scan_type': rotor_dict['directed_scan_type'],
-                           'scans': rotor_dict['scan'],
-                           'directed_scan': rotor_dict['directed_scan']}
-                for dihedral_list in sorted_dihedrals:
-                    dihedrals_key = tuple('{0:.2f}'.format(dihedral) for dihedral in dihedral_list)
-                    dihedral_dict = results['directed_scan'][dihedrals_key]
-                    if dihedral_dict['trsh']:
-                        trshed_points += 1
-                    if dihedral_dict['energy'] is not None:
-                        dihedral_dict['energy'] -= min_energy  # set 0 at the minimal energy
+                if rotor_dict['directed_scan_type'] == 'ess':
+                    # parse the single output file
+                    results = parser.parse_nd_scan_energies(path=rotor_dict['scan_path'])
+                else:
+                    results = {'directed_scan_type': rotor_dict['directed_scan_type'],
+                               'scans': rotor_dict['scan'],
+                               'directed_scan': rotor_dict['directed_scan']}
+                    for dihedral_list in sorted_dihedrals:
+                        dihedrals_key = tuple('{0:.2f}'.format(dihedral) for dihedral in dihedral_list)
+                        dihedral_dict = results['directed_scan'][dihedrals_key]
+                        if dihedral_dict['trsh']:
+                            trshed_points += 1
+                        if dihedral_dict['energy'] is not None:
+                            dihedral_dict['energy'] -= min_energy  # set 0 at the minimal energy
                 folder_name = 'rxns' if self.species_dict[label].is_ts else 'Species'
                 rotor_yaml_file_path = os.path.join(self.project_directory, 'output', folder_name, label, 'rotors',
                                                     '{0}_{1}.yml'.format(pivots, rotor_dict['directed_scan_type']))

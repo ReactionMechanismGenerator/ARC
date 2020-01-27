@@ -259,7 +259,7 @@ def parse_1d_scan_energies(path):
     return energies, angles
 
 
-def parse_nd_scan_energies(path, software='gaussian', return_original_dihedrals=False):
+def parse_nd_scan_energies(path, software=None, return_original_dihedrals=False):
     """
     Parse the ND torsion scan energies from an ESS log file.
 
@@ -287,6 +287,7 @@ def parse_nd_scan_energies(path, software='gaussian', return_original_dihedrals=
     Raises:
         InputError: If ``path`` is invalid.
     """
+    software = software or determine_ess(path)
     results = {'directed_scan_type': f'ess_{software}',
                'scans': list(),
                'directed_scan': dict(),
