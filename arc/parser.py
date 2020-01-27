@@ -500,6 +500,52 @@ def parse_xyz_from_file(path):
     return xyz
 
 
+def parse_trajectory(path):
+    """
+    Parse all geometries from an xyz trajectory file.
+
+    Args:
+        path (str): The file path.
+
+    Returns:
+        list: Entries are xyz's on the trajectory.
+
+    Raises:
+        ParserError: If the trajectory could not be read.
+    """
+    lines = _get_lines_from_file(path)
+    skip_line = False
+    num_of_atoms = 0
+    trajectory, xyz_lines = list(), list()
+    for line in lines:
+        splits = line.strip().split()
+        if len(splits) == 1 and all([c.isdigit() for c in splits[0]]):
+            if len(xyz_lines):
+                if len(xyz_lines) != num_of_atoms:
+                    raise ParserError(f'Could not parse trajectory, expected {num_of_atoms} atoms, '
+                                      f'but got {len(xyz_lines)} for point {len(trajectory) + 1} in the trajectory.')
+                trajectory.append(str_to_xyz(''.join([xyz_line for xyz_line in xyz_lines])))
+            num_of_atoms = int(splits[0])
+            skip_line = True
+            xyz_lines = list()
+        elif skip_line:
+            # skip the comment line
+            skip_line = False
+            continue
+        else:
+            xyz_lines.append(line)
+
+    if len(xyz_lines):
+        # add the last point in the trajectory
+        if len(xyz_lines) != num_of_atoms:
+            raise ParserError(f'Could not parse trajectory, expected {num_of_atoms} atoms, '
+                              f'but got {len(xyz_lines)} for point {len(trajectory) + 1} in the trajectory.')
+        trajectory.append(str_to_xyz(''.join([xyz_line for xyz_line in xyz_lines])))
+    if not len(trajectory):
+        raise ParserError(f'Could not parse trajectory from {path}')
+    return trajectory
+
+
 def parse_dipole_moment(path):
     """
     Parse the dipole moment in Debye from an opt job output file.
