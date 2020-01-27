@@ -185,7 +185,7 @@ def plot_3d_mol_as_scatter(xyz, path=None, plot_h=True, show_plot=True, name='',
     if path is not None:
         if not os.path.isdir(path):
             os.makedirs(path)
-        image_path = os.path.join(path, 'scattered_balls_structure{0}.png'.format(name))
+        image_path = os.path.join(path, f'scattered_balls_structure_{name}.png')
         plt.savefig(image_path, bbox_inches='tight')
 
 
@@ -209,7 +209,7 @@ def check_xyz_species_for_drawing(xyz=None, species=None):
     if xyz is None and species is None:
         raise InputError('Either xyz or species must be given.')
     if species is not None and not isinstance(species, ARCSpecies):
-        raise TypeError('Species must be an ARCSpecies instance. Got {0}.'.format(type(species)))
+        raise TypeError(f'Species must be an ARCSpecies instance. Got {type(species)}.')
     if xyz is not None:
         if isinstance(xyz, str):
             xyz = str_to_xyz(xyz)
@@ -229,7 +229,7 @@ def log_thermo(label, path):
         path (str): The path to the folder containing the relevant Arkane output file.
     """
     logger.info('\n\n')
-    logger.debug('Thermodata for species {0}'.format(label))
+    logger.debug(f'Thermodata for species {label}')
     thermo_block = ''
     log = False
     with open(os.path.join(path, 'output.py'), 'r') as f:
@@ -256,7 +256,7 @@ def log_kinetics(label, path):
         path (str): The path to the folder containing the relevant Arkane output file.
     """
     logger.info('\n\n')
-    logger.debug('Kinetics for species {0}'.format(label))
+    logger.debug(f'Kinetics for species {label}')
     kinetics_block = ''
     log = False
     with open(os.path.join(path, 'output.py'), 'r') as f:
@@ -288,7 +288,7 @@ def log_bde_report(path, bde_report, spc_dict):
         content = ''
         for label, bde_dict in bde_report.items():
             spc = spc_dict[label]
-            content += ' BDE report for {0}:\n'.format(label)
+            content += f' BDE report for {label}:\n'
             content += '  Pivots           Atoms        BDE (kJ/mol)\n'
             content += ' --------          -----        ------------\n'
             bde_list, pivots_list, na_bde_list, na_pivots_list = list(), list(), list(), list()
@@ -361,12 +361,12 @@ def draw_parity_plot(var_arc, var_rmg, var_label, var_units, labels, pp):
     max_var = max(var_arc + var_rmg)
     fig = plt.figure(figsize=(width, height), dpi=120)
     ax = fig.add_subplot(111)
-    plt.title('{0} parity plot'.format(var_label))
+    plt.title(f'{var_label} parity plot')
     for i, label in enumerate(labels):
         plt.plot(var_arc[i], var_rmg[i], 'o', label=label)
     plt.plot([min_var, max_var], [min_var, max_var], 'b-', linewidth=0.5)
-    plt.xlabel('{0} calculated by ARC ({1})'.format(var_label, var_units))
-    plt.ylabel('{0} determined by RMG ({1})'.format(var_label, var_units))
+    plt.xlabel(f'{var_label} calculated by ARC ({var_units})')
+    plt.ylabel(f'{var_label} determined by RMG ({var_units})')
     plt.xlim = (min_var, max_var * 1.1)
     plt.ylim = (min_var, max_var)
     plt.legend(shadow=False, loc='best')
@@ -426,7 +426,7 @@ def draw_kinetics_plots(rxn_list, path=None, t_min=(300, 'K'), t_max=(3000, 'K')
                 rmg_rxn_dict['k'] = k
                 rmg_rxn_dict['T'] = temp
                 if rmg_rxn.kinetics.is_pressure_dependent():
-                    rmg_rxn.comment += ' (at {0} bar)'.format(int(pressure / 1e5))
+                    rmg_rxn.comment += f' (at {int(pressure / 1e5)} bar)'
                 rmg_rxn_dict['label'] = rmg_rxn.comment
                 rmg_rxns.append(rmg_rxn_dict)
             _draw_kinetics_plots(rxn.label, arc_k, temperature, rmg_rxns, units, pp)
@@ -466,7 +466,7 @@ def _draw_kinetics_plots(rxn_label, arc_k, temperature, rmg_rxns, units, pp, max
             ax.semilogy(inverse_temp, rmg_rxn['k'], label=rmg_rxn['label'])
             plotted_rmg_rxns += 1
     plt.xlabel(r'1000 / T (K$^-$$^1$)')
-    plt.ylabel('Rate coefficient{0}'.format(units))
+    plt.ylabel(f'Rate coefficient{units}')
     plt.legend()
     plt.tight_layout()
     if pp is not None:
@@ -505,8 +505,8 @@ def text_plotter(x_data, y_data, labels, text_positions, axis, txt_width, txt_he
     Annotate a plot and add an arrow.
     Source: `stackoverflow <https://stackoverflow.com/questions/8850142/matplotlib-overlapping-annotations>`_.
     """
-    for x, y, l, t in zip(x_data, y_data, labels, text_positions):
-        axis.text(x - .03, 1.02 * t, '{0}'.format(l), rotation=0, color='black', fontsize=10)
+    for x, y, lab, t in zip(x_data, y_data, labels, text_positions):
+        axis.text(x - .03, 1.02 * t, f'{lab}', rotation=0, color='black', fontsize=10)
         if y != t:
             axis.arrow(x, t + 20, 0, y-t, color='blue', alpha=0.2, width=txt_width*0.0,
                        head_width=.02, head_length=txt_height*0.5,
@@ -547,7 +547,7 @@ def save_geo(species=None, xyz=None, project_directory=None, path=None, filename
     if species is None and xyz is None:
         raise InputError('Either a species or xyz must be given')
     elif species is not None and species.final_xyz is None and species.initial_xyz is None:
-        raise InputError('Either initial_xyz or final_xyz of species {0} must be given'.format(species.label))
+        raise InputError(f'Either initial_xyz or final_xyz of species {species.label} must be given')
 
     filename = filename if filename is not None else species.label
     xyz = xyz or species.final_xyz or species.initial_xyz
@@ -563,7 +563,7 @@ def save_geo(species=None, xyz=None, project_directory=None, path=None, filename
         else:
             xyz_file += 'coordinates\n'
         xyz_file += f'{xyz_str}\n'
-        with open(os.path.join(geo_path, '{0}.xyz'.format(filename)), 'w') as f:
+        with open(os.path.join(geo_path, f'{filename}.xyz'), 'w') as f:
             f.write(xyz_file)
 
     if format_ in ['gjf', 'gaussian', 'all']:
@@ -575,7 +575,7 @@ def save_geo(species=None, xyz=None, project_directory=None, path=None, filename
             gv = '# hf/3-21g\n\ncoordinates\n\n'
             gv += '0 1\n'
         gv += f'{xyz_str}\n'
-        with open(os.path.join(geo_path, '{0}.gjf'.format(filename)), 'w') as f:
+        with open(os.path.join(geo_path, f'{filename}.gjf'), 'w') as f:
             f.write(gv)
 
 
@@ -869,7 +869,7 @@ def plot_torsion_angles(torsion_angles, torsions_sampling_points=None, wells_dic
         for file_ in file_names:
             if 'conformer torsions' in file_:
                 i += 1
-        image_path = os.path.join(plot_path, 'conformer torsions {0}.png'.format(i))
+        image_path = os.path.join(plot_path, f'conformer torsions {i}.png')
         plt.savefig(image_path, bbox_inches='tight')
     return num_comb
 
@@ -933,16 +933,16 @@ def plot_1d_rotor_scan(angles=None, energies=None, results=None, path=None, scan
         if not os.path.exists(path):
             os.makedirs(path)
         if comment:
-            fig_name = '{0}-invalid.png'.format(pivots)
+            fig_name = f'{pivots}-invalid.png'
             txt_path = os.path.join(path, 'rotor comments.txt')
             if os.path.isfile(txt_path):
                 with open(txt_path, 'a') as f:
-                    f.write('\n\nPivots: {0}\nComment: {1}'.format(pivots, comment))
+                    f.write(f'\n\nPivots: {pivots}\nComment: {comment}')
             else:
                 with open(txt_path, 'w') as f:
-                    f.write('Pivots: {0}\nComment: {1}'.format(pivots, comment))
+                    f.write(f'Pivots: {pivots}\nComment: {comment}')
         else:
-            fig_name = '{0}.png'.format(pivots)
+            fig_name = f'{pivots}.png'
         fig_path = os.path.join(path, fig_name)
         plt.savefig(fig_path, dpi=120, facecolor='w', edgecolor='w', orientation='portrait', papertype=None,
                     format='png', transparent=False, bbox_inches=None, pad_inches=0.1, metadata=None)
@@ -1021,19 +1021,19 @@ def plot_2d_rotor_scan(results, path=None, label='', cmap='Blues', resolution=90
     keys_list = list(results['directed_scan'].keys())
     for i, phi0 in enumerate(phis0):
         for j, phi1 in enumerate(phis1):
-            key = tuple('{0:.2f}'.format(dihedral) for dihedral in [phi0, phi1])
+            key = tuple(f'{dihedral:.2f}' for dihedral in [phi0, phi1])
             if key in keys_list:
                 energies[i, j] = results['directed_scan'][key]['energy']
             else:
-                key1 = tuple('{0:.2f}'.format(dihedral) for dihedral in [360.0 - phi0, phi1])
-                key2 = tuple('{0:.2f}'.format(dihedral) for dihedral in [phi0, 360.0 - phi1])
-                key3 = tuple('{0:.2f}'.format(dihedral) for dihedral in [360.0 + phi0, phi1])
-                key4 = tuple('{0:.2f}'.format(dihedral) for dihedral in [phi0, 360.0 + phi1])
-                key5 = tuple('{0:.2f}'.format(dihedral) for dihedral in [360.0 + phi0, 360.0 + phi1])
-                key6 = tuple('{0:.2f}'.format(dihedral) for dihedral in [360.0 - phi0, 360.0 - phi1])
-                key7 = tuple('{0:.2f}'.format(dihedral) for dihedral in [-phi0, phi1])
-                key8 = tuple('{0:.2f}'.format(dihedral) for dihedral in [phi0, -phi1])
-                key9 = tuple('{0:.2f}'.format(dihedral) for dihedral in [-phi0, -phi1])
+                key1 = tuple(f'{dihedral:.2f}' for dihedral in [360.0 - phi0, phi1])
+                key2 = tuple(f'{dihedral:.2f}' for dihedral in [phi0, 360.0 - phi1])
+                key3 = tuple(f'{dihedral:.2f}' for dihedral in [360.0 + phi0, phi1])
+                key4 = tuple(f'{dihedral:.2f}' for dihedral in [phi0, 360.0 + phi1])
+                key5 = tuple(f'{dihedral:.2f}' for dihedral in [360.0 + phi0, 360.0 + phi1])
+                key6 = tuple(f'{dihedral:.2f}' for dihedral in [360.0 - phi0, 360.0 - phi1])
+                key7 = tuple(f'{dihedral:.2f}' for dihedral in [-phi0, phi1])
+                key8 = tuple(f'{dihedral:.2f}' for dihedral in [phi0, -phi1])
+                key9 = tuple(f'{dihedral:.2f}' for dihedral in [-phi0, -phi1])
                 for key_ in [key1, key2, key3, key4, key5, key6, key7, key8, key9]:
                     if key_ in keys_list:
                         energies[i, j] = results['directed_scan'][key_]['energy']
@@ -1098,7 +1098,7 @@ def save_rotor_text_file(angles, energies, path):
     if energies:
         lines = ['Angle (degrees)        Energy (kJ/mol)\n']
         for angle, energy in zip(angles, energies):
-            lines.append('{0:12.2f} {1:24.3f}\n'.format(angle, energy))
+            lines.append(f'{angle:12.2f} {energy:24.3f}\n')
         with open(path, 'w') as f:
             f.writelines(lines)
 
@@ -1117,7 +1117,7 @@ def save_nd_rotor_yaml(results, path):
     for dihedral_tuple, dihedral_dict in results['directed_scan'].items():
         for key, val in dihedral_dict.items():
             if key == 'energy':
-                modified_results['directed_scan'][dihedral_tuple][key] = '{:.2f}'.format(val)
+                modified_results['directed_scan'][dihedral_tuple][key] = f'{val:.2f}'
             elif key == 'xyz':
                 modified_results['directed_scan'][dihedral_tuple][key] = xyz_to_str(val)
     save_yaml_file(path=path, content=modified_results)
