@@ -2493,10 +2493,12 @@ class Scheduler(object):
             conformer (str, optional): The conformer index.
         """
         logger.info('\n')
-        logger.warning(f'Troubleshooting {label} job {job.job_name} which failed with status '
-                       f'"{job.job_status[1]["status"]}" with keywords {job.job_status[1]["keywords"]} in '
-                       f'{job.software}. The error "{job.job_status[1]["error"]}" was derived from the following line '
-                       f'in the log file: "{job.job_status[1]["line"]}".')
+        logger.warning(f'Troubleshooting {label} job {job.job_name} which failed with status: '
+                       f'"{job.job_status[1]["status"]},"\n'
+                       f'with keywords: {job.job_status[1]["keywords"]}\n'
+                       f'in {job.software}.\n'
+                       f'The error "{job.job_status[1]["error"]}" was derived from the following line in the log '
+                       f'file:\n"{job.job_status[1]["line"]}".')
         if conformer != -1:
             xyz = self.species_dict[label].conformers[conformer]
         else:
