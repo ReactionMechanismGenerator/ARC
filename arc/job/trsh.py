@@ -442,7 +442,9 @@ def trsh_negative_freq(label, log_file, neg_freqs_trshed=None, job_types=None):
             # species has more than one negative frequency, and has been troubleshooted for it before
             logger.info(f'Species {label} has {len(neg_freqs_idx)} negative frequencies. Perturbing its geometry '
                         f'using the vibrational displacements of ALL negative frequencies')
-        current_neg_freqs_trshed = [round(freqs[i], 2) for i in neg_freqs_idx]  # record trshed negative freqs
+        # convert a numpy array to a list, imprtant for saving the neg_freqs_trshed species attribute in the restart
+        freqs_list = freqs.tolist()
+        current_neg_freqs_trshed = [round(freqs_list[i], 2) for i in neg_freqs_idx]  # record trshed negative freqs
         xyz = parse_xyz_from_file(log_file)
         coords = np.array(xyz_to_coords_list(xyz), np.float64)
         for neg_freq_idx in neg_freqs_idx:
