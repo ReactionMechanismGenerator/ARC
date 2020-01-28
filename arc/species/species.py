@@ -804,8 +804,10 @@ class ARCSpecies(object):
             if lowest_confs is not None:
                 self.conformers.extend([conf['xyz'] for conf in lowest_confs])
                 self.conformer_energies.extend([None] * len(lowest_confs))
-                lowest_conf = conformers.get_lowest_confs(label=self.label, confs=lowest_confs, n=1)[0]
-                logger.debug(f'Most stable force field conformer for {self.label}:\n{xyz_to_str(lowest_conf["xyz"])}\n')
+                if lowest_confs:
+                    lowest_conf = conformers.get_lowest_confs(label=self.label, confs=lowest_confs, n=1)[0]
+                    logger.debug(f'Most stable force field conformer for {self.label}:\n'
+                                 f'{xyz_to_str(lowest_conf["xyz"])}\n')
             else:
                 logger.error(f'Could not generate conformers for {self.label}')
                 if not self.get_xyz(generate=False):
