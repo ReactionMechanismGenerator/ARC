@@ -1,0 +1,5 @@
+3
+reaction: F+H2=HF+H, family: H_Abstraction, labels: 2 0 1, stretch: 1.5919 1.0366, level: QCISD/MG3, source: HTBH38/08 (https://comp.chem.umn.edu/db/dbs/htbh38.html)
+H          0.14657       -1.12839        0.00000
+F          0.00000        0.33042        0.00000
+H         -0.14657       -1.84541        0.00000

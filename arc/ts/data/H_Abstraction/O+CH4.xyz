@@ -1,0 +1,8 @@
+6
+reaction: O+CH4=OH+CH3, family: H_Abstraction, labels: 0 4 5, stretch: 1.1956 1.2388, level: QCISD/MG3, source: HTBH38/08 (https://comp.chem.umn.edu/db/dbs/htbh38.html)
+C          0.00029       -1.14229        0.00000
+H         -1.05596       -1.38474        0.00000
+H          0.52017       -1.40739        0.91245
+H          0.52017       -1.40739       -0.91245
+H          0.01156        0.16010        0.00000
+O          0.00029        1.36164        0.00000

@@ -1,0 +1,5 @@
+3
+reaction: H+HCl=H2+Cl, family: H_Abstraction, labels: 2 0 1, stretch: 1.2054 1.0358, level: QCISD/MG3, source: HTBH38/08 (https://comp.chem.umn.edu/db/dbs/htbh38.html)
+H          0.00048       -1.34063        0.00000
+Cl         0.00000        0.20325        0.00000
+H         -0.00048       -2.11466        0.00000

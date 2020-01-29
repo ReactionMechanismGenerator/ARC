@@ -1,0 +1,6 @@
+4
+reaction: OH+H2=H2O+H, family: H_Abstraction, labels: 0 2 3, stretch: 1.3739 1.1151, level: QCISD/MG3, source: HTBH38/08 (https://comp.chem.umn.edu/db/dbs/htbh38.html)
+O         -0.30106       -0.10805       -0.00001
+H         -0.42795        0.85157        0.00002
+H          1.01549       -0.10037        0.00012
+H          1.82097        0.11319       -0.00007

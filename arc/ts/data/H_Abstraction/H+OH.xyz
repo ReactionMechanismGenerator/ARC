@@ -1,0 +1,5 @@
+3
+reaction: H+HO=H2+O, family: H_Abstraction, labels: 2 0 1, stretch: 1.2261 1.2199, level: QCISD/MG3, source: HTBH38/08 (https://comp.chem.umn.edu/db/dbs/htbh38.html)
+H          0.00000        0.00000       -0.86029
+O          0.00000        0.00000        0.32902
+H          0.00000        0.00000       -1.77191

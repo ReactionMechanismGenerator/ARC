@@ -1,0 +1,5 @@
+3
+reaction: O+HCl=OH+Cl, family: H_Abstraction, labels: 0 1 2, stretch: 1.1482 1.2345, level: QCISD/MG3, source: HTBH38/08 (https://comp.chem.umn.edu/db/dbs/htbh38.html)
+Cl         0.01882       -0.81730        0.00000
+H         -0.47049        0.56948        0.00000
+O          0.01882        1.66558        0.00000
