@@ -1041,7 +1041,7 @@ class ARCSpecies(object):
         if deg_increment is None and deg_abs is None:
             raise InputError('Either deg_increment or deg_abs must be given.')
         if count:
-            if rotor['times_dihedral_set'] <= 10:
+            if rotor['times_dihedral_set'] >= 10:
                 logger.info('\n\n')
                 for i, rotor in self.rotors_dict.items():
                     logger.error(f'Rotor {i} with pivots {rotor["pivots"]} was set '
