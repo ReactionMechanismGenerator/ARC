@@ -2073,6 +2073,8 @@ class Scheduler(object):
         for i in range(self.species_dict[label].number_of_rotors):
             if self.species_dict[label].rotors_dict[i]['pivots'] == job.pivots:
                 energies, angles = parser.parse_1d_scan_energies(path=job.local_path_to_output_file)  # in kJ/mol
+                self.species_dict[label].rotors_dict[i]['original_dihedrals'] = \
+                    [calculate_dihedral_angle(coords=job.xyz, torsion=job.scan, index=1, units='degs')]
                 if energies is None:
                     invalidate = True
                     invalidation_reason = 'Could not read energies'
