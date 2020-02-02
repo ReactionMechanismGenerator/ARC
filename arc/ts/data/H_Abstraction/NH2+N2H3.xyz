@@ -1,5 +1,5 @@
 8
-reaction: NH2+N2H3=NH3+H2NN(T), family: H_Abstraction, labels: 5 4 3, stretch: 1.1031 1.4031, level: ωB97x-D3/6-311++G(3df,3pd), source: 10.1021/acs.jpca.9b02217
+reaction: NH2+N2H3=NH3+H2NN(T), family: H_Abstraction, labels: 3 4 5, stretch: 1.1031 1.4031, level: ωB97x-D3/6-311++G(3df,3pd), source: 10.1021/acs.jpca.9b02217
 N       1.2326875017     0.4213123277    -0.0618658266
 H       0.6655550940     1.2168776592     0.2101055844
 H       2.1957986750     0.4386583007     0.2350889928

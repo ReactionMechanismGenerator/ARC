@@ -1,5 +1,5 @@
 3
-reaction: H+H2=H2+H, family: H_Abstraction, labels: 2 0 1, stretch: 1.2438 1.2438, level: QCISD/MG3, source: HTBH38/08 (https://comp.chem.umn.edu/db/dbs/htbh38.html)
-H          0.00000        0.00000        0.00000
+reaction: H+H2=H2+H, family: H_Abstraction, labels: 0 1 2, stretch: 1.2438 1.2438, level: QCISD/MG3, source: HTBH38/08 (https://comp.chem.umn.edu/db/dbs/htbh38.html)
 H          0.00000        0.00000        0.92947
+H          0.00000        0.00000        0.00000
 H          0.00000        0.00000       -0.92947

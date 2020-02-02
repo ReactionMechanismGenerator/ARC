@@ -1,9 +1,9 @@
 7
-reaction: CH3+NH2=CH4+NH, family: H_Abstraction, labels: 0 5 1, stretch: 1.2808 1.1649, level: QCISD/MG3, source: HTBH38/08 (https://comp.chem.umn.edu/db/dbs/htbh38.html)
+reaction: CH3+NH2=CH4+NH, family: H_Abstraction, labels: 0 4 5, stretch: 1.2808 1.1649, level: QCISD/MG3, source: HTBH38/08 (https://comp.chem.umn.edu/db/dbs/htbh38.html)
 C         -1.19958       -0.01113       -0.00003
-N          1.40071        0.12986        0.00002
 H         -1.42666       -0.51293        0.93306
 H         -1.41991       -0.59138       -0.88814
 H         -1.52024        1.02281       -0.04578
 H          0.18893        0.12690        0.00100
+N          1.40071        0.12986        0.00002
 H          1.57034       -0.88767       -0.00005

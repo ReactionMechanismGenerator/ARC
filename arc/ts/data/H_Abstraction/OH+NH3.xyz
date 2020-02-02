@@ -1,8 +1,8 @@
 6
-reaction: OH+NH3=H2O+NH2, family: H_Abstraction, labels: 0 4 1, stretch: 1.1370 1.3138, level: QCISD/MG3, source: HTBH38/08 (https://comp.chem.umn.edu/db/dbs/htbh38.html)
+reaction: OH+NH3=H2O+NH2, family: H_Abstraction, labels: 0 3 4, stretch: 1.1370 1.3138, level: QCISD/MG3, source: HTBH38/08 (https://comp.chem.umn.edu/db/dbs/htbh38.html)
 N         -1.15082       -0.04393       -0.10256
-O          1.17919       -0.09270       -0.01029
 H         -1.30319       -0.54764        0.76657
 H         -1.33891        0.93581        0.09185
 H         -0.03069       -0.15383       -0.35318
+O          1.17919       -0.09270       -0.01029
 H          1.29501        0.81475        0.29499

@@ -1,5 +1,5 @@
 6
-reaction: HCl+CH3=CH4+Cl, family: H_Abstraction, labels: 5 4 0, stretch: 1.2819 1.1332, level: QCISD/MG3, source: HTBH38/08 (https://comp.chem.umn.edu/db/dbs/htbh38.html)
+reaction: HCl+CH3=CH4+Cl, family: H_Abstraction, labels: 0 4 5, stretch: 1.2819 1.1332, level: QCISD/MG3, source: HTBH38/08 (https://comp.chem.umn.edu/db/dbs/htbh38.html)
 C          0.24412        0.59992        1.70242
 H         -0.67560        0.27848        2.17294
 H          0.35191        1.66379        1.53767
