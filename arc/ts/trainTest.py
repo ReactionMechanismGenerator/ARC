@@ -25,7 +25,7 @@ class TestTrain(unittest.TestCase):
     def test_read_data(self):
         """Test reading the data"""
         results = read_data('H_Abstraction')
-        for entry in results.values():
+        for entry in results:
             self.assertEqual(entry['family'], 'H_Abstraction')
             self.assertIsInstance(entry['labels'], list)
             self.assertIsInstance(entry['stretch'], list)
