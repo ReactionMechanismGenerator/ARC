@@ -370,6 +370,12 @@ def h_abstraction(arc_reaction, rmg_reactions, r1_stretch=1.2, r2_stretch=1.2, a
         else:
             d2_d3_product = [(None, None)]
 
+        r1_stretch_, r2_stretch_, a2_ = get_training_params(
+            family='H_Abstraction',
+            atom_type_key=tuple(sorted([atom_a.atomtype.label, atom_b.atomtype.label])),
+            atom_symbol_key=tuple(sorted([atom_a.element.symbol, atom_b.element.symbol])),
+        )
+
         zmats = list()
         for d2, d3 in d2_d3_product:
             xyz_guess = combine_coordinates_with_redundant_atoms(xyz1=arc_reactant.get_xyz(),
