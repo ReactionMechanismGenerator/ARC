@@ -2524,7 +2524,7 @@ class Scheduler(object):
                 self.species_dict[label].checkfile = job.checkfile
         level_of_theory, _ = format_level_of_theory_inputs(level_of_theory)
         # determine if the species is a hydrogen (or its isotope) atom
-        is_h = len(self.species_dict[label].mol.atoms) == 1 and \
+        is_h = self.species_dict[label].number_of_atoms == 1 and \
             self.species_dict[label].mol.atoms[0].element.symbol in ['H', 'D', 'T']
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
         memory, shift, cpu_cores, dont_rerun = \
