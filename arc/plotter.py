@@ -120,18 +120,22 @@ def draw_3d(xyz=None, species=None, project_directory=None, save_only=False):
         project_directory (str): ARC's project directory to save the image in.
         save_only (bool): Whether to only save an image without plotting it, ``True`` to only save.
     """
-    ase_atoms = list()
-    for symbol, coord in zip(xyz['symbols'], xyz['coords']):
-        ase_atoms.append(Atom(symbol=symbol, position=coord))
-    ase_mol = Atoms(ase_atoms)
-    if not save_only:
-        display(view(ase_mol, viewer='x3d'))
-    if project_directory is not None and species is not None:
-        folder_name = 'rxns' if species.is_ts else 'Species'
-        geo_path = os.path.join(project_directory, 'output', folder_name, species.label, 'geometry')
-        if not os.path.exists(geo_path):
-            os.makedirs(geo_path)
-        ase_write(filename=os.path.join(geo_path, 'geometry.png'), images=ase_mol, scale=100)
+    # this functionality has recently turned buggy, probably related to packages versions
+    # (it keeps zooming) in forever
+    # for now it is disabled
+    logger.debug('not drawing 3D!')
+    # ase_atoms = list()
+    # for symbol, coord in zip(xyz['symbols'], xyz['coords']):
+    #     ase_atoms.append(Atom(symbol=symbol, position=coord))
+    # ase_mol = Atoms(ase_atoms)
+    # if not save_only:
+    #     display(view(ase_mol, viewer='x3d'))
+    # if project_directory is not None and species is not None:
+    #     folder_name = 'rxns' if species.is_ts else 'Species'
+    #     geo_path = os.path.join(project_directory, 'output', folder_name, species.label, 'geometry')
+    #     if not os.path.exists(geo_path):
+    #         os.makedirs(geo_path)
+    #     ase_write(filename=os.path.join(geo_path, 'geometry.png'), images=ase_mol, scale=100)
 
 
 def plot_3d_mol_as_scatter(xyz, path=None, plot_h=True, show_plot=True, name='', index=0):
