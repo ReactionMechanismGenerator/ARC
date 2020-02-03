@@ -732,9 +732,9 @@ class ARCSpecies(object):
             self.multiplicity = self.mol.multiplicity
             self.charge = self.mol.get_net_charge()
         if self.multiplicity is None:
-            self.multiplicity = arkane_spc.conformer.spinMultiplicity
+            self.multiplicity = arkane_spc.conformer.spin_multiplicity
         if self.optical_isomers is None:
-            self.optical_isomers = arkane_spc.conformer.opticalIsomers
+            self.optical_isomers = arkane_spc.conformer.optical_isomers
         if self.external_symmetry is None:
             external_symmetry_mode = None
             for mode in arkane_spc.conformer.modes:

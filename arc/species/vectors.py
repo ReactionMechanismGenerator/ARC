@@ -100,7 +100,12 @@ def calculate_distance(coords, atoms, index=0):
 
     Raises:
         VectorsError: If ``index`` is out of range, or ``atoms`` is of wrong length or has repeating indices.
+        TypeError: If ``coords`` is of wrong type.
     """
+    if isinstance(coords, dict) and 'coords' in coords:
+        coords = coords['coords']
+    if not isinstance(coords, (list, tuple)):
+        raise TypeError(f'coords must be a list or a tuple, got\n{coords}\nwhich is a {type(coords)}')
     if index not in [0, 1]:
         raise VectorsError(f'index must be either 0 or 1, got {index}')
     if len(atoms) != 2:
@@ -136,7 +141,12 @@ def calculate_angle(coords, atoms, index=0, units='degs'):
 
     Raises:
         VectorsError: If ``index`` is out of range, or ``atoms`` is of wrong length or has repeating indices.
+        TypeError: If ``coords`` is of wrong type.
     """
+    if isinstance(coords, dict) and 'coords' in coords:
+        coords = coords['coords']
+    if not isinstance(coords, (list, tuple)):
+        raise TypeError(f'coords must be a list or a tuple, got\n{coords}\nwhich is a {type(coords)}')
     if index not in [0, 1]:
         raise VectorsError(f'index must be either 0 or 1, got {index}')
     if len(atoms) != 3:
@@ -173,7 +183,12 @@ def calculate_dihedral_angle(coords, torsion, index=0, units='degs'):
 
     Raises:
         VectorsError: If ``index`` is out of range, or ``torsion`` is of wrong length or has repeating indices.
+        TypeError: If ``coords`` is of wrong type.
     """
+    if isinstance(coords, dict) and 'coords' in coords:
+        coords = coords['coords']
+    if not isinstance(coords, (list, tuple)):
+        raise TypeError(f'coords must be a list or a tuple, got\n{coords}\nwhich is a {type(coords)}')
     if index not in [0, 1]:
         raise VectorsError(f'index must be either 0 or 1, got {index}')
     if len(torsion) != 4:
