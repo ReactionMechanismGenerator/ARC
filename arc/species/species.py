@@ -465,6 +465,11 @@ class ARCSpecies(object):
         """Allow setting the radius"""
         self._radius = value
 
+    def __str__(self):
+        """A string representation of an ARCSpecies object"""
+        smiles = f', smiles: "{self.mol.to_smiles()}"' if self.mol is not None else ''
+        return f'<ARCSpecies {self.label}{smiles}>'
+
     def as_dict(self):
         """A helper function for dumping this object as a dictionary in a YAML file for restarting ARC"""
         species_dict = dict()
