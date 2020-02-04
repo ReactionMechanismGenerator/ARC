@@ -104,6 +104,8 @@ class ARC(object):
                                       default is False.
         dont_gen_confs (list, optional): A list of species labels for which conformer generation should be avoided
                                          if xyz is given.
+        compare_to_rmg (bool): If ``True`` data calculated from the RMG-database will be calculated and included on the
+                               parity plot
 
     Attributes:
         project (str): The project's name. Used for naming the working directory.
@@ -155,6 +157,8 @@ class ARC(object):
         keep_checks (bool): Whether to keep all Gaussian checkfiles when ARC terminates. True to keep, default is False.
         dont_gen_confs (list): A list of species labels for which conformer generation should be avoided
                                if xyz is given.
+        compare_to_rmg (bool): If ``True`` data calculated from the RMG-database will be calculated and included on the
+                               parity plot
 
     """
 
@@ -164,7 +168,8 @@ class ARC(object):
                  job_shortcut_keywords=None, t_min=None, t_max=None, t_count=None, verbose=logging.INFO,
                  project_directory=None, max_job_time=120, allow_nonisomorphic_2d=False, job_memory=14,
                  ess_settings=None, bath_gas=None, adaptive_levels=None, freq_scale_factor=None, calc_freq_factor=True,
-                 confs_to_dft=5, keep_checks=False, dont_gen_confs=None, specific_job_type='', orbitals_level=''):
+                 confs_to_dft=5, keep_checks=False, dont_gen_confs=None, specific_job_type='', orbitals_level='',
+                 compare_to_rmg=True):
         self.__version__ = VERSION
         self.verbose = verbose
         self.output = dict()
@@ -178,6 +183,7 @@ class ARC(object):
         self.ess_settings = dict()
         self.calc_freq_factor = calc_freq_factor
         self.keep_checks = keep_checks
+        self.compare_to_rmg = compare_to_rmg
 
         if input_dict is None:
             if project is None:
@@ -541,7 +547,8 @@ class ARC(object):
                         species_dict=self.scheduler.species_dict, rxn_list=self.scheduler.rxn_list,
                         output=self.scheduler.output, use_bac=self.use_bac, model_chemistry=self.model_chemistry,
                         lib_long_desc=self.lib_long_desc, rmgdatabase=self.rmgdb, t_min=self.t_min, t_max=self.t_max,
-                        t_count=self.t_count, freq_scale_factor=self.freq_scale_factor)
+                        t_count=self.t_count, freq_scale_factor=self.freq_scale_factor,
+                        compare_to_rmg=self.compare_to_rmg)
         prc.process()
         self.summary()
         log_footer(execution_time=self.execution_time)

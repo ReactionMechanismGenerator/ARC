@@ -47,6 +47,8 @@ class Processor(object):
         t_count (int, optional): The number of temperature points between t_min and t_max for kinetics computations.
         freq_scale_factor (float, optional): The harmonic frequencies scaling factor. Could be automatically determined
                                              if not available in Arkane and not provided by the user.
+        compare_to_rmg (bool): If ``True`` data calculated from the RMG-database will be calculated and included on the
+                               parity plot
 
     Attributes:
         project (str): The project's name. Used for naming the directory.
@@ -65,9 +67,12 @@ class Processor(object):
         t_max (tuple): The maximum temperature for kinetics computations, e.g., (3000, 'K').
         t_count (int): The number of temperature points between t_min and t_max for kinetics computations.
         rmgdb (RMGDatabase): The RMG database object.
+        compare_to_rmg (bool): If ```True`` data calculated from the RMG-database will be calculated and included on the
+                               parity plot
     """
     def __init__(self, project, project_directory, species_dict, rxn_list, output, use_bac, model_chemistry,
-                 lib_long_desc, rmgdatabase, t_min=None, t_max=None, t_count=None, freq_scale_factor=None):
+                 lib_long_desc, rmgdatabase, t_min=None, t_max=None, t_count=None, freq_scale_factor=None,
+                 compare_to_rmg=True):
         self.rmgdb = rmgdatabase
         self.project = project
         self.project_directory = project_directory
@@ -87,6 +92,7 @@ class Processor(object):
         self.t_min = t_min
         self.t_max = t_max
         self.t_count = t_count if t_count is not None else 50
+        self.compare_to_rmg = compare_to_rmg
 
     def _generate_arkane_species_file(self, species):
         """
@@ -187,11 +193,11 @@ class Processor(object):
         """
         Process ARC outputs and generate thermo and kinetics.
         """
-        # load the RMG database
-        try:
-            self.load_rmg_db()
-        except Exception as e:
-            logger.error(f'Could not load the RMG database! Got:\n{e}')
+        if self.compare_to_rmg:  # load the RMG database
+            try:
+                self.load_rmg_db()
+            except Exception as e:
+                logger.error(f'Could not load the RMG database! Got:\n{e}')
         # Thermo:
         species_list_for_thermo_parity = list()
         species_for_thermo_lib = list()
@@ -227,15 +233,16 @@ class Processor(object):
                     species.thermo = arkane_spc.get_thermo_data()
                     plotter.log_thermo(species.label, path=output_path)
                     species_for_thermo_lib.append(species)
-                try:
-                    species.rmg_thermo = self.rmgdb.thermo.get_thermo_data(species.rmg_species)
-                except Exception as e:
-                    logger.info(f'Could not retrieve RMG thermo for species {species.label}, possibly due to missing '
-                                f'2D structure (bond orders). Not including this species in the parity plots.'
-                                f'\nGot: {e}')
-                else:
-                    if species.generate_thermo:
-                        species_list_for_thermo_parity.append(species)
+                if self.compare_to_rmg:
+                    try:
+                        species.rmg_thermo = self.rmgdb.thermo.get_thermo_data(species.rmg_species)
+                    except Exception as e:
+                        logger.info(f'Could not retrieve RMG thermo for species {species.label}, possibly due to missing '
+                                    f'2D structure (bond orders). Not including this species in the parity plots.'
+                                    f'\nGot: {e}')
+                    else:
+                        if species.generate_thermo:
+                            species_list_for_thermo_parity.append(species)
                 if self.output[species.label]['job_types']['onedmin']:
                     species_for_transport_lib.append(species)
             elif not self.output[species.label]['convergence']:
@@ -305,8 +312,9 @@ class Processor(object):
                 if success:
                     rxn.kinetics = kinetics_job.reaction.kinetics
                     plotter.log_kinetics(species.label, path=output_path)
-                    rxn.rmg_reactions = rmgdb.determine_rmg_kinetics(rmgdb=self.rmgdb, reaction=rxn.rmg_reaction,
-                                                                     dh_rxn298=rxn.dh_rxn298)
+                    if self.compare_to_rmg:
+                        rxn.rmg_reactions = rmgdb.determine_rmg_kinetics(rmgdb=self.rmgdb, reaction=rxn.rmg_reaction,
+                                                                         dh_rxn298=rxn.dh_rxn298)
 
         logger.info('\n\n')
         output_dir = os.path.join(self.project_directory, 'output')
