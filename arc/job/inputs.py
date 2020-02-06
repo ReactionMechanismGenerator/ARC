@@ -47,7 +47,7 @@ input_files = {
 %mem={memory}mb
 %NProcShared={cpus}
 
-#P {job_type_1} {restricted}{method}{slash}{basis}{slash_2}{auxiliary_basis} {job_type_2} {fine} {trsh} iop(2/9=2000) {job_options_keywords} {shortcut_keywords}
+#P {job_type_1} {restricted}{method}{slash}{basis}{slash_2}{auxiliary_basis} {job_type_2} {fine} {trsh} iop(2/9=2000) {job_options_keywords} {shortcut_keywords} {dispersion}
 
 name
 
