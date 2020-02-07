@@ -480,14 +480,14 @@ Open the resulting FCheck file using `IQMol <http://iqmol.org/>`_
 to post process and save images.
 
 
-Consider a specific diaestereomer
+Consider a specific diastereomer
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-ARC's conformer generation module will consider by default all non-enantiomeric (non-mirror) diaestereomers,
+ARC's conformer generation module will consider by default all non-enantiomeric (non-mirror) diastereomers,
 using chiral (tetrahedral) carbon atoms, chiral inversion modes in nitrogen atoms, and cis/trans double bonds.
-To consider a specific diaestereomer, pass the 3D xyz coordinates when defining the species, and set the
+To consider a specific diastereomer, pass the 3D xyz coordinates when defining the species, and set the
 ``consider_all_diastereomers`` species flag to ``False`` (it is ``True`` by default). For example, the following code
-will cause ARC to only consider the R-Z diaestereomer of the following hypothetical species::
+will cause ARC to only consider the R-Z diastereomer of the following hypothetical species::
 
     spc1_xyz = """Cl      1.47566594   -2.36900082   -0.86260264
                   O      -1.34833561    1.76407680    0.29252133
