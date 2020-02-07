@@ -480,14 +480,14 @@ Open the resulting FCheck file using `IQMol <http://iqmol.org/>`_
 to post process and save images.
 
 
-Consider a specific diaestereomer
+Consider a specific diastereomer
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-ARC's conformer generation module will consider by default all non-enantiomeric (non-mirror) diaestereomers,
+ARC's conformer generation module will consider by default all non-enantiomeric (non-mirror) diastereomers,
 using chiral (tetrahedral) carbon atoms, chiral inversion modes in nitrogen atoms, and cis/trans double bonds.
-To consider a specific diaestereomer, pass the 3D xyz coordinates when defining the species, and set the
+To consider a specific diastereomer, pass the 3D xyz coordinates when defining the species, and set the
 ``consider_all_diastereomers`` species flag to ``False`` (it is ``True`` by default). For example, the following code
-will cause ARC to only consider the R-Z diaestereomer of the following hypothetical species::
+will cause ARC to only consider the R-Z diastereomer of the following hypothetical species::
 
     spc1_xyz = """Cl      1.47566594   -2.36900082   -0.86260264
                   O      -1.34833561    1.76407680    0.29252133
@@ -789,6 +789,25 @@ must be spawned (and successfully terminated for all species and fragments).
 
 The calculated BDEs are reported in the log file as well as in a designated `BDE_report.yml`
 file under the `output` directory in the project's folder. Units are kJ/mol.
+
+
+Disable comparisons with the RMG database
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+By default, at the end of an ARC job, ARC will try to compare the calculated thermochemistry and kinetics to estimates
+from the RMG database. The comparison is saved as a parity plot in the output directory.
+
+Sometimes though, it is desirable to disable these comparisons with the RMG database. For example, although ARC will
+not crash due to any exceptions encountered while making the parity plots, it makes sense to disable these comparisons
+when dealing with species that cannot be estimated by the RMG database (e.g. because of the presence of atom types that
+are currently not supported). In other circumstances it may make sense to disable this comparison simply to save time
+by not having to load the RMG database if the comparison is not needed.
+
+To disable ARC from generating these parity plots, simply supply the following in the ARC input file (or as a keyword
+argument to the main ARC object if using the API)::
+
+    compare_to_rmg: False
+
+With this option specified, ARC will not load the RMG database, and parity plots will not be generated.
 
 
 .. include:: links.txt
