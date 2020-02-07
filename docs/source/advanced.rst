@@ -396,7 +396,7 @@ Frequency scaling factors
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 ARC will look for appropriate available frequency scaling factors in `Arkane`_
 for the respective ``freq_level``. If a frequency scaling factor isn't available, ARC will attempt
-to determine it using `Truhlar's method`__. This involves spawning fine optimizations anf frequency
+to determine it using `Truhlar's method`__. This involves spawning fine optimizations and frequency
 calculations for a dataset of 15 small molecules. To avoid this, either pass a known frequency scaling
 factor using the ``freq_scale_factor`` attribute (see :ref:`examples <examples>`), or set the
 ``calc_freq_factor`` attribute to ``False`` (it is ``True`` by default).
