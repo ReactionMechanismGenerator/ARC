@@ -32,7 +32,7 @@ Specification 1::
     job_types:
       rotors: false
       conformers: false
-      fine_grid: true
+      fine: true
       freq: true
       opt: true
       sp: true
@@ -571,7 +571,7 @@ which could be read as an input in ARC::
 
     input_dict['job_types'] = {'conformers': True,
                                'opt': True,
-                               'fine_grid': True,
+                               'fine': True,
                                'freq': True,
                                'sp': True,
                                'rotors': True,
@@ -619,7 +619,7 @@ The above code generated the following input file::
     job_types:
       rotors: true
       conformers: true
-      fine_grid: true
+      fine: true
       freq: true
       lennard_jones: false
       opt: true
@@ -718,7 +718,7 @@ Below is an example requesting all hydrogen BDEs in ethanol including the `C--O`
     job_types:
       rotors: true
       conformers: true
-      fine_grid: true
+      fine: true
       freq: true
       opt: true
       sp: true
