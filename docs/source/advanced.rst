@@ -216,6 +216,9 @@ set ``fine`` in the ``job_types`` dictionary to `False`.
 If turned on, ARC will spawn another optimization job after the first one converges
 with a fine grid settings, using the already optimized geometry.
 
+It is also possible to instruct ARC not to run the first optimization job and instead go straight to the fine
+optimization. To do this, set ``fine: True`` but ``opt: False``.
+
 Note that this argument is called ``fine`` in ARC, although in practice
 it directs the ESS to use an **ultrafine** grid. See, for example, `this study`__
 describing the importance of a DFT grid.
