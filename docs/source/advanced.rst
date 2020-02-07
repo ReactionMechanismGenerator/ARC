@@ -791,4 +791,23 @@ The calculated BDEs are reported in the log file as well as in a designated `BDE
 file under the `output` directory in the project's folder. Units are kJ/mol.
 
 
+Disable comparisons with the RMG database
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+By default, at the end of an ARC job, ARC will try to compare the calculated thermochemistry and kinetics to estimates
+from the RMG database. The comparison is saved as a parity plot in the output directory.
+
+Sometimes though, it is desirable to disable these comparisons with the RMG database. For example, although ARC will
+not crash due to any exceptions encountered while making the parity plots, it makes sense to disable these comparisons
+when dealing with species that cannot be estimated by the RMG database (e.g. because of the presence of atom types that
+are currently not supported). In other circumstances it may make sense to disable this comparison simply to save time
+by not having to load the RMG database if the comparison is not needed.
+
+To disable ARC from generating these parity plots, simply supply the following in the ARC input file (or as a keyword
+argument to the main ARC object if using the API)::
+
+    compare_to_rmg: False
+
+With this option specified, ARC will not load the RMG database, and parity plots will not be generated.
+
+
 .. include:: links.txt
