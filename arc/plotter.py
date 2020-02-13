@@ -926,7 +926,7 @@ def plot_1d_rotor_scan(angles=None, energies=None, results=None, path=None, scan
     plt.xticks(np.arange(min_angle, min_angle + 361, step=60))
     plt.ylabel('Electronic energy (kJ/mol)')
     if label is not None:
-        original_dihedral_str = f' from {original_dihedral} deg' if original_dihedral is not None else ''
+        original_dihedral_str = f' from {original_dihedral:.1f}$^o$' if original_dihedral is not None else ''
         plt.title(f'{label} 1D scan of {scan}{original_dihedral_str}')
     plt.tight_layout()
     if is_notebook():
