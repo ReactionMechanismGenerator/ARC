@@ -638,20 +638,19 @@ class Job(object):
             else:  # gaussian, molpro
                 restricted = ''
 
-        dispersion = ''
         if self.software == 'terachem':
             # TeraChem does not accept "wb97xd3", it expects to get "wb97x" as the method and "d3" as the dispersion
             if self.method[-2:] == 'd2':
-                dispersion = 'd2'
+                self.dispersion = 'd2'
                 self.method = self.method[:-2]
             elif self.method[-2:] == 'd3':
-                dispersion = 'd3'
+                self.dispersion = 'd3'
                 self.method = self.method[:-2]
             elif self.method[-1:] == 'd':
-                dispersion = 'yes'
+                self.dispersion = 'yes'
                 self.method = self.method[:-2]
             else:
-                dispersion = 'no'
+                self.dispersion = 'no'
 
         job_type_1, job_type_2, fine = '', '', ''
 
@@ -1170,7 +1169,7 @@ end
                                                job_options_blocks=job_options_blocks,
                                                job_options_keywords=job_options_keywords,
                                                method_class=method_class, auxiliary_basis=self.auxiliary_basis_set,
-                                               shortcut_keywords=shortcut_keywords, dispersion=dispersion,
+                                               shortcut_keywords=shortcut_keywords, dispersion=self.dispersion,
                                                ) \
                     if self.input is not None else None
             except KeyError:
