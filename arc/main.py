@@ -105,7 +105,13 @@ class ARC(object):
         dont_gen_confs (list, optional): A list of species labels for which conformer generation should be avoided
                                          if xyz is given.
         compare_to_rmg (bool): If ``True`` data calculated from the RMG-database will be calculated and included on the
-                               parity plot
+                               parity plot.
+        solvent (dict): This argument, if not None, requests that a calculation be performed in the presence of a
+                        solvent by placing the solute in a cavity within the solvent reaction field.
+                        Keys are:
+                        - 'method' (optional values: 'pcm' (default), 'cpcm', 'dipole', 'ipcm', 'scipcm')
+                        -  'solvent' (values are strings of "known" solvents, see https://gaussian.com/scrf/,
+                                      default is "water")
 
     Attributes:
         project (str): The project's name. Used for naming the working directory.
@@ -158,7 +164,8 @@ class ARC(object):
         dont_gen_confs (list): A list of species labels for which conformer generation should be avoided
                                if xyz is given.
         compare_to_rmg (bool): If ``True`` data calculated from the RMG-database will be calculated and included on the
-                               parity plot
+                               parity plot.
+        solvent (dict): The solvent model and solvent to use.
 
     """
 
@@ -169,7 +176,7 @@ class ARC(object):
                  project_directory=None, max_job_time=120, allow_nonisomorphic_2d=False, job_memory=14,
                  ess_settings=None, bath_gas=None, adaptive_levels=None, freq_scale_factor=None, calc_freq_factor=True,
                  confs_to_dft=5, keep_checks=False, dont_gen_confs=None, specific_job_type='', orbitals_level='',
-                 compare_to_rmg=True):
+                 compare_to_rmg=True, solvent=None):
         self.__version__ = VERSION
         self.verbose = verbose
         self.output = dict()
@@ -195,6 +202,7 @@ class ARC(object):
             self.specific_job_type = specific_job_type
             self.job_types = initialize_job_types(job_types, specific_job_type=self.specific_job_type)
             self.bath_gas = bath_gas
+            self.solvent = solvent
             self.confs_to_dft = confs_to_dft
             self.adaptive_levels = adaptive_levels
             self.project_directory = project_directory if project_directory is not None\
@@ -326,6 +334,8 @@ class ARC(object):
         restart_dict['project'] = self.project
         if self.bath_gas is not None:
             restart_dict['bath_gas'] = self.bath_gas
+        if self.solvent is not None:
+            restart_dict['solvent'] = self.solvent
         if self.adaptive_levels is not None:
             restart_dict['adaptive_levels'] = self.adaptive_levels
         restart_dict['job_types'] = self.job_types
@@ -398,6 +408,7 @@ class ARC(object):
         self.max_job_time = input_dict['max_job_time'] if 'max_job_time' in input_dict else self.max_job_time
         self.memory = input_dict['job_memory'] if 'job_memory' in input_dict else self.memory
         self.bath_gas = input_dict['bath_gas'] if 'bath_gas' in input_dict else None
+        self.solvent = input_dict['solvent'] if 'solvent' in input_dict else None
         self.confs_to_dft = input_dict['confs_to_dft'] if 'confs_to_dft' in input_dict else 5
         self.adaptive_levels = input_dict['adaptive_levels'] if 'adaptive_levels' in input_dict else None
         self.keep_checks = input_dict['keep_checks'] if 'keep_checks' in input_dict else False
@@ -534,7 +545,7 @@ class ARC(object):
                                    max_job_time=self.max_job_time, allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
                                    memory=self.memory, orbitals_level=self.orbitals_level,
                                    adaptive_levels=self.adaptive_levels, confs_to_dft=self.confs_to_dft,
-                                   dont_gen_confs=self.dont_gen_confs)
+                                   dont_gen_confs=self.dont_gen_confs, solvent=self.solvent)
 
         save_yaml_file(path=os.path.join(self.project_directory, 'output', 'status.yml'), content=self.scheduler.output)
 
