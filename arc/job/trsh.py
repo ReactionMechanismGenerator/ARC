@@ -759,7 +759,7 @@ def trsh_ess_job(label, level_of_theory_dict, server, job_status, job_type, soft
             add_mem = float(job_status['error'].split()[-2])  # parse Molpro's requirement in MW
             add_mem = int(np.ceil(add_mem / 100.0)) * 100  # round up to the next hundred
             memory = memory_gb + add_mem / 128. + 5  # convert MW to GB, add 5 extra GB (be conservative)
-            logger.info('Troubleshooting {type} job in {software} for {label} using memory: {mem} GB instead of '
+            logger.info('Troubleshooting {type} job in {software} for {label} using memory: {mem:.2f} GB instead of '
                         '{old} GB'.format(type=job_type, software=software, mem=memory, old=memory_gb,
                                           label=label))
         elif 'shift' not in ess_trsh_methods:
@@ -787,7 +787,7 @@ def trsh_ess_job(label, level_of_theory_dict, server, job_status, job_type, soft
             # Increase memory allocation, also run with a shift
             ess_trsh_methods.append('memory')
             memory = servers[server]['memory']  # set memory to the value of an entire node (in GB)
-            logger.info('Troubleshooting {type} job in {software} for {label} using memory: {mem} GB instead of '
+            logger.info('Troubleshooting {type} job in {software} for {label} using memory: {mem:.2f} GB instead of '
                         '{old} GB'.format(type=job_type, software=software, mem=memory, old=memory_gb,
                                           label=label))
             shift = 'shift,-1.0,-0.5;'
