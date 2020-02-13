@@ -1129,7 +1129,7 @@ end
                                   self.software, self.method + '/' + self.basis_set))
 
         if self.software == 'gaussian' and not self.trsh:
-            if self.level_of_theory[:2] == 'ro':
+            if self.job_level_of_theory_dict['method'][:2] == 'ro':
                 self.trsh = 'use=L506'
             else:
                 # xqc will do qc (quadratic convergence) if the job fails w/o it, so use by default
