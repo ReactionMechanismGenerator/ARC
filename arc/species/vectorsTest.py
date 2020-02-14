@@ -114,10 +114,10 @@ O       1.40465895    0.03095528    0.00000000""")
         self.assertEqual(angle, 180.0)
         angle = vectors.calculate_angle(coords=co2['coords'], atoms=[1, 2, 3], index=1, units='degs')
         self.assertEqual(angle, 180.0)
-        angle = vectors.calculate_angle(coords=co2['coords'], atoms=[1, 2, 1], index=1, units='degs')
-        self.assertEqual(angle, 0.0)
         angle = vectors.calculate_angle(coords=co2['coords'], atoms=[0, 1, 2], index=0, units='rads')
         self.assertEqual(angle, math.pi)
+        with self.assertRaises(VectorsError):
+            angle = vectors.calculate_angle(coords=co2['coords'], atoms=[1, 2, 1], index=1, units='degs')
 
         fake_co2 = converter.str_to_xyz("""O      -1.40465894   -0.03095532    0.00000000
 C      -0.00000000    0.00000004    0.00000000
