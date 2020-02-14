@@ -49,7 +49,7 @@ def get_angle(v1, v2, units='rads'):
         raise VectorsError(f'v1 and v2 must be the same length, got {len(v1)} and {len(v2)}.')
     v1_u, v2_u = unit_vector(v1), unit_vector(v2)
     conversion = 180 / math.pi if 'degs' in units else 1
-    return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0)) * conversion
+    return float(np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0)) * conversion)
 
 
 def get_dihedral(v1, v2, v3, units='degs'):
@@ -83,7 +83,7 @@ def get_dihedral(v1, v2, v3, units='degs'):
     if np.isnan(dihedral):
         raise VectorsError('Could not calculate a dihedral angle')
     conversion = 180 / math.pi if 'degs' in units else 1
-    return dihedral * conversion
+    return float(dihedral * conversion)
 
 
 def calculate_distance(coords, atoms, index=0):
@@ -336,4 +336,4 @@ def get_vector_length(v):
     Returns:
         float: The vector's length.
     """
-    return np.dot(v, v) ** 0.5
+    return float(np.dot(v, v) ** 0.5)
