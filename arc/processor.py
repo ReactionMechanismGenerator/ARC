@@ -219,7 +219,9 @@ class Processor(object):
                 if species.mol_list:
                     arkane_spc.molecule = species.mol_list
                     species.rmg_species.molecule = species.mol_list  # add resonance structures for thermo determination
-                statmech_success = self._run_statmech(arkane_spc, species.arkane_file, output_path,
+                statmech_success = self._run_statmech(arkane_spc,
+                                                      species.arkane_file,
+                                                      output_path,
                                                       use_bac=self.use_bac)
                 if not statmech_success:
                     logger.error(f'Could not run statmech job for species {species.label}')
@@ -299,7 +301,8 @@ class Processor(object):
                                                         if label in rxn.reactants],
                                              products=[str(label + '_') for label in arkane_spc_dict.keys()
                                                        if label in rxn.products],
-                                             transitionState=rxn.ts_label, tunneling='Eckart')
+                                             transitionState=rxn.ts_label,
+                                             tunneling='Eckart')
                 kinetics_job = KineticsJob(reaction=arkane_rxn, Tmin=self.t_min, Tmax=self.t_max, Tcount=self.t_count)
                 logger.info(f'Calculating rate for reaction {rxn.label}')
                 try:
