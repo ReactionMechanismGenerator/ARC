@@ -379,27 +379,28 @@ class ARCReaction(object):
         Return ``False`` if this test fails, else ``True``
         """
         if any([spc.e_elect is None for spc in self.r_species + self.p_species + [self.ts_species]]):
-            logger.error("Could not get E0's of all species participating in reaction {0}. Cannot check TS E0.".format(
-                self.label))
+            logger.error(f"Could not get E0's of all species in reaction {self.label}. Cannot check TS E0.")
             r_e_elect = None if any([spc.e_elect is None for spc in self.r_species])\
                 else sum(spc.e_elect for spc in self.r_species)
             p_e_elect = None if any([spc.e_elect is None for spc in self.p_species])\
                 else sum(spc.e_elect for spc in self.p_species)
             ts_e_elect = self.ts_species.e_elect
-            logger.error('Reactants E0: {0}\nProducts E0: {1}\nTS E0: {2}'.format(r_e_elect, p_e_elect, ts_e_elect))
+            logger.error(f'Reactants E0: {r_e_elect}\nProducts E0: {p_e_elect}\nTS E0: {ts_e_elect}')
             return True
         r_e_elect = sum([spc.e_elect for spc in self.r_species])
         p_e_elect = sum([spc.e_elect for spc in self.p_species])
         if self.ts_species.e_elect < r_e_elect or self.ts_species.e_elect < p_e_elect:
             if log:
-                logger.error('TS of reaction {0} has a lower E0 value than expected:\nReactants: {1:.2f} kJ/mol\nTS:'
-                             ' {2:.2f} kJ/mol\nProducts: {3:.2f} kJ/mol'.format(
-                              self.label, r_e_elect, self.ts_species.e_elect, p_e_elect))
+                logger.error(f'TS of reaction {self.label} has a lower E0 value than expected:\n'
+                             f'Reactants: {r_e_elect:.2f} kJ/mol\n'
+                             f'TS: {self.ts_species.e_elect:.2f} kJ/mol'
+                             f'\nProducts: {p_e_elect:.2f} kJ/mol')
             return False
         if log:
-            logger.info('Reaction {0} has the following path energies:\nReactants: {1:.2f} kJ/mol'
-                        '\nTS: {2:.2f} kJ/mol\nProducts: {3:.2f} kJ/mol'.format(
-                         self.label, r_e_elect, self.ts_species.e_elect, p_e_elect))
+            logger.info(f'Reaction {self.label} has the following path energies:\n'
+                        f'Reactants: {r_e_elect:.2f} kJ/mol\n'
+                        f'TS: {self.ts_species.e_elect:.2f} kJ/mol\n'
+                        f'Products: {p_e_elect:.2f} kJ/mol')
         return True
 
     def check_attributes(self):
