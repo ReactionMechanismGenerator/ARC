@@ -494,10 +494,12 @@ class Processor(object):
         Copy the frequency job output file into the TS geometry folder.
         """
         calc_path = os.path.join(self.output[label]['paths']['freq'])
-        output_path = os.path.join(self.project_directory, 'output', 'rxns', label, 'geometry', 'frequency.out')
-        if not os.path.exists(os.path.dirname(output_path)):
-            os.makedirs(os.path.dirname(output_path))
-        shutil.copyfile(calc_path, output_path)
+        if calc_path:
+            # it's an empty string when loading from a YAML file
+            output_path = os.path.join(self.project_directory, 'output', 'rxns', label, 'geometry', 'frequency.out')
+            if not os.path.exists(os.path.dirname(output_path)):
+                os.makedirs(os.path.dirname(output_path))
+            shutil.copyfile(calc_path, output_path)
 
     def load_rmg_db(self):
         """Load the RMG database"""
