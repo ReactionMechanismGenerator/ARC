@@ -491,6 +491,16 @@ R1=1.0912"""
                                     (-0.8909611825531449, -0.5143966785845662, -0.3637330327013464))}
         self.assertTrue(almost_equal_coords_lists(xyz5, expected_xyz5))
 
+        # test processing commas in string input
+        xyz_from_commas = converter.str_to_xyz(""" O,-3.77205932,0.72922606,-1.43980481
+ H,-4.73205932,0.72922606,-1.43980481
+ H,-3.45160473,-0.17570977,-1.43980481""")
+        expected_xyz = {'symbols': ('O', 'H', 'H'), 'isotopes': (16, 1, 1),
+                        'coords': ((-3.77205932, 0.72922606, -1.43980481),
+                                   (-4.73205932, 0.72922606, -1.43980481),
+                                   (-3.45160473, -0.17570977, -1.43980481))}
+        self.assertTrue(almost_equal_coords_lists(xyz_from_commas, expected_xyz))
+
     def test_xyz_to_str(self):
         """Test converting an ARC xyz format to a string xyz format"""
         xyz_str1 = converter.xyz_to_str(xyz_dict=self.xyz1['dict'])
