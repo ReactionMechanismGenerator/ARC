@@ -401,12 +401,19 @@ def get_atom_radius(symbol):
     return r
 
 
-def colliding_atoms(xyz):
+def colliding_atoms(xyz, threshold=0.55):
     """
     Check whether atoms are too close to each other.
+    A default threshold of 55% the covalent radii of two atoms is used.
+    For example:
+    - C-O collide at 55% * 1.42 A = 0.781 A
+    - N-N collide at 55% * 1.42 A = 0.781 A
+    - C-N collide at 55% * 1.47 A = 0.808 A
+    - C-H collide at 55% * 1.07 A = 0.588 A
 
     Args:
         xyz (dict): The Cartesian coordinates.
+        threshold (float, optional): The collision threshold to use.
 
     Returns:
          bool: ``True`` if they are colliding, ``False`` otherwise.
@@ -414,26 +421,20 @@ def colliding_atoms(xyz):
     if len(xyz['symbols']) == 1:
         # monoatomic
         return False
-    coords = xyz['coords']
-    symbols = xyz['symbols']
-    atom_radaii = [get_atom_radius(symbol) for symbol in symbols]
-    for i, coord1 in enumerate(coords):
-        if i < len(coords) - 1:
-            for j, coord2 in enumerate(coords[i+1:]):
-                if sum((coord1[k] - coord2[k]) ** 2 for k in range(3)) ** 0.5 < \
-                        0.9 * (atom_radaii[i] + atom_radaii[j + i + 1]):  # take a 10% confidence value
-                    logger.debug(f'atom {symbols[i]} with coords {coord1} is distant '
-                                 f'{sum((coord1[k] - coord2[k]) ** 2 for k in range(3)) ** 0.5} '
-                                 f'from atom {symbols[i + j + 1]} with coords {coord2}, '
-                                 f'should be more than {atom_radaii[i] + atom_radaii[j + i + 1]}')
-                    return True
-    return False
+
+    geometry = np.array([np.array(coord, np.float64) * 1.8897259886 for coord in xyz['coords']])  # convert A to Bohr
+    qcel_out = qcel.molutil.guess_connectivity(symbols=xyz['symbols'], geometry=geometry, threshold=threshold)
+    logger.debug(qcel_out)
+
+    return bool(len(qcel_out))
 
 
 # a bond length dictionary of single bonds, Angstrom
 # https://sites.google.com/site/chempendix/bond-lengths
 # https://courses.lumenlearning.com/suny-potsdam-organicchemistry/chapter/1-3-basics-of-bonding/
 # 'N-O' is taken from the geometry of NH2OH
+# todo: combine with partial charge to allow greated distance, e.g., as in N2O4
+# todo: or replace with NBO analysis
 SINGLE_BOND_LENGTH = {'Br-Br': 2.29, 'Br-Cr': 1.94, 'Br-H': 1.41,
                       'C-C': 1.54, 'C-Cl': 1.77, 'C-F': 1.35, 'C-H': 1.09, 'C-I': 2.13,
                       'C-N': 1.47, 'C-O': 1.43, 'C-P': 1.87, 'C-S': 1.81, 'C-Si': 1.86,
