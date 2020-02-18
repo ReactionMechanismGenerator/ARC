@@ -9,7 +9,7 @@ __ greengp_
 
 ARC's contributors are:
 
-- `Dr. Alon Grinberg Dana <http://greengroup.mit.edu/alon-grinberg-dana>`_ (leading developer)
+- `Dr. Alon Grinberg Dana <https://dana.net.technion.ac.il/alon-grinberg-dana/>`_ (leading developer)
 - `Dr. Duminda Ranasinghe <http://greengroup.mit.edu/duminda-ranasinghe>`_
 - `Oscar Haoyang Wu <http://greengroup.mit.edu/oscar-haoyang-wu>`_
 - `Colin Grambow <http://greengroup.mit.edu/colin-grambow>`_

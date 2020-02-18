@@ -279,8 +279,16 @@ class Processor(object):
                 for spc in rxn.r_species + rxn.p_species:
                     if spc.label not in arkane_spc_dict.keys():
                         # add an extra character to the arkane_species label to distinguish between species calculated
-                        #  for thermo and species calculated for kinetics (where we don't want to use BAC)
-                        arkane_spc = arkane_input_species(str(spc.label + '_'), spc.arkane_file)
+                        # for thermo and species calculated for kinetics (where we don't want to use BAC)
+                        counter = 1
+                        rename_success = False
+                        while not rename_success:
+                            try:
+                                arkane_spc = arkane_input_species(str(spc.label + '_' * counter), spc.arkane_file)
+                            except ValueError:
+                                counter += 1
+                            else:
+                                break
                         self._run_statmech(arkane_spc, spc.arkane_file, kinetics=True)
                 rxn.dh_rxn298 = sum([product.thermo.get_enthalpy(298) for product in arkane_spc_dict.values()
                                      if product.label in rxn.products])\

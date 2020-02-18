@@ -116,6 +116,12 @@ class Scheduler(object):
         dont_gen_confs (list, optional): A list of species labels for which conformer jobs were loaded from a restart
                                          file, or user-requested. Additional conformer generation should be avoided.
         confs_to_dft (int, optional): The number of lowest MD conformers to DFT at the conformers_level.
+        solvent (dict): This argument, if not None, requests that a calculation be performed in the presence of a
+                        solvent by placing the solute in a cavity within the solvent reaction field.
+                        Keys are:
+                        - 'method' (optional values: 'pcm' (default), 'cpcm', 'dipole', 'ipcm', 'scipcm')
+                        -  'solvent' (values are strings of "known" solvents, see https://gaussian.com/scrf/,
+                                      default is "water")
 
     Attributes:
         project (str): The project's name. Used for naming the working directory.
@@ -165,11 +171,12 @@ class Scheduler(object):
         adaptive_levels (dict): A dictionary of levels of theory for ranges of the number of heavy atoms in
                                   the molecule. Keys are tuples of (min_num_atoms, max_num_atoms), values are
                                   dictionaries with 'optfreq' and 'sp' as keys and levels of theory as values.
+        solvent (dict): The solvent model and solvent to use.
     """
 
     def __init__(self, project, ess_settings, species_list, project_directory, composite_method='', conformer_level='',
                  opt_level='', freq_level='', sp_level='', scan_level='', ts_guess_level='', orbitals_level='',
-                 adaptive_levels=None, rmgdatabase=None, job_types=None, job_additional_options=None,
+                 adaptive_levels=None, rmgdatabase=None, job_types=None, job_additional_options=None, solvent=None,
                  job_shortcut_keywords=None, rxn_list=None, bath_gas=None, restart_dict=None, max_job_time=120,
                  allow_nonisomorphic_2d=False, memory=14, testing=False, dont_gen_confs=None, confs_to_dft=5):
         self.rmgdb = rmgdatabase
@@ -187,6 +194,7 @@ class Scheduler(object):
         self.testing = testing
         self.memory = memory
         self.bath_gas = bath_gas
+        self.solvent = solvent
         self.adaptive_levels = adaptive_levels
         self.confs_to_dft = confs_to_dft
         self.dont_gen_confs = dont_gen_confs or list()
@@ -705,7 +713,7 @@ class Scheduler(object):
                   scan_res=scan_res, conformer=conformer, checkfile=checkfile, bath_gas=self.bath_gas,
                   number_of_radicals=species.number_of_radicals, conformers=confs, radius=radius,
                   directed_scan_type=directed_scan_type, directed_scans=directed_scans, rotor_index=rotor_index,
-                  directed_dihedrals=directed_dihedrals, cpu_cores=cpu_cores)
+                  directed_dihedrals=directed_dihedrals, cpu_cores=cpu_cores, solvent=self.solvent)
         if job.software is not None:
             if conformer < 0:
                 # this is NOT a conformer DFT job

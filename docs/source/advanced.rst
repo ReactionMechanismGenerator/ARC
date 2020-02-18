@@ -7,7 +7,6 @@ Advanced Features
 
 Flexible coordinates (xyz) input
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
 The xyz attribute of an :ref:`ARCSpecies <species>` object (whether a TS or not) is extremely flexible.
 It could be a multiline string containing the coordinates, or a list of several such multiline strings.
 It could also contain valid file paths to ESS input files, output files,
@@ -18,7 +17,6 @@ __ xyz_format_
 
 Specify a specific job type to execute
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
 To run ARC with a particular job type, set ``specific_job_type`` to the job type you want.
 Currently, ARC supports the following job types: ``conformers``, ``opt``, ``fine``, ``freq``,
 ``sp``, ``rotors``, ``onedmin``, ``orbitals``, ``bde``.
@@ -46,7 +44,6 @@ Specification 2::
 
 Specify job level of theory
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
 It is possible to specify a level of theory to be used in specific job types (e.g., optimization, single point, etc.).
 If not specified, ARC will use the defaults in the ``default_levels_of_theory`` dictionary in settings.py.
 
@@ -152,7 +149,6 @@ are specified. Also, it is not good practice to specify ``level_of_theory`` alon
 
 Additional job options
 ^^^^^^^^^^^^^^^^^^^^^^
-
 Note: this feature currently has limited support for ESS other than ``Orca``.
 
 ARC allows specification of job options (e.g., SCF convergence) at ease. By default, ARC uses default job options for
@@ -202,7 +198,6 @@ is a shortcut of the previous example.
 
 Control job memory allocation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
 To specify the amount of memory for all jobs in an ARC project, set ``job_memory`` with positive integer values in GB.
 
 Notice that user can change the total memory per node by setting the value of ``memory`` key in the servers dictionary
@@ -215,7 +210,6 @@ maximal node ``memory``.
 
 Using a fine DFT grid for optimization
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
 This option is turned on by default. If you'd like to turn it off,
 set ``fine`` in the ``job_types`` dictionary to `False`.
 
@@ -247,7 +241,6 @@ In TeraChem, this will add the following directive::
 
 Rotor scans
 ^^^^^^^^^^^
-
 This option is turned on by default. If you'd like to turn it off,
 set ``rotors`` in the ``job_types`` dictionary to `False`.
 
@@ -264,7 +257,6 @@ All of the above settings can be modified in the settings.py file.
 
 ND Rotor scans
 ^^^^^^^^^^^^^^
-
 ARC also supports ND (N dimensional, N >= 1) rotor scans. There are seven different ND types to execute:
 
 - A1. Generate all geometries in advance (brute force), and calculate single point energies (nested or diagonalized).
@@ -336,7 +328,6 @@ To run specific dihedrals as ND (here all 2D combinations for a species with 3 t
 
 Electronic Structure Software Settings
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
 ARC currently supports the following electronic structure software (ESS):
 
     - `Gaussian`__
@@ -371,7 +362,6 @@ You may pass an ESS settings dictionary to direct ARC where to find each softwar
 
 Troubleshooting
 ^^^^^^^^^^^^^^^
-
 ARC has fairly good auto-troubleshooting methods.
 
 However, at times a user might know in advance that a particular additional keyword
@@ -390,7 +380,6 @@ in the ``initial_trsh`` (`trsh` stands for `troubleshooting`) dictionary passed 
 
 ESS check files
 ^^^^^^^^^^^^^^^
-
 ARC copies check files from previous `Gaussian`__ and `TeraChem <http://www.petachem.com/products.html>`_ jobs,
 and uses them when spawning additional jobs for the same species.
 When ARC terminates, it will attempt to delete all downloaded checkfiles (remote copies remain).
@@ -402,7 +391,6 @@ __ gaussian_
 
 Frequency scaling factors
 ^^^^^^^^^^^^^^^^^^^^^^^^^
-
 ARC will look for appropriate available frequency scaling factors in `Arkane`_
 for the respective ``freq_level``. If a frequency scaling factor isn't available, ARC will attempt
 to determine it using `Truhlar's method`__. This involves spawning fine optimizations anf frequency
@@ -415,7 +403,6 @@ __ Truhlar_
 
 Adaptive levels of theory
 ^^^^^^^^^^^^^^^^^^^^^^^^^
-
 Often we'd like to adapt the levels of theory to the size of the molecule.
 To do so, pass the ``adaptive_levels`` attribute, which is a dictionary of
 levels of theory for ranges of the number of heavy (non-hydrogen) atoms in the
@@ -437,7 +424,6 @@ there aren't any gaps in the heavy atom ranges. The below is in Python (not YAML
 
 Isomorphism checks
 ^^^^^^^^^^^^^^^^^^
-
 When a species is defined using a 2D graph (i.e., SMILES, AdjList, or InChI), an isomorphism check
 is performed on the optimized geometry (all conformers and final optimization).
 If the molecule perceived from the 3D coordinate is not isomorphic
@@ -451,7 +437,6 @@ project, pass `True` to the ``allow_nonisomorphic_2d`` argument (it is `False` b
 
 Using a non-default project directory
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
 If ARC is run from the terminal with an input/restart file
 then the folder in which that file is located becomes the Project's folder.
 If ARC is run using the API, a folder with the Project's name is created under ``ARC/Projects/``.
@@ -462,7 +447,6 @@ folder path using the ``project_directory`` argument. If the folder does not exi
 
 Visualizing molecular orbitals (MOs)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
 There are various ways to visualize MOs.
 One way is to open a `Gaussian`__ output file
 using `GaussView <https://gaussian.com/gaussview6/>`_.
@@ -482,7 +466,6 @@ to post process and save images.
 
 Consider a specific diastereomer
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
 ARC's conformer generation module will consider by default all non-enantiomeric (non-mirror) diastereomers,
 using chiral (tetrahedral) carbon atoms, chiral inversion modes in nitrogen atoms, and cis/trans double bonds.
 To consider a specific diastereomer, pass the 3D xyz coordinates when defining the species, and set the
@@ -516,7 +499,6 @@ but just be an arbitrary conformer with the required chiralities to be preserved
 
 Don't generate conformers for specific species
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
 The ``conformers`` entry in the ``job_types`` dictionary is a global flag,
 affecting conformer generation of all species in the project.
 
@@ -573,7 +555,6 @@ coordinates, ARC **will** generate conformers for it.
 
 Writing an ARC input file using the API
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
 Writing in YAML isn't very intuitive for many, especially without a good editor.
 You could use ARC's API to define your objects, and then dump it all in a YAML file
 which could be read as an input in ARC::
@@ -717,7 +698,6 @@ The above code generated the following input file::
 
 Calculating BDEs (bond dissociation energies)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
 To direct ARC to calculate BDEs for a species, set the ``bde`` job type to `True`,
 and set the requested atom indices (1-indexed) in the species ``.bdes`` argument
 as a list of tuples representing indices of bonded atoms (via a single bond)
@@ -808,6 +788,24 @@ argument to the main ARC object if using the API)::
     compare_to_rmg: False
 
 With this option specified, ARC will not load the RMG database, and parity plots will not be generated.
+
+
+Use solvent corrections
+^^^^^^^^^^^^^^^^^^^^^^^
+This feature is currently only implemented for jobs spawned using Gaussian.
+The `solvent` argument, if not None, requests that a calculation be performed in the presence of a solvent
+by placing the solute (the species) in a cavity within the solvent reaction field. This argument is a dictionary,
+with the following keys:
+
+    - 'method' (optional values: 'pcm' (default), 'cpcm', 'dipole', 'ipcm', 'scipcm')
+    - 'solvent' (values are strings of "known" solvents, default is "water")
+
+Example::
+
+solvent = {'method': 'pcm', 'solvent: 'DiethylEther'}
+
+
+See `https://gaussian.com/scrf/ <https://gaussian.com/scrf/>`_ for more details.
 
 
 .. include:: links.txt

@@ -55,7 +55,7 @@ def str_to_xyz(xyz_str):
         xyz_str (str): The string xyz format to be converted.
 
     Returns:
-        xyz_dict (dict): The ARC xyz format.
+        dict: The ARC xyz format.
 
     Raises:
         ConverterError: If xyz_str is not a string or does not have four space-separated entries per non empty line.
@@ -178,11 +178,11 @@ def xyz_to_x_y_z(xyz_dict):
         xyz_dict (dict): The ARC xyz format.
 
     Returns:
-        x (tuple): The X coordinates.
+        tuple: The X coordinates.
     Returns:
-        y (tuple): The Y coordinates.
+        tuple: The Y coordinates.
     Returns:
-        z (tuple): The Z coordinates.
+        tuple: The Z coordinates.
     """
     xyz_dict = check_xyz_dict(xyz_dict)
     x, y, z = tuple(), tuple(), tuple()
@@ -330,7 +330,7 @@ def standardize_xyz_string(xyz_str, isotope_format=None):
                                         option is 'gaussian'.
 
     Returns:
-        xyz (str): The string xyz format in standardized format.
+        str: The string xyz format in standardized format.
 
     Raises:
         ConverterError: If ``xyz_str`` is of wrong type.
@@ -623,7 +623,7 @@ def str_to_zmat(zmat_str):
         zmat_str (str): The string zmat format to be converted.
 
     Returns:
-        zmat_dict (dict): The ARC zmat format.
+        dict: The ARC zmat format.
 
     Raises:
         ConverterError: If zmat_str is not a string or does not have enough values per line.
@@ -875,7 +875,7 @@ def xyz_to_pybel_mol(xyz):
         xyz (dict): ARC's xyz dictionary format.
 
     Returns:
-        pybel_mol (OBmol): An Open Babel molecule.
+        OBmol: An Open Babel molecule.
     """
     xyz = check_xyz_dict(xyz)
     try:
@@ -894,7 +894,7 @@ def pybel_to_inchi(pybel_mol, has_h=True):
         has_h (bool): Whether the molecule has hydrogen atoms. ``True`` if it does.
 
     Returns:
-        inchi (str): The respective InChI representation of the molecule.
+        str: The respective InChI representation of the molecule.
     """
     if has_h:
         inchi = pybel_mol.write('inchi', opt={'F': None}).strip()  # Add fixed H layer
@@ -1232,7 +1232,7 @@ def update_molecule(mol, to_single_bonds=False):
         to_single_bonds (bool, optional): Whether to convert all bonds to single bonds. ``True`` to convert.
 
     Returns:
-        new_mol (Molecule): The updated molecule.
+        Molecule: The updated molecule.
     """
     new_mol = Molecule()
     try:
@@ -1377,7 +1377,7 @@ def set_rdkit_dihedrals(conf, rd_mol, torsion, deg_increment=None, deg_abs=None)
         deg_abs (float, optional): The required dihedral in degrees.
 
     Returns:
-        new_xyz (dict): The xyz with the new dihedral, ordered according to the map.
+        dict: The xyz with the new dihedral, ordered according to the map.
 
     Raises:
         ConverterError: If the dihedral cannot be set.
