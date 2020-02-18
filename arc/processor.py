@@ -219,7 +219,9 @@ class Processor(object):
                 if species.mol_list:
                     arkane_spc.molecule = species.mol_list
                     species.rmg_species.molecule = species.mol_list  # add resonance structures for thermo determination
-                statmech_success = self._run_statmech(arkane_spc, species.arkane_file, output_path,
+                statmech_success = self._run_statmech(arkane_spc,
+                                                      species.arkane_file,
+                                                      output_path,
                                                       use_bac=self.use_bac)
                 if not statmech_success:
                     logger.error(f'Could not run statmech job for species {species.label}')
@@ -299,7 +301,8 @@ class Processor(object):
                                                         if label in rxn.reactants],
                                              products=[str(label + '_') for label in arkane_spc_dict.keys()
                                                        if label in rxn.products],
-                                             transitionState=rxn.ts_label, tunneling='Eckart')
+                                             transitionState=rxn.ts_label,
+                                             tunneling='Eckart')
                 kinetics_job = KineticsJob(reaction=arkane_rxn, Tmin=self.t_min, Tmax=self.t_max, Tcount=self.t_count)
                 logger.info(f'Calculating rate for reaction {rxn.label}')
                 try:
@@ -494,10 +497,12 @@ class Processor(object):
         Copy the frequency job output file into the TS geometry folder.
         """
         calc_path = os.path.join(self.output[label]['paths']['freq'])
-        output_path = os.path.join(self.project_directory, 'output', 'rxns', label, 'geometry', 'frequency.out')
-        if not os.path.exists(os.path.dirname(output_path)):
-            os.makedirs(os.path.dirname(output_path))
-        shutil.copyfile(calc_path, output_path)
+        if calc_path:
+            # it's an empty string when loading from a YAML file
+            output_path = os.path.join(self.project_directory, 'output', 'rxns', label, 'geometry', 'frequency.out')
+            if not os.path.exists(os.path.dirname(output_path)):
+                os.makedirs(os.path.dirname(output_path))
+            shutil.copyfile(calc_path, output_path)
 
     def load_rmg_db(self):
         """Load the RMG database"""

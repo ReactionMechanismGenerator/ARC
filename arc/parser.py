@@ -107,9 +107,9 @@ def parse_normal_displacement_modes(path, software=None):
         software (str, optional): The software to used to generate the log file.
 
     Returns:
-        np.ndarray: The frequencies (cm^-1)
-    Returns:
-        np.ndarray: The normal displacement modes
+        tuple[np.ndarray: The frequencies (cm^-1),
+              np.ndarray: The normal displacement modes,
+             ]
 
     Raises:
         NotImplementedError: If the parser is not implemented for the ESS this log file belongs to.
@@ -163,7 +163,7 @@ def parse_geometry(path):
         path (str): The ESS log file to parse from
 
     Returns:
-        xyz (dict): The geometry.
+        dict: The geometry.
     """
     log = determine_qm_software(fullpath=path)
     try:
@@ -198,15 +198,15 @@ def parse_e_elect(path, zpe_scale_factor=1.):
         zpe_scale_factor: The ZPE scaling factor, used only for composite methods in Gaussian via Arkane.
 
     Returns:
-        e_elect (float): The electronic energy in kJ/mol
+        float: The electronic energy in kJ/mol
     """
     if not os.path.isfile(path):
-        raise InputError('Could not find file {0}'.format(path))
+        raise InputError(f'Could not find file {path}')
     log = determine_qm_software(fullpath=path)
     try:
         e_elect = log.load_energy(zpe_scale_factor) * 0.001  # convert to kJ/mol
     except (LogError, NotImplementedError):
-        logger.warning('Could not read e_elect from {0}'.format(path))
+        logger.warning(f'Could not read e_elect from {path}')
         e_elect = None
     return e_elect
 
@@ -240,8 +240,9 @@ def parse_1d_scan_energies(path):
         path (str): The ESS log file to parse from.
 
     Returns:
-        energies (list): The electronic energy in kJ/mol.
-        angles (list): The scan angles in degrees.
+        tuple[list: The electronic energy in kJ/mol,
+              list: The scan angles in degrees,
+             ]
 
     Raises:
         InputError: If ``path`` is invalid.
@@ -270,19 +271,20 @@ def parse_nd_scan_energies(path, software=None, return_original_dihedrals=False)
                                                     ``True`` to return, default is ``False``.
 
     Returns:
-        dict: The "results" dictionary, which has the following structure::
+        tuple[
+            dict: The "results" dictionary, which has the following structure::
 
-              results = {'directed_scan_type': <str, used for the fig name>,
-                         'scans': <list, entries are lists of torsion indices>,
-                         'directed_scan': <dict, keys are tuples of '{0:.2f}' formatted dihedrals,
-                                           values are dictionaries with the following keys and values:
-                                           {'energy': <float, energy in kJ/mol>,  * only this is used here
-                                            'xyz': <dict>,
-                                            'is_isomorphic': <bool>,
-                                            'trsh': <list, job.ess_trsh_methods>}>
-                         }
-    Returns:
-        list, optional: The dihedrals angles of the original conformer.
+                  results = {'directed_scan_type': <str, used for the fig name>,
+                             'scans': <list, entries are lists of torsion indices>,
+                             'directed_scan': <dict, keys are tuples of '{0:.2f}' formatted dihedrals,
+                                               values are dictionaries with the following keys and values:
+                                               {'energy': <float, energy in kJ/mol>,  * only this is used here
+                                                'xyz': <dict>,
+                                                'is_isomorphic': <bool>,
+                                                'trsh': <list, job.ess_trsh_methods>}>
+                             },
+            list, optional: The dihedrals angles of the original conformer,
+             ]
 
     Raises:
         InputError: If ``path`` is invalid.
@@ -448,7 +450,7 @@ def parse_xyz_from_file(path):
         path (str): The file path.
 
     Returns:
-        xyz (dict): The parsed coordinates.
+        dict: The parsed coordinates.
 
     Raises:
         ParserError: If the coordinates could not be parsed.
@@ -653,9 +655,9 @@ def process_conformers_file(conformers_path):
                                a "conformers_after_optimization" file).
 
     Returns:
-        xyz (list): Entries are conformer coordinates in a dict format.
-    Returns:
-        energies (list): Entries float numbers representing the energies in kJ/mol.
+        tuple[list: Entries are conformer coordinates in a dict format,
+              list: Entries float numbers representing the energies in kJ/mol,
+             ]
 
     Raises:
         InputError: If the file could not be found.

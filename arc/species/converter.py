@@ -65,6 +65,7 @@ def str_to_xyz(xyz_str):
     if os.path.isfile(xyz_str):
         from arc.parser import parse_xyz_from_file
         return parse_xyz_from_file(xyz_str)
+    xyz_str = xyz_str.replace(',', ' ')
     if len(xyz_str.splitlines()[0]) == 1:
         # this is a zmat
         return zmat_to_xyz(zmat=str_to_zmat(xyz_str), keep_dummy=False)

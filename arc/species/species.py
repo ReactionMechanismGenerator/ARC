@@ -21,15 +21,33 @@ from rmgpy.species import Species
 from rmgpy.statmech import NonlinearRotor, LinearRotor
 from rmgpy.transport import TransportData
 
-from arc.common import get_logger, get_single_bond_length, determine_symmetry, determine_top_group_indices
+from arc.common import (colliding_atoms,
+                        determine_symmetry,
+                        determine_top_group_indices,
+                        get_logger,
+                        get_single_bond_length)
 from arc.exceptions import SpeciesError, RotorError, InputError, TSError, SanitizationError
-from arc.parser import parse_xyz_from_file, parse_dipole_moment, parse_polarizability, process_conformers_file, \
-    parse_1d_scan_energies
+from arc.parser import (parse_1d_scan_energies,
+                        parse_dipole_moment,
+                        parse_polarizability,
+                        parse_xyz_from_file,
+                        process_conformers_file)
 from arc.settings import default_ts_methods, valid_chars, minimum_barrier
 from arc.species import conformers
-from arc.species.converter import check_isomorphism, check_xyz_dict, check_zmat_dict, get_xyz_radius, \
-    molecules_from_xyz, order_atoms_in_mol_list, rdkit_conf_from_mol, remove_dummies, rmg_mol_from_inchi, \
-    set_rdkit_dihedrals, str_to_xyz, translate_to_center_of_mass, xyz_from_data, xyz_to_str
+from arc.species.converter import (check_isomorphism,
+                                   check_xyz_dict,
+                                   check_zmat_dict,
+                                   get_xyz_radius,
+                                   molecules_from_xyz,
+                                   order_atoms_in_mol_list,
+                                   rdkit_conf_from_mol,
+                                   remove_dummies,
+                                   rmg_mol_from_inchi,
+                                   set_rdkit_dihedrals,
+                                   str_to_xyz,
+                                   translate_to_center_of_mass,
+                                   xyz_from_data,
+                                   xyz_to_str)
 from arc.species.vectors import calculate_distance
 from arc.ts import atst
 
@@ -310,7 +328,6 @@ class ARCSpecies(object):
             self.number_of_rotors = 0
             self.rotors_dict = dict()
             self.rmg_species = rmg_species
-            self.process_xyz(xyz)
             if bond_corrections is None:
                 self.bond_corrections = dict()
             else:
@@ -342,6 +359,7 @@ class ARCSpecies(object):
 
             if label is not None:
                 self.label = label
+            self.process_xyz(xyz)
             if multiplicity is not None:
                 self.multiplicity = multiplicity
             if charge is not None:
@@ -1205,6 +1223,10 @@ class ARCSpecies(object):
                     # string which does not represent a (valid) path, treat as a string representation of xyz
                     xyzs.append(remove_dummies(str_to_xyz(xyz)))
                     energies.append(None)  # dummy (lists should be the same length)
+            for xyz in xyzs:
+                if colliding_atoms(xyz):
+                    raise SpeciesError(f'The following coordinates for species {self.label} has colliding atoms:\n'
+                                       f'{xyz_to_str(xyz)}')
             if not self.is_ts:
                 self.conformers.extend(xyzs)
                 self.conformer_energies.extend(energies)

@@ -1026,8 +1026,8 @@ def scan_quality_check(label, pivots, energies, scan_res=rotor_scan_resolution, 
                                              return_num_wells=True)[-1]
         if num_wells == 1:
             invalidate = True
-            invalidation_reason = 'The rotor scan has a barrier of {0} kJ/mol, which is higher than the maximal ' \
-                                  'barrier for rotation ({1} kJ/mol)'.format(
+            invalidation_reason = 'The rotor scan has a barrier of {0:.2f} kJ/mol, which is higher than the maximal ' \
+                                  'barrier for rotation ({1:.2f} kJ/mol)'.format(
                                    np.max(energies) - np.min(energies), maximum_barrier)
             message = 'Rotor scan of {label} between pivots {pivots} has a barrier ' \
                       'larger than {max_barrier:.2f} kJ/mol. Invalidating rotor.'.format(
