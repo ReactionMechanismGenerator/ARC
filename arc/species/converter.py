@@ -87,8 +87,8 @@ def str_to_xyz(xyz_str):
             if line.strip():
                 splits = line.split()
                 if len(splits) != 4:
-                    raise ConverterError('xyz_str has an incorrect format, expected 4 elements in each line, '
-                                         'got "{0}" in:\n{1}'.format(line, xyz_str))
+                    raise ConverterError(f'xyz_str has an incorrect format, expected 4 elements in each line, '
+                                         f'got "{line}" in:\n{xyz_str}')
                 symbol = splits[0]
                 if '(iso=' in symbol.lower():
                     isotope = int(symbol.split('=')[1].strip(')'))
