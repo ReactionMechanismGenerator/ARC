@@ -97,6 +97,7 @@ class Scheduler(object):
         sp_level (str or dict, optional): The level of theory to use for single point energy calculations.
         scan_level (str or dict, optional): The level of theory to use for torsion scans.
         ts_guess_level (str or dict, optional): The level of theory to use for TS guess comparisons.
+        irc_level (str or dict, optional): The level of theory to use for IRC calculations.
         orbitals_level (str or dict, optional): The level of theory to use for calculating MOs (for plotting).
         adaptive_levels (dict, optional): A dictionary of levels of theory for ranges of the number of heavy atoms in
                                           the molecule. Keys are tuples of (min_num_atoms, max_num_atoms), values are
@@ -167,6 +168,7 @@ class Scheduler(object):
         sp_level (dict): The level of theory to use for single point energy calculations.
         scan_level (dict): The level of theory to use for torsion scans.
         ts_guess_level (dict): The level of theory to use for TS guess comparisons.
+        irc_level (dict): The level of theory to use for IRC calculations.
         orbitals_level (dict): The level of theory to use for calculating MOs (for plotting).
         adaptive_levels (dict): A dictionary of levels of theory for ranges of the number of heavy atoms in
                                   the molecule. Keys are tuples of (min_num_atoms, max_num_atoms), values are
@@ -175,10 +177,11 @@ class Scheduler(object):
     """
 
     def __init__(self, project, ess_settings, species_list, project_directory, composite_method='', conformer_level='',
-                 opt_level='', freq_level='', sp_level='', scan_level='', ts_guess_level='', orbitals_level='',
-                 adaptive_levels=None, rmgdatabase=None, job_types=None, job_additional_options=None, solvent=None,
-                 job_shortcut_keywords=None, rxn_list=None, bath_gas=None, restart_dict=None, max_job_time=120,
-                 allow_nonisomorphic_2d=False, memory=14, testing=False, dont_gen_confs=None, confs_to_dft=5):
+                 opt_level='', freq_level='', sp_level='', scan_level='', ts_guess_level='', irc_level='',
+                 orbitals_level='', adaptive_levels=None, rmgdatabase=None, job_types=None, job_additional_options=None,
+                 solvent=None, job_shortcut_keywords=None, rxn_list=None, bath_gas=None, restart_dict=None,
+                 max_job_time=120, allow_nonisomorphic_2d=False, memory=14, testing=False, dont_gen_confs=None,
+                 confs_to_dft=5):
         self.rmgdb = rmgdatabase
         self.restart_dict = restart_dict
         self.species_list = species_list
@@ -220,6 +223,7 @@ class Scheduler(object):
         self.freq_level = freq_level
         self.sp_level = sp_level
         self.scan_level = scan_level
+        self.irc_level = irc_level
         self.orbitals_level = orbitals_level
         self.unique_species_labels = list()
         self.job_additional_options = job_additional_options if job_additional_options is not None else dict()
@@ -512,8 +516,10 @@ class Scheduler(object):
                                     # This wasn't originally a composite method, probably troubleshooted as such
                                     self.run_opt_job(label)
                                 else:
-                                    if self.species_dict[label].is_ts \
-                                            or self.species_dict[label].number_of_atoms > 1:
+                                    if self.job_types['irc'] and self.species_dict[label].is_ts:
+                                        self.run_irc_job(label=label, irc_direction='forward')
+                                        self.run_irc_job(label=label, irc_direction='reverse')
+                                    if self.species_dict[label].number_of_atoms > 1:
                                         self.run_freq_job(label)
                                     self.run_scan_jobs(label)
                                     if self.job_types['onedmin'] and not self.species_dict[label].is_ts \
@@ -549,6 +555,14 @@ class Scheduler(object):
                         successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
                         if successful_server_termination:
                             self.check_scan_job(label=label, job=job)
+                        self.timer = False
+                        break
+                    elif 'irc' in job_name \
+                            and self.job_dict[label]['irc'][job_name].job_id not in self.servers_jobs_ids:
+                        job = self.job_dict[label]['irc'][job_name]
+                        successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
+                        if successful_server_termination:
+                            self.check_irc_job(label=label, job=job)
                         self.timer = False
                         break
                     elif 'orbitals' in job_name \
@@ -655,7 +669,7 @@ class Scheduler(object):
     def run_job(self, label, xyz, level_of_theory, job_type, fine=False, software=None, shift='', trsh='', memory=None,
                 conformer=-1, ess_trsh_methods=None, scan='', pivots=None, occ=None, scan_trsh='', scan_res=None,
                 max_job_time=None, confs=None, radius=None, directed_scan_type=None, directed_scans=None,
-                directed_dihedrals=None, rotor_index=None, cpu_cores=None):
+                directed_dihedrals=None, rotor_index=None, cpu_cores=None, irc_direction=None):
         """
         A helper function for running (all) jobs.
 
@@ -692,6 +706,7 @@ class Scheduler(object):
             directed_dihedrals (list): The dihedral angles of a directed scan job corresponding to ``directed_scans``.
             rotor_index (int): The 0-indexed rotor number (key) in the species.rotors_dict dictionary.
             cpu_cores (int, optional): The total number of cpu cores requested for a job.
+            irc_direction (str, optional): THe direction to run the IRC computation.
         """
         max_job_time = max_job_time or self.max_job_time  # if it's None, set to default
         ess_trsh_methods = ess_trsh_methods if ess_trsh_methods is not None else list()
@@ -705,7 +720,7 @@ class Scheduler(object):
         job_level_of_theory_dict, _ = format_level_of_theory_inputs(level_of_theory)
         job = Job(project=self.project, ess_settings=self.ess_settings, species_name=label, xyz=xyz, job_type=job_type,
                   job_level_of_theory_dict=job_level_of_theory_dict, multiplicity=species.multiplicity,
-                  charge=species.charge, fine=fine,
+                  charge=species.charge, fine=fine, irc_direction=irc_direction, solvent=self.solvent,
                   shift=shift, software=software, is_ts=species.is_ts, total_job_memory_gb=memory, trsh=trsh,
                   ess_trsh_methods=ess_trsh_methods, scan=scan, pivots=pivots, occ=occ,
                   job_additional_options=self.job_additional_options, job_shortcut_keywords=self.job_shortcut_keywords,
@@ -713,7 +728,7 @@ class Scheduler(object):
                   scan_res=scan_res, conformer=conformer, checkfile=checkfile, bath_gas=self.bath_gas,
                   number_of_radicals=species.number_of_radicals, conformers=confs, radius=radius,
                   directed_scan_type=directed_scan_type, directed_scans=directed_scans, rotor_index=rotor_index,
-                  directed_dihedrals=directed_dihedrals, cpu_cores=cpu_cores, solvent=self.solvent)
+                  directed_dihedrals=directed_dihedrals, cpu_cores=cpu_cores)
         if job.software is not None:
             if conformer < 0:
                 # this is NOT a conformer DFT job
@@ -805,7 +820,8 @@ class Scheduler(object):
                      scan=job.scan, pivots=job.pivots, occ=job.occ, scan_trsh=job.scan_trsh, scan_res=job.scan_res,
                      max_job_time=job.max_job_time, confs=job.conformers, radius=job.radius,
                      directed_scan_type=job.directed_scan_type, directed_scans=job.directed_scans,
-                     directed_dihedrals=job.directed_dihedrals, rotor_index=job.rotor_index, cpu_cores=job.cpu_cores)
+                     directed_dihedrals=job.directed_dihedrals, rotor_index=job.rotor_index, cpu_cores=job.cpu_cores,
+                     irc_direction=job.irc_direction)
 
     def run_conformer_jobs(self, labels=None):
         """
@@ -1153,7 +1169,7 @@ class Scheduler(object):
             # This was originally a composite method, probably troubleshooted as 'opt'
             self.run_composite_job(label)
         else:
-            if self.species_dict[label].is_ts:
+            if self.job_types['irc'] and self.species_dict[label].is_ts:
                 self.run_irc_job(label=label, irc_direction='forward')
                 self.run_irc_job(label=label, irc_direction='reverse')
             if self.species_dict[label].number_of_atoms > 1:
@@ -2054,6 +2070,20 @@ class Scheduler(object):
         else:
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.job_level_of_theory_dict)
 
+    def check_irc_job(self, label, job):
+        """
+        Check an IRC job.
+
+        Todo:
+            Need to check isomorphism
+            Take into account that there are two IRC jobs per TS
+
+        Args:
+            label (str): The species label.
+            job (Job): The single point job object.
+        """
+        self.output[label]['job_types']['irc'] = True
+
     def check_scan_job(self, label, job):
         """
         Check that a rotor scan job converged successfully. Also checks (QA) whether the scan is relatively "smooth",
@@ -2368,7 +2398,7 @@ class Scheduler(object):
                                  and job_type in ['conformers', 'opt', 'fine', 'freq', 'rotors', 'bde'])
                              or job_type == 'bde' and self.species_dict[label].bdes is None
                              or job_type == 'conformers' and '_BDE_' in label):
-                logger.debug('Species {0} did not converge'.format(label))
+                logger.debug(f'Species {label} did not converge')
                 all_converged = False
                 break
         if all_converged:
@@ -2392,8 +2422,8 @@ class Scheduler(object):
             self.species_dict[label].run_time = self.species_dict[label].run_time \
                                                 or (conf_time or zero_delta) + (opt_time or zero_delta) \
                                                 + (comp_time or zero_delta) + (other_time or zero_delta)
-            logger.info('\nAll jobs for species {0} successfully converged.'
-                        ' Run time: {1}'.format(label, self.species_dict[label].run_time))
+            logger.info(f'\nAll jobs for species {label} successfully converged. '
+                        f'Run time: {self.species_dict[label].run_time}')
         else:
             job_type_status = {key: val for key, val in self.output[label]['job_types'].items()
                                if key in self.job_types and self.job_types[key]}
@@ -2772,7 +2802,7 @@ class Scheduler(object):
                     if 'job_types' not in self.output[species.label]:
                         self.output[species.label]['job_types'] = dict()
                     for job_type in list(set(self.job_types.keys())) + ['opt', 'freq', 'sp', 'composite', 'onedmin']:
-                        if job_type in ['rotors', 'bde']:
+                        if job_type in ['rotors', 'bde', 'irc']:
                             # rotors could be invalidated due to many reasons,
                             # also could be falsely identified in a species that has no torsional modes.
                             self.output[species.label]['job_types'][job_type] = True
