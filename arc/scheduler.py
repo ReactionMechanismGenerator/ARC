@@ -972,8 +972,11 @@ class Scheduler(object):
             logger.info(f'Not running an sp job for {label} at {format_level_of_theory_for_logging(self.sp_level)}, '
                         f'since the optimization was done at the same level of theory. '
                         f'Using the optimization output for parsing the sp energy.')
-            self.output[label]['paths']['sp'] = self.output[label]['paths']['geo']
-            self.output[label]['job_types']['sp'] = True
+            recent_opt_job_name, recent_opt_job = 'opt_a0', None
+            for opt_job_name, opt_job in self.job_dict[label]['opt'].items():
+                if int(opt_job_name.split('_a')[-1]) > int(recent_opt_job_name.split('_a')[-1]):
+                    recent_opt_job_name, recent_opt_job = opt_job_name, opt_job
+            self.post_sp_actions(label=label, job=recent_opt_job)
             return
         if 'sp' not in self.job_dict[label]:  # Check whether or not single point jobs have been spawned yet
             # we're spawning the first sp job for this species
@@ -2046,22 +2049,7 @@ class Scheduler(object):
             # This is a CCSD job ran before MRCI. Spawn MRCI
             self.run_sp_job(label)
         elif job.job_status[1]['status'] == 'done':
-            self.output[label]['job_types']['sp'] = True
-            self.output[label]['paths']['sp'] = os.path.join(job.local_path, 'output.out')
-            if 'ccsd' in self.sp_level:
-                self.species_dict[label].t1 = parser.parse_t1(self.output[label]['paths']['sp'])
-            zpe_scale_factor = 0.99 if self.composite_method.lower() == 'cbs-qb3' else 1.0
-            self.species_dict[label].e_elect = parser.parse_e_elect(self.output[label]['paths']['sp'],
-                                                                    zpe_scale_factor=zpe_scale_factor)
-            if self.species_dict[label].t1 is not None:
-                txt = ''
-                if self.species_dict[label].t1 > 0.02:
-                    txt += ". Looks like it requires multireference treatment, I wouldn't trust it's calculated energy!"
-                elif self.species_dict[label].t1 > 0.015:
-                    txt += ". It might have multireference characteristic."
-                logger.info('Species {0} has a T1 diagnostic parameter of {1}{2}'.format(
-                    label, self.species_dict[label].t1, txt))
-                self.output[label]['info'] += 'T1 = {0}; '.format(self.species_dict[label].t1)
+            self.post_sp_actions(label, job)
             # Update restart dictionary and save the yaml restart file:
             self.save_restart_dict()
             if self.species_dict[label].number_of_atoms == 1:
@@ -2069,6 +2057,30 @@ class Scheduler(object):
                 self.output[label]['paths']['geo'] = job.local_path_to_output_file
         else:
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.job_level_of_theory_dict)
+
+    def post_sp_actions(self, label, job):
+        """
+        Perform post-sp actions.
+
+        Args:
+            label (str): The species label.
+            job (Job): The single point job object.
+        """
+        self.output[label]['job_types']['sp'] = True
+        self.output[label]['paths']['sp'] = os.path.join(job.local_path, 'output.out')
+        if 'ccsd' in self.sp_level:
+            self.species_dict[label].t1 = parser.parse_t1(self.output[label]['paths']['sp'])
+        zpe_scale_factor = 0.99 if self.composite_method.lower() == 'cbs-qb3' else 1.0
+        self.species_dict[label].e_elect = parser.parse_e_elect(self.output[label]['paths']['sp'],
+                                                                zpe_scale_factor=zpe_scale_factor)
+        if self.species_dict[label].t1 is not None:
+            txt = ''
+            if self.species_dict[label].t1 > 0.02:
+                txt += ". Looks like it requires multireference treatment, I wouldn't trust it's calculated energy!"
+            elif self.species_dict[label].t1 > 0.015:
+                txt += ". It might have multireference characteristic."
+            logger.info(f'Species {label} has a T1 diagnostic parameter of {self.species_dict[label].t1}{txt}')
+            self.output[label]['info'] += f'T1 = {self.species_dict[label].t1}; '
 
     def check_irc_job(self, label, job):
         """
