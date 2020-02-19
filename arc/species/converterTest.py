@@ -18,7 +18,7 @@ from rmgpy.statmech import Conformer
 
 import arc.species.converter as converter
 from arc.common import almost_equal_coords_lists
-from arc.exceptions import ConverterError, ZMatError
+from arc.exceptions import ConverterError
 from arc.species.species import ARCSpecies
 from arc.species.zmat import xyz_to_zmat
 
