@@ -9,7 +9,7 @@ from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 
 import arc.rmgdb as rmgdb
-from arc.common import get_logger
+from arc.common import extermum_list, get_logger
 from arc.exceptions import ReactionError, InputError
 from arc.settings import default_ts_methods
 from arc.species.species import ARCSpecies
@@ -382,34 +382,43 @@ class ARCReaction(object):
             self.family, self.family_own_reverse = rmgdb.determine_reaction_family(rmgdb=rmgdatabase,
                                                                                    reaction=self.rmg_reaction)
 
-    def check_ts(self, log=True):
+    def check_ts(self, verbose=True):
         """
-        Check that the TS E0 is above both reactants and products wells
-        Return ``False`` if this test fails, else ``True``
+        Check that the TS E0 is above both reactants and products wells.
+
+        Args:
+            verbose: Whether to print logging messages.
+
+        Returns: Whether the TS energy is above both reactants and products wells, ``True`` if it is.
         """
-        if any([spc.e_elect is None for spc in self.r_species + self.p_species + [self.ts_species]]):
-            logger.error(f"Could not get E0's of all species in reaction {self.label}. Cannot check TS E0.")
-            r_e_elect = None if any([spc.e_elect is None for spc in self.r_species])\
-                else sum(spc.e_elect for spc in self.r_species)
-            p_e_elect = None if any([spc.e_elect is None for spc in self.p_species])\
-                else sum(spc.e_elect for spc in self.p_species)
-            ts_e_elect = self.ts_species.e_elect
-            logger.error(f'Reactants E0: {r_e_elect}\nProducts E0: {p_e_elect}\nTS E0: {ts_e_elect}')
+        r_e_elect = None if any([spc.e_elect is None for spc in self.r_species]) \
+            else sum(spc.e_elect for spc in self.r_species)
+        p_e_elect = None if any([spc.e_elect is None for spc in self.p_species]) \
+            else sum(spc.e_elect for spc in self.p_species)
+        ts_e_elect = self.ts_species.e_elect
+        min_e = extermum_list([r_e_elect, p_e_elect, ts_e_elect], return_min=True)
+        if any([val is None for val in [r_e_elect, p_e_elect, ts_e_elect]]):
+            if verbose:
+                logger.error(f"Could not get E0's of all species in reaction {self.label}. Cannot check TS E0.\n")
+                r_text = f'{r_e_elect:.2f} kJ/mol' if r_e_elect is not None else 'None'
+                ts_text = f'{ts_e_elect:.2f} kJ/mol' if ts_e_elect is not None else 'None'
+                p_text = f'{p_e_elect:.2f} kJ/mol' if p_e_elect is not None else 'None'
+                logger.info(f"Reactants E0: {r_text}\n"
+                            f"TS E0: {ts_text}\n"
+                            f"Products E0: {p_text}")
             return True
-        r_e_elect = sum([spc.e_elect for spc in self.r_species])
-        p_e_elect = sum([spc.e_elect for spc in self.p_species])
-        if self.ts_species.e_elect < r_e_elect or self.ts_species.e_elect < p_e_elect:
-            if log:
-                logger.error(f'TS of reaction {self.label} has a lower E0 value than expected:\n'
-                             f'Reactants: {r_e_elect:.2f} kJ/mol\n'
-                             f'TS: {self.ts_species.e_elect:.2f} kJ/mol'
-                             f'\nProducts: {p_e_elect:.2f} kJ/mol')
+        if ts_e_elect < r_e_elect or ts_e_elect< p_e_elect:
+            if verbose:
+                logger.error(f'TS of reaction {self.label} has a lower E0 value than expected:\n')
+                logger.info(f'Reactants: {r_e_elect - min_e:.2f} kJ/mol\n'
+                            f'TS: {ts_e_elect - min_e:.2f} kJ/mol'
+                            f'\nProducts: {p_e_elect - min_e:.2f} kJ/mol')
             return False
-        if log:
+        if verbose:
             logger.info(f'Reaction {self.label} has the following path energies:\n'
-                        f'Reactants: {r_e_elect:.2f} kJ/mol\n'
-                        f'TS: {self.ts_species.e_elect:.2f} kJ/mol\n'
-                        f'Products: {p_e_elect:.2f} kJ/mol')
+                        f'Reactants: {r_e_elect - min_e:.2f} kJ/mol\n'
+                        f'TS: {ts_e_elect - min_e:.2f} kJ/mol\n'
+                        f'Products: {p_e_elect - min_e:.2f} kJ/mol')
         return True
 
     def check_attributes(self):
