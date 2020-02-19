@@ -64,19 +64,17 @@ def initialize_job_types(job_types, specific_job_type=''):
         bde_default = {'opt': True, 'fine_grid': True, 'freq': True, 'sp': True}
         job_types.update(bde_default)
 
-    defaults_to_true = ['conformers', 'opt', 'fine', 'freq', 'sp', 'rotors']
-    defaults_to_false = ['onedmin', 'orbitals', 'bde']
+    defaults_to_true = ['conformers', 'fine', 'freq', 'irc', 'opt', 'rotors', 'sp']
+    defaults_to_false = ['bde', 'onedmin', 'orbitals']
     if job_types is None:
         job_types = default_job_types
-        logger.info('Job types were not specified, using default values from ARC settings')
+        logger.info("Job types were not specified, using ARC's defaults")
     else:
         logger.debug(f'the following job types were specified: {job_types}.')
     if 'lennard_jones' in job_types:
-        # rename lennard_jones to OneDMin
         job_types['onedmin'] = job_types['lennard_jones']
         del job_types['lennard_jones']
     if 'fine_grid' in job_types:
-        # rename fine_grid to fine
         job_types['fine'] = job_types['fine_grid']
         del job_types['fine_grid']
     for job_type in defaults_to_true:
