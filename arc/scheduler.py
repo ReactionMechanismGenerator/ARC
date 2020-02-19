@@ -1059,6 +1059,17 @@ class Scheduler(object):
                             self.run_job(label=label, xyz=self.species_dict[label].get_xyz(generate=False),
                                          level_of_theory=self.scan_level, job_type='scan', scan=scan, pivots=pivots)
 
+    def run_irc_job(self, label, irc_direction='forward'):
+        """
+        Spawn an IRC job.
+
+        Args:
+            label (str): The species label.
+            irc_direction (str): The IRC job direction, either 'forward' or 'reverse'.
+        """
+        self.run_job(label=label, xyz=self.species_dict[label].get_xyz(generate=False),
+                     level_of_theory=self.irc_level, job_type='irc', irc_direction=irc_direction)
+
     def run_orbitals_job(self, label):
         """
         Spawn orbitals job used for molecular orbital visualization.
@@ -1142,8 +1153,10 @@ class Scheduler(object):
             # This was originally a composite method, probably troubleshooted as 'opt'
             self.run_composite_job(label)
         else:
-            if self.species_dict[label].is_ts \
-                    or self.species_dict[label].number_of_atoms > 1:
+            if self.species_dict[label].is_ts:
+                self.run_irc_job(label=label, irc_direction='forward')
+                self.run_irc_job(label=label, irc_direction='reverse')
+            if self.species_dict[label].number_of_atoms > 1:
                 if 'freq' not in job_name:
                     self.run_freq_job(label)
                 else:  # this is an 'optfreq' job type, don't run freq
@@ -1162,8 +1175,7 @@ class Scheduler(object):
             for bde_species in bde_species_list:
                 if bde_species.label != 'H':
                     # H is was added in main
-                    logging.info('Creating the BDE species {0} from the original species {1}'.format(
-                        bde_species.label, label))
+                    logging.info(f'Creating the BDE species {bde_species.label} from the original species {label}')
                     self.species_list.append(bde_species)
                     self.species_dict[bde_species.label] = bde_species
                     self.unique_species_labels.append(bde_species.label)
@@ -1171,7 +1183,7 @@ class Scheduler(object):
                     self.job_dict[bde_species.label] = dict()
                     self.running_jobs[bde_species.label] = list()
                     if bde_species.number_of_atoms == 1:
-                        logger.debug('Species {0} is monoatomic'.format(bde_species.label))
+                        logger.debug(f'Species {bde_species.label} is monoatomic')
                         # No need to run opt/freq jobs for a monoatomic species, only run sp (or composite if relevant)
                         if self.composite_method:
                             self.run_composite_job(bde_species.label)
