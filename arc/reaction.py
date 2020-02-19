@@ -112,6 +112,15 @@ class ARCReaction(object):
                                 ' and {1} products for reaction {2}.'.format(len(self.reactants), len(self.products),
                                                                              self.label))
 
+    def __str__(self):
+        """Return a string representation of the object"""
+        str_representation = f'ARCReaction('
+        str_representation += f'label="{self.label}", '
+        str_representation += f'rmg_reaction="{self.rmg_reaction}", '
+        str_representation += f'multiplicity={self.multiplicity}, '
+        str_representation += f'charge={self.charge})'
+        return str_representation
+
     def as_dict(self):
         """A helper function for dumping this object as a dictionary in a YAML file for restarting ARC"""
         reaction_dict = dict()
@@ -371,7 +380,7 @@ class ARCReaction(object):
         """Determine the RMG family and saves the (family, own reverse) tuple in the ``family`` attribute"""
         if self.rmg_reaction is not None:
             self.family, self.family_own_reverse = rmgdb.determine_reaction_family(rmgdb=rmgdatabase,
-                                                                                   reaction=self.rmg_reaction.copy())
+                                                                                   reaction=self.rmg_reaction)
 
     def check_ts(self, log=True):
         """

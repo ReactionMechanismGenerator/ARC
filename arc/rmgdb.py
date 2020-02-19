@@ -188,6 +188,7 @@ def loop_families(rmgdb, reaction):
     Returns:
         list: Entries are corresponding RMG reaction families.
     """
+    reaction = reaction.copy()  # use a copy to avoid changing atom order in the molecules by RMG
     fam_list = list()
     for family in rmgdb.kinetics.families.values():
         degenerate_reactions = list()
@@ -257,13 +258,14 @@ def determine_rmg_kinetics(rmgdb, reaction, dh_rxn298):
     `reaction` is an RMG Reaction object
     `dh_rxn298` is the heat of reaction at 298 K in J / mol
     """
+    reaction = reaction.copy()  # use a copy to avoid changing atom order in the molecules by RMG
     rmg_reactions = list()
     # Libraries:
     for library in rmgdb.kinetics.libraries.values():
         library_reactions = library.get_library_reactions()
         for library_reaction in library_reactions:
             if reaction.is_isomorphic(library_reaction):
-                library_reaction.comment = 'Library: {0}'.format(library.label)
+                library_reaction.comment = f'Library: {library.label}'
                 rmg_reactions.append(library_reaction)
                 break
     # Families:
@@ -275,7 +277,7 @@ def determine_rmg_kinetics(rmgdb, reaction, dh_rxn298):
             kinetics.change_rate(deg_rxn.degeneracy)
             kinetics = kinetics.to_arrhenius(dh_rxn298)  # Convert ArrheniusEP to Arrhenius using the dHrxn at 298K
             deg_rxn.kinetics = kinetics
-            deg_rxn.comment = 'Family: {0}'.format(deg_rxn.family)
+            deg_rxn.comment = f'Family: {deg_rxn.family}'
             deg_rxn.reactants = reaction.reactants
             deg_rxn.products = reaction.products
         rmg_reactions.extend(degenerate_reactions)
@@ -289,8 +291,8 @@ def determine_rmg_kinetics(rmgdb, reaction, dh_rxn298):
                     for entry in depo.entries.values():
                         rxn = entry.item
                         rxn.kinetics = entry.data
-                        rxn.comment = 'NIST: {0}'.format(entry.index)
+                        rxn.comment = f'NIST: {entry.index}'
                         if entry.reference is not None:
-                            rxn.comment += '{0} {1}'.format(entry.reference.authors[0], entry.reference.year)
+                            rxn.comment += f'{entry.reference.authors[0]} {entry.reference.year}'
                         rmg_reactions.append(rxn)
     return rmg_reactions

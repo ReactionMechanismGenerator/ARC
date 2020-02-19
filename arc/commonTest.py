@@ -34,6 +34,7 @@ class TestCommon(unittest.TestCase):
                                  'freq': True,
                                  'sp': True,
                                  'rotors': True,
+                                 'irc': True,
                                  'orbitals': False,
                                  'onedmin': False,
                                  'bde': False,
@@ -302,7 +303,7 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
 
     def test_initialize_job_with_given_job_type(self):
         """Test the initialize_job_types() function"""
-        job_types = {'conformers': False, 'opt': True, 'fine': True, 'freq': True, 'sp': False, 'rotors': False}
+        job_types = {'conformers': False, 'opt': True, 'fine': True, 'freq': True, 'sp': False, 'rotors': False, 'irc': True}
         job_types_expected = copy.deepcopy(self.default_job_types)
         job_types_expected.update(job_types)
         job_types_initialized = common.initialize_job_types(job_types)

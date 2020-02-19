@@ -41,6 +41,14 @@ class TestARCReaction(unittest.TestCase):
         cls.rxn4.rmg_reaction = Reaction(reactants=[Species().from_smiles('[NH2]'), Species().from_smiles('N[NH]')],
                                          products=[Species().from_smiles('N'), Species().from_smiles('N[N]')])
 
+    def test_str(self):
+        """Test the string representation of the object"""
+        str_representation = str(self.rxn1)
+        expected_representation = 'ARCReaction(label="CH4 + OH <=> CH3 + H2O", ' \
+                                  'rmg_reaction="C + [OH] <=> [CH3] + O", ' \
+                                  'multiplicity=2, charge=0)'
+        self.assertEqual(str_representation, expected_representation)
+
     def test_as_dict(self):
         """Test Species.as_dict()"""
         rxn_dict = self.rxn1.as_dict()

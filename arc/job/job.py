@@ -111,6 +111,7 @@ class Job(object):
                         - 'method' (optional values: 'pcm' (default), 'cpcm', 'dipole', 'ipcm', 'scipcm')
                         -  'solvent' (values are strings of "known" solvents, see https://gaussian.com/scrf/,
                                       default is "water")
+        irc_direction (str, optional): The direction of the IRC job (`forward` or `reverse`).
 
     Attributes:
         project (str): The project's name. Used for naming the directory.
@@ -195,6 +196,7 @@ class Job(object):
         directed_scan_type (str): The type of the directed scan.
         rotor_index (int): The 0-indexed rotor number (key) in the species.rotors_dict dictionary.
         solvent (dict): The solvent model and solvent to use.
+        irc_direction (str): The direction of the IRC job (`forward` or `reverse`).
     """
     def __init__(self, project='', ess_settings=None, species_name='', xyz=None, job_type='', multiplicity=None,
                  project_directory='', charge=0, conformer=-1, fine=False, shift='', software=None, is_ts=False,
@@ -203,7 +205,7 @@ class Job(object):
                  job_id=None, server=None, initial_time=None, occ=None, max_job_time=120, scan_res=None, checkfile=None,
                  number_of_radicals=None, conformers=None, radius=None, directed_scan_type=None, directed_scans=None,
                  directed_dihedrals=None, rotor_index=None, testing=False, cpu_cores=None, job_additional_options=None,
-                 job_shortcut_keywords=None, job_level_of_theory_dict=None):
+                 job_shortcut_keywords=None, job_level_of_theory_dict=None, irc_direction=None):
         if job_dict is not None:
             self.from_dict(job_dict)
         else:
@@ -267,21 +269,21 @@ class Job(object):
             self.software = software
             self.cpu_cores = cpu_cores
             self.total_job_memory_gb = total_job_memory_gb
+            self.irc_direction = irc_direction
         # allowed job types:
         job_types = ['conformer', 'opt', 'freq', 'optfreq', 'sp', 'composite', 'bde', 'scan', 'directed_scan',
                      'gsm', 'irc', 'ts_guess', 'orbitals', 'onedmin', 'ff_param_fit', 'gromacs']
         if self.job_type not in job_types:
-            raise ValueError('Job type {0} not understood. Must be one of the following:\n{1}'.format(
-                self.job_type, job_types))
+            raise ValueError(f'Job type {self.job_type} not understood. Must be one of the following:\n{job_types}')
         if self.xyz is None and not self.job_type == 'gromacs':
-            raise InputError('{0} Job of species {1} got None for xyz'.format(self.job_type, self.species_name))
+            raise InputError(f'{self.job_type} Job of species {self.species_name} got None for xyz')
         if self.job_type == 'gromacs' and self.conformers is None:
-            raise InputError('{0} Job of species {1} got None for conformers'.format(self.job_type, self.species_name))
+            raise InputError(f'{self.job_type} Job of species {self.species_name} got None for conformers')
         if self.job_type == 'directed_scan' and (self.directed_dihedrals is None or self.directed_scans is None
                                                  or self.directed_scan_type is None):
-            raise InputError('Must have the directed_dihedrals, directed_scans, and directed_scan_type attributes '
-                             'for a directed scan job. Got {0}, {1}, {2}, respectively.'.format(
-                              self.directed_dihedrals, self.directed_scans, self.directed_scan_type))
+            raise InputError(f'Must have the directed_dihedrals, directed_scans, and directed_scan_type attributes '
+                             f'for a directed scan job. Got {self.directed_dihedrals}, {self.directed_scans}, '
+                             f'{self.directed_scan_type}, respectively.')
         if self.job_type == 'directed_scan' and self.rotor_index is None:
             raise InputError('Must have the rotor_index argument for a directed scan job.')
 
@@ -396,6 +398,8 @@ class Job(object):
             job_dict['conformers'] = self.conformers
         if self.radius is not None:
             job_dict['radius'] = self.radius
+        if self.irc_direction is not None:
+            job_dict['irc_direction'] = self.irc_direction
         return job_dict
 
     def from_dict(self, job_dict):
@@ -456,6 +460,7 @@ class Job(object):
         self.directed_scans = job_dict['directed_scans'] if 'directed_scans' in job_dict else None
         self.directed_scan_type = job_dict['directed_scan_type'] if 'directed_scan_type' in job_dict else None
         self.rotor_index = job_dict['rotor_index'] if 'rotor_index' in job_dict else None
+        self.irc_direction = job_dict['irc_direction'] if 'irc_direction' in job_dict else None
 
     def _set_job_number(self):
         """
@@ -1140,11 +1145,13 @@ end
             # Note: the xyz filename must correspond to the xyz filename specified in TeraChem's input file!
             save_geo(xyz=self.xyz, path=self.local_path, filename='coord', format_='xyz')
 
-        if self.job_type == 'irc':  # TODO
+        if self.job_type == 'irc':
+            if self.irc_direction is None or self.irc_direction not in ['forward', 'reverse']:
+                raise JobError(f'The IRC direction must be either "forward" or "reverse", got {self.irc_direction}.')
             if self.fine:
                 # Note that the Acc2E argument is not available in Gaussian03
                 fine = 'scf=(direct) integral=(grid=ultrafine, Acc2E=12)'
-            job_type_1 = 'irc=(CalcAll,forward,maxpoints=50,stepsize=7)'  # also run reverse; trsh: stepsize=20
+            job_type_1 = f'irc=(CalcAll,{self.irc_direction},maxpoints=50,stepsize=7)'
             if self.checkfile is not None:
                 job_type_1 += ' guess=read'
             else:
@@ -1542,39 +1549,38 @@ end
         esss = self.ess_settings.keys()
         if self.job_type == 'onedmin':
             if 'onedmin' not in esss:
-                raise JobError('Could not find the OneDMin software to compute Lennard-Jones parameters.\n'
-                               'ess_settings is:\n{0}'.format(self.ess_settings))
+                raise JobError(f'Could not find the OneDMin software to compute Lennard-Jones parameters.\n'
+                               f'ess_settings is:\n{self.ess_settings}')
             self.software = 'onedmin'
             if self.bath_gas is None:
-                logger.info('Setting bath gas for Lennard-Jones calculation to N2 for species {0}'.format(
-                    self.species_name))
+                logger.info(f'Setting bath gas for Lennard-Jones calculation to N2 for species {self.species_name}')
                 self.bath_gas = 'N2'
             elif self.bath_gas not in ['He', 'Ne', 'Ar', 'Kr', 'H2', 'N2', 'O2']:
-                raise JobError('Bath gas for OneDMin should be one of the following:\n'
-                               'He, Ne, Ar, Kr, H2, N2, O2.\nGot: {0}'.format(self.bath_gas))
+                raise JobError(f'Bath gas for OneDMin should be one of the following:\n'
+                               f'He, Ne, Ar, Kr, H2, N2, O2.\nGot: {self.bath_gas}')
         elif self.job_type == 'gromacs':
             if 'gromacs' not in esss:
-                raise JobError('Could not find the Gromacs software to run the MD job {0}.\n'
-                               'ess_settings is:\n{1}'.format(self.method, self.ess_settings))
+                raise JobError(f'Could not find the Gromacs software to run the MD job {self.method}.\n'
+                               f'ess_settings is:\n{self.ess_settings}')
             self.software = 'gromacs'
         elif self.job_type == 'orbitals':
             # currently we only have a script to print orbitals on QChem,
             # could/should definitely be elaborated to additional ESS
             if 'qchem' not in esss:
-                logger.debug('Could not find the QChem software to compute molecular orbitals.\n'
-                             'ess_settings is:\n{0}'.format(self.ess_settings))
+                logger.debug(f'Could not find the QChem software to compute molecular orbitals.\n'
+                             f'ess_settings is:\n{self.ess_settings}')
                 self.software = None
             else:
                 self.software = 'qchem'
         elif self.job_type == 'composite':
             if 'gaussian' not in esss:
-                raise JobError('Could not find Gaussian to run the composite method {0}.\n'
-                               'ess_settings is:\n{1}'.format(self.method, self.ess_settings))
+                raise JobError(f'Could not find Gaussian to run the composite method {self.method}.\n'
+                               f'ess_settings is:\n{self.ess_settings}')
             self.software = 'gaussian'
         elif self.job_type == 'ff_param_fit':
             if 'gaussian' not in esss:
-                raise JobError('Could not find Gaussian to fit force field parameters.\n'
-                               'ess_settings is:\n{0}'.format(self.ess_settings))
+                raise JobError(f'Could not find Gaussian to fit force field parameters.\n'
+                               f'ess_settings is:\n{self.ess_settings}')
             self.software = 'gaussian'
         else:
             # First check the levels_ess dictionary from settings.py:
@@ -1604,8 +1610,8 @@ end
                     elif 'b2' in self.method or 'dsd' in self.method or 'pw2' in self.method:
                         # this is a double-hybrid (MP2) DFT method, use Gaussian
                         if 'gaussian' not in esss:
-                            raise JobError('Could not find Gaussian to run the double-hybrid method {0}.\n'
-                                           'ess_settings is:\n{1}'.format(self.method, self.ess_settings))
+                            raise JobError(f'Could not find Gaussian to run the double-hybrid method {self.method}.\n'
+                                           f'ess_settings is:\n{self.ess_settings}')
                         self.software = 'gaussian'
                     elif 'ccs' in self.method or 'cis' in self.method:
                         if 'molpro' in esss:
@@ -1633,8 +1639,7 @@ end
                         elif 'qchem' in esss:
                             self.software = 'qchem'
                         else:
-                            raise JobError('Could not find a software to run {0}/{1}'.format(
-                                self.method, self.basis_set))
+                            raise JobError(f'Could not find a software to run {self.method}/{self.basis_set}')
                     elif 'b97' in self.method or 'def2' in self.basis_set:
                         if 'gaussian' in esss:
                             self.software = 'gaussian'
@@ -1644,11 +1649,11 @@ end
                             self.software = 'qchem'
                     elif 'm062x' in self.method:  # without dash
                         if 'gaussian' not in esss:
-                            raise JobError('Could not find Gaussian to run {0}/{1}'.format(self.method, self.basis_set))
+                            raise JobError(f'Could not find Gaussian to run {self.method}/{self.basis_set}')
                         self.software = 'gaussian'
                     elif 'm06-2x' in self.method:  # with dash
                         if 'qchem' not in esss:
-                            raise JobError('Could not find QChem to run {0}/{1}'.format(self.method, self.basis_set))
+                            raise JobError(f'Could not find QChem to run {self.method}/{self.basis_set}')
                         self.software = 'qchem'
                     elif 'dlpno' in self.method:
                         # this is a DLPNO method, use Orca
@@ -1679,8 +1684,7 @@ end
                         elif 'qchem' in esss:
                             self.software = 'qchem'
                         else:
-                            raise JobError('Could not find a software to run {0}/{1}'.format(
-                                self.method, self.basis_set))
+                            raise JobError(f'Could not find a software to run {self.method}/{self.basis_set}')
                     elif 'b3lyp' in self.method:
                         if 'gaussian' in esss:
                             self.software = 'gaussian'
@@ -1693,11 +1697,11 @@ end
                             self.software = 'qchem'
                     elif 'm06-2x' in self.method:  # with dash
                         if 'qchem' not in esss:
-                            raise JobError('Could not find QChem to run {0}/{1}'.format(self.method, self.basis_set))
+                            raise JobError(f'Could not find QChem to run {self.method}/{self.basis_set}')
                         self.software = 'qchem'
                     elif 'm062x' in self.method:  # without dash
                         if 'gaussian' not in esss:
-                            raise JobError('Could not find Gaussian to run {0}/{1}'.format(self.method, self.basis_set))
+                            raise JobError(f'Could not find Gaussian to run {self.method}/{self.basis_set}')
                         self.software = 'gaussian'
                     elif 'pv' in self.basis_set:
                         if 'molpro' in esss:
@@ -1708,7 +1712,7 @@ end
                             self.software = 'qchem'
                 elif self.job_type in ['gsm', 'irc']:
                     if 'gaussian' not in esss:
-                        raise JobError('Could not find Gaussian to run {0}'.format(self.job_type))
+                        raise JobError(f'Could not find Gaussian to run {self.job_type}')
                     self.software = 'gaussian'
             if self.software is None:
                 # if still no software was determined, just try by order, if exists

@@ -69,6 +69,7 @@ class ARC(object):
         sp_level (str or dict, optional): Level of theory for single point calculations.
         scan_level (str or dict, optional): Level of theory for rotor scans.
         ts_guess_level (str or dict, optional): Level of theory for comparisons of TS guesses between different methods.
+        irc_level (str or dict, optional): The level of theory to use for IRC calculations.
         orbitals_level (str or dict, optional): Level of theory for molecular orbitals calculations.
         use_bac (bool, optional): Whether or not to use bond additivity corrections for thermo calculations.
         job_types (dict, optional): A dictionary of job types to execute. Keys are job types, values are boolean.
@@ -126,6 +127,7 @@ class ARC(object):
         sp_level (dict): Level of theory for single point calculations.
         scan_level (dict): Level of theory for rotor scans.
         ts_guess_level (dict): Level of theory for comparisons of TS guesses between different methods.
+        irc_level (dict): The level of theory to use for IRC calculations.
         orbitals_level (dict): Level of theory for molecular orbitals calculations.
         adaptive_levels (dict): A dictionary of levels of theory for ranges of the number of heavy atoms in the
                                 molecule. Keys are tuples of (min_num_atoms, max_num_atoms), values are dictionaries
@@ -171,11 +173,11 @@ class ARC(object):
 
     def __init__(self, input_dict=None, project=None, arc_species_list=None, arc_rxn_list=None, level_of_theory='',
                  conformer_level='', composite_method='', opt_level='', freq_level='', sp_level='', scan_level='',
-                 ts_guess_level='', use_bac=True, job_types=None, model_chemistry='', job_additional_options=None,
-                 job_shortcut_keywords=None, t_min=None, t_max=None, t_count=None, verbose=logging.INFO,
-                 project_directory=None, max_job_time=120, allow_nonisomorphic_2d=False, job_memory=14,
-                 ess_settings=None, bath_gas=None, adaptive_levels=None, freq_scale_factor=None, calc_freq_factor=True,
-                 confs_to_dft=5, keep_checks=False, dont_gen_confs=None, specific_job_type='', orbitals_level='',
+                 ts_guess_level='', irc_level='', orbitals_level='', use_bac=True, job_types=None, model_chemistry='',
+                 job_additional_options=None, job_shortcut_keywords=None, t_min=None, t_max=None, t_count=None,
+                 verbose=logging.INFO, project_directory=None, max_job_time=120, allow_nonisomorphic_2d=False,
+                 job_memory=14, ess_settings=None, bath_gas=None, adaptive_levels=None, freq_scale_factor=None,
+                 calc_freq_factor=True, confs_to_dft=5, keep_checks=False, dont_gen_confs=None, specific_job_type='',
                  compare_to_rmg=True, solvent=None):
         self.__version__ = VERSION
         self.verbose = verbose
@@ -234,6 +236,7 @@ class ARC(object):
             self.sp_level = sp_level
             self.scan_level = scan_level
             self.ts_guess_level = ts_guess_level
+            self.irc_level = irc_level
             self.orbitals_level = orbitals_level
 
             self.arc_species_list = arc_species_list if arc_species_list is not None else list()
@@ -350,6 +353,7 @@ class ARC(object):
         restart_dict['sp_level'] = self.sp_level
         restart_dict['scan_level'] = self.scan_level
         restart_dict['ts_guess_level'] = self.ts_guess_level
+        restart_dict['irc_level'] = self.irc_level
         restart_dict['orbitals_level'] = self.orbitals_level
 
         # special treatment for level of theory to avoid conflict during restart
@@ -456,6 +460,7 @@ class ARC(object):
         self.sp_level = input_dict['sp_level'] if 'sp_level' in input_dict else ''
         self.scan_level = input_dict['scan_level'] if 'scan_level' in input_dict else ''
         self.ts_guess_level = input_dict['ts_guess_level'] if 'ts_guess_level' in input_dict else ''
+        self.irc_level = input_dict['irc_level'] if 'irc_level' in input_dict else ''
         self.orbitals_level = input_dict['orbitals_level'] if 'orbitals_level' in input_dict else ''
 
         ess_settings = input_dict['ess_settings'] if 'ess_settings' in input_dict else global_ess_settings
@@ -511,7 +516,7 @@ class ARC(object):
         base_path = os.path.dirname(path)
         if not os.path.isdir(base_path):
             os.makedirs(base_path)
-        logger.info('\n\nWriting input file to {0}'.format(path))
+        logger.info(f'\n\nWriting input file to {path}')
         save_yaml_file(path=path, content=self.restart_dict)
 
     def execute(self):
@@ -521,31 +526,29 @@ class ARC(object):
         logger.info('\n')
         for species in self.arc_species_list:
             if not isinstance(species, ARCSpecies):
-                raise ValueError('All species in arc_species_list must be ARCSpecies objects.'
-                                 ' Got {0}'.format(type(species)))
+                raise ValueError(f'All species in arc_species_list must be ARCSpecies objects. Got {type(species)}')
             if species.is_ts:
-                logger.info('Considering transition state: {0}'.format(species.label))
+                logger.info(f'Considering transition state: {species.label}')
             else:
-                logger.info('Considering species: {0}'.format(species.label))
+                logger.info(f'Considering species: {species.label}')
                 if species.mol is not None:
                     display(species.mol.copy(deep=True))
         logger.info('\n')
         for rxn in self.arc_rxn_list:
             if not isinstance(rxn, ARCReaction):
-                raise ValueError('All reactions in arc_rxn_list must be ARCReaction objects.'
-                                 ' Got {0}'.format(type(rxn)))
+                raise ValueError(f'All reactions in arc_rxn_list must be ARCReaction objects. Got {type(rxn)}')
         self.scheduler = Scheduler(project=self.project, species_list=self.arc_species_list, rxn_list=self.arc_rxn_list,
                                    composite_method=self.composite_method, conformer_level=self.conformer_level,
                                    opt_level=self.opt_level, freq_level=self.freq_level, sp_level=self.sp_level,
                                    scan_level=self.scan_level, ts_guess_level=self.ts_guess_level,
+                                   irc_level=self.irc_level, orbitals_level=self.orbitals_level,
                                    ess_settings=self.ess_settings, job_types=self.job_types, bath_gas=self.bath_gas,
-                                   job_additional_options=self.job_additional_options,
+                                   job_additional_options=self.job_additional_options, solvent=self.solvent,
                                    job_shortcut_keywords=self.job_shortcut_keywords, rmgdatabase=self.rmgdb,
                                    restart_dict=self.restart_dict, project_directory=self.project_directory,
                                    max_job_time=self.max_job_time, allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
-                                   memory=self.memory, orbitals_level=self.orbitals_level,
-                                   adaptive_levels=self.adaptive_levels, confs_to_dft=self.confs_to_dft,
-                                   dont_gen_confs=self.dont_gen_confs, solvent=self.solvent)
+                                   memory=self.memory, adaptive_levels=self.adaptive_levels,
+                                   confs_to_dft=self.confs_to_dft, dont_gen_confs=self.dont_gen_confs)
 
         save_yaml_file(path=os.path.join(self.project_directory, 'output', 'status.yml'), content=self.scheduler.output)
 
@@ -893,7 +896,7 @@ class ARC(object):
             if arc_spc.label not in self.unique_species_labels:
                 self.unique_species_labels.append(arc_spc.label)
             else:
-                raise ValueError('Species label {0} is not unique'.format(arc_spc.label))
+                raise ValueError(f'Species label {arc_spc.label} is not unique')
 
     def add_hydrogen_for_bde(self):
         """
@@ -905,10 +908,9 @@ class ARC(object):
                     if species.number_of_atoms == 1 and species.get_xyz(generate=True)['symbols'][0] == 'H':
                         break
                     else:
-                        raise SpeciesError('A species with label "H" was defined, but does not seem to be '
-                                           'the hydrogen atom species. Cannot calculate bond dissociation energies.\n'
-                                           'Got the following species: {0}'.format(
-                                            [spc.label for spc in self.arc_species_list]))
+                        raise SpeciesError(f'A species with label "H" was defined, but does not seem to be '
+                                           f'the hydrogen atom species. Cannot calculate bond dissociation energies.\n'
+                                           f'Got the following species: {[spc.label for spc in self.arc_species_list]}')
             else:
                 # no H species defined, make one
                 h = ARCSpecies(label='H', smiles='[H]', generate_thermo=False)
@@ -984,9 +986,22 @@ class ARC(object):
                             f'after composite jobs.')
             else:
                 self.scan_level = format_level_of_theory_inputs('')[0]
-                logger.warning("Not running rotor scans, for it is not requested by the user. This might compromise "
+                logger.warning("Not running rotor scans, since it was not requested by the user. This might compromise "
                                "finding the best conformer, as dihedral angles won't be corrected. "
                                "Also, entropy won't be accurate.")
+
+            if self.job_types['irc']:
+                if not self.irc_level:
+                    self.irc_level = default_levels_of_theory['irc_for_composite']
+                    default_flag = ' default'
+                else:
+                    default_flag = ''
+                self.irc_level, level = format_level_of_theory_inputs(self.irc_level)
+                logger.info(f'Using{default_flag} level {format_level_of_theory_for_logging(level)} for visualizing '
+                            f'molecular orbitals after composite jobs.')
+            else:
+                self.irc_level = format_level_of_theory_inputs('')[0]
+                logger.debug("Not running molecular orbitals visualization.")
 
             if self.job_types['orbitals']:
                 if not self.orbitals_level:
@@ -1014,7 +1029,7 @@ class ARC(object):
                             f'optimizations.')
             else:
                 self.opt_level = format_level_of_theory_inputs('')[0]
-                logger.warning("Not running geometry optimization, for it is not requested by the user.")
+                logger.warning("Not running geometry optimization, since it was not requested by the user.")
 
             if self.job_types['freq']:
                 if not self.freq_level:
@@ -1027,11 +1042,11 @@ class ARC(object):
                 else:
                     info, default_flag = '', ''
                 self.freq_level, level = format_level_of_theory_inputs(self.freq_level)
-                logger.info(f'Using{info}{default_flag} level {format_level_of_theory_for_logging(level)} for frequency '
-                            f'calculations.')
+                logger.info(f'Using{info}{default_flag} level {format_level_of_theory_for_logging(level)} for frequency'
+                            f' calculations.')
             else:
                 self.freq_level = format_level_of_theory_inputs('')[0]
-                logger.warning("Not running frequency calculation, for it is not requested by the user.")
+                logger.warning("Not running frequency calculation, since it was not requested by the user.")
 
             if self.job_types['sp']:
                 if not self.sp_level:
@@ -1044,7 +1059,7 @@ class ARC(object):
                             f'calculations.')
             else:
                 self.sp_level = format_level_of_theory_inputs('')[0]
-                logger.warning("Not running single point calculation, for it is not requested by the user.")
+                logger.warning("Not running single point calculation, since it was not requested by the user.")
 
             if self.job_types['rotors']:
                 if not self.scan_level:
@@ -1057,12 +1072,26 @@ class ARC(object):
                 else:
                     info, default_flag = '', ''
                 self.scan_level, level = format_level_of_theory_inputs(self.scan_level)
-                logger.info(f'Using{info}{default_flag} level {format_level_of_theory_for_logging(level)} for rotor scans.')
+                logger.info(f'Using{info}{default_flag} level {format_level_of_theory_for_logging(level)} '
+                            f'for rotor scans.')
             else:
                 self.scan_level = format_level_of_theory_inputs('')[0]
-                logger.warning("Not running rotor scans, for it is not requested by the user. This might compromise "
+                logger.warning("Not running rotor scans, since it was not requested by the user. This might compromise "
                                "finding the best conformer, as dihedral angles won't be corrected. "
                                "Also, entropy won't be accurate.")
+
+            if self.job_types['irc']:
+                if not self.irc_level:
+                    self.irc_level = default_levels_of_theory['irc']
+                    default_flag = ' default'
+                else:
+                    default_flag = ''
+                self.irc_level, level = format_level_of_theory_inputs(self.irc_level)
+                logger.info(f'Using{default_flag} level {format_level_of_theory_for_logging(level)} for '
+                            f'IRC calculations.')
+            else:
+                self.irc_level = format_level_of_theory_inputs('')[0]
+                logger.debug("Not running IRC computations, since it was not requested by the user.")
 
             if self.job_types['orbitals']:
                 if not self.orbitals_level:
@@ -1075,7 +1104,7 @@ class ARC(object):
                             f'molecular orbitals.')
             else:
                 self.orbitals_level = format_level_of_theory_inputs('')[0]
-                logger.debug("Not running molecular orbitals visualization, for it is not requested by the user.")
+                logger.debug("Not running molecular orbitals visualization, since it was not requested by the user.")
 
     def _initialize_model_chemistry_inputs(self):
         """

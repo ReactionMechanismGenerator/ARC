@@ -73,6 +73,7 @@ default_job_types = {'conformers': True,      # defaults to True if not specifie
                      'freq': True,            # defaults to True if not specified
                      'sp': True,              # defaults to True if not specified
                      'rotors': True,          # defaults to True if not specified
+                     'irc': True,             # defaults to True if not specified
                      'orbitals': False,       # defaults to False if not specified
                      'lennard_jones': False,  # defaults to False if not specified
                      'bde': False,            # defaults to False if not specified
@@ -126,18 +127,20 @@ output_filename = {'gaussian': 'input.log',
                    'terachem': 'output.out',
                    }
 
-default_levels_of_theory = {'conformer': 'apfd/def2svp',  # it's recommended to choose a method with dispersion
-                            'ts_guesses': 'apfd/def2svp',
-                            'opt': 'wb97xd/def2TZVP',  # used for IRC as well
-                            'freq': 'wb97xd/def2TZVP',  # should be the same level as opt (to calc freq at min E)
-                            'scan': 'wb97xd/def2TZVP',  # should be the same level as freq (to project out rotors)
+default_levels_of_theory = {'conformer': 'wb97xd/def2svp',  # it's recommended to choose a method with dispersion
+                            'ts_guesses': 'wb97xd/def2svp',
+                            'opt': 'wb97xd/def2tzvp',  # good default for Gaussian
+                            # 'opt': 'wb97m-v/def2tzvp',  # good default for QChem
+                            'freq': 'wb97xd/def2tzvp',  # should be the same level as opt (to calc freq at min E)
+                            'scan': 'wb97xd/def2tzvp',  # should be the same level as freq (to project out rotors)
                             'sp': 'ccsd(t)-f12/cc-pvtz-f12',  # This should be a level for which BAC is available
                             # 'sp': 'b3lyp/6-311+g(3df,2p)',
-                            'orbitals': 'wb97x-d3/6-311++g(d,p)',  # save orbitals for visualization
-                            'scan_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of the CBS-QB3 method
-                            'freq_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of the CBS-QB3 method
-                            'orbitals_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of the CBS-QB3 method
-                                                                      # Currently only supported for QChem
+                            'irc': 'wb97xd/def2tzvp',  # should be the same level as opt
+                            'orbitals': 'wb97x-d3/def2tzvp',  # save orbitals for visualization
+                            'scan_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of CBS-QB3
+                            'freq_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of CBS-QB3
+                            'irc_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of CBS-QB3
+                            'orbitals_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of CBS-QB3
                             }
 
 # Software specific default settings

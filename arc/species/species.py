@@ -429,6 +429,17 @@ class ARCSpecies(object):
         if self.mol is not None and self.mol_list is None:
             self.set_mol_list()
 
+    def __str__(self):
+        """Return a string representation of the object"""
+        str_representation = 'ARCSpecies('
+        str_representation += f'label={self.label}, '
+        if self.mol is not None:
+            str_representation += f'smiles={self.mol.to_smiles()}, '
+        str_representation += f'is_ts={self.is_ts}, '
+        str_representation += f'multiplicity={self.multiplicity}, '
+        str_representation += f'charge={self.charge})'
+        return str_representation
+
     @property
     def number_of_atoms(self):
         """The number of atoms in the species"""
@@ -1225,7 +1236,7 @@ class ARCSpecies(object):
                     energies.append(None)  # dummy (lists should be the same length)
             for xyz in xyzs:
                 if colliding_atoms(xyz):
-                    raise SpeciesError(f'The following coordinates for species {self.label} has colliding atoms:\n'
+                    raise SpeciesError(f'The following coordinates for species {self.label} have colliding atoms:\n'
                                        f'{xyz_to_str(xyz)}')
             if not self.is_ts:
                 self.conformers.extend(xyzs)
@@ -1247,8 +1258,8 @@ class ARCSpecies(object):
                 for xyz in xyzs:
                     consistent = check_xyz(xyz=xyz, multiplicity=self.multiplicity, charge=self.charge)
                     if not consistent:
-                        raise SpeciesError('Inconsistent combination of number of electrons. multiplicity and charde  '
-                                           'for {0}.'.format(self.label))
+                        raise SpeciesError(f'Inconsistent combination of number of electrons, multiplicity and charge  '
+                                           f'for {self.label}.')
 
     def set_transport_data(self, lj_path, opt_path, bath_gas, opt_level, freq_path='', freq_level=None):
         """
