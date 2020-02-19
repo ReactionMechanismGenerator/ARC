@@ -55,28 +55,20 @@ class TestARC(unittest.TestCase):
         self.assertIn("'C-C': 1", long_thermo_description)
         self.assertIn("'C-H': 6", long_thermo_description)
         expected_dict = {'composite_method': '',
-                         'conformer_level': {'auxiliary_basis': '',
-                                             'basis': 'def2svp',
-                                             'method': 'apfd',
-                                             'dispersion': ''},
-                         'ts_guess_level': {'auxiliary_basis': '',
-                                            'basis': 'def2svp',
-                                            'method': 'apfd',
-                                            'dispersion': ''},
-                         'opt_level': {'auxiliary_basis': '',
-                                       'basis': '6-311+g(3df,2p)',
-                                       'method': 'b3lyp',
-                                       'dispersion': ''},
-                         'freq_level': {'auxiliary_basis': '',
-                                        'basis': '6-311+g(3df,2p)',
-                                        'method': 'b3lyp',
-                                        'dispersion': ''},
+                         'conformer_level': {'auxiliary_basis': '', 'basis': 'def2svp',
+                                             'method': 'wb97xd', 'dispersion': ''},
+                         'ts_guess_level': {'auxiliary_basis': '', 'basis': 'def2svp',
+                                            'method': 'wb97xd', 'dispersion': ''},
+                         'irc_level': {'auxiliary_basis': '', 'basis': 'def2tzvp',
+                                       'method': 'wb97xd', 'dispersion': ''},
+                         'opt_level': {'auxiliary_basis': '', 'basis': '6-311+g(3df,2p)',
+                                       'method': 'b3lyp', 'dispersion': ''},
+                         'freq_level': {'auxiliary_basis': '', 'basis': '6-311+g(3df,2p)',
+                                        'method': 'b3lyp', 'dispersion': ''},
                          'scan_level': {'auxiliary_basis': '', 'basis': '', 'method': '', 'dispersion': ''},
                          'orbitals_level': {'auxiliary_basis': '', 'basis': '', 'method': '', 'dispersion': ''},
-                         'sp_level': {'auxiliary_basis': '',
-                                      'basis': 'cc-pvdz-f12',
-                                      'method': 'ccsd(t)-f12',
-                                      'dispersion': ''},
+                         'sp_level': {'auxiliary_basis': '', 'basis': 'cc-pvdz-f12',
+                                      'method': 'ccsd(t)-f12', 'dispersion': ''},
                          'freq_scale_factor': 0.967,
                          'job_shortcut_keywords': {'gaussian': 'scf=(NDump=30)'},
                          'max_job_time': 120,
@@ -92,6 +84,7 @@ class TestARC(unittest.TestCase):
                                        'freq': True,
                                        'onedmin': False,
                                        'opt': True,
+                                       'irc': True,
                                        'orbitals': False,
                                        'bde': True,
                                        'sp': True},
@@ -188,7 +181,7 @@ class TestARC(unittest.TestCase):
         arc1 = ARC(project=project)
         arc1.from_dict(input_dict=restart_dict, project=project, project_directory=project_directory)
         job_type_expected = {'conformers': False, 'opt': True, 'freq': True, 'sp': True, 'rotors': False,
-                             'orbitals': False, 'bde': True, 'onedmin': False, 'fine': True}
+                             'orbitals': False, 'bde': True, 'onedmin': False, 'fine': True, 'irc': False}
         self.assertEqual(arc1.job_types, job_type_expected)
         
     def test_check_project_name(self):
@@ -489,8 +482,7 @@ class TestARC(unittest.TestCase):
         arc11 = ARC(project='test', level_of_theory='b3lyp/sto-3g', calc_freq_factor=False,
                     job_types={'rotors': False, 'orbitals': True})
         expected_scan_level = {'method': '', 'basis': '', 'auxiliary_basis': '', 'dispersion': ''}
-        expected_orbitals_level = {'method': 'wb97x-d3', 'basis': '6-311++g(d,p)', 'auxiliary_basis': '',
-                                   'dispersion': ''}
+        expected_orbitals_level = {'method': 'wb97x-d3', 'basis': 'def2tzvp', 'auxiliary_basis': '', 'dispersion': ''}
         self.assertEqual(arc11.scan_level, expected_scan_level)
         self.assertEqual(arc11.orbitals_level, expected_orbitals_level)
 

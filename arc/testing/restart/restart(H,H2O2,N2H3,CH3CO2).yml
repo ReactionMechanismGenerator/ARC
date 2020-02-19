@@ -46,6 +46,7 @@ output:
       freq: true
       onedmin: false
       opt: true
+      irc: true
       orbitals: false
       sp: true
     paths:
@@ -70,6 +71,7 @@ output:
       freq: false
       onedmin: false
       opt: false
+      irc: true
       orbitals: false
       sp: true
     paths:
@@ -95,6 +97,7 @@ output:
       freq: true
       onedmin: false
       opt: true
+      irc: true
       orbitals: false
       sp: true
     paths:
@@ -120,6 +123,7 @@ output:
       freq: true
       onedmin: false
       opt: true
+      irc: true
       orbitals: false
       sp: true
     paths:
