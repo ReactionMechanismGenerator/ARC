@@ -12,11 +12,13 @@ from rdkit import Chem
 from rdkit.Chem import rdMolTransforms as rdMT, rdchem
 
 from rmgpy.molecule.molecule import Molecule
+from rmgpy.quantity import ArrayQuantity
 from rmgpy.species import Species
+from rmgpy.statmech import Conformer
 
 import arc.species.converter as converter
 from arc.common import almost_equal_coords_lists
-from arc.exceptions import ConverterError, ZMatError
+from arc.exceptions import ConverterError
 from arc.species.species import ARCSpecies
 from arc.species.zmat import xyz_to_zmat
 
@@ -443,6 +445,40 @@ H       0.63003260   -0.63003260   -0.63003260
                                                     (-0.6300326, -0.6300326, 0.6300326),
                                                     (-0.6300326, 0.6300326, -0.6300326))}}
 
+        cls.xyz_dict_12 = {'symbols': ('F', 'C', 'C', 'C', 'C', 'C', 'C', 'F', 'H', 'H', 'H', 'H'),
+                           'isotopes': (19, 12, 12, 12, 12, 12, 12, 19, 1, 1, 1, 1),
+                           'coords': ((1.34408, 0, 1.70183),
+                                      (0.692492, 0, 0.530349),
+                                      (1.393, 0, -0.657191),
+                                      (0.693305, 0, -1.85652),
+                                      (-0.693305, -5.15e-08, -1.85652),
+                                      (-1.393, -3.87e-08, -0.657191),
+                                      (-0.692492, 4.63e-08, 0.530349),
+                                      (-1.34408, 4.48e-08, 1.70183),
+                                      (2.47418, 0, -0.625387),
+                                      (1.23765, 0, -2.79083),
+                                      (-1.23765, -1.812e-07, -2.79083),
+                                      (-2.47418, -6.81e-08, -0.625387)
+                                      )
+                           }
+
+        cls.conformer_12 = Conformer(number=ArrayQuantity([9, 6, 6, 6, 6, 6, 6, 9, 1, 1, 1, 1], ''),
+                                     mass=ArrayQuantity([18.9984, 12, 12, 12, 12, 12, 12, 18.9984, 1.00783, 1.00783,
+                                                         1.00783, 1.00783], 'amu'),
+                                     coordinates=ArrayQuantity([[1.34408, 0, 1.70183],
+                                                                [0.692492, 0, 0.530349],
+                                                                [1.393, 0, -0.657191],
+                                                                [0.693305, 0, -1.85652],
+                                                                [-0.693305, -5.15e-08, -1.85652],
+                                                                [-1.393, -3.87e-08, -0.657191],
+                                                                [-0.692492, 4.63e-08, 0.530349],
+                                                                [-1.34408, 4.48e-08, 1.70183],
+                                                                [2.47418, 0, -0.625387],
+                                                                [1.23765, 0, -2.79083],
+                                                                [-1.23765, -1.812e-07, -2.79083],
+                                                                [-2.47418, -6.81e-08, -0.625387]], 'angstroms')
+                                     )
+
         nh_s_adj = """1 N u0 p2 c0 {2,S}
                           2 H u0 p0 c0 {1,S}"""
         nh_s_xyz = """N       0.50949998    0.00000000    0.00000000
@@ -588,6 +624,19 @@ R1=1.0912"""
         self.assertEqual(xyz_dict2, self.xyz1['dict'])
         self.assertIsInstance(xyz_dict2['coords'], tuple)
         self.assertIsInstance(xyz_dict2['coords'][0], tuple)
+
+    def test_conformer_to_xyz_dict(self):
+        """Test the rmg_conformer_to_xyz function"""
+        xyz_dict = converter.rmg_conformer_to_xyz(self.conformer_12)
+        self.assertTrue(almost_equal_coords_lists(xyz_dict, self.xyz_dict_12))
+        self.assertEqual(xyz_dict['isotopes'], self.xyz_dict_12['isotopes'])
+
+    def test_xyz_dict_to_conformer(self):
+        """Test the xyz_to_rmg_conformer function"""
+        conformer = converter.xyz_to_rmg_conformer(self.xyz_dict_12)
+        self.assertTrue(np.array_equal(conformer.number.value, self.conformer_12.number.value))
+        self.assertTrue(np.allclose(conformer.mass.value, self.conformer_12.mass.value))
+        self.assertTrue(np.allclose(conformer.coordinates.value, self.conformer_12.coordinates.value))
 
     def test_get_most_common_isotope_for_element(self):
         """Test the get_most_common_isotope_for_element function"""
