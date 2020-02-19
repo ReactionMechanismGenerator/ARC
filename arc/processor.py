@@ -292,14 +292,15 @@ class Processor(object):
                             else:
                                 break
                         self._run_statmech(arkane_spc, spc.arkane_file, kinetics=True)
+                        arkane_spc_dict[spc.label] = arkane_spc
                 rxn.dh_rxn298 = sum([product.thermo.get_enthalpy(298) for product in arkane_spc_dict.values()
                                      if product.label in rxn.products])\
                     - sum([reactant.thermo.get_enthalpy(298) for reactant in arkane_spc_dict.values()
                            if reactant.label in rxn.reactants])
                 arkane_rxn = arkane_reaction(label=str(rxn.label),
-                                             reactants=[str(label + '_') for label in arkane_spc_dict.keys()
+                                             reactants=[str(label) for label in arkane_spc_dict.keys()
                                                         if label in rxn.reactants],
-                                             products=[str(label + '_') for label in arkane_spc_dict.keys()
+                                             products=[str(label) for label in arkane_spc_dict.keys()
                                                        if label in rxn.products],
                                              transitionState=rxn.ts_label,
                                              tunneling='Eckart')
