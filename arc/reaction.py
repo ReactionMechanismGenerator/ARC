@@ -380,7 +380,7 @@ class ARCReaction(object):
         """Determine the RMG family and saves the (family, own reverse) tuple in the ``family`` attribute"""
         if self.rmg_reaction is not None:
             self.family, self.family_own_reverse = rmgdb.determine_reaction_family(rmgdb=rmgdatabase,
-                                                                                   reaction=self.rmg_reaction.copy())
+                                                                                   reaction=self.rmg_reaction)
 
     def check_ts(self, log=True):
         """
