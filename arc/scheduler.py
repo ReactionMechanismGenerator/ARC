@@ -70,6 +70,7 @@ class Scheduler(object):
                                       'freq': <path to freq output file>,
                                       'sp': <path to sp output file>,
                                       'composite': <path to composite output file>,
+                                      'irc': [list of two IRC paths],
                                      },
                             'conformers': <comments>,
                             'isomorphism': <comments>,
@@ -2084,17 +2085,18 @@ class Scheduler(object):
 
     def check_irc_job(self, label, job):
         """
-        Check an IRC job.
+        Check an IRC job and perform post-job tasks.
 
         Todo:
             Need to check isomorphism
-            Take into account that there are two IRC jobs per TS
 
         Args:
             label (str): The species label.
             job (Job): The single point job object.
         """
-        self.output[label]['job_types']['irc'] = True
+        self.output[label]['paths']['irc'].append(os.path.join(job.local_path, 'output.out'))
+        if len(self.output[label]['paths']['irc']) == 2:
+            self.output[label]['job_types']['irc'] = True
 
     def check_scan_job(self, label, job):
         """
@@ -2811,6 +2813,8 @@ class Scheduler(object):
                     for key in path_keys:
                         if key not in self.output[species.label]['paths']:
                             self.output[species.label]['paths'][key] = ''
+                    if 'irc' not in self.output[species.label]['paths'] and species.is_ts:
+                        self.output[species.label]['paths']['irc'] = list()
                     if 'job_types' not in self.output[species.label]:
                         self.output[species.label]['job_types'] = dict()
                     for job_type in list(set(self.job_types.keys())) + ['opt', 'freq', 'sp', 'composite', 'onedmin']:
