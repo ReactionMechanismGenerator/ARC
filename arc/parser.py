@@ -8,6 +8,8 @@ A module for parsing information from various files.
 import numpy as np
 import os
 
+import qcelemental as qcel
+
 from arkane.exceptions import LogError
 from arkane.ess import GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
 from arkane.util import determine_qm_software
@@ -160,7 +162,7 @@ def parse_geometry(path):
     Parse the xyz geometry from an ESS log file.
 
     Args:
-        path (str): The ESS log file to parse from
+        path (str): The ESS log file to parse from.
 
     Returns:
         dict: The geometry.
@@ -505,7 +507,7 @@ def parse_xyz_from_file(path):
 
 def parse_trajectory(path):
     """
-    Parse all geometries from an xyz trajectory file.
+    Parse all geometries from an xyz trajectory file or an ESS output file.
 
     Args:
         path (str): The file path.
@@ -517,36 +519,67 @@ def parse_trajectory(path):
         ParserError: If the trajectory could not be read.
     """
     lines = _get_lines_from_file(path)
-    skip_line = False
-    num_of_atoms = 0
-    trajectory, xyz_lines = list(), list()
-    for line in lines:
-        splits = line.strip().split()
-        if len(splits) == 1 and all([c.isdigit() for c in splits[0]]):
-            if len(xyz_lines):
-                if len(xyz_lines) != num_of_atoms:
-                    raise ParserError(f'Could not parse trajectory, expected {num_of_atoms} atoms, '
-                                      f'but got {len(xyz_lines)} for point {len(trajectory) + 1} in the trajectory.')
-                trajectory.append(str_to_xyz(''.join([xyz_line for xyz_line in xyz_lines])))
-            num_of_atoms = int(splits[0])
-            skip_line = True
-            xyz_lines = list()
-        elif skip_line:
-            # skip the comment line
-            skip_line = False
-            continue
-        else:
-            xyz_lines.append(line)
 
-    if len(xyz_lines):
-        # add the last point in the trajectory
-        if len(xyz_lines) != num_of_atoms:
-            raise ParserError(f'Could not parse trajectory, expected {num_of_atoms} atoms, '
-                              f'but got {len(xyz_lines)} for point {len(trajectory) + 1} in the trajectory.')
-        trajectory.append(str_to_xyz(''.join([xyz_line for xyz_line in xyz_lines])))
-    if not len(trajectory):
+    ess_file = False
+    if path.split('.')[-1] != 'xyz':
+        try:
+            log = determine_qm_software(fullpath=path)
+            ess_file = True
+        except InputError:
+            ess_file = False
+
+    if ess_file:
+        if not isinstance(log, GaussianLog):
+            raise NotImplementedError(f'Currently parse_trajectory only supports Gaussian files, got {type(log)}')
+        traj = list()
+        done = False
+        i = 0
+        while not done:
+            if 'Input orientation:' in lines[i]:
+                i += 5
+                xyz_str = ''
+                while '--------------------------------------------' not in lines[i]:
+                    splits = lines[i].split()
+                    xyz_str += f'{qcel.periodictable.to_E(int(splits[1]))}  {splits[3]}  {splits[4]}  {splits[5]}\n'
+                    i += 1
+                traj.append(str_to_xyz(xyz_str))
+            elif 'Normal termination of Gaussian' in lines[i] or i >= len(lines):
+                done = True
+            i += 1
+
+    else:
+        # this is not an ESS output file, probably an XYZ format file with several Cartesian coordinates
+        skip_line = False
+        num_of_atoms = 0
+        traj, xyz_lines = list(), list()
+        for line in lines:
+            splits = line.strip().split()
+            if len(splits) == 1 and all([c.isdigit() for c in splits[0]]):
+                if len(xyz_lines):
+                    if len(xyz_lines) != num_of_atoms:
+                        raise ParserError(f'Could not parse trajectory, expected {num_of_atoms} atoms, '
+                                          f'but got {len(xyz_lines)} for point {len(traj) + 1} in the trajectory.')
+                    traj.append(str_to_xyz(''.join([xyz_line for xyz_line in xyz_lines])))
+                num_of_atoms = int(splits[0])
+                skip_line = True
+                xyz_lines = list()
+            elif skip_line:
+                # skip the comment line
+                skip_line = False
+                continue
+            else:
+                xyz_lines.append(line)
+
+        if len(xyz_lines):
+            # add the last point in the trajectory
+            if len(xyz_lines) != num_of_atoms:
+                raise ParserError(f'Could not parse trajectory, expected {num_of_atoms} atoms, '
+                                  f'but got {len(xyz_lines)} for point {len(traj) + 1} in the trajectory.')
+            traj.append(str_to_xyz(''.join([xyz_line for xyz_line in xyz_lines])))
+
+    if not len(traj):
         raise ParserError(f'Could not parse trajectory from {path}')
-    return trajectory
+    return traj
 
 
 def parse_dipole_moment(path):
