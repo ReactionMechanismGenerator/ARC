@@ -1473,6 +1473,11 @@ def check_isomorphism(mol1, mol2, filter_structures=True):
         bool: Whether one of the molecules in the Species derived from ``mol1``
               is isomorphic to one of the molecules in the Species derived from ``mol2``. ``True`` if it is.
     """
+
+    if mol1 is None or mol2 is None:
+        logger.error('Cannot check isomorphism without the molecule objects.')
+        return False
+
     mol1.reactive, mol2.reactive = True, True
     mol1_copy = mol1.copy(deep=True)
     mol2_copy = mol2.copy(deep=True)
