@@ -689,7 +689,7 @@ class ARCSpecies(object):
         if self.mol is None and self.initial_xyz is None and self.final_xyz is None and not self.conformers \
                 and not self.is_ts:
             # Only TS species are allowed to be loaded w/o a structure
-            raise SpeciesError('Must have either mol or xyz for species {0}'.format(self.label))
+            raise SpeciesError(f'Must have either mol or xyz for species {self.label}')
         self.directed_rotors = species_dict['directed_rotors'] if 'directed_rotors' in species_dict else dict()
         self.consider_all_diastereomers = species_dict['consider_all_diastereomers'] \
             if 'consider_all_diastereomers' in species_dict else True
@@ -897,6 +897,9 @@ class ARCSpecies(object):
                 mol_list = [self.mol]
             if mol_list:
                 for mol in mol_list:
+                    if mol is None:
+                        logger.error(f'cannt determine rotors for species {self.label} without a .mol attribute.')
+                        continue
                     rotors = conformers.find_internal_rotors(mol)
                     for new_rotor in rotors:
                         for existing_rotor in self.rotors_dict.values():
