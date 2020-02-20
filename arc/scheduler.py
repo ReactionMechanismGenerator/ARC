@@ -2097,6 +2097,9 @@ class Scheduler(object):
         self.output[label]['paths']['irc'].append(os.path.join(job.local_path, 'output.out'))
         if len(self.output[label]['paths']['irc']) == 2:
             self.output[label]['job_types']['irc'] = True
+            plotter.save_irc_traj_animation(irc_f_path=self.output[label]['paths']['irc'][0],
+                                            irc_r_path=self.output[label]['paths']['irc'][1],
+                                            out_path=os.path.join(job.local_path, 'irc_traj.gjf'))
 
     def check_scan_job(self, label, job):
         """
