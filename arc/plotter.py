@@ -364,9 +364,17 @@ def draw_thermo_parity_plots(species_list, path=None):
             f.write(thermo_sources)
 
 
-def draw_parity_plot(var_arc, var_rmg, var_label, var_units, labels, pp):
+def draw_parity_plot(var_arc, var_rmg, labels, var_label, var_units, pp=None):
     """
     Draw a parity plot.
+
+    Args:
+        var_arc (list): The variable calculated by ARC.
+        var_rmg (list): The variable estimated by RMG.
+        labels (list): Species labels corresponding the the data in ``var_arc`` and ``var_rmg``.
+        var_label (str): The variable name.
+        var_units (str): The variable units.
+        pp (PdfPages, optional): Used for storing the image as a multi-page PFD file.
     """
     height = max(len(var_arc) / 3.5, 4)
     width = 8
