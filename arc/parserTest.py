@@ -181,6 +181,12 @@ H      -0.59436200   -0.94730400    0.00000000"""
         self.assertIsInstance(trajectory[0], dict)
         self.assertEqual(len(trajectory[0]['symbols']), 9)
 
+        path = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'cyano_irc_1.out')
+        trajectory = parser.parse_trajectory(path)
+        self.assertEqual(len(trajectory), 58)
+        self.assertIsInstance(trajectory[0], dict)
+        self.assertEqual(len(trajectory[0]['symbols']), 16)
+
     def test_parse_t1(self):
         """Test T1 diagnostic parsing"""
         path = os.path.join(arc_path, 'arc', 'testing', 'sp', 'mehylamine_CCSD(T).out')
