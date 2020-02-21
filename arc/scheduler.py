@@ -103,7 +103,7 @@ class Scheduler(object):
         adaptive_levels (dict, optional): A dictionary of levels of theory for ranges of the number of heavy atoms in
                                           the molecule. Keys are tuples of (min_num_atoms, max_num_atoms), values are
                                           dictionaries with 'optfreq' and 'sp' as keys and levels of theory as values.
-        rmgdatabase (RMGDatabase, optional): The RMG database object.
+        rmg_database (RMGDatabase, optional): The RMG database object.
         job_types (dict, optional): A dictionary of job types to execute. Keys are job types, values are boolean.
         job_additional_options (dict, optional): Additional specifications to control the execution of a job.
         job_shortcut_keywords (dict, optional): Shortcut keyword specifications to control the execution of a job.
@@ -152,7 +152,7 @@ class Scheduler(object):
         restart_path (str): Path to the `restart.yml` file to be saved.
         max_job_time (float): The maximal allowed job time on the server in hours (can be fractional).
         testing (bool): Used for internal ARC testing (generating the object w/o executing it).
-        rmgdb (RMGDatabase): The RMG database object.
+        rmg_database (RMGDatabase): The RMG database object.
         allow_nonisomorphic_2d (bool): Whether to optimize species even if they do not have a 3D conformer that is
                                        isomorphic to the 2D graph representation.
         dont_gen_confs (list): A list of species labels for which conformer jobs were loaded from a restart file,
@@ -179,11 +179,11 @@ class Scheduler(object):
 
     def __init__(self, project, ess_settings, species_list, project_directory, composite_method='', conformer_level='',
                  opt_level='', freq_level='', sp_level='', scan_level='', ts_guess_level='', irc_level='',
-                 orbitals_level='', adaptive_levels=None, rmgdatabase=None, job_types=None, job_additional_options=None,
+                 orbitals_level='', adaptive_levels=None, rmg_database=None, job_types=None, job_additional_options=None,
                  solvent=None, job_shortcut_keywords=None, rxn_list=None, bath_gas=None, restart_dict=None,
                  max_job_time=120, allow_nonisomorphic_2d=False, memory=14, testing=False, dont_gen_confs=None,
                  confs_to_dft=5):
-        self.rmgdb = rmgdatabase
+        self.rmg_database = rmg_database
         self.restart_dict = restart_dict
         self.species_list = species_list
         self.rxn_list = rxn_list if rxn_list is not None else list()
@@ -234,7 +234,7 @@ class Scheduler(object):
         if len(self.rxn_list):
             rxn_info_path = self.make_reaction_labels_info_file()
             logger.info("\nLoading RMG's families...")
-            rmgdb.load_families_only(self.rmgdb)
+            rmgdb.load_families_only(self.rmg_database)
             for rxn in self.rxn_list:
                 logger.info('\n\n')
                 # update the ARCReaction object and generate an ARCSpecies object for its TS
@@ -246,7 +246,7 @@ class Scheduler(object):
                         rxn.p_species.append(spc)
                 rxn.rmg_reaction_from_arc_species()
                 rxn.check_attributes()
-                rxn.determine_family(self.rmgdb)
+                rxn.determine_family(self.rmg_database)
                 family_text = ''
                 if rxn.family is not None:
                     family_text = f'identified as belonging to RMG family {rxn.family.label}'
