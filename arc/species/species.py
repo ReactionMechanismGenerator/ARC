@@ -1087,12 +1087,12 @@ class ARCSpecies(object):
         if self.optical_isomers is None and self.external_symmetry is None:
             xyz = self.get_xyz()
             symmetry, optical_isomers = determine_symmetry(xyz)
-            self.optical_isomers = self.optical_isomers if self.optical_isomers is not None else optical_isomers
+            self.optical_isomers = self.optical_isomers or optical_isomers
             if self.optical_isomers != optical_isomers:
                 logger.warning(f"User input of optical isomers for {self.label} and ARC's calculation differ: "
                                f"{self.optical_isomers} and {optical_isomers}, respectively. "
                                f"Using the user input of {self.optical_isomers}")
-            self.external_symmetry = self.external_symmetry if self.external_symmetry is not None else symmetry
+            self.external_symmetry = self.external_symmetry or symmetry
             if self.external_symmetry != symmetry:
                 logger.warning(f"User input of external symmetry for {self.label} and ARC's calculation differ: "
                                f"{self.external_symmetry} and {symmetry}, respectively. "
