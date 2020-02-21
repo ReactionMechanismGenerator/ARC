@@ -223,7 +223,7 @@ class ARCSpecies(object):
                          :ref:`ARCReaction <reaction>` object.
         ts_report (str): A description of all methods used for guessing a TS and their ranking.
         rxn_label (str): The reaction string (relevant for TSs).
-        arkane_file (str): Path to the Arkane Species file generated in Processor.
+        arkane_file (str): Path to the Arkane Species file generated in processor.
         yml_path (str): Path to an Arkane YAML file representing a species (for loading the object).
         checkfile (str): The local path to the latest checkfile by Gaussian for the species.
         external_symmetry (int): The external symmetry of the species (not including rotor symmetries).
