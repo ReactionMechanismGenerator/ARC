@@ -17,9 +17,18 @@ from rmgpy.transport import TransportData
 from arc.common import almost_equal_coords_lists
 from arc.plotter import save_conformers_file
 from arc.settings import arc_path
-from arc.species.converter import molecules_from_xyz, check_isomorphism, str_to_xyz, xyz_to_str, xyz_to_x_y_z
-from arc.species.species import ARCSpecies, TSGuess, are_coords_compliant_with_graph, check_xyz, \
-    determine_rotor_symmetry, determine_rotor_type
+from arc.species.converter import (check_isomorphism,
+                                   molecules_from_xyz,
+                                   str_to_xyz,
+                                   xyz_to_str,
+                                   xyz_to_x_y_z)
+from arc.species.species import (ARCSpecies,
+                                 TSGuess,
+                                 are_coords_compliant_with_graph,
+                                 check_label,
+                                 check_xyz,
+                                 determine_rotor_symmetry,
+                                 determine_rotor_type)
 
 
 class TestARCSpecies(unittest.TestCase):
@@ -1138,6 +1147,16 @@ H       1.11582953    0.94384729   -0.10134685"""
         self.assertTrue(are_coords_compliant_with_graph(xyz=xyz_non_split, mol=mol))
         self.assertFalse(are_coords_compliant_with_graph(xyz=xyz_split, mol=mol))
 
+    def test_check_label(self):
+        """Test the species check_label() method"""
+        label = check_label('HCN')
+        self.assertEqual(label, 'HCN')
+
+        label = check_label('C#N')
+        self.assertEqual(label, 'CtN')
+
+        label = check_label('C?N')
+        self.assertEqual(label, 'C_N')
 
     @classmethod
     def tearDownClass(cls):
