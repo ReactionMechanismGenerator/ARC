@@ -51,9 +51,9 @@ output:
       sp: true
     paths:
       composite: ''
-      freq: arc/testing/restart/freq_a19046.out
-      geo: arc/testing/restart/freq_a19046.out
-      sp: arc/testing/restart/sp_a19047.out
+      freq: arc/testing/restart/1_restart_thermo/freq_a19046.out
+      geo: arc/testing/restart/1_restart_thermo/freq_a19046.out
+      sp: arc/testing/restart/1_restart_thermo/sp_a19047.out
     restart: ''
     warnings: ''
   H:
@@ -77,8 +77,8 @@ output:
     paths:
       composite: ''
       freq: ''
-      geo: arc/testing/restart/sp_a19014.out
-      sp: arc/testing/restart/sp_a19014.out
+      geo: arc/testing/restart/1_restart_thermo/sp_a19014.out
+      sp: arc/testing/restart/1_restart_thermo/sp_a19014.out
     restart: ''
     warnings: ''
   H2O2:
@@ -102,9 +102,9 @@ output:
       sp: true
     paths:
       composite: ''
-      freq: arc/testing/restart/freq_a19031.out
-      geo: arc/testing/restart/freq_a19031.out
-      sp: arc/testing/restart/sp_a19032.out
+      freq: arc/testing/restart/1_restart_thermo/freq_a19031.out
+      geo: arc/testing/restart/1_restart_thermo/freq_a19031.out
+      sp: arc/testing/restart/1_restart_thermo/sp_a19032.out
     restart: ''
     warnings: ''
   N2H3:
@@ -128,9 +128,9 @@ output:
       sp: true
     paths:
       composite: ''
-      freq: arc/testing/restart/freq_a19038.out
-      geo: arc/testing/restart/freq_a19038.out
-      sp: arc/testing/restart/sp_a19039.out
+      freq: arc/testing/restart/1_restart_thermo/freq_a19038.out
+      geo: arc/testing/restart/1_restart_thermo/freq_a19038.out
+      sp: arc/testing/restart/1_restart_thermo/sp_a19039.out
     restart: ''
     warnings: ''
 project: restart_test
@@ -269,7 +269,7 @@ species:
       - 3
       - 4
       - 1
-      scan_path: arc/testing/restart/scan_a19049.out
+      scan_path: arc/testing/restart/1_restart_thermo/scan_a19049.out
       success: true
       symmetry: 6
       times_dihedral_set: 0
@@ -340,7 +340,7 @@ species:
       - 1
       - 2
       - 4
-      scan_path: arc/testing/restart/scan_a19034.out
+      scan_path: arc/testing/restart/1_restart_thermo/scan_a19034.out
       success: true
       symmetry: 1
       times_dihedral_set: 0
@@ -416,7 +416,7 @@ species:
       - 1
       - 2
       - 5
-      scan_path: arc/testing/restart/scan_a19040.out
+      scan_path: arc/testing/restart/1_restart_thermo/scan_a19040.out
       success: false
       times_dihedral_set: 0
       top:

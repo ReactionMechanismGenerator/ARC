@@ -42,7 +42,7 @@ class TestCommon(unittest.TestCase):
 
     def test_read_yaml_file(self):
         """Test the read_yaml_file() function"""
-        restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart', 'restart(H,H2O2,N2H3,CH3CO2).yml')
+        restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart', '1_restart_thermo', 'restart.yml')
         input_dict = common.read_yaml_file(restart_path)
         self.assertIsInstance(input_dict, dict)
         self.assertTrue('reactions' in input_dict)
