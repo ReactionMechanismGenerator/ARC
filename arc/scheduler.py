@@ -70,6 +70,7 @@ class Scheduler(object):
                                       'freq': <path to freq output file>,
                                       'sp': <path to sp output file>,
                                       'composite': <path to composite output file>,
+                                      'irc': [list of two IRC paths],
                                      },
                             'conformers': <comments>,
                             'isomorphism': <comments>,
@@ -280,7 +281,7 @@ class Scheduler(object):
                     rxn.ts_methods.append('reverse_autotst')
                 if not any([spc.label == rxn.ts_label for spc in self.species_list]):
                     ts_species = ARCSpecies(is_ts=True, label=rxn.ts_label, rxn_label=rxn.label,
-                                            multiplicity=rxn.multiplicity, charge=rxn.charge, generate_thermo=False,
+                                            multiplicity=rxn.multiplicity, charge=rxn.charge, compute_thermo=False,
                                             ts_methods=rxn.ts_methods, ts_number=rxn.index)
                     ts_species.number_of_atoms = sum(reactant.number_of_atoms for reactant in rxn.r_species)
                     self.species_list.append(ts_species)
@@ -2084,17 +2085,21 @@ class Scheduler(object):
 
     def check_irc_job(self, label, job):
         """
-        Check an IRC job.
+        Check an IRC job and perform post-job tasks.
 
         Todo:
             Need to check isomorphism
-            Take into account that there are two IRC jobs per TS
 
         Args:
             label (str): The species label.
             job (Job): The single point job object.
         """
-        self.output[label]['job_types']['irc'] = True
+        self.output[label]['paths']['irc'].append(os.path.join(job.local_path, 'output.out'))
+        if len(self.output[label]['paths']['irc']) == 2:
+            self.output[label]['job_types']['irc'] = True
+            plotter.save_irc_traj_animation(irc_f_path=self.output[label]['paths']['irc'][0],
+                                            irc_r_path=self.output[label]['paths']['irc'][1],
+                                            out_path=os.path.join(job.local_path, 'irc_traj.gjf'))
 
     def check_scan_job(self, label, job):
         """
@@ -2811,6 +2816,8 @@ class Scheduler(object):
                     for key in path_keys:
                         if key not in self.output[species.label]['paths']:
                             self.output[species.label]['paths'][key] = ''
+                    if 'irc' not in self.output[species.label]['paths'] and species.is_ts:
+                        self.output[species.label]['paths']['irc'] = list()
                     if 'job_types' not in self.output[species.label]:
                         self.output[species.label]['job_types'] = dict()
                     for job_type in list(set(self.job_types.keys())) + ['opt', 'freq', 'sp', 'composite', 'onedmin']:

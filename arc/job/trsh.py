@@ -937,6 +937,7 @@ def trsh_job_on_server(server, job_name, job_id, job_server_status, remote_path,
 
     return None, False
 
+
 def scan_quality_check(label, pivots, energies, scan_res=rotor_scan_resolution, used_methods=None):
     """
     Checks the scan's quality:
@@ -1016,7 +1017,10 @@ def scan_quality_check(label, pivots, energies, scan_res=rotor_scan_resolution, 
         # Find the rotation dihedral in degrees to the closest minimum:
         min_index = np.argmin(energies)
         deg_increment = min_index * scan_res
-        actions = ['change conformer', deg_increment]
+        actions = ['change conformer', pivots, deg_increment]
+        if actions in used_methods:
+            logger.error(f'Not troubleshooting a rotor with the same method: {actions}')
+            actions = list()
         return invalidate, invalidation_reason, message, actions
 
     # 3. Check the barrier height

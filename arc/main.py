@@ -700,7 +700,7 @@ class ARC(object):
                     logger.warning('Could not determine a Model Chemistry to be used in Arkane, '
                                    'NOT calculating thermodata')
                     for spc in self.arc_species_list:
-                        spc.generate_thermo = False
+                        spc.compute_thermo = False
                 self.model_chemistry = sp_level + '//' + freq_level
         if self.model_chemistry:
             logger.info(f'Using {self.model_chemistry} as a model chemistry in Arkane')
@@ -913,7 +913,7 @@ class ARC(object):
                                            f'Got the following species: {[spc.label for spc in self.arc_species_list]}')
             else:
                 # no H species defined, make one
-                h = ARCSpecies(label='H', smiles='[H]', generate_thermo=False)
+                h = ARCSpecies(label='H', smiles='[H]', compute_thermo=False)
                 self.arc_species_list.append(h)
 
     def determine_model_chemistry_for_job_types(self):

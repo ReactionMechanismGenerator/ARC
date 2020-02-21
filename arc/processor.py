@@ -229,7 +229,7 @@ class Processor(object):
 
                 species.e0 = arkane_spc.conformer.E0.value_si * 0.001  # convert to kJ/mol
                 logger.debug(f'Assigned E0 to {species.label}: {species.e0} kJ/mol')
-                if species.generate_thermo:
+                if species.compute_thermo:
                     thermo_job = ThermoJob(arkane_spc, 'NASA')
                     thermo_job.execute(output_directory=output_path, plot=False)
                     species.thermo = arkane_spc.get_thermo_data()
@@ -243,7 +243,7 @@ class Processor(object):
                                     f'2D structure (bond orders). Not including this species in the parity plots.'
                                     f'\nGot: {e}')
                     else:
-                        if species.generate_thermo:
+                        if species.compute_thermo:
                             species_list_for_thermo_parity.append(species)
                 if self.output[species.label]['job_types']['onedmin']:
                     species_for_transport_lib.append(species)
@@ -292,14 +292,15 @@ class Processor(object):
                             else:
                                 break
                         self._run_statmech(arkane_spc, spc.arkane_file, kinetics=True)
+                        arkane_spc_dict[spc.label] = arkane_spc
                 rxn.dh_rxn298 = sum([product.thermo.get_enthalpy(298) for product in arkane_spc_dict.values()
                                      if product.label in rxn.products])\
                     - sum([reactant.thermo.get_enthalpy(298) for reactant in arkane_spc_dict.values()
                            if reactant.label in rxn.reactants])
                 arkane_rxn = arkane_reaction(label=str(rxn.label),
-                                             reactants=[str(label + '_') for label in arkane_spc_dict.keys()
+                                             reactants=[str(label) for label in arkane_spc_dict.keys()
                                                         if label in rxn.reactants],
-                                             products=[str(label + '_') for label in arkane_spc_dict.keys()
+                                             products=[str(label) for label in arkane_spc_dict.keys()
                                                        if label in rxn.products],
                                              transitionState=rxn.ts_label,
                                              tunneling='Eckart')
@@ -509,7 +510,7 @@ class Processor(object):
         load_thermo_libs, load_kinetic_libs = False, False
         if any([species.is_ts and self.output[species.label]['convergence'] for species in self.species_dict.values()]):
             load_kinetic_libs = True
-        if any([species.generate_thermo and self.output[species.label]['convergence']
+        if any([species.compute_thermo and self.output[species.label]['convergence']
                 for species in self.species_dict.values()]):
             load_thermo_libs = True
         if self.rmgdb is not None and (load_kinetic_libs or load_thermo_libs):

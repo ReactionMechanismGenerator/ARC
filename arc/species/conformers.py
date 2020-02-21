@@ -166,6 +166,9 @@ def generate_conformers(mol_list, label, xyzs=None, torsions=None, tops=None, ch
     if not isinstance(mol_list, list):
         logger.error(f'The `mol_list` argument must be a list, got {type(mol_list)}')
         return None
+    if len(mol_list) == 0 or mol_list[0] is None:
+        logger.error('Must get a non-empty `mol_list` argument.')
+        return None
     for mol in mol_list:
         if not isinstance(mol, Molecule):
             raise ConformerError(f'Each entry in the `mol_list` argument must be an RMG Molecule object, '

@@ -17,9 +17,18 @@ from rmgpy.transport import TransportData
 from arc.common import almost_equal_coords_lists
 from arc.plotter import save_conformers_file
 from arc.settings import arc_path
-from arc.species.converter import molecules_from_xyz, check_isomorphism, str_to_xyz, xyz_to_str, xyz_to_x_y_z
-from arc.species.species import ARCSpecies, TSGuess, are_coords_compliant_with_graph, check_xyz, \
-    determine_rotor_symmetry, determine_rotor_type
+from arc.species.converter import (check_isomorphism,
+                                   molecules_from_xyz,
+                                   str_to_xyz,
+                                   xyz_to_str,
+                                   xyz_to_x_y_z)
+from arc.species.species import (ARCSpecies,
+                                 TSGuess,
+                                 are_coords_compliant_with_graph,
+                                 check_label,
+                                 check_xyz,
+                                 determine_rotor_symmetry,
+                                 determine_rotor_type)
 
 
 class TestARCSpecies(unittest.TestCase):
@@ -362,10 +371,10 @@ H      -1.67091600   -1.35164600   -0.93286400"""
 
     def test_charge_and_multiplicity(self):
         """Test determination of molecule charge and multiplicity"""
-        spc1 = ARCSpecies(label='spc1', mol=Molecule(smiles='C[CH]C'), generate_thermo=False)
-        spc2 = ARCSpecies(label='spc2', mol=Molecule(smiles='CCC'), generate_thermo=False)
-        spc3 = ARCSpecies(label='spc3', smiles=str('N[NH]'), generate_thermo=False)
-        spc4 = ARCSpecies(label='spc4', smiles=str('NNN'), generate_thermo=False)
+        spc1 = ARCSpecies(label='spc1', mol=Molecule(smiles='C[CH]C'), compute_thermo=False)
+        spc2 = ARCSpecies(label='spc2', mol=Molecule(smiles='CCC'), compute_thermo=False)
+        spc3 = ARCSpecies(label='spc3', smiles=str('N[NH]'), compute_thermo=False)
+        spc4 = ARCSpecies(label='spc4', smiles=str('NNN'), compute_thermo=False)
         adj1 = """multiplicity 2
                   1 O u1 p2 c0 {2,S}
                   2 H u0 p0 c0 {1,S}
@@ -379,8 +388,8 @@ H      -1.67091600   -1.35164600   -0.93286400"""
                   7 H u0 p0 c0 {2,S}
                   8 H u0 p0 c0 {3,S}
                """
-        spc5 = ARCSpecies(label='spc5', adjlist=str(adj1), generate_thermo=False)
-        spc6 = ARCSpecies(label='spc6', adjlist=str(adj2), generate_thermo=False)
+        spc5 = ARCSpecies(label='spc5', adjlist=str(adj1), compute_thermo=False)
+        spc6 = ARCSpecies(label='spc6', adjlist=str(adj2), compute_thermo=False)
         xyz1 = """O       0.00000000    0.00000000   -0.10796235
                   H       0.00000000    0.00000000    0.86318839"""
         xyz2 = """N      -0.74678912   -0.11808620    0.00000000
@@ -390,8 +399,8 @@ H      -1.67091600   -1.35164600   -0.93286400"""
                   H       1.07725194    1.05216961    0.00000000
                   H      -1.15564250    0.32084669    0.81500594
                   H      -1.15564250    0.32084669   -0.81500594"""
-        spc7 = ARCSpecies(label='spc7', xyz=xyz1, generate_thermo=False)
-        spc8 = ARCSpecies(label='spc8', xyz=xyz2, generate_thermo=False)
+        spc7 = ARCSpecies(label='spc7', xyz=xyz1, compute_thermo=False)
+        spc8 = ARCSpecies(label='spc8', xyz=xyz2, compute_thermo=False)
 
         self.assertEqual(spc1.charge, 0)
         self.assertEqual(spc2.charge, 0)
@@ -428,7 +437,7 @@ H      -1.67091600   -1.35164600   -0.93286400"""
 6 H u0 p0 c0 {2,S}
 7 H u0 p0 c0 {2,S}
 """,
-                         'generate_thermo': True,
+                         'compute_thermo': True,
                          'label': 'methylamine',
                          'long_thermo_description': spc_dict['long_thermo_description'],
                          'charge': 0,
@@ -1138,6 +1147,16 @@ H       1.11582953    0.94384729   -0.10134685"""
         self.assertTrue(are_coords_compliant_with_graph(xyz=xyz_non_split, mol=mol))
         self.assertFalse(are_coords_compliant_with_graph(xyz=xyz_split, mol=mol))
 
+    def test_check_label(self):
+        """Test the species check_label() method"""
+        label = check_label('HCN')
+        self.assertEqual(label, 'HCN')
+
+        label = check_label('C#N')
+        self.assertEqual(label, 'CtN')
+
+        label = check_label('C?N')
+        self.assertEqual(label, 'C_N')
 
     @classmethod
     def tearDownClass(cls):

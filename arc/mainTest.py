@@ -46,7 +46,7 @@ class TestARC(unittest.TestCase):
 
     def test_as_dict(self):
         """Test the as_dict() method of ARC"""
-        spc1 = ARCSpecies(label='spc1', smiles='CC', generate_thermo=False)
+        spc1 = ARCSpecies(label='spc1', smiles='CC', compute_thermo=False)
         arc0 = ARC(project='arc_test', job_types=self.job_types1, job_shortcut_keywords={'gaussian': 'scf=(NDump=30)'},
                    arc_species_list=[spc1], level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)')
         restart_dict = arc0.as_dict()
@@ -105,7 +105,7 @@ class TestARC(unittest.TestCase):
                                       'consider_all_diastereomers': True,
                                       'external_symmetry': None,
                                       'optical_isomers': None,
-                                      'generate_thermo': False,
+                                      'compute_thermo': False,
                                       'is_ts': False,
                                       'label': 'spc1',
                                       'long_thermo_description': long_thermo_description,
@@ -143,7 +143,7 @@ class TestARC(unittest.TestCase):
                                      'conformer_energies': [],
                                      'conformers': [],
                                      'external_symmetry': 1,
-                                     'generate_thermo': False,
+                                     'compute_thermo': False,
                                      'is_ts': False,
                                      'label': 'testing_spc1',
                                      'mol': '1 C u0 p0 c0 {2,S} {3,S} {4,S} {5,S}\n2 C u0 p0 c0 {1,S} {6,S} {7,S} {8,S}'
@@ -504,26 +504,26 @@ class TestARC(unittest.TestCase):
 
     def test_determine_unique_species_labels(self):
         """Test the determine_unique_species_labels method"""
-        spc0 = ARCSpecies(label='spc0', smiles='CC', generate_thermo=False)
-        spc1 = ARCSpecies(label='spc1', smiles='CC', generate_thermo=False)
-        spc2 = ARCSpecies(label='spc2', smiles='CC', generate_thermo=False)
+        spc0 = ARCSpecies(label='spc0', smiles='CC', compute_thermo=False)
+        spc1 = ARCSpecies(label='spc1', smiles='CC', compute_thermo=False)
+        spc2 = ARCSpecies(label='spc2', smiles='CC', compute_thermo=False)
         arc0 = ARC(project='arc_test', job_types=self.job_types1, arc_species_list=[spc0, spc1, spc2],
                    level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)')
         self.assertEqual(arc0.unique_species_labels, ['spc0', 'spc1', 'spc2'])
-        spc3 = ARCSpecies(label='spc0', smiles='CC', generate_thermo=False)
+        spc3 = ARCSpecies(label='spc0', smiles='CC', compute_thermo=False)
         arc0.arc_species_list.append(spc3)
         with self.assertRaises(ValueError):
             arc0.determine_unique_species_labels()
 
     def test_add_hydrogen_for_bde(self):
         """Test the add_hydrogen_for_bde method"""
-        spc0 = ARCSpecies(label='spc0', smiles='CC', generate_thermo=False)
+        spc0 = ARCSpecies(label='spc0', smiles='CC', compute_thermo=False)
         arc0 = ARC(project='arc_test', job_types=self.job_types1, arc_species_list=[spc0],
                    level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)')
         arc0.add_hydrogen_for_bde()
         self.assertEqual(len(arc0.arc_species_list), 1)
 
-        spc1 = ARCSpecies(label='spc1', smiles='CC', generate_thermo=False, bdes=['all_h'])
+        spc1 = ARCSpecies(label='spc1', smiles='CC', compute_thermo=False, bdes=['all_h'])
         arc1 = ARC(project='arc_test', job_types=self.job_types1, arc_species_list=[spc1],
                    level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)')
         arc1.add_hydrogen_for_bde()
