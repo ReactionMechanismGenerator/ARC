@@ -48,13 +48,6 @@ class ParserError(Exception):
     pass
 
 
-class ProcessorError(Exception):
-    """
-    This exception is raised whenever an error occurs while processing thermo and kinetics.
-    """
-    pass
-
-
 class QAError(Exception):
     """
     This exception is raised whenever an error occurs while checking a Job's quality.
