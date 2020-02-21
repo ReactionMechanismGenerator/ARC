@@ -336,8 +336,6 @@ class ARCSpecies(object):
             if self.yml_path is not None:
                 # a YAML path was given
                 self.from_yml_file(label)
-                if label is not None:
-                    self.label = label
             elif self.rmg_species is not None:
                 # an RMG Species was given
                 if not isinstance(self.rmg_species, Species):
@@ -348,7 +346,7 @@ class ARCSpecies(object):
                 if not self.rmg_species.label and not label:
                     raise SpeciesError('If an RMG Species given, it must have a label or a label must be given '
                                        'separately')
-                if label:
+                if label is not None:
                     self.label = label
                 else:
                     self.label = self.rmg_species.label
@@ -396,30 +394,24 @@ class ARCSpecies(object):
             self.neg_freqs_trshed = list()
 
         if self.charge is None:
-            logger.debug('No charge specified for {0}, assuming charge 0.'.format(self.label))
+            logger.debug(f'No charge specified for {self.label}, assuming charge 0.')
             self.charge = 0
         if self.multiplicity is None:
             self.determine_multiplicity(smiles, adjlist, self.mol)
-            logger.debug('No multiplicity specified for {0}, assuming {1}.'.format(self.label, self.multiplicity))
-        if self.multiplicity is not None and self.multiplicity < 1:
-            raise SpeciesError('Multiplicity for species {0} is lower than 1. Got: {1}'.format(
-                self.label, self.multiplicity))
+            logger.debug(f'No multiplicity specified for {self.label}, assuming {self.multiplicity}.')
         if not isinstance(self.multiplicity, int) and self.multiplicity is not None:
-            raise SpeciesError('Multiplicity for species {0} is not an integer. Got: {1}, a {2}'.format(
-                self.label, self.multiplicity, type(self.multiplicity)))
+            raise SpeciesError(f'Multiplicity for species {self.label} is not an integer. '
+                               f'Got {self.multiplicity} which is a {type(self.multiplicity)}.')
+        if self.multiplicity is not None and self.multiplicity < 1:
+            raise SpeciesError(f'Multiplicity for species {self.label} is lower than 1. Got: {self.multiplicity}')
         if not isinstance(self.charge, int):
-            raise SpeciesError('Charge for species {0} is not an integer (got {1}, a {2})'.format(
-                self.label, self.charge, type(self.charge)))
-        if not self.is_ts and self.initial_xyz is None and self.final_xyz is None and self.mol is None\
+            raise SpeciesError(f'Charge for species {self.label} is not an integer. '
+                               f'Got {self.charge} which is a {type(self.charge)}.')
+        if not self.is_ts and self.initial_xyz is None and self.final_xyz is None and self.mol is None \
                 and not self.conformers:
-            raise SpeciesError('No structure (xyz, SMILES, adjList, RMG:Species, or RMG:Molecule) was given for'
-                               ' species {0}'.format(self.label))
-        if self.label is None:
-            raise SpeciesError('A label must be specified for an ARCSpecies object.')
-        # Check that `label` is valid, since it is used for folder names
-        for char in self.label:
-            if char not in valid_chars:
-                raise SpeciesError('Species label {0} contains an invalid character: "{1}"'.format(self.label, char))
+            raise SpeciesError(f'No structure (xyz, SMILES, adjList, RMG Species or Molecule) '
+                               f'was given for species {self.label}')
+        self.label = check_label(self.label)
         allowed_keys = ['brute_force_sp', 'brute_force_opt', 'cont_opt', 'ess',
                         'brute_force_sp_diagonal', 'brute_force_opt_diagonal', 'cont_opt_diagonal']
         for key in self.directed_rotors.keys():
@@ -632,7 +624,7 @@ class ARCSpecies(object):
                 if not self.ts_methods:
                     self.ts_methods = ['user guess']
             else:
-                raise TSError('ts_methods must be a list, got {0} of type {1}'.format(ts_methods, type(ts_methods)))
+                raise TSError(f'ts_methods must be a list, got {ts_methods} of type {type(ts_methods)}')
             self.ts_guesses = [TSGuess(ts_dict=tsg) for tsg in species_dict['ts_guesses']] \
                 if 'ts_guesses' in species_dict else list()
             self.successful_methods = species_dict['successful_methods'] \
@@ -646,13 +638,10 @@ class ARCSpecies(object):
             self.ts_methods = None
         if 'xyz' in species_dict and self.initial_xyz is None and self.final_xyz is None:
             self.process_xyz(species_dict['xyz'])
-        for char in self.label:
-            if char not in valid_chars:
-                raise SpeciesError('Species label {0} contains an invalid character: "{1}"'.format(self.label, char))
         self.multiplicity = species_dict['multiplicity'] if 'multiplicity' in species_dict else None
         self.charge = species_dict['charge'] if 'charge' in species_dict else 0
         if 'charge' not in species_dict:
-            logger.debug('No charge specified for {0}, assuming charge 0.'.format(self.label))
+            logger.debug(f'No charge specified for {self.label}, assuming charge 0.')
         if self.is_ts:
             self.generate_thermo = False
         else:
@@ -1097,14 +1086,14 @@ class ARCSpecies(object):
             symmetry, optical_isomers = determine_symmetry(xyz)
             self.optical_isomers = self.optical_isomers if self.optical_isomers is not None else optical_isomers
             if self.optical_isomers != optical_isomers:
-                logger.warning("User input of optical isomers for {0} and ARC's calculation differ: {1} and {2},"
-                               " respectively. Using the user input of {1}"
-                               .format(self.label, self.optical_isomers, optical_isomers))
+                logger.warning(f"User input of optical isomers for {self.label} and ARC's calculation differ: "
+                               f"{self.optical_isomers} and {optical_isomers}, respectively. "
+                               f"Using the user input of {self.optical_isomers}")
             self.external_symmetry = self.external_symmetry if self.external_symmetry is not None else symmetry
             if self.external_symmetry != symmetry:
-                logger.warning("User input of external symmetry for {0} and ARC's calculation differ: {1} and {2},"
-                               " respectively. Using the user input of {1}"
-                               .format(self.label, self.external_symmetry, symmetry))
+                logger.warning(f"User input of external symmetry for {self.label} and ARC's calculation differ: "
+                               f"{self.external_symmetry} and {symmetry}, respectively. "
+                               f"Using the user input of {self.external_symmetry}")
 
     def determine_multiplicity(self, smiles, adjlist, mol):
         """
@@ -1136,16 +1125,16 @@ class ARCSpecies(object):
                             electrons += number
                             break
                     else:
-                        raise SpeciesError('Could not identify atom symbol {0}'.format(symbol))
+                        raise SpeciesError(f'Could not identify atom symbol {symbol}')
                 electrons -= self.charge
                 if electrons % 2 == 1:
                     self.multiplicity = 2
-                    logger.warning('\nMultiplicity not specified for {0}, assuming a value of 2'.format(self.label))
+                    logger.warning(f'\nMultiplicity not specified for {self.label}, assuming a value of 2')
                 else:
                     self.multiplicity = 1
-                    logger.warning('\nMultiplicity not specified for {0}, assuming a value of 1'.format(self.label))
+                    logger.warning(f'\nMultiplicity not specified for {self.label}, assuming a value of 1')
         if self.multiplicity is None:
-            raise SpeciesError('Could not determine multiplicity for species {0}'.format(self.label))
+            raise SpeciesError(f'Could not determine multiplicity for species {self.label}')
 
     def make_ts_report(self):
         """A helper function to write content into the .ts_report attribute"""
@@ -1999,3 +1988,30 @@ def are_coords_compliant_with_graph(xyz, mol):
         checked_atoms.append(atom_index_1)
     return True
 
+
+def check_label(label):
+    """
+    Check whether a species (or reaction) label is illegal, modify it if needed.
+
+    Args:
+        label (str): A label.
+
+    Returns:
+        str: a legal label.
+    """
+    char_replacement = {'#': 't'}
+    modified = False
+    original_label = label
+    for char in original_label:
+        if char not in valid_chars:
+            logger.error(f'Label {label} contains an invalid character: "{char}"')
+            if char in char_replacement.keys():
+                label = label.replace(char, char_replacement[char])
+            else:
+                label = label.replace(char, '_')
+            modified = True
+    if modified:
+        logger.warning(f'Replaced species label.\n'
+                       f'Original label was: "{original_label}".\n'
+                       f'New label is: "{label}"')
+    return label
