@@ -281,7 +281,7 @@ class Scheduler(object):
                     rxn.ts_methods.append('reverse_autotst')
                 if not any([spc.label == rxn.ts_label for spc in self.species_list]):
                     ts_species = ARCSpecies(is_ts=True, label=rxn.ts_label, rxn_label=rxn.label,
-                                            multiplicity=rxn.multiplicity, charge=rxn.charge, generate_thermo=False,
+                                            multiplicity=rxn.multiplicity, charge=rxn.charge, compute_thermo=False,
                                             ts_methods=rxn.ts_methods, ts_number=rxn.index)
                     ts_species.number_of_atoms = sum(reactant.number_of_atoms for reactant in rxn.r_species)
                     self.species_list.append(ts_species)

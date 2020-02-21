@@ -147,7 +147,7 @@ species:
   external_symmetry: null
   final_xyz: H       0.00000000    0.00000000    0.00000000
   force_field: MMFF94
-  generate_thermo: true
+  compute_thermo: true
   initial_xyz: H       0.00000000    0.00000000    0.00000000
   is_ts: false
   label: H
@@ -228,7 +228,7 @@ species:
     H      -1.11467300    0.50070600   -0.78504800
     H      -1.08350300   -0.98299800    0.18379800
   force_field: MMFF94
-  generate_thermo: true
+  compute_thermo: true
   initial_xyz: |
     O       1.59277500    0.85792100    0.26526400
     O       1.40517300   -0.97922600   -0.64021500
@@ -307,7 +307,7 @@ species:
     H       1.17935500    0.17622900   -0.28602300
     H      -1.19217700   -0.17713500   -0.22601300
   force_field: MMFF94
-  generate_thermo: true
+  compute_thermo: true
   initial_xyz: |
     O       0.60400700   -0.38701900    0.24151000
     O      -0.59119600    0.38792300    0.27006900
@@ -380,7 +380,7 @@ species:
     H      -1.22068800   -0.57930900   -0.00745700
     H       1.45393100    0.16115000   -0.04990200
   force_field: MMFF94
-  generate_thermo: true
+  compute_thermo: true
   initial_xyz: |
     N      -0.42449300    0.01070900    0.16782700
     N       0.75495300   -0.58167100   -0.06802000

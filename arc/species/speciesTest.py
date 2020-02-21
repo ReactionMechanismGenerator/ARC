@@ -371,10 +371,10 @@ H      -1.67091600   -1.35164600   -0.93286400"""
 
     def test_charge_and_multiplicity(self):
         """Test determination of molecule charge and multiplicity"""
-        spc1 = ARCSpecies(label='spc1', mol=Molecule(smiles='C[CH]C'), generate_thermo=False)
-        spc2 = ARCSpecies(label='spc2', mol=Molecule(smiles='CCC'), generate_thermo=False)
-        spc3 = ARCSpecies(label='spc3', smiles=str('N[NH]'), generate_thermo=False)
-        spc4 = ARCSpecies(label='spc4', smiles=str('NNN'), generate_thermo=False)
+        spc1 = ARCSpecies(label='spc1', mol=Molecule(smiles='C[CH]C'), compute_thermo=False)
+        spc2 = ARCSpecies(label='spc2', mol=Molecule(smiles='CCC'), compute_thermo=False)
+        spc3 = ARCSpecies(label='spc3', smiles=str('N[NH]'), compute_thermo=False)
+        spc4 = ARCSpecies(label='spc4', smiles=str('NNN'), compute_thermo=False)
         adj1 = """multiplicity 2
                   1 O u1 p2 c0 {2,S}
                   2 H u0 p0 c0 {1,S}
@@ -388,8 +388,8 @@ H      -1.67091600   -1.35164600   -0.93286400"""
                   7 H u0 p0 c0 {2,S}
                   8 H u0 p0 c0 {3,S}
                """
-        spc5 = ARCSpecies(label='spc5', adjlist=str(adj1), generate_thermo=False)
-        spc6 = ARCSpecies(label='spc6', adjlist=str(adj2), generate_thermo=False)
+        spc5 = ARCSpecies(label='spc5', adjlist=str(adj1), compute_thermo=False)
+        spc6 = ARCSpecies(label='spc6', adjlist=str(adj2), compute_thermo=False)
         xyz1 = """O       0.00000000    0.00000000   -0.10796235
                   H       0.00000000    0.00000000    0.86318839"""
         xyz2 = """N      -0.74678912   -0.11808620    0.00000000
@@ -399,8 +399,8 @@ H      -1.67091600   -1.35164600   -0.93286400"""
                   H       1.07725194    1.05216961    0.00000000
                   H      -1.15564250    0.32084669    0.81500594
                   H      -1.15564250    0.32084669   -0.81500594"""
-        spc7 = ARCSpecies(label='spc7', xyz=xyz1, generate_thermo=False)
-        spc8 = ARCSpecies(label='spc8', xyz=xyz2, generate_thermo=False)
+        spc7 = ARCSpecies(label='spc7', xyz=xyz1, compute_thermo=False)
+        spc8 = ARCSpecies(label='spc8', xyz=xyz2, compute_thermo=False)
 
         self.assertEqual(spc1.charge, 0)
         self.assertEqual(spc2.charge, 0)
@@ -437,7 +437,7 @@ H      -1.67091600   -1.35164600   -0.93286400"""
 6 H u0 p0 c0 {2,S}
 7 H u0 p0 c0 {2,S}
 """,
-                         'generate_thermo': True,
+                         'compute_thermo': True,
                          'label': 'methylamine',
                          'long_thermo_description': spc_dict['long_thermo_description'],
                          'charge': 0,
