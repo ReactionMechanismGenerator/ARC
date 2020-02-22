@@ -89,9 +89,9 @@ class TestARC(unittest.TestCase):
                                        'bde': True,
                                        'sp': True},
                          'level_of_theory': '',
-                         't_min': None,
-                         't_max': None,
-                         't_count': None,
+                         'T_min': None,
+                         'T_max': None,
+                         'T_count': 50,
                          'use_bac': True,
                          'confs_to_dft': 5,
                          'allow_nonisomorphic_2d': False,
@@ -118,6 +118,7 @@ class TestARC(unittest.TestCase):
                                       'force_field': 'MMFF94s',
                                       't1': None}],
                          'specific_job_type': '',
+                         'statmech_adapter': 'Arkane',
                          }
         self.assertEqual(restart_dict, expected_dict)
 
