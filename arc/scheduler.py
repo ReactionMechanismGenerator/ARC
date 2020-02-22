@@ -2157,7 +2157,7 @@ class Scheduler(object):
                     # the rotor scan is problematic, troubleshooting is required
                     if 'change conformer' in actions:
                         # a lower conformation was found
-                        deg_increment = actions[1]
+                        deg_increment = actions[2]
                         self.species_dict[label].set_dihedral(
                             scan=self.species_dict[label].rotors_dict[i]['scan'],
                             deg_increment=deg_increment)
