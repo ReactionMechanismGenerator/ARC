@@ -30,7 +30,7 @@ from arc.common import VERSION, format_level_of_theory_inputs, format_level_of_t
     determine_model_chemistry_type
 from arc.exceptions import InputError, SettingsError, SpeciesError
 from arc.job.ssh import SSHClient
-from arc.processor import Processor
+from arc.processor import process_arc_project
 from arc.reaction import ARCReaction
 from arc.scheduler import Scheduler
 from arc.settings import arc_path, default_levels_of_theory, servers, valid_chars, default_job_types
@@ -79,9 +79,9 @@ class ARC(object):
         job_shortcut_keywords (dict, optional): Shortcut keyword specifications to control the execution of a job.
                                                 keys are ESS, values are keywords
                                                 e.g., {'gaussian': 'iop(99/33=1)'}
-        t_min (tuple, optional): The minimum temperature for kinetics computations, e.g., (500, str('K')).
-        t_max (tuple, optional): The maximum temperature for kinetics computations, e.g., (3000, str('K')).
-        t_count (int, optional): The number of temperature points between t_min and t_max for kinetics computations.
+        T_min (tuple, optional): The minimum temperature for kinetics computations, e.g., (500, str('K')).
+        T_max (tuple, optional): The maximum temperature for kinetics computations, e.g., (3000, str('K')).
+        T_count (int, optional): The number of temperature points between ``T_min`` and ``T_max``.
         verbose (int, optional): The logging level to use.
         project_directory (str, optional): The path to the project directory.
         max_job_time (float, optional): The maximal allowed job time on the server in hours (can be fractional).
@@ -105,14 +105,18 @@ class ARC(object):
                                       default is False.
         dont_gen_confs (list, optional): A list of species labels for which conformer generation should be avoided
                                          if xyz is given.
-        compare_to_rmg (bool): If ``True`` data calculated from the RMG-database will be calculated and included on the
-                               parity plot.
-        solvent (dict): This argument, if not None, requests that a calculation be performed in the presence of a
-                        solvent by placing the solute in a cavity within the solvent reaction field.
-                        Keys are:
-                        - 'method' (optional values: 'pcm' (default), 'cpcm', 'dipole', 'ipcm', 'scipcm')
-                        -  'solvent' (values are strings of "known" solvents, see https://gaussian.com/scrf/,
-                                      default is "water")
+        compare_to_rmg (bool, optional): If ``True`` data calculated from the RMG-database will be calculated and
+                                         included on the parity plot.
+        solvent (dict, optional): This argument, if not None, requests that a calculation be performed in the presence
+                                  of a solvent by placing the solute in a cavity within the solvent reaction field.
+                                  Keys are:
+                                  - 'method' (optional values: 'pcm' (default), 'cpcm', 'dipole', 'ipcm', 'scipcm')
+                                  -  'solvent' (values are strings of "known" solvents, see https://gaussian.com/scrf/,
+                                                default is "water")
+        compute_thermo (bool, optional): Whether to compute thermodynamic properties for converged species.
+        compute_rates (bool, optional): Whether to compute rate coefficients for converged reactions.
+        compute_transport (bool, optional): Whether to compute transport properties for converged species.
+        statmech_adapter (str, optional): The statmech software to use.
 
     Attributes:
         project (str): The project's name. Used for naming the working directory.
@@ -150,11 +154,11 @@ class ARC(object):
         execution_time (str): Overall execution time.
         lib_long_desc (str): A multiline description of levels of theory for the outputted RMG libraries.
         running_jobs (dict): A dictionary of jobs submitted in a precious ARC instance, used for restarting ARC.
-        t_min (tuple): The minimum temperature for kinetics computations, e.g., (500, str('K')).
-        t_max (tuple): The maximum temperature for kinetics computations, e.g., (3000, str('K')).
-        t_count (int): The number of temperature points between t_min and t_max for kinetics computations.
+        T_min (tuple): The minimum temperature for kinetics computations, e.g., (500, str('K')).
+        T_max (tuple): The maximum temperature for kinetics computations, e.g., (3000, str('K')).
+        T_count (int): The number of temperature points between ``T_min`` and ``T_max``.
         max_job_time (float): The maximal allowed job time on the server in hours (can be fractional).
-        rmgdb (RMGDatabase): The RMG database object.
+        rmg_database (RMGDatabase): The RMG database object.
         allow_nonisomorphic_2d (bool): Whether to optimize species even if they do not have a 3D conformer that is
                                        isomorphic to the 2D graph representation.
         memory (int): The total allocated job memory in GB (14 by default to be lower than 90% * 16 GB).
@@ -168,24 +172,28 @@ class ARC(object):
         compare_to_rmg (bool): If ``True`` data calculated from the RMG-database will be calculated and included on the
                                parity plot.
         solvent (dict): The solvent model and solvent to use.
-
+        compute_thermo (bool): Whether to compute thermodynamic properties for converged species.
+        compute_rates (bool): Whether to compute rate coefficients for converged reactions.
+        compute_transport (bool): Whether to compute transport properties for converged species.
+        statmech_adapter (str): The statmech software to use.
     """
 
     def __init__(self, input_dict=None, project=None, arc_species_list=None, arc_rxn_list=None, level_of_theory='',
                  conformer_level='', composite_method='', opt_level='', freq_level='', sp_level='', scan_level='',
                  ts_guess_level='', irc_level='', orbitals_level='', use_bac=True, job_types=None, model_chemistry='',
-                 job_additional_options=None, job_shortcut_keywords=None, t_min=None, t_max=None, t_count=None,
+                 job_additional_options=None, job_shortcut_keywords=None, T_min=None, T_max=None, T_count=50,
                  verbose=logging.INFO, project_directory=None, max_job_time=120, allow_nonisomorphic_2d=False,
                  job_memory=14, ess_settings=None, bath_gas=None, adaptive_levels=None, freq_scale_factor=None,
                  calc_freq_factor=True, confs_to_dft=5, keep_checks=False, dont_gen_confs=None, specific_job_type='',
-                 compare_to_rmg=True, solvent=None):
+                 compare_to_rmg=True, solvent=None, compute_thermo=True, compute_rates=True, compute_transport=True,
+                 statmech_adapter='Arkane'):
         self.__version__ = VERSION
         self.verbose = verbose
         self.output = dict()
         self.running_jobs = dict()
         self.lib_long_desc = ''
         self.unique_species_labels = list()
-        self.rmgdb = rmgdb.make_rmg_database_object()
+        self.rmg_database = rmgdb.make_rmg_database_object()
         self.max_job_time = max_job_time
         self.allow_nonisomorphic_2d = allow_nonisomorphic_2d
         self.memory = job_memory
@@ -198,9 +206,13 @@ class ARC(object):
             if project is None:
                 raise ValueError('A project name must be provided for a new project')
             self.project = project
-            self.t_min = t_min
-            self.t_max = t_max
-            self.t_count = t_count
+            self.compute_thermo = compute_thermo
+            self.compute_rates = compute_rates
+            self.compute_transport = compute_transport
+            self.statmech_adapter = statmech_adapter
+            self.T_min = T_min
+            self.T_max = T_max
+            self.T_count = T_count
             self.specific_job_type = specific_job_type
             self.job_types = initialize_job_types(job_types, specific_job_type=self.specific_job_type)
             self.bath_gas = bath_gas
@@ -335,6 +347,13 @@ class ARC(object):
         """
         restart_dict = dict()
         restart_dict['project'] = self.project
+        if not self.compute_thermo:
+            restart_dict['compute_thermo'] = self.compute_thermo
+        if not self.compute_rates:
+            restart_dict['compute_rates'] = self.compute_rates
+        if not self.compute_transport:
+            restart_dict['compute_transport'] = self.compute_transport
+        restart_dict['statmech_adapter'] = self.statmech_adapter
         if self.bath_gas is not None:
             restart_dict['bath_gas'] = self.bath_gas
         if self.solvent is not None:
@@ -376,9 +395,9 @@ class ARC(object):
         restart_dict['reactions'] = [rxn.as_dict() for rxn in self.arc_rxn_list]
         restart_dict['output'] = self.output  # if read from_dict then it has actual values
         restart_dict['running_jobs'] = self.running_jobs  # if read from_dict then it has actual values
-        restart_dict['t_min'] = self.t_min
-        restart_dict['t_max'] = self.t_max
-        restart_dict['t_count'] = self.t_count
+        restart_dict['T_min'] = self.T_min
+        restart_dict['T_max'] = self.T_max
+        restart_dict['T_count'] = self.T_count
         restart_dict['max_job_time'] = self.max_job_time
         restart_dict['allow_nonisomorphic_2d'] = self.allow_nonisomorphic_2d
         restart_dict['ess_settings'] = self.ess_settings
@@ -408,6 +427,10 @@ class ARC(object):
                        project_directory=self.project_directory, verbose=self.verbose)
         self.t0 = time.time()  # init time
         self.execution_time = None
+        self.compute_thermo = input_dict['compute_thermo'] if 'compute_thermo' in input_dict else True
+        self.compute_rates = input_dict['compute_rates'] if 'compute_rates' in input_dict else True
+        self.compute_transport = input_dict['compute_transport'] if 'compute_transport' in input_dict else True
+        self.statmech_adapter = input_dict['statmech_adapter'] if 'statmech_adapter' in input_dict else 'Arkane'
         self.verbose = input_dict['verbose'] if 'verbose' in input_dict else self.verbose
         self.max_job_time = input_dict['max_job_time'] if 'max_job_time' in input_dict else self.max_job_time
         self.memory = input_dict['job_memory'] if 'job_memory' in input_dict else self.memory
@@ -438,9 +461,9 @@ class ARC(object):
                                         key, label, val))
         self.running_jobs = input_dict['running_jobs'] if 'running_jobs' in input_dict else dict()
         logger.debug('output dictionary successfully parsed:\n{0}'.format(self.output))
-        self.t_min = input_dict['t_min'] if 't_min' in input_dict else None
-        self.t_max = input_dict['t_max'] if 't_max' in input_dict else None
-        self.t_count = input_dict['t_count'] if 't_count' in input_dict else None
+        self.T_min = input_dict['T_min'] if 'T_min' in input_dict else None
+        self.T_max = input_dict['T_max'] if 'T_max' in input_dict else None
+        self.T_count = input_dict['T_count'] if 'T_count' in input_dict else None
         self.job_additional_options = input_dict['job_additional_options'] if 'job_additional_options' \
                                                                               in input_dict else dict()
         self.job_shortcut_keywords = input_dict['job_shortcut_keywords'] if 'job_shortcut_keywords'\
@@ -544,7 +567,7 @@ class ARC(object):
                                    irc_level=self.irc_level, orbitals_level=self.orbitals_level,
                                    ess_settings=self.ess_settings, job_types=self.job_types, bath_gas=self.bath_gas,
                                    job_additional_options=self.job_additional_options, solvent=self.solvent,
-                                   job_shortcut_keywords=self.job_shortcut_keywords, rmgdatabase=self.rmgdb,
+                                   job_shortcut_keywords=self.job_shortcut_keywords, rmg_database=self.rmg_database,
                                    restart_dict=self.restart_dict, project_directory=self.project_directory,
                                    max_job_time=self.max_job_time, allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
                                    memory=self.memory, adaptive_levels=self.adaptive_levels,
@@ -557,13 +580,26 @@ class ARC(object):
 
         self.save_project_info_file()
 
-        prc = Processor(project=self.project, project_directory=self.project_directory,
-                        species_dict=self.scheduler.species_dict, rxn_list=self.scheduler.rxn_list,
-                        output=self.scheduler.output, use_bac=self.use_bac, model_chemistry=self.model_chemistry,
-                        lib_long_desc=self.lib_long_desc, rmgdatabase=self.rmgdb, t_min=self.t_min, t_max=self.t_max,
-                        t_count=self.t_count, freq_scale_factor=self.freq_scale_factor,
-                        compare_to_rmg=self.compare_to_rmg)
-        prc.process()
+        sp_level = self.model_chemistry.split('//')[0] if '//' in self.model_chemistry else self.model_chemistry
+        process_arc_project(statmech_adapter=self.statmech_adapter.lower(),
+                            project=self.project,
+                            project_directory=self.project_directory,
+                            species_dict=self.scheduler.species_dict,
+                            reactions=self.scheduler.rxn_list,
+                            output_dict=self.scheduler.output,
+                            use_bac=self.use_bac,
+                            sp_level=sp_level,
+                            freq_scale_factor=self.freq_scale_factor,
+                            compute_thermo=self.compute_thermo,
+                            compute_rates=self.compute_rates,
+                            compute_transport=self.compute_transport,
+                            T_min=self.T_min,
+                            T_max=self.T_max,
+                            T_count=self.T_count or 50,
+                            lib_long_desc=self.lib_long_desc,
+                            rmg_database=self.rmg_database,
+                            compare_to_rmg=self.compare_to_rmg)
+
         self.summary()
         log_footer(execution_time=self.execution_time)
 
