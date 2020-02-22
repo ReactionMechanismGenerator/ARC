@@ -1050,7 +1050,12 @@ class ARCSpecies(object):
         Raises:
             InputError: If both ``deg_increment`` and ``deg_abs`` are None.
             RotorError: If the rotor could not be identified based on the pivots.
+            TypeError: If ``deg_increment`` or ``deg_abs`` are of wrong type.
         """
+        if deg_increment is not None and not isinstance(deg_increment, float):
+            raise TypeError(f'deg_increment must be a float, got {deg_increment} which is a {type(deg_increment)}')
+        if deg_abs is not None and not isinstance(deg_abs, float):
+            raise TypeError(f'deg_abs must be a float, got {deg_abs} which is a {type(deg_abs)}')
         pivots = scan[1:3]
         rotor = None
         for rotor in self.rotors_dict.values():
@@ -1060,7 +1065,7 @@ class ARCSpecies(object):
             raise RotorError(f'Could not identify rotor based of pivots {pivots}:\n{list(self.rotors_dict.values())}')
         xyz = xyz or self.final_xyz
         if deg_increment is None and deg_abs is None:
-            raise InputError('Either deg_increment or deg_abs must be given.')
+            raise InputError('Either deg_increment or deg_abs must be specified.')
         if count:
             if rotor['times_dihedral_set'] >= 10:
                 logger.info('\n\n')
