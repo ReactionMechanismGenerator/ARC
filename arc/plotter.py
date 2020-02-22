@@ -334,7 +334,11 @@ def log_bde_report(path, bde_report, spc_dict):
 
 def draw_thermo_parity_plots(species_list, path=None):
     """
-    Draws parity plots of calculated thermo and RMG's best values for species in species_list.
+    Draws parity plots of calculated thermo and RMG's estimates.
+
+    Args:
+        species_list (list): Species to compare.
+        path (str, optional): The path to the project's output folder.
     """
     pp = None
     if path is not None:
@@ -402,15 +406,32 @@ def draw_parity_plot(var_arc, var_rmg, labels, var_label, var_units, pp=None):
         plt.show()
 
 
-def draw_kinetics_plots(rxn_list, path=None, t_min=(300, 'K'), t_max=(3000, 'K'), t_count=50):
+def draw_kinetics_plots(rxn_list, T_min, T_max, T_count=50, path=None):
     """
-    Draws plots of calculated rates and RMG's best values for reaction rates in rxn_list
+    Draws plots of calculated rate coefficients and RMG's estimates.
     `rxn_list` has a .kinetics attribute calculated by ARC and an .rmg_reactions list with RMG rates.
+
+    Args:
+        rxn_list (list): Reactions with a .kinetics attribute calculated by ARC
+                         and an .rmg_reactions list with RMG rates.
+        T_min (tuple): The minimum temperature to consider, e.g., (500, 'K').
+        T_max (tuple): The maximum temperature to consider, e.g., (3000, 'K').
+        T_count (int, optional): The number of temperature points between ``T_min`` and ``T_max``.
+        path (str, optional): The path to the project's output folder.
     """
     plt.style.use('seaborn-talk')
-    t_min = ScalarQuantity(value=t_min[0], units=t_min[1])
-    t_max = ScalarQuantity(value=t_max[0], units=t_max[1])
-    temperature = np.linspace(t_min.value_si, t_max.value_si, t_count)
+
+    if T_min is None:
+        T_min = (300, 'K')
+    elif isinstance(T_min, (int, float)):
+        T_min = (T_min, 'K')
+    if T_max is None:
+        T_max = (3000, 'K')
+    elif isinstance(T_max, (int, float)):
+        T_max = (T_min, 'K')
+    T_min = ScalarQuantity(value=T_min[0], units=T_min[1])
+    T_max = ScalarQuantity(value=T_max[0], units=T_max[1])
+    temperature = np.linspace(T_min.value_si, T_max.value_si, T_count)
     pressure = 1e7  # Pa  (=100 bar)
 
     pp = None
@@ -432,18 +453,20 @@ def draw_kinetics_plots(rxn_list, path=None, t_min=(300, 'K'), t_max=(3000, 'K')
             elif reaction_order == 3:
                 units = r' (cm$^6$/(mol$^2$ s))'
             arc_k = list()
-            for t in temperature:
-                arc_k.append(rxn.kinetics.get_rate_coefficient(t, pressure) * conversion_factor[reaction_order])
+            for T in temperature:
+                arc_k.append(rxn.kinetics.get_rate_coefficient(T, pressure) * conversion_factor[reaction_order])
             rmg_rxns = list()
             for rmg_rxn in rxn.rmg_reactions:
                 rmg_rxn_dict = dict()
                 rmg_rxn_dict['rmg_rxn'] = rmg_rxn
-                rmg_rxn_dict['t_min'] = rmg_rxn.kinetics.Tmin if rmg_rxn.kinetics.Tmin is not None else t_min
-                rmg_rxn_dict['t_max'] = rmg_rxn.kinetics.Tmax if rmg_rxn.kinetics.Tmax is not None else t_max
+                rmg_rxn_dict['T_min'] = rmg_rxn.kinetics.Tmin if rmg_rxn.kinetics.Tmin is not None else T_min
+                rmg_rxn_dict['T_max'] = rmg_rxn.kinetics.Tmax if rmg_rxn.kinetics.Tmax is not None else T_max
                 k = list()
-                temp = np.linspace(rmg_rxn_dict['t_min'].value_si, rmg_rxn_dict['t_max'].value_si, t_count)
-                for t in temp:
-                    k.append(rmg_rxn.kinetics.get_rate_coefficient(t, pressure) * conversion_factor[reaction_order])
+                scaled_T_count = max(T_count * (rmg_rxn_dict['T_max'].value_si - rmg_rxn_dict['T_min'].value_si)
+                                     / (T_max.value_si - T_min.value_si), 25)
+                temp = np.linspace(rmg_rxn_dict['T_min'].value_si, rmg_rxn_dict['T_max'].value_si, scaled_T_count)
+                for T in temp:
+                    k.append(rmg_rxn.kinetics.get_rate_coefficient(T, pressure) * conversion_factor[reaction_order])
                 rmg_rxn_dict['k'] = k
                 rmg_rxn_dict['T'] = temp
                 if rmg_rxn.kinetics.is_pressure_dependent():

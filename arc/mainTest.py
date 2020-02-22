@@ -89,9 +89,9 @@ class TestARC(unittest.TestCase):
                                        'bde': True,
                                        'sp': True},
                          'level_of_theory': '',
-                         't_min': None,
-                         't_max': None,
-                         't_count': None,
+                         'T_min': None,
+                         'T_max': None,
+                         'T_count': 50,
                          'use_bac': True,
                          'confs_to_dft': 5,
                          'allow_nonisomorphic_2d': False,
@@ -118,6 +118,7 @@ class TestARC(unittest.TestCase):
                                       'force_field': 'MMFF94s',
                                       't1': None}],
                          'specific_job_type': '',
+                         'statmech_adapter': 'Arkane',
                          }
         self.assertEqual(restart_dict, expected_dict)
 
@@ -195,12 +196,12 @@ class TestARC(unittest.TestCase):
         with self.assertRaises(InputError):
             ARC(project='ar%c')
 
-    def test_restart(self):
+    def test_restart_thermo(self):
         """
         Test restarting ARC through the ARC class in main.py via the input_dict argument of the API
         Rather than through ARC.py. Check that all files are in place and the log file content.
         """
-        restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart', 'restart(H,H2O2,N2H3,CH3CO2).yml')
+        restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart', '1_restart_thermo', 'restart.yml')
         project = 'arc_project_for_testing_delete_after_usage2'
         project_directory = os.path.join(arc_path, 'Projects', project)
         arc1 = ARC(project=project, input_dict=restart_path, project_directory=project_directory)
@@ -318,6 +319,24 @@ class TestARC(unittest.TestCase):
 
         # delete the generated library from RMG-database
         os.remove(new_thermo_library_path)
+
+    def test_restart_rate(self):
+        """Test restarting ARC and attaining reaction a rate coefficient"""
+        restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart', '2_restart_rate', 'restart.yml')
+        project = 'arc_project_for_testing_delete_after_usage3'
+        project_directory = os.path.join(arc_path, 'Projects', project)
+        arc1 = ARC(project=project, input_dict=restart_path, project_directory=project_directory)
+        arc1.execute()
+
+        kinetics_library_path = os.path.join(project_directory, 'output', 'RMG libraries', 'kinetics', 'reactions.py')
+
+        with open(kinetics_library_path, 'r') as f:
+            got_rate = False
+            for line in f.readlines():
+                if "Arrhenius(A=(0.0636958,'cm^3/(mol*s)'), n=4.07981, Ea=(57.5474,'kJ/mol')" in line:
+                    got_rate = True
+                    break
+        self.assertTrue(got_rate)
 
     def test_determine_model_chemistry_and_freq_scale_factor(self):
         """Test determining the model chemistry and the frequency scaling factor"""
@@ -536,9 +555,9 @@ class TestARC(unittest.TestCase):
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests
         """
-        # projects = ['arc_project_for_testing_delete_after_usage1', 'arc_project_for_testing_delete_after_usage2',
-        #             'ar c', 'ar:c', 'ar<c', 'ar%c']
         projects = ['arc_project_for_testing_delete_after_usage1',
+                    'arc_project_for_testing_delete_after_usage2',
+                    # 'arc_project_for_testing_delete_after_usage3',
                     'ar c', 'ar:c', 'ar<c', 'ar%c']
         for project in projects:
             project_directory = os.path.join(arc_path, 'Projects', project)
