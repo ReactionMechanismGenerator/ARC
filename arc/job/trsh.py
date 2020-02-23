@@ -550,6 +550,13 @@ def trsh_ess_job(label, level_of_theory_dict, server, job_status, job_type, soft
     trsh_keyword, shift = '', ''
     memory = memory_gb
 
+    if 'memory' not in servers[server]:
+        servers[server]['memory'] = 64
+        logger.warning(f'A "memory" key (relating to the *maximum* physical node memory) was not defined '
+                       f'for server {server}. Setting it to 64 GB (as a guess). This will affect job troubleshooting '
+                       f'methods which attempt to increase the job memory. This value should be specified in the '
+                       f'servers dictionary in settings.py')
+
     if 'DiskSpace' in job_status['keywords']:
         output_errors.append(f'Error: Could not troubleshoot {job_type} for {label}! '
                              f'The job ran out of disc space on {server}; ')
