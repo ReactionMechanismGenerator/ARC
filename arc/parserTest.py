@@ -352,6 +352,26 @@ H      -0.59436200   -0.94730400    0.00000000"""
         spc6 = ARCSpecies(label='tst6', xyz=path3)
         self.assertEqual(len(spc6.conformers), 4)
 
+    def test_parse_str_blocks(self):
+        """Test parsing str blocks"""
+        path = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'H2O2.out')
+        str_blks = parser.parse_str_blocks(
+            path, 'Initial Parameters', '--------', regex=False, tail_count=3)
+        desire_str_lists = [
+            '                           !    Initial Parameters    !\n',
+            '                           ! (Angstroms and Degrees)  !\n',
+            ' --------------------------                            --------------------------\n',
+            ' ! Name  Definition              Value          Derivative Info.                !\n',
+            ' --------------------------------------------------------------------------------\n',
+            ' ! R1    R(1,2)                  1.4252         calculate D2E/DX2 analytically  !\n',
+            ' ! R2    R(1,3)                  0.9628         calculate D2E/DX2 analytically  !\n',
+            ' ! R3    R(2,4)                  0.9628         calculate D2E/DX2 analytically  !\n',
+            ' ! A1    A(2,1,3)              101.2687         calculate D2E/DX2 analytically  !\n',
+            ' ! A2    A(1,2,4)              101.2687         calculate D2E/DX2 analytically  !\n',
+            ' ! D1    D(3,1,2,4)            118.8736         Scan                            !\n',
+            ' --------------------------------------------------------------------------------\n']
+        self.assertEqual(len(str_blks), 1)
+        self.assertEqual(str_blks[0], desire_str_lists)
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
