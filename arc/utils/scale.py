@@ -12,7 +12,12 @@ import os
 import time
 import shutil
 
-from arc.common import get_logger, check_ess_settings, time_lapse, initialize_log, initialize_job_types
+from arc.common import (check_ess_settings,
+                        determine_model_chemistry_type,
+                        get_logger,
+                        initialize_job_types,
+                        initialize_log,
+                        time_lapse)
 from arc.exceptions import InputError
 from arc.parser import parse_zpe
 from arc.scheduler import Scheduler
@@ -40,7 +45,10 @@ HEADER = 'FREQ: A PROGRAM FOR OPTIMIZING SCALE FACTORS (Version 1)\n'\
          '   DOI: 10.1016/j.cpc.2016.09.004\n\n'
 
 
-def determine_scaling_factors(levels_of_theory, ess_settings=None, init_log=True):
+def determine_scaling_factors(levels_of_theory: list or str,
+                              ess_settings: dict = None,
+                              init_log: bool = True,
+                              ) -> list:
     """
     Determine the zero-point energy, harmonic frequencies, and fundamental frequencies scaling factors
     for a given frequencies level of theory.
@@ -54,7 +62,7 @@ def determine_scaling_factors(levels_of_theory, ess_settings=None, init_log=True
                                    Should be True when called as a stand alone, and False when called within ARC.
 
     Returns:
-        str: The modified level of theory
+        list: The determined frequency scaling factors.
     """
     if init_log:
         initialize_log(log_file='scaling_factor.log', project='Scaling Factors')
@@ -62,8 +70,8 @@ def determine_scaling_factors(levels_of_theory, ess_settings=None, init_log=True
     if isinstance(levels_of_theory, str):
         levels_of_theory = [levels_of_theory]
     if not isinstance(levels_of_theory, list):
-        raise InputError('levels_of_theory must be a list (or a string if only one level is desired). Got: {0}'.format(
-            type(levels_of_theory)))
+        raise InputError(f'levels_of_theory must be a list (or a string if only one level is desired). '
+                         f'Got: {type(levels_of_theory)}')
     t0 = time.time()
 
     logger.info('\n\n\n')
@@ -78,7 +86,7 @@ def determine_scaling_factors(levels_of_theory, ess_settings=None, init_log=True
     lambda_zpes, zpe_dicts, times = list(), list(), list()
     for level_of_theory in levels_of_theory:
         t1 = time.time()
-        logger.info('\nComputing scaling factors at the {0} level of theory...\n\n'.format(level_of_theory))
+        logger.info(f'\nComputing scaling factors at the {level_of_theory} level of theory...\n\n')
         renamed_level = rename_level(level_of_theory)
         project = 'scaling_' + renamed_level
         project_directory = os.path.join(arc_path, 'Projects', 'scaling_factors', project)
@@ -122,7 +130,9 @@ def determine_scaling_factors(levels_of_theory, ess_settings=None, init_log=True
     return harmonic_freq_scaling_factors
 
 
-def calculate_truhlar_scaling_factors(zpe_dict, level_of_theory):
+def calculate_truhlar_scaling_factors(zpe_dict: dict,
+                                      level_of_theory: str,
+                                      ) -> float:
     """
     Calculate the scaling factors using Truhlar's method:
 
@@ -147,11 +157,10 @@ def calculate_truhlar_scaling_factors(zpe_dict, level_of_theory):
     """
     unconverged = [key for key, val in zpe_dict.items() if val is None]
     if len(unconverged):
-        logger.info('\n\nWarning: Not all species in the standard set have converged at the {0} level of theory!\n'
-                    'Unconverged species: {1}\n\n'.format(level_of_theory, unconverged))
+        logger.info(f'\n\nWarning: Not all species in the standard set have converged at the {level_of_theory} '
+                    f'level of theory!\nUnconverged species: {unconverged}\n\n')
     else:
-        logger.info('\n\nAll species in the standard set have converged at the {0} level of theory\n\n\n'.format(
-                     level_of_theory))
+        logger.info(f'\n\nAll species in the standard set have converged at the {level_of_theory} level of theory\n\n\n')
 
     # Experimental ZPE values converted from kcal/mol to J/mol, as reported in reference [2]:
     exp_zpe_dict = {'C2H2': 16.490 * 4184,
@@ -177,13 +186,19 @@ def calculate_truhlar_scaling_factors(zpe_dict, level_of_theory):
         if zpe is not None:
             denominator += zpe ** 2.0
         else:
-            logger.error('ZPE of species {0} could not be determined!'.format(label))
+            logger.error('ZPE of species {label} could not be determined!')
     lambda_zpe = numerator / denominator  # lambda_zpe on the left side of eq. 5 of [2]
 
     return lambda_zpe
 
 
-def summarize_results(lambda_zpes, levels_of_theory, zpe_dicts, times, overall_time, base_path=None):
+def summarize_results(lambda_zpes: list,
+                      levels_of_theory: list,
+                      zpe_dicts: list,
+                      times: list,
+                      overall_time: str,
+                      base_path: str = None,
+                      ) -> None:
     """
     Print and save the results to file.
 
@@ -220,30 +235,28 @@ def summarize_results(lambda_zpes, levels_of_theory, zpe_dicts, times, overall_t
             harmonic_freq_scaling_factors.append(fundamental_freq_scaling_factor)
             unconverged = [key for key, val in zpe_dict.items() if val is None]
 
-            text = '\n\nLevel of theory: {0}\n'.format(level_of_theory)
+            text = f'\n\nLevel of theory: {level_of_theory}\n'
             if unconverged:
-                text += 'The following species from the standard set did not converge at this level:\n {0}\n'.format(
-                    unconverged)
-            text += 'Scale Factor for Zero-Point Energies     = {0:.3f}\n'.format(lambda_zpe)
-            text += 'Scale Factor for Harmonic Frequencies    = {0:.3f}\n'.format(harmonic_freq_scaling_factor)
-            text += 'Scale Factor for Fundamental Frequencies = {0:.3f}\n'.format(fundamental_freq_scaling_factor)
-            text += '(execution time: {0})\n'.format(execution_time)
+                text += f'The following species from the standard set did not converge at this level:\n {unconverged}\n'
+            text += f'Scale Factor for Zero-Point Energies     = {lambda_zpe:.3f}\n'
+            text += f'Scale Factor for Harmonic Frequencies    = {harmonic_freq_scaling_factor:.3f}\n'
+            text += f'Scale Factor for Fundamental Frequencies = {fundamental_freq_scaling_factor:.3f}\n'
+            text += f'(execution time: {execution_time})\n'
             logger.info(text)
             f.write(text)
-            arkane_formats.append("                 '{0}': {1:.3f},  # [4]\n".format(level_of_theory,
-                                                                                     harmonic_freq_scaling_factor))
+            arkane_formats.append(f"                 '{level_of_theory}': {harmonic_freq_scaling_factor:.3f},  # [4]\n")
         logger.info(arkane_text)
         f.write(arkane_text)
         for arkane_format in arkane_formats:
             logger.info(arkane_format)
             f.write(arkane_format)
-        overall_time_text = '\n\nScaling factors calculation for {0} levels of theory completed' \
-                            ' (elapsed time: {1}).\n'.format(len(levels_of_theory), overall_time)
+        overall_time_text = f'\n\nScaling factors calculation for {len(levels_of_theory)} levels of theory completed ' \
+                            f'(elapsed time: {overall_time}).\n'
         logger.info(overall_time_text)
         f.write(overall_time_text)
 
 
-def get_species_list():
+def get_species_list() -> list:
     """
     Generates the standardized species list.
 
@@ -327,7 +340,7 @@ def get_species_list():
     return species_list
 
 
-def rename_level(level):
+def rename_level(level: str) -> str:
     """
     Rename the level of theory so it can be used for folder names.
 
