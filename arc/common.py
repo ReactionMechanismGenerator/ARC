@@ -18,12 +18,11 @@ import sys
 import time
 import warnings
 import yaml
-from typing import Optional
+from typing import Any, List, Optional, Tuple, Union
 
 import numpy as np
+import pandas as pd
 import qcelemental as qcel
-
-from typing import Any, List, Optional, Tuple, Union
 
 from arkane.ess import ess_factory, GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
 from rmgpy.molecule.element import get_element
@@ -1093,6 +1092,46 @@ def estimate_orca_mem_cpu_requirement(num_heavy_atoms: int,
         est_memory = max_server_mem_gb * 1024
 
     return est_cpu, est_memory
+
+
+def check_torsion_change(torsions: pd.DataFrame,
+                         index_1: Union[int, str],
+                         index_2: Union[int, str],
+                         threshold: Union[float, int] = 20.0,
+                         delta: Union[float, int] = 0.0,
+                         ) -> pd.DataFrame:
+    """
+    Compare two sets of torsions (in DataFrame) and check if any entry has a
+    difference larger than threshold. The output is a DataFrame consisting of
+    ``True``/``False``, indicating which torsions changed significantly.
+
+    Args:
+        torsions (pd.DataFrame): A DataFrame consisting of multiple sets of torsions.
+        index_1 (Union[int, str]): The index of the first conformer.
+        index_2 (Union[int, str]): The index of the second conformer.
+        threshold (Union[float, int]): The threshold used to determine the difference significance.
+        delta (Union[float, int]): A known difference between torsion pairs. E.g.,
+                                   for the torsions to be scanned, the dihedral
+                                   differences are equal to the scan resolution.
+
+    Returns:
+        pd.DataFrame: a DataFrame consisting of ``True``/``False``, indicating
+                      which torsions changed significantly. ``True`` for significant
+                      change.
+    """
+    # First iteration without 180/-180 adjustment
+    change = (torsions[index_1] - torsions[index_2] - delta).abs() > threshold
+    # Apply 180/-180 adjustment to those shown significance
+    for label in change[change == True].index:
+        # a -180 / 180 flip causes different sign
+        if torsions.loc[label, index_1] * torsions.loc[label, index_2] < 0:
+            if torsions.loc[label, index_1] < 0 \
+              and abs(torsions.loc[label, index_1] + 360 - torsions.loc[label, index_2] - delta) < threshold:
+                change[label] = False
+            elif torsions.loc[label, index_2] < 0 \
+              and abs(torsions.loc[label, index_1] - 360 - torsions.loc[label, index_2] - delta) < threshold:
+                change[label] = False
+    return change
 
 
 def is_same_pivot(torsion1: list, torsion2: list) -> Optional[bool]:
