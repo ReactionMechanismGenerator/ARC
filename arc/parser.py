@@ -243,7 +243,7 @@ def parse_1d_scan_energies(path):
 
     Returns:
         tuple[list: The electronic energy in kJ/mol,
-              list: The scan angles in degrees,
+              list: The dihedral scan angle in degrees,
              ]
 
     Raises:
@@ -440,7 +440,7 @@ def parse_nd_scan_energies(path, software=None, return_original_dihedrals=False)
         return results
 
 
-def parse_xyz_from_file(path):
+def parse_xyz_from_file(path) -> dict:
     """
     Parse xyz coordinated from:
     - .xyz: XYZ file
@@ -505,7 +505,7 @@ def parse_xyz_from_file(path):
     return xyz
 
 
-def parse_trajectory(path):
+def parse_trajectory(path) -> list:
     """
     Parse all geometries from an xyz trajectory file or an ESS output file.
 
@@ -657,7 +657,7 @@ def parse_polarizability(path):
     return polarizability
 
 
-def _get_lines_from_file(path):
+def _get_lines_from_file(path) -> list:
     """
     A helper function for getting a list of lines from a file.
 
