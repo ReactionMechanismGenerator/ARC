@@ -819,5 +819,12 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
         self.assertTrue(common.is_same_pivot([1, 2, 3, 4], [4, 3, 2, 5]))
         self.assertFalse(common.is_same_pivot([1, 2, 3, 4], [5, 4, 3, 2]))
 
+    def test_is_same_sequence_sublist(self):
+        """Test whether a sequence appears in a list"""
+        self.assertTrue(common.is_same_sequence_sublist([1, 2, 3], [1, 2, 3, 4]))
+        self.assertTrue(common.is_same_sequence_sublist([2, 3, 4], [1, 2, 3, 4]))
+        self.assertFalse(common.is_same_sequence_sublist([1, 3, 4], [1, 2, 3, 4]))
+        self.assertFalse(common.is_same_sequence_sublist([4, 3, 2], [1, 2, 3, 4]))
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
