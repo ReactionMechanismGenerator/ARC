@@ -832,3 +832,61 @@ def parse_str_blocks(file_path, head_pat, tail_pat, regex=True, tail_count=1, bl
         if len(blks) > 0 and (tail_repeat != tail_count):
             blks.pop()
         return blks
+
+
+def parse_scan_args(file_path):
+    """
+    Get the scan arguments, including which internal coordinates (IC) are being scanned, which are frozen,
+    what is the step size and the number of atoms, etc.
+
+    Args:
+        file_path (str): The path to a readable output file.
+
+    Raises:
+        NotImplementedError: If files other than Gaussian log is input
+
+    Returns:
+        dict: A dict contains the scan arguments
+                          as well as step number, step size, number of atom
+                          {'scan': <list, atom indexes of the torsion to be scanned>,
+                           'freeze': <list, list of internal coordinates identified by atom indexes>,
+                           'step': <int, number of steps to scan>,
+                           'step_size': <float, the size of each step>
+                           'n_atom': <int, the number of atoms of the molecule>
+                           }
+    """
+    log = determine_qm_software(fullpath=file_path)
+    scan_args = {'scan': None, 'freeze': [],
+                 'step': 0, 'step_size': 0, 'n_atom': 0}
+    if isinstance(log, GaussianLog):
+        try:
+            # g09, g16
+            scan_blk = parse_str_blocks(file_path, 'The following ModRedundant input section has been read:',
+                                        'Isotopes and Nuclear Properties', regex=False)[0][1:-1]
+        except IndexError:  # Cannot find any block
+            # g03
+            scan_blk_1 = parse_str_blocks(file_path, 'The following ModRedundant input section has been read:',
+                                          'GradGradGradGrad', regex=False)[0][1:-2]
+            scan_blk_2 = parse_str_blocks(file_path, 'NAtoms=',
+                                          'One-electron integrals computed', regex=False)[0][:1]
+            scan_blk = scan_blk_1 + scan_blk_2
+        scan_pat = r'[DBA]?(\s+\d+){2,4}\s+S\s+\d+[\s\d.]+'
+        frz_pat = r'[DBA]?(\s+\d+){2,4}\s+F'
+        value_pat = r'[\d.]+'
+        for line in scan_blk:
+            if re.search(scan_pat, line.strip()):
+                values = re.findall(value_pat, line)
+                scan_len = len(values) - 2  # atom indexes + step + stepsize
+                scan_args['scan'] = [int(values[i]) for i in range(scan_len)]
+                scan_args['step'] = int(values[-2])
+                scan_args['step_size'] = float(values[-1])
+            if re.search(frz_pat, line.strip()):
+                values = re.findall(value_pat, line)
+                scan_args['freeze'].append([int(values[i]) for i in range(len(values))])
+            if 'NAtoms' in line:
+                scan_args['n_atom'] = int(line.split()[1])
+    else:
+        raise NotImplementedError(f'parse_scan_args() can currently only parse Gaussian output '
+                                  f'files, got {log}')
+    return scan_args
+
