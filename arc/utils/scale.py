@@ -95,10 +95,8 @@ def determine_scaling_factors(levels_of_theory: list or str,
 
         species_list = get_species_list()
 
-        if '//' in level_of_theory:
-            raise InputError('Level of theory should either be a composite method or in a method/basis-set format. '
-                             'Got {0}'.format(level_of_theory))
-        if '/' not in level_of_theory:  # assume this is a composite method
+        lot_type = determine_model_chemistry_type(level_of_theory)
+        if lot_type == 'composite':
             freq_level = ''
             composite_method = level_of_theory.lower()
             job_types['freq'] = False
