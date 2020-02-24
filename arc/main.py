@@ -512,7 +512,8 @@ class ARC(object):
             for spc in self.arc_species_list:
                 if spc.rotors_dict is not None:
                     for rotor_num, rotor_dict in spc.rotors_dict.items():
-                        if not os.path.isfile(rotor_dict['scan_path']) and rotor_dict['success']:
+                        if rotor_dict['scan_path'] and not os.path.isfile(rotor_dict['scan_path']) \
+                                and rotor_dict['success']:
                             # try correcting relative paths
                             if os.path.isfile(os.path.join(arc_path, rotor_dict['scan_path'])):
                                 spc.rotors_dict[rotor_num]['scan_path'] = os.path.join(arc_path, rotor_dict['scan_path'])
