@@ -535,7 +535,9 @@ def parse_trajectory(path):
         done = False
         i = 0
         while not done:
-            if 'Input orientation:' in lines[i]:
+            if i >= len(lines) or 'Normal termination of Gaussian' in lines[i] or 'Error termination via' in lines[i]:
+                done = True
+            elif 'Input orientation:' in lines[i]:
                 i += 5
                 xyz_str = ''
                 while '--------------------------------------------' not in lines[i]:
@@ -543,8 +545,6 @@ def parse_trajectory(path):
                     xyz_str += f'{qcel.periodictable.to_E(int(splits[1]))}  {splits[3]}  {splits[4]}  {splits[5]}\n'
                     i += 1
                 traj.append(str_to_xyz(xyz_str))
-            elif 'Normal termination of Gaussian' in lines[i] or i >= len(lines):
-                done = True
             i += 1
 
     else:
