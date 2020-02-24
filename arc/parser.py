@@ -8,14 +8,16 @@ A module for parsing information from various files.
 import os
 import re
 
-import qcelemental as qcel
 import numpy as np
+import pandas as pd
+import qcelemental as qcel
+
 from arkane.exceptions import LogError
 from arkane.ess import ess_factory, GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
 
-from arc.common import get_logger, determine_ess
+from arc.common import determine_ess, get_logger, is_same_pivot
 from arc.exceptions import InputError, ParserError
-from arc.species.converter import xyz_from_data, str_to_xyz
+from arc.species.converter import str_to_xyz, xyz_from_data
 
 
 logger = get_logger()
@@ -855,7 +857,7 @@ def parse_scan_args(file_path):
                            'n_atom': <int, the number of atoms of the molecule>
                            }
     """
-    log = determine_qm_software(fullpath=file_path)
+    log = ess_factory(fullpath=file_path)
     scan_args = {'scan': None, 'freeze': [],
                  'step': 0, 'step_size': 0, 'n_atom': 0}
     if isinstance(log, GaussianLog):
@@ -890,3 +892,139 @@ def parse_scan_args(file_path):
                                   f'files, got {log}')
     return scan_args
 
+
+def parse_ic_info(file_path):
+    """
+    Get the information of internal coordinates (ic) of an intermediate scan conformer.
+
+    Args:
+        file_path (str): The path to a readable output file.
+
+    Raises:
+        NotImplementedError: If files other than Gaussian log is input
+
+    Returns:
+        pd.DataFrame: A DataFrame containing the information of the internal coordinates
+    """
+    log = ess_factory(fullpath=file_path)
+    ic_dict = {item: []
+               for item in ['label', 'type', 'atoms', 'redundant', 'scan']}
+    scan_args = parse_scan_args(file_path)
+    max_atom_ind = scan_args['n_atom']
+    if isinstance(log, GaussianLog):
+        ic_info_block = parse_str_blocks(file_path, 'Initial Parameters', '-----------', regex=False,
+                                         tail_count=3)[0][5:-1]
+        for line in ic_info_block:
+            # Line example with split() indices:
+            # 0 1     2                        3              4         5       6            7
+            # ! R1    R(1, 2)                  1.3581         calculate D2E/DX2 analytically !
+            terms = line.split()
+            ic_dict['label'].append(terms[1])
+            ic_dict['type'].append(terms[1][0])  # 'R: bond, A: angle, D: dihedral
+            atom_inds = re.split(r'[(),]', terms[2])[1:-1]
+            ic_dict['atoms'].append([int(atom_ind) for atom_ind in atom_inds])
+
+            # Identify redundant, cases like 5 atom angles or redundant atoms
+            if (ic_dict['type'][-1] == 'A' and len(atom_inds) > 3) \
+                    or (ic_dict['type'][-1] == 'R' and len(atom_inds) > 2) \
+                    or (ic_dict['type'][-1] == 'D' and len(atom_inds) > 4):
+                ic_dict['redundant'].append(True)
+            else:
+                # Sometimes, redundant atoms with weird indices are added.
+                # Reason unclear. Maybe to better define the molecule, or to
+                # solve equations more easily.
+                weird_indices = [index for index in ic_dict['atoms'][-1]
+                                 if index <= 0 or index > max_atom_ind]
+                if weird_indices:
+                    ic_dict['redundant'].append(True)
+                else:
+                    ic_dict['redundant'].append(False)
+
+            # Identify ics being scanned
+            if len(scan_args['scan']) == len(atom_inds) == 4 \
+                    and is_same_pivot(scan_args['scan'], ic_dict['atoms'][-1]):
+                ic_dict['scan'].append(True)
+            elif len(scan_args['scan']) == len(atom_inds) == 2 \
+                    and set(scan_args['scan']) == set(ic_dict['atoms'][-1]):
+                ic_dict['scan'].append(True)
+            else:
+                # Currently doesn't support scan of angles
+                ic_dict['scan'].append(False)
+    else:
+        raise NotImplementedError(f'parse_ic_info() can currently only parse Gaussian output '
+                                  f'files, got {log}')
+    ic_info = pd.DataFrame.from_dict(ic_dict)
+    ic_info = ic_info.set_index('label')
+    return ic_info
+
+
+def parse_ic_values(ic_block, software=None):
+    """
+    Get the internal coordinates (ic) for an intermediate scan conformer
+
+    Args:
+        ic_block (list): A list of strings containing the optimized internal coordinates of
+        an intermediate scan conformer
+        software(str, optional): The software to used to generate the log file.
+
+    Raises:
+        NotImplementedError: If the software is not supported
+
+    Returns:
+        pd.DataFrame: A DataFrame containing the values of the internal coordinates
+    """
+    ic_dict = {item: [] for item in ['label', 'value']}
+    if software == 'gaussian':
+        for line in ic_block:
+            # Line example with split() indices:
+            # 0 1     2                       3              4      5    6                   7
+            # ! R1    R(1,2)                  1.3602         -DE/DX =    0.0                 !
+            terms = line.split()
+            ic_dict['label'].append(terms[1])
+            ic_dict['value'].append(float(terms[3]))
+    else:
+        raise NotImplementedError(f'parse_ics() can currently only parse Gaussian output '
+                                  f'files, got {software}')
+    ics = pd.DataFrame.from_dict(ic_dict)
+    ics = ics.set_index('label')
+    return ics
+
+
+def parse_scan_conformers(file_path: str) -> pd.DataFrame:
+    """
+    Parse all the internal coordinates of all the scan intermediate conformers and tablet
+    all the infos into a single DataFrame object. Any redundant internal coordinates
+    will be removed during the process.
+
+    Args:
+        file_path (str): The path to a readable output file.
+
+    Raises:
+        NotImplementedError: If files other than Gaussian log is input
+
+    Returns:
+        pd.DataFrame: a list of conformers containing the all the internal
+                       coordinates information in pd.DataFrame
+    """
+    log = ess_factory(fullpath=file_path)
+    scan_args = parse_scan_args(file_path)
+    scan_ic_info = parse_ic_info(file_path)
+    if isinstance(log, GaussianLog):
+        software = 'gaussian'
+        ic_blks = parse_str_blocks(file_path, 'Optimized Parameters', '-----------', regex=False,
+                                   tail_count=3, block_count=(scan_args['step'] + 1))
+    else:
+        raise NotImplementedError(f'parse_scan_conformers() can currently only parse Gaussian output '
+                                  f'files, got {log}')
+    # Extract IC values for each conformer
+    conformers = []
+    for ind, ic_blk in enumerate(ic_blks):
+        ics = parse_ic_values(ic_blk[5:-1], software)
+        ics.rename(columns={'value': ind}, inplace=True)
+        conformers.append(ics)
+    # Concatenate ICs of conformers to a single table and remove redundant ICs
+    scan_conformers = pd.concat([scan_ic_info] + conformers, axis=1)
+    red_ind = scan_conformers[scan_conformers.redundant == True].index
+    if not red_ind.empty:
+        scan_conformers.drop(red_ind, inplace=True)
+    return scan_conformers
