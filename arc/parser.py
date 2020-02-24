@@ -5,11 +5,11 @@
 A module for parsing information from various files.
 """
 
-import numpy as np
 import os
+import re
 
 import qcelemental as qcel
-
+import numpy as np
 from arkane.exceptions import LogError
 from arkane.ess import ess_factory, GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
 
@@ -771,3 +771,64 @@ def process_conformers_file(conformers_path):
         else:
             line_index += 1
     return xyzs, energies
+
+
+def parse_str_blocks(file_path, head_pat, tail_pat, regex=True, tail_count=1, block_count=1):
+    """
+    Return a list of blocks defined by the head pattern and the tail pattern.
+
+    Args:
+        file_path (str): The path to the readable file.
+        head_pat (str/regex): Str pattern or regular expression of the head of the block.
+        tail_pat (str/regex): Str pattern or regular expresion of the tail of the block.
+        regex (bool, optional): Use regex (True) or str pattern (False) to search.
+        tail_count (int, optional): The number of times that the tail repeats.
+        block_count (int, optional): The max number of blocks to search. -1 for any number.
+
+    Raises:
+        InputError: If the file could not be found.
+
+    Returns:
+        list: List of str blocks
+    """
+    if not os.path.isfile(file_path):
+        raise InputError('Could not find file {0}'.format(file_path))
+    with open(file_path, 'r') as f:
+        blks = []
+        # Different search mode
+        if regex:
+            def search(x, y):
+                return re.search(x, y)
+        else:
+            def search(x, y):
+                return x in y
+        # 'search' for the head or 'read' until the tail
+        mode = 'search'
+        line = f.readline()
+        while line != '':
+            if mode == 'search':
+                # Stop searching if found enough blocks
+                if (len(blks)) == block_count:
+                    break
+                # Check if matching the head pattern
+                else:
+                    match = search(head_pat, line)
+                    # Switch to 'read' mode
+                    if match:
+                        tail_repeat = 0
+                        mode = 'read'
+                        blks.append([])
+                        blks[-1].append(line)
+            elif mode == 'read':
+                blks[-1].append(line)
+                match = search(tail_pat, line)
+                if match:
+                    tail_repeat += 1
+                    # If see enough tail patterns, switch to 'search' mode
+                    if tail_repeat == tail_count:
+                        mode = 'search'
+            line = f.readline()
+        # Remove the last incomplete search
+        if len(blks) > 0 and (tail_repeat != tail_count):
+            blks.pop()
+        return blks
