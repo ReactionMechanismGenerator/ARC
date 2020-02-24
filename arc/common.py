@@ -1110,8 +1110,9 @@ def check_torsion_change(torsions: pd.DataFrame,
         index_1 (Union[int, str]): The index of the first conformer.
         index_2 (Union[int, str]): The index of the second conformer.
         threshold (Union[float, int]): The threshold used to determine the difference significance.
-        delta (Union[float, int]): A known difference between torsion pairs. E.g.,
-                                   for the torsions to be scanned, the dihedral
+        delta (Union[float, int]): A known difference between torsion pairs,
+                                   delta = tor[index_1] - tor[index_2].
+                                   E.g.,for the torsions to be scanned, the
                                    differences are equal to the scan resolution.
 
     Returns:

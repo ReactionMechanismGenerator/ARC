@@ -10,6 +10,7 @@ import os
 import time
 import unittest
 
+import pandas as pd
 from rmgpy.molecule.molecule import Molecule
 
 import arc.common as common
@@ -795,6 +796,22 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
         self.assertEqual(est_cpu_2, expected_cpu_2)
         self.assertEqual(est_memory_2, expected_memory_2)
 
+    def test_check_torsion_change(self):
+        """Test checking if torsion changes are significant"""
+        ics = {0: [120], 1: [126], 2: [176], 3: [-174]}
+        torsions = pd.DataFrame(data=ics, index=['D1'])
+        self.assertFalse(common.check_torsion_change(
+            torsions, 1, 0, threshold=20.0, delta=0.0)['D1'])
+        self.assertTrue(common.check_torsion_change(
+            torsions, 1, 0, threshold=5.0, delta=0.0)['D1'])
+        self.assertFalse(common.check_torsion_change(
+            torsions, 1, 0, threshold=5.0, delta=8.0)['D1'])
+        self.assertTrue(common.check_torsion_change(
+            torsions, 2, 1, threshold=20.0, delta=8.0)['D1'])
+        self.assertTrue(common.check_torsion_change(
+            torsions, 3, 1, threshold=20.0, delta=8.0)['D1'])
+        self.assertFalse(common.check_torsion_change(
+            torsions, 3, 2, threshold=20.0, delta=8.0)['D1'])
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
