@@ -181,11 +181,17 @@ H      -0.59436200   -0.94730400    0.00000000"""
         self.assertIsInstance(trajectory[0], dict)
         self.assertEqual(len(trajectory[0]['symbols']), 9)
 
-        path = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'cyano_irc_1.out')
+        path = os.path.join(arc_path, 'arc', 'testing', 'irc', 'cyano_irc_1.out')
         trajectory = parser.parse_trajectory(path)
         self.assertEqual(len(trajectory), 58)
         self.assertIsInstance(trajectory[0], dict)
         self.assertEqual(len(trajectory[0]['symbols']), 16)
+
+        path = os.path.join(arc_path, 'arc', 'testing', 'irc', 'irc_failed.out')
+        trajectory = parser.parse_trajectory(path)
+        self.assertEqual(len(trajectory), 21)
+        self.assertIsInstance(trajectory[0], dict)
+        self.assertEqual(len(trajectory[0]['symbols']), 17)
 
     def test_parse_t1(self):
         """Test T1 diagnostic parsing"""
