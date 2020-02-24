@@ -813,5 +813,11 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
         self.assertFalse(common.check_torsion_change(
             torsions, 3, 2, threshold=20.0, delta=8.0)['D1'])
 
+    def test_is_same_pivot(self):
+        """Test whether two torsions have the same pivot"""
+        self.assertTrue(common.is_same_pivot([1, 2, 3, 4], [5, 2, 3, 4]))
+        self.assertTrue(common.is_same_pivot([1, 2, 3, 4], [4, 3, 2, 5]))
+        self.assertFalse(common.is_same_pivot([1, 2, 3, 4], [5, 4, 3, 2]))
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
