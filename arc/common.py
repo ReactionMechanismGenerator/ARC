@@ -18,6 +18,7 @@ import sys
 import time
 import warnings
 import yaml
+from typing import Optional
 
 import numpy as np
 import qcelemental as qcel
@@ -1092,3 +1093,44 @@ def estimate_orca_mem_cpu_requirement(num_heavy_atoms: int,
         est_memory = max_server_mem_gb * 1024
 
     return est_cpu, est_memory
+
+
+def is_same_pivot(torsion1: list, torsion2: list) -> Optional[bool]:
+    """
+    Check if two torsions have the same pivots.
+
+    Args:
+        torsion1 (list): The four atom indices representing the first torsion.
+        torsion2 (list): The four atom indices representing the second torsion.
+
+    Returns:
+        bool: ``True`` if two torsions share the same pivots.
+    """
+    if not (len(torsion1) == len(torsion2) == 4):
+        return False
+    if torsion1[1:3] == torsion2[1:3] or torsion1[1:3] == torsion2[1:3][::-1]:
+        return True
+
+
+def is_same_sequence_sublist(child_list, parent_list):
+    """
+    Check if the parent list has a sublist which is identical to the child list including the sequence.
+    Examples:
+        - child_list = [1,2,3], parent_list=[5,1,2,3,9] -> ``True``
+        - child_list = [1,2,3], parent_list=[5,6,1,3,9] -> ``False``
+
+    Args:
+        child_list (list): The child list (the pattern to search in the parent list).
+        parent_list (list): The parent list.
+
+    Returns:
+        bool: ``True`` if the sublist is in the parent list.
+    """
+    if len(parent_list) < len(child_list):
+        return False
+    if any([item not in parent_list for item in child_list]):
+        return False
+    for index in range(len(parent_list) - len(child_list) + 1):
+        if child_list == parent_list[index:index + len(child_list)]:
+            return True
+    return False
