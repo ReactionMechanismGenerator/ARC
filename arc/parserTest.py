@@ -373,5 +373,15 @@ H      -0.59436200   -0.94730400    0.00000000"""
         self.assertEqual(len(str_blks), 1)
         self.assertEqual(str_blks[0], desire_str_lists)
 
+    def test_parse_scan_args(self):
+        """Test parsing scan arguments"""
+        path = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'CH2OOH.out')
+        scan_args = parser.parse_scan_args(path)
+        self.assertEqual(scan_args['scan'], [4, 1, 2, 3])
+        self.assertEqual(scan_args['freeze'], [[1, 2, 3, 6], [2, 3]])
+        self.assertEqual(scan_args['step'], 90)
+        self.assertEqual(scan_args['step_size'], 4.0)
+        self.assertEqual(scan_args['n_atom'], 6)
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
