@@ -619,7 +619,7 @@ class ARC(object):
         Save a project info file.
         """
         self.execution_time = time_lapse(t0=self.t0)
-        path = os.path.join(self.project_directory, '{0}.info'.format(self.project))
+        path = os.path.join(self.project_directory, f'{self.project}.info')
         if os.path.exists(path):
             os.remove(path)
         if self.job_types['fine']:
@@ -628,19 +628,19 @@ class ARC(object):
             fine_txt = '(NOT using a fine grid)'
 
         txt = ''
-        txt += 'ARC v{0}\n'.format(self.__version__)
-        txt += 'ARC project {0}\n\nLevels of theory used:\n\n'.format(self.project)
-        txt += 'Conformers:       {0}\n'.format(format_level_of_theory_for_logging(self.conformer_level))
-        txt += 'TS guesses:       {0}\n'.format(format_level_of_theory_for_logging(self.ts_guess_level))
+        txt += f'ARC v{self.__version__}\n'
+        txt += f'ARC project {self.project}\n\nLevels of theory used:\n\n'
+        txt += f'Conformers:       {format_level_of_theory_for_logging(self.conformer_level)}\n'
+        txt += f'TS guesses:       {format_level_of_theory_for_logging(self.ts_guess_level)}\n'
         if self.composite_method:
-            txt += 'Composite method: {0} {1}\n'.format(self.composite_method, fine_txt)
-            txt += 'Frequencies:      {0}\n'.format(format_level_of_theory_for_logging(self.freq_level))
+            txt += f'Composite method: {self.composite_method} {fine_txt}\n'
+            txt += f'Frequencies:      {format_level_of_theory_for_logging(self.freq_level)}\n'
         else:
-            txt += 'Optimization:     {0} {1}\n'.format(format_level_of_theory_for_logging(self.opt_level), fine_txt)
-            txt += 'Frequencies:      {0}\n'.format(format_level_of_theory_for_logging(self.freq_level))
-            txt += 'Single point:     {0}\n'.format(format_level_of_theory_for_logging(self.sp_level))
+            txt += f'Optimization:     {format_level_of_theory_for_logging(self.opt_level)} {fine_txt}\n'
+            txt += f'Frequencies:      {format_level_of_theory_for_logging(self.freq_level)}\n'
+            txt += f'Single point:     {format_level_of_theory_for_logging(self.sp_level)}\n'
         if 'rotors' in self.job_types:
-            txt += 'Rotor scans:      {0}\n'.format(format_level_of_theory_for_logging(self.scan_level))
+            txt += f'Rotor scans:      {format_level_of_theory_for_logging(self.scan_level)}\n'
         else:
             txt += 'Not scanning rotors\n'
         if self.use_bac:
@@ -648,22 +648,19 @@ class ARC(object):
         else:
             txt += 'NOT using bond additivity corrections for thermo\n'
         if self.job_additional_options:
-            txt += 'Using additional job options "{0}"'\
-                .format(yaml.dump(self.job_additional_options, default_flow_style=False))
+            txt += f'Using additional job options "{yaml.dump(self.job_additional_options, default_flow_style=False)}"'
         if self.job_shortcut_keywords:
-            txt += 'Using additional job keywords "{0}"'\
-                .format(yaml.dump(self.job_shortcut_keywords, default_flow_style=False))
-        txt += '\nUsing the following ESS settings: {0}\n'.format(self.ess_settings)
+            txt += f'Using additional job keywords "{yaml.dump(self.job_shortcut_keywords, default_flow_style=False)}"'
+        txt += f'\nUsing the following ESS settings: {self.ess_settings}\n'
         txt += '\nConsidered the following species and TSs:\n'
         for species in self.arc_species_list:
             descriptor = 'TS' if species.is_ts else 'Species'
             failed = '' if self.scheduler.output[species.label]['convergence'] else ' (Failed!)'
-            txt += '{descriptor} {label}{failed} (run time: {time})\n'.format(
-                descriptor=descriptor, label=species.label, failed=failed, time=species.run_time)
+            txt += f'{descriptor} {species.label}{failed} (run time: {species.run_time})\n'
         if self.arc_rxn_list:
             for rxn in self.arc_rxn_list:
-                txt += 'Considered reaction: {0}\n'.format(rxn.label)
-        txt += '\nOverall time since project initiation: {0}'.format(self.execution_time)
+                txt += f'Considered reaction: {rxn.label}\n'
+        txt += f'\nOverall time since project initiation: {self.execution_time}'
         txt += '\n'
 
         with open(path, 'w') as f:
@@ -783,7 +780,7 @@ class ARC(object):
             g16 = find_executable('g16')
             if g03 or g09 or g16:
                 if diagnostics:
-                    logger.info('Found Gaussian: g03={0}, g09={1}, g16={2}'.format(g03, g09, g16))
+                    logger.info(f'Found Gaussian: g03={g03}, g09={g09}, g16={g16}')
                 self.ess_settings['gaussian'] = ['local']
             qchem = find_executable('qchem')
             if qchem:
@@ -824,56 +821,56 @@ class ARC(object):
             g16 = ssh.send_command_to_server(cmd)[0]
             if g03 or g09 or g16:
                 if diagnostics:
-                    logger.info('  Found Gaussian on {3}: g03={0}, g09={1}, g16={2}'.format(g03, g09, g16, server))
+                    logger.info(f'  Found Gaussian on {server}: g03={g03}, g09={g09}, g16={g16}')
                 self.ess_settings['gaussian'].append(server)
             elif diagnostics:
-                logger.info('  Did NOT find Gaussian on {0}'.format(server))
+                logger.info(f'  Did NOT find Gaussian on {server}')
 
             cmd = '. ~/.bashrc; which qchem'
             qchem = ssh.send_command_to_server(cmd)[0]
             if qchem:
                 if diagnostics:
-                    logger.info('  Found QChem on {0}'.format(server))
+                    logger.info(f'  Found QChem on {server}')
                 self.ess_settings['qchem'].append(server)
             elif diagnostics:
-                logger.info('  Did NOT find QChem on {0}'.format(server))
+                logger.info(f'  Did NOT find QChem on {server}')
 
             cmd = '. ~/.bashrc; which orca'
             orca = ssh.send_command_to_server(cmd)[0]
             if orca:
                 if diagnostics:
-                    logger.info('  Found Orca on {0}'.format(server))
+                    logger.info(f'  Found Orca on {server}')
                 self.ess_settings['orca'].append(server)
             elif diagnostics:
-                logger.info('  Did NOT find Orca on {0}'.format(server))
+                logger.info(f'  Did NOT find Orca on {server}')
 
             cmd = '. ~/.bashrc; which terachem'
             terachem = ssh.send_command_to_server(cmd)[0]
             if terachem:
                 if diagnostics:
-                    logging.info('  Found TeraChem on {0}'.format(server))
+                    logging.info(f'  Found TeraChem on {server}')
                 self.ess_settings['terachem'].append(server)
             elif diagnostics:
-                logging.info('  Did NOT find TeraChem on {0}'.format(server))
+                logging.info(f'  Did NOT find TeraChem on {server}')
 
             cmd = '. .bashrc; which molpro'
             molpro = ssh.send_command_to_server(cmd)[0]
             if molpro:
                 if diagnostics:
-                    logger.info('  Found Molpro on {0}'.format(server))
+                    logger.info(f'  Found Molpro on {server}')
                 self.ess_settings['molpro'].append(server)
             elif diagnostics:
-                logger.info('  Did NOT find Molpro on {0}'.format(server))
+                logger.info(f'  Did NOT find Molpro on {server}')
         if diagnostics:
             logger.info('\n\n')
         if 'gaussian' in self.ess_settings.keys():
-            logger.info('Using Gaussian on {0}'.format(self.ess_settings['gaussian']))
+            logger.info(f'Using Gaussian on {self.ess_settings["gaussian"]}')
         if 'qchem' in self.ess_settings.keys():
-            logger.info('Using QChem on {0}'.format(self.ess_settings['qchem']))
+            logger.info(f'Using QChem on {self.ess_settings["qchem"]}')
         if 'orca' in self.ess_settings.keys():
-            logger.info('Using Orca on {0}'.format(self.ess_settings['orca']))
+            logger.info(f'Using Orca on {self.ess_settings["orca"]}')
         if 'molpro' in self.ess_settings.keys():
-            logger.info('Using Molpro on {0}'.format(self.ess_settings['molpro']))
+            logger.info(f'Using Molpro on {self.ess_settings["molpro"]}')
         logger.info('\n')
 
         if 'gaussian' not in self.ess_settings.keys() and 'qchem' not in self.ess_settings.keys() \
@@ -882,7 +879,7 @@ class ARC(object):
             raise SettingsError('Could not find any ESS. Check your .bashrc definitions on the server.\n'
                                 'Alternatively, you could pass a software-server dictionary to arc as `ess_settings`')
         elif diagnostics:
-            logger.info('ESS diagnostics completed (elapsed time: {0})'.format(time_lapse(t0)))
+            logger.info(f'ESS diagnostics completed (elapsed time: {time_lapse(t0)})')
 
     def check_project_name(self):
         """
@@ -1333,5 +1330,5 @@ class ARC(object):
             try:
                 self.orbitals_level, _ = format_level_of_theory_inputs(self.orbitals_level)
             except InputError as e:
-                raise InputError(f'Specified model chemistry input dictionary for visualizing molecular orbitals'
-                                 f' seems wrong. {e!s}')
+                raise InputError(f'Specified model chemistry input dictionary for visualizing molecular orbitals '
+                                 f'seems wrong. {e!s}')
