@@ -10,6 +10,7 @@ import unittest
 
 import arc.job.trsh as trsh
 from arc.settings import arc_path, supported_ess
+from arc.parser import parse_1d_scan_energies
 
 
 class TestTrsh(unittest.TestCase):
@@ -493,6 +494,67 @@ class TestTrsh(unittest.TestCase):
         self.assertEqual(output_errors, list())
         self.assertEqual(output_warnings, list())
 
+    def test_scan_quality_check(self):
+        """Test scan quality check for 1D rotor"""
+        log_file = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'CH2OOH.out')
+        # Case 1: non-smooth scan which troubleshot once
+        case1 = {'label': 'CH2OOH',
+                 'pivots': [1, 2],
+                 'energies': parse_1d_scan_energies(log_file)[0],
+                 'scan_res': 4.0,
+                 'used_methods': None,
+                 'log_file': log_file,
+                }
+        invalidate, invalidation_reason, message, actions = trsh.scan_quality_check(**case1)
+        self.assertTrue(invalidate)
+        self.assertEqual(
+            invalidation_reason, 'Significant difference observed between consecutive conformers')
+        expect_message = 'Rotor scan of CH2OOH between pivots [1, 2] is inconsistent between ' \
+                         'two consecutive conformers.\nInconsistent consecutive conformers and ' \
+                         'problematic internal coordinates:\nconformer # 63 / # 64        D3, D2' \
+                         '\nconformer # 80 / # 81        D3, D2\nARC will attempt to troubleshoot' \
+                         ' this rotor scan.'
+        self.assertEqual(message, expect_message)
+        self.assertEqual(len(actions.keys()), 1)
+        self.assertIn('freeze', actions)
+        self.assertIn([5, 1, 2, 3], actions['freeze'])
+        self.assertIn([2, 1, 4, 5], actions['freeze'])
+
+        # Case 2: Lower conformer
+        log_file = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'COCCOO.out')
+        case2 = {'label': 'COCCOO',
+                 'pivots': [2, 5],
+                 'energies': parse_1d_scan_energies(log_file)[0],
+                 'scan_res': 8.0,
+                 'used_methods': None,
+                 'log_file': log_file,
+                }
+        invalidate, invalidation_reason, message, actions = trsh.scan_quality_check(**case2)
+        self.assertTrue(invalidate)
+        self.assertEqual(
+            invalidation_reason, 'Another conformer for COCCOO exists which is 4.60 kJ/mol lower.')
+        expect_message = 'Species COCCOO is not oriented correctly around pivots [2, 5], ' \
+                         'searching for a better conformation...'
+        self.assertEqual(message, expect_message)
+        xyz = {'symbols': ('O', 'O', 'O', 'C', 'C', 'C', 'H',
+                           'H', 'H', 'H', 'H', 'H', 'H', 'H'),
+               'isotopes': (16, 16, 16, 12, 12, 12, 1, 1,
+                            1, 1, 1, 1, 1, 1),
+               'coords': ((1.064082, 0.653765, -0.451343),
+                          (-2.342701, 0.031994, 0.662511),
+                          (-2.398473, -1.385822, 0.327886),
+                          (0.076296, -0.002042, 0.321439),
+                          (-1.266646, 0.597254, -0.073572),
+                          (2.370241, 0.177374, -0.19811),
+                          (0.246556, 0.151577, 1.397399),
+                          (0.074611, -1.082893, 0.12612),
+                          (-1.343968, 1.669387, 0.129745),
+                          (-1.395784, 0.428829, -1.147694),
+                          (3.049182, 0.738271, -0.841111),
+                          (2.661092, 0.333101, 0.85075),
+                          (2.461024, -0.893605, -0.429469),
+                          (-3.255509, -1.417186, -0.119474))}
+        self.assertEqual(actions, {'change conformer': xyz})
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
