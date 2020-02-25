@@ -11,8 +11,10 @@ import unittest
 
 from arc.common import almost_equal_coords_lists
 from arc.settings import arc_path
-from arc.utils.scale import calculate_truhlar_scaling_factors, summarize_results, get_species_list, \
-    rename_level
+from arc.utils.scale import (calculate_truhlar_scaling_factors,
+                             get_species_list,
+                             rename_level,
+                             summarize_results)
 
 
 class TestScale(unittest.TestCase):
@@ -68,7 +70,12 @@ class TestScale(unittest.TestCase):
         overall_time = '8.5'
         base_path = os.path.join(arc_path, 'Projects', 'scaling_factors_arc_testing_delete_after_usage')
 
-        summarize_results(lambda_zpes, levels_of_theory, self.zpe_dicts, times, overall_time, base_path)
+        summarize_results(lambda_zpes=lambda_zpes,
+                          levels_of_theory=levels_of_theory,
+                          zpe_dicts=self.zpe_dicts,
+                          times=times,
+                          overall_time=overall_time,
+                          base_path=base_path)
 
         info_file_path = os.path.join(base_path, 'scaling_factors_0.info')
         self.assertTrue(os.path.isfile(info_file_path))

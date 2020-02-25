@@ -143,22 +143,21 @@ def check_ess_settings(ess_settings=None):
         elif isinstance(server_list, list):
             for server in server_list:
                 if not isinstance(server, str):
-                    raise SettingsError('Server name could only be a string. '
-                                        'Got {0} which is {1}'.format(server, type(server)))
+                    raise SettingsError(f'Server name could only be a string. Got {server} which is {type(server)}')
                 settings[software.lower()] = server_list
         else:
-            raise SettingsError('Servers in the ess_settings dictionary could either be a string or a list of '
-                                'strings. Got: {0} which is a {1}'.format(server_list, type(server_list)))
+            raise SettingsError(f'Servers in the ess_settings dictionary could either be a string or a list of '
+                                f'strings. Got: {server_list} which is a {type(server_list)}')
     # run checks:
     for ess, server_list in settings.items():
         if ess.lower() not in ['gaussian', 'qchem', 'molpro', 'orca', 'terachem', 'onedmin', 'gromacs']:
-            raise SettingsError('Recognized ESS software are Gaussian, QChem, Molpro, Orca, TeraChem or OneDMin. '
-                                'Got: {0}'.format(ess))
+            raise SettingsError(f'Recognized ESS software are Gaussian, QChem, Molpro, Orca, TeraChem or OneDMin. '
+                                f'Got: {ess}')
         for server in server_list:
             if not isinstance(server, bool) and server.lower() not in list(servers.keys()):
                 server_names = [name for name in servers.keys()]
-                raise SettingsError('Recognized servers are {0}. Got: {1}'.format(server_names, server))
-    logger.info('\nUsing the following ESS settings:\n{0}\n'.format(settings))
+                raise SettingsError(f'Recognized servers are {server_names}. Got: {server}')
+    logger.info(f'\nUsing the following ESS settings:\n{settings}\n')
     return settings
 
 
@@ -233,15 +232,14 @@ def log_header(project, level=logging.INFO):
         project (str): The ARC project name to be logged in the header.
         level: The desired logging level.
     """
-    logger.log(level, 'ARC execution initiated on {0}'.format(time.asctime()))
+    logger.log(level, f'ARC execution initiated on {time.asctime()}')
     logger.log(level, '')
     logger.log(level, '###############################################################')
     logger.log(level, '#                                                             #')
     logger.log(level, '#                 Automatic Rate Calculator                   #')
     logger.log(level, '#                            ARC                              #')
     logger.log(level, '#                                                             #')
-    logger.log(level, '#   Version: {0}{1}                                       #'.format(
-        VERSION, ' ' * (10 - len(VERSION))))
+    logger.log(level, f'#   Version: {VERSION}{" " * (10 - len(VERSION))}                                       #')
     logger.log(level, '#                                                             #')
     logger.log(level, '###############################################################')
     logger.log(level, '')
@@ -256,7 +254,7 @@ def log_header(project, level=logging.INFO):
         logger.log(level, f'    (running on the {branch_name} branch)\n')
     else:
         logger.log(level, '\n')
-    logger.info('Starting project {0}'.format(project))
+    logger.info(f'Starting project {project}')
 
 
 def log_footer(execution_time, level=logging.INFO):
@@ -268,8 +266,8 @@ def log_footer(execution_time, level=logging.INFO):
         level: The desired logging level.
     """
     logger.log(level, '')
-    logger.log(level, 'Total execution time: {0}'.format(execution_time))
-    logger.log(level, 'ARC execution terminated on {0}'.format(time.asctime()))
+    logger.log(level, f'Total execution time: {execution_time}')
+    logger.log(level, f'ARC execution terminated on {time.asctime()}')
 
 
 def get_git_commit():
@@ -384,11 +382,11 @@ def get_atom_radius(symbol):
     Args:
         symbol (str): The atomic symbol.
 
-    Returns:
-        float: The atomic covalent radius (None if not found).
-
     Raises:
         TypeError: If ``symbol`` is of wrong type.
+
+    Returns:
+        float: The atomic covalent radius (None if not found).
     """
     if not isinstance(symbol, str):
         raise TypeError(f'The symbol argument must be string, got {symbol} which is a {type(symbol)}')
@@ -575,13 +573,13 @@ def sort_two_lists_by_the_first(list1, list2):
         list1 (list, tuple): Entries are floats or ints (could also be None).
         list2 (list, tuple): Entries could be anything.
 
+    Raises:
+        InputError: If types are wrong, or lists are not the same length.
+
     Returns:
         list: Sorted values from list1, ignoring None entries.
     Returns:
         list: Respective entries from list2.
-
-    Raises:
-        InputError: If types are wrong, or lists are not the same length.
     """
     if not isinstance(list1, (list, tuple)) or not isinstance(list2, (list, tuple)):
         raise InputError(f'Arguments must be lists, got: {type(list1)} and {type(list2)}')
@@ -618,11 +616,11 @@ def key_by_val(dictionary, value):
         dictionary (dict): The dictionary.
         value: The value.
 
-    Returns:
-        The key.
-
     Raises:
         ValueError: If the value could not be found in the dictionary.
+
+    Returns:
+        The key.
     """
     for key, val in dictionary.items():
         if val == value:
@@ -686,11 +684,12 @@ def determine_model_chemistry_type(method):
     Args:
         method (str, dict): method in a model chemistry. e.g., b3lyp, cbs-qb3, am1, dlpno-ccsd(T)
 
-    Returns:
-        model_chemistry_type (str): class of model chemistry.
-
     Raises:
         TypeError: If ``method`` is of wrong type.
+
+    Returns:
+        model_chemistry_type (str): The model chemistry type, one of the following:
+                                    'composite', 'dft', 'force_field', 'semiempirical', or 'wavefunction'.
     """
     if isinstance(method, dict):
         method = format_level_of_theory_for_logging(method)
@@ -745,14 +744,14 @@ def format_level_of_theory_inputs(level_of_theory):
                                        e.g., {'method': 'DLPNO-CCSD(T)-F12', 'basis': 'cc-pVTZ-F12',
                                               'auxiliary_basis': 'aug-cc-pVTZ/C cc-pVTZ-F12-CABS'}
 
-    Returns:
-        formatted_model_chemistry_dict (dict): The formatted model chemistry dictionary.
-                                               Default keys: 'method', 'basis', 'auxiliary_basis', 'dispersion'
-        formatted_model_chemistry_str (str): The formatted model chemistry string.
-                                             Format: method|basis|auxiliary_basis|dispersion
-
     Raises:
         InputError: If ``level_of_theory`` contains illegal specifications.
+
+    Returns:
+        formatted_model_chemistry_dict (dict): The formatted model chemistry dictionary.
+                                               Default keys: 'method', 'basis', 'auxiliary_basis', 'dispersion'.
+        formatted_model_chemistry_str (str): The formatted model chemistry string.
+                                             Format: method|basis|auxiliary_basis|dispersion.
     """
     formatted_model_chemistry_dict = {'method': '', 'basis': '', 'auxiliary_basis': '', 'dispersion': ''}
     if not level_of_theory:
@@ -829,11 +828,11 @@ def format_level_of_theory_for_logging(level_of_theory):
     Args:
         level_of_theory (str or dict): job level of theory.
 
-    Returns:
-        level_of_theory_log_str (str): level of theory string for logging.
-
     Raises:
         TypeError: If ``level_of_theory`` is of wrong type.
+
+    Returns:
+        level_of_theory_log_str (str): level of theory string for logging.
     """
     if not isinstance(level_of_theory, (dict, str)):
         raise TypeError(f'level_of_theory_dict must be either a dictionary or a string, got: {level_of_theory} '
