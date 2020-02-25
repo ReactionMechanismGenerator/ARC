@@ -346,7 +346,7 @@ class ARC(object):
             shutil.copy(os.path.join(self.project_directory, 'restart.yml'),
                         os.path.join(self.project_directory, 'log_and_restart_archive', restart_backup_name))
 
-    def as_dict(self):
+    def as_dict(self) -> dict:
         """
         A helper function for dumping this object as a dictionary in a YAML file for restarting ARC.
         """
