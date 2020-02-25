@@ -14,8 +14,14 @@ from arc.common import get_logger, determine_ess
 from arc.exceptions import SpeciesError, TrshError
 from arc.job.local import execute_command
 from arc.job.ssh import SSHClient
-from arc.settings import servers, delete_command, list_available_nodes_command, submit_filename, \
-    inconsistency_ab, inconsistency_az, maximum_barrier, rotor_scan_resolution
+from arc.settings import (delete_command,
+                          inconsistency_ab,
+                          inconsistency_az,
+                          list_available_nodes_command,
+                          maximum_barrier,
+                          rotor_scan_resolution,
+                          servers,
+                          submit_filename)
 from arc.species.converter import xyz_from_data, xyz_to_coords_list
 from arc.species.species import determine_rotor_symmetry
 from arc.parser import parse_normal_displacement_modes, parse_xyz_from_file
@@ -24,7 +30,10 @@ from arc.parser import parse_normal_displacement_modes, parse_xyz_from_file
 logger = get_logger()
 
 
-def determine_ess_status(output_path, species_label, job_type, software=None):
+def determine_ess_status(output_path: str,
+                         species_label: str,
+                         job_type: str,
+                         software: str = None):
     """
     Determine the reason that caused an ESS job to crash, assign error keywords for troubleshooting.
 
@@ -357,7 +366,10 @@ def determine_ess_status(output_path, species_label, job_type, software=None):
             return 'errored', keywords, error, line
 
 
-def trsh_negative_freq(label, log_file, neg_freqs_trshed=None, job_types=None):
+def trsh_negative_freq(label: str,
+                       log_file: str,
+                       neg_freqs_trshed: list = None,
+                       job_types: list = None):
     """
     Troubleshooting cases where non-TS species have negative frequencies.
     We take +/-1.1 displacements, generating several new initial geometries.
@@ -420,8 +432,8 @@ def trsh_negative_freq(label, log_file, neg_freqs_trshed=None, job_types=None):
                             f'while troubleshooting for it.')
         if len(neg_freqs_idx) == 1 and not len(neg_freqs_trshed):
             # species has one negative frequency, and has not been troubleshooted for it before
-            logger.info('Species {0} has a negative frequency ({1}). Perturbing its geometry using the respective '
-                        'vibrational displacements'.format(label, freqs[largest_neg_freq_idx]))
+            logger.info(f'Species {label} has a negative frequency ({freqs[largest_neg_freq_idx]}). Perturbing its '
+                        f'geometry using the respective vibrational displacements')
             neg_freqs_idx = [largest_neg_freq_idx]  # indices of the negative frequencies to troubleshoot for
         elif len(neg_freqs_idx) == 1 and any([np.allclose(freqs[0], vf, rtol=1e-04, atol=1e-02)
                                               for vf in neg_freqs_trshed]):
@@ -456,7 +468,11 @@ def trsh_negative_freq(label, log_file, neg_freqs_trshed=None, job_types=None):
     return current_neg_freqs_trshed, conformers, output_errors, output_warnings
 
 
-def trsh_scan_job(label, scan_res, scan, species_scan_lists, methods):
+def trsh_scan_job(label: str,
+                  scan_res: int,
+                  scan: list,
+                  species_scan_lists: list,
+                  methods: list):
     """
     Troubleshooting rotor scans
     Using the following methods: freezing all dihedrals other than the scan's pivots for this job,
@@ -469,13 +485,13 @@ def trsh_scan_job(label, scan_res, scan, species_scan_lists, methods):
         species_scan_lists (list): Entries are lists of four atom indices each representing a torsion.
         methods (list): The troubleshooting method/s to try. Accepted values: 'freeze' and/or 'inc_res'.
 
+    Raises:
+        TrshError: If troubleshooted dihedral is not found.
+
     Returns:
         scan_trsh (str): The scan troubleshooting keywords to be appended to the Gaussian input file.
     Returns:
         scan_res (int): The new scan resolution in degrees.
-
-    Raises:
-        TrshError: If troubleshooted dihedral is not found.
     """
     if methods is None:
         raise TrshError('Expected to get a list of methods, got None.')
@@ -496,8 +512,19 @@ def trsh_scan_job(label, scan_res, scan, species_scan_lists, methods):
     return scan_trsh, scan_res
 
 
-def trsh_ess_job(label, level_of_theory_dict, server, job_status, job_type, software, fine, memory_gb, num_heavy_atoms,
-                 cpu_cores, ess_trsh_methods, available_ess=None, is_h=False):
+def trsh_ess_job(label: str,
+                 level_of_theory_dict: dict,
+                 server: str,
+                 job_status: dict,
+                 job_type: str,
+                 software: str,
+                 fine: bool,
+                 memory_gb: float,
+                 num_heavy_atoms: int,
+                 cpu_cores: int,
+                 ess_trsh_methods: list,
+                 available_ess: list = None,
+                 is_h: bool = False):
     """
     Troubleshoot issues related to the electronic structure software, such as convergence.
 
@@ -508,13 +535,13 @@ def trsh_ess_job(label, level_of_theory_dict, server, job_status, job_type, soft
         job_status (dict): The ESS job status dictionary with standardized error keywords
                            as generated using the `determine_ess_status` function.
         job_type (str): The original job type.
-        software (str, optional): The ESS software.
+        software (str): The ESS software.
         fine (bool): Whether the job used an ultrafine grid, `True` if it did.
         memory_gb (float): The memory in GB used for the job.
-        cpu_cores (int): The total number of cpu cores requested for a job.
-        ess_trsh_methods (list, optional): The troubleshooting methods tried for this job.
-        available_ess (list, optional): Entries are string representations of available ESS.
         num_heavy_atoms (int): Number of heavy atoms in a molecule.
+        cpu_cores (int): The total number of cpu cores requested for a job.
+        ess_trsh_methods (list): The troubleshooting methods tried for this job.
+        available_ess (list, optional): Entries are string representations of available ESS.
         is_h (bool): Whether the species is a hydrogen atom (or its isotope). e.g., H, D, T.
 
     Todo:
@@ -560,8 +587,7 @@ def trsh_ess_job(label, level_of_theory_dict, server, job_status, job_type, soft
     if 'DiskSpace' in job_status['keywords']:
         output_errors.append(f'Error: Could not troubleshoot {job_type} for {label}! '
                              f'The job ran out of disc space on {server}; ')
-        logger.error('Could not troubleshoot {job_type} for {label}! The job ran out of disc space on '
-                     '{server}'.format(job_type=job_type, label=label, server=server))
+        logger.error(f'Could not troubleshoot {job_type} for {label}! The job ran out of disc space on {server}')
         couldnt_trsh = True
     elif 'BasisSet' in job_status['keywords']\
             and ('Unrecognized basis set' in job_status['error']
@@ -579,52 +605,44 @@ def trsh_ess_job(label, level_of_theory_dict, server, job_status, job_type, soft
         elif 'InternalCoordinateError' in job_status['keywords'] \
                 and 'cartesian' not in ess_trsh_methods and job_type == 'opt':
             # try both cartesian and nosymm
-            logger.info('Troubleshooting {type} job in {software} for {label} using opt=cartesian with '
-                        'nosyym'.format(type=job_type, software=software, label=label))
+            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using opt=cartesian with nosyym')
             ess_trsh_methods.append('cartesian')
             trsh_keyword = 'opt=(cartesian,nosymm)'
         elif 'Unconverged' in job_status['keywords'] and 'fine' not in ess_trsh_methods and not fine:
             # try a fine grid for SCF and integral
-            logger.info('Troubleshooting {type} job in {software} for {label} using a fine grid'.format(
-                type=job_type, software=software, label=label))
+            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using a fine grid')
             ess_trsh_methods.append('fine')
             fine = True
         elif 'SCF' in job_status['keywords'] and 'scf=(qc,nosymm)' not in ess_trsh_methods:
             # try both qc and nosymm
-            logger.info('Troubleshooting {type} job in {software} for {label} using scf=(qc,nosymm)'.format(
-                type=job_type, software=software, label=label))
+            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using scf=(qc,nosymm)')
             ess_trsh_methods.append('scf=(qc,nosymm)')
             trsh_keyword = 'scf=(qc,nosymm)'
         elif 'SCF' in job_status['keywords'] and 'scf=(NDump=30)' not in ess_trsh_methods:
             # Allows dynamic dumping for up to N SCF iterations (slower conversion)
-            logger.info('Troubleshooting {type} job in {software} for {label} using scf=(NDump=30)'.format(
-                type=job_type, software=software, label=label))
+            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using scf=(NDump=30)')
             ess_trsh_methods.append('scf=(NDump=30)')
             trsh_keyword = 'scf=(NDump=30)'
         elif 'SCF' in job_status['keywords'] and 'scf=NoDIIS' not in ess_trsh_methods:
             # Switching off Pulay's Direct Inversion
-            logger.info('Troubleshooting {type} job in {software} for {label} using scf=NoDIIS'.format(
-                type=job_type, software=software, label=label))
+            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using scf=NoDIIS')
             ess_trsh_methods.append('scf=NoDIIS')
             trsh_keyword = 'scf=NoDIIS'
         elif 'SCF' in job_status['keywords'] and 'scf=nosymm' not in ess_trsh_methods:
             # try running w/o considering symmetry
-            logger.info('Troubleshooting {type} job in {software} for {label} using scf=nosymm'.format(
-                type=job_type, software=software, label=label))
+            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using scf=nosymm')
             ess_trsh_methods.append('scf=nosymm')
             trsh_keyword = 'scf=nosymm'
         elif 'int=(Acc2E=14)' not in ess_trsh_methods:  # does not work in g03
             # Change integral accuracy (skip everything up to 1E-14 instead of 1E-12)
-            logger.info('Troubleshooting {type} job in {software} for {label} using int=(Acc2E=14)'.format(
-                type=job_type, software=software, label=label))
+            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using int=(Acc2E=14)')
             ess_trsh_methods.append('int=(Acc2E=14)')
             trsh_keyword = 'int=(Acc2E=14)'
         # suggest spwaning a cbs-qb3 job if there are not many heavy atoms
         elif 'cbs-qb3' not in ess_trsh_methods and level_of_theory_dict['method'] != 'cbs-qb3' \
                 and 'scan' not in job_type and num_heavy_atoms <= 10:
             # try running CBS-QB3, which is relatively robust.
-            logger.info('Troubleshooting {type} job in {software} for {label} using CBS-QB3'.format(
-                type=job_type, software=software, label=label))
+            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using CBS-QB3')
             ess_trsh_methods.append('cbs-qb3')
             level_of_theory_dict['method'] = 'cbs-qb3'
             job_type = 'composite'
@@ -632,29 +650,25 @@ def trsh_ess_job(label, level_of_theory_dict, server, job_status, job_type, soft
             # Increase memory allocation
             max_mem = servers[server].get('memory', 128)  # Node memory in GB, defaults to 128 if not specified
             memory = min(memory_gb * 2, max_mem * 0.9)
-            logger.info('Troubleshooting {type} job in {software} for {label} using more memory: {mem} GB instead of '
-                        '{old} GB'.format(type=job_type, software=software, mem=memory, old=memory_gb,
-                                          label=label))
+            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using more memory: {memory} GB '
+                        f'instead of {memory_gb} GB')
             ess_trsh_methods.append('memory')
         elif level_of_theory_dict['method'] != 'cbs-qb3' and 'scf=(qc,nosymm) & CBS-QB3' not in ess_trsh_methods:
             # try both qc and nosymm with CBS-QB3
-            logger.info('Troubleshooting {type} job in {software} for {label} using scf=(qc,nosymm) with '
-                        'CBS-QB3'.format(type=job_type, software=software, label=label))
+            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using scf=(qc,nosymm) with CBS-QB3')
             ess_trsh_methods.append('scf=(qc,nosymm) & CBS-QB3')
             level_of_theory_dict['method'] = 'cbs-qb3'
             trsh_keyword = 'scf=(qc,nosymm)'
         elif 'qchem' not in ess_trsh_methods and job_type != 'composite' and \
                 (available_ess is None or 'qchem' in [ess.lower() for ess in available_ess]):
             # Try QChem
-            logger.info('Troubleshooting {type} job using qchem instead of {software} for {label}'.format(
-                type=job_type, software=software, label=label))
+            logger.info(f'Troubleshooting {job_type} job using qchem instead of {software} for {label}')
             ess_trsh_methods.append('qchem')
             software = 'qchem'
         elif 'molpro' not in ess_trsh_methods and job_type not in ['composite', 'scan'] \
                 and (available_ess is None or 'molpro' in [ess.lower() for ess in available_ess]):
             # Try molpro
-            logger.info('Troubleshooting {type} job using molpro instead of {software} for {label}'.format(
-                type=job_type, software=software, label=label))
+            logger.info(f'Troubleshooting {job_type} job using molpro instead of {software} for {label}')
             ess_trsh_methods.append('molpro')
             software = 'molpro'
         else:
@@ -663,46 +677,40 @@ def trsh_ess_job(label, level_of_theory_dict, server, job_status, job_type, soft
     elif software == 'qchem':
         if 'MaxOptCycles' in job_status['keywords'] and 'max_cycles' not in ess_trsh_methods:
             # this is a common error, increase max cycles and continue running from last geometry
-            logger.info('Troubleshooting {type} job in {software} for {label} using max_cycles'.format(
-                type=job_type, software=software, label=label))
+            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using max_cycles')
             ess_trsh_methods.append('max_cycles')
             trsh_keyword = '\n   GEOM_OPT_MAX_CYCLES 250'  # default is 50
         elif 'SCF' in job_status['keywords'] and 'DIIS_GDM' not in ess_trsh_methods:
             # change the SCF algorithm and increase max SCF cycles
-            logger.info('Troubleshooting {type} job in {software} for {label} using the DIIS_GDM SCF algorithm'.format(
-                type=job_type, software=software, label=label))
+            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using the DIIS_GDM SCF algorithm')
             ess_trsh_methods.append('DIIS_GDM')
             trsh_keyword = '\n   SCF_ALGORITHM DIIS_GDM\n   MAX_SCF_CYCLES 1000'  # default is 50
         elif 'SYM_IGNORE' not in ess_trsh_methods:  # symmetry - look in manual, no symm if fails
             # change the SCF algorithm and increase max SCF cycles
-            logger.info('Troubleshooting {type} job in {software} for {label} using SYM_IGNORE as well as the '
-                        'DIIS_GDM SCF algorithm'.format(type=job_type, software=software, label=label))
+            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using SYM_IGNORE as well as the '
+                        f'DIIS_GDM SCF algorithm')
             ess_trsh_methods.append('SYM_IGNORE')
             trsh_keyword = '\n   SCF_ALGORITHM DIIS_GDM\n   MAX_SCF_CYCLES 250\n   SYM_IGNORE     True'
         elif 'wB97X-D3/def2-TZVP' not in ess_trsh_methods:
-            logger.info('Troubleshooting {type} job in {software} for {label} using wB97X-D3/def2-TZVP'.format(
-                type=job_type, software=software, label=label))
+            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using wB97X-D3/def2-TZVP')
             ess_trsh_methods.append('wB97X-D3/def2-TZVP')
             # try converging with wB97X-D3/def2-TZVP
             level_of_theory_dict = {'method': 'wb97x-d3', 'basis': 'def2-tzvp'}
         elif 'b3lyp/6-311++g(d,p)' not in ess_trsh_methods:
-            logger.info('Troubleshooting {type} job in {software} for {label} using b3lyp/6-311++g(d,p)'.format(
-                type=job_type, software=software, label=label))
+            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using b3lyp/6-311++g(d,p)')
             ess_trsh_methods.append('b3lyp/6-311++g(d,p)')
             # try converging with B3LYP
             level_of_theory_dict = {'method': 'b3lyp', 'basis': '6-311++g(d,p)'}
         elif 'gaussian' not in ess_trsh_methods \
                 and (available_ess is None or 'gaussian' in [ess.lower() for ess in available_ess]):
             # Try Gaussian
-            logger.info('Troubleshooting {type} job using gaussian instead of {software} for {label}'.format(
-                type=job_type, software=software, label=label))
+            logger.info(f'Troubleshooting {job_type} job using gaussian instead of {software} for {label}')
             ess_trsh_methods.append('gaussian')
             software = 'gaussian'
         elif 'molpro' not in ess_trsh_methods and job_type != 'scan' \
                 and (available_ess is None or 'molpro' in [ess.lower() for ess in available_ess]):
             # Try molpro
-            logger.info('Troubleshooting {type} job using molpro instead of {software} for {label}'.format(
-                type=job_type, software=software, label=label))
+            logger.info(f'Troubleshooting {job_type} job using molpro instead of {software} for {label}')
             ess_trsh_methods.append('molpro')
             software = 'molpro'
         else:
@@ -766,27 +774,23 @@ def trsh_ess_job(label, level_of_theory_dict, server, job_status, job_type, soft
             add_mem = float(job_status['error'].split()[-2])  # parse Molpro's requirement in MW
             add_mem = int(np.ceil(add_mem / 100.0)) * 100  # round up to the next hundred
             memory = memory_gb + add_mem / 128. + 5  # convert MW to GB, add 5 extra GB (be conservative)
-            logger.info('Troubleshooting {type} job in {software} for {label} using memory: {mem:.2f} GB instead of '
-                        '{old} GB'.format(type=job_type, software=software, mem=memory, old=memory_gb,
-                                          label=label))
+            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using memory: {memory:.2f} GB '
+                        f'instead of {memory_gb} GB')
         elif 'shift' not in ess_trsh_methods:
             # Try adding a level shift for alpha- and beta-spin orbitals
             # Applying large negative level shifts like {rhf; shift,-1.0,-0.5}
             # will often stabilize convergence at the expense of making it somewhat slower.
-            logger.info('Troubleshooting {type} job in {software} for {label} using shift'.format(
-                type=job_type, software=software, label=label))
+            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using shift')
             ess_trsh_methods.append('shift')
             shift = 'shift,-1.0,-0.5;'
         elif 'vdz' not in ess_trsh_methods:
             # degrade the basis set
-            logger.info('Troubleshooting {type} job in {software} for {label} using vdz'.format(
-                type=job_type, software=software, label=label))
+            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using vdz')
             ess_trsh_methods.append('vdz')
             trsh_keyword = 'vdz'
         elif 'vdz & shift' not in ess_trsh_methods:
             # try adding a level shift for alpha- and beta-spin orbitals
-            logger.info('Troubleshooting {type} job in {software} for {label} using vdz'.format(
-                type=job_type, software=software, label=label))
+            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using vdz')
             ess_trsh_methods.append('vdz & shift')
             shift = 'shift,-1.0,-0.5;'
             trsh_keyword = 'vdz'
@@ -794,22 +798,19 @@ def trsh_ess_job(label, level_of_theory_dict, server, job_status, job_type, soft
             # Increase memory allocation, also run with a shift
             ess_trsh_methods.append('memory')
             memory = servers[server]['memory']  # set memory to the value of an entire node (in GB)
-            logger.info('Troubleshooting {type} job in {software} for {label} using memory: {mem:.2f} GB instead of '
-                        '{old} GB'.format(type=job_type, software=software, mem=memory, old=memory_gb,
-                                          label=label))
+            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using memory: {memory:.2f} GB '
+                        f'instead of {memory_gb} GB')
             shift = 'shift,-1.0,-0.5;'
         elif 'gaussian' not in ess_trsh_methods\
                 and (available_ess is None or 'gaussian' in [ess.lower() for ess in available_ess]):
             # Try Gaussian
-            logger.info('Troubleshooting {type} job using gaussian instead of {software} for {label}'.format(
-                type=job_type, software=software, label=label))
+            logger.info(f'Troubleshooting {job_type} job using gaussian instead of {software} for {label}')
             ess_trsh_methods.append('gaussian')
             software = 'gaussian'
         elif 'qchem' not in ess_trsh_methods\
                 and (available_ess is None or 'qchem' in [ess.lower() for ess in available_ess]):
             # Try QChem
-            logger.info('Troubleshooting {type} job using qchem instead of {software} for {label}'.format(
-                type=job_type, software=software, label=label))
+            logger.info(f'Troubleshooting {job_type} job using qchem instead of {software} for {label}')
             ess_trsh_methods.append('qchem')
             software = 'qchem'
         else:
@@ -840,7 +841,9 @@ def trsh_ess_job(label, level_of_theory_dict, server, job_status, job_type, soft
         trsh_keyword, memory, shift, cpu_cores, couldnt_trsh
 
 
-def trsh_conformer_isomorphism(software, ess_trsh_methods=None):
+def trsh_conformer_isomorphism(software: str,
+                               ess_trsh_methods: list = None,
+                               ) -> str:
     """
     Troubleshoot conformer optimization for a species that failed isomorphic test in
     `determine_most_stable_conformer` by specifying a "good" level of theory.
@@ -849,11 +852,11 @@ def trsh_conformer_isomorphism(software, ess_trsh_methods=None):
         software (str): The ESS used.
         ess_trsh_methods (list, optional): The troubleshooting methods tried for this job.
 
-    Returns:
-        level_of_theory (str): Tte level of theory to troubleshoot at.
-
     Raises:
         TrshError: If the requested ``ess_trsh_methods`` is not supported.
+
+    Returns:
+        level_of_theory (str): Tte level of theory to troubleshoot at.
     """
     ess_trsh_methods = ess_trsh_methods if ess_trsh_methods is not None else list()
     if software == 'gaussian':
@@ -865,7 +868,7 @@ def trsh_conformer_isomorphism(software, ess_trsh_methods=None):
     elif software == 'terachem':
         conformer_trsh_methods = ['wb97xd3/def2-TZVP']
     else:
-        raise TrshError('The troubleshoot_conformer_isomorphism() method is not implemented for {0}.'.format(software))
+        raise TrshError(f'The troubleshoot_conformer_isomorphism() method is not implemented for {software}.')
 
     level_of_theory = None
     for method in conformer_trsh_methods:
@@ -877,7 +880,12 @@ def trsh_conformer_isomorphism(software, ess_trsh_methods=None):
     return level_of_theory
 
 
-def trsh_job_on_server(server, job_name, job_id, job_server_status, remote_path, server_nodes=None):
+def trsh_job_on_server(server: str,
+                       job_name: str,
+                       job_id: str,
+                       job_server_status: str,
+                       remote_path: str,
+                       server_nodes: list = None):
     """
     Troubleshoot server errors.
 
@@ -945,7 +953,11 @@ def trsh_job_on_server(server, job_name, job_id, job_server_status, remote_path,
     return None, False
 
 
-def scan_quality_check(label, pivots, energies, scan_res=rotor_scan_resolution, used_methods=None):
+def scan_quality_check(label: str,
+                       pivots: list,
+                       energies: list,
+                       scan_res: float = rotor_scan_resolution,
+                       used_methods: list = None):
     """
     Checks the scan's quality:
     - Whether the initial and final points are consistent
@@ -999,12 +1011,11 @@ def scan_quality_check(label, pivots, energies, scan_res=rotor_scan_resolution, 
             # Two consecutive points on the scan differ by more than `inconsistency_ab` kJ/mol.
             # This is a serious inconsistency. Invalidate
             invalidate = True
-            invalidation_reason = 'Two consecutive points are inconsistent by more than ' \
-                                  '{0:.2f} kJ/mol'.format(inconsistency_ab * max(energies))
-            message = 'Rotor scan of {label} between pivots {pivots} is inconsistent ' \
-                      'by more than {incons_ab:.2f} kJ/mol between two consecutive ' \
-                      'points. Invalidating rotor.'.format(
-                       label=label, pivots=pivots, incons_ab=inconsistency_ab * max(energies))
+            invalidation_reason = f'Two consecutive points are inconsistent by more than ' \
+                                  f'{inconsistency_ab * max(energies):.2f} kJ/mol'
+            message = f'Rotor scan of {label} between pivots {pivots} is inconsistent ' \
+                      f'by more than {inconsistency_ab * max(energies):.2f} kJ/mol between two consecutive ' \
+                      f'points. Invalidating rotor.'
             logger.error(message)
             if ['inc_res'] not in used_methods:
                 actions = ['inc_res']
@@ -1016,10 +1027,9 @@ def scan_quality_check(label, pivots, energies, scan_res=rotor_scan_resolution, 
     energy_diff = energies[0] - np.min(energies)
     if energy_diff >= 2 or energy_diff > 0.5 * (max(energies) - min(energies)):
         invalidate = True
-        invalidation_reason = 'Another conformer for {0} exists which is {1:.2f} kJ/mol lower.'.format(
-                               label, energy_diff)
-        message = 'Species {label} is not oriented correctly around pivots {pivots}, ' \
-                  'searching for a better conformation...'.format(label=label, pivots=pivots)
+        invalidation_reason = f'Another conformer for {label} exists which is {energy_diff:.2f} kJ/mol lower.'
+        message = f'Species {label} is not oriented correctly around pivots {pivots}, ' \
+                  f'searching for a better conformation...'
         logger.info(message)
         # Find the rotation dihedral in degrees to the closest minimum:
         min_index = np.argmin(energies)
@@ -1037,12 +1047,11 @@ def scan_quality_check(label, pivots, energies, scan_res=rotor_scan_resolution, 
                                              return_num_wells=True)[-1]
         if num_wells == 1:
             invalidate = True
-            invalidation_reason = 'The rotor scan has a barrier of {0:.2f} kJ/mol, which is higher than the maximal ' \
-                                  'barrier for rotation ({1:.2f} kJ/mol)'.format(
-                                   np.max(energies) - np.min(energies), maximum_barrier)
-            message = 'Rotor scan of {label} between pivots {pivots} has a barrier ' \
-                      'larger than {max_barrier:.2f} kJ/mol. Invalidating rotor.'.format(
-                       label=label, pivots=pivots, max_barrier=maximum_barrier)
+            invalidation_reason = f'The rotor scan has a barrier of {np.max(energies) - np.min(energies):.2f} ' \
+                                  f'kJ/mol, which is higher than the maximal barrier for rotation ' \
+                                  f'({maximum_barrier:.2f} kJ/mol)'
+            message = f'Rotor scan of {label} between pivots {pivots} has a barrier ' \
+                      f'larger than {maximum_barrier:.2f} kJ/mol. Invalidating rotor.'
             logger.warning(message)
             return invalidate, invalidation_reason, message, actions
         else:
