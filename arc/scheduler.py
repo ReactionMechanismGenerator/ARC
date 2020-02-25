@@ -287,7 +287,7 @@ class Scheduler(object):
                         rxn.p_species.append(spc)
                 rxn.rmg_reaction_from_arc_species()
                 rxn.check_attributes()
-                rxn.determine_family(self.rmg_database)
+                rxn.determine_family(rmg_database=self.rmg_database)
                 family_text = ''
                 if rxn.family is not None:
                     family_text = f'identified as belonging to RMG family {rxn.family.label}'

@@ -89,13 +89,13 @@ class TestARCReaction(unittest.TestCase):
 
     def test_rxn_family(self):
         """Test that ARC gets the correct RMG family for different reactions"""
-        self.rxn1.determine_family(rmgdatabase=self.rmgdb)
+        self.rxn1.determine_family(rmg_database=self.rmgdb)
         self.assertEqual(self.rxn1.family.label, 'H_Abstraction')
         self.assertTrue(self.rxn1.family_own_reverse)
-        self.rxn2.determine_family(rmgdatabase=self.rmgdb)
+        self.rxn2.determine_family(rmg_database=self.rmgdb)
         self.assertEqual(self.rxn2.family.label, 'Disproportionation')
         self.assertFalse(self.rxn2.family_own_reverse)
-        self.rxn3.determine_family(rmgdatabase=self.rmgdb)
+        self.rxn3.determine_family(rmg_database=self.rmgdb)
         self.assertEqual(self.rxn3.family.label, 'intra_H_migration')
         self.assertTrue(self.rxn3.family_own_reverse)
 
