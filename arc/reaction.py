@@ -121,7 +121,7 @@ class ARCReaction(object):
         str_representation += f'charge={self.charge})'
         return str_representation
 
-    def as_dict(self):
+    def as_dict(self) -> dict:
         """A helper function for dumping this object as a dictionary in a YAML file for restarting ARC"""
         reaction_dict = dict()
         reaction_dict['label'] = self.label
@@ -145,7 +145,7 @@ class ARCReaction(object):
         reaction_dict['ts_label'] = self.ts_label
         return reaction_dict
 
-    def from_dict(self, reaction_dict):
+    def from_dict(self, reaction_dict: dict):
         """
         A helper function for loading this object from a dictionary in a YAML file for restarting ARC
         """
@@ -163,14 +163,13 @@ class ARCReaction(object):
             self.rmg_reaction = None
         self.set_label_reactants_products()
         if self.rmg_reaction is None and (self.reactants is None or self.products is None):
-            raise InputError('Cannot determine reactants and/or products labels for reaction {0}'.format(
-                self.label))
+            raise InputError(f'Cannot determine reactants and/or products labels for reaction {self.label}')
         if self.reactants is None or self.products is None:
             if not all([spc.label for spc in self.rmg_reaction.reactants + self.rmg_reaction.products]):
-                raise InputError('All species in a reaction must be labeled (and the labels must correspond'
-                                 ' to respective Species in ARC). If an RMG Reaction object was passes, make'
-                                 ' sure that all species in the reactants and products are correctly labeled.'
-                                 ' Problematic reaction: {0}'.format(self.label))
+                raise InputError(f'All species in a reaction must be labeled (and the labels must correspond '
+                                 f'to respective Species in ARC). If an RMG Reaction object was passes, make '
+                                 f'sure that all species in the reactants and products are correctly labeled. '
+                                 f'Problematic reaction: {self.label}')
             self.reactants = [spc.label for spc in self.rmg_reaction.reactants]
             self.products = [spc.label for spc in self.rmg_reaction.products]
         self.set_label_reactants_products()
@@ -180,7 +179,7 @@ class ARCReaction(object):
         self.p_species = [p.from_dict() for p in reaction_dict['p_species']] if 'p_species' in reaction_dict else list()
         self.ts_species = reaction_dict['ts_species'].from_dict() if 'ts_species' in reaction_dict else None
 
-        self.long_kinetic_description = reaction_dict['long_kinetic_description']\
+        self.long_kinetic_description = reaction_dict['long_kinetic_description'] \
             if 'long_kinetic_description' in reaction_dict else ''
         self.ts_methods = reaction_dict['ts_methods'] if 'ts_methods' in reaction_dict else default_ts_methods
         self.ts_methods = [tsm.lower() for tsm in self.ts_methods]
@@ -192,7 +191,7 @@ class ARCReaction(object):
         if self.reactants is None or self.products is None:
             if self.label:
                 if self.arrow not in self.label:
-                    raise ReactionError('A reaction label must contain an arrow ("{0}")'.format(self.arrow))
+                    raise ReactionError(f'A reaction label must contain an arrow ("{self.arrow}")')
                 reactants, products = self.label.split(self.arrow)
                 if self.plus in reactants:
                     self.reactants = reactants.split(self.plus)
@@ -221,14 +220,14 @@ class ARCReaction(object):
         elif not self.label and (self.reactants is None or self.products is None):
             raise ReactionError('Either a label or reactants and products lists must be specified')
 
-    def rmg_reaction_to_str(self):
+    def rmg_reaction_to_str(self) -> str:
         """A helper function for dumping the RMG Reaction object as a string for the YAML restart dictionary"""
         return self.arrow.join([self.plus.join(r.molecule[0].copy(deep=True).to_smiles()
                                                for r in self.rmg_reaction.reactants),
                                 self.plus.join(p.molecule[0].copy(deep=True).to_smiles()
                                                for p in self.rmg_reaction.products)])
 
-    def rmg_reaction_from_str(self, reaction_string):
+    def rmg_reaction_from_str(self, reaction_string: str):
         """A helper function for regenerating the RMG Reaction object from a string representation"""
         reactants, products = reaction_string.split(self.arrow)
         reactants = [Species(smiles=smiles) for smiles in reactants.split(self.plus)]
@@ -313,7 +312,7 @@ class ARCReaction(object):
                         self.multiplicity = 3
                     else:
                         self.multiplicity = 1
-                        logger.warning('ASSUMING a multiplicity of 1 (singlet) for reaction {0}'.format(self.label))
+                        logger.warning(f'ASSUMING a multiplicity of 1 (singlet) for reaction {self.label}')
                 elif ordered_r_mult_list == [1, 3]:
                     self.multiplicity = 3  # S + T = T
                 elif ordered_r_mult_list == [2, 3]:
@@ -324,7 +323,7 @@ class ARCReaction(object):
                         self.multiplicity = 4
                     else:
                         self.multiplicity = 2
-                        logger.warning('ASSUMING a multiplicity of 2 (doublet) for reaction {0}'.format(self.label))
+                        logger.warning(f'ASSUMING a multiplicity of 2 (doublet) for reaction {self.label}')
                 elif ordered_r_mult_list == [3, 3]:
                     # T + T = S or T or quintet
                     if ordered_p_mult_list in [[1, 1], [1, 1, 1]]:
@@ -335,7 +334,7 @@ class ARCReaction(object):
                         self.multiplicity = 5
                     else:
                         self.multiplicity = 3
-                        logger.warning('ASSUMING a multiplicity of 3 (triplet) for reaction {0}'.format(self.label))
+                        logger.warning(f'ASSUMING a multiplicity of 3 (triplet) for reaction {self.label}')
                 elif ordered_r_mult_list == [1, 1, 1]:
                     self.multiplicity = 1  # S + S + S = S
                 elif ordered_r_mult_list == [1, 1, 2]:
@@ -350,7 +349,7 @@ class ARCReaction(object):
                         self.multiplicity = 3
                     else:
                         self.multiplicity = 1
-                        logger.warning('ASSUMING a multiplicity of 1 (singlet) for reaction {0}'.format(self.label))
+                        logger.warning(f'ASSUMING a multiplicity of 1 (singlet) for reaction {self.label}')
                 elif ordered_r_mult_list == [2, 2, 2]:
                     # D + D + D = D or Q
                     if ordered_p_mult_list in [[1, 2], [1, 1, 2]]:
@@ -359,7 +358,7 @@ class ARCReaction(object):
                         self.multiplicity = 4
                     else:
                         self.multiplicity = 2
-                        logger.warning('ASSUMING a multiplicity of 2 (doublet) for reaction {0}'.format(self.label))
+                        logger.warning(f'ASSUMING a multiplicity of 2 (doublet) for reaction {self.label}')
                 elif ordered_r_mult_list == [1, 2, 3]:
                     # S + D + T = D or Q
                     if ordered_p_mult_list in [[1, 2], [1, 1, 2]]:
@@ -367,31 +366,31 @@ class ARCReaction(object):
                     elif ordered_p_mult_list in [[1, 4], [1, 1, 4]]:
                         self.multiplicity = 4
                     self.multiplicity = 2
-                    logger.warning('ASSUMING a multiplicity of 2 (doublet) for reaction {0}'.format(self.label))
+                    logger.warning(f'ASSUMING a multiplicity of 2 (doublet) for reaction {self.label}')
                 else:
-                    raise ReactionError('Could not determine multiplicity for reaction {0}, please input it.'.format(
-                        self.multiplicity))
-            logger.info('Setting multiplicity of reaction {0} to {1}'.format(self.label, self.multiplicity))
+                    raise ReactionError(f'Could not determine multiplicity for reaction {self.label}')
+            logger.info(f'Setting multiplicity of reaction {self.label} to {self.multiplicity}')
 
     def determine_rxn_charge(self):
         """A helper function for determining the surface charge"""
         if len(self.r_species):
             self.charge = sum([r.charge for r in self.r_species])
 
-    def determine_family(self, rmgdatabase):
+    def determine_family(self, rmg_database):
         """Determine the RMG family and saves the (family, own reverse) tuple in the ``family`` attribute"""
         if self.rmg_reaction is not None:
-            self.family, self.family_own_reverse = rmgdb.determine_reaction_family(rmgdb=rmgdatabase,
+            self.family, self.family_own_reverse = rmgdb.determine_reaction_family(rmgdb=rmg_database,
                                                                                    reaction=self.rmg_reaction)
 
-    def check_ts(self, verbose=True):
+    def check_ts(self, verbose: bool = True) -> bool:
         """
         Check that the TS E0 is above both reactants and products wells.
 
         Args:
-            verbose: Whether to print logging messages.
+            verbose (bool, optional): Whether to print logging messages.
 
-        Returns: Whether the TS energy is above both reactants and products wells, ``True`` if it is.
+        Returns:
+            bool: Whether the TS energy is above both reactants and products wells, ``True`` if it is.
         """
         r_e_elect = None if any([spc.e_elect is None for spc in self.r_species]) \
             else sum(spc.e_elect for spc in self.r_species)
@@ -429,53 +428,51 @@ class ARCReaction(object):
         if not self.label:
             raise ReactionError('A reaction seems to not be defined correctly')
         if self.arrow not in self.label:
-            raise ReactionError('A reaction label must include a double ended arrow with spaces on both'
-                                ' sides: "{0}". Got:{1}'.format(self.arrow, self.label))
+            raise ReactionError(f'A reaction label must include a double ended arrow with spaces on both '
+                                f'sides: "{self.arrow}". Got:{self.label}')
         if '+' in self.label and self.plus not in self.label:
-            raise ReactionError('Reactants or products in a reaction label must separated with {0} (has spaces on both'
-                                ' sides). Got:{1}'.format(self.plus, self.label))
+            raise ReactionError(f'Reactants or products in a reaction label must separated with {self.plus} '
+                                f'(has spaces on both sides). Got:{self.label}')
         species_labels = self.label.split(self.arrow)
         reactants = species_labels[0].split(self.plus)
         products = species_labels[1].split(self.plus)
         if self.reactants is not None:
             for reactant in reactants:
                 if reactant not in self.reactants:
-                    raise ReactionError('Reactant {0} from the reaction label {1} not in self.reactants ({2})'.format(
-                        reactant, self.label, self.reactants))
+                    raise ReactionError(f'Reactant {reactant} from the reaction label {self.label} '
+                                        f'not in self.reactants ({self.reactants})')
             for reactant in self.reactants:
                 if reactant not in reactants:
-                    raise ReactionError('Reactant {0} not in the reaction label ({1})'.format(reactant, self.label))
+                    raise ReactionError(f'Reactant {reactant} not in the reaction label ({self.label})')
         if self.products is not None:
             for product in products:
                 if product not in self.products:
-                    raise ReactionError('Product {0} from the reaction label {1} not in self.products ({2})'.format(
-                        product, self.label, self.products))
+                    raise ReactionError(f'Product {product} from the reaction label {self.label} '
+                                        f'not in self.products ({self.products})')
             for product in self.products:
                 if product not in products:
-                    raise ReactionError('Product {0} not in the reaction label ({1})'.format(product, self.label))
+                    raise ReactionError(f'Product {product} not in the reaction label ({self.label})')
         if self.r_species is not None:
             for reactant in self.r_species:
                 if reactant.label not in self.reactants:
-                    raise ReactionError('Reactant {0} from not in self.reactants ({1})'.format(
-                        reactant.label, self.reactants))
+                    raise ReactionError(f'Reactant {reactant.label} from not in self.reactants ({self.reactants})')
             for reactant in reactants:
                 if reactant not in [r.label for r in self.r_species]:
-                    raise ReactionError('Reactant {0} from the reaction label {1} not in self.r_species ({2})'.format(
-                        reactant, self.label, [r.label for r in self.r_species]))
+                    raise ReactionError(f'Reactant {reactant} from the reaction label {self.label} '
+                                        f'not in self.r_species ({[r.label for r in self.r_species]})')
             for reactant in self.reactants:
                 if reactant not in [r.label for r in self.r_species]:
-                    raise ReactionError('Reactant {0} not in n self.r_species ({1})'.format(
-                        reactant, [r.label for r in self.r_species]))
+                    raise ReactionError(f'Reactant {reactant} not in '
+                                        f'self.r_species ({[r.label for r in self.r_species]})')
         if self.p_species is not None:
             for product in self.p_species:
                 if product.label not in self.products:
-                    raise ReactionError('Product {0} from not in self.products ({1})'.format(
-                        product.label, self.reactants))
+                    raise ReactionError(f'Product {product.label} from not in self.products ({self.reactants})')
             for product in products:
                 if product not in [p.label for p in self.p_species]:
-                    raise ReactionError('Product {0} from the reaction label {1} not in self.p_species ({2})'.format(
-                        product, self.label, [p.label for p in self.p_species]))
+                    raise ReactionError(f'Product {product} from the reaction label {self.label} '
+                                        f'not in self.p_species ({[p.label for p in self.p_species]})')
             for product in self.products:
                 if product not in [p.label for p in self.p_species]:
-                    raise ReactionError('Product {0} not in n self.p_species ({1})'.format(
-                        product, [p.label for p in self.p_species]))
+                    raise ReactionError(f'Product {product} not in '
+                                        f'self.p_species ({[p.label for p in self.p_species]})')
