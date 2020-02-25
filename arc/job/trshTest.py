@@ -556,5 +556,18 @@ class TestTrsh(unittest.TestCase):
                           (-3.255509, -1.417186, -0.119474))}
         self.assertEqual(actions, {'change conformer': xyz})
 
+    def test_trsh_scan_job(self):
+        """Test troubleshooting problematic 1D rotor scan"""
+        case = {'label': 'CH2OOH',
+                 'scan_res': 4.0,
+                 'scan': [4, 1, 2, 3],
+                 'scan_list': [[4, 1, 2, 3], [1, 2, 3, 6]],
+                 'methods': {'freeze': [[5, 1, 2, 3], [2, 1, 4, 5]]},
+                 'log_file': os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'CH2OOH.out'),
+                }
+        scan_trsh, scan_res = trsh.trsh_scan_job(**case)
+        self.assertEqual(scan_trsh, 'D 5 4 1 2 F\nD 1 2 3 6 F\nB 2 3 F\n')
+        self.assertEqual(scan_res, 4.0)
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
