@@ -9,6 +9,7 @@ import numpy as np
 import os
 
 import pybel
+import qcelemental as qcel
 from rdkit import Chem
 from rdkit.Chem import rdMolTransforms as rdMT
 
@@ -234,6 +235,22 @@ def xyz_to_xyz_file_format(xyz_dict, comment=''):
     if len(comment.splitlines()) > 1:
         raise ConverterError('The comment attribute cannot be a multiline string, got:\n{0}'.format(list(comment)))
     return str(len(xyz_dict['symbols'])) + '\n' + comment.strip() + '\n' + xyz_to_str(xyz_dict) + '\n'
+
+
+def xyz_to_dmat(xyz_dict: dict) -> np.array:
+    """
+    Convert Cartesian coordinates to a distance matrix.
+
+    Args:
+        xyz_dict (dict): The Cartesian coordinates,
+
+    Returns:
+        list: the distance matrix.
+    """
+    xyz_dict = check_xyz_dict(xyz_dict)
+    dmat = qcel.util.misc.distance_matrix(a=np.array(xyz_to_coords_list(xyz_dict)),
+                                          b=np.array(xyz_to_coords_list(xyz_dict)))
+    return dmat
 
 
 def xyz_file_format_to_xyz(xyz_file):
