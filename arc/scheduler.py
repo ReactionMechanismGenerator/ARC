@@ -113,7 +113,7 @@ class Scheduler(object):
         max_job_time (float, optional): The maximal allowed job time on the server in hours (can be fractional).
         allow_nonisomorphic_2d (bool, optional): Whether to optimize species even if they do not have a 3D conformer
                                                  that is isomorphic to the 2D graph representation.
-        memory (int, optional): The total allocated job memory in GB (14 by default).
+        memory (float, optional): The total allocated job memory in GB (14 by default).
         testing (bool, optional): Used for internal ARC testing (generating the object w/o executing it).
         dont_gen_confs (list, optional): A list of species labels for which conformer jobs were loaded from a restart
                                          file, or user-requested. Additional conformer generation should be avoided.
@@ -157,8 +157,8 @@ class Scheduler(object):
                                        isomorphic to the 2D graph representation.
         dont_gen_confs (list): A list of species labels for which conformer jobs were loaded from a restart file,
                                or user-requested. Additional conformer generation should be avoided for them.
-        confs_to_dft (int): The number of lowest MD conformers to DFT at the conformers_level.
-        memory (int): The total allocated job memory in GB (14 by default).
+        confs_to_dft (int): The number of lowest force field conformers to consider.
+        memory (float): The total allocated job memory in GB (14 by default).
         job_types (dict): A dictionary of job types to execute. Keys are job types, values are boolean.
         bath_gas (str): A bath gas. Currently used in OneDMin to calc L-J parameters.
                         Allowed values are He, Ne, Ar, Kr, H2, N2, O2.
@@ -177,12 +177,36 @@ class Scheduler(object):
         solvent (dict): The solvent model and solvent to use.
     """
 
-    def __init__(self, project, ess_settings, species_list, project_directory, composite_method='', conformer_level='',
-                 opt_level='', freq_level='', sp_level='', scan_level='', ts_guess_level='', irc_level='',
-                 orbitals_level='', adaptive_levels=None, rmg_database=None, job_types=None, job_additional_options=None,
-                 solvent=None, job_shortcut_keywords=None, rxn_list=None, bath_gas=None, restart_dict=None,
-                 max_job_time=120, allow_nonisomorphic_2d=False, memory=14, testing=False, dont_gen_confs=None,
-                 confs_to_dft=5):
+    def __init__(self,
+                 project: str,
+                 ess_settings: dict,
+                 species_list: list,
+                 project_directory: str,
+                 composite_method: str = '',
+                 conformer_level: str = '',
+                 opt_level: str = '',
+                 freq_level: str = '',
+                 sp_level: str = '',
+                 scan_level: str = '',
+                 ts_guess_level: str = '',
+                 irc_level: str = '',
+                 orbitals_level: str = '',
+                 adaptive_levels: dict = None,
+                 rmg_database=None,
+                 job_types: dict = None,
+                 job_additional_options: dict = None,
+                 solvent: dict = None,
+                 job_shortcut_keywords: dict = None,
+                 rxn_list: list = None,
+                 bath_gas: str = None,
+                 restart_dict: dict = None,
+                 max_job_time: float = 120,
+                 allow_nonisomorphic_2d: bool = False,
+                 memory: float = 14,
+                 testing: bool = False,
+                 dont_gen_confs: list = None,
+                 confs_to_dft: int = 5,
+                 ) -> None:
         self.rmg_database = rmg_database
         self.restart_dict = restart_dict
         self.species_list = species_list
@@ -643,8 +667,8 @@ class Scheduler(object):
                         and not any([tsg.success is None for tsg in self.species_dict[label].ts_guesses]):
                     # This is a TS Species for which conformers haven't been spawned, and all .success flags
                     # contain a values (whether ``True`` or ``False``)
-                    # We're ready to spawn conformers for this TS Species
-                    self.species_dict[label].generate_conformers()
+                    # We're ready to spawn conformer jobs for this TS Species
+                    # Todo: no need to wait for all TSGs before spawning the first opt jobs
                     self.run_ts_conformer_jobs(label=label)
                     self.species_dict[label].ts_conf_spawned = True
 
@@ -1348,10 +1372,10 @@ class Scheduler(object):
             else:
                 # increment the counter sequentially (non-diagonal scan)
                 for index in range(len(scans)):
-                    if self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][index] < max_num -1:
+                    if self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][index] < max_num - 1:
                         self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][index] += 1
                         break
-                    elif (self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][index] == max_num -1
+                    elif (self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][index] == max_num - 1
                             and index < len(scans) - 1):
                         self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][index] = 0
 
@@ -1483,9 +1507,8 @@ class Scheduler(object):
                 plotter.save_nd_rotor_yaml(results, path=rotor_yaml_file_path)
                 self.species_dict[label].rotors_dict[rotor_dict_index]['scan_path'] = rotor_yaml_file_path
                 if trshed_points:
-                    logger.warning('Directed rotor scan for species {0} between pivots {1} had {2} points that '
-                                   'required optimization troubleshooting.'.format(
-                        label, rotor_dict['pivots'], trshed_points))
+                    logger.warning(f'Directed rotor scan for species {label} between pivots {rotor_dict["pivots"]} '
+                                   f'had {trshed_points} points that required optimization troubleshooting.')
                 rotor_path = os.path.join(self.project_directory, 'output', folder_name, label, 'rotors')
                 if len(results['scans']) == 1:  # plot 1D rotor
                     plotter.plot_1d_rotor_scan(
@@ -1691,7 +1714,8 @@ class Scheduler(object):
                                 self.species_dict[label].conf_is_isomorphic = True
                             else:
                                 if energies[i] is not None:
-                                    mol = molecules_from_xyz(xyzs[0], multiplicity=self.species_dict[label].multiplicity,
+                                    mol = molecules_from_xyz(xyzs[0],
+                                                             multiplicity=self.species_dict[label].multiplicity,
                                                              charge=self.species_dict[label].charge)[1]
                                     logger.info(f'A conformer for species {label} was found to be isomorphic with the '
                                                 f'2D graph representation {self.species_dict[label].mol.to_smiles()}. '
@@ -1712,10 +1736,6 @@ class Scheduler(object):
                                 self.output[label]['conformers'] += f'most stable conformer ({i}) did not ' \
                                                                     f'pass isomorphism check; '
                                 self.species_dict[label].conf_is_isomorphic = False
-                                logger.warning('Most stable conformer for species {0} with structure {1} was found to '
-                                               'be NON-isomorphic with the 2D graph representation {2}. Searching for '
-                                               'a different conformer that is isomorphic...'.format(
-                                    label, b_mol.to_smiles(), self.species_dict[label].mol.to_smiles()))
                                 logger.warning(f'Most stable conformer for species {label} with structure '
                                                f'{b_mol.to_smiles()} was found to be NON-isomorphic with the 2D graph '
                                                f'representation {self.species_dict[label].mol.to_smiles()}. '
@@ -2594,7 +2614,7 @@ class Scheduler(object):
         is_h = self.species_dict[label].number_of_atoms == 1 and \
             self.species_dict[label].mol.atoms[0].element.symbol in ['H', 'D', 'T']
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
-        memory, shift, cpu_cores, dont_rerun = \
+            memory, shift, cpu_cores, dont_rerun = \
             trsh_ess_job(label=label, level_of_theory_dict=level_of_theory, server=job.server,
                          job_status=job.job_status[1], is_h=is_h, job_type=job.job_type,
                          num_heavy_atoms=self.species_dict[label].number_of_heavy_atoms, software=job.software,
