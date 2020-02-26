@@ -4044,5 +4044,25 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         self.assertTrue(almost_equal_coords_lists(new_xyz, expected_xyz))
         self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol4), new_val, 5)
 
+    def test_compare_zmats(self):
+        """Test determining whether two conformers have almost equal internal coordinates (zmats)"""
+        z_1 = {'symbols': ('N', 'N', 'H', 'H'),
+               'coords': ((None, None, None), ('R_1_0', None, None), ('R_2|3_0|1', 'A_2|3_0|1_1|0', None),
+                          ('R_2|3_0|1', 'A_2|3_0|1_1|0', 'D_3_1_0_2')),
+               'vars': {'R_1_0': 1.2451214479859707, 'D_3_1_0_2': 180.00000435340846, 'R_2|3_0|1': 1.0308198031527174,
+                        'A_2|3_0|1_1|0': 112.42663889936155}, 'map': {0: 0, 1: 1, 2: 2, 3: 3}}
+        z_2 = {'symbols': ('N', 'N', 'H', 'H'),
+               'coords': ((None, None, None), ('R_1_0', None, None), ('R_2|3_0|1', 'A_2|3_0|1_1|0', None),
+                          ('R_2|3_0|1', 'A_2|3_0|1_1|0', 'D_3_1_0_2')),
+               'vars': {'R_1_0': 1.2458481980184417, 'D_3_1_0_2': 359.99999758516344, 'R_2|3_0|1': 1.0292894916884854,
+                        'A_2|3_0|1_1|0': 115.61126115172507}, 'map': {0: 0, 1: 1, 2: 2, 3: 3}}
+        z_3 = {'symbols': ('N', 'N', 'H', 'H'),
+               'coords': ((None, None, None), ('R_1_0', None, None), ('R_2|3_0|1', 'A_2|3_0|1_1|0', None),
+                          ('R_2|3_0|1', 'A_2|3_0|1_1|0', 'D_3_1_0_2')),
+               'vars': {'R_1_0': 1.24584819, 'D_3_1_0_2': 360, 'R_2|3_0|1': 1.0292894916884854,
+                        'A_2|3_0|1_1|0': 115.61126115172507}, 'map': {0: 0, 1: 1, 2: 2, 3: 3}}
+        self.assertFalse(converter.compare_zmats(z_1, z_2))
+        self.assertTrue(converter.compare_zmats(z_2, z_2))
+        self.assertTrue(converter.compare_zmats(z_2, z_3))
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
