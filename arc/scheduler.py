@@ -134,6 +134,7 @@ class Scheduler(object):
                         - 'method' (optional values: 'pcm' (default), 'cpcm', 'dipole', 'ipcm', 'scipcm')
                         -  'solvent' (values are strings of "known" solvents, see https://gaussian.com/scrf/,
                                       default is "water")
+        fine_only (bool): If ``True`` ARC will not run optimization jobs without fine=True
 
     Attributes:
         project (str): The project's name. Used for naming the working directory.
@@ -187,6 +188,7 @@ class Scheduler(object):
                                   the molecule. Keys are tuples of (min_num_atoms, max_num_atoms), values are
                                   dictionaries with 'optfreq' and 'sp' as keys and levels of theory as values.
         solvent (dict): The solvent model and solvent to use.
+        fine_only (bool): If ``True`` ARC will not run optimization jobs without fine=True
     """
 
     def __init__(self,
@@ -219,6 +221,7 @@ class Scheduler(object):
                  dont_gen_confs: list = None,
                  n_confs: int = 10,
                  e_confs: float = 5,
+                 fine_only: bool = False,
                  ) -> None:
         self.rmg_database = rmg_database
         self.restart_dict = restart_dict
@@ -241,6 +244,7 @@ class Scheduler(object):
         self.e_confs = e_confs
         self.dont_gen_confs = dont_gen_confs or list()
         self.job_types = job_types if job_types is not None else default_job_types
+        self.fine_only = fine_only
         self.output = dict()
 
         self.species_dict = dict()
@@ -408,7 +412,7 @@ class Scheduler(object):
                             # opt/fine isn't running
                             if not self.output[species.label]['paths']['geo']:
                                 # opt/fine hasn't finished (and isn't running), so run it
-                                self.run_opt_job(species.label)
+                                self.run_opt_job(species.label, fine=self.fine_only)
                             else:
                                 # opt/fine is done, check post-opt job types
                                 if not self.output[species.label]['job_types']['freq'] \
@@ -447,7 +451,7 @@ class Scheduler(object):
                     if self.composite_method:
                         self.run_composite_job(species.label)
                     else:
-                        self.run_opt_job(species.label)
+                        self.run_opt_job(species.label, fine=self.fine_only)
         self.run_conformer_jobs()
         while self.running_jobs != {}:  # loop while jobs are still running
             logger.debug(f'Currently running jobs:\n{self.running_jobs}')
@@ -485,7 +489,7 @@ class Scheduler(object):
                                 if self.species_dict[label].initial_xyz is not None:
                                     # if initial_xyz is None, then we're probably troubleshooting conformers, don't opt
                                     if not self.composite_method:
-                                        self.run_opt_job(label)
+                                        self.run_opt_job(label, fine=self.fine_only)
                                     else:
                                         self.run_composite_job(label)
                             self.timer = False
@@ -527,7 +531,7 @@ class Scheduler(object):
                             if success:
                                 if not self.composite_method:
                                     # This wasn't originally a composite method, probably troubleshooted as such
-                                    self.run_opt_job(label)
+                                    self.run_opt_job(label, fine=self.fine_only)
                                 else:
                                     if self.job_types['irc'] and self.species_dict[label].is_ts:
                                         self.run_irc_job(label=label, irc_direction='forward')
@@ -919,17 +923,18 @@ class Scheduler(object):
                             ' using it for geometry optimization'.format(label, rxn))
                 self.species_dict[label].initial_xyz = successful_tsgs[0].initial_xyz
                 if not self.composite_method:
-                    self.run_opt_job(label)
+                    self.run_opt_job(label, fine=self.fine_only)
                 else:
                     self.run_composite_job(label)
                 self.species_dict[label].chosen_ts_method = self.species_dict[label].ts_guesses[0].method
 
-    def run_opt_job(self, label):
+    def run_opt_job(self, label, fine=False):
         """
         Spawn a geometry optimization job. The initial guess is taken from the `initial_xyz` attribute.
 
         Args:
             label (str): The species label.
+            fine (bool): Whether or not a fine grid should be used during optimization
         """
         if 'opt' not in self.job_dict[label]:  # Check whether or not opt jobs have been spawned yet
             # we're spawning the first opt job for this species
@@ -937,7 +942,7 @@ class Scheduler(object):
         if self.species_dict[label].initial_xyz is None:
             raise SpeciesError(f'Cannot execute opt job for {label} without xyz (got None for Species.initial_xyz)')
         self.run_job(label=label, xyz=self.species_dict[label].initial_xyz, level_of_theory=self.opt_level,
-                     job_type='opt', fine=False)
+                     job_type='opt', fine=fine)
 
     def run_composite_job(self, label):
         """
@@ -1605,7 +1610,7 @@ class Scheduler(object):
                 if spawn_jobs:
                     if not self.composite_method:
                         if self.job_types['opt']:
-                            self.run_opt_job(label)
+                            self.run_opt_job(label, self.fine_only)
                         else:
                             # opt wasn't requested, skip directly to additional relevant job types
                             if self.job_types['freq']:
@@ -2259,7 +2264,7 @@ class Scheduler(object):
                         rotor_dict.pop('symmetry', None)
                     # re-run opt (or composite) on the new initial_xyz with the desired dihedral
                     if not self.composite_method:
-                        self.run_opt_job(label)
+                        self.run_opt_job(label, fine=self.fine_only)
                     else:
                         self.run_composite_job(label)
                 else:
