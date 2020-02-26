@@ -1554,7 +1554,7 @@ def get_parameter_from_atom_indices(zmat, indices, xyz_indexed=True):
     raise ZMatError(f'Could not find a key corresponding to {key} {indices}.')
 
 
-def compare_zmats(zmat1, zmat2, r_tol=None, a_tol=None, d_tol=None, verbose=False, symmetric_torsions=None):
+def _compare_zmats(zmat1, zmat2, r_tol=None, a_tol=None, d_tol=None, verbose=False, symmetric_torsions=None):
     """
     Compare two zmats. The zmats must have identical variables (i.e., derived from the same connectivity or ordered xyz,
     using the same constraints).

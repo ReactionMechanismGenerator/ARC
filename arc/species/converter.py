@@ -13,18 +13,23 @@ import qcelemental as qcel
 from rdkit import Chem
 from rdkit.Chem import rdMolTransforms as rdMT
 
-from arkane.common import symbol_by_number, mass_by_symbol, get_element_mass
+from arkane.common import get_element_mass, mass_by_symbol, symbol_by_number
 from rmgpy.exceptions import AtomTypeError
 from rmgpy.molecule.molecule import Atom, Bond, Molecule
 from rmgpy.quantity import ArrayQuantity
 from rmgpy.species import Species
 from rmgpy.statmech import Conformer
 
-from arc.common import get_logger, is_str_float, get_atom_radius
+from arc.common import almost_equal_lists, get_atom_radius, get_logger, is_str_float
 from arc.exceptions import ConverterError, InputError, SanitizationError, SpeciesError
 from arc.species.xyz_to_2d import MolGraph
-from arc.species.zmat import zmat_to_coords, get_atom_indices_from_zmat_parameter, xyz_to_zmat, KEY_FROM_LEN, \
-    get_parameter_from_atom_indices, get_all_neighbors
+from arc.species.zmat import (KEY_FROM_LEN,
+                              _compare_zmats,
+                              get_all_neighbors,
+                              get_atom_indices_from_zmat_parameter,
+                              get_parameter_from_atom_indices,
+                              zmat_to_coords,
+                              xyz_to_zmat)
 
 
 logger = get_logger()
@@ -1593,3 +1598,39 @@ def get_xyz_radius(xyz):
     atom_r = max([get_atom_radius(si) if get_atom_radius(si) is not None else 1.50 for si in border_elements])
     radius = r ** 0.5 + atom_r
     return radius
+
+
+def compare_zmats(z1, z2, r_tol=0.01, a_tol=2, d_tol=2, verbose=False, symmetric_torsions=None, index=1):
+    """
+    Compare internal coordinates of two conformers of the same species.
+    The comparison could principally be done using all dihedrals, which is information this module readily has,
+    but this function uses Z matrices instead for better robustness (this way rings are considered as well).
+
+    Args:
+        z1 (dict): Z matrix of conformer 1.
+        z2 (dict): Z matrix of conformer 2.
+        r_tol (float, optional): A tolerance for comparing distances (in Angstrom).
+        a_tol (float, optional): A tolerance for comparing angles (in degrees).
+        d_tol (float, optional): A tolerance for comparing dihedral angles (in degrees).
+        verbose (bool, optional): Whether to print a reason for determining the zmats are different if they are,
+                                  ``True`` to print.
+        symmetric_torsions (dict, optional): Keys are tuples scan indices (0- or 1-indexed), values are internal
+                                             rotation symmetry numbers (sigma). Conformers which only differ by an
+                                             integer number of 360 degrees / sigma are considered identical.
+        index (int, optional): Either ``0`` or ``1`` to specify the starting index in the keys of ``symmetric_torsions``
+
+    Returns:
+        bool: Whether the coordinates represent the same conformer within the given tolerance, ``True`` if they do.
+
+    Raises:
+        InputError: If ``xyz1`` and ``xyz2`` are of wrong type.
+    """
+    # convert the keys of symmetric_torsions to 0-indexed torsion tuples
+    symmetric_torsions = {tuple([torsion[i] - index for i in range(4)]): sigma
+                          for torsion, sigma in symmetric_torsions.items()} if symmetric_torsions is not None else None
+    if not all(isinstance(z, dict) for z in [z1, z2]):
+        raise InputError(f'xyz1 and xyz2 must be dictionaries, got {type(z1)} and {type(z2)}, respectively')
+    if z1['symbols'] != z2['symbols']:
+        return False
+    return _compare_zmats(z1, z2, r_tol=r_tol, a_tol=a_tol, d_tol=d_tol, verbose=verbose,
+                          symmetric_torsions=symmetric_torsions)
