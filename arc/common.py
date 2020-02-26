@@ -628,7 +628,43 @@ def key_by_val(dictionary, value):
     raise ValueError(f'Could not find value {value} in the dictionary\n{dictionary}')
 
 
-def almost_equal_coords(xyz1, xyz2, rtol=1.0000000000000001e-05, atol=1e-08):
+def almost_equal_lists(iter1: list or tuple or np.ndarray,
+                       iter2: list or tuple or np.ndarray,
+                       rtol: float = 1e-05,
+                       atol: float = 1e-08,
+                       ) -> bool:
+    """
+    A helper function for checking whether two iterables are almost equal.
+
+    Args:
+        iter1 (list, tuple, np.array): An iterable.
+        iter2 (list, tuple, np.array): An iterable.
+        rtol (float, optional): The relative tolerance parameter.
+        atol (float, optional): The absolute tolerance parameter.
+
+    Returns:
+        bool: ``True`` if they are almost equal, ``False`` otherwise.
+    """
+    if len(iter1) != len(iter2):
+        return False
+    for entry1, entry2 in zip(iter1, iter2):
+        if isinstance(entry1, (list, tuple, np.ndarray)) and isinstance(entry2, (list, tuple, np.ndarray)):
+            return almost_equal_lists(iter1=entry1, iter2=entry2, rtol=rtol, atol=atol)
+        else:
+            if isinstance(entry1, (int, float)) and isinstance(entry2, (int, float)):
+                if not np.isclose([entry1], [entry2], rtol=rtol, atol=atol):
+                    return False
+            else:
+                if entry1 != entry2:
+                    return False
+    return True
+
+
+def almost_equal_coords(xyz1: dict,
+                        xyz2: dict,
+                        rtol: float = 1e-05,
+                        atol: float = 1e-08,
+                        ) -> bool:
     """
     A helper function for checking whether two xyz's are almost equal.
 
@@ -648,7 +684,11 @@ def almost_equal_coords(xyz1, xyz2, rtol=1.0000000000000001e-05, atol=1e-08):
     return True
 
 
-def almost_equal_coords_lists(xyz1, xyz2, rtol=1.0000000000000001e-05, atol=1e-08):
+def almost_equal_coords_lists(xyz1: dict,
+                              xyz2: dict,
+                              rtol: float = 1e-05,
+                              atol: float = 1e-08,
+                              ) -> bool:
     """
     A helper function for checking two lists of xyz's has at least one entry in each that is almost equal.
     Useful for comparing xyz's in unit tests.
