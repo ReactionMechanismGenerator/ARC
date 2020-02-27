@@ -72,7 +72,7 @@ H      -1.16115119    0.31478894   -0.81506145
         project_directory = os.path.join(arc_path, 'Projects', project)
         label = 'butanol'
         spc1 = ARCSpecies(label=label, smiles='CCCCO')
-        spc1.generate_conformers(confs_to_dft=3)
+        spc1.generate_conformers(n_confs=3)
         self.assertIn(len(spc1.conformers), [2, 3])
         plotter.save_conformers_file(project_directory=project_directory, label=spc1.label,
                                      xyzs=spc1.conformers, level_of_theory='APFD/def2tzvp',

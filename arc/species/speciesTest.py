@@ -148,10 +148,14 @@ class TestARCSpecies(unittest.TestCase):
 
         self.spc6.conformers = list()
         self.spc6.generate_conformers()
-        self.assertEqual(len(self.spc6.conformers), 5)
+        self.assertEqual(len(self.spc6.conformers), 8)
 
         self.spc8.conformers = list()
         self.spc8.generate_conformers()
+        self.assertEqual(len(self.spc8.conformers), 1)
+
+        self.spc8.conformers = list()
+        self.spc8.generate_conformers(e_confs=10)
         self.assertEqual(len(self.spc8.conformers), 2)
 
         self.spc9.conformers = list()
@@ -159,27 +163,27 @@ class TestARCSpecies(unittest.TestCase):
         self.assertEqual(len(self.spc9.conformers), 1)
 
         self.spc10.conformers = list()
-        self.spc10.generate_conformers(confs_to_dft=1)
+        self.spc10.generate_conformers(n_confs=1)
         self.assertEqual(len(self.spc10.conformers), 1)
 
         self.spc10.conformers = list()
-        self.spc10.generate_conformers(confs_to_dft=2)
+        self.spc10.generate_conformers(n_confs=2)
         self.assertEqual(len(self.spc10.conformers), 2)
 
         self.spc10.conformers = list()
-        self.spc10.generate_conformers(confs_to_dft=3)
+        self.spc10.generate_conformers(n_confs=3)
         self.assertEqual(len(self.spc10.conformers), 3)
 
         self.spc11.conformers = list()
-        self.spc11.generate_conformers(confs_to_dft=1)
+        self.spc11.generate_conformers(n_confs=1)
         self.assertEqual(len(self.spc11.conformers), 1)
 
         self.spc11.conformers = list()
-        self.spc11.generate_conformers(confs_to_dft=2)
+        self.spc11.generate_conformers(n_confs=2)
         self.assertEqual(len(self.spc11.conformers), 2)
 
         self.spc11.conformers = list()
-        self.spc11.generate_conformers(confs_to_dft=3)
+        self.spc11.generate_conformers(n_confs=3)
         self.assertEqual(len(self.spc11.conformers), 3)
 
         xyz12 = """C       0.00000000    0.00000000    0.00000000
@@ -858,7 +862,7 @@ H       2.82319256   -0.46240839   -0.40178723"""
         spc3 = ARCSpecies(label=str('N3'), xyz=n3_xyz, multiplicity=1, smiles=str('NNN'))
         self.assertEqual(spc3.mol.atoms[1].symbol, 'H')
         spc3.generate_conformers()
-        self.assertEqual(len(spc3.conformers), 6)
+        self.assertEqual(len(spc3.conformers), 9)
 
         xyz4 = """O      -1.48027320    0.36597456    0.41386552
         C      -0.49770656   -0.40253648   -0.26500019

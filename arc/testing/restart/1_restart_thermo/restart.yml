@@ -5,7 +5,7 @@ conformer_level:
   method: b3lyp
   basis: 6-31g(d,p)
   dispersion: empiricaldispersion=gd3bj
-confs_to_dft: 5
+n_confs: 5
 ess_settings:
   gaussian:
   - server1
