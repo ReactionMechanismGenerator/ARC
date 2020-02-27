@@ -1533,7 +1533,7 @@ def update_mol(mol):
     """
     for atom in mol.atoms:
         atom.update_charge()
-    mol.update_atomtypes(log_species=False)
+    mol.update_atomtypes(log_species=False, raise_exception=False)
     mol.update_multiplicity()
     mol.identify_ring_membership()
     return mol
