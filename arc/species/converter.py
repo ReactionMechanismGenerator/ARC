@@ -1634,3 +1634,28 @@ def compare_zmats(z1, z2, r_tol=0.01, a_tol=2, d_tol=2, verbose=False, symmetric
         return False
     return _compare_zmats(z1, z2, r_tol=r_tol, a_tol=a_tol, d_tol=d_tol, verbose=verbose,
                           symmetric_torsions=symmetric_torsions)
+
+
+def compare_confs(xyz1: dict,
+                  xyz2: dict,
+                  rtol: float = 1e-5,
+                  atol: float = 1e-5,
+                  ) -> bool:
+    """
+    Compare two Cartesian coordinates representing conformers using distance matrices.
+
+    The relative difference (``rtol`` * abs(value in xyz2)) and the absolute difference ``atol``
+    are added together to compare against the absolute difference between (value in xyz1) and (value in xyz2).
+
+    Args:
+        xyz1 (dict): Conformer 1.
+        xyz2 (dict): Conformer 2.
+        rtol (float): The relative tolerance parameter (see Notes).
+        atol (float): The absolute tolerance parameter (see Notes).
+
+    Returns:
+        bool: Whether the two conformers have almost equal atom distances. ``True`` if they do.
+    """
+    xyz1, xyz2 = check_xyz_dict(xyz1), check_xyz_dict(xyz2)
+    dmat1, dmat2 = xyz_to_dmat(xyz1), xyz_to_dmat(xyz2)
+    return almost_equal_lists(dmat1, dmat2, rtol=rtol, atol=atol)
