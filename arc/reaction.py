@@ -229,8 +229,8 @@ class ARCReaction(object):
     def rmg_reaction_from_str(self, reaction_string):
         """A helper function for regenerating the RMG Reaction object from a string representation"""
         reactants, products = reaction_string.split(self.arrow)
-        reactants = [Species().from_smiles(smiles) for smiles in reactants.split(self.plus)]
-        products = [Species().from_smiles(smiles) for smiles in products.split(self.plus)]
+        reactants = [Species(smiles=smiles) for smiles in reactants.split(self.plus)]
+        products = [Species(smiles=smiles) for smiles in products.split(self.plus)]
         self.rmg_reaction = Reaction(reactants=reactants, products=products)
 
     def rmg_reaction_from_arc_species(self):

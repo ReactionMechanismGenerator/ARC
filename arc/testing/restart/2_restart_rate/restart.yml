@@ -6,7 +6,7 @@ conformer_level:
   basis: def2svp
   dispersion: ''
   method: wb97xd
-confs_to_dft: 5
+n_confs: 5
 freq_level:
   auxiliary_basis: ''
   basis: def2tzvp

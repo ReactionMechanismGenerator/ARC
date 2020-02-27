@@ -754,7 +754,7 @@ def save_kinetics_lib(rxn_list, path, name, lib_long_desc):
                                   xyz_to_str(rxn.ts_species.final_xyz)
                 rxn.rmg_reaction.kinetics = rxn.kinetics
                 rxn.rmg_reaction.kinetics.comment = ''
-                entries[i+1] = entry
+                entries[i + 1] = entry
             else:
                 logger.warning(f'Reaction {rxn.label} did not contain any kinetic data and was omitted from the '
                                f'kinetics library.')
@@ -781,7 +781,7 @@ def save_conformers_file(project_directory, label, xyzs, level_of_theory, multip
         project_directory (str): The path to the project's directory.
         label (str): The species label.
         xyzs (list): Entries are dict-format xyz coordinates of conformers.
-        level_of_theory (dict): The level of theory used for the conformers optimization.
+        level_of_theory (dict or str): The level of theory used for the conformers optimization.
         multiplicity (int, optional): The species multiplicity, used for perceiving the molecule.
         charge (int, optional): The species charge, used for perceiving the molecule.
         is_ts (bool, optional): Whether the species represents a TS. True if it does.

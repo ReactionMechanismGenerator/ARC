@@ -93,7 +93,8 @@ class TestARC(unittest.TestCase):
                          'T_max': None,
                          'T_count': 50,
                          'use_bac': True,
-                         'confs_to_dft': 5,
+                         'n_confs': None,
+                         'e_confs': 5,
                          'allow_nonisomorphic_2d': False,
                          'calc_freq_factor': True,
                          'ess_settings': {'gaussian': ['local', 'server2'], 'onedmin': ['server1'],
@@ -309,7 +310,7 @@ class TestARC(unittest.TestCase):
             testing=True,
         )
 
-        spc2 = Species().from_smiles('CC([O])=O')
+        spc2 = Species(smiles='CC([O])=O')
         spc2.generate_resonance_structures()
         spc2.thermo = db.thermo.get_thermo_data(spc2)
         self.assertAlmostEqual(spc2.get_enthalpy(298), -212439.26998495663, 1)

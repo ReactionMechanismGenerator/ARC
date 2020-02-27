@@ -18,7 +18,6 @@ Todo:
 conformers is a list of dictionaries, each with the following keys::
 
     {'xyz': <dict>,
-     'zmat': <dict>,
      'index': <int>,
      'FF energy': <float>,
      'source': <str>,
@@ -59,7 +58,7 @@ from rmgpy.molecule.element import C as C_ELEMENT, H as H_ELEMENT, F as F_ELEMEN
 from arc.common import logger, determine_top_group_indices
 from arc.exceptions import ConformerError, InputError
 import arc.plotter
-from arc.species import converter, vectors, zmat
+from arc.species import converter, vectors
 
 
 # The number of conformers to generate per range of heavy atoms in the molecule
@@ -85,9 +84,6 @@ CONFS_VS_TORSIONS = {(0, 1): 75,
 # The resolution (in degrees) for scanning smeared wells
 SMEARED_SCAN_RESOLUTIONS = 30.0
 
-# The number of conformers to return. Will be iteratively checked for consistency. The rest will be written to a file.
-NUM_CONFS_TO_RETURN = 5
-
 # An energy threshold (in kJ/mol) above which wells in a torsion will not be considered (rel. to the most stable well)
 DE_THRESHOLD = 5.
 
@@ -104,11 +100,26 @@ COMBINATION_THRESHOLD = 1000
 CONSOLIDATION_TOLS = {'R': 1e-2, 'A': 1e-2, 'D': 1e-2}
 
 
-def generate_conformers(mol_list, label, xyzs=None, torsions=None, tops=None, charge=0, multiplicity=None,
-                        num_confs=None, num_confs_to_return=None, de_threshold=None, smeared_scan_res=None,
-                        combination_threshold=None, force_field='MMFF94s', max_combination_iterations=None,
-                        diastereomers=None, return_all_conformers=False, plot_path=None, print_logs=True,
-                        use_zmats=True):
+def generate_conformers(mol_list,
+                        label,
+                        xyzs=None,
+                        torsions=None,
+                        tops=None,
+                        charge=0,
+                        multiplicity=None,
+                        num_confs_to_generate=None,
+                        n_confs=None,
+                        e_confs=None,
+                        de_threshold=None,
+                        smeared_scan_res=None,
+                        combination_threshold=None,
+                        force_field='MMFF94s',
+                        max_combination_iterations=None,
+                        diastereomers=None,
+                        return_all_conformers=False,
+                        plot_path=None,
+                        print_logs=True,
+                        ) -> list:
     """
     Generate conformers for (non-TS) species starting from a list of RMG Molecules.
     (resonance structures are assumed to have already been generated and included in the molecule list)
@@ -121,9 +132,10 @@ def generate_conformers(mol_list, label, xyzs=None, torsions=None, tops=None, ch
         tops (list, optional): A list of tops corresponding to torsions. Will be determined if not given.
         charge (int, optional): The species charge. Used to perceive a molecule from xyz.
         multiplicity (int, optional): The species multiplicity. Used to perceive a molecule from xyz.
-        num_confs (int, optional): The number of conformers to generate. Determined automatically if not given.
-        num_confs_to_return (int, optional): The number of conformers to return.
-        well_tolerance (float, optional): The required precision (in degrees) around which to center a well's mean.
+        num_confs_to_generate (int, optional): The number of conformers to generate (can be determined automatically)
+        n_confs (int, optional): The number of conformers to return.
+        e_confs (float, optional): The energy threshold in kJ/mol above the lowest energy conformer
+                                   below which all (unique) generated conformers will be returned.
         de_threshold (float, optional): Energy threshold (in kJ/mol) above which wells will not be considered.
         smeared_scan_res (float, optional): The resolution (in degrees) for scanning smeared wells.
         combination_threshold (int, optional): A threshold below which all combinations will be generated.
@@ -139,16 +151,13 @@ def generate_conformers(mol_list, label, xyzs=None, torsions=None, tops=None, ch
                                    If None, the plot will not be shown (nor saved).
         print_logs (bool, optional): Whether define a logger so logs are also printed to stdout.
                                      Useful when run outside of ARC. True to print.
-        use_zmats (bool, optional): Whether to assign a Z Matrix to each conformer which will be used for detecting
-                                    similar conformers to a certain tolerance. It might be memory-intensive to large
-                                    species, though. ``True`` to use Z Matrices. ``True`` by default.
-
-    Returns:
-        list: Lowest conformers (number of entries is num_confs_to_return times the number of enantiomer combinations)
 
     Raises:
         ConformerError: If something goes wrong.
         TypeError: If xyzs has entries of a wrong type.
+
+    Returns:
+        list: Lowest conformers.
     """
     if isinstance(mol_list, Molecule):
         # try generating resonance structures, but strictly keep atom order
@@ -196,7 +205,6 @@ def generate_conformers(mol_list, label, xyzs=None, torsions=None, tops=None, ch
     t0 = time.time()
     logger.info(f'Generating conformers for {label}')
 
-    num_confs_to_return = num_confs_to_return or NUM_CONFS_TO_RETURN
     max_combination_iterations = max_combination_iterations or MAX_COMBINATION_ITERATIONS
     combination_threshold = combination_threshold or COMBINATION_THRESHOLD
 
@@ -204,21 +212,20 @@ def generate_conformers(mol_list, label, xyzs=None, torsions=None, tops=None, ch
         torsions, tops = determine_rotors(mol_list)
     conformers = generate_force_field_conformers(
         mol_list=mol_list, label=label, xyzs=xyzs, torsion_num=len(torsions), charge=charge, multiplicity=multiplicity,
-        num_confs=num_confs, force_field=force_field, use_zmats=use_zmats)
+        num_confs=num_confs_to_generate, force_field=force_field)
 
     if len(conformers):
         conformers = determine_dihedrals(conformers, torsions)
 
         new_conformers, symmetries = deduce_new_conformers(
             label, conformers, torsions, tops, mol_list, smeared_scan_res, plot_path=plot_path,
-            combination_threshold=combination_threshold, force_field=force_field, use_zmats=use_zmats,
+            combination_threshold=combination_threshold, force_field=force_field,
             max_combination_iterations=max_combination_iterations, diastereomers=diastereomers,
             de_threshold=de_threshold)
 
         new_conformers = determine_chirality(conformers=new_conformers, label=label, mol=mol_list[0])
 
-        num_confs_to_return = min(num_confs_to_return, len(new_conformers))  # don't return more than we have
-        lowest_confs = get_lowest_confs(label, new_conformers, n=num_confs_to_return, symmetries=symmetries)
+        lowest_confs = get_lowest_confs(label, new_conformers, n=n_confs, e=e_confs)
 
         lowest_confs.sort(key=lambda x: x['FF energy'], reverse=False)  # sort by output confs, lowest to highest energy
 
@@ -242,7 +249,7 @@ def generate_conformers(mol_list, label, xyzs=None, torsions=None, tops=None, ch
 
 def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_scan_res=None, plot_path=None,
                           combination_threshold=1000, force_field='MMFF94s', max_combination_iterations=25,
-                          diastereomers=None, de_threshold=None, use_zmats=True):
+                          diastereomers=None, de_threshold=None):
     """
     By knowing the existing torsion wells, get the geometries of all important conformers.
     Validate that atoms don't collide in the generated conformers (don't consider ones where they do).
@@ -263,9 +270,6 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
                                         representing specific diastereomers to keep.
         de_threshold (float, optional): An energy threshold (in kJ/mol) above which wells in a torsion
                                         will not be considered.
-        use_zmats (bool, optional): Whether to assign a Z Matrix to each conformer which will be used for detecting
-                                    similar conformers to a certain tolerance. It might be memory-intensive to large
-                                    species, though.  ``True`` to use Z Matrices. ``True`` by default.
 
     Returns:
         list: The deduced conformers.
@@ -339,10 +343,10 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
             combination_threshold=combination_threshold, len_conformers=len(conformers), force_field=force_field,
             max_combination_iterations=max_combination_iterations, plot_path=plot_path, torsion_angles=torsion_angles,
             multiple_sampling_points_dict=multiple_sampling_points_dict, wells_dict=wells_dict,
-            de_threshold=de_threshold, symmetries=symmetries, use_zmats=use_zmats))
+            de_threshold=de_threshold, symmetries=symmetries))
 
     if plot_path is not None:
-        lowest_conf = get_lowest_confs(label=label, confs=new_conformers, n=1, symmetries=symmetries)[0]
+        lowest_conf = get_lowest_confs(label=label, confs=new_conformers, n=1)[0]
         lowest_conf = determine_chirality([lowest_conf], label, mol, force=False)[0]
         diastereomer = f" (diastereomer: {lowest_conf['chirality']})" if 'chirality' in lowest_conf \
                                                                          and lowest_conf['chirality'] else ''
@@ -357,7 +361,7 @@ def generate_conformer_combinations(label, mol, base_xyz, hypothetical_num_comb,
                                     multiple_sampling_points, combination_threshold=1000, len_conformers=-1,
                                     force_field='MMFF94s', max_combination_iterations=25, plot_path=None,
                                     torsion_angles=None, multiple_sampling_points_dict=None, wells_dict=None,
-                                    de_threshold=None, symmetries=None, use_zmats=True):
+                                    de_threshold=None, symmetries=None):
     """
     Call either conformers_combinations_by_lowest_conformer() or generate_all_combinations(),
     according to the hypothetical_num_comb.
@@ -385,9 +389,6 @@ def generate_conformer_combinations(label, mol, base_xyz, hypothetical_num_comb,
                                             If None, the plot will not be shown (nor saved).
         symmetries (dict, optional): Keys are tuples scan indices (1-indexed), values are internal
                                      rotation symmetry numbers (sigma).
-        use_zmats (bool, optional): Whether to assign a Z Matrix to each conformer which will be used for detecting
-                                    similar conformers to a certain tolerance. It might be memory-intensive to large
-                                    species, though.  ``True`` to use Z Matrices. ``True`` by default.
 
     Returns:
         list: New conformer combinations, entries are conformer dictionaries.
@@ -402,19 +403,19 @@ def generate_conformer_combinations(label, mol, base_xyz, hypothetical_num_comb,
             multiple_sampling_points=multiple_sampling_points, len_conformers=len_conformers, force_field=force_field,
             plot_path=plot_path, de_threshold=de_threshold, max_combination_iterations=max_combination_iterations,
             torsion_angles=torsion_angles, multiple_sampling_points_dict=multiple_sampling_points_dict,
-            wells_dict=wells_dict, symmetries=symmetries, use_zmats=use_zmats)
+            wells_dict=wells_dict, symmetries=symmetries)
     else:
         # just generate all combinations and get their FF energies
         logger.debug(f'hypothetical_num_comb for {label} is < {combination_threshold}')
         new_conformers = generate_all_combinations(label, mol, base_xyz, multiple_tors, multiple_sampling_points,
                                                    len_conformers=len_conformers, force_field=force_field,
-                                                   torsions=list(torsion_angles.keys()), use_zmats=use_zmats)
+                                                   torsions=list(torsion_angles.keys()))
     return new_conformers
 
 
 def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_tors, multiple_sampling_points,
                                                 len_conformers=-1, force_field='MMFF94s', max_combination_iterations=25,
-                                                torsion_angles=None, multiple_sampling_points_dict=None, use_zmats=True,
+                                                torsion_angles=None, multiple_sampling_points_dict=None,
                                                 wells_dict=None, de_threshold=None, plot_path=False, symmetries=None):
     """
     Iteratively modify dihedrals in the lowest conformer (each iteration deduces a new lowest conformer),
@@ -440,9 +441,6 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
                                             If None, the plot will not be shown (nor saved).
         symmetries (dict, optional): Keys are tuples scan indices (1-indexed), values are internal
                                      rotation symmetry numbers (sigma).
-        use_zmats (bool, optional): Whether to assign a Z Matrix to each conformer which will be used for detecting
-                                    similar conformers to a certain tolerance. It might be memory-intensive to large
-                                    species, though.  ``True`` to use Z Matrices. ``True`` by default.
 
     Returns:
         list: New conformer combinations, entries are conformer dictionaries.
@@ -464,21 +462,11 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
             newest_conformers_dict[tor] = list()  # keys are torsions for plotting
             for xyz, energy, dihedral in zip(xyzs, energies, sampling_points):
                 exists = False
-                for conf in new_conformers + newest_conformer_list:
-                    if use_zmats and compare_zmats(converter.zmat_from_xyz(xyz=xyz, mol=mol,
-                                                                           consolidation_tols=CONSOLIDATION_TOLS),
-                                                   conf['zmat'], symmetric_torsions=symmetries):
-                        exists = True
-                        break
-                    if not use_zmats and compare_xyz(xyz, conf['xyz']):
-                        exists = True
-                        break
+                if any([converter.compare_confs(xyz, conf['xyz']) for conf in new_conformers + newest_conformer_list]):
+                    exists = True
                 if xyz is not None:
-                    zmat = converter.zmat_from_xyz(xyz=xyz, mol=mol, consolidation_tols=CONSOLIDATION_TOLS) \
-                        if use_zmats else None
                     conformer = {'index': len_conformers + len(new_conformers) + len(newest_conformer_list),
                                  'xyz': xyz,
-                                 'zmat': zmat,
                                  'FF energy': round(energy, 3),
                                  'source': f'Changing dihedrals on most stable conformer, iteration {i}',
                                  'torsion': tor,
@@ -495,13 +483,9 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
         if not newest_conformer_list:
             newest_conformer_list = [lowest_conf_i]
         if force_field != 'gromacs':
-            lowest_conf_i = get_lowest_confs(label, newest_conformer_list, n=1, symmetries=symmetries)[0]
+            lowest_conf_i = get_lowest_confs(label, newest_conformer_list, n=1)[0]
             if lowest_conf_i['FF energy'] == base_energy \
-                    and (use_zmats and compare_zmats(lowest_conf_i['zmat'],
-                                                     converter.zmat_from_xyz(xyz=base_xyz, mol=mol,
-                                                                             consolidation_tols=CONSOLIDATION_TOLS),
-                                                     symmetric_torsions=symmetries)
-                         or not use_zmats and compare_xyz(lowest_conf_i['xyz'], base_xyz)):
+                    and converter.compare_confs(lowest_conf_i['xyz'], base_xyz):
                 break
             elif lowest_conf_i['FF energy'] < base_energy:
                 base_energy = lowest_conf_i['FF energy']
@@ -524,7 +508,7 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
 
 
 def generate_all_combinations(label, mol, base_xyz, multiple_tors, multiple_sampling_points, len_conformers=-1,
-                              torsions=None, force_field='MMFF94s', use_zmats=True):
+                              torsions=None, force_field='MMFF94s'):
     """
     Generate all combinations of torsion wells from a base conformer.
 
@@ -538,9 +522,6 @@ def generate_all_combinations(label, mol, base_xyz, multiple_tors, multiple_samp
         len_conformers (int, optional): The length of the existing conformers list (for consecutive numbering).
         force_field (str, optional): The type of force field to use.
         torsions (list, optional): A list of all possible torsions in the molecule. Will be determined if not given.
-        use_zmats (bool, optional): Whether to assign a Z Matrix to each conformer which will be used for detecting
-                                    similar conformers to a certain tolerance. It might be memory-intensive to large
-                                    species, though.  ``True`` to use Z Matrices. ``True`` by default.
 
     Returns:
         list: New conformer combinations, entries are conformer dictionaries.
@@ -555,22 +536,16 @@ def generate_all_combinations(label, mol, base_xyz, multiple_tors, multiple_samp
                                                              force_field=force_field)
         for xyz, energy in zip(xyzs, energies):
             if xyz is not None:
-                zmat = converter.zmat_from_xyz(xyz=xyz, mol=mol, consolidation_tols=CONSOLIDATION_TOLS) \
-                    if use_zmats else None
                 new_conformers.append({'index': len_conformers + len(new_conformers),
                                        'xyz': xyz,
-                                       'zmat': zmat,
                                        'FF energy': energy,
                                        'source': 'Generated all combinations from scan map'})
     else:
         # no multiple torsions (all torsions are symmetric or no torsions in the molecule), this is a trivial case
         energy = get_force_field_energies(label, mol, num_confs=None, xyz=base_xyz, force_field=force_field,
                                           optimize=True)[1][0]
-        zmat = converter.zmat_from_xyz(xyz=base_xyz, mol=mol, consolidation_tols=CONSOLIDATION_TOLS) \
-            if use_zmats else None
         new_conformers.append({'index': len_conformers + len(new_conformers),
                                'xyz': base_xyz,
-                               'zmat': zmat,
                                'FF energy': energy,
                                'source': 'Generated all combinations from scan map (trivial case)'})
     if torsions is None:
@@ -579,8 +554,14 @@ def generate_all_combinations(label, mol, base_xyz, multiple_tors, multiple_samp
     return new_conformers
 
 
-def generate_force_field_conformers(label, mol_list, torsion_num, charge, multiplicity, xyzs=None, num_confs=None,
-                                    force_field='MMFF94s', use_zmats=True):
+def generate_force_field_conformers(label,
+                                    mol_list,
+                                    torsion_num,
+                                    charge,
+                                    multiplicity,
+                                    xyzs=None,
+                                    num_confs=None,
+                                    force_field='MMFF94s'):
     """
     Generate conformers using RDKit and OpenBabel and optimize them using a force field
     Also consider user guesses in `xyzs`
@@ -594,9 +575,6 @@ def generate_force_field_conformers(label, mol_list, torsion_num, charge, multip
         multiplicity (int): The species spin multiplicity.
         num_confs (int, optional): The number of conformers to generate.
         force_field (str, optional): The type of force field to use.
-        use_zmats (bool, optional): Whether to assign a Z Matrix to each conformer which will be used for detecting
-                                    similar conformers to a certain tolerance. It might be memory-intensive to large
-                                    species, though.  ``True`` to use Z Matrices. ``True`` by default.
 
     Returns:
         list: Entries are conformer dictionaries.
@@ -618,15 +596,15 @@ def generate_force_field_conformers(label, mol_list, torsion_num, charge, multip
     for mol in mol_list:
         ff_xyzs, ff_energies = list(), list()
         try:
-            ff_xyzs, ff_energies = get_force_field_energies(label, mol, num_confs=num_confs, force_field=force_field)
+            ff_xyzs, ff_energies = get_force_field_energies(label,
+                                                            mol,
+                                                            num_confs=num_confs,
+                                                            force_field=force_field)
         except ValueError as e:
             logger.warning(f'Could not generate conformers for {label}, failed with: {e}')
         if ff_xyzs:
             for xyz, energy in zip(ff_xyzs, ff_energies):
-                zmat = converter.zmat_from_xyz(xyz=xyz, mol=mol_list[0], consolidation_tols=CONSOLIDATION_TOLS) \
-                    if use_zmats else None
                 conformers.append({'xyz': xyz,
-                                   'zmat': zmat,
                                    'index': len(conformers),
                                    'FF energy': energy,
                                    'source': force_field})
@@ -638,10 +616,7 @@ def generate_force_field_conformers(label, mol_list, torsion_num, charge, multip
             if not isinstance(xyz, dict):
                 raise ConformerError('Each entry in xyzs must be a dictionary, got {0}'.format(type(xyz)))
             s_mol, b_mol = converter.molecules_from_xyz(xyz, multiplicity=multiplicity, charge=charge)
-            zmat = converter.zmat_from_xyz(xyz=xyz, mol=mol_list[0], consolidation_tols=CONSOLIDATION_TOLS) \
-                if use_zmats else None
             conformers.append({'xyz': xyz,
-                               'zmat': zmat,
                                'index': len(conformers),
                                'FF energy': get_force_field_energies(label, mol=b_mol or s_mol, xyz=xyz,
                                                                      optimize=True, force_field=force_field)[1][0],
@@ -697,7 +672,7 @@ def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals
         for torsion, dihedral in zip(torsions, dihedrals):
             conf, rd_mol = converter.rdkit_conf_from_mol(mol, xyz_dihedrals)
             if conf is not None:
-                torsion_0_indexed = [tor -1 for tor in torsion]
+                torsion_0_indexed = [tor - 1 for tor in torsion]
                 xyz_dihedrals = converter.set_rdkit_dihedrals(conf, rd_mol, torsion_0_indexed, deg_abs=dihedral)
         if force_field != 'gromacs':
             xyz_, energy = get_force_field_energies(label, mol=mol, xyz=xyz_dihedrals, optimize=True,
@@ -952,28 +927,40 @@ def determine_well_width_tolerance(mean_width):
     return tol
 
 
-def get_lowest_confs(label, confs, n=1, energy='FF energy', symmetries=None):
+def get_lowest_confs(label: str,
+                     confs: dict or list,
+                     n: int = None,
+                     e: float = None,
+                     energy: str = 'FF energy',
+                     ) -> list:
     """
     Get the most stable conformer
 
     Args:
         label (str): The species' label.
         confs (dict, list): Entries are either conformer dictionaries or a length two list of xyz coordinates and energy
-        n (int): Number of lowest conformers to return.
+        n (int, optional): Number of lowest conformers to return.
+        e (float, optional): The energy threshold above the lowest energy conformer in kJ/mol
+                             below which all conformers will be returned.
         energy (str, optional): The energy attribute to search by. Currently only 'FF energy' is supported.
-        symmetries (dict, optional): Keys are tuples scan indices (1-indexed), values are internal
-                                     rotation symmetry numbers (sigma).
+
+    Raises:
+        ConformerError: If n < 1, e < 0, both n and e are ``None``, or if no conformers are given.
 
     Returns:
         list: Conformer dictionaries.
-
-    Raises:
-        ConformerError: If n < 1, or if no conformers were given.
     """
-    if n < 1:
-        raise ConformerError(f'n cannot be lower than 1, got: {n}')
+    if e is not None:
+        if e < 0:
+            raise ConformerError(f'e cannot be negative, got: {e}')
+    elif n is not None:
+        if n < 1:
+            raise ConformerError(f'n cannot be lower than 1, got: {n}')
+    else:
+        raise ConformerError(f'Either n or e must be specified')
     if not confs or confs is None:
         raise ConformerError(f'get_lowest_confs() got no conformers for {label}')
+
     if isinstance(confs[0], list):
         conformer_list = list()
         for entry in confs:
@@ -982,20 +969,20 @@ def get_lowest_confs(label, confs, n=1, energy='FF energy', symmetries=None):
     elif isinstance(confs[0], dict):
         conformer_list = [conformer for conformer in confs if energy in conformer and conformer[energy] is not None]
     else:
-        raise ConformerError(f"confs could either be a list of dictionaries or a list of lists. "
-                             f"Got a list of {type(confs[0])}'s for {label}")
+        raise ConformerError(f'confs could either be a list of dictionaries or a list of lists. '
+                             f'Got a list of {type(confs[0])}s for {label}')
+
     conformer_list.sort(key=lambda conformer: conformer[energy], reverse=False)
-    n_lowest_confs = [conformer_list[0]]
-    index = 1
-    use_zmat = all('zmat' in conf and conf['zmat'] is not None for conf in conformer_list)
-    while n - 1 and index < len(conformer_list):
-        if use_zmat and not any([compare_zmats(n_lowest_confs[i]['zmat'], conformer_list[index]['zmat'],
-                                  symmetric_torsions=symmetries) for i in range(len(n_lowest_confs))]) \
-                or not use_zmat and not compare_xyz(n_lowest_confs[-1]['xyz'], conformer_list[index]['xyz']):
-            n_lowest_confs.append(conformer_list[index])
-            n -= 1
-        index += 1
-    return n_lowest_confs
+    if e is not None:
+        min_e = min([conf[energy] for conf in conformer_list])
+    lowest_confs = [conformer_list[0]]
+    for index in range(len(conformer_list)):
+        if (e is not None and conformer_list[index][energy] > min_e + e) or (n is not None and len(lowest_confs) >= n):
+            break
+        if index > 0 and not any([converter.compare_confs(lowest_conf['xyz'], conformer_list[index]['xyz'])
+                                  for lowest_conf in lowest_confs]):
+            lowest_confs.append(conformer_list[index])
+    return lowest_confs
 
 
 def get_torsion_angles(label, conformers, torsions):
@@ -1028,7 +1015,7 @@ def get_torsion_angles(label, conformers, torsions):
 def get_force_field_energies(label, mol, num_confs=None, xyz=None, force_field='MMFF94s',  optimize=True, try_ob=False):
     """
     Determine force field energies using RDKit.
-    If num_confs is given, random 3D geometries will be generated. If xyz is given, it will be directly used instead.
+    If ``num_confs`` is given, random 3D geometries will be generated. If xyz is given, it will be directly used instead.
     The coordinates are returned in the order of atoms in mol.
 
     Args:
@@ -1054,8 +1041,12 @@ def get_force_field_energies(label, mol, num_confs=None, xyz=None, force_field='
         xyzs, energies = rdkit_force_field(label, rd_mol, mol=mol, force_field=force_field, optimize=optimize,
                                            try_ob=try_ob)
     if not len(xyzs) and force_field.lower() in ['gaff', 'mmff94', 'mmff94s', 'uff', 'ghemical'] and try_ob:
-        xyzs, energies = mix_rdkit_and_openbabel_force_field(label, mol, num_confs=num_confs, xyz=xyz,
-                                                             force_field=force_field, try_ob=try_ob)
+        xyzs, energies = mix_rdkit_and_openbabel_force_field(label,
+                                                             mol,
+                                                             num_confs=num_confs,
+                                                             xyz=xyz,
+                                                             force_field=force_field,
+                                                             try_ob=try_ob)
     if not len(xyzs):
         if force_field.lower() not in ['mmff94', 'mmff94s', 'uff', 'gaff', 'ghemical']:
             raise ConformerError(f'Unrecognized force field for {label}. Should be either MMFF94, MMFF94s, UFF, '
@@ -1064,7 +1055,12 @@ def get_force_field_energies(label, mol, num_confs=None, xyz=None, force_field='
     return xyzs, energies
 
 
-def mix_rdkit_and_openbabel_force_field(label, mol, num_confs=None, xyz=None, force_field='GAFF', try_ob=False):
+def mix_rdkit_and_openbabel_force_field(label,
+                                        mol,
+                                        num_confs=None,
+                                        xyz=None,
+                                        force_field='GAFF',
+                                        try_ob=False):
     """
     Optimize conformers using a force field (GAFF, MMFF94s, MMFF94, UFF, Ghemical)
     Use RDKit to generate the random conformers (OpenBabel isn't good enough),
@@ -1102,7 +1098,11 @@ def mix_rdkit_and_openbabel_force_field(label, mol, num_confs=None, xyz=None, fo
 
     else:
         for xyz in unoptimized_xyzs:
-            xyzs_, energies_ = openbabel_force_field(label, mol, num_confs, xyz=xyz, force_field=force_field)
+            xyzs_, energies_ = openbabel_force_field(label,
+                                                     mol,
+                                                     num_confs,
+                                                     xyz=xyz,
+                                                     force_field=force_field)
             xyzs.extend(xyzs_)
             energies.extend(energies_)
     return xyzs, energies
@@ -1533,7 +1533,7 @@ def update_mol(mol):
     """
     for atom in mol.atoms:
         atom.update_charge()
-    mol.update_atomtypes(log_species=False)
+    mol.update_atomtypes(log_species=False, raise_exception=False)
     mol.update_multiplicity()
     mol.identify_ring_membership()
     return mol
@@ -1552,7 +1552,6 @@ def generate_monoatomic_conformer(symbol):
     conf = {'xyz': {'symbols': (symbol,),
                     'isotopes': (converter.get_most_common_isotope_for_element(symbol),),
                     'coords': ((0.0, 0.0, 0.0),)},
-            'zmat': {'symbols': (symbol,), 'coords': ((None, None, None),), 'vars': {}, 'map': {0: 0}},
             'index': 0,
             'FF energy': 0.0,
             'chirality': None,
@@ -1560,71 +1559,6 @@ def generate_monoatomic_conformer(symbol):
             'torsion_dihedrals': None,
             }
     return conf
-
-
-def compare_zmats(z1, z2, r_tol=0.01, a_tol=2, d_tol=2, verbose=False, symmetric_torsions=None, index=1):
-    """
-    Compare internal coordinates of two conformers of the same species.
-    The comparison could principally be done using all dihedrals, which is information this module readily has,
-    but this function uses Z matrices instead for better robustness (this way rings are considered as well).
-
-    Args:
-        z1 (dict): Z matrix of conformer 1.
-        z2 (dict): Z matrix of conformer 2.
-        r_tol (float, optional): A tolerance for comparing distances (in Angstrom).
-        a_tol (float, optional): A tolerance for comparing angles (in degrees).
-        d_tol (float, optional): A tolerance for comparing dihedral angles (in degrees).
-        verbose (bool, optional): Whether to print a reason for determining the zmats are different if they are,
-                                  ``True`` to print.
-        symmetric_torsions (dict, optional): Keys are tuples scan indices (0- or 1-indexed), values are internal
-                                             rotation symmetry numbers (sigma). Conformers which only differ by an
-                                             integer number of 360 degrees / sigma are considered identical.
-        index (int, optional): Either ``0`` or ``1`` to specify the starting index in the keys of ``symmetric_torsions``
-
-    Returns:
-        bool: Whether the coordinates represent the same conformer within the given tolerance, ``True`` if they do.
-
-    Raises:
-        InputError: If ``xyz1`` and ``xyz2`` are of wrong type.
-    """
-    # convert the keys of symmetric_torsions to 0-indexed torsion tuples
-    symmetric_torsions = {tuple([torsion[i] - index for i in range(4)]): sigma
-                          for torsion, sigma in symmetric_torsions.items()} if symmetric_torsions is not None else None
-    if not all(isinstance(z, dict) for z in [z1, z2]):
-        raise InputError(f'xyz1 and xyz2 must be dictionaries, got {type(z1)} and {type(z2)}, respectively')
-    if z1['symbols'] != z2['symbols']:
-        return False
-    return zmat.compare_zmats(z1, z2, r_tol=r_tol, a_tol=a_tol, d_tol=d_tol, verbose=verbose,
-                              symmetric_torsions=symmetric_torsions)
-
-
-def compare_xyz(xyz1, xyz2, precision=0.1):
-    """
-    Compare coordinates of two conformers of the same species. Not checking isotopes.
-    compare_zmats() is much more accurate, use this function only if the conformers do not have the `zmat` attribute.
-
-    Args:
-        xyz1 (dict): Coordinates of conformer 1 in either string or array format.
-        xyz2 (dict): Coordinates of conformer 2 in either string or array format.
-        precision (float, optional): The allowed difference threshold between coordinates, in Angstroms.
-
-    Returns:
-        bool: Whether the coordinates represent the same conformer within the given ``precision``, ``True`` if they do.
-
-    Raises:
-        InputError: If ``xyz1`` and ``xyz2`` are of wrong type or have different elements (not considering isotopes).
-    """
-    if not all(isinstance(xyz, dict) for xyz in [xyz1, xyz2]):
-        raise InputError('xyz1 and xyz2 must be dictionaries, got {0} and {1}, respectively'.format(
-                              type(xyz1), type(xyz2)))
-    if xyz1['symbols'] != xyz2['symbols']:
-        raise IndexError('xyz1 and xyz2 have different elements, cannot compare coordinates. '
-                         'Got:\n{0}\nand:\n{1}'.format(xyz1['symbols'], xyz2['symbols']))
-    for coord1, coord2 in zip(xyz1['coords'], xyz2['coords']):
-        for entry1, entry2 in zip(coord1, coord2):
-            if abs(entry1 - entry2) > precision:
-                return False
-    return True
 
 
 def translate_groups(label, mol, xyz, pivot):
@@ -2041,7 +1975,7 @@ def replace_n_with_c_in_mol(mol, chiral_nitrogen_centers):
             raise ConformerError(f'Cannot replace a nitrogen atom index {n_index} if not all of its bonds are single '
                                  f'(got: {[bond.order for bond in mol.atoms[n_index].edges.values()]}).')
         new_c_atom = Atom(element=C_ELEMENT, radical_electrons=mol.atoms[n_index].radical_electrons,
-                        charge=mol.atoms[n_index].charge, lone_pairs=0, id=mol.atoms[n_index].id)
+                          charge=mol.atoms[n_index].charge, lone_pairs=0, id=mol.atoms[n_index].id)
         new_c_atom.edges = dict()
         for atom2 in mol.atoms[n_index].edges.keys():
             # delete bonds from all other atoms connected to the atom represented by n_index

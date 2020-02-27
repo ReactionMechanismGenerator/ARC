@@ -364,7 +364,7 @@ class ARCSpecies(object):
                 self.charge = charge
             if self.mol is None:
                 if adjlist:
-                    self.mol = Molecule().from_adjacency_list(adjlist=adjlist)
+                    self.mol = Molecule().from_adjacency_list(adjlist=adjlist, raise_atomtype_exception=False)
                 elif inchi:
                     self.mol = rmg_mol_from_inchi(inchi)
                 elif smiles:
@@ -654,7 +654,8 @@ class ARCSpecies(object):
         self.neg_freqs_trshed = species_dict['neg_freqs_trshed'] if 'neg_freqs_trshed' in species_dict else list()
         self.bond_corrections = species_dict['bond_corrections'] if 'bond_corrections' in species_dict else dict()
         try:
-            self.mol = Molecule().from_adjacency_list(species_dict['mol']) if 'mol' in species_dict else None
+            self.mol = Molecule().from_adjacency_list(species_dict['mol'], raise_atomtype_exception=False) \
+                if 'mol' in species_dict else None
         except (ValueError, InvalidAdjacencyListError) as e:
             logger.error('Could not read RMG adjacency list {0}. Got:\n{1}'.format(species_dict['mol'] if 'mol'
                                                                                    in species_dict else None, e))
@@ -664,7 +665,7 @@ class ARCSpecies(object):
         adjlist = species_dict['adjlist'] if 'adjlist' in species_dict else None
         if self.mol is None:
             if adjlist is not None:
-                self.mol = Molecule().from_adjacency_list(adjlist=adjlist)
+                self.mol = Molecule().from_adjacency_list(adjlist=adjlist, raise_atomtype_exception=False)
             elif inchi is not None:
                 self.mol = rmg_mol_from_inchi(inchi)
             elif smiles is not None:
@@ -738,14 +739,15 @@ class ARCSpecies(object):
                                        numbers=arkane_spc.conformer.number.value)
         if arkane_spc.adjacency_list is not None:
             try:
-                self.mol = Molecule().from_adjacency_list(adjlist=arkane_spc.adjacency_list)
+                self.mol = Molecule().from_adjacency_list(adjlist=arkane_spc.adjacency_list,
+                                                          raise_atomtype_exception=False)
             except ValueError:
                 print('Could not read adjlist:\n{0}'.format(arkane_spc.adjacency_list))  # should *not* be logging
                 raise
         elif arkane_spc.inchi is not None:
-            self.mol = Molecule().from_inchi(inchistr=arkane_spc.inchi)
+            self.mol = Molecule().from_inchi(inchistr=arkane_spc.inchi, raise_atomtype_exception=False)
         elif arkane_spc.smiles is not None:
-            self.mol = Molecule().from_smiles(arkane_spc.smiles)
+            self.mol = Molecule().from_smiles(arkane_spc.smiles, raise_atomtype_exception=False)
         if self.mol is not None:
             self.multiplicity = self.mol.multiplicity
             self.charge = self.mol.get_net_charge()
@@ -794,13 +796,19 @@ class ARCSpecies(object):
                                 atoms.append(atom2)
                     mol.atoms = atoms
 
-    def generate_conformers(self, confs_to_dft=5, plot_path=None):
+    def generate_conformers(self,
+                            n_confs: int = 15,
+                            e_confs: float = 5,
+                            plot_path: str = None,
+                            ) -> None:
         """
         Generate conformers
 
         Args:
-            confs_to_dft (int, optional): The number of conformers to store in the .conformers attribute of the species
-                                          that will later be DFT'ed at the conformers_level.
+            n_confs (int, optional): The max number of conformers to store in the .conformers attribute
+                                            that will later be DFT'ed at the conformers_level.
+            e_confs (float, optional): The energy threshold in kJ/mol above the lowest energy conformer below which all
+                                       (unique) generated conformers will be stored in the .conformers attribute.
             plot_path (str, optional): A folder path in which the plot will be saved.
                                        If None, the plot will not be shown (nor saved).
         """
@@ -814,11 +822,17 @@ class ARCSpecies(object):
             else:
                 xyz = self.get_xyz(generate=False)
                 diastereomers = [xyz] if xyz is not None else None
-            lowest_confs = conformers.generate_conformers(mol_list=mol_list, label=self.label,
-                                                          charge=self.charge, multiplicity=self.multiplicity,
-                                                          force_field=self.force_field, print_logs=False,
-                                                          num_confs_to_return=confs_to_dft, return_all_conformers=False,
-                                                          plot_path=plot_path, diastereomers=diastereomers)
+            lowest_confs = conformers.generate_conformers(mol_list=mol_list,
+                                                          label=self.label,
+                                                          charge=self.charge,
+                                                          multiplicity=self.multiplicity,
+                                                          force_field=self.force_field,
+                                                          print_logs=False,
+                                                          n_confs=n_confs,
+                                                          e_confs=e_confs,
+                                                          return_all_conformers=False,
+                                                          plot_path=plot_path,
+                                                          diastereomers=diastereomers)
             if lowest_confs is not None:
                 self.conformers.extend([conf['xyz'] for conf in lowest_confs])
                 self.conformer_energies.extend([None] * len(lowest_confs))
@@ -1112,7 +1126,7 @@ class ARCSpecies(object):
             if mol is not None and mol.multiplicity >= 1:
                 self.multiplicity = mol.multiplicity
             elif adjlist:
-                mol = Molecule().from_adjacency_list(adjlist)
+                mol = Molecule().from_adjacency_list(adjlist, raise_atomtype_exception=False)
                 self.multiplicity = mol.multiplicity
             elif self.mol is not None and self.mol.multiplicity >= 1:
                 self.multiplicity = self.mol.multiplicity
@@ -1499,8 +1513,8 @@ class ARCSpecies(object):
                     else:
                         raise SpeciesError('Could not figure out which atom should gain a radical '
                                            'due to scission in {0}'.format(self.label))
-        mol1.update()
-        mol2.update()
+        mol1.update(raise_atomtype_exception=False)
+        mol2.update(raise_atomtype_exception=False)
 
         # match xyz to mol:
         if len(mol1.atoms) != len(mol2.atoms):
@@ -1683,9 +1697,9 @@ class TSGuess(object):
             reactants = list()
             products = list()
             for reactant in reac:
-                reactants.append(Species().from_smiles(reactant))
+                reactants.append(Species(smiles=reactant))
             for product in prod:
-                products.append(Species().from_smiles(product))
+                products.append(Species(smiles=product))
             self.rmg_reaction = Reaction(reactants=reactants, products=products)
 
     def execute_ts_guess_method(self):

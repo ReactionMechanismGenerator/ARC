@@ -457,7 +457,7 @@ class TestZMat(unittest.TestCase):
                                  ('R_1_0', None, None)),
                       'vars': {'R_1_0': 0.6956932439857395},
                       'map': {0: 0, 1: 1}}
-        self.assertTrue(zmat.compare_zmats(z, expected_z, verbose=True))
+        self.assertTrue(zmat._compare_zmats(z, expected_z, verbose=True))
 
         z = zmat.xyz_to_zmat(self.ch2, consolidate=False)  # just the first three atoms
         expected_z = {'symbols': ('C', 'H', 'H'),
@@ -466,7 +466,7 @@ class TestZMat(unittest.TestCase):
                                  ('R_2_1', 'A_2_1_0', None)),
                       'vars': {'R_1_0': 1.0730302929508322, 'R_2_1': 1.9756079619269422, 'A_2_1_0': 22.989828156538568},
                       'map': {0: 0, 1: 1, 2: 2}}
-        self.assertTrue(zmat.compare_zmats(z, expected_z, verbose=True))
+        self.assertTrue(zmat._compare_zmats(z, expected_z, verbose=True))
 
         z = zmat.xyz_to_zmat(self.ch2, constraints={'R_atom': [(2, 1)]})  # just the first three atoms w/ a constraint
         expected_z = {'symbols': ('C', 'H', 'H'),
@@ -475,7 +475,7 @@ class TestZMat(unittest.TestCase):
                                  ('R_2_1', 'A_2_1_0', None)),
                       'vars': {'R_1_0': 1.0730302929508322, 'R_2_1': 1.9756079619269422, 'A_2_1_0': 22.989828156538568},
                       'map': {0: 0, 1: 1, 2: 2}}
-        self.assertTrue(zmat.compare_zmats(z, expected_z, verbose=True))
+        self.assertTrue(zmat._compare_zmats(z, expected_z, verbose=True))
 
         z = zmat.xyz_to_zmat(self.ch4, consolidate=False)  # "simple" five atoms, no consolidation
         expected_z = {'symbols': ('C', 'H', 'H', 'H', 'H'),
@@ -486,7 +486,7 @@ class TestZMat(unittest.TestCase):
                                'D_3_2_0_1': 120.00000000000001, 'R_4_3': 1.7820012700068855,
                                'A_4_3_2': 59.99999916833805, 'D_4_3_2_1': 70.52877936550931},
                       'map': {0: 0, 1: 1, 2: 2, 3: 3, 4: 4}}
-        self.assertTrue(zmat.compare_zmats(z, expected_z, verbose=True))
+        self.assertTrue(zmat._compare_zmats(z, expected_z, verbose=True))
 
         z = zmat.xyz_to_zmat(self.ch4, consolidate=True)  # "simple" five atoms, consolidation
         expected_z = {'symbols': ('C', 'H', 'H', 'H', 'H'),
@@ -497,7 +497,7 @@ class TestZMat(unittest.TestCase):
                                'A_4_3_2': 59.99999916833805, 'D_4_3_2_1': 70.52877936550931,
                                'R_2|3|4_1|2|3': 1.7820012700068855, 'A_2|3_1|2_0|0': 35.26438764560717},
                       'map': {0: 0, 1: 1, 2: 2, 3: 3, 4: 4}}
-        self.assertTrue(zmat.compare_zmats(z, expected_z, verbose=True))
+        self.assertTrue(zmat._compare_zmats(z, expected_z, verbose=True))
 
         # "simple" five atoms using connectivity, consolidation
         z = zmat.xyz_to_zmat(self.ch4, mol=ARCSpecies(label='CH4', xyz=self.ch4).mol, consolidate=True)
@@ -510,7 +510,7 @@ class TestZMat(unittest.TestCase):
                       'vars': {'R_1|2|3|4_0|0|0|0': 1.0912484581271156, 'A_2|3|4_0|0|0_1|1|1': 109.47122114377756,
                                'D_3|4_0|0_1|1_2|3': 120.00000000000001},
                       'map': {0: 0, 1: 1, 2: 2, 3: 3, 4: 4}}
-        self.assertTrue(zmat.compare_zmats(z, expected_z, verbose=True))
+        self.assertTrue(zmat._compare_zmats(z, expected_z, verbose=True))
 
         z = zmat.xyz_to_zmat(self.n2h2)  # only two heavy atoms, H on each side
         expected_z = {'symbols': ('N', 'N', 'H', 'H'),
@@ -519,7 +519,7 @@ class TestZMat(unittest.TestCase):
                       'vars': {'R_1_0': 1.2451214479859707, 'R_2_1': 1.8953164901754294, 'A_2_1_0': 30.18165946689929,
                                'R_3_2': 2.785552137148173, 'A_3_2_0': 24.405141545817347,
                                'D_3_2_0_1': 3.6222548091772e-06}, 'map': {0: 0, 1: 1, 2: 2, 3: 3}}
-        self.assertTrue(zmat.compare_zmats(z, expected_z, verbose=True))
+        self.assertTrue(zmat._compare_zmats(z, expected_z, verbose=True))
 
         z = zmat.xyz_to_zmat(self.h2nn)  # only two heavy atoms, but H's only on one side
         expected_z = {'symbols': ('N', 'N', 'H', 'H'),
@@ -528,7 +528,7 @@ class TestZMat(unittest.TestCase):
                       'vars': {'R_1_0': 1.453439904003661, 'R_2_1': 1.0201432886642632, 'A_2_1_0': 121.26532344550412,
                                'R_3_2': 1.7439821177668233, 'A_3_2_0': 66.26220791342335,
                                'D_3_2_0_1': 359.99999758516344}, 'map': {0: 0, 1: 1, 2: 2, 3: 3}}
-        self.assertTrue(zmat.compare_zmats(z, expected_z, verbose=True))
+        self.assertTrue(zmat._compare_zmats(z, expected_z, verbose=True))
 
         # only two heavy atoms, check H dihedrals make sense and represent "real" molecular torsions
         # also tests a case where the 'map' is not trivial
@@ -545,7 +545,7 @@ class TestZMat(unittest.TestCase):
                                'R_3|6_1|1': 1.019169330302324, 'A_2|4_0|0_1|1': 110.20495980110817,
                                'A_3|6_1|1_0|0': 109.41187648524644},
                       'map': {0: 0, 1: 1, 2: 2, 3: 5, 4: 3, 5: 4, 6: 6}}
-        self.assertTrue(zmat.compare_zmats(z, expected_z, verbose=True))
+        self.assertTrue(zmat._compare_zmats(z, expected_z, verbose=True))
 
         # check a 3-member ring
         z = zmat.xyz_to_zmat(self.co3, mol=ARCSpecies(label='cO3', xyz=self.co3, smiles='O1OO1').mol)
@@ -555,7 +555,7 @@ class TestZMat(unittest.TestCase):
                                  ('R_1|2_0|0', 'A_2_0_1', None)),
                       'vars': {'A_2_0_1': 60.000001547447354, 'R_1|2_0|0': 1.4437053921236238},
                       'map': {0: 0, 1: 1, 2: 2}}
-        self.assertTrue(zmat.compare_zmats(z, expected_z, verbose=True))
+        self.assertTrue(zmat._compare_zmats(z, expected_z, verbose=True))
 
         # check a linear molecule (with a dummy atom)
         z = zmat.xyz_to_zmat(self.co2, mol=ARCSpecies(label='CO2', xyz=self.co2, smiles='O=C=O').mol)
@@ -567,7 +567,7 @@ class TestZMat(unittest.TestCase):
                       'vars': {'RX_2_1': 1.0, 'DX_3_1_2_0': 180.0, 'R_1|3_0|1': 1.404999961513641,
                                'AX_2|3_1|1_0|2': 90.0},
                       'map': {0: 0, 1: 1, 2: 'X3', 3: 2}}
-        self.assertTrue(zmat.compare_zmats(z, expected_z, verbose=True))
+        self.assertTrue(zmat._compare_zmats(z, expected_z, verbose=True))
 
         # check a larger linear molecule (with several dummy atoms) with connectivity
         z = zmat.xyz_to_zmat(self.c4h2, mol=ARCSpecies(label='CtCCtC', xyz=self.c4h2, smiles='C#CC#C').mol)
@@ -595,7 +595,7 @@ class TestZMat(unittest.TestCase):
                                'AX_2|3|4|5|6|7|8|9_1|1|3|3|0|0|5|5_0|2|1|4|1|6|3|8': 90.0,
                                'DX_3|5|7|9_1|3|0|5_2|4|6|8_0|1|1|3': 180.0},
                       'map': {0: 0, 1: 1, 2: 'X6', 3: 2, 4: 'X7', 5: 3, 6: 'X8', 7: 4, 8: 'X9', 9: 5}}
-        self.assertTrue(zmat.compare_zmats(z, expected_z, verbose=True))
+        self.assertTrue(zmat._compare_zmats(z, expected_z, verbose=True))
 
         # check a larger linear molecule (with several dummy atoms) without connectivity
         z = zmat.xyz_to_zmat(self.c4h2)
@@ -620,7 +620,7 @@ class TestZMat(unittest.TestCase):
                                'AX_2|3|4|5|6|7|8|9_1|1|3|3|5|5|7|7_0|2|0|4|0|6|0|8': 90.0, 'DX_3|5_1|3_2|4_0|0': 180.0,
                                'DX_7|9_5|7_6|8_0|0': 0.0},
                       'map': {0: 0, 1: 1, 2: 'X6', 3: 2, 4: 'X7', 5: 3, 6: 'X8', 7: 4, 8: 'X9', 9: 5}}
-        self.assertTrue(zmat.compare_zmats(z, expected_z, verbose=True))
+        self.assertTrue(zmat._compare_zmats(z, expected_z, verbose=True))
 
         z = zmat.xyz_to_zmat(self.c6h8, mol=ARCSpecies(label='c6h8', xyz=self.c6h8, smiles='C=CC=C=CC=C').mol,
                              consolidate=False)
@@ -654,7 +654,7 @@ class TestZMat(unittest.TestCase):
                                'A_15_7_6': 122.24035799136644, 'D_15_7_6_14': 180.00215607227028},
                       'map': {0: 0, 1: 1, 2: 2, 3: 3, 4: 'X15', 5: 4, 6: 5, 7: 6, 8: 7, 9: 8, 10: 9, 11: 10, 12: 11,
                               13: 12, 14: 13, 15: 14}}
-        self.assertTrue(zmat.compare_zmats(z, expected_z, verbose=True))
+        self.assertTrue(zmat._compare_zmats(z, expected_z, verbose=True))
 
         # test benzene
         adj = """1  C u0 p0 c0 {2,B} {6,B} {7,S}
@@ -695,7 +695,7 @@ class TestZMat(unittest.TestCase):
                                'D_5_3_1_0': 1.9090959104164224e-06, 'D_7_1_0_6': 0.0,
                                'D_6|8|9|10|11_0|3|5|4|2_1|1|3|2|0_5|0|1|0|1': 180.00000108126886},
                       'map': {0: 0, 1: 1, 2: 5, 3: 2, 4: 4, 5: 3, 6: 6, 7: 7, 8: 8, 9: 9, 10: 10, 11: 11}}
-        self.assertTrue(zmat.compare_zmats(z, expected_z, verbose=True))
+        self.assertTrue(zmat._compare_zmats(z, expected_z, verbose=True))
 
         # test benzene with two linear groups
         z = zmat.xyz_to_zmat(self.benzene_linear, mol=ARCSpecies(
@@ -736,7 +736,7 @@ class TestZMat(unittest.TestCase):
                                'D_15_5_7_9': 7.778248095798993e-06, 'D_7|8_5|6_3|4_4|7': 1.8688260386968244e-06},
                       'map': {0: 5, 1: 4, 2: 'X15', 3: 3, 4: 2, 5: 6, 6: 1, 7: 7, 8: 0, 9: 8, 10: 'X16', 11: 9, 12: 10,
                               13: 11, 14: 12, 15: 13, 16: 'X17', 17: 14}}
-        self.assertTrue(zmat.compare_zmats(z, expected_z, verbose=True))
+        self.assertTrue(zmat._compare_zmats(z, expected_z, verbose=True))
 
         # test linear alcohol
         z = zmat.xyz_to_zmat(self.c3h3oh, mol=ARCSpecies(label='c3h3oh', xyz=self.c3h3oh, smiles='C#CCO').mol)
@@ -759,7 +759,7 @@ class TestZMat(unittest.TestCase):
                                'D_9_4_3_1': 310.94886913928315, 'RX_2|5_1|0': 1.0, 'AX_2|3|5|6_1|1|0|0_0|2|1|5': 90.0,
                                'DX_3|6_1|0_2|5_0|1': 180.0},
                       'map': {0: 0, 1: 1, 2: 'X8', 3: 2, 4: 3, 5: 'X9', 6: 4, 7: 5, 8: 6, 9: 7}}
-        self.assertTrue(zmat.compare_zmats(z, expected_z, verbose=True))
+        self.assertTrue(zmat._compare_zmats(z, expected_z, verbose=True))
 
         # test a long linear molecule with different edges
         z = zmat.xyz_to_zmat(self.linear_o_s, mol=ARCSpecies(label='linear_o_s', xyz=self.linear_o_s,
@@ -816,7 +816,7 @@ class TestZMat(unittest.TestCase):
                                'DX_3|5|7|9|11|13_1|3|5|7|9|11_2|4|6|8|10|12_0|1|3|5|7|9': 180.0},
                       'map': {0: 0, 1: 1, 2: 'X10', 3: 2, 4: 'X11', 5: 3, 6: 'X12', 7: 4, 8: 'X13', 9: 5, 10: 'X14',
                               11: 6, 12: 'X15', 13: 7, 14: 8, 15: 9}}
-        self.assertTrue(zmat.compare_zmats(z, expected_z, verbose=True))
+        self.assertTrue(zmat._compare_zmats(z, expected_z, verbose=True))
 
         # test c4linear
         z = zmat.xyz_to_zmat(self.c4linear, mol=ARCSpecies(label='c4linear', xyz=self.c4linear,
@@ -890,7 +890,7 @@ class TestZMat(unittest.TestCase):
                       'map': {0: 0, 1: 1, 2: 'X15', 3: 2, 4: 'X16', 5: 3, 6: 'X17', 7: 4, 8: 11, 9: 7, 10: 5, 11: 'X18',
                               12: 12, 13: 'X19', 14: 8, 15: 'X20', 16: 6, 17: 'X21', 18: 9, 19: 'X22', 20: 10,
                               21: 'X23', 22: 13, 23: 'X24', 24: 14}}
-        self.assertTrue(zmat.compare_zmats(zmat.consolidate_zmat(z), expected_z, verbose=True))
+        self.assertTrue(zmat._compare_zmats(zmat.consolidate_zmat(z), expected_z, verbose=True))
 
         # test an API (CJ-11974)
         z = zmat.xyz_to_zmat(self.cj, mol=ARCSpecies(
@@ -1053,7 +1053,7 @@ class TestZMat(unittest.TestCase):
                               46: 46, 47: 47, 48: 48, 49: 49, 50: 50, 51: 51, 52: 52, 53: 53, 54: 54, 55: 55, 56: 56,
                               57: 57, 58: 58, 59: 59, 60: 60, 61: 61, 62: 62, 63: 63, 64: 64, 65: 65, 66: 66, 67: 67,
                               68: 68, 69: 69, 70: 70, 71: 71}}
-        self.assertTrue(zmat.compare_zmats(zmat.consolidate_zmat(z), expected_z, verbose=True))
+        self.assertTrue(zmat._compare_zmats(zmat.consolidate_zmat(z), expected_z, verbose=True))
 
         # test methylamine with a dihedral constraint
         z = zmat.xyz_to_zmat(self.ch3nh2, mol=ARCSpecies(label='CH3NH2', xyz=self.ch3nh2, smiles='CN').mol,
@@ -1070,7 +1070,7 @@ class TestZMat(unittest.TestCase):
                                'D_5_2_1_4': 239.76779188408136, 'R_6_1': 1.0191693010605467,
                                'A_6_1_2': 109.41187816450345, 'D_6_1_2_5': 65.17113681053117},
                       'map': {0: 5, 1: 1, 2: 0, 3: 2, 4: 3, 5: 4, 6: 6}}
-        self.assertTrue(zmat.compare_zmats(z, expected_z, verbose=True))
+        self.assertTrue(zmat._compare_zmats(z, expected_z, verbose=True))
 
         # test H2O2 with a dihedral constraint
         z = zmat.xyz_to_zmat(self.h2o2, mol=ARCSpecies(label='H2O2', xyz=self.h2o2, smiles='OO').mol,
@@ -1082,7 +1082,7 @@ class TestZMat(unittest.TestCase):
                                'R_3_2': 0.9760734554285878, 'A_3_2_1': 96.7728795665803,
                                'D_3_2_1_0': 129.36732759202636},
                       'map': {0: 3, 1: 1, 2: 0, 3: 2}}
-        self.assertTrue(zmat.compare_zmats(z, expected_z, verbose=True))
+        self.assertTrue(zmat._compare_zmats(z, expected_z, verbose=True))
 
     def test_consolidate_zmat(self):
         """Test consolidating a zmat"""
@@ -1114,7 +1114,7 @@ class TestZMat(unittest.TestCase):
                                'D_0_1_2_4': 35.26438968275465,
                                'R_0|0|0|0_1|2|3|4': 1.0912484581271156},
                       'map': {0: 0, 1: 1, 2: 2, 3: 3, 4: 4}}
-        self.assertTrue(zmat.compare_zmats(zmat.consolidate_zmat(z), expected_z, verbose=True))
+        self.assertTrue(zmat._compare_zmats(zmat.consolidate_zmat(z), expected_z, verbose=True))
 
         # test consolidating the same coordinates as CH4 with replaced symbols, expect different consolidation
         # note that the values of 'R_0|0_1|2' and 'R_0|0_3|4' are the same, but the represent different elements
@@ -1148,7 +1148,7 @@ class TestZMat(unittest.TestCase):
                                'R_0|0_1|2': 1.0912484581271156,
                                'R_0|0_3|4': 1.0912484581271156},
                       'map': {0: 0, 1: 1, 2: 2, 3: 3, 4: 4}}
-        self.assertTrue(zmat.compare_zmats(zmat.consolidate_zmat(z), expected_z, verbose=True))
+        self.assertTrue(zmat._compare_zmats(zmat.consolidate_zmat(z), expected_z, verbose=True))
 
         # test consolidation while specifying a molecule (consolidate by atom types)
         z = zmat.xyz_to_zmat(self.c6h8, mol=ARCSpecies(label='c6h8', xyz=self.c6h8, smiles='C=CC=C=CC=C').mol,
@@ -1182,7 +1182,7 @@ class TestZMat(unittest.TestCase):
                                'D_11|12_2|5_1|6_0|7': 359.8632362707074},
                       'map': {0: 0, 1: 1, 2: 2, 3: 3, 4: 'X15', 5: 4, 6: 5, 7: 6, 8: 7, 9: 8, 10: 9, 11: 10, 12: 11,
                               13: 12, 14: 13, 15: 14}}
-        self.assertTrue(zmat.compare_zmats(zmat.consolidate_zmat(z), expected_z, verbose=True))
+        self.assertTrue(zmat._compare_zmats(zmat.consolidate_zmat(z), expected_z, verbose=True))
 
         # test consolidation while specifying a molecule (consolidate by atom types)
         # this is a special case where the consolidation algorithm finds two different lists to consolidate
@@ -1228,7 +1228,7 @@ class TestZMat(unittest.TestCase):
                                'R_10|11|8_0|1|0': 1.0956084664750403},
                       'map': {0: 0, 1: 1, 2: 3, 3: 2, 4: 4, 5: 5, 6: 6, 7: 7, 8: 8, 9: 9, 10: 10, 11: 11, 12: 12,
                               13: 13, 14: 14, 15: 15, 16: 16, 17: 17, 18: 18}}
-        self.assertTrue(zmat.compare_zmats(zmat.consolidate_zmat(z), expected_z, verbose=True))
+        self.assertTrue(zmat._compare_zmats(zmat.consolidate_zmat(z), expected_z, verbose=True))
 
     def test_get_atom_indices_from_zmat_parameter(self):
         """Test attaining atom indices from the zmat string parameter"""
@@ -1370,7 +1370,7 @@ class TestZMat(unittest.TestCase):
                             ('R_1_0', None, None)),
                  'vars': {'R_1_0': 0.6956932439857395},
                  'map': {0: 0, 1: 1}}
-        self.assertTrue(zmat.compare_zmats(zmat1, zmat2))
+        self.assertTrue(zmat._compare_zmats(zmat1, zmat2))
 
         # two identical complex zmats
         zmat1 = {'symbols': ('C', 'C', 'X', 'C', 'O', 'X', 'H', 'H', 'H', 'H'),
@@ -1411,7 +1411,7 @@ class TestZMat(unittest.TestCase):
                           'D_9_4_3_1': 310.94886913928315, 'RX_2|5_1|0': 1.0, 'AX_2|3|5|6_1|1|0|0_0|2|3|5': 90.0,
                           'DX_3|6_1|0_2|5_0|3': 180.0},
                  'map': {0: 0, 1: 1, 2: 'X', 3: 2, 4: 3, 5: 'X', 6: 4, 7: 5, 8: 6, 9: 7}}
-        self.assertTrue(zmat.compare_zmats(zmat1, zmat2))
+        self.assertTrue(zmat._compare_zmats(zmat1, zmat2))
 
         # non-identical zmats (H2 and the above complex zmat)
         zmat1 = {'symbols': ('H', 'H'),
@@ -1419,7 +1419,7 @@ class TestZMat(unittest.TestCase):
                             ('R_1_0', None, None)),
                  'vars': {'R_1_0': 0.6956932439857395},
                  'map': {0: 0, 1: 1}}
-        self.assertFalse(zmat.compare_zmats(zmat1, zmat2))
+        self.assertFalse(zmat._compare_zmats(zmat1, zmat2))
 
         # a simple case of two H2 zmats that differ within the tolerance
         zmat1 = {'symbols': ('H', 'H'),
@@ -1432,7 +1432,7 @@ class TestZMat(unittest.TestCase):
                             ('R_1_0', None, None)),
                  'vars': {'R_1_0': 0.6956932439857395},
                  'map': {0: 0, 1: 1}}
-        self.assertTrue(zmat.compare_zmats(zmat1, zmat2))
+        self.assertTrue(zmat._compare_zmats(zmat1, zmat2))
 
         # two zmats that differ within the tolerance
         zmat1 = {'symbols': ('C', 'N', 'H', 'H', 'H', 'H', 'H'),
@@ -1463,7 +1463,7 @@ class TestZMat(unittest.TestCase):
                           'R_2|4_0|0': 1.0935188594180785, 'R_3|6_1|1': 1.019169330302324,
                           'A_2|4_0|0_1|1': 110.20495980110817, 'A_3|6_1|1_0|0': 109.41187648524644},
                  'map': {0: 0, 1: 1, 2: 2, 3: 5, 4: 3, 5: 4, 6: 6}}
-        self.assertTrue(zmat.compare_zmats(zmat1, zmat2))
+        self.assertTrue(zmat._compare_zmats(zmat1, zmat2))
 
         # two zmats that differ beyond the tolerance
         zmat1 = {'symbols': ('C', 'N', 'H', 'H', 'H', 'H', 'H'),
@@ -1494,7 +1494,7 @@ class TestZMat(unittest.TestCase):
                           'R_2|4_0|0': 1.0935188594180785, 'R_3|6_1|1': 1.019169330302324,
                           'A_2|4_0|0_1|1': 110.20495980110817, 'A_3|6_1|1_0|0': 109.41187648524644},
                  'map': {0: 0, 1: 1, 2: 2, 3: 5, 4: 3, 5: 4, 6: 6}}
-        self.assertFalse(zmat.compare_zmats(zmat1, zmat2))
+        self.assertFalse(zmat._compare_zmats(zmat1, zmat2))
 
     def test_get_all_neighbors(self):
         """Test getting the neighbors of an atom in a molecule"""
