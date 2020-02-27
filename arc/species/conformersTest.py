@@ -1107,6 +1107,17 @@ O       1.40839617    0.14303696    0.00000000"""
         self.assertEqual(conformers.determine_torsion_symmetry(label='', top1=tops[0], mol_list=[mol9],
                                                                torsion_scan=torsion_angles[tuple(torsions[0])]), 6)
 
+        mol10 = Molecule(smiles='O[CH2]')
+        mol10.update()
+        torsions, tops = conformers.determine_rotors([mol10])
+        confs = conformers.generate_force_field_conformers(mol_list=[mol10], label='mol10', num_confs=50,
+                                                           torsion_num=len(torsions), charge=0, multiplicity=2)
+        confs = conformers.determine_dihedrals(conformers=confs, torsions=torsions)
+        torsion_angles = conformers.get_torsion_angles(label='', conformers=confs, torsions=torsions)
+        self.assertEqual(len(torsions), 1)
+        self.assertEqual(conformers.determine_torsion_symmetry(label='', top1=tops[0], mol_list=[mol10],
+                                                               torsion_scan=torsion_angles[tuple(torsions[0])]), 2)
+
         # test symmetry for a torsion involving a benzene ring
         spc1 = ARCSpecies(label='aniline', smiles='Nc1ccccc1')
         torsions, tops = conformers.determine_rotors(spc1.mol_list)
