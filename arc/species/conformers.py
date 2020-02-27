@@ -863,6 +863,11 @@ def determine_torsion_symmetry(label, top1, mol_list, torsion_scan):
                 and all([mol.atoms[top[i] - 1].is_hydrogen() for i in range(1, 4)]):
             symmetry *= 3
             check_tops[j] = 0
+        # A quick bypass for methylene radicals:
+        if len(top) == 3 and mol.atoms[top[0] - 1].is_carbon() and mol.atoms[top[0] - 1].radical_electrons == 1 \
+                and all([mol.atoms[top[i] - 1].is_hydrogen() for i in range(1, 3)]):
+            symmetry *= 2
+            check_tops[j] = 0
         # A quick bypass for benzene rings:
         elif len(top) == 11 and sum([mol.atoms[top[i] - 1].is_carbon() for i in range(11)]) == 6 \
                 and sum([mol.atoms[top[i] - 1].is_hydrogen() for i in range(11)]) == 5:
