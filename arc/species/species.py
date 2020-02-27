@@ -794,13 +794,19 @@ class ARCSpecies(object):
                                 atoms.append(atom2)
                     mol.atoms = atoms
 
-    def generate_conformers(self, confs_to_dft=5, plot_path=None):
+    def generate_conformers(self,
+                            n_confs: int = 15,
+                            e_confs: float = 5,
+                            plot_path: str = None,
+                            ) -> None:
         """
         Generate conformers
 
         Args:
-            confs_to_dft (int, optional): The number of conformers to store in the .conformers attribute of the species
-                                          that will later be DFT'ed at the conformers_level.
+            n_confs (int, optional): The max number of conformers to store in the .conformers attribute
+                                            that will later be DFT'ed at the conformers_level.
+            e_confs (float, optional): The energy threshold in kJ/mol above the lowest energy conformer below which all
+                                       (unique) generated conformers will be stored in the .conformers attribute.
             plot_path (str, optional): A folder path in which the plot will be saved.
                                        If None, the plot will not be shown (nor saved).
         """
@@ -814,11 +820,17 @@ class ARCSpecies(object):
             else:
                 xyz = self.get_xyz(generate=False)
                 diastereomers = [xyz] if xyz is not None else None
-            lowest_confs = conformers.generate_conformers(mol_list=mol_list, label=self.label,
-                                                          charge=self.charge, multiplicity=self.multiplicity,
-                                                          force_field=self.force_field, print_logs=False,
-                                                          num_confs_to_return=confs_to_dft, return_all_conformers=False,
-                                                          plot_path=plot_path, diastereomers=diastereomers)
+            lowest_confs = conformers.generate_conformers(mol_list=mol_list,
+                                                          label=self.label,
+                                                          charge=self.charge,
+                                                          multiplicity=self.multiplicity,
+                                                          force_field=self.force_field,
+                                                          print_logs=False,
+                                                          n_confs=n_confs,
+                                                          e_confs=e_confs,
+                                                          return_all_conformers=False,
+                                                          plot_path=plot_path,
+                                                          diastereomers=diastereomers)
             if lowest_confs is not None:
                 self.conformers.extend([conf['xyz'] for conf in lowest_confs])
                 self.conformer_energies.extend([None] * len(lowest_confs))

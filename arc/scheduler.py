@@ -26,8 +26,13 @@ from arc.job.local import check_running_jobs_ids
 from arc.job.ssh import SSHClient
 from arc.job.trsh import trsh_negative_freq, trsh_scan_job, trsh_ess_job, trsh_conformer_isomorphism, scan_quality_check
 from arc.species.species import ARCSpecies, are_coords_compliant_with_graph, determine_rotor_symmetry, TSGuess
-from arc.species.converter import molecules_from_xyz, check_isomorphism, standardize_xyz_string, \
-    str_to_xyz, xyz_to_str, xyz_to_coords_list
+from arc.species.converter import (check_isomorphism,
+                                   compare_confs,
+                                   molecules_from_xyz,
+                                   standardize_xyz_string,
+                                   str_to_xyz,
+                                   xyz_to_coords_list,
+                                   xyz_to_str)
 from arc.ts.atst import autotst
 from arc.settings import default_job_types, rotor_scan_resolution
 import arc.rmgdb as rmgdb
@@ -117,7 +122,9 @@ class Scheduler(object):
         testing (bool, optional): Used for internal ARC testing (generating the object w/o executing it).
         dont_gen_confs (list, optional): A list of species labels for which conformer jobs were loaded from a restart
                                          file, or user-requested. Additional conformer generation should be avoided.
-        confs_to_dft (int, optional): The number of lowest MD conformers to DFT at the conformers_level.
+        n_confs (int, optional): The number of lowest force field conformers to consider.
+        e_confs (float, optional): The energy threshold in kJ/mol above the lowest energy conformer below which
+                                   force field conformers are considered.
         solvent (dict): This argument, if not None, requests that a calculation be performed in the presence of a
                         solvent by placing the solute in a cavity within the solvent reaction field.
                         Keys are:
@@ -157,8 +164,10 @@ class Scheduler(object):
                                        isomorphic to the 2D graph representation.
         dont_gen_confs (list): A list of species labels for which conformer jobs were loaded from a restart file,
                                or user-requested. Additional conformer generation should be avoided for them.
-        confs_to_dft (int): The number of lowest force field conformers to consider.
         memory (float): The total allocated job memory in GB (14 by default).
+        n_confs (int): The number of lowest force field conformers to consider.
+        e_confs (float): The energy threshold in kJ/mol above the lowest energy conformer below which
+                         force field conformers are considered.
         job_types (dict): A dictionary of job types to execute. Keys are job types, values are boolean.
         bath_gas (str): A bath gas. Currently used in OneDMin to calc L-J parameters.
                         Allowed values are He, Ne, Ar, Kr, H2, N2, O2.
@@ -205,7 +214,8 @@ class Scheduler(object):
                  memory: float = 14,
                  testing: bool = False,
                  dont_gen_confs: list = None,
-                 confs_to_dft: int = 5,
+                 n_confs: int = None,
+                 e_confs: float = 5,
                  ) -> None:
         self.rmg_database = rmg_database
         self.restart_dict = restart_dict
@@ -224,7 +234,8 @@ class Scheduler(object):
         self.bath_gas = bath_gas
         self.solvent = solvent
         self.adaptive_levels = adaptive_levels
-        self.confs_to_dft = confs_to_dft
+        self.n_confs = n_confs
+        self.e_confs = e_confs
         self.dont_gen_confs = dont_gen_confs or list()
         self.job_types = job_types if job_types is not None else default_job_types
         self.output = dict()
@@ -646,7 +657,8 @@ class Scheduler(object):
                                          f'MMFF94s conformers instead of fitting a force field for species {label}, '
                                          f'although its force_field attribute was set to "fit".')
                             self.species_dict[label].force_field = 'MMFF94s'
-                            self.species_dict[label].generate_conformers(confs_to_dft=self.confs_to_dft,
+                            self.species_dict[label].generate_conformers(n_confs=self.n_confs,
+                                                                         e_confs=self.e_confs,
                                                                          plot_path=os.path.join(self.project_directory,
                                                                                                 'output', 'Species',
                                                                                                 label, 'geometry',
@@ -888,7 +900,9 @@ class Scheduler(object):
                     else:
                         # run the combinatorial method w/o fitting a force field
                         self.species_dict[label].generate_conformers(
-                            confs_to_dft=self.confs_to_dft, plot_path=os.path.join(
+                            n_confs=self.n_confs,
+                            e_confs=self.e_confs,
+                            plot_path=os.path.join(
                                 self.project_directory, 'output', 'Species', label, 'geometry', 'conformers'))
                     self.process_conformers(label)
             elif not self.job_types['conformers']:
@@ -1160,7 +1174,8 @@ class Scheduler(object):
                          'the ess_settings dictionary. Generating standard MMFF94s conformers instead for '
                          'species {0}, although its force_field attribute was set to "fit".'.format(label))
             self.species_dict[label].force_field = 'MMFF94s'
-            self.species_dict[label].generate_conformers(confs_to_dft=self.confs_to_dft,
+            self.species_dict[label].generate_conformers(n_confs=self.n_confs,
+                                                         e_confs=self.e_confs,
                                                          plot_path=os.path.join(self.project_directory, 'output',
                                                                                 'Species', label, 'geometry',
                                                                                 'conformers'))
@@ -2373,7 +2388,7 @@ class Scheduler(object):
         """
         done = False
         conf_list = read_yaml_file(job.local_path_to_output_file)
-        lowest_conf = conformers.get_lowest_confs(label=label, confs=conf_list)[0]
+        lowest_conf = conformers.get_lowest_confs(label=label, confs=conf_list, n=1)[0]
         if self.species_dict[label].recent_md_conformer is None:
             self.species_dict[label].recent_md_conformer = lowest_conf + [0]
         else:
@@ -2386,7 +2401,7 @@ class Scheduler(object):
                 self.species_dict[label].recent_md_conformer = lowest_conf \
                                                                + [self.species_dict[label].recent_md_conformer[2] + 1]
             elif lowest_conf[1] == self.species_dict[label].recent_md_conformer[1]:
-                if conformers.compare_xyz(lowest_conf[0], self.species_dict[label].recent_md_conformer[0]):
+                if compare_confs(lowest_conf[0], self.species_dict[label].recent_md_conformer[0]):
                     # converged
                     done = True
                 else:
@@ -2397,14 +2412,17 @@ class Scheduler(object):
                     done = True  # Todo: reconsider
             else:
                 # why did we found a higher conformer?
-                logger.error('Could not converge on a single conformer using Gromacs for species {0}, got a higher'
-                             'energy conformer. Using the latest lowest conformer.'.format(label))
+                logger.error(f'Could not converge on a single conformer using Gromacs for species {label}, got a higher'
+                             f'energy conformer. Using the latest lowest conformer.')
                 done = True
         if done:
             # process conformers and DFT them
-            logger.info('Final conformer for {0}:\n{1}'.format(label, lowest_conf[0]))
+            logger.info(f'Final conformer for {label}:\n{lowest_conf[0]}')
             plotter.draw_structure(xyz=lowest_conf[0], species=self.species_dict[label])
-            lowest_confs = conformers.get_lowest_confs(label=label, confs=conf_list, n=self.confs_to_dft)
+            lowest_confs = conformers.get_lowest_confs(label=label,
+                                                       confs=conf_list,
+                                                       n=self.n_confs,
+                                                       e=self.e_confs)
             self.species_dict[label].conformers.extend(standardize_xyz_string(conf[0]) for conf in lowest_confs)
             self.species_dict[label].conformer_energies = [None] * len(lowest_confs)
             self.process_conformers(label=label)

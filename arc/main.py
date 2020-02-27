@@ -100,7 +100,9 @@ class ARC(object):
         calc_freq_factor (bool, optional): Whether to calculate the frequencies scaling factor using Truhlar's method if
                                            it was not given by the user and could not be determined by Arkane. True to
                                            calculate, False to use user input / Arkane's value / Arkane's default.
-        confs_to_dft (int, optional): The number of lowest MD conformers to DFT at the conformers_level.
+        n_confs (int, optional): The number of lowest force field conformers to consider.
+        e_confs (float, optional): The energy threshold in kJ/mol above the lowest energy conformer below which
+                                   force field conformers are considered.
         keep_checks (bool, optional): Whether to keep all Gaussian checkfiles when ARC terminates. True to keep,
                                       default is False.
         dont_gen_confs (list, optional): A list of species labels for which conformer generation should be avoided
@@ -150,7 +152,9 @@ class ARC(object):
         job_additional_options (dict): Additional specifications to control the execution of a job.
         job_shortcut_keywords (dict): Shortcut keyword specifications to control the execution of a job.
         t0 (float): Initial time when the project was spawned.
-        confs_to_dft (int): The number of lowest MD conformers to DFT at the conformers_level.
+        n_confs (int): The number of lowest force field conformers to consider.
+        e_confs (float): The energy threshold in kJ/mol above the lowest energy conformer below which
+                         force field conformers are considered.
         execution_time (str): Overall execution time.
         lib_long_desc (str): A multiline description of levels of theory for the outputted RMG libraries.
         running_jobs (dict): A dictionary of jobs submitted in a precious ARC instance, used for restarting ARC.
@@ -184,9 +188,9 @@ class ARC(object):
                  job_additional_options=None, job_shortcut_keywords=None, T_min=None, T_max=None, T_count=50,
                  verbose=logging.INFO, project_directory=None, max_job_time=120, allow_nonisomorphic_2d=False,
                  job_memory=14, ess_settings=None, bath_gas=None, adaptive_levels=None, freq_scale_factor=None,
-                 calc_freq_factor=True, confs_to_dft=5, keep_checks=False, dont_gen_confs=None, specific_job_type='',
-                 compare_to_rmg=True, solvent=None, compute_thermo=True, compute_rates=True, compute_transport=True,
-                 statmech_adapter='Arkane'):
+                 calc_freq_factor=True, n_confs=None, e_confs=5, dont_gen_confs=None, keep_checks=False,
+                 solvent=None, compare_to_rmg=True, compute_thermo=True, compute_rates=True, compute_transport=True,
+                 specific_job_type='', statmech_adapter='Arkane'):
         self.__version__ = VERSION
         self.verbose = verbose
         self.output = dict()
@@ -217,7 +221,8 @@ class ARC(object):
             self.job_types = initialize_job_types(job_types, specific_job_type=self.specific_job_type)
             self.bath_gas = bath_gas
             self.solvent = solvent
-            self.confs_to_dft = confs_to_dft
+            self.n_confs = n_confs
+            self.e_confs = e_confs
             self.adaptive_levels = adaptive_levels
             self.project_directory = project_directory if project_directory is not None\
                 else os.path.join(arc_path, 'Projects', self.project)
@@ -402,7 +407,8 @@ class ARC(object):
         restart_dict['allow_nonisomorphic_2d'] = self.allow_nonisomorphic_2d
         restart_dict['ess_settings'] = self.ess_settings
         restart_dict['job_memory'] = self.memory
-        restart_dict['confs_to_dft'] = self.confs_to_dft
+        restart_dict['n_confs'] = self.n_confs
+        restart_dict['e_confs'] = self.e_confs
         restart_dict['specific_job_type'] = self.specific_job_type
         if self.keep_checks:
             restart_dict['keep_checks'] = self.keep_checks
@@ -436,7 +442,8 @@ class ARC(object):
         self.memory = input_dict['job_memory'] if 'job_memory' in input_dict else self.memory
         self.bath_gas = input_dict['bath_gas'] if 'bath_gas' in input_dict else None
         self.solvent = input_dict['solvent'] if 'solvent' in input_dict else None
-        self.confs_to_dft = input_dict['confs_to_dft'] if 'confs_to_dft' in input_dict else 5
+        self.n_confs = input_dict['n_confs'] if 'n_confs' in input_dict else None
+        self.e_confs = input_dict['e_confs'] if 'e_confs' in input_dict else 5  # kJ/mol
         self.adaptive_levels = input_dict['adaptive_levels'] if 'adaptive_levels' in input_dict else None
         self.keep_checks = input_dict['keep_checks'] if 'keep_checks' in input_dict else False
         self.allow_nonisomorphic_2d = input_dict['allow_nonisomorphic_2d']\
@@ -571,7 +578,7 @@ class ARC(object):
                                    restart_dict=self.restart_dict, project_directory=self.project_directory,
                                    max_job_time=self.max_job_time, allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
                                    memory=self.memory, adaptive_levels=self.adaptive_levels,
-                                   confs_to_dft=self.confs_to_dft, dont_gen_confs=self.dont_gen_confs)
+                                   n_confs=self.n_confs, e_confs=self.e_confs, dont_gen_confs=self.dont_gen_confs)
 
         save_yaml_file(path=os.path.join(self.project_directory, 'output', 'status.yml'), content=self.scheduler.output)
 
