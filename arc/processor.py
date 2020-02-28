@@ -99,9 +99,6 @@ def process_arc_project(statmech_adapter: str,
     # 1. Rates
     if compute_rates:
         for reaction in reactions:
-            copy_freq_output_for_ts(label=reaction.ts_label,
-                                    project_directory=project_directory,
-                                    output_dict=output_dict)
             species_converged = True
             if output_dict[reaction.ts_label]['convergence']:
                 for species in reaction.r_species + reaction.p_species:
@@ -431,25 +428,3 @@ def clean_output_directory(project_directory: str) -> None:
                 if '_rotor' in file_name:  # move to the rotor directory
                     shutil.move(src=os.path.join(species_path, file_name),
                                 dst=os.path.join(species_path, 'rotors', file_name))
-
-
-def copy_freq_output_for_ts(label: str,
-                            project_directory: str,
-                            output_dict: dict,
-                            ) -> None:
-    """
-    Copy the frequency job output file into the TS geometry folder.
-
-    Args:
-        label (str): The TS species label.
-        project_directory (str): The path to the ARC project directory.
-        output_dict (dict): Keys are labels, values are output file paths.
-                            See Scheduler for a description of this dictionary.
-    """
-    calc_path = os.path.join(output_dict[label]['paths']['freq'])
-    if calc_path and os.path.isfile(calc_path):
-        # calc_path is empty string when loading from a YAML file
-        output_path = os.path.join(project_directory, 'output', 'rxns', label, 'geometry', 'frequency.out')
-        if not os.path.exists(os.path.dirname(output_path)):
-            os.makedirs(os.path.dirname(output_path))
-        shutil.copyfile(calc_path, output_path)
