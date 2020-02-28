@@ -16,15 +16,21 @@ from IPython.display import display
 
 from rmgpy.reaction import Reaction
 
-from arc.common import format_level_of_theory_for_logging, format_level_of_theory_inputs, get_logger, \
-    get_ordinal_indicator, extermum_list, read_yaml_file, save_yaml_file, sort_two_lists_by_the_first
+from arc.common import (extermum_list,
+                        format_level_of_theory_for_logging,
+                        format_level_of_theory_inputs,
+                        get_logger,
+                        get_ordinal_indicator,
+                        read_yaml_file,
+                        save_yaml_file,
+                        sort_two_lists_by_the_first)
 from arc import plotter
 from arc import parser
 from arc.job.job import Job
 from arc.exceptions import InputError, SanitizationError, SchedulerError, SpeciesError, TSError
 from arc.job.local import check_running_jobs_ids
 from arc.job.ssh import SSHClient
-from arc.job.trsh import trsh_negative_freq, trsh_scan_job, trsh_ess_job, trsh_conformer_isomorphism, scan_quality_check
+from arc.job.trsh import scan_quality_check, trsh_conformer_isomorphism, trsh_ess_job, trsh_negative_freq, trsh_scan_job
 from arc.species.species import ARCSpecies, are_coords_compliant_with_graph, determine_rotor_symmetry, TSGuess
 from arc.species.converter import (check_isomorphism,
                                    compare_confs,
@@ -320,16 +326,19 @@ class Scheduler(object):
                                             ts_methods=rxn.ts_methods, ts_number=rxn.index)
                     ts_species.number_of_atoms = sum(reactant.number_of_atoms for reactant in rxn.r_species)
                     self.species_list.append(ts_species)
-                    self.species_dict[rxn.ts_label] = ts_species
-                    self.initialize_output_dict(label=rxn.ts_label)
+                    self.species_dict[ts_species.label] = ts_species
+                    self.initialize_output_dict(ts_species.label)
                 else:
                     # The TS species was already loaded from a restart dict or an Arkane YAML file
+                    ts_species = None
                     for spc in self.species_list:
                         if spc.label == rxn.ts_label:
                             ts_species = spc
+                            if ts_species.rxn_label is None:
+                                ts_species.rxn_label = rxn.label
                             break
-                    if ts_species.rxn_label is None:
-                        ts_species.rxn_label = rxn.label
+                if ts_species is None:
+                    raise SchedulerError(f'Could not identify a TS species for {rxn}')
                 rxn.ts_species = ts_species
                 # Generate TSGuess objects for all methods, start with the user guesses
                 for i, user_guess in enumerate(rxn.ts_xyz_guess):  # this is a list of guesses, could be empty
@@ -385,7 +394,7 @@ class Scheduler(object):
                 if species.label not in self.running_jobs:
                     self.running_jobs[species.label] = list()  # initialize before running the first job
                 if species.number_of_atoms == 1:
-                    logger.debug('Species {0} is monoatomic'.format(species.label))
+                    logger.debug(f'Species {species.label} is monoatomic')
                     if not self.species_dict[species.label].initial_xyz:
                         # generate a simple "Symbol   0.0   0.0   0.0" coords in a dictionary format
                         if self.species_dict[species.label].mol is not None:
@@ -394,7 +403,7 @@ class Scheduler(object):
                             symbol = species.label
                             logger.warning(f'Could not determine element of monoatomic species {species.label}. '
                                            f'Assuming element is {symbol}')
-                        monoatomic_xyz_dict = str_to_xyz('{0}   0.0   0.0   0.0'.format(symbol))
+                        monoatomic_xyz_dict = str_to_xyz(f'{symbol}   0.0   0.0   0.0')
                         self.species_dict[species.label].initial_xyz = monoatomic_xyz_dict
                         self.species_dict[species.label].final_xyz = monoatomic_xyz_dict
                     if not self.output[species.label]['job_types']['sp'] \
@@ -2848,7 +2857,7 @@ class Scheduler(object):
         Initialize self.output.
         Do not initialize keys that will contain paths ('geo', 'freq', 'sp', 'composite'),
         their existence indicate the job was terminated for restarting purposes.
-        If `label` is not None, will initialize for a specific species, otherwise will initialize for all species.
+        If ``label`` is not ``None``, will initialize for a specific species, otherwise will initialize for all species.
 
         Args:
             label (str, optional): A species label.
