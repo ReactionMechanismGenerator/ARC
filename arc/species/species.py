@@ -438,8 +438,10 @@ class ARCSpecies(object):
         if self._number_of_atoms is None:
             if self.mol is not None:
                 self._number_of_atoms = len(self.mol.atoms)
-            elif not self.is_ts:
-                self._number_of_atoms = len(self.get_xyz()['symbols'])
+            else:
+                xyz = self.get_xyz()
+                if xyz is not None:
+                    self._number_of_atoms = len(xyz['symbols'])
         return self._number_of_atoms
 
     @number_of_atoms.setter
@@ -889,7 +891,7 @@ class ARCSpecies(object):
             if self.is_ts:
                 for ts_guess in self.ts_guesses:
                     if ts_guess.initial_xyz is not None:
-                        xyz = ts_guess.initial_xyz
+                        xyz = ts_guess.opt_xyz or ts_guess.initial_xyz
                         return xyz
                 return None
             elif generate:
@@ -904,33 +906,34 @@ class ARCSpecies(object):
         The resulting rotors are saved in {'pivots': [1, 3], 'top': [3, 7], 'scan': [2, 1, 3, 7]} format
         in self.species_dict[species.label]['rotors_dict']. Also updates 'number_of_rotors'.
         """
-        if not self.is_ts:
-            if not self.charge:
-                mol_list = self.mol_list
-            else:
-                mol_list = [self.mol]
-            if mol_list:
-                for mol in mol_list:
-                    if mol is None:
-                        logger.error(f'cannt determine rotors for species {self.label} without a .mol attribute.')
-                        continue
-                    rotors = conformers.find_internal_rotors(mol)
-                    for new_rotor in rotors:
-                        for existing_rotor in self.rotors_dict.values():
-                            if existing_rotor['pivots'] == new_rotor['pivots']:
-                                break
-                        else:
-                            self.rotors_dict[self.number_of_rotors] = new_rotor
-                            self.number_of_rotors += 1
-            else:
-                logger.error(f'Could not determine rotors for {self.label} without a 2D graph structure')
-            if self.number_of_rotors == 1:
-                logger.info(f'\nFound one possible rotor for {self.label}')
-            elif self.number_of_rotors > 1:
-                logger.info(f'\nFound {self.number_of_rotors} possible rotors for {self.label}')
-            if self.number_of_rotors > 0:
-                logger.info(f'Pivot list(s) for {self.label}: '
-                            f'{[self.rotors_dict[i]["pivots"] for i in range(self.number_of_rotors)]}\n')
+        if not self.charge:
+            mol_list = self.mol_list
+        else:
+            mol_list = [self.mol]
+        if mol_list:
+            for mol in mol_list:
+                if mol is None:
+                    logger.error(f'Cannot determine rotors for species {self.label} without a .mol attribute.')
+                    continue
+                rotors = conformers.find_internal_rotors(mol)
+                for new_rotor in rotors:
+                    for existing_rotor in self.rotors_dict.values():
+                        if existing_rotor['pivots'] == new_rotor['pivots']:
+                            break
+                    else:
+                        self.rotors_dict[self.number_of_rotors] = new_rotor
+                        self.number_of_rotors += 1
+        else:
+            logger.error(f'Could not determine rotors for {self.label} without a 2D graph structure')
+
+        if self.number_of_rotors == 1:
+            logger.info(f'\nFound one possible rotor for {self.label}')
+        elif self.number_of_rotors > 1:
+            logger.info(f'\nFound {self.number_of_rotors} possible rotors for {self.label}')
+        if self.number_of_rotors > 0:
+            logger.info(f'Pivot list(s) for {self.label}: '
+                        f'{[self.rotors_dict[i]["pivots"] for i in range(self.number_of_rotors)]}\n')
+
         self.initialize_directed_rotors()
 
     def initialize_directed_rotors(self):
@@ -1162,7 +1165,7 @@ class ARCSpecies(object):
         """A helper function to write content into the .ts_report attribute"""
         self.ts_report = ''
         if self.chosen_ts_method is not None:
-            self.ts_report += 'TS method summary for {0} in {1}\n'.format(self.label, self.rxn_label)
+            self.ts_report += f'TS method summary for {self.label} in {self.rxn_label}\n'
             self.ts_report += 'Methods that successfully generated a TS guess:\n'
             if self.successful_methods:
                 for successful_method in self.successful_methods:
@@ -1171,10 +1174,13 @@ class ARCSpecies(object):
                 self.ts_report += '\nMethods that were unsuccessfully in generating a TS guess:\n'
                 for unsuccessful_method in self.unsuccessful_methods:
                     self.ts_report += unsuccessful_method + ','
-            self.ts_report += '\nThe method that generated the best TS guess and its output used for the' \
-                              ' optimization: {0}'.format(self.chosen_ts_method)
+            self.ts_report += f'\nThe method that generated the best TS guess and its output used for the ' \
+                              f'optimization: {self.chosen_ts_method}'
 
-    def mol_from_xyz(self, xyz=None, get_cheap=False):
+    def mol_from_xyz(self,
+                     xyz: dict = None,
+                     get_cheap: bool = False,
+                     ) -> None:
         """
         Make sure atom order in self.mol corresponds to xyz.
         Important for TS discovery and for identifying rotor indices.
@@ -1205,7 +1211,11 @@ class ARCSpecies(object):
                 # molecules_from_xyz() returned None for b_mol
                 self.mol = original_mol  # todo: Atom order will not be correct, need fix
         else:
-            self.mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
+            mol_s, mol_b = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)
+            if len(mol_b.atoms) == self.number_of_atoms:
+                self.mol = mol_b
+            elif len(mol_s.atoms) == self.number_of_atoms:
+                self.mol = mol_s
 
     def process_xyz(self, xyz_list):
         """
