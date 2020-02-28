@@ -906,33 +906,34 @@ class ARCSpecies(object):
         The resulting rotors are saved in {'pivots': [1, 3], 'top': [3, 7], 'scan': [2, 1, 3, 7]} format
         in self.species_dict[species.label]['rotors_dict']. Also updates 'number_of_rotors'.
         """
-        if not self.is_ts:
-            if not self.charge:
-                mol_list = self.mol_list
-            else:
-                mol_list = [self.mol]
-            if mol_list:
-                for mol in mol_list:
-                    if mol is None:
-                        logger.error(f'cannt determine rotors for species {self.label} without a .mol attribute.')
-                        continue
-                    rotors = conformers.find_internal_rotors(mol)
-                    for new_rotor in rotors:
-                        for existing_rotor in self.rotors_dict.values():
-                            if existing_rotor['pivots'] == new_rotor['pivots']:
-                                break
-                        else:
-                            self.rotors_dict[self.number_of_rotors] = new_rotor
-                            self.number_of_rotors += 1
-            else:
-                logger.error(f'Could not determine rotors for {self.label} without a 2D graph structure')
-            if self.number_of_rotors == 1:
-                logger.info(f'\nFound one possible rotor for {self.label}')
-            elif self.number_of_rotors > 1:
-                logger.info(f'\nFound {self.number_of_rotors} possible rotors for {self.label}')
-            if self.number_of_rotors > 0:
-                logger.info(f'Pivot list(s) for {self.label}: '
-                            f'{[self.rotors_dict[i]["pivots"] for i in range(self.number_of_rotors)]}\n')
+        if not self.charge:
+            mol_list = self.mol_list
+        else:
+            mol_list = [self.mol]
+        if mol_list:
+            for mol in mol_list:
+                if mol is None:
+                    logger.error(f'Cannot determine rotors for species {self.label} without a .mol attribute.')
+                    continue
+                rotors = conformers.find_internal_rotors(mol)
+                for new_rotor in rotors:
+                    for existing_rotor in self.rotors_dict.values():
+                        if existing_rotor['pivots'] == new_rotor['pivots']:
+                            break
+                    else:
+                        self.rotors_dict[self.number_of_rotors] = new_rotor
+                        self.number_of_rotors += 1
+        else:
+            logger.error(f'Could not determine rotors for {self.label} without a 2D graph structure')
+
+        if self.number_of_rotors == 1:
+            logger.info(f'\nFound one possible rotor for {self.label}')
+        elif self.number_of_rotors > 1:
+            logger.info(f'\nFound {self.number_of_rotors} possible rotors for {self.label}')
+        if self.number_of_rotors > 0:
+            logger.info(f'Pivot list(s) for {self.label}: '
+                        f'{[self.rotors_dict[i]["pivots"] for i in range(self.number_of_rotors)]}\n')
+
         self.initialize_directed_rotors()
 
     def initialize_directed_rotors(self):
