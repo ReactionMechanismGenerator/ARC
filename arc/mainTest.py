@@ -93,7 +93,7 @@ class TestARC(unittest.TestCase):
                          'T_max': None,
                          'T_count': 50,
                          'use_bac': True,
-                         'n_confs': None,
+                         'n_confs': 10,
                          'e_confs': 5,
                          'allow_nonisomorphic_2d': False,
                          'calc_freq_factor': True,
