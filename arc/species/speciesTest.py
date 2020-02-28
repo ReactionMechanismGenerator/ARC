@@ -42,56 +42,56 @@ class TestARCSpecies(unittest.TestCase):
         """
         cls.maxDiff = None
         # Method 1: RMG Species object (here by SMILES)
-        cls.spc1_rmg = Species(molecule=[Molecule().from_smiles('C=C[O]')])  # delocalized radical + amine
-        cls.spc1_rmg.label = str('vinoxy')
+        cls.spc1_rmg = Species(molecule=[Molecule(smiles='C=C[O]')])  # delocalized radical + amine
+        cls.spc1_rmg.label = 'vinoxy'
         cls.spc1 = ARCSpecies(rmg_species=cls.spc1_rmg)
 
         # Method 2: ARCSpecies object by XYZ (also give SMILES for thermo BAC)
-        oh_xyz = str("""O       0.00000000    0.00000000   -0.12002167
-        H       0.00000000    0.00000000    0.85098324""")
-        cls.spc2 = ARCSpecies(label=str('OH'), xyz=oh_xyz, smiles=str('[OH]'), multiplicity=2, charge=0)
+        oh_xyz = """O       0.00000000    0.00000000   -0.12002167
+        H       0.00000000    0.00000000    0.85098324"""
+        cls.spc2 = ARCSpecies(label='OH', xyz=oh_xyz, smiles='[OH]', multiplicity=2, charge=0)
 
         # Method 3: ARCSpecies object by SMILES
-        cls.spc3 = ARCSpecies(label=str('methylamine'), smiles=str('CN'), multiplicity=1, charge=0)
+        cls.spc3 = ARCSpecies(label='methylamine', smiles='CN', multiplicity=1, charge=0)
 
         # Method 4: ARCSpecies object by RMG Molecule object
         mol4 = Molecule().from_smiles('C=CC')
-        cls.spc4 = ARCSpecies(label=str('propene'), mol=mol4, multiplicity=1, charge=0)
+        cls.spc4 = ARCSpecies(label='propene', mol=mol4, multiplicity=1, charge=0)
 
         # Method 5: ARCSpecies by AdjacencyList (to generate AdjLists, see https://rmg.mit.edu/molecule_search)
-        n2h4_adj = str("""1 N u0 p1 c0 {2,S} {3,S} {4,S}
+        n2h4_adj = """1 N u0 p1 c0 {2,S} {3,S} {4,S}
         2 N u0 p1 c0 {1,S} {5,S} {6,S}
         3 H u0 p0 c0 {1,S}
         4 H u0 p0 c0 {1,S}
         5 H u0 p0 c0 {2,S}
-        6 H u0 p0 c0 {2,S}""")
-        cls.spc5 = ARCSpecies(label=str('N2H4'), adjlist=n2h4_adj, multiplicity=1, charge=0)
+        6 H u0 p0 c0 {2,S}"""
+        cls.spc5 = ARCSpecies(label='N2H4', adjlist=n2h4_adj, multiplicity=1, charge=0)
 
-        n3_xyz = str("""N      -1.1997440839    -0.1610052059     0.0274738287
+        n3_xyz = """N      -1.1997440839    -0.1610052059     0.0274738287
         H      -1.4016624407    -0.6229695533    -0.8487034080
         H      -0.0000018759     1.2861082773     0.5926077870
         N       0.0000008520     0.5651072858    -0.1124621525
         H      -1.1294692206    -0.8709078271     0.7537518889
         N       1.1997613019    -0.1609980472     0.0274604887
         H       1.1294795781    -0.8708998550     0.7537444446
-        H       1.4015274689    -0.6230592706    -0.8487058662""")
-        cls.spc6 = ARCSpecies(label=str('N3'), xyz=n3_xyz, multiplicity=1, smiles=str('NNN'))
+        H       1.4015274689    -0.6230592706    -0.8487058662"""
+        cls.spc6 = ARCSpecies(label='N3', xyz=n3_xyz, multiplicity=1, smiles='NNN')
 
         xyz1 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'AIBN.gjf')
-        cls.spc7 = ARCSpecies(label='AIBN', smiles=str('N#CC(C)(C)N=NC(C)(C)C#N'), xyz=xyz1)
+        cls.spc7 = ARCSpecies(label='AIBN', smiles='N#CC(C)(C)N=NC(C)(C)C#N', xyz=xyz1)
 
-        hso3_xyz = str("""S      -0.12383700    0.10918200   -0.21334200
+        hso3_xyz = """S      -0.12383700    0.10918200   -0.21334200
         O       0.97332200   -0.98800100    0.31790100
         O      -1.41608500   -0.43976300    0.14487300
         O       0.32370100    1.42850400    0.21585900
-        H       1.84477700   -0.57224200    0.35517700""")
-        cls.spc8 = ARCSpecies(label=str('HSO3'), xyz=hso3_xyz, multiplicity=2, charge=0, smiles=str('O[S](=O)=O'))
+        H       1.84477700   -0.57224200    0.35517700"""
+        cls.spc8 = ARCSpecies(label='HSO3', xyz=hso3_xyz, multiplicity=2, charge=0, smiles='O[S](=O)=O')
 
-        nh_s_adj = str("""1 N u0 p2 c0 {2,S}
-                          2 H u0 p0 c0 {1,S}""")
-        nh_s_xyz = str("""N       0.50949998    0.00000000    0.00000000
-                          H      -0.50949998    0.00000000    0.00000000""")
-        cls.spc9 = ARCSpecies(label=str('NH2(S)'), adjlist=nh_s_adj, xyz=nh_s_xyz, multiplicity=1, charge=0)
+        nh_s_adj = """1 N u0 p2 c0 {2,S}
+                      2 H u0 p0 c0 {1,S}"""
+        nh_s_xyz = """N       0.50949998    0.00000000    0.00000000
+                      H      -0.50949998    0.00000000    0.00000000"""
+        cls.spc9 = ARCSpecies(label='NH2(S)', adjlist=nh_s_adj, xyz=nh_s_xyz, multiplicity=1, charge=0)
 
         cls.spc10 = ARCSpecies(label='CCCCC', smiles='CCCCC')
         cls.spc11 = ARCSpecies(label='CCCNO', smiles='CCCNO')  # has chiral N
@@ -198,8 +198,8 @@ H      -0.41231900    0.99757300    0.00391900"""
     def test_from_rmg_species(self):
         """Test the conversion of an RMG species into an ARCSpecies"""
         self.spc1_rmg.label = None
-        self.spc = ARCSpecies(rmg_species=self.spc1_rmg, label=str('vinoxy'))
-        self.assertEqual(self.spc.label, str('vinoxy'))
+        self.spc = ARCSpecies(rmg_species=self.spc1_rmg, label='vinoxy')
+        self.assertEqual(self.spc.label, 'vinoxy')
         self.assertEqual(self.spc.multiplicity, 2)
         self.assertEqual(self.spc.charge, 0)
 
@@ -219,21 +219,21 @@ H      -0.41231900    0.99757300    0.00391900"""
         self.assertEqual(len(self.spc5.rotors_dict), 1)
         self.assertEqual(len(self.spc6.rotors_dict), 2)
 
-        self.assertEqual(self.spc1.rotors_dict[0][str('pivots')], [1, 2])
-        self.assertEqual(self.spc1.rotors_dict[0][str('scan')], [4, 1, 2, 3])
-        self.assertTrue(all([t in [1, 4, 5] for t in self.spc1.rotors_dict[0][str('top')]]))
-        self.assertEqual(self.spc1.rotors_dict[0][str('times_dihedral_set')], 0)
-        self.assertEqual(self.spc3.rotors_dict[0][str('pivots')], [1, 2])
-        self.assertEqual(self.spc4.rotors_dict[0][str('pivots')], [2, 3])
-        self.assertEqual(self.spc5.rotors_dict[0][str('pivots')], [1, 2])
-        self.assertEqual(self.spc6.rotors_dict[0][str('pivots')], [1, 4])
-        self.assertEqual(self.spc6.rotors_dict[0][str('scan')], [2, 1, 4, 6])
-        self.assertEqual(len(self.spc6.rotors_dict[0][str('top')]), 3)
-        self.assertTrue(all([t in [1, 5, 2] for t in self.spc6.rotors_dict[0][str('top')]]))
-        self.assertEqual(self.spc6.rotors_dict[1][str('pivots')], [4, 6])
-        self.assertEqual(self.spc6.rotors_dict[1][str('scan')], [1, 4, 6, 7])
-        self.assertEqual(len(self.spc6.rotors_dict[1][str('top')]), 3)
-        self.assertTrue(all([t in [6, 7, 8] for t in self.spc6.rotors_dict[1][str('top')]]))
+        self.assertEqual(self.spc1.rotors_dict[0]['pivots'], [1, 2])
+        self.assertEqual(self.spc1.rotors_dict[0]['scan'], [4, 1, 2, 3])
+        self.assertTrue(all([t in [1, 4, 5] for t in self.spc1.rotors_dict[0]['top']]))
+        self.assertEqual(self.spc1.rotors_dict[0]['times_dihedral_set'], 0)
+        self.assertEqual(self.spc3.rotors_dict[0]['pivots'], [1, 2])
+        self.assertEqual(self.spc4.rotors_dict[0]['pivots'], [2, 3])
+        self.assertEqual(self.spc5.rotors_dict[0]['pivots'], [1, 2])
+        self.assertEqual(self.spc6.rotors_dict[0]['pivots'], [1, 4])
+        self.assertEqual(self.spc6.rotors_dict[0]['scan'], [2, 1, 4, 6])
+        self.assertEqual(len(self.spc6.rotors_dict[0]['top']), 3)
+        self.assertTrue(all([t in [1, 5, 2] for t in self.spc6.rotors_dict[0]['top']]))
+        self.assertEqual(self.spc6.rotors_dict[1]['pivots'], [4, 6])
+        self.assertEqual(self.spc6.rotors_dict[1]['scan'], [1, 4, 6, 7])
+        self.assertEqual(len(self.spc6.rotors_dict[1]['top']), 3)
+        self.assertTrue(all([t in [6, 7, 8] for t in self.spc6.rotors_dict[1]['top']]))
 
         ts_xyz1 = {'symbols': ('O', 'C', 'N', 'C', 'H', 'H', 'H', 'H'),
                    'isotopes': (16, 12, 14, 12, 1, 1, 1, 1),
@@ -332,7 +332,7 @@ H      -1.97060638    1.29922153   -0.25658392"""
 
     def test_symmetry(self):
         """Test external symmetry and chirality determination"""
-        allene = ARCSpecies(label=str('allene'), smiles=str('C=C=C'), multiplicity=1, charge=0)
+        allene = ARCSpecies(label='allene', smiles='C=C=C', multiplicity=1, charge=0)
         allene.final_xyz = str_to_xyz("""C  -1.01646   0.10640  -0.91445
                               H  -1.39000   1.03728  -1.16672
                               C   0.00000   0.00000   0.00000
@@ -344,7 +344,7 @@ H      -1.97060638    1.29922153   -0.25658392"""
         self.assertEqual(allene.optical_isomers, 1)
         self.assertEqual(allene.external_symmetry, 4)
 
-        ammonia = ARCSpecies(label=str('ammonia'), smiles=str('N'), multiplicity=1, charge=0)
+        ammonia = ARCSpecies(label='ammonia', smiles='N', multiplicity=1, charge=0)
         ammonia.final_xyz = str_to_xyz("""N  0.06617   0.20024   0.13886
                                H  -0.62578  -0.34119   0.63709
                                H  -0.32018   0.51306  -0.74036
@@ -353,7 +353,7 @@ H      -1.97060638    1.29922153   -0.25658392"""
         self.assertEqual(ammonia.optical_isomers, 1)
         self.assertEqual(ammonia.external_symmetry, 3)
 
-        methane = ARCSpecies(label=str('methane'), smiles=str('C'), multiplicity=1, charge=0)
+        methane = ARCSpecies(label='methane', smiles='C', multiplicity=1, charge=0)
         methane.final_xyz = str_to_xyz("""C   0.00000   0.00000   0.00000
                                H  -0.29717   0.97009  -0.39841
                                H   1.08773  -0.06879   0.01517
@@ -363,7 +363,7 @@ H      -1.97060638    1.29922153   -0.25658392"""
         self.assertEqual(methane.optical_isomers, 1)
         self.assertEqual(methane.external_symmetry, 12)
 
-        chiral = ARCSpecies(label=str('chiral'), smiles=str('C(C)(O)(N)'), multiplicity=1, charge=0)
+        chiral = ARCSpecies(label='chiral', smiles='C(C)(O)(N)', multiplicity=1, charge=0)
         chiral.final_xyz = str_to_xyz("""C                 -0.49341625    0.37828349    0.00442108
                               H                 -1.56331545    0.39193350    0.01003359
                               N                  0.01167132    1.06479568    1.20212111
@@ -379,7 +379,7 @@ H      -1.97060638    1.29922153   -0.25658392"""
         self.assertEqual(chiral.optical_isomers, 2)
         self.assertEqual(chiral.external_symmetry, 1)
 
-        s8 = ARCSpecies(label=str('s8'), smiles=str('S1SSSSSSS1'), multiplicity=1, charge=0)
+        s8 = ARCSpecies(label='s8', smiles='S1SSSSSSS1', multiplicity=1, charge=0)
         s8.final_xyz = str_to_xyz("""S   2.38341   0.12608   0.09413
                           S   1.45489   1.88955  -0.13515
                           S  -0.07226   2.09247   1.14966
@@ -392,7 +392,7 @@ H      -1.97060638    1.29922153   -0.25658392"""
         self.assertEqual(s8.optical_isomers, 1)
         self.assertEqual(s8.external_symmetry, 8)
 
-        water = ARCSpecies(label=str('H2O'), smiles=str('O'), multiplicity=1, charge=0)
+        water = ARCSpecies(label='H2O', smiles='O', multiplicity=1, charge=0)
         water.final_xyz = str_to_xyz("""O   0.19927   0.29049  -0.11186
                              H   0.50770  -0.61852  -0.09124
                              H  -0.70697   0.32803   0.20310""")
@@ -432,8 +432,8 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         """Test determination of molecule charge and multiplicity"""
         spc1 = ARCSpecies(label='spc1', mol=Molecule(smiles='C[CH]C'), compute_thermo=False)
         spc2 = ARCSpecies(label='spc2', mol=Molecule(smiles='CCC'), compute_thermo=False)
-        spc3 = ARCSpecies(label='spc3', smiles=str('N[NH]'), compute_thermo=False)
-        spc4 = ARCSpecies(label='spc4', smiles=str('NNN'), compute_thermo=False)
+        spc3 = ARCSpecies(label='spc3', smiles='N[NH]', compute_thermo=False)
+        spc4 = ARCSpecies(label='spc4', smiles='NNN', compute_thermo=False)
         adj1 = """multiplicity 2
                   1 O u1 p2 c0 {2,S}
                   2 H u0 p0 c0 {1,S}
@@ -447,8 +447,8 @@ H      -1.67091600   -1.35164600   -0.93286400"""
                   7 H u0 p0 c0 {2,S}
                   8 H u0 p0 c0 {3,S}
                """
-        spc5 = ARCSpecies(label='spc5', adjlist=str(adj1), compute_thermo=False)
-        spc6 = ARCSpecies(label='spc6', adjlist=str(adj2), compute_thermo=False)
+        spc5 = ARCSpecies(label='spc5', adjlist=adj1, compute_thermo=False)
+        spc6 = ARCSpecies(label='spc6', adjlist=adj2, compute_thermo=False)
         xyz1 = """O       0.00000000    0.00000000   -0.10796235
                   H       0.00000000    0.00000000    0.86318839"""
         xyz2 = """N      -0.74678912   -0.11808620    0.00000000
@@ -579,7 +579,7 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         
         
         
-   O    3.1024    0.1216    1.0455
+        O   3.1024  0.1216  1.0455
    O    1.4602   -3.3145   -0.2099
 C   -2.2924    0.2555   -0.8205
    C   -2.3929   -0.1455   -2.3013
@@ -593,10 +593,10 @@ C   -2.2924    0.2555   -0.8205
    C    1.0837    1.3976    0.5896
    
 
-   C    1.9403   -2.2644    0.1662
+   C,    1.9403,   -2.2644,    0.1662
     H   -2.6363    1.2898   -0.7367
 H   -2.0724   -1.1772   -2.4533
-   H   -1.7687    0.4927   -2.9270
+        H   -1.7687    0.4927   -2.9270
    H   -3.4228   -0.0630   -2.6520
    H   -4.2511   -0.5298   -0.2908
    H   -3.1797   -0.3025    1.0951
@@ -605,7 +605,7 @@ H    3.8200    2.0502    0.7167
    H    4.7525    0.9900    1.7960
                                                                            H    3.2393    1.7229    2.3720
 	H   -0.5302   -1.8837   -0.6253
-	H   -0.7777    2.3260    0.1202
+H,-0.7777,2.3260,0.1202
 	H    1.5203    2.3247    0.9261
 	H    2.9757   -2.2266    0.5368
  
@@ -765,11 +765,11 @@ H      -1.69944700    0.93441600   -0.11271200"""
         self.assertTrue(os.path.isfile(os.path.join(project_directory, 'output', 'Species', 'vinoxy', 'geometry',
                                                     'conformers', 'conformers_after_optimization.txt')))
 
-        spc2 = ARCSpecies(label=str('vinoxy'), smiles='C=C[O]', xyz=os.path.join(
+        spc2 = ARCSpecies(label='vinoxy', smiles='C=C[O]', xyz=os.path.join(
             project_directory, 'output', 'Species', 'vinoxy', 'geometry', 'conformers',
             'conformers_before_optimization.txt'))
 
-        spc3 = ARCSpecies(label=str('vinoxy'), smiles='C=C[O]', xyz=os.path.join(
+        spc3 = ARCSpecies(label='vinoxy', smiles='C=C[O]', xyz=os.path.join(
             project_directory, 'output', 'Species', 'vinoxy', 'geometry', 'conformers',
             'conformers_after_optimization.txt'))
 
@@ -912,15 +912,15 @@ H       2.82319256   -0.46240839   -0.40178723"""
             if adj and coord:
                 self.assertEqual(adj.split()[1], coord.split()[0])
 
-        n3_xyz = str("""N      -1.1997440839    -0.1610052059     0.0274738287
+        n3_xyz = """N      -1.1997440839    -0.1610052059     0.0274738287
         H      -1.4016624407    -0.6229695533    -0.8487034080
         H      -0.0000018759     1.2861082773     0.5926077870
         N       0.0000008520     0.5651072858    -0.1124621525
         H      -1.1294692206    -0.8709078271     0.7537518889
         N       1.1997613019    -0.1609980472     0.0274604887
         H       1.1294795781    -0.8708998550     0.7537444446
-        H       1.4015274689    -0.6230592706    -0.8487058662""")
-        spc3 = ARCSpecies(label=str('N3'), xyz=n3_xyz, multiplicity=1, smiles=str('NNN'))
+        H       1.4015274689    -0.6230592706    -0.8487058662"""
+        spc3 = ARCSpecies(label='N3', xyz=n3_xyz, multiplicity=1, smiles='NNN')
         self.assertEqual(spc3.mol.atoms[1].symbol, 'H')
         spc3.generate_conformers()
         self.assertEqual(len(spc3.conformers), 9)
@@ -1246,9 +1246,9 @@ class TestTSGuess(unittest.TestCase):
         """
         cls.maxDiff = None
         spc1 = Species().from_smiles('CON=O')
-        spc1.label = str('CONO')
+        spc1.label = 'CONO'
         spc2 = Species().from_smiles('C[N+](=O)[O-]')
-        spc2.label = str('CNO2')
+        spc2.label = 'CNO2'
         rmg_reaction = Reaction(reactants=[spc1], products=[spc2])
         cls.tsg1 = TSGuess(rmg_reaction=rmg_reaction, method='AutoTST', family='H_Abstraction')
         xyz = """N       0.9177905887     0.5194617797     0.0000000000
