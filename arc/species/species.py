@@ -438,8 +438,10 @@ class ARCSpecies(object):
         if self._number_of_atoms is None:
             if self.mol is not None:
                 self._number_of_atoms = len(self.mol.atoms)
-            elif not self.is_ts:
-                self._number_of_atoms = len(self.get_xyz()['symbols'])
+            else:
+                xyz = self.get_xyz()
+                if xyz is not None:
+                    self._number_of_atoms = len(xyz['symbols'])
         return self._number_of_atoms
 
     @number_of_atoms.setter
@@ -889,7 +891,7 @@ class ARCSpecies(object):
             if self.is_ts:
                 for ts_guess in self.ts_guesses:
                     if ts_guess.initial_xyz is not None:
-                        xyz = ts_guess.initial_xyz
+                        xyz = ts_guess.opt_xyz or ts_guess.initial_xyz
                         return xyz
                 return None
             elif generate:
@@ -1162,7 +1164,7 @@ class ARCSpecies(object):
         """A helper function to write content into the .ts_report attribute"""
         self.ts_report = ''
         if self.chosen_ts_method is not None:
-            self.ts_report += 'TS method summary for {0} in {1}\n'.format(self.label, self.rxn_label)
+            self.ts_report += f'TS method summary for {self.label} in {self.rxn_label}\n'
             self.ts_report += 'Methods that successfully generated a TS guess:\n'
             if self.successful_methods:
                 for successful_method in self.successful_methods:
@@ -1171,10 +1173,13 @@ class ARCSpecies(object):
                 self.ts_report += '\nMethods that were unsuccessfully in generating a TS guess:\n'
                 for unsuccessful_method in self.unsuccessful_methods:
                     self.ts_report += unsuccessful_method + ','
-            self.ts_report += '\nThe method that generated the best TS guess and its output used for the' \
-                              ' optimization: {0}'.format(self.chosen_ts_method)
+            self.ts_report += f'\nThe method that generated the best TS guess and its output used for the ' \
+                              f'optimization: {self.chosen_ts_method}'
 
-    def mol_from_xyz(self, xyz=None, get_cheap=False):
+    def mol_from_xyz(self,
+                     xyz: dict = None,
+                     get_cheap: bool = False,
+                     ) -> None:
         """
         Make sure atom order in self.mol corresponds to xyz.
         Important for TS discovery and for identifying rotor indices.
@@ -1205,7 +1210,11 @@ class ARCSpecies(object):
                 # molecules_from_xyz() returned None for b_mol
                 self.mol = original_mol  # todo: Atom order will not be correct, need fix
         else:
-            self.mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
+            mol_s, mol_b = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)
+            if len(mol_b.atoms) == self.number_of_atoms:
+                self.mol = mol_b
+            elif len(mol_s.atoms) == self.number_of_atoms:
+                self.mol = mol_s
 
     def process_xyz(self, xyz_list):
         """
