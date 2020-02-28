@@ -746,6 +746,12 @@ H       1.32129900    0.71837500    0.38017700
         spc10 = ARCSpecies(label='spc10', xyz=xyz10)
         self.assertEqual(spc10.number_of_atoms, 7)
 
+        spc11 = ARCSpecies(label='C--H', xyz='C 0 0 0\nH 1 2 5')  # test using mol_s instead of mol_b
+        self.assertEqual(spc11.number_of_atoms, 2)
+
+        spc12 = ARCSpecies(label='C--H-TS', xyz='C 0 0 0\nH 1 2 5', is_ts=True)
+        self.assertEqual(spc12.number_of_atoms, 2)
+
     def test_number_of_heavy_atoms_property(self):
         """Test that the number_of_heavy_atoms property functions correctly"""
         self.assertEqual(self.spc1.number_of_heavy_atoms, 3)
