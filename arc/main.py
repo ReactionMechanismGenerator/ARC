@@ -421,7 +421,7 @@ class ARC(object):
         in the restart dictionary.
         """
         if isinstance(input_dict, str):
-            input_dict = read_yaml_file(input_dict)
+            input_dict = read_yaml_file(path=input_dict, project_directory=self.project_directory)
         if project is None and 'project' not in input_dict:
             raise InputError('A project name must be given')
         self.project = project if project is not None else input_dict['project']
