@@ -1208,8 +1208,8 @@ class ARCSpecies(object):
         self.ts_report = ''
         if self.chosen_ts_method is not None:
             self.ts_report += f'TS method summary for {self.label} in {self.rxn_label}\n'
-            self.ts_report += 'Methods that successfully generated a TS guess:\n'
             if self.successful_methods:
+                self.ts_report += 'Methods that successfully generated a TS guess:\n'
                 for successful_method in self.successful_methods:
                     self.ts_report += successful_method + ','
             if self.unsuccessful_methods:
