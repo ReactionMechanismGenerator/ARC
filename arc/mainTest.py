@@ -185,7 +185,7 @@ class TestARC(unittest.TestCase):
         job_type_expected = {'conformers': False, 'opt': True, 'freq': True, 'sp': True, 'rotors': False,
                              'orbitals': False, 'bde': True, 'onedmin': False, 'fine': True, 'irc': False}
         self.assertEqual(arc1.job_types, job_type_expected)
-        
+
     def test_check_project_name(self):
         """Test project name invalidity"""
         with self.assertRaises(InputError):
@@ -550,6 +550,20 @@ class TestARC(unittest.TestCase):
         self.assertEqual(len(arc1.arc_species_list), 2)
         self.assertIn('H', [spc.label for spc in arc1.arc_species_list])
 
+    def test_globalize_paths(self):
+        """Test modifying a file's contents to correct absolute file paths"""
+        restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart', 'restart_paths.yml')
+        arc0 = ARC(input_dict=restart_path,
+                   project='test_globalizing_paths',
+                   project_directory=os.path.join(arc_path, 'arc', 'testing', 'restart'))
+        globalized_restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart', 'restart_paths_globalized.yml')
+        content = read_yaml_file(globalized_restart_path)  # not giving a project directory, this is tested in common
+        self.assertEqual(content['restart'], 'Restarted ARC at 2020-02-28 12:51:14.446086; ')
+        self.assertIn('ARC/arc/testing/restart/calcs/Species/HCN/freq_a38229/output.out', content['paths']['freq'])
+        self.assertIn('ARC/arc/testing/restart/calcs/Species/HCN/sp_a38230/output.out', content['paths']['sp'])
+        self.assertNotIn('gpfs/workspace/users/user', content['paths']['freq'])
+        self.assertNotIn('gpfs/workspace/users/user', content['paths']['sp'])
+
     @classmethod
     def tearDownClass(cls):
         """
@@ -563,6 +577,9 @@ class TestARC(unittest.TestCase):
         for project in projects:
             project_directory = os.path.join(arc_path, 'Projects', project)
             shutil.rmtree(project_directory)
+
+        for file_name in ['arc.log', 'restart_paths_globalized.yml']:
+            os.remove(os.path.join(arc_path, 'arc', 'testing', 'restart', file_name))
 
 
 if __name__ == '__main__':
