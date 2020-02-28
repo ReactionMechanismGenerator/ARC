@@ -929,7 +929,7 @@ class ARC(object):
             for file_ in files:
                 if os.path.splitext(file_)[1] == '.chk' and os.path.isfile(os.path.join(root, file_)):
                     if not logged:
-                        logger.info('deleting all check files...')
+                        logger.info('\ndeleting all check files...\n')
                         logged = True
                     os.remove(os.path.join(root, file_))
 
