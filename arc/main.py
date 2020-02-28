@@ -188,7 +188,7 @@ class ARC(object):
                  job_additional_options=None, job_shortcut_keywords=None, T_min=None, T_max=None, T_count=50,
                  verbose=logging.INFO, project_directory=None, max_job_time=120, allow_nonisomorphic_2d=False,
                  job_memory=14, ess_settings=None, bath_gas=None, adaptive_levels=None, freq_scale_factor=None,
-                 calc_freq_factor=True, n_confs=None, e_confs=5, dont_gen_confs=None, keep_checks=False,
+                 calc_freq_factor=True, n_confs=10, e_confs=5, dont_gen_confs=None, keep_checks=False,
                  solvent=None, compare_to_rmg=True, compute_thermo=True, compute_rates=True, compute_transport=True,
                  specific_job_type='', statmech_adapter='Arkane'):
         self.__version__ = VERSION
