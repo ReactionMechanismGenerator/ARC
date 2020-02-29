@@ -357,7 +357,7 @@ def string_representer(dumper, data):
     return dumper.represent_scalar(tag='tag:yaml.org,2002:str', value=data)
 
 
-def get_ordinal_indicator(number):
+def get_ordinal_indicator(number: int) -> str:
     """
     Returns the ordinal indicator for an integer.
 
@@ -375,7 +375,7 @@ def get_ordinal_indicator(number):
     return 'th'
 
 
-def get_atom_radius(symbol):
+def get_atom_radius(symbol: str) -> float:
     """
     Get the atom covalent radius of an atom in Angstroms.
 
@@ -397,7 +397,9 @@ def get_atom_radius(symbol):
     return r
 
 
-def colliding_atoms(xyz, threshold=0.55):
+def colliding_atoms(xyz: dict,
+                    threshold: float = 0.55,
+                    ) -> bool:
     """
     Check whether atoms are too close to each other.
     A default threshold of 55% the covalent radii of two atoms is used.
@@ -446,7 +448,9 @@ SINGLE_BOND_LENGTH = {'Br-Br': 2.29, 'Br-Cr': 1.94, 'Br-H': 1.41,
                       }
 
 
-def get_single_bond_length(symbol1, symbol2):
+def get_single_bond_length(symbol1: str,
+                           symbol2: str,
+                           ) -> float:
     """
     Get the an approximate for a single bond length between two elements.
 
@@ -537,7 +541,9 @@ def determine_top_group_indices(mol, atom1, atom2, index=1):
     return top, not atom2.is_hydrogen()
 
 
-def extermum_list(lst, return_min=True):
+def extermum_list(lst: list,
+                  return_min: bool = True,
+                  ) -> int:
     """
     A helper function for finding the minimum of a list of numbers (int/float) where some of the entries might be None.
 
@@ -717,7 +723,7 @@ def almost_equal_coords_lists(xyz1: dict,
     return True
 
 
-def determine_model_chemistry_type(method):
+def determine_model_chemistry_type(method: str or dict) -> str:
     """
     Determine the type of a model chemistry (e.g., DFT, wavefunction, force field, semi-empirical, composite).
 
@@ -767,7 +773,7 @@ def determine_model_chemistry_type(method):
     return model_chemistry_class
 
 
-def format_level_of_theory_inputs(level_of_theory):
+def format_level_of_theory_inputs(level_of_theory: str or dict):
     """
     A helper function to format level of theory inputs for internal use in ARC.
 
@@ -855,7 +861,7 @@ def format_level_of_theory_inputs(level_of_theory):
     return formatted_model_chemistry_dict, formatted_model_chemistry_str
 
 
-def format_level_of_theory_for_logging(level_of_theory):
+def format_level_of_theory_for_logging(level_of_theory: str or dict) -> str:
     """
     Format level of theory dictionary to string for logging purposes.
 
@@ -892,7 +898,7 @@ def format_level_of_theory_for_logging(level_of_theory):
     return level_of_theory_log_str
 
 
-def is_notebook():
+def is_notebook() -> bool:
     """
     Check whether ARC was called from an IPython notebook.
 
@@ -911,7 +917,7 @@ def is_notebook():
         return False  # Probably standard Python interpreter
 
 
-def is_str_float(value):
+def is_str_float(value: str) -> bool:
     """
     Check whether a string represents a number.
 
