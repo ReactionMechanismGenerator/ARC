@@ -224,7 +224,7 @@ class ARC(object):
             self.n_confs = n_confs
             self.e_confs = e_confs
             self.adaptive_levels = adaptive_levels
-            self.project_directory = project_directory if project_directory is not None\
+            self.project_directory = project_directory if project_directory is not None \
                 else os.path.join(arc_path, 'Projects', self.project)
             if not os.path.exists(self.project_directory):
                 os.makedirs(self.project_directory)
@@ -313,9 +313,9 @@ class ARC(object):
         else:
             # ARC is run from an input or a restart file.
             # Read the input_dict
-            project_directory = project_directory if project_directory is not None\
+            self.project_directory = project_directory if project_directory is not None \
                 else os.path.abspath(os.path.dirname(input_dict))
-            self.from_dict(input_dict=input_dict, project=project, project_directory=project_directory)
+            self.from_dict(input_dict=input_dict, project=project, project_directory=self.project_directory)
         if self.adaptive_levels is not None:
             logger.info('Using the following adaptive levels of theory:\n{0}'.format(self.adaptive_levels))
         if not self.ess_settings:
@@ -446,7 +446,7 @@ class ARC(object):
         self.e_confs = input_dict['e_confs'] if 'e_confs' in input_dict else 5  # kJ/mol
         self.adaptive_levels = input_dict['adaptive_levels'] if 'adaptive_levels' in input_dict else None
         self.keep_checks = input_dict['keep_checks'] if 'keep_checks' in input_dict else False
-        self.allow_nonisomorphic_2d = input_dict['allow_nonisomorphic_2d']\
+        self.allow_nonisomorphic_2d = input_dict['allow_nonisomorphic_2d'] \
             if 'allow_nonisomorphic_2d' in input_dict else False
         self.output = input_dict['output'] if 'output' in input_dict else dict()
         self.freq_scale_factor = input_dict['freq_scale_factor'] if 'freq_scale_factor' in input_dict else None
@@ -459,21 +459,21 @@ class ARC(object):
                                 # try correcting relative paths
                                 if os.path.isfile(os.path.join(arc_path, val)):
                                     self.output[label]['paths'][key] = os.path.join(arc_path, val)
-                                    logger.debug('corrected path to {0}'.format(os.path.join(arc_path, val)))
+                                    logger.debug(f'corrected path to {os.path.join(arc_path, val)}')
                                 elif os.path.isfile(os.path.join(arc_path, 'Projects', val)):
                                     self.output[label]['paths'][key] = os.path.join(arc_path, 'Projects', val)
-                                    logger.debug('corrected path to {0}'.format(os.path.join(arc_path, val)))
+                                    logger.debug(f'corrected path to {os.path.join(arc_path, val)}')
                                 else:
                                     raise SpeciesError('Could not find {0} output file for species {1}: {2}'.format(
                                         key, label, val))
         self.running_jobs = input_dict['running_jobs'] if 'running_jobs' in input_dict else dict()
-        logger.debug('output dictionary successfully parsed:\n{0}'.format(self.output))
+        logger.debug(f'output dictionary successfully parsed:\n{self.output}')
         self.T_min = input_dict['T_min'] if 'T_min' in input_dict else None
         self.T_max = input_dict['T_max'] if 'T_max' in input_dict else None
         self.T_count = input_dict['T_count'] if 'T_count' in input_dict else None
         self.job_additional_options = input_dict['job_additional_options'] if 'job_additional_options' \
                                                                               in input_dict else dict()
-        self.job_shortcut_keywords = input_dict['job_shortcut_keywords'] if 'job_shortcut_keywords'\
+        self.job_shortcut_keywords = input_dict['job_shortcut_keywords'] if 'job_shortcut_keywords' \
                                                                             in input_dict else dict()
         self.specific_job_type = input_dict['specific_job_type'] if 'specific_job_type' in input_dict else None
         self.job_types = input_dict['job_types'] if 'job_types' in input_dict else default_job_types
@@ -503,9 +503,9 @@ class ARC(object):
             logger.info('\n')
         if not self.job_types['rotors']:
             logger.info('\n')
-            logger.warning("Not running rotor scans."
-                           " This might compromise finding the best conformer, as dihedral angles won't be"
-                           " corrected. Also, entropy won't be accurate.")
+            logger.warning("Not running rotor scans. "
+                           "This might compromise finding the best conformer, as dihedral angles won't be "
+                           "corrected. Also, entropy won't be accurate.")
             logger.info('\n')
 
         if 'species' in input_dict:
@@ -517,7 +517,7 @@ class ARC(object):
                         if os.path.isfile(os.path.join(arc_path, rotor_dict['scan_path'])):
                             spc.rotors_dict[rotor_num]['scan_path'] = os.path.join(arc_path, rotor_dict['scan_path'])
                         elif os.path.isfile(os.path.join(arc_path, 'Projects', rotor_dict['scan_path'])):
-                            spc.rotors_dict[rotor_num]['scan_path'] =\
+                            spc.rotors_dict[rotor_num]['scan_path'] = \
                                 os.path.join(arc_path, 'Projects', rotor_dict['scan_path'])
                         else:
                             raise SpeciesError('Could not find rotor scan output file for rotor {0} of species {1}:'
@@ -881,11 +881,10 @@ class ARC(object):
         """
         for char in self.project:
             if char not in valid_chars:
-                raise InputError('A project name (used to naming folders) must contain only valid characters.'
-                                 ' Got {0} in {1}.'.format(char, self.project))
+                raise InputError(f'A project name (used to naming folders) must contain only valid characters. '
+                                 f'Got {char} in {self.project}.')
             if char == ' ':  # space IS a valid character for other purposes, but isn't valid in project names
-                raise InputError('A project name (used to naming folders) must not contain spaces.'
-                                 ' Got {0}.'.format(self.project))
+                raise InputError(f'A project name (used to naming folders) must not contain spaces. Got {self.project}.')
 
     def check_freq_scaling_factor(self):
         """
@@ -903,8 +902,7 @@ class ARC(object):
                 # Arkane has this harmonic frequencies scaling factor (if not found, the factor is set to exactly 1)
                 self.freq_scale_factor = freq_scale_factor
             else:
-                logger.info('Could not determine the harmonic frequencies scaling factor for {0} from '
-                            'Arkane.'.format(level))
+                logger.info(f'Could not determine the harmonic frequencies scaling factor for {level} from Arkane.')
                 if self.calc_freq_factor:
                     logger.info("Calculating it using Truhlar's method:\n\n")
                     self.freq_scale_factor = determine_scaling_factors(
