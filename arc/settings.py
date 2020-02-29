@@ -155,7 +155,7 @@ orca_default_options_dict = {'opt': {'keyword': {'opt_convergence': 'NormalOpt',
                              }
 
 # default_ts_methods = ['QST2', 'DEGSM', 'NEB', 'Kinbot', 'AutoTST']
-default_ts_methods = ['AutoTST']
+default_ts_methods = []
 
 arc_path = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))  # absolute path to the ARC folder
 

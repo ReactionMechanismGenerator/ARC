@@ -309,17 +309,22 @@ def get_git_branch():
         return ''
 
 
-def read_yaml_file(path):
+def read_yaml_file(path: str,
+                   project_directory: str = None,
+                   ) -> dict or list:
     """
     Read a YAML file (usually an input / restart file, but also conformers file)
     and return the parameters as python variables.
 
     Args:
         path (str): The YAML file path to read.
+        project_directory (str, optional): The current project directory to rebase upon.
 
     Returns:
         dict or list: The content read from the file.
     """
+    if project_directory is not None:
+        path = globalize_paths(path, project_directory)
     if not isinstance(path, str):
         raise InputError(f'path must be a string, got {path} which is a {type(path)}')
     if not os.path.isfile(path):
@@ -329,7 +334,9 @@ def read_yaml_file(path):
     return content
 
 
-def save_yaml_file(path, content):
+def save_yaml_file(path: str,
+                   content: list or dict,
+                   ) -> None:
     """
     Save a YAML file (usually an input / restart file, but also conformers file)
 
@@ -348,6 +355,65 @@ def save_yaml_file(path, content):
         f.write(content)
 
 
+def globalize_paths(file_path: str,
+                    project_directory: str,
+                    ) -> str:
+    """
+    Rebase all file paths in the contents of the given file on the current project path.
+    Useful when restarting an ARC project in a different folder or on a different machine.
+
+    Args:
+        file_path (str): A path to the file to check.
+                         The contents of this file will be changed and saved as a different file.
+        project_directory (str): The current project directory to rebase upon.
+
+    Returns:
+        str: A path to the respective file with rebased absolute file paths.
+    """
+    modified = False
+    new_lines = list()
+    if project_directory[-1] != '/':
+        project_directory += '/'
+    with open(file_path, 'r') as f:
+        lines = f.readlines()
+    for line in lines:
+        new_line = globalize_path(line, project_directory)
+        modified = modified or new_line != line
+        new_lines.append(new_line)
+    if modified:
+        base_name, file_name = os.path.split(file_path)
+        file_name_splits = file_name.split('.')
+        new_file_name = '.'.join(file_name_splits[:-1]) + '_globalized.' + str(file_name_splits[-1])
+        new_path = os.path.join(base_name, new_file_name)
+        with open(new_path, 'w') as f:
+            f.writelines(new_lines)
+        return new_path
+    else:
+        return file_path
+
+
+def globalize_path(string: str,
+                   project_directory: str,
+                   ) -> str:
+    """
+    Rebase an absolute file path on the current project path.
+    Useful when restarting an ARC project in a different folder or on a different machine.
+
+    Args:
+        string (str): A string containing a path to rebase.
+        project_directory (str): The current project directory to rebase upon.
+
+    Returns:
+        str: A string with the rebased path.
+    """
+    if '/calcs/Species/' in string or '/calcs/TSs/' in string and project_directory not in string:
+        splits = string.split('/calcs/')
+        prefix = splits[0].split('/')[0]
+        new_string = prefix + project_directory + 'calcs/' + splits[-1]
+        return new_string
+    return string
+
+
 def string_representer(dumper, data):
     """
     Add a custom string representer to use block literals for multiline strings.
@@ -357,7 +423,7 @@ def string_representer(dumper, data):
     return dumper.represent_scalar(tag='tag:yaml.org,2002:str', value=data)
 
 
-def get_ordinal_indicator(number):
+def get_ordinal_indicator(number: int) -> str:
     """
     Returns the ordinal indicator for an integer.
 
@@ -375,7 +441,7 @@ def get_ordinal_indicator(number):
     return 'th'
 
 
-def get_atom_radius(symbol):
+def get_atom_radius(symbol: str) -> float:
     """
     Get the atom covalent radius of an atom in Angstroms.
 
@@ -397,7 +463,9 @@ def get_atom_radius(symbol):
     return r
 
 
-def colliding_atoms(xyz, threshold=0.55):
+def colliding_atoms(xyz: dict,
+                    threshold: float = 0.55,
+                    ) -> bool:
     """
     Check whether atoms are too close to each other.
     A default threshold of 55% the covalent radii of two atoms is used.
@@ -446,7 +514,9 @@ SINGLE_BOND_LENGTH = {'Br-Br': 2.29, 'Br-Cr': 1.94, 'Br-H': 1.41,
                       }
 
 
-def get_single_bond_length(symbol1, symbol2):
+def get_single_bond_length(symbol1: str,
+                           symbol2: str,
+                           ) -> float:
     """
     Get the an approximate for a single bond length between two elements.
 
@@ -537,7 +607,9 @@ def determine_top_group_indices(mol, atom1, atom2, index=1):
     return top, not atom2.is_hydrogen()
 
 
-def extermum_list(lst, return_min=True):
+def extermum_list(lst: list,
+                  return_min: bool = True,
+                  ) -> int:
     """
     A helper function for finding the minimum of a list of numbers (int/float) where some of the entries might be None.
 
@@ -717,7 +789,7 @@ def almost_equal_coords_lists(xyz1: dict,
     return True
 
 
-def determine_model_chemistry_type(method):
+def determine_model_chemistry_type(method: str or dict) -> str:
     """
     Determine the type of a model chemistry (e.g., DFT, wavefunction, force field, semi-empirical, composite).
 
@@ -767,7 +839,7 @@ def determine_model_chemistry_type(method):
     return model_chemistry_class
 
 
-def format_level_of_theory_inputs(level_of_theory):
+def format_level_of_theory_inputs(level_of_theory: str or dict):
     """
     A helper function to format level of theory inputs for internal use in ARC.
 
@@ -855,7 +927,7 @@ def format_level_of_theory_inputs(level_of_theory):
     return formatted_model_chemistry_dict, formatted_model_chemistry_str
 
 
-def format_level_of_theory_for_logging(level_of_theory):
+def format_level_of_theory_for_logging(level_of_theory: str or dict) -> str:
     """
     Format level of theory dictionary to string for logging purposes.
 
@@ -892,7 +964,7 @@ def format_level_of_theory_for_logging(level_of_theory):
     return level_of_theory_log_str
 
 
-def is_notebook():
+def is_notebook() -> bool:
     """
     Check whether ARC was called from an IPython notebook.
 
@@ -911,7 +983,7 @@ def is_notebook():
         return False  # Probably standard Python interpreter
 
 
-def is_str_float(value):
+def is_str_float(value: str) -> bool:
     """
     Check whether a string represents a number.
 

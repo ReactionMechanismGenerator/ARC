@@ -729,6 +729,33 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
         self.assertEqual(common.get_single_bond_length('O', 'C'), 1.43)
         self.assertEqual(common.get_single_bond_length('P', 'Si'), 2.5)
 
+    def test_globalize_paths(self):
+        """Test modifying a file's contents to correct absolute file paths"""
+        project_directory = os.path.join(arc_path, 'arc', 'testing', 'restart')
+        restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart', 'restart_paths.yml')
+        common.globalize_paths(file_path=restart_path, project_directory=project_directory)
+        globalized_restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart', 'restart_paths_globalized.yml')
+        content = common.read_yaml_file(globalized_restart_path)
+        self.assertEqual(content['restart'], 'Restarted ARC at 2020-02-28 12:51:14.446086; ')
+        self.assertIn('ARC/arc/testing/restart/calcs/Species/HCN/freq_a38229/output.out', content['paths']['freq'])
+        self.assertIn('ARC/arc/testing/restart/calcs/Species/HCN/sp_a38230/output.out', content['paths']['sp'])
+        self.assertNotIn('gpfs/workspace/users/user', content['paths']['freq'])
+        self.assertNotIn('gpfs/workspace/users/user', content['paths']['sp'])
+
+    def test_globalize_path(self):
+        """Test rebasing a single path to the current ARC project"""
+        project_directory = 'project/directory/'
+        for string in ['/gpfs/workspace/users/user/runs/ARC/Soup/R_Add_HCN/calcs/Species/HCN/sp_a38230/output.out',
+                       '/gpfs/workspace/users/user/runs/ARC/Soup/R_Add_HCN/calcs/TSs/HCN/sp_a38230/output.out']:
+            globalized_string = common.globalize_path(string=string, project_directory=project_directory)
+            self.assertIn('project/directory/calcs/', globalized_string)
+            self.assertIn('/HCN/sp_a38230/output.out', globalized_string)
+            self.assertFalse('/gpfs/workspace/users/user' in globalized_string)
+
+        string = 'some non-path string'
+        globalized_string = common.globalize_path(string=string, project_directory='')
+        self.assertEqual(globalized_string, string)
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

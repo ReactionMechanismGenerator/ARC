@@ -50,8 +50,8 @@ def main():
     # Parse the command-line arguments (requires the argparse module)
     args = parse_command_line_arguments()
     input_file = args.file
-    input_dict = read_yaml_file(input_file)
     project_directory = os.path.abspath(os.path.dirname(args.file))
+    input_dict = read_yaml_file(path=input_file, project_directory=project_directory)
     try:
         input_dict['project']
     except KeyError:

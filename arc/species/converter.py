@@ -983,7 +983,7 @@ def pybel_to_inchi(pybel_mol, has_h=True):
     return inchi
 
 
-def rmg_mol_from_inchi(inchi):
+def rmg_mol_from_inchi(inchi: str):
     """
     Generate an RMG Molecule object from InChI.
 
@@ -996,8 +996,9 @@ def rmg_mol_from_inchi(inchi):
     try:
         rmg_mol = Molecule().from_inchi(inchi, raise_atomtype_exception=False)
     except (AtomTypeError, ValueError, KeyError, TypeError) as e:
-        logger.warning('Got the following Error when trying to create an RMG Molecule object from InChI:'
-                       '\n{0}'.format(e))
+        logger.warning(f'Got an Error when trying to create an RMG Molecule object from InChI "{inchi}":\n{e}')
+        if 'got an unexpected keyword argument' in str(e):
+            raise ConverterError('Make sure RMG-Py is up to date and compiled!')
         return None
     return rmg_mol
 
