@@ -4180,6 +4180,12 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                        (-2.650256378769789, 1.8823222470150054, -1.4017891959903757))}
         self.assertTrue(converter.compare_confs(occco_1, occco_5))
 
+    def test_check_isomorphism(self):
+        """Test checking for molecule isomorphism"""
+        mol1 = Molecule(smiles='[O-][N+]#N')
+        mol2 = Molecule(smiles='[N-]=[N+]=O')
+        self.assertTrue(converter.check_isomorphism(mol1, mol2))
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
