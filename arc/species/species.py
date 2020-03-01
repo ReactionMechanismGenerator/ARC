@@ -1353,62 +1353,86 @@ class ARCSpecies(object):
             comment=comment
         )
 
-    def check_xyz_isomorphism(self, allow_nonisomorphic_2d=False, xyz=None, verbose=True):
+    def check_xyz_isomorphism(self,
+                              mol = None,
+                              xyz: dict = None,
+                              allow_nonisomorphic_2d: bool = False,
+                              verbose: bool = True,
+                              ) -> bool:
         """
         Check whether the perception of self.final_xyz or ``xyz`` is isomorphic with self.mol.
         If it is not isomorphic, compliant coordinates will be checked (equivalent to checking isomorphism without
         bond order information, only does not necessitates a molecule object, directly checks bond lengths)
 
         Args:
-            allow_nonisomorphic_2d (bool, optional): Whether to continue spawning jobs for the species even if this
-                                                     test fails. `True` to allow (default is `False`).
-            xyz (dict, optional): The coordinates to check (will use self.final_xyz if not given).
+            mol (Molecule, optional): A molecule to check instead of self.mol.
+            xyz (dict, optional): The coordinates to check instead of self.final_xyz.
+            allow_nonisomorphic_2d (bool, optional): Whether to allow non-isomorphic representations to pass this test.
             verbose (bool, optional): Whether to log isomorphism findings and errors.
 
         Returns:
             bool: Whether the perception of self.final_xyz is isomorphic with self.mol, ``True`` if it is.
         """
+        mol = mol or self.mol
         xyz = xyz or self.final_xyz
-        result = False
-        if self.mol is not None:
+        isomorphic = False
+
+        if mol is not None:
+
+            s_mol, b_mol = None, None
+
+            # 1. Perceive
             try:
-                b_mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
-            except SanitizationError:
-                b_mol = None
+                s_mol, b_mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)
+            except Exception as e:
                 if verbose:
-                    logger.error(f'Could not perceive the Cartesian coordinates of species {self.label}')
+                    logger.error(f'Could not perceive the Cartesian coordinates of species {self.label}. This '
+                                 f'might result in inconsistent atom order between the Cartesian and the 2D graph '
+                                 f'representations. Got:\n{e}')
+
+            # 2. A. Check isomorphism with bond orders using b_mol
             if b_mol is not None:
-                result = check_isomorphism(self.mol, b_mol)
-                if not result and verbose:
+                isomorphic = check_isomorphism(mol, b_mol)
+                if not isomorphic and verbose:
                     logger.error(f'The Cartesian coordinates of species {self.label} are not isomorphic with the 2D '
-                                 f'structure {self.mol.to_smiles()}')
-            if b_mol is None or not result:
-                result = are_coords_compliant_with_graph(xyz=xyz, mol=self.mol)
-                if not result and verbose:
+                                 f'structure {mol.copy(deep=True).to_smiles()} when considering bond orders.')
+
+            # 2. B. Check isomorphism without bond orders using s_mol (only for charged or high spin multiplicity)
+            if not isomorphic and s_mol is not None:
+                isomorphic = check_isomorphism(mol, s_mol, convert_to_single_bonds=True)
+                if not isomorphic and verbose:
+                    logger.error(f'The Cartesian coordinates of species {self.label} with charge {self.charge} '
+                                 f'and multiplicity {self.multiplicity} are not isomorphic with the 2D '
+                                 f'structure {mol.copy(deep=True).to_smiles()} even without considering bond orders.')
+
+            # 2. C. Check isomorphism without bond orders NOT using s_mol
+            if not isomorphic:
+                isomorphic = are_coords_compliant_with_graph(xyz=xyz, mol=mol)
+                if not isomorphic and verbose:
                     logger.error(f'The Cartesian coordinates of species {self.label} are not compliant with the 2D '
-                                 f'structure {self.mol.to_smiles()}')
-            if not result and self.conf_is_isomorphic:
+                                 f'structure {mol.copy(deep=True).to_smiles()} even without considering bond orders.')
+
+            # 3. Report and resolve
+            if not isomorphic:
                 if allow_nonisomorphic_2d:
-                    # conformer was isomorphic, we **do** allow nonisomorphism, and the optimized structure isn't
-                    result = True
                     if verbose:
-                        logger.warning('allowing nonisomorphic 2D')
-                else:
-                    # conformer was isomorphic, we don't allow nonisomorphism, but the optimized structure isn't
-                    result = False
-                    if verbose:
-                        logger.warning('not allowing nonisomorphic 2D')
-            elif not result and verbose:
-                logger.warning('not allowing nonisomorphic 2D')
+                        logger.warning('Allowing nonisomorphic 2D')
+                    isomorphic = True
+                elif verbose:
+                    if self.conf_is_isomorphic:
+                        # conformer was isomorphic, we don't allow nonisomorphism, but the optimized structure isn't
+                        logger.warning('Not allowing nonisomorphic 2D (the conformer WAS isomorphic with the 2D graph)')
+                    else:
+                        logger.warning('Not allowing nonisomorphic 2D')
         else:
             if verbose:
                 logger.error(f'Cannot check isomorphism for species {self.label} '
                              f'without the 2D graph connectivity information.')
             if allow_nonisomorphic_2d:
-                result = True
+                isomorphic = True
                 if verbose:
-                    logger.warning('allowing nonisomorphic 2D')
-        return result
+                    logger.warning('Allowing nonisomorphic 2D')
+        return isomorphic
 
     def scissors(self) -> list:
         """
