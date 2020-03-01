@@ -675,7 +675,7 @@ def save_thermo_lib(species_list, path, name, lib_long_desc):
                 spc.long_thermo_description += f'\nGeometry:\n{xyz_to_str(spc.final_xyz)}'
                 thermo_library.load_entry(index=i,
                                           label=spc.label,
-                                          molecule=spc.mol_list[0].to_adjacency_list(),
+                                          molecule=spc.mol_list[0].copy(deep=True).to_adjacency_list(),
                                           thermo=spc.thermo,
                                           shortDesc=spc.thermo.comment,
                                           longDesc=spc.long_thermo_description)
@@ -700,7 +700,7 @@ def save_transport_lib(species_list, path, name, lib_long_desc=''):
                 description = f'\nGeometry:\n{xyz_to_str(spc.final_xyz)}'
                 transport_library.load_entry(index=i,
                                              label=spc.label,
-                                             molecule=spc.mol_list[0].to_adjacency_list(),
+                                             molecule=spc.mol_list[0].copy(deep=True).to_adjacency_list(),
                                              transport=spc.transport_data,
                                              shortDesc=spc.thermo.comment,
                                              longDesc=description)
@@ -814,7 +814,7 @@ def save_conformers_file(project_directory, label, xyzs, level_of_theory, multip
                         b_mol = molecules_from_xyz(xyz, multiplicity=multiplicity, charge=charge)[1]
                     except SanitizationError:
                         b_mol = None
-                    smiles = b_mol.to_smiles() if b_mol is not None else 'Could not perceive molecule'
+                    smiles = b_mol.copy(deep=True).to_smiles() if b_mol is not None else 'Could not perceive molecule'
                     content += f'\nSMILES: {smiles}\n'
                 elif ts_methods is not None:
                     content += f'TS guess method: {ts_methods[i]}\n'

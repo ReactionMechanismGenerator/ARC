@@ -376,9 +376,9 @@ class ARCSpecies(object):
                     self.mol_from_xyz(get_cheap=False)
                 if self.mol is None:
                     if self.compute_thermo:
-                        logger.warning('No structure (SMILES, adjList, RMG Species, or RMG Molecule) was given for '
-                                       'species {0}, NOT using bond additivity corrections (BAC) for thermo '
-                                       'computation.'.format(self.label))
+                        logger.warning(f'No structure (SMILES, adjList, RMG Species, or RMG Molecule) was given for '
+                                       f'species {self.label}, NOT using bond additivity corrections (BAC) for thermo '
+                                       f'computation.')
                 else:
                     # Generate bond list for applying bond additivity corrections
                     if not self.bond_corrections and self.mol is not None:
@@ -387,9 +387,8 @@ class ARCSpecies(object):
                             self.long_thermo_description += 'Bond corrections: {0}\n'.format(self.bond_corrections)
 
             elif not self.bond_corrections and self.compute_thermo:
-                logger.warning('Cannot determine bond additivity corrections (BAC) for species {0} based on xyz '
-                               'coordinates only. For better thermoproperties, provide bond corrections.'.format(
-                                self.label))
+                logger.warning(f'Cannot determine bond additivity corrections (BAC) for species {self.label} based on '
+                               f'xyz coordinates only. For better thermoproperties, provide bond corrections.')
 
             self.neg_freqs_trshed = list()
 
@@ -426,7 +425,7 @@ class ARCSpecies(object):
         str_representation = 'ARCSpecies('
         str_representation += f'label={self.label}, '
         if self.mol is not None:
-            str_representation += f'smiles={self.mol.to_smiles()}, '
+            str_representation += f'smiles={self.mol.copy(deep=True).to_smiles()}, '
         str_representation += f'is_ts={self.is_ts}, '
         str_representation += f'multiplicity={self.multiplicity}, '
         str_representation += f'charge={self.charge})'
@@ -536,7 +535,7 @@ class ARCSpecies(object):
         if self.bond_corrections is not None:
             species_dict['bond_corrections'] = self.bond_corrections
         if self.mol is not None:
-            species_dict['mol'] = self.mol.to_adjacency_list()
+            species_dict['mol'] = self.mol.copy(deep=True).to_adjacency_list()
         if self.initial_xyz is not None:
             species_dict['initial_xyz'] = xyz_to_str(self.initial_xyz)
         if self.final_xyz is not None:
@@ -744,7 +743,7 @@ class ARCSpecies(object):
                 self.mol = Molecule().from_adjacency_list(adjlist=arkane_spc.adjacency_list,
                                                           raise_atomtype_exception=False)
             except ValueError:
-                print('Could not read adjlist:\n{0}'.format(arkane_spc.adjacency_list))  # should *not* be logging
+                print(f'Could not read adjlist:\n{arkane_spc.adjacency_list}')  # should *not* be logging
                 raise
         elif arkane_spc.inchi is not None:
             self.mol = Molecule().from_inchi(inchistr=arkane_spc.inchi, raise_atomtype_exception=False)
@@ -1197,19 +1196,34 @@ class ARCSpecies(object):
             xyz = self.get_xyz(generate=get_cheap)
 
         if self.mol is not None:
+            if len(self.mol.atoms) != len(xyz['symbols']):
+                raise SpeciesError(f'The number of atoms in the molecule and in the cartesian coordinates is different.'
+                                   f'\nGot:\n{self.mol.copy(deep=True).to_adjacency_list()}\nand:\n{xyz}')
             # self.mol should have come from another source, e.g., SMILES or yml
-            original_mol = self.mol.copy(deep=True)
-            self.mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
-            if self.mol is not None and not check_isomorphism(original_mol, self.mol):
-                logger.warning('XYZ and the 2D graph representation for {0} are not isomorphic.\n'
-                               'Got xyz:\n{1}\n\nwhich corresponds to {2}\n{3}\n\nand: {4}\n{5}'.format(
-                                self.label, xyz, self.mol.to_smiles(), self.mol.to_adjacency_list(),
-                                original_mol.to_smiles(), original_mol.to_adjacency_list()))
-                if not are_coords_compliant_with_graph(xyz=xyz, mol=self.mol):
-                    raise SpeciesError(f'XYZ and the 2D graph representation for {self.label} are not compliant')
-            elif self.mol is None:
+            perceived_mol = molecules_from_xyz(xyz=xyz,
+                                               multiplicity=self.multiplicity,
+                                               charge=self.charge)[1]
+            if perceived_mol is not None:
+                allow_nonisomorphic_2d = (self.charge is not None and self.charge) \
+                                         or self.mol.has_charge() or perceived_mol.has_charge() \
+                                         or (self.multiplicity is not None and self.multiplicity >= 3) \
+                                         or self.mol.multiplicity >= 3 or perceived_mol.multiplicity >= 3
+                isomorphic = self.check_xyz_isomorphism(mol=perceived_mol,
+                                                        xyz=xyz,
+                                                        allow_nonisomorphic_2d=allow_nonisomorphic_2d)
+                if not isomorphic:
+                    logger.warning(f'XYZ and the 2D graph representation for {self.label} are not isomorphic.\nGot '
+                                   f'xyz:\n{xyz}\n\nwhich corresponds to {self.mol.copy(deep=True).to_smiles()}\n'
+                                   f'{self.mol.copy(deep=True).to_adjacency_list()}\n\nand: '
+                                   f'{self.mol.copy(deep=True).to_smiles()}\n'
+                                   f'{self.mol.copy(deep=True).to_adjacency_list()}')
+                    raise SpeciesError(f'XYZ and the 2D graph representation for {self.label} are not compliant.')
+                else:
+                    self.mol = perceived_mol
+            else:
                 # molecules_from_xyz() returned None for b_mol
-                self.mol = original_mol  # todo: Atom order will not be correct, need fix
+                # todo: Atom order will not be correct, fix
+                pass
         else:
             mol_s, mol_b = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)
             if len(mol_b.atoms) == self.number_of_atoms:
@@ -1339,64 +1353,88 @@ class ARCSpecies(object):
             comment=comment
         )
 
-    def check_xyz_isomorphism(self, allow_nonisomorphic_2d=False, xyz=None, verbose=True):
+    def check_xyz_isomorphism(self,
+                              mol = None,
+                              xyz: dict = None,
+                              allow_nonisomorphic_2d: bool = False,
+                              verbose: bool = True,
+                              ) -> bool:
         """
         Check whether the perception of self.final_xyz or ``xyz`` is isomorphic with self.mol.
         If it is not isomorphic, compliant coordinates will be checked (equivalent to checking isomorphism without
         bond order information, only does not necessitates a molecule object, directly checks bond lengths)
 
         Args:
-            allow_nonisomorphic_2d (bool, optional): Whether to continue spawning jobs for the species even if this
-                                                     test fails. `True` to allow (default is `False`).
-            xyz (dict, optional): The coordinates to check (will use self.final_xyz if not given).
+            mol (Molecule, optional): A molecule to check instead of self.mol.
+            xyz (dict, optional): The coordinates to check instead of self.final_xyz.
+            allow_nonisomorphic_2d (bool, optional): Whether to allow non-isomorphic representations to pass this test.
             verbose (bool, optional): Whether to log isomorphism findings and errors.
 
         Returns:
             bool: Whether the perception of self.final_xyz is isomorphic with self.mol, ``True`` if it is.
         """
+        mol = mol or self.mol
         xyz = xyz or self.final_xyz
-        result = False
-        if self.mol is not None:
+        isomorphic = False
+
+        if mol is not None:
+
+            s_mol, b_mol = None, None
+
+            # 1. Perceive
             try:
-                b_mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
-            except SanitizationError:
-                b_mol = None
+                s_mol, b_mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)
+            except Exception as e:
                 if verbose:
-                    logger.error(f'Could not perceive the Cartesian coordinates of species {self.label}')
+                    logger.error(f'Could not perceive the Cartesian coordinates of species {self.label}. This '
+                                 f'might result in inconsistent atom order between the Cartesian and the 2D graph '
+                                 f'representations. Got:\n{e}')
+
+            # 2. A. Check isomorphism with bond orders using b_mol
             if b_mol is not None:
-                result = check_isomorphism(self.mol, b_mol)
-                if not result and verbose:
+                isomorphic = check_isomorphism(mol, b_mol)
+                if not isomorphic and verbose:
                     logger.error(f'The Cartesian coordinates of species {self.label} are not isomorphic with the 2D '
-                                 f'structure {self.mol.to_smiles()}')
-            if b_mol is None or not result:
-                result = are_coords_compliant_with_graph(xyz=xyz, mol=self.mol)
-                if not result and verbose:
+                                 f'structure {mol.copy(deep=True).to_smiles()} when considering bond orders.')
+
+            # 2. B. Check isomorphism without bond orders using s_mol (only for charged or high spin multiplicity)
+            if not isomorphic and s_mol is not None:
+                isomorphic = check_isomorphism(mol, s_mol, convert_to_single_bonds=True)
+                if not isomorphic and verbose:
+                    logger.error(f'The Cartesian coordinates of species {self.label} with charge {self.charge} '
+                                 f'and multiplicity {self.multiplicity} are not isomorphic with the 2D '
+                                 f'structure {mol.copy(deep=True).to_smiles()} even without considering bond orders.')
+
+            # 2. C. Check isomorphism without bond orders NOT using s_mol
+            if not isomorphic:
+                isomorphic = are_coords_compliant_with_graph(xyz=xyz, mol=mol)
+                if not isomorphic and verbose:
                     logger.error(f'The Cartesian coordinates of species {self.label} are not compliant with the 2D '
-                                 f'structure {self.mol.to_smiles()}')
-            if not result and self.conf_is_isomorphic:
+                                 f'structure {mol.copy(deep=True).to_smiles()} even without considering bond orders.')
+
+            # 3. Report and resolve
+            if not isomorphic:
                 if allow_nonisomorphic_2d:
-                    # conformer was isomorphic, we **do** allow nonisomorphism, and the optimized structure isn't
-                    result = True
                     if verbose:
-                        logger.warning('allowing nonisomorphic 2D')
-                else:
-                    # conformer was isomorphic, we don't allow nonisomorphism, but the optimized structure isn't
-                    result = False
-                    if verbose:
-                        logger.warning('not allowing nonisomorphic 2D')
-            elif not result and verbose:
-                logger.warning('not allowing nonisomorphic 2D')
+                        logger.warning('Allowing nonisomorphic 2D')
+                    isomorphic = True
+                elif verbose:
+                    if self.conf_is_isomorphic:
+                        # conformer was isomorphic, we don't allow nonisomorphism, but the optimized structure isn't
+                        logger.warning('Not allowing nonisomorphic 2D (the conformer WAS isomorphic with the 2D graph)')
+                    else:
+                        logger.warning('Not allowing nonisomorphic 2D')
         else:
             if verbose:
                 logger.error(f'Cannot check isomorphism for species {self.label} '
                              f'without the 2D graph connectivity information.')
             if allow_nonisomorphic_2d:
-                result = True
+                isomorphic = True
                 if verbose:
-                    logger.warning('allowing nonisomorphic 2D')
-        return result
+                    logger.warning('Allowing nonisomorphic 2D')
+        return isomorphic
 
-    def scissors(self):
+    def scissors(self) -> list:
         """
         Cut chemical bonds to create new species from the original one according to the .bdes attribute,
         preserving the 3D geometry other than the splitted bond.
@@ -1412,11 +1450,10 @@ class ARCSpecies(object):
             self.bdes.pop(self.bdes.index('all_h'))
         for entry in self.bdes:
             if len(entry) != 2:
-                raise SpeciesError('Could not interpret entry {0} in {1} for BDEs calculations.'.format(
-                    entry, self.bdes))
+                raise SpeciesError(f'Could not interpret entry {entry} in {self.bdes} for BDEs calculations.')
             if not isinstance(entry, (tuple, list)):
-                raise SpeciesError('`indices` entries must be tuples or lists, got {0} which is a {1} in {2}'.format(
-                    entry, type(entry), self.bdes))
+                raise SpeciesError(f'`indices` entries must be tuples or lists, '
+                                   f'got {entry} which is a {type(entry)} in {self.bdes}')
         self.bdes = [tuple(bde) for bde in self.bdes]
         if all_h:
             for atom1 in self.mol.atoms:
@@ -1436,7 +1473,7 @@ class ARCSpecies(object):
                     resulting_species.append(new_species)
         return resulting_species
 
-    def _scissors(self, indices):
+    def _scissors(self, indices: tuple) -> list:
         """
         Cut a chemical bond to create two new species from the original one, preserving the 3D geometry.
 
@@ -1451,7 +1488,7 @@ class ARCSpecies(object):
         if not all([isinstance(i, int) for i in indices]):
             raise SpeciesError('Indices must be integers')
         if self.final_xyz is None:
-            raise SpeciesError('Cannot use scissors without the .final_xyz attribute of species {0}'.format(self.label))
+            raise SpeciesError(f'Cannot use scissors without the .final_xyz attribute of species {self.label}')
         indices = (indices[0] - 1, indices[1] - 1)  # convert to 0-indexed atoms
         atom1 = self.mol.atoms[indices[0]]
         atom2 = self.mol.atoms[indices[1]]
@@ -1521,8 +1558,8 @@ class ARCSpecies(object):
                         atom.radical_electrons += 1
                         added_radical.append(label)
                     else:
-                        raise SpeciesError('Could not figure out which atom should gain a radical '
-                                           'due to scission in {0}'.format(self.label))
+                        raise SpeciesError(f'Could not figure out which atom should gain a radical '
+                                           f'due to scission in {self.label}')
         mol1.update(raise_atomtype_exception=False)
         mol2.update(raise_atomtype_exception=False)
 
@@ -1655,8 +1692,10 @@ class TSGuess(object):
         if self.family is not None:
             ts_dict['family'] = self.family
         if self.rmg_reaction is not None:
-            rxn_string = ' <=> '.join([' + '.join([spc.molecule[0].to_smiles() for spc in self.rmg_reaction.reactants]),
-                                      ' + '.join([spc.molecule[0].to_smiles() for spc in self.rmg_reaction.products])])
+            rxn_string = ' <=> '.join([' + '.join([spc.molecule[0].copy(deep=True).to_smiles()
+                                                   for spc in self.rmg_reaction.reactants]),
+                                      ' + '.join([spc.molecule[0].copy(deep=True).to_smiles()
+                                                  for spc in self.rmg_reaction.products])])
             ts_dict['rmg_reaction'] = rxn_string
         return ts_dict
 

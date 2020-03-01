@@ -391,7 +391,7 @@ def write_unconverged_log(unconverged_species: list,
                     if species.is_ts:
                         f.write(f' rxn: {species.rxn_label}')
                     elif species.mol is not None:
-                        f.write(f' SMILES: {species.mol.to_smiles()}')
+                        f.write(f' SMILES: {species.mol.copy(deep=True).to_smiles()}')
                     f.write('\n')
             if unconverged_rxns:
                 f.write('Reactions:')

@@ -1569,8 +1569,8 @@ class Scheduler(object):
                     if self.allow_nonisomorphic_2d or self.species_dict[label].charge:
                         # we'll optimize the single conformer even if it is not isomorphic with the 2D graph
                         logger.error(f'The single conformer {label} could not be checked for isomorphism with the 2D '
-                                     f'graph representation {self.species_dict[label].mol.to_smiles()}. '
-                                     f'Optimizing this conformer anyway.')
+                                     f'graph representation {self.species_dict[label].mol.copy(deep=True).to_smiles()}.'
+                                     f' Optimizing this conformer anyway.')
                         if self.species_dict[label].charge:
                             logger.warning(f'Isomorphism check cannot be done for charged species {label}')
                         self.output[label]['conformers'] += 'Single conformer could not be checked for isomorphism; '
@@ -1578,9 +1578,9 @@ class Scheduler(object):
                         self.species_dict[label].conf_is_isomorphic, spawn_jobs = True, True
                     else:
                         logger.error(f'The only conformer for species {label} could not be checked for isomorphism '
-                                     f'with the 2D graph representation {self.species_dict[label].mol.to_smiles()}. '
-                                     f'NOT calculating this species. To change this behaviour, pass '
-                                     f'`allow_nonisomorphic_2d = True` to ARC.')
+                                     f'with the 2D graph representation '
+                                     f'{self.species_dict[label].mol.copy(deep=True).to_smiles()}. NOT calculating '
+                                     f'this species. To change this behaviour, pass `allow_nonisomorphic_2d = True`.')
                         self.species_dict[label].conf_is_isomorphic, spawn_jobs = False, False
                 if b_mol is not None:
                     try:
@@ -1595,13 +1595,13 @@ class Scheduler(object):
                             self.species_dict[label].conf_is_isomorphic, spawn_jobs = False, self.allow_nonisomorphic_2d
                     if is_isomorphic:
                         logger.info(f'The only conformer for species {label} was found to be isomorphic '
-                                    f'with the 2D graph representation {b_mol.to_smiles()}\n')
+                                    f'with the 2D graph representation {b_mol.copy(deep=True).to_smiles()}\n')
                         self.output[label]['conformers'] += 'single conformer passed isomorphism check; '
                         self.output[label]['job_types']['conformers'] = True
                         self.species_dict[label].conf_is_isomorphic = True
                     else:
                         logger.error(f'The only conformer for species {label} is not isomorphic '
-                                     f'with the 2D graph representation {b_mol.to_smiles()}\n')
+                                     f'with the 2D graph representation {b_mol.copy(deep=True).to_smiles()}\n')
                         self.species_dict[label].conf_is_isomorphic = False
                         if are_coords_compliant_with_graph(xyz=self.species_dict[label].initial_xyz, mol=b_mol):
                             logger.info('Using this conformer anyway (it is compliant with the 2D graph)')
@@ -1721,7 +1721,7 @@ class Scheduler(object):
                         if is_isomorphic or are_coords_compliant_with_graph(xyz=xyz, mol=self.species_dict[label].mol):
                             if i == 0:
                                 logger.info(f'Most stable conformer for species {label} was found to be isomorphic '
-                                            f'with the 2D graph representation {b_mol.to_smiles()}\n')
+                                            f'with the 2D graph representation {b_mol.copy(deep=True).to_smiles()}\n')
                                 conformer_xyz = xyz
                                 if 'passed isomorphism check' not in self.output[label]['conformers']:
                                     self.output[label]['conformers'] += f'most stable conformer ({i}) passed ' \
@@ -1733,11 +1733,12 @@ class Scheduler(object):
                                                              multiplicity=self.species_dict[label].multiplicity,
                                                              charge=self.species_dict[label].charge)[1]
                                     logger.info(f'A conformer for species {label} was found to be isomorphic with the '
-                                                f'2D graph representation {self.species_dict[label].mol.to_smiles()}. '
+                                                f'2D graph representation '
+                                                f'{self.species_dict[label].mol.copy(deep=True).to_smiles()}. '
                                                 f'This conformer is {energies[i] - energies[0]:.2f} kJ/mol above the '
                                                 f'most stable one which corresponds to '
-                                                f'{mol.to_smiles()} (and is not isomorphic). Using the isomorphic '
-                                                f'conformer for further geometry optimization.')
+                                                f'{mol.copy(deep=True).to_smiles()} (and is not isomorphic). '
+                                                f'Using the isomorphic conformer for further geometry optimization.')
                                     self.output[label]['conformers'] += f'Conformer {i} was found to be the lowest ' \
                                                                         f'energy isomorphic conformer; '
                                 conformer_xyz = xyz
@@ -1752,8 +1753,9 @@ class Scheduler(object):
                                                                     f'pass isomorphism check; '
                                 self.species_dict[label].conf_is_isomorphic = False
                                 logger.warning(f'Most stable conformer for species {label} with structure '
-                                               f'{b_mol.to_smiles()} was found to be NON-isomorphic with the 2D graph '
-                                               f'representation {self.species_dict[label].mol.to_smiles()}. '
+                                               f'{b_mol.copy(deep=True).to_smiles()} was found to be NON-isomorphic '
+                                               f'with the 2D graph representation '
+                                               f'{self.species_dict[label].mol.copy(deep=True).to_smiles()}. '
                                                f'Searching for a different conformer that is isomorphic...')
                 else:
                     # all conformers for the species failed isomorphism test
@@ -1762,14 +1764,14 @@ class Scheduler(object):
                         try:
                             b_mol = molecules_from_xyz(xyz, multiplicity=self.species_dict[label].multiplicity,
                                                        charge=self.species_dict[label].charge)[1]
-                            smiles_list.append(b_mol.to_smiles())
+                            smiles_list.append(b_mol.copy(deep=True).to_smiles())
                         except (SanitizationError, AttributeError):
                             smiles_list.append('Could not perceive molecule')
                     if self.allow_nonisomorphic_2d or self.species_dict[label].charge:
                         # we'll optimize the most stable conformer even if it is not isomorphic to the 2D graph
                         logger.error(f'No conformer for {label} was found to be isomorphic with the 2D graph '
-                                     f'representation {self.species_dict[label].mol.to_smiles()} (got: {smiles_list}). '
-                                     f' Optimizing the most stable conformer anyway.')
+                                     f'representation {self.species_dict[label].mol.copy(deep=True).to_smiles()} '
+                                     f'(got: {smiles_list}).  Optimizing the most stable conformer anyway.')
                         self.output[label]['conformers'] += 'No conformer was found to be isomorphic with ' \
                                                             'the 2D graph representation; '
                         if self.species_dict[label].charge:
@@ -2218,7 +2220,8 @@ class Scheduler(object):
                             self.output[label]['errors'] += \
                                 f'A lower conformer was found for {label} via a torsion mode, but it is not ' \
                                 f'isomorphic with the 2D graph representation ' \
-                                f'{self.species_dict[label].mol.to_smiles()}. Not calculating this species.'
+                                f'{self.species_dict[label].mol.copy(deep=True).to_smiles()}. ' \
+                                f'Not calculating this species.'
                             self.output[label]['conformers'] += 'Unconverged'
                             self.output[label]['convergence'] = False
 
@@ -2305,7 +2308,7 @@ class Scheduler(object):
                     self.output[label]['errors'] += 'A lower conformer was found for {0} via a torsion mode, ' \
                                                     'but it is not isomorphic with the 2D graph representation ' \
                                                     '{1}. Not calculating this species.'.format(
-                        label, self.species_dict[label].mol.to_smiles())
+                        label, self.species_dict[label].mol.copy(deep=True).to_smiles())
                     self.output[label]['conformers'] += 'Unconverged'
                     self.output[label]['convergence'] = False
             else:
@@ -2676,7 +2679,8 @@ class Scheduler(object):
         if level_of_theory is None:
             logger.error(f'ARC has attempted all built-in conformer isomorphism troubleshoot methods for species '
                          f'{label}. No conformer for this species was found to be isomorphic with the 2D graph '
-                         f'representation {self.species_dict[label].mol.to_smiles()}. NOT optimizing this species.')
+                         f'representation {self.species_dict[label].mol.copy(deep=True).to_smiles()}. '
+                         f'NOT optimizing this species.')
             self.output[label]['conformers'] += 'Error: No conformer was found to be isomorphic with the 2D' \
                                                 ' graph representation!; '
         else:

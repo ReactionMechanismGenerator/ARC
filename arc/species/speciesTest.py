@@ -15,6 +15,7 @@ from rmgpy.species import Species
 from rmgpy.transport import TransportData
 
 from arc.common import almost_equal_coords_lists
+from arc.exceptions import SpeciesError
 from arc.plotter import save_conformers_file
 from arc.settings import arc_path
 from arc.species.converter import (check_isomorphism,
@@ -908,9 +909,8 @@ H      -2.43580767   -0.00829320    0.40610628
 H      -1.54270451    1.15356356   -0.58992943
 H       2.82319256   -0.46240839   -0.40178723"""
         spc2 = ARCSpecies(label='spc2', xyz=xyz2)
-        for adj, coord in zip(spc2.mol.to_adjacency_list().splitlines(), xyz2.splitlines()):
-            if adj and coord:
-                self.assertEqual(adj.split()[1], coord.split()[0])
+        for i, atom in enumerate(spc2.mol.atoms):
+            self.assertEqual(atom.symbol, spc2.get_xyz()['symbols'][i])
 
         n3_xyz = """N      -1.1997440839    -0.1610052059     0.0274738287
         H      -1.4016624407    -0.6229695533    -0.8487034080
@@ -921,7 +921,8 @@ H       2.82319256   -0.46240839   -0.40178723"""
         H       1.1294795781    -0.8708998550     0.7537444446
         H       1.4015274689    -0.6230592706    -0.8487058662"""
         spc3 = ARCSpecies(label='N3', xyz=n3_xyz, multiplicity=1, smiles='NNN')
-        self.assertEqual(spc3.mol.atoms[1].symbol, 'H')
+        for i, atom in enumerate(spc3.mol.atoms):
+            self.assertEqual(atom.symbol, spc3.get_xyz()['symbols'][i])
         spc3.generate_conformers()
         self.assertEqual(len(spc3.conformers), 9)
 
@@ -937,6 +938,8 @@ H       2.82319256   -0.46240839   -0.40178723"""
         spc4 = ARCSpecies(label='CCO', smiles='CCO', xyz=xyz4)  # define from xyz for consistent atom order
         for atom1, atom2 in zip(spc4.mol.atoms, spc4.mol_list[0].atoms):
             self.assertEqual(atom1.symbol, atom2.symbol)
+        for i, atom in enumerate(spc4.mol.atoms):
+            self.assertEqual(atom.symbol, spc4.get_xyz()['symbols'][i])
 
         xyz5 = {'symbols': ('S', 'O', 'O', 'O', 'C', 'C', 'H', 'H', 'H', 'H'),
                 'isotopes': (32, 16, 16, 16, 12, 12, 1, 1, 1, 1),
@@ -1030,6 +1033,44 @@ H       1.11582953    0.94384729   -0.10134685"""
 
         is_isomorphic3 = spc2.check_xyz_isomorphism(allow_nonisomorphic_2d=True)
         self.assertTrue(is_isomorphic3)
+
+        xyz4 = """N       2.25402700    0.45886100    0.16098200
+                  C       0.96879200    0.14668800    0.06929300
+                  C       0.01740100    1.20875600   -0.00119800
+                  H       0.40464100    2.21851400    0.02457300
+                  C      -1.33137900    0.96373600   -0.09758800
+                  C      -1.81578100   -0.35215900   -0.12971800
+                  C      -0.87660400   -1.35782200   -0.06021800
+                  C       0.46214300   -1.20057200    0.03562800
+                  H       2.81718400   -0.39044400    0.20315600
+                  H      -2.03062400    1.78920300   -0.14948800
+                  H      -2.87588800   -0.55598400   -0.20545500
+                  H       1.15316700   -2.03432300    0.08695500"""
+        spc4 = ARCSpecies(label='anilino_radical_BDE_7_12_A', smiles='N=C1[CH]C=C[C]=C1', xyz=xyz4)
+        spc4.final_xyz = xyz4
+        is_isomorphic4 = spc4.check_xyz_isomorphism()
+        self.assertTrue(is_isomorphic4)
+
+        xyz5 = """C       0.08059628    1.32037195   -0.29800610
+                  C      -1.28794158    1.26062641   -0.03029704
+                  C      -1.89642539    0.02969442    0.21332426
+                  C      -1.13859198   -1.14110023    0.18344613
+                  C       0.23092154   -1.08214781   -0.08393383
+                  C       0.84282867    0.15119681   -0.31285027
+                  O       2.17997981    0.29916802   -0.59736431
+                  O       2.90066125   -0.82056323   -0.00921949
+                  H       0.55201906    2.27952184   -0.49410221
+                  H      -1.87925130    2.17240519   -0.01581738
+                  H      -2.96278939   -0.01860646    0.41888241
+                  H      -1.61463364   -2.10195688    0.36125669
+                  H       0.80478689   -2.00346200   -0.12519327"""
+        with self.assertRaises(SpeciesError):
+            spc5 = ARCSpecies(label='c1ccccc1OO', smiles='c1ccccc1OO', xyz=xyz5)
+
+        xyz6 = """C    1.1709385492    0.1763143411    0.0
+                  Cl  -0.5031634975   -0.0109430036    0.0
+                  H    1.5281481620   -0.8718549847    0.0"""
+        spc6 = ARCSpecies(label='[CH]Cl', smiles='[CH]Cl', xyz=xyz6)
 
     def test_scissors(self):
         """Test the scissors method in Species"""
@@ -1127,20 +1168,29 @@ H       1.11582953    0.94384729   -0.10134685"""
         self.assertTrue(any(spc.mol.to_smiles() == 'CO[NH]' for spc in spc_list))
 
     def test_net_charged_species(self):
-        """Test that we can define and manipulate ions"""
+        """Test that we can define, process, and manipulate ions"""
         nh4 = ARCSpecies(label='NH4', smiles='[NH4+]', charge=1)
         nh4.determine_multiplicity(smiles='', adjlist='', mol=None)
         self.assertEqual(nh4.multiplicity, 1)
 
-        cation = ARCSpecies(label='OCCCOH2', smiles='OCCC[OH2+]', charge=1)
-        cation.determine_multiplicity(smiles='', adjlist='', mol=None)
-        self.assertEqual(cation.multiplicity, 1)
-        cation.generate_conformers()
-        self.assertTrue(len(cation.conformers))
+        cation1 = ARCSpecies(label='OCCCOH2', smiles='OCCC[OH2+]', charge=1)
+        cation1.determine_multiplicity(smiles='', adjlist='', mol=None)
+        self.assertEqual(cation1.multiplicity, 1)
+        self.assertEqual(cation1.charge, 1)
+        cation1.generate_conformers()
+        self.assertTrue(len(cation1.conformers))
+
+        cation2 = ARCSpecies(label='C(C)(C)C[NH2+]CO', smiles='C(C)(C)C[NH2+]CO', charge=1)
+        cation2.determine_multiplicity(smiles='', adjlist='', mol=None)
+        self.assertEqual(cation2.multiplicity, 1)
+        self.assertEqual(cation2.charge, 1)
+        cation2.generate_conformers()
+        self.assertEqual(len(cation2.conformers), 15)
 
         anion = ARCSpecies(label='CCC(=O)[O-]', smiles='CCC(=O)[O-]', charge=-1)
         anion.determine_multiplicity(smiles='', adjlist='', mol=None)
         self.assertEqual(anion.multiplicity, 1)
+        self.assertEqual(anion.charge, -1)
         anion.generate_conformers()
         self.assertTrue(len(anion.conformers))
 

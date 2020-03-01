@@ -1067,19 +1067,19 @@ def molecules_from_xyz(xyz, multiplicity=None, charge=0):
             try:
                 set_multiplicity(mol_bo, multiplicity, charge)
             except SpeciesError as e:
-                logger.warning('Cannot infer 2D graph connectivity, failed to set species multiplicity with the '
-                               'following error:\n{0}'.format(e))
+                logger.warning(f'Cannot infer 2D graph connectivity, failed to set species multiplicity with the '
+                               f'following error:\n{e}')
                 return mol_s1_updated, None
         mol_s1_updated.multiplicity = mol_bo.multiplicity
         try:
             order_atoms(ref_mol=mol_s1_updated, mol=mol_bo)
         except SanitizationError:
-            logger.warning('Could not order atoms for {0}!'.format(mol_s1_updated.copy(deep=True).to_smiles()))
+            logger.warning(f'Could not order atoms for {mol_s1_updated.copy(deep=True).to_smiles()}!')
         try:
             set_multiplicity(mol_s1_updated, mol_bo.multiplicity, charge, radical_map=mol_bo)
         except SpeciesError as e:
-            logger.warning('Cannot infer 2D graph connectivity, failed to set species multiplicity with the '
-                           'following error:\n{0}'.format(e))
+            logger.warning(f'Cannot infer 2D graph connectivity, failed to set species multiplicity with the '
+                           f'following error:\n{e}')
             return mol_s1_updated, mol_bo
 
     return mol_s1_updated, mol_bo
@@ -1118,15 +1118,15 @@ def set_multiplicity(mol, multiplicity, charge, radical_map=None):
             add_rads_by_atom_valance(mol)
             if mol.multiplicity > radicals + 1:
                 # still problematic, currently there's no automated solution to this case, raise an error
-                raise SpeciesError('A multiplicity of {0} was given, but only {1} radicals were identified. '
-                                   'Cannot infer 2D graph representation for this species.\nMore info:{2}\n{3}'.format(
-                                    mol.multiplicity, radicals, mol.to_smiles(), mol.to_adjacency_list()))
+                raise SpeciesError(f'A multiplicity of {mol.multiplicity} was given, but only {radicals} radicals '
+                                   f'were identified. Cannot infer 2D graph representation for this species.\nMore '
+                                   f'info:{mol.copy(deep=True).to_smiles()}\n{mol.copy(deep=True).to_adjacency_list()}')
     add_lone_pairs_by_atom_valance(mol)
     # final check: an even number of radicals results in an odd multiplicity, and vice versa
     if divmod(mol.multiplicity, 2)[1] == divmod(radicals, 2)[1]:
         if not charge:
             raise SpeciesError('Number of radicals ({0}) and multiplicity ({1}) for {2} do not match.\n{3}'.format(
-                radicals, mol.multiplicity, mol.to_smiles(), mol.to_adjacency_list()))
+                radicals, mol.multiplicity, mol.copy(deep=True).to_smiles(), mol.copy(deep=True).to_adjacency_list()))
         else:
             logger.warning('Number of radicals ({0}) and multiplicity ({1}) for {2} do not match. It might be OK since '
                            'this species is charged and charged molecules are currently not perceived well in ARC.'
@@ -1250,8 +1250,8 @@ def order_atoms_in_mol_list(ref_mol, mol_list):
             try:  # TODO: flag as unordered (or solve)
                 order_atoms(ref_mol, mol)
             except SanitizationError as e:
-                logger.warning('Could not order atoms in\n{0}\nGot the following error:'
-                               '\n{1}'.format(mol.to_adjacency_list, e))
+                logger.warning(f'Could not order atoms in\n{mol.copy(deep=True).to_adjacency_list}'
+                               f'\nGot the following error:\n{e}')
                 return False
     else:
         logger.warning('Could not order atoms')
@@ -1480,7 +1480,7 @@ def set_rdkit_dihedrals(conf, rd_mol, torsion, deg_increment=None, deg_abs=None)
     return new_xyz
 
 
-def check_isomorphism(mol1, mol2, filter_structures=True):
+def check_isomorphism(mol1, mol2, filter_structures=True, convert_to_single_bonds=False):
     """
     Convert ``mol1`` and ``mol2`` to RMG Species objects, and generate resonance structures.
     Then check Species isomorphism.
@@ -1491,6 +1491,9 @@ def check_isomorphism(mol1, mol2, filter_structures=True):
         mol2 (Molecule): An RMG Molecule object.
         filter_structures (bool, optional): Whether to apply the filtration algorithm when generating
                                             resonance structures. ``True`` to apply.
+        convert_to_single_bonds (bool, optional): Whether to convert both molecules to single bonds,
+                                                  avoiding a bond order comparison (only compares connectivity).
+                                                  Resonance structures will not be generated.
 
     Returns:
         bool: Whether one of the molecules in the Species derived from ``mol1``
@@ -1502,19 +1505,24 @@ def check_isomorphism(mol1, mol2, filter_structures=True):
         return False
 
     mol1.reactive, mol2.reactive = True, True
-    mol1_copy = mol1.copy(deep=True)
-    mol2_copy = mol2.copy(deep=True)
+    if convert_to_single_bonds:
+        mol1_copy = mol1.to_single_bonds(raise_atomtype_exception=False)
+        mol2_copy = mol2.to_single_bonds(raise_atomtype_exception=False)
+    else:
+        mol1_copy = mol1.copy(deep=True)
+        mol2_copy = mol2.copy(deep=True)
     spc1 = Species(molecule=[mol1_copy])
     spc2 = Species(molecule=[mol2_copy])
 
-    try:
-        spc1.generate_resonance_structures(keep_isomorphic=False, filter_structures=filter_structures)
-    except (AtomTypeError, ValueError):
-        pass
-    try:
-        spc2.generate_resonance_structures(keep_isomorphic=False, filter_structures=filter_structures)
-    except (AtomTypeError, ValueError):
-        pass
+    if not convert_to_single_bonds:
+        try:
+            spc1.generate_resonance_structures(keep_isomorphic=False, filter_structures=filter_structures)
+        except (AtomTypeError, ValueError):
+            pass
+        try:
+            spc2.generate_resonance_structures(keep_isomorphic=False, filter_structures=filter_structures)
+        except (AtomTypeError, ValueError):
+            pass
 
     for molecule1 in spc1.molecule:
         for molecule2 in spc2.molecule:
