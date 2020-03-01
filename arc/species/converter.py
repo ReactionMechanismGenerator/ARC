@@ -1067,8 +1067,8 @@ def molecules_from_xyz(xyz, multiplicity=None, charge=0):
             try:
                 set_multiplicity(mol_bo, multiplicity, charge)
             except SpeciesError as e:
-                logger.warning('Cannot infer 2D graph connectivity, failed to set species multiplicity with the '
-                               'following error:\n{0}'.format(e))
+                logger.warning(f'Cannot infer 2D graph connectivity, failed to set species multiplicity with the '
+                               f'following error:\n{e}')
                 return mol_s1_updated, None
         mol_s1_updated.multiplicity = mol_bo.multiplicity
         try:
@@ -1078,8 +1078,8 @@ def molecules_from_xyz(xyz, multiplicity=None, charge=0):
         try:
             set_multiplicity(mol_s1_updated, mol_bo.multiplicity, charge, radical_map=mol_bo)
         except SpeciesError as e:
-            logger.warning('Cannot infer 2D graph connectivity, failed to set species multiplicity with the '
-                           'following error:\n{0}'.format(e))
+            logger.warning(f'Cannot infer 2D graph connectivity, failed to set species multiplicity with the '
+                           f'following error:\n{e}')
             return mol_s1_updated, mol_bo
 
     return mol_s1_updated, mol_bo
