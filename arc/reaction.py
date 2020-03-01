@@ -223,8 +223,10 @@ class ARCReaction(object):
 
     def rmg_reaction_to_str(self):
         """A helper function for dumping the RMG Reaction object as a string for the YAML restart dictionary"""
-        return self.arrow.join([self.plus.join(r.molecule[0].to_smiles() for r in self.rmg_reaction.reactants),
-                                self.plus.join(p.molecule[0].to_smiles() for p in self.rmg_reaction.products)])
+        return self.arrow.join([self.plus.join(r.molecule[0].copy(deep=True).to_smiles()
+                                               for r in self.rmg_reaction.reactants),
+                                self.plus.join(p.molecule[0].copy(deep=True).to_smiles()
+                                               for p in self.rmg_reaction.products)])
 
     def rmg_reaction_from_str(self, reaction_string):
         """A helper function for regenerating the RMG Reaction object from a string representation"""

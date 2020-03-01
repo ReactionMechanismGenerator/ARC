@@ -62,12 +62,12 @@ def get_reaction_label(rmg_reaction):
     reactants = rmg_reaction.reactants
     products = rmg_reaction.products
     if len(reactants) > 1:
-        reactants_string = '+'.join([reactant.molecule[0].to_smiles() for reactant in reactants])
+        reactants_string = '+'.join([reactant.molecule[0].copy(deep=True).to_smiles() for reactant in reactants])
     else:
-        reactants_string = reactants[0].molecule[0].to_smiles()
+        reactants_string = reactants[0].molecule[0].copy(deep=True).to_smiles()
     if len(products) > 1:
-        products_string = '+'.join([product.molecule[0].to_smiles() for product in products])
+        products_string = '+'.join([product.molecule[0].copy(deep=True).to_smiles() for product in products])
     else:
-        products_string = products[0].molecule[0].to_smiles()
+        products_string = products[0].molecule[0].copy(deep=True).to_smiles()
     reaction_label = '_'.join([reactants_string, products_string])
     return reaction_label

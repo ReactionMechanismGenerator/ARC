@@ -1074,7 +1074,7 @@ def molecules_from_xyz(xyz, multiplicity=None, charge=0):
         try:
             order_atoms(ref_mol=mol_s1_updated, mol=mol_bo)
         except SanitizationError:
-            logger.warning('Could not order atoms for {0}!'.format(mol_s1_updated.copy(deep=True).to_smiles()))
+            logger.warning(f'Could not order atoms for {mol_s1_updated.copy(deep=True).to_smiles()}!')
         try:
             set_multiplicity(mol_s1_updated, mol_bo.multiplicity, charge, radical_map=mol_bo)
         except SpeciesError as e:
@@ -1118,15 +1118,15 @@ def set_multiplicity(mol, multiplicity, charge, radical_map=None):
             add_rads_by_atom_valance(mol)
             if mol.multiplicity > radicals + 1:
                 # still problematic, currently there's no automated solution to this case, raise an error
-                raise SpeciesError('A multiplicity of {0} was given, but only {1} radicals were identified. '
-                                   'Cannot infer 2D graph representation for this species.\nMore info:{2}\n{3}'.format(
-                                    mol.multiplicity, radicals, mol.to_smiles(), mol.to_adjacency_list()))
+                raise SpeciesError(f'A multiplicity of {mol.multiplicity} was given, but only {radicals} radicals '
+                                   f'were identified. Cannot infer 2D graph representation for this species.\nMore '
+                                   f'info:{mol.copy(deep=True).to_smiles()}\n{mol.copy(deep=True).to_adjacency_list()}')
     add_lone_pairs_by_atom_valance(mol)
     # final check: an even number of radicals results in an odd multiplicity, and vice versa
     if divmod(mol.multiplicity, 2)[1] == divmod(radicals, 2)[1]:
         if not charge:
             raise SpeciesError('Number of radicals ({0}) and multiplicity ({1}) for {2} do not match.\n{3}'.format(
-                radicals, mol.multiplicity, mol.to_smiles(), mol.to_adjacency_list()))
+                radicals, mol.multiplicity, mol.copy(deep=True).to_smiles(), mol.copy(deep=True).to_adjacency_list()))
         else:
             logger.warning('Number of radicals ({0}) and multiplicity ({1}) for {2} do not match. It might be OK since '
                            'this species is charged and charged molecules are currently not perceived well in ARC.'
@@ -1250,8 +1250,8 @@ def order_atoms_in_mol_list(ref_mol, mol_list):
             try:  # TODO: flag as unordered (or solve)
                 order_atoms(ref_mol, mol)
             except SanitizationError as e:
-                logger.warning('Could not order atoms in\n{0}\nGot the following error:'
-                               '\n{1}'.format(mol.to_adjacency_list, e))
+                logger.warning(f'Could not order atoms in\n{mol.copy(deep=True).to_adjacency_list}'
+                               f'\nGot the following error:\n{e}')
                 return False
     else:
         logger.warning('Could not order atoms')

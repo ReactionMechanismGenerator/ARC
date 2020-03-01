@@ -426,7 +426,7 @@ class ARCSpecies(object):
         str_representation = 'ARCSpecies('
         str_representation += f'label={self.label}, '
         if self.mol is not None:
-            str_representation += f'smiles={self.mol.to_smiles()}, '
+            str_representation += f'smiles={self.mol.copy(deep=True).to_smiles()}, '
         str_representation += f'is_ts={self.is_ts}, '
         str_representation += f'multiplicity={self.multiplicity}, '
         str_representation += f'charge={self.charge})'
@@ -536,7 +536,7 @@ class ARCSpecies(object):
         if self.bond_corrections is not None:
             species_dict['bond_corrections'] = self.bond_corrections
         if self.mol is not None:
-            species_dict['mol'] = self.mol.to_adjacency_list()
+            species_dict['mol'] = self.mol.copy(deep=True).to_adjacency_list()
         if self.initial_xyz is not None:
             species_dict['initial_xyz'] = xyz_to_str(self.initial_xyz)
         if self.final_xyz is not None:
@@ -1655,8 +1655,10 @@ class TSGuess(object):
         if self.family is not None:
             ts_dict['family'] = self.family
         if self.rmg_reaction is not None:
-            rxn_string = ' <=> '.join([' + '.join([spc.molecule[0].to_smiles() for spc in self.rmg_reaction.reactants]),
-                                      ' + '.join([spc.molecule[0].to_smiles() for spc in self.rmg_reaction.products])])
+            rxn_string = ' <=> '.join([' + '.join([spc.molecule[0].copy(deep=True).to_smiles()
+                                                   for spc in self.rmg_reaction.reactants]),
+                                      ' + '.join([spc.molecule[0].copy(deep=True).to_smiles()
+                                                  for spc in self.rmg_reaction.products])])
             ts_dict['rmg_reaction'] = rxn_string
         return ts_dict
 

@@ -238,7 +238,7 @@ def generate_conformers(mol_list,
             logger.info(f'Conformer execution time using {force_field}: {days}{int(h):02d}:{int(m):02d}:{int(s):02d}')
 
     else:
-        logger.error(f'Could not generate conformers for {label}: {mol_list[0].to_smiles()}')
+        logger.error(f'Could not generate conformers for {label}: {mol_list[0].copy(deep=True).to_smiles()}')
         lowest_confs, new_conformers = list(), list()
 
     if not return_all_conformers:
