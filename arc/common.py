@@ -497,7 +497,7 @@ def colliding_atoms(xyz: dict,
 # https://sites.google.com/site/chempendix/bond-lengths
 # https://courses.lumenlearning.com/suny-potsdam-organicchemistry/chapter/1-3-basics-of-bonding/
 # 'N-O' is taken from the geometry of NH2OH
-# todo: combine with partial charge to allow greated distance, e.g., as in N2O4
+# todo: combine with partial charge to allow greater distance, e.g., as in N2O4
 # todo: or replace with NBO analysis
 SINGLE_BOND_LENGTH = {'Br-Br': 2.29, 'Br-Cr': 1.94, 'Br-H': 1.41,
                       'C-C': 1.54, 'C-Cl': 1.77, 'C-F': 1.35, 'C-H': 1.09, 'C-I': 2.13,
