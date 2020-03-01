@@ -1200,18 +1200,30 @@ class ARCSpecies(object):
                 raise SpeciesError(f'The number of atoms in the molecule and in the cartesian coordinates is different.'
                                    f'\nGot:\n{self.mol.copy(deep=True).to_adjacency_list()}\nand:\n{xyz}')
             # self.mol should have come from another source, e.g., SMILES or yml
-            original_mol = self.mol.copy(deep=True)
-            self.mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
-            if self.mol is not None and not check_isomorphism(original_mol, self.mol):
-                logger.warning('XYZ and the 2D graph representation for {0} are not isomorphic.\n'
-                               'Got xyz:\n{1}\n\nwhich corresponds to {2}\n{3}\n\nand: {4}\n{5}'.format(
-                                self.label, xyz, self.mol.to_smiles(), self.mol.to_adjacency_list(),
-                                original_mol.to_smiles(), original_mol.to_adjacency_list()))
-                if not are_coords_compliant_with_graph(xyz=xyz, mol=self.mol):
-                    raise SpeciesError(f'XYZ and the 2D graph representation for {self.label} are not compliant')
-            elif self.mol is None:
+            perceived_mol = molecules_from_xyz(xyz=xyz,
+                                               multiplicity=self.multiplicity,
+                                               charge=self.charge)[1]
+            if perceived_mol is not None:
+                allow_nonisomorphic_2d = (self.charge is not None and self.charge) \
+                                         or self.mol.has_charge() or perceived_mol.has_charge() \
+                                         or (self.multiplicity is not None and self.multiplicity >= 3) \
+                                         or self.mol.multiplicity >= 3 or perceived_mol.multiplicity >= 3
+                isomorphic = self.check_xyz_isomorphism(mol=perceived_mol,
+                                                        xyz=xyz,
+                                                        allow_nonisomorphic_2d=allow_nonisomorphic_2d)
+                if not isomorphic:
+                    logger.warning(f'XYZ and the 2D graph representation for {self.label} are not isomorphic.\nGot '
+                                   f'xyz:\n{xyz}\n\nwhich corresponds to {self.mol.copy(deep=True).to_smiles()}\n'
+                                   f'{self.mol.copy(deep=True).to_adjacency_list()}\n\nand: '
+                                   f'{self.mol.copy(deep=True).to_smiles()}\n'
+                                   f'{self.mol.copy(deep=True).to_adjacency_list()}')
+                    raise SpeciesError(f'XYZ and the 2D graph representation for {self.label} are not compliant.')
+                else:
+                    self.mol = perceived_mol
+            else:
                 # molecules_from_xyz() returned None for b_mol
-                self.mol = original_mol  # todo: Atom order will not be correct, need fix
+                # todo: Atom order will not be correct, fix
+                pass
         else:
             mol_s, mol_b = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)
             if len(mol_b.atoms) == self.number_of_atoms:
