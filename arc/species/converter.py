@@ -1480,7 +1480,7 @@ def set_rdkit_dihedrals(conf, rd_mol, torsion, deg_increment=None, deg_abs=None)
     return new_xyz
 
 
-def check_isomorphism(mol1, mol2, filter_structures=True):
+def check_isomorphism(mol1, mol2, filter_structures=True, convert_to_single_bonds=False):
     """
     Convert ``mol1`` and ``mol2`` to RMG Species objects, and generate resonance structures.
     Then check Species isomorphism.
@@ -1491,6 +1491,9 @@ def check_isomorphism(mol1, mol2, filter_structures=True):
         mol2 (Molecule): An RMG Molecule object.
         filter_structures (bool, optional): Whether to apply the filtration algorithm when generating
                                             resonance structures. ``True`` to apply.
+        convert_to_single_bonds (bool, optional): Whether to convert both molecules to single bonds,
+                                                  avoiding a bond order comparison (only compares connectivity).
+                                                  Resonance structures will not be generated.
 
     Returns:
         bool: Whether one of the molecules in the Species derived from ``mol1``
@@ -1502,19 +1505,24 @@ def check_isomorphism(mol1, mol2, filter_structures=True):
         return False
 
     mol1.reactive, mol2.reactive = True, True
-    mol1_copy = mol1.copy(deep=True)
-    mol2_copy = mol2.copy(deep=True)
+    if convert_to_single_bonds:
+        mol1_copy = mol1.to_single_bonds(raise_atomtype_exception=False)
+        mol2_copy = mol2.to_single_bonds(raise_atomtype_exception=False)
+    else:
+        mol1_copy = mol1.copy(deep=True)
+        mol2_copy = mol2.copy(deep=True)
     spc1 = Species(molecule=[mol1_copy])
     spc2 = Species(molecule=[mol2_copy])
 
-    try:
-        spc1.generate_resonance_structures(keep_isomorphic=False, filter_structures=filter_structures)
-    except (AtomTypeError, ValueError):
-        pass
-    try:
-        spc2.generate_resonance_structures(keep_isomorphic=False, filter_structures=filter_structures)
-    except (AtomTypeError, ValueError):
-        pass
+    if not convert_to_single_bonds:
+        try:
+            spc1.generate_resonance_structures(keep_isomorphic=False, filter_structures=filter_structures)
+        except (AtomTypeError, ValueError):
+            pass
+        try:
+            spc2.generate_resonance_structures(keep_isomorphic=False, filter_structures=filter_structures)
+        except (AtomTypeError, ValueError):
+            pass
 
     for molecule1 in spc1.molecule:
         for molecule2 in spc2.molecule:
