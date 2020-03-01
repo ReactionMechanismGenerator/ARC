@@ -376,9 +376,9 @@ class ARCSpecies(object):
                     self.mol_from_xyz(get_cheap=False)
                 if self.mol is None:
                     if self.compute_thermo:
-                        logger.warning('No structure (SMILES, adjList, RMG Species, or RMG Molecule) was given for '
-                                       'species {0}, NOT using bond additivity corrections (BAC) for thermo '
-                                       'computation.'.format(self.label))
+                        logger.warning(f'No structure (SMILES, adjList, RMG Species, or RMG Molecule) was given for '
+                                       f'species {self.label}, NOT using bond additivity corrections (BAC) for thermo '
+                                       f'computation.')
                 else:
                     # Generate bond list for applying bond additivity corrections
                     if not self.bond_corrections and self.mol is not None:
@@ -387,9 +387,8 @@ class ARCSpecies(object):
                             self.long_thermo_description += 'Bond corrections: {0}\n'.format(self.bond_corrections)
 
             elif not self.bond_corrections and self.compute_thermo:
-                logger.warning('Cannot determine bond additivity corrections (BAC) for species {0} based on xyz '
-                               'coordinates only. For better thermoproperties, provide bond corrections.'.format(
-                                self.label))
+                logger.warning(f'Cannot determine bond additivity corrections (BAC) for species {self.label} based on '
+                               f'xyz coordinates only. For better thermoproperties, provide bond corrections.')
 
             self.neg_freqs_trshed = list()
 
@@ -744,7 +743,7 @@ class ARCSpecies(object):
                 self.mol = Molecule().from_adjacency_list(adjlist=arkane_spc.adjacency_list,
                                                           raise_atomtype_exception=False)
             except ValueError:
-                print('Could not read adjlist:\n{0}'.format(arkane_spc.adjacency_list))  # should *not* be logging
+                print(f'Could not read adjlist:\n{arkane_spc.adjacency_list}')  # should *not* be logging
                 raise
         elif arkane_spc.inchi is not None:
             self.mol = Molecule().from_inchi(inchistr=arkane_spc.inchi, raise_atomtype_exception=False)
@@ -1396,7 +1395,7 @@ class ARCSpecies(object):
                     logger.warning('allowing nonisomorphic 2D')
         return result
 
-    def scissors(self):
+    def scissors(self) -> list:
         """
         Cut chemical bonds to create new species from the original one according to the .bdes attribute,
         preserving the 3D geometry other than the splitted bond.
@@ -1412,11 +1411,10 @@ class ARCSpecies(object):
             self.bdes.pop(self.bdes.index('all_h'))
         for entry in self.bdes:
             if len(entry) != 2:
-                raise SpeciesError('Could not interpret entry {0} in {1} for BDEs calculations.'.format(
-                    entry, self.bdes))
+                raise SpeciesError(f'Could not interpret entry {entry} in {self.bdes} for BDEs calculations.')
             if not isinstance(entry, (tuple, list)):
-                raise SpeciesError('`indices` entries must be tuples or lists, got {0} which is a {1} in {2}'.format(
-                    entry, type(entry), self.bdes))
+                raise SpeciesError(f'`indices` entries must be tuples or lists, '
+                                   f'got {entry} which is a {type(entry)} in {self.bdes}')
         self.bdes = [tuple(bde) for bde in self.bdes]
         if all_h:
             for atom1 in self.mol.atoms:
@@ -1436,7 +1434,7 @@ class ARCSpecies(object):
                     resulting_species.append(new_species)
         return resulting_species
 
-    def _scissors(self, indices):
+    def _scissors(self, indices: tuple) -> list:
         """
         Cut a chemical bond to create two new species from the original one, preserving the 3D geometry.
 
@@ -1451,7 +1449,7 @@ class ARCSpecies(object):
         if not all([isinstance(i, int) for i in indices]):
             raise SpeciesError('Indices must be integers')
         if self.final_xyz is None:
-            raise SpeciesError('Cannot use scissors without the .final_xyz attribute of species {0}'.format(self.label))
+            raise SpeciesError(f'Cannot use scissors without the .final_xyz attribute of species {self.label}')
         indices = (indices[0] - 1, indices[1] - 1)  # convert to 0-indexed atoms
         atom1 = self.mol.atoms[indices[0]]
         atom2 = self.mol.atoms[indices[1]]
@@ -1521,8 +1519,8 @@ class ARCSpecies(object):
                         atom.radical_electrons += 1
                         added_radical.append(label)
                     else:
-                        raise SpeciesError('Could not figure out which atom should gain a radical '
-                                           'due to scission in {0}'.format(self.label))
+                        raise SpeciesError(f'Could not figure out which atom should gain a radical '
+                                           f'due to scission in {self.label}')
         mol1.update(raise_atomtype_exception=False)
         mol2.update(raise_atomtype_exception=False)
 
