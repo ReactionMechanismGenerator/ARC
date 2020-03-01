@@ -909,9 +909,8 @@ H      -2.43580767   -0.00829320    0.40610628
 H      -1.54270451    1.15356356   -0.58992943
 H       2.82319256   -0.46240839   -0.40178723"""
         spc2 = ARCSpecies(label='spc2', xyz=xyz2)
-        for adj, coord in zip(spc2.mol.to_adjacency_list().splitlines(), xyz2.splitlines()):
-            if adj and coord:
-                self.assertEqual(adj.split()[1], coord.split()[0])
+        for i, atom in enumerate(spc2.mol.atoms):
+            self.assertEqual(atom.symbol, spc2.get_xyz()['symbols'][i])
 
         n3_xyz = """N      -1.1997440839    -0.1610052059     0.0274738287
         H      -1.4016624407    -0.6229695533    -0.8487034080
@@ -922,7 +921,8 @@ H       2.82319256   -0.46240839   -0.40178723"""
         H       1.1294795781    -0.8708998550     0.7537444446
         H       1.4015274689    -0.6230592706    -0.8487058662"""
         spc3 = ARCSpecies(label='N3', xyz=n3_xyz, multiplicity=1, smiles='NNN')
-        self.assertEqual(spc3.mol.atoms[1].symbol, 'H')
+        for i, atom in enumerate(spc3.mol.atoms):
+            self.assertEqual(atom.symbol, spc3.get_xyz()['symbols'][i])
         spc3.generate_conformers()
         self.assertEqual(len(spc3.conformers), 9)
 
@@ -938,6 +938,8 @@ H       2.82319256   -0.46240839   -0.40178723"""
         spc4 = ARCSpecies(label='CCO', smiles='CCO', xyz=xyz4)  # define from xyz for consistent atom order
         for atom1, atom2 in zip(spc4.mol.atoms, spc4.mol_list[0].atoms):
             self.assertEqual(atom1.symbol, atom2.symbol)
+        for i, atom in enumerate(spc4.mol.atoms):
+            self.assertEqual(atom.symbol, spc4.get_xyz()['symbols'][i])
 
         xyz5 = {'symbols': ('S', 'O', 'O', 'O', 'C', 'C', 'H', 'H', 'H', 'H'),
                 'isotopes': (32, 16, 16, 16, 12, 12, 1, 1, 1, 1),
@@ -1166,20 +1168,29 @@ H       1.11582953    0.94384729   -0.10134685"""
         self.assertTrue(any(spc.mol.to_smiles() == 'CO[NH]' for spc in spc_list))
 
     def test_net_charged_species(self):
-        """Test that we can define and manipulate ions"""
+        """Test that we can define, process, and manipulate ions"""
         nh4 = ARCSpecies(label='NH4', smiles='[NH4+]', charge=1)
         nh4.determine_multiplicity(smiles='', adjlist='', mol=None)
         self.assertEqual(nh4.multiplicity, 1)
 
-        cation = ARCSpecies(label='OCCCOH2', smiles='OCCC[OH2+]', charge=1)
-        cation.determine_multiplicity(smiles='', adjlist='', mol=None)
-        self.assertEqual(cation.multiplicity, 1)
-        cation.generate_conformers()
-        self.assertTrue(len(cation.conformers))
+        cation1 = ARCSpecies(label='OCCCOH2', smiles='OCCC[OH2+]', charge=1)
+        cation1.determine_multiplicity(smiles='', adjlist='', mol=None)
+        self.assertEqual(cation1.multiplicity, 1)
+        self.assertEqual(cation1.charge, 1)
+        cation1.generate_conformers()
+        self.assertTrue(len(cation1.conformers))
+
+        cation2 = ARCSpecies(label='C(C)(C)C[NH2+]CO', smiles='C(C)(C)C[NH2+]CO', charge=1)
+        cation2.determine_multiplicity(smiles='', adjlist='', mol=None)
+        self.assertEqual(cation2.multiplicity, 1)
+        self.assertEqual(cation2.charge, 1)
+        cation2.generate_conformers()
+        self.assertEqual(len(cation2.conformers), 15)
 
         anion = ARCSpecies(label='CCC(=O)[O-]', smiles='CCC(=O)[O-]', charge=-1)
         anion.determine_multiplicity(smiles='', adjlist='', mol=None)
         self.assertEqual(anion.multiplicity, 1)
+        self.assertEqual(anion.charge, -1)
         anion.generate_conformers()
         self.assertTrue(len(anion.conformers))
 
