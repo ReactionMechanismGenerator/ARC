@@ -954,7 +954,7 @@ class ARC(object):
                                            f'Got the following species: {[spc.label for spc in self.arc_species_list]}')
             else:
                 # no H species defined, make one
-                h = ARCSpecies(label='H', smiles='[H]', compute_thermo=False)
+                h = ARCSpecies(label='H', smiles='[H]', compute_thermo=False, e0_only=True)
                 self.arc_species_list.append(h)
 
     def determine_model_chemistry_for_job_types(self):
