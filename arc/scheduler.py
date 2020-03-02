@@ -375,7 +375,9 @@ class Scheduler(object):
             if species.label not in self.job_dict:
                 self.job_dict[species.label] = dict()
             if species.yml_path is None:
-                if self.job_types['rotors'] and not self.species_dict[species.label].number_of_rotors:
+                if self.job_types['rotors'] and not self.species_dict[species.label].number_of_rotors \
+                        and self.species_dict[species.label].rotors_dict is not None:
+                    # if species.rotors_dict is None, it means the species is marked to not spawn rotor scans
                     self.species_dict[species.label].determine_rotors()
                 if not self.job_types['opt'] and self.species_dict[species.label].final_xyz is not None:
                     # opt wasn't asked for, and it's not needed, declare it as converged
@@ -1408,7 +1410,7 @@ class Scheduler(object):
                                              If not given, a first Gromacs job will be spawned.
             num_confs (int, optional): The number of conformers to generate.
         """
-        if not self.species_dict[label].rotors_dict:
+        if not self.species_dict[label].rotors_dict and self.species_dict[label].rotors_dict is not None:
             self.species_dict[label].determine_rotors()
         torsions, tops = list(), list()
         for rotor_dict in self.species_dict[label].rotors_dict.values():

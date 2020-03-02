@@ -590,7 +590,7 @@ class ARCSpecies(object):
             species_dict['conformers_before_opt'] = [xyz_to_str(conf) for conf in self.conformers_before_opt]
         if self.bdes is not None:
             species_dict['bdes'] = self.bdes
-        if len(list(self.rotors_dict.keys())):
+        if self.rotors_dict is not None and len(list(self.rotors_dict.keys())):
             rotors_dict = dict()
             for index, rotor_dict in self.rotors_dict.items():
                 rotors_dict[index] = dict()
@@ -610,6 +610,10 @@ class ARCSpecies(object):
                     else:
                         rotors_dict[index][key] = val
             species_dict['rotors_dict'] = rotors_dict
+        elif self.rotors_dict is None:
+            # this marks the species to skip rotor scans (it is not an empty dict)
+            # this is valuable information, store it in the restart file
+            species_dict['rotors_dict'] = self.rotors_dict
         return species_dict
 
     def from_dict(self, species_dict):
@@ -726,7 +730,9 @@ class ARCSpecies(object):
         if self.bdes is not None and not isinstance(self.bdes, list):
             raise SpeciesError(f'The .bdes argument must be a list, got {self.bdes} which is a {type(self.bdes)}')
         self.rotors_dict = dict()
-        if 'rotors_dict' in species_dict:
+        if 'rotors_dict' in species_dict and species_dict['rotors_dict'] is None:
+                self.rotors_dict = None
+        if 'rotors_dict' in species_dict and self.rotors_dict is not None:
             for index, rotor_dict in species_dict['rotors_dict'].items():
                 self.rotors_dict[index] = dict()
                 for key, val in rotor_dict.items():
@@ -931,6 +937,9 @@ class ARCSpecies(object):
         The resulting rotors are saved in {'pivots': [1, 3], 'top': [3, 7], 'scan': [2, 1, 3, 7]} format
         in self.species_dict[species.label]['rotors_dict']. Also updates 'number_of_rotors'.
         """
+        if self.rotors_dict is None:
+            # this species was marked to skip rotor scans (.rotors_dict is not initialized as an empty dict but as None)
+            return
         if not self.charge:
             mol_list = self.mol_list
         else:
@@ -1620,6 +1629,7 @@ class ARCSpecies(object):
                           compute_thermo=False,
                           e0_only=True)
         spc1.generate_conformers()
+        spc1.rotors_dict = None
         spc2 = ARCSpecies(label=label2,
                           mol=mol2,
                           xyz=xyz2,
@@ -1628,6 +1638,7 @@ class ARCSpecies(object):
                           compute_thermo=False,
                           e0_only=True)
         spc2.generate_conformers()
+        spc2.rotors_dict = None
 
         return [spc1, spc2]
 

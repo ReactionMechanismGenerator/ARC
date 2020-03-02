@@ -464,8 +464,7 @@ class ARC(object):
                                     self.output[label]['paths'][key] = os.path.join(arc_path, 'Projects', val)
                                     logger.debug(f'corrected path to {os.path.join(arc_path, val)}')
                                 else:
-                                    raise SpeciesError('Could not find {0} output file for species {1}: {2}'.format(
-                                        key, label, val))
+                                    raise SpeciesError(f'Could not find {key} output file for species {label}: {val}')
         self.running_jobs = input_dict['running_jobs'] if 'running_jobs' in input_dict else dict()
         logger.debug(f'output dictionary successfully parsed:\n{self.output}')
         self.T_min = input_dict['T_min'] if 'T_min' in input_dict else None
@@ -511,17 +510,18 @@ class ARC(object):
         if 'species' in input_dict:
             self.arc_species_list = [ARCSpecies(species_dict=spc_dict) for spc_dict in input_dict['species']]
             for spc in self.arc_species_list:
-                for rotor_num, rotor_dict in spc.rotors_dict.items():
-                    if not os.path.isfile(rotor_dict['scan_path']) and rotor_dict['success']:
-                        # try correcting relative paths
-                        if os.path.isfile(os.path.join(arc_path, rotor_dict['scan_path'])):
-                            spc.rotors_dict[rotor_num]['scan_path'] = os.path.join(arc_path, rotor_dict['scan_path'])
-                        elif os.path.isfile(os.path.join(arc_path, 'Projects', rotor_dict['scan_path'])):
-                            spc.rotors_dict[rotor_num]['scan_path'] = \
-                                os.path.join(arc_path, 'Projects', rotor_dict['scan_path'])
-                        else:
-                            raise SpeciesError('Could not find rotor scan output file for rotor {0} of species {1}:'
-                                               ' {2}'.format(rotor_num, spc.label, rotor_dict['scan_path']))
+                if spc.rotors_dict is not None:
+                    for rotor_num, rotor_dict in spc.rotors_dict.items():
+                        if not os.path.isfile(rotor_dict['scan_path']) and rotor_dict['success']:
+                            # try correcting relative paths
+                            if os.path.isfile(os.path.join(arc_path, rotor_dict['scan_path'])):
+                                spc.rotors_dict[rotor_num]['scan_path'] = os.path.join(arc_path, rotor_dict['scan_path'])
+                            elif os.path.isfile(os.path.join(arc_path, 'Projects', rotor_dict['scan_path'])):
+                                spc.rotors_dict[rotor_num]['scan_path'] = \
+                                    os.path.join(arc_path, 'Projects', rotor_dict['scan_path'])
+                            else:
+                                raise SpeciesError(f'Could not find rotor scan output file for rotor {rotor_num} of '
+                                                   f'species {spc.label}: {rotor_dict["scan_path"]}')
         else:
             self.arc_species_list = list()
         if self.job_types['bde']:

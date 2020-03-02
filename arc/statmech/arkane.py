@@ -304,7 +304,7 @@ class ArkaneAdapter(StatmechAdapter):
             return None
 
         rotors, rotors_description = '', ''
-        if any([i_r_dict['success'] for i_r_dict in species.rotors_dict.values()]):
+        if species.rotors_dict is not None and any([i_r_dict['success'] for i_r_dict in species.rotors_dict.values()]):
             rotors = '\n\nrotors = ['
             rotors_description = '1D rotors:\n'
             for i in range(species.number_of_rotors):
