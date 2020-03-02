@@ -99,7 +99,10 @@ class ArkaneAdapter(StatmechAdapter):
         str_representation += f'T_count={self.T_count})'
         return str_representation
 
-    def compute_thermo(self, kinetics_flag: bool = False) -> None:
+    def compute_thermo(self,
+                       kinetics_flag: bool = False,
+                       e0_only: bool = False,
+                       ) -> None:
         """
         Generate thermodynamic data for a species.
         Populates the species.thermo attribute.
@@ -107,6 +110,7 @@ class ArkaneAdapter(StatmechAdapter):
         Args:
             kinetics_flag (bool, optional): Whether this call is used for generating species statmech
                                             for a rate coefficient calculation.
+            e0_only (bool, optional): Whether to only run statmech (w/o thermo) to compute E0.
         """
         if not kinetics_flag:
             # initialize the Arkane species_dict so that species for which thermo is calculated won't interfere
@@ -136,11 +140,12 @@ class ArkaneAdapter(StatmechAdapter):
             if statmech_success:
                 self.species.e0 = arkane_species.conformer.E0.value_si * 0.001  # convert to kJ/mol
                 logger.debug(f'Assigned E0 to {self.species.label}: {self.species.e0:.2f} kJ/mol')
-                thermo_job = ThermoJob(arkane_species, 'NASA')
-                thermo_job.execute(output_directory=arkane_output_path, plot=False)
-                self.species.thermo = arkane_species.get_thermo_data()
-                if not kinetics_flag:
-                    plotter.log_thermo(self.species.label, path=arkane_output_path)
+                if not e0_only:
+                    thermo_job = ThermoJob(arkane_species, 'NASA')
+                    thermo_job.execute(output_directory=arkane_output_path, plot=False)
+                    self.species.thermo = arkane_species.get_thermo_data()
+                    if not kinetics_flag:
+                        plotter.log_thermo(self.species.label, path=arkane_output_path)
             else:
                 logger.error(f'Could not run statmech job for species {self.species.label}')
         clean_output_directory(species_path=os.path.join(self.output_directory, 'Species', self.species.label))
