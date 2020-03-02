@@ -1347,18 +1347,15 @@ def read_rdkit_embedded_conformer_i(rd_mol, i, rd_index_map=None):
     return xyz_dict
 
 
-def rdkit_force_field(label, rd_mol, mol=None, force_field='MMFF94s', optimize=True, try_ob=False):
+def rdkit_force_field(label, rd_mol, force_field='MMFF94s', optimize=True):
     """
     Optimize RDKit conformers using a force field (MMFF94 or MMFF94s are recommended).
-    Fallback to OpenBabel if RDKit fails.
 
     Args:
         label (str): The species' label.
         rd_mol (RDKit RDMol): The RDKit molecule with embedded conformers to optimize.
-        mol (Molecule, optional): The RMG molecule object with connectivity and bond order information.
         force_field (str, optional): The type of force field to use.
         optimize (bool, optional): Whether to first optimize the conformer using FF. True to optimize.
-        try_ob (bool, optional): Whether to try OpenBabel if RDKit fails. ``True`` to try, ``False`` by default.
 
     Returns:
         list: Entries are optimized xyz's in a dictionary format.
@@ -1369,7 +1366,7 @@ def rdkit_force_field(label, rd_mol, mol=None, force_field='MMFF94s', optimize=T
     for i in range(rd_mol.GetNumConformers()):
         if optimize:
             v, j = 1, 0
-            while v and j < 200:
+            while v == 1 and j < 200:  # v == 1: continue, v == 0: enough steps, v == -1: unable to set up
                 v = Chem.AllChem.MMFFOptimizeMolecule(rd_mol, mmffVariant=force_field, confId=i,
                                                       maxIters=500, ignoreInterfragInteractions=False)
                 j += 1
@@ -1379,12 +1376,6 @@ def rdkit_force_field(label, rd_mol, mol=None, force_field='MMFF94s', optimize=T
             if optimize:
                 energies.append(ff.CalcEnergy())
             xyzs.append(read_rdkit_embedded_conformer_i(rd_mol, i))
-    if not len(xyzs) and try_ob:
-        # RDKit failed, try OpenBabel
-        energies = list()
-        xyzs = read_rdkit_embedded_conformers(label, rd_mol)
-        for xyz in xyzs:
-            energies.append(openbabel_force_field(label, mol, xyz=xyz, force_field=force_field)[1][0])
     return xyzs, energies
 
 

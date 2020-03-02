@@ -504,7 +504,7 @@ O       1.40839617    0.14303696    0.00000000"""
     def test_embed_rdkit(self):
         """Test embedding in RDKit"""
         rd_mol = conformers.embed_rdkit(label='CJ', mol=self.cj_spc.mol, num_confs=1)
-        xyzs, energies = conformers.rdkit_force_field(label='CJ', rd_mol=rd_mol, mol=self.cj_spc.mol)
+        xyzs, energies = conformers.rdkit_force_field(label='CJ', rd_mol=rd_mol)
         for atom, symbol in zip(self.cj_spc.mol.atoms, xyzs[0]['symbols']):
             self.assertEqual(atom.symbol, symbol)
 
@@ -540,7 +540,7 @@ O      -1.21746139   -0.72237602    0.00000000
 O       1.40839617    0.14303696    0.00000000"""
         spc = ARCSpecies(label='SO2', smiles='O=S=O', xyz=xyz)
         rd_mol = conformers.embed_rdkit(label='', mol=spc.mol, num_confs=3, xyz=xyz)
-        xyzs, energies = conformers.rdkit_force_field(label='', rd_mol=rd_mol, mol=spc.mol,
+        xyzs, energies = conformers.rdkit_force_field(label='', rd_mol=rd_mol,
                                                       force_field='MMFF94s', optimize=True)
         self.assertEqual(len(energies), 3)
         self.assertAlmostEqual(energies[0], 2.8820960262158292e-11, 5)
@@ -563,7 +563,7 @@ O       1.40839617    0.14303696    0.00000000"""
                            'symbols': ('S', 'O', 'O')}]
 
         self.assertTrue(almost_equal_coords_lists(xyzs, expected_xyzs1))
-        xyzs, energies = conformers.rdkit_force_field(label='', rd_mol=rd_mol, mol=spc.mol,
+        xyzs, energies = conformers.rdkit_force_field(label='', rd_mol=rd_mol,
                                                       force_field='MMFF94s', optimize=False)
         self.assertEqual(len(energies), 0)
         expected_xyzs2 = [{'symbols': ('S', 'O', 'O'),

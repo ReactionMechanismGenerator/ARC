@@ -894,7 +894,7 @@ class ARCSpecies(object):
             num_confs = min(500, max(50, len(self.mol.atoms) * 3))
             rd_mol = conformers.embed_rdkit(label=self.label, mol=self.mol, num_confs=num_confs)
             xyzs, energies = conformers.rdkit_force_field(label=self.label, rd_mol=rd_mol,
-                                                          mol=self.mol, force_field='MMFF94s')
+                                                          force_field='MMFF94s')
             if energies:
                 min_energy = min(energies)
                 min_energy_index = energies.index(min_energy)
