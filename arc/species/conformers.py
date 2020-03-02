@@ -30,7 +30,8 @@ Module workflow::
 
     generate_conformers
         generate_force_field_conformers
-            get_force_field_energies, rdkit_force_field or mix_rdkit_and_openbabel_force_field, determine_dihedrals
+            get_force_field_energies, rdkit_force_field or openbabel_force_field_on_rdkit_conformers,
+            determine_dihedrals
         deduce_new_conformers
             get_torsion_angles, determine_torsion_symmetry, determine_torsion_sampling_points,
             change_dihedrals_and_force_field_it
@@ -1017,7 +1018,7 @@ def get_torsion_angles(label, conformers, torsions):
     return torsion_angles
 
 
-def get_force_field_energies(label, mol, num_confs=None, xyz=None, force_field='MMFF94s',  optimize=True, try_ob=False):
+def get_force_field_energies(label, mol, num_confs=None, xyz=None, force_field='MMFF94s', optimize=True, try_ob=True):
     """
     Determine force field energies using RDKit.
     If ``num_confs`` is given, random 3D geometries will be generated. If xyz is given, it will be directly used instead.
@@ -1030,28 +1031,25 @@ def get_force_field_energies(label, mol, num_confs=None, xyz=None, force_field='
         xyz (dict, optional): The 3D coordinates guess.
         force_field (str, optional): The type of force field to use.
         optimize (bool, optional): Whether to first optimize the conformer using FF. True to optimize.
-        try_ob (bool, optional): Whether to try OpenBabel if RDKit fails. ``True`` to try, ``False`` by default.
+        try_ob (bool, optional): Whether to try OpenBabel if RDKit fails. ``True`` to try, ``True`` by default.
+
+    Raises:
+        ConformerError: If conformers could not be generated.
 
     Returns:
         list: Entries are xyz coordinates, each in a dict format.
     Returns:
         list: Entries are the FF energies (in kJ/mol).
-
-    Raises:
-        ConformerError: If conformers could not be generated.
     """
     xyzs, energies = list(), list()
     if force_field.lower() in ['mmff94', 'mmff94s', 'uff']:
         rd_mol = embed_rdkit(label, mol, num_confs=num_confs, xyz=xyz)
-        xyzs, energies = rdkit_force_field(label, rd_mol, mol=mol, force_field=force_field, optimize=optimize,
-                                           try_ob=try_ob)
+        xyzs, energies = rdkit_force_field(label, rd_mol, force_field=force_field, optimize=optimize)
     if not len(xyzs) and force_field.lower() in ['gaff', 'mmff94', 'mmff94s', 'uff', 'ghemical'] and try_ob:
-        xyzs, energies = mix_rdkit_and_openbabel_force_field(label,
-                                                             mol,
-                                                             num_confs=num_confs,
-                                                             xyz=xyz,
-                                                             force_field=force_field,
-                                                             try_ob=try_ob)
+        logger.warning(f'Using OpenBabel instead of RDKit as a fall back method to generate conformers for {label}. '
+                       f'This is often slower, and prohibits ARC from using all features of the conformers module.')
+        xyzs, energies = openbabel_force_field_on_rdkit_conformers(
+                                            label, rd_mol, force_field=force_field, optimize=optimize)
     if not len(xyzs):
         if force_field.lower() not in ['mmff94', 'mmff94s', 'uff', 'gaff', 'ghemical']:
             raise ConformerError(f'Unrecognized force field for {label}. Should be either MMFF94, MMFF94s, UFF, '
