@@ -342,7 +342,7 @@ def process_bdes(label: str,
         if source.mol.atoms[bde_indices[0] - 1].is_hydrogen():
             e1 = species_dict['H'].e0
         else:
-            bde_label = label + '_BDE_' + str(bde_indices[0]) + '_' + str(bde_indices[1]) + '_A'
+            bde_label = f'{label}_BDE_{bde_indices[0]}_{bde_indices[1]}_A'
             if bde_label not in species_dict:
                 logger.error(f'Could not find BDE species {bde_label} for generating a BDE report for {label}. '
                              f'Not generating a BDE report for this species.')
@@ -354,7 +354,7 @@ def process_bdes(label: str,
             e2 = species_dict['H'].e0
         else:
             letter = 'B' if found_a_label else 'A'
-            bde_label = label + '_BDE_' + str(bde_indices[0]) + '_' + str(bde_indices[1]) + '_' + letter
+            bde_label = f'{label}_BDE_{bde_indices[0]}_{bde_indices[1]}_{letter}'
             if bde_label not in species_dict:
                 logger.error(f'Could not find BDE species {bde_label} for generating a BDE report for {label}. '
                              f'Not generating a BDE report for this species.')
@@ -364,7 +364,7 @@ def process_bdes(label: str,
             bde_report[bde_indices] = e1 + e2 - source.e0  # products - reactant
         else:
             bde_report[bde_indices] = 'N/A'
-            logger.error(f'could not calculate BDE for {label} between atoms '
+            logger.error(f'Could not calculate BDE for {label} between atoms '
                          f'{bde_indices[0]} ({source.mol.atoms[bde_indices[0] - 1].element.symbol}) '
                          f'and {bde_indices[1]} ({source.mol.atoms[bde_indices[1] - 1].element.symbol})')
     return bde_report
