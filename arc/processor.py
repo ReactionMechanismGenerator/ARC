@@ -146,7 +146,7 @@ def process_arc_project(statmech_adapter: str,
     # 2. Thermo
     if compute_thermo:
         for species in species_dict.values():
-            if species.compute_thermo and output_dict[species.label]['convergence']:
+            if (species.compute_thermo or species.e0_only) and output_dict[species.label]['convergence']:
                 statmech_adapter = statmech_factory(statmech_adapter_label=statmech_adapter_label,
                                                     output_directory=output_directory,
                                                     output_dict=output_dict,
@@ -155,10 +155,10 @@ def process_arc_project(statmech_adapter: str,
                                                     freq_scale_factor=freq_scale_factor,
                                                     species=species,
                                                     )
-                statmech_adapter.compute_thermo(kinetics_flag=False)
+                statmech_adapter.compute_thermo(kinetics_flag=False, e0_only=species.e0_only)
                 if species.thermo is not None:
                     species_for_thermo_lib.append(species)
-                elif species not in unconverged_species:
+                elif not species.e0_only and species not in unconverged_species:
                     unconverged_species.append(species)
             elif species.compute_thermo and not output_dict[species.label]['convergence'] \
                     and species not in unconverged_species:
@@ -342,7 +342,7 @@ def process_bdes(label: str,
         if source.mol.atoms[bde_indices[0] - 1].is_hydrogen():
             e1 = species_dict['H'].e0
         else:
-            bde_label = label + '_BDE_' + str(bde_indices[0]) + '_' + str(bde_indices[1]) + '_A'
+            bde_label = f'{label}_BDE_{bde_indices[0]}_{bde_indices[1]}_A'
             if bde_label not in species_dict:
                 logger.error(f'Could not find BDE species {bde_label} for generating a BDE report for {label}. '
                              f'Not generating a BDE report for this species.')
@@ -354,7 +354,7 @@ def process_bdes(label: str,
             e2 = species_dict['H'].e0
         else:
             letter = 'B' if found_a_label else 'A'
-            bde_label = label + '_BDE_' + str(bde_indices[0]) + '_' + str(bde_indices[1]) + '_' + letter
+            bde_label = f'{label}_BDE_{bde_indices[0]}_{bde_indices[1]}_{letter}'
             if bde_label not in species_dict:
                 logger.error(f'Could not find BDE species {bde_label} for generating a BDE report for {label}. '
                              f'Not generating a BDE report for this species.')
@@ -364,7 +364,7 @@ def process_bdes(label: str,
             bde_report[bde_indices] = e1 + e2 - source.e0  # products - reactant
         else:
             bde_report[bde_indices] = 'N/A'
-            logger.error(f'could not calculate BDE for {label} between atoms '
+            logger.error(f'Could not calculate BDE for {label} between atoms '
                          f'{bde_indices[0]} ({source.mol.atoms[bde_indices[0] - 1].element.symbol}) '
                          f'and {bde_indices[1]} ({source.mol.atoms[bde_indices[1] - 1].element.symbol})')
     return bde_report

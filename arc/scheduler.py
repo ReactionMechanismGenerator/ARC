@@ -375,7 +375,9 @@ class Scheduler(object):
             if species.label not in self.job_dict:
                 self.job_dict[species.label] = dict()
             if species.yml_path is None:
-                if self.job_types['rotors'] and not self.species_dict[species.label].number_of_rotors:
+                if self.job_types['rotors'] and not self.species_dict[species.label].number_of_rotors \
+                        and self.species_dict[species.label].rotors_dict is not None:
+                    # if species.rotors_dict is None, it means the species is marked to not spawn rotor scans
                     self.species_dict[species.label].determine_rotors()
                 if not self.job_types['opt'] and self.species_dict[species.label].final_xyz is not None:
                     # opt wasn't asked for, and it's not needed, declare it as converged
@@ -1050,7 +1052,7 @@ class Scheduler(object):
                              level_of_theory='ccsd/vdz', job_type='sp', occ=occ)
             else:
                 # MRCI was requested but no sp job ran for this species, run CCSD first
-                logger.info('running a CCSD job for {0} before MRCI'.format(label))
+                logger.info(f'running a CCSD job for {label} before MRCI')
                 self.run_job(label=label, xyz=self.species_dict[label].get_xyz(generate=False),
                              level_of_theory='ccsd/vdz', job_type='sp')
         if self.job_types['sp']:
@@ -1066,6 +1068,9 @@ class Scheduler(object):
         """
         if self.job_types['rotors']:
             for i in range(self.species_dict[label].number_of_rotors):
+                if self.species_dict[label].rotors_dict[i]['scan_path'] \
+                        and os.path.isfile(self.species_dict[label].rotors_dict[i]['scan_path']):
+                    continue
                 scan = self.species_dict[label].rotors_dict[i]['scan']
                 pivots = self.species_dict[label].rotors_dict[i]['pivots']
                 if not isinstance(scan[0], list):
@@ -1405,7 +1410,7 @@ class Scheduler(object):
                                              If not given, a first Gromacs job will be spawned.
             num_confs (int, optional): The number of conformers to generate.
         """
-        if not self.species_dict[label].rotors_dict:
+        if not self.species_dict[label].rotors_dict and self.species_dict[label].rotors_dict is not None:
             self.species_dict[label].determine_rotors()
         torsions, tops = list(), list()
         for rotor_dict in self.species_dict[label].rotors_dict.values():
@@ -2720,13 +2725,13 @@ class Scheduler(object):
         Important for the restart feature so long jobs won't be ran twice.
         """
         jobs = self.restart_dict['running_jobs']
-        if not jobs:
+        if not jobs or not any([job for job in jobs.values()]):
             del self.restart_dict['running_jobs']
             self.running_jobs = dict()
-            logger.debug('It seems that there are no running jobs specified in the ARC restart file. Assuming all jobs '
-                         'have finished.')
+            logger.debug('It seems that there are no running jobs specified in the ARC restart file. '
+                         'Assuming all jobs have finished.')
         else:
-            logger.info(f"ARC's restart files indicate the following jobs are still running. {list(jobs.keys())}")
+            logger.info(f"ARC's restart files indicate the following jobs are still running: {list(jobs.values())}")
             for spc_label in jobs.keys():
                 if spc_label not in self.running_jobs:
                     self.running_jobs[spc_label] = list()
@@ -2734,12 +2739,12 @@ class Scheduler(object):
                     if 'conformer' not in job_description or job_description['conformer'] < 0:
                         self.running_jobs[spc_label].append(job_description['job_name'])
                     else:
-                        self.running_jobs[spc_label].append('conformer{0}'.format(job_description['conformer']))
+                        self.running_jobs[spc_label].append(f'conformer{job_description["conformer"]}')
                     for species in self.species_list:
                         if species.label == spc_label:
                             break
                     else:
-                        raise SchedulerError('Could not find species {0} in the restart file'.format(spc_label))
+                        raise SchedulerError(f'Could not find species {spc_label} in the restart file')
                     job = Job(job_dict=job_description)
                     if spc_label not in self.job_dict:
                         self.job_dict[spc_label] = dict()
@@ -2765,7 +2770,7 @@ class Scheduler(object):
                                 content += job_name + ', '
                             else:
                                 content += self.job_dict[spc_label][job_type][job_name].job_name \
-                                           + ' (conformer' + str(job_name) + ')' + ', '
+                                           + f' (conformer{job_name}), '
                 content += '\n\n'
                 logger.info(content)
 

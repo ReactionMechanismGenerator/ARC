@@ -14,13 +14,17 @@ class StatmechAdapter(ABC):
     """
 
     @abstractmethod
-    def compute_thermo(self, kinetics_flag: bool = True) -> None:
+    def compute_thermo(self,
+                       kinetics_flag: bool = True,
+                       e0_only: bool = False,
+                       ) -> None:
         """
         Generate thermodynamic data for a species.
 
         Args:
             kinetics_flag (bool, optional): Whether this call is used for generating species statmech
                                             for a rate coefficient calculation.
+            e0_only (bool, optional): Whether to only run statmech (w/o thermo) to compute E0.
         """
         pass
 
