@@ -1066,6 +1066,9 @@ class Scheduler(object):
         """
         if self.job_types['rotors']:
             for i in range(self.species_dict[label].number_of_rotors):
+                if self.species_dict[label].rotors_dict[i]['scan_path'] \
+                        and os.path.isfile(self.species_dict[label].rotors_dict[i]['scan_path']):
+                    continue
                 scan = self.species_dict[label].rotors_dict[i]['scan']
                 pivots = self.species_dict[label].rotors_dict[i]['pivots']
                 if not isinstance(scan[0], list):
