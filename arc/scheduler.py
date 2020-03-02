@@ -2720,13 +2720,13 @@ class Scheduler(object):
         Important for the restart feature so long jobs won't be ran twice.
         """
         jobs = self.restart_dict['running_jobs']
-        if not jobs:
+        if not jobs or not any([job for job in jobs.values()]):
             del self.restart_dict['running_jobs']
             self.running_jobs = dict()
             logger.debug('It seems that there are no running jobs specified in the ARC restart file. '
                          'Assuming all jobs have finished.')
         else:
-            logger.info(f"ARC's restart files indicate the following jobs are still running. {list(jobs.keys())}")
+            logger.info(f"ARC's restart files indicate the following jobs are still running: {list(jobs.values())}")
             for spc_label in jobs.keys():
                 if spc_label not in self.running_jobs:
                     self.running_jobs[spc_label] = list()
