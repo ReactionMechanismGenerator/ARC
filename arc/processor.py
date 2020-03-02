@@ -146,7 +146,7 @@ def process_arc_project(statmech_adapter: str,
     # 2. Thermo
     if compute_thermo:
         for species in species_dict.values():
-            if species.compute_thermo and output_dict[species.label]['convergence']:
+            if (species.compute_thermo or species.e0_only) and output_dict[species.label]['convergence']:
                 statmech_adapter = statmech_factory(statmech_adapter_label=statmech_adapter_label,
                                                     output_directory=output_directory,
                                                     output_dict=output_dict,
@@ -155,10 +155,10 @@ def process_arc_project(statmech_adapter: str,
                                                     freq_scale_factor=freq_scale_factor,
                                                     species=species,
                                                     )
-                statmech_adapter.compute_thermo(kinetics_flag=False)
+                statmech_adapter.compute_thermo(kinetics_flag=False, e0_only=species.e0_only)
                 if species.thermo is not None:
                     species_for_thermo_lib.append(species)
-                elif species not in unconverged_species:
+                elif not species.e0_only and species not in unconverged_species:
                     unconverged_species.append(species)
             elif species.compute_thermo and not output_dict[species.label]['convergence'] \
                     and species not in unconverged_species:
