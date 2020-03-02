@@ -1060,6 +1060,53 @@ def get_force_field_energies(label, mol, num_confs=None, xyz=None, force_field='
     return xyzs, energies
 
 
+def openbabel_force_field_on_rdkit_conformers(label, rd_mol, force_field='MMFF94s', optimize=True):
+    """
+    Optimize RDKit conformers by OpenBabel using a force field (MMFF94 or MMFF94s are recommended).
+    This is a fall back method when RDKit fails to generate force field optimized conformers.
+
+    Args:
+        label (str): The species' label.
+        rd_mol (RDKit RDMol): The RDKit molecule with embedded conformers to optimize.
+        force_field (str, optional): The type of force field to use.
+        optimize (bool, optional): Whether to first optimize the conformer using FF. True to optimize.
+
+    Returns:
+        list: Entries are optimized xyz's in a dictionary format.
+    Returns:
+        list: Entries are float numbers representing the energies (in kJ/mol).
+    """
+    xyzs, energies = list(), list()
+    # Set up Openbabel input and output format
+    obconversion = ob.OBConversion()
+    obconversion.SetInAndOutFormats('xyz', 'xyz')
+    # Set up Openbabel force field
+    ff = ob.OBForceField.FindForceField(force_field)
+    symbols = [rd_atom.GetSymbol() for rd_atom in rd_mol.GetAtoms()]
+    for i in range(rd_mol.GetNumConformers()):
+        # Convert RDKit conformer to xyz string
+        conf = rd_mol.GetConformer(i)
+        xyz_str = f'{conf.GetNumAtoms()}\n\n'
+        for j in range(conf.GetNumAtoms()):
+            xyz_str += symbols[j] + '      '
+            pt = conf.GetAtomPosition(j)
+            xyz_str += '   '.join([str(pt.x), str(pt.y), str(pt.z)]) + '\n'
+        # Build OpenBabel molecule from xyz string
+        ob_mol = ob.OBMol()
+        obconversion.ReadString(ob_mol, xyz_str)
+        ff.Setup(ob_mol)
+        # Optimize the molecule if needed
+        if optimize:
+            ff.ConjugateGradients(2000)
+        # Export xyzs and energies
+        ob_mol.GetCoordinates()
+        ff.GetCoordinates(ob_mol)
+        energies.append(ff.Energy())
+        xyz_str = '\n'.join(obconversion.WriteString(ob_mol).splitlines()[2:])
+        xyzs.append(converter.str_to_xyz(xyz_str))
+    return xyzs, energies
+
+
 def mix_rdkit_and_openbabel_force_field(label,
                                         mol,
                                         num_confs=None,
