@@ -251,11 +251,35 @@ class ARCSpecies(object):
                                                      generating conformers. ``True`` to consider all.
         zmat (dict): The species internal coordinates (Z Matrix).
     """
-    def __init__(self, label=None, is_ts=False, rmg_species=None, mol=None, xyz=None, multiplicity=None, charge=None,
-                 smiles='', adjlist='', inchi='', bond_corrections=None, compute_thermo=True, species_dict=None,
-                 yml_path=None, ts_methods=None, ts_number=None, rxn_label=None, external_symmetry=None,
-                 optical_isomers=None, run_time=None, checkfile=None, number_of_radicals=None, force_field='MMFF94s',
-                 svpfit_output_file=None, bdes=None, directed_rotors=None, consider_all_diastereomers=True):
+    def __init__(self,
+                 label: str = None,
+                 species_dict: dict = None,
+                 yml_path: str = None,
+                 is_ts: bool = False,
+                 rmg_species: Species = None,
+                 mol: Molecule = None,
+                 smiles: str = '',
+                 adjlist: str = '',
+                 inchi: str = '',
+                 number_of_radicals: int = None,
+                 multiplicity: int = None,
+                 charge: int = None,
+                 external_symmetry: int = None,
+                 optical_isomers: int = None,
+                 bond_corrections: dict = None,
+                 xyz: list or dict or str = None,
+                 force_field: str = 'MMFF94s',
+                 svpfit_output_file: str = None,
+                 bdes: list = None,
+                 directed_rotors: dict = None,
+                 consider_all_diastereomers: bool = True,
+                 checkfile: str = None,
+                 run_time: datetime.timedelta = None,
+                 compute_thermo: bool = True,
+                 ts_methods: list = None,
+                 ts_number: int = None,
+                 rxn_label: str = None,
+                 ):
         self.t1 = None
         self.ts_number = ts_number
         self.conformers = list()
@@ -301,8 +325,7 @@ class ARCSpecies(object):
             self.consider_all_diastereomers = consider_all_diastereomers
             self.zmat = None
             if self.bdes is not None and not isinstance(self.bdes, list):
-                raise SpeciesError('The .bdes argument must be a list, got {0} which is a {1}'.format(
-                                    self.bdes, type(self.bdes)))
+                raise SpeciesError(f'The .bdes argument must be a list, got {self.bdes} which is a {type(self.bdes)}')
             if self.is_ts:
                 if ts_methods is None:
                     self.ts_methods = default_ts_methods
@@ -311,7 +334,7 @@ class ARCSpecies(object):
                     if not self.ts_methods:
                         self.ts_methods = ['user guess']
                 else:
-                    raise TSError('ts_methods must be a list, got {0} of type {1}'.format(ts_methods, type(ts_methods)))
+                    raise TSError(f'ts_methods must be a list, got {ts_methods} which is a {type(ts_methods)}')
             else:
                 self.ts_methods = None
             self.rxn_label = rxn_label
@@ -658,8 +681,8 @@ class ARCSpecies(object):
             self.mol = Molecule().from_adjacency_list(species_dict['mol'], raise_atomtype_exception=False) \
                 if 'mol' in species_dict else None
         except (ValueError, InvalidAdjacencyListError) as e:
-            logger.error('Could not read RMG adjacency list {0}. Got:\n{1}'.format(species_dict['mol'] if 'mol'
-                                                                                   in species_dict else None, e))
+            logger.error(f'Could not read RMG adjacency list {species_dict["mol"] if "mol" in species_dict else None}. '
+                         f'Got:\n{e}')
             self.mol = None
         smiles = species_dict['smiles'] if 'smiles' in species_dict else None
         inchi = species_dict['inchi'] if 'inchi' in species_dict else None
@@ -677,7 +700,7 @@ class ARCSpecies(object):
             if 'bond_corrections' not in species_dict:
                 self.bond_corrections = enumerate_bonds(self.mol)
                 if self.bond_corrections:
-                    self.long_thermo_description += 'Bond corrections: {0}\n'.format(self.bond_corrections)
+                    self.long_thermo_description += f'Bond corrections: {self.bond_corrections}\n'
             if self.multiplicity is None:
                 self.multiplicity = self.mol.multiplicity
             if self.charge is None:
@@ -697,8 +720,7 @@ class ARCSpecies(object):
             if 'consider_all_diastereomers' in species_dict else True
         self.bdes = species_dict['bdes'] if 'bdes' in species_dict else None
         if self.bdes is not None and not isinstance(self.bdes, list):
-            raise SpeciesError('The .bdes argument must be a list, got {0} which is a {1}'.format(
-                                self.bdes, type(self.bdes)))
+            raise SpeciesError(f'The .bdes argument must be a list, got {self.bdes} which is a {type(self.bdes)}')
         self.rotors_dict = dict()
         if 'rotors_dict' in species_dict:
             for index, rotor_dict in species_dict['rotors_dict'].items():
