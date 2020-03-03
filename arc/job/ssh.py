@@ -92,7 +92,7 @@ class SSHClient(object):
         i, max_times_to_try = 1, 30
         success = False
         sleep_time = 10  # seconds
-        while i < 30:
+        while i < max_times_to_try:
             try:
                 write_file(sftp, remote_file_path, local_file_path, file_string)
             except IOError:
