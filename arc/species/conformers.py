@@ -108,8 +108,8 @@ def generate_conformers(mol_list,
                         charge=0,
                         multiplicity=None,
                         num_confs_to_generate=None,
-                        n_confs=None,
-                        e_confs=None,
+                        n_confs=10,
+                        e_confs=5.0,
                         de_threshold=None,
                         smeared_scan_res=None,
                         combination_threshold=None,
@@ -934,8 +934,8 @@ def determine_well_width_tolerance(mean_width):
 
 def get_lowest_confs(label: str,
                      confs: dict or list,
-                     n: int = None,
-                     e: float = None,
+                     n: int = 10,
+                     e: float = 5.0,
                      energy: str = 'FF energy',
                      ) -> list:
     """
