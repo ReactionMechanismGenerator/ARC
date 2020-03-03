@@ -214,7 +214,7 @@ class Scheduler(object):
                  memory: float = 14,
                  testing: bool = False,
                  dont_gen_confs: list = None,
-                 n_confs: int = None,
+                 n_confs: int = 10,
                  e_confs: float = 5,
                  ) -> None:
         self.rmg_database = rmg_database

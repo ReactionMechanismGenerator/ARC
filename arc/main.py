@@ -442,7 +442,7 @@ class ARC(object):
         self.memory = input_dict['job_memory'] if 'job_memory' in input_dict else self.memory
         self.bath_gas = input_dict['bath_gas'] if 'bath_gas' in input_dict else None
         self.solvent = input_dict['solvent'] if 'solvent' in input_dict else None
-        self.n_confs = input_dict['n_confs'] if 'n_confs' in input_dict else None
+        self.n_confs = input_dict['n_confs'] if 'n_confs' in input_dict else 10
         self.e_confs = input_dict['e_confs'] if 'e_confs' in input_dict else 5  # kJ/mol
         self.adaptive_levels = input_dict['adaptive_levels'] if 'adaptive_levels' in input_dict else None
         self.keep_checks = input_dict['keep_checks'] if 'keep_checks' in input_dict else False

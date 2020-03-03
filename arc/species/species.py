@@ -830,7 +830,7 @@ class ARCSpecies(object):
                     mol.atoms = atoms
 
     def generate_conformers(self,
-                            n_confs: int = 15,
+                            n_confs: int = 10,
                             e_confs: float = 5,
                             plot_path: str = None,
                             ) -> None:

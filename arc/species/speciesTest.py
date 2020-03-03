@@ -1185,7 +1185,7 @@ H       1.11582953    0.94384729   -0.10134685"""
         self.assertEqual(cation2.multiplicity, 1)
         self.assertEqual(cation2.charge, 1)
         cation2.generate_conformers()
-        self.assertEqual(len(cation2.conformers), 15)
+        self.assertEqual(len(cation2.conformers), 10)
 
         anion = ARCSpecies(label='CCC(=O)[O-]', smiles='CCC(=O)[O-]', charge=-1)
         anion.determine_multiplicity(smiles='', adjlist='', mol=None)
