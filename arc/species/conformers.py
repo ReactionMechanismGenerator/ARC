@@ -447,7 +447,7 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
         list: New conformer combinations, entries are conformer dictionaries.
     """
     base_energy = get_force_field_energies(label, mol, num_confs=None, xyz=base_xyz,
-                                           force_field=force_field, optimize=True)[1]
+                                           force_field=force_field, optimize=True, suppress_warning=True)[1]
     if len(base_energy) == 0:
         return list()
     else:
@@ -544,7 +544,7 @@ def generate_all_combinations(label, mol, base_xyz, multiple_tors, multiple_samp
     else:
         # no multiple torsions (all torsions are symmetric or no torsions in the molecule), this is a trivial case
         energy = get_force_field_energies(label, mol, num_confs=None, xyz=base_xyz, force_field=force_field,
-                                          optimize=True)[1][0]
+                                          optimize=True, suppress_warning=True)[1][0]
         new_conformers.append({'index': len_conformers + len(new_conformers),
                                'xyz': base_xyz,
                                'FF energy': energy,
@@ -658,7 +658,8 @@ def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals
         xyz = converter.str_to_xyz(xyz)
 
     if torsions is None or new_dihedrals is None:
-        xyz, energy = get_force_field_energies(label, mol=mol, xyz=xyz, optimize=True, force_field=force_field)
+        xyz, energy = get_force_field_energies(label, mol=mol, xyz=xyz, optimize=True,
+                                               force_field=force_field, suppress_warning=True)
         return xyz, energy
 
     xyzs, energies = list(), list()
@@ -677,7 +678,7 @@ def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals
                 xyz_dihedrals = converter.set_rdkit_dihedrals(conf, rd_mol, torsion_0_indexed, deg_abs=dihedral)
         if force_field != 'gromacs':
             xyz_, energy = get_force_field_energies(label, mol=mol, xyz=xyz_dihedrals, optimize=True,
-                                                    force_field=force_field)
+                                                    force_field=force_field, suppress_warning=True)
             if energy and xyz_:
                 energies.append(energy[0])
                 if optimize:
@@ -769,7 +770,7 @@ def determine_number_of_conformers_to_generate(label, heavy_atoms, torsion_num, 
     if mol is None and xyz is not None:
         mol = converter.molecules_from_xyz(xyz)[1]
     if mol is not None and xyz is None:
-        xyzs = get_force_field_energies(label, mol, num_confs=1)[0]
+        xyzs = get_force_field_energies(label, mol, num_confs=1, suppress_warning=True)[0]
         xyz = xyzs[0] if len(xyzs) else None
     if mol is not None and xyz is not None:
         num_chiral_centers = get_number_of_chiral_centers(label, mol, xyz=xyz, just_get_the_number=True)
@@ -1018,7 +1019,14 @@ def get_torsion_angles(label, conformers, torsions):
     return torsion_angles
 
 
-def get_force_field_energies(label, mol, num_confs=None, xyz=None, force_field='MMFF94s', optimize=True, try_ob=True):
+def get_force_field_energies(label: str,
+                             mol: Molecule,
+                             num_confs: int = None,
+                             xyz: dict = None,
+                             force_field: str = 'MMFF94s',
+                             optimize: bool = True,
+                             try_ob: bool = True,
+                             suppress_warning: bool = False) -> (list, list):
     """
     Determine force field energies using RDKit.
     If ``num_confs`` is given, random 3D geometries will be generated. If xyz is given, it will be directly used instead.
@@ -1032,6 +1040,7 @@ def get_force_field_energies(label, mol, num_confs=None, xyz=None, force_field='
         force_field (str, optional): The type of force field to use.
         optimize (bool, optional): Whether to first optimize the conformer using FF. True to optimize.
         try_ob (bool, optional): Whether to try OpenBabel if RDKit fails. ``True`` to try, ``True`` by default.
+        suppress_warning (bool, optional): Wheter to suppress warning of using OpenBabel. ``True`` to suppress, ``False`` by default.
 
     Raises:
         ConformerError: If conformers could not be generated.
@@ -1046,8 +1055,9 @@ def get_force_field_energies(label, mol, num_confs=None, xyz=None, force_field='
         rd_mol = embed_rdkit(label, mol, num_confs=num_confs, xyz=xyz)
         xyzs, energies = rdkit_force_field(label, rd_mol, force_field=force_field, optimize=optimize)
     if not len(xyzs) and force_field.lower() in ['gaff', 'mmff94', 'mmff94s', 'uff', 'ghemical'] and try_ob:
-        logger.warning(f'Using OpenBabel instead of RDKit as a fall back method to generate conformers for {label}. '
-                       f'This is often slower, and prohibits ARC from using all features of the conformers module.')
+        if not suppress_warning:
+            logger.warning(f'Using OpenBabel instead of RDKit as a fall back method to generate conformers for {label}. '
+                           f'This is often slower.')
         xyzs, energies = openbabel_force_field_on_rdkit_conformers(
                                             label, rd_mol, force_field=force_field, optimize=optimize)
     if not len(xyzs):
