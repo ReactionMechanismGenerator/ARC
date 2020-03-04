@@ -1028,7 +1028,8 @@ def scan_quality_check(label: str,
     if energy_diff >= 2 or energy_diff > 0.5 * (max(energies) - min(energies)):
         invalidate = True
         invalidation_reason = f'Another conformer for {label} exists which is {energy_diff:.2f} kJ/mol lower.'
-        message = f'Species {label} is not oriented correctly around pivots {pivots}, ' \
+        message = f'Species {label} is not oriented correctly around pivots {pivots}. ' \
+                  f'Another conformer exists which is {energy_diff:.2f} kJ/mol lower. ' \
                   f'searching for a better conformation...'
         logger.info(message)
         # Find the rotation dihedral in degrees to the closest minimum:
