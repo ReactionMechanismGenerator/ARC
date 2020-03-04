@@ -14,8 +14,6 @@ import shutil
 import time
 from IPython.display import display
 
-from rmgpy.reaction import Reaction
-
 from arc.common import (extermum_list,
                         format_level_of_theory_for_logging,
                         format_level_of_theory_inputs,
@@ -27,7 +25,7 @@ from arc.common import (extermum_list,
 from arc import plotter
 from arc import parser
 from arc.job.job import Job
-from arc.exceptions import InputError, SanitizationError, SchedulerError, SpeciesError, TSError
+from arc.exceptions import InputError, SanitizationError, SchedulerError, SpeciesError
 from arc.job.local import check_running_jobs_ids
 from arc.job.ssh import SSHClient
 from arc.job.trsh import scan_quality_check, trsh_conformer_isomorphism, trsh_ess_job, trsh_negative_freq, trsh_scan_job
@@ -39,7 +37,6 @@ from arc.species.converter import (check_isomorphism,
                                    str_to_xyz,
                                    xyz_to_coords_list,
                                    xyz_to_str)
-from arc.ts.atst import autotst
 from arc.settings import default_job_types, rotor_scan_resolution
 import arc.rmgdb as rmgdb
 import arc.species.conformers as conformers  # import after importing plotter to avoid circular import
@@ -311,15 +308,6 @@ class Scheduler(object):
                     rxn.ts_methods.append('user guess')
                 elif len(rxn.ts_xyz_guess) > 1 and all(['user guess' not in method for method in rxn.ts_methods]):
                     rxn.ts_methods.append(f'{len(rxn.ts_xyz_guess)} user guesses')
-                auto_tst = False
-                reverse_auto_tst = False
-                for method in rxn.ts_methods:
-                    if method == 'autotst':
-                        auto_tst = True
-                    elif method == 'reverse_autotst':
-                        reverse_auto_tst = True
-                if rxn.family_own_reverse and auto_tst and not reverse_auto_tst:
-                    rxn.ts_methods.append('reverse_autotst')
                 if not any([spc.label == rxn.ts_label for spc in self.species_list]):
                     ts_species = ARCSpecies(is_ts=True, label=rxn.ts_label, rxn_label=rxn.label,
                                             multiplicity=rxn.multiplicity, charge=rxn.charge, compute_thermo=False,
@@ -344,32 +332,6 @@ class Scheduler(object):
                 for i, user_guess in enumerate(rxn.ts_xyz_guess):  # this is a list of guesses, could be empty
                     ts_species.ts_guesses.append(TSGuess(method=f'user guess {i}', xyz=user_guess,
                                                          rmg_reaction=rxn.rmg_reaction))
-                for tsm in rxn.ts_methods:
-                    # loop through all ts methods of this reaction, generate a TSGuess object if not a user guess
-                    if 'user guess' not in tsm:
-                        rmg_reaction = rxn.rmg_reaction
-                        if tsm == 'reverse_autotst':
-                            rmg_reaction = Reaction(reactants=rxn.rmg_reaction.products,
-                                                    products=rxn.rmg_reaction.reactants)
-                        family = rxn.family.label if rxn.family is not None else None
-                        ts_species.ts_guesses.append(TSGuess(method=tsm, family=family, rmg_reaction=rmg_reaction))
-                for ts_guess in ts_species.ts_guesses:
-                    # Execute the TS guess methods that don't require optimized reactants and products
-                    if 'autotst' in ts_guess.method and ts_guess.initial_xyz is None:
-                        reverse = ' in the reverse direction' if 'reverse' in ts_guess.method else ''
-                        logger.info(f'Trying to generating a TS guess for {ts_guess.family} reaction {rxn.label} '
-                                    f'using AutoTST{reverse}...')
-                        ts_guess.t0 = datetime.datetime.now()
-                        try:
-                            ts_guess.xyz = autotst(rmg_reaction=ts_guess.rmg_reaction, reaction_family=ts_guess.family)
-                        except TSError as e:
-                            logger.error(f'Could not generate an AutoTST guess for reaction {rxn.label}.\nGot: {e}')
-                        ts_guess.success = True if ts_guess.xyz is not None else False
-                        ts_guess.execution_time = str(datetime.datetime.now() - ts_guess.t0).split('.')[0]
-                    else:
-                        # spawn other methods as needed when they are implemented (job_type = 'ts_guess');
-                        # add to job_dict only spawn if `ts_guess.xyz is None` (restart)
-                        pass
 
         for species in self.species_list:
             if not isinstance(species, ARCSpecies):
