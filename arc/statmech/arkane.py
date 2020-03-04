@@ -304,7 +304,7 @@ class ArkaneAdapter(StatmechAdapter):
             return None
 
         rotors, rotors_description = '', ''
-        if species.rotors_dict is not None and any([i_r_dict['success'] for i_r_dict in species.rotors_dict.values()]):
+        if species.rotors_dict is not None and any([i_r_dict['pivots'] for i_r_dict in species.rotors_dict.values()]):
             rotors = '\n\nrotors = ['
             rotors_description = '1D rotors:\n'
             for i in range(species.number_of_rotors):
@@ -343,7 +343,8 @@ class ArkaneAdapter(StatmechAdapter):
                                           f'invalidation reason: {species.rotors_dict[i]["invalidation_reason"]}\n'
 
             rotors += ']'
-            species.long_thermo_description += rotors_description + '\n'
+            if 'rotors' not in species.long_thermo_description:
+                species.long_thermo_description += rotors_description + '\n'
 
         # write the Arkane species input file
         bac_txt = '' if use_bac else '_no_BAC'
