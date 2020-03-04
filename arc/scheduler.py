@@ -989,10 +989,19 @@ class Scheduler(object):
                         f'since the optimization was done at the same level of theory. '
                         f'Using the optimization output for parsing the sp energy.')
             recent_opt_job_name, recent_opt_job = 'opt_a0', None
-            for opt_job_name, opt_job in self.job_dict[label]['opt'].items():
-                if int(opt_job_name.split('_a')[-1]) > int(recent_opt_job_name.split('_a')[-1]):
-                    recent_opt_job_name, recent_opt_job = opt_job_name, opt_job
-            self.post_sp_actions(label=label, job=recent_opt_job)
+            if 'opt' in self.job_dict[label]:
+                for opt_job_name, opt_job in self.job_dict[label]['opt'].items():
+                    if int(opt_job_name.split('_a')[-1]) > int(recent_opt_job_name.split('_a')[-1]):
+                        recent_opt_job_name, recent_opt_job = opt_job_name, opt_job
+                self.post_sp_actions(label=label, sp_path=os.path.join(recent_opt_job.local_path, 'output.out'))
+
+            # If opt is not in the job dictionary, the likely explanation is this job has been restarted
+            elif 'geo' in self.output[label]['paths']:  # Then just use this path directly
+                self.post_sp_actions(label=label, sp_path=self.output[label]['paths']['geo'])
+
+            else:
+                raise RuntimeError(f'Unable to set the path for the sp job for species {label}')
+            
             return
         if 'sp' not in self.job_dict[label]:  # Check whether or not single point jobs have been spawned yet
             # we're spawning the first sp job for this species
@@ -2067,7 +2076,7 @@ class Scheduler(object):
             # This is a CCSD job ran before MRCI. Spawn MRCI
             self.run_sp_job(label)
         elif job.job_status[1]['status'] == 'done':
-            self.post_sp_actions(label, job)
+            self.post_sp_actions(label, sp_path=os.path.join(job.local_path, 'output.out'))
             # Update restart dictionary and save the yaml restart file:
             self.save_restart_dict()
             if self.species_dict[label].number_of_atoms == 1:
@@ -2076,16 +2085,16 @@ class Scheduler(object):
         else:
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.job_level_of_theory_dict)
 
-    def post_sp_actions(self, label, job):
+    def post_sp_actions(self, label, sp_path):
         """
         Perform post-sp actions.
 
         Args:
             label (str): The species label.
-            job (Job): The single point job object.
+            sp_path (str): The path to 'output.out' for the single point job
         """
         self.output[label]['job_types']['sp'] = True
-        self.output[label]['paths']['sp'] = os.path.join(job.local_path, 'output.out')
+        self.output[label]['paths']['sp'] = sp_path
         if 'ccsd' in self.sp_level:
             self.species_dict[label].t1 = parser.parse_t1(self.output[label]['paths']['sp'])
         zpe_scale_factor = 0.99 if self.composite_method.lower() == 'cbs-qb3' else 1.0
