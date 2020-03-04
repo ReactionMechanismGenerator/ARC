@@ -555,7 +555,7 @@ class ARC(object):
         Execute ARC.
 
         Returns:
-            dict: Status dictionary indicating which species converged successfully
+            dict: Status dictionary indicating which species converged successfully.
         """
         logger.info('\n')
         for species in self.arc_species_list:
@@ -668,9 +668,12 @@ class ARC(object):
             f.write(str(txt))
         self.lib_long_desc = txt
 
-    def summary(self):
+    def summary(self) -> dict:
         """
         Report status and data of all species / reactions.
+
+        Returns:
+            dict: Status dictionary indicating which species converged successfully.
         """
         status_dict = {}
         logger.info(f'\n\n\nAll jobs terminated. Summary for project {self.project}:\n')
@@ -692,7 +695,6 @@ class ARC(object):
                 if 'errors' in output and output['errors']:
                     logger.info(f'  and errors: {output["errors"]}')
                 logger.info('\n')
-
         return status_dict
 
     def determine_model_chemistry(self):
