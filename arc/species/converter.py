@@ -7,6 +7,7 @@ A module for performing various species-related format conversions.
 
 import numpy as np
 import os
+from typing import Tuple
 
 import pybel
 import qcelemental as qcel
@@ -187,11 +188,7 @@ def xyz_to_x_y_z(xyz_dict):
         xyz_dict (dict): The ARC xyz format.
 
     Returns:
-        tuple: The X coordinates.
-    Returns:
-        tuple: The Y coordinates.
-    Returns:
-        tuple: The Z coordinates.
+        Tuple[tuple, tuple, tuple]: The X coordinates, the Y coordinates, the Z coordinates.
     """
     xyz_dict = check_xyz_dict(xyz_dict)
     x, y, z = tuple(), tuple(), tuple()
@@ -751,9 +748,7 @@ def split_str_zmat(zmat_str):
         zmat_str (str): The zmat.
 
     Returns:
-        str: The coords section.
-    Returns:
-        str: The variables section if it exists, else None.
+        Tuple[str: The coords section, str: The variables section if it exists, else None]
     """
     coords, variables = list(), list()
     flag = False

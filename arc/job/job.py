@@ -323,7 +323,7 @@ class Job(object):
             # if job_num was given, then don't save as initiated jobs, this is a restarted job
             self._write_initiated_job_to_csv_file()
 
-    def as_dict(self):
+    def as_dict(self) -> dict:
         """
         A helper function for dumping this object as a dictionary in a YAML file for restarting ARC.
         """

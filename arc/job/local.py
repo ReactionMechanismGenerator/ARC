@@ -216,7 +216,7 @@ def delete_all_local_arc_jobs():
     if server in servers:
         print('\nDeleting all ARC jobs from local server...')
         cmd = check_status_command[servers[server]['cluster_soft']] + ' -u ' + servers[server]['un']
-        stdout = execute_command(cmd)[0]
+        stdout = execute_command(cmd, no_fail=True)[0]
         for status_line in stdout:
             s = re.search(r' a\d+', status_line)
             if s is not None:

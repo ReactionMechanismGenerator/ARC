@@ -14,17 +14,21 @@ import shutil
 import time
 from IPython.display import display
 
-from rmgpy.reaction import Reaction
-
-from arc.common import format_level_of_theory_for_logging, format_level_of_theory_inputs, get_logger, \
-    get_ordinal_indicator, extermum_list, read_yaml_file, save_yaml_file, sort_two_lists_by_the_first
+from arc.common import (extermum_list,
+                        format_level_of_theory_for_logging,
+                        format_level_of_theory_inputs,
+                        get_logger,
+                        get_ordinal_indicator,
+                        read_yaml_file,
+                        save_yaml_file,
+                        sort_two_lists_by_the_first)
 from arc import plotter
 from arc import parser
 from arc.job.job import Job
-from arc.exceptions import InputError, SanitizationError, SchedulerError, SpeciesError, TSError
+from arc.exceptions import InputError, SanitizationError, SchedulerError, SpeciesError
 from arc.job.local import check_running_jobs_ids
 from arc.job.ssh import SSHClient
-from arc.job.trsh import trsh_negative_freq, trsh_scan_job, trsh_ess_job, trsh_conformer_isomorphism, scan_quality_check
+from arc.job.trsh import scan_quality_check, trsh_conformer_isomorphism, trsh_ess_job, trsh_negative_freq, trsh_scan_job
 from arc.species.species import ARCSpecies, are_coords_compliant_with_graph, determine_rotor_symmetry, TSGuess
 from arc.species.converter import (check_isomorphism,
                                    compare_confs,
@@ -33,7 +37,6 @@ from arc.species.converter import (check_isomorphism,
                                    str_to_xyz,
                                    xyz_to_coords_list,
                                    xyz_to_str)
-from arc.ts.atst import autotst
 from arc.settings import default_job_types, rotor_scan_resolution
 import arc.rmgdb as rmgdb
 import arc.species.conformers as conformers  # import after importing plotter to avoid circular import
@@ -281,7 +284,7 @@ class Scheduler(object):
                         rxn.p_species.append(spc)
                 rxn.rmg_reaction_from_arc_species()
                 rxn.check_attributes()
-                rxn.determine_family(self.rmg_database)
+                rxn.determine_family(rmg_database=self.rmg_database)
                 family_text = ''
                 if rxn.family is not None:
                     family_text = f'identified as belonging to RMG family {rxn.family.label}'
@@ -305,62 +308,30 @@ class Scheduler(object):
                     rxn.ts_methods.append('user guess')
                 elif len(rxn.ts_xyz_guess) > 1 and all(['user guess' not in method for method in rxn.ts_methods]):
                     rxn.ts_methods.append(f'{len(rxn.ts_xyz_guess)} user guesses')
-                auto_tst = False
-                reverse_auto_tst = False
-                for method in rxn.ts_methods:
-                    if method == 'autotst':
-                        auto_tst = True
-                    elif method == 'reverse_autotst':
-                        reverse_auto_tst = True
-                if rxn.family_own_reverse and auto_tst and not reverse_auto_tst:
-                    rxn.ts_methods.append('reverse_autotst')
                 if not any([spc.label == rxn.ts_label for spc in self.species_list]):
                     ts_species = ARCSpecies(is_ts=True, label=rxn.ts_label, rxn_label=rxn.label,
                                             multiplicity=rxn.multiplicity, charge=rxn.charge, compute_thermo=False,
                                             ts_methods=rxn.ts_methods, ts_number=rxn.index)
                     ts_species.number_of_atoms = sum(reactant.number_of_atoms for reactant in rxn.r_species)
                     self.species_list.append(ts_species)
-                    self.species_dict[rxn.ts_label] = ts_species
-                    self.initialize_output_dict(label=rxn.ts_label)
+                    self.species_dict[ts_species.label] = ts_species
+                    self.initialize_output_dict(ts_species.label)
                 else:
                     # The TS species was already loaded from a restart dict or an Arkane YAML file
+                    ts_species = None
                     for spc in self.species_list:
                         if spc.label == rxn.ts_label:
                             ts_species = spc
+                            if ts_species.rxn_label is None:
+                                ts_species.rxn_label = rxn.label
                             break
-                    if ts_species.rxn_label is None:
-                        ts_species.rxn_label = rxn.label
+                if ts_species is None:
+                    raise SchedulerError(f'Could not identify a TS species for {rxn}')
                 rxn.ts_species = ts_species
                 # Generate TSGuess objects for all methods, start with the user guesses
                 for i, user_guess in enumerate(rxn.ts_xyz_guess):  # this is a list of guesses, could be empty
                     ts_species.ts_guesses.append(TSGuess(method=f'user guess {i}', xyz=user_guess,
                                                          rmg_reaction=rxn.rmg_reaction))
-                for tsm in rxn.ts_methods:
-                    # loop through all ts methods of this reaction, generate a TSGuess object if not a user guess
-                    if 'user guess' not in tsm:
-                        rmg_reaction = rxn.rmg_reaction
-                        if tsm == 'reverse_autotst':
-                            rmg_reaction = Reaction(reactants=rxn.rmg_reaction.products,
-                                                    products=rxn.rmg_reaction.reactants)
-                        family = rxn.family.label if rxn.family is not None else None
-                        ts_species.ts_guesses.append(TSGuess(method=tsm, family=family, rmg_reaction=rmg_reaction))
-                for ts_guess in ts_species.ts_guesses:
-                    # Execute the TS guess methods that don't require optimized reactants and products
-                    if 'autotst' in ts_guess.method and ts_guess.initial_xyz is None:
-                        reverse = ' in the reverse direction' if 'reverse' in ts_guess.method else ''
-                        logger.info(f'Trying to generating a TS guess for {ts_guess.family} reaction {rxn.label} '
-                                    f'using AutoTST{reverse}...')
-                        ts_guess.t0 = datetime.datetime.now()
-                        try:
-                            ts_guess.xyz = autotst(rmg_reaction=ts_guess.rmg_reaction, reaction_family=ts_guess.family)
-                        except TSError as e:
-                            logger.error(f'Could not generate an AutoTST guess for reaction {rxn.label}.\nGot: {e}')
-                        ts_guess.success = True if ts_guess.xyz is not None else False
-                        ts_guess.execution_time = str(datetime.datetime.now() - ts_guess.t0).split('.')[0]
-                    else:
-                        # spawn other methods as needed when they are implemented (job_type = 'ts_guess');
-                        # add to job_dict only spawn if `ts_guess.xyz is None` (restart)
-                        pass
 
         for species in self.species_list:
             if not isinstance(species, ARCSpecies):
@@ -385,7 +356,7 @@ class Scheduler(object):
                 if species.label not in self.running_jobs:
                     self.running_jobs[species.label] = list()  # initialize before running the first job
                 if species.number_of_atoms == 1:
-                    logger.debug('Species {0} is monoatomic'.format(species.label))
+                    logger.debug(f'Species {species.label} is monoatomic')
                     if not self.species_dict[species.label].initial_xyz:
                         # generate a simple "Symbol   0.0   0.0   0.0" coords in a dictionary format
                         if self.species_dict[species.label].mol is not None:
@@ -394,7 +365,7 @@ class Scheduler(object):
                             symbol = species.label
                             logger.warning(f'Could not determine element of monoatomic species {species.label}. '
                                            f'Assuming element is {symbol}')
-                        monoatomic_xyz_dict = str_to_xyz('{0}   0.0   0.0   0.0'.format(symbol))
+                        monoatomic_xyz_dict = str_to_xyz(f'{symbol}   0.0   0.0   0.0')
                         self.species_dict[species.label].initial_xyz = monoatomic_xyz_dict
                         self.species_dict[species.label].final_xyz = monoatomic_xyz_dict
                     if not self.output[species.label]['job_types']['sp'] \
@@ -2848,7 +2819,7 @@ class Scheduler(object):
         Initialize self.output.
         Do not initialize keys that will contain paths ('geo', 'freq', 'sp', 'composite'),
         their existence indicate the job was terminated for restarting purposes.
-        If `label` is not None, will initialize for a specific species, otherwise will initialize for all species.
+        If ``label`` is not ``None``, will initialize for a specific species, otherwise will initialize for all species.
 
         Args:
             label (str, optional): A species label.

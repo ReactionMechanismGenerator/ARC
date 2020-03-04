@@ -15,7 +15,9 @@ from arc.exceptions import VectorsError
 from arc.species import converter
 
 
-def get_normal(v1, v2):
+def get_normal(v1: list,
+               v2: list,
+               ) -> list:
     """
     Calculate a normal vector using cross multiplication.
 
@@ -30,7 +32,10 @@ def get_normal(v1, v2):
     return unit_vector(normal)
 
 
-def get_angle(v1, v2, units='rads'):
+def get_angle(v1: list,
+              v2: list,
+              units: str = 'rads',
+              ) -> float:
     """
     Calculate the angle between two vectors.
 
@@ -39,11 +44,11 @@ def get_angle(v1, v2, units='rads'):
          v2 (list): Vector 2.
          units (str, optional): The desired units, either 'rads' for radians, or 'degs' for degrees.
 
-    Returns:
-        float: The angle between ``v1`` and ``v2`` in the desired units.
-
     Raises:
         VectorsError: If ``v1`` and ``v2`` are of different lengths.
+
+    Returns:
+        float: The angle between ``v1`` and ``v2`` in the desired units.
     """
     if len(v1) != len(v2):
         raise VectorsError(f'v1 and v2 must be the same length, got {len(v1)} and {len(v2)}.')
@@ -52,7 +57,11 @@ def get_angle(v1, v2, units='rads'):
     return float(np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0)) * conversion)
 
 
-def get_dihedral(v1, v2, v3, units='degs'):
+def get_dihedral(v1:list,
+                 v2: list,
+                 v3: list,
+                 units: str = 'degs',
+                 ) -> float:
     """
     Calculate the dihedral angle between three vectors.
     ``v2`` connects between ``v1`` and ``v3``.
@@ -64,11 +73,11 @@ def get_dihedral(v1, v2, v3, units='degs'):
          v3 (list): Vector 3.
          units (str, optional): The desired units, either 'rads' for radians, or 'degs' for degrees.
 
-    Returns:
-        float: The dihedral angle between ``v1`` and ``v2`` in the desired units.
-
     Raises:
         VectorsError: If either ``v1`` or ``v2`` have lengths different than three.
+
+    Returns:
+        float: The dihedral angle between ``v1`` and ``v2`` in the desired units.
     """
     if len(v1) != 3 or len(v2) != 3 or len(v3) != 3:
         raise VectorsError(f'v1, v2, and v3 must have a length of three, got {len(v1)}, {len(v2)}, and {len(v3)}.')
@@ -86,21 +95,24 @@ def get_dihedral(v1, v2, v3, units='degs'):
     return float(dihedral * conversion)
 
 
-def calculate_distance(coords, atoms, index=0):
+def calculate_distance(coords: list or tuple or dict,
+                       atoms: list,
+                       index: int = 0,
+                       ) -> float:
     """
     Calculate a distance.
 
     Args:
-        coords (list, tuple): The array-format or tuple-format coordinates.
+        coords (list, tuple, dict): The array-format or tuple-format coordinates, or the xyz dict.
         atoms (list): The 2 atoms to calculate defining the vector for which the length will be calculated.
         index (int, optional): Whether ``atoms`` is 0-indexed or 1-indexed (values are 0 or 1).
-
-    Returns:
-        float: The distance in the coords units.
 
     Raises:
         VectorsError: If ``index`` is out of range, or ``atoms`` is of wrong length or has repeating indices.
         TypeError: If ``coords`` is of wrong type.
+
+    Returns:
+        float: The distance in the coords units.
     """
     if isinstance(coords, dict) and 'coords' in coords:
         coords = coords['coords']
@@ -126,22 +138,26 @@ def calculate_distance(coords, atoms, index=0):
     return get_vector_length(vector)
 
 
-def calculate_angle(coords, atoms, index=0, units='degs'):
+def calculate_angle(coords: list or tuple or dict,
+                    atoms: list,
+                    index: int = 0,
+                    units: str = 'degs',
+                    ) -> float:
     """
     Calculate an angle.
 
     Args:
-        coords (list, tuple): The array-format or tuple-format coordinates.
+        coords (list, tuple, dict): The array-format or tuple-format coordinates, or the xyz dict.
         atoms (list): The 3 atoms defining the angle.
         index (int, optional): Whether ``atoms`` is 0-indexed or 1-indexed (values are 0 or 1).
         units (str, optional): The desired units, either 'rads' for radians, or 'degs' for degrees.
 
-    Returns:
-        float: The angle.
-
     Raises:
         VectorsError: If ``index`` is out of range, or ``atoms`` is of wrong length or has repeating indices.
         TypeError: If ``coords`` is of wrong type.
+
+    Returns:
+        float: The angle.
     """
     if isinstance(coords, dict) and 'coords' in coords:
         coords = coords['coords']
@@ -168,22 +184,26 @@ def calculate_angle(coords, atoms, index=0, units='degs'):
     return get_angle(v1, v2, units=units)
 
 
-def calculate_dihedral_angle(coords, torsion, index=0, units='degs'):
+def calculate_dihedral_angle(coords: list or tuple or dict,
+                             torsion: list,
+                             index: int = 0,
+                             units: str = 'degs',
+                             ) -> float:
     """
     Calculate a dihedral angle.
 
     Args:
-        coords (list, tuple): The array-format or tuple-format coordinates.
+        coords (list, tuple, dict): The array-format or tuple-format coordinates, or the xyz dict.
         torsion (list): The 4 atoms defining the dihedral angle.
         index (int, optional): Whether ``torsion`` is 0-indexed or 1-indexed (values are 0 or 1).
         units (str, optional): The desired units, either 'rads' for radians, or 'degs' for degrees.
 
-    Returns:
-        float: The dihedral angle in a 0-360 degrees range.
-
     Raises:
         VectorsError: If ``index`` is out of range, or ``torsion`` is of wrong length or has repeating indices.
         TypeError: If ``coords`` is of wrong type.
+
+    Returns:
+        float: The dihedral angle in a 0-360 degrees range.
     """
     if isinstance(coords, dict) and 'coords' in coords:
         coords = coords['coords']
@@ -212,7 +232,7 @@ def calculate_dihedral_angle(coords, torsion, index=0, units='degs'):
     return get_dihedral(v1, v2, v3, units=units)
 
 
-def unit_vector(vector):
+def unit_vector(vector: list) -> list:
     """
     Calculate a unit vector in the same direction as the input vector.
 
@@ -226,7 +246,9 @@ def unit_vector(vector):
     return [vi / length for vi in vector]
 
 
-def set_vector_length(vector, length):
+def set_vector_length(vector: list,
+                      length: float,
+                      ) -> list:
     """
     Set the length of a 3D vector.
 
@@ -241,7 +263,11 @@ def set_vector_length(vector, length):
     return [u[0] * length, u[1] * length, u[2] * length]
 
 
-def rotate_vector(point_a, point_b, normal, theta):
+def rotate_vector(point_a: list,
+                  point_b: list,
+                  normal: list,
+                  theta: float,
+                  ) -> list:
     """
     Rotate a vector in 3D space around a given axis by a certain angle.
 
@@ -271,7 +297,10 @@ def rotate_vector(point_a, point_b, normal, theta):
     return new_vector
 
 
-def get_vector(pivot, anchor, xyz):
+def get_vector(pivot: int,
+               anchor: int,
+               xyz: dict,
+               ) -> list:
     """
     Get a vector between two atoms in the molecule (pointing from pivot to anchor).
 
@@ -290,7 +319,11 @@ def get_vector(pivot, anchor, xyz):
     return [dx, dy, dz]
 
 
-def get_lp_vector(label, mol, xyz, pivot):
+def get_lp_vector(label: str,
+                  mol: Molecule,
+                  xyz: dict,
+                  pivot: int,
+                  ) -> list:
     """
     Get a vector from the pivotal atom in the molecule towards its lone electron pair (lp).
     The approach is to reverse the average of the three unit vectors between the pivotal atom and its neighbors.
@@ -301,11 +334,11 @@ def get_lp_vector(label, mol, xyz, pivot):
         xyz (dict): The 3D coordinates of the molecule with the same atom order as in mol.
         pivot (int): The 0-index of the pivotal atom of interest.
 
-    Returns:
-        list: A unit vector pointing from the pivotal (nitrogen) atom towards its lone electron pairs orbital.
-
     Raises:
         VectorsError: If the lp vector cannot be attained.
+
+    Returns:
+        list: A unit vector pointing from the pivotal (nitrogen) atom towards its lone electron pairs orbital.
     """
     neighbors, vectors = list(), list()
     if not mol.atoms[pivot].is_nitrogen():
@@ -326,7 +359,7 @@ def get_lp_vector(label, mol, xyz, pivot):
     return unit_vector([x, y, z])
 
 
-def get_vector_length(v):
+def get_vector_length(v: list) -> float:
     """
     Get the length of an ND vector
 

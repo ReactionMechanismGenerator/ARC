@@ -476,7 +476,7 @@ class ARCSpecies(object):
         self._number_of_atoms = value
 
     @property
-    def number_of_heavy_atoms(self):
+    def number_of_heavy_atoms(self) -> int:
         """The number of heavy (non hydrogen) atoms in the species"""
         if self._number_of_heavy_atoms is None:
             if self.mol is not None:
@@ -496,7 +496,7 @@ class ARCSpecies(object):
         self._number_of_heavy_atoms = value
 
     @property
-    def radius(self):
+    def radius(self) -> float:
         """
         Determine the largest distance from the coordinate system origin attributed to one of the molecule's
         atoms in 3D space.
@@ -514,7 +514,7 @@ class ARCSpecies(object):
         """Allow setting the radius"""
         self._radius = value
 
-    def as_dict(self):
+    def as_dict(self) -> dict:
         """A helper function for dumping this object as a dictionary in a YAML file for restarting ARC"""
         species_dict = dict()
         species_dict['force_field'] = self.force_field
@@ -752,7 +752,7 @@ class ARCSpecies(object):
                     else:
                         self.rotors_dict[index][key] = val
 
-    def from_yml_file(self, label=None):
+    def from_yml_file(self, label: str = None):
         """
         Load important species attributes such as label and final_xyz from an Arkane YAML file.
         Actual QM data parsing is done later when processing thermo and kinetics.
@@ -902,7 +902,7 @@ class ARCSpecies(object):
                 logger.warning('Could not generate a cheap conformer for {0}'.format(self.label))
                 self.cheap_conformer = None
 
-    def get_xyz(self, generate=True):
+    def get_xyz(self, generate: bool = True):
         """
         Get the highest quality xyz the species has.
         If it doesn't have any 3D information, and if ``generate`` is ``True``, cheaply generate it.
@@ -1084,7 +1084,12 @@ class ARCSpecies(object):
                             break
             self.directed_rotors = directed_rotors_scans
 
-    def set_dihedral(self, scan, deg_increment=None, deg_abs=None, count=True, xyz=None):
+    def set_dihedral(self,
+                     scan: list,
+                     deg_increment: float = None,
+                     deg_abs: float = None,
+                     count: bool = True,
+                     xyz: dict = None):
         """
         Generated an RDKit molecule object from either self.final_xyz or ``xyz``.
         Increments the current dihedral angle between atoms i, j, k, l in the `scan` list by 'deg_increment` in degrees.
@@ -1154,7 +1159,10 @@ class ARCSpecies(object):
                                f"{self.external_symmetry} and {symmetry}, respectively. "
                                f"Using the user input of {self.external_symmetry}")
 
-    def determine_multiplicity(self, smiles, adjlist, mol):
+    def determine_multiplicity(self,
+                               smiles: str,
+                               adjlist: str,
+                               mol: Molecule):
         """
         Determine the spin multiplicity of the species
         """
@@ -1200,8 +1208,8 @@ class ARCSpecies(object):
         self.ts_report = ''
         if self.chosen_ts_method is not None:
             self.ts_report += f'TS method summary for {self.label} in {self.rxn_label}\n'
-            self.ts_report += 'Methods that successfully generated a TS guess:\n'
             if self.successful_methods:
+                self.ts_report += 'Methods that successfully generated a TS guess:\n'
                 for successful_method in self.successful_methods:
                     self.ts_report += successful_method + ','
             if self.unsuccessful_methods:
@@ -1266,7 +1274,7 @@ class ARCSpecies(object):
             elif len(mol_s.atoms) == self.number_of_atoms:
                 self.mol = mol_s
 
-    def process_xyz(self, xyz_list):
+    def process_xyz(self, xyz_list: list or str or dict):
         """
         Process the user's input and add either to the .conformers attribute or to .ts_guesses.
 
@@ -1319,8 +1327,9 @@ class ARCSpecies(object):
                     #     if xyz == tsg.xyz:
                     #         break
                     # else:
-                    self.ts_guesses.append(TSGuess(method='user guess {0}'.format(tsg_index),
-                                                   xyz=remove_dummies(xyz), energy=energy))
+                    self.ts_guesses.append(TSGuess(method=f'user guess {tsg_index}',
+                                                   xyz=remove_dummies(xyz),
+                                                   energy=energy))
                     # user guesses are always successful in generating a *guess*:
                     self.ts_guesses[tsg_index].success = True
                     tsg_index += 1
@@ -1328,10 +1337,16 @@ class ARCSpecies(object):
                 for xyz in xyzs:
                     consistent = check_xyz(xyz=xyz, multiplicity=self.multiplicity, charge=self.charge)
                     if not consistent:
-                        raise SpeciesError(f'Inconsistent combination of number of electrons, multiplicity and charge  '
+                        raise SpeciesError(f'Inconsistent combination of number of electrons, multiplicity and charge '
                                            f'for {self.label}.')
 
-    def set_transport_data(self, lj_path, opt_path, bath_gas, opt_level, freq_path='', freq_level=None):
+    def set_transport_data(self,
+                           lj_path: str,
+                           opt_path: str,
+                           bath_gas: str,
+                           opt_level: str,
+                           freq_path: str = '',
+                           freq_level: str = None):
         """
         Set the species.transport_data attribute after a Lennard-Jones calculation (via OneDMin).
 
@@ -1719,7 +1734,7 @@ class TSGuess(object):
             raise TSError('Unrecognized method. Should be either {0}. Got: {1}'.format(
                           ['User guess'] + default_ts_methods, self.method))
 
-    def as_dict(self):
+    def as_dict(self) -> dict:
         """A helper function for dumping this object as a dictionary in a YAML file for restarting ARC"""
         ts_dict = dict()
         ts_dict['t0'] = self.t0
@@ -1746,7 +1761,7 @@ class TSGuess(object):
             ts_dict['rmg_reaction'] = rxn_string
         return ts_dict
 
-    def from_dict(self, ts_dict):
+    def from_dict(self, ts_dict: dict):
         """
         A helper function for loading this object from a dictionary in a YAML file for restarting ARC
         """
@@ -1860,7 +1875,7 @@ class TSGuess(object):
         """
         self.success = False
 
-    def process_xyz(self, xyz):
+    def process_xyz(self, xyz: dict or str):
         """
         Process the user's input. If ``xyz`` represents a file path, parse it.
 
@@ -1893,7 +1908,9 @@ def determine_occ(xyz, charge):
     electrons -= charge
 
 
-def nearly_equal(a, b, sig_fig=5):
+def nearly_equal(a: float,
+                 b: float,
+                 sig_fig: int = 5):
     """
     A helper function to determine whether two floats are nearly equal.
     Can be replaced by math.isclose in Py3
@@ -1901,7 +1918,11 @@ def nearly_equal(a, b, sig_fig=5):
     return a == b or int(a*10**sig_fig) == int(b*10**sig_fig)
 
 
-def determine_rotor_symmetry(label, pivots, rotor_path='', energies=None, return_num_wells=False):
+def determine_rotor_symmetry(label: str,
+                             pivots: list,
+                             rotor_path: str = '',
+                             energies: list = None,
+                             return_num_wells: bool = False):
     """
     Determine the rotor symmetry number from a potential energy scan.
     The *worst* resolution for each peak and valley is determined.
@@ -1911,9 +1932,9 @@ def determine_rotor_symmetry(label, pivots, rotor_path='', energies=None, return
     the highest peak value. This is only applied if the highest peak is above 2 kJ/mol.
 
     Args:
-        rotor_path (str): The path to an ESS output rotor scan file.
         label (str): The species label (used for error messages).
         pivots (list, optional): A list of two atom indices representing the torsion pivots.
+        rotor_path (str): The path to an ESS output rotor scan file.
         energies (list, optional): The list of energies in the scan in kJ/mol.
         return_num_wells (bool, optional): Whether to also return the number of wells, ``True`` to return,
                                            default is ``False``.
@@ -2013,17 +2034,19 @@ def determine_rotor_symmetry(label, pivots, rotor_path='', energies=None, return
         return symmetry, max_e
 
 
-def cyclic_index_i_plus_1(i, length):
+def cyclic_index_i_plus_1(i: int,
+                          length: int,
+                          ) -> int:
     """A helper function for cyclic indexing rotor scans"""
     return i + 1 if i + 1 < length else 0
 
 
-def cyclic_index_i_minus_1(i):
+def cyclic_index_i_minus_1(i: int) -> int:
     """A helper function for cyclic indexing rotor scans"""
     return i - 1 if i - 1 > 0 else -1
 
 
-def determine_rotor_type(rotor_path):
+def determine_rotor_type(rotor_path: str) -> str:
     """
     Determine whether this rotor should be treated as a HinderedRotor of a FreeRotor
     according to it's maximum peak
@@ -2033,7 +2056,7 @@ def determine_rotor_type(rotor_path):
     return 'FreeRotor' if max_val < minimum_barrier else 'HinderedRotor'
 
 
-def enumerate_bonds(mol):
+def enumerate_bonds(mol: Molecule) -> dict:
     """
     A helper function for calling Molecule.enumerate_bonds.
     First, get the Kekulized molecule (get the Kekule version with alternating single and double bonds if the molecule
@@ -2052,7 +2075,10 @@ def enumerate_bonds(mol):
         return mol.enumerate_bonds()
 
 
-def check_xyz(xyz, multiplicity, charge):
+def check_xyz(xyz: dict,
+              multiplicity: int,
+              charge: int,
+              ) -> bool:
     """
     Checks xyz for electronic consistency with the spin multiplicity and charge.
 
@@ -2077,7 +2103,9 @@ def check_xyz(xyz, multiplicity, charge):
     return False
 
 
-def are_coords_compliant_with_graph(xyz, mol):
+def are_coords_compliant_with_graph(xyz: dict,
+                                    mol: Molecule,
+                                    ) -> bool:
     """
     Check whether the Cartesian coordinates represent the same 2D connectivity as the graph.
     Bond orders are not considered here, this function checks whether the coordinates represent a bond length
@@ -2107,7 +2135,7 @@ def are_coords_compliant_with_graph(xyz, mol):
     return True
 
 
-def check_label(label):
+def check_label(label: str) -> str:
     """
     Check whether a species (or reaction) label is illegal, modify it if needed.
 
