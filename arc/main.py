@@ -549,9 +549,12 @@ class ARC(object):
         logger.info(f'\n\nWriting input file to {path}')
         save_yaml_file(path=path, content=self.restart_dict)
 
-    def execute(self):
+    def execute(self) -> dict:
         """
         Execute ARC.
+
+        Returns:
+            dict: Status dictionary indicating which species converged successfully
         """
         logger.info('\n')
         for species in self.arc_species_list:
@@ -607,8 +610,9 @@ class ARC(object):
                             rmg_database=self.rmg_database,
                             compare_to_rmg=self.compare_to_rmg)
 
-        self.summary()
+        status_dict = self.summary()
         log_footer(execution_time=self.execution_time)
+        return status_dict
 
     def save_project_info_file(self):
         """
@@ -670,11 +674,14 @@ class ARC(object):
         """
         Report status and data of all species / reactions.
         """
+        status_dict = {}
         logger.info(f'\n\n\nAll jobs terminated. Summary for project {self.project}:\n')
         for label, output in self.scheduler.output.items():
             if output['convergence']:
+                status_dict[label] = True
                 logger.info(f'Species {label} converged successfully\n')
             else:
+                status_dict[label] = False
                 job_type_status = {key: val for key, val in self.output[label]['job_types'].items()
                                    if key in self.job_types and self.job_types[key]}
                 logger.info(f'  Species {label} failed with status:\n  {job_type_status}')
@@ -687,6 +694,8 @@ class ARC(object):
                 if 'errors' in output and output['errors']:
                     logger.info(f'  and errors: {output["errors"]}')
                 logger.info('\n')
+
+        return status_dict
 
     def determine_model_chemistry(self):
         """
