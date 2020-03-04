@@ -750,8 +750,9 @@ def save_kinetics_lib(rxn_list, path, name, lib_long_desc):
                     data=rxn.kinetics,
                     label=rxn.label)
                 rxn.ts_species.make_ts_report()
-                entry.long_desc = rxn.ts_species.ts_report + '\n\nOptimized TS geometry:\n' + \
-                                  xyz_to_str(rxn.ts_species.final_xyz)
+                entry.long_desc = f'{rxn.ts_species.ts_report}\n\n' \
+                                  f'Optimized TS geometry:\n{xyz_to_str(rxn.ts_species.final_xyz)}\n\n' \
+                                  f'{rxn.ts_species.long_thermo_description}'
                 rxn.rmg_reaction.kinetics = rxn.kinetics
                 rxn.rmg_reaction.kinetics.comment = ''
                 entries[i + 1] = entry
