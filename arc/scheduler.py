@@ -2169,42 +2169,9 @@ class Scheduler(object):
 
                 if len(actions):
                     # the rotor scan is problematic, troubleshooting is required
-                    if 'change conformer' in actions:
-                        # a lower conformation was found
-                        deg_increment = actions[2]
-                        self.species_dict[label].set_dihedral(
-                            scan=self.species_dict[label].rotors_dict[i]['scan'],
-                            deg_increment=deg_increment)
-                        is_isomorphic = self.species_dict[label].check_xyz_isomorphism(
-                            allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
-                            xyz=self.species_dict[label].initial_xyz)
-                        if is_isomorphic:
-                            self.delete_all_species_jobs(label)
-                            # Remove all completed rotor calculation information
-                            for rotor in self.species_dict[label].rotors_dict.values():
-                                rotor['scan_path'] = ''
-                                rotor['invalidation_reason'] = ''
-                                rotor['success'] = None
-                                rotor.pop('symmetry', None)
-                            # re-run opt (or composite) on the new initial_xyz with the desired dihedral
-                            if not self.composite_method:
-                                self.run_opt_job(label)
-                            else:
-                                self.run_composite_job(label)
-                        else:
-                            # The conformer is wrong, and changing the dihedral resulted in a non-isomorphic species.
-                            self.output[label]['errors'] += \
-                                f'A lower conformer was found for {label} via a torsion mode, but it is not ' \
-                                f'isomorphic with the 2D graph representation ' \
-                                f'{self.species_dict[label].mol.copy(deep=True).to_smiles()}. ' \
-                                f'Not calculating this species.'
-                            self.output[label]['conformers'] += 'Unconverged'
-                            self.output[label]['convergence'] = False
-
-                        # apply the troubleshooting methods in the `actions` list if they weren't already tried out
-                        logger.info(f'Trying to troubleshoot rotor {job.pivots} of {label} using {actions}...')
-                        self.species_dict[label].rotors_dict[i]['trsh_methods'].append(actions)
-                        self.troubleshoot_scan_job(job=job, methods=actions)
+                    logger.info(f'Trying to troubleshoot rotor {job.pivots} of {label} using {actions}...')
+                    self.species_dict[label].rotors_dict[i]['trsh_methods'].append(actions)
+                    self.troubleshoot_scan_job(job=job, methods=actions)
 
                 if not invalidate:
                     # the rotor scan is good, calculate the symmetry number
@@ -2522,11 +2489,44 @@ class Scheduler(object):
             logger.error(f'Will not troubleshoot a rotor scan for {label} more than once with the exact '
                          f'same methods ({scan_trsh_str}).')
         else:
-            species_scan_lists = [rotor_dict['scan'] for rotor_dict in self.species_dict[label].rotors_dict.values()]
-            scan_trsh, scan_res = trsh_scan_job(label=label, scan_res=job.scan_res, scan=job.scan,
-                                                species_scan_lists=species_scan_lists, methods=methods)
-            self.run_job(label=label, xyz=job.xyz, level_of_theory=job.job_level_of_theory_dict, job_type='scan',
-                         scan=job.scan, pivots=job.pivots, scan_trsh=scan_trsh, scan_res=scan_res)
+            if 'change conformer' in methods:
+                # a lower conformation was found
+                deg_increment = methods[2]
+                self.species_dict[label].set_dihedral(
+                    scan=self.species_dict[label].rotors_dict[i]['scan'],
+                    deg_increment=deg_increment)
+                is_isomorphic = self.species_dict[label].check_xyz_isomorphism(
+                    allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
+                    xyz=self.species_dict[label].initial_xyz)
+                if is_isomorphic:
+                    self.delete_all_species_jobs(label)
+                    # Remove all completed rotor calculation information
+                    for rotor in self.species_dict[label].rotors_dict.values():
+                        # don't initialize all parameters, e.g., `times_dihedral_set` needs to remain as is
+                        rotor['scan_path'] = ''
+                        rotor['invalidation_reason'] = ''
+                        rotor['success'] = None
+                        rotor.pop('symmetry', None)
+                    # re-run opt (or composite) on the new initial_xyz with the desired dihedral
+                    if not self.composite_method:
+                        self.run_opt_job(label)
+                    else:
+                        self.run_composite_job(label)
+                else:
+                    # The conformer is wrong, and changing the dihedral will results in a non-isomorphic species
+                    self.output[label]['errors'] += \
+                        f'A lower conformer was found for {label} via a torsion mode, but it is not ' \
+                        f'isomorphic with the 2D graph representation ' \
+                        f'{self.species_dict[label].mol.copy(deep=True).to_smiles()}. ' \
+                        f'Not calculating this species.'
+                    self.output[label]['conformers'] += 'Unconverged'
+                    self.output[label]['convergence'] = False
+            else:
+                species_scan_lists = [rotor_dict['scan'] for rotor_dict in self.species_dict[label].rotors_dict.values()]
+                scan_trsh, scan_res = trsh_scan_job(label=label, scan_res=job.scan_res, scan=job.scan,
+                                                    species_scan_lists=species_scan_lists, methods=methods)
+                self.run_job(label=label, xyz=job.xyz, level_of_theory=job.job_level_of_theory_dict, job_type='scan',
+                             scan=job.scan, pivots=job.pivots, scan_trsh=scan_trsh, scan_res=scan_res)
 
     def troubleshoot_opt_jobs(self, label):
         """
