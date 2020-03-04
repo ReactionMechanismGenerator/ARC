@@ -2159,8 +2159,8 @@ class Scheduler(object):
                 if energies is None:
                     invalidate = True
                     invalidation_reason = 'Could not read energies'
-                    message = 'Energies from rotor scan of {label} between pivots {pivots} could not ' \
-                              'be read. Invalidating rotor.'.format(label=label, pivots=job.pivots)
+                    message = f'Energies from rotor scan of {label} between pivots {job.pivots} could not ' \
+                              f'be read. Invalidating rotor.'
                     logger.error(message)
                     break
                 invalidate, invalidation_reason, message, actions = scan_quality_check(
@@ -2185,7 +2185,7 @@ class Scheduler(object):
                         label=label, symmetry=self.species_dict[label].rotors_dict[i]['symmetry']))
                 break
         else:
-            raise SchedulerError('Could not match rotor with pivots {0} in species {1}'.format(job.pivots, label))
+            raise SchedulerError(f'Could not match rotor with pivots {job.pivots} in species {label}')
 
         # Only continue if not troubleshooting the scan
         if not actions:
@@ -2194,6 +2194,7 @@ class Scheduler(object):
             if self.species_dict[label].rotors_dict[i]['success'] is not None:  # exclude reset conformer
                 self.species_dict[label].rotors_dict[i]['scan_path'] = job.local_path_to_output_file
                 self.species_dict[label].rotors_dict[i]['invalidation_reason'] = invalidation_reason
+
         # If energies were obtained, draw the scan curve
         if len(energies):
             folder_name = 'rxns' if job.is_ts else 'Species'
@@ -2201,7 +2202,8 @@ class Scheduler(object):
             plotter.plot_1d_rotor_scan(angles=angles, energies=energies, path=rotor_path,
                                        scan=job.scan, comment=message, label=label,
                                        original_dihedral=self.species_dict[label].rotors_dict[i]['original_dihedrals'])
-        # Save the Restart dictionary
+
+        # Save the restart dictionary
         self.save_restart_dict()
 
     def check_directed_scan(self, label, pivots, scan, energies):
@@ -2237,6 +2239,7 @@ class Scheduler(object):
                     self.delete_all_species_jobs(label)
                     # Remove all completed rotor calculation information
                     for rotor_dict in self.species_dict[label].rotors_dict.values():
+                        # don't initialize all parameters, e.g., `times_dihedral_set` needs to remain as is
                         rotor_dict['scan_path'] = ''
                         rotor_dict['invalidation_reason'] = ''
                         rotor_dict['success'] = None
@@ -2264,17 +2267,19 @@ class Scheduler(object):
                         rotor_dict['invalidation_reason'] = invalidation_reason
                         rotor_dict['success'] = False
 
-        # the rotor scan is good, calculate the symmetry number
-        for rotor_dict in self.species_dict[label].rotors_dict.values():
-            if rotor_dict['pivots'] == pivots:
-                if not invalidate:
-                    rotor_dict['success'] = True
-                    rotor_dict['symmetry'] = determine_rotor_symmetry(label=label, pivots=pivots, energies=energies)[0]
-                    logger.info('Rotor scan {scan} between pivots {pivots} for {label} has symmetry {symmetry}'.format(
-                        scan=scan, pivots=pivots, label=label, symmetry=rotor_dict['symmetry']))
-                else:
-                    rotor_dict['success'] = False
-        # Save the Restart dictionary
+        else:
+            # the rotor scan is good, calculate the symmetry number
+            for rotor_dict in self.species_dict[label].rotors_dict.values():
+                if rotor_dict['pivots'] == pivots:
+                    if not invalidate:
+                        rotor_dict['success'] = True
+                        rotor_dict['symmetry'] = determine_rotor_symmetry(label=label, pivots=pivots, energies=energies)[0]
+                        logger.info('Rotor scan {scan} between pivots {pivots} for {label} has symmetry {symmetry}'.format(
+                            scan=scan, pivots=pivots, label=label, symmetry=rotor_dict['symmetry']))
+                    else:
+                        rotor_dict['success'] = False
+
+        # Save the restart dictionary
         self.save_restart_dict()
 
     def check_directed_scan_job(self, label, job):
@@ -2686,7 +2691,7 @@ class Scheduler(object):
         for job_dict in self.job_dict[label].values():
             for job_name, job in job_dict.items():
                 if job_name in self.running_jobs[label]:
-                    logger.debug(f'Deleted job {job_name}')
+                    logger.info(f'Deleted job {job_name}')
                     job.delete()
         self.running_jobs[label] = list()
 
