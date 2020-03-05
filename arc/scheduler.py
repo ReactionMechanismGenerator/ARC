@@ -2497,9 +2497,16 @@ class Scheduler(object):
             if 'change conformer' in methods:
                 # a lower conformation was found
                 deg_increment = methods[2]
-                self.species_dict[label].set_dihedral(
-                    scan=self.species_dict[label].rotors_dict[i]['scan'],
-                    deg_increment=deg_increment)
+                for rotor_dict in self.species_dict[label].rotors_dict.values():
+                    if rotor_dict['scan'][1:3] == methods[1] or rotor_dict['scan'][1:3] == methods[1][::-1]:
+                        # the rotor was identified by its pivots
+                        scan = rotor_dict['scan']
+                        break
+                else:
+                    pivots = [rotor_dict["scan"][1:3] for rotor_dict in self.species_dict[label].rotors_dict.values()]
+                    raise SchedulerError(f'Could not identify the rotors that corresponds to pivots {methods[1]}. '
+                                         f'Existing rotor pivots are {pivots}')
+                self.species_dict[label].set_dihedral(scan=scan, deg_increment=deg_increment)
                 is_isomorphic = self.species_dict[label].check_xyz_isomorphism(
                     allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
                     xyz=self.species_dict[label].initial_xyz)
