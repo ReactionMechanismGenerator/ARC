@@ -340,6 +340,10 @@ class Scheduler(object):
             if species.label in self.unique_species_labels:
                 raise SpeciesError(f'Each species in `species_list` has to have a unique label. '
                                    f'Label of species {species.label} is not unique.')
+            if species.mol is None and not species.is_ts:
+                # we'll attempt to infer ,mol for a TS after we attain xyz for it
+                # for a non-TS, this attribute should be set by this point
+                self.output[species.label]['errors'] = 'Could not infer a 2D graph (a .mol species attribute); '
             self.unique_species_labels.append(species.label)
             if self._does_output_dict_contain_info():
                 self.output[species.label]['restart'] += f'Restarted ARC at {datetime.datetime.now()}; '
