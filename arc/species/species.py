@@ -1147,23 +1147,24 @@ class ARCSpecies(object):
             new_xyz = set_rdkit_dihedrals(conf, rd_mol, torsion_0_indexed, deg_increment=deg_increment, deg_abs=deg_abs)
             self.initial_xyz = new_xyz
 
-    def determine_symmetry(self):
+    def determine_symmetry(self) -> None:
         """
-        Determine external symmetry and chirality (optical isomers) of the species.
+        Determine the external symmetry and chirality (optical isomers) of the species.
         """
-        if self.optical_isomers is None and self.external_symmetry is None:
-            xyz = self.get_xyz()
-            symmetry, optical_isomers = determine_symmetry(xyz)
+        xyz = self.get_xyz()
+        symmetry, optical_isomers = determine_symmetry(xyz)
+        if self.optical_isomers is None:
             self.optical_isomers = self.optical_isomers or optical_isomers
-            if self.optical_isomers != optical_isomers:
-                logger.warning(f"User input of optical isomers for {self.label} and ARC's calculation differ: "
-                               f"{self.optical_isomers} and {optical_isomers}, respectively. "
-                               f"Using the user input of {self.optical_isomers}")
+        elif self.optical_isomers != optical_isomers:
+            logger.warning(f"User input of optical isomers for {self.label} and ARC's calculation differ: "
+                           f"{self.optical_isomers} and {optical_isomers}, respectively. "
+                           f"Using the user input of {self.optical_isomers}")
+        if self.external_symmetry is None:
             self.external_symmetry = self.external_symmetry or symmetry
-            if self.external_symmetry != symmetry:
-                logger.warning(f"User input of external symmetry for {self.label} and ARC's calculation differ: "
-                               f"{self.external_symmetry} and {symmetry}, respectively. "
-                               f"Using the user input of {self.external_symmetry}")
+        elif self.external_symmetry != symmetry:
+            logger.warning(f"User input of external symmetry for {self.label} and ARC's calculation differ: "
+                           f"{self.external_symmetry} and {symmetry}, respectively. "
+                           f"Using the user input of {self.external_symmetry}")
 
     def determine_multiplicity(self,
                                smiles: str,
