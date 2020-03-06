@@ -933,7 +933,7 @@ class ARCSpecies(object):
                 xyz = self.cheap_conformer
         return xyz
 
-    def determine_rotors(self):
+    def determine_rotors(self) -> None:
         """
         Determine possible unique rotors in the species to be treated as hindered rotors,
         taking into account all localized structures.
@@ -943,12 +943,8 @@ class ARCSpecies(object):
         if self.rotors_dict is None:
             # this species was marked to skip rotor scans (.rotors_dict is not initialized as an empty dict but as None)
             return
-        if not self.charge:
-            mol_list = self.mol_list
-        else:
-            mol_list = [self.mol]
-        if mol_list:
-            for mol in mol_list:
+        if self.mol_list is not None and len(self.mol_list):
+            for mol in self.mol_list:
                 if mol is None:
                     logger.error(f'Cannot determine rotors for species {self.label} without a .mol attribute.')
                     continue
