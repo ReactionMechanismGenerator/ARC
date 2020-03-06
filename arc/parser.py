@@ -281,6 +281,40 @@ def parse_1d_scan_energies(path):
     return energies, angles
 
 
+def parse_1d_scan_coords(path):
+    """
+    Parse the 1D torsion scan coordinates from an ESS log file.
+
+    Args:
+        path (str): The ESS log file to parse from.
+
+    Returns:
+        list: The Cartesian coordinates
+    """
+    lines = _get_lines_from_file(path)
+    log = ess_factory(fullpath=path)
+    if not isinstance(log, GaussianLog):
+        raise NotImplementedError(f'Currently parse_1d_scan_coords only supports Gaussian files, got {type(log)}')
+    traj = list()
+    done = False
+    i = 0
+    while not done:
+        if i >= len(lines) or 'Normal termination of Gaussian' in lines[i] or 'Error termination via' in lines[i]:
+            done = True
+        elif 'Optimization completed' in lines[i]:
+            while 'Input orientation:' not in lines[i]:
+                i += 1
+            i += 5
+            xyz_str = ''
+            while '--------------------------------------------' not in lines[i]:
+                splits = lines[i].split()
+                xyz_str += f'{qcel.periodictable.to_E(int(splits[1]))}  {splits[3]}  {splits[4]}  {splits[5]}\n'
+                i += 1
+            traj.append(str_to_xyz(xyz_str))
+        i += 1
+    return traj
+
+
 def parse_nd_scan_energies(path, software=None, return_original_dihedrals=False):
     """
     Parse the ND torsion scan energies from an ESS log file.
