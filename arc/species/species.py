@@ -1263,15 +1263,17 @@ class ARCSpecies(object):
                 else:
                     self.mol = perceived_mol
             else:
-                # molecules_from_xyz() returned None for b_mol
+                # molecules_from_xyz() returned None for mol_b
                 # todo: Atom order will not be correct, fix
                 pass
         else:
             mol_s, mol_b = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)
-            if len(mol_b.atoms) == self.number_of_atoms:
+            if mol_b is not None and len(mol_b.atoms) == self.number_of_atoms:
                 self.mol = mol_b
-            elif len(mol_s.atoms) == self.number_of_atoms:
+            elif mol_s is not None and len(mol_s.atoms) == self.number_of_atoms:
                 self.mol = mol_s
+            else:
+                logger.error(f'Could not infer a 2D graph for species {self.label}')
 
     def process_xyz(self, xyz_list: list or str or dict):
         """
