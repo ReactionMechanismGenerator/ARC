@@ -807,16 +807,19 @@ class ARCSpecies(object):
         The mol_list attribute is used for identifying rotors and generating conformers,
         """
         if self.mol is not None:
-            self.mol_list = list()
             self.mol.assign_atom_ids()
-            try:
-                self.mol_list = self.mol.copy(deep=True).generate_resonance_structures(keep_isomorphic=False,
-                                                                                       filter_structures=True)
-            except (ValueError, ILPSolutionError, ResonanceError) as e:
-                logger.warning(f'Could not generate resonance structures for species {self.label}. Got: {e}')
+            if not self.is_ts:
+                try:
+                    self.mol_list = self.mol.copy(deep=True).generate_resonance_structures(keep_isomorphic=False,
+                                                                                           filter_structures=True)
+                except (ValueError, ILPSolutionError, ResonanceError) as e:
+                    logger.warning(f'Could not generate resonance structures for species {self.label}. Got: {e}')
+                    self.mol_list = [self.mol]
+            else:
+                self.mol_list = [self.mol]
             success = order_atoms_in_mol_list(ref_mol=self.mol.copy(deep=True), mol_list=self.mol_list)
             if not success:
-                # try sorting by IDs, repeat object creation to make sure the are unchanged
+                # try sorting by IDs, repeat object creation to make sure the original instances remain unchanged
                 mol_copy = self.mol.copy(deep=True)
                 mol_copy.assign_atom_ids()
                 mol_list = mol_copy.generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
