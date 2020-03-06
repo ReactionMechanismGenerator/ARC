@@ -201,6 +201,18 @@ H      -0.59436200   -0.94730400    0.00000000"""
         self.assertIsInstance(trajectory[0], dict)
         self.assertEqual(len(trajectory[0]['symbols']), 17)
 
+    def test_parse_1d_scan_coords(self):
+        """Test parsing the optimized coordinates of a torsion scan at each optimization point"""
+        path = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'H2O2.out')
+        traj = parser.parse_1d_scan_coords(path)
+        self.assertEqual(len(traj), 37)
+        self.assertEqual(traj[10], {'coords': ((-0.715582, -0.140909, 0.383809),
+                                               (0.715582, 0.140909, 0.383809),
+                                               (-1.043959, 0.678384, -0.010288),
+                                               (1.043959, -0.678384, -0.010288)),
+                                    'isotopes': (16, 16, 1, 1),
+                                    'symbols': ('O', 'O', 'H', 'H')})
+
     def test_parse_t1(self):
         """Test T1 diagnostic parsing"""
         path = os.path.join(arc_path, 'arc', 'testing', 'sp', 'mehylamine_CCSD(T).out')
