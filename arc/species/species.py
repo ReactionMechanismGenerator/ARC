@@ -807,16 +807,19 @@ class ARCSpecies(object):
         The mol_list attribute is used for identifying rotors and generating conformers,
         """
         if self.mol is not None:
-            self.mol_list = list()
             self.mol.assign_atom_ids()
-            try:
-                self.mol_list = self.mol.copy(deep=True).generate_resonance_structures(keep_isomorphic=False,
-                                                                                       filter_structures=True)
-            except (ValueError, ILPSolutionError, ResonanceError) as e:
-                logger.warning(f'Could not generate resonance structures for species {self.label}. Got: {e}')
+            if not self.is_ts:
+                try:
+                    self.mol_list = self.mol.copy(deep=True).generate_resonance_structures(keep_isomorphic=False,
+                                                                                           filter_structures=True)
+                except (ValueError, ILPSolutionError, ResonanceError) as e:
+                    logger.warning(f'Could not generate resonance structures for species {self.label}. Got: {e}')
+                    self.mol_list = [self.mol]
+            else:
+                self.mol_list = [self.mol]
             success = order_atoms_in_mol_list(ref_mol=self.mol.copy(deep=True), mol_list=self.mol_list)
             if not success:
-                # try sorting by IDs, repeat object creation to make sure the are unchanged
+                # try sorting by IDs, repeat object creation to make sure the original instances remain unchanged
                 mol_copy = self.mol.copy(deep=True)
                 mol_copy.assign_atom_ids()
                 mol_list = mol_copy.generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
@@ -930,7 +933,7 @@ class ARCSpecies(object):
                 xyz = self.cheap_conformer
         return xyz
 
-    def determine_rotors(self):
+    def determine_rotors(self) -> None:
         """
         Determine possible unique rotors in the species to be treated as hindered rotors,
         taking into account all localized structures.
@@ -940,12 +943,8 @@ class ARCSpecies(object):
         if self.rotors_dict is None:
             # this species was marked to skip rotor scans (.rotors_dict is not initialized as an empty dict but as None)
             return
-        if not self.charge:
-            mol_list = self.mol_list
-        else:
-            mol_list = [self.mol]
-        if mol_list:
-            for mol in mol_list:
+        if self.mol_list is not None and len(self.mol_list):
+            for mol in self.mol_list:
                 if mol is None:
                     logger.error(f'Cannot determine rotors for species {self.label} without a .mol attribute.')
                     continue
@@ -1264,15 +1263,17 @@ class ARCSpecies(object):
                 else:
                     self.mol = perceived_mol
             else:
-                # molecules_from_xyz() returned None for b_mol
+                # molecules_from_xyz() returned None for mol_b
                 # todo: Atom order will not be correct, fix
                 pass
         else:
             mol_s, mol_b = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)
-            if len(mol_b.atoms) == self.number_of_atoms:
+            if mol_b is not None and len(mol_b.atoms) == self.number_of_atoms:
                 self.mol = mol_b
-            elif len(mol_s.atoms) == self.number_of_atoms:
+            elif mol_s is not None and len(mol_s.atoms) == self.number_of_atoms:
                 self.mol = mol_s
+            else:
+                logger.error(f'Could not infer a 2D graph for species {self.label}')
 
     def process_xyz(self, xyz_list: list or str or dict):
         """
