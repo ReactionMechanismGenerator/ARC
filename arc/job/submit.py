@@ -385,5 +385,37 @@ cd $WorkDir
 ~/auto1dmin/exe/auto1dmin.x < input.in > output.out
 
 """,
+        # Orca
+        'orca': """#!/bin/bash -l
+
+#$ -N {name}
+#$ -l long{architecture}
+#$ -l h_rt={t_max}
+#$ -l h_vmem={memory}M
+#$ -pe singlenode {cpus}
+#$ -cwd
+#$ -o out.txt
+#$ -e err.txt
+
+echo "Running on node:"
+hostname
+
+export PATH=/opt/orca/:$PATH
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib/:/usr/local/etc
+
+WorkDir=/scratch/{un}/{name}
+SubmitDir=`pwd`
+
+mkdir -p $WorkDir
+cd $WorkDir
+
+cp $SubmitDir/input.in .
+
+/opt/orca/orca input.in > input.log
+cp * $SubmitDir/
+
+rm -rf $WorkDir
+
+""",
     }
 }
