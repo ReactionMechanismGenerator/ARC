@@ -180,6 +180,8 @@ class ARC(object):
         compute_rates (bool): Whether to compute rate coefficients for converged reactions.
         compute_transport (bool): Whether to compute transport properties for converged species.
         statmech_adapter (str): The statmech software to use.
+        fine_only (bool): If ``self.job_types['fine'] and not self.job_types['opt']`` ARC will not run optimization
+                          jobs without fine=True
     """
 
     def __init__(self, input_dict=None, project=None, arc_species_list=None, arc_rxn_list=None, level_of_theory='',
@@ -323,6 +325,12 @@ class ARC(object):
             self.ess_settings = check_ess_settings(ess_settings or global_ess_settings)
         if not self.ess_settings:
             self.determine_ess_settings()
+
+        # Determine if fine-only behavior is requested before determining chemistry for job types
+        self.fine_only = False
+        if self.job_types['fine'] and not self.job_types['opt']:
+            self.fine_only = True
+            self.job_types['opt'] = True  # Run the optimizations, self.fine_only will make sure that they are fine
 
         # execute regardless of new job or restart job
         self.determine_model_chemistry_for_job_types()  # all level of theory attributes should be dict after this call
@@ -582,7 +590,8 @@ class ARC(object):
                                    restart_dict=self.restart_dict, project_directory=self.project_directory,
                                    max_job_time=self.max_job_time, allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
                                    memory=self.memory, adaptive_levels=self.adaptive_levels,
-                                   n_confs=self.n_confs, e_confs=self.e_confs, dont_gen_confs=self.dont_gen_confs)
+                                   n_confs=self.n_confs, e_confs=self.e_confs, dont_gen_confs=self.dont_gen_confs,
+                                   fine_only=self.fine_only)
 
         save_yaml_file(path=os.path.join(self.project_directory, 'output', 'status.yml'), content=self.scheduler.output)
 

@@ -32,7 +32,7 @@ Specification 1::
     job_types:
       rotors: false
       conformers: false
-      fine_grid: true
+      fine: true
       freq: true
       opt: true
       sp: true
@@ -216,6 +216,9 @@ set ``fine`` in the ``job_types`` dictionary to `False`.
 If turned on, ARC will spawn another optimization job after the first one converges
 with a fine grid settings, using the already optimized geometry.
 
+It is also possible to instruct ARC not to run the first optimization job and instead go straight to the fine
+optimization. To do this, set ``fine: True`` but ``opt: False``.
+
 Note that this argument is called ``fine`` in ARC, although in practice
 it directs the ESS to use an **ultrafine** grid. See, for example, `this study`__
 describing the importance of a DFT grid.
@@ -393,7 +396,7 @@ Frequency scaling factors
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 ARC will look for appropriate available frequency scaling factors in `Arkane`_
 for the respective ``freq_level``. If a frequency scaling factor isn't available, ARC will attempt
-to determine it using `Truhlar's method`__. This involves spawning fine optimizations anf frequency
+to determine it using `Truhlar's method`__. This involves spawning fine optimizations and frequency
 calculations for a dataset of 15 small molecules. To avoid this, either pass a known frequency scaling
 factor using the ``freq_scale_factor`` attribute (see :ref:`examples <examples>`), or set the
 ``calc_freq_factor`` attribute to ``False`` (it is ``True`` by default).
@@ -568,7 +571,7 @@ which could be read as an input in ARC::
 
     input_dict['job_types'] = {'conformers': True,
                                'opt': True,
-                               'fine_grid': True,
+                               'fine': True,
                                'freq': True,
                                'sp': True,
                                'rotors': True,
@@ -616,7 +619,7 @@ The above code generated the following input file::
     job_types:
       rotors: true
       conformers: true
-      fine_grid: true
+      fine: true
       freq: true
       lennard_jones: false
       opt: true
@@ -715,7 +718,7 @@ Below is an example requesting all hydrogen BDEs in ethanol including the `C--O`
     job_types:
       rotors: true
       conformers: true
-      fine_grid: true
+      fine: true
       freq: true
       opt: true
       sp: true
