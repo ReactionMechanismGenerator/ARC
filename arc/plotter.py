@@ -200,6 +200,7 @@ def plot_3d_mol_as_scatter(xyz, path=None, plot_h=True, show_plot=True, name='',
             os.makedirs(path)
         image_path = os.path.join(path, f'scattered_balls_structure_{name}.png')
         plt.savefig(image_path, bbox_inches='tight')
+    plt.close(fig=fig)
 
 
 def check_xyz_species_for_drawing(xyz=None, species=None):
@@ -404,6 +405,7 @@ def draw_parity_plot(var_arc, var_rmg, labels, var_label, var_units, pp=None):
         plt.savefig(pp, format='pdf')
     if is_notebook():
         plt.show()
+    plt.close(fig=fig)
 
 
 def draw_kinetics_plots(rxn_list, T_min, T_max, T_count=50, path=None):
@@ -517,6 +519,7 @@ def _draw_kinetics_plots(rxn_label, arc_k, temperature, rmg_rxns, units, pp, max
         plt.savefig(pp, format='pdf')
     if is_notebook():
         plt.show()
+    plt.close(fig=fig)
 
 
 def get_text_positions(x_data, y_data, txt_width, txt_height):
@@ -950,6 +953,7 @@ def plot_torsion_angles(torsion_angles, torsions_sampling_points=None, wells_dic
                 i += 1
         image_path = os.path.join(plot_path, f'conformer torsions {i}.png')
         plt.savefig(image_path, bbox_inches='tight')
+    plt.close(fig)
     return num_comb
 
 
@@ -991,7 +995,7 @@ def plot_1d_rotor_scan(angles=None, energies=None, results=None, path=None, scan
     if isinstance(original_dihedral, list) and len(original_dihedral) == 1:
         original_dihedral = original_dihedral[0]
     marker_color, line_color = plt.cm.viridis([0.1, 0.9])
-    plt.figure(figsize=(4, 3), dpi=120)
+    fig = plt.figure(figsize=(4, 3), dpi=120)
     plt.subplot(1, 1, 1)
     plt.plot(angles, energies, '.-', markerfacecolor=marker_color,
              markeredgecolor=marker_color, color=line_color)
@@ -1025,6 +1029,7 @@ def plot_1d_rotor_scan(angles=None, energies=None, results=None, path=None, scan
         fig_path = os.path.join(path, fig_name)
         plt.savefig(fig_path, dpi=120, facecolor='w', edgecolor='w', orientation='portrait', papertype=None,
                     format='png', transparent=False, bbox_inches=None, pad_inches=0.1, metadata=None)
+    plt.close(fig=fig)
 
 
 def plot_2d_rotor_scan(results, path=None, label='', cmap='Blues', resolution=90,
@@ -1124,7 +1129,7 @@ def plot_2d_rotor_scan(results, path=None, label='', cmap='Blues', resolution=90
                 zero_phi0.append(phi0)
                 zero_phi1.append(phi1)
 
-    plt.figure(num=None, figsize=(12, 8), dpi=resolution, facecolor='w', edgecolor='k')
+    fig = plt.figure(num=None, figsize=(12, 8), dpi=resolution, facecolor='w', edgecolor='k')
 
     plt.contourf(phis0, phis1, energies, 20, cmap=cmap)
     plt.colorbar()
@@ -1154,6 +1159,8 @@ def plot_2d_rotor_scan(results, path=None, label='', cmap='Blues', resolution=90
         fig_path = os.path.join(path, fig_name)
         plt.savefig(fig_path, dpi=resolution, facecolor='w', edgecolor='w', orientation='portrait', papertype=None,
                     format='png', transparent=False, bbox_inches=None, pad_inches=0.1, metadata=None)
+
+    plt.close(fig=fig)
 
 
 def save_rotor_text_file(angles, energies, path):
