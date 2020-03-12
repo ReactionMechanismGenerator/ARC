@@ -1213,7 +1213,10 @@ class ARCSpecies(object):
         """A helper function to write content into the .ts_report attribute"""
         self.ts_report = ''
         if self.chosen_ts_method is not None:
-            self.ts_report += f'TS method summary for {self.label} in {self.rxn_label}\n'
+            self.ts_report += f'TS method summary for {self.label}'
+            if self.rxn_label is not None:
+                self.ts_report += f' in {self.rxn_label}'
+            self.ts_report += f':\n'
             if self.successful_methods:
                 self.ts_report += 'Methods that successfully generated a TS guess:\n'
                 for successful_method in self.successful_methods:
@@ -1223,7 +1226,7 @@ class ARCSpecies(object):
                 for unsuccessful_method in self.unsuccessful_methods:
                     self.ts_report += unsuccessful_method + ','
             self.ts_report += f'\nThe method that generated the best TS guess and its output used for the ' \
-                              f'optimization: {self.chosen_ts_method}'
+                              f'optimization: {self.chosen_ts_method}\n'
 
     def mol_from_xyz(self,
                      xyz: dict = None,
