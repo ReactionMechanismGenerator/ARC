@@ -49,11 +49,19 @@ class SSHClient(object):
         self.key = servers[server]['key']
         logging.getLogger("paramiko").setLevel(logging.WARNING)
 
-    def send_command_to_server(self, command, remote_path=''):
+    def _send_command_to_server(self, command: str, remote_path: str='') -> (list, list):
         """
-        Send commands to server. `command` is either a sting or an array of string commands to send.
-        If remote_path is not an empty string, the command will be executed in the directory path it points to.
-        Returns lists of stdout, stderr corresponding to the commands sent.
+        Send commands to server. 
+
+        Args:
+            command (str or list): A string or an array of string commands to send.
+            remote_path (str, optional): The directory path at which the command will be executed.
+
+        Returns:
+            list: A list of lines of standard output stream.
+
+        Returns:
+            list: A list of lines of standard error stream.
         """
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
