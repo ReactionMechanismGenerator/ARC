@@ -827,12 +827,9 @@ class ARC(object):
                 logger.info('\nTrying {0}'.format(server))
             ssh = SSHClient(server)
 
-            cmd = '. ~/.bashrc; which g03'
-            g03 = ssh.send_command_to_server(cmd)[0]
-            cmd = '. ~/.bashrc; which g09'
-            g09 = ssh.send_command_to_server(cmd)[0]
-            cmd = '. ~/.bashrc; which g16'
-            g16 = ssh.send_command_to_server(cmd)[0]
+            g03 = ssh.find_package('g03')
+            g09 = ssh.find_package('g09')
+            g16 = ssh.find_package('g16')
             if g03 or g09 or g16:
                 if diagnostics:
                     logger.info(f'  Found Gaussian on {server}: g03={g03}, g09={g09}, g16={g16}')
@@ -840,8 +837,7 @@ class ARC(object):
             elif diagnostics:
                 logger.info(f'  Did NOT find Gaussian on {server}')
 
-            cmd = '. ~/.bashrc; which qchem'
-            qchem = ssh.send_command_to_server(cmd)[0]
+            qchem = ssh.find_package('qchem')
             if qchem:
                 if diagnostics:
                     logger.info(f'  Found QChem on {server}')
@@ -849,8 +845,7 @@ class ARC(object):
             elif diagnostics:
                 logger.info(f'  Did NOT find QChem on {server}')
 
-            cmd = '. ~/.bashrc; which orca'
-            orca = ssh.send_command_to_server(cmd)[0]
+            orca = ssh.find_package('orca')
             if orca:
                 if diagnostics:
                     logger.info(f'  Found Orca on {server}')
@@ -858,8 +853,7 @@ class ARC(object):
             elif diagnostics:
                 logger.info(f'  Did NOT find Orca on {server}')
 
-            cmd = '. ~/.bashrc; which terachem'
-            terachem = ssh.send_command_to_server(cmd)[0]
+            terachem = ssh.find_package('terachem')
             if terachem:
                 if diagnostics:
                     logging.info(f'  Found TeraChem on {server}')
@@ -867,8 +861,7 @@ class ARC(object):
             elif diagnostics:
                 logging.info(f'  Did NOT find TeraChem on {server}')
 
-            cmd = '. .bashrc; which molpro'
-            molpro = ssh.send_command_to_server(cmd)[0]
+            molpro = ssh.find_package('molpro')
             if molpro:
                 if diagnostics:
                     logger.info(f'  Found Molpro on {server}')

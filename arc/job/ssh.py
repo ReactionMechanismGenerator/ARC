@@ -302,6 +302,16 @@ class SSHClient(object):
         command = f'ls -alF'
         return self._send_command_to_server(command, remote_path)[0]
 
+    def find_package(self, package_name: str) -> list:
+        """
+        Find the path to the package.
+
+        Args:
+            package_name (str): The name of the package to search for.
+        """
+        command = f'. ~/.bashrc; which {package_name}'
+        return self._send_command_to_server(command)[0]
+
 
 def write_file(sftp, remote_file_path, local_file_path='', file_string=''):
     """
