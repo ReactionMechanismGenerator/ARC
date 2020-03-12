@@ -41,10 +41,10 @@ def load_families_only(rmgdb, kinetics_families='default'):
         rmgdb (RMGDatabase): The RMG database instance.
         kinetics_families (str, optional): Specific kinetics families to load.
     """
-    if kinetics_families not in ('default', 'all', 'none'):
-        if not isinstance(kinetics_families, list):
-            raise InputError("kinetics families should be either 'default', 'all', 'none', or a list of names, e.g.,"
-                             " ['H_Abstraction','R_Recombination'] or ['!Intra_Disproportionation'].")
+    if kinetics_families not in ('default', 'all', 'none') and not isinstance(kinetics_families, list):
+        raise InputError(f"kinetics families should be either 'default', 'all', 'none', or a list of names, e.g., "
+                         f"['H_Abstraction', 'R_Recombination'] or ['!Intra_Disproportionation']. "
+                         f"Got:\n{kinetics_families}")
     logger.debug('\n\nLoading only kinetic families from the RMG database...')
     rmgdb.load(
         path=db_path,
