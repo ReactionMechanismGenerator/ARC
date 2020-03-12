@@ -172,18 +172,34 @@ class SSHClient(object):
             sftp.close()
             ssh.close()
 
-    def download_file(self, remote_file_path, local_file_path):
+    def download_file(self, remote_file_path: str, local_file_path: str):
         """
-        Download a file from `remote_file_path` to `local_file_path`.
+        A modulator function of _download_file(). Download a file from the server.
+
+        Args:
+            remote_file_path (str): The remote path to be downloaded from.
+            local_file_path (str): The local path to be downloaded to.
+
+        Raises:
+            ServerError: If the file cannot be downloaded with maximum times to try
         """
         i, max_times_to_try = 1, 30
         success = False
         sleep_time = 10  # seconds
-        while i < 30:
+
+        if not self._check_file_exists(remote_file_path):
+            # Check if a file exists
+            # This doesn't have a real impact now to avoid screwing up ESS trsh
+            # but introduce an opportunity for better troubleshooting.
+            # The current behavior is that if the remote path does not exist
+            # an empty file will be created at the local path
+            logger.debug(
+                f'{remote_file_path} does not exist on {self.server}.')
+
+        while i < max_times_to_try and not success:
             self._download_file(remote_file_path, local_file_path)
             if os.path.isfile(local_file_path):
                 success = True
-                i = 1000
             else:
                 logger.error(f'Could not download file {remote_file_path} from {self.server}!')
                 logger.error(f'ARC is sleeping for {sleep_time * i} seconds before re-trying, '
@@ -195,9 +211,16 @@ class SSHClient(object):
             raise ServerError(f'Could not download file {remote_file_path} from {self.server}. '
                               f'Tried {max_times_to_try} times.')
 
-    def _download_file(self, remote_file_path, local_file_path):
+    def _download_file(self, remote_file_path: str, local_file_path: str):
         """
-        Download a file from `remote_file_path` to `local_file_path`.
+        Download a file from the server.
+
+        Args:
+            remote_file_path (str): The remote path to be downloaded from.
+            local_file_path (str): The local path to be downloaded to.
+
+        Raises:
+            IOError: Cannot download file via sftp.
         """
         sftp, ssh = self.connect()
         try:
@@ -224,9 +247,16 @@ class SSHClient(object):
         ssh.close()
         return content
 
-    def check_job_status(self, job_id):
+    def check_job_status(self, job_id: int) -> str:
         """
-        A modulator method of _check_job_status()
+        A modulator method of _check_job_status(). Check job's status.
+
+        Args:
+            job_id (int): The job's ID.
+
+        Returns:
+            str: Possible statuses: `before_submission`, `running`, `errored on node xx`,
+                 `done`, and `connection error`
         """
         i = 1
         sleep_time = 1  # minutes
@@ -242,48 +272,72 @@ class SSHClient(object):
             i += 1
         return result
 
-    def _check_job_status(self, job_id):
+    def _check_job_status(self, job_id: int) -> str:
         """
-        Possible statuses: `before_submission`, `running`, `errored on node xx`, `done`
-        Status line formats:
-        pharos: '540420 0.45326 xq1340b    user_name       r     10/26/2018 11:08:30 long1@node18.cluster'
-        rmg: '14428     debug xq1371m2   user_name  R 50-04:04:46      1 node06'
+        Check job's status.
+
+        Args:
+            job_id (int): The job's ID.
+        
+        Returns:
+            str: Possible statuses: `before_submission`, `running`, `errored on node xx`,
+                 `done`, and `connection error`
         """
         cmd = check_status_command[servers[self.server]['cluster_soft']] + ' -u $USER'
-        stdout, stderr = self.send_command_to_server(cmd)
+        stdout, stderr = self._send_command_to_server(cmd)
+        # Status line formats:
+        # OGE: '540420 0.45326 xq1340b    user_name       r     10/26/2018 11:08:30 long1@node18.cluster'
+        # SLURM: '14428     debug xq1371m2   user_name  R 50-04:04:46      1 node06'
         if stderr:
             logger.info('\n\n')
             logger.error(f'Could not check status of job {job_id} due to {stderr}')
             return 'connection error'
         return check_job_status_in_stdout(job_id=job_id, stdout=stdout, server=self.server)
 
-    def delete_job(self, job_id):
+    def delete_job(self, job_id: int):
         """
-        Deletes a running job
+        Deletes a running job.
+
+        Args:
+            job_id (int): The job's ID.
         """
         cmd = delete_command[servers[self.server]['cluster_soft']] + ' ' + str(job_id)
-        self.send_command_to_server(cmd)
+        self._send_command_to_server(cmd)
 
-    def check_running_jobs_ids(self):
+    def check_running_jobs_ids(self) -> list:
         """
-        Return a list of ``int`` representing job IDs of all jobs submitted by the user on a server
+        Check all jobs submitted by the user on a server.
+
+        Returns:
+            list: A list of job IDs
         """
         running_jobs_ids = list()
         cmd = check_status_command[servers[self.server]['cluster_soft']] + ' -u $USER'
-        stdout = self.send_command_to_server(cmd)[0]
+        stdout = self._send_command_to_server(cmd)[0]
         for i, status_line in enumerate(stdout):
             if (servers[self.server]['cluster_soft'].lower() == 'slurm' and i > 0)\
                     or (servers[self.server]['cluster_soft'].lower() == 'oge' and i > 1):
                 running_jobs_ids.append(int(status_line.split()[0]))
         return running_jobs_ids
 
-    def submit_job(self, remote_path):
-        """Submit a job"""
+    def submit_job(self, remote_path: str) -> (str, int):
+        """
+        Submit a job to the server.
+        
+        Args:
+            remote_path (str): The remote path contains the input file and the submission script.
+
+        Returns:
+            str: A string indicate the status of job submission. Either `errored` or `submitted`.
+
+        Returns:
+            int: the job ID of the submitted job.
+        """
         job_status = ''
         job_id = 0
-        cmd = submit_command[servers[self.server]['cluster_soft']] + ' '\
-            + submit_filename[servers[self.server]['cluster_soft']]
-        stdout, stderr = self.send_command_to_server(cmd, remote_path)
+        cluster_soft = servers[self.server]['cluster_soft']
+        cmd = submit_command[cluster_soft] + ' ' + submit_filename[cluster_soft]
+        stdout, stderr = self._send_command_to_server(cmd, remote_path)
         if len(stderr) > 0 or len(stdout) == 0:
             logger.warning(f'Got stderr when submitting job:\n{stderr}')
             job_status = 'errored'
@@ -293,23 +347,34 @@ class SSHClient(object):
                                    f'settings, such as cpus and memory, in ARC/arc/settings.py')
         elif 'submitted' in stdout[0].lower():
             job_status = 'running'
-            if servers[self.server]['cluster_soft'].lower() == 'oge':
+            if cluster_soft.lower() == 'oge':
                 job_id = int(stdout[0].split()[2])
-            elif servers[self.server]['cluster_soft'].lower() == 'slurm':
+            elif cluster_soft.lower() == 'slurm':
                 job_id = int(stdout[0].split()[3])
             else:
                 raise ValueError(f'Unrecognized cluster software {servers[self.server]["cluster_soft"]}')
         return job_status, job_id
 
     def connect(self):
-        """A helper function for calling self.try_connecting until successful"""
+        """
+        A modulator function for _connect(). Connect to the server.
+
+        Raises:
+            ServerError: Cannot connect to the server with maximum times to try
+            
+        Returns:
+            paramiko.sftp_client.SFTPClient
+
+        Returns:
+            paramiko.SSHClient
+        """
         times_tried = 0
-        max_times_to_try = 1440  # continue trying for 24 hrs...
+        max_times_to_try = 1440  # continue trying for 24 hrs (24 hr * 60 min/hr)...
         interval = 60  # wait 60 sec between trials
         while times_tried < max_times_to_try:
             times_tried += 1
             try:
-                sftp, ssh = self.try_connecting()
+                sftp, ssh = self._connect()
             except Exception as e:
                 if not times_tried % 10:
                     logger.info(f'Tried connecting to {self.server} {times_tried} times with no success...'
@@ -323,8 +388,16 @@ class SSHClient(object):
             time.sleep(interval)
         raise ServerError(f'Could not connect to server {self.server} even after {times_tried} trials.')
 
-    def try_connecting(self):
-        """A helper function for connecting via paramiko, returns the `sftp` and `ssh` objects"""
+    def _connect(self):
+        """
+        Connect via paramiko, and open a SSH session as well as a SFTP session.
+
+        Returns:
+            paramiko.sftp_client.SFTPClient
+
+        Returns:
+            paramiko.SSHClient
+        """
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         ssh.load_system_host_keys(filename=self.key)
@@ -337,8 +410,16 @@ class SSHClient(object):
         sftp = ssh.open_sftp()
         return sftp, ssh
 
-    def get_last_modified_time(self, remote_file_path):
-        """returns the last modified time of `remote_file_path` in a datetime format"""
+    def get_last_modified_time(self, remote_file_path: str):
+        """
+        Get the last modified time of a remote file.
+
+        Args:
+            remote_file_path (str): The remote file path to check.
+
+        Returns:
+            datetime.datetime: the last modified time of the file
+        """
         sftp, ssh = self.connect()
         try:
             timestamp = sftp.stat(remote_file_path).st_mtime
@@ -513,7 +594,7 @@ def delete_all_arc_jobs(server_list, jobs=None):
         print(f'\nDeleting {jobs_message} ARC jobs from {server}...')
         cmd = check_status_command[servers[server]['cluster_soft']] + ' -u $USER'
         ssh = SSHClient(server)
-        stdout = ssh.send_command_to_server(cmd)[0]
+        stdout = ssh._send_command_to_server(cmd)[0]
         for status_line in stdout:
             s = re.search(r' a\d+', status_line)
             if s is not None:
