@@ -19,7 +19,8 @@ import paramiko
 
 from arc.common import get_logger
 from arc.exceptions import InputError, ServerError
-from arc.settings import servers, check_status_command, submit_command, submit_filename, delete_command
+from arc.settings import check_status_command, delete_command, list_available_nodes_command, \
+                         servers, submit_command, submit_filename
 
 
 logger = get_logger()
@@ -311,6 +312,31 @@ class SSHClient(object):
         """
         command = f'. ~/.bashrc; which {package_name}'
         return self._send_command_to_server(command)[0]
+
+    def list_available_nodes(self) -> list:
+        """
+        List available nodes on the server.
+
+        Args:
+            mode (str): The mode change to be applied, can be either octal or symbolic.
+
+        Returns:
+            list: lines of the node hostnames.
+        """
+        cluster_soft = servers[self.server]['cluster_soft']
+        cmd = list_available_nodes_command[cluster_soft]
+        stdout = self._send_command_to_server(command=cmd)[0]
+        if cluster_soft.lower() == 'oge':
+            # Stdout line example:
+            # long1@node01.cluster           BIP   0/0/8          -NA-     lx24-amd64    aAdu
+            nodes = [line.split()[0].split('@')[1]
+                     for line in stdout if '0/0/8' in line]
+        elif cluster_soft.lower() == 'slurm':
+            # Stdout line example:
+            # node01 alloc 1.00 none
+            nodes = [line.split()[0] for line in stdout
+                     if line.split()[1] in ['mix', 'alloc', 'idle']]
+        return nodes
 
 
 def write_file(sftp, remote_file_path, local_file_path='', file_string=''):
