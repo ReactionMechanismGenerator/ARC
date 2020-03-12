@@ -89,36 +89,88 @@ class SSHClient(object):
         ssh.close()
         return stdout, stderr
 
-    def upload_file(self, remote_file_path, local_file_path='', file_string=''):
+    def upload_file(self, remote_file_path: str, local_file_path: str='', file_string: str=''):
         """
-        Upload `local_file_path` or the contents of `file_string` to `remote_file_path`.
-        Either `file_string` or `local_file_path` must be given.
+        A modulator method of _upload_file(). Upload a local file or contents
+        from a string to the remote server.
+
+        Args:
+            remote_file_path (str): The path to write into on the remote server.
+            local_file_path (str, optional): The local file path to be copied to the remote location.
+            file_string (str, optional): The file content to be copied and saved as the remote file.
+
+        Raises:
+            InputError: If both `local_file_path` or `file_string` are invalid,
+                        or `local_file_path` does not exists.
+            ServerError: If the file cannot be uploaded with maximum times to try
         """
+        if not local_file_path and not file_string:
+            raise InputError('Cannot not upload file to server. Either `file_string` or `local_file_path`'
+                             ' must be specified')
         if local_file_path and not os.path.isfile(local_file_path):
             raise InputError(f'Cannot upload a non-existing file. '
                              f'Check why file in path {local_file_path} is missing.')
-        sftp, ssh = self.connect()
+
         i, max_times_to_try = 1, 30
         success = False
         sleep_time = 10  # seconds
-        while i < max_times_to_try:
+        while i < max_times_to_try and not success:
             try:
-                write_file(sftp, remote_file_path, local_file_path, file_string)
+                self._upload_file(remote_file_path, local_file_path, file_string)
+            except InputError:
+                raise InputError(f'Cannot upload the file when the directory of the path {remote_file_path} '
+                      f'does not exist.')
             except IOError:
                 logger.error(f'Could not upload file {local_file_path} to {self.server}!')
                 logger.error(f'ARC is sleeping for {sleep_time * i} seconds before re-trying, '
                              f'please check your connectivity.')
                 logger.info('ZZZZZ..... ZZZZZ.....')
                 time.sleep(sleep_time * i)  # in seconds
+                i += 1
             else:
                 success = True
-                i = 1000
-            i += 1
         if not success:
             raise ServerError(f'Could not write file {remote_file_path} on {self.server}. '
                               f'Tried {max_times_to_try} times.')
-        sftp.close()
-        ssh.close()
+
+    def _upload_file(self, remote_file_path:str, local_file_path: str='', file_string: str='', force_upload: bool=True):
+        """
+        Upload a file. If `file_string` is given, write it as the content of the file.
+        Else, if `local_file_path` is given, copy it to `remote_file_path`.
+
+        Args:
+            remote_file_path (str): The path to write into on the remote server.
+            local_file_path (str, optional): The local file path to be copied to the remote location.
+            file_string (str, optional): The file content to be copied and saved as the remote file.
+            force_upload (bool, optional): Whether upload the file if the directory of the file does not exists.
+                                           ``True`` for make the directory and upload.
+        """
+        sftp, ssh = self.connect()
+        # If the directory does not exist, open cannot create a file based on the given path
+        remote_dir_path = os.path.dirname(remote_file_path)
+        if not self._check_dir_exists(remote_file_path):
+            if force_upload:
+                self._create_dir(remote_dir_path)
+            else:
+                logger.error(f'{remote_dir_path} does not exist on {self.server}. '
+                             f'Cannot upload file {remote_file_path}')
+                raise InputError(f'Remote file path {remote_file_path} is invalid, since its '
+                                  'directory does not exist.')
+        try:
+            if file_string:
+                with sftp.open(remote_file_path, 'w') as f_remote:
+                    f_remote.write(file_string)
+            else:
+                sftp.put(localpath=local_file_path,
+                         remotepath=remote_file_path)
+        except IOError:
+            logger.debug(
+                f'Got an IOError when trying to upload file {remote_file_path} from {self.server}')
+            raise IOError(
+                f'Got an IOError when trying to upload file {remote_file_path} from {self.server}')
+        finally:
+            sftp.close()
+            ssh.close()
 
     def download_file(self, remote_file_path, local_file_path):
         """
@@ -392,27 +444,18 @@ class SSHClient(object):
         if len(stdout):
             return True
 
-def write_file(sftp, remote_file_path, local_file_path='', file_string=''):
-    """
-    Write a file. If `file_string` is given, write it as the content of the file.
-    Else, if `local_file_path` is given, copy it to `remote_file_path`.
+    def _create_dir(self, remote_path: str):
+        """
+        Create a new directory on the server.
 
-    Args:
-        sftp (paramiko's SFTP): The SFTP object.
-        remote_file_path (str): The path to write into on the remote server.
-        local_file_path (str, optional): A local file path to be copied into the remote location.
-        file_string (str): The file content to be copied and saved as the remote file.
-    """
-    with sftp.open(remote_file_path, 'w') as f_remote:
-        if file_string:
-            f_remote.write(file_string)
-        elif local_file_path:
-            # with open(local_file_path, 'r') as f_local:
-            #     f_remote.write(f_local.readlines())
-            sftp.put(localpath=local_file_path, remotepath=remote_file_path)
-        else:
-            raise ValueError('Could not upload file to server. Either `file_string` or `local_file_path`'
-                             ' must be specified')
+        Args:
+            remote_path (str): The path to the directory to create on the remote server.
+        """
+        command = f'mkdir -p "{remote_path}"'
+        _, stderr = self._send_command_to_server(command)
+        if stderr:
+            raise ServerError(
+                f'Cannot create dir for the given path ({remote_path}).\nGot: {stderr}')
 
 
 def check_job_status_in_stdout(job_id, stdout, server):

@@ -1229,13 +1229,11 @@ end
 
     def _upload_submit_file(self):
         ssh = SSHClient(self.server)
-        ssh.send_command_to_server(command='mkdir -p {0}'.format(self.remote_path))
         remote_file_path = os.path.join(self.remote_path, submit_filename[servers[self.server]['cluster_soft']])
         ssh.upload_file(remote_file_path=remote_file_path, file_string=self.submit)
 
     def _upload_input_file(self):
         ssh = SSHClient(self.server)
-        ssh.send_command_to_server(command='mkdir -p {0}'.format(self.remote_path))
         if self.input is not None:
             remote_file_path = os.path.join(self.remote_path, input_filename[self.software])
             ssh.upload_file(remote_file_path=remote_file_path, file_string=self.input)
