@@ -1249,7 +1249,7 @@ end
                                'got: {1}'.format(up_file['name'], up_file['source']))
             ssh.upload_file(remote_file_path=up_file['remote'], local_file_path=local_file_path)
             if up_file['make_x']:
-                ssh.send_command_to_server(command='chmod +x {0}'.format(up_file['name']), remote_path=self.remote_path)
+                ssh.change_mode(mode='+x', path=up_file['name'], remote_path=self.remote_path)
         self.initial_time = ssh.get_last_modified_time(
             remote_file_path=os.path.join(self.remote_path, submit_filename[servers[self.server]['cluster_soft']]))
 

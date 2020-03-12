@@ -342,6 +342,25 @@ class SSHClient(object):
                      if line.split()[1] in ['mix', 'alloc', 'idle']]
         return nodes
 
+    def change_mode(self,
+                    mode: str,
+                    path: str,
+                    recursive: bool = False,
+                    remote_path: str = ''):
+        """
+        Change the mode to a file or a directory.
+
+        Args:
+            mode (str): The mode change to be applied, can be either octal or symbolic.
+            path (str): The path to the file or the directory to be changed.
+            recursive (bool, optional): Whether to recursively change the mode to all files
+                                        under a directory.``True`` for recursively change.
+            remote_path (str, optional): The directory path at which the command will be executed.
+        """
+        recursive = '-R' if recursive else ''
+        command = f'chmod {recursive} {mode} {path}'
+        self._send_command_to_server(command, remote_path)
+
 
 def write_file(sftp, remote_file_path, local_file_path='', file_string=''):
     """
