@@ -1650,3 +1650,36 @@ def get_all_neighbors(mol, atom_index):
     for atom in mol.atoms[atom_index].edges.keys():
         neighbors.append(mol.atoms.index(atom))
     return neighbors
+
+
+def up_param(param, increment=None, increment_list=None):
+    """
+    Increase the indices represented by a zmat parameter.
+
+    Args:
+        param (str): The zmat parameter.
+        increment (int, optional): The increment to increase by.
+        increment_list (list, optional): Entries are individual indices to use when incrementing the ``param`` indices.
+
+    Raises:
+        ZMatError: If neither ``increment`` nor ``increment_list`` were specified,
+                   or if the increase resulted in a negative number.
+
+    Returns:
+        str: The new parameter with increased indices.
+    """
+    if increment is None and increment_list is None:
+        raise ZMatError('Either increment or increment_list must be specified.')
+    indices = get_atom_indices_from_zmat_parameter(param)[0]
+    if increment is not None:
+        new_indices = [index + increment for index in indices]
+    else:
+        if len(increment_list) != len(indices):
+            raise ZMatError(f'The number of increments in {increment_list} ({len(increment_list)} is different than '
+                            f'the number of indices to increment {indices} ({len(indices)})')
+        new_indices = [index + inc for index, inc in zip(indices, increment_list)]
+    if any(index < 0 for index in new_indices):
+        raise ZMatError(f'Got a negative zmat index when bumping {param} by {increment}')
+    new_indices = [str(index) for index in new_indices]
+    new_param = '_'.join([param.split('_')[0]] + new_indices)
+    return new_param
