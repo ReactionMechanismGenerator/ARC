@@ -155,14 +155,18 @@ class SSHClient(object):
         sftp.close()
         ssh.close()
 
-    def read_remote_file(self, remote_path, filename):
+    def read_remote_file(self, remote_file_path: str) -> list:
         """
-        Read a remote file. `remote_path` is the remote path (required), a `filename` is also required.
-        Returns the file's content.
+        Read a remote file.
+
+        Args:
+            remote_file_path (str): The remote path to be read.
+        
+        Returns:
+            list: A list of lines read from the file.
         """
         sftp, ssh = self.connect()
-        full_path = os.path.join(remote_path, filename)
-        with sftp.open(full_path, 'r') as f_remote:
+        with sftp.open(remote_file_path, 'r') as f_remote:
             content = f_remote.readlines()
         sftp.close()
         ssh.close()
