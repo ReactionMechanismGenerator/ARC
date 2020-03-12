@@ -361,6 +361,36 @@ class SSHClient(object):
         command = f'chmod {recursive} {mode} {path}'
         self._send_command_to_server(command, remote_path)
 
+    def _check_file_exists(self, remote_file_path: str) -> bool:
+        """
+        Check if a file exists on the remote server.
+
+        Args:
+            remote_file_path (str): The path to the file on the remote server.
+
+        Returs:
+            bool: If the file exists on the remote server. ``True`` if exist.
+        """
+        command = f'[ -f "{remote_file_path}" ] && echo "File exists"'
+        stdout, _ = self._send_command_to_server(command, remote_path='')
+        if len(stdout):
+            return True
+
+    def _check_dir_exists(self,
+                          remote_dir_path: str) -> bool:
+        """
+        Check if a directory exists on the remote server.
+
+        Args:
+            remote_dir_path (str): The path to the directory on the remote server.
+
+        Returns:
+            bool: If the directory exists on the remote server. ``True`` if exist.
+        """
+        command = f'[ -d "{remote_dir_path}" ] && echo "Dir exists"'
+        stdout, _ = self._send_command_to_server(command)
+        if len(stdout):
+            return True
 
 def write_file(sftp, remote_file_path, local_file_path='', file_string=''):
     """
