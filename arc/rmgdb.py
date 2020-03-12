@@ -6,10 +6,10 @@ A module for working with the RMG database.
 """
 
 import os
+from typing import Tuple, TYPE_CHECKING, Union
 
 from rmgpy import settings
 from rmgpy.data.kinetics.common import find_degenerate_reactions
-from rmgpy.data.kinetics.family import KineticsFamily
 from rmgpy.data.rmg import RMGDatabase
 from rmgpy.exceptions import KineticsError
 from rmgpy.reaction import same_species_lists, Reaction
@@ -17,13 +17,16 @@ from rmgpy.reaction import same_species_lists, Reaction
 from arc.common import get_logger
 from arc.exceptions import InputError
 
+if TYPE_CHECKING:
+    from rmgpy.data.kinetics.family import KineticsFamily
+
 
 logger = get_logger()
 
 db_path = settings['database.directory']
 
 
-def make_rmg_database_object():
+def make_rmg_database_object() -> RMGDatabase:
     """
     Make a clean RMGDatabase object.
 
@@ -34,13 +37,15 @@ def make_rmg_database_object():
     return rmgdb
 
 
-def load_families_only(rmgdb, kinetics_families='default'):
+def load_families_only(rmgdb: RMGDatabase,
+                       kinetics_families: Union[str, list] = 'default',
+                       ) -> None:
     """
     A helper function for loading kinetic families from RMG's database.
 
     Args:
         rmgdb (RMGDatabase): The RMG database instance.
-        kinetics_families (str, optional): Specific kinetics families to load.
+        kinetics_families (str, list, optional): Specific kinetics families to load.
     """
     if kinetics_families not in ('default', 'all', 'none') and not isinstance(kinetics_families, list):
         raise InputError(f"kinetics families should be either 'default', 'all', 'none', or a list of names, e.g., "
@@ -59,8 +64,14 @@ def load_families_only(rmgdb, kinetics_families='default'):
     )
 
 
-def load_rmg_database(rmgdb, thermo_libraries=None, reaction_libraries=None, kinetics_families='default',
-                      load_thermo_libs=True, load_kinetic_libs=True, include_nist=False):
+def load_rmg_database(rmgdb: RMGDatabase,
+                      thermo_libraries: list = None,
+                      reaction_libraries: list = None,
+                      kinetics_families: Union[str, list] = 'default',
+                      load_thermo_libs: bool = True,
+                      load_kinetic_libs: bool = True,
+                      include_nist: bool = False,
+                      ) -> None:
     """
     A helper function for loading the RMG database.
 
@@ -154,7 +165,9 @@ def load_rmg_database(rmgdb, thermo_libraries=None, reaction_libraries=None, kin
     logger.info('\n\n')
 
 
-def determine_reaction_family(rmgdb, reaction):
+def determine_reaction_family(rmgdb: RMGDatabase,
+                              reaction: Reaction,
+                              ) -> Tuple[Union['KineticsFamily', None], bool]:
     """
     Determine the RMG kinetic family for a given ARCReaction object.
     Returns None if no family found or more than one family found.
@@ -164,10 +177,10 @@ def determine_reaction_family(rmgdb, reaction):
         reaction (Reaction): The RMG Reaction object.
 
     Returns:
-        KineticsFamily: The corresponding RMG reaction family.
-                        Returns ``None`` if no family or more than one family were found.
-    Returns:
-         bool: Whether the family is its own reverse.
+        Tuple['KineticsFamily', bool]:
+            - The corresponding RMG reaction family
+              (``None`` if no family or more than one family were found).
+            - Whether the family is its own reverse. ``True`` if it is.
     """
     fam_list = loop_families(rmgdb=rmgdb, reaction=reaction)
     families = [fam_l[0] for fam_l in fam_list]
@@ -177,7 +190,9 @@ def determine_reaction_family(rmgdb, reaction):
         return None, False
 
 
-def loop_families(rmgdb, reaction):
+def loop_families(rmgdb: RMGDatabase,
+                  reaction: Reaction,
+                  ) -> list:
     """
     Loop through kinetic families and return a list of tuples of (family, degenerate_reactions)
     `reaction` is an RMG Reaction object.
@@ -251,14 +266,21 @@ def loop_families(rmgdb, reaction):
     return fam_list
 
 
-def determine_rmg_kinetics(rmgdb, reaction, dh_rxn298):
+def determine_rmg_kinetics(rmgdb: RMGDatabase,
+                           reaction: Reaction,
+                           dh_rxn298: float,
+                           ) -> list:
     """
     Determine kinetics for `reaction` (an RMG Reaction object) from RMG's database, if possible.
     Assigns a list of all matching entries from both libraries and families.
-    Returns a list of all matching RMG reactions (both libraries and families) with a populated .kinetics attribute
-    `rmgdb` is the RMG database instance
-    `reaction` is an RMG Reaction object
-    `dh_rxn298` is the heat of reaction at 298 K in J / mol
+
+    Args:
+        rmgdb (RMGDatabase): The RMG database instance.
+        reaction (Reaction): The RMG Reaction object.
+        dh_rxn298 (float): The heat of reaction at 298 K in J/mol.
+
+    Returns:
+        list: All matching RMG reactions (both libraries and families) with a populated .kinetics attribute.
     """
     reaction = reaction.copy()  # use a copy to avoid changing atom order in the molecules by RMG
     rmg_reactions = list()
