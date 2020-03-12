@@ -9,6 +9,7 @@ import os
 
 from rmgpy import settings
 from rmgpy.data.kinetics.common import find_degenerate_reactions
+from rmgpy.data.kinetics.family import KineticsFamily
 from rmgpy.data.rmg import RMGDatabase
 from rmgpy.exceptions import KineticsError
 from rmgpy.reaction import same_species_lists, Reaction
@@ -163,7 +164,8 @@ def determine_reaction_family(rmgdb, reaction):
         reaction (Reaction): The RMG Reaction object.
 
     Returns:
-        str: The corresponding RMG reaction's family. None if no family was found or more than one family were found.
+        KineticsFamily: The corresponding RMG reaction family.
+                        Returns ``None`` if no family or more than one family were found.
     Returns:
          bool: Whether the family is its own reverse.
     """
@@ -186,7 +188,7 @@ def loop_families(rmgdb, reaction):
         reaction (Reaction): The RMG Reaction object.
 
     Returns:
-        list: Entries are corresponding RMG reaction families.
+        list: Entries are corresponding RMG KineticsFamily instances.
     """
     reaction = reaction.copy()  # use a copy to avoid changing atom order in the molecules by RMG
     fam_list = list()
