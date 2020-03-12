@@ -1456,7 +1456,7 @@ end
         elif cluster_soft == 'slurm':
             if self.server != 'local':
                 ssh = SSHClient(self.server)
-                response = ssh.send_command_to_server(command='ls -alF', remote_path=self.remote_path)
+                response = ssh.list_dir(remote_path=self.remote_path)
             else:
                 response = execute_command('ls -alF {0}'.format(self.local_path))
             files = list()

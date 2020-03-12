@@ -291,6 +291,17 @@ class SSHClient(object):
         ssh.close()
         return datetime.datetime.fromtimestamp(timestamp)
 
+    def list_dir(self, remote_path: str = '') -> list:
+        """
+        List directory contents.
+
+        Args:
+            mode (str): The mode change to be applied, can be either octal or symbolic.
+            remote_path (str, optional): The directory path at which the command will be executed.
+        """
+        command = f'ls -alF'
+        return self._send_command_to_server(command, remote_path)[0]
+
 
 def write_file(sftp, remote_file_path, local_file_path='', file_string=''):
     """
