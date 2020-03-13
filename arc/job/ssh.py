@@ -52,6 +52,13 @@ class SSHClient(object):
         self._ssh = None
         logging.getLogger("paramiko").setLevel(logging.WARNING)
 
+    def __enter__(self):
+        self.connect()
+        return self
+
+    def __exit__(self, exc_type, exc_value, exc_traceback):
+        self.close()
+
     def _send_command_to_server(self, command: str, remote_path: str='') -> (list, list):
         """
         A wapper for exec_command in paramiko. SSHClient. Send commands to the server. 
@@ -391,6 +398,16 @@ class SSHClient(object):
             ssh.connect(hostname=self.address, username=self.un)
         sftp = ssh.open_sftp()
         return sftp, ssh
+
+    def close(self):
+        """
+        Close the connection to paramiko SSHClient and SFTPClient
+        """
+        if self._sftp is not None:
+            self._sftp.close()
+        if self._ssh is not None:
+            self._ssh.close()
+
 
     def get_last_modified_time(self, remote_file_path: str):
         """
