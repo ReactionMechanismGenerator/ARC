@@ -49,7 +49,6 @@ from arc.species.converter import (check_isomorphism,
                                    xyz_from_data,
                                    xyz_to_str)
 from arc.species.vectors import calculate_distance
-from arc.ts import atst
 
 
 logger = get_logger()
@@ -1823,68 +1822,6 @@ class TSGuess(object):
                 self.rmg_reaction = Reaction(reactants=reactants, products=products)
             except AtomTypeError:
                 pass
-
-    def execute_ts_guess_method(self):
-        """
-        Execute a TS guess method
-        """
-        if self.method == 'user guess':
-            pass
-        elif self.method == 'qst2':
-            self.qst2()
-        elif self.method == 'degsm':
-            self.degsm()
-        elif self.method == 'neb':
-            self.neb()
-        elif self.method == 'kinbot':
-            self.kinbot()
-        elif self.method == 'autotst':
-            self.autotst()
-        else:
-            raise TSError('Unrecognized method. Should be either {0}. Got: {1}'.format(
-                          ['User guess'] + default_ts_methods, self.method))
-
-    def autotst(self):
-        """
-        Determine a TS guess using AutoTST for the following RMG families:
-        Current supported families are:
-        - H_Abstraction
-        Near-future supported families might be:
-        - Disproportionation
-        - R_Addition_MultipleBond
-        - intra_H_migration
-        """
-        if not isinstance(self.rmg_reaction, Reaction):
-            raise InputError('AutoTST requires an RMG Reaction object. Got: {0}'.format(type(self.rmg_reaction)))
-        if self.family not in ['H_Abstraction']:
-            logger.debug('AutoTST currently only works for H_Abstraction. Got: {0}'.format(self.family))
-            self.initial_xyz = None
-        else:
-            self.initial_xyz = atst.autotst(rmg_reaction=self.rmg_reaction, reaction_family=self.family)
-
-    def qst2(self):
-        """
-        Determine a TS guess using QST2
-        """
-        self.success = False
-
-    def degsm(self):
-        """
-        Determine a TS guess using DEGSM
-        """
-        self.success = False
-
-    def neb(self):
-        """
-        Determine a TS guess using NEB
-        """
-        self.success = False
-
-    def kinbot(self):
-        """
-        Determine a TS guess using Kinbot for RMG's unimolecular families
-        """
-        self.success = False
 
     def process_xyz(self, xyz: dict or str):
         """
