@@ -444,8 +444,8 @@ class ARCReaction(object):
         if self.reactants is not None:
             for reactant in reactants:
                 if reactant not in self.reactants:
-                    raise ReactionError(f'Reactant {reactant} from the reaction label {self.label} '
-                                        f'not in self.reactants ({self.reactants})')
+                    raise ReactionError(f'Reactant {reactant} from the reaction {self.label} '
+                                        f'is not in self.reactants ({self.reactants})')
             for reactant in self.reactants:
                 if reactant not in reactants:
                     raise ReactionError(f'Reactant {reactant} not in the reaction label ({self.label})')
@@ -453,31 +453,33 @@ class ARCReaction(object):
             for product in products:
                 if product not in self.products:
                     raise ReactionError(f'Product {product} from the reaction label {self.label} '
-                                        f'not in self.products ({self.products})')
+                                        f'is not in self.products ({self.products})')
             for product in self.products:
                 if product not in products:
-                    raise ReactionError(f'Product {product} not in the reaction label ({self.label})')
+                    raise ReactionError(f'Product {product} is not in the reaction label ({self.label})')
         if self.r_species is not None:
             for reactant in self.r_species:
                 if reactant.label not in self.reactants:
-                    raise ReactionError(f'Reactant {reactant.label} from not in self.reactants ({self.reactants})')
+                    raise ReactionError(f'Reactant {reactant.label} from the reaction {self.label} '
+                                        f'is not in self.reactants ({self.reactants})')
             for reactant in reactants:
                 if reactant not in [r.label for r in self.r_species]:
-                    raise ReactionError(f'Reactant {reactant} from the reaction label {self.label} '
-                                        f'not in self.r_species ({[r.label for r in self.r_species]})')
+                    raise ReactionError(f'Reactant {reactant} from the reaction {self.label} '
+                                        f'is not in self.r_species ({[r.label for r in self.r_species]})')
             for reactant in self.reactants:
                 if reactant not in [r.label for r in self.r_species]:
-                    raise ReactionError(f'Reactant {reactant} not in '
+                    raise ReactionError(f'Reactant {reactant} is not in '
                                         f'self.r_species ({[r.label for r in self.r_species]})')
         if self.p_species is not None:
             for product in self.p_species:
                 if product.label not in self.products:
-                    raise ReactionError(f'Product {product.label} from not in self.products ({self.reactants})')
+                    raise ReactionError(f'Product {product.label} from the reaction {self.label} '
+                                        f'is not in self.products ({self.reactants})')
             for product in products:
                 if product not in [p.label for p in self.p_species]:
-                    raise ReactionError(f'Product {product} from the reaction label {self.label} '
-                                        f'not in self.p_species ({[p.label for p in self.p_species]})')
+                    raise ReactionError(f'Product {product} from the reaction {self.label} '
+                                        f'is not in self.p_species ({[p.label for p in self.p_species]})')
             for product in self.products:
                 if product not in [p.label for p in self.p_species]:
-                    raise ReactionError(f'Product {product} not in '
+                    raise ReactionError(f'Product {product} is not in '
                                         f'self.p_species ({[p.label for p in self.p_species]})')
