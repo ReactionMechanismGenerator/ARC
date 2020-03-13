@@ -26,6 +26,32 @@ from arc.settings import check_status_command, delete_command, list_available_no
 logger = get_logger()
 
 
+def check_connections(function: Callable[..., Any]) -> Callable[..., Any]:
+    """
+    A decorator designned for ``SSHClient``to check SSH connections before
+    calling a method. It first checks if ``self._ssh`` is available in a 
+    SSHClient instance and then checks if you can send ``ls`` and get response
+    to make sure your connection still alive. If connection is bad, this
+    decorator will reconnect the SSH channel, to avoid connection related
+    error when executing the method.
+    """
+    def decorator(*args, **kwargs) -> Any:
+        self = args[0]
+        if self._ssh is None:  # not sure if some status may cause False
+            self._sftp, self._ssh = self.connect()
+        # test connection, reference:
+        # https://stackoverflow.com/questions/
+        # 20147902/how-to-know-if-a-paramiko-ssh-channel-is-disconnected
+        # According to author, maybe no better way
+        try:
+            self._ssh.exec_command('ls')
+        except Exception as e:
+            logger.debug(f'The connection is no longer valid. {e}')
+            self.connect()
+        return function(*args, **kwargs)
+    return decorator
+
+
 class SSHClient(object):
     """
     This is a class for communicating with remote servers via SSH.
@@ -59,7 +85,8 @@ class SSHClient(object):
     def __exit__(self, exc_type, exc_value, exc_traceback):
         self.close()
 
-    def _send_command_to_server(self, command: str, remote_path: str='') -> (list, list):
+    @check_connections
+    def _send_command_to_server(self, command: str, remote_path: str= '') -> (list, list):
         """
         A wapper for exec_command in paramiko. SSHClient. Send commands to the server. 
 
@@ -142,6 +169,7 @@ class SSHClient(object):
             raise ServerError(f'Could not write file {remote_file_path} on {self.server}. '
                               f'Tried {max_times_to_try} times.')
 
+    @check_connections
     def _upload_file(self, remote_file_path: str, local_file_path: str = '', file_string: str = ''):
         """
         Upload a file. If `file_string` is given, write it as the content of the file.
@@ -204,6 +232,7 @@ class SSHClient(object):
             raise ServerError(f'Could not download file {remote_file_path} from {self.server}. '
                               f'Tried {max_times_to_try} times.')
 
+    @check_connections
     def _download_file(self, remote_file_path: str, local_file_path: str):
         """
         Download a file from the server.
@@ -222,6 +251,7 @@ class SSHClient(object):
             logger.debug(
                 f'Got an IOError when trying to download file {remote_file_path} from {self.server}')
 
+    @check_connections
     def read_remote_file(self, remote_file_path: str) -> list:
         """
         Read a remote file.
@@ -408,7 +438,7 @@ class SSHClient(object):
         if self._ssh is not None:
             self._ssh.close()
 
-
+    @check_connections
     def get_last_modified_time(self, remote_file_path: str):
         """
         Get the last modified time of a remote file.
