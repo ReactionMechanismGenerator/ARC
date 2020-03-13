@@ -48,11 +48,13 @@ class SSHClient(object):
         self.address = servers[server]['address']
         self.un = servers[server]['un']
         self.key = servers[server]['key']
+        self._sftp = None
+        self._ssh = None
         logging.getLogger("paramiko").setLevel(logging.WARNING)
 
     def _send_command_to_server(self, command: str, remote_path: str='') -> (list, list):
         """
-        Send commands to server. 
+        A wapper for exec_command in paramiko. SSHClient. Send commands to the server. 
 
         Args:
             command (str or list): A string or an array of string commands to send.
@@ -64,29 +66,27 @@ class SSHClient(object):
         Returns:
             list: A list of lines of standard error stream.
         """
-        ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.load_system_host_keys(filename=self.key)
-        try:
-            ssh.connect(hostname=self.address, username=self.un)
-        except:
-            return '', 'paramiko failed to connect'
         if isinstance(command, list):
             command = '; '.join(command)
         if remote_path != '':
             # execute command in remote_path directory.
-            # Since each `.exec_command()` is a single session, `cd` has to be added to all commands.
-            command = f'cd {remote_path}; {command}'
+            # Check remote path existence, otherwise the cmd will be invalid
+            # and even yield different behaviors.
+            # Make sure to change directory back after the command is executed
+            if self._check_dir_exists(remote_path):
+                command = f'cd "{remote_path}"; {command}; cd '
+            else:
+                raise InputError(
+                    f'Cannot execute command at given remote_path({remote_path})')
         try:
-            _, stdout, stderr = ssh.exec_command(command)
+            _, stdout, stderr = self._ssh.exec_command(command)
         except:  # SSHException: Timeout opening channel.
             try:  # try again
-                _, stdout, stderr = ssh.exec_command(command)
+                _, stdout, stderr = self._ssh.exec_command(command)
             except:
                 return '', 'ssh timed-out after two trials'
         stdout = stdout.readlines()
         stderr = stderr.readlines()
-        ssh.close()
         return stdout, stderr
 
     def upload_file(self, remote_file_path: str, local_file_path: str='', file_string: str=''):
@@ -110,16 +110,18 @@ class SSHClient(object):
         if local_file_path and not os.path.isfile(local_file_path):
             raise InputError(f'Cannot upload a non-existing file. '
                              f'Check why file in path {local_file_path} is missing.')
+        # If the directory does not exist, _upload_file cannot create a file based on the given path
+        remote_dir_path = os.path.dirname(remote_file_path)
+        if not self._check_dir_exists(remote_dir_path):
+            self._create_dir(remote_dir_path)
 
         i, max_times_to_try = 1, 30
         success = False
         sleep_time = 10  # seconds
         while i < max_times_to_try and not success:
             try:
-                self._upload_file(remote_file_path, local_file_path, file_string)
-            except InputError:
-                raise InputError(f'Cannot upload the file when the directory of the path {remote_file_path} '
-                      f'does not exist.')
+                self._upload_file(remote_file_path,
+                                  local_file_path, file_string)
             except IOError:
                 logger.error(f'Could not upload file {local_file_path} to {self.server}!')
                 logger.error(f'ARC is sleeping for {sleep_time * i} seconds before re-trying, '
@@ -133,7 +135,7 @@ class SSHClient(object):
             raise ServerError(f'Could not write file {remote_file_path} on {self.server}. '
                               f'Tried {max_times_to_try} times.')
 
-    def _upload_file(self, remote_file_path:str, local_file_path: str='', file_string: str='', force_upload: bool=True):
+    def _upload_file(self, remote_file_path: str, local_file_path: str = '', file_string: str = ''):
         """
         Upload a file. If `file_string` is given, write it as the content of the file.
         Else, if `local_file_path` is given, copy it to `remote_file_path`.
@@ -142,35 +144,19 @@ class SSHClient(object):
             remote_file_path (str): The path to write into on the remote server.
             local_file_path (str, optional): The local file path to be copied to the remote location.
             file_string (str, optional): The file content to be copied and saved as the remote file.
-            force_upload (bool, optional): Whether upload the file if the directory of the file does not exists.
-                                           ``True`` for make the directory and upload.
         """
-        sftp, ssh = self.connect()
-        # If the directory does not exist, open cannot create a file based on the given path
-        remote_dir_path = os.path.dirname(remote_file_path)
-        if not self._check_dir_exists(remote_file_path):
-            if force_upload:
-                self._create_dir(remote_dir_path)
-            else:
-                logger.error(f'{remote_dir_path} does not exist on {self.server}. '
-                             f'Cannot upload file {remote_file_path}')
-                raise InputError(f'Remote file path {remote_file_path} is invalid, since its '
-                                  'directory does not exist.')
         try:
             if file_string:
-                with sftp.open(remote_file_path, 'w') as f_remote:
+                with self._sftp.open(remote_file_path, 'w') as f_remote:
                     f_remote.write(file_string)
             else:
-                sftp.put(localpath=local_file_path,
-                         remotepath=remote_file_path)
+                self._sftp.put(localpath=local_file_path,
+                               remotepath=remote_file_path)
         except IOError:
             logger.debug(
                 f'Got an IOError when trying to upload file {remote_file_path} from {self.server}')
             raise IOError(
                 f'Got an IOError when trying to upload file {remote_file_path} from {self.server}')
-        finally:
-            sftp.close()
-            ssh.close()
 
     def download_file(self, remote_file_path: str, local_file_path: str):
         """
@@ -222,13 +208,12 @@ class SSHClient(object):
         Raises:
             IOError: Cannot download file via sftp.
         """
-        sftp, ssh = self.connect()
         try:
-            sftp.get(remotepath=remote_file_path, localpath=local_file_path)
+            self._sftp.get(remotepath=remote_file_path,
+                           localpath=local_file_path)
         except IOError:
-            logger.debug(f'Got an IOError when trying to download file {remote_file_path} from {self.server}')
-        sftp.close()
-        ssh.close()
+            logger.debug(
+                f'Got an IOError when trying to download file {remote_file_path} from {self.server}')
 
     def read_remote_file(self, remote_file_path: str) -> list:
         """
@@ -240,11 +225,8 @@ class SSHClient(object):
         Returns:
             list: A list of lines read from the file.
         """
-        sftp, ssh = self.connect()
-        with sftp.open(remote_file_path, 'r') as f_remote:
+        with self._sftp.open(remote_file_path, 'r') as f_remote:
             content = f_remote.readlines()
-        sftp.close()
-        ssh.close()
         return content
 
     def check_job_status(self, job_id: int) -> str:
@@ -374,7 +356,7 @@ class SSHClient(object):
         while times_tried < max_times_to_try:
             times_tried += 1
             try:
-                sftp, ssh = self._connect()
+                self._sftp, self._ssh = self._connect()
             except Exception as e:
                 if not times_tried % 10:
                     logger.info(f'Tried connecting to {self.server} {times_tried} times with no success...'
@@ -384,7 +366,7 @@ class SSHClient(object):
                           f'\nGot: {e}')
             else:
                 logger.debug(f'Successfully connected to {self.server} at the {times_tried} trial.')
-                return sftp, ssh
+                return
             time.sleep(interval)
         raise ServerError(f'Could not connect to server {self.server} even after {times_tried} trials.')
 
@@ -420,13 +402,10 @@ class SSHClient(object):
         Returns:
             datetime.datetime: the last modified time of the file
         """
-        sftp, ssh = self.connect()
         try:
-            timestamp = sftp.stat(remote_file_path).st_mtime
+            timestamp = self._sftp.stat(remote_file_path).st_mtime
         except IOError:
             return None
-        sftp.close()
-        ssh.close()
         return datetime.datetime.fromtimestamp(timestamp)
 
     def list_dir(self, remote_path: str = '') -> list:
