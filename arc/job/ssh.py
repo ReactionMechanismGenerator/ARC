@@ -589,19 +589,19 @@ def delete_all_arc_jobs(server_list, jobs=None):
         jobs_message = f'{len(jobs)}' if jobs is not None else 'all'
         print(f'\nDeleting {jobs_message} ARC jobs from {server}...')
         cmd = check_status_command[servers[server]['cluster_soft']] + ' -u $USER'
-        ssh = SSHClient(server)
-        stdout = ssh._send_command_to_server(cmd)[0]
-        for status_line in stdout:
-            s = re.search(r' a\d+', status_line)
-            if s is not None:
-                job_id = s.group()[1:]
-                if job_id in jobs or jobs is None:
-                    if servers[server]['cluster_soft'].lower() == 'slurm':
-                        server_job_id = status_line.split()[0]
-                        ssh.delete_job(server_job_id)
-                        print(f'deleted job {job_id} ({server_job_id} on server)')
-                    elif servers[server]['cluster_soft'].lower() == 'oge':
-                        ssh.delete_job(job_id)
-                        print(f'deleted job {job_id}')
+        with SSHClient(server) as ssh:
+            stdout = ssh._send_command_to_server(cmd)[0]
+            for status_line in stdout:
+                s = re.search(r' a\d+', status_line)
+                if s is not None:
+                    job_id = s.group()[1:]
+                    if job_id in jobs or jobs is None:
+                        if servers[server]['cluster_soft'].lower() == 'slurm':
+                            server_job_id = status_line.split()[0]
+                            ssh.delete_job(server_job_id)
+                            print(f'deleted job {job_id} ({server_job_id} on server)')
+                        elif servers[server]['cluster_soft'].lower() == 'oge':
+                            ssh.delete_job(job_id)
+                            print(f'deleted job {job_id}')
     if server_list:
         print('\ndone.')

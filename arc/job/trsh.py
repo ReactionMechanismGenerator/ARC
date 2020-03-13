@@ -1129,8 +1129,8 @@ def trsh_job_on_server(server: str,
         execute_command(cmd)
         return None, True
     else:
-        ssh = SSHClient(server)
-        ssh.delete_job(job_id)
+        with SSHClient(server) as ssh:
+            ssh.delete_job(job_id)
 
     # find available node
     logger.error('Troubleshooting by changing node.')
@@ -1148,7 +1148,8 @@ def trsh_job_on_server(server: str,
 
     # modify the submit file
     remote_submit_file = os.path.join(remote_path, submit_filename[cluster_soft])
-    content = ssh.read_remote_file(remote_file_path=remote_submit_file)
+    with SSHClient(server) as ssh:
+        content = ssh.read_remote_file(remote_file_path=remote_submit_file)
     if cluster_soft.lower() == 'oge':
         node_assign = '#$ -l h='
         insert_line_num = 7
@@ -1169,8 +1170,9 @@ def trsh_job_on_server(server: str,
     content = ''.join(content)  # convert list into a single string, not to upset paramiko
 
     # resubmit
-    ssh.upload_file(remote_file_path=os.path.join(remote_path,
-                    submit_filename[cluster_soft]), file_string=content)
+    with SSHClient(server) as ssh:
+        ssh.upload_file(remote_file_path=os.path.join(remote_path,
+                        submit_filename[cluster_soft]), file_string=content)
     return node, True
 
 

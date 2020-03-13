@@ -1228,38 +1228,38 @@ end
                 self._upload_check_file(local_check_file_path=self.checkfile)
 
     def _upload_submit_file(self):
-        ssh = SSHClient(self.server)
         remote_file_path = os.path.join(self.remote_path, submit_filename[servers[self.server]['cluster_soft']])
-        ssh.upload_file(remote_file_path=remote_file_path, file_string=self.submit)
+        with SSHClient(self.server) as ssh:
+            ssh.upload_file(remote_file_path=remote_file_path, file_string=self.submit)
 
     def _upload_input_file(self):
-        ssh = SSHClient(self.server)
-        if self.input is not None:
-            remote_file_path = os.path.join(self.remote_path, input_filename[self.software])
-            ssh.upload_file(remote_file_path=remote_file_path, file_string=self.input)
-        for up_file in self.additional_files_to_upload:
-            if up_file['source'] == 'path':
-                local_file_path = up_file['local']
-            elif up_file['source'] == 'input_files':
-                local_file_path = input_files[up_file['local']]
-            else:
-                raise JobError('Unclear file source for {0}. Should either be "path" of "input_files", '
-                               'got: {1}'.format(up_file['name'], up_file['source']))
-            ssh.upload_file(remote_file_path=up_file['remote'], local_file_path=local_file_path)
-            if up_file['make_x']:
-                ssh.change_mode(mode='+x', path=up_file['name'], remote_path=self.remote_path)
-        self.initial_time = ssh.get_last_modified_time(
-            remote_file_path=os.path.join(self.remote_path, submit_filename[servers[self.server]['cluster_soft']]))
+        with SSHClient(self.server) as ssh:
+            if self.input is not None:
+                remote_file_path = os.path.join(self.remote_path, input_filename[self.software])
+                ssh.upload_file(remote_file_path=remote_file_path, file_string=self.input)
+            for up_file in self.additional_files_to_upload:
+                if up_file['source'] == 'path':
+                    local_file_path = up_file['local']
+                elif up_file['source'] == 'input_files':
+                    local_file_path = input_files[up_file['local']]
+                else:
+                    raise JobError(f'Unclear file source for {up_file["name"]}. Should either be "path" or '
+                                   f'"input_files", got: {up_file["source"]}')
+                ssh.upload_file(remote_file_path=up_file['remote'], local_file_path=local_file_path)
+                if up_file['make_x']:
+                    ssh.change_mode(mode='+x', path=up_file['name'], remote_path=self.remote_path)
+            self.initial_time = ssh.get_last_modified_time(
+                remote_file_path=os.path.join(self.remote_path, submit_filename[servers[self.server]['cluster_soft']]))
 
     def _upload_check_file(self, local_check_file_path=None):
         if self.server != 'local':
-            ssh = SSHClient(self.server)
             remote_check_file_path = os.path.join(self.remote_path, 'check.chk')
-            local_check_file_path = os.path.join(self.local_path, 'check.chk') if remote_check_file_path is None\
+            local_check_file_path = os.path.join(self.local_path, 'check.chk') if local_check_file_path is None\
                 else local_check_file_path
             if os.path.isfile(local_check_file_path) and self.software.lower() == 'gaussian':
-                ssh.upload_file(remote_file_path=remote_check_file_path, local_file_path=local_check_file_path)
-                logger.debug('uploading checkpoint file for {0}'.format(self.job_name))
+                with SSHClient(self.server) as ssh:
+                    ssh.upload_file(remote_file_path=remote_check_file_path, local_file_path=local_check_file_path)
+                logger.debug(f'uploading checkpoint file for {self.job_name}')
         else:
             # running locally, just copy the check file to the job folder
             new_check_file_path = os.path.join(self.local_path, 'check.chk')
@@ -1269,67 +1269,67 @@ end
         """
         Download ESS output, orbitals check file, and the Gaussian check file, if relevant.
         """
-        ssh = SSHClient(self.server)
+        with SSHClient(self.server) as ssh:
 
-        # download output file
-        remote_file_path = os.path.join(self.remote_path, output_filename[self.software])
-        ssh.download_file(remote_file_path=remote_file_path, local_file_path=self.local_path_to_output_file)
-        if not os.path.isfile(self.local_path_to_output_file):
-            raise JobError('output file for {0} was not downloaded properly'.format(self.job_name))
-        self.final_time = ssh.get_last_modified_time(remote_file_path=remote_file_path)
+            # download output file
+            remote_file_path = os.path.join(self.remote_path, output_filename[self.software])
+            ssh.download_file(remote_file_path=remote_file_path, local_file_path=self.local_path_to_output_file)
+            if not os.path.isfile(self.local_path_to_output_file):
+                raise JobError(f'output file for {self.job_name} was not downloaded properly')
+            self.final_time = ssh.get_last_modified_time(remote_file_path=remote_file_path)
 
-        # download orbitals FChk file
-        if self.job_type == 'orbitals':
-            remote_file_path = os.path.join(self.remote_path, 'input.FChk')
-            ssh.download_file(remote_file_path=remote_file_path, local_file_path=self.local_path_to_orbitals_file)
-            if not os.path.isfile(self.local_path_to_orbitals_file):
-                logger.warning('Orbitals FChk file for {0} was not downloaded properly '
-                               '(this is not the Gaussian formatted check file...)'.format(self.job_name))
+            # download orbitals FChk file
+            if self.job_type == 'orbitals':
+                remote_file_path = os.path.join(self.remote_path, 'input.FChk')
+                ssh.download_file(remote_file_path=remote_file_path, local_file_path=self.local_path_to_orbitals_file)
+                if not os.path.isfile(self.local_path_to_orbitals_file):
+                    logger.warning(f'Orbitals FChk file for {self.job_name} was not downloaded properly '
+                                   f'(this is not the Gaussian formatted check file...)')
 
-        # download Gaussian check file
-        if self.software.lower() == 'gaussian':
-            remote_check_file_path = os.path.join(self.remote_path, 'check.chk')
-            ssh.download_file(remote_file_path=remote_check_file_path, local_file_path=self.local_path_to_check_file)
-            if not os.path.isfile(self.local_path_to_check_file):
-                logger.warning('Gaussian check file for {0} was not downloaded properly'.format(self.job_name))
+            # download Gaussian check file
+            if self.software.lower() == 'gaussian':
+                remote_check_file_path = os.path.join(self.remote_path, 'check.chk')
+                ssh.download_file(remote_file_path=remote_check_file_path, local_file_path=self.local_path_to_check_file)
+                if not os.path.isfile(self.local_path_to_check_file):
+                    logger.warning(f'Gaussian check file for {self.job_name} was not downloaded properly')
 
-        # download Orca .hess hessian file generated by frequency calculations
-        # Hessian is useful when the user would like to project rotors
-        if self.software.lower() == 'orca' and self.job_type == 'freq':
-            remote_hess_file_path = os.path.join(self.remote_path, 'input.hess')
-            ssh.download_file(remote_file_path=remote_hess_file_path, local_file_path=self.local_path_to_hess_file)
-            if not os.path.isfile(self.local_path_to_hess_file):
-                logger.warning(f'Orca hessian file for {self.job_name} was not downloaded properly')
+            # download Orca .hess hessian file generated by frequency calculations
+            # Hessian is useful when the user would like to project rotors
+            if self.software.lower() == 'orca' and self.job_type == 'freq':
+                remote_hess_file_path = os.path.join(self.remote_path, 'input.hess')
+                ssh.download_file(remote_file_path=remote_hess_file_path, local_file_path=self.local_path_to_hess_file)
+                if not os.path.isfile(self.local_path_to_hess_file):
+                    logger.warning(f'Orca hessian file for {self.job_name} was not downloaded properly')
 
-        # download Lennard_Jones data file
-        if self.software.lower() == 'onedmin':
-            remote_lj_file_path = os.path.join(self.remote_path, 'lj.dat')
-            ssh.download_file(remote_file_path=remote_lj_file_path, local_file_path=self.local_path_to_lj_file)
-            if not os.path.isfile(self.local_path_to_lj_file):
-                logger.warning('Lennard-Jones data file for {0} was not downloaded properly'.format(self.job_name))
+            # download Lennard_Jones data file
+            if self.software.lower() == 'onedmin':
+                remote_lj_file_path = os.path.join(self.remote_path, 'lj.dat')
+                ssh.download_file(remote_file_path=remote_lj_file_path, local_file_path=self.local_path_to_lj_file)
+                if not os.path.isfile(self.local_path_to_lj_file):
+                    logger.warning(f'Lennard-Jones data file for {self.job_name} was not downloaded properly')
 
-        # download molpro log file (in addition to the output file)
-        if self.software.lower() == 'molpro':
-            remote_log_file_path = os.path.join(self.remote_path, 'input.log')
-            local_log_file_path = os.path.join(self.local_path, 'output.log')
-            ssh.download_file(remote_file_path=remote_log_file_path, local_file_path=local_log_file_path)
-            if not os.path.isfile(local_log_file_path):
-                logger.warning('Could not download Molpro log file for {0} '
-                               '(this is not the output file)'.format(self.job_name))
-
-        # download terachem files (in addition to the output file)
-        if self.software.lower() == 'terachem':
-            base_path = os.path.join(self.remote_path, 'scr')
-            filenames = ['results.dat', 'output.molden', 'charge.xls', 'charge_mull.xls', 'optlog.xls', 'optim.xyz',
-                         'Frequencies.dat', 'I_matrix.dat', 'Mass.weighted.modes.dat', 'moments_of_inertia.dat',
-                         'output.basis', 'output.geometry', 'output.molden', 'Reduced.mass.dat', 'results.dat']
-            for filename in filenames:
-                remote_log_file_path = os.path.join(base_path, filename)
-                local_log_file_path = os.path.join(self.local_path, 'scr', filename)
+            # download molpro log file (in addition to the output file)
+            if self.software.lower() == 'molpro':
+                remote_log_file_path = os.path.join(self.remote_path, 'input.log')
+                local_log_file_path = os.path.join(self.local_path, 'output.log')
                 ssh.download_file(remote_file_path=remote_log_file_path, local_file_path=local_log_file_path)
-            xyz_path = os.path.join(base_path, 'optim.xyz')
-            if os.path.isfile(xyz_path):
-                self.local_path_to_xyz = xyz_path
+                if not os.path.isfile(local_log_file_path):
+                    logger.warning(f'Could not download Molpro log file for {self.job_name} ' \
+                                   f'(this is not the output file)')
+
+            # download terachem files (in addition to the output file)
+            if self.software.lower() == 'terachem':
+                base_path = os.path.join(self.remote_path, 'scr')
+                filenames = ['results.dat', 'output.molden', 'charge.xls', 'charge_mull.xls', 'optlog.xls', 'optim.xyz',
+                             'Frequencies.dat', 'I_matrix.dat', 'Mass.weighted.modes.dat', 'moments_of_inertia.dat',
+                             'output.basis', 'output.geometry', 'output.molden', 'Reduced.mass.dat', 'results.dat']
+                for filename in filenames:
+                    remote_log_file_path = os.path.join(base_path, filename)
+                    local_log_file_path = os.path.join(self.local_path, 'scr', filename)
+                    ssh.download_file(remote_file_path=remote_log_file_path, local_file_path=local_log_file_path)
+                xyz_path = os.path.join(base_path, 'optim.xyz')
+                if os.path.isfile(xyz_path):
+                    self.local_path_to_xyz = xyz_path
 
     def run(self):
         """
@@ -1350,15 +1350,9 @@ end
         logger.debug('writing input file...')
         self.write_input_file()
         if self.server != 'local':
-            ssh = SSHClient(self.server)
             logger.debug('submitting job...')
             # submit_job returns job server status and job server id
-            try:
-                self.job_status[0], self.job_id = ssh.submit_job(remote_path=self.remote_path)
-            except IndexError:
-                # if the connection broke, the files might not have been uploaded correctly
-                self.write_submit_script()
-                self.write_input_file()
+            with SSHClient(self.server) as ssh:
                 self.job_status[0], self.job_id = ssh.submit_job(remote_path=self.remote_path)
         else:
             # running locally
@@ -1370,9 +1364,9 @@ end
         """
         logger.debug('Deleting job {name} for {label}'.format(name=self.job_name, label=self.species_name))
         if self.server != 'local':
-            ssh = SSHClient(self.server)
-            logger.debug('deleting job on {0}...'.format(self.server))
-            ssh.delete_job(self.job_id)
+            logger.debug(f'deleting job on {self.server}...')
+            with SSHClient(self.server) as ssh:
+                ssh.delete_job(self.job_id)
         else:
             logger.debug('deleting job locally...')
             delete_job(job_id=self.job_id)
@@ -1419,7 +1413,6 @@ end
         """
         Download the additional information of stdout and stderr from the server.
         """
-        ssh = None
         lines1, lines2 = list(), list()
         content = ''
         cluster_soft = servers[self.server]['cluster_soft'].lower()
@@ -1427,21 +1420,20 @@ end
             local_file_path1 = os.path.join(self.local_path, 'out.txt')
             local_file_path2 = os.path.join(self.local_path, 'err.txt')
             if self.server != 'local':
-                ssh = SSHClient(self.server)
                 remote_file_path = os.path.join(self.remote_path, 'out.txt')
-                try:
-                    ssh.download_file(remote_file_path=remote_file_path, local_file_path=local_file_path1)
-                except (TypeError, IOError) as e:
-                    logger.warning('Got the following error when trying to download out.txt for {0}:'.format(
-                        self.job_name))
-                    logger.warning(e)
-                remote_file_path = os.path.join(self.remote_path, 'err.txt')
-                try:
-                    ssh.download_file(remote_file_path=remote_file_path, local_file_path=local_file_path2)
-                except (TypeError, IOError) as e:
-                    logger.warning('Got the following error when trying to download err.txt for {0}:'.format(
-                        self.job_name))
-                    logger.warning(e)
+                with SSHClient(self.server) as ssh:
+                    try:
+                        ssh.download_file(remote_file_path=remote_file_path, 
+                                          local_file_path=local_file_path1)
+                    except (TypeError, IOError) as e:
+                        logger.warning(f'Got the following error when trying to download out.txt for {self.job_name}:')
+                        logger.warning(e)
+                    remote_file_path = os.path.join(self.remote_path, 'err.txt')
+                    try:
+                        ssh.download_file(remote_file_path=remote_file_path, local_file_path=local_file_path2)
+                    except (TypeError, IOError) as e:
+                        logger.warning(f'Got the following error when trying to download err.txt for {self.job_name}:')
+                        logger.warning(e)
             if os.path.isfile(local_file_path1):
                 with open(local_file_path1, 'r') as f:
                     lines1 = f.readlines()
@@ -1453,8 +1445,8 @@ end
             content += ''.join([line for line in lines2])
         elif cluster_soft == 'slurm':
             if self.server != 'local':
-                ssh = SSHClient(self.server)
-                response = ssh.list_dir(remote_path=self.remote_path)
+                with SSHClient(self.server) as ssh:
+                    response = ssh.list_dir(remote_path=self.remote_path)
             else:
                 response = execute_command('ls -alF {0}'.format(self.local_path))
             files = list()
@@ -1466,11 +1458,12 @@ end
                     if self.server != 'local':
                         remote_file_path = os.path.join(self.remote_path, file_name)
                         try:
-                            ssh.download_file(remote_file_path=remote_file_path, local_file_path=local_file_path)
+                            with SSHClient(self.server) as ssh:
+                                ssh.download_file(remote_file_path=remote_file_path, 
+                                                  local_file_path=local_file_path)
                         except (TypeError, IOError) as e:
-                            logger.warning('Got the following error when trying to download {0} for {1}:'.format(
-                                file_name, self.job_name))
-                            logger.warning(e)
+                            logger.warning(f'Got the following error when trying to download {file_name} ' \
+                                           f'for {self.job_name}: {e}')
                     if os.path.isfile(local_file_path):
                         with open(local_file_path, 'r') as f:
                             lines1 = f.readlines()
@@ -1483,8 +1476,8 @@ end
         Possible statuses: `initializing`, `running`, `errored on node xx`, `done`.
         """
         if self.server != 'local':
-            ssh = SSHClient(self.server)
-            return ssh.check_job_status(self.job_id)
+            with SSHClient(self.server) as ssh:
+                return ssh.check_job_status(self.job_id)
         else:
             return check_job_status(self.job_id)
 
