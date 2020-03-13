@@ -123,7 +123,7 @@ class SSHClient(object):
         stderr = stderr.readlines()
         return stdout, stderr
 
-    def upload_file(self, remote_file_path: str, local_file_path: str='', file_string: str=''):
+    def upload_file(self, remote_file_path: str, local_file_path: str = '', file_string: str = ''):
         """
         A modulator method of _upload_file(). Upload a local file or contents
         from a string to the remote server.
@@ -149,37 +149,6 @@ class SSHClient(object):
         if not self._check_dir_exists(remote_dir_path):
             self._create_dir(remote_dir_path)
 
-        i, max_times_to_try = 1, 30
-        success = False
-        sleep_time = 10  # seconds
-        while i < max_times_to_try and not success:
-            try:
-                self._upload_file(remote_file_path,
-                                  local_file_path, file_string)
-            except IOError:
-                logger.error(f'Could not upload file {local_file_path} to {self.server}!')
-                logger.error(f'ARC is sleeping for {sleep_time * i} seconds before re-trying, '
-                             f'please check your connectivity.')
-                logger.info('ZZZZZ..... ZZZZZ.....')
-                time.sleep(sleep_time * i)  # in seconds
-                i += 1
-            else:
-                success = True
-        if not success:
-            raise ServerError(f'Could not write file {remote_file_path} on {self.server}. '
-                              f'Tried {max_times_to_try} times.')
-
-    @check_connections
-    def _upload_file(self, remote_file_path: str, local_file_path: str = '', file_string: str = ''):
-        """
-        Upload a file. If `file_string` is given, write it as the content of the file.
-        Else, if `local_file_path` is given, copy it to `remote_file_path`.
-
-        Args:
-            remote_file_path (str): The path to write into on the remote server.
-            local_file_path (str, optional): The local file path to be copied to the remote location.
-            file_string (str, optional): The file content to be copied and saved as the remote file.
-        """
         try:
             if file_string:
                 with self._sftp.open(remote_file_path, 'w') as f_remote:
@@ -188,12 +157,13 @@ class SSHClient(object):
                 self._sftp.put(localpath=local_file_path,
                                remotepath=remote_file_path)
         except IOError:
-            logger.debug(
-                f'Got an IOError when trying to upload file {remote_file_path} from {self.server}')
-            raise IOError(
-                f'Got an IOError when trying to upload file {remote_file_path} from {self.server}')
-
-    def download_file(self, remote_file_path: str, local_file_path: str):
+            logger.deug(f'Could not upload file {local_file_path} to {self.server}!')
+            raise ServerError(f'Could not write file {remote_file_path} on {self.server}. ')
+    
+    def download_file(self,
+                      remote_file_path: str,
+                      local_file_path: str,
+                      ) -> None:
         """
         A modulator function of _download_file(). Download a file from the server.
 
@@ -204,10 +174,6 @@ class SSHClient(object):
         Raises:
             ServerError: If the file cannot be downloaded with maximum times to try
         """
-        i, max_times_to_try = 1, 30
-        success = False
-        sleep_time = 10  # seconds
-
         if not self._check_file_exists(remote_file_path):
             # Check if a file exists
             # This doesn't have a real impact now to avoid screwing up ESS trsh
@@ -216,40 +182,13 @@ class SSHClient(object):
             # an empty file will be created at the local path
             logger.debug(
                 f'{remote_file_path} does not exist on {self.server}.')
-
-        while i < max_times_to_try and not success:
-            self._download_file(remote_file_path, local_file_path)
-            if os.path.isfile(local_file_path):
-                success = True
-            else:
-                logger.error(f'Could not download file {remote_file_path} from {self.server}!')
-                logger.error(f'ARC is sleeping for {sleep_time * i} seconds before re-trying, '
-                             f'please check your connectivity.')
-                logger.info('ZZZZZ..... ZZZZZ.....')
-                time.sleep(sleep_time * i)  # in seconds
-            i += 1
-        if not success:
-            raise ServerError(f'Could not download file {remote_file_path} from {self.server}. '
-                              f'Tried {max_times_to_try} times.')
-
-    @check_connections
-    def _download_file(self, remote_file_path: str, local_file_path: str):
-        """
-        Download a file from the server.
-
-        Args:
-            remote_file_path (str): The remote path to be downloaded from.
-            local_file_path (str): The local path to be downloaded to.
-
-        Raises:
-            IOError: Cannot download file via sftp.
-        """
         try:
             self._sftp.get(remotepath=remote_file_path,
                            localpath=local_file_path)
         except IOError:
             logger.debug(
                 f'Got an IOError when trying to download file {remote_file_path} from {self.server}')
+            raise ServerError(f'Could not download file {remote_file_path} from {self.server}. ')
 
     @check_connections
     def read_remote_file(self, remote_file_path: str) -> list:
@@ -268,39 +207,14 @@ class SSHClient(object):
 
     def check_job_status(self, job_id: int) -> str:
         """
-        A modulator method of _check_job_status(). Check job's status.
-
-        Args:
-            job_id (int): The job's ID.
-
-        Returns:
-            str: Possible statuses: `before_submission`, `running`, `errored on node xx`,
-                 `done`, and `connection error`
-        """
-        i = 1
-        sleep_time = 1  # minutes
-        while i < 30:
-            result = self._check_job_status(job_id)
-            if result == 'connection error':
-                logger.error(f'ARC is sleeping for {sleep_time * i} min before re-trying, '
-                             f'please check your connectivity.')
-                logger.info('ZZZZZ..... ZZZZZ.....')
-                time.sleep(sleep_time * i * 60)  # in seconds
-            else:
-                i = 1000
-            i += 1
-        return result
-
-    def _check_job_status(self, job_id: int) -> str:
-        """
         Check job's status.
 
         Args:
             job_id (int): The job's ID.
-        
+
         Returns:
             str: Possible statuses: `before_submission`, `running`, `errored on node xx`,
-                 `done`, and `connection error`
+                 `done`, and `errored: ...`
         """
         cmd = check_status_command[servers[self.server]['cluster_soft']] + ' -u $USER'
         stdout, stderr = self._send_command_to_server(cmd)
@@ -310,7 +224,7 @@ class SSHClient(object):
         if stderr:
             logger.info('\n\n')
             logger.error(f'Could not check status of job {job_id} due to {stderr}')
-            return 'connection error'
+            return f'errored: {stderr}'
         return check_job_status_in_stdout(job_id=job_id, stdout=stdout, server=self.server)
 
     def delete_job(self, job_id: int):
