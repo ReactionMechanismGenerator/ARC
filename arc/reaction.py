@@ -37,8 +37,10 @@ class ARCReaction(object):
     Args:
         label (str, optional): The reaction's label in the format `r1 + r2 <=> p1 + p2`
                                (or unimolecular on either side, as appropriate).
-        reactants (list, optional): A list of reactants labels corresponding to an :ref:`ARCSpecies <species>`.
-        products (list, optional): A list of products labels corresponding to an :ref:`ARCSpecies <species>`.
+        reactants (list, optional): A list of reactants *labels* corresponding to an :ref:`ARCSpecies <species>`.
+        products (list, optional): A list of products *labels* corresponding to an :ref:`ARCSpecies <species>`.
+        r_species (list, optional): A list of reactants :ref:`ARCSpecies <species>` objects.
+        p_species (list, optional): A list of products :ref:`ARCSpecies <species>` objects.
         ts_label (str, optional): The :ref:`ARCSpecies <species>` label of the respective TS.
         rmg_reaction (Reaction, optional): An RMG Reaction class.
         ts_methods (list, optional): Methods to try for generating TS guesses. If an ARCSpecies is a TS and ts_methods
@@ -73,12 +75,12 @@ class ARCReaction(object):
                      corresponding TS :ref:`ARCSpecies <species>` object.
         ts_label (str): The :ref:`ARCSpecies <species>` label of the respective TS.
     """
-    def __init__(self, label='', reactants=None, products=None, ts_label=None, rmg_reaction=None,
-                 ts_methods=None, ts_xyz_guess=None, multiplicity=None, charge=0, reaction_dict=None):
+    def __init__(self, label='', reactants=None, products=None, r_species=None, p_species=None, ts_label=None,
+                 rmg_reaction=None, ts_methods=None, ts_xyz_guess=None, multiplicity=None, charge=0, reaction_dict=None):
         self.arrow = ' <=> '
         self.plus = ' + '
-        self.r_species = list()
-        self.p_species = list()
+        self.r_species = r_species or list()
+        self.p_species = p_species or list()
         self.kinetics = None
         self.rmg_kinetics = None
         self.long_kinetic_description = ''
