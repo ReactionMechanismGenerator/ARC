@@ -14,13 +14,18 @@ import logging
 import os
 import re
 import time
+from typing import Any, Callable, List, Optional, Tuple, Union
 
 import paramiko
 
 from arc.common import get_logger
 from arc.exceptions import InputError, ServerError
-from arc.settings import check_status_command, delete_command, list_available_nodes_command, \
-                         servers, submit_command, submit_filename
+from arc.settings import (check_status_command,
+                          delete_command,
+                          list_available_nodes_command,
+                          servers,
+                          submit_command,
+                          submit_filename)
 
 
 logger = get_logger()
@@ -64,8 +69,10 @@ class SSHClient(object):
         address (str): The server's address.
         un (str): The username to use on the server.
         key (str): A path to a file containing the RSA SSH private key to the server.
+        _ssh (paramiko.SSHClient): A high-level representation of a session with an SSH server.
+        _sftp (paramiko.sftp_client.SFTPClient): SFTP client used to perform remote file operations. 
     """
-    def __init__(self, server=''):
+    def __init__(self, server: str = '') -> None:
         if server == '':
             raise ValueError('A server name must be specified')
         if server not in servers.keys():
@@ -78,27 +85,29 @@ class SSHClient(object):
         self._ssh = None
         logging.getLogger("paramiko").setLevel(logging.WARNING)
 
-    def __enter__(self):
+    def __enter__(self) -> 'SSHClient':
         self.connect()
         return self
 
-    def __exit__(self, exc_type, exc_value, exc_traceback):
+    def __exit__(self, exc_type, exc_value, exc_traceback) -> None:
         self.close()
 
     @check_connections
-    def _send_command_to_server(self, command: str, remote_path: str= '') -> (list, list):
+    def _send_command_to_server(self, 
+                                command: Union[str, list], 
+                                remote_path: Optional[str] = '',
+                                ) -> Tuple[list, list]:
         """
-        A wapper for exec_command in paramiko. SSHClient. Send commands to the server. 
+        A wrapper for exec_command in paramiko.SSHClient. Send commands to the server. 
 
         Args:
-            command (str or list): A string or an array of string commands to send.
-            remote_path (str, optional): The directory path at which the command will be executed.
+            command (Union[str, list]): A string or an array of string commands to send.
+            remote_path (Optional[str]): The directory path at which the command will be executed.
 
         Returns:
-            list: A list of lines of standard output stream.
-
-        Returns:
-            list: A list of lines of standard error stream.
+            Tuple[list, list]:
+                - A list of lines of standard output stream.
+                - A list of lines of the standard error stream.
         """
         if isinstance(command, list):
             command = '; '.join(command)
@@ -123,15 +132,18 @@ class SSHClient(object):
         stderr = stderr.readlines()
         return stdout, stderr
 
-    def upload_file(self, remote_file_path: str, local_file_path: str = '', file_string: str = ''):
+    def upload_file(self,
+                    remote_file_path: str,
+                    local_file_path: Optional[str] = '',
+                    file_string: Optional[str] = '',
+                    ) -> None:
         """
-        A modulator method of _upload_file(). Upload a local file or contents
-        from a string to the remote server.
+        Upload a local file or contents from a string to the remote server.
 
         Args:
             remote_file_path (str): The path to write into on the remote server.
-            local_file_path (str, optional): The local file path to be copied to the remote location.
-            file_string (str, optional): The file content to be copied and saved as the remote file.
+            local_file_path (Optional[str]): The local file path to be copied to the remote location.
+            file_string (Optional[str]): The file content to be copied and saved as the remote file.
 
         Raises:
             InputError: If both `local_file_path` or `file_string` are invalid,
@@ -157,15 +169,15 @@ class SSHClient(object):
                 self._sftp.put(localpath=local_file_path,
                                remotepath=remote_file_path)
         except IOError:
-            logger.deug(f'Could not upload file {local_file_path} to {self.server}!')
+            logger.debug(f'Could not upload file {local_file_path} to {self.server}!')
             raise ServerError(f'Could not write file {remote_file_path} on {self.server}. ')
-    
+
     def download_file(self,
                       remote_file_path: str,
                       local_file_path: str,
                       ) -> None:
         """
-        A modulator function of _download_file(). Download a file from the server.
+        Download a file from the server.
 
         Args:
             remote_file_path (str): The remote path to be downloaded from.
@@ -227,7 +239,7 @@ class SSHClient(object):
             return f'errored: {stderr}'
         return check_job_status_in_stdout(job_id=job_id, stdout=stdout, server=self.server)
 
-    def delete_job(self, job_id: int):
+    def delete_job(self, job_id: int) -> None:
         """
         Deletes a running job.
 
@@ -253,18 +265,19 @@ class SSHClient(object):
                 running_jobs_ids.append(int(status_line.split()[0]))
         return running_jobs_ids
 
-    def submit_job(self, remote_path: str) -> (str, int):
+    def submit_job(self, remote_path: str) -> Tuple[str, int]:
         """
         Submit a job to the server.
         
         Args:
-            remote_path (str): The remote path contains the input file and the submission script.
+            remote_path (str): The remote path contains the input file
+                               and the submission script.
 
         Returns:
-            str: A string indicate the status of job submission. Either `errored` or `submitted`.
-
-        Returns:
-            int: the job ID of the submitted job.
+            Tuple[str, int]:
+                - A string indicate the status of job submission.
+                  Either `errored` or `submitted`.
+                - The job ID of the submitted job.
         """
         job_status = ''
         job_id = 0
@@ -285,21 +298,15 @@ class SSHClient(object):
             elif cluster_soft.lower() == 'slurm':
                 job_id = int(stdout[0].split()[3])
             else:
-                raise ValueError(f'Unrecognized cluster software {servers[self.server]["cluster_soft"]}')
+                raise ValueError(f'Unrecognized cluster software: {cluster_soft}')
         return job_status, job_id
 
-    def connect(self):
+    def connect(self) -> None:
         """
         A modulator function for _connect(). Connect to the server.
 
         Raises:
             ServerError: Cannot connect to the server with maximum times to try
-            
-        Returns:
-            paramiko.sftp_client.SFTPClient
-
-        Returns:
-            paramiko.SSHClient
         """
         times_tried = 0
         max_times_to_try = 1440  # continue trying for 24 hrs (24 hr * 60 min/hr)...
@@ -321,15 +328,14 @@ class SSHClient(object):
             time.sleep(interval)
         raise ServerError(f'Could not connect to server {self.server} even after {times_tried} trials.')
 
-    def _connect(self):
+    def _connect(self) -> Tuple[paramiko.sftp_client.SFTPClient, paramiko.SSHClient]:
         """
         Connect via paramiko, and open a SSH session as well as a SFTP session.
 
         Returns:
-            paramiko.sftp_client.SFTPClient
-
-        Returns:
-            paramiko.SSHClient
+            Tuple[paramiko.sftp_client.SFTPClient, paramiko.SSHClient]:
+                - An SFTP client used to perform remote file operations. 
+                - A high-level representation of a session with an SSH server.
         """
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -343,7 +349,7 @@ class SSHClient(object):
         sftp = ssh.open_sftp()
         return sftp, ssh
 
-    def close(self):
+    def close(self) -> None:
         """
         Close the connection to paramiko SSHClient and SFTPClient
         """
@@ -353,7 +359,9 @@ class SSHClient(object):
             self._ssh.close()
 
     @check_connections
-    def get_last_modified_time(self, remote_file_path: str):
+    def get_last_modified_time(self, 
+                               remote_file_path: str,
+                               ) -> Optional[datetime.datetime]:
         """
         Get the last modified time of a remote file.
 
@@ -374,7 +382,6 @@ class SSHClient(object):
         List directory contents.
 
         Args:
-            mode (str): The mode change to be applied, can be either octal or symbolic.
             remote_path (str, optional): The directory path at which the command will be executed.
         """
         command = f'ls -alF'
@@ -393,9 +400,6 @@ class SSHClient(object):
     def list_available_nodes(self) -> list:
         """
         List available nodes on the server.
-
-        Args:
-            mode (str): The mode change to be applied, can be either octal or symbolic.
 
         Returns:
             list: lines of the node hostnames.
@@ -418,23 +422,26 @@ class SSHClient(object):
     def change_mode(self,
                     mode: str,
                     path: str,
-                    recursive: bool = False,
-                    remote_path: str = ''):
+                    recursive: Optional[bool] = False,
+                    remote_path: Optional[str] = '',
+                    ) -> None:
         """
         Change the mode to a file or a directory.
 
         Args:
             mode (str): The mode change to be applied, can be either octal or symbolic.
             path (str): The path to the file or the directory to be changed.
-            recursive (bool, optional): Whether to recursively change the mode to all files
+            recursive (Optional[bool]): Whether to recursively change the mode to all files
                                         under a directory.``True`` for recursively change.
-            remote_path (str, optional): The directory path at which the command will be executed.
+            remote_path (Optional[str]): The directory path at which the command will be executed.
         """
         recursive = '-R' if recursive else ''
         command = f'chmod {recursive} {mode} {path}'
         self._send_command_to_server(command, remote_path)
 
-    def _check_file_exists(self, remote_file_path: str) -> bool:
+    def _check_file_exists(self, 
+                           remote_file_path: str,
+                           ) -> bool:
         """
         Check if a file exists on the remote server.
 
@@ -450,7 +457,8 @@ class SSHClient(object):
             return True
 
     def _check_dir_exists(self,
-                          remote_dir_path: str) -> bool:
+                          remote_dir_path: str,
+                          ) -> bool:
         """
         Check if a directory exists on the remote server.
 
@@ -465,7 +473,7 @@ class SSHClient(object):
         if len(stdout):
             return True
 
-    def _create_dir(self, remote_path: str):
+    def _create_dir(self, remote_path: str) -> None:
         """
         Create a new directory on the server.
 
@@ -479,13 +487,16 @@ class SSHClient(object):
                 f'Cannot create dir for the given path ({remote_path}).\nGot: {stderr}')
 
 
-def check_job_status_in_stdout(job_id, stdout, server):
+def check_job_status_in_stdout(job_id: int, 
+                               stdout: Union[list, str],
+                               server: str,
+                               ) -> str:
     """
     A helper function for checking job status.
 
     Args:
         job_id (int): the job ID recognized by the server.
-        stdout (list, str): The output of a queue status check.
+        stdout (Union[list, str]): The output of a queue status check.
         server (str): The server name.
 
     Returns:
@@ -516,7 +527,8 @@ def check_job_status_in_stdout(job_id, stdout, server):
             raise ValueError(f'Unknown cluster software {servers[server]["cluster_soft"]}')
 
 
-def delete_all_arc_jobs(server_list, jobs=None):
+
+def delete_all_arc_jobs(server_list: list, jobs: Optional[List[str]] = None) -> None:
     """
     Delete all ARC-spawned jobs (with job name starting with `a` and a digit) from :list:servers
     (`servers` could also be a string of one server name)
