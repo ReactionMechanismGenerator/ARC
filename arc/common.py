@@ -781,12 +781,10 @@ def almost_equal_coords_lists(xyz1: dict,
     for xyz1_entry in xyz1:
         for xyz2_entry in xyz2:
             if xyz1_entry['symbols'] != xyz2_entry['symbols']:
-                return False
+                continue
             if almost_equal_coords(xyz1_entry, xyz2_entry, rtol=rtol, atol=atol):
-                break
-        else:
-            return False
-    return True
+                return True  # Anytime find one match, return `True`
+    return False  # If no match is found
 
 
 def determine_model_chemistry_type(method: str or dict) -> str:

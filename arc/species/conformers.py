@@ -30,7 +30,8 @@ Module workflow::
 
     generate_conformers
         generate_force_field_conformers
-            get_force_field_energies, rdkit_force_field or mix_rdkit_and_openbabel_force_field, determine_dihedrals
+            get_force_field_energies, rdkit_force_field or openbabel_force_field_on_rdkit_conformers,
+            determine_dihedrals
         deduce_new_conformers
             get_torsion_angles, determine_torsion_symmetry, determine_torsion_sampling_points,
             change_dihedrals_and_force_field_it
@@ -446,7 +447,7 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
         list: New conformer combinations, entries are conformer dictionaries.
     """
     base_energy = get_force_field_energies(label, mol, num_confs=None, xyz=base_xyz,
-                                           force_field=force_field, optimize=True)[1]
+                                           force_field=force_field, optimize=True, suppress_warning=True)[1]
     if len(base_energy) == 0:
         return list()
     else:
@@ -543,7 +544,7 @@ def generate_all_combinations(label, mol, base_xyz, multiple_tors, multiple_samp
     else:
         # no multiple torsions (all torsions are symmetric or no torsions in the molecule), this is a trivial case
         energy = get_force_field_energies(label, mol, num_confs=None, xyz=base_xyz, force_field=force_field,
-                                          optimize=True)[1][0]
+                                          optimize=True, suppress_warning=True)[1][0]
         new_conformers.append({'index': len_conformers + len(new_conformers),
                                'xyz': base_xyz,
                                'FF energy': energy,
@@ -657,7 +658,8 @@ def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals
         xyz = converter.str_to_xyz(xyz)
 
     if torsions is None or new_dihedrals is None:
-        xyz, energy = get_force_field_energies(label, mol=mol, xyz=xyz, optimize=True, force_field=force_field)
+        xyz, energy = get_force_field_energies(label, mol=mol, xyz=xyz, optimize=True,
+                                               force_field=force_field, suppress_warning=True)
         return xyz, energy
 
     xyzs, energies = list(), list()
@@ -676,7 +678,7 @@ def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals
                 xyz_dihedrals = converter.set_rdkit_dihedrals(conf, rd_mol, torsion_0_indexed, deg_abs=dihedral)
         if force_field != 'gromacs':
             xyz_, energy = get_force_field_energies(label, mol=mol, xyz=xyz_dihedrals, optimize=True,
-                                                    force_field=force_field)
+                                                    force_field=force_field, suppress_warning=True)
             if energy and xyz_:
                 energies.append(energy[0])
                 if optimize:
@@ -768,7 +770,7 @@ def determine_number_of_conformers_to_generate(label, heavy_atoms, torsion_num, 
     if mol is None and xyz is not None:
         mol = converter.molecules_from_xyz(xyz)[1]
     if mol is not None and xyz is None:
-        xyzs = get_force_field_energies(label, mol, num_confs=1)[0]
+        xyzs = get_force_field_energies(label, mol, num_confs=1, suppress_warning=True)[0]
         xyz = xyzs[0] if len(xyzs) else None
     if mol is not None and xyz is not None:
         num_chiral_centers = get_number_of_chiral_centers(label, mol, xyz=xyz, just_get_the_number=True)
@@ -1017,7 +1019,14 @@ def get_torsion_angles(label, conformers, torsions):
     return torsion_angles
 
 
-def get_force_field_energies(label, mol, num_confs=None, xyz=None, force_field='MMFF94s',  optimize=True, try_ob=False):
+def get_force_field_energies(label: str,
+                             mol: Molecule,
+                             num_confs: int = None,
+                             xyz: dict = None,
+                             force_field: str = 'MMFF94s',
+                             optimize: bool = True,
+                             try_ob: bool = True,
+                             suppress_warning: bool = False) -> (list, list):
     """
     Determine force field energies using RDKit.
     If ``num_confs`` is given, random 3D geometries will be generated. If xyz is given, it will be directly used instead.
@@ -1030,33 +1039,79 @@ def get_force_field_energies(label, mol, num_confs=None, xyz=None, force_field='
         xyz (dict, optional): The 3D coordinates guess.
         force_field (str, optional): The type of force field to use.
         optimize (bool, optional): Whether to first optimize the conformer using FF. True to optimize.
-        try_ob (bool, optional): Whether to try OpenBabel if RDKit fails. ``True`` to try, ``False`` by default.
+        try_ob (bool, optional): Whether to try OpenBabel if RDKit fails. ``True`` to try, ``True`` by default.
+        suppress_warning (bool, optional): Wheter to suppress warning of using OpenBabel. ``True`` to suppress, ``False`` by default.
+
+    Raises:
+        ConformerError: If conformers could not be generated.
 
     Returns:
         list: Entries are xyz coordinates, each in a dict format.
     Returns:
         list: Entries are the FF energies (in kJ/mol).
-
-    Raises:
-        ConformerError: If conformers could not be generated.
     """
     xyzs, energies = list(), list()
     if force_field.lower() in ['mmff94', 'mmff94s', 'uff']:
         rd_mol = embed_rdkit(label, mol, num_confs=num_confs, xyz=xyz)
-        xyzs, energies = rdkit_force_field(label, rd_mol, mol=mol, force_field=force_field, optimize=optimize,
-                                           try_ob=try_ob)
+        xyzs, energies = rdkit_force_field(label, rd_mol, force_field=force_field, optimize=optimize)
     if not len(xyzs) and force_field.lower() in ['gaff', 'mmff94', 'mmff94s', 'uff', 'ghemical'] and try_ob:
-        xyzs, energies = mix_rdkit_and_openbabel_force_field(label,
-                                                             mol,
-                                                             num_confs=num_confs,
-                                                             xyz=xyz,
-                                                             force_field=force_field,
-                                                             try_ob=try_ob)
+        if not suppress_warning:
+            logger.warning(f'Using OpenBabel instead of RDKit as a fall back method to generate conformers for {label}. '
+                           f'This is often slower.')
+        xyzs, energies = openbabel_force_field_on_rdkit_conformers(
+                                            label, rd_mol, force_field=force_field, optimize=optimize)
     if not len(xyzs):
         if force_field.lower() not in ['mmff94', 'mmff94s', 'uff', 'gaff', 'ghemical']:
             raise ConformerError(f'Unrecognized force field for {label}. Should be either MMFF94, MMFF94s, UFF, '
                                  f'Ghemical, or GAFF. Got: {force_field}.')
         # raise ConformerError(f'Could not generate conformers for species {label}.')
+    return xyzs, energies
+
+
+def openbabel_force_field_on_rdkit_conformers(label, rd_mol, force_field='MMFF94s', optimize=True):
+    """
+    Optimize RDKit conformers by OpenBabel using a force field (MMFF94 or MMFF94s are recommended).
+    This is a fall back method when RDKit fails to generate force field optimized conformers.
+
+    Args:
+        label (str): The species' label.
+        rd_mol (RDKit RDMol): The RDKit molecule with embedded conformers to optimize.
+        force_field (str, optional): The type of force field to use.
+        optimize (bool, optional): Whether to first optimize the conformer using FF. True to optimize.
+
+    Returns:
+        list: Entries are optimized xyz's in a dictionary format.
+    Returns:
+        list: Entries are float numbers representing the energies (in kJ/mol).
+    """
+    xyzs, energies = list(), list()
+    # Set up Openbabel input and output format
+    obconversion = ob.OBConversion()
+    obconversion.SetInAndOutFormats('xyz', 'xyz')
+    # Set up Openbabel force field
+    ff = ob.OBForceField.FindForceField(force_field)
+    symbols = [rd_atom.GetSymbol() for rd_atom in rd_mol.GetAtoms()]
+    for i in range(rd_mol.GetNumConformers()):
+        # Convert RDKit conformer to xyz string
+        conf = rd_mol.GetConformer(i)
+        xyz_str = f'{conf.GetNumAtoms()}\n\n'
+        for j in range(conf.GetNumAtoms()):
+            xyz_str += symbols[j] + '      '
+            pt = conf.GetAtomPosition(j)
+            xyz_str += '   '.join([str(pt.x), str(pt.y), str(pt.z)]) + '\n'
+        # Build OpenBabel molecule from xyz string
+        ob_mol = ob.OBMol()
+        obconversion.ReadString(ob_mol, xyz_str)
+        ff.Setup(ob_mol)
+        # Optimize the molecule if needed
+        if optimize:
+            ff.ConjugateGradients(2000)
+        # Export xyzs and energies
+        ob_mol.GetCoordinates()
+        ff.GetCoordinates(ob_mol)
+        energies.append(ff.Energy())
+        xyz_str = '\n'.join(obconversion.WriteString(ob_mol).splitlines()[2:])
+        xyzs.append(converter.str_to_xyz(xyz_str))
     return xyzs, energies
 
 
@@ -1300,18 +1355,15 @@ def read_rdkit_embedded_conformer_i(rd_mol, i, rd_index_map=None):
     return xyz_dict
 
 
-def rdkit_force_field(label, rd_mol, mol=None, force_field='MMFF94s', optimize=True, try_ob=False):
+def rdkit_force_field(label, rd_mol, force_field='MMFF94s', optimize=True):
     """
     Optimize RDKit conformers using a force field (MMFF94 or MMFF94s are recommended).
-    Fallback to OpenBabel if RDKit fails.
 
     Args:
         label (str): The species' label.
         rd_mol (RDKit RDMol): The RDKit molecule with embedded conformers to optimize.
-        mol (Molecule, optional): The RMG molecule object with connectivity and bond order information.
         force_field (str, optional): The type of force field to use.
         optimize (bool, optional): Whether to first optimize the conformer using FF. True to optimize.
-        try_ob (bool, optional): Whether to try OpenBabel if RDKit fails. ``True`` to try, ``False`` by default.
 
     Returns:
         list: Entries are optimized xyz's in a dictionary format.
@@ -1322,7 +1374,7 @@ def rdkit_force_field(label, rd_mol, mol=None, force_field='MMFF94s', optimize=T
     for i in range(rd_mol.GetNumConformers()):
         if optimize:
             v, j = 1, 0
-            while v and j < 200:
+            while v == 1 and j < 200:  # v == 1: continue, v == 0: enough steps, v == -1: unable to set up
                 v = Chem.AllChem.MMFFOptimizeMolecule(rd_mol, mmffVariant=force_field, confId=i,
                                                       maxIters=500, ignoreInterfragInteractions=False)
                 j += 1
@@ -1332,12 +1384,6 @@ def rdkit_force_field(label, rd_mol, mol=None, force_field='MMFF94s', optimize=T
             if optimize:
                 energies.append(ff.CalcEnergy())
             xyzs.append(read_rdkit_embedded_conformer_i(rd_mol, i))
-    if not len(xyzs) and try_ob:
-        # RDKit failed, try OpenBabel
-        energies = list()
-        xyzs = read_rdkit_embedded_conformers(label, rd_mol)
-        for xyz in xyzs:
-            energies.append(openbabel_force_field(label, mol, xyz=xyz, force_field=force_field)[1][0])
     return xyzs, energies
 
 
