@@ -869,7 +869,7 @@ class ARCSpecies(object):
                                                           return_all_conformers=False,
                                                           plot_path=plot_path,
                                                           diastereomers=diastereomers)
-            if lowest_confs is not None:
+            if len(lowest_confs):
                 self.conformers.extend([conf['xyz'] for conf in lowest_confs])
                 self.conformer_energies.extend([None] * len(lowest_confs))
                 if lowest_confs:
@@ -877,8 +877,8 @@ class ARCSpecies(object):
                     logger.debug(f'Most stable force field conformer for {self.label}:\n'
                                  f'{xyz_to_str(lowest_conf["xyz"])}\n')
             else:
-                logger.error(f'Could not generate conformers for {self.label}')
-                if not self.get_xyz(generate=False):
+                xyz = self.get_xyz(generate=False)
+                if xyz is None or not xyz:
                     logger.error(f'No 3D coordinates available for species {self.label}!')
 
     def get_cheap_conformer(self):
@@ -905,7 +905,7 @@ class ARCSpecies(object):
                 logger.warning('Could not generate a cheap conformer for {0}'.format(self.label))
                 self.cheap_conformer = None
 
-    def get_xyz(self, generate: bool = True):
+    def get_xyz(self, generate: bool = True) -> dict:
         """
         Get the highest quality xyz the species has.
         If it doesn't have any 3D information, and if ``generate`` is ``True``, cheaply generate it.
