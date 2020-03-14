@@ -284,7 +284,7 @@ class Scheduler(object):
                 for spc in self.species_list:
                     if spc.label in rxn.reactants:
                         rxn.r_species.append(spc)
-                    elif spc.label in rxn.products:
+                    if spc.label in rxn.products:
                         rxn.p_species.append(spc)
                 rxn.rmg_reaction_from_arc_species()
                 rxn.check_attributes()
