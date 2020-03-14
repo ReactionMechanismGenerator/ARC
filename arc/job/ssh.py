@@ -123,11 +123,13 @@ class SSHClient(object):
                     f'Cannot execute command at given remote_path({remote_path})')
         try:
             _, stdout, stderr = self._ssh.exec_command(command)
-        except:  # SSHException: Timeout opening channel.
+        except Exception as e:  # SSHException: Timeout opening channel.
+            logger.debug(f'ssh timed-out in the first trial. Got:{e}')
             try:  # try again
                 _, stdout, stderr = self._ssh.exec_command(command)
-            except:
-                return '', 'ssh timed-out after two trials'
+            except Exception as e:
+                logger.debug(f'ssh timed-out after two trials. Got:{e}')
+                return ['',], ['ssh timed-out after two trials',]
         stdout = stdout.readlines()
         stderr = stderr.readlines()
         return stdout, stderr
