@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
-# encoding: utf-8
+"""
+Initialize the arc ts module
+"""
 
-import arc.ts.atst
+from .adapter import TSAdapter
+from .heuristics import HeuristicsAdapter
+from .user import UserAdapter
+from .search import TSSearch
