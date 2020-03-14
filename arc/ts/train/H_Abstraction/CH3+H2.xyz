@@ -1,0 +1,8 @@
+6
+reaction: CH3+H2=CH4+H, family: H_Abstraction, labels: 0 4 5, stretch: 1.2691 1.2098, level: QCISD/MG3, source: HTBH38/08 (https://comp.chem.umn.edu/db/dbs/htbh38.html)
+C          0.00000        0.26481        0.00000
+H          1.05343        0.51667        0.00000
+H         -0.52663        0.51702        0.91225
+H         -0.52663        0.51702       -0.91225
+H         -0.00026       -1.11777        0.00000
+H          0.00008       -2.02183        0.00000

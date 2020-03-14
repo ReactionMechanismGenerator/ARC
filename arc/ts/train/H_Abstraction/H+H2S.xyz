@@ -1,0 +1,6 @@
+4
+reaction: H+H2S=H2+HS, family: H_Abstraction, labels: 1 2 3, stretch: 1.0686 1.5382, level: QCISD/MG3, source: HTBH38/08 (https://comp.chem.umn.edu/db/dbs/htbh38.html)
+H          1.26210       -0.22010        0.00000
+S          0.00000        0.22315        0.00000
+H         -0.50058       -1.11545        0.00000
+H         -0.76152       -2.23491        0.00000

@@ -1,0 +1,7 @@
+5
+reaction: H2+NH2=H+NH3, family: H_Abstraction, labels: 0 1 4, stretch: 1.2855 1.2170, level: CCSD(T)/cc-pVDZ, source: CCCBDB
+N    0.000000    0.000000    0.000000
+H    0.440024   -1.227096    0.000000
+H    0.558063    0.343916    0.804359
+H    0.558063    0.343916   -0.804359
+H    1.058293   -1.894031    0.000000

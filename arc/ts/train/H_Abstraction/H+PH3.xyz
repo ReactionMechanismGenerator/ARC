@@ -1,0 +1,7 @@
+5
+reaction: H+PH3=H2+PH2, family: H_Abstraction, labels: 0 3 4, stretch: 1.0496 1.6916, level: QCISD/MG3, source: HTBH38/08 (https://comp.chem.umn.edu/db/dbs/htbh38.html)
+P          0.21743        0.00009       -0.11125
+H          0.24661        1.03467        0.85216
+H          0.26266       -1.02506        0.86162
+H         -1.26642       -0.01095       -0.15063
+H         -2.50429        0.00003        0.10558

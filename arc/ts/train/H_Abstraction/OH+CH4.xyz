@@ -1,0 +1,9 @@
+7
+reaction: OH+CH4=H2O+CH3, family: H_Abstraction, labels: 0 2 1, stretch: 1.1267 1.3404, level: QCISD/MG3, source: HTBH38/08 (https://comp.chem.umn.edu/db/dbs/htbh38.html)
+C         -1.21149        0.00797        0.00041
+O          1.29397       -0.10869        0.00013
+H          0.00948       -0.11802        0.00280
+H         -1.52553       -0.23325        1.01007
+H         -1.43067        1.03323       -0.27808
+H         -1.55271       -0.71011       -0.73770
+H          1.41664        0.84989       -0.00059
