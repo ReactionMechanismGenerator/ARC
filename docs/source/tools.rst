@@ -7,7 +7,7 @@ The ARC repository includes various stand-alone scripts, able to perform useful 
 without spawning actual ESS jobs. These scripts are available as iPython Jupyter notebooks under the ``ipython`` folder.
 
 
-ARC EDD diagnostics
+ARC ESS diagnostics
 ^^^^^^^^^^^^^^^^^^^
 
 This tool will search all servers defined in ARC's settings file, and report on the different ESS it finds.
