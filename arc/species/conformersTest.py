@@ -125,6 +125,42 @@ H      -1.22610851    0.40421362    1.35170355"""
         self.assertTrue(found_inf, "The CONFS_VS_TORSIONS dictionary has to have a key that ends with 'inf'. "
                                    "got:\n{0}".format(conformers.CONFS_VS_TORSIONS))
 
+    def test_generate_conformers_with_openbabel(self):
+        """Test the main conformer generation function with a species for which RDKit fails to generate conformers"""
+        xyz = converter.str_to_xyz("""C         -2.18276        2.03598        0.00028
+        C         -0.83696        1.34108       -0.05231
+        H         -2.23808        2.82717       -0.75474
+        H         -2.33219        2.51406        0.97405
+        H         -2.99589        1.32546       -0.17267
+        O          0.18176        2.30786        0.17821
+        H         -0.69161        0.88171       -1.03641
+        H         -0.78712        0.56391        0.71847
+        O          1.39175        1.59510        0.11494""")
+        spc = ARCSpecies(label='CCO[O]', smiles='CCO[O]', xyz=xyz)
+        lowest_confs = conformers.generate_conformers(mol_list=spc.mol_list, label=spc.label,
+                                                        charge=spc.charge, multiplicity=spc.multiplicity,
+                                                        force_field='MMFF94s', print_logs=False, diastereomers=None,
+                                                        n_confs=1, return_all_conformers=False)
+        self.assertEqual(len(lowest_confs), 1)
+        self.assertAlmostEqual(lowest_confs[0]['FF energy'], -0.7460169669694667)
+        expected_xyz = {'symbols': ('C', 'C', 'H', 'H', 'H', 'O', 'H', 'H', 'O'),
+                        'isotopes': (12, 12, 1, 1, 1, 16, 1, 1, 16),
+                        'coords': ((-1.06401, 0.15134, -0.02907),
+                                   (0.39059, -0.26595, -0.11181),
+                                   (-1.38709, 0.21893, 1.01503),
+                                   (-1.21986, 1.1209, -0.51032),
+                                   (-1.70646, -0.59124, -0.51377),
+                                   (0.53686, -1.52925, 0.52713),
+                                   (0.6972, -0.347, -1.16062),
+                                   (1.0214, 0.47542, 0.39124),
+                                   (1.90095, -1.84857, 0.41142))}
+        # Only symbols instead of the coordinate values are compared.
+        # This is due to the unknown behavior of OpenBabel optimization function.
+        # With the same iteration number and same initial xyz, the optimized xyzs can
+        # be different on different machines, while energies are still consistent.
+        # More info can be found from PR #332
+        self.assertEqual(lowest_confs[0]['xyz']['symbols'], expected_xyz['symbols'])
+
     def test_generate_conformers_with_specific_diastereomers(self):
         """Test the main conformer generation function, considering a specific diastereomer"""
         spc1 = ARCSpecies(label='spc1', smiles='IC=CC(Cl)(I)NF')
