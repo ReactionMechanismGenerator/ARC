@@ -2422,7 +2422,7 @@ class Scheduler(object):
                              or (self.species_dict[label].number_of_atoms == 1
                                  and job_type in ['conformers', 'opt', 'fine', 'freq', 'rotors', 'bde'])
                              or job_type == 'bde' and self.species_dict[label].bdes is None
-                             or job_type == 'conformers' and '_BDE_' in label):
+                             or job_type == 'conformers'):
                 logger.debug(f'Species {label} did not converge')
                 all_converged = False
                 break
