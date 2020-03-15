@@ -105,12 +105,12 @@ class Job(object):
         cpu_cores (int, optional): The total number of cpu cores requested for a job.
         job_additional_options (dict, optional): Additional specifications to control the execution of a job.
         job_shortcut_keywords (dict, optional): Shortcut keyword specifications to control the execution of a job.
-        solvent (dict): This argument, if not None, requests that a calculation be performed in the presence of a
-                        solvent by placing the solute in a cavity within the solvent reaction field.
-                        Keys are:
-                        - 'method' (optional values: 'pcm' (default), 'cpcm', 'dipole', 'ipcm', 'scipcm')
-                        -  'solvent' (values are strings of "known" solvents, see https://gaussian.com/scrf/,
-                                      default is "water")
+        solvation (dict): This argument, if not ``None``, requests that a calculation be performed in the presence of a
+                          solvent by placing the solute in a cavity within the solvent reaction field.
+                          Keys are:
+                          - 'method' (optional values: 'pcm' (default), 'cpcm', 'dipole', 'ipcm', 'scipcm')
+                          -  'solvent' (values are strings of "known" solvents, see https://gaussian.com/scrf/,
+                                        default is "water")
         irc_direction (str, optional): The direction of the IRC job (`forward` or `reverse`).
 
     Attributes:
@@ -195,13 +195,13 @@ class Job(object):
         directed_dihedrals (list): The dihedral angles of a directed scan job corresponding to ``directed_scans``.
         directed_scan_type (str): The type of the directed scan.
         rotor_index (int): The 0-indexed rotor number (key) in the species.rotors_dict dictionary.
-        solvent (dict): The solvent model and solvent to use.
+        solvation (dict): The solvation model and solvent to use.
         irc_direction (str): The direction of the IRC job (`forward` or `reverse`).
     """
     def __init__(self, project='', ess_settings=None, species_name='', xyz=None, job_type='', multiplicity=None,
                  project_directory='', charge=0, conformer=-1, fine=False, shift='', software=None, is_ts=False,
                  scan=None, pivots=None, total_job_memory_gb=14, comments='', trsh='', scan_trsh='', job_dict=None,
-                 ess_trsh_methods=None, bath_gas=None, solvent=None, job_num=None, job_server_name=None, job_name=None,
+                 ess_trsh_methods=None, bath_gas=None, solvation=None, job_num=None, job_server_name=None, job_name=None,
                  job_id=None, server=None, initial_time=None, occ=None, max_job_time=120, scan_res=None, checkfile=None,
                  number_of_radicals=None, conformers=None, radius=None, directed_scan_type=None, directed_scans=None,
                  directed_dihedrals=None, rotor_index=None, testing=False, cpu_cores=None, job_additional_options=None,
@@ -251,7 +251,7 @@ class Job(object):
             self.pivots = pivots if pivots is not None else list()
             self.max_job_time = max_job_time
             self.bath_gas = bath_gas
-            self.solvent = solvent
+            self.solvation = solvation
             self.testing = testing
             self.fine = fine
             self.shift = shift
@@ -390,8 +390,8 @@ class Job(object):
             job_dict['rotor_index'] = self.rotor_index
         if self.bath_gas is not None:
             job_dict['bath_gas'] = self.bath_gas
-        if self.solvent is not None:
-            job_dict['solvent'] = self.solvent
+        if self.solvation is not None:
+            job_dict['solvation'] = self.solvation
         if self.checkfile is not None:
             job_dict['checkfile'] = self.checkfile
         if self.conformers is not None:
@@ -442,7 +442,7 @@ class Job(object):
                                                                           in job_dict else dict()
         self.ess_trsh_methods = job_dict['ess_trsh_methods'] if 'ess_trsh_methods' in job_dict else list()
         self.bath_gas = job_dict['bath_gas'] if 'bath_gas' in job_dict else None
-        self.solvent = job_dict['solvent'] if 'solvent' in job_dict else None
+        self.solvation = job_dict['solvation'] if 'solvation' in job_dict else None
         self.job_num = job_dict['job_num'] if 'job_num' in job_dict else -1
         self.job_server_name = job_dict['job_server_name'] if 'job_server_name' in job_dict else None
         self.job_name = job_dict['job_name'] if 'job_name' in job_dict else None
@@ -1160,12 +1160,12 @@ end
         elif self.job_type == 'gsm':  # TODO
             pass
 
-        if self.software == 'gaussian' and self.solvent is not None:
-            if 'method' not in self.solvent:
-                self.solvent['method'] = 'pcm'
-            if 'solvent' not in self.solvent:
-                self.solvent['solvent'] = 'water'
-            job_type_1 += f' SCRF=({self.solvent["method"]},Solvent={self.solvent["solvent"]})'
+        if self.software == 'gaussian' and self.solvation is not None:
+            if 'method' not in self.solvation:
+                self.solvation['method'] = 'pcm'
+            if 'solvent' not in self.solvation:
+                self.solvation['solvent'] = 'water'
+            job_type_1 += f' SCRF=({self.solvation["method"]},Solvent={self.solvation["solvent"]})'
 
         if 'mrci' in self.method:
             if self.software != 'molpro':

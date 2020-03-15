@@ -109,12 +109,12 @@ class ARC(object):
                                          if xyz is given.
         compare_to_rmg (bool, optional): If ``True`` data calculated from the RMG-database will be calculated and
                                          included on the parity plot.
-        solvent (dict, optional): This argument, if not None, requests that a calculation be performed in the presence
-                                  of a solvent by placing the solute in a cavity within the solvent reaction field.
-                                  Keys are:
-                                  - 'method' (optional values: 'pcm' (default), 'cpcm', 'dipole', 'ipcm', 'scipcm')
-                                  -  'solvent' (values are strings of "known" solvents, see https://gaussian.com/scrf/,
-                                                default is "water")
+        solvation (dict, optional): This argument, if not ``None``, requests that a calculation be performed in the presence
+                                    of a solvent by placing the solute in a cavity within the solvent reaction field.
+                                    Keys are:
+                                    - 'method' (optional values: 'pcm' (default), 'cpcm', 'dipole', 'ipcm', 'scipcm')
+                                    -  'solvent' (values are strings of "known" solvents, see https://gaussian.com/scrf/,
+                                                  default is "water")
         compute_thermo (bool, optional): Whether to compute thermodynamic properties for converged species.
         compute_rates (bool, optional): Whether to compute rate coefficients for converged reactions.
         compute_transport (bool, optional): Whether to compute transport properties for converged species.
@@ -191,7 +191,7 @@ class ARC(object):
                  verbose=logging.INFO, project_directory=None, max_job_time=120, allow_nonisomorphic_2d=False,
                  job_memory=14, ess_settings=None, bath_gas=None, adaptive_levels=None, freq_scale_factor=None,
                  calc_freq_factor=True, n_confs=10, e_confs=5, dont_gen_confs=None, keep_checks=False,
-                 solvent=None, compare_to_rmg=True, compute_thermo=True, compute_rates=True, compute_transport=True,
+                 solvation=None, compare_to_rmg=True, compute_thermo=True, compute_rates=True, compute_transport=True,
                  specific_job_type='', statmech_adapter='Arkane'):
         self.__version__ = VERSION
         self.verbose = verbose
@@ -222,7 +222,7 @@ class ARC(object):
             self.specific_job_type = specific_job_type
             self.job_types = initialize_job_types(job_types, specific_job_type=self.specific_job_type)
             self.bath_gas = bath_gas
-            self.solvent = solvent
+            self.solvation = solvation
             self.n_confs = n_confs
             self.e_confs = e_confs
             self.adaptive_levels = adaptive_levels
@@ -369,8 +369,8 @@ class ARC(object):
         restart_dict['statmech_adapter'] = self.statmech_adapter
         if self.bath_gas is not None:
             restart_dict['bath_gas'] = self.bath_gas
-        if self.solvent is not None:
-            restart_dict['solvent'] = self.solvent
+        if self.solvation is not None:
+            restart_dict['solvation'] = self.solvation
         if self.adaptive_levels is not None:
             restart_dict['adaptive_levels'] = self.adaptive_levels
         restart_dict['job_types'] = self.job_types
@@ -449,7 +449,7 @@ class ARC(object):
         self.max_job_time = input_dict['max_job_time'] if 'max_job_time' in input_dict else self.max_job_time
         self.memory = input_dict['job_memory'] if 'job_memory' in input_dict else self.memory
         self.bath_gas = input_dict['bath_gas'] if 'bath_gas' in input_dict else None
-        self.solvent = input_dict['solvent'] if 'solvent' in input_dict else None
+        self.solvation = input_dict['solvation'] if 'solvation' in input_dict else None
         self.n_confs = input_dict['n_confs'] if 'n_confs' in input_dict else 10
         self.e_confs = input_dict['e_confs'] if 'e_confs' in input_dict else 5  # kJ/mol
         self.adaptive_levels = input_dict['adaptive_levels'] if 'adaptive_levels' in input_dict else None
@@ -585,7 +585,7 @@ class ARC(object):
                                    scan_level=self.scan_level, ts_guess_level=self.ts_guess_level,
                                    irc_level=self.irc_level, orbitals_level=self.orbitals_level,
                                    ess_settings=self.ess_settings, job_types=self.job_types, bath_gas=self.bath_gas,
-                                   job_additional_options=self.job_additional_options, solvent=self.solvent,
+                                   job_additional_options=self.job_additional_options, solvation=self.solvation,
                                    job_shortcut_keywords=self.job_shortcut_keywords, rmg_database=self.rmg_database,
                                    restart_dict=self.restart_dict, project_directory=self.project_directory,
                                    max_job_time=self.max_job_time, allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,

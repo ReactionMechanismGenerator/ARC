@@ -128,12 +128,12 @@ class Scheduler(object):
         n_confs (int, optional): The number of lowest force field conformers to consider.
         e_confs (float, optional): The energy threshold in kJ/mol above the lowest energy conformer below which
                                    force field conformers are considered.
-        solvent (dict): This argument, if not None, requests that a calculation be performed in the presence of a
-                        solvent by placing the solute in a cavity within the solvent reaction field.
-                        Keys are:
-                        - 'method' (optional values: 'pcm' (default), 'cpcm', 'dipole', 'ipcm', 'scipcm')
-                        -  'solvent' (values are strings of "known" solvents, see https://gaussian.com/scrf/,
-                                      default is "water")
+        solvation (dict): This argument, if not ``None``, requests that a calculation be performed in the presence of a
+                          solvent by placing the solute in a cavity within the solvent reaction field.
+                          Keys are:
+                          - 'method' (optional values: 'pcm' (default), 'cpcm', 'dipole', 'ipcm', 'scipcm')
+                          -  'solvent' (values are strings of "known" solvents, see https://gaussian.com/scrf/,
+                                        default is "water")
         fine_only (bool): If ``True`` ARC will not run optimization jobs without fine=True
 
     Attributes:
@@ -187,7 +187,7 @@ class Scheduler(object):
         adaptive_levels (dict): A dictionary of levels of theory for ranges of the number of heavy atoms in
                                   the molecule. Keys are tuples of (min_num_atoms, max_num_atoms), values are
                                   dictionaries with 'optfreq' and 'sp' as keys and levels of theory as values.
-        solvent (dict): The solvent model and solvent to use.
+        solvation (dict): The solvation model and solvent to use.
         fine_only (bool): If ``True`` ARC will not run optimization jobs without fine=True
     """
 
@@ -209,7 +209,7 @@ class Scheduler(object):
                  rmg_database=None,
                  job_types: dict = None,
                  job_additional_options: dict = None,
-                 solvent: dict = None,
+                 solvation: dict = None,
                  job_shortcut_keywords: dict = None,
                  rxn_list: list = None,
                  bath_gas: str = None,
@@ -238,7 +238,7 @@ class Scheduler(object):
         self.testing = testing
         self.memory = memory
         self.bath_gas = bath_gas
-        self.solvent = solvent
+        self.solvation = solvation
         self.adaptive_levels = adaptive_levels
         self.n_confs = n_confs
         self.e_confs = e_confs
@@ -738,7 +738,7 @@ class Scheduler(object):
         job_level_of_theory_dict, _ = format_level_of_theory_inputs(level_of_theory)
         job = Job(project=self.project, ess_settings=self.ess_settings, species_name=label, xyz=xyz, job_type=job_type,
                   job_level_of_theory_dict=job_level_of_theory_dict, multiplicity=species.multiplicity,
-                  charge=species.charge, fine=fine, irc_direction=irc_direction, solvent=self.solvent,
+                  charge=species.charge, fine=fine, irc_direction=irc_direction, solvation=self.solvation,
                   shift=shift, software=software, is_ts=species.is_ts, total_job_memory_gb=memory, trsh=trsh,
                   ess_trsh_methods=ess_trsh_methods, scan=scan, pivots=pivots, occ=occ,
                   job_additional_options=self.job_additional_options, job_shortcut_keywords=self.job_shortcut_keywords,
