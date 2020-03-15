@@ -796,7 +796,7 @@ With this option specified, ARC will not load the RMG database, and parity plots
 Use solvent corrections
 ^^^^^^^^^^^^^^^^^^^^^^^
 This feature is currently only implemented for jobs spawned using Gaussian.
-The `solvent` argument, if not None, requests that a calculation be performed in the presence of a solvent
+The `solvation` argument, if not ``None``, requests that a calculation be performed in the presence of a solvent
 by placing the solute (the species) in a cavity within the solvent reaction field. This argument is a dictionary,
 with the following keys:
 
@@ -805,7 +805,7 @@ with the following keys:
 
 Example::
 
-solvent = {'method': 'pcm', 'solvent: 'DiethylEther'}
+solvation = {'method': 'pcm', 'solvent: 'DiethylEther'}
 
 
 See `https://gaussian.com/scrf/ <https://gaussian.com/scrf/>`_ for more details.
