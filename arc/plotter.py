@@ -771,6 +771,8 @@ def save_kinetics_lib(rxn_list, path, name, lib_long_desc):
                     label=rxn.label)
                 rxn.ts_species.make_ts_report()
                 entry.long_desc = f'{rxn.ts_species.ts_report}\n\n' \
+                                  f'TS external symmetry: {rxn.ts_species.external_symmetry}, ' \
+                                  f'TS optical isomers: {rxn.ts_species.optical_isomers}\n\n' \
                                   f'Optimized TS geometry:\n{xyz_to_str(rxn.ts_species.final_xyz)}\n\n' \
                                   f'{rxn.ts_species.long_thermo_description}'
                 rxn.rmg_reaction.kinetics = rxn.kinetics
