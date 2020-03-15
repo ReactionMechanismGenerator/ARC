@@ -649,6 +649,8 @@ class ARC(object):
             txt += f'Optimization:     {format_level_of_theory_for_logging(self.opt_level)} {fine_txt}\n'
             txt += f'Frequencies:      {format_level_of_theory_for_logging(self.freq_level)}\n'
             txt += f'Single point:     {format_level_of_theory_for_logging(self.sp_level)}\n'
+        if self.solvation is not None:
+            txt += f'Solvation model:  {self.solvation}\n'
         if 'rotors' in self.job_types:
             txt += f'Rotor scans:      {format_level_of_theory_for_logging(self.scan_level)}\n'
         else:
