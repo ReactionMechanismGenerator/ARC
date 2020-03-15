@@ -16,6 +16,9 @@
 .idea/*
 venv/
 
+# VS Code Local History files
+.history/*
+
 # Projects
 Projects/
 
