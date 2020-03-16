@@ -1152,7 +1152,7 @@ def is_same_pivot(torsion1: list, torsion2: list) -> Optional[bool]:
         return True
 
 
-def is_same_sequence_sublist(child_list, parent_list):
+def is_same_sequence_sublist(child_list: list, parent_list: list) -> bool:
     """
     Check if the parent list has a sublist which is identical to the child list including the sequence.
     Examples:
