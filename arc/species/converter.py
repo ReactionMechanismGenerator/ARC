@@ -1689,6 +1689,6 @@ def ics_to_scan_constraints(ics: list,
                 scan_trsh += 'D '
             scan_trsh += ''.join([str(num) + ' ' for num in ic]) + 'F\n'
     else:
-        raise NotImplementedError(f'Given software {software} is not implemented'
+        raise NotImplementedError(f'Given software {software} is not implemented' \
                                   f'for ics_to_scan_constraints().')
     return scan_trsh
