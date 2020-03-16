@@ -7,6 +7,7 @@ A module for parsing information from various files.
 
 import os
 import re
+from typing import Match, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -775,7 +776,13 @@ def process_conformers_file(conformers_path):
     return xyzs, energies
 
 
-def parse_str_blocks(file_path, head_pat, tail_pat, regex=True, tail_count=1, block_count=1):
+def parse_str_blocks(file_path: str,
+                     head_pat: Union[Match, str],
+                     tail_pat: Union[Match, str],
+                     regex: bool = True,
+                     tail_count: int = 1,
+                     block_count: int = 1,
+                     ) -> list:
     """
     Return a list of blocks defined by the head pattern and the tail pattern.
 
@@ -836,7 +843,7 @@ def parse_str_blocks(file_path, head_pat, tail_pat, regex=True, tail_count=1, bl
         return blks
 
 
-def parse_scan_args(file_path):
+def parse_scan_args(file_path: str) -> dict:
     """
     Get the scan arguments, including which internal coordinates (IC) are being scanned, which are frozen,
     what is the step size and the number of atoms, etc.
@@ -893,7 +900,7 @@ def parse_scan_args(file_path):
     return scan_args
 
 
-def parse_ic_info(file_path):
+def parse_ic_info(file_path: str) -> pd.DataFrame:
     """
     Get the information of internal coordinates (ic) of an intermediate scan conformer.
 
@@ -958,7 +965,9 @@ def parse_ic_info(file_path):
     return ic_info
 
 
-def parse_ic_values(ic_block, software=None):
+def parse_ic_values(ic_block: list,
+                    software: Optional[str] = None,
+                    ) -> pd.DataFrame:
     """
     Get the internal coordinates (ic) for an intermediate scan conformer
 
