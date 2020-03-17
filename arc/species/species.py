@@ -113,7 +113,7 @@ class ARCSpecies(object):
                                    :ref:`ARCReaction <reaction>` object.
         rxn_label (str, optional): The reaction string (relevant for TSs).
         external_symmetry (int, optional): The external symmetry of the species (not including rotor symmetries).
-        optical_isomers (int, optional): Whether (=2) or not (=1) the species has chiral center/s.
+        chiral_centers (int, optional): The number of chiral centers in this species.
         run_time (timedelta, optional): Overall species execution time.
         checkfile (str, optional): The local path to the latest checkfile by Gaussian for the species.
         number_of_radicals (int, optional): The number of radicals (inputted by the user, ARC won't attempt to determine
@@ -229,7 +229,7 @@ class ARCSpecies(object):
         yml_path (str): Path to an Arkane YAML file representing a species (for loading the object).
         checkfile (str): The local path to the latest checkfile by Gaussian for the species.
         external_symmetry (int): The external symmetry of the species (not including rotor symmetries).
-        optical_isomers (int): Whether (=2) or not (=1) the species has chiral center/s.
+        chiral_centers (int): The number of chiral centers in this species.
         transport_data (TransportData): A placeholder for updating transport properties after Lennard-Jones
                                         calculation (using OneDMin).
         force_field (str): The force field to be used for conformer screening. The default is MMFF94s.
@@ -267,7 +267,7 @@ class ARCSpecies(object):
                  multiplicity: int = None,
                  charge: int = None,
                  external_symmetry: int = None,
-                 optical_isomers: int = None,
+                 chiral_centers: int = None,
                  bond_corrections: dict = None,
                  xyz: list or dict or str = None,
                  force_field: str = 'MMFF94s',
@@ -304,7 +304,7 @@ class ARCSpecies(object):
         self.multiplicity = multiplicity
         self.number_of_radicals = number_of_radicals
         self.external_symmetry = external_symmetry
-        self.optical_isomers = optical_isomers
+        self.chiral_centers = chiral_centers
         self.charge = charge
         self.run_time = run_time
         self.checkfile = checkfile
@@ -527,7 +527,7 @@ class ARCSpecies(object):
         species_dict['compute_thermo'] = self.compute_thermo
         species_dict['number_of_rotors'] = self.number_of_rotors
         species_dict['external_symmetry'] = self.external_symmetry
-        species_dict['optical_isomers'] = self.optical_isomers
+        species_dict['chiral_centers'] = self.chiral_centers
         species_dict['neg_freqs_trshed'] = self.neg_freqs_trshed.tolist() \
             if isinstance(self.neg_freqs_trshed, np.ndarray) else self.neg_freqs_trshed
         species_dict['arkane_file'] = self.arkane_file
@@ -682,7 +682,7 @@ class ARCSpecies(object):
         self.opt_level = species_dict['opt_level'] if 'opt_level' in species_dict else None
         self.number_of_rotors = species_dict['number_of_rotors'] if 'number_of_rotors' in species_dict else 0
         self.external_symmetry = species_dict['external_symmetry'] if 'external_symmetry' in species_dict else None
-        self.optical_isomers = species_dict['optical_isomers'] if 'optical_isomers' in species_dict else None
+        self.chiral_centers = species_dict['chiral_centers'] if 'chiral_centers' in species_dict else None
         self.neg_freqs_trshed = species_dict['neg_freqs_trshed'] if 'neg_freqs_trshed' in species_dict else list()
         self.bond_corrections = species_dict['bond_corrections'] if 'bond_corrections' in species_dict else dict()
         try:
@@ -786,8 +786,8 @@ class ARCSpecies(object):
             self.charge = self.mol.get_net_charge()
         if self.multiplicity is None:
             self.multiplicity = arkane_spc.conformer.spin_multiplicity
-        if self.optical_isomers is None:
-            self.optical_isomers = arkane_spc.conformer.optical_isomers
+        if self.chiral_centers is None:
+            self.chiral_centers = arkane_spc.conformer.optical_isomers - 1
         if self.external_symmetry is None:
             external_symmetry_mode = None
             for mode in arkane_spc.conformer.modes:
@@ -1142,28 +1142,28 @@ class ARCSpecies(object):
 
     def determine_symmetry(self):
         """
-        Determine external symmetry and chirality (optical isomers) of the species.
+        Determine external symmetry and number of chiral centers of the species.
         External symmetry is determined using the brute force symmetry analyzer (https://github.com/alongd/symmetry),
         while the number of chiral centers is determined using ARC's conformers module for non_TS species,
         and using the brute force symmetry analyzer (less robust) for TS species.
         """
-        if self.optical_isomers is None and self.external_symmetry is None:
+        if self.chiral_centers is None or self.external_symmetry is None:
             xyz = self.get_xyz()
-            symmetry, optical_isomers_ts = determine_symmetry(xyz)
-            optical_isomers_non_ts = conformers.get_number_of_chiral_centers(label=self.label,
-                                                                             mol=self.mol,
-                                                                             xyz=self.get_xyz(),
-                                                                             just_get_the_number=True)
+            symmetry, chiral_centers_ts = determine_symmetry(xyz)
+            chiral_centers_non_ts = conformers.get_number_of_chiral_centers(label=self.label,
+                                                                            mol=self.mol,
+                                                                            xyz=xyz,
+                                                                            just_get_the_number=True)
             if self.is_ts:
-                self.optical_isomers = self.optical_isomers or optical_isomers_ts
-                optical_isomers = optical_isomers_ts
+                self.chiral_centers = self.chiral_centers or chiral_centers_ts
+                chiral_centers = chiral_centers_ts
             else:
-                self.optical_isomers = self.optical_isomers or optical_isomers_non_ts
-                optical_isomers = optical_isomers_non_ts
-            if self.optical_isomers != optical_isomers:
-                logger.warning(f"User input of optical isomers for {self.label} and ARC's calculation differ: "
-                               f"{self.optical_isomers} and {optical_isomers}, respectively. "
-                               f"Using the user input of {self.optical_isomers}")
+                self.chiral_centers = self.chiral_centers or chiral_centers_non_ts
+                chiral_centers = chiral_centers_non_ts
+            if self.chiral_centers != chiral_centers:
+                logger.warning(f"User input of chiral centers for {self.label} and ARC's calculation differ: "
+                               f"{self.chiral_centers} and {chiral_centers}, respectively. "
+                               f"Using the user input of {self.chiral_centers}.")
             self.external_symmetry = self.external_symmetry or symmetry
             if self.external_symmetry != symmetry:
                 logger.warning(f"User input of external symmetry for {self.label} and ARC's calculation differ: "

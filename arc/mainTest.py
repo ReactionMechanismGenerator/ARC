@@ -99,7 +99,7 @@ class TestARC(unittest.TestCase):
                                       'charge': 0,
                                       'consider_all_diastereomers': True,
                                       'external_symmetry': None,
-                                      'optical_isomers': None,
+                                      'chiral_centers': None,
                                       'compute_thermo': False,
                                       'is_ts': False,
                                       'label': 'spc1',
@@ -149,7 +149,7 @@ class TestARC(unittest.TestCase):
                                      'neg_freqs_trshed': [],
                                      'number_of_rotors': 0,
                                      'opt_level': '',
-                                     'optical_isomers': 1,
+                                     'chiral_centers': 0,
                                      'rotors_dict': {},
                                      'xyzs': []}],
                         'use_bac': True}

@@ -342,7 +342,7 @@ H      -1.97060638    1.29922153   -0.25658392"""
                               H   0.79874  -0.20864   1.92036
                               H   2.00101  -0.08444   0.59842""")
         allene.determine_symmetry()
-        self.assertEqual(allene.optical_isomers, 1)
+        self.assertEqual(allene.chiral_centers, 0)
         self.assertEqual(allene.external_symmetry, 4)
 
         ammonia = ARCSpecies(label='ammonia', smiles='N', multiplicity=1, charge=0)
@@ -351,7 +351,7 @@ H      -1.97060638    1.29922153   -0.25658392"""
                                H  -0.32018   0.51306  -0.74036
                                H   0.87976  -0.37219  -0.03564""")
         ammonia.determine_symmetry()
-        self.assertEqual(ammonia.optical_isomers, 1)
+        self.assertEqual(ammonia.chiral_centers, 0)
         self.assertEqual(ammonia.external_symmetry, 3)
 
         methane = ARCSpecies(label='methane', smiles='C', multiplicity=1, charge=0)
@@ -361,7 +361,7 @@ H      -1.97060638    1.29922153   -0.25658392"""
                                H  -0.38523  -0.10991   1.01373
                                H -0.40533  -0.79140  -0.63049""")
         methane.determine_symmetry()
-        self.assertEqual(methane.optical_isomers, 1)
+        self.assertEqual(methane.chiral_centers, 0)
         self.assertEqual(methane.external_symmetry, 12)
 
         chiral = ARCSpecies(label='chiral', smiles='C(C)(O)(N)', multiplicity=1, charge=0)
@@ -377,7 +377,7 @@ H      -1.97060638    1.29922153   -0.25658392"""
                               H                 -0.32122209    2.11106387   -1.25369100
                               H                  1.09243518    1.08414066   -1.26122530""")
         chiral.determine_symmetry()
-        self.assertEqual(chiral.optical_isomers, 2)
+        self.assertEqual(chiral.chiral_centers, 1)
         self.assertEqual(chiral.external_symmetry, 1)
 
         s8 = ARCSpecies(label='s8', smiles='S1SSSSSSS1', multiplicity=1, charge=0)
@@ -390,7 +390,7 @@ H      -1.97060638    1.29922153   -0.25658392"""
                           S   0.22079  -2.35820  -0.30909
                           S   1.66220  -1.25754  -1.16665""")
         s8.determine_symmetry()
-        self.assertEqual(s8.optical_isomers, 1)
+        self.assertEqual(s8.chiral_centers, 0)
         self.assertEqual(s8.external_symmetry, 8)
 
         water = ARCSpecies(label='H2O', smiles='O', multiplicity=1, charge=0)
@@ -398,7 +398,7 @@ H      -1.97060638    1.29922153   -0.25658392"""
                              H   0.50770  -0.61852  -0.09124
                              H  -0.70697   0.32803   0.20310""")
         water.determine_symmetry()
-        self.assertEqual(water.optical_isomers, 1)
+        self.assertEqual(water.chiral_centers, 0)
         self.assertEqual(water.external_symmetry, 2)
 
     def test_xyz_format_conversion(self):
@@ -483,7 +483,7 @@ H      -1.67091600   -1.35164600   -0.93286400"""
     def test_as_dict(self):
         """Test Species.as_dict()"""
         spc_dict = self.spc3.as_dict()
-        expected_dict = {'optical_isomers': None,
+        expected_dict = {'chiral_centers': None,
                          'number_of_rotors': 0,
                          'neg_freqs_trshed': [],
                          'external_symmetry': None,

@@ -557,7 +557,8 @@ def determine_symmetry(xyz: dict) -> Tuple[int, int]:
     scr_dir = os.path.join(arc_path, 'scratch')  # Scratch directory that the SYMMETRY code writes its files in
     if not os.path.exists(scr_dir):
         os.makedirs(scr_dir)
-    symmetry = optical_isomers = 1
+    symmetry = 1
+    chiral_centers = 0
     qmdata = QMData(
         groundStateDegeneracy=1,  # Only needed to check if valid QMData
         numberOfAtoms=len(atom_numbers),
@@ -570,8 +571,8 @@ def determine_symmetry(xyz: dict) -> Tuple[int, int]:
     pg = pgc.calculate()
     if pg is not None:
         symmetry = pg.symmetry_number
-        optical_isomers = 2 if pg.chiral else optical_isomers
-    return symmetry, optical_isomers
+        chiral_centers = 1 if pg.chiral else chiral_centers
+    return symmetry, chiral_centers
 
 
 def determine_top_group_indices(mol, atom1, atom2, index=1):

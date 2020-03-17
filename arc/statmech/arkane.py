@@ -359,7 +359,7 @@ class ArkaneAdapter(StatmechAdapter):
         input_file = input_file.format(bonds=bonds,
                                        symmetry=species.external_symmetry,
                                        multiplicity=species.multiplicity,
-                                       optical=bool(species.optical_isomers) + 1,  # Arkane accepts 1 or 2 here
+                                       optical=bool(species.chiral_centers) + 1,  # Arkane accepts 1 or 2 here
                                        sp_level=self.sp_level,
                                        sp_path=sp_path,
                                        opt_path=opt_path,

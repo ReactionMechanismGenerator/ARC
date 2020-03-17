@@ -674,7 +674,7 @@ def save_thermo_lib(species_list, path, name, lib_long_desc):
         for i, spc in enumerate(species_list):
             if spc.thermo is not None:
                 spc.long_thermo_description += f'\nExternal symmetry: {spc.external_symmetry}, ' \
-                                               f'optical isomers: {spc.optical_isomers}\n'
+                                               f'number of chiral centers: {spc.chiral_centers}\n'
                 spc.long_thermo_description += f'\nGeometry:\n{xyz_to_str(spc.final_xyz)}'
                 thermo_library.load_entry(index=i,
                                           label=spc.label,
