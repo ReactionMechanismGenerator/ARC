@@ -36,6 +36,7 @@ class TestARCSpecies(unittest.TestCase):
     """
     Contains unit tests for the ARCSpecies class
     """
+
     @classmethod
     def setUpClass(cls):
         """
@@ -400,6 +401,30 @@ H      -1.97060638    1.29922153   -0.25658392"""
         water.determine_symmetry()
         self.assertEqual(water.chiral_centers, 0)
         self.assertEqual(water.external_symmetry, 2)
+
+        h2o2 = ARCSpecies(label='H2O2', smiles='OO', multiplicity=1, charge=0)
+        h2o2.final_xyz = str_to_xyz("""O  0.0000000  0.7246620 -0.0587080
+O  0.0000000 -0.7246620 -0.0587080
+H  0.7859290  0.8948680  0.4696680
+H -0.7859290 -0.8948680  0.4696680""")
+        h2o2.determine_symmetry()
+        self.assertEqual(h2o2.chiral_centers, 0)
+        self.assertEqual(h2o2.external_symmetry, 2)
+
+        ar = ARCSpecies(label='aR', smiles='CC(C)[CH]O', multiplicity=1, charge=0)
+        ar.determine_symmetry()
+        self.assertEqual(ar.chiral_centers, 0)
+        self.assertEqual(ar.external_symmetry, 2)
+
+        qooh = ARCSpecies(label='QOOH', smiles='CC(C)([CH]O)OO', multiplicity=2, charge=0)
+        qooh.determine_symmetry()
+        self.assertEqual(qooh.chiral_centers, 0)
+        self.assertEqual(qooh.external_symmetry, 1)
+
+        two_chiral_centers = ARCSpecies(label='2_chiral_centers', smiles='OC(S)C(N)O', multiplicity=1, charge=0)
+        two_chiral_centers.determine_symmetry()
+        self.assertEqual(two_chiral_centers.chiral_centers, 0)
+        self.assertEqual(two_chiral_centers.external_symmetry, 1)
 
     def test_xyz_format_conversion(self):
         """Test conversions from string to dict xyz formats"""
