@@ -419,5 +419,28 @@ H      -0.59436200   -0.94730400    0.00000000"""
         self.assertEqual(expected_labels, ic_values.index.to_list())
         self.assertEqual(expected_values, ic_values.value.to_list())
 
+    def test_parse_conformers(self):
+        """Test parsing internal coordinates of all intermediate conformers in a scan job"""
+        path = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'H2O2.out')
+        scan_conformers = parser.parse_scan_conformers(path)
+        expected_labels = ['R1', 'R2', 'R3', 'A1', 'A2', 'D1']
+        expected_types = ['R', 'R', 'R', 'A', 'A', 'D']
+        expected_atoms = [[1, 2], [1, 3], [2, 4], [2, 1, 3], [1, 2, 4], [3, 1, 2, 4]]
+        expected_redundant = [False] * 6
+        expected_scan = [False] * 5 + [True]
+        expected_conf_0 = [1.4535, 0.9674, 0.9674, 100.563, 100.563, 118.8736]
+        expected_conf_18 = [1.4512, 0.9688, 0.9688, 103.2599, 103.2599, -61.1264]
+        expected_conf_36 = [1.4536, 0.9673, 0.9673, 100.5586, 100.5586, 118.8736]
+        self.assertEqual(expected_labels, scan_conformers.index.to_list())
+        self.assertEqual(expected_types, scan_conformers.type.to_list())
+        self.assertEqual(expected_atoms, scan_conformers.atoms.to_list())
+        self.assertEqual(expected_redundant, scan_conformers.redundant.to_list())
+        self.assertEqual(expected_scan, scan_conformers.scan.to_list())
+        self.assertEqual((6, 41), scan_conformers.shape)
+        self.assertEqual(expected_conf_0, scan_conformers[0].to_list())
+        self.assertEqual(expected_conf_18, scan_conformers[18].to_list())
+        self.assertEqual(expected_conf_36, scan_conformers[36].to_list())
+
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
