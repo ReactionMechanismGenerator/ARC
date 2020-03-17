@@ -18,6 +18,7 @@ import sys
 import time
 import warnings
 import yaml
+from typing import Tuple
 
 import numpy as np
 import qcelemental as qcel
@@ -535,17 +536,17 @@ def get_single_bond_length(symbol1: str,
     return 2.5
 
 
-def determine_symmetry(xyz):
+def determine_symmetry(xyz: dict) -> Tuple[int, int]:
     """
-    Determine external symmetry and chirality (optical isomers) of the species.
+    Determine the external symmetry and the number of chiral centers of the species.
 
     Args:
         xyz (dict): The 3D coordinates.
 
     Returns:
-        int: The external symmetry number.
-    Returns:
-        int: 1 if no chiral centers are present, 2 if chiral centers are present.
+        Tuple[int, int]:
+            - The external symmetry number.
+            - The number of chiral centers.
     """
     atom_numbers = list()  # List of atomic numbers
     for symbol in xyz['symbols']:
