@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# encoding: utf-8
-
 """
 A module for (non-TS) species conformer generation
 
@@ -44,6 +41,7 @@ import logging
 import sys
 import time
 from itertools import product
+from typing import Optional, Union
 
 import openbabel as ob
 import pybel as pyb
@@ -1705,24 +1703,29 @@ def translate_group(mol, xyz, pivot, anchor, vector):
     return new_xyz
 
 
-def get_number_of_chiral_centers(label, mol, conformer=None, xyz=None, just_get_the_number=True):
+def get_number_of_chiral_centers(label: str,
+                                 mol: Molecule,
+                                 conformer: Optional[dict] = None,
+                                 xyz: Optional[dict] = None,
+                                 just_get_the_number: Optional[bool] = True,
+                                 ) -> Union[dict, int]:
     """
     Determine the number of chiral centers by type. Either ``conformer`` or ``xyz`` must be given.
 
     Args:
         label (str): The species label.
         mol (Molecule): The RMG Molecule object.
-        conformer (dict, optional): A conformer dictionary.
-        xyz (dict, optional): The xyz coordinates.
-        just_get_the_number (bool, optional): Return the number of chiral centers regardless of their type.
-
-    Returns:
-        dict, int : Keys are types of chiral sites ('C' for carbon, 'N' for nitrogen, 'D' for double bond),
-                    values are the number of chiral centers of each type. If ``just_get_the_number`` is ``True``,
-                    just returns the number of chiral centers (integer).
+        conformer (Optional[dict]): A conformer dictionary.
+        xyz (Optional[dict]): The xyz coordinates.
+        just_get_the_number (Optional[bool]): Return the number of chiral centers regardless of their type.
 
     Raises:
         InputError: If neither ``conformer`` nor ``xyz`` were given.
+
+    Returns:
+        Union[dict, int] : Keys are types of chiral sites ('C' for carbon, 'N' for nitrogen, 'D' for double bond),
+                           values are the number of chiral centers of each type. If ``just_get_the_number`` is ``True``,
+                           just returns the number of chiral centers (integer).
     """
     if conformer is None and xyz is None:
         raise InputError('Must get either conformer or xyz.')
