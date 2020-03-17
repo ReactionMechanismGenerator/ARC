@@ -1932,7 +1932,7 @@ def determine_chirality(conformers, label, mol, force=False):
               All atom indices are 0-indexed.
     """
     chiral_nitrogen_centers = identify_chiral_nitrogen_centers(mol)
-    new_mol, elements_to_insert = replace_n_with_c_in_mol(mol, chiral_nitrogen_centers)
+    n_replaced_mol, elements_to_insert = replace_n_with_c_in_mol(mol, chiral_nitrogen_centers)
     for conformer in conformers:
         if 'chirality' not in conformer:
             # keys are either 1-length atom indices (for chiral atom centers)
@@ -1942,23 +1942,27 @@ def determine_chirality(conformers, label, mol, force=False):
         elif conformer['chirality'] != dict() and not force:
             # don't override data
             continue
-        new_xyz = replace_n_with_c_in_xyz(label, mol, conformer['xyz'], chiral_nitrogen_centers, elements_to_insert)
-        rd_mol = embed_rdkit(label, new_mol, xyz=new_xyz)
+        rd_mol = embed_rdkit(label, mol, xyz=conformer['xyz'])
         Chem.rdmolops.AssignStereochemistryFrom3D(rd_mol, 0)
         for i, rd_atom in enumerate(rd_mol.GetAtoms()):
             rd_atom_props_dict = rd_atom.GetPropsAsDict()
             if '_CIPCode' in list(rd_atom_props_dict.keys()):
-                if mol.atoms[i].is_nitrogen():
-                    # this is a nitrogen site in the original molecule, mark accordingly
-                    conformer['chirality'][(i,)] = 'N' + rd_atom_props_dict['_CIPCode']
-                else:
-                    conformer['chirality'][(i,)] = rd_atom_props_dict['_CIPCode']
+                conformer['chirality'][(i,)] = rd_atom_props_dict['_CIPCode']
         for rd_bond in rd_mol.GetBonds():
             stereo = str(rd_bond.GetStereo())
             if stereo in ['STEREOE', 'STEREOZ']:
                 # possible values are 'STEREOANY', 'STEREOCIS', 'STEREOE', 'STEREONONE', 'STEREOTRANS', and 'STEREOZ'
                 rd_atoms = [rd_bond.GetBeginAtomIdx(), rd_bond.GetEndAtomIdx()]  # indices of atoms bonded by this bond
                 conformer['chirality'][tuple(rd_atom for rd_atom in rd_atoms)] = stereo[-1]
+        n_replaced_xyz = replace_n_with_c_in_xyz(label, mol, conformer['xyz'],
+                                                 chiral_nitrogen_centers, elements_to_insert)
+        n_replaced_rd_mol = embed_rdkit(label, n_replaced_mol, xyz=n_replaced_xyz)
+        Chem.rdmolops.AssignStereochemistryFrom3D(n_replaced_rd_mol, 0)
+        for i, rd_atom in enumerate(n_replaced_rd_mol.GetAtoms()):
+            rd_atom_props_dict = rd_atom.GetPropsAsDict()
+            if '_CIPCode' in list(rd_atom_props_dict.keys()) and mol.atoms[i].is_nitrogen():
+                # this is a nitrogen site in the original molecule, mark accordingly
+                conformer['chirality'][(i,)] = 'N' + rd_atom_props_dict['_CIPCode']
     return conformers
 
 
