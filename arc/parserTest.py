@@ -383,5 +383,25 @@ H      -0.59436200   -0.94730400    0.00000000"""
         self.assertEqual(scan_args['step_size'], 4.0)
         self.assertEqual(scan_args['n_atom'], 6)
 
+    def test_parse_ic_info(self):
+        """Test parsing internal coordinates information"""
+        path = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'CH2OOH.out')
+        ic_info = parser.parse_ic_info(path)
+        expected_labels = ['R1', 'R2', 'R3', 'R4', 'R5', 'A1', 'A2',
+                           'A3', 'A4', 'A5', 'D1', 'D2', 'D3', 'D4']
+        expected_types = ['R', 'R', 'R', 'R', 'R', 'A',
+                          'A', 'A', 'A', 'A', 'D', 'D', 'D', 'D']
+        expected_atoms = [[1, 2], [1, 4], [1, 5], [2, 3], [3, 6], [2, 1, 4],
+                          [2, 1, 5], [4, 1, 5], [1, 2, 3], [2, 3, 6], [4, 1, 2, 3],
+                          [5, 1, 2, 3], [2, 1, 4, 5], [1, 2, 3, 6]]
+        expected_redundant = [False] * 14
+        expected_scan = [False, False, False, False, False, False, False,
+                         False, False, False, True, True, False, False]
+        self.assertEqual(expected_labels, ic_info.index.to_list())
+        self.assertEqual(expected_types, ic_info.type.to_list())
+        self.assertEqual(expected_atoms, ic_info.atoms.to_list())
+        self.assertEqual(expected_redundant, ic_info.redundant.to_list())
+        self.assertEqual(expected_scan, ic_info.scan.to_list())
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
