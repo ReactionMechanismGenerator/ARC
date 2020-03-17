@@ -1143,11 +1143,23 @@ class ARCSpecies(object):
     def determine_symmetry(self):
         """
         Determine external symmetry and chirality (optical isomers) of the species.
+        External symmetry is determined using the brute force symmetry analyzer (https://github.com/alongd/symmetry),
+        while the number of chiral centers is determined using ARC's conformers module for non_TS species,
+        and using the brute force symmetry analyzer (less robust) for TS species.
         """
         if self.optical_isomers is None and self.external_symmetry is None:
             xyz = self.get_xyz()
-            symmetry, optical_isomers = determine_symmetry(xyz)
-            self.optical_isomers = self.optical_isomers or optical_isomers
+            symmetry, optical_isomers_ts = determine_symmetry(xyz)
+            optical_isomers_non_ts = conformers.get_number_of_chiral_centers(label=self.label,
+                                                                             mol=self.mol,
+                                                                             xyz=self.get_xyz(),
+                                                                             just_get_the_number=True)
+            if self.is_ts:
+                self.optical_isomers = self.optical_isomers or optical_isomers_ts
+                optical_isomers = optical_isomers_ts
+            else:
+                self.optical_isomers = self.optical_isomers or optical_isomers_non_ts
+                optical_isomers = optical_isomers_non_ts
             if self.optical_isomers != optical_isomers:
                 logger.warning(f"User input of optical isomers for {self.label} and ARC's calculation differ: "
                                f"{self.optical_isomers} and {optical_isomers}, respectively. "
