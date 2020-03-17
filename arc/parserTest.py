@@ -403,5 +403,21 @@ H      -0.59436200   -0.94730400    0.00000000"""
         self.assertEqual(expected_redundant, ic_info.redundant.to_list())
         self.assertEqual(expected_scan, ic_info.scan.to_list())
 
+    def test_parse_ic_values(self):
+        """Test parsing internal coordinate values"""
+        ic_blk = [
+            ' ! R1    R(1,2)                  1.4535         -DE/DX =    0.0                 !\n',
+            ' ! R2    R(1,3)                  0.9674         -DE/DX =    0.0                 !\n',
+            ' ! R3    R(2,4)                  0.9674         -DE/DX =    0.0                 !\n',
+            ' ! A1    A(2,1,3)              100.563          -DE/DX =    0.0                 !\n',
+            ' ! A2    A(1,2,4)              100.563          -DE/DX =    0.0                 !\n',
+            ' ! D1    D(3,1,2,4)            118.8736         -DE/DX =    0.0003              !\n']
+        software = 'gaussian'
+        ic_values = parser.parse_ic_values(ic_blk, software)
+        expected_labels = ['R1', 'R2', 'R3', 'A1', 'A2', 'D1']
+        expected_values = [1.4535, 0.9674, 0.9674, 100.563, 100.563, 118.8736]
+        self.assertEqual(expected_labels, ic_values.index.to_list())
+        self.assertEqual(expected_values, ic_values.value.to_list())
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
