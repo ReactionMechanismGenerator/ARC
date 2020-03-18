@@ -41,12 +41,12 @@ mkdir -p $WorkDir
 cd $WorkDir
 . $g09root/g09/bsd/g09.profile
 
-cp $SubmitDir/input.gjf .
-cp $SubmitDir/check.chk .
+cp "$SubmitDir/input.gjf" .
+cp "$SubmitDir/check.chk" .
 
 g09 < input.gjf > input.log
 formchk  check.chk check.fchk
-cp * $SubmitDir/
+cp * "$SubmitDir/"
 
 rm -rf $GAUSS_SCRDIR
 rm -rf $WorkDir
@@ -86,10 +86,10 @@ SubmitDir=`pwd`
 mkdir -p $WorkDir
 cd $WorkDir
 
-cp $SubmitDir/input.inp .
+cp "$SubmitDir/input.inp" .
 
 ${ORCA_DIR}/orca input.inp > input.log
-cp * $SubmitDir/
+cp * "$SubmitDir/"
 
 rm -rf $WorkDir
 
@@ -129,12 +129,12 @@ mkdir -p $WorkDir
 cd $WorkDir
 . $g16root/g16/bsd/g16.profile
 
-cp $SubmitDir/input.gjf .
-cp $SubmitDir/check.chk .
+cp "$SubmitDir/input.gjf" .
+cp "$SubmitDir/check.chk" .
 
 g16 < input.gjf > input.log
 formchk check.chk check.fchk
-cp * $SubmitDir/
+cp * "$SubmitDir/"
 
 rm -rf $GAUSS_SCRDIR
 rm -rf $WorkDir
@@ -165,12 +165,12 @@ SubmitDir=`pwd`
 mkdir -p $sdir
 cd $sdir
 
-cp $SubmitDir/input.in .
+cp "$SubmitDir/input.in" .
 
 molpro -n {cpus} -d $sdir input.in
 
-cp input.* $SubmitDir/
-cp geometry*.* $SubmitDir/
+cp input.* "$SubmitDir/"
+cp geometry*.* "$SubmitDir/"
 
 rm -rf $sdir
 
@@ -225,10 +225,10 @@ SubmitDir=`pwd`
 mkdir -p $WorkDir
 cd $WorkDir
 
-cp $SubmitDir/input.inp .
+cp "$SubmitDir/input.inp" .
 
 ${ORCA_DIR}/orca input.inp > input.log
-cp * $SubmitDir/
+cp * "$SubmitDir/"
 
 rm -rf $WorkDir
 
@@ -409,10 +409,10 @@ SubmitDir=`pwd`
 mkdir -p $WorkDir
 cd $WorkDir
 
-cp $SubmitDir/input.in .
+cp "$SubmitDir/input.in" .
 
 /opt/orca/orca input.in > input.log
-cp * $SubmitDir/
+cp * "$SubmitDir/"
 
 rm -rf $WorkDir
 
