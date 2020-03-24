@@ -422,7 +422,7 @@ class ARCSpecies(object):
         if self.charge is None:
             logger.debug(f'No charge specified for {self.label}, assuming charge 0.')
             self.charge = 0
-        if self.multiplicity is None:
+        if self.multiplicity is None or self.multiplicity < 1:
             self.determine_multiplicity(smiles, adjlist, self.mol)
             logger.debug(f'No multiplicity specified for {self.label}, assuming {self.multiplicity}.')
         if not isinstance(self.multiplicity, int) and self.multiplicity is not None:
@@ -1177,7 +1177,7 @@ class ARCSpecies(object):
             elif smiles:
                 mol = Molecule(smiles=smiles)
                 self.multiplicity = mol.multiplicity
-            else:
+            if self.multiplicity is None or self.multiplicity < 1:
                 get_mul_from_xyz = True
         if get_mul_from_xyz:
             xyz = self.get_xyz()
