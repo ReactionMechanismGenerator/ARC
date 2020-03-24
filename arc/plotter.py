@@ -25,6 +25,7 @@ from rmgpy.data.base import Entry
 from rmgpy.data.kinetics.library import KineticsLibrary
 from rmgpy.data.thermo import ThermoLibrary
 from rmgpy.data.transport import TransportLibrary
+from rmgpy.exceptions import InvalidAdjacencyListError
 from rmgpy.quantity import ScalarQuantity
 from rmgpy.species import Species
 
@@ -662,11 +663,19 @@ def save_irc_traj_animation(irc_f_path, irc_r_path, out_path):
 
 # *** Files (libraries, xyz, conformers) ***
 
-def save_thermo_lib(species_list, path, name, lib_long_desc):
+def save_thermo_lib(species_list: list,
+                    path: str,
+                    name: str,
+                    lib_long_desc: str,
+                    ) -> None:
     """
-    Save an RMG thermo library of all species in `species_list` in the supplied `path`.
-    `name` is the library's name (or project's name).
-    `long_desc` is a multiline string with level of theory description.
+    Save an RMG thermo library of all species
+
+    Args:
+        species_list (list): Entries are ARCSpecies objects to be saved in the library.
+        path (str): The file path where the library should be created.
+        name (str): The library's name (or project's name).
+        lib_long_desc (str): A multiline string with level of theory description.
     """
     if species_list:
         lib_path = os.path.join(path, 'thermo', f'{name}.py')
@@ -676,12 +685,16 @@ def save_thermo_lib(species_list, path, name, lib_long_desc):
                 spc.long_thermo_description += f'\nExternal symmetry: {spc.external_symmetry}, ' \
                                                f'optical isomers: {spc.optical_isomers}\n'
                 spc.long_thermo_description += f'\nGeometry:\n{xyz_to_str(spc.final_xyz)}'
-                thermo_library.load_entry(index=i,
-                                          label=spc.label,
-                                          molecule=spc.mol_list[0].copy(deep=True).to_adjacency_list(),
-                                          thermo=spc.thermo,
-                                          shortDesc=spc.thermo.comment,
-                                          longDesc=spc.long_thermo_description)
+                try:
+                    thermo_library.load_entry(index=i,
+                                              label=spc.label,
+                                              molecule=spc.mol_list[0].copy(deep=True).to_adjacency_list(),
+                                              thermo=spc.thermo,
+                                              shortDesc=spc.thermo.comment,
+                                              longDesc=spc.long_thermo_description)
+                except InvalidAdjacencyListError as e:
+                    logger.error(f'Could not save species {spc.label} in the thermo library, got:')
+                    logger.info(e)
             else:
                 logger.warning(f'Species {spc.label} did not contain any thermo data and was omitted from the thermo '
                                f'library.')
@@ -701,12 +714,16 @@ def save_transport_lib(species_list, path, name, lib_long_desc=''):
         for i, spc in enumerate(species_list):
             if spc.transport_data is not None:
                 description = f'\nGeometry:\n{xyz_to_str(spc.final_xyz)}'
-                transport_library.load_entry(index=i,
-                                             label=spc.label,
-                                             molecule=spc.mol_list[0].copy(deep=True).to_adjacency_list(),
-                                             transport=spc.transport_data,
-                                             shortDesc=spc.thermo.comment,
-                                             longDesc=description)
+                try:
+                    transport_library.load_entry(index=i,
+                                                 label=spc.label,
+                                                 molecule=spc.mol_list[0].copy(deep=True).to_adjacency_list(),
+                                                 transport=spc.transport_data,
+                                                 shortDesc=spc.thermo.comment,
+                                                 longDesc=description)
+                except InvalidAdjacencyListError as e:
+                    logger.error(f'Could not save species {spc.label} in the transport library, got:')
+                    logger.info(e)
                 logger.info(f'\n\nTransport properties for {spc.label}:')
                 logger.info(f'  Shape index: {spc.transport_data.shapeIndex}')
                 logger.info(f'  Epsilon: {spc.transport_data.epsilon}')
