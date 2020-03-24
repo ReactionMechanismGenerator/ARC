@@ -13,7 +13,7 @@ import os
 import rmgpy.molecule.element as elements
 from arkane.common import ArkaneSpecies, symbol_by_number
 from arkane.statmech import is_linear
-from rmgpy.exceptions import InvalidAdjacencyListError, ILPSolutionError, ResonanceError
+from rmgpy.exceptions import AtomTypeError, InvalidAdjacencyListError, ILPSolutionError, ResonanceError
 from rmgpy.molecule.molecule import Atom, Molecule
 from rmgpy.molecule.resonance import generate_kekule_structure
 from rmgpy.reaction import Reaction
@@ -422,7 +422,7 @@ class ARCSpecies(object):
         if self.charge is None:
             logger.debug(f'No charge specified for {self.label}, assuming charge 0.')
             self.charge = 0
-        if self.multiplicity is None:
+        if self.multiplicity is None or self.multiplicity < 1:
             self.determine_multiplicity(smiles, adjlist, self.mol)
             logger.debug(f'No multiplicity specified for {self.label}, assuming {self.multiplicity}.')
         if not isinstance(self.multiplicity, int) and self.multiplicity is not None:
@@ -688,7 +688,7 @@ class ARCSpecies(object):
         try:
             self.mol = Molecule().from_adjacency_list(species_dict['mol'], raise_atomtype_exception=False) \
                 if 'mol' in species_dict else None
-        except (ValueError, InvalidAdjacencyListError) as e:
+        except (ValueError, AtomTypeError, InvalidAdjacencyListError) as e:
             logger.error(f'Could not read RMG adjacency list {species_dict["mol"] if "mol" in species_dict else None}. '
                          f'Got:\n{e}')
             self.mol = None
@@ -1177,7 +1177,7 @@ class ARCSpecies(object):
             elif smiles:
                 mol = Molecule(smiles=smiles)
                 self.multiplicity = mol.multiplicity
-            else:
+            if self.multiplicity is None or self.multiplicity < 1:
                 get_mul_from_xyz = True
         if get_mul_from_xyz:
             xyz = self.get_xyz()
@@ -1786,9 +1786,8 @@ class TSGuess(object):
         if self.family is None and self.method.lower() in ['kinbot', 'autotst']:
             # raise TSError('No family specified for method {0}'.format(self.method))
             logger.warning('No family specified for method {0}'.format(self.method))
-        if 'rmg_reaction' not in ts_dict:
-            self.rmg_reaction = None
-        else:
+        self.rmg_reaction = None
+        if 'rmg_reaction' in ts_dict:
             rxn_string = ts_dict['rmg_reaction']
             plus = ' + '
             arrow = ' <=> '
@@ -1808,11 +1807,14 @@ class TSGuess(object):
                 prod = [prod]
             reactants = list()
             products = list()
-            for reactant in reac:
-                reactants.append(Species(smiles=reactant))
-            for product in prod:
-                products.append(Species(smiles=product))
-            self.rmg_reaction = Reaction(reactants=reactants, products=products)
+            try:
+                for reactant in reac:
+                    reactants.append(Species(smiles=reactant))
+                for product in prod:
+                    products.append(Species(smiles=product))
+                self.rmg_reaction = Reaction(reactants=reactants, products=products)
+            except AtomTypeError:
+                pass
 
     def execute_ts_guess_method(self):
         """
