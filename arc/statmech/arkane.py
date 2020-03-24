@@ -333,10 +333,20 @@ class ArkaneAdapter(StatmechAdapter):
                                      f'this could very well be WRONG.')
                         rotor_symmetry = 1
                         max_e = None
+                    scan_trsh = ''
+                    scan_res = 360
+                    if 'trsh_methods' in species.rotors_dict[i]:
+                        for scan_trsh_method in species.rotors_dict[i]['trsh_methods']:
+                            if 'scan_trsh' in scan_trsh_method and len(scan_trsh) < len(scan_trsh_method['scan_trsh']):
+                                scan_trsh = scan_trsh_method['scan_trsh']
+                            if scan_res > scan_trsh_method['scan_res']:
+                                scan_res = scan_trsh_method['scan_res']
+                        scan_trsh = f'Troubleshot with the following constraints and {scan_res} degrees ' \
+                                    f'resolution:\n{scan_trsh}' if scan_trsh else ''
                     max_e = f', max scan energy: {max_e:.2f} kJ/mol' if max_e is not None else ''
                     free = ' (set as a FreeRotor)' if rotor_type == 'FreeRotor' else ''
                     rotors_description += f'pivots: {pivots}, dihedral: {scan}, ' \
-                                          f'rotor symmetry: {rotor_symmetry}{max_e}{free}\n'
+                                          f'rotor symmetry: {rotor_symmetry}{max_e}{free}\n{scan_trsh}'
                     if rotor_type == 'HinderedRotor':
                         rotors += input_files['arkane_hindered_rotor'].format(rotor_path=rotor_path,
                                                                               pivots=pivots,
