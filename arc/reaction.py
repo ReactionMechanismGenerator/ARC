@@ -82,8 +82,7 @@ class ARCReaction(object):
         self.ts_label = ts_label
         self.dh_rxn298 = None
         self.rmg_reactions = None
-        if ts_xyz_guess is not None and not isinstance(ts_xyz_guess, list):
-            ts_xyz_guess = [ts_xyz_guess]
+        self.ts_xyz_guess = ts_xyz_guess
         if reaction_dict is not None:
             # Reading from a dictionary
             self.from_dict(reaction_dict=reaction_dict)
@@ -108,9 +107,10 @@ class ARCReaction(object):
             self.ts_methods = [tsm.lower() for tsm in self.ts_methods]
             self.ts_xyz_guess = ts_xyz_guess if ts_xyz_guess is not None else list()
         if len(self.reactants) > 3 or len(self.products) > 3:
-            raise ReactionError('An ARC Reaction can have up to three reactants / products. got {0} reactants'
-                                ' and {1} products for reaction {2}.'.format(len(self.reactants), len(self.products),
-                                                                             self.label))
+            raise ReactionError(f'An ARC Reaction can have up to three reactants / products. got {len(self.reactants)} '
+                                f'reactants and {len(self.products)} products for reaction {self.label}.')
+        if self.ts_xyz_guess is not None and not isinstance(self.ts_xyz_guess, list):
+            self.ts_xyz_guess = [self.ts_xyz_guess]
 
     def __str__(self):
         """Return a string representation of the object"""
