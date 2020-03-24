@@ -8,7 +8,7 @@ As such, it should not import any other ARC module (specifically ones that use t
 
 VERSION is the full ARC version, using `semantic versioning <https://semver.org/>`_.
 """
-
+import ast
 import datetime
 import logging
 import os
@@ -1135,17 +1135,21 @@ def check_torsion_change(torsions: pd.DataFrame,
     return change
 
 
-def is_same_pivot(torsion1: list, torsion2: list) -> Optional[bool]:
+def is_same_pivot(torsion1: Union[list, str],
+                  torsion2: Union[list, str],
+                  ) -> Optional[bool]:
     """
     Check if two torsions have the same pivots.
 
     Args:
-        torsion1 (list): The four atom indices representing the first torsion.
-        torsion2 (list): The four atom indices representing the second torsion.
+        torsion1 (Union[list, str]): The four atom indices representing the first torsion.
+        torsion2 (Union: [list, str]): The four atom indices representing the second torsion.
 
     Returns:
-        bool: ``True`` if two torsions share the same pivots.
+        Optional[bool]: ``True`` if two torsions share the same pivots.
     """
+    torsion1 = ast.literal_eval(torsion1) if isinstance(torsion1, str) else torsion1
+    torsion2 = ast.literal_eval(torsion2) if isinstance(torsion2, str) else torsion2
     if not (len(torsion1) == len(torsion2) == 4):
         return False
     if torsion1[1:3] == torsion2[1:3] or torsion1[1:3] == torsion2[1:3][::-1]:
