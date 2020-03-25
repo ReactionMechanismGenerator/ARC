@@ -1270,38 +1270,37 @@ def scan_quality_check(label: str,
                 changed_ic_dict.update({index_1: changed_ics})
 
         # 1.2 Check broken bond and any lowest conformation
-        broken_bonds = []
         # Exclude those with boken bonds (different species)
+        # Better to just freeze the broken bond when bond changing first happens
         for ics in changed_ic_dict.values():
             # R(X,Y) refers to bonds in ics
-            any_broken_bond = [ic for ic in ics if 'R' in ic]
-            if any_broken_bond:
-                broken_bonds += any_broken_bond
-        if not broken_bonds:
-            # If no bond broke, ideally all conformers should be isomorphic.
-            # Switch to the lowest conformer
-            energy_diff = energies[0] - np.min(energies)
-            # Use tighter threshold to find lower conformer
-            if energy_diff >= 0.5 or energy_diff > 0.5 * (max(energies) - min(energies)):
-                invalidate = True
-                invalidation_reason = f'Another conformer for {label} exists which is ' \
-                                      f'{energy_diff:.2f} kJ/mol lower.'
-                message = f'Species {label} is not oriented correctly around pivots {pivots}, ' \
-                          f'searching for a better conformation...'
-                logger.info(message)
-                # Find the dihedrals in degrees of the lowest conformer:
-                min_index = np.argmin(energies)
-                conf_xyzs = parse_1d_scan_coords(log_file)
-                actions = {'change conformer': conf_xyzs[min_index]}
+            broken_bond = [ic for ic in ics if 'R' in ic]
+            if broken_bond:
+                # Freeze the bonds, no further freezing other ics to prevent over-constraining
+                broken_bonds = [scan_conformers['atoms'][ic_label]
+                                for ic_label in list(set(broken_bonds))]
+                invalidation_reason = f'Bond ({broken_bonds}) broke during the scan.'
+                message = f'Rotor scan of {label} between pivots {pivots} has broken bonds: ' \
+                          f'{broken_bonds}. ARC will attempt to troubleshoot this rotor scan.'
+                logger.error(message)
+                actions = {'freeze': broken_bonds}
                 return invalidate, invalidation_reason, message, actions
-        else:
-            # Freeze the bonds, no further freezing other ics to prevent over-constraining
-            broken_bonds = [scan_conformers['atoms'][ic_label] for ic_label in list(set(broken_bonds))]
-            invalidation_reason = f'Bond ({broken_bonds}) broke during the scan.'
-            message = f'Rotor scan of {label} between pivots {pivots} has broken bonds: ' \
-                      f'{broken_bonds}. ARC will attempt to troubleshoot this rotor scan.'
-            logger.error(message)
-            actions = {'freeze': broken_bonds}
+
+        # If no bond broke, ideally all conformers should be isomorphic.
+        # Switch to the lowest conformer
+        energy_diff = energies[0] - np.min(energies)
+        # Use tighter threshold to find lower conformer
+        if energy_diff >= 0.5 or energy_diff > 0.5 * (max(energies) - min(energies)):
+            invalidate = True
+            invalidation_reason = f'Another conformer for {label} exists which is ' \
+                                  f'{energy_diff:.2f} kJ/mol lower.'
+            message = f'Species {label} is not oriented correctly around pivots {pivots}, ' \
+                      f'searching for a better conformation...'
+            logger.info(message)
+            # Find the dihedrals in degrees of the lowest conformer:
+            min_index = np.argmin(energies)
+            conf_xyzs = parse_1d_scan_coords(log_file)
+            actions = {'change conformer': conf_xyzs[min_index]}
             return invalidate, invalidation_reason, message, actions
 
         # 1.3 Check consistency
