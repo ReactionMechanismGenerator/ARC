@@ -2732,7 +2732,6 @@ class Scheduler(object):
             logger.debug('It seems that there are no running jobs specified in the ARC restart file. '
                          'Assuming all jobs have finished.')
         else:
-            logger.info(f"ARC's restart files indicate the following jobs are still running: {list(jobs.values())}")
             for spc_label in jobs.keys():
                 if spc_label not in self.running_jobs:
                     self.running_jobs[spc_label] = list()
@@ -2764,7 +2763,7 @@ class Scheduler(object):
             if self.job_dict:
                 content = 'Restarting ARC, tracking the following jobs spawned in a previous session:'
                 for spc_label in self.job_dict.keys():
-                    content += '\n' + spc_label + ': '
+                    content += f'\n{spc_label}: '
                     for job_type in self.job_dict[spc_label].keys():
                         for job_name in self.job_dict[spc_label][job_type].keys():
                             if job_type != 'conformers':
