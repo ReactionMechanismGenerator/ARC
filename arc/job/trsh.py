@@ -1236,17 +1236,23 @@ def scan_quality_check(label: str,
 
         # 1.1 Find significant changes of internal coordinates
         threshold = preserve_param_in_scan_stable
-        step_num = int(360 / scan_res)
+        expected_step_num = int(360 / scan_res)
+        # 5 below referes to type, atoms, scan, redundant and initial guess
+        actual_step_num = scan_conformers.shape[1] - 5
+        step_num = min(expected_step_num, actual_step_num)
         changed_ic_dict = {}
         for index_1 in range(step_num + 1):
             if index_1 != 0:
                 # Compare the 'adjacent' conformers
                 index_2 = index_1 - 1
                 delta =  scan_res  # scan[index_1] - scan[index_2] = scan_res
-            else:
+            elif step_num == expected_step_num:
                 # Compare the first and the last conformer
                 index_2 = step_num
                 delta = 0
+            else:
+                # When the scan is not finished as desired
+                continue
             # Identify changes by type
             bond_change = (2 * (bonds[index_1] - bonds[index_2]) /
                           (bonds[index_1] + bonds[index_2])).abs() > threshold['bond']
