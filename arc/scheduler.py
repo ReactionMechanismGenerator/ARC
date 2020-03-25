@@ -724,7 +724,7 @@ class Scheduler(object):
             directed_dihedrals (list): The dihedral angles of a directed scan job corresponding to ``directed_scans``.
             rotor_index (int): The 0-indexed rotor number (key) in the species.rotors_dict dictionary.
             cpu_cores (int, optional): The total number of cpu cores requested for a job.
-            irc_direction (str, optional): THe direction to run the IRC computation.
+            irc_direction (str, optional): The direction to run the IRC computation.
         """
         max_job_time = max_job_time or self.max_job_time  # if it's None, set to default
         ess_trsh_methods = ess_trsh_methods if ess_trsh_methods is not None else list()
