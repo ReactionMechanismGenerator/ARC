@@ -1245,7 +1245,7 @@ def scan_quality_check(label: str,
             if index_1 != 0:
                 # Compare the 'adjacent' conformers
                 index_2 = index_1 - 1
-                delta =  scan_res  # scan[index_1] - scan[index_2] = scan_res
+                delta = scan_res  # scan[index_1] - scan[index_2] = scan_res
             elif step_num == expected_step_num:
                 # Compare the first and the last conformer
                 index_2 = step_num
@@ -1278,13 +1278,19 @@ def scan_quality_check(label: str,
         # 1.2 Check broken bond and any lowest conformation
         # Exclude those with boken bonds (different species)
         # Better to just freeze the broken bond when bond changing first happens
-        for ics in changed_ic_dict.values():
+        for conf_index, ics in changed_ic_dict.items():
             # R(X,Y) refers to bonds in ics
-            broken_bond = [ic for ic in ics if 'R' in ic]
-            if broken_bond:
+            broken_bonds = [ic for ic in ics if 'R' in ic]
+            if broken_bonds and conf_index != 0:
+                # Find the bond that changes the most, to avoid acompanied changes, like C-O transforms
+                # to C=O, which we don't want to freeze. If other bonds need to be frozen as well,
+                # it can be done in the following troubleshooting.
+                bonds = scan_conformers.loc[broken_bonds, :]
+                bond_change = (2 * (bonds[conf_index] - bonds[conf_index - 1]) /
+                              (bonds[conf_index] + bonds[conf_index - 1])).abs()
+                broken_bond_label = bond_change.sort_values().index[-1]  # the largest change
                 # Freeze the bonds, no further freezing other ics to prevent over-constraining
-                broken_bonds = [scan_conformers['atoms'][ic_label]
-                                for ic_label in list(set(broken_bonds))]
+                broken_bonds = [scan_conformers['atoms'][broken_bond_label]]
                 invalidation_reason = f'Bond ({broken_bonds}) broke during the scan.'
                 message = f'Rotor scan of {label} between pivots {pivots} has broken bonds: ' \
                           f'{broken_bonds}. ARC will attempt to troubleshoot this rotor scan.'
