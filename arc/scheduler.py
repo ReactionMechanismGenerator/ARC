@@ -724,7 +724,7 @@ class Scheduler(object):
             directed_dihedrals (list): The dihedral angles of a directed scan job corresponding to ``directed_scans``.
             rotor_index (int): The 0-indexed rotor number (key) in the species.rotors_dict dictionary.
             cpu_cores (int, optional): The total number of cpu cores requested for a job.
-            irc_direction (str, optional): THe direction to run the IRC computation.
+            irc_direction (str, optional): The direction to run the IRC computation.
         """
         max_job_time = max_job_time or self.max_job_time  # if it's None, set to default
         ess_trsh_methods = ess_trsh_methods if ess_trsh_methods is not None else list()
@@ -2732,7 +2732,6 @@ class Scheduler(object):
             logger.debug('It seems that there are no running jobs specified in the ARC restart file. '
                          'Assuming all jobs have finished.')
         else:
-            logger.info(f"ARC's restart files indicate the following jobs are still running: {list(jobs.values())}")
             for spc_label in jobs.keys():
                 if spc_label not in self.running_jobs:
                     self.running_jobs[spc_label] = list()
@@ -2764,7 +2763,7 @@ class Scheduler(object):
             if self.job_dict:
                 content = 'Restarting ARC, tracking the following jobs spawned in a previous session:'
                 for spc_label in self.job_dict.keys():
-                    content += '\n' + spc_label + ': '
+                    content += f'\n{spc_label}: '
                     for job_type in self.job_dict[spc_label].keys():
                         for job_name in self.job_dict[spc_label][job_type].keys():
                             if job_type != 'conformers':

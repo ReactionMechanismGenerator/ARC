@@ -142,7 +142,7 @@ class ArkaneAdapter(StatmechAdapter):
                 logger.debug(f'Assigned E0 to {self.species.label}: {self.species.e0:.2f} kJ/mol')
                 if not e0_only:
                     thermo_job = ThermoJob(arkane_species, 'NASA')
-                    thermo_job.execute(output_directory=arkane_output_path, plot=False)
+                    thermo_job.execute(output_directory=arkane_output_path, plot=True)
                     self.species.thermo = arkane_species.get_thermo_data()
                     if not kinetics_flag:
                         plotter.log_thermo(self.species.label, path=arkane_output_path)
@@ -183,7 +183,7 @@ class ArkaneAdapter(StatmechAdapter):
                 kinetics_job = KineticsJob(reaction=arkane_rxn, Tmin=self.T_min, Tmax=self.T_max, Tcount=self.T_count)
                 logger.info(f'Calculating rate for reaction {self.reaction.label}')
                 try:
-                    kinetics_job.execute(output_directory=arkane_output_path, plot=False)
+                    kinetics_job.execute(output_directory=arkane_output_path, plot=True)
                 except (ValueError, OverflowError) as e:
                     # ValueError: One or both of the barrier heights of -9.3526 and 62.683 kJ/mol encountered in Eckart
                     # method are invalid.
@@ -203,7 +203,8 @@ class ArkaneAdapter(StatmechAdapter):
 
         # initialize the Arkane species_dict in case another reaction uses the same species
         arkane.input.species_dict = dict()
-        clean_output_directory(species_path=os.path.join(self.output_directory, 'rxns', ts_species.label))
+        clean_output_directory(species_path=os.path.join(self.output_directory, 'rxns', ts_species.label),
+                               is_ts=True)
 
     def run_statmech(self,
                      arkane_species: Type[Species],
@@ -376,13 +377,17 @@ class ArkaneAdapter(StatmechAdapter):
         return arkane_output_path
 
 
-def clean_output_directory(species_path: str) -> None:
+def clean_output_directory(species_path: str,
+                           is_ts: bool = False,
+                           ) -> None:
     """
-    Relocate Arkane's YAML files.
+    Relocate Arkane files.
 
     Args:
-        species_path (str): THe path to the species folder.
+        species_path (str): The path to the species folder.
+        is_ts (bool, optional): Whether the species represents a TS, in which case reaction files will be generated.
     """
+    # 1. The YAML file
     species_yaml_base_path = os.path.join(species_path, 'arkane', 'species')
     if os.path.exists(species_yaml_base_path):
         species_yaml_files = os.listdir(species_yaml_base_path)
@@ -392,6 +397,45 @@ def clean_output_directory(species_path: str) -> None:
                     shutil.move(src=os.path.join(species_yaml_base_path, yml_file),
                                 dst=os.path.join(species_path, yml_file))
         shutil.rmtree(species_yaml_base_path)
+
+    if is_ts:
+        # 2. reaction files
+        # 2.1. the reaction path (PES)
+        paths_path = os.path.join(species_path, 'arkane', 'paths')
+        if os.path.exists(paths_path):
+            path_diagram_files = os.listdir(paths_path)
+            if path_diagram_files:
+                path_file = path_diagram_files[0]
+                target_file = os.path.join(os.path.dirname(path_file), f'reaction_path.{path_file.split(".")[-1]}')
+                shutil.move(src=os.path.join(paths_path, path_file),
+                            dst=os.path.join(species_path, target_file))
+            shutil.rmtree(paths_path)
+
+        # 2.2. the Arrhenius plot
+        plot_path = os.path.join(species_path, 'arkane', 'plots')
+        if os.path.exists(plot_path):
+            plot_files = os.listdir(plot_path)
+            if plot_files:
+                for plot_file in plot_files:
+                    if '<=>' in plot_file:
+                        target_file = os.path.join(os.path.dirname(plot_file), f'Arrhenius_plot.{plot_file.split(".")[-1]}')
+                        shutil.move(src=os.path.join(plot_path, plot_file),
+                                    dst=os.path.join(species_path, target_file))
+                        if len(plot_files) == 1:
+                            shutil.rmtree(plot_path)
+
+    # 3. thermo plots
+    plot_path = os.path.join(species_path, 'arkane', 'plots')
+    print(plot_path)
+    if os.path.exists(plot_path):
+        plot_files = os.listdir(plot_path)
+        print(plot_files)
+        if plot_files:
+            plot_file = plot_files[0]
+            target_file = os.path.join(os.path.dirname(plot_file), f'thermo_properties_plot.{plot_file.split(".")[-1]}')
+            shutil.move(src=os.path.join(plot_path, plot_file),
+                        dst=os.path.join(species_path, target_file))
+        shutil.rmtree(plot_path)
 
 
 register_statmech_adapter('arkane', ArkaneAdapter)
