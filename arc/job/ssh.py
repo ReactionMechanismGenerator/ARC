@@ -222,6 +222,10 @@ class SSHClient(object):
         if len(stderr) > 0 or len(stdout) == 0:
             logger.warning(f'Got stderr when submitting job:\n{stderr}')
             job_status = 'errored'
+            for line in stderr:
+                if 'Requested node configuration is not available' in line:
+                    logger.warning(f'User may be requesting more resources than are available. Please check server '
+                                   f'settings, such as cpus and memory, in ARC/arc/settings.py')
         elif 'submitted' in stdout[0].lower():
             job_status = 'running'
             if servers[self.server]['cluster_soft'].lower() == 'oge':
