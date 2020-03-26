@@ -184,6 +184,26 @@ frequencies = Log('{freq_path}')
 {rotors}
 
 """,
+
+    'arkane_input_species_explicit_e': """#!/usr/bin/env python3
+# encoding: utf-8
+
+{bonds}externalSymmetry = {symmetry}
+
+spinMultiplicity = {multiplicity}
+
+opticalIsomers = {optical}
+
+energy = {{'{sp_level}': {e_elect}}}
+
+geometry = Log('{opt_path}')
+
+frequencies = Log('{freq_path}')
+
+{rotors}
+
+""",
+
     'arkane_hindered_rotor':
         """HinderedRotor(scanLog=Log('{rotor_path}'), pivots={pivots}, top={top}, symmetry={symmetry}, fit='fourier')""",
 
