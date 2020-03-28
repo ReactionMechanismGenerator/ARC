@@ -309,11 +309,18 @@ class ARCSpecies(object):
         self.run_time = run_time
         self.checkfile = checkfile
         self.transport_data = TransportData()
+        self.yml_path = None
 
         if species_dict is not None:
-            # Reading from a dictionary
-            self.from_dict(species_dict=species_dict)
-        else:
+            # Reading from a dictionary (it's possible that the dict contain only a 'yml_path' argument, check first)
+            if 'yml_path' in species_dict:
+                if 'label' in species_dict:
+                    self.label = species_dict['label']
+                self.yml_path = species_dict['yml_path']
+            else:
+                self.from_dict(species_dict=species_dict)
+
+        if species_dict is None or self.yml_path is not None:
             # Not reading from a dictionary
             self.force_field = force_field
             self.is_ts = is_ts
@@ -350,7 +357,7 @@ class ARCSpecies(object):
             self.long_thermo_description = ''
             self.opt_level = None
             self.ts_report = ''
-            self.yml_path = yml_path
+            self.yml_path = self.yml_path or yml_path
             self.final_xyz = None
             self.number_of_rotors = 0
             self.rotors_dict = dict()
