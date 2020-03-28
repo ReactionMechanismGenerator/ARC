@@ -185,7 +185,9 @@ def determine_reaction_family(rmgdb: RMGDatabase,
     fam_list = loop_families(rmgdb=rmgdb, reaction=reaction)
     families = [fam_l[0] for fam_l in fam_list]
     if len(set(families)) == 1:
-        return families[0], families[0].own_reverse
+        family = families[0]
+        family.save_order = True
+        return family, family.own_reverse
     else:
         return None, False
 
