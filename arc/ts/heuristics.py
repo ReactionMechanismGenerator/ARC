@@ -308,8 +308,7 @@ def label_molecules(reactants: list,
     #                     products=[mol.copy(deep=True) for mol in products])
     try:
         family.add_atom_labels_for_reaction(reaction=reaction,
-                                            output_with_resonance=output_with_resonance,
-                                            save_order=True)
+                                            output_with_resonance=output_with_resonance)
     except ActionError:
         return None
     return reaction
