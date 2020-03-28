@@ -401,6 +401,12 @@ H      -1.97060638    1.29922153   -0.25658392"""
         self.assertEqual(water.optical_isomers, 1)
         self.assertEqual(water.external_symmetry, 2)
 
+        # test setting only symmetry, preserving optical isomers
+        ch2oh = ARCSpecies(label='CH2OH', smiles='[CH2]O', optical_isomers=1)
+        ch2oh.determine_symmetry()
+        self.assertEqual(ch2oh.optical_isomers, 1)
+        self.assertEqual(ch2oh.external_symmetry, 1)
+
     def test_xyz_format_conversion(self):
         """Test conversions from string to dict xyz formats"""
         xyz_str0 = """N       2.24690600   -0.00006500    0.11597700

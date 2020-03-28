@@ -505,18 +505,18 @@ def parse_xyz_from_file(path) -> dict:
     return xyz
 
 
-def parse_trajectory(path) -> list:
+def parse_trajectory(path: str) -> list:
     """
     Parse all geometries from an xyz trajectory file or an ESS output file.
 
     Args:
         path (str): The file path.
 
-    Returns:
-        list: Entries are xyz's on the trajectory.
-
     Raises:
         ParserError: If the trajectory could not be read.
+
+    Returns:
+        list: Entries are xyz's on the trajectory.
     """
     lines = _get_lines_from_file(path)
 

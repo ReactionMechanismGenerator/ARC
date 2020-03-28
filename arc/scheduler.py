@@ -284,7 +284,7 @@ class Scheduler(object):
                 for spc in self.species_list:
                     if spc.label in rxn.reactants:
                         rxn.r_species.append(spc)
-                    elif spc.label in rxn.products:
+                    if spc.label in rxn.products:
                         rxn.p_species.append(spc)
                 rxn.rmg_reaction_from_arc_species()
                 rxn.check_attributes()
@@ -2422,7 +2422,7 @@ class Scheduler(object):
                              or (self.species_dict[label].number_of_atoms == 1
                                  and job_type in ['conformers', 'opt', 'fine', 'freq', 'rotors', 'bde'])
                              or job_type == 'bde' and self.species_dict[label].bdes is None
-                             or job_type == 'conformers' and '_BDE_' in label):
+                             or job_type == 'conformers'):
                 logger.debug(f'Species {label} did not converge')
                 all_converged = False
                 break

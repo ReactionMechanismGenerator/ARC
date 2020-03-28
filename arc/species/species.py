@@ -309,11 +309,18 @@ class ARCSpecies(object):
         self.run_time = run_time
         self.checkfile = checkfile
         self.transport_data = TransportData()
+        self.yml_path = None
 
         if species_dict is not None:
-            # Reading from a dictionary
-            self.from_dict(species_dict=species_dict)
-        else:
+            # Reading from a dictionary (it's possible that the dict contain only a 'yml_path' argument, check first)
+            if 'yml_path' in species_dict:
+                if 'label' in species_dict:
+                    self.label = species_dict['label']
+                self.yml_path = species_dict['yml_path']
+            else:
+                self.from_dict(species_dict=species_dict)
+
+        if species_dict is None or self.yml_path is not None:
             # Not reading from a dictionary
             self.force_field = force_field
             self.is_ts = is_ts
@@ -350,7 +357,7 @@ class ARCSpecies(object):
             self.long_thermo_description = ''
             self.opt_level = None
             self.ts_report = ''
-            self.yml_path = yml_path
+            self.yml_path = self.yml_path or yml_path
             self.final_xyz = None
             self.number_of_rotors = 0
             self.rotors_dict = dict()
@@ -869,7 +876,7 @@ class ARCSpecies(object):
                                                           return_all_conformers=False,
                                                           plot_path=plot_path,
                                                           diastereomers=diastereomers)
-            if lowest_confs is not None:
+            if len(lowest_confs):
                 self.conformers.extend([conf['xyz'] for conf in lowest_confs])
                 self.conformer_energies.extend([None] * len(lowest_confs))
                 if lowest_confs:
@@ -877,8 +884,8 @@ class ARCSpecies(object):
                     logger.debug(f'Most stable force field conformer for {self.label}:\n'
                                  f'{xyz_to_str(lowest_conf["xyz"])}\n')
             else:
-                logger.error(f'Could not generate conformers for {self.label}')
-                if not self.get_xyz(generate=False):
+                xyz = self.get_xyz(generate=False)
+                if xyz is None or not xyz:
                     logger.error(f'No 3D coordinates available for species {self.label}!')
 
     def get_cheap_conformer(self):
@@ -905,7 +912,7 @@ class ARCSpecies(object):
                 logger.warning('Could not generate a cheap conformer for {0}'.format(self.label))
                 self.cheap_conformer = None
 
-    def get_xyz(self, generate: bool = True):
+    def get_xyz(self, generate: bool = True) -> dict:
         """
         Get the highest quality xyz the species has.
         If it doesn't have any 3D information, and if ``generate`` is ``True``, cheaply generate it.
@@ -1140,23 +1147,24 @@ class ARCSpecies(object):
             new_xyz = set_rdkit_dihedrals(conf, rd_mol, torsion_0_indexed, deg_increment=deg_increment, deg_abs=deg_abs)
             self.initial_xyz = new_xyz
 
-    def determine_symmetry(self):
+    def determine_symmetry(self) -> None:
         """
-        Determine external symmetry and chirality (optical isomers) of the species.
+        Determine the external symmetry and chirality (optical isomers) of the species.
         """
-        if self.optical_isomers is None and self.external_symmetry is None:
-            xyz = self.get_xyz()
-            symmetry, optical_isomers = determine_symmetry(xyz)
+        xyz = self.get_xyz()
+        symmetry, optical_isomers = determine_symmetry(xyz)
+        if self.optical_isomers is None:
             self.optical_isomers = self.optical_isomers or optical_isomers
-            if self.optical_isomers != optical_isomers:
-                logger.warning(f"User input of optical isomers for {self.label} and ARC's calculation differ: "
-                               f"{self.optical_isomers} and {optical_isomers}, respectively. "
-                               f"Using the user input of {self.optical_isomers}")
+        elif self.optical_isomers != optical_isomers:
+            logger.warning(f"User input of optical isomers for {self.label} and ARC's calculation differ: "
+                           f"{self.optical_isomers} and {optical_isomers}, respectively. "
+                           f"Using the user input of {self.optical_isomers}")
+        if self.external_symmetry is None:
             self.external_symmetry = self.external_symmetry or symmetry
-            if self.external_symmetry != symmetry:
-                logger.warning(f"User input of external symmetry for {self.label} and ARC's calculation differ: "
-                               f"{self.external_symmetry} and {symmetry}, respectively. "
-                               f"Using the user input of {self.external_symmetry}")
+        elif self.external_symmetry != symmetry:
+            logger.warning(f"User input of external symmetry for {self.label} and ARC's calculation differ: "
+                           f"{self.external_symmetry} and {symmetry}, respectively. "
+                           f"Using the user input of {self.external_symmetry}")
 
     def determine_multiplicity(self,
                                smiles: str,
