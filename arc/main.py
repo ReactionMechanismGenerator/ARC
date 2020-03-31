@@ -109,12 +109,18 @@ class ARC(object):
                                          if xyz is given.
         compare_to_rmg (bool, optional): If ``True`` data calculated from the RMG-database will be calculated and
                                          included on the parity plot.
-        solvation (dict, optional): This argument, if not ``None``, requests that a calculation be performed in the presence
-                                    of a solvent by placing the solute in a cavity within the solvent reaction field.
-                                    Keys are:
-                                    - 'method' (optional values: 'pcm' (default), 'cpcm', 'dipole', 'ipcm', 'scipcm')
-                                    -  'solvent' (values are strings of "known" solvents, see https://gaussian.com/scrf/,
-                                                  default is "water")
+        solvation (dict, optional): This argument, if not ``None``, requests that a calculation be performed in the
+                                    presence of an implicit solvent by placing the solute in a cavity within the solvent
+                                    reaction field.
+                                    Keys (values) are:
+                                    - 'method' (str): ('pcm' (default), 'smd', 'cpcm', 'dipole', 'ipcm', or 'scipcm')
+                                    - 'solvent' (str): (values are strings of "known" solvents,
+                                                       see https://gaussian.com/scrf/, default is "water")
+                                    - 'level' (str, dict): If not ``None``, ARC will NOT attempt to run the sp job with
+                                                           a solvation correction, and instead spawn two additional sp
+                                                           jobs at that level, with and without the correction. Finally,
+                                                           the species electronic energy will be set to:
+                                                           e_elect = e_original + sp_e_sol_corrected - sp_e_uncorrected
         compute_thermo (bool, optional): Whether to compute thermodynamic properties for converged species.
         compute_rates (bool, optional): Whether to compute rate coefficients for converged reactions.
         compute_transport (bool, optional): Whether to compute transport properties for converged species.
@@ -359,6 +365,11 @@ class ARC(object):
             restart_backup_name = 'restart.old.' + local_time + '.yml'
             shutil.copy(os.path.join(self.project_directory, 'restart.yml'),
                         os.path.join(self.project_directory, 'log_and_restart_archive', restart_backup_name))
+        if self.solvation is not None:
+            if 'level' not in self.solvation:
+                self.solvation['level'] = None
+            else:
+                self.solvation['level'] = format_level_of_theory_inputs(self.solvation['level'])[0]
 
     def as_dict(self) -> dict:
         """
