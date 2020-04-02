@@ -811,4 +811,32 @@ solvation = {'method': 'pcm', 'solvent: 'DiethylEther'}
 See `https://gaussian.com/scrf/ <https://gaussian.com/scrf/>`_ for more details.
 
 
+Batch delete ARC jobs
+^^^^^^^^^^^^^^^^^^^^^
+
+DANGER ZONE: Make sure you understand what you're doing before running this script! Data of running jobs will be lost.
+
+ARC has a feature that deletes all ARC-spawned jobs from selected servers and projects.
+To delete all ARC jobs, type in a terminal in the ARC code folder after activating ``arc_env``::
+
+    python arc/utils/delete.py -a
+
+You can also request to delete jobs from a specific server by specifying its name after the ``-s`` flag::
+
+    python arc/utils/delete.py -s server1 -a
+
+To delete jobs from a specific ARC project, pass the project's name after the ``-p`` flag::
+
+    python arc/utils/delete.py -p project1
+
+Alternatively (since project names might be long and not always shown in full when requesting the server job status),
+one can supply an ARC job ID, and ALL jobs related to the project of the given job ID will be deleted
+(NOT only the given job!)::
+
+    python arc/utils/delete.py -j a_54836
+
+Note that either a ``-a``, a ``-p``, or a ``-j`` flag must be given.
+All flags can be combined with the optional ``-s`` flag.
+
+
 .. include:: links.txt
