@@ -15,9 +15,10 @@ from arc.main import ARC
 
 def parse_command_line_arguments(command_line_args=None):
     """
-    Parse the command-line arguments being passed to ARC. This uses the
-    :mod:`argparse` module, which ensures that the command-line arguments are
-    sensible, parses them, and returns them.
+    Parse command-line arguments.
+
+    Args:
+        command_line_args: The command line arguments.
     """
 
     parser = argparse.ArgumentParser(description='Automatic Rate Calculator (ARC)')
@@ -32,22 +33,16 @@ def parse_command_line_arguments(command_line_args=None):
     group.add_argument('-q', '--quiet', action='store_true', help='only print warnings and errors')
 
     args = parser.parse_args(command_line_args)
-
-    # Process args to set correct default values and format
-
-    # For output and scratch directories, if they are empty strings, set them
-    # to match the input file location
     args.file = args.file[0]
-
-    # Set directories
-    # input_directory = os.path.abspath(os.path.dirname(args.file))
 
     return args
 
 
 def main():
-    """The main ARC executable function"""
-    # Parse the command-line arguments (requires the argparse module)
+    """
+    The main ARC executable function
+    """
+
     args = parse_command_line_arguments()
     input_file = args.file
     project_directory = os.path.abspath(os.path.dirname(args.file))
@@ -66,8 +61,6 @@ def main():
     arc_object = ARC(input_dict=input_dict, project_directory=project_directory)
     arc_object.execute()
 
-
-################################################################################
 
 if __name__ == '__main__':
     main()
