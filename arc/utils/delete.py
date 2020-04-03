@@ -9,19 +9,86 @@ Using this module might results in deletion of jobs running on all servers ARC h
 Use this only if you are certain in what you're doing to avoid deleting valuable jobs and information loss.
 """
 
+import argparse
+import csv
+import os
+
+from arc.exceptions import InputError
 from arc.job.local import delete_all_local_arc_jobs
 from arc.job.ssh import delete_all_arc_jobs
-from arc.settings import servers
+from arc.settings import arc_path, servers
+
+
+def parse_command_line_arguments(command_line_args=None):
+    """
+    Parse command-line arguments.
+
+    Args:
+        command_line_args: The command line arguments.
+    """
+
+    parser = argparse.ArgumentParser(description='ARC delete util')
+
+    parser.add_argument('-p', '--project', type=str, nargs=1, default='',
+                        metavar='Project', help='the project for which all jobs wil be deleted')
+    parser.add_argument('-j', '--job', type=str, nargs=1, default='',
+                        metavar='Job', help='the job the belongs to a project for which all jobs wil be deleted')
+    parser.add_argument('-s', '--server', type=str, nargs=1, default='',
+                        metavar='Server', help='the server name from which to delete jobs')
+    parser.add_argument('-a', '--all', type=bool, nargs=1, default=False,
+                        metavar='All', help='delete all ARC jobs')
+
+    args = parser.parse_args(command_line_args)
+    if args.job:
+        if args.job[0][0] == 'a':
+            args.job = args.job[0][1:]
+        else:
+            args.job = args.job[0]
+    if args.project:
+        args.project = args.project[0]
+
+    return args
 
 
 def main():
     """
-    Delete all ARC jobs from all servers.
+    Delete ARC jobs according to the command line arguments specifications.
     """
-    server_list = [server for server in servers.keys() if server != 'local']
-    delete_all_arc_jobs(server_list=server_list)
-    if 'local' in servers:
-        delete_all_local_arc_jobs()
+
+    args = parse_command_line_arguments()
+
+    if not args.all and not args.project and not args.job:
+        raise InputError("Either a project (e,g,, '-p project_name'), a job (e.g., '-j a4563'), or ALL (i.e., '-a')")
+
+    server_list = args.server if args.server else [server for server in servers.keys()]
+
+    csv_path = os.path.join(arc_path, 'initiated_jobs.csv')
+
+    project, jobs = None, list()
+    if args.project:
+        project = args.project
+    elif args.job:
+        with open(csv_path, 'r') as f:
+            reader = csv.reader(f, dialect='excel')
+            for row in reader:
+                if args.job == row[0]:
+                    project = row[1]
+
+    if project is not None:
+        with open(csv_path, 'r') as f:
+            reader = csv.reader(f, dialect='excel')
+            for row in reader:
+                if row[1] == project:
+                    jobs.append(f'a{row[0]}')
+
+    if args.all:
+        jobs = None
+
+    for server in server_list:
+        if server != 'local':
+            delete_all_arc_jobs(server_list=server_list, jobs=jobs)
+        else:
+            delete_all_local_arc_jobs(jobs=jobs)
 
 
 if __name__ == '__main__':

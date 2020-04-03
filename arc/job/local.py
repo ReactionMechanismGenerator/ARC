@@ -206,11 +206,14 @@ def rename_output(local_file_path, software):
         shutil.move(src=os.path.join(os.path.dirname(local_file_path), output_filename[software]), dst=local_file_path)
 
 
-def delete_all_local_arc_jobs():
+def delete_all_local_arc_jobs(jobs=None):
     """
     Delete all ARC-spawned jobs (with job name starting with `a` and a digit) from the local server.
     Make sure you know what you're doing, so unrelated jobs won't be deleted...
     Useful when terminating ARC while some (ghost) jobs are still running.
+
+    Args:
+        jobs (Optional[List[str]]): Specific ARC job IDs to delete.
     """
     server = 'local'
     if server in servers:
@@ -220,13 +223,13 @@ def delete_all_local_arc_jobs():
         for status_line in stdout:
             s = re.search(r' a\d+', status_line)
             if s is not None:
-                if servers[server]['cluster_soft'].lower() == 'slurm':
-                    job_id = s.group()[1:]
-                    server_job_id = status_line.split()[0]
-                    delete_job(server_job_id)
-                    print('deleted job {0} ({1} on server)'.format(job_id, server_job_id))
-                elif servers[server]['cluster_soft'].lower() == 'oge':
-                    job_id = s.group()[1:]
-                    delete_job(job_id)
-                    print('deleted job {0}'.format(job_id))
+                job_id = s.group()[1:]
+                if job_id in jobs or jobs is None:
+                    if servers[server]['cluster_soft'].lower() == 'slurm':
+                        server_job_id = status_line.split()[0]
+                        delete_job(server_job_id)
+                        print(f'deleted job {job_id} ({server_job_id} on server)')
+                    elif servers[server]['cluster_soft'].lower() == 'oge':
+                        delete_job(job_id)
+                        print(f'deleted job {job_id}')
         print('\ndone.')

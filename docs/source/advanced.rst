@@ -25,7 +25,7 @@ Note: ``specific_job_type`` takes higher precedence than ``job_types``. If you s
 dismiss the given ``job_types`` and will only populate the ``job_types`` dictionary using the given
 ``specific_job_type``.
 
-For bond dissociation energy calculation, the following two ``job_types`` specifications are equivalent::
+For bond dissociation energy calculation, the following two ``job_types`` specifications are equivalent:
 
 Specification 1::
 
@@ -211,7 +211,7 @@ maximal node ``memory``.
 Using a fine DFT grid for optimization
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 This option is turned on by default. If you'd like to turn it off,
-set ``fine`` in the ``job_types`` dictionary to `False`.
+set ``fine`` in the ``job_types`` dictionary to ``False``.
 
 If turned on, ARC will spawn another optimization job after the first one converges
 with a fine grid settings, using the already optimized geometry.
@@ -245,7 +245,7 @@ In TeraChem, this will add the following directive::
 Rotor scans
 ^^^^^^^^^^^
 This option is turned on by default. If you'd like to turn it off,
-set ``rotors`` in the ``job_types`` dictionary to `False`.
+set ``rotors`` in the ``job_types`` dictionary to ``False``.
 
 ARC will perform 1D (one dimensional) rotor scans for all possible unique internal rotors in the species,
 
@@ -369,7 +369,7 @@ ARC has fairly good auto-troubleshooting methods.
 
 However, at times a user might know in advance that a particular additional keyword
 is required for the calculation. In such cases, simply pass the relevant keyword
-in the ``initial_trsh`` (`trsh` stands for `troubleshooting`) dictionary passed to ARC::
+in the ``initial_trsh`` (``trsh`` stands for ``troubleshooting``) dictionary passed to ARC::
 
     initial_trsh:
       gaussian:
@@ -409,9 +409,9 @@ Adaptive levels of theory
 Often we'd like to adapt the levels of theory to the size of the molecule.
 To do so, pass the ``adaptive_levels`` attribute, which is a dictionary of
 levels of theory for ranges of the number of heavy (non-hydrogen) atoms in the
-molecule. Keys are tuples of (`min_num_atoms`, `max_num_atoms`), values are
+molecule. Keys are tuples of (``min_num_atoms``, ``max_num_atoms``), values are
 dictionaries with ``optfreq`` and ``sp`` as keys and levels of theory as values.
-Don't forget to bound the entire range between ``1`` and ``inf``, also make sure
+Don't forget to bound the entire range between 1 and ``inf``, also make sure
 there aren't any gaps in the heavy atom ranges. The below is in Python (not YAML) format::
 
     adaptive_levels = {(1, 5):      {'optfreq': 'wb97xd/6-311+g(2d,2p)',
@@ -433,7 +433,7 @@ If the molecule perceived from the 3D coordinate is not isomorphic
 with the input 2D graph, ARC will not spawn any additional jobs for the species, and will not use it further
 (for thermo and/or rates calculations). However, sometimes the perception algorithm doesn't work as expected (e.g.,
 issues with charged species and triplets are known). To continue spawning jobs for all species in an ARC
-project, pass `True` to the ``allow_nonisomorphic_2d`` argument (it is `False` by default).
+project, pass ``True`` to the ``allow_nonisomorphic_2d`` argument (it is ``False`` by default).
 
 
 .. _directory:
@@ -457,11 +457,11 @@ using `GaussView <https://gaussian.com/gaussview6/>`_.
 __ gaussian_
 
 ARC supports an additional way to generate high quality and good looking MOs.
-Simply set the ``orbitals`` entry of the ``job_types`` dictionary to `True` (it is `False` by default`).
+Simply set the ``orbitals`` entry of the ``job_types`` dictionary to ``True`` (it is ``False`` by default`).
 ARC will spawn a `QChem <https://www.q-chem.com/>`_ job with the
 ``PRINT_ORBITALS TRUE`` directive using `NBO <http://nbo.chem.wisc.edu/>`_,
 and will copy the resulting FCheck output file.
-Make sure you set the `orbitals` level of theory to the desired level in ``default_levels_of_theory``
+Make sure you set the ``orbitals`` level of theory to the desired level in ``default_levels_of_theory``
 in ``settings.py``.
 Open the resulting FCheck file using `IQMol <http://iqmol.org/>`_
 to post process and save images.
@@ -701,7 +701,7 @@ The above code generated the following input file::
 
 Calculating BDEs (bond dissociation energies)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-To direct ARC to calculate BDEs for a species, set the ``bde`` job type to `True`,
+To direct ARC to calculate BDEs for a species, set the ``bde`` job type to ``True``,
 and set the requested atom indices (1-indexed) in the species ``.bdes`` argument
 as a list of tuples representing indices of bonded atoms (via a single bond)
 between which the BDE will be calculated (a list of lists is also allowed and will be converted),
@@ -709,9 +709,9 @@ E.g., a species can be defined as::
 
     spc1 = ARCSpecies(label='label1', smiles='CC(NO)C', xyz=xyz1, bdes=[(1, 2), (5, 8)])
 
-Note that the `bdes` species argument also accepts the string ``'all_h'`` as one of the entries
+Note that the ``bdes`` species argument also accepts the string ``'all_h'`` as one of the entries
 in the list, directing ARC to calculate BDEs for all hydrogen atoms in the species.
-Below is an example requesting all hydrogen BDEs in ethanol including the `C--O` BDE::
+Below is an example requesting all hydrogen BDEs in ethanol including the ``C--O`` BDE::
 
     project: ethanol_BDEs
 
@@ -767,11 +767,11 @@ but on the optimal geometry determined by ARC. To calculate the same BDEs in eth
       - - 1
         - 2
 
-Note: The BDEs are determined based on `E0`, therefore both ``sp`` and ``freq`` jobs
+Note: The BDEs are determined based on ``E0``, therefore both ``sp`` and ``freq`` jobs
 must be spawned (and successfully terminated for all species and fragments).
 
-The calculated BDEs are reported in the log file as well as in a designated `BDE_report.yml`
-file under the `output` directory in the project's folder. Units are kJ/mol.
+The calculated BDEs are reported in the log file as well as in a designated ``BDE_report.yml``
+file under the ``output`` directory in the project's folder. Units are kJ/mol.
 
 
 Disable comparisons with the RMG database
@@ -796,7 +796,7 @@ With this option specified, ARC will not load the RMG database, and parity plots
 Use solvent corrections
 ^^^^^^^^^^^^^^^^^^^^^^^
 This feature is currently only implemented for jobs spawned using Gaussian.
-The `solvation` argument, if not ``None``, requests that a calculation be performed in the presence of a solvent
+The ``solvation`` argument, if not ``None``, requests that a calculation be performed in the presence of a solvent
 by placing the solute (the species) in a cavity within the solvent reaction field. This argument is a dictionary,
 with the following keys:
 
@@ -809,6 +809,34 @@ solvation = {'method': 'pcm', 'solvent: 'DiethylEther'}
 
 
 See `https://gaussian.com/scrf/ <https://gaussian.com/scrf/>`_ for more details.
+
+
+Batch delete ARC jobs
+^^^^^^^^^^^^^^^^^^^^^
+
+DANGER ZONE: Make sure you understand what you're doing before running this script! Data of running jobs will be lost.
+
+ARC has a feature that deletes all ARC-spawned jobs from selected servers and projects.
+To delete all ARC jobs, type in a terminal in the ARC code folder after activating ``arc_env``::
+
+    python arc/utils/delete.py -a
+
+You can also request to delete jobs from a specific server by specifying its name after the ``-s`` flag::
+
+    python arc/utils/delete.py -s server1 -a
+
+To delete jobs from a specific ARC project, pass the project's name after the ``-p`` flag::
+
+    python arc/utils/delete.py -p project1
+
+Alternatively (since project names might be long and not always shown in full when requesting the server job status),
+one can supply an ARC job ID, and ALL jobs related to the project of the given job ID will be deleted
+(NOT only the given job!)::
+
+    python arc/utils/delete.py -j a_54836
+
+Note that either a ``-a``, a ``-p``, or a ``-j`` flag must be given.
+All flags can be combined with the optional ``-s`` flag.
 
 
 .. include:: links.txt
