@@ -26,6 +26,7 @@ from arc.species.converter import (check_isomorphism,
 from arc.species.species import (ARCSpecies,
                                  TSGuess,
                                  are_coords_compliant_with_graph,
+                                 check_atom_balance,
                                  check_label,
                                  check_xyz,
                                  determine_rotor_symmetry,
@@ -1278,6 +1279,29 @@ H       1.11582953    0.94384729   -0.10134685"""
 
         label = check_label('C?N')
         self.assertEqual(label, 'C_N')
+
+    def test_check_atom_balance(self):
+        """Test the check_atom_balance function"""
+        entry_mol = Molecule(smiles='C')
+        entry_str = """C  0.0000000  0.0000000  0.0000000
+                     H  0.6325850  0.6325850  0.6325850
+                     H -0.6325850 -0.6325850  0.6325850
+                     H -0.6325850  0.6325850 -0.6325850
+                     H  0.6325850 -0.6325850 -0.6325850"""
+        entry_dict = {'symbols': ('C', 'H', 'H', 'H', 'H'),
+                      'isotopes': (12, 1, 1, 1, 1),
+                      'coords': ((0.0, 0.0, 0.0),
+                                 (0.6300326, 0.6300326, 0.6300326),
+                                 (-0.6300326, -0.6300326, 0.6300326),
+                                 (-0.6300326, 0.6300326, -0.6300326),
+                                 (0.6300326, -0.6300326, -0.6300326))}
+        entry_wrong = Molecule(smiles='N')
+
+        self.assertTrue(check_atom_balance(entry_mol, entry_str))
+        self.assertTrue(check_atom_balance(entry_str, entry_dict))
+        self.assertTrue(check_atom_balance(entry_dict, entry_dict))
+        self.assertFalse(check_atom_balance(entry_wrong, entry_dict))
+        self.assertFalse(check_atom_balance(entry_mol, entry_wrong))
 
     @classmethod
     def tearDownClass(cls):
