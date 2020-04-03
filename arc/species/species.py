@@ -1322,10 +1322,14 @@ class ARCSpecies(object):
                     # string which does not represent a (valid) path, treat as a string representation of xyz
                     xyzs.append(remove_dummies(str_to_xyz(xyz)))
                     energies.append(None)  # dummy (lists should be the same length)
-            for xyz in xyzs:
+            for i, xyz in enumerate(xyzs):
                 if colliding_atoms(xyz):
                     raise SpeciesError(f'The following coordinates for species {self.label} have colliding atoms:\n'
                                        f'{xyz_to_str(xyz)}')
+                if self.mol is not None:
+                    check_atom_balance(xyz, self.mol)
+                elif i:
+                    check_atom_balance(xyz, xyzs[0])
             if not self.is_ts:
                 self.conformers.extend(xyzs)
                 self.conformer_energies.extend(energies)
