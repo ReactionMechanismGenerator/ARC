@@ -173,6 +173,14 @@ H      -0.59436200    0.94730400    0.00000000
 H      -0.59436200   -0.94730400    0.00000000"""
         self.assertEqual(xyz11_str, expected_xyz_11)
 
+    def test_parse_geometry(self):
+        """Test parse_geometry()"""
+        # Test parsing xyz from a Gaussina file with more than 50 atoms where the iop(2/9=2000) keyword is not specified
+        path1 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'Gaussian_large.log')
+        xyz = parser.parse_geometry(path=path1)
+        self.assertIsInstance(xyz, dict)
+        self.assertEqual(len(xyz['symbols']), 53)
+
     def test_parse_trajectory(self):
         """Test parsing trajectories"""
         path = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'scan_optim.xyz')

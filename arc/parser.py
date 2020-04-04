@@ -172,7 +172,27 @@ def parse_geometry(path):
         coords, number, _ = log.load_geometry()
     except LogError:
         logger.debug(f'Could not parse xyz from {path}')
+
+        # try parsing Gaussian standard orientation instead of the input orientation parsed by Arkane
+        lines = _get_lines_from_file(path)
+        xyz_str = ''
+        for i in range(len(lines)):
+            if 'Standard orientation:' in lines[i]:
+                xyz_str = ''
+                j = i
+                while not lines[j].split()[0].isdigit():
+                    j += 1
+                while '-------------------' not in lines[j]:
+                    splits = lines[j].split()
+                    xyz_str += f'{qcel.periodictable.to_E(int(splits[1]))}  {splits[3]}  {splits[4]}  {splits[5]}\n'
+                    j += 1
+                break
+
+        if xyz_str:
+            return str_to_xyz(xyz_str)
+
         return None
+
     return xyz_from_data(coords=coords, numbers=number)
 
 
