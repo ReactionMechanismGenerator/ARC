@@ -336,6 +336,7 @@ class Scheduler(object):
                 for i, user_guess in enumerate(rxn.ts_xyz_guess):  # this is a list of guesses, could be empty
                     ts_species.ts_guesses.append(TSGuess(method=f'user guess {i}', xyz=user_guess,
                                                          rmg_reaction=rxn.rmg_reaction))
+                rxn.check_atom_balance()
 
         for species in self.species_list:
             if not isinstance(species, ARCSpecies):
