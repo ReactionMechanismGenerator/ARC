@@ -913,7 +913,7 @@ class ARCSpecies(object):
                 logger.warning('Could not generate a cheap conformer for {0}'.format(self.label))
                 self.cheap_conformer = None
 
-    def get_xyz(self, generate: bool = True) -> dict:
+    def get_xyz(self, generate: bool = True) -> Union[dict, None]:
         """
         Get the highest quality xyz the species has.
         If it doesn't have any 3D information, and if ``generate`` is ``True``, cheaply generate it.
@@ -1284,7 +1284,7 @@ class ARCSpecies(object):
             else:
                 logger.error(f'Could not infer a 2D graph for species {self.label}')
 
-    def process_xyz(self, xyz_list: list or str or dict):
+    def process_xyz(self, xyz_list: Union[list, str, dict]):
         """
         Process the user's input and add either to the .conformers attribute or to .ts_guesses.
 
@@ -1302,8 +1302,8 @@ class ARCSpecies(object):
             xyzs, energies = list(), list()
             for xyz in xyz_list:
                 if not isinstance(xyz, (str, dict)):
-                    raise InputError('Each xyz entry in xyz_list must be either a string or a dictionary. '
-                                     'Got:\n{0}\nwhich is a {1}'.format(xyz, type(xyz)))
+                    raise InputError(f'Each xyz entry in xyz_list must be either a string or a dictionary. '
+                                     f'Got:\n{xyz}\nwhich is a {type(xyz)}')
                 if isinstance(xyz, dict):
                     xyzs.append(remove_dummies(check_xyz_dict(xyz)))
                     energies.append(None)  # dummy (lists should be the same length)
