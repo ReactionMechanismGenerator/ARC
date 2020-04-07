@@ -311,6 +311,11 @@ def determine_ess_status(output_path: str,
                     error = f'Specified wavefunction method is not converged. Please restart calculation with larger ' \
                             f'max iterations or with different convergence flags.'
                     break
+                elif 'ORCA finished by error termination in GTOInt' in line:
+                    error = f'GTOInt error in Orca. Assuming memory allocation error.'
+                    keywords.append('GTOInt')
+                    keywords.append('Memory')
+                    break
             if done:
                 return 'done', keywords, '', ''
             error = error if error else 'Orca job terminated for an unknown reason.'
