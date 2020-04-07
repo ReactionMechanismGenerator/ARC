@@ -769,14 +769,14 @@ wf,spin={spin},charge={charge};}}
                 if self.is_ts:
                     job_type_1 = 'opt=(ts, calcfc, noeigentest, maxstep=5, maxcycles=100)'
                 else:
-                    job_type_1 = 'opt'
+                    job_type_1 = 'opt=(calcfc)'
                 if self.fine:
                     # Note that the Acc2E argument is not available in Gaussian03
                     fine = 'scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
                     if self.is_ts:
                         job_type_1 = 'opt=(ts, calcfc, noeigentest, tight, maxstep=5, maxcycles=100)'
                     else:
-                        job_type_1 = 'opt=(tight)'
+                        job_type_1 = 'opt=(tight, calcfc)'
                 if self.checkfile is not None:
                     job_type_1 += ' guess=read'
                 else:
