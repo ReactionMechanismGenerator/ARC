@@ -153,6 +153,16 @@ class TestTrsh(unittest.TestCase):
         self.assertEqual(error, expected_error_msg)
         self.assertIn('parallel calculation exceeds', line)
 
+        # test detection of generic GTOInt failure
+        path = os.path.join(self.base_path['orca'], 'orca_GTOInt_error.log')
+        status, keywords, error, line = trsh.determine_ess_status(
+            output_path=path, species_label='test', job_type='sp', software='orca')
+        self.assertEqual(status, 'errored')
+        self.assertEqual(keywords, ['GTOInt', 'Memory'])
+        expected_error_msg = 'GTOInt error in Orca. Assuming memory allocation error.'
+        self.assertEqual(error, expected_error_msg)
+        self.assertIn('ORCA finished by error termination in GTOInt', line)
+
         # test detection of generic MDCI failure
         path = os.path.join(self.base_path['orca'], 'orca_mdci_error.log')
         status, keywords, error, line = trsh.determine_ess_status(
