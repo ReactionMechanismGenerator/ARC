@@ -756,6 +756,26 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
         globalized_string = common.globalize_path(string=string, project_directory='')
         self.assertEqual(globalized_string, string)
 
+    def test_estimate_orca_mem_cpu_requirement(self):
+        """Test estimating memory and cpu requirements for an Orca job."""
+        num_heavy_atoms_0 = 0
+        est_cpu_0, est_memory_0 = common.estimate_orca_mem_cpu_requirement(num_heavy_atoms_0)
+        expected_cpu_0, expected_memory_0 = 2, 4000.0
+        self.assertEqual(est_cpu_0, expected_cpu_0)
+        self.assertEqual(est_memory_0, expected_memory_0)
+
+        num_heavy_atoms_1 = 12
+        est_cpu_1, est_memory_1 = common.estimate_orca_mem_cpu_requirement(num_heavy_atoms_1)
+        expected_cpu_1, expected_memory_1 = 50, 100000.0
+        self.assertEqual(est_cpu_1, expected_cpu_1)
+        self.assertEqual(est_memory_1, expected_memory_1)
+
+        num_heavy_atoms_2 = 12
+        est_cpu_2, est_memory_2 = common.estimate_orca_mem_cpu_requirement(num_heavy_atoms_2, 'server2', True)
+        expected_cpu_2, expected_memory_2 = 48, 96000.0
+        self.assertEqual(est_cpu_2, expected_cpu_2)
+        self.assertEqual(est_memory_2, expected_memory_2)
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
