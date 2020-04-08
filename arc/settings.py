@@ -172,3 +172,10 @@ minimum_barrier = 1.0   # a rotor threshold (kJ/mol) below which it is considere
 inconsistency_az = 5    # maximum allowed inconsistency (kJ/mol) between initial and final rotor scan points. Default: 5
 inconsistency_ab = 0.3  # maximum allowed inconsistency between consecutive points in the scan given as a fraction
 #  of the maximum scan energy. Default: 30%
+
+# Default job memory, cpu, time settings
+default_job_settings = {'job_total_memory_gb': 14,
+                        'job_cpu_cores': 8,
+                        'job_time_limit_hrs': 120,
+                        'job_max_server_node_memory_allocation': 0.8,  # e.g., at most 80% node memory will be used
+                        }
