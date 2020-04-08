@@ -985,16 +985,33 @@ def is_notebook() -> bool:
 
 def is_str_float(value: str) -> bool:
     """
-    Check whether a string represents a number.
+    Check whether a string can be converted to a floating number.
 
     Args:
         value (str): The string to check.
 
     Returns:
-        bool: ``True`` if it does, ``False`` otherwise.
+        bool: ``True`` if it can, ``False`` otherwise.
     """
     try:
         float(value)
+        return True
+    except ValueError:
+        return False
+
+
+def is_str_int(value: str) -> bool:
+    """
+    Check whether a string can be converted to an integer.
+
+    Args:
+        value (str): The string to check.
+
+    Returns:
+        bool: ``True`` if it can, ``False`` otherwise.
+    """
+    try:
+        int(value)
         return True
     except ValueError:
         return False
