@@ -1766,9 +1766,13 @@ end
         """
         Set the amount of cpus and memory based on ESS and cluster software.
         """
+        max_cpu = servers[self.server].get('cpus', None)  # max cpus per node on server
+        # set to 8 if user did not specify cpu in settings and in ARC input file
+        job_cpu_cores = default_job_settings.get('job_cpu_cores', 8)
+        if max_cpu is not None and job_cpu_cores > max_cpu:
+            job_cpu_cores = max_cpu
         if self.cpu_cores is None:
-            # set to 8 if user did not specify cpu in settings and in ARC input file
-            self.cpu_cores = servers[self.server].get('cpus', 8)
+            self.cpu_cores = job_cpu_cores
 
         max_mem = servers[self.server].get('memory', None)  # max memory per node in GB
         job_max_server_node_memory_allocation = default_job_settings.get('job_max_server_node_memory_allocation', 0.8)
