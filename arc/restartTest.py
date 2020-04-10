@@ -173,7 +173,7 @@ class TestARC(unittest.TestCase):
                     break
         self.assertTrue(got_rate)
 
-    def test_resrart_bde(self):
+    def test_restart_bde(self):
         """Test restarting ARC and attaining reaction a rate coefficient"""
         restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart', '3_restart_bde', 'restart.yml')
         arc1 = ARC(input_dict=restart_path)
