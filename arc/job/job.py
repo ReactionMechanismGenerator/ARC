@@ -275,6 +275,8 @@ class Job(object):
                      'gsm', 'irc', 'ts_guess', 'orbitals', 'onedmin', 'ff_param_fit', 'gromacs']
         if self.job_type not in job_types:
             raise ValueError(f'Job type {self.job_type} not understood. Must be one of the following:\n{job_types}')
+        if self.job_type != 'sp':
+            self.solvation = None
         if self.xyz is None and not self.job_type == 'gromacs':
             raise InputError(f'{self.job_type} Job of species {self.species_name} got None for xyz')
         if self.job_type == 'gromacs' and self.conformers is None:
