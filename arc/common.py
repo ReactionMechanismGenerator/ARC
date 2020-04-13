@@ -22,7 +22,7 @@ import yaml
 import numpy as np
 import qcelemental as qcel
 
-from typing import List, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
 
 from arkane.ess import GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
 from arkane.util import determine_qm_software
@@ -39,7 +39,9 @@ logger = logging.getLogger('arc')
 VERSION = '1.1.0'
 
 
-def initialize_job_types(job_types, specific_job_type=''):
+def initialize_job_types(job_types: dict,
+                         specific_job_type: str = '',
+                         ) -> dict:
     """
     A helper function for initializing job_types.
     Returns the comprehensive (default values for missing job types) job types for ARC.
@@ -99,7 +101,7 @@ def initialize_job_types(job_types, specific_job_type=''):
     return job_types
 
 
-def determine_ess(log_file):
+def determine_ess(log_file: str) -> str:
     """
     Determine the ESS to which the log file belongs.
 
@@ -124,7 +126,7 @@ def determine_ess(log_file):
                      f'Gaussian, Molpro, Orca, QChem, or TeraChem.')
 
 
-def check_ess_settings(ess_settings=None):
+def check_ess_settings(ess_settings: Optional[dict] = None) -> dict:
     """
     A helper function to convert servers in the ess_settings dict to lists
     Assists in troubleshooting job and trying a different server
@@ -163,7 +165,11 @@ def check_ess_settings(ess_settings=None):
     return settings
 
 
-def initialize_log(log_file, project, project_directory=None, verbose=logging.INFO):
+def initialize_log(log_file: str,
+                   project: str,
+                   project_directory: Optional[str] = None,
+                   verbose: int = logging.INFO,
+                   ) -> None:
     """
     Set up a logger for ARC.
 
@@ -226,7 +232,9 @@ def get_logger():
     return logger
 
 
-def log_header(project, level=logging.INFO):
+def log_header(project: str,
+               level: int = logging.INFO,
+               ) -> None:
     """
     Output a header containing identifying information about ARC to the log.
 
@@ -259,7 +267,9 @@ def log_header(project, level=logging.INFO):
     logger.info(f'Starting project {project}')
 
 
-def log_footer(execution_time, level=logging.INFO):
+def log_footer(execution_time: str,
+               level: int = logging.INFO,
+               ) -> None:
     """
     Output a footer for the log.
 
@@ -312,7 +322,7 @@ def get_git_branch():
 
 
 def read_yaml_file(path: str,
-                   project_directory: str = None,
+                   project_directory: Optional[str] = None,
                    ) -> dict or list:
     """
     Read a YAML file (usually an input / restart file, but also conformers file)
@@ -537,7 +547,7 @@ def get_single_bond_length(symbol1: str,
     return 2.5
 
 
-def determine_symmetry(xyz):
+def determine_symmetry(xyz: dict) -> Tuple[int, int]:
     """
     Determine external symmetry and chirality (optical isomers) of the species.
 
@@ -547,7 +557,9 @@ def determine_symmetry(xyz):
     Returns:
         int: The external symmetry number.
     Returns:
-        int: 1 if no chiral centers are present, 2 if chiral centers are present.
+        Tuple[int, int]:
+            - The external symmetry number.
+            - ``1`` if no chiral centers are present, ``2`` if chiral centers are present.
     """
     atom_numbers = list()  # List of atomic numbers
     for symbol in xyz['symbols']:
@@ -635,7 +647,9 @@ def extermum_list(lst: list,
         return max([entry for entry in lst if entry is not None])
 
 
-def sort_two_lists_by_the_first(list1, list2):
+def sort_two_lists_by_the_first(list1: List[Union[float, int, None]],
+                                list2: List[Union[float, int, None]],
+                                ) -> Tuple[List[Union[float, int]], List[Union[float, int]]]:
     """
     Sort two lists in increasing order by the values of the first list.
     Ignoring None entries from list1 and their respective entries in list2.
@@ -681,7 +695,9 @@ def sort_two_lists_by_the_first(list1, list2):
     return sorted_list1, sorted_list2
 
 
-def key_by_val(dictionary, value):
+def key_by_val(dictionary: dict,
+               value: Any,
+               ) -> Any:
     """
     A helper function for getting a key from a dictionary corresponding to a certain value.
     Does not check for value unicity.
@@ -839,7 +855,7 @@ def determine_model_chemistry_type(method: str or dict) -> str:
     return model_chemistry_class
 
 
-def format_level_of_theory_inputs(level_of_theory: str or dict):
+def format_level_of_theory_inputs(level_of_theory: Union[str, dict]) -> Tuple[dict, str]:
     """
     A helper function to format level of theory inputs for internal use in ARC.
 
