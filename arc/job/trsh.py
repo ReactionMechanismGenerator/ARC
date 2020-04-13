@@ -10,7 +10,7 @@ import os
 
 import numpy as np
 
-from arc.common import get_logger, determine_ess
+from arc.common import get_logger, determine_ess, estimate_orca_mem_cpu_requirement
 from arc.exceptions import SpeciesError, TrshError
 from arc.job.local import execute_command
 from arc.job.ssh import SSHClient
@@ -223,9 +223,17 @@ def determine_ess_status(output_path: str,
                     keywords = ['SCF']
                     for j, info in enumerate(reverse_lines):
                         if 'Please increase MaxCore' in info:
-                            estimated_mem = info.split()[-2]  # e.g., Please increase MaxCore to more than: 289 MB
+                            try:
+                                # e.g., Please increase MaxCore to more than: 289 MB
+                                estimated_mem = float(info.split()[-2]) + 500
+                            except ValueError:
+                                error = f'Insufficient Orca job memory. ARC will estimate the amount of memory ' \
+                                        f'required.'
+                                keywords.append('Memory')
+                                break
                             keywords.append('Memory')
-                            line = reverse_lines[j + 3].rstrip()  # e.g., Error (ORCA_SCF): Not enough memory available!
+                            # e.g., Error (ORCA_SCF): Not enough memory available!
+                            line = reverse_lines[j + 3].rstrip()
                             error = f'Orca suggests to increase per cpu core memory to {estimated_mem} MB.'
                             break
                     else:
@@ -235,30 +243,47 @@ def determine_ess_status(output_path: str,
                     keywords = ['MDCI']
                     for j, info in enumerate(reverse_lines):
                         if 'Please increase MaxCore' in info:
-                            # e.g., Please increase MaxCore - by at least ( 9717.9 MB)
-                            # This message appears multiple times, and suggest different memory at each appearance
-                            # Need to store all suggested memory values, and then pick the largest one
                             estimated_mem_list = []
                             for message in reverse_lines:
                                 if 'Please increase MaxCore' in message:
-                                    estimated_mem = math.ceil(float(message.split()[-2]))
+                                    try:
+                                        # e.g., Please increase MaxCore - by at least ( 9717.9 MB)
+                                        # This message appears multiple times, and suggest different memory at each
+                                        # appearance. Need to store all suggested memory values, and then pick the
+                                        # largest one. This error msg appears in Orca version 4.2.x
+                                        estimated_mem = math.ceil(float(message.split()[-2]))
+                                    except ValueError:
+                                        # e.g., Please increase MaxCore
+                                        # In old Orca versions, there is no indication on the minimum memory requirement
+                                        error = f'Insufficient Orca job memory. ARC will estimate the amount of ' \
+                                                f'memory required.'
+                                        break
                                     estimated_mem_list.append(estimated_mem)
+                            if estimated_mem_list:
+                                estimated_max_mem = np.max(estimated_mem_list) + 500
+                                error = f'Orca suggests to increase per cpu core memory to {estimated_max_mem} MB.'
                             keywords.append('Memory')
-                            estimated_max_mem = np.max(estimated_mem_list)
-                            error = f'Orca suggests to increase per cpu core memory to {estimated_max_mem} MB.'
                             line = info
                             break
                         elif 'parallel calculation exceeds number of pairs' in info:
-                            # e.g., Error (ORCA_MDCI): Number of processes (16) in parallel calculation exceeds
-                            # number of pairs (10)
-                            max_core = int(info.split()[-1].strip('()'))
+                            try:
+                                # e.g., Error (ORCA_MDCI): Number of processes (16) in parallel calculation exceeds
+                                # number of pairs (10) - error msg in Orca version 4.2.x
+                                max_core = int(info.split()[-1].strip('()'))
+                                error = f'Orca cannot utilize cpu cores more than electron pairs in a molecule. The ' \
+                                        f'maximum number of cpu cores can be used for this job is {max_core}.'
+                            except ValueError:
+                                # e.g., Error (ORCA_MDCI): Number of processes in parallel calculation exceeds
+                                # number of pairs - error msg in Orca version 4.1.x
+                                error = f'Orca cannot utilize cpu cores more than electron pairs in a molecule. ARC ' \
+                                        f'will estimate the number of cpu cores needed based on the number of heavy ' \
+                                        f'atoms in the molecule.'
                             keywords.append('cpu')
-                            error = f'Orca cannot utilize cpu cores more than electron pairs in a molecule. The ' \
-                                    f'maximum number of cpu cores can be used for this job is {max_core}.'
                             line = info
                             break
                     else:
-                        error = f'MDCI error in Orca.'
+                        error = f'MDCI error in Orca. Assuming memory allocation error.'
+                        keywords.append('Memory')
                     break
                 elif 'Error : multiplicity' in line:
                     keywords = ['Input']
@@ -285,6 +310,11 @@ def determine_ess_status(output_path: str,
                     keywords = ['Convergence']
                     error = f'Specified wavefunction method is not converged. Please restart calculation with larger ' \
                             f'max iterations or with different convergence flags.'
+                    break
+                elif 'ORCA finished by error termination in GTOInt' in line:
+                    error = f'GTOInt error in Orca. Assuming memory allocation error.'
+                    keywords.append('GTOInt')
+                    keywords.append('Memory')
                     break
             if done:
                 return 'done', keywords, '', ''
@@ -723,8 +753,15 @@ def trsh_ess_job(label: str,
             # `Error  (ORCA_SCF): Not enough memory available! Please increase MaxCore to more than: 289 MB`.
             if 'memory' not in ess_trsh_methods:
                 ess_trsh_methods.append('memory')
-            estimated_mem_per_core = float(job_status['error'].split()[-2])  # parse Orca's memory requirement in MB
-            estimated_mem_per_core = int(np.ceil(estimated_mem_per_core / 100.0)) * 100  # round up to the next hundred
+            try:
+                # parse Orca's memory requirement in MB
+                estimated_mem_per_core = float(job_status['error'].split()[-2])
+            except ValueError:
+                estimated_mem_per_core = estimate_orca_mem_cpu_requirement(num_heavy_atoms=num_heavy_atoms,
+                                                                           server=server,
+                                                                           consider_server_limits=True)[1]/cpu_cores
+            # round up to the next hundred
+            estimated_mem_per_core = int(np.ceil(estimated_mem_per_core / 100.0)) * 100
             if 'max_total_job_memory' in job_status['keywords']:
                 per_cpu_core_memory = np.ceil(memory_gb / cpu_cores * 1024)
                 logger.info(f'The crashed Orca job {label} was ran with {cpu_cores} cpu cores and '
@@ -751,11 +788,14 @@ def trsh_ess_job(label: str,
                             f'and {cpu_cores} cpu cores.')
         elif 'cpu' in job_status['keywords']:
             # Reduce cpu allocation.
-            # job_status will be for example
-            # Error (ORCA_MDCI): Number of processes (16) in parallel calculation exceeds number of pairs (10)
-            cpu_cores = int(job_status['error'].split()[-1].strip('.'))  # max_cpu_cores_allowed
-            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using {cpu_cores} cpu cores '
-                        f'(reduced).')
+            try:
+                # job_status will be for example (Orca varsion 4.2.x)
+                # Error (ORCA_MDCI): Number of processes (16) in parallel calculation exceeds number of pairs (10)
+                cpu_cores = int(job_status['error'].split()[-1].strip('.'))  # max_cpu_cores_allowed
+            except ValueError:
+                cpu_cores = estimate_orca_mem_cpu_requirement(num_heavy_atoms=num_heavy_atoms, server=server,
+                                                              consider_server_limits=True)[0]
+            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using {cpu_cores} cpu cores.')
             if 'cpu' not in ess_trsh_methods:
                 ess_trsh_methods.append('cpu')
         elif 'dlpno' in level_of_theory_dict['method'] and is_h:

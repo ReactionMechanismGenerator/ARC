@@ -713,6 +713,25 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
         self.assertFalse(common.is_str_float('R1'))
         self.assertFalse(common.is_str_float('D_3_5_7_4'))
 
+    def test_is_str_int(self):
+        """Test the is_str_int() function"""
+        self.assertTrue(common.is_str_int('0'))
+        self.assertTrue(common.is_str_int('123'))
+        self.assertTrue(common.is_str_int('+123'))
+        self.assertTrue(common.is_str_int('-123'))
+        self.assertFalse(common.is_str_int('6e02'))
+        self.assertFalse(common.is_str_int('+1e1'))
+        self.assertFalse(common.is_str_int('+1e1e'))
+        self.assertFalse(common.is_str_int('text 34'))
+        self.assertFalse(common.is_str_int(' '))
+        self.assertFalse(common.is_str_int('R1'))
+        self.assertFalse(common.is_str_int('D_3_5_7_4'))
+        self.assertFalse(common.is_str_int('.2'))
+        self.assertFalse(common.is_str_int('.0'))
+        self.assertFalse(common.is_str_int('125.84'))
+        self.assertFalse(common.is_str_int('0.0'))
+
+
     def test_get_atom_radius(self):
         """Test determining the covalent radius of an atom"""
         self.assertEqual(common.get_atom_radius('C'), 0.76)
@@ -755,6 +774,26 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
         string = 'some non-path string'
         globalized_string = common.globalize_path(string=string, project_directory='')
         self.assertEqual(globalized_string, string)
+
+    def test_estimate_orca_mem_cpu_requirement(self):
+        """Test estimating memory and cpu requirements for an Orca job."""
+        num_heavy_atoms_0 = 0
+        est_cpu_0, est_memory_0 = common.estimate_orca_mem_cpu_requirement(num_heavy_atoms_0)
+        expected_cpu_0, expected_memory_0 = 2, 4000.0
+        self.assertEqual(est_cpu_0, expected_cpu_0)
+        self.assertEqual(est_memory_0, expected_memory_0)
+
+        num_heavy_atoms_1 = 12
+        est_cpu_1, est_memory_1 = common.estimate_orca_mem_cpu_requirement(num_heavy_atoms_1)
+        expected_cpu_1, expected_memory_1 = 50, 100000.0
+        self.assertEqual(est_cpu_1, expected_cpu_1)
+        self.assertEqual(est_memory_1, expected_memory_1)
+
+        num_heavy_atoms_2 = 12
+        est_cpu_2, est_memory_2 = common.estimate_orca_mem_cpu_requirement(num_heavy_atoms_2, 'server2', True)
+        expected_cpu_2, expected_memory_2 = 48, 96000.0
+        self.assertEqual(est_cpu_2, expected_cpu_2)
+        self.assertEqual(est_memory_2, expected_memory_2)
 
 
 if __name__ == '__main__':

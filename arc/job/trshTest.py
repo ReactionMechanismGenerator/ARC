@@ -128,7 +128,7 @@ class TestTrsh(unittest.TestCase):
             output_path=path, species_label='test', job_type='sp', software='orca')
         self.assertEqual(status, 'errored')
         self.assertEqual(keywords, ['SCF', 'Memory'])
-        expected_error_msg = 'Orca suggests to increase per cpu core memory to 289 MB.'
+        expected_error_msg = 'Orca suggests to increase per cpu core memory to 789.0 MB.'
         self.assertEqual(error, expected_error_msg)
         self.assertEqual(' Error  (ORCA_SCF): Not enough memory available!', line)
 
@@ -138,7 +138,7 @@ class TestTrsh(unittest.TestCase):
             output_path=path, species_label='test', job_type='sp', software='orca')
         self.assertEqual(status, 'errored')
         self.assertEqual(keywords, ['MDCI', 'Memory'])
-        expected_error_msg = 'Orca suggests to increase per cpu core memory to 9718 MB.'
+        expected_error_msg = 'Orca suggests to increase per cpu core memory to 10218 MB.'
         self.assertEqual(error, expected_error_msg)
         self.assertIn('Please increase MaxCore', line)
 
@@ -153,15 +153,47 @@ class TestTrsh(unittest.TestCase):
         self.assertEqual(error, expected_error_msg)
         self.assertIn('parallel calculation exceeds', line)
 
+        # test detection of generic GTOInt failure
+        path = os.path.join(self.base_path['orca'], 'orca_GTOInt_error.log')
+        status, keywords, error, line = trsh.determine_ess_status(
+            output_path=path, species_label='test', job_type='sp', software='orca')
+        self.assertEqual(status, 'errored')
+        self.assertEqual(keywords, ['GTOInt', 'Memory'])
+        expected_error_msg = 'GTOInt error in Orca. Assuming memory allocation error.'
+        self.assertEqual(error, expected_error_msg)
+        self.assertIn('ORCA finished by error termination in GTOInt', line)
+
         # test detection of generic MDCI failure
         path = os.path.join(self.base_path['orca'], 'orca_mdci_error.log')
         status, keywords, error, line = trsh.determine_ess_status(
             output_path=path, species_label='test', job_type='sp', software='orca')
         self.assertEqual(status, 'errored')
-        self.assertEqual(keywords, ['MDCI'])
-        expected_error_msg = 'MDCI error in Orca.'
+        self.assertEqual(keywords, ['MDCI', 'Memory'])
+        expected_error_msg = 'MDCI error in Orca. Assuming memory allocation error.'
         self.assertEqual(error, expected_error_msg)
         self.assertIn('ORCA finished by error termination in MDCI', line)
+
+        # test detection of generic MDCI failure in Orca version 4.2.x log files
+        path = os.path.join(self.base_path['orca'], 'orca_mdci_error_2.log')
+        status, keywords, error, line = trsh.determine_ess_status(
+            output_path=path, species_label='test', job_type='sp', software='orca')
+        self.assertEqual(status, 'errored')
+        self.assertEqual(keywords, ['MDCI', 'Memory'])
+        expected_error_msg = 'MDCI error in Orca. Assuming memory allocation error.'
+        self.assertEqual(error, expected_error_msg)
+        self.assertIn('ORCA finished by error termination in MDCI', line)
+
+        # test detection of MDCI failure in Orca version 4.1.x log files (no memory/cpu suggestions compared to 4.2.x)
+        path = os.path.join(self.base_path['orca'], 'orca_mdci_error_3.log')
+        status, keywords, error, line = trsh.determine_ess_status(
+            output_path=path, species_label='test', job_type='sp', software='orca')
+        self.assertEqual(status, 'errored')
+        self.assertEqual(keywords, ['MDCI', 'cpu'])
+        expected_error_msg = 'Orca cannot utilize cpu cores more than electron pairs in a molecule. ARC will ' \
+                             'estimate the number of cpu cores needed based on the number of heavy atoms in the ' \
+                             'molecule.'
+        self.assertEqual(error, expected_error_msg)
+        self.assertIn('Number of processes in parallel calculation exceeds number of pairs', line)
 
         # test detection of multiplicty and charge combination error
         path = os.path.join(self.base_path['orca'], 'orca_multiplicity_error.log')
@@ -327,7 +359,7 @@ class TestTrsh(unittest.TestCase):
                                                                    cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
         self.assertEqual(cpu_cores, 32)
-        self.assertAlmostEqual(memory, 312)
+        self.assertAlmostEqual(memory, 327)
 
         # orca: test 2
         # Test troubleshooting insufficient memory issue
@@ -353,8 +385,8 @@ class TestTrsh(unittest.TestCase):
                                                                    software, fine, memory_gb, num_heavy_atoms,
                                                                    cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
-        self.assertEqual(cpu_cores, 24)
-        self.assertAlmostEqual(memory, 235)
+        self.assertEqual(cpu_cores, 22)
+        self.assertAlmostEqual(memory, 227)
 
         # orca: test 3
         # Test troubleshooting insufficient memory issue

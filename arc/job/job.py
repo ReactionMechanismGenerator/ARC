@@ -21,8 +21,8 @@ from arc.job.submit import submit_scripts
 from arc.job.ssh import SSHClient
 from arc.job.trsh import determine_ess_status, trsh_job_on_server
 from arc.plotter import save_geo
-from arc.settings import arc_path, servers, submit_filename, t_max_format, input_filename, output_filename, \
-    rotor_scan_resolution, levels_ess, orca_default_options_dict
+from arc.settings import arc_path, default_job_settings, servers, submit_filename, t_max_format, input_filename, \
+    output_filename, rotor_scan_resolution, levels_ess, orca_default_options_dict
 from arc.species.converter import xyz_to_str, str_to_xyz, check_xyz_dict
 from arc.species.vectors import calculate_dihedral_angle
 
@@ -200,9 +200,9 @@ class Job(object):
     """
     def __init__(self, project='', ess_settings=None, species_name='', xyz=None, job_type='', multiplicity=None,
                  project_directory='', charge=0, conformer=-1, fine=False, shift='', software=None, is_ts=False,
-                 scan=None, pivots=None, total_job_memory_gb=14, comments='', trsh='', scan_trsh='', job_dict=None,
+                 scan=None, pivots=None, total_job_memory_gb=None, comments='', trsh='', scan_trsh='', job_dict=None,
                  ess_trsh_methods=None, bath_gas=None, solvation=None, job_num=None, job_server_name=None, job_name=None,
-                 job_id=None, server=None, initial_time=None, occ=None, max_job_time=120, scan_res=None, checkfile=None,
+                 job_id=None, server=None, initial_time=None, occ=None, max_job_time=None, scan_res=None, checkfile=None,
                  number_of_radicals=None, conformers=None, radius=None, directed_scan_type=None, directed_scans=None,
                  directed_dihedrals=None, rotor_index=None, testing=False, cpu_cores=None, job_additional_options=None,
                  job_shortcut_keywords=None, job_level_of_theory_dict=None, irc_direction=None):
@@ -249,7 +249,8 @@ class Job(object):
             self.scan_res = scan_res if scan_res is not None else rotor_scan_resolution
             self.scan = scan
             self.pivots = pivots if pivots is not None else list()
-            self.max_job_time = max_job_time
+            self.max_job_time = max_job_time if max_job_time is not None \
+                else default_job_settings.get('job_time_limit_hrs', 120)
             self.bath_gas = bath_gas
             self.solvation = solvation
             self.testing = testing
@@ -268,7 +269,8 @@ class Job(object):
             self.server = server
             self.software = software
             self.cpu_cores = cpu_cores
-            self.total_job_memory_gb = total_job_memory_gb
+            self.total_job_memory_gb = total_job_memory_gb if total_job_memory_gb is not None \
+                else default_job_settings.get('job_total_memory_gb', 14)
             self.irc_direction = irc_direction
         # allowed job types:
         job_types = ['conformer', 'opt', 'freq', 'optfreq', 'sp', 'composite', 'bde', 'scan', 'directed_scan',
@@ -431,7 +433,8 @@ class Job(object):
         self.is_ts = job_dict['is_ts'] if 'is_ts' in job_dict else False
         self.scan = job_dict['scan'] if 'scan' in job_dict else None
         self.pivots = job_dict['pivots'] if 'pivots' in job_dict else list()
-        self.total_job_memory_gb = job_dict['total_job_memory_gb'] if 'total_job_memory_gb' in job_dict else 14
+        self.total_job_memory_gb = job_dict['total_job_memory_gb'] if 'total_job_memory_gb' in job_dict \
+            else default_job_settings.get('job_total_memory_gb', 14)
         self.cpu_cores = job_dict['cpu_cores'] if 'cpu_cores' in job_dict else None
         self.comments = job_dict['comments'] if 'comments' in job_dict else ''
         self.trsh = job_dict['trsh'] if 'trsh' in job_dict else ''
@@ -449,7 +452,8 @@ class Job(object):
         self.job_id = job_dict['job_id'] if 'job_id' in job_dict else 0
         self.server = job_dict['server'] if 'server' in job_dict else None
         self.occ = job_dict['occ'] if 'occ' in job_dict else None
-        self.max_job_time = job_dict['max_job_time'] if 'max_job_time' in job_dict else 120
+        self.max_job_time = job_dict['max_job_time'] if 'max_job_time' in job_dict \
+            else default_job_settings.get('job_time_limit_hrs', 120)
         self.scan_res = job_dict['scan_res'] if 'scan_res' in job_dict else rotor_scan_resolution
         self.checkfile = job_dict['checkfile'] if 'checkfile' in job_dict else None
         self.number_of_radicals = job_dict['number_of_radicals'] if 'number_of_radicals' in job_dict else None
@@ -1762,16 +1766,21 @@ end
         """
         Set the amount of cpus and memory based on ESS and cluster software.
         """
+        max_cpu = servers[self.server].get('cpus', None)  # max cpus per node on server
+        # set to 8 if user did not specify cpu in settings and in ARC input file
+        job_cpu_cores = default_job_settings.get('job_cpu_cores', 8)
+        if max_cpu is not None and job_cpu_cores > max_cpu:
+            job_cpu_cores = max_cpu
         if self.cpu_cores is None:
-            # set to 8 if user did not specify cpu in settings and in ARC input file
-            self.cpu_cores = servers[self.server].get('cpus', 8)
+            self.cpu_cores = job_cpu_cores
 
         max_mem = servers[self.server].get('memory', None)  # max memory per node in GB
-        if max_mem is not None and self.total_job_memory_gb > max_mem * 0.8:
+        job_max_server_node_memory_allocation = default_job_settings.get('job_max_server_node_memory_allocation', 0.8)
+        if max_mem is not None and self.total_job_memory_gb > max_mem * job_max_server_node_memory_allocation:
             logger.warning(f'The memory for job {self.job_name} using {self.software} ({self.total_job_memory_gb} GB) '
-                           f'exceeds 80% of the the maximum node memory on {self.server}. '
-                           f'Setting it to 80% * {max_mem} GB.')
-            self.total_job_memory_gb = 0.8 * max_mem
+                           f'exceeds {100 * job_max_server_node_memory_allocation}% of the the maximum node memory on '
+                           f'{self.server}. Setting it to {job_max_server_node_memory_allocation * max_mem} GB.')
+            self.total_job_memory_gb = job_max_server_node_memory_allocation * max_mem
             total_submit_script_memory = self.total_job_memory_gb * 1024 * 1.05  # MB
             self.job_status[1]['keywords'].append('max_total_job_memory')  # useful info when trouble shoot
         else:
