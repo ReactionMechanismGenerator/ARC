@@ -141,11 +141,11 @@ class Job(object):
                          ARC adopts the following naming system to describe computing hardware hierarchy
                          node > cpu > cpu_cores > cpu_threads
         input_file_memory (int): The memory ARC writes to job input files in appropriate formats per ESS.
-                                 In software like Gaussian, this varible is total memory for all cpu cores.
-                                 In software like Orca, this varible is memory per cpu core.
+                                 In software like Gaussian, this variable is total memory for all cpu cores.
+                                 In software like Orca, this variable is memory per cpu core.
         submit_script_memory (int): The memory ARC writes to submit script in appropriate formats per cluster system.
-                                    In system like Sun Grid Engine, this varible is total memory for all cpu cores.
-                                    In system like Slurm, this varible is memory per cpu core.
+                                    In system like Sun Grid Engine, this variable is total memory for all cpu cores.
+                                    In system like Slurm, this variable is memory per cpu core.
                                     Notice that submit_script_memory > input_file_memory because additional memory is
                                     needed to execute a job on server properly
         total_job_memory_gb (int): The total memory ARC specifies for a job in GB.
