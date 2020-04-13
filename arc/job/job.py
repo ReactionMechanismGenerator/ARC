@@ -345,7 +345,7 @@ class Job(object):
         job_dict['fine'] = self.fine
         job_dict['job_status'] = self.job_status
         job_dict['cpu_cores'] = self.cpu_cores
-        job_dict['total_job_memory_gb'] = self.total_job_memory_gb
+        job_dict['total_job_memory_gb'] = int(self.total_job_memory_gb)
         job_dict['job_id'] = self.job_id
         job_dict['scan_res'] = self.scan_res
         job_dict['is_ts'] = self.is_ts
