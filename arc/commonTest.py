@@ -713,6 +713,25 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
         self.assertFalse(common.is_str_float('R1'))
         self.assertFalse(common.is_str_float('D_3_5_7_4'))
 
+    def test_is_str_int(self):
+        """Test the is_str_int() function"""
+        self.assertTrue(common.is_str_int('0'))
+        self.assertTrue(common.is_str_int('123'))
+        self.assertTrue(common.is_str_int('+123'))
+        self.assertTrue(common.is_str_int('-123'))
+        self.assertFalse(common.is_str_int('6e02'))
+        self.assertFalse(common.is_str_int('+1e1'))
+        self.assertFalse(common.is_str_int('+1e1e'))
+        self.assertFalse(common.is_str_int('text 34'))
+        self.assertFalse(common.is_str_int(' '))
+        self.assertFalse(common.is_str_int('R1'))
+        self.assertFalse(common.is_str_int('D_3_5_7_4'))
+        self.assertFalse(common.is_str_int('.2'))
+        self.assertFalse(common.is_str_int('.0'))
+        self.assertFalse(common.is_str_int('125.84'))
+        self.assertFalse(common.is_str_int('0.0'))
+
+
     def test_get_atom_radius(self):
         """Test determining the covalent radius of an atom"""
         self.assertEqual(common.get_atom_radius('C'), 0.76)
