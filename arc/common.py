@@ -22,6 +22,8 @@ import yaml
 import numpy as np
 import qcelemental as qcel
 
+from typing import List, Tuple, Union
+
 from arkane.ess import GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
 from arkane.util import determine_qm_software
 from rmgpy.molecule.element import get_element
@@ -1017,3 +1019,44 @@ def time_lapse(t0):
     else:
         d = ''
     return f'{d}{h:02.0f}:{m:02.0f}:{s:02.0f}'
+
+
+def estimate_orca_mem_cpu_requirement(num_heavy_atoms: int,
+                                      server: str = '',
+                                      consider_server_limits: bool = False,
+                                      ) -> Tuple[int, float]:
+    """
+    Estimates memory and cpu requirements for an Orca job.
+
+    Args:
+        num_heavy_atoms (int): The number of heavy atoms in the species.
+        server (str): The name of the server where Orca runs.
+        consider_server_limits (bool):  Try to give realistic estimations.
+
+    Returns:
+        Tuple[int, float]:
+            - the amount of total memory (MB) and cpu cores required for the Orca job of given species.
+    """
+    max_server_mem_gb = None
+    max_server_cpus = None
+
+    if consider_server_limits:
+        if server in servers:
+            max_server_mem_gb = servers[server].get('memory', None)
+            max_server_cpus = servers[server].get('cpus', None)
+        else:
+            logger.debug(f'Cannot find server {server} in settings.py')
+            consider_server_limits = False
+
+        max_server_mem_gb = max_server_mem_gb if is_str_int(max_server_mem_gb) else None
+        max_server_cpus = max_server_cpus if is_str_int(max_server_cpus) else None
+
+    est_cpu = 2 + num_heavy_atoms * 4
+    if consider_server_limits and max_server_cpus and est_cpu > max_server_cpus:
+        est_cpu = max_server_cpus
+
+    est_memory = 2000.0 * est_cpu
+    if consider_server_limits and max_server_mem_gb and est_memory > max_server_mem_gb * 1024:
+        est_memory = max_server_mem_gb * 1024
+
+    return est_cpu, est_memory
