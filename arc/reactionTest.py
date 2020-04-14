@@ -11,14 +11,17 @@ from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 
 import arc.rmgdb as rmgdb
+from arc.exceptions import ReactionError
 from arc.reaction import ARCReaction
 from arc.settings import default_ts_methods
+from arc.species import ARCSpecies
 
 
 class TestARCReaction(unittest.TestCase):
     """
     Contains unit tests for the ARCSpecies class
     """
+
     @classmethod
     def setUpClass(cls):
         """
@@ -118,6 +121,46 @@ class TestARCReaction(unittest.TestCase):
 
         self.rxn4.determine_rxn_multiplicity()
         self.assertEqual(self.rxn4.multiplicity, 3)
+
+    def test_check_atom_balance(self):
+        """Test the Reaction check_atom_balance method"""
+
+        # A normal reaction
+        rxn1 = ARCReaction(reactants=['CH4', 'OH'], products=['CH3', 'H2O'])
+        rxn1.r_species = [ARCSpecies(label='CH4', smiles='C'),
+                          ARCSpecies(label='OH', smiles='[OH]')]
+        rxn1.p_species = [ARCSpecies(label='CH3', smiles='[CH3]'),
+                          ARCSpecies(label='H2O', smiles='O')]
+        self.assertTrue(rxn1.check_atom_balance())
+
+        # A non-balanced reaction
+        rxn2 = ARCReaction(reactants=['CH4', 'OH'], products=['CH4', 'H2O'])
+        rxn2.r_species = [ARCSpecies(label='CH4', smiles='C'),
+                          ARCSpecies(label='OH', smiles='[OH]')]
+        rxn2.p_species = [ARCSpecies(label='CH4', smiles='C'),
+                          ARCSpecies(label='H2O', smiles='O')]
+        self.assertFalse(rxn2.check_atom_balance(raise_error=False))
+        with self.assertRaises(ReactionError):
+            rxn2.check_atom_balance()
+
+        # A reaction with the same species twice on one side
+        rxn3 = ARCReaction(reactants=['CH4', 'OH', 'H2O'], products=['CH3', 'H2O', 'H2O'])
+        rxn3.r_species = [ARCSpecies(label='CH4', smiles='C'),
+                          ARCSpecies(label='OH', smiles='[OH]'),
+                          ARCSpecies(label='H2O', smiles='O')]
+        rxn3.p_species = [ARCSpecies(label='CH3', smiles='[CH3]'),
+                          ARCSpecies(label='H2O', smiles='O')]
+        self.assertTrue(rxn3.check_atom_balance())
+
+    def test_get_species_count(self):
+        """Test the get_species_count() method"""
+        rxn1 = ARCReaction(reactants=['CH4', 'OH', 'H2O'], products=['CH3', 'H2O', 'H2O'])
+        spc1 = ARCSpecies(label='OH', smiles='[OH]')
+        spc2 = ARCSpecies(label='H2O', smiles='O')
+        self.assertEqual(rxn1.get_species_count(species=spc1, well=0), 1)
+        self.assertEqual(rxn1.get_species_count(species=spc1, well=1), 0)
+        self.assertEqual(rxn1.get_species_count(species=spc2, well=0), 1)
+        self.assertEqual(rxn1.get_species_count(species=spc2, well=1), 2)
 
 
 if __name__ == '__main__':
