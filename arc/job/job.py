@@ -771,7 +771,7 @@ wf,spin={spin},charge={charge};}}
         if self.job_type in ['conformer', 'opt']:
             if self.software == 'gaussian':
                 if self.is_ts:
-                    job_type_1 = 'opt=(ts, calcfc, noeigentest, maxstep=5, maxcycles=100)'
+                    job_type_1 = 'opt=(ts, calcfc, noeigentest, maxcycles=100)'
                 else:
                     job_type_1 = 'opt=(calcfc)'
                 if self.fine:
@@ -780,7 +780,7 @@ wf,spin={spin},charge={charge};}}
                     if self.is_ts:
                         job_type_1 = 'opt=(ts, calcfc, noeigentest, tight, maxstep=5, maxcycles=100)'
                     else:
-                        job_type_1 = 'opt=(tight, calcfc)'
+                        job_type_1 = 'opt=(tight, calcfc, maxstep=5)'
                 if self.checkfile is not None:
                     job_type_1 += ' guess=read'
                 else:
