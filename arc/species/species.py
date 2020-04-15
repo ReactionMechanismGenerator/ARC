@@ -9,6 +9,7 @@ If the species is a transition state (TS), its ``ts_guesses`` attribute will hav
 import datetime
 import numpy as np
 import os
+from typing import Optional, Union
 
 import rmgpy.molecule.element as elements
 from arkane.common import ArkaneSpecies, symbol_by_number
@@ -912,7 +913,7 @@ class ARCSpecies(object):
                 logger.warning('Could not generate a cheap conformer for {0}'.format(self.label))
                 self.cheap_conformer = None
 
-    def get_xyz(self, generate: bool = True) -> dict:
+    def get_xyz(self, generate: bool = True) -> Union[dict, None]:
         """
         Get the highest quality xyz the species has.
         If it doesn't have any 3D information, and if ``generate`` is ``True``, cheaply generate it.
@@ -1283,7 +1284,7 @@ class ARCSpecies(object):
             else:
                 logger.error(f'Could not infer a 2D graph for species {self.label}')
 
-    def process_xyz(self, xyz_list: list or str or dict):
+    def process_xyz(self, xyz_list: Union[list, str, dict]):
         """
         Process the user's input and add either to the .conformers attribute or to .ts_guesses.
 
@@ -1301,8 +1302,8 @@ class ARCSpecies(object):
             xyzs, energies = list(), list()
             for xyz in xyz_list:
                 if not isinstance(xyz, (str, dict)):
-                    raise InputError('Each xyz entry in xyz_list must be either a string or a dictionary. '
-                                     'Got:\n{0}\nwhich is a {1}'.format(xyz, type(xyz)))
+                    raise InputError(f'Each xyz entry in xyz_list must be either a string or a dictionary. '
+                                     f'Got:\n{xyz}\nwhich is a {type(xyz)}')
                 if isinstance(xyz, dict):
                     xyzs.append(remove_dummies(check_xyz_dict(xyz)))
                     energies.append(None)  # dummy (lists should be the same length)
@@ -1321,10 +1322,14 @@ class ARCSpecies(object):
                     # string which does not represent a (valid) path, treat as a string representation of xyz
                     xyzs.append(remove_dummies(str_to_xyz(xyz)))
                     energies.append(None)  # dummy (lists should be the same length)
-            for xyz in xyzs:
+            for i, xyz in enumerate(xyzs):
                 if colliding_atoms(xyz):
                     raise SpeciesError(f'The following coordinates for species {self.label} have colliding atoms:\n'
                                        f'{xyz_to_str(xyz)}')
+                if self.mol is not None:
+                    check_atom_balance(xyz, self.mol)
+                elif i:
+                    check_atom_balance(xyz, xyzs[0])
             if not self.is_ts:
                 self.conformers.extend(xyzs)
                 self.conformer_energies.extend(energies)
@@ -2172,3 +2177,59 @@ def check_label(label: str) -> str:
                        f'Original label was: "{original_label}".\n'
                        f'New label is: "{label}"')
     return label
+
+
+def check_atom_balance(entry_1: Union[dict, str, Molecule],
+                       entry_2: Union[dict, str, Molecule],
+                       verbose: Optional[bool] = True,
+                       ) -> bool:
+    """
+    Check whether the two entries are in atom balance.
+
+    Args:
+        entry_1 (Union[dict, str, Molecule]): Either an xyz (dict or str) or an RMG Molecule object.
+        entry_2 (Union[dict, str, Molecule]):  Either an xyz (dict or str) or an RMG Molecule object.
+        verbose (Optional[bool]): Whether to log the differences if found.
+
+    Raises:
+        SpeciesError: If both entries are empty.
+
+    Returns:
+        bool: Whether ``entry1`` and ``entry2`` are in atomic balance. ``True`` id they are.
+    """
+    if not entry_1 or not entry_2:
+        raise SpeciesError(f'Cannot compare entries. Got:\n{entry_1}\nand\n{entry_2}')
+    element_dict_1, element_dict_2, diff = dict(), dict(), dict()
+    result = True
+
+    # Count the number of each element.
+    for element_dict, entry in zip([element_dict_1, element_dict_2], [entry_1, entry_2]):
+        if isinstance(entry, Molecule):
+            for atom in entry.atoms:
+                symbol = atom.element.symbol
+                element_dict[symbol] = element_dict.get(symbol, 0) + 1
+        else:
+            xyz = check_xyz_dict(entry)
+            for symbol in xyz['symbols']:
+                element_dict[symbol] = element_dict.get(symbol, 0) + 1
+
+    # Compare elements.
+    if len(list(element_dict_1.keys())) != len(list(element_dict_1.keys())):
+        result = False
+    if result:
+        for symbol in element_dict_1.keys():
+            if symbol not in list(element_dict_2.keys()):
+                result = False
+                break
+            num_1, num_2 = element_dict_1[symbol], element_dict_2[symbol]
+            if num_1 != num_2:
+                result = False
+                break
+
+    if not result:
+        if verbose:
+            logger.error(f'\nEntries have different types or numbers of elements, got:\n'
+                         f'{element_dict_1}\nand\n{element_dict_2}\n')
+        return False
+
+    return result

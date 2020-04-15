@@ -173,11 +173,18 @@ class ArkaneAdapter(StatmechAdapter):
             else:
                 ts_species.e0 = arkane_ts_species.conformer.E0.value_si * 0.001  # convert to kJ/mol
                 self.reaction.dh_rxn298 = \
-                    sum([product.thermo.get_enthalpy(298) for product in self.reaction.p_species]) \
-                    - sum([reactant.thermo.get_enthalpy(298) for reactant in self.reaction.r_species])
-                arkane_rxn = arkane_reaction(label=str(self.reaction.label),
-                                             reactants=[species.label for species in self.reaction.r_species],
-                                             products=[species.label for species in self.reaction.p_species],
+                    sum([product.thermo.get_enthalpy(298) * self.reaction.get_species_count(product, well=1)
+                         for product in self.reaction.p_species]) \
+                    - sum([reactant.thermo.get_enthalpy(298) * self.reaction.get_species_count(reactant, well=0)
+                           for reactant in self.reaction.r_species])
+                reactant_labels, product_labels = list(), list()
+                for reactant in self.reaction.r_species:
+                    reactant_labels.extend([reactant.label] * self.reaction.get_species_count(reactant, well=0))
+                for product in self.reaction.p_species:
+                    product_labels.extend([product.label] * self.reaction.get_species_count(product, well=1))
+                arkane_rxn = arkane_reaction(label=self.reaction.label,
+                                             reactants=reactant_labels,
+                                             products=product_labels,
                                              transitionState=self.reaction.ts_label,
                                              tunneling='Eckart')
                 kinetics_job = KineticsJob(reaction=arkane_rxn, Tmin=self.T_min, Tmax=self.T_max, Tcount=self.T_count)

@@ -5,6 +5,8 @@
 A module for representing a reaction.
 """
 
+from typing import Optional
+
 from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 
@@ -12,7 +14,8 @@ import arc.rmgdb as rmgdb
 from arc.common import extermum_list, get_logger
 from arc.exceptions import ReactionError, InputError
 from arc.settings import default_ts_methods
-from arc.species.species import ARCSpecies
+from arc.species.converter import xyz_to_str
+from arc.species.species import ARCSpecies, check_atom_balance
 
 
 logger = get_logger()
@@ -111,6 +114,7 @@ class ARCReaction(object):
                                 f'reactants and {len(self.products)} products for reaction {self.label}.')
         if self.ts_xyz_guess is not None and not isinstance(self.ts_xyz_guess, list):
             self.ts_xyz_guess = [self.ts_xyz_guess]
+        self.check_atom_balance()
 
     def __str__(self):
         """Return a string representation of the object"""
@@ -455,7 +459,8 @@ class ARCReaction(object):
         if self.r_species is not None:
             for reactant in self.r_species:
                 if reactant.label not in self.reactants:
-                    raise ReactionError(f'Reactant {reactant.label} from not in self.reactants ({self.reactants})')
+                    raise ReactionError(f'Reactant {reactant.label} from {self.label} '
+                                        f'not in self.reactants ({self.reactants})')
             for reactant in reactants:
                 if reactant not in [r.label for r in self.r_species]:
                     raise ReactionError(f'Reactant {reactant} from the reaction label {self.label} '
@@ -467,7 +472,8 @@ class ARCReaction(object):
         if self.p_species is not None:
             for product in self.p_species:
                 if product.label not in self.products:
-                    raise ReactionError(f'Product {product.label} from not in self.products ({self.reactants})')
+                    raise ReactionError(f'Product {product.label} from {self.label} '
+                                        f'not in self.products ({self.reactants})')
             for product in products:
                 if product not in [p.label for p in self.p_species]:
                     raise ReactionError(f'Product {product} from the reaction label {self.label} '
@@ -476,3 +482,105 @@ class ARCReaction(object):
                 if product not in [p.label for p in self.p_species]:
                     raise ReactionError(f'Product {product} not in '
                                         f'self.p_species ({[p.label for p in self.p_species]})')
+
+    def check_atom_balance(self,
+                           ts_xyz: Optional[dict] = None,
+                           raise_error: bool = True,
+                           ) -> bool:
+        """
+        Check atom balance between reactants, TSs, and product wells.
+
+        Args:
+            ts_xyz (Optional[dict]): An alternative TS xyz to check.
+                                     If unspecified, user guesses and the ts_species will be checked.
+            raise_error (bool, optional): Whether to raise an error if an imbalance is found.
+
+        Raises:
+            ReactionError: If not all wells and TSs are atom balanced.
+                           The exception is not raised if ``raise_error`` is ``False``.
+
+        Returns:
+            bool: Whether all wells and TSs are atom balanced.
+        """
+        self.arc_species_from_rmg_reaction()
+
+        balanced_wells, balanced_ts_xyz, balanced_xyz_guess, balanced_ts_species_mol, balanced_ts_species_xyz = \
+            True, True, True, True, True
+        r_well, p_well = '', ''
+
+        for reactant in self.r_species:
+            count = self.get_species_count(species=reactant, well=0)
+            xyz = reactant.get_xyz(generate=True)
+            if xyz is not None and xyz:
+                r_well += (xyz_to_str(xyz) + '\n') * count
+            else:
+                r_well = ''
+                break
+
+        for product in self.p_species:
+            count = self.get_species_count(species=product, well=1)
+            xyz = product.get_xyz(generate=True)
+            if xyz is not None and xyz:
+                p_well += (xyz_to_str(xyz) + '\n') * count
+            else:
+                p_well = ''
+                break
+
+        if r_well:
+            for xyz_guess in self.ts_xyz_guess:
+                balanced_xyz_guess *= check_atom_balance(entry_1=xyz_guess, entry_2=r_well)
+
+            if p_well:
+                balanced_wells = check_atom_balance(entry_1=r_well, entry_2=p_well)
+
+            if ts_xyz:
+                balanced_ts_xyz = check_atom_balance(entry_1=ts_xyz, entry_2=r_well)
+
+            if self.ts_species is not None:
+                if self.ts_species.mol is not None:
+                    balanced_ts_species_mol = check_atom_balance(entry_1=self.ts_species.mol, entry_2=r_well)
+
+                ts_xyz = self.ts_species.get_xyz()
+                if ts_xyz is not None:
+                    balanced_ts_species_xyz = check_atom_balance(entry_1=self.ts_species.get_xyz(), entry_2=r_well)
+
+        if not balanced_wells:
+            logger.error(f'The reactant(s) and product(s) wells of reaction {self.label}, are not atom balanced.')
+        if not balanced_ts_xyz:
+            logger.error(f'The generated TS xyz for reaction {self.label} '
+                         f'is not atom balances with the reactant(s) well.')
+        if not balanced_ts_species_mol:
+            logger.error(f'The TS mol for reaction {self.label} is not atom balances with the reactant(s) well.')
+        if not balanced_ts_species_xyz:
+            logger.error(f'The TS coordinates for reaction {self.label} '
+                         f'are not atom balances with the reactant(s) well.')
+        if not balanced_xyz_guess:
+            logger.error(f'Check TS xyz user guesses of reaction {self.label}, '
+                         f'some are not atom balances with the reactant(s) well.')
+        if not all([balanced_wells, balanced_ts_xyz, balanced_ts_species_mol,
+                    balanced_ts_species_xyz, balanced_xyz_guess]):
+            if raise_error:
+                raise ReactionError(f'Reaction {self.label} is not atom balanced.')
+            return False
+
+        return True
+
+    def get_species_count(self,
+                          species: ARCSpecies,
+                          well: int = 0,
+                          ) -> int:
+        """
+        Get the number of times a species participates in the reactants or products well.
+
+        Args:
+            species (ARCSpecies): The species to check.
+            well (int, optional): Either ``0`` or ``1`` for the reactants or products well, respectively.
+
+        Returns:
+            Union[int, None]: The number of times this species appears in the respective well.
+        """
+        well_str = self.label.split('<=>')[well]
+        count = well_str.startswith(f'{species.label} ') + \
+                well_str.count(f' {species.label} ') + \
+                well_str.endswith(f' {species.label}')
+        return count
