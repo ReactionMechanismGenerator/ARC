@@ -465,6 +465,7 @@ class Job(object):
         self.directed_scan_type = job_dict['directed_scan_type'] if 'directed_scan_type' in job_dict else None
         self.rotor_index = job_dict['rotor_index'] if 'rotor_index' in job_dict else None
         self.irc_direction = job_dict['irc_direction'] if 'irc_direction' in job_dict else None
+        self.testing = job_dict['testing'] if 'testing' in job_dict else False
 
     def _set_job_number(self):
         """
