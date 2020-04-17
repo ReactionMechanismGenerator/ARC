@@ -11,8 +11,7 @@ import os
 import qcelemental as qcel
 
 from arkane.exceptions import LogError
-from arkane.ess import GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
-from arkane.util import determine_qm_software
+from arkane.ess import ess_factory, GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
 
 from arc.common import get_logger, determine_ess
 from arc.exceptions import InputError, ParserError
@@ -167,7 +166,7 @@ def parse_geometry(path):
     Returns:
         dict: The geometry.
     """
-    log = determine_qm_software(fullpath=path)
+    log = ess_factory(fullpath=path)
     try:
         coords, number, _ = log.load_geometry()
     except LogError:
@@ -202,7 +201,7 @@ def parse_t1(path):
     """
     if not os.path.isfile(path):
         raise InputError('Could not find file {0}'.format(path))
-    log = determine_qm_software(fullpath=path)
+    log = ess_factory(fullpath=path)
     try:
         t1 = log.get_T1_diagnostic()
     except (LogError, NotImplementedError):
@@ -224,7 +223,7 @@ def parse_e_elect(path, zpe_scale_factor=1.):
     """
     if not os.path.isfile(path):
         raise InputError(f'Could not find file {path}')
-    log = determine_qm_software(fullpath=path)
+    log = ess_factory(fullpath=path)
     try:
         e_elect = log.load_energy(zpe_scale_factor) * 0.001  # convert to kJ/mol
     except (LogError, NotImplementedError):
@@ -245,7 +244,7 @@ def parse_zpe(path):
     """
     if not os.path.isfile(path):
         raise InputError('Could not find file {0}'.format(path))
-    log = determine_qm_software(fullpath=path)
+    log = ess_factory(fullpath=path)
     try:
         zpe = log.load_zero_point_energy() * 0.001  # convert to kJ/mol
     except (LogError, NotImplementedError):
@@ -271,7 +270,7 @@ def parse_1d_scan_energies(path):
     """
     if not os.path.isfile(path):
         raise InputError(f'Could not find file {path}')
-    log = determine_qm_software(fullpath=path)
+    log = ess_factory(fullpath=path)
     try:
         energies, angles = log.load_scan_energies()
         energies *= 0.001  # convert to kJ/mol
@@ -543,7 +542,7 @@ def parse_trajectory(path: str) -> list:
     ess_file = False
     if path.split('.')[-1] != 'xyz':
         try:
-            log = determine_qm_software(fullpath=path)
+            log = ess_factory(fullpath=path)
             ess_file = True
         except InputError:
             ess_file = False
@@ -607,7 +606,7 @@ def parse_dipole_moment(path):
     Parse the dipole moment in Debye from an opt job output file.
     """
     lines = _get_lines_from_file(path)
-    log = determine_qm_software(path)
+    log = ess_factory(path)
     dipole_moment = None
     if isinstance(log, GaussianLog):
         # example:
