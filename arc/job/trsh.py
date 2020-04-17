@@ -670,7 +670,7 @@ def trsh_ess_job(label: str,
             trsh_keyword = 'int=(Acc2E=14)'
         # suggest spawning a cbs-qb3 job if there are not many heavy atoms
         elif 'cbs-qb3' not in ess_trsh_methods and level_of_theory_dict['method'] != 'cbs-qb3' \
-                and 'scan' not in job_type and num_heavy_atoms <= 10:
+                and 'scan' not in job_type and num_heavy_atoms <= 15:
             # try running CBS-QB3, which is relatively robust.
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using CBS-QB3')
             ess_trsh_methods.append('cbs-qb3')
