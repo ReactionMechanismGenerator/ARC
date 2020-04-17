@@ -683,7 +683,8 @@ def trsh_ess_job(label: str,
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using more memory: {memory} GB '
                         f'instead of {memory_gb} GB')
             ess_trsh_methods.append('memory')
-        elif level_of_theory_dict['method'] != 'cbs-qb3' and 'scf=(qc,nosymm) & CBS-QB3' not in ess_trsh_methods:
+        elif level_of_theory_dict['method'] != 'cbs-qb3' and 'scf=(qc,nosymm) & CBS-QB3' not in ess_trsh_methods \
+                and 'scan' not in job_type and num_heavy_atoms <= 15:
             # try both qc and nosymm with CBS-QB3
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using scf=(qc,nosymm) with CBS-QB3')
             ess_trsh_methods.append('scf=(qc,nosymm) & CBS-QB3')
