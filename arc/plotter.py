@@ -394,8 +394,8 @@ def draw_parity_plot(var_arc, var_rmg, labels, var_label, var_units, pp=None):
     plt.plot([min_var, max_var], [min_var, max_var], 'b-', linewidth=0.5)
     plt.xlabel(f'{var_label} calculated by ARC ({var_units})')
     plt.ylabel(f'{var_label} determined by RMG ({var_units})')
-    plt.xlim = (min_var, max_var * 1.1)
-    plt.ylim = (min_var, max_var)
+    plt.xlim(min_var, max_var * 1.1)
+    plt.ylim(min_var, max_var)
     plt.legend(shadow=False, loc='best')
     # txt_height = 0.04 * (plt.ylim[1] - plt.ylim[0])  # plt.ylim and plt.xlim return a tuple
     # txt_width = 0.02 * (plt.xlim[1] - plt.xlim[0])
@@ -1020,7 +1020,7 @@ def plot_1d_rotor_scan(angles=None, energies=None, results=None, path=None, scan
              markeredgecolor=marker_color, color=line_color)
     plt.xlabel('Dihedral angle increment (degrees)')
     min_angle = int(np.ceil(min(angles) / 10.0)) * 10
-    plt.xlim = (min_angle, min_angle + 360)
+    plt.xlim(min_angle, min_angle + 360)
     plt.xticks(np.arange(min_angle, min_angle + 361, step=60))
     plt.ylabel('Electronic energy (kJ/mol)')
     if label is not None:
