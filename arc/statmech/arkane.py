@@ -19,6 +19,9 @@ from arkane.input import (reaction as arkane_reaction,
 from arkane.kinetics import KineticsJob
 from arkane.statmech import StatMechJob
 from arkane.thermo import ThermoJob
+from arkane.ess import ess_factory
+
+import rmgpy.constants as constants
 
 import arc.plotter as plotter
 from arc.common import get_logger
@@ -165,7 +168,8 @@ class ArkaneAdapter(StatmechAdapter):
         Populates the reaction.kinetics attribute.
         """
         ts_species = self.species_dict[self.reaction.ts_label]
-        if self.output_dict[ts_species.label]['convergence'] and self.reaction.check_ts():
+        # if self.output_dict[ts_species.label]['convergence'] and self.reaction.check_ts():
+        if self.output_dict[ts_species.label]['convergence']:
             success = True
             arkane_output_path = self.generate_arkane_species_file(species=ts_species,
                                                                    use_bac=False)
@@ -180,7 +184,9 @@ class ArkaneAdapter(StatmechAdapter):
                 logger.error(f'Could not run statmech job for TS species {ts_species.label} '
                              f'of reaction {self.reaction.label}')
             else:
-                ts_species.e0 = arkane_ts_species.conformer.E0.value_si * 0.001  # convert to kJ/mol
+                if 'sp_sol' not in self.output_dict[ts_species.label]['paths']:
+                    ts_species.e0 = arkane_ts_species.conformer.E0.value_si * 0.001  # convert to kJ/mol
+                self.reaction.check_ts()
                 self.reaction.dh_rxn298 = \
                     sum([product.thermo.get_enthalpy(298) * self.reaction.get_species_count(product, well=1)
                          for product in self.reaction.p_species]) \
@@ -291,6 +297,7 @@ class ArkaneAdapter(StatmechAdapter):
         Returns:
             str: The path to the species arkane folder (Arkane's default output folder).
         """
+        print(f'Generating an Arkane file for species {species.label}')
         folder_name = 'rxns' if species.is_ts else 'Species'
         species_folder_path = os.path.join(self.output_directory, folder_name, species.label)
         arkane_output_path = os.path.join(species_folder_path, 'arkane')
@@ -381,22 +388,46 @@ class ArkaneAdapter(StatmechAdapter):
         # write the Arkane species input file
         bac_txt = '' if use_bac else '_no_BAC'
         input_file_path = os.path.join(species_folder_path, f'{species.label}_arkane_input{bac_txt}.py')
-        input_file = input_files['arkane_input_species']
         if use_bac and not species.is_ts:
             logger.info(f'Using the following BAC for {species.label}: {species.bond_corrections}')
             bonds = f'bonds = {species.bond_corrections}\n\n'
         else:
             logger.debug(f'NOT using BAC for {species.label}')
             bonds = ''
-        input_file = input_file.format(bonds=bonds,
-                                       symmetry=species.external_symmetry,
-                                       multiplicity=species.multiplicity,
-                                       optical=species.optical_isomers,
-                                       sp_level=self.sp_level,
-                                       sp_path=sp_path,
-                                       opt_path=opt_path,
-                                       freq_path=freq_path,
-                                       rotors=rotors)
+        if 'sp_sol' not in self.output_dict[species.label]['paths']:
+            input_file = input_files['arkane_input_species']
+            input_file = input_file.format(bonds=bonds,
+                                           symmetry=species.external_symmetry,
+                                           multiplicity=species.multiplicity,
+                                           optical=species.optical_isomers,
+                                           sp_level=self.sp_level,
+                                           sp_path=sp_path,
+                                           opt_path=opt_path,
+                                           freq_path=freq_path,
+                                           rotors=rotors)
+        else:
+            # e_elect = e_original + sp_e_sol_corrected - sp_e_uncorrected
+            original_log = ess_factory(self.output_dict[species.label]['paths']['sp'])
+            e_original = original_log.load_energy()
+            print(f'e_original: {e_original * 0.001} kJ/mol')
+            e_sol_log = ess_factory(self.output_dict[species.label]['paths']['sp_sol'])
+            e_sol = e_sol_log.load_energy()
+            print(f'e_sol: {e_sol * 0.001} kJ/mol')
+            e_no_sol_log = ess_factory(self.output_dict[species.label]['paths']['sp_no_sol'])
+            e_no_sol = e_no_sol_log.load_energy()
+            print(f'e_no_sol: {e_no_sol * 0.001} kJ/mol')
+            e_elect = (e_original + e_sol - e_no_sol) / (constants.E_h * constants.Na)  # convert J/mol to Hartree
+            print(f'e_elect final: {(e_original + e_sol - e_no_sol) * 0.001} kJ/mol\n\n')
+            input_file = input_files['arkane_input_species_explicit_e']
+            input_file = input_file.format(bonds=bonds,
+                                           symmetry=species.external_symmetry,
+                                           multiplicity=species.multiplicity,
+                                           optical=species.optical_isomers,
+                                           sp_level=self.sp_level,
+                                           e_elect=e_elect,
+                                           opt_path=opt_path,
+                                           freq_path=freq_path,
+                                           rotors=rotors)
 
         if freq_path:
             with open(input_file_path, 'w') as f:
