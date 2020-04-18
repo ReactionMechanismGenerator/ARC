@@ -38,7 +38,7 @@ from arc.species.species import ARCSpecies
 from arc.utils.scale import determine_scaling_factors
 
 try:
-    from arc.settings import global_ess_settings
+    from arc.settings import default_job_settings, global_ess_settings
 except ImportError:
     global_ess_settings = None
 
@@ -188,8 +188,8 @@ class ARC(object):
                  conformer_level='', composite_method='', opt_level='', freq_level='', sp_level='', scan_level='',
                  ts_guess_level='', irc_level='', orbitals_level='', use_bac=True, job_types=None, model_chemistry='',
                  job_additional_options=None, job_shortcut_keywords=None, T_min=None, T_max=None, T_count=50,
-                 verbose=logging.INFO, project_directory=None, max_job_time=120, allow_nonisomorphic_2d=False,
-                 job_memory=14, ess_settings=None, bath_gas=None, adaptive_levels=None, freq_scale_factor=None,
+                 verbose=logging.INFO, project_directory=None, max_job_time=None, allow_nonisomorphic_2d=False,
+                 job_memory=None, ess_settings=None, bath_gas=None, adaptive_levels=None, freq_scale_factor=None,
                  calc_freq_factor=True, n_confs=10, e_confs=5, dont_gen_confs=None, keep_checks=False,
                  solvation=None, compare_to_rmg=True, compute_thermo=True, compute_rates=True, compute_transport=True,
                  specific_job_type='', statmech_adapter='Arkane'):
@@ -200,9 +200,9 @@ class ARC(object):
         self.lib_long_desc = ''
         self.unique_species_labels = list()
         self.rmg_database = rmgdb.make_rmg_database_object()
-        self.max_job_time = max_job_time
+        self.max_job_time = max_job_time or default_job_settings.get('job_time_limit_hrs', 120)
         self.allow_nonisomorphic_2d = allow_nonisomorphic_2d
-        self.memory = job_memory
+        self.memory = job_memory or default_job_settings.get('job_total_memory_gb', 14)
         self.ess_settings = dict()
         self.calc_freq_factor = calc_freq_factor
         self.keep_checks = keep_checks

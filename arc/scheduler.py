@@ -37,7 +37,7 @@ from arc.species.converter import (check_isomorphism,
                                    str_to_xyz,
                                    xyz_to_coords_list,
                                    xyz_to_str)
-from arc.settings import default_job_types, rotor_scan_resolution
+from arc.settings import default_job_settings, default_job_types, rotor_scan_resolution
 import arc.rmgdb as rmgdb
 import arc.species.conformers as conformers  # import after importing plotter to avoid circular import
 from arc.species.vectors import get_angle, calculate_dihedral_angle
@@ -214,9 +214,9 @@ class Scheduler(object):
                  rxn_list: list = None,
                  bath_gas: str = None,
                  restart_dict: dict = None,
-                 max_job_time: float = 120,
+                 max_job_time: float = None,
                  allow_nonisomorphic_2d: bool = False,
-                 memory: float = 14,
+                 memory: float = None,
                  testing: bool = False,
                  dont_gen_confs: list = None,
                  n_confs: int = 10,
@@ -228,7 +228,7 @@ class Scheduler(object):
         self.species_list = species_list
         self.rxn_list = rxn_list if rxn_list is not None else list()
         self.project = project
-        self.max_job_time = max_job_time
+        self.max_job_time = max_job_time or default_job_settings.get('job_time_limit_hrs', 120)
         self.ess_settings = ess_settings
         self.project_directory = project_directory
         self.job_dict = dict()
@@ -236,7 +236,7 @@ class Scheduler(object):
         self.running_jobs = dict()
         self.allow_nonisomorphic_2d = allow_nonisomorphic_2d
         self.testing = testing
-        self.memory = memory
+        self.memory = memory or default_job_settings.get('job_total_memory_gb', 14)
         self.bath_gas = bath_gas
         self.solvation = solvation
         self.adaptive_levels = adaptive_levels

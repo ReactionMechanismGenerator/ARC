@@ -249,8 +249,7 @@ class Job(object):
             self.scan_res = scan_res if scan_res is not None else rotor_scan_resolution
             self.scan = scan
             self.pivots = pivots if pivots is not None else list()
-            self.max_job_time = max_job_time if max_job_time is not None \
-                else default_job_settings.get('job_time_limit_hrs', 120)
+            self.max_job_time = max_job_time or default_job_settings.get('job_time_limit_hrs', 120)
             self.bath_gas = bath_gas
             self.solvation = solvation
             self.testing = testing
@@ -269,8 +268,7 @@ class Job(object):
             self.server = server
             self.software = software
             self.cpu_cores = cpu_cores
-            self.total_job_memory_gb = total_job_memory_gb if total_job_memory_gb is not None \
-                else default_job_settings.get('job_total_memory_gb', 14)
+            self.total_job_memory_gb = total_job_memory_gb or default_job_settings.get('job_total_memory_gb', 14)
             self.irc_direction = irc_direction
         # allowed job types:
         job_types = ['conformer', 'opt', 'freq', 'optfreq', 'sp', 'composite', 'bde', 'scan', 'directed_scan',
