@@ -184,7 +184,7 @@ class SSHClient(object):
         pharos: '540420 0.45326 xq1340b    user_name       r     10/26/2018 11:08:30 long1@node18.cluster'
         rmg: '14428     debug xq1371m2   user_name  R 50-04:04:46      1 node06'
         """
-        cmd = check_status_command[servers[self.server]['cluster_soft']] + ' -u ' + servers[self.server]['un']
+        cmd = check_status_command[servers[self.server]['cluster_soft']] + ' -u $USER'
         stdout, stderr = self.send_command_to_server(cmd)
         if stderr:
             logger.info('\n\n')
@@ -204,7 +204,7 @@ class SSHClient(object):
         Return a list of ``int`` representing job IDs of all jobs submitted by the user on a server
         """
         running_jobs_ids = list()
-        cmd = check_status_command[servers[self.server]['cluster_soft']] + ' -u ' + servers[self.server]['un']
+        cmd = check_status_command[servers[self.server]['cluster_soft']] + ' -u $USER'
         stdout = self.send_command_to_server(cmd)[0]
         for i, status_line in enumerate(stdout):
             if (servers[self.server]['cluster_soft'].lower() == 'slurm' and i > 0)\
@@ -360,7 +360,7 @@ def delete_all_arc_jobs(server_list, jobs=None):
     for server in server_list:
         jobs_message = f'{len(jobs)}' if jobs is not None else 'all'
         print(f'\nDeleting {jobs_message} ARC jobs from {server}...')
-        cmd = check_status_command[servers[server]['cluster_soft']] + ' -u ' + servers[server]['un']
+        cmd = check_status_command[servers[server]['cluster_soft']] + ' -u $USER'
         ssh = SSHClient(server)
         stdout = ssh.send_command_to_server(cmd)[0]
         for status_line in stdout:

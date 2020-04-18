@@ -120,7 +120,7 @@ def check_job_status(job_id):
 
     """
     server = 'local'
-    cmd = check_status_command[servers[server]['cluster_soft']] + ' -u ' + servers[server]['un']
+    cmd = check_status_command[servers[server]['cluster_soft']] + ' -u $USER'
     stdout = execute_command(cmd)[0]
     return check_job_status_in_stdout(job_id=job_id, stdout=stdout, server=server)
 
@@ -148,7 +148,7 @@ def check_running_jobs_ids():
     Return a list of ``int`` representing job IDs of all jobs submitted by the user on a server
     """
     running_jobs_ids = list()
-    cmd = check_status_command[servers['local']['cluster_soft']] + ' -u ' + servers['local']['un']
+    cmd = check_status_command[servers['local']['cluster_soft']] + ' -u $USER'
     stdout = execute_command(cmd)[0]
     for i, status_line in enumerate(stdout):
         if (servers['local']['cluster_soft'].lower() == 'slurm' and i > 0)\
@@ -218,7 +218,7 @@ def delete_all_local_arc_jobs(jobs=None):
     server = 'local'
     if server in servers:
         print('\nDeleting all ARC jobs from local server...')
-        cmd = check_status_command[servers[server]['cluster_soft']] + ' -u ' + servers[server]['un']
+        cmd = check_status_command[servers[server]['cluster_soft']] + ' -u $USER'
         stdout = execute_command(cmd, no_fail=True)[0]
         for status_line in stdout:
             s = re.search(r' a\d+', status_line)
