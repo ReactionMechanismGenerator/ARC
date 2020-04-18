@@ -668,9 +668,9 @@ def trsh_ess_job(label: str,
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using int=(Acc2E=14)')
             ess_trsh_methods.append('int=(Acc2E=14)')
             trsh_keyword = 'int=(Acc2E=14)'
-        # suggest spwaning a cbs-qb3 job if there are not many heavy atoms
+        # suggest spawning a cbs-qb3 job if there are not many heavy atoms
         elif 'cbs-qb3' not in ess_trsh_methods and level_of_theory_dict['method'] != 'cbs-qb3' \
-                and 'scan' not in job_type and num_heavy_atoms <= 10:
+                and 'scan' not in job_type and num_heavy_atoms <= 15:
             # try running CBS-QB3, which is relatively robust.
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using CBS-QB3')
             ess_trsh_methods.append('cbs-qb3')
@@ -683,7 +683,8 @@ def trsh_ess_job(label: str,
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using more memory: {memory} GB '
                         f'instead of {memory_gb} GB')
             ess_trsh_methods.append('memory')
-        elif level_of_theory_dict['method'] != 'cbs-qb3' and 'scf=(qc,nosymm) & CBS-QB3' not in ess_trsh_methods:
+        elif level_of_theory_dict['method'] != 'cbs-qb3' and 'scf=(qc,nosymm) & CBS-QB3' not in ess_trsh_methods \
+                and 'scan' not in job_type and num_heavy_atoms <= 15:
             # try both qc and nosymm with CBS-QB3
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using scf=(qc,nosymm) with CBS-QB3')
             ess_trsh_methods.append('scf=(qc,nosymm) & CBS-QB3')
