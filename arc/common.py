@@ -24,8 +24,7 @@ import qcelemental as qcel
 
 from typing import Any, List, Optional, Tuple, Union
 
-from arkane.ess import GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
-from arkane.util import determine_qm_software
+from arkane.ess import ess_factory, GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
 from rmgpy.molecule.element import get_element
 from rmgpy.qm.qmdata import QMData
 from rmgpy.qm.symmetry import PointGroupCalculator
@@ -111,7 +110,7 @@ def determine_ess(log_file: str) -> str:
     Returns:
         str: The ESS log class from Arkane.
     """
-    log = determine_qm_software(log_file)
+    log = ess_factory(log_file)
     if isinstance(log, GaussianLog):
         return 'gaussian'
     if isinstance(log, MolproLog):
