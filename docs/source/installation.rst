@@ -60,22 +60,32 @@ The first two directives are only required if you'd like ARC to access remote se
   <https://www.digitalocean.com/community/tutorials/how-to-set-up-ssh-keys--2>`_.
 - Copy the RSA SSH key path/s on your local machine to ARC/arc/settings.py in the servers
   dictionary under keys.
-- Update the `servers` dictionary in `ARC/arc/settings.py
+- Update the ``servers`` dictionary in `ARC/arc/settings.py
   <https://github.com/ReactionMechanismGenerator/ARC/blob/master/arc/settings.py>`_.
 
   * A local server must be named with the reserved keyword ``local``. ``cluster_soft`` and username (``un``) are
     mandatory.
   * A remote server has no limitations for naming. ``cluster_soft``, ``address``, username (``un``), and ``key``
     (the path to the local RSA SSH key) are mandatory.
-  * Optional parameters for both local and remote servers are ``cpus`` and ``memory``. The number of CPU cores ARC
-    will use when spawning ESS jobs defaults to 8 unless otherwise specified under ``cpus``.
-    The ``memory`` parameter stands for the maximum amount of memory available to a node. By default, ARC will use 14 GB
-    of memory for each ESS job. If a job crashes due to insufficient memory, ARC will automatically re-run the job with
-    increased memory. However, ARC will not use more than 90% of the maximum node memory specified under ``memory``.
+  * Optional parameters for both local and remote servers are ``cpus`` and ``memory``. These two parameters stand for
+    the maximum amount of cpu cores and memory in GB available to a node. If a job crashes due to cpu or memory issues,
+    ARC will automatically re-run the job with different cpu and memory allocations within the limitation specified by
+    these two parameters. By default, ``cpus`` is 8 and ``memory`` is 14 GB.
   * Although ARC currently does not allocate computing resources dynamically based on system size or ESS, the user can
     manually control memory specifications for each project. See :ref:`Advanced Features <advanced>` for details.
   * In certain ESS, the maximum number of CPU cores allowed for a calculation depends on system size. If a job crashes
     for this reason, ARC will attempt to re-run the job with fewer CPU cores.
+
+- Update the ``default_job_settings`` dictionary in `ARC/arc/settings.py
+  <https://github.com/ReactionMechanismGenerator/ARC/blob/master/arc/settings.py>`_.
+
+  * This dictionary contains default job memory, cpu, and time settings.
+  * A default ESS job in ARC has 14 GB of memory, 8 cpu cores, and 120 hours of maximum execution time. The default
+    settings can be changed by providing different values to the ``job_total_memory_gb``, ``job_cpu_cores``, and
+    ``job_time_limit_hrs`` keys.
+  * ARC will alter job memory, cpu, and time settings when troubleshoot jobs crashed due to resource allocation issues.
+    The ``job_max_server_node_memory_allocation`` key stands for the maximum percentage of total node memory ARC will
+    use when troubleshoot a job. The default value is 80%.
 
 - Update the submit scripts in `ARC/arc/job/submit.py
   <https://github.com/ReactionMechanismGenerator/ARC/blob/master/arc/job/submit.py>`_
