@@ -107,6 +107,19 @@ class TestTrsh(unittest.TestCase):
         self.assertEqual(error, '')
         self.assertEqual(line, '')
 
+        # test detection of a successful job
+        # notice that the log file in this example has a different format under the line
+        # ***  Starting incremental Fock matrix formation  ***
+        # compared to the above example. It is important to make sure that ARC's Orca trsh algorithm parse this
+        # log file successfully
+        path = os.path.join(self.base_path['orca'], 'orca_successful_sp_scf.log')
+        status, keywords, error, line = trsh.determine_ess_status(
+            output_path=path, species_label='test', job_type='sp', software='orca')
+        self.assertEqual(status, 'done')
+        self.assertEqual(keywords, list())
+        self.assertEqual(error, '')
+        self.assertEqual(line, '')
+
         # test detection of SCF energy diverge issue
         path = os.path.join(self.base_path['orca'], 'orca_scf_blow_up_error.log')
         status, keywords, error, line = trsh.determine_ess_status(
