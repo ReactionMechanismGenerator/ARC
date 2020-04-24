@@ -124,7 +124,10 @@ class ArkaneAdapter(StatmechAdapter):
                                                                use_bac=self.use_bac)
 
         if arkane_output_path is not None:
-            arkane_species = arkane_input_species(self.species.label, self.species.arkane_file)
+            try:
+                arkane_species = arkane_input_species(self.species.label, self.species.arkane_file)
+            except ValueError:
+                arkane_species = arkane.input.species_dict[self.species.label]
             self.species.rmg_species = Species(molecule=[self.species.mol])
             self.species.rmg_species.reactive = True
             if self.species.mol_list:
