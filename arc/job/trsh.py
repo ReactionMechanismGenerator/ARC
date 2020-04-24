@@ -10,7 +10,7 @@ import os
 
 import numpy as np
 
-from arc.common import get_logger, determine_ess, estimate_orca_mem_cpu_requirement
+from arc.common import get_logger, determine_ess, estimate_orca_mem_cpu_requirement, is_str_float
 from arc.exceptions import SpeciesError, TrshError
 from arc.job.local import execute_command
 from arc.job.ssh import SSHClient
@@ -199,6 +199,8 @@ def determine_ess_status(output_path: str,
                     # not done yet, things can still go wrong (e.g., SCF energy might blow up)
                     for j, info in enumerate(forward_lines):
                         if 'Starting incremental Fock matrix formation' in info:
+                            while not is_str_float(forward_lines[j + 1].split()[1]):
+                                j += 1
                             scf_energy_initial_iteration = float(forward_lines[j + 1].split()[1])
                         if 'TOTAL SCF ENERGY' in info:
                             # this value is very close to the scf energy at last iteration and is easier to parse
