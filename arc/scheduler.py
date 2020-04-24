@@ -704,7 +704,7 @@ class Scheduler(object):
     def run_job(self, label, xyz, level_of_theory, job_type, fine=False, software=None, shift='', trsh='', memory=None,
                 conformer=-1, ess_trsh_methods=None, scan='', pivots=None, occ=None, scan_trsh='', scan_res=None,
                 max_job_time=None, confs=None, radius=None, directed_scan_type=None, directed_scans=None,
-                directed_dihedrals=None, rotor_index=None, cpu_cores=None, irc_direction=None):
+                directed_dihedrals=None, rotor_index=None, cpu_cores=None, irc_direction=None, solvation=None):
         """
         A helper function for running (all) jobs.
 
@@ -755,7 +755,7 @@ class Scheduler(object):
         job_level_of_theory_dict, _ = format_level_of_theory_inputs(level_of_theory)
         job = Job(project=self.project, ess_settings=self.ess_settings, species_name=label, xyz=xyz, job_type=job_type,
                   job_level_of_theory_dict=job_level_of_theory_dict, multiplicity=species.multiplicity,
-                  charge=species.charge, fine=fine, irc_direction=irc_direction, solvation=self.solvation,
+                  charge=species.charge, fine=fine, irc_direction=irc_direction, solvation=solvation,
                   shift=shift, software=software, is_ts=species.is_ts, total_job_memory_gb=memory, trsh=trsh,
                   ess_trsh_methods=ess_trsh_methods, scan=scan, pivots=pivots, occ=occ,
                   job_additional_options=self.job_additional_options, job_shortcut_keywords=self.job_shortcut_keywords,
@@ -856,7 +856,7 @@ class Scheduler(object):
                      max_job_time=job.max_job_time, confs=job.conformers, radius=job.radius,
                      directed_scan_type=job.directed_scan_type, directed_scans=job.directed_scans,
                      directed_dihedrals=job.directed_dihedrals, rotor_index=job.rotor_index, cpu_cores=job.cpu_cores,
-                     irc_direction=job.irc_direction)
+                     irc_direction=job.irc_direction, solvation=self.solvation)
 
     def run_conformer_jobs(self, labels=None):
         """
@@ -929,7 +929,7 @@ class Scheduler(object):
             self.job_dict[label]['conformers'] = dict()
             for i, tsg in enumerate(successful_tsgs):
                 self.run_job(label=label, xyz=tsg.initial_xyz, level_of_theory=self.ts_guess_level,
-                             job_type='conformer', conformer=i)
+                             job_type='conformer', conformer=i, solvation=self.solvation)
         elif len(successful_tsgs) == 1:
             if 'opt' not in self.job_dict[label] and 'composite' not in self.job_dict[label]:
                 # proceed only if opt (/composite) not already spawned
@@ -959,7 +959,7 @@ class Scheduler(object):
         if self.species_dict[label].initial_xyz is None:
             raise SpeciesError(f'Cannot execute opt job for {label} without xyz (got None for Species.initial_xyz)')
         self.run_job(label=label, xyz=self.species_dict[label].initial_xyz, level_of_theory=self.opt_level,
-                     job_type='opt', fine=fine)
+                     job_type='opt', fine=fine, solvation=self.solvation)
 
     def run_composite_job(self, label):
         """
@@ -978,7 +978,7 @@ class Scheduler(object):
         else:
             xyz = self.species_dict[label].initial_xyz
         self.run_job(label=label, xyz=xyz, level_of_theory=self.composite_method, job_type='composite',
-                     fine=self.job_types['fine'])
+                     fine=self.job_types['fine'], solvation=self.solvation)
 
     def run_freq_job(self, label):
         """
@@ -993,15 +993,17 @@ class Scheduler(object):
             self.job_dict[label]['freq'] = dict()
         if self.job_types['freq']:
             self.run_job(label=label, xyz=self.species_dict[label].get_xyz(generate=False),
-                         level_of_theory=self.freq_level, job_type='freq')
+                         level_of_theory=self.freq_level, job_type='freq', solvation=self.solvation)
 
-    def run_sp_job(self, label):
+    def run_sp_job(self, label, use_solvation=True, level=None):
         """
         Spawn a single point job using 'final_xyz' for species ot TS 'label'.
         If the method is MRCI, first spawn a simple CCSD job, and use orbital determination to run the MRCI job.
 
         Args:
             label (str): The species label.
+            use_solvation (bool): Whether to use the solvation model if available.
+            level (dict): A level of theory to run at. If ``None``, self.sp_level will be used.
         """
         # determine_occ(xyz=self.xyz, charge=self.charge)
         if self.sp_level == self.opt_level and not self.composite_method \
@@ -1055,15 +1057,17 @@ class Scheduler(object):
                                              ' sp calculation for {label}'.format(label=label))
                 occ = val + core  # the occupied orbitals are the core and valence orbitals
                 self.run_job(label=label, xyz=self.species_dict[label].get_xyz(generate=False),
-                             level_of_theory='ccsd/vdz', job_type='sp', occ=occ)
+                             level_of_theory='ccsd/vdz', job_type='sp', occ=occ, solvation=self.solvation)
             else:
                 # MRCI was requested but no sp job ran for this species, run CCSD first
                 logger.info(f'running a CCSD job for {label} before MRCI')
                 self.run_job(label=label, xyz=self.species_dict[label].get_xyz(generate=False),
-                             level_of_theory='ccsd/vdz', job_type='sp')
+                             level_of_theory='ccsd/vdz', job_type='sp', solvation=self.solvation)
         if self.job_types['sp']:
+            level = level or self.sp_level
+            solvation = self.solvation if use_solvation else None
             self.run_job(label=label, xyz=self.species_dict[label].get_xyz(generate=False),
-                         level_of_theory=self.sp_level, job_type='sp')
+                         level_of_theory=level, job_type='sp', solvation=solvation)
 
     def run_scan_jobs(self, label):
         """
@@ -1136,9 +1140,18 @@ class Scheduler(object):
                         if scan_job.pivots == pivots and scan_job.job_name in self.running_jobs[label]:
                             break
                     else:
-                        self.run_job(label=label, xyz=self.species_dict[label].get_xyz(generate=False),
-                                     level_of_theory=self.scan_level, job_type='scan', scan=scan, pivots=pivots)
-                    
+                        # this is a "normal" scan (not directed)
+                        # check this job isn't already running on the server or completed (from a restarted project)
+                        if 'scan' not in self.job_dict[label]:
+                            # we're spawning the first scan job for this species
+                            self.job_dict[label]['scan'] = dict()
+                        for scan_job in self.job_dict[label]['scan'].values():
+                            if scan_job.pivots == pivots and scan_job.job_name in self.running_jobs[label]:
+                                break
+                        else:
+                            self.run_job(label=label, xyz=self.species_dict[label].get_xyz(generate=False),
+                                         level_of_theory=self.scan_level, job_type='scan', scan=scan, pivots=pivots,
+                                         solvation=self.solvation)
 
     def run_irc_job(self, label, irc_direction='forward'):
         """
@@ -1149,7 +1162,8 @@ class Scheduler(object):
             irc_direction (str): The IRC job direction, either 'forward' or 'reverse'.
         """
         self.run_job(label=label, xyz=self.species_dict[label].get_xyz(generate=False),
-                     level_of_theory=self.irc_level, job_type='irc', irc_direction=irc_direction)
+                     level_of_theory=self.irc_level, job_type='irc', irc_direction=irc_direction,
+                     solvation=self.solvation)
 
     def run_orbitals_job(self, label):
         """
@@ -1160,7 +1174,7 @@ class Scheduler(object):
             label (str): The species label.
         """
         self.run_job(label=label, xyz=self.species_dict[label].get_xyz(generate=False),
-                     level_of_theory=self.orbitals_level, job_type='orbitals')
+                     level_of_theory=self.orbitals_level, job_type='orbitals', solvation=self.solvation)
 
     def run_onedmin_job(self, label):
         """
@@ -1173,7 +1187,7 @@ class Scheduler(object):
             logger.error('Cannot execute a Lennard Jones job without the OneDMin software')
         elif 'onedmin' not in self.job_dict[label]:
             self.run_job(label=label, xyz=self.species_dict[label].get_xyz(generate=False), job_type='onedmin',
-                         level_of_theory='')
+                         level_of_theory='', solvation=None)
 
     def run_force_field_fit_job(self, label):
         """
@@ -1243,7 +1257,7 @@ class Scheduler(object):
                     self.run_freq_job(label)
                 else:  # this is an 'optfreq' job type, don't run freq
                     self.check_freq_job(label=label, job=self.job_dict[label]['optfreq'][job_name])
-            self.run_sp_job(label)
+            self.run_sp_job(label, use_solvation=self.solvation is not None and not self.solvation['level'])
             self.run_scan_jobs(label)
 
         if self.job_types['orbitals'] and 'orbitals' not in self.job_dict[label]:
@@ -1308,7 +1322,7 @@ class Scheduler(object):
             # allow the ESS to control the scan
             self.run_job(label=label, xyz=xyz, level_of_theory=self.scan_level, job_type='scan',
                          directed_scan_type=directed_scan_type, directed_scans=scans, rotor_index=rotor_index,
-                         pivots=pivots)
+                         pivots=pivots, solvation=self.solvation)
 
         elif 'brute' in directed_scan_type:
             # spawn jobs all at once
@@ -1332,7 +1346,7 @@ class Scheduler(object):
                     self.run_job(label=label, xyz=modified_xyz, level_of_theory=self.scan_level,
                                  job_type='directed_scan', directed_scan_type=directed_scan_type,
                                  directed_scans=scans, directed_dihedrals=list(dihedral_tuple),
-                                 rotor_index=rotor_index, pivots=pivots)
+                                 rotor_index=rotor_index, pivots=pivots, solvation=self.solvation)
             else:
                 # increment all dihedrals at once (resulting in a unique 1D scan along several changing dimensions)
                 for i in range(len(dihedrals[tuple(scans[0])])):
@@ -1346,7 +1360,7 @@ class Scheduler(object):
                     self.run_job(label=label, xyz=modified_xyz, level_of_theory=self.scan_level,
                                  job_type='directed_scan', directed_scan_type=directed_scan_type,
                                  directed_scans=scans, directed_dihedrals=directed_dihedrals,
-                                 rotor_index=rotor_index, pivots=pivots)
+                                 rotor_index=rotor_index, pivots=pivots, solvation=self.solvation)
 
         elif 'cont' in directed_scan_type:
             # spawn jobs one by one
@@ -1368,7 +1382,8 @@ class Scheduler(object):
                 # this is the first call for this cont_opt directed rotor, spawn the first job w/o changing dihedrals
                 self.run_job(label=label, xyz=self.species_dict[label].final_xyz, level_of_theory=self.scan_level,
                              job_type='directed_scan', directed_scan_type=directed_scan_type, directed_scans=scans,
-                             directed_dihedrals=original_dihedrals, rotor_index=rotor_index, pivots=pivots)
+                             directed_dihedrals=original_dihedrals, rotor_index=rotor_index, pivots=pivots,
+                             solvation=self.solvation)
                 self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][0] += 1
                 return
             else:
@@ -1399,7 +1414,7 @@ class Scheduler(object):
                 # attribute to the desired dihedral.
                 self.species_dict[label].set_dihedral(scan=scan_, deg_abs=dihedral, count=False, xyz=modified_xyz)
                 modified_xyz = self.species_dict[label].initial_xyz
-            self.run_job(label=label, xyz=modified_xyz, level_of_theory=self.scan_level,
+            self.run_job(label=label, xyz=modified_xyz, level_of_theory=self.scan_level, solvation=self.solvation,
                          job_type='directed_scan', directed_scan_type=directed_scan_type, directed_scans=scans,
                          directed_dihedrals=dihedrals, rotor_index=rotor_index, pivots=pivots)
 
@@ -1576,7 +1591,7 @@ class Scheduler(object):
                 self.job_dict[label]['conformers'] = dict()
                 for i, xyz in enumerate(self.species_dict[label].conformers):
                     self.run_job(label=label, xyz=xyz, level_of_theory=self.conformer_level,
-                                 job_type='conformer', conformer=i)
+                                 job_type='conformer', conformer=i, solvation=self.solvation)
             elif len(self.species_dict[label].conformers) == 1:
                 logger.info(f'Only one conformer is available for species {label}, using it as initial xyz.')
                 self.species_dict[label].initial_xyz = self.species_dict[label].conformers[0]
@@ -1966,7 +1981,7 @@ class Scheduler(object):
                 xyz = self.species_dict[label].final_xyz
                 self.species_dict[label].initial_xyz = xyz  # save for troubleshooting, since trsh goes by initial
                 self.run_job(label=label, xyz=xyz, level_of_theory=job.job_level_of_theory_dict, job_type='opt',
-                             fine=True)
+                             fine=True, solvation=self.solvation)
             else:
                 success = True
                 if 'optfreq' in job.job_name:
@@ -2110,7 +2125,7 @@ class Scheduler(object):
             # This is a CCSD job ran before MRCI. Spawn MRCI
             self.run_sp_job(label)
         elif job.job_status[1]['status'] == 'done':
-            self.post_sp_actions(label, sp_path=os.path.join(job.local_path, 'output.out'))
+            self.post_sp_actions(label, sp_path=os.path.join(job.local_path, 'output.out'), solvation=job.solvation)
             # Update restart dictionary and save the yaml restart file:
             self.save_restart_dict()
             if self.species_dict[label].number_of_atoms == 1:
@@ -2119,15 +2134,16 @@ class Scheduler(object):
         else:
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.job_level_of_theory_dict)
 
-    def post_sp_actions(self, label, sp_path):
+    def post_sp_actions(self, label, sp_path, solvation=None):
         """
         Perform post-sp actions.
 
         Args:
             label (str): The species label.
-            sp_path (str): The path to 'output.out' for the single point job
+            sp_path (str): The path to 'output.out' for the single point job.
+            solvation (dict): The job solvation attribute.
         """
-        self.output[label]['job_types']['sp'] = True
+        original_sp_path = self.output[label]['paths']['sp'] if 'sp' in self.output[label]['paths'] else None
         self.output[label]['paths']['sp'] = sp_path
         if 'ccsd' in self.sp_level:
             self.species_dict[label].t1 = parser.parse_t1(self.output[label]['paths']['sp'])
@@ -2142,6 +2158,24 @@ class Scheduler(object):
                 txt += ". It might have multireference characteristic."
             logger.info(f'Species {label} has a T1 diagnostic parameter of {self.species_dict[label].t1}{txt}')
             self.output[label]['info'] += f'T1 = {self.species_dict[label].t1}; '
+
+        if self.solvation is not None and self.solvation['level'] is not None and self.solvation['level'] \
+                and 'method' in self.solvation['level'] and self.solvation['level']['method']:
+            # a complex behavior was requested for requested for sp
+            if not self.output[label]['job_types']['sp']:
+                # this is the first "original" sp job, spawn two more
+                self.run_sp_job(label=label, use_solvation=True, level=self.solvation['level'])
+                self.run_sp_job(label=label, use_solvation=False, level=self.solvation['level'])
+            else:
+                # this is one of the additional sp jobs ran
+                if solvation is not None:
+                    self.output[label]['paths']['sp_sol'] = sp_path
+                else:
+                    self.output[label]['paths']['sp_no_sol'] = sp_path
+                self.output[label]['paths']['sp'] = original_sp_path  # restore original path
+
+        # set *at the end* to differentiate between sp jobs
+        self.output[label]['job_types']['sp'] = True
 
     def check_irc_job(self, label, job):
         """
@@ -2542,7 +2576,7 @@ class Scheduler(object):
             self.job_dict[label]['conformers'] = dict()  # initialize the conformer job dictionary
             for i, xyz in enumerate(self.species_dict[label].conformers):
                 self.run_job(label=label, xyz=xyz, level_of_theory=self.conformer_level, job_type='conformer',
-                             conformer=i)
+                             conformer=i, solvation=self.solvation)
 
     def troubleshoot_scan_job(self,
                               job: Job,
@@ -2647,16 +2681,12 @@ class Scheduler(object):
             except InputError as e:
                 logger.debug(f'Got invalid input for trsh_scan_job: {e}\nJob info:\n{job}')
             else:
-                if scan_trsh or job.scan_res != scan_res \
-                        and {'scan_trsh': scan_trsh, 'scan_res': scan_res} not in used_trsh_methods:
-                    # Valid troubleshooting method for freezing or increasing resolution
-                    trsh_success = True
-                    actual_actions = {'scan_trsh': scan_trsh, 'scan_res': scan_res}
-                    self.run_job(label=label, xyz=job.xyz,
-                                 level_of_theory=job.job_level_of_theory_dict,
-                                 job_type='scan', scan=job.scan, pivots=job.pivots,
-                                 scan_trsh=scan_trsh, scan_res=scan_res)
-        return trsh_success, actual_actions
+                species_scan_lists = [rotor_dict['scan'] for rotor_dict in self.species_dict[label].rotors_dict.values()]
+                scan_trsh, scan_res = trsh_scan_job(label=label, scan_res=job.scan_res, scan=job.scan,
+                                                    species_scan_lists=species_scan_lists, methods=methods)
+                self.run_job(label=label, xyz=job.xyz, level_of_theory=job.job_level_of_theory_dict, job_type='scan',
+                             scan=job.scan, pivots=job.pivots, scan_trsh=scan_trsh, scan_res=scan_res,
+                             solvation=self.solvation)
 
     def troubleshoot_opt_jobs(self, label):
         """
@@ -2686,7 +2716,8 @@ class Scheduler(object):
                     self.parse_opt_geo(label=label, job=job)
                     xyz = self.species_dict[label].final_xyz
                     self.species_dict[label].initial_xyz = xyz  # save for troubleshooting, since trsh goes by initial
-                    self.run_job(label=label, xyz=xyz, level_of_theory=self.opt_level, job_type='opt', fine=True)
+                    self.run_job(label=label, xyz=xyz, level_of_theory=self.opt_level, job_type='opt', fine=True,
+                                 solvation=self.solvation)
             else:
                 trsh_opt = True
                 # job passed on the server, but failed in ESS calculation
@@ -2759,7 +2790,7 @@ class Scheduler(object):
                          job_type=job_type, fine=fine, ess_trsh_methods=ess_trsh_methods, trsh=trsh_keyword,
                          conformer=conformer, scan=job.scan, pivots=job.pivots, scan_res=job.scan_res, shift=shift,
                          directed_dihedrals=job.directed_dihedrals, directed_scans=job.directed_scans,
-                         cpu_cores=cpu_cores)
+                         cpu_cores=cpu_cores, solvation=self.solvation)
         self.save_restart_dict()
 
     def troubleshoot_conformer_isomorphism(self, label):
@@ -2803,7 +2834,8 @@ class Scheduler(object):
                     job.ess_trsh_methods.append('Conformers: ' + level_of_theory)
 
                 self.run_job(label=label, xyz=xyz, level_of_theory=level_of_theory, software=job.software,
-                             job_type='conformer', ess_trsh_methods=job.ess_trsh_methods, conformer=conformer)
+                             job_type='conformer', ess_trsh_methods=job.ess_trsh_methods, conformer=conformer,
+                             solvation=self.solvation)
 
     def delete_all_species_jobs(self, label):
         """
