@@ -25,7 +25,7 @@ from rmgpy.data.base import Entry
 from rmgpy.data.kinetics.library import KineticsLibrary
 from rmgpy.data.thermo import ThermoLibrary
 from rmgpy.data.transport import TransportLibrary
-from rmgpy.exceptions import InvalidAdjacencyListError
+from rmgpy.exceptions import DatabaseError, InvalidAdjacencyListError
 from rmgpy.quantity import ScalarQuantity
 from rmgpy.species import Species
 
@@ -692,7 +692,7 @@ def save_thermo_lib(species_list: list,
                                               thermo=spc.thermo,
                                               shortDesc=spc.thermo.comment,
                                               longDesc=spc.long_thermo_description)
-                except InvalidAdjacencyListError as e:
+                except (InvalidAdjacencyListError, DatabaseError) as e:
                     logger.error(f'Could not save species {spc.label} in the thermo library, got:')
                     logger.info(e)
             else:
