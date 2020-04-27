@@ -350,7 +350,7 @@ class Scheduler(object):
                 # for a non-TS, this attribute should be set by this point
                 self.output[species.label]['errors'] = 'Could not infer a 2D graph (a .mol species attribute); '
             self.unique_species_labels.append(species.label)
-            if self._does_output_dict_contain_info():
+            if self._does_output_dict_contain_info() and species.label in list(self.output.keys()):
                 self.output[species.label]['restart'] += f'Restarted ARC at {datetime.datetime.now()}; '
             if species.label not in self.job_dict:
                 self.job_dict[species.label] = dict()
