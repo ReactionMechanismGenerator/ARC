@@ -394,8 +394,8 @@ def draw_parity_plot(var_arc, var_rmg, labels, var_label, var_units, pp=None):
     plt.plot([min_var, max_var], [min_var, max_var], 'b-', linewidth=0.5)
     plt.xlabel(f'{var_label} calculated by ARC ({var_units})')
     plt.ylabel(f'{var_label} determined by RMG ({var_units})')
-    plt.xlim = (min_var, max_var * 1.1)
-    plt.ylim = (min_var, max_var)
+    plt.xlim(min_var, max_var * 1.1)
+    plt.ylim(min_var, max_var)
     plt.legend(shadow=False, loc='best')
     # txt_height = 0.04 * (plt.ylim[1] - plt.ylim[0])  # plt.ylim and plt.xlim return a tuple
     # txt_width = 0.02 * (plt.xlim[1] - plt.xlim[0])
@@ -957,8 +957,6 @@ def plot_torsion_angles(torsion_angles, torsions_sampling_points=None, wells_dic
         #     ax.label_outer()
         plt.setp(axs, xticks=ticks)  # set the x ticks of all subplots
         fig.set_size_inches(8, len(torsions) * 1.5)
-    if is_notebook():
-        plt.show()
     if plot_path is not None:
         if not os.path.isdir(plot_path):
             os.makedirs(plot_path)
@@ -972,6 +970,8 @@ def plot_torsion_angles(torsion_angles, torsions_sampling_points=None, wells_dic
                 i += 1
         image_path = os.path.join(plot_path, f'conformer torsions {i}.png')
         plt.savefig(image_path, bbox_inches='tight')
+    if is_notebook():
+        plt.show()
     plt.close(fig)
     return num_comb
 
@@ -1020,15 +1020,13 @@ def plot_1d_rotor_scan(angles=None, energies=None, results=None, path=None, scan
              markeredgecolor=marker_color, color=line_color)
     plt.xlabel('Dihedral angle increment (degrees)')
     min_angle = int(np.ceil(min(angles) / 10.0)) * 10
-    plt.xlim = (min_angle, min_angle + 360)
+    plt.xlim(min_angle, min_angle + 360)
     plt.xticks(np.arange(min_angle, min_angle + 361, step=60))
     plt.ylabel('Electronic energy (kJ/mol)')
     if label is not None:
         original_dihedral_str = f' from {original_dihedral:.1f}$^o$' if original_dihedral is not None else ''
         plt.title(f'{label} 1D scan of {scan}{original_dihedral_str}')
     plt.tight_layout()
-    if is_notebook():
-        plt.show()
 
     if path is not None and scan is not None:
         pivots = scan[1:3]
@@ -1048,6 +1046,8 @@ def plot_1d_rotor_scan(angles=None, energies=None, results=None, path=None, scan
         fig_path = os.path.join(path, fig_name)
         plt.savefig(fig_path, dpi=120, facecolor='w', edgecolor='w', orientation='portrait', papertype=None,
                     format='png', transparent=False, bbox_inches=None, pad_inches=0.1, metadata=None)
+    if is_notebook():
+        plt.show()
     plt.close(fig=fig)
 
 
