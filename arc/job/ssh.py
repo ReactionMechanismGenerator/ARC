@@ -12,7 +12,6 @@ Todo:
 import datetime
 import logging
 import os
-import re
 import time
 from typing import Any, Callable, List, Optional, Tuple, Union
 
@@ -241,15 +240,33 @@ class SSHClient(object):
             return f'errored: {stderr}'
         return check_job_status_in_stdout(job_id=job_id, stdout=stdout, server=self.server)
 
-    def delete_job(self, job_id: int) -> None:
+    def delete_job(self, job_id: Union[int, str]) -> None:
         """
         Deletes a running job.
 
         Args:
-            job_id (int): The job's ID.
+            job_id (Union[int, str]): The job's ID.
         """
         cmd = delete_command[servers[self.server]['cluster_soft']] + ' ' + str(job_id)
         self._send_command_to_server(cmd)
+
+    def delete_jobs(self,
+                    jobs: Optional[List[Union[str, int]]] = None
+                    ) -> None:
+        """
+        Delete all of the jobs on a specific server.
+
+        Args:
+                jobs (Optional[List[str, int]]): Specific ARC job IDs to delete.
+        """
+        jobs_message = f'{len(jobs)}' if jobs is not None else 'all'
+        print(f'\nDeleting {jobs_message} ARC jobs from {self.server}...')
+        
+        running_job_ids = self.check_running_jobs_ids()
+        for job_id in running_job_ids:
+            if jobs is None or str(job_id) in jobs:
+                self.delete_job(job_id)
+                print(f'deleted job {job_id}')
 
     def check_running_jobs_ids(self) -> list:
         """
@@ -532,7 +549,6 @@ def check_job_status_in_stdout(job_id: int,
             raise ValueError(f'Unknown cluster software {servers[server]["cluster_soft"]}')
 
 
-
 def delete_all_arc_jobs(server_list: list, jobs: Optional[List[str]] = None) -> None:
     """
     Delete all ARC-spawned jobs (with job name starting with `a` and a digit) from :list:servers
@@ -547,22 +563,7 @@ def delete_all_arc_jobs(server_list: list, jobs: Optional[List[str]] = None) -> 
     if isinstance(server_list, str):
         server_list = [server_list]
     for server in server_list:
-        jobs_message = f'{len(jobs)}' if jobs is not None else 'all'
-        print(f'\nDeleting {jobs_message} ARC jobs from {server}...')
-        cmd = check_status_command[servers[server]['cluster_soft']] + ' -u $USER'
         with SSHClient(server) as ssh:
-            stdout = ssh._send_command_to_server(cmd)[0]
-            for status_line in stdout:
-                s = re.search(r' a\d+', status_line)
-                if s is not None:
-                    job_id = s.group()[1:]
-                    if job_id in jobs or jobs is None:
-                        if servers[server]['cluster_soft'].lower() == 'slurm':
-                            server_job_id = status_line.split()[0]
-                            ssh.delete_job(server_job_id)
-                            print(f'deleted job {job_id} ({server_job_id} on server)')
-                        elif servers[server]['cluster_soft'].lower() == 'oge':
-                            ssh.delete_job(job_id)
-                            print(f'deleted job {job_id}')
+            ssh.delete_jobs(jobs)
     if server_list:
         print('\ndone.')
