@@ -1593,7 +1593,7 @@ end
                     elif 'terachem' in esss:
                         self.software = 'terachem'
                 elif self.job_type in ['conformer', 'opt', 'freq', 'optfreq', 'sp',
-                                     'directed_scan']:
+                                       'directed_scan']:
                     if self.method == 'hf':
                         if 'gaussian' in esss:
                             self.software = 'gaussian'
