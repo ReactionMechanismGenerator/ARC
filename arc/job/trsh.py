@@ -736,7 +736,7 @@ def trsh_ess_job(label: str,
 
     Args:
         label (str): The species label.
-        level_of_theory_dict (dict): The original level of theory dictionary of the problmatic job.
+        level_of_theory_dict (dict): The original level of theory dictionary of the problematic job.
         server (str): The server used for this job.
         job_status (dict): The ESS job status dictionary with standardized error keywords
                            as generated using the `determine_ess_status` function.
