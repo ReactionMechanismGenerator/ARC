@@ -13,6 +13,7 @@ import os
 import shutil
 import time
 from IPython.display import display
+from typing import Optional, Tuple
 
 from arc.common import (extermum_list,
                         format_level_of_theory_for_logging,
@@ -25,11 +26,22 @@ from arc.common import (extermum_list,
 from arc import plotter
 from arc import parser
 from arc.job.job import Job
-from arc.exceptions import InputError, SanitizationError, SchedulerError, SpeciesError
+from arc.exceptions import (InputError,
+                            SanitizationError,
+                            SchedulerError,
+                            SpeciesError,
+                            TrshError)
 from arc.job.local import check_running_jobs_ids
 from arc.job.ssh import SSHClient
-from arc.job.trsh import scan_quality_check, trsh_conformer_isomorphism, trsh_ess_job, trsh_negative_freq, trsh_scan_job
-from arc.species.species import ARCSpecies, are_coords_compliant_with_graph, determine_rotor_symmetry, TSGuess
+from arc.job.trsh import (scan_quality_check,
+                          trsh_conformer_isomorphism,
+                          trsh_ess_job,
+                          trsh_negative_freq,
+                          trsh_scan_job)
+from arc.species.species import (ARCSpecies,
+                                 are_coords_compliant_with_graph,
+                                 determine_rotor_symmetry,
+                                 TSGuess)
 from arc.species.converter import (check_isomorphism,
                                    compare_confs,
                                    molecules_from_xyz,
@@ -2134,7 +2146,7 @@ class Scheduler(object):
                                             out_path=os.path.join(self.project_directory, 'output',
                                                                   'rxns', label, 'irc_traj.gjf'))
 
-    def check_scan_job(self, label, job):
+    def check_scan_job(self, label: str, job: Job) -> None:
         """
         Check that a rotor scan job converged successfully. Also checks (QA) whether the scan is relatively "smooth",
         and whether the optimized geometry indeed represents the minimum energy conformer.
@@ -2151,6 +2163,7 @@ class Scheduler(object):
                               'scan_path': <path to scan output file>,
                               'max_e': ``float``,  # in kJ/mol,
                               'symmetry': ``int``,
+                              'trsh_methods': ``list``,
                               'dimensions': ``int``,
                               'original_dihedrals': ``list``,
                               'cont_indices': ``list``,
@@ -2165,14 +2178,21 @@ class Scheduler(object):
             label (str): The species label.
             job (Job): The rotor scan job object.
         """
-        # If the job has not converged, troubleshoot
-        if job.job_status[1]['status'] != 'done':
+        # If the job has not converged, troubleshoot ESS
+        # Besides, according to the experience, 'Internal coordinate error' cannot be handled by
+        # troubleshoot_ess() for scan jobs. It is usually related to bond or angle changes which
+        # causes the internal coordinates mess up in the middway of the scan. It can be resolved
+        # by conformer based scan troubleshooting method and its energies are readable.
+        if job.job_status[1]['status'] != 'done' \
+                and job.job_status[1]['error'] != 'Internal coordinate error':
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.job_level_of_theory_dict)
             return None
+        # Otherwise, check the scan job quality
         invalidate, actions, energies = False, list(), list()
         for i in range(self.species_dict[label].number_of_rotors):
             if self.species_dict[label].rotors_dict[i]['pivots'] == job.pivots:
-                energies, angles = parser.parse_1d_scan_energies(path=job.local_path_to_output_file)  # in kJ/mol
+                # Read energy profile (in kJ/mol), it may be used in the troubleshooting
+                energies, angles = parser.parse_1d_scan_energies(path=job.local_path_to_output_file)
                 self.species_dict[label].rotors_dict[i]['original_dihedrals'] = \
                     [calculate_dihedral_angle(coords=job.xyz, torsion=job.scan, index=1, units='degs')]
                 if energies is None:
@@ -2184,13 +2204,23 @@ class Scheduler(object):
                     break
                 invalidate, invalidation_reason, message, actions = scan_quality_check(
                     label=label, pivots=job.pivots, energies=energies, scan_res=job.scan_res,
-                    used_methods=self.species_dict[label].rotors_dict[i]['trsh_methods'])
+                    used_methods=self.species_dict[label].rotors_dict[i]['trsh_methods'], 
+                    log_file=job.local_path_to_output_file)
 
                 if len(actions):
                     # the rotor scan is problematic, troubleshooting is required
-                    logger.info(f'Trying to troubleshoot rotor {job.pivots} of {label} using {actions}...')
-                    self.species_dict[label].rotors_dict[i]['trsh_methods'].append(actions)
-                    self.troubleshoot_scan_job(job=job, methods=actions)
+                    logger.info(f'Trying to troubleshoot rotor {job.pivots} of {label} ...')
+                    # Try to troubleshoot the rotor. sometimes, troubleshooting cannot yield solutions
+                    # actions from scan_quality_check() is not the actual actions applied,
+                    # they will be postprocessed by trsh_scan_job. If troubleshooting fails,
+                    # The actual actions will be an empty list, indicating invalid rotor.
+                    trsh_success, actions = self.troubleshoot_scan_job(job=job, methods=actions)
+                    if not trsh_success:
+                        # Detailed reasons are logged in the troubleshoot_scan_job()
+                        invalidation_reason += ' But unable to propose troubleshooting methods.'
+                    else:
+                        # record actions, only if the method is valid
+                        self.species_dict[label].rotors_dict[i]['trsh_methods'].append(actions)
 
                 if not invalidate:
                     # the rotor scan is good, calculate the symmetry number
@@ -2206,13 +2236,14 @@ class Scheduler(object):
         else:
             raise SchedulerError(f'Could not match rotor with pivots {job.pivots} in species {label}')
 
-        # Only continue if not troubleshooting the scan
-        if not actions:
-            if invalidate:
-                self.species_dict[label].rotors_dict[i]['success'] = False
-            if self.species_dict[label].rotors_dict[i]['success'] is not None:  # exclude reset conformer
-                self.species_dict[label].rotors_dict[i]['scan_path'] = job.local_path_to_output_file
-                self.species_dict[label].rotors_dict[i]['invalidation_reason'] = invalidation_reason
+        # This is a bad rotor scan, and we can do nothing about it at this moment.
+        if invalidate and not actions:
+            self.species_dict[label].rotors_dict[i]['success'] = False
+
+        # Better to save the path and invalidation reason for debugging and tracing the file
+        # if ``success`` is null, it means that the job is being troubleshot
+        self.species_dict[label].rotors_dict[i]['scan_path'] = job.local_path_to_output_file
+        self.species_dict[label].rotors_dict[i]['invalidation_reason'] = invalidation_reason
 
         # If energies were obtained, draw the scan curve
         if len(energies):
@@ -2497,40 +2528,63 @@ class Scheduler(object):
                 self.run_job(label=label, xyz=xyz, level_of_theory=self.conformer_level, job_type='conformer',
                              conformer=i)
 
-    def troubleshoot_scan_job(self, job, methods=None):
+    def troubleshoot_scan_job(self,
+                              job: Job,
+                              methods: Optional[dict] = None,
+                              ) -> Tuple[bool, dict]:
         """
         Troubleshooting rotor scans
-        Using the following methods: freezing all dihedrals other than the scan's pivots for this job,
-        or increasing the scan resolution.
+        Using the following methods: 
+        1. freeze: freezing specific internal coordinates or all torsions other than the scan's pivots
+        2. inc_res: increasing the scan resolution.
+        3. change conformer: changing to a conformer with a lower energy
 
         Args:
             job (Job): The scan Job object.
-            methods (list): The troubleshooting method/s to try. Optional values: 'freeze', 'inc_res'.
+            methods (dict): The troubleshooting method/s to try:
+                            {'freeze': <a list of problematic internal coordinates>,
+                             'inc_res': ``None``,
+                             'change conformer': <a xyz dict>}
+
+        Returns:
+            Tuple[bool, dict]:
+                - ``True`` if the troubleshooting is valid.
+                - The actions are actual applied in the troubleshooting.
         """
         label = job.species_name
-        scan_trsh_str = '_'.join([str(method) for method in methods])
-        if scan_trsh_str in job.ess_trsh_methods:
-            logger.error(f'Will not troubleshoot a rotor scan for {label} more than once with the exact '
-                         f'same methods ({scan_trsh_str}).')
-        else:
-            if 'change conformer' in methods:
-                # a lower conformation was found
-                deg_increment = methods[2]
-                for rotor_dict in self.species_dict[label].rotors_dict.values():
-                    if rotor_dict['scan'][1:3] == methods[1] or rotor_dict['scan'][1:3] == methods[1][::-1]:
-                        # the rotor was identified by its pivots
-                        scan = rotor_dict['scan']
-                        break
-                else:
-                    pivots = [rotor_dict["scan"][1:3] for rotor_dict in self.species_dict[label].rotors_dict.values()]
-                    raise SchedulerError(f'Could not identify the rotors that corresponds to pivots {methods[1]}. '
-                                         f'Existing rotor pivots are {pivots}')
-                self.species_dict[label].set_dihedral(scan=scan, deg_increment=deg_increment)
+        trsh_success = False
+        actual_actions = dict()  #  If troubleshooting fails, there will be no actual action
+        # Read used troubleshooting methods
+        for rotor in self.species_dict[label].rotors_dict.values():
+            if rotor['scan'] == job.scan:
+                used_trsh_methods = rotor['trsh_methods']
+                break
+
+        # A lower conformation was found
+        if 'change conformer' in methods:
+            # We will delete all of the jobs no matter we can successfully change to the conformer.
+            # If succeed, we have to cancel jobs to avoid conflicts
+            # If not succeed, we are in a situation that we find a lower conformer, but either
+            # this is a incorrect conformer or we have applied this troubleshooting before, but it
+            # didn't yield a good result.
+            self.delete_all_species_jobs(label)
+
+            new_xyz = methods['change conformer']
+            # Check if the same conformer is used in previous troubleshooting
+            for used_trsh_method in used_trsh_methods:
+                if 'change conformer' in used_trsh_method \
+                        and compare_confs(new_xyz, used_trsh_method['change conformer']):
+                        # Find we have used this conformer for troubleshooting. Invalid the troubleshooting.
+                    logger.error(f'The change conformer method for {label} is invalid. ' \
+                                    f'ARC will not change to the same conformer twice.')
+                    break
+            else:
+                # If the conformer is not used, check isomorphism
                 is_isomorphic = self.species_dict[label].check_xyz_isomorphism(
                     allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
-                    xyz=self.species_dict[label].initial_xyz)
+                    xyz=new_xyz)
                 if is_isomorphic:
-                    self.delete_all_species_jobs(label)
+                    self.species_dict[label].final_xyz = new_xyz
                     # Remove all completed rotor calculation information
                     for rotor in self.species_dict[label].rotors_dict.values():
                         # don't initialize all parameters, e.g., `times_dihedral_set` needs to remain as is
@@ -2538,26 +2592,55 @@ class Scheduler(object):
                         rotor['invalidation_reason'] = ''
                         rotor['success'] = None
                         rotor.pop('symmetry', None)
+                        if rotor['scan'] == job.scan:
+                            rotor['times_dihedral_set'] += 1
+                        # We can save the change conformer trsh info, but other trsh methods like
+                        # freezing or increasing scan resolution can be cleaned, otherwise, they may
+                        # not be troubleshot
+                        rotor['trsh_methods'] = [trsh_method for trsh_method in rotor['trsh_methods']
+                                                if 'change conformer' in trsh_method]
                     # re-run opt (or composite) on the new initial_xyz with the desired dihedral
                     if not self.composite_method:
                         self.run_opt_job(label)
                     else:
                         self.run_composite_job(label)
-                else:
-                    # The conformer is wrong, and changing the dihedral will results in a non-isomorphic species
-                    self.output[label]['errors'] += \
-                        f'A lower conformer was found for {label} via a torsion mode, but it is not ' \
-                        f'isomorphic with the 2D graph representation ' \
-                        f'{self.species_dict[label].mol.copy(deep=True).to_smiles()}. ' \
-                        f'Not calculating this species.'
-                    self.output[label]['conformers'] += 'Unconverged'
-                    self.output[label]['convergence'] = False
+                    trsh_success = True
+                    actual_actions = methods
+                    return trsh_success, actual_actions
+
+            # The conformer is wrong, or we are in a loop changing to the same conformers again
+            self.output[label]['errors'] += \
+                f'A lower conformer was found for {label} via a torsion mode, ' \
+                f'but it is not isomorphic with the 2D graph representation ' \
+                f'{self.species_dict[label].mol.copy(deep=True).to_smiles()}. ' \
+                f'Not calculating this species.'
+            self.output[label]['conformers'] += 'Unconverged'
+            self.output[label]['convergence'] = False
+        else:
+            # Freezing or increasing scan resolution
+            scan_list = [rotor_dict['scan'] for rotor_dict in
+                         self.species_dict[label].rotors_dict.values()]
+            try:
+                scan_trsh, scan_res = trsh_scan_job(label=label, scan_res=job.scan_res,
+                                                    scan=job.scan, scan_list=scan_list,
+                                                    methods=methods,
+                                                    log_file=job.local_path_to_output_file)
+            except TrshError as e:
+                logger.error(f'Troubleshooting of the rotor scan on {job.scan} for ' \
+                             f'{label} failed. Got: {e}\nJob info:\n{job}')
+            except InputError as e:
+                logger.debug(f'Got invalid input for trsh_scan_job: {e}\nJob info:\n{job}')
             else:
-                species_scan_lists = [rotor_dict['scan'] for rotor_dict in self.species_dict[label].rotors_dict.values()]
-                scan_trsh, scan_res = trsh_scan_job(label=label, scan_res=job.scan_res, scan=job.scan,
-                                                    species_scan_lists=species_scan_lists, methods=methods)
-                self.run_job(label=label, xyz=job.xyz, level_of_theory=job.job_level_of_theory_dict, job_type='scan',
-                             scan=job.scan, pivots=job.pivots, scan_trsh=scan_trsh, scan_res=scan_res)
+                if scan_trsh or job.scan_res != scan_res \
+                        and {'scan_trsh': scan_trsh, 'scan_res': scan_res} not in used_trsh_methods:
+                    # Valid troubleshooting method for freezing or increasing resolution
+                    trsh_success = True
+                    actual_actions = {'scan_trsh': scan_trsh, 'scan_res': scan_res}
+                    self.run_job(label=label, xyz=job.xyz,
+                                 level_of_theory=job.job_level_of_theory_dict,
+                                 job_type='scan', scan=job.scan, pivots=job.pivots,
+                                 scan_trsh=scan_trsh, scan_res=scan_res)
+        return trsh_success, actual_actions
 
     def troubleshoot_opt_jobs(self, label):
         """

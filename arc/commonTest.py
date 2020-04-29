@@ -10,6 +10,7 @@ import os
 import time
 import unittest
 
+import pandas as pd
 from rmgpy.molecule.molecule import Molecule
 
 import arc.common as common
@@ -795,6 +796,38 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
         self.assertEqual(est_cpu_2, expected_cpu_2)
         self.assertEqual(est_memory_2, expected_memory_2)
 
+    def test_check_torsion_change(self):
+        """Test checking if torsion changes are significant"""
+        ics = {0: [120], 1: [126], 2: [176], 3: [-174]}
+        torsions = pd.DataFrame(data=ics, index=['D1'])
+        self.assertFalse(common.check_torsion_change(
+            torsions, 1, 0, threshold=20.0, delta=0.0)['D1'])
+        self.assertTrue(common.check_torsion_change(
+            torsions, 1, 0, threshold=5.0, delta=0.0)['D1'])
+        self.assertFalse(common.check_torsion_change(
+            torsions, 1, 0, threshold=5.0, delta=8.0)['D1'])
+        self.assertTrue(common.check_torsion_change(
+            torsions, 2, 1, threshold=20.0, delta=8.0)['D1'])
+        self.assertTrue(common.check_torsion_change(
+            torsions, 3, 1, threshold=20.0, delta=8.0)['D1'])
+        self.assertFalse(common.check_torsion_change(
+            torsions, 3, 2, threshold=20.0, delta=8.0)['D1'])
+
+    def test_is_same_pivot(self):
+        """Test whether two torsions have the same pivot"""
+        self.assertTrue(common.is_same_pivot([1, 2, 3, 4], [5, 2, 3, 4]))
+        self.assertTrue(common.is_same_pivot([1, 2, 3, 4], [4, 3, 2, 5]))
+        self.assertFalse(common.is_same_pivot([1, 2, 3, 4], [5, 4, 3, 2]))
+        self.assertTrue(common.is_same_pivot("[1, 2, 3, 4]", [5, 2, 3, 4]))
+        self.assertTrue(common.is_same_pivot([1, 2, 3, 4], "[4, 3, 2, 5]"))
+        self.assertFalse(common.is_same_pivot("[1, 2, 3, 4]", "[5, 4, 3, 2]"))
+
+    def test_is_same_sequence_sublist(self):
+        """Test whether a sequence appears in a list"""
+        self.assertTrue(common.is_same_sequence_sublist([1, 2, 3], [1, 2, 3, 4]))
+        self.assertTrue(common.is_same_sequence_sublist([2, 3, 4], [1, 2, 3, 4]))
+        self.assertFalse(common.is_same_sequence_sublist([1, 3, 4], [1, 2, 3, 4]))
+        self.assertFalse(common.is_same_sequence_sublist([4, 3, 2], [1, 2, 3, 4]))
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

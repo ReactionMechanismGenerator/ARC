@@ -201,6 +201,18 @@ H      -0.59436200   -0.94730400    0.00000000"""
         self.assertIsInstance(trajectory[0], dict)
         self.assertEqual(len(trajectory[0]['symbols']), 17)
 
+    def test_parse_1d_scan_coords(self):
+        """Test parsing the optimized coordinates of a torsion scan at each optimization point"""
+        path = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'H2O2.out')
+        traj = parser.parse_1d_scan_coords(path)
+        self.assertEqual(len(traj), 37)
+        self.assertEqual(traj[10], {'coords': ((-0.715582, -0.140909, 0.383809),
+                                               (0.715582, 0.140909, 0.383809),
+                                               (-1.043959, 0.678384, -0.010288),
+                                               (1.043959, -0.678384, -0.010288)),
+                                    'isotopes': (16, 16, 1, 1),
+                                    'symbols': ('O', 'O', 'H', 'H')})
+
     def test_parse_t1(self):
         """Test T1 diagnostic parsing"""
         path = os.path.join(arc_path, 'arc', 'testing', 'sp', 'mehylamine_CCSD(T).out')
@@ -339,6 +351,95 @@ H      -0.59436200   -0.94730400    0.00000000"""
         self.assertTrue(all([e is not None for e in spc5.conformer_energies]))
         spc6 = ARCSpecies(label='tst6', xyz=path3)
         self.assertEqual(len(spc6.conformers), 4)
+
+    def test_parse_str_blocks(self):
+        """Test parsing str blocks"""
+        path = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'H2O2.out')
+        str_blks = parser.parse_str_blocks(
+            path, 'Initial Parameters', '--------', regex=False, tail_count=3)
+        desire_str_lists = [
+            '                           !    Initial Parameters    !\n',
+            '                           ! (Angstroms and Degrees)  !\n',
+            ' --------------------------                            --------------------------\n',
+            ' ! Name  Definition              Value          Derivative Info.                !\n',
+            ' --------------------------------------------------------------------------------\n',
+            ' ! R1    R(1,2)                  1.4252         calculate D2E/DX2 analytically  !\n',
+            ' ! R2    R(1,3)                  0.9628         calculate D2E/DX2 analytically  !\n',
+            ' ! R3    R(2,4)                  0.9628         calculate D2E/DX2 analytically  !\n',
+            ' ! A1    A(2,1,3)              101.2687         calculate D2E/DX2 analytically  !\n',
+            ' ! A2    A(1,2,4)              101.2687         calculate D2E/DX2 analytically  !\n',
+            ' ! D1    D(3,1,2,4)            118.8736         Scan                            !\n',
+            ' --------------------------------------------------------------------------------\n']
+        self.assertEqual(len(str_blks), 1)
+        self.assertEqual(str_blks[0], desire_str_lists)
+
+    def test_parse_scan_args(self):
+        """Test parsing scan arguments"""
+        path = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'CH2OOH.out')
+        scan_args = parser.parse_scan_args(path)
+        self.assertEqual(scan_args['scan'], [4, 1, 2, 3])
+        self.assertEqual(scan_args['freeze'], [[1, 2, 3, 6], [2, 3]])
+        self.assertEqual(scan_args['step'], 90)
+        self.assertEqual(scan_args['step_size'], 4.0)
+        self.assertEqual(scan_args['n_atom'], 6)
+
+    def test_parse_ic_info(self):
+        """Test parsing internal coordinates information"""
+        path = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'CH2OOH.out')
+        ic_info = parser.parse_ic_info(path)
+        expected_labels = ['R1', 'R2', 'R3', 'R4', 'R5', 'A1', 'A2',
+                           'A3', 'A4', 'A5', 'D1', 'D2', 'D3', 'D4']
+        expected_types = ['R', 'R', 'R', 'R', 'R', 'A',
+                          'A', 'A', 'A', 'A', 'D', 'D', 'D', 'D']
+        expected_atoms = [[1, 2], [1, 4], [1, 5], [2, 3], [3, 6], [2, 1, 4],
+                          [2, 1, 5], [4, 1, 5], [1, 2, 3], [2, 3, 6], [4, 1, 2, 3],
+                          [5, 1, 2, 3], [2, 1, 4, 5], [1, 2, 3, 6]]
+        expected_redundant = [False] * 14
+        expected_scan = [False, False, False, False, False, False, False,
+                         False, False, False, True, True, False, False]
+        self.assertEqual(expected_labels, ic_info.index.to_list())
+        self.assertEqual(expected_types, ic_info.type.to_list())
+        self.assertEqual(expected_atoms, ic_info.atoms.to_list())
+        self.assertEqual(expected_redundant, ic_info.redundant.to_list())
+        self.assertEqual(expected_scan, ic_info.scan.to_list())
+
+    def test_parse_ic_values(self):
+        """Test parsing internal coordinate values"""
+        ic_blk = [
+            ' ! R1    R(1,2)                  1.4535         -DE/DX =    0.0                 !\n',
+            ' ! R2    R(1,3)                  0.9674         -DE/DX =    0.0                 !\n',
+            ' ! R3    R(2,4)                  0.9674         -DE/DX =    0.0                 !\n',
+            ' ! A1    A(2,1,3)              100.563          -DE/DX =    0.0                 !\n',
+            ' ! A2    A(1,2,4)              100.563          -DE/DX =    0.0                 !\n',
+            ' ! D1    D(3,1,2,4)            118.8736         -DE/DX =    0.0003              !\n']
+        software = 'gaussian'
+        ic_values = parser.parse_ic_values(ic_blk, software)
+        expected_labels = ['R1', 'R2', 'R3', 'A1', 'A2', 'D1']
+        expected_values = [1.4535, 0.9674, 0.9674, 100.563, 100.563, 118.8736]
+        self.assertEqual(expected_labels, ic_values.index.to_list())
+        self.assertEqual(expected_values, ic_values.value.to_list())
+
+    def test_parse_conformers(self):
+        """Test parsing internal coordinates of all intermediate conformers in a scan job"""
+        path = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'H2O2.out')
+        scan_conformers = parser.parse_scan_conformers(path)
+        expected_labels = ['R1', 'R2', 'R3', 'A1', 'A2', 'D1']
+        expected_types = ['R', 'R', 'R', 'A', 'A', 'D']
+        expected_atoms = [[1, 2], [1, 3], [2, 4], [2, 1, 3], [1, 2, 4], [3, 1, 2, 4]]
+        expected_redundant = [False] * 6
+        expected_scan = [False] * 5 + [True]
+        expected_conf_0 = [1.4535, 0.9674, 0.9674, 100.563, 100.563, 118.8736]
+        expected_conf_18 = [1.4512, 0.9688, 0.9688, 103.2599, 103.2599, -61.1264]
+        expected_conf_36 = [1.4536, 0.9673, 0.9673, 100.5586, 100.5586, 118.8736]
+        self.assertEqual(expected_labels, scan_conformers.index.to_list())
+        self.assertEqual(expected_types, scan_conformers.type.to_list())
+        self.assertEqual(expected_atoms, scan_conformers.atoms.to_list())
+        self.assertEqual(expected_redundant, scan_conformers.redundant.to_list())
+        self.assertEqual(expected_scan, scan_conformers.scan.to_list())
+        self.assertEqual((6, 41), scan_conformers.shape)
+        self.assertEqual(expected_conf_0, scan_conformers[0].to_list())
+        self.assertEqual(expected_conf_18, scan_conformers[18].to_list())
+        self.assertEqual(expected_conf_36, scan_conformers[36].to_list())
 
 
 if __name__ == '__main__':

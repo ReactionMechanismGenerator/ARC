@@ -1663,3 +1663,32 @@ def compare_confs(xyz1: dict,
     xyz1, xyz2 = check_xyz_dict(xyz1), check_xyz_dict(xyz2)
     dmat1, dmat2 = xyz_to_dmat(xyz1), xyz_to_dmat(xyz2)
     return almost_equal_lists(dmat1, dmat2, rtol=rtol, atol=atol)
+
+
+def ics_to_scan_constraints(ics: list,
+                            software: str = 'gaussian',
+                            ) -> str:
+    """
+    A helper function for converting internal coordinate (ic) info
+    into a str block which can be read as scan constraints by ESS.
+
+    Args:
+        ics (list): A list of internal coordinates (ic, stored as lists of atom indices).
+
+    Returns:
+        str: A str block can be read as scan constraints by ESS.
+    """
+    scan_trsh = ''
+    if software == 'gaussian':
+        for ic in ics:
+            if len(ic) == 2:
+                scan_trsh += 'B '
+            elif len(ic) == 3:
+                scan_trsh += 'A '
+            elif len(ic) == 4:
+                scan_trsh += 'D '
+            scan_trsh += ''.join([str(num) + ' ' for num in ic]) + 'F\n'
+    else:
+        raise NotImplementedError(f'Given software {software} is not implemented' \
+                                  f'for ics_to_scan_constraints().')
+    return scan_trsh

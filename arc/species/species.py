@@ -1096,7 +1096,8 @@ class ARCSpecies(object):
                      deg_increment: float = None,
                      deg_abs: float = None,
                      count: bool = True,
-                     xyz: dict = None):
+                     xyz: dict = None,
+                     chk_rotor_list: bool = True):
         """
         Generated an RDKit molecule object from either self.final_xyz or ``xyz``.
         Increments the current dihedral angle between atoms i, j, k, l in the `scan` list by 'deg_increment` in degrees.
@@ -1109,36 +1110,38 @@ class ARCSpecies(object):
             deg_abs (float, optional): The absolute desired dihedral angle.
             count (bool, optional): Whether to increment the rotor's times_dihedral_set parameter. `True` to increment.
             xyz (dict, optional): An alternative xyz to use instead of self.final_xyz.
+            chk_rotor_list (bool, optional): Whether to check if the changing dihedral is in the rotor list.
 
         Raises:
             InputError: If both ``deg_increment`` and ``deg_abs`` are None.
             RotorError: If the rotor could not be identified based on the pivots.
             TypeError: If ``deg_increment`` or ``deg_abs`` are of wrong type.
         """
-        if deg_increment is not None and not isinstance(deg_increment, float):
+        if deg_increment is None and deg_abs is None:
+            raise InputError('Either deg_increment or deg_abs must be specified.')
+        if deg_increment is not None and not isinstance(deg_increment, (int,float)):
             raise TypeError(f'deg_increment must be a float, got {deg_increment} which is a {type(deg_increment)}')
-        if deg_abs is not None and not isinstance(deg_abs, float):
+        if deg_abs is not None and not isinstance(deg_abs, (int, float)):
             raise TypeError(f'deg_abs must be a float, got {deg_abs} which is a {type(deg_abs)}')
         pivots = scan[1:3]
         rotor = None
-        for rotor in self.rotors_dict.values():
-            if rotor['pivots'] == pivots:
-                break
-        if rotor is None:
-            raise RotorError(f'Could not identify rotor based of pivots {pivots}:\n{list(self.rotors_dict.values())}')
         xyz = xyz or self.final_xyz
-        if deg_increment is None and deg_abs is None:
-            raise InputError('Either deg_increment or deg_abs must be specified.')
-        if count:
-            if rotor['times_dihedral_set'] >= 10:
-                logger.info('\n\n')
-                for i, rotor in self.rotors_dict.items():
-                    logger.error(f'Rotor {i} with pivots {rotor["pivots"]} was set '
-                                 f'{rotor["times_dihedral_set"]} times')
-                rotor['success'] = False
-                rotor['invalidation_reason'] = f'rotor set too many ({rotor["times_dihedral_set"]}) times'
-                return
-            rotor['times_dihedral_set'] += 1
+        if chk_rotor_list:
+            for rotor in self.rotors_dict.values():
+                if rotor['pivots'] == pivots:
+                    break
+            if rotor is None:
+                raise RotorError(f'Could not identify rotor based of pivots {pivots}:\n{list(self.rotors_dict.values())}')
+            if count:
+                if rotor['times_dihedral_set'] >= 10:
+                    logger.info('\n\n')
+                    for i, rotor in self.rotors_dict.items():
+                        logger.error(f'Rotor {i} with pivots {rotor["pivots"]} was set '
+                                    f'{rotor["times_dihedral_set"]} times')
+                    rotor['success'] = False
+                    rotor['invalidation_reason'] = f'rotor set too many ({rotor["times_dihedral_set"]}) times'
+                    return
+                rotor['times_dihedral_set'] += 1
         if deg_increment == 0 and deg_abs is None:
             logger.warning(f'set_dihedral was called with zero increment for {self.label} with pivots {pivots}')
         else:

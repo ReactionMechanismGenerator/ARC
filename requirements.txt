@@ -10,6 +10,7 @@ ase>=3.15.0
 rdkit>=2019.09.1
 openbabel
 pyyaml
+pandas>=1.01
 qcelemental
 
 # For running the unit tests
