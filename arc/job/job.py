@@ -1310,10 +1310,9 @@ end
 
             # download molpro log file (in addition to the output file)
             if self.software.lower() == 'molpro':
-                remote_log_file_path = os.path.join(self.remote_path, 'input.log')
-                local_log_file_path = os.path.join(self.local_path, 'output.log')
-                ssh.download_file(remote_file_path=remote_log_file_path, local_file_path=local_log_file_path)
-                if not os.path.isfile(local_log_file_path):
+                remote_log_file_path = os.path.join(self.remote_path, output_filename[self.software])
+                ssh.download_file(remote_file_path=remote_log_file_path, local_file_path=self.local_path_to_output_file)
+                if not os.path.isfile(self.local_path_to_output_file):
                     logger.warning(f'Could not download Molpro log file for {self.job_name} ' \
                                    f'(this is not the output file)')
 
