@@ -1393,7 +1393,11 @@ end
 
     def _get_additional_job_info(self):
         """
-        Download the additional information of stdout and stderr from the server.
+        Get the additional information of stdout and stderr according to the 
+        queue software outputs.
+
+        Returns:
+            str: a str includes the info from stdout and stderr
         """
         lines1, lines2 = list(), list()
         content = ''
