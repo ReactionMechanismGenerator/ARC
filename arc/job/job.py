@@ -1364,8 +1364,10 @@ end
         if self.job_status[0] == 'done':
             try:
                 self._check_job_ess_status()  # populates self.job_status[1], and downloads the output file
-            except IOError:
-                logger.error('Got an IOError when trying to download output file for job {0}.'.format(self.job_name))
+            except (JobError, IOError) as e:
+                # A JobError is previously raised when ARC cannot understand the status by simply
+                # analyzing the output file, either due to the file is missing or incomplete
+                logger.error(f'Got an error ({e}), when checking the status of job {self.job_name}.')
                 content = self._get_additional_job_info()
                 if content:
                     logger.info('Got the following information from the server:')
@@ -1478,7 +1480,9 @@ end
                 os.remove(self.local_path_to_orbitals_file)
             if os.path.exists(self.local_path_to_check_file):
                 os.remove(self.local_path_to_check_file)
-            self._download_output_file()  # also downloads the check file and orbital file if exist
+            # Download output files, and the check file and orbital file if exist
+            # If the output file cannot be downloaded, a JobError will be raised
+            self._download_output_file()
         else:
             # If running locally, just rename the output file to "output.out" for consistency between software
             if self.final_time is None:
