@@ -1399,6 +1399,24 @@ end
                             self.job_status[1]['error'] = 'Job cancelled by the server due to a node failure.'
                             self.job_status[1]['line'] = ''
                             break
+                        # TODO: there is another case where jobs are canceled due to quota (scratch quota, disk quota, etc.)
+                    else:
+                        # We cannot identify problems from the content
+                        logger.warning('Additional info does not help identify the error. If the error is not due to the disk quota,'
+                                       'please report this issue and provide your job outputs on ARC\'s github page.')
+                        self.job_status[1]['status'] = 'errored'
+                        self.job_status[1]['keywords'] = ['Unknown']
+                        if not ('error' in self.job_status[1] and self.job_status[1]['error']):
+                            self.job_status[1]['error'] = f'{self.software.title()} job terminated for an unknown reason.'
+                        if not ('line' in self.job_status[1] and self.job_status[1]['line']):
+                            self.job_status[1]['line'] = ''
+                else:
+                    # The stdout and stderr files are missing or empty
+                    logger.warning('Cannot find any outputs related the job\'s failure, maybe the job never runs')
+                    self.job_status[1]['status'] = 'errored'
+                    self.job_status[1]['keywords'] = ['Unknown']
+                    self.job_status[1]['error'] = 'Cannot find any output from the ESS and the queue software'
+                    self.job_status[1]['line'] = ''
                 raise
         elif self.job_status[0] == 'running':
             self.job_status[1]['status'] = 'running'
