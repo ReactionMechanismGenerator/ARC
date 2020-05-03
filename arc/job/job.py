@@ -1434,6 +1434,17 @@ end
                                                           'time limit.'
                             self.job_status[1]['line'] = ''
                             break
+                        # example:
+                        # slurmstepd: *** JOB 12219482 CANCELLED AT 2020-05-03T01:25:00 DUE TO NODE node027 FAILURE ***
+                        if 'cancelled' in line.lower() and 'due to node' in line.lower() and 'failure' in line.lower():
+                            logger.warning(f'Looks like the job was cancelled on {self.server} due to node faliure. '
+                                           f'Got: {line}')
+                            logger.warning('Needs to rerun the job.')
+                            self.job_status[1]['status'] = 'errored'
+                            self.job_status[1]['keywords'] = ['NodeFailure']
+                            self.job_status[1]['error'] = 'Job cancelled by the server due to a node failure.'
+                            self.job_status[1]['line'] = ''
+                            break
                 raise
         elif self.job_status[0] == 'running':
             self.job_status[1]['status'] = 'running'
