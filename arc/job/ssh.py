@@ -197,13 +197,24 @@ class SSHClient(object):
                 f'{remote_file_path} does not exist on {self.server}.')
             raise InputError(f'{remote_file_path} does not exist on {self.server}.')
 
+        # Download the file by `get()` method
         try:
             self._sftp.get(remotepath=remote_file_path,
                            localpath=local_file_path)
-        except IOError:
+        except IOError as e:
+            # Catch IOError other than 'no such file' error
             logger.debug(
-                f'Got an IOError when trying to download file {remote_file_path} from {self.server}')
-            raise ServerError(f'Could not download file {remote_file_path} from {self.server}. ')
+                f'Got an IOError ({e}) when trying to download file {remote_file_path}'
+                f'from {self.server}')
+            raise ServerError(f'Could not download file {remote_file_path} from {self.server}.'
+                              f'Got: {e}.')
+        except Exception as e:
+            # Catch all other error
+            # TODO: simplify this blocks when we understand the behavior of `sftp.get()` better
+            logger.debug(
+                f'Got an error ({e}) which hinders ARC from downloading file {remote_file_path}')
+            raise ServerError(f'Could not download file {remote_file_path} from {self.server}.'
+                              f'Got: {e}.')
 
     @check_connections
     def read_remote_file(self, remote_file_path: str) -> list:
