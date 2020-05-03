@@ -212,6 +212,15 @@ class SSHClient(object):
             raise ServerError(f'Could not download file {remote_file_path} from {self.server}.\n'
                               f'Got: {e}.')
 
+        # Check if the file is correctly downloaded
+        if not os.path.isfile(local_file_path):
+            logger.debug(f'Cannot find the downloaded file {local_file_path}. SFTP seems to work, '
+                         f'but the file {remote_file_path} was not actually downloaded.')
+            raise ServerError(f'Could not download file {remote_file_path} from {self.server}. '
+                              f'Download process is done, but the local file {local_file_path} '
+                              f'cannot be found.')
+        logger.debug(f'Successfully download file {remote_file_path} from {self.server}.')
+
     @check_connections
     def read_remote_file(self, remote_file_path: str) -> list:
         """
