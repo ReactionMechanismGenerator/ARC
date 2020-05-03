@@ -183,14 +183,16 @@ class SSHClient(object):
         Raises:
             ServerError: If the file cannot be downloaded with maximum times to try
         """
+        # Check if the file exists on the remote server
+        # This step will also check the connection of the SSHClient
         if not self._check_file_exists(remote_file_path):
-            # Check if a file exists
-            # This doesn't have a real impact now to avoid screwing up ESS trsh
-            # but introduce an opportunity for better troubleshooting.
-            # The current behavior is that if the remote path does not exist
-            # an empty file will be created at the local path
+            # For paramiko 2.7.1 and higher, if the remote file does not existed, then
+            # IOError ('[Errno 2] No such file) will be raised when calling `sftp.get()`
+            # The behavior in the previous versions is creating an empty file at `localpath`
             logger.debug(
                 f'{remote_file_path} does not exist on {self.server}.')
+            raise InputError(f'{remote_file_path} does not exist on {self.server}.')
+
         try:
             self._sftp.get(remotepath=remote_file_path,
                            localpath=local_file_path)
