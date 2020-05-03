@@ -1393,67 +1393,50 @@ end
 
     def _get_additional_job_info(self):
         """
-        Get the additional information of stdout and stderr according to the 
+        Get the additional information of stdout and stderr according to the
         queue software outputs.
 
         Returns:
             str: a str includes the info from stdout and stderr
         """
-        lines1, lines2 = list(), list()
-        content = ''
+        # Determine what files to be read from
         cluster_soft = servers[self.server]['cluster_soft'].lower()
-        if cluster_soft in ['oge', 'sge']:
-            local_file_path1 = os.path.join(self.local_path, 'out.txt')
-            local_file_path2 = os.path.join(self.local_path, 'err.txt')
-            if self.server != 'local':
-                remote_file_path = os.path.join(self.remote_path, 'out.txt')
-                with SSHClient(self.server) as ssh:
-                    try:
-                        ssh.download_file(remote_file_path=remote_file_path, 
-                                          local_file_path=local_file_path1)
-                    except (TypeError, IOError) as e:
-                        logger.warning(f'Got the following error when trying to download out.txt for {self.job_name}:')
-                        logger.warning(e)
-                    remote_file_path = os.path.join(self.remote_path, 'err.txt')
-                    try:
-                        ssh.download_file(remote_file_path=remote_file_path, local_file_path=local_file_path2)
-                    except (TypeError, IOError) as e:
-                        logger.warning(f'Got the following error when trying to download err.txt for {self.job_name}:')
-                        logger.warning(e)
-            if os.path.isfile(local_file_path1):
-                with open(local_file_path1, 'r') as f:
-                    lines1 = f.readlines()
-            if os.path.isfile(local_file_path2):
-                with open(local_file_path2, 'r') as f:
-                    lines2 = f.readlines()
-            content += ''.join([line for line in lines1])
-            content += '\n'
-            content += ''.join([line for line in lines2])
-        elif cluster_soft == 'slurm':
+        if cluster_soft.lower() in ['oge', 'sge']:
+            files = ['out.txt', 'err.txt']
+        elif cluster_soft.lower() == 'slurm':
             if self.server != 'local':
                 with SSHClient(self.server) as ssh:
                     response = ssh.list_dir(remote_path=self.remote_path)
             else:
-                response = execute_command('ls -alF {0}'.format(self.local_path))
+                response = execute_command(f'ls -alF {self.local_path}')[0]
             files = list()
-            for line in response[0]:
+            for line in response:
                 files.append(line.split()[-1])
-            for file_name in files:
-                if 'slurm' in file_name and '.out' in file_name:
-                    local_file_path = os.path.join(self.local_path, file_name)
-                    if self.server != 'local':
-                        remote_file_path = os.path.join(self.remote_path, file_name)
-                        try:
-                            with SSHClient(self.server) as ssh:
-                                ssh.download_file(remote_file_path=remote_file_path, 
-                                                  local_file_path=local_file_path)
-                        except (TypeError, IOError) as e:
-                            logger.warning(f'Got the following error when trying to download {file_name} '
-                                           f'for {self.job_name}: {e}')
-                    if os.path.isfile(local_file_path):
-                        with open(local_file_path, 'r') as f:
-                            lines1 = f.readlines()
-                    content += ''.join([line for line in lines1])
+            files = [file for file in files if ('slurm' in file and '.out' in file)]
+        else:
+            raise NotImplementedError(f'Queue software {cluster_soft} is not supported')
+
+        # Download files if necessary
+        if self.server != 'local':
+            with SSHClient(self.server) as ssh:
+                for file in files:
+                    remote_file_path = os.path.join(self.remote_path, file)
+                    local_file_path = os.path.join(self.local_path, file)
+                    try:
+                        ssh.download_file(remote_file_path=remote_file_path,
+                                          local_file_path=local_file_path)
+                    except (InputError, ServerError) as e:
+                        logger.warning(f'Got the following error when trying to download {file} for {self.job_name}:')
+                        logger.warning(e)
+
+        # Gather infos into a single content
+        content = ''
+        for file in files:
+            local_file_path = os.path.join(self.local_path, file)
+            if os.path.isfile(local_file_path):
+                with open(local_file_path, 'r') as f:
+                    lines = f.readlines()
+                    content += ''.join([line for line in lines])
                     content += '\n'
         return content
 
