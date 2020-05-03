@@ -1426,13 +1426,18 @@ end
 
     def _check_job_server_status(self):
         """
-        Possible statuses: `initializing`, `running`, `errored on node xx`, `done`.
+        Possible statuses: `initializing`, `running`, `errored`, `done`.
         """
         if self.server != 'local':
             with SSHClient(self.server) as ssh:
-                return ssh.check_job_status(self.job_id)
+                server_status = ssh.check_job_status(self.job_id)
         else:
-            return check_job_status(self.job_id)
+            server_status = check_job_status(self.job_id)
+        # `server_status` should only be 'initializing' / 'running' / 'errored' / 'done'
+        # but `check_job_status()` may return 'errored on node xxx'
+        if 'errored' in server_status:
+            return 'errored'
+        return server_status 
 
     def _check_job_ess_status(self):
         """
