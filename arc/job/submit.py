@@ -242,7 +242,7 @@ rm -rf $WorkDir
 #SBATCH --cpus-per-task=1
 #SBATCH --ntasks-per-node=4
 #SBATCH --gres=gpu:2
-#SBATCH --mem-per-cpu={mem_per_cpu}
+#SBATCH --mem-per-cpu={memory}
 
 echo "============================================================"
 echo "Job ID : $SLURM_JOB_ID"

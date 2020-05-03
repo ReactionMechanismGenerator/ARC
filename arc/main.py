@@ -20,7 +20,7 @@ import yaml
 from distutils.spawn import find_executable
 from IPython.display import display
 
-from arkane.statmech import assign_frequency_scale_factor
+from arkane.encorr.corr import assign_frequency_scale_factor
 from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 
