@@ -1380,14 +1380,12 @@ end
         stdout and stderr are named out.txt and err.txt respectively
         submission script in submit.py should contain -o and -e flags.
         """
-        lines1, lines2 = list(), list()
-        content = ''
+        # Determine what files to be read from
         cluster_soft = servers[self.server]['cluster_soft'].lower()
         if cluster_soft in ['oge', 'sge', 'slurm', 'pbs']:
             local_file_path1 = os.path.join(self.local_path, 'out.txt')
             local_file_path2 = os.path.join(self.local_path, 'err.txt')
             if self.server != 'local':
-                remote_file_path = os.path.join(self.remote_path, 'out.txt')
                 with SSHClient(self.server) as ssh:
                     try:
                         ssh.download_file(remote_file_path=remote_file_path, 
