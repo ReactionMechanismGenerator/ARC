@@ -1377,9 +1377,20 @@ end
         Raises:
             IOError: If the output file and any additional server information cannot be found.
         """
+        # Get server status
+        if self.job_status[0] in ['initializing', 'running']:
+            # The server status does not need to be rechecked if we know it is 'done' or 'errored'
+            self.job_status[0] = self._check_job_server_status()
         if self.job_status[0] == 'errored':
+            # Cases marked as 'errorer' are those 
+            # - whose job status cannot be checked
+            # - whose queue status is errored
+            # - whose job submission is failed
+            # Cases where your job is mistakenly canceled by various reasons,
+            # will have job_status[0] = 'done'
+            # TODO: Consider if this weird behavior is to be changed.
             return
-        self.job_status[0] = self._check_job_server_status()
+        
         if self.job_status[0] == 'done':
             try:
                 self._check_job_ess_status()  # populates self.job_status[1], and downloads the output file
