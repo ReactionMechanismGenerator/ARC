@@ -1359,8 +1359,8 @@ end
                         # example:
                         # slurmstepd: *** JOB 7752164 CANCELLED AT 2019-03-27T00:30:50 DUE TO TIME LIMIT on node096 ***
                         if 'cancelled' in line.lower() and 'due to time limit' in line.lower():
-                            logger.warning('Looks like the job was cancelled on {0} due to time limit. '
-                                           'Got: {1}'.format(self.server, line))
+                            logger.warning(f'Looks like the job was cancelled on {self.server} due to time limit. '
+                                           f'Got: {line}')
                             new_max_job_time = self.max_job_time - 24 if self.max_job_time > 25 else 1
                             logger.warning('Setting max job time to {0} (was {1})'.format(new_max_job_time,
                                                                                           self.max_job_time))
@@ -1370,6 +1370,7 @@ end
                             self.job_status[1]['error'] = 'Job cancelled by the server since it reached the maximal ' \
                                                           'time limit.'
                             self.job_status[1]['line'] = ''
+                            break
                 raise
         elif self.job_status[0] == 'running':
             self.job_status[1]['status'] = 'running'
