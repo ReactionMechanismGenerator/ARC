@@ -412,11 +412,15 @@ class Scheduler(object):
                                 and 'composite' not in list(self.job_dict[species.label].keys()):
                             # doing composite; composite hasn't finished and is not running; spawn composite
                             self.run_composite_job(species.label)
-                        elif not self.output[species.label]['job_types']['freq'] \
-                                and 'freq' not in list(self.job_dict[species.label].keys()) \
-                                and (self.species_dict[species.label].is_ts
-                                     or self.species_dict[species.label].number_of_atoms > 1):
-                            self.run_freq_job(species.label)
+                        elif 'composite' not in list(self.job_dict[species.label].keys()):
+                            # composite is done; do other jobs
+                            if not self.output[species.label]['job_types']['freq'] \
+                                    and 'freq' not in list(self.job_dict[species.label].keys()) \
+                                    and (self.species_dict[species.label].is_ts 
+                                         or self.species_dict[species.label].number_of_atoms > 1):
+                                self.run_freq_job(species.label)
+                            if self.job_types['rotors']:
+                                self.run_scan_jobs(species.label)
                     else:
                         # non-composite-related restart
                         if ('opt' not in list(self.job_dict[species.label].keys()) and not self.job_types['fine']) or \
