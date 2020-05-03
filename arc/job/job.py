@@ -1376,7 +1376,7 @@ end
                         # example:
                         # slurmstepd: *** JOB 7752164 CANCELLED AT 2019-03-27T00:30:50 DUE TO TIME LIMIT on node096 ***
                         if 'cancelled' in line.lower() and 'due to time limit' in line.lower():
-                            logger.warning(f'Looks like the job was cancelled on {self.server} due to time limit. '
+                            logger.warning(f'Looks like the job was cancelled on {self.server} due to time limit.\n'
                                            f'Got: {line}')
                             new_max_job_time = self.max_job_time - 24 if self.max_job_time > 25 else 1
                             logger.warning('Setting max job time to {0} (was {1})'.format(new_max_job_time,
@@ -1386,6 +1386,17 @@ end
                             self.job_status[1]['keywords'] = ['ServerTimeLimit']
                             self.job_status[1]['error'] = 'Job cancelled by the server since it reached the maximal ' \
                                                           'time limit.'
+                            self.job_status[1]['line'] = ''
+                            break
+                        # example:
+                        # slurmstepd: *** JOB 12219482 CANCELLED AT 2020-05-03T01:25:00 DUE TO NODE node027 FAILURE ***
+                        if 'cancelled' in line.lower() and 'due to node' in line.lower() and 'failure' in line.lower():
+                            logger.warning(f'Looks like the job was cancelled on {self.server} due to node faliure.\n'
+                                           f'Got: {line}')
+                            logger.warning('Needs to rerun the job.')
+                            self.job_status[1]['status'] = 'errored'
+                            self.job_status[1]['keywords'] = ['NodeFailure']
+                            self.job_status[1]['error'] = 'Job cancelled by the server due to a node failure.'
                             self.job_status[1]['line'] = ''
                             break
                 raise
