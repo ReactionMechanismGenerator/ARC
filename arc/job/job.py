@@ -1407,6 +1407,10 @@ end
             # TODO: Consider if this weird behavior is to be changed.
             return
         
+        # Get ESS status
+        # jobs being initializing will remain unchanged
+        # jobs being running will have their ESS status 'running'
+        # jobs being done will be further checked
         if self.job_status[0] == 'done':
             try:
                 self._check_job_ess_status()  # populates self.job_status[1], and downloads the output file
