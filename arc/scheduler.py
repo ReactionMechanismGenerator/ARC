@@ -20,6 +20,7 @@ from arc.common import (extermum_list,
                         sort_two_lists_by_the_first)
 from arc import parser, plotter
 from arc.exceptions import (InputError,
+                            JobError,
                             SanitizationError,
                             SchedulerError,
                             SpeciesError,
@@ -823,7 +824,7 @@ class Scheduler(object):
         """
         try:
             job.determine_job_status()  # also downloads output file
-        except IOError:
+        except (IOError, JobError):
             if job.job_type not in ['orbitals']:
                 logger.warning(f'Tried to determine status of job {job.job_name}, but it seems like the job never ran. '
                                f'Re-running job.')
