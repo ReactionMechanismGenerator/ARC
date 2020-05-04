@@ -1486,7 +1486,11 @@ end
         elif cluster_soft.lower() == 'slurm':
             if self.server != 'local':
                 with SSHClient(self.server) as ssh:
-                    response = ssh.list_dir(remote_path=self.remote_path)
+                    try:
+                        response = ssh.list_dir(remote_path=self.remote_path)
+                    except InputError:
+                        # The remote path does not exist, it seems like the job never submitted
+                        return ''
             else:
                 response = execute_command(f'ls -alF {self.local_path}')[0]
             files = list()
