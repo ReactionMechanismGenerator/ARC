@@ -27,6 +27,7 @@ from arc import plotter
 from arc import parser
 from arc.job.job import Job
 from arc.exceptions import (InputError,
+                            JobError,
                             SanitizationError,
                             SchedulerError,
                             SpeciesError,
@@ -796,7 +797,7 @@ class Scheduler(object):
         """
         try:
             job.determine_job_status()  # also downloads output file
-        except IOError:
+        except (IOError, JobError):
             if job.job_type not in ['orbitals']:
                 logger.warning('Tried to determine status of job {0}, but it seems like the job never ran.'
                                ' Re-running job.'.format(job.job_name))
