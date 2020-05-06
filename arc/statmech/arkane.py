@@ -334,12 +334,12 @@ class ArkaneAdapter(StatmechAdapter):
                         rotor_symmetry = 1
                         max_e = None
                     scan_trsh = ''
-                    scan_res = 360
                     if 'trsh_methods' in species.rotors_dict[i]:
+                        scan_res = 360
                         for scan_trsh_method in species.rotors_dict[i]['trsh_methods']:
                             if 'scan_trsh' in scan_trsh_method and len(scan_trsh) < len(scan_trsh_method['scan_trsh']):
                                 scan_trsh = scan_trsh_method['scan_trsh']
-                            if scan_res > scan_trsh_method['scan_res']:
+                            if 'scan_res' in scan_trsh_method and scan_res > scan_trsh_method['scan_res']:
                                 scan_res = scan_trsh_method['scan_res']
                         scan_trsh = f'Troubleshot with the following constraints and {scan_res} degrees ' \
                                     f'resolution:\n{scan_trsh}' if scan_trsh else ''

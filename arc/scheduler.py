@@ -412,11 +412,15 @@ class Scheduler(object):
                                 and 'composite' not in list(self.job_dict[species.label].keys()):
                             # doing composite; composite hasn't finished and is not running; spawn composite
                             self.run_composite_job(species.label)
-                        elif not self.output[species.label]['job_types']['freq'] \
-                                and 'freq' not in list(self.job_dict[species.label].keys()) \
-                                and (self.species_dict[species.label].is_ts
-                                     or self.species_dict[species.label].number_of_atoms > 1):
-                            self.run_freq_job(species.label)
+                        elif 'composite' not in list(self.job_dict[species.label].keys()):
+                            # composite is done; do other jobs
+                            if not self.output[species.label]['job_types']['freq'] \
+                                    and 'freq' not in list(self.job_dict[species.label].keys()) \
+                                    and (self.species_dict[species.label].is_ts 
+                                         or self.species_dict[species.label].number_of_atoms > 1):
+                                self.run_freq_job(species.label)
+                            if self.job_types['rotors']:
+                                self.run_scan_jobs(species.label)
                     else:
                         # non-composite-related restart
                         if ('opt' not in list(self.job_dict[species.label].keys()) and not self.job_types['fine']) or \
@@ -1068,13 +1072,23 @@ class Scheduler(object):
         Args:
             label (str): The species label.
         """
-        if self.job_types['rotors']:
-            for i in range(self.species_dict[label].number_of_rotors):
-                if self.species_dict[label].rotors_dict[i]['scan_path'] \
-                        and os.path.isfile(self.species_dict[label].rotors_dict[i]['scan_path']):
-                    continue
-                scan = self.species_dict[label].rotors_dict[i]['scan']
-                pivots = self.species_dict[label].rotors_dict[i]['pivots']
+        if self.job_types['rotors'] and isinstance(self.species_dict[label].rotors_dict, dict):
+            for i, rotor in self.species_dict[label].rotors_dict.items():
+                # Since this function applied in multiple cases, all cases are listed for debugging
+                # [have not started] success = None, and scan_path = ''
+                # [first time calculating] success = None, and scan_path = ''
+                # [converged, good] success = True, and scan_path is file
+                # [converged, invalidated] success = False, and scan_path is file
+                # [previous converged, troubleshooting] success = None, and scan_path (previous scan) is file
+                # [pervious converged, lower conformer] success = None, and scan_path (previous scan) is file
+                # [not a torsion] success = False, and scan_path = ''
+                if rotor['success'] is not None:
+                    if rotor['scan_path'] and not os.path.isfile(rotor['scan_path']):
+                        # For some reason the output file does not exist
+                        rotor['success'] = None
+                    else:
+                        continue
+                scan = rotor['scan']
                 if not isinstance(scan[0], list):
                     # check that a 1D rotors is not linear
                     coords = xyz_to_coords_list(self.species_dict[label].get_xyz())
@@ -1084,45 +1098,47 @@ class Scheduler(object):
                     angle1, angle2 = get_angle(v1, v2, units='degs'), get_angle(v2, v3, units='degs')
                     if any([abs(angle - 180.0) < 0.15 for angle in [angle1, angle2]]):
                         # this is not a torsional mode, invalidate rotor
-                        self.species_dict[label].rotors_dict[i]['success'] = False
-                        self.species_dict[label].rotors_dict[i]['invalidation_reason'] = \
+                        rotor['success'] = False
+                        rotor['invalidation_reason'] = \
                             f'not a torsional mode (angles = {angle1:.2f}, {angle2:.2f} degrees)'
-                        return
-                directed_scan_type = self.species_dict[label].rotors_dict[i]['directed_scan_type'] \
-                    if 'directed_scan_type' in self.species_dict[label].rotors_dict[i] else ''
-                if not self.species_dict[label].rotors_dict[i]['scan_path']:
-                    if directed_scan_type:
-                        # check this job isn't already running on the server or completed (from a restarted project)
-                        if 'directed_scan' not in self.job_dict[label]:
-                            # we're spawning the first brute force scan jobs for this species
-                            self.job_dict[label]['directed_scan'] = dict()
-                        for directed_scan_job in self.job_dict[label]['directed_scan'].values():
-                            if directed_scan_job.pivots == pivots \
-                                    and directed_scan_job.job_name in self.running_jobs[label]:
-                                break
-                        else:
-                            if 'cont' in directed_scan_type:
-                                for directed_pivots in self.job_dict[label]['directed_scan'].keys():
-                                    if directed_pivots == pivots \
-                                            and self.job_dict[label]['directed_scan'][directed_pivots]:
-                                        # the previous job hasn't finished
-                                        break
-                                else:
-                                    self.spawn_directed_scan_jobs(label, rotor_index=i)
+                        continue
+                pivots = rotor['pivots']
+                directed_scan_type = rotor['directed_scan_type'] if 'directed_scan_type' in rotor else ''
+
+                if directed_scan_type:
+                    # this is a directed scan
+                    # check this job isn't already running on the server (from a restarted project)
+                    if 'directed_scan' not in self.job_dict[label]:
+                        # we're spawning the first brute force scan jobs for this species
+                        self.job_dict[label]['directed_scan'] = dict()
+                    for directed_scan_job in self.job_dict[label]['directed_scan'].values():
+                        if directed_scan_job.pivots == pivots \
+                                and directed_scan_job.job_name in self.running_jobs[label]:
+                            break
+                    else:
+                        if 'cont' in directed_scan_type:
+                            for directed_pivots in self.job_dict[label]['directed_scan'].keys():
+                                if directed_pivots == pivots \
+                                        and self.job_dict[label]['directed_scan'][directed_pivots]:
+                                    # the previous job hasn't finished
+                                    break
                             else:
                                 self.spawn_directed_scan_jobs(label, rotor_index=i)
-                    else:
-                        # this is a "normal" scan (not directed)
-                        # check this job isn't already running on the server or completed (from a restarted project)
-                        if 'scan' not in self.job_dict[label]:
-                            # we're spawning the first scan job for this species
-                            self.job_dict[label]['scan'] = dict()
-                        for scan_job in self.job_dict[label]['scan'].values():
-                            if scan_job.pivots == pivots and scan_job.job_name in self.running_jobs[label]:
-                                break
                         else:
-                            self.run_job(label=label, xyz=self.species_dict[label].get_xyz(generate=False),
-                                         level_of_theory=self.scan_level, job_type='scan', scan=scan, pivots=pivots)
+                            self.spawn_directed_scan_jobs(label, rotor_index=i)                    
+                else:
+                    # this is a "normal" scan (not directed)
+                    # check this job isn't already running on the server(from a restarted project)
+                    if 'scan' not in self.job_dict[label]:
+                        # we're spawning the first scan job for this species
+                        self.job_dict[label]['scan'] = dict()
+                    for scan_job in self.job_dict[label]['scan'].values():
+                        if scan_job.pivots == pivots and scan_job.job_name in self.running_jobs[label]:
+                            break
+                    else:
+                        self.run_job(label=label, xyz=self.species_dict[label].get_xyz(generate=False),
+                                     level_of_theory=self.scan_level, job_type='scan', scan=scan, pivots=pivots)
+                    
 
     def run_irc_job(self, label, irc_direction='forward'):
         """

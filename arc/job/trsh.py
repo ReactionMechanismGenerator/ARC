@@ -1429,8 +1429,8 @@ def scan_quality_check(label: str,
             logger.warning(f'The maximal barrier for rotor {pivots} of {label} is '
                            f'{(np.max(energies) - np.min(energies))} kJ/mol, which is higher than the set threshold '
                            f'of {maximum_barrier} kJ/mol. Since this mode when treated as torsion has {num_wells}, '
-                           f'this mode is not invalidated: treating it as a vibrational mode will be less accurate than'
-                           f'the a hindered rotor treatment, since the entropy contribution from the population of '
+                           f'this mode is not invalidated: treating it as a vibrational mode will be less accurate than '
+                           f'the hindered rotor treatment, since the entropy contribution from the population of '
                            f'this species at the higher wells will not be taken into account. NOT invalidating this '
                            f'torsional mode.')
 
