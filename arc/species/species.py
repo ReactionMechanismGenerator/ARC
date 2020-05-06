@@ -399,7 +399,8 @@ class ARCSpecies(object):
                 self.charge = charge
             if self.mol is None:
                 if adjlist:
-                    self.mol = Molecule().from_adjacency_list(adjlist=adjlist, raise_atomtype_exception=False)
+                    self.mol = Molecule().from_adjacency_list(adjlist=adjlist, raise_atomtype_exception=False,
+                                                              raise_charge_exception=False)
                 elif inchi:
                     self.mol = rmg_mol_from_inchi(inchi)
                 elif smiles:
@@ -694,8 +695,8 @@ class ARCSpecies(object):
         self.neg_freqs_trshed = species_dict['neg_freqs_trshed'] if 'neg_freqs_trshed' in species_dict else list()
         self.bond_corrections = species_dict['bond_corrections'] if 'bond_corrections' in species_dict else dict()
         try:
-            self.mol = Molecule().from_adjacency_list(species_dict['mol'], raise_atomtype_exception=False) \
-                if 'mol' in species_dict else None
+            self.mol = Molecule().from_adjacency_list(species_dict['mol'], raise_atomtype_exception=False,
+                                                      raise_charge_exception=False) if 'mol' in species_dict else None
         except (ValueError, AtomTypeError, InvalidAdjacencyListError) as e:
             logger.error(f'Could not read RMG adjacency list {species_dict["mol"] if "mol" in species_dict else None}. '
                          f'Got:\n{e}')
@@ -705,7 +706,8 @@ class ARCSpecies(object):
         adjlist = species_dict['adjlist'] if 'adjlist' in species_dict else None
         if self.mol is None:
             if adjlist is not None:
-                self.mol = Molecule().from_adjacency_list(adjlist=adjlist, raise_atomtype_exception=False)
+                self.mol = Molecule().from_adjacency_list(adjlist=adjlist, raise_atomtype_exception=False,
+                                                          raise_charge_exception=False)
             elif inchi is not None:
                 self.mol = rmg_mol_from_inchi(inchi)
             elif smiles is not None:
@@ -1182,7 +1184,8 @@ class ARCSpecies(object):
             if mol is not None and mol.multiplicity >= 1:
                 self.multiplicity = mol.multiplicity
             elif adjlist:
-                mol = Molecule().from_adjacency_list(adjlist, raise_atomtype_exception=False)
+                mol = Molecule().from_adjacency_list(adjlist, raise_atomtype_exception=False,
+                                                     raise_charge_exception=False)
                 self.multiplicity = mol.multiplicity
             elif self.mol is not None and self.mol.multiplicity >= 1:
                 self.multiplicity = self.mol.multiplicity
