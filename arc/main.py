@@ -119,6 +119,7 @@ class ARC(object):
         compute_rates (bool, optional): Whether to compute rate coefficients for converged reactions.
         compute_transport (bool, optional): Whether to compute transport properties for converged species.
         statmech_adapter (str, optional): The statmech software to use.
+        previous_job_paths (dict, optional): A dictionary for paths to previously run files needed for this job
 
     Attributes:
         project (str): The project's name. Used for naming the working directory.
@@ -182,6 +183,7 @@ class ARC(object):
         statmech_adapter (str): The statmech software to use.
         fine_only (bool): If ``self.job_types['fine'] and not self.job_types['opt']`` ARC will not run optimization
                           jobs without fine=True
+        previous_job_paths (dict, optional): A dictionary for paths to previously run files needed for this job
     """
 
     def __init__(self, input_dict=None, project=None, arc_species_list=None, arc_rxn_list=None, level_of_theory='',
@@ -192,7 +194,7 @@ class ARC(object):
                  job_memory=None, ess_settings=None, bath_gas=None, adaptive_levels=None, freq_scale_factor=None,
                  calc_freq_factor=True, n_confs=10, e_confs=5, dont_gen_confs=None, keep_checks=False,
                  solvation=None, compare_to_rmg=True, compute_thermo=True, compute_rates=True, compute_transport=True,
-                 specific_job_type='', statmech_adapter='Arkane'):
+                 specific_job_type='', statmech_adapter='Arkane', previous_job_paths=None):
         self.__version__ = VERSION
         self.verbose = verbose
         self.output = dict()
@@ -207,6 +209,7 @@ class ARC(object):
         self.calc_freq_factor = calc_freq_factor
         self.keep_checks = keep_checks
         self.compare_to_rmg = compare_to_rmg
+        self.previous_job_paths = previous_job_paths
 
         if input_dict is None:
             if project is None:
@@ -618,7 +621,8 @@ class ARC(object):
                             T_count=self.T_count or 50,
                             lib_long_desc=self.lib_long_desc,
                             rmg_database=self.rmg_database,
-                            compare_to_rmg=self.compare_to_rmg)
+                            compare_to_rmg=self.compare_to_rmg,
+                            previous_job_paths=self.previous_job_paths)
 
         status_dict = self.summary()
         log_footer(execution_time=self.execution_time)

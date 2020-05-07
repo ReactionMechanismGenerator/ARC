@@ -49,6 +49,7 @@ def process_arc_project(statmech_adapter: str,
                         lib_long_desc: str = '',
                         rmg_database: Type[RMGDatabase] = None,
                         compare_to_rmg: bool = True,
+                        previous_job_paths: dict = None,
                         ) -> None:
     """
     Process an RMG project, generate thermo and rate coefficients using statistical mechanics (statmech).
@@ -75,7 +76,22 @@ def process_arc_project(statmech_adapter: str,
         rmg_database (RMGDatabase, optional): The RMG database object.
         compare_to_rmg (bool, optional): If ``True``, ARC's calculations will be compared against estimations
                                          from RMG's database.
+        previous_job_paths (dict, optional): A dictionary for paths to previously run files needed for this job
     """
+    # First, add previous paths to the output dictionary
+    if previous_job_paths is not None:
+        print('Checking to see if previous job paths need to be appended')
+        for spcs_label in species_dict.keys():
+            if spcs_label in previous_job_paths.keys():
+                if 'geo' in previous_job_paths[spcs_label].keys():
+                    geo_path = previous_job_paths[spcs_label]['geo']
+                    output_dict[spcs_label]['paths']['geo'] = geo_path
+                    print(f'Geometry path {geo_path} added for species {spcs_label}')
+                if 'freq' in previous_job_paths[spcs_label].keys():
+                    freq_path = previous_job_paths[spcs_label]['freq']
+                    output_dict[spcs_label]['paths']['freq'] = freq_path
+                    print(f'Frequency path {freq_path} added for species {spcs_label}')
+
     T_min = T_min or (300, 'K')
     T_max = T_max or (3000, 'K')
     if isinstance(T_min, (int, float)):
