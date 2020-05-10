@@ -825,56 +825,49 @@ class ARC(object):
                 continue
             if diagnostics:
                 logger.info('\nTrying {0}'.format(server))
-            ssh = SSHClient(server)
+            with SSHClient(server) as ssh:
 
-            cmd = '. ~/.bashrc; which g03'
-            g03 = ssh.send_command_to_server(cmd)[0]
-            cmd = '. ~/.bashrc; which g09'
-            g09 = ssh.send_command_to_server(cmd)[0]
-            cmd = '. ~/.bashrc; which g16'
-            g16 = ssh.send_command_to_server(cmd)[0]
-            if g03 or g09 or g16:
-                if diagnostics:
-                    logger.info(f'  Found Gaussian on {server}: g03={g03}, g09={g09}, g16={g16}')
-                self.ess_settings['gaussian'].append(server)
-            elif diagnostics:
-                logger.info(f'  Did NOT find Gaussian on {server}')
+                g03 = ssh.find_package('g03')
+                g09 = ssh.find_package('g09')
+                g16 = ssh.find_package('g16')
+                if g03 or g09 or g16:
+                    if diagnostics:
+                        logger.info(f'  Found Gaussian on {server}: g03={g03}, g09={g09}, g16={g16}')
+                    self.ess_settings['gaussian'].append(server)
+                elif diagnostics:
+                    logger.info(f'  Did NOT find Gaussian on {server}')
 
-            cmd = '. ~/.bashrc; which qchem'
-            qchem = ssh.send_command_to_server(cmd)[0]
-            if qchem:
-                if diagnostics:
-                    logger.info(f'  Found QChem on {server}')
-                self.ess_settings['qchem'].append(server)
-            elif diagnostics:
-                logger.info(f'  Did NOT find QChem on {server}')
+                qchem = ssh.find_package('qchem')
+                if qchem:
+                    if diagnostics:
+                        logger.info(f'  Found QChem on {server}')
+                    self.ess_settings['qchem'].append(server)
+                elif diagnostics:
+                    logger.info(f'  Did NOT find QChem on {server}')
 
-            cmd = '. ~/.bashrc; which orca'
-            orca = ssh.send_command_to_server(cmd)[0]
-            if orca:
-                if diagnostics:
-                    logger.info(f'  Found Orca on {server}')
-                self.ess_settings['orca'].append(server)
-            elif diagnostics:
-                logger.info(f'  Did NOT find Orca on {server}')
+                orca = ssh.find_package('orca')
+                if orca:
+                    if diagnostics:
+                        logger.info(f'  Found Orca on {server}')
+                    self.ess_settings['orca'].append(server)
+                elif diagnostics:
+                    logger.info(f'  Did NOT find Orca on {server}')
 
-            cmd = '. ~/.bashrc; which terachem'
-            terachem = ssh.send_command_to_server(cmd)[0]
-            if terachem:
-                if diagnostics:
-                    logging.info(f'  Found TeraChem on {server}')
-                self.ess_settings['terachem'].append(server)
-            elif diagnostics:
-                logging.info(f'  Did NOT find TeraChem on {server}')
+                terachem = ssh.find_package('terachem')
+                if terachem:
+                    if diagnostics:
+                        logging.info(f'  Found TeraChem on {server}')
+                    self.ess_settings['terachem'].append(server)
+                elif diagnostics:
+                    logging.info(f'  Did NOT find TeraChem on {server}')
 
-            cmd = '. .bashrc; which molpro'
-            molpro = ssh.send_command_to_server(cmd)[0]
-            if molpro:
-                if diagnostics:
-                    logger.info(f'  Found Molpro on {server}')
-                self.ess_settings['molpro'].append(server)
-            elif diagnostics:
-                logger.info(f'  Did NOT find Molpro on {server}')
+                molpro = ssh.find_package('molpro')
+                if molpro:
+                    if diagnostics:
+                        logger.info(f'  Found Molpro on {server}')
+                    self.ess_settings['molpro'].append(server)
+                elif diagnostics:
+                    logger.info(f'  Did NOT find Molpro on {server}')
         if diagnostics:
             logger.info('\n\n')
         if 'gaussian' in self.ess_settings.keys():

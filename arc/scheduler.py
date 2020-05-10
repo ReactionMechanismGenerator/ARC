@@ -2511,8 +2511,8 @@ class Scheduler(object):
         self.servers_jobs_ids = list()
         for server in self.servers:
             if server != 'local':
-                ssh = SSHClient(server)
-                self.servers_jobs_ids.extend(ssh.check_running_jobs_ids())
+                with SSHClient(server) as ssh:
+                    self.servers_jobs_ids.extend(ssh.check_running_jobs_ids())
             else:
                 self.servers_jobs_ids.extend(check_running_jobs_ids())
 

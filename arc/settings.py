@@ -102,7 +102,7 @@ delete_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qdel
                   'Slurm': '/usr/bin/scancel'}
 
 list_available_nodes_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat -f | grep "/8 " | grep "long" | grep -v "8/8"| grep -v "aAu"',
-                                'Slurm': 'sinfo'}
+                                'Slurm': 'sinfo -o "%n %t %O %E"'}
 
 submit_filename = {'OGE': 'submit.sh',
                    'Slurm': 'submit.sl'}

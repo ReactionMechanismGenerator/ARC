@@ -25,7 +25,6 @@ from arc.job.ssh import SSHClient
 from arc.settings import (delete_command,
                           inconsistency_ab,
                           inconsistency_az,
-                          list_available_nodes_command,
                           maximum_barrier,
                           preserve_param_in_scan_stable,
                           rotor_scan_resolution,
@@ -1120,54 +1119,61 @@ def trsh_job_on_server(server: str,
         bool: Whether to re-run the job, `True` to rerun.
     """
     server_nodes = server_nodes if server_nodes is not None else list()
+    cluster_soft = servers[server]['cluster_soft']
     if job_server_status != 'done':
         logger.error(f'Job {job_name} has server status "{job_server_status}" on {server}.')
 
     # delete current server run
-    command = delete_command[servers[server]['cluster_soft']] + ' ' + str(job_id)
     if server == 'local':
-        execute_command(command)
+        cmd = delete_command[cluster_soft] + ' ' + str(job_id)
+        execute_command(cmd)
         return None, True
     else:
-        ssh = SSHClient(server)
-        ssh.send_command_to_server(command)
+        with SSHClient(server) as ssh:
+            ssh.delete_job(job_id)
 
-    if servers[server]['cluster_soft'].lower() == 'oge':
-        logger.error('Troubleshooting by changing node.')
-        ssh = SSHClient(server)
-        # find available nodes
-        stdout = ssh.send_command_to_server(command=list_available_nodes_command[servers[server]['cluster_soft']])[0]
-        for line in stdout:
-            node = line.split()[0].split('.')[0].split('node')[1]
-            if servers[server]['cluster_soft'] == 'OGE' and '0/0/8' in line and node not in server_nodes:
-                server_nodes.append(node)
-                break
-        else:
-            logger.error(f'Could not find an available node on the server {server}')
-            # TODO: continue troubleshooting; if all else fails, put the job to sleep,
-            #       and try again searching for a node
-            return None, False
+    # find available node
+    logger.error('Troubleshooting by changing node.')
+    ssh = SSHClient(server)
+    nodes = ssh.list_available_nodes()
+    for node in nodes:
+        if node not in server_nodes:
+            server_nodes.append(node)
+            break
+    else:
+        logger.error(f'Could not find an available node on the server {server}')
+        # TODO: continue troubleshooting; if all else fails, put the job to sleep,
+        #       and try again searching for a node
+        return None, False
 
-        # modify the submit file
-        content = ssh.read_remote_file(remote_path=remote_path,
-                                       filename=submit_filename[servers[server]['cluster_soft']])
-        for i, line in enumerate(content):
-            if '#$ -l h=node' in line:
-                content[i] = '#$ -l h=node{0}.cluster'.format(node)
-                break
-        else:
-            content.insert(7, '#$ -l h=node{0}.cluster'.format(node))
-        content = ''.join(content)  # convert list into a single string, not to upset paramiko
-        # resubmit
+    # modify the submit file
+    remote_submit_file = os.path.join(remote_path, submit_filename[cluster_soft])
+    with SSHClient(server) as ssh:
+        content = ssh.read_remote_file(remote_file_path=remote_submit_file)
+    if cluster_soft.lower() == 'oge':
+        node_assign = '#$ -l h='
+        insert_line_num = 7
+    elif cluster_soft.lower() == 'slurm':
+        node_assign = '#$BATCH -w, --nodelist='
+        insert_line_num = 5
+    else:
+        # Other software?
+        logger.denug(f'Unknown cluster software {cluster_soft} is encountered when '
+                     f'troubleshooting by changing node.')
+        return None, False
+    for i, line in enumerate(content):
+        if node_assign in line:
+            content[i] = node_assign + node
+        break
+    else:
+        content.insert(insert_line_num, node_assign + node)
+    content = ''.join(content)  # convert list into a single string, not to upset paramiko
+
+    # resubmit
+    with SSHClient(server) as ssh:
         ssh.upload_file(remote_file_path=os.path.join(remote_path,
-                        submit_filename[servers[server]['cluster_soft']]), file_string=content)
-        return node, True
-
-    elif servers[server]['cluster_soft'].lower() == 'slurm':
-        # TODO: change node on Slurm
-        return None, True
-
-    return None, False
+                        submit_filename[cluster_soft]), file_string=content)
+    return node, True
 
 
 def scan_quality_check(label: str,
