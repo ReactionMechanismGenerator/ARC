@@ -838,5 +838,28 @@ one can supply an ARC job ID, and ALL jobs related to the project of the given j
 Note that either a ``-a``, a ``-p``, or a ``-j`` flag must be given.
 All flags can be combined with the optional ``-s`` flag.
 
+Choose modified/classical Arrhenius equation form for rate coefficient fitting
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+ARC uses statistical mechanics software packages (e.g., Arkane) to compute rate coefficients for chemical reactions from
+the results of quantum chemistry calculations. By default, ARC instructs the statmech programs to compute rate
+coefficients in the modified three-parameter Arrhenius equation format:
+
+  .. math :: k(T) = A \left( \frac{T}{T_0} \right)^n \exp \left( -\frac{E_a}{RT} \right)
+
+Alternatively, the user may request to compute the rate coefficients in the classical two-parameter Arrhenius format:
+
+  .. math :: k(T) = A \exp \left( -\frac{E_a}{RT} \right)
+
+by setting the ``three_params`` attribute to ``False`` (it is ``True`` by default). For example::
+
+    project: use_classical_arrhenius_eqn_for_rate_calc_demo
+    three_params: False
+
+instructs the relevant statmech program to compute rate coefficients in the classical two-parameter Arrhenius format for
+all reactions in the same ARC project.
+
+Advanced: to recompute the rate coefficient in the modified three-parameter Arrhenius equation format, simply change
+``three_params`` to ``True`` in the ARC project's restart.yml file, and then restart ARC.
 
 .. include:: links.txt
