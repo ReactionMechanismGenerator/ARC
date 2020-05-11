@@ -49,6 +49,7 @@ def process_arc_project(statmech_adapter: str,
                         lib_long_desc: str = '',
                         rmg_database: Type[RMGDatabase] = None,
                         compare_to_rmg: bool = True,
+                        three_params: bool = True,
                         ) -> None:
     """
     Process an RMG project, generate thermo and rate coefficients using statistical mechanics (statmech).
@@ -75,6 +76,9 @@ def process_arc_project(statmech_adapter: str,
         rmg_database (RMGDatabase, optional): The RMG database object.
         compare_to_rmg (bool, optional): If ``True``, ARC's calculations will be compared against estimations
                                          from RMG's database.
+        three_params (bool, optional): Compute rate coefficients using the modified three-parameter Arrhenius equation
+                                       format (``True``, default) or classical two-parameter Arrhenius equation format
+                                       (``False``).
     """
     T_min = T_min or (300, 'K')
     T_max = T_max or (3000, 'K')
@@ -135,6 +139,7 @@ def process_arc_project(statmech_adapter: str,
                                                         T_min=T_min,
                                                         T_max=T_max,
                                                         T_count=T_count,
+                                                        three_params=three_params,
                                                         )
                     statmech_adapter.compute_high_p_rate_coefficient()
                     if reaction.kinetics is not None:
