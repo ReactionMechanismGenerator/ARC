@@ -42,7 +42,8 @@ class TestARC(unittest.TestCase):
         """Test the as_dict() method of ARC"""
         spc1 = ARCSpecies(label='spc1', smiles='CC', compute_thermo=False)
         arc0 = ARC(project='arc_test', job_types=self.job_types1, job_shortcut_keywords={'gaussian': 'scf=(NDump=30)'},
-                   arc_species_list=[spc1], level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)')
+                   arc_species_list=[spc1], level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)',
+                   three_params=False,)
         restart_dict = arc0.as_dict()
         long_thermo_description = restart_dict['species'][0]['long_thermo_description']
         self.assertIn('Bond corrections:', long_thermo_description)
@@ -114,6 +115,7 @@ class TestARC(unittest.TestCase):
                                       't1': None}],
                          'specific_job_type': '',
                          'statmech_adapter': 'Arkane',
+                         'three_params': False,
                          }
         self.assertEqual(restart_dict, expected_dict)
 
@@ -152,7 +154,9 @@ class TestARC(unittest.TestCase):
                                      'optical_isomers': 1,
                                      'rotors_dict': {},
                                      'xyzs': []}],
-                        'use_bac': True}
+                        'use_bac': True,
+                        'three_params': False,
+                        }
         arc1 = ARC(project='wrong', freq_scale_factor=0.95)
         self.assertEqual(arc1.freq_scale_factor, 0.95)  # user input
         project = 'arc_project_for_testing_delete_after_usage_test_from_dict'
@@ -168,6 +172,7 @@ class TestARC(unittest.TestCase):
         self.assertEqual(arc1.arc_species_list[0].label, 'testing_spc1')
         self.assertFalse(arc1.arc_species_list[0].is_ts)
         self.assertEqual(arc1.arc_species_list[0].charge, 1)
+        self.assertFalse(arc1.three_params)
 
     def test_from_dict_specific_job(self):
         """Test the from_dict() method of ARC"""
