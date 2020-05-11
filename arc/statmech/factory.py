@@ -45,6 +45,7 @@ def statmech_factory(statmech_adapter_label: str,  # add everything that goes in
                      T_min: tuple = None,
                      T_max: tuple = None,
                      T_count: int = 50,
+                     three_params: bool = True,
                      ) -> Type[StatmechAdapter]:
     """
     A factory generating a statmech adapter corresponding to ``statmech_adapter``.
@@ -64,6 +65,9 @@ def statmech_factory(statmech_adapter_label: str,  # add everything that goes in
         T_min (tuple, optional): The minimum temperature for kinetics computations, e.g., (500, 'K').
         T_max (tuple, optional): The maximum temperature for kinetics computations, e.g., (3000, 'K').
         T_count (int, optional): The number of temperature points between t_min and t_max for kinetics computations.
+        three_params (bool, optional): Compute rate coefficients using the modified three-parameter Arrhenius equation
+                                       format (``True``, default) or classical two-parameter Arrhenius equation format
+                                       (``False``).
 
     Returns:
         StatmechAdapter: The requested StatmechAdapter instance, initialized with the respective arguments,
@@ -79,5 +83,6 @@ def statmech_factory(statmech_adapter_label: str,  # add everything that goes in
                                                                                    T_min=T_min,
                                                                                    T_max=T_max,
                                                                                    T_count=T_count,
+                                                                                   three_params=three_params
                                                                                    )
     return statmech_adapter_class
