@@ -51,6 +51,9 @@ class ArkaneAdapter(StatmechAdapter):
         T_min (tuple, optional): The minimum temperature for kinetics computations, e.g., (500, 'K').
         T_max (tuple, optional): The maximum temperature for kinetics computations, e.g., (3000, 'K').
         T_count (int, optional): The number of temperature points between t_min and t_max for kinetics computations.
+        three_params (bool, optional): Instruct Arkane to compute the high pressure kinetic rate coefficients in the
+                                       modified three-parameter Arrhenius equation format (``True``, default) or
+                                       classical two-parameter Arrhenius equation format (``False``).
     """
 
     def __init__(self,
@@ -64,7 +67,9 @@ class ArkaneAdapter(StatmechAdapter):
                  species_dict: dict = None,
                  T_min: tuple = None,
                  T_max: tuple = None,
-                 T_count: int = 50):
+                 T_count: int = 50,
+                 three_params: bool = True,
+                 ):
         self.output_directory = output_directory
         self.output_dict = output_dict
         self.use_bac = use_bac
@@ -76,6 +81,7 @@ class ArkaneAdapter(StatmechAdapter):
         self.T_min = T_min
         self.T_max = T_max
         self.T_count = T_count
+        self.three_params = three_params
 
         if not self.output_directory:
             raise InputError('A project directory was not provided.')
@@ -190,8 +196,13 @@ class ArkaneAdapter(StatmechAdapter):
                                              products=product_labels,
                                              transitionState=self.reaction.ts_label,
                                              tunneling='Eckart')
-                kinetics_job = KineticsJob(reaction=arkane_rxn, Tmin=self.T_min, Tmax=self.T_max, Tcount=self.T_count)
-                logger.info(f'Calculating rate for reaction {self.reaction.label}')
+                kinetics_job = KineticsJob(reaction=arkane_rxn, Tmin=self.T_min, Tmax=self.T_max, Tcount=self.T_count,
+                                           three_params=self.three_params)
+                if self.three_params:
+                    msg = 'using the modified three-parameter Arrhenius equation k = A * (T/T0)^n * exp(-Ea/RT)'
+                else:
+                    msg = 'using the classical two-parameter Arrhenius equation k = A * exp(-Ea/RT)'
+                logger.info(f'Calculating rate for reaction {self.reaction.label} {msg}.')
                 try:
                     kinetics_job.execute(output_directory=arkane_output_path, plot=True)
                 except (ValueError, OverflowError) as e:

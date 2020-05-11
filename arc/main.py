@@ -119,6 +119,9 @@ class ARC(object):
         compute_rates (bool, optional): Whether to compute rate coefficients for converged reactions.
         compute_transport (bool, optional): Whether to compute transport properties for converged species.
         statmech_adapter (str, optional): The statmech software to use.
+        three_params (bool, optional): Compute rate coefficients using the modified three-parameter Arrhenius equation
+                                       format (``True``, default) or classical two-parameter Arrhenius equation format
+                                       (``False``).
 
     Attributes:
         project (str): The project's name. Used for naming the working directory.
@@ -182,6 +185,8 @@ class ARC(object):
         statmech_adapter (str): The statmech software to use.
         fine_only (bool): If ``self.job_types['fine'] and not self.job_types['opt']`` ARC will not run optimization
                           jobs without fine=True
+        three_params (bool): Compute rate coefficients using the modified three-parameter Arrhenius equation
+                             format (``True``) or classical two-parameter Arrhenius equation format (``False``).
     """
 
     def __init__(self, input_dict=None, project=None, arc_species_list=None, arc_rxn_list=None, level_of_theory='',
@@ -192,7 +197,7 @@ class ARC(object):
                  job_memory=None, ess_settings=None, bath_gas=None, adaptive_levels=None, freq_scale_factor=None,
                  calc_freq_factor=True, n_confs=10, e_confs=5, dont_gen_confs=None, keep_checks=False,
                  solvation=None, compare_to_rmg=True, compute_thermo=True, compute_rates=True, compute_transport=True,
-                 specific_job_type='', statmech_adapter='Arkane'):
+                 specific_job_type='', statmech_adapter='Arkane', three_params=True):
         self.__version__ = VERSION
         self.verbose = verbose
         self.output = dict()
@@ -214,6 +219,7 @@ class ARC(object):
             self.project = project
             self.compute_thermo = compute_thermo
             self.compute_rates = compute_rates
+            self.three_params = three_params
             self.compute_transport = compute_transport
             self.statmech_adapter = statmech_adapter
             self.T_min = T_min
@@ -364,6 +370,8 @@ class ARC(object):
             restart_dict['compute_thermo'] = self.compute_thermo
         if not self.compute_rates:
             restart_dict['compute_rates'] = self.compute_rates
+        if not self.three_params:
+            restart_dict['three_params'] = self.three_params
         if not self.compute_transport:
             restart_dict['compute_transport'] = self.compute_transport
         restart_dict['statmech_adapter'] = self.statmech_adapter
@@ -443,6 +451,7 @@ class ARC(object):
         self.execution_time = None
         self.compute_thermo = input_dict['compute_thermo'] if 'compute_thermo' in input_dict else True
         self.compute_rates = input_dict['compute_rates'] if 'compute_rates' in input_dict else True
+        self.three_params = input_dict['three_params'] if 'three_params' in input_dict else True
         self.compute_transport = input_dict['compute_transport'] if 'compute_transport' in input_dict else True
         self.statmech_adapter = input_dict['statmech_adapter'] if 'statmech_adapter' in input_dict else 'Arkane'
         self.verbose = input_dict['verbose'] if 'verbose' in input_dict else self.verbose
@@ -618,7 +627,9 @@ class ARC(object):
                             T_count=self.T_count or 50,
                             lib_long_desc=self.lib_long_desc,
                             rmg_database=self.rmg_database,
-                            compare_to_rmg=self.compare_to_rmg)
+                            compare_to_rmg=self.compare_to_rmg,
+                            three_params=self.three_params,
+                            )
 
         status_dict = self.summary()
         log_footer(execution_time=self.execution_time)
