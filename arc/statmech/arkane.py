@@ -312,17 +312,19 @@ class ArkaneAdapter(StatmechAdapter):
             freq_path = self.output_dict[species.label]['paths']['freq']
             opt_path = self.output_dict[species.label]['paths']['freq']
 
-        return_none_text = None
+        return_none_text = []
         if not sp_path:
-            return_none_text = 'path to the sp calculation'
+            return_none_text.append('the path to the sp calculation')
+        elif not os.path.isfile(sp_path):
+            return_none_text.append(f'the sp file in path {sp_path}')
         if not freq_path:
-            return_none_text = 'path to the freq calculation'
-        if not os.path.isfile(freq_path):
-            return_none_text = f'the freq file in path {freq_path}'
-        if not os.path.isfile(sp_path):
-            return_none_text = f'the sp file in path {sp_path}'
-        if return_none_text is not None:
-            logger.error(f'Could not find {return_none_text} for species {species.label}. Not calculating properties.')
+            return_none_text.append('the path to the freq calculation')
+        elif not os.path.isfile(freq_path):
+            return_none_text.append(f'the freq file in path {freq_path}')
+
+        if len(return_none_text) != 0:
+            logger.error(f'Could not find the following items for species {species.label}: '
+                         f'{", ".join(return_none_text)} Not calculating properties.')
             return None
 
         rotors, rotors_description = '', ''
