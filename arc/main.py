@@ -769,7 +769,8 @@ class ARC(object):
                                       'mp2_rmp2_pvtz', 'mp2_rmp2_pvqz', 'ccsd-f12/cc-pvdz-f12',
                                       'ccsd(t)-f12/cc-pvdz-f12_noscale', 'g03_pbepbe_6-311++g_d_p', 'fci/cc-pvdz',
                                       'fci/cc-pvtz', 'fci/cc-pvqz', 'bmk/cbsb7', 'bmk/6-311g(2d,d,p)',
-                                      'b3lyp/6-31g(d,p)', 'b3lyp/6-311+g(3df,2p)', 'MRCI+Davidson/aug-cc-pV(T+d)Z']:
+                                      'b3lyp/6-31g(d,p)', 'b3lyp/6-311+g(3df,2p)', 'MRCI+Davidson/aug-cc-pV(T+d)Z',
+                                      'wb97xd/def2tzvp', 'dlpno-ccsd(t)/def2-tzvp',]:
                     logger.warning('Could not determine a Model Chemistry to be used in Arkane, '
                                    'NOT calculating thermodata')
                     for spc in self.arc_species_list:
