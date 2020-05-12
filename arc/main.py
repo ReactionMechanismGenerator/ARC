@@ -20,6 +20,7 @@ import yaml
 from distutils.spawn import find_executable
 from IPython.display import display
 
+import arkane.encorr.data as data
 from arkane.encorr.corr import assign_frequency_scale_factor
 from rmgpy.reaction import Reaction
 from rmgpy.species import Species
@@ -750,9 +751,7 @@ class ARC(object):
                     logger.warning('Using model chemistry {0} based on sp level {1}.'.format(
                         sp_level + '-f12', sp_level))
                     sp_level += '-f12'
-                if sp_level not in ['ccsd(t)-f12/cc-pvdz-f12', 'ccsd(t)-f12/cc-pvtz-f12', 'ccsd(t)-f12/cc-pvqz-f12',
-                                    'b3lyp/cbsb7', 'b3lyp/6-311g(2d,d,p)', 'b3lyp/6-311+g(3df,2p)', 'b3lyp/6-31g(d,p)']\
-                        and self.use_bac:
+                if sp_level not in set().union(data.mbac, data.pbac) and self.use_bac:
                     logger.info('\n\n')
                     logger.warning('Could not determine appropriate Model Chemistry to be used in Arkane for '
                                    'thermochemical parameter calculations.\nNot using atom energy corrections and '
