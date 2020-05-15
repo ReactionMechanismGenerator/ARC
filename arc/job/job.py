@@ -781,7 +781,7 @@ wf,spin={spin},charge={charge};}}
                     else:
                         job_type_1 = 'opt=(tight, calcfc, maxstep=5)'
                 if self.checkfile is not None:
-                    job_type_1 += ' guess=read'
+                    job_type_1 += ' guess=mix'
                 else:
                     job_type_1 += ' guess=mix'
             elif self.software == 'qchem':
@@ -871,7 +871,7 @@ end
 %mem={memory}mb
 %NProcShared={cpus}
 
-# HF/6-31G(d) SCF=Tight Pop=MK IOp(6/33=2,6/41=10,6/42=17) scf(maxcyc=500) guess=read geom=check Maxdisk=2GB
+# HF/6-31G(d) SCF=Tight Pop=MK IOp(6/33=2,6/41=10,6/42=17) scf(maxcyc=500) guess=mix geom=check Maxdisk=2GB
 
 name
 
@@ -884,7 +884,7 @@ name
             if self.software == 'gaussian':
                 job_type_2 = 'freq iop(7/33=1) scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
                 if self.checkfile is not None:
-                    job_type_1 += ' guess=read'
+                    job_type_1 += ' guess=mix'
                 else:
                     job_type_1 += ' guess=mix'
             elif self.software == 'qchem':
@@ -922,7 +922,7 @@ name
                     else:
                         job_type_1 = 'opt=(calcfc, noeigentest, tight)'
                 if self.checkfile is not None:
-                    job_type_1 += ' guess=read'
+                    job_type_1 += ' guess=mix'
                 else:
                     job_type_1 += ' guess=mix'
             elif self.software == 'qchem':
@@ -1013,7 +1013,7 @@ end
             if self.software == 'gaussian':
                 job_type_1 = 'scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
                 if self.checkfile is not None:
-                    job_type_1 += ' guess=read'
+                    job_type_1 += ' guess=mix'
                 else:
                     job_type_1 += ' guess=mix'
             elif self.software == 'qchem':
@@ -1061,7 +1061,7 @@ end
                 job_type_1 = f'opt=({ts}modredundant, calcfc, noeigentest, maxStep=5) scf=(tight, direct) ' \
                              f'integral=(grid=ultrafine, Acc2E=12)'
                 if self.checkfile is not None:
-                    job_type_1 += ' guess=read'
+                    job_type_1 += ' guess=mix'
                 else:
                     job_type_1 += ' guess=mix'
                 scan_string = ''
@@ -1113,7 +1113,7 @@ end
                         scan_string += 'D {scan} ={dihedral} B\nD {scan} F\n'.format(
                             scan=scan_atoms, dihedral='{0:.2f}'.format(directed_dihedral))
                 if self.checkfile is not None:
-                    job_type_1 += ' guess=read'
+                    job_type_1 += ' guess=mix'
                 else:
                     job_type_1 += ' guess=mix'
             elif self.software == 'qchem':
@@ -1156,7 +1156,7 @@ end
                 fine = 'scf=(direct) integral=(grid=ultrafine, Acc2E=12)'
             job_type_1 = f'irc=(CalcAll,{self.irc_direction},maxpoints=50,stepsize=7)'
             if self.checkfile is not None:
-                job_type_1 += ' guess=read'
+                job_type_1 += ' guess=mix'
             else:
                 job_type_1 += ' guess=mix'
 
