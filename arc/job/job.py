@@ -1300,6 +1300,11 @@ end
                 if os.path.isfile(xyz_path):
                     self.local_path_to_xyz = xyz_path
 
+    def remove_remote_files(self):
+        if self.server != 'local':
+            with SSHClient(self.server) as ssh:
+                ssh.remove_dir(self.remote_path)
+
     def run(self):
         """
         Execute the Job.
@@ -1336,6 +1341,7 @@ end
             logger.debug(f'deleting job on {self.server}...')
             with SSHClient(self.server) as ssh:
                 ssh.delete_job(self.job_id)
+                ssh.remove_dir(self.remote_path)
         else:
             logger.debug('deleting job locally...')
             delete_job(job_id=self.job_id)
