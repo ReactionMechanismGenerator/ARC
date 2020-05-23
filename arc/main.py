@@ -21,6 +21,7 @@ from distutils.spawn import find_executable
 from IPython.display import display
 
 from arkane.encorr.corr import assign_frequency_scale_factor
+from arkane.modelchem import CompositeLevelOfTheory, LevelOfTheory
 from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 
@@ -343,6 +344,21 @@ class ARC(object):
         self.determine_model_chemistry()
         self.scheduler = None
         self.check_project_name()
+        self.lot = CompositeLevelOfTheory(
+            freq=LevelOfTheory(
+                method=self.freq_level['method'] if not self.composite_method else self.composite_method,
+                basis=self.freq_level['basis'] if not self.composite_method else None,
+                auxiliary_basis=self.freq_level['auxiliary_basis'] if not self.composite_method else None,
+                solvent=self.solvation['solvent'] if self.solvation is not None else None,
+                solvation_method=self.solvation['method'] if self.solvation is not None else None,
+            ),
+            energy=LevelOfTheory(
+                method=self.sp_level['method'] if not self.composite_method else self.composite_method,
+                basis=self.sp_level['basis'] if not self.composite_method else None,
+                auxiliary_basis=self.sp_level['auxiliary_basis'] if not self.composite_method else None,
+                solvent=self.solvation['solvent'] if self.solvation is not None else None,
+                solvation_method=self.solvation['method'] if self.solvation is not None else None,
+            ))
         self.check_freq_scaling_factor()
         self.restart_dict = self.as_dict()
 
@@ -609,7 +625,6 @@ class ARC(object):
 
         self.save_project_info_file()
 
-        sp_level = self.model_chemistry.split('//')[0] if '//' in self.model_chemistry else self.model_chemistry
         process_arc_project(statmech_adapter=self.statmech_adapter.lower(),
                             project=self.project,
                             project_directory=self.project_directory,
@@ -617,7 +632,7 @@ class ARC(object):
                             reactions=self.scheduler.rxn_list,
                             output_dict=self.scheduler.output,
                             use_bac=self.use_bac,
-                            sp_level=sp_level,
+                            lot=self.lot,
                             freq_scale_factor=self.freq_scale_factor,
                             compute_thermo=self.compute_thermo,
                             compute_rates=self.compute_rates,
@@ -917,18 +932,17 @@ class ARC(object):
         """
         if self.freq_scale_factor is None:
             # the user did not specify a scaling factor, see if Arkane has it
-            if not self.composite_method:
-                level = self.freq_level['method'] + '/' + self.freq_level['basis']
-            else:
-                level = self.composite_method
-            freq_scale_factor = assign_frequency_scale_factor(level)
+            freq_scale_factor = assign_frequency_scale_factor(self.lot)
             if freq_scale_factor != 1:
                 # Arkane has this harmonic frequencies scaling factor (if not found, the factor is set to exactly 1)
                 self.freq_scale_factor = freq_scale_factor
             else:
-                logger.info(f'Could not determine the harmonic frequencies scaling factor for {level} from Arkane.')
+                logger.info(f'Could not determine the harmonic frequencies scaling factor for {self.lot.to_model_chem()} '
+                            f'from Arkane.')
                 if self.calc_freq_factor:
                     logger.info("Calculating it using Truhlar's method:\n\n")
+                    level = self.composite_method if self.composite_method \
+                        else self.freq_level['method'] + '/' + self.freq_level['basis']
                     self.freq_scale_factor = determine_scaling_factors(
                         level, ess_settings=self.ess_settings, init_log=False)[0]
                 else:

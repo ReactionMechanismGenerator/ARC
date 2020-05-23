@@ -5,7 +5,9 @@
 A module for generating statmech adapters.
 """
 
-from typing import Type
+from typing import Optional, Type
+
+from arkane.modelchem import CompositeLevelOfTheory
 
 from arc.reaction import ARCReaction
 from arc.species.species import ARCSpecies
@@ -37,7 +39,7 @@ def statmech_factory(statmech_adapter_label: str,  # add everything that goes in
                      output_directory: str,
                      output_dict: dict,
                      use_bac: bool,
-                     sp_level: str = '',
+                     lot: Optional[Type[CompositeLevelOfTheory]] = None,
                      freq_scale_factor: float = 1.0,
                      species: Type[ARCSpecies] = None,
                      reaction: Type[ARCReaction] = None,
@@ -56,8 +58,7 @@ def statmech_factory(statmech_adapter_label: str,  # add everything that goes in
         output_dict (dict): Keys are labels, values are output file paths.
                             See Scheduler for a description of this dictionary.
         use_bac (bool): Whether or not to use bond additivity corrections (BACs) for thermo calculations.
-        sp_level (str, optional): The level of theory used for the single point energy calculation
-                                  (could be a composite method), used for determining energy corrections.
+        lot (CompositeLevelOfTheory, optional): The level of theory used for energy corrections.
         freq_scale_factor (float, optional): The harmonic frequencies scaling factor.
         species (ARCSpecies, optional): The species object.
         reaction (list, optional): The reaction object.
@@ -75,7 +76,7 @@ def statmech_factory(statmech_adapter_label: str,  # add everything that goes in
     statmech_adapter_class = _registered_statmech_adapters[statmech_adapter_label](output_directory=output_directory,
                                                                                    output_dict=output_dict,
                                                                                    use_bac=use_bac,
-                                                                                   sp_level=sp_level,
+                                                                                   lot=lot,
                                                                                    freq_scale_factor=freq_scale_factor,
                                                                                    species=species,
                                                                                    reaction=reaction,

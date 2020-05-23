@@ -7,8 +7,9 @@ An adapter for executing Arkane.
 
 import os
 import shutil
-from typing import Type
+from typing import Optional, Type
 
+from arkane.modelchem import CompositeLevelOfTheory
 from rmgpy.species import Species
 
 import arkane.input
@@ -42,8 +43,7 @@ class ArkaneAdapter(StatmechAdapter):
         output_dict (dict): Keys are labels, values are output file paths.
                             See Scheduler for a description of this dictionary.
         use_bac (bool): Whether or not to use bond additivity corrections (BACs) for thermo calculations.
-        sp_level (str, optional): The level of theory used for the single point energy calculation
-                                  (could be a composite method), used for determining energy corrections.
+        lot (CompositeLevelOfTheory, optional): The level of theory used for energy corrections.
         freq_scale_factor (float, optional): The harmonic frequencies scaling factor.
         species (ARCSpecies, optional): The species object.
         reaction (ARCReaction, optional): The reaction object.
@@ -60,7 +60,7 @@ class ArkaneAdapter(StatmechAdapter):
                  output_directory: str,
                  output_dict: dict,
                  use_bac: bool,
-                 sp_level: str = '',
+                 lot:Optional[Type[CompositeLevelOfTheory]] = None,
                  freq_scale_factor: float = 1.0,
                  species: Type[ARCSpecies] = None,
                  reaction: Type[ARCReaction] = None,
@@ -73,7 +73,7 @@ class ArkaneAdapter(StatmechAdapter):
         self.output_directory = output_directory
         self.output_dict = output_dict
         self.use_bac = use_bac
-        self.sp_level = sp_level
+        self.lot = lot
         self.freq_scale_factor = freq_scale_factor
         self.species = species
         self.reaction = reaction
@@ -96,7 +96,7 @@ class ArkaneAdapter(StatmechAdapter):
         str_representation = 'ArkaneAdapter('
         str_representation += f'output_directory={self.output_directory}, '
         str_representation += f'use_bac={self.use_bac}, '
-        str_representation += f'sp_level={self.sp_level}, '
+        str_representation += f'lot={self.lot.to_model_chem()}, '
         str_representation += f'freq_scale_factor={self.freq_scale_factor}, '
         str_representation += f'species={self.species}, '
         str_representation += f'reaction={self.reaction}, '
@@ -144,7 +144,7 @@ class ArkaneAdapter(StatmechAdapter):
                                                  arkane_file_path=self.species.arkane_file,
                                                  arkane_output_path=arkane_output_path,
                                                  use_bac=self.use_bac,
-                                                 sp_level=self.sp_level,
+                                                 lot=self.lot,
                                                  plot=False)
             if statmech_success:
                 self.species.e0 = arkane_species.conformer.E0.value_si * 0.001  # convert to kJ/mol
@@ -174,7 +174,7 @@ class ArkaneAdapter(StatmechAdapter):
                                                  arkane_file_path=ts_species.arkane_file,
                                                  arkane_output_path=arkane_output_path,
                                                  use_bac=False,
-                                                 sp_level=self.sp_level,
+                                                 lot=self.lot,
                                                  plot=False)
             if not statmech_success:
                 logger.error(f'Could not run statmech job for TS species {ts_species.label} '
@@ -232,7 +232,7 @@ class ArkaneAdapter(StatmechAdapter):
                      arkane_file_path: str,
                      arkane_output_path: str = None,
                      use_bac: bool = False,
-                     sp_level: str = '',
+                     lot:Optional[Type[CompositeLevelOfTheory]] = None,
                      plot: bool = False,
                      ) -> bool:
         """
@@ -243,8 +243,7 @@ class ArkaneAdapter(StatmechAdapter):
             arkane_file_path (str): The path to the Arkane species file (either in .py or YAML form).
             arkane_output_path (str): The path to the folder in which the Arkane output.py file will be saved.
             use_bac (bool): A flag indicating whether or not to use bond additivity corrections (True to use).
-            sp_level (str, optional): The level of theory used for the single point energy calculation
-                                      (could be a composite method), used for determining energy corrections.
+            lot (CompositeLevelOfTheory, optional): The level of theory used for energy corrections.
             plot (bool): A flag indicating whether to plot a PDF of the calculated thermo properties (True to plot)
 
         Returns:
@@ -252,9 +251,9 @@ class ArkaneAdapter(StatmechAdapter):
         """
         success = True
         stat_mech_job = StatMechJob(arkane_species, arkane_file_path)
-        stat_mech_job.applyBondEnergyCorrections = use_bac and sp_level
-        stat_mech_job.modelChemistry = sp_level
-        if not sp_level:
+        stat_mech_job.applyBondEnergyCorrections = use_bac and lot is not None
+        stat_mech_job.level_of_theory = lot
+        if lot is None:
             # if this is a kinetics computation and we don't have a valid model chemistry, don't bother about it
             stat_mech_job.applyAtomEnergyCorrections = False
         stat_mech_job.frequencyScaleFactor = self.freq_scale_factor
@@ -392,7 +391,7 @@ class ArkaneAdapter(StatmechAdapter):
                                        symmetry=species.external_symmetry,
                                        multiplicity=species.multiplicity,
                                        optical=species.optical_isomers,
-                                       sp_level=self.sp_level,
+                                       lot=self.lot,
                                        sp_path=sp_path,
                                        opt_path=opt_path,
                                        freq_path=freq_path,

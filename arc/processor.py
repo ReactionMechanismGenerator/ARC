@@ -8,8 +8,9 @@ Processor module for computing thermodynamic properties and rate coefficients us
 import os
 import shutil
 from enum import Enum
-from typing import Type
+from typing import Optional, Type
 
+from arkane.modelchem import CompositeLevelOfTheory
 from rmgpy.data.rmg import RMGDatabase
 
 import arc.plotter as plotter
@@ -38,7 +39,7 @@ def process_arc_project(statmech_adapter: str,
                         reactions: list,
                         output_dict: dict,
                         use_bac: bool,
-                        sp_level: str = '',
+                        lot: Optional[Type[CompositeLevelOfTheory]] = None,
                         freq_scale_factor: float = 1.0,
                         compute_thermo: bool = True,
                         compute_rates: bool = True,
@@ -47,7 +48,7 @@ def process_arc_project(statmech_adapter: str,
                         T_max: tuple = None,
                         T_count: int = 50,
                         lib_long_desc: str = '',
-                        rmg_database: Type[RMGDatabase] = None,
+                        rmg_database: Optional[Type[RMGDatabase]] = None,
                         compare_to_rmg: bool = True,
                         three_params: bool = True,
                         ) -> None:
@@ -63,8 +64,7 @@ def process_arc_project(statmech_adapter: str,
         output_dict (dict): Keys are labels, values are output file paths.
                             See Scheduler for a description of this dictionary.
         use_bac (bool): Whether or not to use bond additivity corrections (BACs) for thermo calculations.
-        sp_level (str, optional): The level of theory used for the single point energy calculation.
-                                  (could be a composite method), used for determining energy corrections.
+        lot (CompositeLevelOfTheory, optional): The level of theory used for energy corrections.
         freq_scale_factor (float, optional): The harmonic frequencies scaling factor.
         compute_thermo (bool, optional): Whether to compute thermodynamic properties for the provided species.
         compute_rates (bool, optional): Whether to compute high pressure limit rate coefficients.
@@ -117,7 +117,7 @@ def process_arc_project(statmech_adapter: str,
                                                             output_directory=output_directory,
                                                             output_dict=output_dict,
                                                             use_bac=False,
-                                                            sp_level=sp_level,
+                                                            lot=lot,
                                                             freq_scale_factor=freq_scale_factor,
                                                             species=species,
                                                             )
@@ -132,7 +132,7 @@ def process_arc_project(statmech_adapter: str,
                                                         output_directory=output_directory,
                                                         output_dict=output_dict,
                                                         use_bac=False,
-                                                        sp_level=sp_level,
+                                                        lot=lot,
                                                         freq_scale_factor=freq_scale_factor,
                                                         reaction=reaction,
                                                         species_dict=species_dict,
@@ -162,7 +162,7 @@ def process_arc_project(statmech_adapter: str,
                                                     output_directory=output_directory,
                                                     output_dict=output_dict,
                                                     use_bac=use_bac,
-                                                    sp_level=sp_level,
+                                                    lot=lot,
                                                     freq_scale_factor=freq_scale_factor,
                                                     species=species,
                                                     )
