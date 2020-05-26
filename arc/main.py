@@ -21,19 +21,20 @@ from distutils.spawn import find_executable
 from IPython.display import display
 
 from arkane.encorr.corr import assign_frequency_scale_factor
+from arkane.modelchem import LevelOfTheory
 from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 
 import arc.rmgdb as rmgdb
 from arc.common import VERSION, format_level_of_theory_inputs, format_level_of_theory_for_logging, read_yaml_file, \
     time_lapse, check_ess_settings, initialize_log, log_footer, get_logger, save_yaml_file, initialize_job_types, \
-    determine_model_chemistry_type
+    determine_ess_based_on_method, determine_model_chemistry_type
 from arc.exceptions import InputError, SettingsError, SpeciesError
 from arc.job.ssh import SSHClient
 from arc.processor import process_arc_project
 from arc.reaction import ARCReaction
 from arc.scheduler import Scheduler
-from arc.settings import arc_path, default_levels_of_theory, servers, valid_chars, default_job_types
+from arc.settings import arc_path, default_levels_of_theory, servers, valid_chars, default_job_types, levels_ess
 from arc.species.species import ARCSpecies
 from arc.utils.scale import determine_scaling_factors
 
@@ -915,24 +916,43 @@ class ARC(object):
         Check that the harmonic frequencies scaling factor is known,
         otherwise spawn a calculation for it if calc_freq_factor is set to True.
         """
+        # the user did not specify a scaling factor, see if Arkane has it
         if self.freq_scale_factor is None:
-            # the user did not specify a scaling factor, see if Arkane has it
-            if not self.composite_method:
-                level = self.freq_level['method'] + '/' + self.freq_level['basis']
+            method = self.freq_level['method'] if not self.composite_method else self.composite_method
+            method = method.lower()
+            software = determine_ess_based_on_method(method)
+
+            # deduce the ess from user's settings if we cannot deduce it from ARC
+            if not software:
+                for k, v in levels_ess.items():
+                    if method in v:
+                        software = k
+                        break
+
+            if software:
+                level = LevelOfTheory(method=method, basis=self.freq_level['basis'], software=software[0]) \
+                    if not self.composite_method else LevelOfTheory(method=method, software=software[0])
+                try:
+                    freq_scale_factor = assign_frequency_scale_factor(level)
+                except (AttributeError, KeyError) as e:
+                    freq_scale_factor = 1
             else:
-                level = self.composite_method
-            freq_scale_factor = assign_frequency_scale_factor(level)
+                freq_scale_factor = 1
+                logger.warning(f'Could not determine ESS for {method}.')
+
             if freq_scale_factor != 1:
                 # Arkane has this harmonic frequencies scaling factor (if not found, the factor is set to exactly 1)
                 self.freq_scale_factor = freq_scale_factor
             else:
-                logger.info(f'Could not determine the harmonic frequencies scaling factor for {level} from Arkane.')
+                logger.warning(f'Could not determine the harmonic frequencies scaling factor for '
+                               f'{method} from Arkane.')
                 if self.calc_freq_factor:
                     logger.info("Calculating it using Truhlar's method:\n\n")
                     self.freq_scale_factor = determine_scaling_factors(
-                        level, ess_settings=self.ess_settings, init_log=False)[0]
+                        method, ess_settings=self.ess_settings, init_log=False)[0]
                 else:
-                    logger.info('Not calculating it, assuming a frequencies scaling factor of 1.')
+                    logger.warning('Not calculating it, assuming a frequencies scaling factor of 1.')
+                    self.freq_scale_factor = 1.0
 
     def delete_check_files(self):
         """
