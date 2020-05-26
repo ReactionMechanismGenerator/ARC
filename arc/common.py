@@ -1369,3 +1369,14 @@ qchem_supported_methods = ['B97-D3',
                            'TPSSh',
                            'DSD-PBEPBE-D3',
 ]
+
+# see https://www.molpro.net/info/release/doc/manual/node261.html for more info on molpro methods
+molpro_supported_methods = ['MP2-F12',
+                            'DF-MP2-F12',
+                            'CCSD-F12',
+                            'CCSD(T)-F12',
+                            'MRCI-F12',
+                            'CISD',
+                            'QCISD',
+                            'VPT2',
+]
