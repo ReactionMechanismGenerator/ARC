@@ -1220,3 +1220,35 @@ def get_ordered_intersection_of_two_lists(l1: list,
         l3 = [v for v in l3 if v not in lookup and lookup.add(v) is None]
 
     return l3
+
+
+def determine_ess_based_on_method(method: str,
+                                  ) -> List[str]:
+    """
+    Determine ESS based on method using heuristics.
+
+    Args:
+        method: Computational chemistry method.
+
+    Returns:
+        A list of ESS that are compatible with the specified method.
+    """
+    method = method.lower()
+    g16 = [v.lower() for v in g16_supported_methods]
+    orca = [v.lower() for v in orca_supported_methods]
+    qchem = [v.lower() for v in qchem_supported_methods]
+    terachem = [v.lower() for v in terachem_supported_methods]
+    molpro = [v.lower() for v in molpro_supported_methods]
+
+    compatible_ess = list()
+    if method in g16:
+        compatible_ess.append('gaussian')
+    if method in orca:
+        compatible_ess.append('orca')
+    if method in qchem:
+        compatible_ess.append('qchem')
+    if method in terachem:
+        compatible_ess.append('terachem')
+    if method in molpro:
+        compatible_ess.append('molpro')
+    return compatible_ess
