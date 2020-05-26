@@ -829,5 +829,25 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
         self.assertFalse(common.is_same_sequence_sublist([1, 3, 4], [1, 2, 3, 4]))
         self.assertFalse(common.is_same_sequence_sublist([4, 3, 2], [1, 2, 3, 4]))
 
+    def test_get_ordered_intersection_of_two_lists(self):
+        """Test get ordered intersection of two lists."""
+        l1 = [1, 2, 3, 3, 5, 6]
+        l2 = [6, 3, 5, 5, 1]
+
+        l3_out_0 = common.get_ordered_intersection_of_two_lists(l1, l2, order_by_first_list=True, return_unique=True)
+        l3_expected_0 = [1, 3, 5, 6]
+        self.assertEqual(l3_out_0, l3_expected_0)
+
+        l3_out_1 = common.get_ordered_intersection_of_two_lists(l1, l2, order_by_first_list=True, return_unique=False)
+        l3_expected_1 = [1, 3, 5, 5, 6]
+        self.assertEqual(l3_out_1, l3_expected_1)
+
+        l3_out_2 = common.get_ordered_intersection_of_two_lists(l1, l2, order_by_first_list=False, return_unique=True)
+        l3_expected_2 = [6, 3, 5, 1]
+        self.assertEqual(l3_out_2, l3_expected_2)
+
+        l3_out_3 = common.get_ordered_intersection_of_two_lists(l1, l2, order_by_first_list=False, return_unique=False)
+        l3_expected_3 = [6, 3, 5, 5, 1]
+        self.assertEqual(l3_out_3, l3_expected_3)
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
