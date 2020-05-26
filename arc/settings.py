@@ -79,7 +79,7 @@ default_job_types = {'conformers': True,      # defaults to True if not specifie
                      'bde': False,            # defaults to False if not specified
                      }
 
-supported_ess = ['gaussian', 'molpro', 'orca', 'qchem', 'terachem']  # use lowercase when adding new ones
+supported_ess = ['gaussian', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin']  # use lowercase when adding new ones
 
 # List here (complete or partial) phrases of methods or basis sets you'd like to associate to specific ESS
 # Avoid ascribing the same phrase to more than one software, this may cause undeterministic assignment of software
