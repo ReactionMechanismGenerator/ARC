@@ -853,57 +853,57 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
     def test_determine_ess_based_on_method(self):
         """Test determine ess based on method."""
         method_0 = 'wb97xd'
-        ess_out_0 = common.determine_model_chemistry_type(method_0)
+        ess_out_0 = common.determine_ess_based_on_method(method_0)
         ess_expected_0 = ['gaussian']
         self.assertEqual(ess_out_0, ess_expected_0)
 
         method_1 = 'wb97x-d'
-        ess_out_1 = common.determine_model_chemistry_type(method_1)
+        ess_out_1 = common.determine_ess_based_on_method(method_1)
         ess_expected_1 = ['qchem']
         self.assertEqual(ess_out_1, ess_expected_1)
 
         method_2 = 'wB97M-V'
-        ess_out_2 = common.determine_model_chemistry_type(method_2)
+        ess_out_2 = common.determine_ess_based_on_method(method_2)
         ess_expected_2 = ['qchem']
         self.assertEqual(ess_out_2, ess_expected_2)
 
         method_3 = 'wB97x'
-        ess_out_3 = common.determine_model_chemistry_type(method_3)
+        ess_out_3 = common.determine_ess_based_on_method(method_3)
         ess_expected_3 = ['gaussian', 'terachem']
         self.assertEqual(ess_out_3, ess_expected_3)
 
         method_4 = 'cbs-qb3'
-        ess_out_4 = common.determine_model_chemistry_type(method_4)
+        ess_out_4 = common.determine_ess_based_on_method(method_4)
         ess_expected_4 = ['gaussian']
         self.assertEqual(ess_out_4, ess_expected_4)
 
         method_5 = 'm06-2x'
-        ess_out_5 = common.determine_model_chemistry_type(method_5)
+        ess_out_5 = common.determine_ess_based_on_method(method_5)
         ess_expected_5 = ['qchem']
         self.assertEqual(ess_out_5, ess_expected_5)
 
         method_6 = 'm062x'
-        ess_out_6 = common.determine_model_chemistry_type(method_6)
+        ess_out_6 = common.determine_ess_based_on_method(method_6)
         ess_expected_6 = ['gaussian']
         self.assertEqual(ess_out_6, ess_expected_6)
 
         method_7 = 'dlpno-mp2-f12/d'
-        ess_out_7 = common.determine_model_chemistry_type(method_7)
+        ess_out_7 = common.determine_ess_based_on_method(method_7)
         ess_expected_7 = ['orca']
         self.assertEqual(ess_out_7, ess_expected_7)
 
         method_8 = 'VPT2'
-        ess_out_8 = common.determine_model_chemistry_type(method_8)
+        ess_out_8 = common.determine_ess_based_on_method(method_8)
         ess_expected_8 = ['molpro']
         self.assertEqual(ess_out_8, ess_expected_8)
 
         method_9 = 'b3lyp'
-        ess_out_9 = common.determine_model_chemistry_type(method_9)
-        ess_expected_9 = ['qchem', 'gaussian', 'terachem']
+        ess_out_9 = common.determine_ess_based_on_method(method_9)
+        ess_expected_9 = ['gaussian', 'qchem', 'terachem']
         self.assertEqual(ess_out_9, ess_expected_9)
 
         method_10 = 'am1'
-        ess_out_10 = common.determine_model_chemistry_type(method_10)
+        ess_out_10 = common.determine_ess_based_on_method(method_10)
         ess_expected_10 = ['gaussian']
         self.assertEqual(ess_out_10, ess_expected_10)
 
