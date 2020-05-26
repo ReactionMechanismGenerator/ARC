@@ -839,7 +839,7 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
         self.assertEqual(l3_out_0, l3_expected_0)
 
         l3_out_1 = common.get_ordered_intersection_of_two_lists(l1, l2, order_by_first_list=True, return_unique=False)
-        l3_expected_1 = [1, 3, 5, 5, 6]
+        l3_expected_1 = [1, 3, 3, 5, 6]
         self.assertEqual(l3_out_1, l3_expected_1)
 
         l3_out_2 = common.get_ordered_intersection_of_two_lists(l1, l2, order_by_first_list=False, return_unique=True)
