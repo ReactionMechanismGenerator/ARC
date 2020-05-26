@@ -1626,6 +1626,8 @@ end
                 logger.debug(f'auxiliary_basis_set: {self.auxiliary_basis_set}')
 
                 self.software = get_ordered_intersection_of_two_lists(preferred_ess_order, esss)[0]
+                logger.warning(f'ARC is trying to run {self.job_name} using {self.software}. Notice that '
+                               f'{self.software} might not be compatible with the job!')
 
     def determine_model_chemistry(self):
         """
