@@ -12,7 +12,8 @@ import os
 import shutil
 import yaml
 
-from arc.common import determine_model_chemistry_type, get_logger
+from arc.common import determine_ess_based_on_method, determine_model_chemistry_type, get_logger, \
+    get_ordered_intersection_of_two_lists
 from arc.exceptions import JobError, InputError
 from arc.job.inputs import input_files
 from arc.job.local import get_last_modified_time, submit_job, delete_job, execute_command, check_job_status, \
@@ -1539,7 +1540,7 @@ end
         """
         Deduce the software to be used based on heuristics.
         """
-        esss = self.ess_settings.keys()
+        esss = list(self.ess_settings.keys())
         if self.job_type == 'onedmin':
             if 'onedmin' not in esss:
                 raise JobError(f'Could not find the OneDMin software to compute Lennard-Jones parameters.\n'
@@ -1581,160 +1582,50 @@ end
                 for phrase in phrase_list:
                     if phrase in self.job_level_of_theory_dict['method']:
                         self.software = ess.lower()
+
+            preferred_ess_order = ['gaussian', 'qchem', 'orca', 'molpro', 'terachem']
             if self.software is None:
-                if determine_model_chemistry_type(self.job_level_of_theory_dict) in ['semiempirical', 'force_field']:
-                    if 'gaussian' in esss:
-                        self.software = 'gaussian'
-                    elif 'orca' in esss:
-                        self.software = 'orca'
-                    elif 'qchem' in esss:
-                        self.software = 'qchem'
-                    elif 'terachem' in esss:
-                        self.software = 'terachem'
-                elif self.job_type in ['conformer', 'opt', 'freq', 'optfreq', 'sp',
-                                       'directed_scan']:
-                    if self.method == 'hf':
-                        if 'gaussian' in esss:
-                            self.software = 'gaussian'
-                        elif 'qchem' in esss:
-                            self.software = 'qchem'
-                        elif 'molpro' in esss:
-                            self.software = 'molpro'
-                    elif 'b2' in self.method or 'dsd' in self.method or 'pw2' in self.method:
-                        # this is a double-hybrid (MP2) DFT method, use Gaussian
-                        if 'gaussian' not in esss:
-                            raise JobError(f'Could not find Gaussian to run the double-hybrid method {self.method}.\n'
-                                           f'ess_settings is:\n{self.ess_settings}')
-                        self.software = 'gaussian'
-                    elif 'ccs' in self.method or 'cis' in self.method:
-                        if 'molpro' in esss:
-                            self.software = 'molpro'
-                        elif 'gaussian' in esss:
-                            self.software = 'gaussian'
-                        elif 'qchem' in esss:
-                            self.software = 'qchem'
-                    elif 'b3lyp' in self.method:
-                        if 'gaussian' in esss:
-                            self.software = 'gaussian'
-                        elif 'qchem' in esss:
-                            self.software = 'qchem'
-                        elif 'terachem' in esss:
-                            self.software = 'terachem'
-                        elif 'molpro' in esss:
-                            self.software = 'molpro'
-                    elif 'wb97' in self.method:
-                        if '-d' in self.method:
-                            self.software = 'qchem'
-                        elif 'terachem' in esss:
-                            self.software = 'terachem'
-                        elif 'gaussian' in esss:
-                            self.software = 'gaussian'
-                        elif 'qchem' in esss:
-                            self.software = 'qchem'
-                        else:
-                            raise JobError(f'Could not find a software to run {self.method}/{self.basis_set}')
-                    elif 'b97' in self.method or 'def2' in self.basis_set:
-                        if 'gaussian' in esss:
-                            self.software = 'gaussian'
-                        elif 'terachem' in esss:
-                            self.software = 'terachem'
-                        elif 'qchem' in esss:
-                            self.software = 'qchem'
-                    elif 'm062x' in self.method:  # without dash
-                        if 'gaussian' not in esss:
-                            raise JobError(f'Could not find Gaussian to run {self.method}/{self.basis_set}')
-                        self.software = 'gaussian'
-                    elif 'm06-2x' in self.method:  # with dash
-                        if 'qchem' not in esss:
-                            raise JobError(f'Could not find QChem to run {self.method}/{self.basis_set}')
-                        self.software = 'qchem'
-                    elif 'dlpno' in self.method:
-                        # this is a DLPNO method, use Orca
-                        if 'orca' not in esss:
-                            raise JobError(f'Could not find the Orca software to run the DLPNO method {self.method}.\n'
-                                           f'ess_settings is:\n{self.ess_settings}')
-                        self.software = 'orca'
-                    elif self.method in ['pbe', 'wpbe', 'pbe0']:
-                        if 'terachem' in esss:
-                            self.software = 'terachem'
-                        elif 'qchem' in esss:
-                            self.software = 'qchem'
-                    elif self.method in ['svwn', 'bhandhlyp', 'b3p86', 'b3p86', 'b3lyp5', 'b3pw91', 'pw91', 'revpbe',
-                                         'revpbe0', 'wpbeh', 'bop', 'mubop', 'camb3lyp']:
-                        if 'terachem' in esss:
-                            self.software = 'terachem'
-                    elif '1pbe' in self.method or '2pbe' in self.method or '2pbe' in self.method:
-                        if 'gaussian' in esss:
-                            self.software = 'gaussian'
-                elif self.job_type == 'scan':
-                    if 'wb97' in self.method:
-                        if '-d' in self.method:
-                            self.software = 'qchem'
-                        elif 'terachem' in esss:
-                            self.software = 'terachem'
-                        elif 'gaussian' in esss:
-                            self.software = 'gaussian'
-                        elif 'qchem' in esss:
-                            self.software = 'qchem'
-                        else:
-                            raise JobError(f'Could not find a software to run {self.method}/{self.basis_set}')
-                    elif 'b3lyp' in self.method:
-                        if 'gaussian' in esss:
-                            self.software = 'gaussian'
-                        elif 'qchem' in esss:
-                            self.software = 'qchem'
-                    elif 'b97' in self.method or 'def2' in self.basis_set:
-                        if 'gaussian' in esss:
-                            self.software = 'gaussian'
-                        elif 'qchem' in esss:
-                            self.software = 'qchem'
-                    elif 'm06-2x' in self.method:  # with dash
-                        if 'qchem' not in esss:
-                            raise JobError(f'Could not find QChem to run {self.method}/{self.basis_set}')
-                        self.software = 'qchem'
-                    elif 'm062x' in self.method:  # without dash
-                        if 'gaussian' not in esss:
-                            raise JobError(f'Could not find Gaussian to run {self.method}/{self.basis_set}')
-                        self.software = 'gaussian'
-                    elif 'pv' in self.basis_set:
-                        if 'molpro' in esss:
-                            self.software = 'molpro'
-                        elif 'gaussian' in esss:
-                            self.software = 'gaussian'
-                        elif 'qchem' in esss:
-                            self.software = 'qchem'
+                compatible_software = determine_ess_based_on_method(self.method)
+                model_chem_type = determine_model_chemistry_type(self.method)
+
+                if model_chem_type in ['force_field', 'semiempirical']:
+                    preferred_ess_order = ['gaussian', 'qchem', 'orca', 'molpro', 'terachem']
+                elif model_chem_type in ['wavefunction']:
+                    preferred_ess_order = ['orca', 'molpro', 'gaussian', 'qchem', 'terachem']
+                elif model_chem_type in ['composite']:
+                    preferred_ess_order = ['gaussian']
+                elif model_chem_type in ['dft']:
+                    preferred_ess_order = ['gaussian', 'qchem', 'orca', 'molpro', 'terachem']
+
+                if self.job_type in ['conformer', 'opt', 'freq', 'optfreq', 'sp', 'directed_scan', 'scan'] \
+                        and compatible_software:
+                    available_software = get_ordered_intersection_of_two_lists(compatible_software, esss)
+                    self.software = get_ordered_intersection_of_two_lists(preferred_ess_order, available_software)[0] \
+                        if available_software else None
                 elif self.job_type in ['gsm', 'irc']:
                     if 'gaussian' not in esss:
                         raise JobError(f'Could not find Gaussian to run {self.job_type}')
                     self.software = 'gaussian'
+
             if self.software is None:
                 # if still no software was determined, just try by order, if exists
-                logger.error(f'job_num: {self.job_num}')
-                logger.error(f'ess_trsh_methods: {self.ess_trsh_methods}')
-                logger.error(f'trsh: {self.trsh}')
-                logger.error(f'job_type: {self.job_type}')
-                logger.error(f'job_name: {self.job_name}')
-                logger.error(f'level_of_theory: {self.job_level_of_theory_dict}')
-                logger.error(f'software: {self.software}')
-                logger.error(f'method: {self.method}')
-                logger.error(f'basis_set: {self.basis_set}')
-                logger.error(f'auxiliary_basis_set: {self.auxiliary_basis_set}')
-                logger.error(f'Could not determine software for job {self.job_name}')
-                if 'gaussian' in esss:
-                    logger.error('Setting it to Gaussian')
-                    self.software = 'gaussian'
-                elif 'orca' in esss:
-                    logger.error('Setting it to Orca')
-                    self.software = 'orca'
-                elif 'qchem' in esss:
-                    logger.error('Setting it to QChem')
-                    self.software = 'qchem'
-                elif 'molpro' in esss:
-                    logger.error('Setting it to Molpro')
-                    self.software = 'molpro'
-                elif 'terachem' in esss:
-                    logger.error('Setting it to TeraChem')
-                    self.software = 'terachem'
+                logger.warning(f'Could not determine ESS for job {self.job_name}.')
+                logger.warning(f'job_type: {self.job_type}')
+                logger.warning(f'level_of_theory: {self.job_level_of_theory_dict}')
+                logger.warning(f'Please check if the levels_ess dictionary in settings.py is set correctly.')
+
+                logger.debug(f'job_num: {self.job_num}')
+                logger.debug(f'ess_trsh_methods: {self.ess_trsh_methods}')
+                logger.debug(f'trsh: {self.trsh}')
+                logger.debug(f'job_type: {self.job_type}')
+                logger.debug(f'job_name: {self.job_name}')
+                logger.debug(f'level_of_theory: {self.job_level_of_theory_dict}')
+                logger.debug(f'software: {self.software}')
+                logger.debug(f'method: {self.method}')
+                logger.debug(f'basis_set: {self.basis_set}')
+                logger.debug(f'auxiliary_basis_set: {self.auxiliary_basis_set}')
+
+                self.software = get_ordered_intersection_of_two_lists(preferred_ess_order, esss)[0]
 
     def determine_model_chemistry(self):
         """
