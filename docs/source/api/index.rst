@@ -11,13 +11,18 @@ ARC's API
    species
    converter
    conformers
+   vectors
+   zmat
    reaction
    scheduler
    job
    ssh
    local
+   trsh
    parser
    plotter
    processor
    rmgdb
    common
+   level
+   scale
