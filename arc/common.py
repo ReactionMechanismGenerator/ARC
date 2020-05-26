@@ -1178,3 +1178,45 @@ def is_same_sequence_sublist(child_list: list, parent_list: list) -> bool:
         if child_list == parent_list[index:index + len(child_list)]:
             return True
     return False
+
+
+def get_ordered_intersection_of_two_lists(l1: list,
+                                          l2: list,
+                                          order_by_first_list: Optional[bool] = True,
+                                          return_unique: Optional[bool] = True,
+                                          ) -> list:
+    """
+    Find the intersection of two lists by order.
+
+    Examples:
+        - l1 = [1, 2, 3, 3, 5, 6], l2 = [6, 3, 5, 5, 1], order_by_first_list = ``True``, return_unique = ``True``
+          -> [1, 3, 5, 6] unique values in the intersection of l1 and l2, order following value's first appearance in l1
+
+        - l1 = [1, 2, 3, 3, 5, 6], l2 = [6, 3, 5, 5, 1], order_by_first_list = ``True``, return_unique = ``False``
+          -> [1, 3, 3, 5, 6] unique values in the intersection of l1 and l2, order following value's first appearance in l1
+
+        - l1 = [1, 2, 3, 3, 5, 6], l2 = [6, 3, 5, 5, 1], order_by_first_list = ``False``, return_unique = ``True``
+          -> [6, 3, 5, 1] unique values in the intersection of l1 and l2, order following value's first appearance in l2
+
+        - l1 = [1, 2, 3, 3, 5, 6], l2 = [6, 3, 5, 5, 1], order_by_first_list = ``False``, return_unique = ``False``
+          -> [6, 3, 5, 5, 1] unique values in the intersection of l1 and l2, order following value's first appearance in l2
+
+    Args:
+        l1 (list): The first list.
+        l2 (list): The second list.
+        order_by_first_list (bool, optional: Whether to order the output list using the order of the values in the first list.
+        return_unique (bool, optional): Whether to return only unique values in the intersection of two lists.
+
+    Returns:
+        list: An ordered list of the intersection of two input lists.
+    """
+    if order_by_first_list:
+        l3 = [v for v in l1 if v in l2]
+    else:
+        l3 = [v for v in l2 if v in l1]
+
+    lookup = set()
+    if return_unique:
+        l3 = [v for v in l3 if v not in lookup and lookup.add(v) is None]
+
+    return l3
