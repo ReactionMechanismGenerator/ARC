@@ -1192,7 +1192,7 @@ def get_ordered_intersection_of_two_lists(l1: list,
           -> [1, 3, 5, 6] unique values in the intersection of l1 and l2, order following value's first appearance in l1
 
         - l1 = [1, 2, 3, 3, 5, 6], l2 = [6, 3, 5, 5, 1], order_by_first_list = ``True``, return_unique = ``False``
-          -> [1, 3, 5, 5, 6] unique values in the intersection of l1 and l2, order following value's first appearance in l1
+          -> [1, 3, 3, 5, 6] unique values in the intersection of l1 and l2, order following value's first appearance in l1
 
         - l1 = [1, 2, 3, 3, 5, 6], l2 = [6, 3, 5, 5, 1], order_by_first_list = ``False``, return_unique = ``True``
           -> [6, 3, 5, 1] unique values in the intersection of l1 and l2, order following value's first appearance in l2
