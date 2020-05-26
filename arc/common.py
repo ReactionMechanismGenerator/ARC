@@ -1340,3 +1340,11 @@ g16_supported_methods = ['uff',  # mechanics
                          'g3mp2b3',
                          'g4mp2',
 ]
+
+# see https://cec.mpg.de/fileadmin/media/Forschung/ORCA/orca_manual_4_0_1.pdf for more info on orca methods
+orca_supported_methods = ['dlpno-ccsd',
+                          'dlpno-ccsd(t)',
+                          'dlpno-mp2',
+                          'dlpno-mp2-f12',
+                          'dlpno-mp2-f12/d',
+]
