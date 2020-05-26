@@ -105,6 +105,12 @@ class TestJob(unittest.TestCase):
                    job_type='opt', job_level_of_theory_dict={'method': 'wb97xd', 'basis': '6-311++g(d,p)'},
                    multiplicity=1, testing=True,
                    project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
+        self.assertEqual(job0.software, 'gaussian')
+
+        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
+                   job_type='opt', job_level_of_theory_dict={'method': 'bhandhlyp', 'basis': '6-311++g(d,p)'},
+                   multiplicity=1, testing=True,
+                   project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'terachem')
 
         job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
@@ -204,6 +210,13 @@ class TestJob(unittest.TestCase):
         self.job1.job_type = 'opt'
         self.job1.job_level_of_theory_dict = {'method': 'wb97xd', 'basis': '6-311g'}
         self.job1.method = 'wb97xd'
+        self.job1.software = None
+        self.job1.deduce_software()
+        self.assertEqual(self.job1.software, 'gaussian')
+
+        self.job1.job_type = 'opt'
+        self.job1.job_level_of_theory_dict = {'method': 'svwn', 'basis': '6-311g'}
+        self.job1.method = 'svwn'
         self.job1.software = None
         self.job1.deduce_software()
         self.assertEqual(self.job1.software, 'terachem')
