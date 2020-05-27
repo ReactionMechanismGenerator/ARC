@@ -14,7 +14,7 @@ Note:
 from __future__ import annotations
 
 import os
-from typing import Iterable, List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from arkane.modelchem import LevelOfTheory
 
@@ -22,78 +22,82 @@ from arc.common import get_ordered_intersection_of_two_lists, read_yaml_file
 from arc.settings import arc_path, levels_ess, supported_ess
 
 
-class Level(object):
+class Level(LevelOfTheory):
     """
     Uniquely defines the settings used for a quantum calculation.
+    Its a dataclass inheriting from ``RMGObject``.
 
     Args:
         repr (str, dict, optional): A dictionary or a simple string representation of the level of theory,
                                     e.g. "wb97xd/def2-tzvp", or {'method': 'b3lyp', 'basis': '6-31g'}.
+                                    Not in ``LevelOfTheory``.
         method (str, optional): Quantum chemistry method.
         basis (str, optional): Basis set.
         auxiliary_basis (str, optional): Auxiliary basis set for correlated methods.
         cabs (str, optional): Complementary auxiliary basis set for F12 calculations.
-        method_type (str, optional): The level of theory method type (DFT, wavefunction, force field, semi-empirical, or composite).
+        method_type (str, optional): The level of theory method type (DFT, wavefunction, force field, semi-empirical,
+                                     or composite). Not in ``LevelOfTheory``.
         software (str, optional): Quantum chemistry software.
         software_version (Union[int, float, str], optional): Quantum chemistry software version.
         solvation_method (str, optional): Solvation method.
         solvent (str, optional): Solvent.
         solvation_scheme_level (Level, optional): A Level class representing the level of theory to calculate a
-                                                  solvation energy correction at.
-        args (str, optional): Tuple of additional arguments provided to the software.
+                                                  solvation energy correction at. Not in ``LevelOfTheory``.
+        args: Tuple of additional arguments provided to the software.
+        _std_tuple: Standardized tuple representation of object.
+        job_args (dict, optional): Additional arguments provided to the software. Keys are either 'keyword' or 'block',
+                                   values are strings to be used either as keywords or as blocks in the respective
+                                   software input file. Not in ``LevelOfTheory``.
+        compatible_ess ()list, optional): Entries are names of compatible ESS.
     """
+    repr: Optional[Union[str, dict]] = None
+    method_type: Optional[str] = None
+    solvation_scheme_level: Optional[Level] = None
+    job_args: Optional[Dict[str, str]] = None
+    compatible_ess: Optional[List[str, ...]] = None
 
-    def __init__(self,
-                 repr: Optional[Union[str, dict]] = None,
-                 method: Optional[str] = None,
-                 basis: Optional[str] = None,
-                 auxiliary_basis: Optional[str] = None,
-                 cabs: Optional[str] = None,
-                 method_type: Optional[str] = None,
-                 software: Optional[str] = None,
-                 software_version: Optional[Union[int, float, str]] = None,
-                 solvation_method: Optional[str] = None,
-                 solvent: Optional[str] = None,
-                 solvation_scheme_level: Optional[Level] = None,
-                 args: Optional[Union[str, Iterable[str]]] = None,
-                 ):
-        self.repr = repr
-        self.method = method
+    # def __init__(self,
+    #              repr: Optional[Union[str, dict]] = None,
+    #              method: Optional[str] = None,
+    #              basis: Optional[str] = None,
+    #              auxiliary_basis: Optional[str] = None,
+    #              cabs: Optional[str] = None,
+    #              method_type: Optional[str] = None,
+    #              software: Optional[str] = None,
+    #              software_version: Optional[Union[int, float, str]] = None,
+    #              solvation_method: Optional[str] = None,
+    #              solvent: Optional[str] = None,
+    #              solvation_scheme_level: Optional[Level] = None,
+    #              args: Optional[Union[str, Dict[str, str]]] = None,
+    #              ):
+    #     super().__init__()  # call the superclass __init__()
+    def __post_init__(self):
+        super().__post_init__()
         if self.repr is not None and self.method is not None:
             raise ValueError(f'Either repr or method must be specified, not both.\n'
                              f'Got: "{self.repr}" and "{self.method}".')
         if self.repr is None and self.method is None:
             raise ValueError(f'Either repr or method must be specified, got neither.')
-
-        self.basis = basis
-        self.auxiliary_basis = auxiliary_basis
-        self.cabs = cabs
-        self.method_type = method_type
-        self.software = software
-        self.software_version = software_version
-        self.solvation_method = solvation_method
-        self.solvent = solvent
-        if isinstance(solvation_scheme_level, (dict, str)):
-            solvation_scheme_level = Level(repr=solvation_scheme_level)
-        if solvation_scheme_level is not None \
-                and (solvation_scheme_level.solvent is not None
-                     or solvation_scheme_level.solvation_method is not None
-                     or solvation_scheme_level.solvation_scheme_level is not None):
+        if isinstance(self.solvation_scheme_level, (dict, str)):
+            self.solvation_scheme_level = Level(repr=self.solvation_scheme_level)
+        if self.solvation_scheme_level is not None \
+                and (self.solvation_scheme_level.solvent is not None
+                     or self.solvation_scheme_level.solvation_method is not None
+                     or self.solvation_scheme_level.solvation_scheme_level is not None):
             raise ValueError(f'Cannot represent a solvation_scheme_level which itself has solvation attributes.')
-        self.solvation_scheme_level = solvation_scheme_level
         if self.solvation_method is not None and self.solvent is None:
             raise ValueError(f'Cannot represent a level of theory with a solvation method ("{self.solvation_method}") '
                              f'that lacks a solvent.')
 
-        if isinstance(args, (list, tuple)):
-            for arg in args:
+        if isinstance(self.job_args, dict):
+            for key, arg in self.job_args.items():
+                if key not in ['keyword', 'block']:
+                    raise ValueError(f'Keys of the args dictionary must be either "keyword" or "block", got "{key}".')
                 if not isinstance(arg, str):
                     raise ValueError(f'All entries in the args argument must be strings.\n'
-                                     f'Got {arg} which is a {type(arg)} in {args}.')
-        elif args is not None and not isinstance(args, str):
-            raise ValueError(f'The args argument must be either a string or an iterable.\n'
-                             f'Got {args} which is a {type(args)}.')
-        self.args = args
+                                     f'Got {arg} which is a {type(arg)} in {self.job_args}.')
+        elif self.job_args is not None and isinstance(self.job_args, str):
+            self.job_args = {'keyword': self.job_args}
 
         if self.repr is not None:
             self.build()
@@ -131,10 +135,32 @@ class Level(object):
             if self.software_version is not None:
                 str_ += f', software_version: {self.software_version}'
         if self.args is not None:
-            str_ += f', args: {self.args}'
+            if any([key == 'keyword' for key in self.args.keys()]):
+                str_ += ', keyword args:'
+                for key, arg in self.args.items():
+                    if key == 'keyword':
+                        str_ += f' {arg}'
         if self.method_type is not None:
             str_ += f' ({self.method_type})'
         return str_
+
+    def as_dict(self) -> dict:
+        """
+        Returns a minimal dictionary representation from which the object can be reconstructed.
+        Useful for ARC restart files.
+        """
+        original_dict = self.__dict__
+        clean_dict = {}
+        del original_dict['repr']
+        del original_dict['_std_tuple']
+        if self.job_args is not None:
+            # only pass keyword arguments to Arkane (not blocks)
+            if any([key == 'keyword' for key in self.job_args.keys()]):
+                clean_dict['job_args'] = [val for key, val in self.job_args.items() if key == 'keyword']
+        for key, val in original_dict.items():
+            if val is not None and val and key != 'job_args':
+                clean_dict[key] = val
+        return clean_dict
 
     def lower(self):
         """
@@ -157,8 +183,7 @@ class Level(object):
             self.solvation_method = self.solvation_method.lower()
         if self.solvent is not None:
             self.solvent = self.solvent.lower()
-        self.args = (self.args.lower(),) if isinstance(self.args, str) \
-            else tuple([arg.lower() for arg in self.args]) if self.args is not None else None
+        self.job_args = {key: arg.lower() for key, arg in self.job_args.items()} if self.job_args is not None else None
 
     def build(self):
         """
@@ -174,7 +199,7 @@ class Level(object):
                       'solvation_method': None,
                       'solvent': None,
                       'solvation_scheme_level': None,
-                      'args': None}
+                      'job_args': None}
         allowed_keys = list(level_dict.keys())
 
         if isinstance(self.repr, str):
@@ -228,6 +253,12 @@ class Level(object):
         del kwargs['method_type']
         del kwargs['repr']
         del kwargs['compatible_ess']
+        if self.job_args is not None:
+            # only pass keyword arguments to Arkane (not blocks)
+            if any([key == 'keyword' for key in self.job_args.keys()]):
+                kwargs['args'] = [val for key, val in self.job_args.items() if key == 'keyword']
+            else:
+                kwargs['args'] = None
         return LevelOfTheory(**kwargs)
 
     def deduce_method_type(self):
