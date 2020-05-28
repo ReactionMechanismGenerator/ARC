@@ -1,6 +1,3 @@
-#!/usr/bin/env python
-# encoding: utf-8
-
 """
 A module for representing and manipulating `Z matrices <https://en.wikipedia.org/wiki/Z-matrix_(chemistry)>`_
 (internal coordinates).
@@ -34,7 +31,7 @@ import re
 
 from rmgpy.molecule.molecule import Molecule
 
-from arc.common import get_logger, key_by_val,determine_top_group_indices
+from arc.common import get_logger, key_by_val, determine_top_group_indices
 from arc.exceptions import ZMatError
 from arc.species.vectors import calculate_distance, calculate_angle, calculate_dihedral_angle, get_vector_length
 
