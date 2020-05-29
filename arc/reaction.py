@@ -412,7 +412,7 @@ class ARCReaction(object):
                             f"TS E0: {ts_text}\n"
                             f"Products E0: {p_text}")
             return True
-        if ts_e_elect < r_e_elect or ts_e_elect< p_e_elect:
+        if ts_e_elect < r_e_elect or ts_e_elect < p_e_elect:
             if verbose:
                 logger.error(f'TS of reaction {self.label} has a lower E0 value than expected:\n')
                 logger.info(f'Reactants: {r_e_elect - min_e:.2f} kJ/mol\n'
