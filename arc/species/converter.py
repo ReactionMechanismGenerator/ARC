@@ -7,7 +7,7 @@ A module for performing various species-related format conversions.
 
 import numpy as np
 import os
-from typing import Tuple
+from typing import Optional, Tuple, Union
 
 import pybel
 import qcelemental as qcel
@@ -1011,7 +1011,10 @@ def elementize(atom):
         atom.atomtype = atom_type[0]
 
 
-def molecules_from_xyz(xyz, multiplicity=None, charge=0):
+def molecules_from_xyz(xyz: Optional[Union[dict, str]],
+                       multiplicity: Optional[int] = None,
+                       charge: int = 0,
+                       ) -> Tuple[Union[Molecule, None], Union[Molecule, None]]:
     """
     Creating RMG:Molecule objects from xyz with correct atom labeling.
     Based on the MolGraph.perceive_smiles method.
@@ -1326,7 +1329,7 @@ def update_molecule(mol, to_single_bonds=False):
             new_mol.add_bond(bond)
     try:
         new_mol.update_atomtypes(raise_exception=False)
-    except (KeyError):
+    except KeyError:
         pass
     new_mol.multiplicity = mol.multiplicity
     return new_mol
@@ -1666,7 +1669,7 @@ def compare_confs(xyz1: dict,
 
 
 def ics_to_scan_constraints(ics: list,
-                            software: str = 'gaussian',
+                            software: Optional[str] = 'gaussian',
                             ) -> str:
     """
     A helper function for converting internal coordinate (ic) info
@@ -1674,6 +1677,7 @@ def ics_to_scan_constraints(ics: list,
 
     Args:
         ics (list): A list of internal coordinates (ic, stored as lists of atom indices).
+        software (str, optional): The electronic structure software.
 
     Returns:
         str: A str block can be read as scan constraints by ESS.
@@ -1689,6 +1693,6 @@ def ics_to_scan_constraints(ics: list,
                 scan_trsh += 'D '
             scan_trsh += ''.join([str(num) + ' ' for num in ic]) + 'F\n'
     else:
-        raise NotImplementedError(f'Given software {software} is not implemented' \
+        raise NotImplementedError(f'Given software {software} is not implemented '
                                   f'for ics_to_scan_constraints().')
     return scan_trsh
