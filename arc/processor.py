@@ -8,13 +8,14 @@ Processor module for computing thermodynamic properties and rate coefficients us
 import os
 import shutil
 from enum import Enum
-from typing import Type
+from typing import Optional, Type
 
 from rmgpy.data.rmg import RMGDatabase
 
 import arc.plotter as plotter
 import arc.rmgdb as rmgdb
 from arc.common import get_logger
+from arc.level import Level
 from arc.statmech.factory import statmech_factory
 
 
@@ -28,17 +29,19 @@ class StatmechEnum(str, Enum):
     """
 
     arkane = 'arkane'
-    mess = 'mess'
+    # mesmer = 'mesmer'
+    # mess = 'mess'
 
 
-def process_arc_project(statmech_adapter: str,
+def process_arc_project(thermo_adapter: str,
+                        kinetics_adapter: str,
                         project: str,
                         project_directory: str,
                         species_dict: dict,
                         reactions: list,
                         output_dict: dict,
-                        use_bac: bool,
-                        sp_level: str = '',
+                        bac_type: Optional[str] = None,
+                        sp_level: Optional[Level] = None,
                         freq_scale_factor: float = 1.0,
                         compute_thermo: bool = True,
                         compute_rates: bool = True,
@@ -47,24 +50,25 @@ def process_arc_project(statmech_adapter: str,
                         T_max: tuple = None,
                         T_count: int = 50,
                         lib_long_desc: str = '',
-                        rmg_database: Type[RMGDatabase] = None,
+                        rmg_database: Optional[RMGDatabase] = None,
                         compare_to_rmg: bool = True,
                         three_params: bool = True,
                         ) -> None:
     """
-    Process an RMG project, generate thermo and rate coefficients using statistical mechanics (statmech).
+    Process an ARC project, generate thermo and rate coefficients using statistical mechanics (statmech).
 
     Args:
-        statmech_adapter (str): The software to use for the statistical mechanics computations.
+        thermo_adapter (str): The software to use for calculating thermodynamic data.
+        kinetics_adapter (str): The software to use for calculating rate coefficients.
         project (str): The ARC project name.
         project_directory (str): The path to the ARC project directory.
         species_dict (dict): Keys are labels, values are ARCSpecies objects.
         reactions (list): Entries are ARCReaction objects.
         output_dict (dict): Keys are labels, values are output file paths.
                             See Scheduler for a description of this dictionary.
-        use_bac (bool): Whether or not to use bond additivity corrections (BACs) for thermo calculations.
-        sp_level (str, optional): The level of theory used for the single point energy calculation.
-                                  (could be a composite method), used for determining energy corrections.
+        bac_type (str, optional): The bond additivity correction type. 'p' for Petersson- or 'm' for Melius-type BAC.
+                                  ``None`` to not use BAC.
+        sp_level (Level, optional): The level of theory used for energy corrections.
         freq_scale_factor (float, optional): The harmonic frequencies scaling factor.
         compute_thermo (bool, optional): Whether to compute thermodynamic properties for the provided species.
         compute_rates (bool, optional): Whether to compute high pressure limit rate coefficients.
@@ -98,7 +102,9 @@ def process_arc_project(statmech_adapter: str,
     if not os.path.isdir(output_directory):
         os.makedirs(output_directory)
 
-    statmech_adapter_label = StatmechEnum(statmech_adapter)  # guarantees that the adapter is supported
+    # guarantees that the adapters are supported:
+    thermo_adapter_label = StatmechEnum(thermo_adapter)
+    kinetics_adapter_label = StatmechEnum(kinetics_adapter)
 
     # 1. Rates
     if compute_rates:
@@ -113,10 +119,10 @@ def process_arc_project(statmech_adapter: str,
                         continue
                     considered_labels.append(species.label)
                     if output_dict[species.label]['convergence']:
-                        statmech_adapter = statmech_factory(statmech_adapter_label=statmech_adapter_label,
+                        statmech_adapter = statmech_factory(statmech_adapter_label=kinetics_adapter_label,
                                                             output_directory=output_directory,
                                                             output_dict=output_dict,
-                                                            use_bac=False,
+                                                            bac_type=None,
                                                             sp_level=sp_level,
                                                             freq_scale_factor=freq_scale_factor,
                                                             species=species,
@@ -128,10 +134,10 @@ def process_arc_project(statmech_adapter: str,
                         unconverged_species.append(species)
                         species_converged = False
                 if species_converged:
-                    statmech_adapter = statmech_factory(statmech_adapter_label=statmech_adapter_label,
+                    statmech_adapter = statmech_factory(statmech_adapter_label=kinetics_adapter_label,
                                                         output_directory=output_directory,
                                                         output_dict=output_dict,
-                                                        use_bac=False,
+                                                        bac_type=None,
                                                         sp_level=sp_level,
                                                         freq_scale_factor=freq_scale_factor,
                                                         reaction=reaction,
@@ -158,10 +164,10 @@ def process_arc_project(statmech_adapter: str,
     if compute_thermo:
         for species in species_dict.values():
             if (species.compute_thermo or species.e0_only) and output_dict[species.label]['convergence']:
-                statmech_adapter = statmech_factory(statmech_adapter_label=statmech_adapter_label,
+                statmech_adapter = statmech_factory(statmech_adapter_label=thermo_adapter_label,
                                                     output_directory=output_directory,
                                                     output_dict=output_dict,
-                                                    use_bac=use_bac,
+                                                    bac_type=bac_type,
                                                     sp_level=sp_level,
                                                     freq_scale_factor=freq_scale_factor,
                                                     species=species,
@@ -243,7 +249,7 @@ def compare_thermo(species_for_thermo_lib: list,
             species.rmg_thermo = rmg_database.thermo.get_thermo_data(species.rmg_species)
         except Exception as e:
             logger.info(f'Could not estimate thermo for species {species.label} using RMG, possibly due to a missing '
-                        f'2D structure. Not including this species in the parity plots.\nGot: {e}')
+                        f'2D structure. Not including this species in the parity plots. Got:\n{e}')
         else:
             species_to_compare.append(species)
     if species_to_compare:
@@ -324,7 +330,8 @@ def load_rmg_database(rmg_database: Type[RMGDatabase],
             for species in species_dict.values()]):
         load_thermo_libs = True
     if rmg_database is not None and (load_kinetic_libs or load_thermo_libs):
-        rmgdb.load_rmg_database(rmgdb=rmg_database, load_thermo_libs=load_thermo_libs,
+        rmgdb.load_rmg_database(rmgdb=rmg_database,
+                                load_thermo_libs=load_thermo_libs,
                                 load_kinetic_libs=load_kinetic_libs)
 
 
