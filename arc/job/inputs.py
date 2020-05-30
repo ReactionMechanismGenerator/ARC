@@ -175,7 +175,7 @@ spinMultiplicity = {multiplicity}
 
 opticalIsomers = {optical}
 
-energy = {{'{sp_level}': Log('{sp_path}')}}
+energy = Log('{sp_path}')
 
 geometry = Log('{opt_path}')
 
