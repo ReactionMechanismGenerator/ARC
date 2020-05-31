@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# encoding: utf-8
-
 """
 A module for plotting and saving output files such as RMG libraries.
 """
@@ -16,6 +13,7 @@ import os
 import shutil
 from matplotlib.backends.backend_pdf import PdfPages
 from mpl_toolkits.mplot3d import Axes3D
+from typing import List, Optional
 
 import py3Dmol as p3D
 import qcelemental as qcel
@@ -30,12 +28,12 @@ from rmgpy.quantity import ScalarQuantity
 from rmgpy.species import Species
 
 from arc.common import (extermum_list,
-                        format_level_of_theory_for_logging,
                         get_logger,
                         is_notebook,
                         save_yaml_file,
                         sort_two_lists_by_the_first)
 from arc.exceptions import InputError, SanitizationError
+from arc.level import Level
 from arc.parser import parse_trajectory
 from arc.species.converter import (check_xyz_dict,
                                    get_xyz_radius,
@@ -389,15 +387,15 @@ def draw_parity_plot(var_arc, var_rmg, labels, var_label, var_units, pp=None):
     min_var = min(var_arc + var_rmg)
     max_var = max(var_arc + var_rmg)
     fig = plt.figure(figsize=(width, height), dpi=120)
-    ax = fig.add_subplot(111)
+    fig.add_subplot(111)
     plt.title(f'{var_label} parity plot')
     for i, label in enumerate(labels):
         plt.plot(var_arc[i], var_rmg[i], 'o', label=label)
     plt.plot([min_var, max_var], [min_var, max_var], 'b-', linewidth=0.5)
     plt.xlabel(f'{var_label} calculated by ARC ({var_units})')
     plt.ylabel(f'{var_label} determined by RMG ({var_units})')
-    plt.xlim(min_var, max_var * 1.1)
-    plt.ylim(min_var, max_var)
+    plt.xlim(min_var - max(abs(min_var * 0.1), 10), max_var + max(abs(max_var * 0.1), 10))
+    plt.ylim(min_var - max(abs(min_var * 0.1), 10), max_var + max(abs(max_var * 0.1), 10))
     plt.legend(shadow=False, loc='best')
     # txt_height = 0.04 * (plt.ylim[1] - plt.ylim[0])  # plt.ylim and plt.xlim return a tuple
     # txt_width = 0.02 * (plt.xlim[1] - plt.xlim[0])
@@ -796,8 +794,16 @@ def save_kinetics_lib(rxn_list, path, name, lib_long_desc):
         kinetics_library.save_dictionary(os.path.join(lib_path, 'dictionary.txt'))
 
 
-def save_conformers_file(project_directory, label, xyzs, level_of_theory, multiplicity=None, charge=None, is_ts=False,
-                         energies=None, ts_methods=None):
+def save_conformers_file(project_directory: str,
+                         label: str,
+                         xyzs: List[dict],
+                         level_of_theory: Level,
+                         multiplicity: Optional[int] = None,
+                         charge: Optional[int] = None,
+                         is_ts: bool = False,
+                         energies: Optional[List[float]] = None,
+                         ts_methods: Optional[List[str]] = None,
+                         ):
     """
     Save the conformers before or after optimization.
     If energies are given, the conformers are considered to be optimized.
@@ -806,7 +812,7 @@ def save_conformers_file(project_directory, label, xyzs, level_of_theory, multip
         project_directory (str): The path to the project's directory.
         label (str): The species label.
         xyzs (list): Entries are dict-format xyz coordinates of conformers.
-        level_of_theory (dict or str): The level of theory used for the conformers optimization.
+        level_of_theory (Level): The level of theory used for the conformers optimization.
         multiplicity (int, optional): The species multiplicity, used for perceiving the molecule.
         charge (int, optional): The species charge, used for perceiving the molecule.
         is_ts (bool, optional): Whether the species represents a TS. True if it does.
@@ -828,8 +834,7 @@ def save_conformers_file(project_directory, label, xyzs, level_of_theory, multip
     with open(conf_path, 'w') as f:
         content = ''
         if optimized:
-            content += f'Conformers for {label}, optimized at the ' \
-                       f'{format_level_of_theory_for_logging(level_of_theory)} level:\n\n'
+            content += f'Conformers for {label}, optimized at the {level_of_theory.simple()} level:\n\n'
         for i, xyz in enumerate(xyzs):
             content += f'conformer {i}:\n'
             if xyz is not None:
