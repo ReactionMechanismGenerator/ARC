@@ -334,9 +334,11 @@ def log_bde_report(path, bde_report, spc_dict):
 
 # *** Parity and kinetic plots ***
 
-def draw_thermo_parity_plots(species_list, path=None):
+def draw_thermo_parity_plots(species_list: list,
+                             path: Optional[str] = None):
     """
     Draws parity plots of calculated thermo and RMG's estimates.
+    Saves a thermo.info file if a ``path`` is specified.
 
     Args:
         species_list (list): Species to compare.
