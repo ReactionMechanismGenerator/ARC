@@ -2,15 +2,15 @@
 
 # Calculate the C-H BDE of ibuprofen for C5-H18 and C5-H19
 # The geometry of ibuprofen was previously optimized and specified below
-# In this exmaple ARC will not generate new conformers for ibuprofen
+# In this example ARC will not generate new conformers for ibuprofen
 
 project: BDE_example_ibuprofen
 
 specific_job_type: bde
 
 level_of_theory: apfd/def2svp
-model_chemistry: bmk/cbsb7 # a dummy model_chemistry required for Arkane processing
-                           # this setting will not affect the BDE result which is a relative calculation
+arkane_level_of_theory: bmk/cbsb7 # a dummy model_chemistry required for Arkane processing
+                                  # this setting will not affect the BDE result which is a relative calculation
 use_bac: false
 freq_scale_factor: 0.990
 

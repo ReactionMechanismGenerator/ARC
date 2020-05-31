@@ -1,5 +1,5 @@
 # This is an example of optimizing a transition state given as xyz
-# Note that `multiplicity` has to be given for this example,
+# Note that `multiplicity` has to be given for this example (it is not trivial),
 # otherwise ARC will assign a trivial guess of 1.
 # The TS here is of a hydrogen abstraction reaction, N2H4 + NH <=> N2H3 + NH2
 project: TS
