@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# encoding: utf-8
-
 """
 This module contains functions which are shared across multiple ARC modules.
 As such, it should not import any other ARC module (specifically ones that use the logger defined here)
@@ -8,10 +5,12 @@ As such, it should not import any other ARC module (specifically ones that use t
 
 VERSION is the full ARC version, using `semantic versioning <https://semver.org/>`_.
 """
+
 import ast
 import datetime
 import logging
 import os
+import pprint
 import shutil
 import subprocess
 import sys
@@ -30,7 +29,7 @@ from rmgpy.qm.qmdata import QMData
 from rmgpy.qm.symmetry import PointGroupCalculator
 
 from arc.exceptions import InputError, SettingsError
-from arc.settings import arc_path, servers, default_job_types
+from arc.settings import arc_path, default_job_types, servers
 
 
 logger = logging.getLogger('arc')
@@ -160,7 +159,7 @@ def check_ess_settings(ess_settings: Optional[dict] = None) -> dict:
             if not isinstance(server, bool) and server.lower() not in list(servers.keys()):
                 server_names = [name for name in servers.keys()]
                 raise SettingsError(f'Recognized servers are {server_names}. Got: {server}')
-    logger.info(f'\nUsing the following ESS settings:\n{settings}\n')
+    logger.info(f'\nUsing the following ESS settings:\n{pprint.pformat(settings)}\n')
     return settings
 
 
@@ -218,9 +217,10 @@ def initialize_log(log_file: str,
     logger.addHandler(fh)
     log_header(project=project)
 
-    # ignore Paramiko and cclib warnings:
+    # ignore Paramiko, cclib, and matplotlib warnings:
     warnings.filterwarnings(action='ignore', module='.*paramiko.*')
     warnings.filterwarnings(action='ignore', module='.*cclib.*')
+    warnings.filterwarnings(action='ignore', module='.*matplotlib.*')
     logging.captureWarnings(capture=False)
 
 
@@ -420,7 +420,9 @@ def globalize_path(string: str,
     if '/calcs/Species/' in string or '/calcs/TSs/' in string and project_directory not in string:
         splits = string.split('/calcs/')
         prefix = splits[0].split('/')[0]
-        new_string = prefix + project_directory + 'calcs/' + splits[-1]
+        new_string = prefix + project_directory
+        new_string += '/' if new_string[-1] != '/' else ''
+        new_string += 'calcs/' + splits[-1]
         return new_string
     return string
 
@@ -622,7 +624,7 @@ def determine_top_group_indices(mol, atom1, atom2, index=1):
 
 def extermum_list(lst: list,
                   return_min: bool = True,
-                  ) -> int:
+                  ) -> Union[int, None]:
     """
     A helper function for finding the minimum of a list of numbers (int/float) where some of the entries might be None.
 
@@ -804,181 +806,6 @@ def almost_equal_coords_lists(xyz1: dict,
     return False  # If no match is found
 
 
-def determine_model_chemistry_type(method: str or dict) -> str:
-    """
-    Determine the type of a model chemistry (e.g., DFT, wavefunction, force field, semi-empirical, composite).
-
-    Args:
-        method (str, dict): method in a model chemistry. e.g., b3lyp, cbs-qb3, am1, dlpno-ccsd(T)
-
-    Raises:
-        TypeError: If ``method`` is of wrong type.
-
-    Returns:
-        model_chemistry_type (str): The model chemistry type, one of the following:
-                                    'composite', 'dft', 'force_field', 'semiempirical', or 'wavefunction'.
-    """
-    if isinstance(method, dict):
-        method = format_level_of_theory_for_logging(method)
-    if not isinstance(method, str):
-        raise TypeError(f'The method argument must be a string, got {method} which is a {type(method)}.')
-    given_method = method.lower()
-    wave_function_methods = ['hf', 'cc', 'ci', 'mp2', 'mp3', 'cp', 'cep', 'nevpt', 'dmrg', 'ri', 'cas', 'ic', 'mr',
-                             'bd', 'mbpt']
-    semiempirical_methods = ['am', 'pm', 'zindo', 'mndo', 'xtb', 'nddo']
-    force_field_methods = ['amber', 'mmff', 'dreiding', 'uff', 'qmdff', 'gfn', 'gaff', 'ghemical', 'charmm', 'ani']
-    # all composite methods supported by Gaussian
-    composite_methods = ['cbs-4m', 'cbs-qb3', 'rocbs-qb3', 'cbs-apno', 'w1u', 'w1ro', 'w1bd', 'g1', 'g2', 'g3', 'g4',
-                         'g2mp2', 'g3mp2', 'g3b3', 'g3mp2b3', 'g4mp2', 'cbs-qb3-paraskevas']
-
-    # Composite methods
-    if given_method in composite_methods:
-        model_chemistry_class = 'composite'
-        return model_chemistry_class
-
-    # Special cases
-    if given_method in ['m06hf', 'm06-hf']:
-        model_chemistry_class = 'dft'
-        return model_chemistry_class
-
-    # General cases
-    if any(wf_method in given_method for wf_method in wave_function_methods):
-        model_chemistry_class = 'wavefunction'
-    elif any(sm_method in given_method for sm_method in semiempirical_methods):
-        model_chemistry_class = 'semiempirical'
-    elif any(ff_method in given_method for ff_method in force_field_methods):
-        model_chemistry_class = 'force_field'   # a.k.a molecular dynamics
-    else:
-        logger.debug(f'Assuming {given_method} is a DFT method.')
-        model_chemistry_class = 'dft'
-    return model_chemistry_class
-
-
-def format_level_of_theory_inputs(level_of_theory: Union[str, dict]) -> Tuple[dict, str]:
-    """
-    A helper function to format level of theory inputs for internal use in ARC.
-
-    Examples: input -> output
-        'cbs-qb3' -> {'method': 'cbs-qb3', 'basis': '', 'auxiliary_basis': '', 'dispersion': ''}
-        'b3lyp/def2-TZVP' -> {'method': 'b3lyp', 'basis': 'def2-tzvp', 'auxiliary_basis': '', 'dispersion': ''}
-        {'method': 'wb97xd', 'basis': '6-31g'} -> {'method': 'wb97xd', 'basis': '6-31g', 'auxiliary_basis': '',
-                                                   'dispersion': ''}
-        More examples can be found from `test_format_model_chemistry_inputs` in commonTest.
-
-    Args:
-        level_of_theory (str or dict): job level of theory specification
-                                       e.g., 'b3lyp/def2-svp'
-                                       e.g., {'method': 'DLPNO-CCSD(T)-F12', 'basis': 'cc-pVTZ-F12',
-                                              'auxiliary_basis': 'aug-cc-pVTZ/C cc-pVTZ-F12-CABS'}
-
-    Raises:
-        InputError: If ``level_of_theory`` contains illegal specifications.
-
-    Returns:
-        formatted_model_chemistry_dict (dict): The formatted model chemistry dictionary.
-                                               Default keys: 'method', 'basis', 'auxiliary_basis', 'dispersion'.
-        formatted_model_chemistry_str (str): The formatted model chemistry string.
-                                             Format: method|basis|auxiliary_basis|dispersion.
-    """
-    formatted_model_chemistry_dict = {'method': '', 'basis': '', 'auxiliary_basis': '', 'dispersion': ''}
-    if not level_of_theory:
-        formatted_model_chemistry_str = ''
-        return formatted_model_chemistry_dict, formatted_model_chemistry_str
-    if isinstance(level_of_theory, str):
-        if '|' in level_of_theory:
-            if level_of_theory.count('|') != 3:
-                raise InputError(f'{level_of_theory} contains {level_of_theory.count("|")} pipes "|" in its name. '
-                                 f'The standard job model chemistry format used internally in ARC should contain '
-                                 f'exactly three pipes (method|basis|auxiliary_basis|dispersion).')
-            else:
-                formatted_model_chemistry_dict['method'], formatted_model_chemistry_dict['basis'],\
-                    formatted_model_chemistry_dict['auxiliary_basis'], formatted_model_chemistry_dict['dispersion']\
-                    = level_of_theory.lower().split('|')
-        elif ' ' in level_of_theory:
-            # illegal inputs like 'dlpno-ccsd(t)/def2-svp def2-svp/c' or 'b3 lyp'
-            raise InputError(f'{level_of_theory} has empty space in its name. Please use a dictionary format '
-                             f'to specify method, basis, auxiliary basis, and dispersion in this case. '
-                             f'See documentation for more details.')
-        elif '/' not in level_of_theory:
-            # e.g., 'AM1', 'XTB', 'CBS-QB3'
-            # Notice that this function is not designed to distinguish composite methods and
-            # semi-empirical methods. If such differentiation is needed elsewhere in the codebase, please use
-            # `determine_model_chemistry_type` in common.py
-            formatted_model_chemistry_dict['method'] = level_of_theory.lower()
-        elif level_of_theory.count('/') >= 2:
-            # illegal inputs like 'dlpno-ccsd(t)/def2-svp/def2-svp/c'
-            raise InputError(f'{level_of_theory} has multiple slashes in its name. Please use a dictionary format '
-                             f'to specify method, basis, auxiliary basis, and dispersion in this case. '
-                             f'See documentation for more details.')
-        else:
-            # e.g., 'b3lyp/def2-svp'
-            formatted_model_chemistry_dict['method'] = level_of_theory.split('/')[0].lower()
-            formatted_model_chemistry_dict['basis'] = level_of_theory.split('/')[1].lower()
-    elif isinstance(level_of_theory, dict):
-        if level_of_theory == formatted_model_chemistry_dict:
-            # This usually occurs in a restarted job (because ARC writes formatted model chemistry specifications into
-            # the restart dictionary). To ensure `if level_of_theory:` evaluates to `False` so that the function
-            # `determine_model_chemistry_for_job_types` behaves properly as if the job was a new job instead of a
-            # restarted one, in this case we return formatted_model_chemistry_dict = {} so that expressions like
-            # if self.sp_level evaluates to false
-            return dict(), ''
-
-        if 'method' not in level_of_theory.keys():
-            raise InputError(f'{level_of_theory} must at least have "method" as a key.')
-
-        for key in level_of_theory.keys():
-            if key in formatted_model_chemistry_dict:
-                formatted_model_chemistry_dict[key] = level_of_theory[key].lower()
-            else:
-                raise InputError(f'{level_of_theory} has illegal key {key}. The standard model chemistry input '
-                                 f'dictionary has four keys: method, basis, auxiliary_basis, and dispersion.')
-    else:
-        raise InputError(f'{level_of_theory} must be either a string or a dictionary. Got: {type(level_of_theory)}.')
-
-    formatted_model_chemistry_str = "|".join([formatted_model_chemistry_dict['method'],
-                                              formatted_model_chemistry_dict['basis'],
-                                              formatted_model_chemistry_dict['auxiliary_basis'],
-                                              formatted_model_chemistry_dict['dispersion']])
-    return formatted_model_chemistry_dict, formatted_model_chemistry_str
-
-
-def format_level_of_theory_for_logging(level_of_theory: str or dict) -> str:
-    """
-    Format level of theory dictionary to string for logging purposes.
-
-    Examples: input -> output
-        {'method': 'cbs-qb3'} -> 'cbs-qb3'
-        {'method': 'b3lyp', 'basis': '6-31g', 'auxiliary_basis': '', 'dispersion': 'gd3bj'} -> 'b3lyp/6-31g gd3bj'
-        'apfd/def2-tzvp' -> 'apfd/def2-tzvp'
-        More examples can be found from `test_format_level_of_theory_for_logging` in commonTest.
-
-    Args:
-        level_of_theory (str or dict): job level of theory.
-
-    Raises:
-        TypeError: If ``level_of_theory`` is of wrong type.
-
-    Returns:
-        level_of_theory_log_str (str): level of theory string for logging.
-    """
-    if not isinstance(level_of_theory, (dict, str)):
-        raise TypeError(f'level_of_theory_dict must be either a dictionary or a string, got: {level_of_theory} '
-                        f'which is a {type(level_of_theory)}.')
-    if isinstance(level_of_theory, str) and '|' not in level_of_theory:
-        return level_of_theory.lower()
-    level_of_theory_dict = format_level_of_theory_inputs(level_of_theory)[0]
-    method = level_of_theory_dict.get('method', '')
-    basis = level_of_theory_dict.get('basis', '')
-    auxiliary_basis = level_of_theory_dict.get('auxiliary_basis', '')
-    dispersion = level_of_theory_dict.get('dispersion', '')
-    level_of_theory_log_str = '/'.join([method, basis]) if basis else method
-    level_of_theory_log_str = '/'.join([level_of_theory_log_str, auxiliary_basis]) if auxiliary_basis \
-        else level_of_theory_log_str
-    level_of_theory_log_str = ' '.join([level_of_theory_log_str, dispersion]) if dispersion \
-        else level_of_theory_log_str
-    return level_of_theory_log_str
-
-
 def is_notebook() -> bool:
     """
     Check whether ARC was called from an IPython notebook.
@@ -1130,7 +957,7 @@ def check_torsion_change(torsions: pd.DataFrame,
               and abs(torsions.loc[label, index_1] + 360 - torsions.loc[label, index_2] - delta) < threshold:
                 change[label] = False
             elif torsions.loc[label, index_2] < 0 \
-              and abs(torsions.loc[label, index_1] - 360 - torsions.loc[label, index_2] - delta) < threshold:
+                    and abs(torsions.loc[label, index_1] - 360 - torsions.loc[label, index_2] - delta) < threshold:
                 change[label] = False
     return change
 
