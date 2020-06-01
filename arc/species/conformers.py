@@ -44,6 +44,7 @@ import logging
 import sys
 import time
 from itertools import product
+from typing import Optional, Tuple, Union
 
 import openbabel as ob
 import pybel as pyb
@@ -120,7 +121,7 @@ def generate_conformers(mol_list,
                         return_all_conformers=False,
                         plot_path=None,
                         print_logs=True,
-                        ) -> list:
+                        ) -> Union[list, Tuple[list, list], None]:
     """
     Generate conformers for (non-TS) species starting from a list of RMG Molecules.
     (resonance structures are assumed to have already been generated and included in the molecule list)
@@ -351,8 +352,8 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
         lowest_conf = determine_chirality([lowest_conf], label, mol, force=False)[0]
         diastereomer = f" (diastereomer: {lowest_conf['chirality']})" if 'chirality' in lowest_conf \
                                                                          and lowest_conf['chirality'] else ''
-        logger.info(f'Lowest force field conformer for {label}{diastereomer}:')
-        logger.info(converter.xyz_to_str(lowest_conf['xyz']))
+        logger.info(f'Lowest force field conformer for {label}{diastereomer}:\n'
+                    f'{converter.xyz_to_str(lowest_conf["xyz"])}\n')
         arc.plotter.draw_structure(xyz=lowest_conf['xyz'])
 
     return new_conformers, symmetries
@@ -716,7 +717,13 @@ def determine_rotors(mol_list):
     return torsions, tops
 
 
-def determine_number_of_conformers_to_generate(label, heavy_atoms, torsion_num, mol=None, xyz=None, minimalist=False):
+def determine_number_of_conformers_to_generate(label: str,
+                                               heavy_atoms: int,
+                                               torsion_num: int,
+                                               mol: Optional[Molecule] = None,
+                                               xyz: Optional[dict] = None,
+                                               minimalist: bool = False,
+                                               ) -> Tuple[int, int]:
     """
     Determine the number of conformers to generate using molecular mechanics
 
@@ -729,13 +736,13 @@ def determine_number_of_conformers_to_generate(label, heavy_atoms, torsion_num, 
         minimalist (bool, optional): Whether to return a small number of conformers, useful when this is just a guess
                                      before fitting a force field. True to be minimalistic.
 
-    Returns:
-        int: The number of conformers to generate.
-    Returns:
-        int: The number of chiral centers.
-
     Raises:
         ConformerError: If the number of conformers to generate cannot be determined.
+
+    Returns:
+        Tuple[int, int]:
+            - The number of conformers to generate.
+            - The number of chiral centers.
     """
     if isinstance(torsion_num, list):
         torsion_num = len(torsion_num)
@@ -1026,7 +1033,7 @@ def get_force_field_energies(label: str,
                              force_field: str = 'MMFF94s',
                              optimize: bool = True,
                              try_ob: bool = True,
-                             suppress_warning: bool = False) -> (list, list):
+                             suppress_warning: bool = False) -> Tuple[list, list]:
     """
     Determine force field energies using RDKit.
     If ``num_confs`` is given, random 3D geometries will be generated. If xyz is given, it will be directly used instead.
