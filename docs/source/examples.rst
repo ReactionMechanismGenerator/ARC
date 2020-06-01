@@ -38,7 +38,10 @@ Multiple species are defined using SMILES / an XYZ list / InChI::
 
     level_of_theory: CCSD(T)-F12/cc-pVTZ-F12//wb97xd/def2tzvp
     scan_level: wb97xd/def2tzvp
-    conformer_level: b3lyp/6-311+g(d,p)
+    conformer_level:
+      method: b3lyp
+      basis: '6-311+g(d,p)'
+      dispersion: empiricaldispersion=gd3bj
 
     species:
 
@@ -81,13 +84,13 @@ To specify a composite method, simply define something like::
 
     level_of_theory: CBS-QB3
 
-Note that for composite methods the default ``freq_level`` and ``scan_level`` may have different
-default values than for non-composite methods (defined in settings.py). Yes, an independent
-frequencies calculation job is executed after a composite job just so that the Hamiltonian will
+Note that for composite methods the ``freq_level`` and ``scan_level`` may have different
+default values than for non-composite methods (defined in settings.py). Note: an independent
+frequencies calculation job is automatically executed after a composite job just so that the Hamiltonian will
 be outputted.
 
-For detailed discussion on specifying job level of theory (e.g., including auxiliary basis sets and DFT dispersions),
-see see :ref:`Specify job level of theory`.
+For detailed discussion on specifying levels of theory (e.g., including auxiliary basis sets and DFT dispersions),
+see see :ref:`Levels of theory <levels>`.
 
 The same example as above ran via the API (e.g., in `Jupyter notebooks`__) would look like the following::
 
@@ -121,15 +124,17 @@ The same example as above ran via the API (e.g., in `Jupyter notebooks`__) would
 
     spc3 = ARCSpecies(label='propanol', inchi='InChI=1S/C3H8O/c1-2-3-4/h4H,2-3H2,1H3')
 
-    arc0 = ARC(project='arc_demo_1',
-               ess_settings={'gaussian': ['local', 'server1'], 'molpro': 'server1', 'qchem': 'server2'},
-               job_types={'rotors': True, 'conformers': True, 'fine': True, 'freq': True, 'opt': True, sp: True},
-               max_job_time=24,
-               level_of_theory='CCSD(T)-F12/cc-pVTZ-F12//wb97xd/def2tzvp',
-               scan_level='wb97xd/def2tzvp',
-               conformer_level='b3lyp/6-311+g(d,p)')
+    arc = ARC(project='arc_demo_1',
+              ess_settings={'gaussian': ['local', 'server1'], 'molpro': 'server1', 'qchem': 'server2'},
+              job_types={'rotors': True, 'conformers': True, 'fine': True, 'freq': True, 'opt': True, sp: True},
+              max_job_time=24,
+              level_of_theory='CCSD(T)-F12/cc-pVTZ-F12//wb97xd/def2tzvp',
+              scan_level='wb97xd/def2tzvp',
+              conformer_level='b3lyp/6-311+g(d,p)',
+              species=[spc1, spc2, spc3],
+              )
 
-    arc0.execute()
+    arc.execute()
 
 __ jupyter_
 

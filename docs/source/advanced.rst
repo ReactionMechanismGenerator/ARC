@@ -17,9 +17,9 @@ __ xyz_format_
 
 Specify a specific job type to execute
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-To run ARC with a particular job type, set ``specific_job_type`` to the job type you want.
+To run ARC with a particular job type **only**, set ``specific_job_type`` to the job type you want.
 Currently, ARC supports the following job types: ``conformers``, ``opt``, ``fine``, ``freq``,
-``sp``, ``rotors``, ``onedmin``, ``orbitals``, ``bde``.
+``sp``, ``rotors``, ``onedmin``, ``orbitals``, ``bde``, ``irc``.
 
 Note: ``specific_job_type`` takes higher precedence than ``job_types``. If you specify both attributes, ARC will
 dismiss the given ``job_types`` and will only populate the ``job_types`` dictionary using the given
@@ -42,61 +42,75 @@ Specification 2::
 
     specific_job_type: bde
 
-Specify job level of theory
-^^^^^^^^^^^^^^^^^^^^^^^^^^^
-It is possible to specify a level of theory to be used in specific job types (e.g., optimization, single point, etc.).
-If not specified, ARC will use the defaults in the ``default_levels_of_theory`` dictionary in settings.py.
 
-ARC has the flexibility of accepting various types of job level of theory specification in an input file. The most
-general syntax is a dictionary::
+.. _levels:
 
-    <job_type>_level: {'method': 'method_string', 'basis': 'basis_string', 'auxiliary_basis': 'auxiliary_basis_string', 'dispersion': 'DFT_dispersion_string'}
+Levels of theory
+^^^^^^^^^^^^^^^^
+
+ARC's :ref:`Level <level>` class is meant to allow detailed and comprehensive specification of
+a level of theory. ARC allows users to specify a level of theory per job type, with some shortcuts
+as described below. Job types for which levels of theory may be specified (otherwise ARC will assume
+defaults values) are:
+
+    - ``conformer_level``
+    - ``ts_guess_level``
+    - ``opt_level``
+    - ``freq_level``
+    - ``sp_level``
+    - ``composite_method``
+    - ``scan_level``
+    - ``irc_level``
+    - ``orbitals_level``
+
+Each level may be defined either by a string or a dictionary.
+Specifying a string may only contain a method and a basis set where applicable, e.g.,
+``CBS-QB3`` or ``wb97xd/def2-tzvp``. The dictionary allows additional
+arguments to be defined: ``method``, ``basis``, ``auxiliary_basis``, ``dispersion``,
+``cabs`` (complementary auxiliary basis set for F12 calculations), ``software``,
+``software_version`` (not used), ``solvation_method``, ``solvent``, ``solvation_scheme_level``, ``args``.
 
 For example::
 
-    conformer_level: {'method': 'b3lyp', 'basis': '6-31g(d,p)', 'dispersion': 'empiricaldispersion=gd3bj'}
+    conformer_level: {'method': 'b3lyp',
+                      'basis': '6-31g(d,p)',
+                      'dispersion': 'empiricaldispersion=gd3bj',
+                      }
 
-specifies ``b3lyp/6-31g(d,p)`` model chemistry along with the `D3 version of Grimme’s dispersion with Becke-Johnson
-damping <https://onlinelibrary.wiley.com/doi/full/10.1002/jcc.21759>`_ for optimizing conformers.
-Notice that ``empiricaldispersion=gd3bj`` is the format required by ``Gaussian``. In general, different ESS have various
-formats for specifying model chemistry. Make sure to pass the correct format based on the intended ESS that should be
-used.
+specifies ``b3lyp/6-31g(d,p)`` model chemistry along with the
+`D3 version of Grimme’s dispersion with Becke-Johnson damping <https://onlinelibrary.wiley.com/doi/full/10.1002/jcc.21759>`_ for optimizing conformers.
+Note that ``empiricaldispersion=gd3bj`` is the format required by ``Gaussian``.
+In general, different ESS have various formats for specifying model chemistry.
+Make sure to pass the correct format based on the intended ESS that should be used.
 
 Another example::
 
-    sp_level: {'method': 'DLPNO-CCSD(T)-F12', 'basis': 'cc-pVTZ-F12', 'auxiliary_basis': 'aug-cc-pVTZ/C cc-pVTZ-F12-CABS'}
+    sp_level: {'method': 'DLPNO-CCSD(T)-F12',
+               'basis': 'cc-pVTZ-F12',
+               'auxiliary_basis': 'aug-cc-pVTZ/C cc-pVTZ-F12-CABS',
+               'args': {'keyword' :{'opt_convergence': 'TightOpt'}},
+               'software': 'orca',
+               }
 
-specifies ``DLPNO-CCSD(T)-F12/cc-pVTZ-F12`` model chemistry along with two auxiliary basis sets ``aug-cc-pVTZ/C`` and
-``cc-pVTZ-F12-CABS`` for single point calculation.
+specifies ``DLPNO-CCSD(T)-F12/cc-pVTZ-F12`` model chemistry along with two auxiliary basis sets,
+``aug-cc-pVTZ/C`` and ``cc-pVTZ-F12-CABS``, with ``TightOpt`` for a single point energy calculation.
 
-The following job-specific level of theory arguments accept either a simple string (see "shortcuts" below) or the
-above-detailed dictionary specification: ``conformer_level``, ``opt_level``, ``freq_level``, ``sp_level``,
-``scan_level``, ``ts_guess_level``, ``orbitals_level``.
 
-Using dictionary to specify job level of theory is always recommended due to its clarity and flexibility. In addition,
-ARC supports several shortcuts.
-
-The job level of theory also accepts a string input with format ``method`` or ``method/basis``. You may use this option
-only if the level of theory specification contains neither ``auxiliary_basis`` nor ``dispersion``.
-
-For example::
+THe following are examples for **equivalent** definitions::
 
     opt_level = 'apfd/def2tzvp'
-
-is a shortcut for::
-
     opt_level = {'method': 'apfd', 'basis': 'def2tzvp'}
 
-Another example::
-
     conformer_level = 'PM6'
-
-is a shortcut for::
-
     conformer_level = {'method': 'PM6'}
 
-ARC also supports an additional argument (``level_of_theory``) as a shortcut to simultaneously specify ``opt_level``,
-``freq_level``, ``sp_level``, and ``scan_level``.
+
+Note that the ``cabs`` and ``solvation_scheme_level`` arguments currently have no effect
+and will be implemented in future versions. The ``software`` argument is automatically determined
+unless specified by the user.
+
+ARC also supports an additional shortcut argument, ``level_of_theory``,
+to simultaneously specify ``opt_level``, ``freq_level``, ``sp_level``, and ``scan_level``.
 
 For example::
 
@@ -109,8 +123,8 @@ is a shortcut for::
     scan_level = {'method': 'apfd', 'basis': 'def2svp'}
     sp_level = {'method': 'dlpno-ccsd(T)', 'basis': 'def2tzvp'}
 
-Note: If ``level_of_theory`` does not contain the ``//`` deliminator but does contain ``\/``, it is interpreted as intended
-for running all opt, freq, scan, and sp job types at that level.
+Note: If ``level_of_theory`` does not contain the ``//`` deliminator but does contain ``\/``,
+it is interpreted as intended for running all opt, freq, scan, **and sp** job types at that level.
 
 For example::
 
@@ -142,101 +156,104 @@ For example, to specify ``AM1`` as the geometry optimization method, please use:
 
     opt_level = {'method': 'AM1'}
 
-To avoid conflicts and confusion, ARC will raise an ``InputError`` if both ``level_of_theory`` and ``composite_method``
-are specified. Also, it is not good practice to specify ``level_of_theory`` along with ``opt_level``,
-``freq_level``, and ``sp_level``. If these arguments are specified simultaneously, ARC will overwrite
-``level_of_theory`` with the values given in ``opt_level``, ``freq_level``, and ``sp_level``.
+To avoid conflicts and confusion, ARC will raise an ``InputError`` if
+``level_of_theory`` is specified along with ``composite_method``, ``opt_level``,
+or ``sp_level``.
 
-Additional job options
-^^^^^^^^^^^^^^^^^^^^^^
-Note: this feature currently has limited support for ESS other than ``Orca``.
-
-ARC allows specification of job options (e.g., SCF convergence) at ease. By default, ARC uses default job options for
-each ESS and job type stored in the ``ESS_default_options_dict`` dictionary in the settings.py.
-
-ARC has the flexibility of accepting various types of job option specification in an input file. The most general
-syntax is a dictionary::
-
-    job_additional_options = {ESS: {job_type:  {option_format: {option_category: option_specification}}}}
+A notable argument is ``args``, which is a 2-level nested dictionary
+of additional directives to pass to the ESS.
+There are only two allowed keys for the first level, ``keyword`` and ``block``.
+Entries under ``keyword`` will be added to the directive line of the ESS input file as keywords,
+while entries under ``block`` are treated as multiline strings and will be added after the
+directive line of the ESS input file. The corresponding values for these keywords are dictionaries as well.
+While specific keys are used by ARC internally for troubleshooting,
+users are encouraged use ``general`` as a key for any additional values.
+ARC can deduce the software to be used per level of theory using heuristics, yet since the values of ``args``
+are software-dependent, it is highly recommended that users also specify the optional ``software`` argument
+to avoid using an incompatible software. For convenience,
+``args`` can also be inputted as a sting or a list of strings which will be internallt converted to the correct
+dictionary format with ``keyword`` and ``general`` keys.
 
 For example::
 
-    job_additional_options = {'orca': {'opt': {'keyword' :{'opt_convergence': 'TightOpt'}}}}
-
-sets the optimization convergence to ``TightOpt`` for geometry optimization jobs in Orca.
+    args = {'keyword' :{'opt_convergence': 'TightOpt'},
+            'block': {'general': '%scf DryRun true \n end'}}
 
 Another example::
 
-    job_additional_options = {'orca': {'global': {'block' :{'generic': '%scf DryRun true \n end'}}}}
+    args = {'keyword' :{'general': 'iop(99/33=1)'}}
 
-instructs ``Orca`` to run a test job for determining the memory needed for the SCF module.
+will append ``iop(99/33=1)`` to the respective Gaussian job input file.
 
-Notice that ARC supports two kinds of ``option_format``, which are ``keyword`` and ``block``, because many ESS have
-these two methods to specify job options (e.g., ``Orca``). Make sure to read the manual of the ESS that is intended to
-use to ensure correct format for specifying job options.
 
-Using dictionary to specify job option is always recommended due to its clarity and flexibility. The
-``ESS_default_options_dict`` dictionary in the settings.py contains default ``option_category``
-(e.g., ``opt_convergence``, ``scf_convergence``) that ARC use. Make sure to read the manual of the ESS that is
-intended to use to obtain a list of possible options. For example, ``opt_convergence`` can take values like
-``NormalOpt`` and ``TightOpt`` as specified in the ``Orca`` `manual <https://cec.mpg.de/fileadmin/media/Forschung/ORCA/orca_manual_4_0_1.pdf>`_.
+Adaptive levels of theory
+^^^^^^^^^^^^^^^^^^^^^^^^^
+ARC allows users to adapt the level of theory to the size of the molecule.
+To do so, pass the ``adaptive_levels`` attribute, which is a dictionary of
+levels of theory for ranges of the number of heavy (non-hydrogen) atoms in the
+molecule. Keys are tuples of (``min_num_atoms``, ``max_num_atoms``), values are
+dictionaries with the a tuple of job type as the key (``opt``, ``freq``, ``sp``, ``scan``)
+and the respective level of theory as a string or a dictionary is the value.
+Don't forget to bound the entire range between 1 and ``inf``, also make sure
+there aren't any gaps in the heavy atom ranges. For example::
 
-Use ``generic`` as a key for ``option_category`` that is not default in ARC.
+    adaptive_levels = {(1, 5):      {('opt', 'freq'): 'wb97xd/6-311+g(2d,2p)',
+                                     'sp': 'ccsd(t)-f12/aug-cc-pvtz-f12'},
+                       (6, 15):     {('opt', 'freq'): 'b3lyp/cbsb7',
+                                     'sp': 'dlpno-ccsd(t)/def2-tzvp/c'},
+                       (16, 30):    {('opt', 'freq'): 'b3lyp/6-31g(d,p)',
+                                     'sp': 'wb97xd/6-311+g(2d,2p)'},
+                       (31, 'inf'): {('opt', 'freq'): 'b3lyp/6-31g(d,p)',
+                                     'sp': 'b3lyp/6-311+g(d,p)'}}
 
-For example::
+Note that job types which are not specified in ``adaptive_levels`` will use no-adaptive
+(defined separately e.g., via ``opt_level``, or using ARC's defaults.
 
-    job_additional_options = {'gaussian': {'global': {'keyword' :{'generic': 'iop(99/33=1)'}}}}
-
-will append ``iop(99/33=1)`` to all ``Gaussian`` job input scripts. In addition, ARC supports a shortcut.
-``job_shortcut_keywords`` is a dictionary with ESS string as keys and job option keyword string as values.
-
-For example::
-
-    job_shortcut_keywords = {'gaussian': 'iop(99/33=1)'}
-
-is a shortcut of the previous example.
 
 Control job memory allocation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-To specify the amount of memory for all jobs in an ARC project, set ``job_memory`` with positive integer values in GB.
+To specify the amount of memory for all jobs in an ARC project,
+set ``job_memory`` with a positive integer value (units are GB).
 
-Notice that user can change the total memory per node by setting the value of ``memory`` key in the servers dictionary
-under settings.py. This value will be treated as the maximum allowable memory, and memory-related troubleshooting
+Note that the total memory per node can be modified by setting the value of ``memory``
+in the servers dictionary under settings.py.
+This value will be treated as the maximum allowable memory per node, and memory-related troubleshooting
 methods will not be allowed to request more than this value.
 
-If ``job_memory`` is not defined, ARC will initialize each job using 14 GB memory by default. In case a job crashes due
-to insufficient memory, ARC will try to resubmit that job asking for a higher memory allocation up to the specified
-maximal node ``memory``.
+If ``job_memory`` is not defined, ARC will initialize each job using 14 GB memory by default.
+In case a job crashes due to insufficient memory, ARC will try to resubmit that job asking for
+a higher memory allocation up to the specified maximal node ``memory``.
+
 
 Using a fine DFT grid for optimization
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 This option is turned on by default. If you'd like to turn it off,
 set ``fine`` in the ``job_types`` dictionary to ``False``.
 
-If turned on, ARC will spawn another optimization job after the first one converges
-with a fine grid settings, using the already optimized geometry.
+If turned on, ARC will spawn another DFT optimization job after the first one converges,
+now with a fine grid settings, using the already optimized geometry.
 
-It is also possible to instruct ARC not to run the first optimization job and instead go straight to the fine
-optimization. To do this, set ``fine: True`` but ``opt: False``.
+It is also possible to instruct ARC not to run the first optimization job,
+and instead use a fine grid to begin with. To do so, set ``fine: True`` but ``opt: False``.
 
 Note that this argument is called ``fine`` in ARC, although in practice
 it directs the ESS to use an **ultrafine** grid. See, for example, `this study`__
-describing the importance of a DFT grid.
+describing the importance of the DFT grid.
 
 __ DFTGridStudy_
 
-In Gaussian, this will add the following keywords::
+In Gaussian, ``fine`` will add the following directive::
 
     scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)
 
-In QChem, this will add the following directives::
+In QChem, it will add the following directives::
 
    GEOM_OPT_TOL_GRADIENT     15
    GEOM_OPT_TOL_DISPLACEMENT 60
    GEOM_OPT_TOL_ENERGY       5
    XC_GRID                   3
 
-In TeraChem, this will add the following directive::
+In TeraChem, it will add the following directives::
 
    dftgrid 4
    dynamicgrid yes
@@ -278,11 +295,13 @@ The optional primary keys are:
 - ``cont_opt``
 - ``ess``
 
-The brute force methods will generate all the geometries in advance and submit all relevant jobs simultaneously.
-The continuous method will wait for the previous job to terminate, and use its geometry as the initial guess for
-the next job.
+The brute force methods will generate all the geometries in advance and submit all relevant
+jobs simultaneously.
+The continuous method will wait for the previous job to terminate, and use its geometry as the
+initial guess for the next job.
 
-Another set of three keys is allowed, adding ``_diagonal`` to each of the above keys. The secondary keys are therefore:
+Another set of three keys is allowed, adding ``_diagonal`` to each of the above keys.
+The secondary keys are therefore:
 
 - ``brute_force_sp_diagonal``
 - ``brute_force_opt_diagonal``
@@ -402,28 +421,6 @@ factor using the ``freq_scale_factor`` attribute (see :ref:`examples <examples>`
 ``calc_freq_factor`` attribute to ``False`` (it is ``True`` by default).
 
 __ Truhlar_
-
-
-Adaptive levels of theory
-^^^^^^^^^^^^^^^^^^^^^^^^^
-Often we'd like to adapt the levels of theory to the size of the molecule.
-To do so, pass the ``adaptive_levels`` attribute, which is a dictionary of
-levels of theory for ranges of the number of heavy (non-hydrogen) atoms in the
-molecule. Keys are tuples of (``min_num_atoms``, ``max_num_atoms``), values are
-dictionaries with ``optfreq`` and ``sp`` as keys and levels of theory as values.
-Don't forget to bound the entire range between 1 and ``inf``, also make sure
-there aren't any gaps in the heavy atom ranges. The below is in Python (not YAML) format::
-
-    adaptive_levels = {(1, 5):      {'optfreq': 'wb97xd/6-311+g(2d,2p)',
-                                     'sp': 'ccsd(t)-f12/aug-cc-pvtz-f12'},
-                       (6, 15):     {'optfreq': 'b3lyp/cbsb7',
-                                     'sp': 'dlpno-ccsd(t)/def2-tzvp/c'},
-                       (16, 30):    {'optfreq': 'b3lyp/6-31g(d,p)',
-                                     'sp': 'wb97xd/6-311+g(2d,2p)'},
-                       (31, 'inf'): {'optfreq': 'b3lyp/6-31g(d,p)',
-                                     'sp': 'b3lyp/6-311+g(d,p)'}}
-
-
 
 Isomorphism checks
 ^^^^^^^^^^^^^^^^^^
@@ -776,17 +773,19 @@ file under the ``output`` directory in the project's folder. Units are kJ/mol.
 
 Disable comparisons with the RMG database
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-By default, at the end of an ARC job, ARC will try to compare the calculated thermochemistry and kinetics to estimates
-from the RMG database. The comparison is saved as a parity plot in the output directory.
+By default, at the end of an ARC job, ARC will try to compare the calculated
+thermochemistry and kinetics to estimates from the RMG database to assist the human reality-check.
+The comparison is saved as a parity plot in the output directory.
 
-Sometimes though, it is desirable to disable these comparisons with the RMG database. For example, although ARC will
-not crash due to any exceptions encountered while making the parity plots, it makes sense to disable these comparisons
-when dealing with species that cannot be estimated by the RMG database (e.g. because of the presence of atom types that
-are currently not supported). In other circumstances it may make sense to disable this comparison simply to save time
-by not having to load the RMG database if the comparison is not needed.
+Sometimes though, it is desirable to disable these comparisons with the RMG database.
+For example, although ARC will not crash due to any exceptions encountered while making
+the parity plots, it makes sense to disable these comparisons when dealing with species
+that cannot be estimated by the RMG database (e.g. because of the presence of atom types that
+are currently not supported). In other circumstances it may make sense to disable this comparison
+simply to save time by not having to load the entire RMG database.
 
-To disable ARC from generating these parity plots, simply supply the following in the ARC input file (or as a keyword
-argument to the main ARC object if using the API)::
+To disable ARC from generating these parity plots,
+simply pass the following argument to ARC::
 
     compare_to_rmg: False
 
@@ -796,17 +795,20 @@ With this option specified, ARC will not load the RMG database, and parity plots
 Use solvent corrections
 ^^^^^^^^^^^^^^^^^^^^^^^
 This feature is currently only implemented for jobs spawned using Gaussian.
-The ``solvation`` argument, if not ``None``, requests that a calculation be performed in the presence of a solvent
-by placing the solute (the species) in a cavity within the solvent reaction field. This argument is a dictionary,
-with the following keys:
+The ``solvation`` argument of a level of theory, if not ``None``, requests that a calculation
+be performed in the presence of a solvent by placing the solute (the species) in a cavity within
+the solvent reaction field. This argument is a dictionary, with the following keys:
 
     - 'method' (optional values: 'pcm' (default), 'cpcm', 'dipole', 'ipcm', 'scipcm')
     - 'solvent' (values are strings of "known" solvents, default is "water")
 
 Example::
 
-solvation = {'method': 'pcm', 'solvent: 'DiethylEther'}
-
+    opt_level = {'method': 'wb97xd',
+                 'basis': 'def2tzvp',
+                 'solvation': {'method': 'pcm',
+                               'solvent: 'DiethylEther'},
+                }
 
 See `https://gaussian.com/scrf/ <https://gaussian.com/scrf/>`_ for more details.
 
