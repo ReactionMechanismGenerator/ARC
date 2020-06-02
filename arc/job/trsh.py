@@ -18,7 +18,8 @@ from arc.common import (check_torsion_change,
                         get_logger,
                         is_same_pivot,
                         is_same_sequence_sublist,
-                        is_str_float)
+                        is_str_float,
+                        )
 from arc.exceptions import InputError, SpeciesError, TrshError
 from arc.job.local import execute_command
 from arc.job.ssh import SSHClient
@@ -29,16 +30,19 @@ from arc.settings import (delete_command,
                           preserve_param_in_scan_stable,
                           rotor_scan_resolution,
                           servers,
-                          submit_filename)
+                          submit_filename,
+                          )
 from arc.species.converter import (ics_to_scan_constraints,
                                    xyz_from_data,
-                                   xyz_to_coords_list)
+                                   xyz_to_coords_list,
+                                   )
 from arc.species.species import determine_rotor_symmetry
 from arc.parser import (parse_1d_scan_coords,
                         parse_normal_displacement_modes,
                         parse_scan_args,
                         parse_scan_conformers,
-                        parse_xyz_from_file)
+                        parse_xyz_from_file,
+                        )
 
 
 logger = get_logger()
@@ -535,9 +539,9 @@ def trsh_scan_job(label: str,
         scan_list (list): Entries are the four-atom scan lists (1-indexed) of all torsions
                            (without duplicate pivots) in this species.
         methods (dict): The troubleshooting method/s to try.
-                        Example:
-                        {'inc_res': None,
-                         'freeze': 'all' or [[1, 2, 3, 4], ...]}
+                        Example::
+                            {'inc_res': None,
+                             'freeze': 'all' or [[1, 2, 3, 4], ...]}
         log_file (str, optional): The related output file path.
 
     Raises:
@@ -1098,7 +1102,7 @@ def trsh_conformer_isomorphism(software: str,
 
 def trsh_job_on_server(server: str,
                        job_name: str,
-                       job_id: str,
+                       job_id: Union[int, str],
                        job_server_status: str,
                        remote_path: str,
                        server_nodes: list = None):
@@ -1108,7 +1112,7 @@ def trsh_job_on_server(server: str,
     Args:
         server (str): The server name.
         job_name (str): The job's name (e.g., 'opt_a103').
-        job_id (str): The job's ID on the server.
+        job_id (int, str): The job's ID on the server.
         job_server_status (str): The job server status (either 'initializing', 'running', 'errored', or 'done').
         remote_path (str): The remote path to the job folder.
         server_nodes (list, optional): The nodes already tried on this server for this jobs.
@@ -1420,8 +1424,13 @@ def scan_quality_check(label: str,
     # 3. Check the barrier height
     if (np.max(energies) - np.min(energies)) > maximum_barrier:
         # The barrier for the internal rotation is higher than `maximum_barrier`
-        num_wells = determine_rotor_symmetry(label=label, pivots=pivots, rotor_path='', energies=energies,
-                                             return_num_wells=True)[-1]
+        num_wells = determine_rotor_symmetry(label=label,
+                                             pivots=pivots,
+                                             rotor_path='',
+                                             energies=energies,
+                                             return_num_wells=True,
+                                             log=False,
+                                             )[-1]
         if num_wells == 1:
             invalidate = True
             invalidation_reason = f'The rotor scan has a barrier of {np.max(energies) - np.min(energies):.2f} ' \
