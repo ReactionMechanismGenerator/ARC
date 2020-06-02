@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# encoding: utf-8
-
 """
 ARC's settings
 """
@@ -8,9 +5,7 @@ ARC's settings
 import os
 import string
 
-##################################################################
-
-# If ARC communication with remote servers is desired, complete the following server dictionary.
+# Users should update the following server dictionary.
 # Instructions for RSA key generation can be found here:
 # https://www.digitalocean.com/community/tutorials/how-to-set-up-ssh-keys--2
 # If ARC is being executed on a server, and ESS are available on that server, define a server named 'local',
