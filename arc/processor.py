@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# encoding: utf-8
-
 """
 Processor module for computing thermodynamic properties and rate coefficients using statistical mechanics.
 """

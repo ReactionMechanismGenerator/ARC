@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# encoding: utf-8
-
 """
 A module for representing stationary points (chemical species and transition states).
 If the species is a transition state (TS), its ``ts_guesses`` attribute will have one or more ``TSGuess`` objects.

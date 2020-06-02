@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# encoding: utf-8
-
 """
 Submit scripts
 sorted in a dictionary with server names as keys
