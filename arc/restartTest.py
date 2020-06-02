@@ -8,6 +8,7 @@ This module contains unit tests for the arc.main module related to the restart f
 import os
 import shutil
 import unittest
+import warnings
 
 from rmgpy import settings
 from rmgpy.data.rmg import RMGDatabase
@@ -30,6 +31,7 @@ class TestARC(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
+        warnings.filterwarnings(action='ignore', module='.*matplotlib.*')
 
     def test_restart_thermo(self):
         """
@@ -37,9 +39,11 @@ class TestARC(unittest.TestCase):
         Rather than through ARC.py. Check that all files are in place and the log file content.
         """
         restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart', '1_restart_thermo', 'restart.yml')
+        input_dict = read_yaml_file(path=restart_path)
         project = 'arc_project_for_testing_delete_after_usage_restart_thermo'
         project_directory = os.path.join(arc_path, 'Projects', project)
-        arc1 = ARC(project=project, input_dict=restart_path, project_directory=project_directory)
+        input_dict['project'], input_dict['project_directory'] = project, project_directory
+        arc1 = ARC(**input_dict)
         arc1.execute()
         self.assertEqual(arc1.freq_scale_factor, 0.988)
 
@@ -158,9 +162,11 @@ class TestARC(unittest.TestCase):
     def test_restart_rate(self):
         """Test restarting ARC and attaining reaction a rate coefficient"""
         restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart', '2_restart_rate', 'restart.yml')
+        input_dict = read_yaml_file(path=restart_path)
         project = 'arc_project_for_testing_delete_after_usage_restart_rate'
         project_directory = os.path.join(arc_path, 'Projects', project)
-        arc1 = ARC(project=project, input_dict=restart_path, project_directory=project_directory)
+        input_dict['project'], input_dict['project_directory'] = project, project_directory
+        arc1 = ARC(**input_dict)
         arc1.execute()
 
         kinetics_library_path = os.path.join(project_directory, 'output', 'RMG libraries', 'kinetics', 'reactions.py')
@@ -176,30 +182,31 @@ class TestARC(unittest.TestCase):
     def test_restart_bde(self):
         """Test restarting ARC and attaining reaction a rate coefficient"""
         restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart', '3_restart_bde', 'restart.yml')
-        arc1 = ARC(input_dict=restart_path)
+        input_dict = read_yaml_file(path=restart_path)
+        arc1 = ARC(**input_dict)
         arc1.execute()
 
-        report_path = os.path.join(arc_path, 'arc', 'testing', 'restart', '3_restart_bde', 'output', 'BDE_report.txt')
+        report_path = os.path.join(arc_path, 'Projects', 'test_restart_bde', 'output', 'BDE_report.txt')
         with open(report_path, 'r') as f:
             lines = f.readlines()
         self.assertIn(' BDE report for anilino_radical:\n', lines)
-        self.assertIn(' (1, 9)            N - H           359.61\n', lines)
-        self.assertIn(' (3, 4)            C - H           455.17\n', lines)
-        self.assertIn(' (5, 10)           C - H           462.79\n', lines)
+        self.assertIn(' (1, 9)            N - H           353.92\n', lines)
+        self.assertIn(' (3, 4)            C - H           454.12\n', lines)
+        self.assertIn(' (5, 10)           C - H           461.75\n', lines)
 
     def test_globalize_paths(self):
-        """Test modifying a file's contents to correct absolute file paths"""
-        restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart', 'restart_paths.yml')
-        arc0 = ARC(input_dict=restart_path,
-                   project='test_globalizing_paths',
-                   project_directory=os.path.join(arc_path, 'arc', 'testing', 'restart'))
-        globalized_restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart', 'restart_paths_globalized.yml')
+        """Test modifying a YAML file's contents to correct absolute file paths"""
+        project_directory = os.path.join(arc_path, 'arc', 'testing', 'restart', '4_globalized_paths')
+        restart_path = os.path.join(project_directory, 'restart_paths.yml')
+        input_dict = read_yaml_file(path=restart_path, project_directory=project_directory)
+        input_dict['project_directory'] = project_directory
+        ARC(**input_dict)
+        globalized_restart_path = os.path.join(project_directory, 'restart_paths_globalized.yml')
         content = read_yaml_file(globalized_restart_path)  # not giving a project directory, this is tested in common
-        self.assertEqual(content['restart'], 'Restarted ARC at 2020-02-28 12:51:14.446086; ')
-        self.assertIn('ARC/arc/testing/restart/calcs/Species/HCN/freq_a38229/output.out', content['paths']['freq'])
-        self.assertIn('ARC/arc/testing/restart/calcs/Species/HCN/sp_a38230/output.out', content['paths']['sp'])
-        self.assertNotIn('gpfs/workspace/users/user', content['paths']['freq'])
-        self.assertNotIn('gpfs/workspace/users/user', content['paths']['sp'])
+        self.assertEqual(content['output']['restart'], 'Restarted ARC at 2020-02-28 12:51:14.446086; ')
+        self.assertIn('ARC/arc/testing/restart/4_globalized_paths/calcs/Species/HCN/freq_a38229/output.out',
+                      content['output']['spc']['paths']['freq'])
+        self.assertNotIn('gpfs/workspace/users/user', content['output']['spc']['paths']['freq'])
 
     @classmethod
     def tearDownClass(cls):
@@ -209,18 +216,14 @@ class TestARC(unittest.TestCase):
         """
         projects = ['arc_project_for_testing_delete_after_usage_restart_thermo',
                     'arc_project_for_testing_delete_after_usage_restart_rate',
+                    'test_restart_bde',
                     ]
         for project in projects:
             project_directory = os.path.join(arc_path, 'Projects', project)
             shutil.rmtree(project_directory)
 
         for file_name in ['arc.log', 'restart_paths_globalized.yml']:
-            os.remove(os.path.join(arc_path, 'arc', 'testing', 'restart', file_name))
-
-        for file_name in ['arc.log', 'restart_globalized.yml', 'test_restart_bde.info']:
-            os.remove(os.path.join(arc_path, 'arc', 'testing', 'restart', '3_restart_bde', file_name))
-        shutil.rmtree(os.path.join(arc_path, 'arc', 'testing', 'restart', '3_restart_bde', 'output'))
-        shutil.rmtree(os.path.join(arc_path, 'arc', 'testing', 'restart', '3_restart_bde', 'log_and_restart_archive'))
+            os.remove(os.path.join(arc_path, 'arc', 'testing', 'restart', '4_globalized_paths', file_name))
 
 
 if __name__ == '__main__':

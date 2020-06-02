@@ -1,5 +1,6 @@
 allow_nonisomorphic_2d: false
 calc_freq_factor: false
+compare_to_rmg: false
 composite_method: ''
 conformer_level:
   auxiliary_basis: ''
@@ -32,7 +33,7 @@ job_types:
   sp: true
 level_of_theory: ''
 max_job_time: 120
-model_chemistry: wb97x-d/aug-cc-pvtz//wb97xd/def2tzvp
+arkane_level_of_theory: wb97xd/augccpvtz
 opt_level:
   auxiliary_basis: ''
   basis: def2tzvp
@@ -832,4 +833,3 @@ ts_guess_level:
   basis: def2svp
   dispersion: ''
   method: wb97xd
-use_bac: false

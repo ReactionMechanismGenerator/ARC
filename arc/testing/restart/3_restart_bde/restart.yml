@@ -2,13 +2,21 @@ T_count: null
 T_max: null
 T_min: null
 allow_nonisomorphic_2d: true
-calc_freq_factor: false
-composite_method: ''
+arkane_level_of_theory:
+  basis: 6-311+g(3df,2p)
+  method: b3lyp
+  method_type: dft
+  software: gaussian
+compare_to_rmg: false
+compute_transport: false
 conformer_level:
-  auxiliary_basis: ''
   basis: def2svp
-  dispersion: ''
+  compatible_ess:
+  - gaussian
+  - terachem
   method: wb97xd
+  method_type: dft
+  software: gaussian
 e_confs: 5
 ess_settings:
   gaussian:
@@ -16,16 +24,22 @@ ess_settings:
   molpro:
   - local
 freq_level:
-  auxiliary_basis: ''
   basis: def2tzvp
-  dispersion: ''
+  compatible_ess:
+  - gaussian
+  - terachem
   method: wb97xd
+  method_type: dft
+  software: gaussian
 freq_scale_factor: 0.988
 irc_level:
-  auxiliary_basis: ''
   basis: def2tzvp
-  dispersion: ''
+  compatible_ess:
+  - gaussian
+  - terachem
   method: wb97xd
+  method_type: dft
+  software: gaussian
 job_memory: 14
 job_types:
   bde: true
@@ -38,15 +52,17 @@ job_types:
   orbitals: false
   rotors: true
   sp: true
-level_of_theory: ''
+kinetics_adapter: Arkane
 max_job_time: 120
-model_chemistry: wb97x-d/aug-cc-pvtz//wb97xd/def2tzvp
 n_confs: null
 opt_level:
-  auxiliary_basis: ''
   basis: def2tzvp
-  dispersion: ''
+  compatible_ess:
+  - gaussian
+  - terachem
   method: wb97xd
+  method_type: dft
+  software: gaussian
 orbitals_level:
   auxiliary_basis: ''
   basis: ''
@@ -74,9 +90,10 @@ output:
     paths:
       composite: ''
       freq: ''
-      geo: /home/user/runs/ARC/ARC_Project/calcs/Species/H/sp_a4339/output.out
-      sp: /home/user/runs/ARC/ARC_Project/calcs/Species/H/sp_a4339/output.out
-    restart: 'Restarted ARC at 2020-03-01 22:55:56.979546; '
+      geo: arc/testing/restart/3_restart_bde/calcs/Species/H/sp_a4339/output.out
+      sp: arc/testing/restart/3_restart_bde/calcs/Species/H/sp_a4339/output.out
+    restart: 'Restarted ARC at 2020-03-01 22:55:56.979546; Restarted ARC at 2020-05-30
+      22:06:46.684281; '
     warnings: ''
   anilino_radical:
     conformers: 'most stable conformer (0) passed isomorphism check; Conformers optimized
@@ -99,10 +116,11 @@ output:
       sp: true
     paths:
       composite: ''
-      freq: /home/user/runs/ARC/ARC_Project/calcs/Species/anilino_radical/freq_a4345/output.out
-      geo: /home/user/runs/ARC/ARC_Project/calcs/Species/anilino_radical/freq_a4345/output.out
-      sp: /home/user/runs/ARC/ARC_Project/calcs/Species/anilino_radical/opt_a4344/output.out
-    restart: 'Restarted ARC at 2020-03-01 22:55:56.979303; '
+      freq: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical/freq_a4345/output.out
+      geo: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical/freq_a4345/output.out
+      sp: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical/opt_a4344/output.out
+    restart: 'Restarted ARC at 2020-03-01 22:55:56.979303; Restarted ARC at 2020-05-30
+      22:06:46.684219; '
     warnings: ''
   anilino_radical_BDE_1_9_A:
     conformers: 'No conformer was found to be isomorphic with the 2D graph representation; '
@@ -124,10 +142,10 @@ output:
       sp: true
     paths:
       composite: ''
-      freq: /home/user/runs/ARC/ARC_Project/calcs/Species/anilino_radical_BDE_1_9_A/freq_a4387/output.out
-      geo: /home/user/runs/ARC/ARC_Project/calcs/Species/anilino_radical_BDE_1_9_A/freq_a4387/output.out
-      sp: /home/user/runs/ARC/ARC_Project/calcs/Species/anilino_radical_BDE_1_9_A/opt_a4382/output.out
-    restart: ''
+      freq: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_1_9_A/freq_a4387/output.out
+      geo: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_1_9_A/freq_a4387/output.out
+      sp: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_1_9_A/opt_a4382/output.out
+    restart: 'Restarted ARC at 2020-05-30 22:06:46.684325; '
     warnings: ''
   anilino_radical_BDE_3_4_A:
     conformers: 'No conformer was found to be isomorphic with the 2D graph representation; '
@@ -149,10 +167,10 @@ output:
       sp: true
     paths:
       composite: ''
-      freq: /home/user/runs/ARC/ARC_Project/calcs/Species/anilino_radical_BDE_3_4_A/freq_a4388/output.out
-      geo: /home/user/runs/ARC/ARC_Project/calcs/Species/anilino_radical_BDE_3_4_A/freq_a4388/output.out
-      sp: /home/user/runs/ARC/ARC_Project/calcs/Species/anilino_radical_BDE_3_4_A/opt_a4381/output.out
-    restart: ''
+      freq: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_3_4_A/freq_a4388/output.out
+      geo: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_3_4_A/freq_a4388/output.out
+      sp: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_3_4_A/opt_a4381/output.out
+    restart: 'Restarted ARC at 2020-05-30 22:06:46.684314; '
     warnings: ''
   anilino_radical_BDE_5_10_A:
     conformers: 'No conformer was found to be isomorphic with the 2D graph representation; '
@@ -174,10 +192,10 @@ output:
       sp: true
     paths:
       composite: ''
-      freq: /home/user/runs/ARC/ARC_Project/calcs/Species/anilino_radical_BDE_5_10_A/freq_a4389/output.out
-      geo: /home/user/runs/ARC/ARC_Project/calcs/Species/anilino_radical_BDE_5_10_A/freq_a4389/output.out
-      sp: /home/user/runs/ARC/ARC_Project/calcs/Species/anilino_radical_BDE_5_10_A/opt_a4383/output.out
-    restart: ''
+      freq: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_5_10_A/freq_a4389/output.out
+      geo: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_5_10_A/freq_a4389/output.out
+      sp: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_5_10_A/opt_a4383/output.out
+    restart: 'Restarted ARC at 2020-05-30 22:06:46.684428; '
     warnings: ''
   anilino_radical_BDE_6_11_A:
     conformers: 'No conformer was found to be isomorphic with the 2D graph representation; '
@@ -199,10 +217,10 @@ output:
       sp: true
     paths:
       composite: ''
-      freq: /home/user/runs/ARC/ARC_Project/calcs/Species/anilino_radical_BDE_6_11_A/freq_a4390/output.out
-      geo: /home/user/runs/ARC/ARC_Project/calcs/Species/anilino_radical_BDE_6_11_A/freq_a4390/output.out
-      sp: /home/user/runs/ARC/ARC_Project/calcs/Species/anilino_radical_BDE_6_11_A/opt_a4384/output.out
-    restart: ''
+      freq: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_6_11_A/freq_a4390/output.out
+      geo: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_6_11_A/freq_a4390/output.out
+      sp: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_6_11_A/opt_a4384/output.out
+    restart: 'Restarted ARC at 2020-05-30 22:06:46.684439; '
     warnings: ''
   anilino_radical_BDE_7_12_A:
     conformers: 'No conformer was found to be isomorphic with the 2D graph representation; '
@@ -224,10 +242,10 @@ output:
       sp: true
     paths:
       composite: ''
-      freq: /home/user/runs/ARC/ARC_Project/calcs/Species/anilino_radical_BDE_7_12_A/freq_a4391/output.out
-      geo: /home/user/runs/ARC/ARC_Project/calcs/Species/anilino_radical_BDE_7_12_A/freq_a4391/output.out
-      sp: /home/user/runs/ARC/ARC_Project/calcs/Species/anilino_radical_BDE_7_12_A/opt_a4386/output.out
-    restart: ''
+      freq: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_7_12_A/freq_a4391/output.out
+      geo: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_7_12_A/freq_a4391/output.out
+      sp: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_7_12_A/opt_a4386/output.out
+    restart: 'Restarted ARC at 2020-05-30 22:06:46.684449; '
     warnings: ''
   anilino_radical_BDE_8_13_A:
     conformers: 'No conformer was found to be isomorphic with the 2D graph representation; '
@@ -249,25 +267,25 @@ output:
       sp: true
     paths:
       composite: ''
-      freq: /home/user/runs/ARC/ARC_Project/calcs/Species/anilino_radical_BDE_8_13_A/freq_a4392/output.out
-      geo: /home/user/runs/ARC/ARC_Project/calcs/Species/anilino_radical_BDE_8_13_A/freq_a4392/output.out
-      sp: /home/user/runs/ARC/ARC_Project/calcs/Species/anilino_radical_BDE_8_13_A/opt_a4385/output.out
-    restart: ''
+      freq: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_8_13_A/freq_a4392/output.out
+      geo: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_8_13_A/freq_a4392/output.out
+      sp: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_8_13_A/opt_a4385/output.out
+    restart: 'Restarted ARC at 2020-05-30 22:06:46.684458; '
     warnings: ''
 project: test_restart_bde
 reactions: []
 running_jobs:
   anilino_radical_BDE_8_13_A: []
 scan_level:
-  auxiliary_basis: ''
   basis: 6-31g(d,p)
-  dispersion: ''
   method: b3lyp
+  method_type: dft
+  software: gaussian
 sp_level:
-  auxiliary_basis: ''
-  basis: def2tzvp
-  dispersion: ''
-  method: wb97xd
+  basis: 6-311+g(3df,2p)
+  method: b3lyp
+  method_type: dft
+  software: gaussian
 species:
 - arkane_file: null
   bdes:
@@ -390,7 +408,6 @@ species:
     H       1.11923599   -2.05121088   -0.04011097
   consider_all_diastereomers: true
   e_elect: -753397.1073788411
-  external_symmetry: null
   final_xyz: |-
     N       2.41574100    0.57533600    0.17236300
     C       1.12588300    0.26835100    0.08033100
@@ -443,10 +460,8 @@ species:
     13 H u0 p0 c0 {8,S}
   most_stable_conformer: 0
   multiplicity: 2
-  neg_freqs_trshed: []
   number_of_rotors: 1
   opt_level: wb97xd/def2tzvp
-  optical_isomers: null
   rotors_dict:
     0:
       cont_indices: []
@@ -465,7 +480,7 @@ species:
       - 1
       - 2
       - 3
-      scan_path: /home/user/runs/ARC/ARC_Project/calcs/Species/anilino_radical/scan_a4346/output.out
+      scan_path: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical/scan_a4346/output.out
       success: true
       symmetry: 2
       times_dihedral_set: 0
@@ -474,7 +489,6 @@ species:
       - 9
       trsh_methods: []
   run_time: 4693.0
-  t1: null
 - arkane_file: null
   bond_corrections: {}
   charge: 0
@@ -482,7 +496,6 @@ species:
   consider_all_diastereomers: true
   e0_only: true
   e_elect: -1319.7504918767363
-  external_symmetry: null
   final_xyz: H       0.00000000    0.00000000    0.00000000
   force_field: MMFF94s
   initial_xyz: H       0.00000000    0.00000000    0.00000000
@@ -493,11 +506,8 @@ species:
     multiplicity 2
     1 H u1 p0 c0
   multiplicity: 2
-  neg_freqs_trshed: []
   number_of_rotors: 0
-  optical_isomers: null
   run_time: 5.0
-  t1: null
 - arkane_file: null
   bond_corrections:
     C-C: 4
@@ -648,7 +658,6 @@ species:
   consider_all_diastereomers: true
   e0_only: true
   e_elect: -751589.0168073712
-  external_symmetry: null
   final_xyz: |-
     N       2.40185500   -0.98144200    0.04137300
     C       0.07244400   -1.48563800   -0.06341900
@@ -698,13 +707,10 @@ species:
     12 H u0 p0 c0 {1,S}
   most_stable_conformer: 1
   multiplicity: 3
-  neg_freqs_trshed: []
   number_of_rotors: 0
   opt_level: wb97xd/def2tzvp
-  optical_isomers: null
   rotors_dict: null
   run_time: 4809.0
-  t1: null
 - arkane_file: null
   bond_corrections:
     C-C: 4
@@ -800,7 +806,6 @@ species:
   consider_all_diastereomers: true
   e0_only: true
   e_elect: -751685.392553462
-  external_symmetry: null
   final_xyz: |-
     N       2.29050100    0.41707600    0.16368700
     C       0.99677500    0.17856500    0.07123900
@@ -850,12 +855,9 @@ species:
     12 H u0 p0 c0 {7,S}
   most_stable_conformer: 0
   multiplicity: 3
-  neg_freqs_trshed: []
   number_of_rotors: 0
   opt_level: wb97xd/def2tzvp
-  optical_isomers: null
   run_time: 4839.0
-  t1: null
 - arkane_file: null
   bond_corrections:
     C-C: 4
@@ -1006,7 +1008,6 @@ species:
   consider_all_diastereomers: true
   e0_only: true
   e_elect: -751580.9711179597
-  external_symmetry: null
   final_xyz: |-
     N       2.24779800    0.72537500   -0.05193400
     C       1.02000600    0.22582800   -0.02633000
@@ -1056,13 +1057,10 @@ species:
     12 H u0 p0 c0 {1,S}
   most_stable_conformer: 2
   multiplicity: 3
-  neg_freqs_trshed: []
   number_of_rotors: 0
   opt_level: wb97xd/def2tzvp
-  optical_isomers: null
   rotors_dict: null
   run_time: 4979.0
-  t1: null
 - arkane_file: null
   bond_corrections:
     C-C: 4
@@ -1213,7 +1211,6 @@ species:
   consider_all_diastereomers: true
   e0_only: true
   e_elect: -751589.982061892
-  external_symmetry: null
   final_xyz: |-
     N       2.22557100    0.47658700    0.15890200
     C       0.94074000    0.16929400    0.06723200
@@ -1263,13 +1260,10 @@ species:
     12 H u0 p0 c0 {1,S}
   most_stable_conformer: 0
   multiplicity: 3
-  neg_freqs_trshed: []
   number_of_rotors: 0
   opt_level: wb97xd/def2tzvp
-  optical_isomers: null
   rotors_dict: null
   run_time: 5106.0
-  t1: null
 - arkane_file: null
   bond_corrections:
     C-C: 4
@@ -1420,7 +1414,6 @@ species:
   consider_all_diastereomers: true
   e0_only: true
   e_elect: -751580.9711179597
-  external_symmetry: null
   final_xyz: |-
     N       2.25402700    0.45886100    0.16098200
     C       0.96879200    0.14668800    0.06929300
@@ -1470,13 +1463,10 @@ species:
     12 H u0 p0 c0 {1,S}
   most_stable_conformer: 0
   multiplicity: 3
-  neg_freqs_trshed: []
   number_of_rotors: 0
   opt_level: wb97xd/def2tzvp
-  optical_isomers: null
   rotors_dict: null
   run_time: 5183.0
-  t1: null
 - arkane_file: null
   bond_corrections:
     C-C: 4
@@ -1627,7 +1617,6 @@ species:
   consider_all_diastereomers: true
   e0_only: true
   e_elect: -751589.0108868688
-  external_symmetry: null
   final_xyz: |-
     N       2.39405800   -1.00852500    0.03988300
     C       0.05919300   -1.48723800   -0.06396400
@@ -1677,18 +1666,13 @@ species:
     12 H u0 p0 c0 {1,S}
   most_stable_conformer: 1
   multiplicity: 3
-  neg_freqs_trshed: []
   number_of_rotors: 0
   opt_level: wb97xd/def2tzvp
-  optical_isomers: null
   rotors_dict: null
   run_time: 5484.0
-  t1: null
-specific_job_type: null
-statmech_adapter: Arkane
+thermo_adapter: Arkane
 ts_guess_level:
   auxiliary_basis: ''
   basis: def2svp
   dispersion: ''
   method: wb97xd
-use_bac: false
