@@ -50,10 +50,8 @@ def main():
     input_file = args.file
     project_directory = os.path.abspath(os.path.dirname(args.file))
     input_dict = read_yaml_file(path=input_file, project_directory=project_directory)
-    try:
-        input_dict['project']
-    except KeyError:
-        print('A project name must be provided!')
+    if 'project' not in list(input_dict.keys()):
+        raise ValueError('A project name must be provided!')
 
     verbose = logging.INFO
     if args.debug:
@@ -61,7 +59,9 @@ def main():
     elif args.quiet:
         verbose = logging.WARNING
     input_dict['verbose'] = input_dict['verbose'] if 'verbose' in input_dict else verbose
-    arc_object = ARC(input_dict=input_dict, project_directory=project_directory)
+    if 'project_directory' not in input_dict or not input_dict['project_directory']:
+        input_dict['project_directory'] = project_directory
+    arc_object = ARC(**input_dict)
     arc_object.execute()
 
 
