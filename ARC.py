@@ -19,6 +19,9 @@ def parse_command_line_arguments(command_line_args=None):
 
     Args:
         command_line_args: The command line arguments.
+
+    Returns:
+        The parsed command-line arguments by key words.
     """
 
     parser = argparse.ArgumentParser(description='Automatic Rate Calculator (ARC)')
