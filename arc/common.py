@@ -281,36 +281,44 @@ def log_footer(execution_time: str,
     logger.log(level, f'ARC execution terminated on {time.asctime()}')
 
 
-def get_git_commit():
+def get_git_commit(path: Optional[str] = None) -> Tuple[str, str]:
     """
     Get the recent git commit to be logged.
 
     Note:
         Returns empty strings if hash and date cannot be determined.
 
+    Args:
+        path (str, optional): The path to check.
+
     Returns:
         tuple: The git HEAD commit hash and the git HEAD commit date, each as a string.
     """
+    path = path or arc_path
     head, date = '', ''
-    if os.path.exists(os.path.join(arc_path, '.git')):
+    if os.path.exists(os.path.join(path, '.git')):
         try:
-            head, date = subprocess.check_output(['git', 'log', '--format=%H%n%cd', '-1'], cwd=arc_path).splitlines()
+            head, date = subprocess.check_output(['git', 'log', '--format=%H%n%cd', '-1'], cwd=path).splitlines()
             head, date = head.decode(), date.decode()
         except (subprocess.CalledProcessError, OSError):
             return head, date
     return head, date
 
 
-def get_git_branch():
+def get_git_branch(path: Optional[str] = None) -> str:
     """
     Get the git branch to be logged.
+
+    Args:
+        path (str, optional): The path to check.
 
     Returns:
         str: The git branch name.
     """
-    if os.path.exists(os.path.join(arc_path, '.git')):
+    path = path or arc_path
+    if os.path.exists(os.path.join(path, '.git')):
         try:
-            branch_list = subprocess.check_output(['git', 'branch'], cwd=arc_path).splitlines()
+            branch_list = subprocess.check_output(['git', 'branch'], cwd=path).splitlines()
         except (subprocess.CalledProcessError, OSError):
             return ''
         for branch_name in branch_list:
