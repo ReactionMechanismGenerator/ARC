@@ -47,7 +47,7 @@ input_files = {
 %mem={memory}mb
 %NProcShared={cpus}
 
-#P {job_type_1} {restricted}{method}{slash}{basis}{slash_2}{auxiliary_basis} {job_type_2} {fine} {trsh} iop(2/9=2000) {job_options_keywords} {shortcut_keywords} {dispersion}
+#P {job_type_1} {restricted}{method}{slash}{basis}{slash_2}{auxiliary_basis} {job_type_2} {fine} iop(2/9=2000) {job_options_keywords} {dispersion}
 
 name
 
@@ -59,7 +59,7 @@ name
 
 """,
 
-    'orca': """!{restricted}{method_class} {method} {basis} {auxiliary_basis} {job_options_keywords} {shortcut_keywords}
+    'orca': """!{restricted}{method_class} {method} {basis} {auxiliary_basis} {job_options_keywords}
 ! NRSCF # using Newton–Raphson SCF algorithm 
 !{job_type_1} 
 {job_type_2}
@@ -88,7 +88,7 @@ $rem
    JOBTYPE       {job_type_1}
    METHOD        {method}
    UNRESTRICTED  {restricted}
-   BASIS         {basis}{fine}{trsh}{constraint}
+   BASIS         {basis}{fine}{job_options_keywords}{constraint}
 $end
 {scan}
 
@@ -117,7 +117,7 @@ wf,spin={spin},charge={charge};}}
     'terachem': """chkfile teracheck.chk
 jobname output
 run {job_type_1}
-{trsh}
+{job_options_keywords}
 coordinates coord.xyz
 gpumem {memory}
 
