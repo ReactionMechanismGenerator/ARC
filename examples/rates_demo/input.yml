@@ -2,7 +2,7 @@
 # Note that species labels must match their respective occurrence in the reaction string
 # The minimal requirement for defining a reaction is its label,
 # additional arguments such as a TS guess could be added
-project: demo
+project: reaction_demo
 
 species:
   - label: N2H4

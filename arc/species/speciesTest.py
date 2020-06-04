@@ -16,6 +16,7 @@ from rmgpy.transport import TransportData
 
 from arc.common import almost_equal_coords_lists
 from arc.exceptions import SpeciesError
+from arc.level import Level
 from arc.plotter import save_conformers_file
 from arc.settings import arc_path
 from arc.species.converter import (check_isomorphism,
@@ -490,10 +491,7 @@ H      -1.67091600   -1.35164600   -0.93286400"""
     def test_as_dict(self):
         """Test Species.as_dict()"""
         spc_dict = self.spc3.as_dict()
-        expected_dict = {'optical_isomers': None,
-                         'number_of_rotors': 0,
-                         'neg_freqs_trshed': [],
-                         'external_symmetry': None,
+        expected_dict = {'number_of_rotors': 0,
                          'multiplicity': 1,
                          'arkane_file': None,
                          'mol': """1 C u0 p0 c0 {2,S} {3,S} {4,S} {5,S}
@@ -511,7 +509,6 @@ H      -1.67091600   -1.35164600   -0.93286400"""
                          'consider_all_diastereomers': True,
                          'force_field': 'MMFF94s',
                          'is_ts': False,
-                         't1': None,
                          'bond_corrections': {'C-H': 3, 'C-N': 1, 'H-N': 2}}
         self.assertEqual(spc_dict, expected_dict)
 
@@ -540,10 +537,10 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         path4 = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'sBuOH.out')  # symmetry = 3
         path5 = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'CH3C(O)O_FreeRotor.out')  # symmetry = 6
 
-        sym1, e1 = determine_rotor_symmetry(label='label', pivots=[3, 4], rotor_path=path1)
-        sym2, e2 = determine_rotor_symmetry(label='label', pivots=[3, 4], rotor_path=path2)
+        sym1, e1, _ = determine_rotor_symmetry(label='label', pivots=[3, 4], rotor_path=path1)
+        sym2, e2, _ = determine_rotor_symmetry(label='label', pivots=[3, 4], rotor_path=path2)
         sym3, e3, n3 = determine_rotor_symmetry(label='label', pivots=[3, 4], rotor_path=path3, return_num_wells=True)
-        sym4, e4 = determine_rotor_symmetry(label='label', pivots=[3, 4], rotor_path=path4)
+        sym4, e4, _ = determine_rotor_symmetry(label='label', pivots=[3, 4], rotor_path=path4)
         sym5, e5, n5 = determine_rotor_symmetry(label='label', pivots=[3, 4], rotor_path=path5, return_num_wells=True)
 
         self.assertEqual(sym1, 1)
@@ -763,13 +760,15 @@ H      -1.69944700    0.93441600   -0.11271200"""
                             (1.312774, 0.900871, 0.108784), (-1.166758, 1.033626, -0.112737))}]
         energies = [0, 5, 5, 5]  # J/mol
 
-        save_conformers_file(project_directory=project_directory, label='vinoxy', xyzs=xyzs, level_of_theory='level1',
-                             multiplicity=2, charge=0)
+        # test w/o energies
+        save_conformers_file(project_directory=project_directory, label='vinoxy', xyzs=xyzs,
+                             level_of_theory=Level(repr='level1'), multiplicity=2, charge=0)
         self.assertTrue(os.path.isfile(os.path.join(project_directory, 'output', 'Species', 'vinoxy', 'geometry',
                                                     'conformers', 'conformers_before_optimization.txt')))
 
-        save_conformers_file(project_directory=project_directory, label='vinoxy', xyzs=xyzs, level_of_theory='level1',
-                             multiplicity=2, charge=0, energies=energies)
+        # test with energies
+        save_conformers_file(project_directory=project_directory, label='vinoxy', xyzs=xyzs,
+                             level_of_theory=Level(repr='level1'), multiplicity=2, charge=0, energies=energies)
         self.assertTrue(os.path.isfile(os.path.join(project_directory, 'output', 'Species', 'vinoxy', 'geometry',
                                                     'conformers', 'conformers_after_optimization.txt')))
 
@@ -845,9 +844,9 @@ H       1.32129900    0.71837500    0.38017700
         lj_path = os.path.join(arc_path, 'arc', 'testing', 'NH3_oneDMin.dat')
         opt_path = os.path.join(arc_path, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
         bath_gas = 'N2'
-        opt_level = 'CBS-QB3'
+        opt_level = Level(repr='CBS-QB3')
         freq_path = os.path.join(arc_path, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
-        freq_level = 'CBS-QB3'
+        freq_level = Level(repr='CBS-QB3')
         self.spc1.set_transport_data(lj_path, opt_path, bath_gas, opt_level, freq_path, freq_level)
         self.assertIsInstance(self.spc1.transport_data, TransportData)
         self.assertEqual(self.spc1.transport_data.shapeIndex, 2)
@@ -858,9 +857,9 @@ H       1.32129900    0.71837500    0.38017700
         self.assertEqual(self.spc1.transport_data.rotrelaxcollnum, 2)
         self.assertEqual(self.spc1.transport_data.comment, 'L-J coefficients calculated by OneDMin using a '
                                                            'DF-MP2/aug-cc-pVDZ potential energy surface with N2 as '
-                                                           'the bath gas; Dipole moment was calculated at the CBS-QB3 '
+                                                           'the bath gas; Dipole moment was calculated at the cbs-qb3 '
                                                            'level of theory; Polarizability was calculated at the '
-                                                           'CBS-QB3 level of theory; Rotational Relaxation Collision '
+                                                           'cbs-qb3 level of theory; Rotational Relaxation Collision '
                                                            'Number was not determined, default value is 2')
 
     def test_xyz_from_dict(self):
@@ -1072,7 +1071,7 @@ H       1.11582953    0.94384729   -0.10134685"""
                   H      -1.61463364   -2.10195688    0.36125669
                   H       0.80478689   -2.00346200   -0.12519327"""
         with self.assertRaises(SpeciesError):
-            spc5 = ARCSpecies(label='c1ccccc1OO', smiles='c1ccccc1OO', xyz=xyz5)
+            ARCSpecies(label='c1ccccc1OO', smiles='c1ccccc1OO', xyz=xyz5)
 
         xyz6 = """C    1.1709385492    0.1763143411    0.0
                   Cl  -0.5031634975   -0.0109430036    0.0

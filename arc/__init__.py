@@ -1,10 +1,8 @@
-#!/usr/bin/env python3
-# encoding: utf-8
-
 import arc.exceptions
 import arc.main
 from arc.main import ARC
 import arc.common
+import arc.level
 import arc.parser
 import arc.plotter
 import arc.processor

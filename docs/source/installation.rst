@@ -3,7 +3,8 @@
 Installation instructions
 =========================
 
-Note: ARC was only tested on Linux (Ubuntu_ 18.04.1 LTS) and Mac machines. We don't expect it to work on Windows.
+Note:
+    ARC was only tested on Linux (Ubuntu_ 18.04.1 LTS) and Mac machines. We don't expect it to work on Windows.
 
 ARC can be installed on a server, as well as on your local desktop / laptop, submitting jobs to the server/s.
 The instructions below make this differentiation when relevant (the only difference is that ARC should be aware
@@ -17,11 +18,11 @@ Clone and setup path
 
 - Download and install the `Anaconda Python Platform`__ for Python 3.7 or higher if you haven't already.
 - Get git if you don't have it already by typing sudo apt-get install git in a terminal.
-- Clone ARC's repository to by typing the following command in the desired folder (e.g., under `~/home/Code/`)::
+- Clone ARC's repository to by typing the following command in the desired folder (e.g., under `~/Code/`)::
 
     git clone https://github.com/ReactionMechanismGenerator/ARC.git
 
-- Add ARC to your local path in .bashrc (make sure to change `~/Path/to/ARC/` accordingly)::
+- Add ARC to your local path in .bashrc (make sure to change ``~/Path/to/ARC/`` accordingly)::
 
     export PYTHONPATH=$PYTHONPATH:~/Path/to/ARC/
 
@@ -33,14 +34,15 @@ __ anaconda_
 Install dependencies
 ^^^^^^^^^^^^^^^^^^^^
 
-- Install the latest DEVELOPER version of RMG (which has Arkane).
+- Install the latest **DEVELOPER** version of RMG (which has Arkane).
   It is recommended to follow RMG's `Developer installation by source using Anaconda
   <http://reactionmechanismgenerator.github.io/RMG-Py/users/rmg/installation/index.html
   #for-developers-installation-by-source-using-anaconda-environment>`_ instructions.
   Make sure to add RMG-Py to your PATH and PYTHONPATH variables as explained in RMG's documentation.
 - If you'd like to use `AutoTST <https://github.com/ReactionMechanismGenerator/AutoTST>`_ in ARC (optional),
   clone it in a separate folder and add it to your PYTHONPATH just as well.
-- Create the Anaconda environment for ARC::
+- Create the Anaconda environment for ARC (after changing the directory to the
+  installation folder by, e.g., ``cd ~/Code/ARC/``)::
 
     conda env create -f environment.yml
 
@@ -178,8 +180,8 @@ Tests
 
 .. _aliases:
 
-Add ARC aliases to your .bashrc (for convenience)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Optional: Add ARC aliases to your .bashrc (for convenience)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Below are optional aliases to make ARC (even) more convenient (make sure to change `~/Path/to/ARC/` accordingly).
 Add these to your ``.bashrc`` file (edit it by typing, e.g., ``nano ~/.bashrc``)::
@@ -198,8 +200,9 @@ Updating ARC
 
 ARC is being updated frequently. Make sure to update ARC and enjoy new features and bug fixes.
 
-**Note:** It is highly recommended to backup files you manually changed in ARC before updating the version,
-these are usually `ARC/arc/settings.py` and `ARC/arc/job/submit.py`.
+Note:
+    It is highly recommended to backup files you manually changed in ARC before updating the version,
+    these are usually `ARC/arc/settings.py` and `ARC/arc/job/submit.py`.
 
 You can update ARC to a specific version, or to the most recent developer version.
 To get the most recent developer version, do the following

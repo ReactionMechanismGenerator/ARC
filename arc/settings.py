@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# encoding: utf-8
-
 """
 ARC's settings
 """
@@ -8,9 +5,7 @@ ARC's settings
 import os
 import string
 
-##################################################################
-
-# If ARC communication with remote servers is desired, complete the following server dictionary.
+# Users should update the following server dictionary.
 # Instructions for RSA key generation can be found here:
 # https://www.digitalocean.com/community/tutorials/how-to-set-up-ssh-keys--2
 # If ARC is being executed on a server, and ESS are available on that server, define a server named 'local',
@@ -79,7 +74,7 @@ default_job_types = {'conformers': True,      # defaults to True if not specifie
                      'bde': False,            # defaults to False if not specified
                      }
 
-supported_ess = ['gaussian', 'molpro', 'orca', 'qchem', 'terachem']  # use lowercase when adding new ones
+supported_ess = ['gaussian', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin']  # use lowercase when adding new ones
 
 # List here (complete or partial) phrases of methods or basis sets you'd like to associate to specific ESS
 # Avoid ascribing the same phrase to more than one software, this may cause undeterministic assignment of software

@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# encoding: utf-8
-
 """
 A module for SSHing into servers.
 Used for giving commands, uploading, and downloading files.
@@ -94,7 +91,7 @@ class SSHClient(object):
     @check_connections
     def _send_command_to_server(self, 
                                 command: Union[str, list], 
-                                remote_path: Optional[str] = '',
+                                remote_path: str = '',
                                 ) -> Tuple[list, list]:
         """
         A wrapper for exec_command in paramiko.SSHClient. Send commands to the server. 
@@ -123,20 +120,20 @@ class SSHClient(object):
         try:
             _, stdout, stderr = self._ssh.exec_command(command)
         except Exception as e:  # SSHException: Timeout opening channel.
-            logger.debug(f'ssh timed-out in the first trial. Got:{e}')
+            logger.debug(f'ssh timed-out in the first trial. Got: {e}')
             try:  # try again
                 _, stdout, stderr = self._ssh.exec_command(command)
             except Exception as e:
-                logger.debug(f'ssh timed-out after two trials. Got:{e}')
-                return ['',], ['ssh timed-out after two trials',]
+                logger.debug(f'ssh timed-out after two trials. Got: {e}')
+                return ['', ], ['ssh timed-out after two trials', ]
         stdout = stdout.readlines()
         stderr = stderr.readlines()
         return stdout, stderr
 
     def upload_file(self,
                     remote_file_path: str,
-                    local_file_path: Optional[str] = '',
-                    file_string: Optional[str] = '',
+                    local_file_path: str = '',
+                    file_string: str = '',
                     ) -> None:
         """
         Upload a local file or contents from a string to the remote server.
@@ -257,7 +254,7 @@ class SSHClient(object):
         Delete all of the jobs on a specific server.
 
         Args:
-                jobs (Optional[List[str, int]]): Specific ARC job IDs to delete.
+                jobs (List[str, int], optional): Specific ARC job IDs to delete.
         """
         jobs_message = f'{len(jobs)}' if jobs is not None else 'all'
         print(f'\nDeleting {jobs_message} ARC jobs from {self.server}...')
@@ -444,8 +441,8 @@ class SSHClient(object):
     def change_mode(self,
                     mode: str,
                     path: str,
-                    recursive: Optional[bool] = False,
-                    remote_path: Optional[str] = '',
+                    recursive: bool = False,
+                    remote_path: str = '',
                     ) -> None:
         """
         Change the mode to a file or a directory.
@@ -453,9 +450,9 @@ class SSHClient(object):
         Args:
             mode (str): The mode change to be applied, can be either octal or symbolic.
             path (str): The path to the file or the directory to be changed.
-            recursive (Optional[bool]): Whether to recursively change the mode to all files
+            recursive (bool, optional): Whether to recursively change the mode to all files
                                         under a directory.``True`` for recursively change.
-            remote_path (Optional[str]): The directory path at which the command will be executed.
+            remote_path (str, optional): The directory path at which the command will be executed.
         """
         recursive = '-R' if recursive else ''
         command = f'chmod {recursive} {mode} {path}'
@@ -549,7 +546,9 @@ def check_job_status_in_stdout(job_id: int,
             raise ValueError(f'Unknown cluster software {servers[server]["cluster_soft"]}')
 
 
-def delete_all_arc_jobs(server_list: list, jobs: Optional[List[str]] = None) -> None:
+def delete_all_arc_jobs(server_list: list,
+                        jobs: Optional[List[str]] = None,
+                        ) -> None:
     """
     Delete all ARC-spawned jobs (with job name starting with `a` and a digit) from :list:servers
     (`servers` could also be a string of one server name)

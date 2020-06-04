@@ -1,5 +1,6 @@
 RMG_version: 2.3.0
 class: ArkaneSpecies
+is_ts: true
 conformer:
   E0: {class: ScalarQuantity, units: kJ/mol, value: -228.67468037880084}
   class: Conformer

@@ -11,6 +11,7 @@ import time
 import unittest
 
 import pandas as pd
+
 from rmgpy.molecule.molecule import Molecule
 
 import arc.common as common
@@ -48,7 +49,6 @@ class TestCommon(unittest.TestCase):
         self.assertIsInstance(input_dict, dict)
         self.assertTrue('reactions' in input_dict)
         self.assertTrue('freq_level' in input_dict)
-        self.assertTrue('use_bac' in input_dict)
         self.assertTrue('ts_guess_level' in input_dict)
         self.assertTrue('running_jobs' in input_dict)
 
@@ -452,250 +452,6 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
         self.assertEqual(list1, [])
         self.assertEqual(list2, [])
 
-    def test_determine_model_chemistry_type(self):
-        """Test that the type (e.g., DFT, wavefunction ...) of a model chemistry can be determined properly."""
-
-        # The special case: has `hf` keyword but is a DFT method
-        method = 'm06-hf'
-        model_chemistry_class = common.determine_model_chemistry_type(method)
-        model_chemistry_class_expected = 'dft'
-        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
-
-        # Test family of wavefunction methods
-        method = 'hf'
-        model_chemistry_class = common.determine_model_chemistry_type(method)
-        model_chemistry_class_expected = 'wavefunction'
-        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
-
-        method = 'DLPNO-CCSD(T)'
-        model_chemistry_class = common.determine_model_chemistry_type(method)
-        model_chemistry_class_expected = 'wavefunction'
-        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
-
-        method = 'DLPNO-MP2-F12'
-        model_chemistry_class = common.determine_model_chemistry_type(method)
-        model_chemistry_class_expected = 'wavefunction'
-        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
-
-        method = 'QCISD'
-        model_chemistry_class = common.determine_model_chemistry_type(method)
-        model_chemistry_class_expected = 'wavefunction'
-        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
-
-        # Test family of force field (a.k.a molecular dynamics) methods
-        method = 'ANI-1x'
-        model_chemistry_class = common.determine_model_chemistry_type(method)
-        model_chemistry_class_expected = 'force_field'
-        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
-
-        method = 'MMFF94'
-        model_chemistry_class = common.determine_model_chemistry_type(method)
-        model_chemistry_class_expected = 'force_field'
-        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
-
-        # Test family of semi-empirical methods
-        method = 'ZINDO/S'
-        model_chemistry_class = common.determine_model_chemistry_type(method)
-        model_chemistry_class_expected = 'semiempirical'
-        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
-
-        method = 'pm7'
-        model_chemistry_class = common.determine_model_chemistry_type(method)
-        model_chemistry_class_expected = 'semiempirical'
-        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
-
-        # Test family of DFT methods
-        method = 'mPW1PW'
-        model_chemistry_class = common.determine_model_chemistry_type(method)
-        model_chemistry_class_expected = 'dft'
-        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
-
-        method = 'b3lyp'
-        model_chemistry_class = common.determine_model_chemistry_type(method)
-        model_chemistry_class_expected = 'dft'
-        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
-
-        method = 'wb97x-d3'
-        model_chemistry_class = common.determine_model_chemistry_type(method)
-        model_chemistry_class_expected = 'dft'
-        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
-
-        method = 'apfd'
-        model_chemistry_class = common.determine_model_chemistry_type(method)
-        model_chemistry_class_expected = 'dft'
-        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
-
-        method = 'M06-2X'
-        model_chemistry_class = common.determine_model_chemistry_type(method)
-        model_chemistry_class_expected = 'dft'
-        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
-
-        method = 'B2PLYP'
-        model_chemistry_class = common.determine_model_chemistry_type(method)
-        model_chemistry_class_expected = 'dft'
-        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
-
-        method = 'CBS-QB3'
-        model_chemistry_class = common.determine_model_chemistry_type(method)
-        model_chemistry_class_expected = 'composite'
-        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
-
-        method = 'G4'
-        model_chemistry_class = common.determine_model_chemistry_type(method)
-        model_chemistry_class_expected = 'composite'
-        self.assertEqual(model_chemistry_class, model_chemistry_class_expected)
-
-    def test_format_level_of_theory_inputs(self):
-        """Test formatting the job model chemistry inputs"""
-        # Test illegal input (list)
-        with self.assertRaises(InputError):
-            common.format_level_of_theory_inputs(['b3lyp', 'def2tzvp'])
-
-        # Test illegal input (not exactly three pipes)
-        with self.assertRaises(InputError):
-            common.format_level_of_theory_inputs('b3lyp|def2tzvp')
-        with self.assertRaises(InputError):
-            common.format_level_of_theory_inputs('wb97xd|def2tzvp|||')
-
-        # Test illegal input (empty space)
-        with self.assertRaises(InputError):
-            common.format_level_of_theory_inputs('b3 lyp')
-        with self.assertRaises(InputError):
-            common.format_level_of_theory_inputs('dlpno-ccsd(t)/def2-svp def2-svp/c')
-        with self.assertRaises(InputError):
-            common.format_level_of_theory_inputs('dlpno-ccsd(t)/def2-svp aug-def2-svp')
-
-        # Test illegal input (multiple slashes)
-        with self.assertRaises(InputError):
-            common.format_level_of_theory_inputs('dlpno-ccsd(t)/def2-svp/def2-svp/c')
-        with self.assertRaises(InputError):
-            common.format_level_of_theory_inputs('b3lyp/def2-svp/aug-def2-svp')
-
-        # Test illegal input ('method' is not a key)
-        with self.assertRaises(InputError):
-            common.format_level_of_theory_inputs({'basis': '6-31g'})
-
-        # Test illegal input (illegal key)
-        with self.assertRaises(InputError):
-            common.format_level_of_theory_inputs({'random': 'something'})
-
-        # Test parsing string inputs
-        output_dict_0, output_str_0 = common.format_level_of_theory_inputs('cbs-qb3')
-        expected_dict_0 = {'method': 'cbs-qb3', 'basis': '', 'auxiliary_basis': '', 'dispersion': ''}
-        expected_str_0 = 'cbs-qb3|||'
-        self.assertEqual(output_dict_0, expected_dict_0)
-        self.assertEqual(output_str_0, expected_str_0)
-
-        output_dict_1, output_str_1 = common.format_level_of_theory_inputs('b3lyp/def2-TZVP')
-        expected_dict_1 = {'method': 'b3lyp', 'basis': 'def2-tzvp', 'auxiliary_basis': '', 'dispersion': ''}
-        expected_str_1 = 'b3lyp|def2-tzvp||'
-        self.assertEqual(output_dict_1, expected_dict_1)
-        self.assertEqual(output_str_1, expected_str_1)
-
-        output_dict_2, output_str_2 = common.format_level_of_theory_inputs('|||')
-        expected_dict_2 = {'method': '', 'basis': '', 'auxiliary_basis': '', 'dispersion': ''}
-        expected_str_2 = '|||'
-        self.assertEqual(output_dict_2, expected_dict_2)
-        self.assertEqual(output_str_2, expected_str_2)
-
-        output_dict_3, output_str_3 = common.format_level_of_theory_inputs('b3lyp|def2tzvp||')
-        expected_dict_3 = {'method': 'b3lyp', 'basis': 'def2tzvp', 'auxiliary_basis': '', 'dispersion': ''}
-        expected_str_3 = 'b3lyp|def2tzvp||'
-        self.assertEqual(output_dict_3, expected_dict_3)
-        self.assertEqual(output_str_3, expected_str_3)
-
-        output_dict_4, output_str_4 = common.format_level_of_theory_inputs('b3lyp|def2tzvp|aug-def2-svp|gd3bj')
-        expected_dict_4 = {'method': 'b3lyp', 'basis': 'def2tzvp', 'auxiliary_basis': 'aug-def2-svp',
-                           'dispersion': 'gd3bj'}
-        expected_str_4 = 'b3lyp|def2tzvp|aug-def2-svp|gd3bj'
-        self.assertEqual(output_dict_4, expected_dict_4)
-        self.assertEqual(output_str_4, expected_str_4)
-
-        output_dict_5, output_str_5 = common.format_level_of_theory_inputs('b3lyp|def2tzvp||gd3bj')
-        expected_dict_5 = {'method': 'b3lyp', 'basis': 'def2tzvp', 'auxiliary_basis': '', 'dispersion': 'gd3bj'}
-        expected_str_5 = 'b3lyp|def2tzvp||gd3bj'
-        self.assertEqual(output_dict_5, expected_dict_5)
-        self.assertEqual(output_str_5, expected_str_5)
-
-        # Test parsing dictionary inputs
-        output_dict_6, output_str_6 = common.format_level_of_theory_inputs({'method': 'wb97xd', 'basis': '6-31g'})
-        expected_dict_6 = {'method': 'wb97xd', 'basis': '6-31g', 'auxiliary_basis': '', 'dispersion': ''}
-        expected_str_6 = 'wb97xd|6-31g||'
-        self.assertEqual(output_dict_6, expected_dict_6)
-        self.assertEqual(output_str_6, expected_str_6)
-
-        output_dict_7, output_str_7 = common.format_level_of_theory_inputs({'method': 'b3lyp', 'basis': 'def2tzvp',
-                                                                            'auxiliary_basis': 'aug-def2-svp',
-                                                                            'dispersion': 'gd3bj'})
-        expected_dict_7 = {'method': 'b3lyp', 'basis': 'def2tzvp', 'auxiliary_basis': 'aug-def2-svp',
-                           'dispersion': 'gd3bj'}
-        expected_str_7 = 'b3lyp|def2tzvp|aug-def2-svp|gd3bj'
-        self.assertEqual(output_dict_7, expected_dict_7)
-        self.assertEqual(output_str_7, expected_str_7)
-
-        # Test parsing empty inputs
-        output_dict_8, output_str_8 = common.format_level_of_theory_inputs('')
-        expected_dict_8 = {'method': '', 'basis': '', 'auxiliary_basis': '', 'dispersion': ''}
-        expected_str_8 = ''
-        self.assertEqual(output_dict_8, expected_dict_8)
-        self.assertEqual(output_str_8, expected_str_8)
-
-        output_dict_9, output_str_9 = common.format_level_of_theory_inputs({'method': '', 'basis': '',
-                                                                            'auxiliary_basis': '', 'dispersion': ''})
-        expected_dict_9 = {}
-        expected_str_9 = ''
-        self.assertEqual(output_dict_9, expected_dict_9)
-        self.assertEqual(output_str_9, expected_str_9)
-
-        output_dict_10, output_str_10 = common.format_level_of_theory_inputs({})
-        expected_dict_10 = {'method': '', 'basis': '', 'auxiliary_basis': '', 'dispersion': ''}
-        expected_str_10 = ''
-        self.assertEqual(output_dict_10, expected_dict_10)
-        self.assertEqual(output_str_10, expected_str_10)
-
-    def test_format_level_of_theory_for_logging(self):
-        """Test format level of theory dictionary to string for logging purposes."""
-        level_of_theory = {}
-        expected_str = ''
-        formatted_str = common.format_level_of_theory_for_logging(level_of_theory)
-        self.assertEqual(expected_str, formatted_str)
-
-        level_of_theory = {'method': 'cbs-qb3'}
-        expected_str = 'cbs-qb3'
-        formatted_str = common.format_level_of_theory_for_logging(level_of_theory)
-        self.assertEqual(expected_str, formatted_str)
-
-        level_of_theory = {'method': 'cbs-qb3', 'basis': '', 'auxiliary_basis': '', 'dispersion': ''}
-        expected_str = 'cbs-qb3'
-        formatted_str = common.format_level_of_theory_for_logging(level_of_theory)
-        self.assertEqual(expected_str, formatted_str)
-
-        level_of_theory = {'method': 'apfd', 'basis': 'def2svp', 'auxiliary_basis': '', 'dispersion': ''}
-        expected_str = 'apfd/def2svp'
-        formatted_str = common.format_level_of_theory_for_logging(level_of_theory)
-        self.assertEqual(expected_str, formatted_str)
-
-        level_of_theory = {'method': 'b3lyp', 'basis': '6-31g', 'auxiliary_basis': '', 'dispersion': 'gd3bj'}
-        expected_str = 'b3lyp/6-31g gd3bj'
-        formatted_str = common.format_level_of_theory_for_logging(level_of_theory)
-        self.assertEqual(expected_str, formatted_str)
-
-        level_of_theory = {'method': 'DLPNO-CCSD(T)-F12', 'basis': 'cc-pVTZ-F12',
-                           'auxiliary_basis': 'aug-cc-pVTZ/C cc-pVTZ-F12-CABS', 'dispersion': ''}
-        expected_str = 'dlpno-ccsd(t)-f12/cc-pvtz-f12/aug-cc-pvtz/c cc-pvtz-f12-cabs'
-        formatted_str = common.format_level_of_theory_for_logging(level_of_theory)
-        self.assertEqual(expected_str, formatted_str)
-
-        level_of_theory = 'PM6'
-        expected_str = 'pm6'
-        formatted_str = common.format_level_of_theory_for_logging(level_of_theory)
-        self.assertEqual(expected_str, formatted_str)
-
-        level_of_theory = 'wb97xd3/6-31G+'
-        expected_str = 'wb97xd3/6-31g+'
-        formatted_str = common.format_level_of_theory_for_logging(level_of_theory)
-        self.assertEqual(expected_str, formatted_str)
-
     def test_is_notebook(self):
         """Test whether ARC is being called from an IPython notebook"""
         is_notebook = common.is_notebook()
@@ -751,16 +507,19 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
 
     def test_globalize_paths(self):
         """Test modifying a file's contents to correct absolute file paths"""
-        project_directory = os.path.join(arc_path, 'arc', 'testing', 'restart')
-        restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart', 'restart_paths.yml')
+        project_directory = os.path.join(arc_path, 'arc', 'testing', 'restart', '4_globalized_paths')
+        restart_path = os.path.join(project_directory, 'restart_paths.yml')
         common.globalize_paths(file_path=restart_path, project_directory=project_directory)
-        globalized_restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart', 'restart_paths_globalized.yml')
+        globalized_restart_path = os.path.join(project_directory, 'restart_paths_globalized.yml')
         content = common.read_yaml_file(globalized_restart_path)
-        self.assertEqual(content['restart'], 'Restarted ARC at 2020-02-28 12:51:14.446086; ')
-        self.assertIn('ARC/arc/testing/restart/calcs/Species/HCN/freq_a38229/output.out', content['paths']['freq'])
-        self.assertIn('ARC/arc/testing/restart/calcs/Species/HCN/sp_a38230/output.out', content['paths']['sp'])
-        self.assertNotIn('gpfs/workspace/users/user', content['paths']['freq'])
-        self.assertNotIn('gpfs/workspace/users/user', content['paths']['sp'])
+        self.assertEqual(content['output']['restart'], 'Restarted ARC at 2020-02-28 12:51:14.446086; ')
+        self.assertIn('ARC/arc/testing/restart/4_globalized_paths/calcs/Species/HCN/freq_a38229/output.out',
+                      content['output']['spc']['paths']['freq'])
+        self.assertNotIn('gpfs/workspace/users/user', content['output']['spc']['paths']['freq'])
+
+        path = '/home/user/runs/ARC/ARC_Project/calcs/Species/H/sp_a4339/output.out'
+        new_path = common.globalize_path(path, project_directory)
+        self.assertIn('/ARC/arc/testing/restart/4_globalized_paths/calcs/Species/H/sp_a4339/output.out', new_path)
 
     def test_globalize_path(self):
         """Test rebasing a single path to the current ARC project"""
@@ -828,6 +587,41 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
         self.assertTrue(common.is_same_sequence_sublist([2, 3, 4], [1, 2, 3, 4]))
         self.assertFalse(common.is_same_sequence_sublist([1, 3, 4], [1, 2, 3, 4]))
         self.assertFalse(common.is_same_sequence_sublist([4, 3, 2], [1, 2, 3, 4]))
+
+    def test_get_ordered_intersection_of_two_lists(self):
+        """Test get ordered intersection of two lists."""
+        l1 = [1, 2, 3, 3, 5, 6]
+        l2 = [6, 3, 5, 5, 1]
+
+        l3_out_0 = common.get_ordered_intersection_of_two_lists(l1, l2, order_by_first_list=True, return_unique=True)
+        l3_expected_0 = [1, 3, 5, 6]
+        self.assertEqual(l3_out_0, l3_expected_0)
+
+        l3_out_1 = common.get_ordered_intersection_of_two_lists(l1, l2, order_by_first_list=True, return_unique=False)
+        l3_expected_1 = [1, 3, 3, 5, 6]
+        self.assertEqual(l3_out_1, l3_expected_1)
+
+        l3_out_2 = common.get_ordered_intersection_of_two_lists(l1, l2, order_by_first_list=False, return_unique=True)
+        l3_expected_2 = [6, 3, 5, 1]
+        self.assertEqual(l3_out_2, l3_expected_2)
+
+        l3_out_3 = common.get_ordered_intersection_of_two_lists(l1, l2, order_by_first_list=False, return_unique=False)
+        l3_expected_3 = [6, 3, 5, 5, 1]
+        self.assertEqual(l3_out_3, l3_expected_3)
+
+        l1 = [1, 2, 3, 3, 5, 6]
+        l2 = [7]
+        self.assertEqual(common.get_ordered_intersection_of_two_lists(l1, l2), list())
+
+    @classmethod
+    def tearDownClass(cls):
+        """
+        A function that is run ONCE after all unit tests in this class.
+        """
+        globalized_restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart', '4_globalized_paths',
+                                               'restart_paths_globalized.yml')
+        os.remove(path=globalized_restart_path)
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

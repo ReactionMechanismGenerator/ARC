@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# encoding: utf-8
-
 """
 This module contains classes which extend Exception for usage in the RMG module.
 """

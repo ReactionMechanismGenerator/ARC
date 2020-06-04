@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# encoding: utf-8
-
 """
 Determine scaling factors for a given list of levels of theory
 
@@ -10,15 +7,15 @@ Adapted by Duminda Ranasinghe and Alon Grinberg Dana
 
 import os
 import time
+from typing import List, Optional, Union
 import shutil
 
 from arc.common import (check_ess_settings,
-                        determine_model_chemistry_type,
                         get_logger,
                         initialize_job_types,
                         initialize_log,
                         time_lapse)
-from arc.exceptions import InputError
+from arc.level import Level
 from arc.parser import parse_zpe
 from arc.scheduler import Scheduler
 from arc.settings import arc_path
@@ -45,21 +42,21 @@ HEADER = 'FREQ: A PROGRAM FOR OPTIMIZING SCALE FACTORS (Version 1)\n'\
          '   DOI: 10.1016/j.cpc.2016.09.004\n\n'
 
 
-def determine_scaling_factors(levels_of_theory: list or str,
-                              ess_settings: dict = None,
-                              init_log: bool = True,
+def determine_scaling_factors(levels: List[Union[Level, dict, str]],
+                              ess_settings: Optional[dict] = None,
+                              init_log: Optional[bool] = True,
                               ) -> list:
     """
     Determine the zero-point energy, harmonic frequencies, and fundamental frequencies scaling factors
     for a given frequencies level of theory.
 
     Args:
-        levels_of_theory (list, str): A list of frequencies levels of theory
-                                               for which scaling factors are determined.
-                                               A string can also be passed for just one level of theory.
+        levels (list): A list of frequencies levels of theory for which scaling factors are determined.
+                       Entries are either Level instances, dictionaries, or simple string representations.
+                       If a single entry is given, it will be converted to a list.
         ess_settings (dict, optional): A dictionary of available ESS (keys) and a corresponding server list (values).
-        init_log (bool, optional): Whether to initialize the logger. True to initialize.
-                                   Should be True when called as a stand alone, and False when called within ARC.
+        init_log (bool, optional): Whether to initialize the logger. ``True`` to initialize.
+                                   Should be ``True`` when called as a standalone, but ``False`` when called within ARC.
 
     Returns:
         list: The determined frequency scaling factors.
@@ -67,11 +64,10 @@ def determine_scaling_factors(levels_of_theory: list or str,
     if init_log:
         initialize_log(log_file='scaling_factor.log', project='Scaling Factors')
 
-    if isinstance(levels_of_theory, str):
-        levels_of_theory = [levels_of_theory]
-    if not isinstance(levels_of_theory, list):
-        raise InputError(f'levels_of_theory must be a list (or a string if only one level is desired). '
-                         f'Got: {type(levels_of_theory)}')
+    if not isinstance(levels, (list, tuple)):
+        levels = [levels]
+    levels = [Level(repr=level) if not isinstance(level, Level) else level for level in levels]
+
     t0 = time.time()
 
     logger.info('\n\n\n')
@@ -84,10 +80,10 @@ def determine_scaling_factors(levels_of_theory: list or str,
     job_types['opt'], job_types['fine'], job_types['freq'] = True, True, True
 
     lambda_zpes, zpe_dicts, times = list(), list(), list()
-    for level_of_theory in levels_of_theory:
+    for level in levels:
         t1 = time.time()
-        logger.info(f'\nComputing scaling factors at the {level_of_theory} level of theory...\n\n')
-        renamed_level = rename_level(level_of_theory)
+        logger.info(f'\nComputing scaling factors at the {level} level of theory...\n\n')
+        renamed_level = rename_level(str(level))
         project = 'scaling_' + renamed_level
         project_directory = os.path.join(arc_path, 'Projects', 'scaling_factors', project)
         if os.path.isdir(project_directory):
@@ -95,15 +91,13 @@ def determine_scaling_factors(levels_of_theory: list or str,
 
         species_list = get_species_list()
 
-        lot_type = determine_model_chemistry_type(level_of_theory)
-        if lot_type == 'composite':
-            freq_level = ''
-            composite_method = level_of_theory.lower()
+        if level.method_type == 'composite':
+            freq_level = None
+            composite_method = level
             job_types['freq'] = False
         else:
-            freq_level = level_of_theory.lower()
-            composite_method = ''
-            job_types['freq'] = True
+            freq_level = level
+            composite_method = None
 
         ess_settings = check_ess_settings(ess_settings or global_ess_settings)
 
@@ -117,10 +111,14 @@ def determine_scaling_factors(levels_of_theory: list or str,
                                                          'geometry', 'freq.out')) * 1000  # convert to J/mol
         zpe_dicts.append(zpe_dict)
 
-        lambda_zpes.append(calculate_truhlar_scaling_factors(zpe_dict, level_of_theory))
+        lambda_zpes.append(calculate_truhlar_scaling_factors(zpe_dict=zpe_dict, level=str(level)))
         times.append(time_lapse(t1))
 
-    summarize_results(lambda_zpes, levels_of_theory, zpe_dicts, times, time_lapse(t0))
+    summarize_results(lambda_zpes=lambda_zpes,
+                      levels=[str(level) for level in levels],
+                      zpe_dicts=zpe_dicts,
+                      times=times,
+                      overall_time=time_lapse(t0))
     logger.info('\n\n\n')
     logger.info(HEADER)
 
@@ -129,7 +127,7 @@ def determine_scaling_factors(levels_of_theory: list or str,
 
 
 def calculate_truhlar_scaling_factors(zpe_dict: dict,
-                                      level_of_theory: str,
+                                      level: str,
                                       ) -> float:
     """
     Calculate the scaling factors using Truhlar's method:
@@ -148,17 +146,17 @@ def calculate_truhlar_scaling_factors(zpe_dict: dict,
     Args:
         zpe_dict (dict): The calculated vibrational zero-point energies at the requested level of theory.
                          Keys are species labels, values are floats representing the ZPE in J/mol.
-        level_of_theory (str): The frequencies level of theory.
+        level (str): A string representation of the frequencies level of theory.
 
     Returns:
         float: The scale factor for the vibrational zero-point energy (lambda ZPE) as defined in reference [2].
     """
     unconverged = [key for key, val in zpe_dict.items() if val is None]
     if len(unconverged):
-        logger.info(f'\n\nWarning: Not all species in the standard set have converged at the {level_of_theory} '
+        logger.info(f'\n\nWarning: Not all species in the standard set have converged at the {level} '
                     f'level of theory!\nUnconverged species: {unconverged}\n\n')
     else:
-        logger.info(f'\n\nAll species in the standard set have converged at the {level_of_theory} level of theory\n\n\n')
+        logger.info(f'\n\nAll species in the standard set have converged at the {level} level of theory\n\n\n')
 
     # Experimental ZPE values converted from kcal/mol to J/mol, as reported in reference [2]:
     exp_zpe_dict = {'C2H2': 16.490 * 4184,
@@ -191,18 +189,18 @@ def calculate_truhlar_scaling_factors(zpe_dict: dict,
 
 
 def summarize_results(lambda_zpes: list,
-                      levels_of_theory: list,
+                      levels: List[str],
                       zpe_dicts: list,
                       times: list,
                       overall_time: str,
-                      base_path: str = None,
+                      base_path: Optional[str] = None,
                       ) -> None:
     """
     Print and save the results to file.
 
     Args:
         lambda_zpes (list): The scale factors for the vibrational zero-point energy, entries are floats.
-        levels_of_theory (list): The frequencies levels of theory.
+        levels (list): Entries are string representations of the frequency levels of theory.
         zpe_dicts (list): Entries are The calculated vibrational zero-point energies at the requested level of theory.
                           Keys are species labels, values are floats representing the ZPE in J/mol.
         times (list): Entries are string-format of the calculation execution times.
@@ -226,14 +224,14 @@ def summarize_results(lambda_zpes: list,
                       '(paste in the `freq_dict` under assign_frequency_scale_factor() in arkane/statmech.py):\n'
         arkane_formats = list()
         harmonic_freq_scaling_factors = list()
-        for lambda_zpe, level_of_theory, zpe_dict, execution_time\
-                in zip(lambda_zpes, levels_of_theory, zpe_dicts, times):
+        for lambda_zpe, level, zpe_dict, execution_time\
+                in zip(lambda_zpes, levels, zpe_dicts, times):
             harmonic_freq_scaling_factor = lambda_zpe * 1.014
             fundamental_freq_scaling_factor = lambda_zpe * 0.974
             harmonic_freq_scaling_factors.append(fundamental_freq_scaling_factor)
             unconverged = [key for key, val in zpe_dict.items() if val is None]
 
-            text = f'\n\nLevel of theory: {level_of_theory}\n'
+            text = f'\n\nLevel of theory: {level}\n'
             if unconverged:
                 text += f'The following species from the standard set did not converge at this level:\n {unconverged}\n'
             text += f'Scale Factor for Zero-Point Energies     = {lambda_zpe:.3f}\n'
@@ -242,13 +240,13 @@ def summarize_results(lambda_zpes: list,
             text += f'(execution time: {execution_time})\n'
             logger.info(text)
             f.write(text)
-            arkane_formats.append(f"                 '{level_of_theory}': {harmonic_freq_scaling_factor:.3f},  # [4]\n")
+            arkane_formats.append(f"                 '{level}': {harmonic_freq_scaling_factor:.3f},  # [4]\n")
         logger.info(arkane_text)
         f.write(arkane_text)
         for arkane_format in arkane_formats:
             logger.info(arkane_format)
             f.write(arkane_format)
-        overall_time_text = f'\n\nScaling factors calculation for {len(levels_of_theory)} levels of theory completed ' \
+        overall_time_text = f'\n\nScaling factors calculation for {len(levels)} levels of theory completed ' \
                             f'(elapsed time: {overall_time}).\n'
         logger.info(overall_time_text)
         f.write(overall_time_text)

@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# encoding: utf-8
-
 """
 A module for running jobs on the local machine.
 When transitioning to Python 3, use

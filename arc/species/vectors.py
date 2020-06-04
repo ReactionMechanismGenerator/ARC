@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# encoding: utf-8
-
 """
 A module for manipulating vectors
 """
@@ -57,7 +54,7 @@ def get_angle(v1: list,
     return float(np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0)) * conversion)
 
 
-def get_dihedral(v1:list,
+def get_dihedral(v1: list,
                  v2: list,
                  v3: list,
                  units: str = 'degs',

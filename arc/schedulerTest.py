@@ -11,8 +11,9 @@ import shutil
 
 import arc.rmgdb as rmgdb
 import arc.parser as parser
-from arc.common import almost_equal_coords_lists, format_level_of_theory_inputs
+from arc.common import almost_equal_coords_lists
 from arc.job.job import Job
+from arc.level import Level
 from arc.plotter import save_conformers_file
 from arc.scheduler import Scheduler
 from arc.settings import arc_path, default_levels_of_theory
@@ -42,14 +43,14 @@ H      -1.82570782    0.42754384   -0.56130718"""
         xyz2 = {'symbols': ('C',), 'isotopes': (12,), 'coords': ((0.0, 0.0, 0.0),)}
         cls.job1 = Job(project='project_test', ess_settings=cls.ess_settings, species_name='methylamine',
                        xyz=xyz2, job_type='conformer', conformer=0,
-                       job_level_of_theory_dict={'method': 'b97-d3', 'basis': '6-311+g(d,p)'},
+                       level={'method': 'b97-d3', 'basis': '6-311+g(d,p)'},
                        multiplicity=1, project_directory=cls.project_directory, job_num=101)
         cls.job2 = Job(project='project_test', ess_settings=cls.ess_settings, species_name='methylamine',
                        xyz=xyz2, job_type='conformer', conformer=1,
-                       job_level_of_theory_dict={'method': 'b97-d3', 'basis': '6-311+g(d,p)'},
+                       level={'method': 'b97-d3', 'basis': '6-311+g(d,p)'},
                        multiplicity=1, project_directory=cls.project_directory, job_num=102)
         cls.job3 = Job(project='project_test', ess_settings=cls.ess_settings, species_name='C2H6', xyz=xyz2,
-                       job_type='freq', job_level_of_theory_dict={'method': 'wb97x-d3', 'basis': '6-311+g(d,p)'},
+                       job_type='freq', level={'method': 'wb97x-d3', 'basis': '6-311+g(d,p)'},
                        multiplicity=1, project_directory=cls.project_directory, software='qchem', job_num=103)
         cls.rmg_database = rmgdb.make_rmg_database_object()
         cls.job_types1 = {'conformers': True,
@@ -63,16 +64,20 @@ H      -1.82570782    0.42754384   -0.56130718"""
                           }
         cls.sched1 = Scheduler(project='project_test', ess_settings=cls.ess_settings,
                                species_list=[cls.spc1, cls.spc2, cls.spc3],
-                               composite_method='',
-                               conformer_level=format_level_of_theory_inputs(default_levels_of_theory['conformer'])[0],
-                               opt_level=format_level_of_theory_inputs(default_levels_of_theory['opt'])[0],
-                               freq_level=format_level_of_theory_inputs(default_levels_of_theory['freq'])[0],
-                               sp_level=format_level_of_theory_inputs(default_levels_of_theory['sp'])[0],
-                               scan_level=format_level_of_theory_inputs(default_levels_of_theory['scan'])[0],
-                               ts_guess_level=format_level_of_theory_inputs(default_levels_of_theory['ts_guesses'])[0],
-                               rmg_database=cls.rmg_database, project_directory=cls.project_directory, testing=True,
-                               job_types=cls.job_types1, orbitals_level=default_levels_of_theory['orbitals'],
-                               adaptive_levels=None)
+                               composite_method=None,
+                               conformer_level=Level(repr=default_levels_of_theory['conformer']),
+                               opt_level=Level(repr=default_levels_of_theory['opt']),
+                               freq_level=Level(repr=default_levels_of_theory['freq']),
+                               sp_level=Level(repr=default_levels_of_theory['sp']),
+                               scan_level=Level(repr=default_levels_of_theory['scan']),
+                               ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                               rmg_database=cls.rmg_database,
+                               project_directory=cls.project_directory,
+                               testing=True,
+                               job_types=cls.job_types1,
+                               orbitals_level=default_levels_of_theory['orbitals'],
+                               adaptive_levels=None,
+                               )
 
     def test_conformers(self):
         """Test the parse_conformer_energy() and determine_most_stable_conformer() methods"""
@@ -121,9 +126,12 @@ H      -1.82570782    0.42754384   -0.56130718"""
                                                     'freq': False, 'conformers': False},
                                       'convergence': True, 'conformers': '', 'restart': ''}
         self.sched1.run_conformer_jobs()
-        save_conformers_file(project_directory=self.sched1.project_directory, label='C2H6',
-                             xyzs=self.sched1.species_dict['C2H6'].conformers, level_of_theory='level1',
-                             multiplicity=1, charge=0)
+        save_conformers_file(project_directory=self.sched1.project_directory,
+                             label='C2H6',
+                             xyzs=self.sched1.species_dict['C2H6'].conformers,
+                             level_of_theory=Level(method='CBS-QB3'),
+                             multiplicity=1,
+                             charge=0)
         c2h6_conf_path = os.path.join(self.sched1.project_directory, 'output', 'Species', 'C2H6', 'geometry',
                                       'conformers', 'conformers_before_optimization.txt')
         self.assertTrue(os.path.isfile(c2h6_conf_path))
@@ -144,43 +152,60 @@ H      -1.82570782    0.42754384   -0.56130718"""
 
     def test_determine_adaptive_level(self):
         """Test the determine_adaptive_level() method"""
-        adaptive_levels = {(1, 5):      {'optfreq': 'wb97xd/6-311+g(2d,2p)',
-                                         'sp': 'ccsd(t)-f12/aug-cc-pvtz-f12'},
-                           (6, 15):     {'optfreq': 'b3lyp/cbsb7',
-                                         'sp': 'dlpno-ccsd(t)/def2-tzvp/c'},
-                           (16, 30):    {'optfreq': 'b3lyp/6-31g(d,p)',
-                                         'sp': 'wb97xd/6-311+g(2d,2p)'},
-                           (31, 'inf'): {'optfreq': 'b3lyp/6-31g(d,p)',
-                                         'sp': 'b3lyp/6-311+g(d,p)'}}
+        # adaptive_levels get converted to ``Level`` objects in main, but here we skip main and test Scheduler directly
+        adaptive_levels = {(1, 5):      {('opt', 'freq'): Level(repr='wb97xd/6-311+g(2d,2p)'),
+                                         ('sp',): Level(repr='ccsd(t)-f12/aug-cc-pvtz-f12')},
+                           (6, 15):     {('opt', 'freq'): Level(repr='b3lyp/cbsb7'),
+                                         ('sp',): Level(repr='dlpno-ccsd(t)/def2-tzvp')},
+                           (16, 30):    {('opt', 'freq'): Level(repr='b3lyp/6-31g(d,p)'),
+                                         ('sp',): Level(repr='wb97xd/6-311+g(2d,2p)')},
+                           (31, 'inf'): {('opt', 'freq'): Level(repr='b3lyp/6-31g(d,p)'),
+                                         ('sp',): Level(repr='b3lyp/6-311+g(d,p)')}}
 
-        sched2 = Scheduler(project='project_test', ess_settings=self.ess_settings, species_list=[self.spc1, self.spc2],
-                           composite_method='', conformer_level=default_levels_of_theory['conformer'],
-                           opt_level=default_levels_of_theory['opt'], freq_level=default_levels_of_theory['freq'],
-                           sp_level=default_levels_of_theory['sp'], scan_level=default_levels_of_theory['scan'],
-                           ts_guess_level=default_levels_of_theory['ts_guesses'], rmg_database=self.rmg_database,
-                           project_directory=self.project_directory, testing=True, job_types=self.job_types1,
-                           orbitals_level=default_levels_of_theory['orbitals'], adaptive_levels=adaptive_levels)
-        level1 = sched2.determine_adaptive_level(original_level_of_theory='some_original_level',
-                                                 job_type='opt', heavy_atoms=5)
-        level2 = sched2.determine_adaptive_level(original_level_of_theory='some_original_level',
-                                                 job_type='freq', heavy_atoms=5)
-        level3 = sched2.determine_adaptive_level(original_level_of_theory='some_original_level',
-                                                 job_type='opt', heavy_atoms=20)
-        level4 = sched2.determine_adaptive_level(original_level_of_theory='some_original_level',
-                                                 job_type='composite', heavy_atoms=50)
-        level5 = sched2.determine_adaptive_level(original_level_of_theory='some_original_level',
-                                                 job_type='orbitals', heavy_atoms=5)
-        level6 = sched2.determine_adaptive_level(original_level_of_theory='some_original_level',
-                                                 job_type='sp', heavy_atoms=7)
-        level7 = sched2.determine_adaptive_level(original_level_of_theory='some_original_level',
-                                                 job_type='sp', heavy_atoms=25)
-        self.assertEqual(level1, 'wb97xd/6-311+g(2d,2p)')
-        self.assertEqual(level2, 'wb97xd/6-311+g(2d,2p)')
-        self.assertEqual(level3, 'b3lyp/6-31g(d,p)')
-        self.assertEqual(level4, 'b3lyp/6-31g(d,p)')
-        self.assertEqual(level5, 'some_original_level')
-        self.assertEqual(level6, 'dlpno-ccsd(t)/def2-tzvp/c')
-        self.assertEqual(level7, 'wb97xd/6-311+g(2d,2p)')
+        sched2 = Scheduler(project='project_test',
+                           ess_settings=self.ess_settings,
+                           species_list=[self.spc1, self.spc2],
+                           composite_method=None,
+                           conformer_level=default_levels_of_theory['conformer'],
+                           opt_level=default_levels_of_theory['opt'],
+                           freq_level=default_levels_of_theory['freq'],
+                           sp_level=default_levels_of_theory['sp'],
+                           scan_level=default_levels_of_theory['scan'],
+                           ts_guess_level=default_levels_of_theory['ts_guesses'],
+                           rmg_database=self.rmg_database,
+                           project_directory=self.project_directory,
+                           testing=True, job_types=self.job_types1,
+                           orbitals_level=default_levels_of_theory['orbitals'],
+                           adaptive_levels=adaptive_levels)
+        original_level = Level(method='CBS-QB3')
+        level1 = sched2.determine_adaptive_level(original_level_of_theory=original_level,
+                                                 job_type='opt',
+                                                 heavy_atoms=5)
+        level2 = sched2.determine_adaptive_level(original_level_of_theory=original_level,
+                                                 job_type='freq',
+                                                 heavy_atoms=5)
+        level3 = sched2.determine_adaptive_level(original_level_of_theory=original_level,
+                                                 job_type='opt',
+                                                 heavy_atoms=20)
+        level4 = sched2.determine_adaptive_level(original_level_of_theory=original_level,
+                                                 job_type='composite',
+                                                 heavy_atoms=50)
+        level5 = sched2.determine_adaptive_level(original_level_of_theory=original_level,
+                                                 job_type='orbitals',
+                                                 heavy_atoms=5)
+        level6 = sched2.determine_adaptive_level(original_level_of_theory=original_level,
+                                                 job_type='sp',
+                                                 heavy_atoms=7)
+        level7 = sched2.determine_adaptive_level(original_level_of_theory=original_level,
+                                                 job_type='sp',
+                                                 heavy_atoms=25)
+        self.assertEqual(level1.simple(), 'wb97xd/6-311+g(2d,2p)')
+        self.assertEqual(level2.simple(), 'wb97xd/6-311+g(2d,2p)')
+        self.assertEqual(level3.simple(), 'b3lyp/6-31g(d,p)')
+        self.assertEqual(level4.simple(), 'cbs-qb3')
+        self.assertEqual(level5.simple(), 'cbs-qb3')
+        self.assertEqual(level6.simple(), 'dlpno-ccsd(t)/def2-tzvp')
+        self.assertEqual(level7.simple(), 'wb97xd/6-311+g(2d,2p)')
 
     def test_initialize_output_dict(self):
         """Test Scheduler.initialize_output_dict"""

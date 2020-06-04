@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# encoding: utf-8
-
 """
 A module for representing a reaction.
 """
@@ -396,34 +393,34 @@ class ARCReaction(object):
         Returns:
             bool: Whether the TS energy is above both reactants and products wells, ``True`` if it is.
         """
-        r_e_elect = None if any([spc.e_elect is None for spc in self.r_species]) \
-            else sum(spc.e_elect for spc in self.r_species)
-        p_e_elect = None if any([spc.e_elect is None for spc in self.p_species]) \
-            else sum(spc.e_elect for spc in self.p_species)
-        ts_e_elect = self.ts_species.e_elect
-        min_e = extermum_list([r_e_elect, p_e_elect, ts_e_elect], return_min=True)
-        if any([val is None for val in [r_e_elect, p_e_elect, ts_e_elect]]):
+        r_e0 = None if any([spc.e0 is None for spc in self.r_species]) \
+            else sum(spc.e0 for spc in self.r_species)
+        p_e0 = None if any([spc.e0 is None for spc in self.p_species]) \
+            else sum(spc.e0 for spc in self.p_species)
+        ts_e0 = self.ts_species.e0
+        min_e = extermum_list([r_e0, p_e0, ts_e0], return_min=True)
+        if any([val is None for val in [r_e0, p_e0, ts_e0]]):
             if verbose:
                 logger.error(f"Could not get E0's of all species in reaction {self.label}. Cannot check TS E0.\n")
-                r_text = f'{r_e_elect:.2f} kJ/mol' if r_e_elect is not None else 'None'
-                ts_text = f'{ts_e_elect:.2f} kJ/mol' if ts_e_elect is not None else 'None'
-                p_text = f'{p_e_elect:.2f} kJ/mol' if p_e_elect is not None else 'None'
+                r_text = f'{r_e0:.2f} kJ/mol' if r_e0 is not None else 'None'
+                ts_text = f'{ts_e0:.2f} kJ/mol' if ts_e0 is not None else 'None'
+                p_text = f'{p_e0:.2f} kJ/mol' if p_e0 is not None else 'None'
                 logger.info(f"Reactants E0: {r_text}\n"
                             f"TS E0: {ts_text}\n"
                             f"Products E0: {p_text}")
             return True
-        if ts_e_elect < r_e_elect or ts_e_elect< p_e_elect:
+        if ts_e0 < r_e0 or ts_e0 < p_e0:
             if verbose:
                 logger.error(f'TS of reaction {self.label} has a lower E0 value than expected:\n')
-                logger.info(f'Reactants: {r_e_elect - min_e:.2f} kJ/mol\n'
-                            f'TS: {ts_e_elect - min_e:.2f} kJ/mol'
-                            f'\nProducts: {p_e_elect - min_e:.2f} kJ/mol')
+                logger.info(f'Reactants: {r_e0 - min_e:.2f} kJ/mol\n'
+                            f'TS: {ts_e0 - min_e:.2f} kJ/mol'
+                            f'\nProducts: {p_e0 - min_e:.2f} kJ/mol')
             return False
         if verbose:
             logger.info(f'Reaction {self.label} has the following path energies:\n'
-                        f'Reactants: {r_e_elect - min_e:.2f} kJ/mol\n'
-                        f'TS: {ts_e_elect - min_e:.2f} kJ/mol\n'
-                        f'Products: {p_e_elect - min_e:.2f} kJ/mol')
+                        f'Reactants: {r_e0 - min_e:.2f} kJ/mol\n'
+                        f'TS: {ts_e0 - min_e:.2f} kJ/mol\n'
+                        f'Products: {p_e0 - min_e:.2f} kJ/mol')
         return True
 
     def check_attributes(self):

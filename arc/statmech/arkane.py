@@ -1,13 +1,10 @@
-#!/usr/bin/env python3
-# encoding: utf-8
-
 """
 An adapter for executing Arkane.
 """
 
 import os
 import shutil
-from typing import Type
+from typing import Optional, Type
 
 from rmgpy.species import Species
 
@@ -24,6 +21,7 @@ import arc.plotter as plotter
 from arc.common import get_logger
 from arc.exceptions import InputError, RotorError
 from arc.job.inputs import input_files
+from arc.level import Level
 from arc.reaction import ARCReaction
 from arc.species.species import ARCSpecies, determine_rotor_symmetry, determine_rotor_type
 from arc.statmech.adapter import StatmechAdapter
@@ -41,9 +39,9 @@ class ArkaneAdapter(StatmechAdapter):
         output_directory (str): The path to the ARC project output directory.
         output_dict (dict): Keys are labels, values are output file paths.
                             See Scheduler for a description of this dictionary.
-        use_bac (bool): Whether or not to use bond additivity corrections (BACs) for thermo calculations.
-        sp_level (str, optional): The level of theory used for the single point energy calculation
-                                  (could be a composite method), used for determining energy corrections.
+        bac_type (str): The bond additivity correction type. 'p' for Petersson- or 'm' for Melius-type BAC.
+                        ``None`` to not use BAC.
+        sp_level (Level, optional): The level of theory used for energy corrections.
         freq_scale_factor (float, optional): The harmonic frequencies scaling factor.
         species (ARCSpecies, optional): The species object.
         reaction (ARCReaction, optional): The reaction object.
@@ -59,8 +57,8 @@ class ArkaneAdapter(StatmechAdapter):
     def __init__(self,
                  output_directory: str,
                  output_dict: dict,
-                 use_bac: bool,
-                 sp_level: str = '',
+                 bac_type: Optional[str],
+                 sp_level: Optional[Level] = None,
                  freq_scale_factor: float = 1.0,
                  species: Type[ARCSpecies] = None,
                  reaction: Type[ARCReaction] = None,
@@ -72,7 +70,7 @@ class ArkaneAdapter(StatmechAdapter):
                  ):
         self.output_directory = output_directory
         self.output_dict = output_dict
-        self.use_bac = use_bac
+        self.bac_type = bac_type
         self.sp_level = sp_level
         self.freq_scale_factor = freq_scale_factor
         self.species = species
@@ -93,17 +91,18 @@ class ArkaneAdapter(StatmechAdapter):
         Returns:
             str: The desired string representation.
         """
-        str_representation = 'ArkaneAdapter('
-        str_representation += f'output_directory={self.output_directory}, '
-        str_representation += f'use_bac={self.use_bac}, '
-        str_representation += f'sp_level={self.sp_level}, '
-        str_representation += f'freq_scale_factor={self.freq_scale_factor}, '
-        str_representation += f'species={self.species}, '
-        str_representation += f'reaction={self.reaction}, '
-        str_representation += f'T_min={self.T_min}, '
-        str_representation += f'T_max={self.T_max}, '
-        str_representation += f'T_count={self.T_count})'
-        return str_representation
+        str_ = 'ArkaneAdapter('
+        str_ += f'output_directory={self.output_directory}, '
+        str_ += f'bac_type={self.bac_type}, '
+        if self.sp_level is not None:
+            str_ += f'sp_level={self.sp_level.simple()}, '
+        str_ += f'freq_scale_factor={self.freq_scale_factor}, '
+        str_ += f'species={self.species}, '
+        str_ += f'reaction={self.reaction}, '
+        str_ += f'T_min={self.T_min}, '
+        str_ += f'T_max={self.T_max}, '
+        str_ += f'T_count={self.T_count})'
+        return str_
 
     def compute_thermo(self,
                        kinetics_flag: bool = False,
@@ -122,12 +121,14 @@ class ArkaneAdapter(StatmechAdapter):
             # initialize the Arkane species_dict so that species for which thermo is calculated won't interfere
             # with species used for a rate coefficient calculation.
             arkane.input.species_dict = dict()
+            if self.sp_level.to_arkane_level_of_theory(variant='AEC', raise_error=False, warn=False) is None:
+                raise ValueError(f'Cannot compute thermo without a valid Arkane Level for AEC.')
 
         if self.species is None:
             raise InputError('Cannot not compute thermo without a species object.')
 
         arkane_output_path = self.generate_arkane_species_file(species=self.species,
-                                                               use_bac=self.use_bac)
+                                                               bac_type=self.bac_type)
 
         if arkane_output_path is not None:
             try:
@@ -143,7 +144,7 @@ class ArkaneAdapter(StatmechAdapter):
             statmech_success = self.run_statmech(arkane_species=arkane_species,
                                                  arkane_file_path=self.species.arkane_file,
                                                  arkane_output_path=arkane_output_path,
-                                                 use_bac=self.use_bac,
+                                                 bac_type=self.bac_type,
                                                  sp_level=self.sp_level,
                                                  plot=False)
             if statmech_success:
@@ -168,12 +169,12 @@ class ArkaneAdapter(StatmechAdapter):
         if self.output_dict[ts_species.label]['convergence'] and self.reaction.check_ts():
             success = True
             arkane_output_path = self.generate_arkane_species_file(species=ts_species,
-                                                                   use_bac=False)
+                                                                   bac_type=None)
             arkane_ts_species = arkane_transition_state(ts_species.label, ts_species.arkane_file)
             statmech_success = self.run_statmech(arkane_species=arkane_ts_species,
                                                  arkane_file_path=ts_species.arkane_file,
                                                  arkane_output_path=arkane_output_path,
-                                                 use_bac=False,
+                                                 bac_type=None,
                                                  sp_level=self.sp_level,
                                                  plot=False)
             if not statmech_success:
@@ -231,8 +232,8 @@ class ArkaneAdapter(StatmechAdapter):
                      arkane_species: Type[Species],
                      arkane_file_path: str,
                      arkane_output_path: str = None,
-                     use_bac: bool = False,
-                     sp_level: str = '',
+                     bac_type: Optional[str] = None,
+                     sp_level: Optional[Level] = None,
                      plot: bool = False,
                      ) -> bool:
         """
@@ -242,9 +243,9 @@ class ArkaneAdapter(StatmechAdapter):
             arkane_species (arkane_input_species): An instance of an Arkane species() object.
             arkane_file_path (str): The path to the Arkane species file (either in .py or YAML form).
             arkane_output_path (str): The path to the folder in which the Arkane output.py file will be saved.
-            use_bac (bool): A flag indicating whether or not to use bond additivity corrections (True to use).
-            sp_level (str, optional): The level of theory used for the single point energy calculation
-                                      (could be a composite method), used for determining energy corrections.
+            bac_type (str, optional): The bond additivity correction type. 'p' for Petersson- or 'm' for Melius-type BAC.
+                                      ``None`` to not use BAC.
+            sp_level (Level, optional): The level of theory used for energy corrections.
             plot (bool): A flag indicating whether to plot a PDF of the calculated thermo properties (True to plot)
 
         Returns:
@@ -252,11 +253,14 @@ class ArkaneAdapter(StatmechAdapter):
         """
         success = True
         stat_mech_job = StatMechJob(arkane_species, arkane_file_path)
-        stat_mech_job.applyBondEnergyCorrections = use_bac and sp_level
-        stat_mech_job.modelChemistry = sp_level
-        if not sp_level:
+        stat_mech_job.applyBondEnergyCorrections = bac_type is not None and sp_level is not None
+        if bac_type is not None:
+            stat_mech_job.bondEnergyCorrectionType = bac_type
+        if sp_level is None:
             # if this is a kinetics computation and we don't have a valid model chemistry, don't bother about it
             stat_mech_job.applyAtomEnergyCorrections = False
+        else:
+            stat_mech_job.level_of_theory = sp_level.to_arkane_level_of_theory()
         stat_mech_job.frequencyScaleFactor = self.freq_scale_factor
         try:
             stat_mech_job.execute(output_directory=arkane_output_path, plot=plot)
@@ -278,15 +282,16 @@ class ArkaneAdapter(StatmechAdapter):
 
     def generate_arkane_species_file(self,
                                      species: Type[ARCSpecies],
-                                     use_bac: bool,
-                                     ) -> str:
+                                     bac_type: Optional[str],
+                                     ) -> Optional[str]:
         """
         A helper function for generating an Arkane Python species file.
         Assigns the path of the generated file to the species.arkane_file attribute.
 
         Args:
             species (ARCSpecies): The species to process.
-            use_bac (bool): Whether or not to use bond additivity corrections (BACs) for thermo calculations.
+            bac_type (str): The bond additivity correction type. 'p' for Petersson- or 'm' for Melius-type BAC.
+                            ``None`` to not use BAC.
 
         Returns:
             str: The path to the species arkane folder (Arkane's default output folder).
@@ -337,7 +342,7 @@ class ArkaneAdapter(StatmechAdapter):
                     rotor_type = determine_rotor_type(rotor_path)
                     top = str(species.rotors_dict[i]['top'])
                     try:
-                        rotor_symmetry, max_e = determine_rotor_symmetry(species.label, pivots, rotor_path)
+                        rotor_symmetry, max_e, _ = determine_rotor_symmetry(species.label, pivots, rotor_path)
                     except RotorError:
                         logger.error(f'Could not determine rotor symmetry for species {species.label} between '
                                      f'pivots {pivots}. Setting the rotor symmetry to 1, '
@@ -379,20 +384,20 @@ class ArkaneAdapter(StatmechAdapter):
                 species.long_thermo_description += rotors_description + '\n'
 
         # write the Arkane species input file
-        bac_txt = '' if use_bac else '_no_BAC'
+        bac_txt = '' if bac_type is not None else '_no_BAC'
         input_file_path = os.path.join(species_folder_path, f'{species.label}_arkane_input{bac_txt}.py')
         input_file = input_files['arkane_input_species']
-        if use_bac and not species.is_ts:
-            logger.info(f'Using the following BAC for {species.label}: {species.bond_corrections}')
+        if bac_type is not None and not species.is_ts:
+            logger.info(f'Using the following BAC (type {bac_type}) for {species.label}: {species.bond_corrections}')
             bonds = f'bonds = {species.bond_corrections}\n\n'
         else:
             logger.debug(f'NOT using BAC for {species.label}')
             bonds = ''
+
         input_file = input_file.format(bonds=bonds,
                                        symmetry=species.external_symmetry,
                                        multiplicity=species.multiplicity,
                                        optical=species.optical_isomers,
-                                       sp_level=self.sp_level,
                                        sp_path=sp_path,
                                        opt_path=opt_path,
                                        freq_path=freq_path,
@@ -457,10 +462,8 @@ def clean_output_directory(species_path: str,
 
     # 3. thermo plots
     plot_path = os.path.join(species_path, 'arkane', 'plots')
-    print(plot_path)
     if os.path.exists(plot_path):
         plot_files = os.listdir(plot_path)
-        print(plot_files)
         if plot_files:
             plot_file = plot_files[0]
             target_file = os.path.join(os.path.dirname(plot_file), f'thermo_properties_plot.{plot_file.split(".")[-1]}')

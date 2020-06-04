@@ -7,7 +7,7 @@ ARC - Automated Rate Calculator v\ |release|
 **ARC - Automated Rate Calculator** is a software for automating
 electronic structure calculations relevant for chemical kinetic modeling.
 ARC has many advanced options, yet at its core it is simple: it accepts 2D
-graph representations of chemical species (e.g., SMILES_ or `adjacency lists`__),
+graph representations of chemical species (e.g., SMILES_, InChI_, or `adjacency lists`__),
 and  automatically executes, tracks, and processes relevant electronic structure
 jobs on user-defined servers. The principal outputs of ARC are thermodynamic properties
 (H, S, Cp) and high-pressure limit kinetic rate coefficients for the defined species
@@ -21,7 +21,7 @@ ARC is written in Python 3.7, and was made open-source under the :ref:`MIT licen
 
 We use ARC to facilitate our research and have made it available
 as a benefit to the community in the hopes that others may find it useful as well.
-Its code is hosted on GitHub_, which is where comments, issues, and community
+The code is hosted on GitHub_, which is where comments, issues, and community
 contributions are welcomed.
 
 The following pages describe how to install and execute ARC,

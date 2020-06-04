@@ -1,7 +1,5 @@
-#!/usr/bin/env python3
-# encoding: utf-8
-
 """
+Perceive 3D Cartesian coordinates to 2D graph connectivity
 Written by Colin Grambow
 """
 

@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# encoding: utf-8
-
 """
 A module for representing stationary points (chemical species and transition states).
 If the species is a transition state (TS), its ``ts_guesses`` attribute will have one or more ``TSGuess`` objects.
@@ -9,7 +6,7 @@ If the species is a transition state (TS), its ``ts_guesses`` attribute will hav
 import datetime
 import numpy as np
 import os
-from typing import Optional, Union
+from typing import Optional, Tuple, Union
 
 import rmgpy.molecule.element as elements
 from arkane.common import ArkaneSpecies, symbol_by_number
@@ -27,7 +24,8 @@ from arc.common import (colliding_atoms,
                         determine_top_group_indices,
                         get_logger,
                         get_single_bond_length)
-from arc.exceptions import SpeciesError, RotorError, InputError, TSError, SanitizationError
+from arc.exceptions import SpeciesError, RotorError, InputError, TSError
+from arc.level import Level
 from arc.parser import (parse_1d_scan_energies,
                         parse_dipole_moment,
                         parse_polarizability,
@@ -528,17 +526,21 @@ class ARCSpecies(object):
         species_dict = dict()
         species_dict['force_field'] = self.force_field
         species_dict['is_ts'] = self.is_ts
-        species_dict['t1'] = self.t1
+        if self.t1 is not None:
+            species_dict['t1'] = self.t1
         species_dict['label'] = self.label
         species_dict['long_thermo_description'] = self.long_thermo_description
         species_dict['multiplicity'] = self.multiplicity
         species_dict['charge'] = self.charge
         species_dict['compute_thermo'] = self.compute_thermo
         species_dict['number_of_rotors'] = self.number_of_rotors
-        species_dict['external_symmetry'] = self.external_symmetry
-        species_dict['optical_isomers'] = self.optical_isomers
-        species_dict['neg_freqs_trshed'] = self.neg_freqs_trshed.tolist() \
-            if isinstance(self.neg_freqs_trshed, np.ndarray) else self.neg_freqs_trshed
+        if self.external_symmetry is not None:
+            species_dict['external_symmetry'] = self.external_symmetry
+        if self.optical_isomers is not None:
+            species_dict['optical_isomers'] = self.optical_isomers
+        if self.neg_freqs_trshed:
+            species_dict['neg_freqs_trshed'] = self.neg_freqs_trshed.tolist() \
+                if isinstance(self.neg_freqs_trshed, np.ndarray) else self.neg_freqs_trshed
         species_dict['arkane_file'] = self.arkane_file
         species_dict['consider_all_diastereomers'] = self.consider_all_diastereomers
         if self.is_ts:
@@ -741,7 +743,7 @@ class ARCSpecies(object):
             raise SpeciesError(f'The .bdes argument must be a list, got {self.bdes} which is a {type(self.bdes)}')
         self.rotors_dict = dict()
         if 'rotors_dict' in species_dict and species_dict['rotors_dict'] is None:
-                self.rotors_dict = None
+            self.rotors_dict = None
         if 'rotors_dict' in species_dict and self.rotors_dict is not None:
             for index, rotor_dict in species_dict['rotors_dict'].items():
                 self.rotors_dict[index] = dict()
@@ -1121,7 +1123,7 @@ class ARCSpecies(object):
         """
         if deg_increment is None and deg_abs is None:
             raise InputError('Either deg_increment or deg_abs must be specified.')
-        if deg_increment is not None and not isinstance(deg_increment, (int,float)):
+        if deg_increment is not None and not isinstance(deg_increment, (int, float)):
             raise TypeError(f'deg_increment must be a float, got {deg_increment} which is a {type(deg_increment)}')
         if deg_abs is not None and not isinstance(deg_abs, (int, float)):
             raise TypeError(f'deg_abs must be a float, got {deg_abs} which is a {type(deg_abs)}')
@@ -1139,7 +1141,7 @@ class ARCSpecies(object):
                     logger.info('\n\n')
                     for i, rotor in self.rotors_dict.items():
                         logger.error(f'Rotor {i} with pivots {rotor["pivots"]} was set '
-                                    f'{rotor["times_dihedral_set"]} times')
+                                     f'{rotor["times_dihedral_set"]} times')
                     rotor['success'] = False
                     rotor['invalidation_reason'] = f'rotor set too many ({rotor["times_dihedral_set"]}) times'
                     return
@@ -1175,7 +1177,7 @@ class ARCSpecies(object):
     def determine_multiplicity(self,
                                smiles: str,
                                adjlist: str,
-                               mol: Molecule):
+                               mol: Optional[Molecule]):
         """
         Determine the spin multiplicity of the species
         """
@@ -1364,9 +1366,9 @@ class ARCSpecies(object):
                            lj_path: str,
                            opt_path: str,
                            bath_gas: str,
-                           opt_level: str,
-                           freq_path: str = '',
-                           freq_level: str = None):
+                           opt_level: Level,
+                           freq_path: Optional[str] = '',
+                           freq_level: Optional[Level] = None):
         """
         Set the species.transport_data attribute after a Lennard-Jones calculation (via OneDMin).
 
@@ -1374,9 +1376,9 @@ class ARCSpecies(object):
             lj_path (str): The path to a oneDMin job output file.
             opt_path (str): The path to an opt job output file.
             bath_gas (str): The oneDMin job bath gas.
-            opt_level (str): The optimization level of theory.
+            opt_level (Level): The optimization level of theory.
             freq_path (str, optional): The path to a frequencies job output file.
-            freq_level (str, optional): The frequencies level of theory.
+            freq_level (Level, optional): The frequencies level of theory.
         """
         original_comment = self.transport_data.comment
         comment = 'L-J coefficients calculated by OneDMin using a DF-MP2/aug-cc-pVDZ potential energy surface ' \
@@ -1403,13 +1405,13 @@ class ARCSpecies(object):
         if self.number_of_atoms > 1:
             dipole_moment = parse_dipole_moment(opt_path) or 0
             if dipole_moment:
-                comment += '; Dipole moment was calculated at the {0} level of theory'.format(opt_level)
+                comment += f'; Dipole moment was calculated at the {opt_level.simple()} level of theory'
         else:
             dipole_moment = 0
         polar = self.transport_data.polarizability or (0, 'angstroms^3')
         if freq_path:
             polar = (parse_polarizability(freq_path), 'angstroms^3')
-            comment += '; Polarizability was calculated at the {0} level of theory'.format(freq_level)
+            comment += f'; Polarizability was calculated at the {freq_level.simple()} level of theory'
         comment += '; Rotational Relaxation Collision Number was not determined, default value is 2'
         if original_comment:
             comment += '; ' + original_comment
@@ -1424,10 +1426,10 @@ class ARCSpecies(object):
         )
 
     def check_xyz_isomorphism(self,
-                              mol = None,
-                              xyz: dict = None,
-                              allow_nonisomorphic_2d: bool = False,
-                              verbose: bool = True,
+                              mol: Optional[Molecule] = None,
+                              xyz: Optional[dict] = None,
+                              allow_nonisomorphic_2d: Optional[bool] = False,
+                              verbose: Optional[bool] = True,
                               ) -> bool:
         """
         Check whether the perception of self.final_xyz or ``xyz`` is isomorphic with self.mol.
@@ -1721,8 +1723,15 @@ class TSGuess(object):
                      Assigned only if self.success is ``True``.
 
     """
-    def __init__(self, method=None, reactants_xyz=None, products_xyz=None, family=None, xyz=None,
-                 rmg_reaction=None, ts_dict=None, energy=None):
+    def __init__(self,
+                 method: Optional[str] = None,
+                 reactants_xyz: Optional[list] = None,
+                 products_xyz: Optional[list] = None,
+                 family: Optional[str] = None,
+                 xyz: Optional[Union[dict, str]] = None,
+                 rmg_reaction: Optional[Reaction] = None,
+                 ts_dict: Optional[dict] = None,
+                 energy: Optional[float] = None):
 
         if ts_dict is not None:
             # Reading from a dictionary
@@ -1941,10 +1950,12 @@ def nearly_equal(a: float,
 
 
 def determine_rotor_symmetry(label: str,
-                             pivots: list,
+                             pivots: Union[list, str],
                              rotor_path: str = '',
-                             energies: list = None,
-                             return_num_wells: bool = False):
+                             energies: Optional[Union[list, np.ndarray]] = None,
+                             return_num_wells: bool = False,
+                             log: bool = True,
+                             ) -> Tuple[int, float, Optional[int]]:
     """
     Determine the rotor symmetry number from a potential energy scan.
     The *worst* resolution for each peak and valley is determined.
@@ -1955,22 +1966,22 @@ def determine_rotor_symmetry(label: str,
 
     Args:
         label (str): The species label (used for error messages).
-        pivots (list, optional): A list of two atom indices representing the torsion pivots.
+        pivots (list, str, optional): A list of two atom indices representing the torsion pivots.
         rotor_path (str): The path to an ESS output rotor scan file.
         energies (list, optional): The list of energies in the scan in kJ/mol.
         return_num_wells (bool, optional): Whether to also return the number of wells, ``True`` to return,
                                            default is ``False``.
-
-    Returns:
-        int: The symmetry number (int)
-    Returns:
-        float: The highest torsional energy barrier in kJ/mol.
-    Returns:
-        int (optional): The number of peaks, only returned if ``return_len_peaks`` is ``True``.
+        log (bool, optional): Whether to log info, error, and warning messages.
 
     Raises:
         InputError: If both or none of the rotor_path and energy arguments are given,
         or if rotor_path does not point to an existing file.
+
+    Returns:
+        Tuple[int, float, int]:
+            int: The symmetry number
+            float: The highest torsional energy barrier in kJ/mol.
+            int (optional): The number of peaks, only returned if ``return_len_peaks`` is ``True``.
     """
     if not rotor_path and energies is None:
         raise InputError('Expected either rotor_path or energies, got neither')
@@ -2016,12 +2027,13 @@ def determine_rotor_symmetry(label: str,
     # The number of peaks and valley must always be the same (what goes up must come down), if it isn't then there's
     # something seriously wrong with the scan
     if len(peaks) != len(valleys):
-        logger.error(f'Rotor of species {label} between pivots {pivots} does not have the same number '
-                     f'of peaks ({len(peaks)}) and valleys ({len(valleys)}).')
+        if log:
+            logger.error(f'Rotor of species {label} between pivots {pivots} does not have the same number '
+                         f'of peaks ({len(peaks)}) and valleys ({len(valleys)}).')
         if return_num_wells:
             return len(peaks), max_e, len(peaks)  # this works for CC(=O)[O]
         else:
-            return len(peaks), max_e  # this works for CC(=O)[O]
+            return len(peaks), max_e, None  # this works for CC(=O)[O]
     min_peak = min(peaks)
     max_peak = max(peaks)
     min_valley = min(valleys)
@@ -2044,16 +2056,17 @@ def determine_rotor_symmetry(label: str,
         # We declare this rotor as symmetric and the symmetry number is the number of peaks (and valleys)
         symmetry = len(peaks)
         reason = 'number of peaks and valleys, all within the determined resolution criteria'
-    if symmetry not in [1, 2, 3]:
-        logger.info(f'Determined symmetry number {symmetry} for rotor of species {label} between pivots {pivots}; '
-                    f'you should make sure this makes sense')
-    else:
-        logger.info(f'Determined a symmetry number of {symmetry} for rotor of species {label} between pivots {pivots} '
-                    f'based on the {reason}.')
+    if log:
+        if symmetry not in [1, 2, 3]:
+            logger.info(f'Determined symmetry number {symmetry} for rotor of species {label} between pivots {pivots}; '
+                        f'you should make sure this makes sense.')
+        else:
+            logger.info(f'Determined a symmetry number of {symmetry} for rotor of species {label} between pivots '
+                        f'{pivots} based on the {reason}.')
     if return_num_wells:
         return symmetry, max_e, len(peaks)
     else:
-        return symmetry, max_e
+        return symmetry, max_e, None
 
 
 def cyclic_index_i_plus_1(i: int,

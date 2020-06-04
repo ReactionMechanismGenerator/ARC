@@ -59,7 +59,7 @@ class TestScale(unittest.TestCase):
 
     def test_calculate_truhlar_scaling_factors(self):
         """Test the scale calculate_truhlar_scaling_factors() function"""
-        lambda_zpe = calculate_truhlar_scaling_factors(zpe_dict=self.zpe_dicts[0], level_of_theory='test')
+        lambda_zpe = calculate_truhlar_scaling_factors(zpe_dict=self.zpe_dicts[0], level='test')
         self.assertAlmostEqual(lambda_zpe, 1.0241661, 5)
 
     def test_summarize_results(self):
@@ -71,7 +71,7 @@ class TestScale(unittest.TestCase):
         base_path = os.path.join(arc_path, 'Projects', 'scaling_factors_arc_testing_delete_after_usage')
 
         summarize_results(lambda_zpes=lambda_zpes,
-                          levels_of_theory=levels_of_theory,
+                          levels=levels_of_theory,
                           zpe_dicts=self.zpe_dicts,
                           times=times,
                           overall_time=overall_time,

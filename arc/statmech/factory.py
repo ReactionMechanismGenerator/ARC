@@ -1,12 +1,10 @@
-#!/usr/bin/env python3
-# encoding: utf-8
-
 """
 A module for generating statmech adapters.
 """
 
-from typing import Type
+from typing import Optional, Type
 
+from arc.level import Level
 from arc.reaction import ARCReaction
 from arc.species.species import ARCSpecies
 from arc.statmech.adapter import StatmechAdapter
@@ -36,8 +34,9 @@ def register_statmech_adapter(statmech_adapter_label: str,
 def statmech_factory(statmech_adapter_label: str,  # add everything that goes into the adapter class init
                      output_directory: str,
                      output_dict: dict,
-                     use_bac: bool,
-                     sp_level: str = '',
+                     bac_type: Optional[str],
+                     sp_level: Optional[Level] = None,
+                     arkane_level_of_theory: Optional[Level] = None,
                      freq_scale_factor: float = 1.0,
                      species: Type[ARCSpecies] = None,
                      reaction: Type[ARCReaction] = None,
@@ -55,9 +54,9 @@ def statmech_factory(statmech_adapter_label: str,  # add everything that goes in
         output_directory (str): The path to the ARC project output directory.
         output_dict (dict): Keys are labels, values are output file paths.
                             See Scheduler for a description of this dictionary.
-        use_bac (bool): Whether or not to use bond additivity corrections (BACs) for thermo calculations.
-        sp_level (str, optional): The level of theory used for the single point energy calculation
-                                  (could be a composite method), used for determining energy corrections.
+        bac_type (str, optional): The bond additivity correction type. 'p' for Petersson- or 'm' for Melius-type BAC.
+                                  ``None`` to not use BAC.
+        sp_level (Level, optional): The level of theory used for energy corrections.
         freq_scale_factor (float, optional): The harmonic frequencies scaling factor.
         species (ARCSpecies, optional): The species object.
         reaction (list, optional): The reaction object.
@@ -72,17 +71,18 @@ def statmech_factory(statmech_adapter_label: str,  # add everything that goes in
     Returns:
         StatmechAdapter: The requested StatmechAdapter instance, initialized with the respective arguments,
     """
-    statmech_adapter_class = _registered_statmech_adapters[statmech_adapter_label](output_directory=output_directory,
-                                                                                   output_dict=output_dict,
-                                                                                   use_bac=use_bac,
-                                                                                   sp_level=sp_level,
-                                                                                   freq_scale_factor=freq_scale_factor,
-                                                                                   species=species,
-                                                                                   reaction=reaction,
-                                                                                   species_dict=species_dict,
-                                                                                   T_min=T_min,
-                                                                                   T_max=T_max,
-                                                                                   T_count=T_count,
-                                                                                   three_params=three_params
-                                                                                   )
+    statmech_adapter_class = \
+        _registered_statmech_adapters[statmech_adapter_label](output_directory=output_directory,
+                                                              output_dict=output_dict,
+                                                              bac_type=bac_type,
+                                                              sp_level=sp_level,
+                                                              freq_scale_factor=freq_scale_factor,
+                                                              species=species,
+                                                              reaction=reaction,
+                                                              species_dict=species_dict,
+                                                              T_min=T_min,
+                                                              T_max=T_max,
+                                                              T_count=T_count,
+                                                              three_params=three_params
+                                                              )
     return statmech_adapter_class

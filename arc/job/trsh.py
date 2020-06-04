@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# encoding: utf-8
-
 """
 The ARC troubleshooting ("trsh") module
 """
@@ -18,8 +15,10 @@ from arc.common import (check_torsion_change,
                         get_logger,
                         is_same_pivot,
                         is_same_sequence_sublist,
-                        is_str_float)
+                        is_str_float,
+                        )
 from arc.exceptions import InputError, SpeciesError, TrshError
+from arc.level import Level
 from arc.job.local import execute_command
 from arc.job.ssh import SSHClient
 from arc.settings import (delete_command,
@@ -29,16 +28,19 @@ from arc.settings import (delete_command,
                           preserve_param_in_scan_stable,
                           rotor_scan_resolution,
                           servers,
-                          submit_filename)
+                          submit_filename,
+                          )
 from arc.species.converter import (ics_to_scan_constraints,
                                    xyz_from_data,
-                                   xyz_to_coords_list)
+                                   xyz_to_coords_list,
+                                   )
 from arc.species.species import determine_rotor_symmetry
 from arc.parser import (parse_1d_scan_coords,
                         parse_normal_displacement_modes,
                         parse_scan_args,
                         parse_scan_conformers,
-                        parse_xyz_from_file)
+                        parse_xyz_from_file,
+                        )
 
 
 logger = get_logger()
@@ -535,9 +537,9 @@ def trsh_scan_job(label: str,
         scan_list (list): Entries are the four-atom scan lists (1-indexed) of all torsions
                            (without duplicate pivots) in this species.
         methods (dict): The troubleshooting method/s to try.
-                        Example:
-                        {'inc_res': None,
-                         'freeze': 'all' or [[1, 2, 3, 4], ...]}
+                        Example::
+                            {'inc_res': None,
+                             'freeze': 'all' or [[1, 2, 3, 4], ...]}
         log_file (str, optional): The related output file path.
 
     Raises:
@@ -718,7 +720,7 @@ def trsh_special_rotor(special_rotor: list,
 
 
 def trsh_ess_job(label: str,
-                 level_of_theory_dict: dict,
+                 level_of_theory: Union[Level, dict, str],
                  server: str,
                  job_status: dict,
                  job_type: str,
@@ -729,13 +731,14 @@ def trsh_ess_job(label: str,
                  cpu_cores: int,
                  ess_trsh_methods: list,
                  available_ess: list = None,
-                 is_h: bool = False):
+                 is_h: bool = False,
+                 ) -> tuple:
     """
     Troubleshoot issues related to the electronic structure software, such as convergence.
 
     Args:
         label (str): The species label.
-        level_of_theory_dict (dict): The original level of theory dictionary of the problematic job.
+        level_of_theory (Union[Level, dict, str]): The original level of theory dictionary of the problematic job.
         server (str): The server used for this job.
         job_status (dict): The ESS job status dictionary with standardized error keywords
                            as generated using the `determine_ess_status` function.
@@ -750,33 +753,25 @@ def trsh_ess_job(label: str,
         is_h (bool): Whether the species is a hydrogen atom (or its isotope). e.g., H, D, T.
 
     Todo:
-        * Change server to one that has the same ESS if running out of disk space.
+        - Don't change the level of theory as a trsh method unless the user explicitly allows it
+        - Change server to one that has the same ESS if running out of disk space.
 
     Returns:
-        output_errors (list): Errors to report.
-    Returns:
-        ess_trsh_methods (list): The updated troubleshooting methods tried for this job.
-    Returns:
-        remove_checkfile (bool): Whether to remove the checkfile from the job, `True` to remove.
-    Returns:
-        level_of_theory_dict (dict): The new level of theory dictionary to use.
-    Returns:
-        software (str, optional): The new ESS software to use.
-    Returns:
-        job_type (str): The new job type to use.
-    Returns:
-        fine (bool): whether the new job should use a fine grid, `True` if it should.
-    Returns:
-        trsh_keyword (str): The troubleshooting keyword to use.
-    Returns:
-        memory (float): The new memory in GB to use for the job.
-    Returns:
-        shift (str): The shift to use (only in Molpro).
-    Returns:
-        cpus (int): The total number of cpu cores requested for a job.
-    Returns:
-        couldnt_trsh (bool): Whether a troubleshooting solution was found. `True` if it was not found.
+        tuple:
+            - output_errors (list): Errors to report.
+            - ess_trsh_methods (list): The updated troubleshooting methods tried for this job.
+            - remove_checkfile (bool): Whether to remove the checkfile from the job, `True` to remove.
+            - level_of_theory (Level): The new level of theory dictionary to use.
+            - software (str, optional): The new ESS software to use.
+            - job_type (str): The new job type to use.
+            - fine (bool): whether the new job should use a fine grid, `True` if it should.
+            - trsh_keyword (str): The troubleshooting keyword to use.
+            - memory (float): The new memory in GB to use for the job.
+            - shift (str): The shift to use (only in Molpro).
+            - cpus (int): The total number of cpu cores requested for a job.
+            - couldnt_trsh (bool): Whether a troubleshooting solution was found. `True` if it was not found.
     """
+    level_of_theory = Level(repr=level_of_theory)
     output_errors = list()
     remove_checkfile, couldnt_trsh = False, False
     trsh_keyword, shift = '', ''
@@ -844,12 +839,12 @@ def trsh_ess_job(label: str,
             ess_trsh_methods.append('int=(Acc2E=14)')
             trsh_keyword = 'int=(Acc2E=14)'
         # suggest spawning a cbs-qb3 job if there are not many heavy atoms
-        elif 'cbs-qb3' not in ess_trsh_methods and level_of_theory_dict['method'] != 'cbs-qb3' \
+        elif 'cbs-qb3' not in ess_trsh_methods and level_of_theory.method != 'cbs-qb3' \
                 and 'scan' not in job_type and num_heavy_atoms <= 15:
             # try running CBS-QB3, which is relatively robust.
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using CBS-QB3')
             ess_trsh_methods.append('cbs-qb3')
-            level_of_theory_dict['method'] = 'cbs-qb3'
+            level_of_theory = Level(method='cbs-qb3')
             job_type = 'composite'
         elif 'Memory' in job_status['keywords'] and 'memory' not in ess_trsh_methods:
             # Increase memory allocation
@@ -858,12 +853,12 @@ def trsh_ess_job(label: str,
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using more memory: {memory} GB '
                         f'instead of {memory_gb} GB')
             ess_trsh_methods.append('memory')
-        elif level_of_theory_dict['method'] != 'cbs-qb3' and 'scf=(qc,nosymm) & CBS-QB3' not in ess_trsh_methods \
+        elif level_of_theory.method != 'cbs-qb3' and 'scf=(qc,nosymm) & CBS-QB3' not in ess_trsh_methods \
                 and 'scan' not in job_type and num_heavy_atoms <= 15:
             # try both qc and nosymm with CBS-QB3
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using scf=(qc,nosymm) with CBS-QB3')
             ess_trsh_methods.append('scf=(qc,nosymm) & CBS-QB3')
-            level_of_theory_dict['method'] = 'cbs-qb3'
+            level_of_theory = Level(method='cbs-qb3')
             trsh_keyword = 'scf=(qc,nosymm)'
         elif 'qchem' not in ess_trsh_methods and job_type != 'composite' and \
                 (available_ess is None or 'qchem' in [ess.lower() for ess in available_ess]):
@@ -901,12 +896,12 @@ def trsh_ess_job(label: str,
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using wB97X-D3/def2-TZVP')
             ess_trsh_methods.append('wB97X-D3/def2-TZVP')
             # try converging with wB97X-D3/def2-TZVP
-            level_of_theory_dict = {'method': 'wb97x-d3', 'basis': 'def2-tzvp'}
+            level_of_theory = Level(method='wb97x-d3', basis='def2-tzvp')
         elif 'b3lyp/6-311++g(d,p)' not in ess_trsh_methods:
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using b3lyp/6-311++g(d,p)')
             ess_trsh_methods.append('b3lyp/6-311++g(d,p)')
             # try converging with B3LYP
-            level_of_theory_dict = {'method': 'b3lyp', 'basis': '6-311++g(d,p)'}
+            level_of_theory = Level(method='b3lyp', basis='6-311++g(d,p)')
         elif 'gaussian' not in ess_trsh_methods \
                 and (available_ess is None or 'gaussian' in [ess.lower() for ess in available_ess]):
             # Try Gaussian
@@ -974,7 +969,7 @@ def trsh_ess_job(label: str,
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using {cpu_cores} cpu cores.')
             if 'cpu' not in ess_trsh_methods:
                 ess_trsh_methods.append('cpu')
-        elif 'dlpno' in level_of_theory_dict['method'] and is_h:
+        elif 'dlpno' in level_of_theory.method and is_h:
             logger.error(f'DLPNO method is not supported for H atom (or its isotope D or T) in Orca.')
             couldnt_trsh = True
         else:
@@ -1053,8 +1048,19 @@ def trsh_ess_job(label: str,
                      f'Tried troubleshooting with the following methods: {ess_trsh_methods}')
         output_errors.append(f'Error: Could not troubleshoot {job_type} for {label}! '
                              f'Tried troubleshooting with the following methods: {ess_trsh_methods}; ')
-    return output_errors, ess_trsh_methods, remove_checkfile, level_of_theory_dict, software, job_type, fine, \
-        trsh_keyword, memory, shift, cpu_cores, couldnt_trsh
+    return (output_errors,
+            ess_trsh_methods,
+            remove_checkfile,
+            level_of_theory,
+            software,
+            job_type,
+            fine,
+            trsh_keyword,
+            memory,
+            shift,
+            cpu_cores,
+            couldnt_trsh,
+            )
 
 
 def trsh_conformer_isomorphism(software: str,
@@ -1098,7 +1104,7 @@ def trsh_conformer_isomorphism(software: str,
 
 def trsh_job_on_server(server: str,
                        job_name: str,
-                       job_id: str,
+                       job_id: Union[int, str],
                        job_server_status: str,
                        remote_path: str,
                        server_nodes: list = None):
@@ -1108,7 +1114,7 @@ def trsh_job_on_server(server: str,
     Args:
         server (str): The server name.
         job_name (str): The job's name (e.g., 'opt_a103').
-        job_id (str): The job's ID on the server.
+        job_id (int, str): The job's ID on the server.
         job_server_status (str): The job server status (either 'initializing', 'running', 'errored', or 'done').
         remote_path (str): The remote path to the job folder.
         server_nodes (list, optional): The nodes already tried on this server for this jobs.
@@ -1420,8 +1426,13 @@ def scan_quality_check(label: str,
     # 3. Check the barrier height
     if (np.max(energies) - np.min(energies)) > maximum_barrier:
         # The barrier for the internal rotation is higher than `maximum_barrier`
-        num_wells = determine_rotor_symmetry(label=label, pivots=pivots, rotor_path='', energies=energies,
-                                             return_num_wells=True)[-1]
+        num_wells = determine_rotor_symmetry(label=label,
+                                             pivots=pivots,
+                                             rotor_path='',
+                                             energies=energies,
+                                             return_num_wells=True,
+                                             log=False,
+                                             )[-1]
         if num_wells == 1:
             invalidate = True
             invalidation_reason = f'The rotor scan has a barrier of {np.max(energies) - np.min(energies):.2f} ' \
@@ -1433,7 +1444,7 @@ def scan_quality_check(label: str,
             return invalidate, invalidation_reason, message, actions
         else:
             logger.warning(f'The maximal barrier for rotor {pivots} of {label} is '
-                           f'{(np.max(energies) - np.min(energies))} kJ/mol, which is higher than the set threshold '
+                           f'{(np.max(energies) - np.min(energies)):.2f} kJ/mol, which is higher than the set threshold '
                            f'of {maximum_barrier} kJ/mol. Since this mode when treated as torsion has {num_wells}, '
                            f'this mode is not invalidated: treating it as a vibrational mode will be less accurate than '
                            f'the hindered rotor treatment, since the entropy contribution from the population of '
