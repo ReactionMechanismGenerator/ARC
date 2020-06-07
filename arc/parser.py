@@ -4,7 +4,7 @@ A module for parsing information from various files.
 
 import os
 import re
-from typing import Match, Optional, Union
+from typing import Dict, List, Match, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -21,9 +21,18 @@ from arc.species.converter import str_to_xyz, xyz_from_data
 logger = get_logger()
 
 
-def parse_frequencies(path, software):
+def parse_frequencies(path: str,
+                      software: str,
+                      ) -> np.ndarray:
     """
     Parse the frequencies from a freq job output file.
+
+    Args:
+        path (str): The log file path.
+        software (str): The ESS.
+
+    Returns:
+        np.ndarray: The parsed frequencies (in cm^-1).
     """
     lines = _get_lines_from_file(path)
     freqs = np.array([], np.float64)
@@ -99,7 +108,9 @@ def parse_frequencies(path, software):
     return freqs
 
 
-def parse_normal_displacement_modes(path, software=None):
+def parse_normal_displacement_modes(path: str,
+                                    software: Optional[str] = None,
+                                    ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Parse frequencies and normal displacement modes.
 
@@ -107,13 +118,11 @@ def parse_normal_displacement_modes(path, software=None):
         path (str): The path to the log file.
         software (str, optional): The software to used to generate the log file.
 
-    Returns:
-        tuple[np.ndarray: The frequencies (cm^-1),
-              np.ndarray: The normal displacement modes,
-             ]
-
     Raises:
         NotImplementedError: If the parser is not implemented for the ESS this log file belongs to.
+
+    Returns:
+        Tuple[np.ndarray, np.ndarray]: The frequencies (in cm^-1) and The normal displacement modes.
     """
     software = software or determine_ess(path)
     freqs, normal_disp_modes, normal_disp_modes_entries = list(), list(), list()
@@ -156,7 +165,7 @@ def parse_normal_displacement_modes(path, software=None):
     return freqs, normal_disp_modes
 
 
-def parse_geometry(path):
+def parse_geometry(path: str) -> Optional[Dict[str, tuple]]:
     """
     Parse the xyz geometry from an ESS log file.
 
@@ -164,7 +173,7 @@ def parse_geometry(path):
         path (str): The ESS log file to parse from.
 
     Returns:
-        dict: The geometry.
+        Optional[Dict[str, tuple]]: The cartesian geometry.
     """
     log = ess_factory(fullpath=path)
     try:
@@ -195,9 +204,15 @@ def parse_geometry(path):
     return xyz_from_data(coords=coords, numbers=number)
 
 
-def parse_t1(path):
+def parse_t1(path: str) -> Optional[float]:
     """
     Parse the T1 parameter from a Molpro or Orca coupled cluster calculation.
+
+    Args:
+        path (str): The ess log file path.
+
+    Returns:
+        Optional[float]: The T1 parameter.
     """
     if not os.path.isfile(path):
         raise InputError('Could not find file {0}'.format(path))
@@ -210,16 +225,18 @@ def parse_t1(path):
     return t1
 
 
-def parse_e_elect(path, zpe_scale_factor=1.):
+def parse_e_elect(path: str,
+                  zpe_scale_factor: float = 1.,
+                  ) -> Optional[float]:
     """
     Parse the electronic energy from an sp job output file.
 
     Args:
         path (str): The ESS log file to parse from.
-        zpe_scale_factor: The ZPE scaling factor, used only for composite methods in Gaussian via Arkane.
+        zpe_scale_factor (float): The ZPE scaling factor, used only for composite methods in Gaussian via Arkane.
 
     Returns:
-        float: The electronic energy in kJ/mol
+        Optional[float]: The electronic energy in kJ/mol.
     """
     if not os.path.isfile(path):
         raise InputError(f'Could not find file {path}')
@@ -232,7 +249,7 @@ def parse_e_elect(path, zpe_scale_factor=1.):
     return e_elect
 
 
-def parse_zpe(path):
+def parse_zpe(path: str) -> Optional[float]:
     """
     Determine the calculated ZPE from a frequency output file
 
@@ -240,7 +257,7 @@ def parse_zpe(path):
         path (str): The path to a frequency calculation output file.
 
     Returns:
-        float: The calculated zero point energy in kJ/mol.
+        Optional[float]: The calculated zero point energy in kJ/mol.
     """
     if not os.path.isfile(path):
         raise InputError('Could not find file {0}'.format(path))
@@ -253,20 +270,19 @@ def parse_zpe(path):
     return zpe
 
 
-def parse_1d_scan_energies(path):
+def parse_1d_scan_energies(path: str) -> Tuple[Optional[List[float]], Optional[List[float]]]:
     """
     Parse the 1D torsion scan energies from an ESS log file.
 
     Args:
         path (str): The ESS log file to parse from.
 
-    Returns:
-        tuple[list: The electronic energy in kJ/mol,
-              list: The dihedral scan angle in degrees,
-             ]
-
     Raises:
         InputError: If ``path`` is invalid.
+
+    Returns:
+        Tuple[Optional[List[float]], Optional[List[float]]]:
+            The electronic energy in kJ/mol and the dihedral scan angle in degrees.
     """
     if not os.path.isfile(path):
         raise InputError(f'Could not find file {path}')
@@ -281,7 +297,7 @@ def parse_1d_scan_energies(path):
     return energies, angles
 
 
-def parse_1d_scan_coords(path):
+def parse_1d_scan_coords(path: str) -> List[Dict[str, tuple]]:
     """
     Parse the 1D torsion scan coordinates from an ESS log file.
 
@@ -289,7 +305,7 @@ def parse_1d_scan_coords(path):
         path (str): The ESS log file to parse from.
 
     Returns:
-        list: The Cartesian coordinates
+        list: The Cartesian coordinates.
     """
     lines = _get_lines_from_file(path)
     log = ess_factory(fullpath=path)
@@ -315,7 +331,10 @@ def parse_1d_scan_coords(path):
     return traj
 
 
-def parse_nd_scan_energies(path, software=None, return_original_dihedrals=False):
+def parse_nd_scan_energies(path: str,
+                           software: Optional[str] = None,
+                           return_original_dihedrals: bool = False,
+                           ) -> Tuple[dict, Optional[List[float]]]:
     """
     Parse the ND torsion scan energies from an ESS log file.
 
@@ -325,9 +344,12 @@ def parse_nd_scan_energies(path, software=None, return_original_dihedrals=False)
         return_original_dihedrals (bool, optional): Whether to return the dihedral angles of the original conformer.
                                                     ``True`` to return, default is ``False``.
 
+    Raises:
+        InputError: If ``path`` is invalid.
+
     Returns:
-        tuple[
-            dict: The "results" dictionary, which has the following structure::
+        Tuple[dict, Optional[List[float]]]:
+            The "results" dictionary, which has the following structure::
 
                   results = {'directed_scan_type': <str, used for the fig name>,
                              'scans': <list, entries are lists of torsion indices>,
@@ -338,11 +360,7 @@ def parse_nd_scan_energies(path, software=None, return_original_dihedrals=False)
                                                 'is_isomorphic': <bool>,
                                                 'trsh': <list, job.ess_trsh_methods>}>
                              },
-            list, optional: The dihedrals angles of the original conformer,
-             ]
-
-    Raises:
-        InputError: If ``path`` is invalid.
+            The dihedrals angles of the original conformer
     """
     software = software or determine_ess(path)
     results = {'directed_scan_type': f'ess_{software}',
@@ -490,10 +508,10 @@ def parse_nd_scan_energies(path, software=None, return_original_dihedrals=False)
     if return_original_dihedrals:
         return results, original_dihedrals
     else:
-        return results
+        return results, None
 
 
-def parse_xyz_from_file(path) -> dict:
+def parse_xyz_from_file(path: str) -> Optional[Dict[str, tuple]]:
     """
     Parse xyz coordinated from:
     - .xyz: XYZ file
@@ -504,11 +522,11 @@ def parse_xyz_from_file(path) -> dict:
     Args:
         path (str): The file path.
 
-    Returns:
-        dict: The parsed coordinates.
-
     Raises:
         ParserError: If the coordinates could not be parsed.
+
+    Returns:
+        Optional[Dict[str, tuple]]: The parsed cartesian coordinates.
     """
     lines = _get_lines_from_file(path)
     file_extension = os.path.splitext(path)[1]
@@ -558,7 +576,7 @@ def parse_xyz_from_file(path) -> dict:
     return xyz
 
 
-def parse_trajectory(path: str) -> list:
+def parse_trajectory(path: str) -> List[Dict[str, tuple]]:
     """
     Parse all geometries from an xyz trajectory file or an ESS output file.
 
@@ -569,7 +587,7 @@ def parse_trajectory(path: str) -> list:
         ParserError: If the trajectory could not be read.
 
     Returns:
-        list: Entries are xyz's on the trajectory.
+        List[Dict[str, tuple]]: Entries are xyz's on the trajectory.
     """
     lines = _get_lines_from_file(path)
 
@@ -635,9 +653,15 @@ def parse_trajectory(path: str) -> list:
     return traj
 
 
-def parse_dipole_moment(path):
+def parse_dipole_moment(path: str) -> Optional[float]:
     """
     Parse the dipole moment in Debye from an opt job output file.
+
+    Args:
+        path: The ESS log file.
+
+    Returns:
+        Optional[float]: The dipole moment in Debye.
     """
     lines = _get_lines_from_file(path)
     log = ess_factory(path)
@@ -696,9 +720,15 @@ def parse_dipole_moment(path):
     return dipole_moment
 
 
-def parse_polarizability(path):
+def parse_polarizability(path: str) -> Optional[float]:
     """
     Parse the polarizability from a freq job output file, returns the value in Angstrom^3.
+
+    Args:
+        path: The ESS log file.
+
+    Returns:
+        Optional[float]: The polarizability in Angstrom^3.
     """
     lines = _get_lines_from_file(path)
     polarizability = None
@@ -710,18 +740,18 @@ def parse_polarizability(path):
     return polarizability
 
 
-def _get_lines_from_file(path) -> list:
+def _get_lines_from_file(path: str) -> List[str]:
     """
     A helper function for getting a list of lines from a file.
 
     Args:
         path (str): The file path.
 
-    Returns:
-        list: Entries are lines from the file.
-
     Raises:
         InputError: If the file could not be read.
+
+    Returns:
+        List[str]: Entries are lines from the file.
     """
     if os.path.isfile(path):
         with open(path, 'r') as f:
@@ -731,7 +761,7 @@ def _get_lines_from_file(path) -> list:
     return lines
 
 
-def process_conformers_file(conformers_path):
+def process_conformers_file(conformers_path: str) -> Tuple[List[Dict[str, tuple]], List[float]]:
     """
     Parse coordinates and energies from an ARC conformers file of either species or TSs.
 
@@ -740,13 +770,12 @@ def process_conformers_file(conformers_path):
                                (either a "conformers_before_optimization" or
                                a "conformers_after_optimization" file).
 
-    Returns:
-        tuple[list: Entries are conformer coordinates in a dict format,
-              list: Entries float numbers representing the energies in kJ/mol,
-             ]
-
     Raises:
         InputError: If the file could not be found.
+
+    Returns:
+        Tuple[List[Dict[str, tuple]], List[float]]:
+            Conformer coordinates in a dict format, the respective energies in kJ/mol.
     """
     if not os.path.isfile(conformers_path):
         raise InputError('Conformers file {0} could not be found'.format(conformers_path))
@@ -779,7 +808,7 @@ def parse_str_blocks(file_path: str,
                      regex: bool = True,
                      tail_count: int = 1,
                      block_count: int = 1,
-                     ) -> list:
+                     ) -> List[str]:
     """
     Return a list of blocks defined by the head pattern and the tail pattern.
 
@@ -795,7 +824,7 @@ def parse_str_blocks(file_path: str,
         InputError: If the file could not be found.
 
     Returns:
-        list: List of str blocks
+        List[str]: List of str blocks.
     """
     if not os.path.isfile(file_path):
         raise InputError('Could not find file {0}'.format(file_path))
@@ -962,7 +991,7 @@ def parse_ic_info(file_path: str) -> pd.DataFrame:
     return ic_info
 
 
-def parse_ic_values(ic_block: list,
+def parse_ic_values(ic_block: List[str],
                     software: Optional[str] = None,
                     ) -> pd.DataFrame:
     """
@@ -998,8 +1027,8 @@ def parse_ic_values(ic_block: list,
 
 def parse_scan_conformers(file_path: str) -> pd.DataFrame:
     """
-    Parse all the internal coordinates of all the scan intermediate conformers and tablet
-    all the infos into a single DataFrame object. Any redundant internal coordinates
+    Parse all the internal coordinates of all the scan intermediate conformers and tabulate
+    all the info into a single DataFrame object. Any redundant internal coordinates
     will be removed during the process.
 
     Args:
