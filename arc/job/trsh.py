@@ -25,7 +25,7 @@ from arc.settings import (delete_command,
                           inconsistency_ab,
                           inconsistency_az,
                           maximum_barrier,
-                          preserve_param_in_scan_stable,
+                          preserve_params_in_scan,
                           rotor_scan_resolution,
                           servers,
                           submit_filename,
@@ -1247,7 +1247,6 @@ def scan_quality_check(label: str,
         scan_rotor = scan_conformers[scan_conformers['scan'] == True]
 
         # 1.1 Find significant changes of internal coordinates
-        threshold = preserve_param_in_scan_stable
         expected_step_num = int(360 / scan_res)
         # 5 below referes to type, atoms, scan, redundant and initial guess
         actual_step_num = scan_conformers.shape[1] - 5
@@ -1267,16 +1266,16 @@ def scan_quality_check(label: str,
                 continue
             # Identify changes by type
             bond_change = (2 * (bonds[index_1] - bonds[index_2]) /
-                          (bonds[index_1] + bonds[index_2])).abs() > threshold['bond']
-            angle_change = (angles[index_1] - angles[index_2]).abs() > threshold['angle']
+                          (bonds[index_1] + bonds[index_2])).abs() > preserve_params_in_scan['bond']
+            angle_change = (angles[index_1] - angles[index_2]).abs() > preserve_params_in_scan['angle']
             non_scan_rotor_change = check_torsion_change(torsions=non_scan_rotor,
                                                          index_1=index_1,
                                                          index_2=index_2,
-                                                         threshold=threshold['torsion'])
+                                                         threshold=preserve_params_in_scan['torsion'])
             scan_rotor_change = check_torsion_change(torsions=scan_rotor,
                                                      index_1=index_1,
                                                      index_2=index_2,
-                                                     threshold=threshold['torsion'],
+                                                     threshold=preserve_params_in_scan['torsion'],
                                                      delta=delta)
             # Summarize changes
             change_sum = pd.concat([bond_change, angle_change,

@@ -142,12 +142,13 @@ default_levels_of_theory = {'conformer': 'wb97xd/def2svp',  # it's recommended t
 # Orca
 # ARC accepts all the Orca options listed in the dictionary below. For specifying additional Orca options, please see
 # documentation and Orca manual.
-orca_default_options_dict = {'opt': {'keyword': {'opt_convergence': 'NormalOpt',
-                                                 'fine_opt_convergence': 'TightOpt'}},
-                             'freq': {'keyword': {'use_num_freq': False}},
-                             'global': {'keyword': {'scf_convergence': 'TightSCF',
-                                                    'dlpno_threshold': 'normalPNO'}}
-                             }
+orca_default_options_dict = {
+    'opt': {'keyword': {'opt_convergence': 'NormalOpt',
+                        'fine_opt_convergence': 'TightOpt'}},
+    'freq': {'keyword': {'use_num_freq': False}},
+    'global': {'keyword': {'scf_convergence': 'TightSCF',
+                           'dlpno_threshold': 'normalPNO'}},
+}
 
 # default_ts_methods = ['QST2', 'DEGSM', 'NEB', 'Kinbot', 'AutoTST']
 default_ts_methods = []
@@ -166,16 +167,20 @@ maximum_barrier = 40    # a rotor threshold (kJ/mol) above which the mode will b
 minimum_barrier = 1.0   # a rotor threshold (kJ/mol) below which it is considered a FreeRotor. Default: 1.0 kJ/mol
 inconsistency_az = 5    # maximum allowed inconsistency (kJ/mol) between initial and final rotor scan points. Default: 5
 inconsistency_ab = 0.3  # maximum allowed inconsistency between consecutive points in the scan given as a fraction
-                        #  of the maximum scan energy. Default: 30%
-# Thresholds for identifying significant change in bond distance, bond angle,
-# or torsion angle during a rotor scan of a stable molecule (not TS)
-preserve_param_in_scan_stable = {'bond': 0.1,  # Default: 10%
-                                 'angle': 10,  # Default: 10 degrees
-                                 'torsion': 20}  # Default: 20 degrees
+                        # of the maximum scan energy. Default: 30%
+
+# Thresholds for identifying significant changes in bond distance, bond angle,
+# or torsion angle during a rotor scan. For a TS, only 'bond' and 'torsion' are considered.
+preserve_params_in_scan = {
+    'bond': 0.1,  # Default: 10% of the original bond length
+    'angle': 10,  # Default: 10 degrees
+    'dihedral': 20,  # Default: 20 degrees
+}
 
 # Default job memory, cpu, time settings
-default_job_settings = {'job_total_memory_gb': 14,
-                        'job_cpu_cores': 8,
-                        'job_time_limit_hrs': 120,
-                        'job_max_server_node_memory_allocation': 0.8,  # e.g., at most 80% node memory will be used
-                        }
+default_job_settings = {
+    'job_total_memory_gb': 14,
+    'job_cpu_cores': 8,
+    'job_time_limit_hrs': 120,
+    'job_max_server_node_memory_allocation': 0.8,  # e.g., at most 80% node memory will be used
+}
