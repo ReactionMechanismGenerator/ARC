@@ -977,20 +977,19 @@ class ARCSpecies(object):
         if self.rotors_dict is None:
             # this species was marked to skip rotor scans (.rotors_dict is not initialized as an empty dict but as None)
             return
-        if self.mol_list is not None and len(self.mol_list):
-            for mol in self.mol_list:
-                if mol is None:
-                    logger.error(f'Cannot determine rotors for species {self.label} without a .mol attribute.')
-                    continue
-                rotors = conformers.find_internal_rotors(mol)
-                for new_rotor in rotors:
-                    for existing_rotor in self.rotors_dict.values():
-                        if existing_rotor['pivots'] == new_rotor['pivots']:
-                            break
-                    else:
-                        self.rotors_dict[self.number_of_rotors] = new_rotor
-                        self.number_of_rotors += 1
-        elif not self.is_ts:
+        mol_list = self.mol_list or [self.mol]
+        for mol in mol_list:
+            if mol is None:
+                continue
+            rotors = conformers.find_internal_rotors(mol)
+            for new_rotor in rotors:
+                for existing_rotor in self.rotors_dict.values():
+                    if existing_rotor['pivots'] == new_rotor['pivots']:
+                        break
+                else:
+                    self.rotors_dict[self.number_of_rotors] = new_rotor
+                    self.number_of_rotors += 1
+        if (mol_list is None or not mol_list or all([mol is None for mol in mol_list])) and not self.is_ts:
             logger.error(f'Could not determine rotors for {self.label} without a 2D graph structure')
 
         if self.number_of_rotors == 1:
