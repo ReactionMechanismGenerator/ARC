@@ -368,3 +368,26 @@ def get_vector_length(v: List[float]) -> float:
         float: The vector's length.
     """
     return float(np.dot(v, v) ** 0.5)
+
+
+def get_delta_angle(a1: float,
+                    a2: float,
+                    ) -> float:
+    """
+    Get the difference between two (dihedral or regular) angles.
+
+    Examples::
+        3 - 1 = 2
+        1 - 3 = 2
+        1- 359 = 2
+
+    Args:
+        a1 (float): Angle 1 in degrees.
+        a2 (float): Angle 2 in degrees.
+
+    Returns:
+        float: THe difference between the angles in degrees.
+    """
+    a1 %= 360
+    a2 %= 360
+    return min(abs(a1 - a2), abs(a1 + 360 - a2), abs(a1 - a2 - 360))
