@@ -403,11 +403,12 @@ class ARCSpecies(object):
                     self.mol = rmg_mol_from_inchi(inchi)
                 elif smiles:
                     self.mol = Molecule(smiles=smiles)
+            # Perceive molecule from xyz coordinates. This also populates the .mol attribute of the Species.
+            # It overrides self.mol generated from adjlist or smiles so xyz and mol will have the same atom order.
+            if self.final_xyz or self.initial_xyz or self.most_stable_conformer or self.conformers:
+                self.mol_from_xyz(get_cheap=False)
             if not self.is_ts:
-                # Perceive molecule from xyz coordinates. This also populates the .mol attribute of the Species.
-                # It overrides self.mol generated from adjlist or smiles so xyz and mol will have the same atom order.
-                if self.final_xyz or self.initial_xyz or self.most_stable_conformer or self.conformers:
-                    self.mol_from_xyz(get_cheap=False)
+                # We don't care about BACs in TSs
                 if self.mol is None:
                     if self.compute_thermo:
                         logger.warning(f'No structure (SMILES, adjList, RMG Species, or RMG Molecule) was given for '
@@ -420,7 +421,7 @@ class ARCSpecies(object):
                         if self.bond_corrections:
                             self.long_thermo_description += 'Bond corrections: {0}\n'.format(self.bond_corrections)
 
-            elif not self.bond_corrections and self.compute_thermo:
+            if not self.bond_corrections and self.compute_thermo:
                 logger.warning(f'Cannot determine bond additivity corrections (BAC) for species {self.label} based on '
                                f'xyz coordinates only. For better thermoproperties, provide bond corrections.')
 
@@ -714,7 +715,7 @@ class ARCSpecies(object):
                 self.mol = rmg_mol_from_inchi(inchi)
             elif smiles is not None:
                 self.mol = Molecule(smiles=smiles)
-        if self.mol is None and not self.is_ts:
+        if self.mol is None:
             self.mol_from_xyz()
         if self.mol is not None:
             if 'bond_corrections' not in species_dict:
