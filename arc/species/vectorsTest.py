@@ -423,6 +423,18 @@ H      -0.56460509    0.87663914    1.25780346""")
         # --> Returns a unit vector pointing from the pivotal (nitrogen) atom towards its lone electron pairs orbital.
         self.assertAlmostEqual(vectors.get_vector_length(v1), 1)
 
+    def test_get_delta_angle(self):
+        """Test calculating a difference between two angles"""
+        self.assertEqual(vectors.get_delta_angle(3, 1), 2.0)
+        self.assertEqual(vectors.get_delta_angle(1, 3), 2.0)
+        self.assertEqual(vectors.get_delta_angle(3.5, 1.2), 2.3)
+        self.assertEqual(vectors.get_delta_angle(0, 300), 60.0)
+        self.assertEqual(vectors.get_delta_angle(0, -60), 60.0)
+        self.assertEqual(vectors.get_delta_angle(-370, -60), 50.0)
+        self.assertEqual(vectors.get_delta_angle(1, 359), 2.0)
+        self.assertEqual(vectors.get_delta_angle(372, 359), 13.0)
+        self.assertAlmostEqual(vectors.get_delta_angle(730, 10.1), 0.1)
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
