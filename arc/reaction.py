@@ -68,8 +68,18 @@ class ARCReaction(object):
                      corresponding TS :ref:`ARCSpecies <species>` object.
         ts_label (str): The :ref:`ARCSpecies <species>` label of the respective TS.
     """
-    def __init__(self, label='', reactants=None, products=None, ts_label=None, rmg_reaction=None,
-                 ts_methods=None, ts_xyz_guess=None, multiplicity=None, charge=0, reaction_dict=None):
+    def __init__(self,
+                 label: str = '',
+                 reactants: Optional[List[str]] = None,
+                 products: Optional[List[str]] = None,
+                 ts_label: Optional[str] = None,
+                 rmg_reaction: Optional[Reaction] = None,
+                 ts_methods: Optional[List[str]] = None,
+                 ts_xyz_guess: Optional[list] = None,
+                 multiplicity: Optional[int] = None,
+                 charge: int = 0,
+                 reaction_dict: Optional[dict] = None,
+                 ):
         self.arrow = ' <=> '
         self.plus = ' + '
         self.r_species = list()
