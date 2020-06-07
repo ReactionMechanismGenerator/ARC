@@ -1302,6 +1302,21 @@ H       1.11582953    0.94384729   -0.10134685"""
         self.assertFalse(check_atom_balance(entry_wrong, entry_dict))
         self.assertFalse(check_atom_balance(entry_mol, entry_wrong))
 
+    def test_ts_mol_attribute(self):
+        """Test that a TS species has a .mol attribute generated from xyz"""
+        ts_xyz = """O      -0.63023600    0.92494700    0.43958200
+C       0.14513500   -0.07880000   -0.04196400
+C      -0.97050300   -1.02992900   -1.65916600
+N      -0.75664700   -2.16458700   -1.81286400
+H      -1.25079800    0.57954500    1.08412300
+H       0.98208300    0.28882200   -0.62114100
+H       0.30969500   -0.94370100    0.59100600
+H      -1.47626400   -0.10694600   -1.88883800"""
+        ts_spc = ARCSpecies(label='TS', is_ts=True, xyz=ts_xyz)
+        ts_spc.mol_from_xyz()
+        self.assertEqual(ts_spc.mol.to_smiles(), 'C#N.[CH2]O')
+        self.assertEqual(len(ts_spc.mol.atoms), 8)
+
     @classmethod
     def tearDownClass(cls):
         """
