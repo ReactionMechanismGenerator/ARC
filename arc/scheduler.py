@@ -352,7 +352,7 @@ class Scheduler(object):
                 raise SpeciesError(f'Each species in `species_list` has to have a unique label. '
                                    f'Label of species {species.label} is not unique.')
             if species.mol is None and not species.is_ts:
-                # we'll attempt to infer ,mol for a TS after we attain xyz for it
+                # we'll attempt to infer .mol for a TS after we attain xyz for it
                 # for a non-TS, this attribute should be set by this point
                 self.output[species.label]['errors'] = 'Could not infer a 2D graph (a .mol species attribute); '
             self.unique_species_labels.append(species.label)
@@ -540,19 +540,7 @@ class Scheduler(object):
                         if successful_server_termination:
                             success = self.parse_composite_geo(label=label, job=job)
                             if success:
-                                if not self.composite_method:
-                                    # This wasn't originally a composite method, probably troubleshooted as such
-                                    self.run_opt_job(label, fine=self.fine_only)
-                                else:
-                                    if self.job_types['irc'] and self.species_dict[label].is_ts:
-                                        self.run_irc_job(label=label, irc_direction='forward')
-                                        self.run_irc_job(label=label, irc_direction='reverse')
-                                    if self.species_dict[label].number_of_atoms > 1:
-                                        self.run_freq_job(label)
-                                    self.run_scan_jobs(label)
-                                    if self.job_types['onedmin'] and not self.species_dict[label].is_ts \
-                                            and self.composite_method:
-                                        self.run_onedmin_job(label)
+                                self.spawn_post_opt_jobs(label=label, job_name=job_name)
                         self.timer = False
                         break
                     elif 'directed_scan' in job_name \
@@ -1297,7 +1285,10 @@ class Scheduler(object):
                          radius=self.species_dict[label].radius,
                          )
 
-    def spawn_post_opt_jobs(self, label: str, job_name: str):
+    def spawn_post_opt_jobs(self,
+                            label: str,
+                            job_name: str,
+                            ):
         """
         Spawn additional jobs after opt has converged.
 
@@ -1305,19 +1296,26 @@ class Scheduler(object):
             label (str): The species label.
             job_name (str): The opt job name (used for differentiating between ``opt`` and ``optfreq`` jobs).
         """
-        if self.composite_method:
+        composite = 'composite' in job_name  # Whether "post composite jobs" need to be spawned
+        if not composite and self.composite_method:
             # This was originally a composite method, probably troubleshooted as 'opt'
             self.run_composite_job(label)
+        elif composite and not self.composite_method:
+            # This wasn't originally a composite method, probably troubleshooted as such
+            self.run_opt_job(label, fine=self.fine_only)
         else:
             if self.job_types['irc'] and self.species_dict[label].is_ts:
                 self.run_irc_job(label=label, irc_direction='forward')
                 self.run_irc_job(label=label, irc_direction='reverse')
             if self.species_dict[label].number_of_atoms > 1:
                 if 'freq' not in job_name:
+                    # this is either an opt or a composite job, spawn freq
                     self.run_freq_job(label)
-                else:  # this is an 'optfreq' job type, don't run freq
+                elif not composite:
+                    # this is an 'optfreq' job type, don't run freq
                     self.check_freq_job(label=label, job=self.job_dict[label]['optfreq'][job_name])
-            self.run_sp_job(label)
+            if not composite:
+                self.run_sp_job(label)
             if self.species_dict[label].mol is None:
                 # useful for TS species where xyz might not be given to perceive a .mol attribute,
                 # and a user guess, if provided, cannot always be trusted
@@ -1325,6 +1323,11 @@ class Scheduler(object):
             if not self.species_dict[label].rotors_dict:
                 self.species_dict[label].determine_rotors()
             self.run_scan_jobs(label)
+
+        if composite and self.composite_method:
+            self.post_sp_actions(label=label,
+                                 sp_path=os.path.join(self.job_dict[label]['composite'][job_name].local_path,
+                                                      'output.out'))
 
         if self.job_types['orbitals'] and 'orbitals' not in self.job_dict[label]:
             self.run_orbitals_job(label)
