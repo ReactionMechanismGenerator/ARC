@@ -770,6 +770,8 @@ def save_kinetics_lib(rxn_list, path, name, lib_long_desc):
                     data=rxn.kinetics,
                     label=rxn.label)
                 rxn.ts_species.make_ts_report()
+                if 'rotors' not in rxn.ts_species.long_thermo_description:
+                    rxn.ts_species.long_thermo_description += '\nNo rotors considered for this TS.'
                 entry.long_desc = f'{rxn.ts_species.ts_report}\n\n' \
                                   f'TS external symmetry: {rxn.ts_species.external_symmetry}, ' \
                                   f'TS optical isomers: {rxn.ts_species.optical_isomers}\n\n' \
