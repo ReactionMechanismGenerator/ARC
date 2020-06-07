@@ -1318,6 +1318,12 @@ class Scheduler(object):
                 else:  # this is an 'optfreq' job type, don't run freq
                     self.check_freq_job(label=label, job=self.job_dict[label]['optfreq'][job_name])
             self.run_sp_job(label)
+            if self.species_dict[label].mol is None:
+                # useful for TS species where xyz might not be given to perceive a .mol attribute,
+                # and a user guess, if provided, cannot always be trusted
+                self.species_dict[label].mol_from_xyz()
+            if not self.species_dict[label].rotors_dict:
+                self.species_dict[label].determine_rotors()
             self.run_scan_jobs(label)
 
         if self.job_types['orbitals'] and 'orbitals' not in self.job_dict[label]:
