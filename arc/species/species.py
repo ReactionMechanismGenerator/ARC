@@ -737,7 +737,7 @@ class ARCSpecies(object):
         if self.mol is None:
             self.mol_from_xyz()
         if self.mol is not None:
-            if 'bond_corrections' not in species_dict:
+            if 'bond_corrections' not in species_dict and not self.is_ts:
                 self.bond_corrections = enumerate_bonds(self.mol)
                 if self.bond_corrections:
                     self.long_thermo_description += f'Bond corrections: {self.bond_corrections}\n'
@@ -990,7 +990,7 @@ class ARCSpecies(object):
                     else:
                         self.rotors_dict[self.number_of_rotors] = new_rotor
                         self.number_of_rotors += 1
-        else:
+        elif not self.is_ts:
             logger.error(f'Could not determine rotors for {self.label} without a 2D graph structure')
 
         if self.number_of_rotors == 1:
