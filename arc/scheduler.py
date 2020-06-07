@@ -306,9 +306,17 @@ class Scheduler(object):
                 elif len(rxn.ts_xyz_guess) > 1 and all(['user guess' not in method for method in rxn.ts_methods]):
                     rxn.ts_methods.append(f'{len(rxn.ts_xyz_guess)} user guesses')
                 if not any([spc.label == rxn.ts_label for spc in self.species_list]):
-                    ts_species = ARCSpecies(is_ts=True, label=rxn.ts_label, rxn_label=rxn.label,
-                                            multiplicity=rxn.multiplicity, charge=rxn.charge, compute_thermo=False,
-                                            ts_methods=rxn.ts_methods, ts_number=rxn.index)
+                    ts_species = ARCSpecies(
+                        is_ts=True,
+                        label=rxn.ts_label,
+                        rxn_label=rxn.label,
+                        multiplicity=rxn.multiplicity,
+                        charge=rxn.charge,
+                        compute_thermo=False,
+                        ts_methods=rxn.ts_methods,
+                        ts_number=rxn.index,
+                        preserve_param_in_scan=rxn.preserve_param_in_scan,
+                    )
                     ts_species.number_of_atoms = sum(reactant.number_of_atoms for reactant in rxn.r_species)
                     self.species_list.append(ts_species)
                     self.species_dict[ts_species.label] = ts_species
@@ -327,8 +335,13 @@ class Scheduler(object):
                 rxn.ts_species = ts_species
                 # Generate TSGuess objects for all methods, start with the user guesses
                 for i, user_guess in enumerate(rxn.ts_xyz_guess):  # this is a list of guesses, could be empty
-                    ts_species.ts_guesses.append(TSGuess(method=f'user guess {i}', xyz=user_guess,
-                                                         rmg_reaction=rxn.rmg_reaction))
+                    ts_species.ts_guesses.append(
+                        TSGuess(
+                            method=f'user guess {i}',
+                            xyz=user_guess,
+                            rmg_reaction=rxn.rmg_reaction,
+                        )
+                    )
                 rxn.check_atom_balance()
 
         for species in self.species_list:
@@ -2324,10 +2337,20 @@ class Scheduler(object):
                               f'be read. Invalidating rotor.'
                     logger.error(message)
                     break
+                trajectory = parser.parse_1d_scan_coords(path=job.local_path_to_output_file) \
+                    if self.species_dict[label].is_ts else None
                 invalidate, invalidation_reason, message, actions = scan_quality_check(
-                    label=label, pivots=job.pivots, energies=energies, scan_res=job.scan_res,
+                    label=label,
+                    pivots=job.pivots,
+                    energies=energies,
+                    scan_res=job.scan_res,
                     used_methods=self.species_dict[label].rotors_dict[i]['trsh_methods'], 
-                    log_file=job.local_path_to_output_file)
+                    log_file=job.local_path_to_output_file,
+                    species=self.species_dict[label],
+                    preserve_params=self.species_dict[label].preserve_param_in_scan,
+                    trajectory=trajectory,
+                    original_xyz=self.species_dict[label].final_xyz,
+                )
 
                 if len(actions):
                     # the rotor scan is problematic, troubleshooting is required
