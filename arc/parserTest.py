@@ -277,11 +277,11 @@ H      -0.59436200   -0.94730400    0.00000000"""
         """Test parsing an ND scan output file"""
         path1 = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'scan_2D_relaxed_OCdOO.log')
         results = parser.parse_nd_scan_energies(path=path1, software='gaussian')
-        self.assertEqual(results['directed_scan_type'], 'ess_gaussian')
-        self.assertEqual(results['scans'], [(4, 1, 2, 5), (4, 1, 3, 6)])
-        self.assertEqual(len(list(results.keys())), 3)
-        self.assertEqual(len(list(results['directed_scan'].keys())), 36 * 36 + 1)  # 1297
-        self.assertAlmostEqual(results['directed_scan']['170.00', '40.00']['energy'], 26.09747088)
+        self.assertEqual(results[0]['directed_scan_type'], 'ess_gaussian')
+        self.assertEqual(results[0]['scans'], [(4, 1, 2, 5), (4, 1, 3, 6)])
+        self.assertEqual(len(list(results[0].keys())), 3)
+        self.assertEqual(len(list(results[0]['directed_scan'].keys())), 36 * 36 + 1)  # 1297
+        self.assertAlmostEqual(results[0]['directed_scan']['170.00', '40.00']['energy'], 26.09747088)
 
     def test_parse_dipole_moment(self):
         """Test parsing the dipole moment from an opt job output file"""

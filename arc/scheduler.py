@@ -1612,7 +1612,7 @@ class Scheduler(object):
                 trshed_points = 0
                 if rotor_dict['directed_scan_type'] == 'ess':
                     # parse the single output file
-                    results = parser.parse_nd_scan_energies(path=rotor_dict['scan_path'])
+                    results = parser.parse_nd_scan_energies(path=rotor_dict['scan_path'])[0]
                 else:
                     results = {'directed_scan_type': rotor_dict['directed_scan_type'],
                                'scans': rotor_dict['scan'],
