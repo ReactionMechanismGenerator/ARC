@@ -4044,6 +4044,14 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         self.assertTrue(almost_equal_coords_lists(new_xyz, expected_xyz))
         self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol4), new_val, 5)
 
+        # test 1-indexed input
+        indices = [5, 4, 2, 1]
+        new_xyz = converter.modify_coords(coords=xyz4, indices=indices, new_value=new_val,
+                                          modification_type=modification_type, mol=mol4, index=1)
+        self.assertTrue(almost_equal_coords_lists(new_xyz, expected_xyz))
+        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol4, index=1),
+                               new_val, 5)
+
     def test_compare_zmats(self):
         """Test determining whether two conformers have almost equal internal coordinates (zmats)"""
         z_1 = {'symbols': ('N', 'N', 'H', 'H'),
