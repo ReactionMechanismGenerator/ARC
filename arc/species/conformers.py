@@ -1470,7 +1470,7 @@ def find_internal_rotors(mol):
     Returns:
         list: Entries are rotor dictionaries with the four-atom scan coordinates, the pivots, and the smallest top.
     """
-    rotors = []
+    rotors = list()
     for atom1 in mol.vertices:
         if atom1.is_non_hydrogen():
             for atom2, bond in atom1.edges.items():
@@ -1493,42 +1493,11 @@ def find_internal_rotors(mol):
                         else:
                             rotor['top'] = top1 if len(top1) <= len(top2) else top2
                         # scan:
-                        rotor['scan'] = []
-                        heavy_atoms = []
-                        hydrogens = []
-                        for atom3 in atom1.edges.keys():
-                            if atom3.is_hydrogen():
-                                hydrogens.append(mol.vertices.index(atom3))
-                            elif atom3 is not atom2:
-                                heavy_atoms.append(mol.vertices.index(atom3))
-                        smallest_index = len(mol.vertices)
-                        if len(heavy_atoms):
-                            for i in heavy_atoms:
-                                if i < smallest_index:
-                                    smallest_index = i
-                        else:
-                            for i in hydrogens:
-                                if i < smallest_index:
-                                    smallest_index = i
-                        rotor['scan'].append(smallest_index + 1)
+                        rotor['scan'] = [determine_smallest_atom_index_in_scan(atom1=atom1, atom2=atom2, mol=mol)]
                         rotor['scan'].extend([mol.vertices.index(atom1) + 1, mol.vertices.index(atom2) + 1])
-                        heavy_atoms = []
-                        hydrogens = []
-                        for atom3 in atom2.edges.keys():
-                            if atom3.is_hydrogen():
-                                hydrogens.append(mol.vertices.index(atom3))
-                            elif atom3 is not atom1:
-                                heavy_atoms.append(mol.vertices.index(atom3))
-                        smallest_index = len(mol.vertices)
-                        if len(heavy_atoms):
-                            for i in heavy_atoms:
-                                if i < smallest_index:
-                                    smallest_index = i
-                        else:
-                            for i in hydrogens:
-                                if i < smallest_index:
-                                    smallest_index = i
-                        rotor['scan'].append(smallest_index + 1)
+                        rotor['scan'].append(determine_smallest_atom_index_in_scan(atom1=atom2, atom2=atom1, mol=mol))
+
+                        # other keys:
                         rotor['number_of_running_jobs'] = 0
                         rotor['success'] = None
                         rotor['invalidation_reason'] = ''
@@ -1542,6 +1511,42 @@ def find_internal_rotors(mol):
                         rotor['cont_indices'] = list()
                         rotors.append(rotor)
     return rotors
+
+
+def determine_smallest_atom_index_in_scan(atom1: Atom,
+                                          atom2: Atom,
+                                          mol: Molecule,
+                                          ) -> int:
+    """
+    Determine the smallest atom index in mol connected to ``atom1`` which is not ``atom2``.
+    Returns a heavy atom if available, otherwise a hydrogen atom.
+    Useful for deterministically determining the indices of four atom in a scan.
+    This function assumes there ARE additional atoms connected to ``atom1``, and that ``atom2`` is not a hydrogen atom.
+
+    Args:
+        atom1 (Atom): The atom who's neighbors will be searched.
+        atom2 (Atom): An atom connected to ``atom1`` to exclude (a pivotal atom).
+        mol (Molecule): The molecule to process.
+
+    Returns:
+        int: The smallest atom index (1-indexed) connected to ``atom1`` which is not ``atom2``.
+    """
+    heavy_atoms, hydrogens = list(), list()
+    for atom3 in atom1.edges.keys():
+        if atom3.is_hydrogen():
+            hydrogens.append(mol.vertices.index(atom3))
+        elif atom3 is not atom2:
+            heavy_atoms.append(mol.vertices.index(atom3))
+    smallest_index = len(mol.vertices)
+    if len(heavy_atoms):
+        for atom_index in heavy_atoms:
+            if atom_index < smallest_index:
+                smallest_index = atom_index
+    else:
+        for atom_index in hydrogens:
+            if atom_index < smallest_index:
+                smallest_index = atom_index
+    return smallest_index + 1
 
 
 def to_group(mol, atom_indices):
