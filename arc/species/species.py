@@ -170,6 +170,9 @@ class ARCSpecies(object):
         preserve_param_in_scan (list, optional): Entries are length two iterables of atom indices (1-indexed)
                                                  between which distances and dihedrals of these pivots must be
                                                  preserved. Used for identification of rotors which break a TS.
+        fragments (Optional[List[List[int]]]):
+            Fragments represented by this species, i.e., as in a VdW well or a TS.
+            Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.
 
     Attributes:
         label (str): The species' label.
@@ -256,6 +259,9 @@ class ARCSpecies(object):
         zmat (dict): The species internal coordinates (Z Matrix).
         preserve_param_in_scan (list): Entries are length two iterables of atom indices (1-indexed) between which
                                        distances and dihedrals of these pivots must be preserved.
+        fragments (Optional[List[List[int]]]):
+            Fragments represented by this species, i.e., as in a VdW well or a TS.
+            Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.
     """
     def __init__(self,
                  adjlist: str = '',
@@ -268,6 +274,7 @@ class ARCSpecies(object):
                  directed_rotors: Optional[dict] = None,
                  e0_only: bool = False,
                  external_symmetry: Optional[int] = None,
+                 fragments: Optional[List[List[int]]] = None,
                  force_field: str = 'MMFF94s',
                  inchi: str = '',
                  is_ts: bool = False,
@@ -315,6 +322,7 @@ class ARCSpecies(object):
         self.checkfile = checkfile
         self.transport_data = TransportData()
         self.yml_path = None
+        self.fragments = fragments
 
         if species_dict is not None:
             # Reading from a dictionary (it's possible that the dict contain only a 'yml_path' argument, check first)
@@ -574,6 +582,8 @@ class ARCSpecies(object):
             species_dict['chosen_ts'] = self.chosen_ts
         if self.e_elect is not None:
             species_dict['e_elect'] = self.e_elect
+        if self.fragments is not None:
+            species_dict['fragments'] = self.fragments
         if self.e0 is not None:
             species_dict['e0'] = self.e0
         if self.e0_only is not False:
@@ -668,6 +678,7 @@ class ARCSpecies(object):
         self.cheap_conformer = species_dict['cheap_conformer'] if 'cheap_conformer' in species_dict else None
         self.recent_md_conformer = str_to_xyz(species_dict['recent_md_conformer']) \
             if 'recent_md_conformer' in species_dict else None
+        self.fragments = species_dict['fragments'] if 'fragments' in species_dict else None
         self.force_field = species_dict['force_field'] if 'force_field' in species_dict else 'MMFF94s'
         self.svpfit_output_file = species_dict['svpfit_output_file'] if 'svpfit_output_file' in species_dict else None
         self.long_thermo_description = species_dict['long_thermo_description'] \
