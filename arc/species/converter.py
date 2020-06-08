@@ -4,7 +4,7 @@ A module for performing various species-related format conversions.
 
 import numpy as np
 import os
-from typing import Dict, Iterable, Optional, Tuple, Union
+from typing import Dict, Iterable, List, Optional, Tuple, Union
 
 import pybel
 import qcelemental as qcel
@@ -801,20 +801,28 @@ def get_zmat_str_var_value(zmat_str, var):
     raise ConverterError(f'Could not find var "{var}" in zmat:\n{zmat_str}')
 
 
-def get_zmat_param_value(coords, indices, mol):
+def get_zmat_param_value(coords: Dict[str, tuple],
+                         indices: List[int],
+                         mol: Molecule,
+                         index: int = 0,
+                         ) -> float:
     """
     Generates a zmat similarly to modify_coords(),
     but instead of modifying it, only reports on the value of a requested parameter.
 
     Args:
         coords (dict): Either cartesian (xyz) or internal (zmat) coordinates.
-        indices (list): The indices to change (0-indexed). Specifying a list of length 2, 3, or 4
-                        will result in a length, angle, or a dihedral angle parameter, respectively.
+        indices (list): The indices to change. Specifying a list of length 2, 3, or 4 will result in a
+                        bond length, angle, or a dihedral angle parameter, respectively.
         mol (Molecule, optional): The corresponding RMG molecule with the connectivity information.
+        index (bool, optional): Whether the specified atoms are 0- or 1-indexed.
 
     Returns:
         float: The parameter value in Angstrom or degrees.
     """
+    if index < 0 or index > 1:
+        raise ValueError(f'The index argument must be either 0 or 1, got {index}.')
+    indices = [i - index for i in indices]  # make sure indices are 0-indexed
     modification_type = KEY_FROM_LEN[len(indices)] + '_' + 'atom'  # e.g., R_atom
     if 'map' in list(coords.keys()):
         # a zmat was given, we actually need xyz to recreate a specific zmat for the parameter modification.
@@ -832,11 +840,18 @@ def get_zmat_param_value(coords, indices, mol):
         return sum(zmat["vars"][par] for par in param)
 
 
-def modify_coords(coords, indices, new_value, modification_type, mol=None):
+def modify_coords(coords: Dict[str, tuple],
+                  indices: List[int],
+                  new_value: float,
+                  modification_type: str,
+                  mol: Optional[Molecule] = None,
+                  index: int = 0,
+                  ) -> Dict[str, tuple]:
     """
     Modify either a bond length, angle, or dihedral angle in the given coordinates.
-    The coordinates input could either be cartesian (preferred) or internal (will be first converter to cartesian,
-    then to internal back again since a specific zmat must be created).
+    The coordinates input could either be cartesian (preferred) or internal
+    (will be first converter to cartesian, then to internal back again
+    since a specific zmat must be created).
     Internal coordinates will be used for the modification (using folding and unfolding).
 
     Specifying an 'atom' modification type will only translate/rotate the atom represented by the first index
@@ -848,21 +863,22 @@ def modify_coords(coords, indices, new_value, modification_type, mol=None):
 
     Args:
         coords (dict): Either cartesian (xyz) or internal (zmat) coordinates.
-        indices (list): The indices to change (0-indexed). Specifying a list of length 2, 3, or 4
-                        will result in changing a bond length, angle, or a dihedral angle, respectively.
+        indices (list): The indices to change. Specifying a list of length 2, 3, or 4 will result in changing
+                        a bond length, angle, or a dihedral angle, respectively.
         new_value (float): The new value to set (in Angstrom or degrees).
         modification_type (str): Either 'atom', 'group', or 'groups' ('groups' is only allowed for dihedral angles).
                                  Note that D 'groups' is a composite constraint, equivalent to calling D 'group'
                                  for each 1st neighboring  atom in a torsion top.
         mol (Molecule, optional): The corresponding RMG molecule with the connectivity information.
                                   Mandatory if the modification type is 'group' or 'groups'.
-
-    Returns:
-        dict: The respective cartesian (xyz) coordinates reflecting the desired modification.
+        index (bool, optional): Whether the specified atoms are 0- or 1-indexed.
 
     Raises:
         InputError: If a group/s modification type is requested but ``mol`` is ``None``,
                     or if a 'groups' modification type was specified for R or A.
+
+    Returns:
+        dict: The respective cartesian (xyz) coordinates reflecting the desired modification.
     """
     if modification_type not in ['atom', 'group', 'groups']:
         raise InputError(f'Allowed modification types are atom, group, or groups, got: {modification_type}.')
@@ -872,6 +888,8 @@ def modify_coords(coords, indices, new_value, modification_type, mol=None):
     if modification_type == 'groups' and modification_type[0] != 'D':
         raise InputError(f'The "groups" modification type is only supported for dihedrals (D), '
                          f'not for an {modification_type[0]} parameter.')
+    if index < 0 or index > 1:
+        raise ValueError(f'The index argument must be either 0 or 1, got {index}.')
     if 'map' in list(coords.keys()):
         # a zmat was given, we actually need xyz to recreate a specific zmat for the parameter modification.
         xyz = zmat_to_xyz(zmat=coords)
@@ -879,6 +897,7 @@ def modify_coords(coords, indices, new_value, modification_type, mol=None):
         # coords represents xyz
         xyz = coords
 
+    indices = [i - index for i in indices]  # make sure indices are 0-indexed
     constraints_list = [tuple(indices)]
     if modification_type == 'D_groups':
         # this is a special constraint for which neighbor dihedrals must be considered as well.
