@@ -1075,7 +1075,6 @@ def molecules_from_xyz(xyz: Optional[Union[dict, str]],
         except SpeciesError as e:
             logger.warning(f'Cannot infer 2D graph connectivity, failed to set species multiplicity with the '
                            f'following error:\n{e}')
-            return mol_s1_updated, mol_bo
 
     return mol_s1_updated, mol_bo
 
