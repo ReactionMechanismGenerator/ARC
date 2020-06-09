@@ -846,6 +846,7 @@ def modify_coords(coords: Dict[str, tuple],
                   modification_type: str,
                   mol: Optional[Molecule] = None,
                   index: int = 0,
+                  fragments: Optional[List[List[int]]] = None,
                   ) -> Dict[str, tuple]:
     """
     Modify either a bond length, angle, or dihedral angle in the given coordinates.
@@ -871,7 +872,11 @@ def modify_coords(coords: Dict[str, tuple],
                                  for each 1st neighboring  atom in a torsion top.
         mol (Molecule, optional): The corresponding RMG molecule with the connectivity information.
                                   Mandatory if the modification type is 'group' or 'groups'.
-        index (bool, optional): Whether the specified atoms are 0- or 1-indexed.
+        index (bool, optional): Whether the specified atoms in ``indices`` and ``fragments`` are 0- or 1-indexed.
+        fragments (List[List[int]], optional):
+            Fragments represented by the species, i.e., as in a VdW well or a TS.
+            Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.
+            indices are 0-indexed.
 
     Raises:
         InputError: If a group/s modification type is requested but ``mol`` is ``None``,
@@ -898,6 +903,20 @@ def modify_coords(coords: Dict[str, tuple],
         xyz = coords
 
     indices = [i - index for i in indices]  # make sure indices are 0-indexed
+    if fragments is None:
+        fragments = [list(range(len(xyz['symbols'])))]
+    else:
+        new_fragments = list()
+        for fragment in fragments:
+            new_fragments.append([f - index for f in fragment])  # make sure indices are 0-indexed
+        fragments = new_fragments
+
+    if any([i < 0 for i in indices]):
+        raise ValueError(f'indices cannot be negative, got {indices}')
+    for fragment in fragments:
+        if any([f < 0 for f in fragment]):
+            raise ValueError(f'fragment indices cannot be negative, got {fragments}')
+
     constraints_list = [tuple(indices)]
     if modification_type == 'D_groups':
         # this is a special constraint for which neighbor dihedrals must be considered as well.
@@ -911,7 +930,7 @@ def modify_coords(coords: Dict[str, tuple],
     increment = None
     for constraint in constraints_list:
         constraint_dict = {modification_type: [constraint]}
-        zmat = xyz_to_zmat(xyz=new_xyz, mol=mol, consolidate=False, constraints=constraint_dict)
+        zmat = xyz_to_zmat(xyz=new_xyz, mol=mol, consolidate=False, constraints=constraint_dict, fragments=fragments)
         param = get_parameter_from_atom_indices(zmat, constraint, xyz_indexed=True)
 
         if modification_type == 'D_group' and increment is None:
