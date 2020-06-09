@@ -4186,6 +4186,23 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         mol2 = Molecule(smiles='[N-]=[N+]=O')
         self.assertTrue(converter.check_isomorphism(mol1, mol2))
 
+    def test_calc_rmsd(self):
+        """Test compute the root-mean-square deviation between two matrices."""
+        a1 = np.array([1, 2, 3, 4])
+        b1 = np.array([1, 2, 3, 4])
+        rmsd1 = converter.calc_rmsd(a1, b1)
+        self.assertEqual(rmsd1, 0.0)
+
+        a2 = np.array([1, 2, 3, 4])
+        b2 = np.array([4, 3, 2, 1])
+        rmsd2 = converter.calc_rmsd(a2, b2)
+        self.assertAlmostEqual(rmsd2, 2.23606797749979)
+
+        a3 = np.array([[1, 2], [3, 4]])
+        b3 = np.array([[4, 3], [2, 1]])
+        rmsd3 = converter.calc_rmsd(a3, b3)
+        self.assertAlmostEqual(rmsd3, 3.1622776601683795)
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
