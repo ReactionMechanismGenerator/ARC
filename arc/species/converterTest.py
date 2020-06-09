@@ -4075,6 +4075,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                             (-0.6300326, 0.6300326, -0.6300326),
                             (0.6300326, -0.6300326, -0.6300326))}
         self.assertTrue(converter.compare_confs(ch4_1, ch4_1))
+        self.assertEqual(converter.compare_confs(ch4_1, ch4_1, rmsd_score=True), 0.0)
 
         ch4_2 = {'symbols': ('C', 'H', 'H', 'H', 'H'),
                  'isotopes': (12, 1, 1, 1, 1),
@@ -4084,6 +4085,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                             (-0.6300326, 0.6300326, -0.6300326),
                             (0.6300326, -0.6300326, -0.6300326))}
         self.assertTrue(converter.compare_confs(ch4_1, ch4_2))
+        self.assertAlmostEqual(converter.compare_confs(ch4_1, ch4_2, rmsd_score=True), 0.0, places=4)
 
         ch4_3 = {'symbols': ('C', 'H', 'H', 'H', 'H'),
                  'isotopes': (12, 1, 1, 1, 1),
@@ -4093,6 +4095,8 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                             (-0.6300326, 0.6300326, -0.6300326),
                             (0.6300326, -0.6300326, -0.6300326))}
         self.assertFalse(converter.compare_confs(ch4_1, ch4_3))
+        self.assertAlmostEqual(converter.compare_confs(ch4_1, ch4_3, rmsd_score=True), 0.0004480326076878692)
+
 
         occco_1 = {'symbols': ('O', 'C', 'C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
                    'isotopes': (16, 12, 12, 12, 16, 1, 1, 1, 1, 1, 1, 1, 1),
@@ -4110,6 +4114,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                               (-0.4846097814890448, 3.4746190180148613, 1.0370826136306412),
                               (-0.7517118479102434, 2.0995465744609016, -1.4084474547843668))}
         self.assertTrue(converter.compare_confs(occco_1, occco_1))
+        self.assertEqual(converter.compare_confs(occco_1, occco_1, rmsd_score=True), 0.0)
 
         occco_2 = {'symbols': ('O', 'C', 'C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
                    'isotopes': (16, 12, 12, 12, 16, 1, 1, 1, 1, 1, 1, 1, 1),
@@ -4127,6 +4132,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                               (1.0743805139106757, -1.9882575918786236, 1.2595102280098387),
                               (0.35195568839394714, -2.3791987519096245, -0.81652943836054))}
         self.assertFalse(converter.compare_confs(occco_1, occco_2))
+        self.assertAlmostEqual(converter.compare_confs(occco_1, occco_2, rmsd_score=True), 1.0094079844245747)
 
         occco_3 = {'symbols': ('O', 'C', 'C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
                    'isotopes': (16, 12, 12, 12, 16, 1, 1, 1, 1, 1, 1, 1, 1),
@@ -4144,6 +4150,8 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                               (-0.6621011473071822, 3.6174144955483376, 0.18956005497753062),
                               (-1.544021016988015, 1.848253867499642, -1.8191893347265315))}
         self.assertTrue(converter.compare_confs(occco_1, occco_3))
+        self.assertAlmostEqual(converter.compare_confs(occco_1, occco_3, rmsd_score=True), 0.0, places=4)
+
 
         occco_4 = {'symbols': ('O', 'C', 'C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
                    'isotopes': (16, 12, 12, 12, 16, 1, 1, 1, 1, 1, 1, 1, 1),
@@ -4161,6 +4169,8 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                               (-1.759053255113454, 3.4819317812208626, 1.3557210162758644),
                               (-2.0785703072969466, 2.2346795710060765, -1.151280970188824))}
         self.assertTrue(converter.compare_confs(occco_1, occco_4))
+        self.assertAlmostEqual(converter.compare_confs(occco_1, occco_4, rmsd_score=True), 0.0, places=4)
+
 
         occco_5 = {'symbols': ('O', 'C', 'C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
                    'isotopes': (16, 12, 12, 12, 16, 1, 1, 1, 1, 1, 1, 1, 1),
@@ -4179,6 +4189,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                        (-2.07095189274604, 3.516416462694289, 0.8201309204066712),
                        (-2.650256378769789, 1.8823222470150054, -1.4017891959903757))}
         self.assertTrue(converter.compare_confs(occco_1, occco_5))
+        self.assertAlmostEqual(converter.compare_confs(occco_1, occco_5, rmsd_score=True), 0.0, places=4)
 
     def test_check_isomorphism(self):
         """Test checking for molecule isomorphism"""
