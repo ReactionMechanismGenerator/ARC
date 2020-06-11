@@ -298,40 +298,58 @@ class TestZMat(unittest.TestCase):
                                  4: [0], 5: [0], 6: [1], 7: [1], 8: [2], 9: [3]}
         self.assertEqual(connectivity, expected_connectivity)
 
+    def test_get_connectivity(self):
+        """Test get_connectivity()"""
+        connectivity = zmat.get_connectivity(mol=ARCSpecies(label='CH4', smiles='C', xyz=self.ch4).mol)
+        self.assertEqual(connectivity, {0: [1, 2, 3, 4], 1: [0], 2: [0], 3: [0], 4: [0]})
+
+        connectivity = zmat.get_connectivity(mol=ARCSpecies(label='sonch', smiles='S1ONC1', xyz=self.sonch).mol)
+        self.assertEqual(connectivity, {0: [3, 1], 3: [2, 0, 4, 5], 1: [2, 0], 2: [3, 1, 6], 4: [3], 5: [3], 6: [2]})
+
+        connectivity = zmat.get_connectivity(mol=ARCSpecies(label='N3H5', smiles='NNN', xyz=self.n3h5).mol)
+        self.assertEqual(connectivity, {0: [3, 1, 4], 3: [0, 5, 2], 5: [3, 6, 7],
+                                        1: [0], 2: [3], 4: [0], 6: [5], 7: [5]})
+
+        connectivity = zmat.get_connectivity(
+            mol=ARCSpecies(label='phenanthrene', smiles='c1=ccc2c3cc=ccc3ccc2c1', xyz=self.phenanthrene).mol)
+        self.assertEqual(connectivity[2], [1, 3, 16, 17])
+        self.assertEqual(len(list(connectivity.keys())), 28)
+
+        connectivity = zmat.get_connectivity(
+            mol=ARCSpecies(label='crazy', smiles='CSC(CCO)(Cc1ccc(NO)cc1)C(O[CH2])(COO)C', xyz=self.crazy).mol)
+        self.assertEqual(len(list(connectivity.keys())), 46)
+
+        connectivity = zmat.get_connectivity(mol=ARCSpecies(label='N', smiles='[N]').mol)
+        self.assertEqual(connectivity, {0: []})
+
     def test_get_atom_order_from_mol(self):
         """Test getting the atom order from xyz"""
-        atom_order, connectivity = zmat.get_atom_order_from_mol(ARCSpecies(label='CH4', smiles='C', xyz=self.ch4).mol)
+        atom_order = zmat.get_atom_order_from_mol(ARCSpecies(label='CH4', smiles='C', xyz=self.ch4).mol)
         self.assertEqual(atom_order, [0, 1, 2, 3, 4])
         symbols = [self.ch4['symbols'][atom_index] for atom_index in atom_order]
         self.assertEqual(symbols, ['C', 'H', 'H', 'H', 'H'])
-        self.assertEqual(connectivity, {0: [1, 2, 3, 4], 1: [0], 2: [0], 3: [0], 4: [0]})
 
-        atom_order, connectivity = zmat.get_atom_order_from_mol(
+        atom_order = zmat.get_atom_order_from_mol(
             ARCSpecies(label='sonch', smiles='S1ONC1', xyz=self.sonch).mol)
         self.assertEqual(atom_order, [0, 3, 1, 2, 4, 5, 6])
         symbols = [self.sonch['symbols'][atom_index] for atom_index in atom_order]
         self.assertEqual(symbols, ['S', 'C', 'O', 'N', 'H', 'H', 'H'])
-        self.assertEqual(connectivity, {0: [3, 1], 3: [2, 0, 4, 5], 1: [2, 0], 2: [3, 1, 6], 4: [3], 5: [3], 6: [2]})
 
-        atom_order, connectivity = zmat.get_atom_order_from_mol(
+        atom_order = zmat.get_atom_order_from_mol(
             ARCSpecies(label='N3H5', smiles='NNN', xyz=self.n3h5).mol)
         self.assertEqual(atom_order, [0, 3, 5, 1, 2, 4, 6, 7])
         symbols = [self.n3h5['symbols'][atom_index] for atom_index in atom_order]
         self.assertEqual(symbols, ['N', 'N', 'N', 'H', 'H', 'H', 'H', 'H'])
-        self.assertEqual(connectivity, {0: [3, 1, 4], 3: [0, 5, 2], 5: [3, 6, 7],
-                                        1: [0], 2: [3], 4: [0], 6: [5], 7: [5]})
 
-        atom_order, connectivity = zmat.get_atom_order_from_mol(
+        atom_order = zmat.get_atom_order_from_mol(
             ARCSpecies(label='phenanthrene', smiles='c1=ccc2c3cc=ccc3ccc2c1', xyz=self.phenanthrene).mol)
         self.assertEqual(atom_order, [0, 1, 13, 2, 12, 3, 11, 4, 10, 5, 9, 6, 8, 7, 14,
                                       15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27])
         symbols = [self.phenanthrene['symbols'][atom_index] for atom_index in atom_order]
         self.assertEqual(symbols, ['C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C',
                                    'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'])
-        self.assertEqual(connectivity[2], [1, 3, 16, 17])
-        self.assertEqual(len(list(connectivity.keys())), len(symbols))
 
-        atom_order, connectivity = zmat.get_atom_order_from_mol(
+        atom_order = zmat.get_atom_order_from_mol(
             ARCSpecies(label='crazy', smiles='CSC(CCO)(Cc1ccc(NO)cc1)C(O[CH2])(COO)C', xyz=self.crazy).mol)
         self.assertEqual(atom_order, [0, 1, 2, 3, 6, 15, 4, 7, 23, 20, 16, 5, 8, 14, 21, 17, 9, 13, 22, 10, 11,
                                       12, 18, 19, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
@@ -340,9 +358,8 @@ class TestZMat(unittest.TestCase):
         self.assertEqual(symbols, ['C', 'S', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'O', 'O', 'C', 'C', 'O', 'C', 'C',
                                    'C', 'O', 'C', 'N', 'O', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H',
                                    'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'])
-        self.assertEqual(len(list(connectivity.keys())), len(symbols))
 
-        atom_order, connectivity = zmat.get_atom_order_from_mol(
+        atom_order = zmat.get_atom_order_from_mol(
             ARCSpecies(label='crazy', smiles='CSC(CCO)(Cc1ccc(NO)cc1)C(O[CH2])(COO)C', xyz=self.crazy).mol,
             constraints_dict={})
         self.assertEqual(atom_order, [0, 1, 2, 3, 6, 15, 4, 7, 23, 20, 16, 5, 8, 14, 21, 17, 9, 13, 22, 10, 11,
@@ -352,71 +369,74 @@ class TestZMat(unittest.TestCase):
         self.assertEqual(symbols, ['C', 'S', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'O', 'O', 'C', 'C', 'O', 'C', 'C',
                                    'C', 'O', 'C', 'N', 'O', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H',
                                    'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'])
-        self.assertEqual(len(list(connectivity.keys())), len(symbols))
 
         # test the same molecule without and with constraints:
 
-        atom_order, connectivity = zmat.get_atom_order_from_mol(
+        atom_order = zmat.get_atom_order_from_mol(
             ARCSpecies(label='chiral_chlorine', smiles='CC(Cl)CC=C(O)C', xyz=self.chiral_chlorine).mol,
             constraints_dict={})
         self.assertEqual(atom_order, [0, 1, 3, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18])
         symbols = [self.chiral_chlorine['symbols'][atom_index] for atom_index in atom_order]
         self.assertEqual(symbols, ['C', 'C', 'C', 'Cl', 'C', 'C', 'C', 'O', 'H',
                                    'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'])
-        self.assertEqual(len(list(connectivity.keys())), len(symbols))
 
-        atom_order, connectivity = zmat.get_atom_order_from_mol(
+        atom_order = zmat.get_atom_order_from_mol(
             ARCSpecies(label='chiral_chlorine', smiles='CC(Cl)CC=C(O)C', xyz=self.chiral_chlorine).mol,
             constraints_dict={'R_atom': [(3, 2)]})
         self.assertEqual(atom_order, [2, 1, 0, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18])
         symbols = [self.chiral_chlorine['symbols'][atom_index] for atom_index in atom_order]
         self.assertEqual(symbols, ['Cl', 'C', 'C', 'C', 'C', 'C', 'C', 'O', 'H',
                                    'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'])
-        self.assertEqual(len(list(connectivity.keys())), len(symbols))
 
-        atom_order, connectivity = zmat.get_atom_order_from_mol(
+        atom_order = zmat.get_atom_order_from_mol(
             ARCSpecies(label='chiral_chlorine', smiles='CC(Cl)CC=C(O)C', xyz=self.chiral_chlorine).mol,
             constraints_dict={'R_atom': [(3, 4)]})
         self.assertEqual(atom_order, [6, 5, 4, 7, 3, 1, 0, 2, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18])
         symbols = [self.chiral_chlorine['symbols'][atom_index] for atom_index in atom_order]
         self.assertEqual(symbols, ['C', 'C', 'C', 'O', 'C', 'C', 'C', 'Cl', 'H',
                                    'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'])
-        self.assertEqual(len(list(connectivity.keys())), len(symbols))
 
-        atom_order, connectivity = zmat.get_atom_order_from_mol(
+        atom_order = zmat.get_atom_order_from_mol(
             ARCSpecies(label='chiral_chlorine', smiles='CC(Cl)CC=C(O)C', xyz=self.chiral_chlorine).mol,
             constraints_dict={'R_group': [(3, 4)]})
         self.assertEqual(atom_order, [6, 5, 4, 7, 3, 1, 0, 2, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18])
         symbols = [self.chiral_chlorine['symbols'][atom_index] for atom_index in atom_order]
         self.assertEqual(symbols, ['C', 'C', 'C', 'O', 'C', 'C', 'C', 'Cl', 'H',
                                    'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'])
-        self.assertEqual(len(list(connectivity.keys())), len(symbols))
 
-        atom_order, connectivity = zmat.get_atom_order_from_mol(
+        atom_order = zmat.get_atom_order_from_mol(
             ARCSpecies(label='chiral_chlorine', smiles='CC(Cl)CC=C(O)C', xyz=self.chiral_chlorine).mol,
             constraints_dict={'A_group': [(3, 4, 5)]})
         self.assertEqual(atom_order, [6, 5, 4, 7, 3, 1, 0, 2, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18])
         symbols = [self.chiral_chlorine['symbols'][atom_index] for atom_index in atom_order]
         self.assertEqual(symbols, ['C', 'C', 'C', 'O', 'C', 'C', 'C', 'Cl', 'H',
                                    'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'])
-        self.assertEqual(len(list(connectivity.keys())), len(symbols))
 
-        atom_order, connectivity = zmat.get_atom_order_from_mol(
+        atom_order = zmat.get_atom_order_from_mol(
             ARCSpecies(label='chiral_chlorine', smiles='CC(Cl)CC=C(O)C', xyz=self.chiral_chlorine).mol,
             constraints_dict={'D_group': [(3, 4, 5, 7)]})
         self.assertEqual(atom_order, [7, 5, 6, 4, 14, 15, 16, 17, 18, 3, 12, 13, 1, 11, 0, 8, 9, 10, 2])
         symbols = [self.chiral_chlorine['symbols'][atom_index] for atom_index in atom_order]
         self.assertEqual(symbols, ['O', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H',
                                    'C', 'H', 'H', 'C', 'H', 'C', 'H', 'H', 'H', 'Cl'])
-        self.assertEqual(len(list(connectivity.keys())), len(symbols))
+
+    def test_order_fragments_by_constraints(self):
+        """Test order_fragments_by_constraints()"""
+        constraints_dict = {'R_atom': [(4, 7)],
+                            'A_atom': [(8, 9, 10), (6, 1, 0)],
+                            'D_group': [(5, 10, 3, 4)],
+                            }
+        fragments = [[3, 4, 5, 8, 9, 10], [0, 1, 2, 6, 7]]
+        new_fragments = zmat.order_fragments_by_constraints(fragments=fragments, constraints_dict=constraints_dict)
+        self.assertEqual(new_fragments, [[0, 1, 2, 6, 7], [3, 4, 5, 8, 9, 10]])
 
     def test_get_atom_order_from_xyz(self):
         """Test getting the atom order from xyz"""
-        atom_order = zmat.get_atom_order_from_xyz(self.ch4)[0]
+        atom_order = zmat.get_atom_order_from_xyz(self.ch4)
         self.assertEqual(atom_order, [0, 1, 2, 3, 4])
-        atom_order = zmat.get_atom_order_from_xyz(self.sonch)[0]
+        atom_order = zmat.get_atom_order_from_xyz(self.sonch)
         self.assertEqual(atom_order, [0, 1, 2, 3, 4, 5, 6])
-        atom_order = zmat.get_atom_order_from_xyz(self.n3h5)[0]
+        atom_order = zmat.get_atom_order_from_xyz(self.n3h5)
         self.assertEqual(atom_order, [0, 3, 5, 1, 2, 4, 6, 7])
 
     def test_check_atom_r_constraints(self):
@@ -1501,6 +1521,18 @@ class TestZMat(unittest.TestCase):
         mol = ARCSpecies(label='chiral_chlorine', xyz=self.chiral_chlorine).mol
         neighbors = zmat.get_all_neighbors(mol, 3)
         self.assertEqual(neighbors, [4, 1, 12, 13])
+
+    def test_is_atom_in_new_fragment(self):
+        """Test is_atom_in_new_fragment()"""
+        fragments = [[46, 47, 48, 49, 50, 51, 52],
+                     [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+                      25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45]]
+        zmat1 = {'map': {0: 0, 1: 1, 2: 2, 3: 6, 4: 3, 5: 7, 6: 8, 7: 12, 8: 13, 9: 9, 10: 14, 11: 17, 12: 16, 13: 21,
+                        14: 24, 15: 23, 16: 25, 17: 32, 18: 4, 19: 5, 20: 10, 21: 11, 22: 15, 23: 19, 24: 20, 25: 22,
+                        26: 26, 27: 27, 28: 28, 29: 29, 30: 33, 31: 34, 32: 35, 33: 36, 34: 37, 35: 44, 36: 18, 37: 30,
+                        38: 38, 39: 39, 40: 40, 41: 31, 42: 41, 43: 42, 44: 43}}
+        self.assertTrue(zmat.is_atom_in_new_fragment(atom_index=46, zmat=zmat1, fragments=fragments))
+        self.assertFalse(zmat.is_atom_in_new_fragment(atom_index=44, zmat=zmat1, fragments=fragments))
 
 
 if __name__ == '__main__':
