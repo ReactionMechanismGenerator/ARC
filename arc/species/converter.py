@@ -1664,6 +1664,25 @@ def compare_confs(xyz1: dict,
     dmat1, dmat2 = xyz_to_dmat(xyz1), xyz_to_dmat(xyz2)
     return almost_equal_lists(dmat1, dmat2, rtol=rtol, atol=atol)
 
+def calc_rmsd(x: np.array,
+              y: np.array,
+              ) -> float:
+    """
+    Compute the root-mean-square deviation between two matrices.
+
+    Args:
+        x (np.array): Matrix 1.
+        y (np.array): Matrix 2.
+
+    Returns:
+        float: The RMSD score of two matrices.
+    """
+    d = x - y
+    n = x.shape[0]
+    sqr_sum = (d**2).sum()
+    rmsd = np.sqrt(sqr_sum/n)
+    return float(rmsd)
+
 
 def ics_to_scan_constraints(ics: list,
                             software: Optional[str] = 'gaussian',
