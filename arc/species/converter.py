@@ -4,7 +4,7 @@ A module for performing various species-related format conversions.
 
 import numpy as np
 import os
-from typing import Optional, Tuple, Union
+from typing import Dict, Iterable, Optional, Tuple, Union
 
 import pybel
 import qcelemental as qcel
@@ -1644,7 +1644,8 @@ def compare_confs(xyz1: dict,
                   xyz2: dict,
                   rtol: float = 1e-5,
                   atol: float = 1e-5,
-                  ) -> bool:
+                  rmsd_score: bool = False,
+                  ) -> Union[float, bool]:
     """
     Compare two Cartesian coordinates representing conformers using distance matrices.
 
@@ -1656,14 +1657,70 @@ def compare_confs(xyz1: dict,
         xyz2 (dict): Conformer 2.
         rtol (float): The relative tolerance parameter (see Notes).
         atol (float): The absolute tolerance parameter (see Notes).
+        rmsd_score (bool): Whether to output a root-mean-square deviation score of the two distance matrices.
 
     Returns:
-        bool: Whether the two conformers have almost equal atom distances. ``True`` if they do.
+        Union[float, bool]:
+            - If ``rmsd_score`` is ``False`` (default): Whether the two conformers have almost equal atom distances.
+              ``True`` if they do.
+            - If ``rmsd_score`` is ``True``: The RMSD score of two distance matrices.
     """
     xyz1, xyz2 = check_xyz_dict(xyz1), check_xyz_dict(xyz2)
     dmat1, dmat2 = xyz_to_dmat(xyz1), xyz_to_dmat(xyz2)
-    return almost_equal_lists(dmat1, dmat2, rtol=rtol, atol=atol)
+    if rmsd_score:
+        # distance matrix is symmetric, only need the upper triangular part to compute rmsd
+        rmsd = calc_rmsd(np.triu(dmat1), np.triu(dmat2))
+        return rmsd
+    else:
+        return almost_equal_lists(dmat1, dmat2, rtol=rtol, atol=atol)
 
+def calc_rmsd(x: np.array,
+              y: np.array,
+              ) -> float:
+    """
+    Compute the root-mean-square deviation between two matrices.
+
+    Args:
+        x (np.array): Matrix 1.
+        y (np.array): Matrix 2.
+
+    Returns:
+        float: The RMSD score of two matrices.
+    """
+    d = x - y
+    n = x.shape[0]
+    sqr_sum = (d**2).sum()
+    rmsd = np.sqrt(sqr_sum/n)
+    return float(rmsd)
+
+def cluster_confs_by_rmsd(xyzs: Iterable[Dict[str, tuple]],
+                          rmsd_threshold: float = 1e-2,
+                          ) -> Tuple[Dict[str, tuple]]:
+    """
+    Cluster conformers with the same atom orders using RMSD of distance matrices. Work for both TS and non-TS conformers.
+
+    Intended for finding structurally distinct conformers from a pool of conformers.
+    Suitable scenarios:
+        1. filter a pool of conformers with their geometry optimized at some level.
+    Not suitable for:
+        1. cluster conformers (not optimized) that are sampling of a well or a saddle point (these conformers may have
+           large difference in RMSE, but they really should be representing the same well or saddle point).
+
+    Args:
+        xyzs (Iterable): Conformers with the same atom orders.
+        rmsd_threshold (float): The minimum RMSD to consider two conformers as distinct
+                                (i.e., if rmsd > rmsd_threshold, then two conformers are considered distinctive).
+
+    Returns:
+        Tuple[Dict[str, tuple]]: Conformers with distinctive geometries.
+    """
+    xyzs = tuple(xyzs)
+    distinct_xyzs = [xyzs[0]]
+    for xyz in xyzs:
+        rmsd_list = [compare_confs(xyz, distinct_xyz, rmsd_score=True) for distinct_xyz in tuple(distinct_xyzs)]
+        if all([rmsd > rmsd_threshold for rmsd in tuple(rmsd_list)]):
+            distinct_xyzs.append(xyz)
+    return tuple(distinct_xyzs)
 
 def ics_to_scan_constraints(ics: list,
                             software: Optional[str] = 'gaussian',
