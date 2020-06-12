@@ -406,11 +406,6 @@ class ARCReaction(object):
             self.family, self.family_own_reverse = rmgdb.determine_reaction_family(rmgdb=rmg_database,
                                                                                    reaction=self.rmg_reaction)
 
-    def determine_preserve_distance_in_scan(self):
-        """Todo: Determine which atom labels participate in the reaction coordinate from the RMG reaction family"""
-        if self.family is not None:
-            pass
-
     def check_ts(self, verbose: bool = True) -> bool:
         """
         Check that the TS E0 is above both reactants and products wells.
