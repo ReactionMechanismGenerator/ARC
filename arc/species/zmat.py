@@ -18,7 +18,8 @@ An example for a (consolidated) zmat representation for methane::
      'map': {0: 0, 1: 1, 2: 2, 3: 3, 4: 4},
      }
 
-Isotope information is not saved in the zmat, it exists in the xyz dic, and can be attained using the zmat map if needed.
+Isotope information is not saved in the zmat, it exists in the xyz dict,
+and can be attained using the zmat map if needed.
 
 Note that a 180 (or 0) degree for an angle in a Z matrix is not allowed, since a GIC (Generalized Internal Coordinates)
 optimization has no defined derivative at 180 degrees. Instead, a dummy atom 'X' is used.
@@ -27,7 +28,9 @@ Dihedral angles may have any value.
 
 import math
 import numpy as np
+import operator
 import re
+from typing import Dict, List, Optional, Tuple , Union
 
 from rmgpy.molecule.molecule import Molecule
 
@@ -48,7 +51,13 @@ TOL_180 = 0.9  # degrees
 KEY_FROM_LEN = {2: 'R', 3: 'A', 4: 'D'}
 
 
-def xyz_to_zmat(xyz, mol=None, constraints=None, consolidate=True, consolidation_tols=None):
+def xyz_to_zmat(xyz: Dict[str, tuple],
+                mol: Optional[Molecule] = None,
+                constraints: Optional[Dict[str, List[Tuple[int]]]] = None,
+                consolidate: bool = True,
+                consolidation_tols: Dict[str, float] = None,
+                fragments: Optional[List[List[int]]] = None,
+                ) -> Dict[str, tuple]:
     """
     Generate a z-matrix from cartesian coordinates.
     The zmat is a dictionary with the following keys:
@@ -80,34 +89,51 @@ def xyz_to_zmat(xyz, mol=None, constraints=None, consolidate=True, consolidation
         consolidate (bool, optional): Whether to consolidate the zmat after generation, ``True`` to consolidate.
         consolidation_tols (dict, optional): Keys are 'R', 'A', 'D', values are floats representing absolute tolerance
                                              for consolidating almost equal internal coordinates.
-
-    Returns:
-        dict: The z-matrix.
+        fragments (List[List[int]], optional):
+            Fragments represented by the species, i.e., as in a VdW well or a TS.
+            Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.
+            indices are 0-indexed.
 
     Raises:
         ZMatError: If the zmat could not be generated.
+
+    Returns:
+        dict: The z-matrix.
     """
+    fragments = fragments or [list(range(len(xyz['symbols'])))]
     constraints = constraints or dict()
     if mol is None and any('group' in constraint_key for constraint_key in constraints.keys()):
         raise ZMatError(f'Cannot generate a constrained zmat without mol. Got mol=None and constraints=\n{constraints}')
     xyz = xyz.copy()
     zmat = {'symbols': list(), 'coords': list(), 'vars': dict(), 'map': dict()}
-    atom_order, connectivity = get_atom_order_from_mol(mol, constraints_dict=constraints) if mol is not None \
-        else get_atom_order_from_xyz(xyz)
+    atom_order = get_atom_order(xyz=xyz, mol=mol, constraints_dict=constraints, fragments=fragments)
+    connectivity = get_connectivity(mol=mol) if mol is not None else None
     skipped_atoms = list()  # atoms for which constrains are applied
     for atom_index in atom_order:
-        zmat, xyz, skipped = _add_nth_atom_to_zmat(zmat=zmat, xyz=xyz, connectivity=connectivity,
-                                                   n=len(list(zmat['symbols'])), atom_index=atom_index,
-                                                   constraints=constraints)
+        zmat, xyz, skipped = _add_nth_atom_to_zmat(
+            zmat=zmat,
+            xyz=xyz,
+            connectivity=connectivity,
+            n=len(list(zmat['symbols'])),
+            atom_index=atom_index,
+            constraints=constraints,
+            fragments=fragments,
+        )
         skipped_atoms.extend(skipped)
 
     while len(skipped_atoms):
         num_of_skipped_atoms = len(skipped_atoms)
         indices_to_pop = list()
         for i, atom_index in enumerate(skipped_atoms):
-            zmat, xyz, skipped = _add_nth_atom_to_zmat(zmat=zmat, xyz=xyz, connectivity=connectivity,
-                                                       n=len(list(zmat['symbols'])), atom_index=atom_index,
-                                                       constraints=constraints)
+            zmat, xyz, skipped = _add_nth_atom_to_zmat(
+                zmat=zmat,
+                xyz=xyz,
+                connectivity=connectivity,
+                n=len(list(zmat['symbols'])),
+                atom_index=atom_index,
+                constraints=constraints,
+                fragments=fragments,
+            )
             if not len(skipped):
                 # this atom was not skipped this time, remove it from the skipped atoms list
                 indices_to_pop.append(i)
@@ -130,7 +156,15 @@ def xyz_to_zmat(xyz, mol=None, constraints=None, consolidate=True, consolidation
     return zmat
 
 
-def determine_r_atoms(zmat, xyz, connectivity, n, atom_index, r_constraint=None, trivial_assignment=False):
+def determine_r_atoms(zmat: Dict[str, Union[dict, tuple]],
+                      xyz: Dict[str, tuple],
+                      connectivity: Dict[int, List[int]],
+                      n: int,
+                      atom_index: int,
+                      r_constraint: Optional[Tuple[int]] = None,
+                      trivial_assignment: bool = False,
+                      fragments: Optional[List[List[int]]] = None,
+                      ) -> Optional[List[int]]:
     """
     Determine the atoms for defining the distance R.
     This should be in the form: [n, <some other atom already in the zmat>]
@@ -147,13 +181,19 @@ def determine_r_atoms(zmat, xyz, connectivity, n, atom_index, r_constraint=None,
                                         constrained. ``None`` if it is not constrained.
         trivial_assignment (bool, optional): Whether to attempt assigning atoms without considering connectivity
                                              if the connectivity assignment fails.
-
-    Returns:
-        list: The 0-indexed z-mat R atoms.
+        fragments (List[List[int]], optional):
+            Fragments represented by the species, i.e., as in a VdW well or a TS.
+            Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.
+            indices are 0-indexed.
 
     Raises:
         ZMatError: If the R atoms could not be determined.
+
+    Returns:
+        list: The 0-indexed z-mat R atoms.
     """
+    if is_atom_in_new_fragment(atom_index=atom_index, zmat=zmat, fragments=fragments):
+        connectivity = None
     if len(zmat['coords']) == 0:
         # this is the 1st atom added to the zmat, there's no distance definition here
         r_atoms = None
@@ -161,7 +201,7 @@ def determine_r_atoms(zmat, xyz, connectivity, n, atom_index, r_constraint=None,
         # 1. always use the constrains if given
         r_atoms = [n] + [key_by_val(zmat['map'], atom) for atom in r_constraint[1:]]
     elif connectivity is not None:
-        # 2. use connectivity if the atom is not constraint
+        # 2. use connectivity if the atom is not constrained
         r_atoms = [n]
         atom_dict = dict()  # Keys are neighbor atom indices, values are tuples of depth and linearity
         for atom_c in connectivity[atom_index]:
@@ -241,8 +281,17 @@ def determine_r_atoms(zmat, xyz, connectivity, n, atom_index, r_constraint=None,
     return r_atoms
 
 
-def determine_a_atoms(zmat, coords, connectivity, r_atoms, n, atom_index, a_constraint=None, a_constraint_type=None,
-                      trivial_assignment=False):
+def determine_a_atoms(zmat: Dict[str, Union[dict, tuple]],
+                      coords: Union[list, tuple],
+                      connectivity: Dict[int, List[int]],
+                      r_atoms: Optional[List[int]],
+                      n: int,
+                      atom_index: int,
+                      a_constraint: Optional[Tuple[int]] = None,
+                      a_constraint_type: Optional[str] = None,
+                      trivial_assignment: bool = False,
+                      fragments: Optional[List[List[int]]] = None,
+                      ) -> Optional[List[int]]:
     """
     Determine the atoms for defining the angle A.
     This should be in the form: [n, r_atoms[1], <some other atom already in the zmat>]
@@ -261,13 +310,20 @@ def determine_a_atoms(zmat, coords, connectivity, r_atoms, n, atom_index, a_cons
         a_constraint_type (str, optional): The A constraint type ('A_atom', or 'A_group').
         trivial_assignment (bool, optional): Whether to attempt assigning atoms without considering connectivity
                                              if the connectivity assignment fails.
-
-    Returns:
-        list: The 0-indexed z-mat A atoms.
+        fragments (List[List[int]], optional):
+            Fragments represented by the species, i.e., as in a VdW well or a TS.
+            Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.
 
     Raises:
         ZMatError: If the A atoms could not be determined.
+            indices are 0-indexed.
+
+    Returns:
+        list: The 0-indexed z-mat A atoms.
     """
+    if r_atoms is not None and is_atom_in_new_fragment(atom_index=atom_index, zmat=zmat,
+                                                       fragments=fragments, skip_atoms=r_atoms):
+        connectivity = None
     if r_atoms is not None and len(r_atoms) != 2:
         raise ZMatError(f'r_atoms must be a list of length 2, got {r_atoms}')
     if len(zmat['coords']) <= 1:
@@ -364,8 +420,19 @@ def determine_a_atoms(zmat, coords, connectivity, r_atoms, n, atom_index, a_cons
     return a_atoms
 
 
-def determine_d_atoms(zmat, xyz, coords, connectivity, a_atoms, n, atom_index, d_constraint=None,
-                      d_constraint_type=None, specific_atom=None, dummy=False):
+def determine_d_atoms(zmat: Dict[str, Union[dict, tuple]],
+                      xyz: Dict[str, tuple],
+                      coords: Union[list, tuple],
+                      connectivity: Dict[int, List[int]],
+                      a_atoms: Optional[List[int]],
+                      n: int,
+                      atom_index: int,
+                      d_constraint: Optional[Tuple[int]] = None,
+                      d_constraint_type: Optional[str] = None,
+                      specific_atom: Optional[int] = None,
+                      dummy: bool = False,
+                      fragments: Optional[List[List[int]]] = None,
+                      ) -> Optional[List[int]]:
     """
     Determine the atoms for defining the dihedral angle D.
     This should be in the form: [n, a_atoms[1], a_atoms[2], <some other atom already in the zmat>]
@@ -380,18 +447,25 @@ def determine_d_atoms(zmat, xyz, coords, connectivity, a_atoms, n, atom_index, d
         atom_index (int): The 0-index of the atom in the molecule or cartesian coordinates to be added.
                           (``n`` and ``atom_index`` refer to the same atom, but it might have different indices
                           in the zmat and the molecule/xyz)
-        d_constraint (tuple, optional): A-type constraints. The atom indices to which the atom being checked is
+        d_constraint (tuple, optional): D-type constraints. The atom indices to which the atom being checked is
                                         constrained. ``None`` if it is not constrained.
         d_constraint_type (str, optional): The D constraint type ('D_atom', or 'D_group').
         specific_atom (int, optional): A 0-index of the zmat atom to be added to a_atoms to create d_atoms.
         dummy (bool, optional): Whether the atom being added (n) represents a dummy atom. ``True`` if it does.
-
-    Returns:
-        list: The 0-indexed z-mat D atoms.
+        fragments (List[List[int]], optional):
+            Fragments represented by the species, i.e., as in a VdW well or a TS.
+            Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.
 
     Raises:
         ZMatError: If the A atoms could not be determined.
+            indices are 0-indexed.
+
+    Returns:
+        list: The 0-indexed z-mat D atoms.
     """
+    if a_atoms is not None and is_atom_in_new_fragment(atom_index=atom_index, zmat=zmat,
+                                                       fragments=fragments, skip_atoms=a_atoms):
+        connectivity = None
     if a_atoms is not None and len(a_atoms) != 3:
         raise ZMatError(f'a_atoms must be a list of length 3, got {a_atoms}')
     if len(zmat['coords']) <= 2:
@@ -565,7 +639,14 @@ def determine_d_atoms_from_connectivity(zmat, xyz, coords, connectivity, a_atoms
     return d_atoms
 
 
-def _add_nth_atom_to_zmat(zmat, xyz, connectivity, n, atom_index, constraints):
+def _add_nth_atom_to_zmat(zmat: Dict[str, Union[dict, tuple]],
+                          xyz: Dict[str, tuple],
+                          connectivity: Dict[int, List[int]],
+                          n: int,
+                          atom_index: int,
+                          constraints: Dict[str, List[Tuple[int]]],
+                          fragments: List[List[int]],
+                          ) -> Tuple[Dict[str, tuple], Dict[str, tuple], List[int]]:
     """
     Add the n-th atom to the zmat (n >= 0).
     Also considers the special cases where ``n`` is the first, second, or third atom to be added to the zmat.
@@ -584,16 +665,19 @@ def _add_nth_atom_to_zmat(zmat, xyz, connectivity, n, atom_index, constraints):
                            'R_atom', 'R_group',
                            'A_atom', 'A_group',
                            'D_atom', 'D_group'.
-
-    Returns:
-        dict: The updated zmat.
-    Returns:
-        dict: The xyz coordinates updated with dummy atoms.
-    Returns:
-        list: A 0- or 1-length list with the skipped atom index.
+        fragments (List[List[int]]):
+            Fragments represented by the species, i.e., as in a VdW well or a TS.
+            Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.
+            indices are 0-indexed.
 
     Raises:
         ZMatError: If the zmat could not be generated.
+
+    Returns:
+        Tuple[Dict[str, tuple], Dict[str, tuple], List[int]]:
+          - The updated zmat.
+          - The xyz coordinates updated with dummy atoms.
+          - A 0- or 1-length list with the skipped atom index.
     """
     coords = xyz['coords']
     skipped_atoms = list()
@@ -620,17 +704,32 @@ def _add_nth_atom_to_zmat(zmat, xyz, connectivity, n, atom_index, constraints):
             return zmat, xyz, skipped_atoms
 
         # determine the atoms for defining the distance, R; this should be [n, <some other atom already in the zmat>]
-        r_atoms = determine_r_atoms(zmat, xyz, connectivity, n, atom_index, r_constraint,
-                                    trivial_assignment=any('_atom' in constraint_key
-                                                           for constraint_key in constraints.keys()))
-
+        r_atoms = determine_r_atoms(
+            zmat,
+            xyz,
+            connectivity,
+            n,
+            atom_index,
+            r_constraint,
+            trivial_assignment=any('_atom' in constraint_key for constraint_key in constraints.keys()),
+            fragments=fragments,
+        )
         # determine the atoms for defining the angle, A
         if a_constraint is None and d_constraint is not None:
             # if a D constraint is given, the A constraint must obey it as well
             a_constraint = d_constraint[:-1]
-        a_atoms = determine_a_atoms(zmat, coords, connectivity, r_atoms, n, atom_index, a_constraint, a_constraint_type,
-                                    trivial_assignment=any('_atom' in constraint_key
-                                                           for constraint_key in constraints.keys()))
+        a_atoms = determine_a_atoms(
+            zmat,
+            coords,
+            connectivity,
+            r_atoms,
+            n,
+            atom_index,
+            a_constraint,
+            a_constraint_type,
+            trivial_assignment=any('_atom' in constraint_key for constraint_key in constraints.keys()),
+            fragments=fragments,
+        )
 
         # calculate the angle, add a dummy atom if needed
         added_dummy = False
@@ -643,8 +742,18 @@ def _add_nth_atom_to_zmat(zmat, xyz, connectivity, n, atom_index, constraints):
                 added_dummy = True
 
         # determine the atoms for defining the dihedral angle, D
-        d_atoms = determine_d_atoms(zmat, xyz, coords, connectivity, a_atoms, n, atom_index, d_constraint,
-                                    d_constraint_type, specific_atom=specific_last_d_atom)
+        d_atoms = determine_d_atoms(
+            zmat,
+            xyz,
+            coords,
+            connectivity,
+            a_atoms,
+            n,
+            atom_index,
+            d_constraint,
+            d_constraint_type, specific_atom=specific_last_d_atom,
+            fragments=fragments,
+        )
 
         # update the zmat
         zmat = update_zmat_with_new_atom(zmat, xyz, coords, n, atom_index, r_atoms, a_atoms, d_atoms, added_dummy)
@@ -1128,41 +1237,140 @@ def get_atom_connectivity_from_mol(mol, atom1):
         + [mol.atoms.index(atom2) for atom2 in list(atom1.edges.keys()) if atom2.is_hydrogen()]
 
 
-def get_atom_order_from_mol(mol, constraints_dict=None):
+def get_connectivity(mol: Molecule) -> Dict[int, List[int]]:
+    """
+    Get the connectivity information from the molecule object.
+
+    Args:
+        mol (Molecule): The Molecule object.
+
+    Returns:
+        Dict[int, List[int]]: The connectivity information.
+              Keys are atom indices, values are tuples of respective edges, ordered with heavy atoms first.
+              All indices are 0-indexed, corresponding to atom indices in ``mol`` (not in the zmat).
+              ``None`` if ``xyz`` is given.
+    """
+    connectivity = dict()
+    for atom in mol.atoms:
+        connectivity[mol.atoms.index(atom)] = get_atom_connectivity_from_mol(mol, atom)
+    return connectivity
+
+
+def order_fragments_by_constraints(fragments: List[List[int]],
+                                   constraints_dict: Optional[Dict[str, List[tuple]]] = None,
+                                   ) -> List[List[int]]:
+    """
+    Get the order in which atoms should be added to the zmat from a 2D or a 3D representation.
+
+    Args:
+        fragments (List[List[int]]):
+            Fragments represented by the species, i.e., as in a VdW well or a TS.
+            Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.
+        constraints_dict (dict, optional):
+            A dictionary of atom constraints. The function will try to find an atom order in which all constrained atoms
+            are after the atoms they are constraint to.
+
+    Returns:
+        List[List[int]]: The ordered fragments list.
+    """
+    if constraints_dict is None or not len(fragments):
+        return fragments
+    constraints_in_fragments = list()
+    for i in range(len(fragments)):
+        # initialize with general constraint types and the original index
+        constraints_in_fragments.append({'R': 0, 'A': 0, 'D': 0, 'i': i})
+    for constraint_type, constraint_list in constraints_dict.items():
+        for constraint in constraint_list:
+            for i, fragment in enumerate(fragments):
+                if all([c in fragment for c in constraint]):
+                    constraints_in_fragments[i][constraint_type[0]] += 1
+    constraints_in_fragments.sort(key=operator.itemgetter('R', 'A', 'D'), reverse=False)
+    new_order = [constraint['i'] for constraint in constraints_in_fragments]
+    new_fragments = [[]] * len(fragments)
+    for fragment, i in zip(fragments, new_order):
+        new_fragments[i] = fragment
+    return new_fragments
+
+
+def get_atom_order(xyz: Optional[Dict[str, tuple]] = None,
+                   mol: Optional[Molecule] = None,
+                   fragments: Optional[List[List[int]]] = None,
+                   constraints_dict: Optional[Dict[str, List[tuple]]] = None,
+                   ) -> List[int]:
+    """
+    Get the order in which atoms should be added to the zmat from a 2D or a 3D representation.
+
+    Args:
+        xyz (dict, optional): The 3D coordinates.
+        mol (Molecule, optional): The Molecule object.
+        fragments (List[List[int]], optional):
+            Fragments represented by the species, i.e., as in a VdW well or a TS.
+            Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.
+        constraints_dict (dict, optional):
+            A dictionary of atom constraints. The function will try to find an atom order in which all constrained atoms
+            are after the atoms they are constraint to.
+
+    Returns:
+        List[int]: The atom order, 0-indexed.
+    """
+    if mol is None and xyz is None:
+        raise ValueError('Either mol or xyz must be given.')
+    if fragments is None or not len(fragments):
+        if mol is not None:
+            fragments = [list(range(len(mol.atoms)))]
+        if xyz is not None:
+            fragments = [list(range(len(xyz['symbols'])))]
+    else:
+        fragments = order_fragments_by_constraints(fragments=fragments, constraints_dict=constraints_dict)
+
+    atom_order = list()
+    if mol is not None:
+        for fragment in fragments:
+            atom_order.extend(get_atom_order_from_mol(mol=mol, fragment=fragment, constraints_dict=constraints_dict))
+    elif xyz is not None:
+        for fragment in fragments:
+            atom_order.extend(get_atom_order_from_xyz(xyz, fragment=fragment))
+    return atom_order
+
+
+def get_atom_order_from_mol(mol: Molecule,
+                            fragment: List[int] = None,
+                            constraints_dict: Optional[Dict[str, List[tuple]]] = None,
+                            ) -> List[int]:
     """
     Get the order in which atoms should be added to the zmat from the 2D graph representation of the molecule.
 
     Args:
-        mol (Molecule): The corresponding RMG Molecule.
+        mol (Molecule): The Molecule object.
+        fragment (List[int], optional): Entries are 0-indexed atom indices to consider in the molecule.
+                                        Only atoms within the fragment are considered.
         constraints_dict (dict, optional): A dictionary of atom constraints.
                                            The function will try to find an atom order in which all constrained atoms
                                            are after the atoms they are constraint to.
 
     Returns:
-        atom_order (list): The atom order, 0-indexed.
-    Returns:
-        connectivity (dict): Keys are atom indices, values are tuples of respective edges, ordered with heavy atoms
-                             first. All indices are 0-indexed, corresponding to atom indices in ``mol``
-                             (not in the zmat).
+        Tuple[List[int], dict]:
+            - The atom order, 0-indexed.
+            - Keys are atom indices, values are tuples of respective edges, ordered with heavy atoms first.
+              All indices are 0-indexed, corresponding to atom indices in ``mol`` (not in the zmat).
     """
+    fragment = fragment or list(range(len(mol.atoms)))
     atoms_to_explore, constraints, constraint_atoms, unsuccessful, top_d = list(), list(), list(), list(), list()
-    connectivity = dict()
     constraints_dict = constraints_dict or dict()
     number_of_heavy_atoms = len([atom for atom in mol.atoms if atom.is_non_hydrogen()])
 
     for constraint_type, constraint_list in constraints_dict.items():
-        # a list of the constraint tuples
-        constraints.extend(constraint_list)
+        constraints.extend(constraint_list)  # a list of all constraint tuples
         for constraint in constraint_list:
             # a list of the atoms being constraint to other atoms
-            constraint_atoms.append(constraint[0])
+            constraint_atoms.append(constraint[0])  # only the first atom in the constraint tuple is really constrained
         if constraint_type == 'D_group':
             for constraint_indices in constraint_list:
                 if len(top_d):
-                    raise ZMatError(f'zmats can only handle one D_group constraint at a time, got {constraints_dict}')
+                    raise ZMatError(f'zmats can only handle one D_group constraint at a time, got:\n{constraints_dict}')
                 # determine the "top" of the *relevant branch* of this torsion
                 # since the first atom (number 0) is the constrained one being changed,
-                # this top is defined from the second atom in the torsion (numver 1) to it
+                # this top is defined from the second atom in the torsion (number 1) to it
                 logger.debug(f'determining top_d for {constraint_indices[1]} -> {constraint_indices[0]}')
                 top_d = determine_top_group_indices(mol=mol,
                                                     atom1=mol.atoms[constraint_indices[1]],
@@ -1170,30 +1378,41 @@ def get_atom_order_from_mol(mol, constraints_dict=None):
                                                     index=0)[0]
 
     for i in range(len(mol.atoms)):
+        # iterate through the atoms until a successful atom_order is reached
+
         atom_order, start = list(), None
         # try determining a starting point as a heavy atom connected to no more than one heavy atom neighbor
         for atom1 in mol.atoms:
             # find a tail, e.g.: CH3-C-...
             atom1_index = mol.atoms.index(atom1)
-            if atom1.is_non_hydrogen() and sum([atom2.is_non_hydrogen() for atom2 in list(atom1.edges.keys())]) <= 1 \
-                    and atom1_index not in constraint_atoms and atom1_index not in unsuccessful \
-                    and atom1_index not in top_d:
+            if atom1.is_non_hydrogen() \
+                    and sum([atom2.is_non_hydrogen() for atom2 in list(atom1.edges.keys())]) <= 1 \
+                    and atom1_index not in constraint_atoms \
+                    and atom1_index not in unsuccessful \
+                    and atom1_index not in top_d \
+                    and atom1_index in fragment:
                 start = atom1_index
                 break
         else:
             # if a tail could not be found (e.g., cyclohexane), just start from the first non-constrained heavy atom
             for atom1 in mol.atoms:
                 atom1_index = mol.atoms.index(atom1)
-                if atom1.is_non_hydrogen() and mol.atoms.index(atom1) not in constraint_atoms \
-                        and atom1_index not in unsuccessful and atom1_index not in top_d:
+                if atom1.is_non_hydrogen() \
+                        and mol.atoms.index(atom1) not in constraint_atoms \
+                        and atom1_index not in unsuccessful \
+                        and atom1_index not in top_d \
+                        and atom1_index in fragment:
                     start = atom1_index
                     break
             else:
                 # try hydrogens (an atom might be constraint to H, in which case H should come before that atom)
                 for atom1 in mol.atoms:
                     atom1_index = mol.atoms.index(atom1)
-                    if atom1.is_hydrogen() and atom1_index not in constraint_atoms \
-                            and atom1_index not in unsuccessful and atom1_index not in top_d:
+                    if atom1.is_hydrogen() \
+                            and atom1_index not in constraint_atoms \
+                            and atom1_index not in unsuccessful \
+                            and atom1_index not in top_d \
+                            and atom1_index in fragment:
                         start = atom1_index
                         break
         if start is None:
@@ -1210,32 +1429,31 @@ def get_atom_order_from_mol(mol, constraints_dict=None):
             if len(hydrogens_0) and len(hydrogens_1):
                 if not constraint_atoms:
                     hydrogen_0, hydrogen_1 = hydrogens_0[0], hydrogens_1[0]
-                    atom_order.extend([mol.atoms.index(heavy_atoms[0]), mol.atoms.index(heavy_atoms[1]),
-                                       mol.atoms.index(hydrogen_0), mol.atoms.index(hydrogen_1)])
+                    for atom_index in [mol.atoms.index(heavy_atoms[0]), mol.atoms.index(heavy_atoms[1]),
+                                       mol.atoms.index(hydrogen_0), mol.atoms.index(hydrogen_1)]:
+                        if atom_index in fragment:
+                            atom_order.append(atom_index)
                 else:
                     for constraint in constraints:
-                        atom_order.extend(constraint[::-1])
+                        for atom_index in constraint[::-1]:
+                            if atom_index in fragment:
+                                atom_order.append(atom_index)
                     for atom1 in mol.atoms:
                         atom1_index = mol.atoms.index(atom1)
-                        if atom1_index not in atom_order:
+                        if atom1_index not in atom_order and atom1_index in fragment:
                             atom_order.append(atom1_index)
-
-                # atom_list = [hydrogen_0, hydrogen_1] + heavy_atoms
-                for atom in heavy_atoms:
-                    connectivity[mol.atoms.index(atom)] = get_atom_connectivity_from_mol(mol, atom)
                 atoms_to_explore = list()
 
         unexplored = list()  # atoms purposely not added to atom_order due to a D_group constraint
         while len(atoms_to_explore):
             # add all heavy atoms, consider branching and rings
-            index1 = atoms_to_explore[0]
+            atom1_index = atoms_to_explore[0]
             atoms_to_explore.pop(0)
-            atom1 = mol.atoms[index1]
-            if index1 not in top_d:
-                atom_order.append(index1)
+            atom1 = mol.atoms[atom1_index]
+            if atom1_index not in top_d and atom1_index in fragment:
+                atom_order.append(atom1_index)
             else:
-                unexplored.append(index1)
-            connectivity[index1] = get_atom_connectivity_from_mol(mol, atom1)
+                unexplored.append(atom1_index)
             for atom2 in list(atom1.edges.keys()):
                 index2 = mol.atoms.index(atom2)
                 if index2 not in atom_order and index2 not in atoms_to_explore and index2 not in unexplored \
@@ -1246,27 +1464,34 @@ def get_atom_order_from_mol(mol, constraints_dict=None):
             # add all hydrogen atoms
             if atom1.is_hydrogen():
                 index = mol.atoms.index(atom1)
-                if index not in atom_order and index not in top_d:
+                if index not in atom_order and index not in top_d and index in fragment:
                     atom_order.append(index)
-                if index not in list(connectivity.keys()):
-                    connectivity[index] = get_atom_connectivity_from_mol(mol, atom1)  # assigns a list of length 1
 
         # now add top_d
         for top_d_atom in top_d:
             if top_d_atom not in atom_order:
-                atom_order.extend(top_d)
+                atom_order.extend(d for d in top_d if d in fragment)
 
-        success = False if len(constraints) else True
+        if len(atom_order) != len(fragment):
+            continue
+
+        if not len(constraints):
+            break
+
+        success = True
+
         for constraint in constraints:
-            # loop through all constraint tuples, verify that the atoms are ordered correctly
-            constraint_atom_order = [atom_order.index(constraint_atom) for constraint_atom in constraint]
-            diff = [constraint_atom_order[j+1] - constraint_atom_order[j]
-                    for j in range(len(constraint_atom_order) - 1)]
-            if any(entry > 0 for entry in diff):
-                # diff should only have negative entries
-                unsuccessful.append(start)
-            else:
-                success = True
+            # loop through all constraint tuples, verify that the atoms are ordered in accordance with them
+            if any([c in fragment for c in constraint]):
+                # consider this constraint
+                constraint_atom_order = [atom_order.index(constraint_atom) for constraint_atom in constraint
+                                         if constraint_atom in fragment]
+                diff = [constraint_atom_order[j+1] - constraint_atom_order[j]
+                        for j in range(len(constraint_atom_order) - 1)]
+                if any(entry > 0 for entry in diff):
+                    # diff should only have negative entries
+                    unsuccessful.append(start)
+                    success = False
 
         if success:
             # The atom order list answers all constraints criteria
@@ -1277,29 +1502,33 @@ def get_atom_order_from_mol(mol, constraints_dict=None):
         raise ZMatError(f'Could not derive an atom order from connectivity that answers all '
                         f'constraint criteria:\n{constraints_dict}')
 
-    return atom_order, connectivity
+    return atom_order
 
 
-def get_atom_order_from_xyz(xyz):
+def get_atom_order_from_xyz(xyz: Dict[str, tuple],
+                            fragment: Optional[List[int]] = None,
+                            ) -> List[int]:
     """
     Get the order in which atoms should be added to the zmat from the 3D geometry.
 
     Args:
         xyz (dict): The 3D coordinates.
+        fragment (List[int], optional): Entries are 0-indexed atom indices to consider in the molecule.
+                              Only atoms within the fragment are considered.
 
     Returns:
-        list: The atom order, 0-indexed.
-    Returns:
-        None: Not used, but important for returning the same number of parameters as ``get_atom_order_from_mol``.
+        List[int]: The atom order, 0-indexed.
     """
+    fragment = fragment or list(range(len(xyz['symbols'])))
     atom_order, hydrogens = list(), list()
     for i, symbol in enumerate(xyz['symbols']):
-        if symbol == 'H':
-            hydrogens.append(i)
-        else:
-            atom_order.append(i)
+        if i in fragment:
+            if symbol == 'H':
+                hydrogens.append(i)
+            else:
+                atom_order.append(i)
     atom_order.extend(hydrogens)
-    return atom_order, None
+    return atom_order
 
 
 def consolidate_zmat(zmat, mol=None, consolidation_tols=None):
@@ -1647,3 +1876,38 @@ def get_all_neighbors(mol, atom_index):
     for atom in mol.atoms[atom_index].edges.keys():
         neighbors.append(mol.atoms.index(atom))
     return neighbors
+
+
+def is_atom_in_new_fragment(atom_index: int,
+                            zmat: Dict[str, Union[dict, tuple]],
+                            fragments: Optional[List[List[int]]] = None,
+                            skip_atoms: Optional[List[int]] = None,
+                            ) -> bool:
+    """
+    Whether an atom is present in a new fragment that hasn't been added to the zmat yet,
+    and therefore atom assignment should not be done based on connectivity.
+
+    Args:
+        atom_index (int): The 0-index of the atom in the molecule or cartesian coordinates to be added.
+                          (``n`` and ``atom_index`` refer to the same atom, but it might have different indices
+                          in the zmat/molecule/xyz/fragments)
+        zmat (dict): The zmat.
+        skip_atoms (list): Atoms in the zmat map to ignore when checking fragments.
+        fragments (List[List[int]], optional):
+            Fragments represented by the species, i.e., as in a VdW well or a TS.
+            Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.
+            indices are 0-indexed.
+
+    Returns:
+        bool: Whether to consider connectivity for assigning atoms in z-mat variables.
+    """
+    skip_atoms = skip_atoms or list()
+    if fragments is not None and len(fragments) > 1:
+        for fragment in fragments:
+            if atom_index in fragment:
+                if all([z_index in skip_atoms or frag_index not in fragment
+                        for z_index, frag_index in zmat['map'].items()]):
+                    # all atoms considered thus far are not in the current fragment, connectivity is meaningless
+                    return True
+                break
+    return False
