@@ -2254,7 +2254,7 @@ class Scheduler(object):
         """
         self.output[label]['job_types']['sp'] = True
         self.output[label]['paths']['sp'] = sp_path
-        if 'ccsd' in self.sp_level.method:
+        if self.sp_level is not None and 'ccsd' in self.sp_level.method:
             self.species_dict[label].t1 = parser.parse_t1(self.output[label]['paths']['sp'])
         zpe_scale_factor = 0.99 if (self.composite_method is not None and 'cbs-qb3' in self.composite_method.method) \
             else 1.0
