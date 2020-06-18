@@ -273,6 +273,11 @@ H      -0.59436200   -0.94730400    0.00000000"""
         np.testing.assert_almost_equal(energies, expected_energies)
         np.testing.assert_almost_equal(angles, expected_angles)
 
+        path2 = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'scan_1d_curvilinear_error.out')
+        energies_2, angles_2 = parser.parse_1d_scan_energies(path=path2)
+        self.assertEqual(energies_2, None)
+        self.assertEqual(angles_2, None)
+
     def test_parse_nd_scan_energies(self):
         """Test parsing an ND scan output file"""
         path1 = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'scan_2D_relaxed_OCdOO.log')

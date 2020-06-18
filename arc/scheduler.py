@@ -2400,7 +2400,7 @@ class Scheduler(object):
         self.species_dict[label].rotors_dict[i]['invalidation_reason'] = invalidation_reason
 
         # If energies were obtained, draw the scan curve
-        if len(energies):
+        if energies is not None and len(energies):
             folder_name = 'rxns' if job.is_ts else 'Species'
             rotor_path = os.path.join(self.project_directory, 'output', folder_name, job.species_name, 'rotors')
             plotter.plot_1d_rotor_scan(angles=angles,
