@@ -847,6 +847,7 @@ def modify_coords(coords: Dict[str, tuple],
                   mol: Optional[Molecule] = None,
                   index: int = 0,
                   fragments: Optional[List[List[int]]] = None,
+                  output_zmat: bool = False,
                   ) -> Dict[str, tuple]:
     """
     Modify either a bond length, angle, or dihedral angle in the given coordinates.
@@ -873,6 +874,7 @@ def modify_coords(coords: Dict[str, tuple],
         mol (Molecule, optional): The corresponding RMG molecule with the connectivity information.
                                   Mandatory if the modification type is 'group' or 'groups'.
         index (bool, optional): Whether the specified atoms in ``indices`` and ``fragments`` are 0- or 1-indexed.
+        output_zmat(bool, optional): Whether to output cartesian (xyz, default) or internal (zmat) coordinates.
         fragments (List[List[int]], optional):
             Fragments represented by the species, i.e., as in a VdW well or a TS.
             Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.
@@ -883,7 +885,8 @@ def modify_coords(coords: Dict[str, tuple],
                     or if a 'groups' modification type was specified for R or A.
 
     Returns:
-        dict: The respective cartesian (xyz) coordinates reflecting the desired modification.
+        dict: The respective cartesian (xyz, default) or internal (zmat, if ``output_zmat`` is ``True``) coordinates
+              reflecting the desired modification.
     """
     if modification_type not in ['atom', 'group', 'groups']:
         raise InputError(f'Allowed modification types are atom, group, or groups, got: {modification_type}.')
@@ -945,8 +948,11 @@ def modify_coords(coords: Dict[str, tuple],
             # the requested parameter represents an angle split by a dummy atom,
             # a list of the two corresponding parameters was be returned
             zmat['vars'][param[0]] = new_value - sum(zmat['vars'][par] for par in param[1:])
+    if output_zmat:
+        return zmat
+    else:
         new_xyz = zmat_to_xyz(zmat=zmat)
-    return new_xyz
+        return new_xyz
 
 
 def get_most_common_isotope_for_element(element_symbol):
