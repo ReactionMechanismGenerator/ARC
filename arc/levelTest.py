@@ -151,6 +151,13 @@ class TestLevel(unittest.TestCase):
                 self.assertIsInstance(method, str)
         self.assertIn('gaussian', list(ess_methods.keys()))
 
+    def test_copy(self):
+        """Test copying the object"""
+        level_1 = Level(repr='wB97xd/def2-tzvp')
+        level_2 = level_1.copy()
+        self.assertIsNot(level_1, level_2)
+        self.assertEqual(level_1.as_dict(), level_2.as_dict())
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
