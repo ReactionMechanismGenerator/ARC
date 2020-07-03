@@ -1282,8 +1282,9 @@ def order_atoms_in_mol_list(ref_mol, mol_list):
             try:  # TODO: flag as unordered (or solve)
                 order_atoms(ref_mol, mol)
             except SanitizationError as e:
-                logger.warning(f'Could not order atoms in\n{mol.copy(deep=True).to_adjacency_list}'
-                               f'\nGot the following error:\n{e}')
+                logger.warning(f'Could not order atoms in\n'
+                               f'{mol.copy(deep=True).to_adjacency_list()}\n'
+                               f'Got the following error:\n{e}')
                 return False
     else:
         logger.warning('Could not order atoms')
