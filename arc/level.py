@@ -144,6 +144,15 @@ class Level(object):
             str_ += f' ({self.method_type})'
         return str_
 
+    def copy(self):
+        """
+        A method to create a copy of the object.
+
+        Returns:
+            Level: A copy of the object.
+        """
+        return Level(repr=self.as_dict())
+
     def simple(self) -> str:
         """
         Return a simple humane-readable string representation of the object.

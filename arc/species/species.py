@@ -1629,6 +1629,8 @@ class ARCSpecies(object):
         if not mol_copy.has_bond(atom1, atom2):
             raise SpeciesError('Attempted to remove a nonexistent bond.')
         bond = mol_copy.get_bond(atom1, atom2)
+        if not bond.is_single():
+            logger.warning(f'Scissors were requested to remove a non-single bond in {self.label}.')
         mol_copy.remove_bond(bond)
         mol_splits = mol_copy.split()
         if len(mol_splits) == 2:
