@@ -1035,30 +1035,42 @@ class Scheduler(object):
             self.run_job(label=label, xyz=self.species_dict[label].get_xyz(generate=False),
                          level_of_theory=self.freq_level, job_type='freq')
 
-    def run_sp_job(self, label):
+    def run_sp_job(self,
+                   label: str,
+                   level: Optional[Level] = None,
+                   ):
         """
         Spawn a single point job using 'final_xyz' for species ot TS 'label'.
         If the method is MRCI, first spawn a simple CCSD job, and use orbital determination to run the MRCI job.
 
         Args:
             label (str): The species label.
+            level (Level): An alternative level of theory to run at. If ``None``, self.sp_level will be used.
         """
+        level = level or self.sp_level
+
         # determine_occ(xyz=self.xyz, charge=self.charge)
-        if self.sp_level == self.opt_level and not self.composite_method \
+        if level == self.opt_level and not self.composite_method \
                 and 'paths' in self.output[label] and 'geo' in self.output[label]['paths'] \
                 and self.output[label]['paths']['geo']:
-            logger.info(f'Not running an sp job for {label} at {self.sp_level} since the optimization was done at the '
+            logger.info(f'Not running an sp job for {label} at {level} since the optimization was done at the '
                         f'same level of theory. Using the optimization output to parse the sp energy.')
             recent_opt_job_name, recent_opt_job = 'opt_a0', None
             if 'opt' in self.job_dict[label]:
                 for opt_job_name, opt_job in self.job_dict[label]['opt'].items():
                     if int(opt_job_name.split('_a')[-1]) > int(recent_opt_job_name.split('_a')[-1]):
                         recent_opt_job_name, recent_opt_job = opt_job_name, opt_job
-                self.post_sp_actions(label=label, sp_path=os.path.join(recent_opt_job.local_path, 'output.out'))
+                self.post_sp_actions(label=label,
+                                     sp_path=os.path.join(recent_opt_job.local_path, 'output.out'),
+                                     level=level,
+                                     )
 
             # If opt is not in the job dictionary, the likely explanation is this job has been restarted
             elif 'geo' in self.output[label]['paths']:  # Then just use this path directly
-                self.post_sp_actions(label=label, sp_path=self.output[label]['paths']['geo'])
+                self.post_sp_actions(label=label,
+                                     sp_path=self.output[label]['paths']['geo'],
+                                     level=level,
+                                     )
 
             else:
                 raise RuntimeError(f'Unable to set the path for the sp job for species {label}')
@@ -1069,7 +1081,7 @@ class Scheduler(object):
             self.job_dict[label]['sp'] = dict()
         if self.composite_method:
             raise SchedulerError(f'run_sp_job() was called for {label} which has a composite method level of theory')
-        if 'mrci' in self.sp_level.method:
+        if 'mrci' in level.method:
             if self.job_dict[label]['sp']:
                 # Parse orbital information from the CCSD job, then run MRCI
                 job0 = None
@@ -1107,8 +1119,9 @@ class Scheduler(object):
         if self.job_types['sp']:
             self.run_job(label=label,
                          xyz=self.species_dict[label].get_xyz(generate=False),
-                         level_of_theory=self.sp_level,
-                         job_type='sp')
+                         level_of_theory=level,
+                         job_type='sp',
+                         )
 
     def run_scan_jobs(self, label):
         """
@@ -1315,6 +1328,7 @@ class Scheduler(object):
                     # this is an 'optfreq' job type, don't run freq
                     self.check_freq_job(label=label, job=self.job_dict[label]['optfreq'][job_name])
             if not composite:
+                # don't use a solvation correction for this sp job if a solvation_scheme_level was specified
                 self.run_sp_job(label)
             if self.species_dict[label].mol is None:
                 # useful for TS species where xyz might not be given to perceive a .mol attribute,
@@ -2233,7 +2247,10 @@ class Scheduler(object):
             # This is a CCSD job ran before MRCI. Spawn MRCI
             self.run_sp_job(label)
         elif job.job_status[1]['status'] == 'done':
-            self.post_sp_actions(label, sp_path=os.path.join(job.local_path, 'output.out'))
+            self.post_sp_actions(label,
+                                 sp_path=os.path.join(job.local_path, 'output.out'),
+                                 level=job.level,
+                                 )
             # Update restart dictionary and save the yaml restart file:
             self.save_restart_dict()
             if self.species_dict[label].number_of_atoms == 1:
@@ -2244,15 +2261,20 @@ class Scheduler(object):
                                   job=job,
                                   level_of_theory=job.level)
 
-    def post_sp_actions(self, label, sp_path):
+    def post_sp_actions(self,
+                        label: str,
+                        sp_path: str,
+                        level: Optional[Level] = None,
+                        ):
         """
         Perform post-sp actions.
 
         Args:
             label (str): The species label.
-            sp_path (str): The path to 'output.out' for the single point job
+            sp_path (str): The path to 'output.out' for the single point job.
+            level (Level, optional): The level of theory used for the sp job.
         """
-        self.output[label]['job_types']['sp'] = True
+        original_sp_path = self.output[label]['paths']['sp'] if 'sp' in self.output[label]['paths'] else None
         self.output[label]['paths']['sp'] = sp_path
         if self.sp_level is not None and 'ccsd' in self.sp_level.method:
             self.species_dict[label].t1 = parser.parse_t1(self.output[label]['paths']['sp'])
@@ -2268,6 +2290,27 @@ class Scheduler(object):
                 txt += ". It might have multireference characteristic."
             logger.info(f'Species {label} has a T1 diagnostic parameter of {self.species_dict[label].t1}{txt}')
             self.output[label]['info'] += f'T1 = {self.species_dict[label].t1}; '
+
+        if self.sp_level.solvation_scheme_level is not None:
+            # a complex solvation correction behavior was requested for the single-point energy value
+            if not self.output[label]['job_types']['sp']:
+                # this is the first "original" sp job, spawn two more at the sp_level.solvation_scheme_level level,
+                # with and without solvation corrections
+                solvation_sp_level = self.sp_level.solvation_scheme_level.copy()
+                solvation_sp_level.solvation_method = self.sp_level.solvation_method
+                solvation_sp_level.solvent = self.sp_level.solvent
+                self.run_sp_job(label=label, level=solvation_sp_level)
+                self.run_sp_job(label=label, level=self.sp_level.solvation_scheme_level)
+            else:
+                # this is one of the additional sp jobs spawned by the above previously
+                if level is not None and level.solvation_method is not None:
+                    self.output[label]['paths']['sp_sol'] = sp_path
+                else:
+                    self.output[label]['paths']['sp_no_sol'] = sp_path
+                self.output[label]['paths']['sp'] = original_sp_path  # restore the original path
+
+        # set *at the end* to differentiate between sp jobs when using complex solvation corrections
+        self.output[label]['job_types']['sp'] = True
 
     def check_irc_job(self, label, job):
         """
