@@ -33,9 +33,11 @@ class TestParser(unittest.TestCase):
         so2oo_path = os.path.join(arc_path, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
         ch2o_path_molpro = os.path.join(arc_path, 'arc', 'testing', 'freq', 'CH2O_freq_molpro.out')
         ch2o_path_terachem = os.path.join(arc_path, 'arc', 'testing', 'freq', 'CH2O_freq_terachem.dat')
-        ch2o_path_terachem_output = os.path.join(arc_path, 'arc', 'testing', 'freq', 'formaldehyde_freq_terachem_output.out')
-        ncc_path_terachem_output = os.path.join(arc_path, 'arc', 'testing', 'freq', 'ethylamine_freq_terachem_output.out')
-        orca_path = os.path.join(arc_path, 'arc', 'testing', 'orca_example_freq.log')
+        ch2o_path_terachem_output = os.path.join(arc_path, 'arc', 'testing', 'freq',
+                                                 'formaldehyde_freq_terachem_output.out')
+        ncc_path_terachem_output = os.path.join(arc_path, 'arc', 'testing', 'freq',
+                                                'ethylamine_freq_terachem_output.out')
+        orca_path = os.path.join(arc_path, 'arc', 'testing', 'freq', 'orca_example_freq.log')
 
         no3_freqs = parser.parse_frequencies(path=no3_path, software='QChem')
         c2h6_freqs = parser.parse_frequencies(path=c2h6_path, software='QChem')
@@ -75,7 +77,7 @@ class TestParser(unittest.TestCase):
 
     def test_parse_normal_displacement_modes(self):
         """Test parsing frequencies and normal displacement modes"""
-        freq_path = os.path.join(arc_path, 'arc', 'testing', 'Gaussian_neg_freq.out')
+        freq_path = os.path.join(arc_path, 'arc', 'testing', 'freq', 'Gaussian_neg_freq.out')
         freqs, normal_disp_modes = parser.parse_normal_displacement_modes(path=freq_path)
         expected_freqs = np.array([-18.0696, 127.6948, 174.9499, 207.585, 228.8421, 281.2939, 292.4101,
                                    308.0345, 375.4493, 486.8396, 498.6986, 537.6196, 564.0223, 615.3762,
@@ -93,7 +95,7 @@ class TestParser(unittest.TestCase):
              [0.3, 0.03, 0.41], [0.0, 0.0, -0.15], [0.0, -0.0, 0.01], [0.0, -0.0, 0.21], [0.0, -0.0, 0.19]], np.float64)
         np.testing.assert_almost_equal(normal_disp_modes[0], expected_normal_disp_modes_0)
 
-        freq_path = os.path.join(arc_path, 'arc', 'testing', 'CHO_neg_freq.out')
+        freq_path = os.path.join(arc_path, 'arc', 'testing', 'freq', 'CHO_neg_freq.out')
         freqs, normal_disp_modes = parser.parse_normal_displacement_modes(path=freq_path)
         expected_freqs = np.array([-1612.8294, 840.8655, 1883.4822, 3498.091], np.float64)
         np.testing.assert_almost_equal(freqs, expected_freqs)

@@ -498,7 +498,7 @@ class TestTrsh(unittest.TestCase):
 
     def test_trsh_negative_freq(self):
         """Test troubleshooting a negative frequency"""
-        gaussian_neg_freq_path = os.path.join(arc_path, 'arc', 'testing', 'Gaussian_neg_freq.out')
+        gaussian_neg_freq_path = os.path.join(arc_path, 'arc', 'testing', 'freq', 'Gaussian_neg_freq.out')
         current_neg_freqs_trshed, conformers, output_errors, output_warnings = \
             trsh.trsh_negative_freq(label='2-methoxy_n-methylaniline', log_file=gaussian_neg_freq_path)
         expected_current_neg_freqs_trshed = [-18.07]
