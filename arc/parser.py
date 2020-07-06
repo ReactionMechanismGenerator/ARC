@@ -137,6 +137,8 @@ def parse_normal_displacement_modes(path: str,
                 parse = True
             if parse and len(line.split()) in [0, 1, 3]:
                 parse_normal_disp_modes = False
+                normal_disp_modes.extend(normal_disp_modes_entries)
+                normal_disp_modes_entries = list()
             if parse and 'Frequencies --' in line:
                 # e.g.:  Frequencies --    -18.0696               127.6948               174.9499
                 splits = line.split()
@@ -153,8 +155,7 @@ def parse_normal_displacement_modes(path: str,
                     if len(normal_disp_modes_entries) < i + 1:
                         normal_disp_modes_entries.append(list())
                     normal_disp_modes_entries[i].append(splits[3 * i: 3 * i + 3])
-                normal_disp_modes.extend(normal_disp_modes_entries)
-            elif parse and 'Atom  AN      X      Y      Z        X      Y      Z        X      Y      Z' in line:
+            elif parse and 'Atom  AN      X      Y      Z' in line:
                 parse_normal_disp_modes = True
             elif parse and not line or '-------------------' in line:
                 parse = False

@@ -19,6 +19,7 @@ class TestParser(unittest.TestCase):
     """
     Contains unit tests for the parser functions
     """
+
     @classmethod
     def setUpClass(cls):
         """
@@ -33,9 +34,11 @@ class TestParser(unittest.TestCase):
         so2oo_path = os.path.join(arc_path, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
         ch2o_path_molpro = os.path.join(arc_path, 'arc', 'testing', 'freq', 'CH2O_freq_molpro.out')
         ch2o_path_terachem = os.path.join(arc_path, 'arc', 'testing', 'freq', 'CH2O_freq_terachem.dat')
-        ch2o_path_terachem_output = os.path.join(arc_path, 'arc', 'testing', 'freq', 'formaldehyde_freq_terachem_output.out')
-        ncc_path_terachem_output = os.path.join(arc_path, 'arc', 'testing', 'freq', 'ethylamine_freq_terachem_output.out')
-        orca_path = os.path.join(arc_path, 'arc', 'testing', 'orca_example_freq.log')
+        ch2o_path_terachem_output = os.path.join(arc_path, 'arc', 'testing', 'freq',
+                                                 'formaldehyde_freq_terachem_output.out')
+        ncc_path_terachem_output = os.path.join(arc_path, 'arc', 'testing', 'freq',
+                                                'ethylamine_freq_terachem_output.out')
+        orca_path = os.path.join(arc_path, 'arc', 'testing', 'freq', 'orca_example_freq.log')
 
         no3_freqs = parser.parse_frequencies(path=no3_path, software='QChem')
         c2h6_freqs = parser.parse_frequencies(path=c2h6_path, software='QChem')
@@ -75,7 +78,7 @@ class TestParser(unittest.TestCase):
 
     def test_parse_normal_displacement_modes(self):
         """Test parsing frequencies and normal displacement modes"""
-        freq_path = os.path.join(arc_path, 'arc', 'testing', 'Gaussian_neg_freq.out')
+        freq_path = os.path.join(arc_path, 'arc', 'testing', 'freq', 'Gaussian_neg_freq.out')
         freqs, normal_disp_modes = parser.parse_normal_displacement_modes(path=freq_path)
         expected_freqs = np.array([-18.0696, 127.6948, 174.9499, 207.585, 228.8421, 281.2939, 292.4101,
                                    308.0345, 375.4493, 486.8396, 498.6986, 537.6196, 564.0223, 615.3762,
@@ -93,20 +96,95 @@ class TestParser(unittest.TestCase):
              [0.3, 0.03, 0.41], [0.0, 0.0, -0.15], [0.0, -0.0, 0.01], [0.0, -0.0, 0.21], [0.0, -0.0, 0.19]], np.float64)
         np.testing.assert_almost_equal(normal_disp_modes[0], expected_normal_disp_modes_0)
 
-        freq_path = os.path.join(arc_path, 'arc', 'testing', 'CHO_neg_freq.out')
+        freq_path = os.path.join(arc_path, 'arc', 'testing', 'freq', 'CHO_neg_freq.out')
         freqs, normal_disp_modes = parser.parse_normal_displacement_modes(path=freq_path)
         expected_freqs = np.array([-1612.8294, 840.8655, 1883.4822, 3498.091], np.float64)
         np.testing.assert_almost_equal(freqs, expected_freqs)
         expected_normal_disp_modes = np.array(
-            [[[0.05, 0.03, 0.], [-0.13, -0.09, 0.], [0.8, 0.57, 0.]],
-             [[-0.03, 0.05, 0.], [0.09, -0.13, 0.], [-0.57, 0.8, 0.]],
-             [[0., 0., -0.41], [-0., 0., 0.49], [0., 0., 0.77]],
-             [[0.05, 0.03, 0.], [-0.13, -0.09, 0.], [0.8, 0.57, 0.]],
-             [[-0.03, 0.05, 0.], [0.09, -0.13, 0.], [-0.57, 0.8, 0.]],
-             [[0., 0., -0.41], [0., 0., 0.49], [0., 0., 0.77]],
-             [[0.05, 0.03, 0.], [-0.13, -0.09, 0.], [0.8, 0.57, 0.]],
-             [[-0.03, 0.05, 0.], [0.09, -0.13, 0.], [-0.57, 0.8, 0.]],
-             [[0., 0., -0.41], [-0., 0., 0.49], [0., 0., 0.77]]], np.float64)
+            [[[0.05, 0.03, -0.0], [-0.13, -0.09, 0.0], [0.8, 0.57, -0.0]],
+             [[-0.03, 0.05, -0.0], [0.09, -0.13, 0.0], [-0.57, 0.8, 0.0]],
+             [[0.0, -0.0, -0.41], [-0.0, 0.0, 0.49], [0.0, -0.0, 0.77]],
+             [[0.0, -0.0, 0.02], [-0.0, 0.0, -0.11], [0.0, -0.0, 0.99]]], np.float64)
+        np.testing.assert_almost_equal(normal_disp_modes, expected_normal_disp_modes)
+
+        freq_path = os.path.join(arc_path, 'arc', 'testing', 'freq', 'CH3OO_freq_gaussian.out')
+        freqs, normal_disp_modes = parser.parse_normal_displacement_modes(path=freq_path)
+        expected_freqs = np.array([136.4446, 494.1267, 915.7812, 1131.4603, 1159.9315, 1225.148, 1446.5652,
+                                   1474.8065, 1485.6423, 3046.2186, 3134.8026, 3147.5619], np.float64)
+        np.testing.assert_almost_equal(freqs, expected_freqs)
+        expected_normal_disp_modes = np.array(
+            [[[-0.0, -0.0, 0.02],
+              [0.0, 0.0, -0.11],
+              [0.0, -0.0, 0.09],
+              [0.32, 0.39, -0.23],
+              [0.0, 0.0, 0.61],
+              [-0.32, -0.39, -0.23]],
+             [[-0.24, -0.06, -0.0],
+              [-0.02, 0.22, 0.0],
+              [0.26, -0.13, -0.0],
+              [-0.54, -0.11, 0.01],
+              [0.12, -0.43, -0.0],
+              [-0.54, -0.11, -0.01]],
+             [[0.41, -0.16, -0.0],
+              [-0.25, 0.25, 0.0],
+              [-0.1, -0.09, 0.0],
+              [-0.03, -0.16, -0.0],
+              [0.66, -0.42, -0.0],
+              [-0.03, -0.16, 0.0]],
+             [[0.0, 0.0, 0.13],
+              [0.0, 0.0, -0.06],
+              [-0.0, -0.0, -0.0],
+              [-0.52, 0.38, -0.16],
+              [-0.0, 0.0, -0.29],
+              [0.52, -0.38, -0.16]],
+             [[-0.01, 0.17, -0.0],
+              [0.21, 0.02, 0.0],
+              [-0.2, -0.12, 0.0],
+              [-0.35, -0.01, 0.1],
+              [0.62, -0.46, 0.0],
+              [-0.35, -0.01, -0.1]],
+             [[-0.07, -0.14, -0.0],
+              [0.13, 0.2, 0.0],
+              [-0.11, -0.12, -0.0],
+              [0.52, 0.06, -0.1],
+              [-0.48, 0.3, 0.0],
+              [0.52, 0.06, 0.1]],
+             [[-0.09, 0.05, 0.0],
+              [-0.04, -0.0, 0.0],
+              [0.02, 0.02, -0.0],
+              [0.52, -0.16, 0.17],
+              [0.39, -0.44, -0.0],
+              [0.52, -0.16, -0.17]],
+             [[-0.0, 0.0, -0.06],
+              [-0.0, 0.0, -0.01],
+              [0.0, -0.0, 0.0],
+              [-0.44, -0.19, 0.07],
+              [0.0, 0.0, 0.73],
+              [0.44, 0.19, 0.07]],
+             [[-0.03, -0.05, -0.0],
+              [-0.01, -0.02, -0.0],
+              [0.0, 0.01, 0.0],
+              [0.06, 0.53, -0.37],
+              [0.24, -0.29, 0.0],
+              [0.06, 0.53, 0.37]],
+             [[-0.03, 0.02, -0.0],
+              [-0.0, 0.0, 0.0],
+              [0.0, 0.0, 0.0],
+              [0.02, -0.33, -0.5],
+              [0.37, 0.37, -0.0],
+              [0.02, -0.33, 0.5]],
+             [[0.0, 0.0, -0.1],
+              [0.0, 0.0, 0.0],
+              [-0.0, -0.0, 0.0],
+              [-0.02, 0.4, 0.58],
+              [-0.0, -0.0, -0.02],
+              [0.02, -0.4, 0.58]],
+             [[-0.05, -0.08, -0.0],
+              [-0.0, -0.0, -0.0],
+              [0.0, 0.0, 0.0],
+              [-0.02, 0.19, 0.31],
+              [0.61, 0.6, -0.0],
+              [-0.02, 0.19, -0.31]]], np.float64)
         np.testing.assert_almost_equal(normal_disp_modes, expected_normal_disp_modes)
 
     def test_parse_xyz_from_file(self):
