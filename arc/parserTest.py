@@ -39,6 +39,7 @@ class TestParser(unittest.TestCase):
         ncc_path_terachem_output = os.path.join(arc_path, 'arc', 'testing', 'freq',
                                                 'ethylamine_freq_terachem_output.out')
         orca_path = os.path.join(arc_path, 'arc', 'testing', 'freq', 'orca_example_freq.log')
+        dual_freq_path = os.path.join(arc_path, 'arc', 'testing', 'freq', 'dual_freq_output.out')
 
         no3_freqs = parser.parse_frequencies(path=no3_path, software='QChem')
         c2h6_freqs = parser.parse_frequencies(path=c2h6_path, software='QChem')
@@ -48,6 +49,7 @@ class TestParser(unittest.TestCase):
         ch2o_terachem_output_freqs = parser.parse_frequencies(path=ch2o_path_terachem_output, software='TeraChem')
         ncc_terachem_output_freqs = parser.parse_frequencies(path=ncc_path_terachem_output, software='TeraChem')
         orca_freqs = parser.parse_frequencies(path=orca_path, software='Orca')
+        dual_freqs = parser.parse_frequencies(path=dual_freq_path, software='Gaussian')
 
         np.testing.assert_almost_equal(no3_freqs,
                                        np.array([-390.08, -389.96, 822.75, 1113.23, 1115.24, 1195.35], np.float64))
@@ -75,6 +77,15 @@ class TestParser(unittest.TestCase):
                                                  3087.60678739, 3447.41720077, 3529.23879182], np.float64))
         np.testing.assert_almost_equal(orca_freqs,
                                        np.array([1151.03, 1250.19, 1526.12, 1846.4, 3010.49, 3070.82], np.float64))
+        np.testing.assert_almost_equal(dual_freqs,
+                                       np.array([-1617.8276,    56.9527,    76.681,    121.4038,   182.1572,   194.9796,
+                                                   202.4056,   209.9621,   273.506,    342.468,    431.985,    464.0768,
+                                                   577.758,    594.4119,   615.5216,   764.1286,   962.2969,   968.0013,
+                                                  1004.7852,  1098.0136,  1129.3888,  1137.0454,  1150.7824,  1185.4531,
+                                                  1249.0746,  1387.4803,  1401.5073,  1413.8079,  1420.6471,  1453.6296,
+                                                  1481.9425,  1487.0125,  1496.0713,  1498.382,   1507.7379,  2280.9881,
+                                                  3015.0638,  3018.8871,  3030.1281,  3074.8208,  3079.5256,  3103.8434,
+                                                  3109.1728,  3156.4352,  3783.7315], np.float64))
 
     def test_parse_normal_displacement_modes(self):
         """Test parsing frequencies and normal displacement modes"""
