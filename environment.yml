@@ -48,6 +48,7 @@ dependencies:
   - rdkit >=2019.09.2.0
   - scikit-learn
   - scipy
+  - sphinx_rtd_theme
   - symmetry
   - xlwt
   - paramiko >=2.6.0
