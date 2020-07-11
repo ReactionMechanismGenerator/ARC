@@ -23,8 +23,8 @@ def get_normal(v1: List[float],
          v1 (list): Vector 1.
          v2 (list): Vector 2.
 
-    Returns:
-        list: A normal unit vector to v1 and v2.
+    Returns: list
+        A normal unit vector to v1 and v2.
     """
     normal = [v1[1] * v2[2] - v2[1] * v1[2], - v1[0] * v2[2] + v2[0] * v1[2], v1[0] * v2[1] - v2[0] * v1[1]]
     return unit_vector(normal)
@@ -45,8 +45,8 @@ def get_angle(v1: List[float],
     Raises:
         VectorsError: If ``v1`` and ``v2`` are of different lengths.
 
-    Returns:
-        float: The angle between ``v1`` and ``v2`` in the desired units.
+    Returns: float
+        The angle between ``v1`` and ``v2`` in the desired units.
     """
     if len(v1) != len(v2):
         raise VectorsError(f'v1 and v2 must be the same length, got {len(v1)} and {len(v2)}.')
@@ -74,8 +74,8 @@ def get_dihedral(v1: List[float],
     Raises:
         VectorsError: If either ``v1`` or ``v2`` have lengths different than three.
 
-    Returns:
-        float: The dihedral angle between ``v1`` and ``v2`` in the desired units.
+    Returns: float
+        The dihedral angle between ``v1`` and ``v2`` in the desired units.
     """
     if len(v1) != 3 or len(v2) != 3 or len(v3) != 3:
         raise VectorsError(f'v1, v2, and v3 must have a length of three, got {len(v1)}, {len(v2)}, and {len(v3)}.')
@@ -109,8 +109,8 @@ def calculate_distance(coords: Union[list, tuple, dict],
         VectorsError: If ``index`` is out of range, or ``atoms`` is of wrong length or has repeating indices.
         TypeError: If ``coords`` is of wrong type.
 
-    Returns:
-        float: The distance in the coords units.
+    Returns: float
+        The distance in the coords units.
     """
     if isinstance(coords, dict) and 'coords' in coords:
         coords = coords['coords']
@@ -154,8 +154,8 @@ def calculate_angle(coords: Union[list, tuple, dict],
         VectorsError: If ``index`` is out of range, or ``atoms`` is of wrong length or has repeating indices.
         TypeError: If ``coords`` is of wrong type.
 
-    Returns:
-        float: The angle.
+    Returns: float
+        The angle.
     """
     if isinstance(coords, dict) and 'coords' in coords:
         coords = coords['coords']
@@ -200,8 +200,8 @@ def calculate_dihedral_angle(coords: Union[list, tuple, dict],
         VectorsError: If ``index`` is out of range, or ``torsion`` is of wrong length or has repeating indices.
         TypeError: If ``coords`` is of wrong type.
 
-    Returns:
-        float: The dihedral angle in a 0-360 degrees range.
+    Returns: float
+        The dihedral angle in a 0-360 degrees range.
     """
     if isinstance(coords, dict) and 'coords' in coords:
         coords = coords['coords']
@@ -237,8 +237,8 @@ def unit_vector(vector: List[float]) -> List[float]:
     Args:
         vector (list): The input vector.
 
-    Returns:
-        list: The unit vector.
+    Returns: list
+        The unit vector.
     """
     length = get_vector_length(vector)
     return [vi / length for vi in vector]
@@ -254,8 +254,8 @@ def set_vector_length(vector: List[float],
         vector (list): The vector to process.
         length (float): The desired length to set.
 
-    Returns:
-        list: A vector with the desired length.
+    Returns: list
+        A vector with the desired length.
     """
     u = unit_vector(vector)
     return [u[0] * length, u[1] * length, u[2] * length]
@@ -277,8 +277,8 @@ def rotate_vector(point_a: List[float],
         normal (list): The axis to be rotated around.
         theta (float): The degree in radians by which to rotate.
 
-    Returns:
-        list: The rotated vector (the new coordinates for point B).
+    Returns: list
+        The rotated vector (the new coordinates for point B).
     """
     normal = np.asarray(normal)
     normal = normal / math.sqrt(np.dot(normal, normal))  # should *not* be replaced by an augmented assignment
@@ -307,8 +307,8 @@ def get_vector(pivot: int,
         anchor (int): The 0-index of an additional atom in the molecule.
         xyz (dict): The 3D coordinates of the molecule with the same atom order as in mol.
 
-    Returns:
-         list: A vector pointing from the pivotal atom towards the anchor atom.
+    Returns: list
+         A vector pointing from the pivotal atom towards the anchor atom.
     """
     x, y, z = converter.xyz_to_x_y_z(xyz)
     dx = x[anchor] - x[pivot]
@@ -335,8 +335,8 @@ def get_lp_vector(label: str,
     Raises:
         VectorsError: If the lp vector cannot be attained.
 
-    Returns:
-        list: A unit vector pointing from the pivotal (nitrogen) atom towards its lone electron pairs orbital.
+    Returns: list
+        A unit vector pointing from the pivotal (nitrogen) atom towards its lone electron pairs orbital.
     """
     neighbors, vectors = list(), list()
     if not mol.atoms[pivot].is_nitrogen():
@@ -364,8 +364,8 @@ def get_vector_length(v: List[float]) -> float:
     Args:
         v (list): The vector.
 
-    Returns:
-        float: The vector's length.
+    Returns: float
+        The vector's length.
     """
     return float(np.dot(v, v) ** 0.5)
 
@@ -385,8 +385,8 @@ def get_delta_angle(a1: float,
         a1 (float): Angle 1 in degrees.
         a2 (float): Angle 2 in degrees.
 
-    Returns:
-        float: THe difference between the angles in degrees.
+    Returns: float
+        The difference between the angles in degrees.
     """
     a1 %= 360
     a2 %= 360

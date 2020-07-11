@@ -41,6 +41,7 @@ Documentation Contents
    output
    api/index
    tools
+   media
    release
    credits
    contribute

@@ -393,7 +393,7 @@ def xyz_to_rmg_conformer(xyz_dict):
 
 def standardize_xyz_string(xyz_str, isotope_format=None):
     """
-    A helper function to correct xyz string format input (** string to string **).
+    A helper function to correct xyz string format input (string to string).
     Usually empty lines are added by the user either in the beginning or the end,
     here we remove them along with other common issues.
 
@@ -1186,7 +1186,7 @@ def add_rads_by_atom_valance(mol):
 
 def add_lone_pairs_by_atom_valance(mol):
     """
-     helper function for assigning lone pairs instead of carbenes/nitrenes if not identified automatically,
+    A helper function for assigning lone pairs instead of carbenes/nitrenes if not identified automatically,
     and they are missing according to the given multiplicity.
 
     Args:
@@ -1731,18 +1731,18 @@ def calc_rmsd(x: np.array,
     rmsd = np.sqrt(sqr_sum/n)
     return float(rmsd)
 
+
 def cluster_confs_by_rmsd(xyzs: Iterable[Dict[str, tuple]],
                           rmsd_threshold: float = 1e-2,
                           ) -> Tuple[Dict[str, tuple]]:
     """
-    Cluster conformers with the same atom orders using RMSD of distance matrices. Work for both TS and non-TS conformers.
-
+    Cluster conformers with the same atom orders using RMSD of distance matrices.
+    Works for both TS and non-TS conformers.
     Intended for finding structurally distinct conformers from a pool of conformers.
-    Suitable scenarios:
-        1. filter a pool of conformers with their geometry optimized at some level.
-    Not suitable for:
-        1. cluster conformers (not optimized) that are sampling of a well or a saddle point (these conformers may have
-           large difference in RMSE, but they really should be representing the same well or saddle point).
+    Suitable scenario: Filter a pool of conformers with their geometry optimized at some level.
+    Not suitable for clustering conformers (not optimized) that are sampling of a well or a saddle point
+    (these conformers may have large difference in RMSE,
+    but they really should be representing the same well or saddle point).
 
     Args:
         xyzs (Iterable): Conformers with the same atom orders.

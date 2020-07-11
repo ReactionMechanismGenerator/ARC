@@ -90,8 +90,8 @@ def show_sticks(xyz=None, species=None, project_directory=None):
         species (ARCSpecies, optional): xyz coordinates will be taken from the species.
         project_directory (str): ARC's project directory to save a draw_3d image in.
 
-    Returns:
-        bool: Whether the show_sticks drawing was successful. ``True`` if it was.
+    Returns: bool
+        Whether the show_sticks drawing was successful. ``True`` if it was.
     """
     xyz = check_xyz_species_for_drawing(xyz, species)
     if species is None:
@@ -212,12 +212,12 @@ def check_xyz_species_for_drawing(xyz=None, species=None):
         xyz (dict, str, optional): The 3D coordinates in any form.
         species (ARCSpecies, optional): A species to take the coordinates from.
 
-    Returns:
-        xyz (dict): The coordinates to plot.
-
     Raises:
         InputError: If neither ``xyz`` nor ``species`` are given.
         TypeError: If ``species`` is of wrong type.
+
+    Returns: dict
+        The coordinates to plot.
     """
     if xyz is None and species is None:
         raise InputError('Either xyz or species must be given.')
@@ -1066,18 +1066,19 @@ def plot_2d_rotor_scan(results, path=None, label='', cmap='Blues', resolution=90
     Plot a 2D rotor scan.
 
     Args:
-        results (dict): The results dictionary, dihedrals are assumed to be in degrees (not radians).
-                        This dictionary has the following structure::
+        results (dict):
+            The results dictionary, dihedrals are assumed to be in degrees (not radians).
+            This dictionary has the following structure::
 
-                        results = {'directed_scan_type': <str, used for the fig name>,
-                                   'scans': <list, entries are lists of torsion indices>,
-                                   'directed_scan': <dict, keys are tuples of '{0:.2f}' formatted dihedrals,
-                                                     values are dictionaries with the following keys and values:
-                                                     {'energy': <float, energy in kJ/mol>,  * only this is used here
-                                                      'xyz': <dict>,
-                                                      'is_isomorphic': <bool>,
-                                                      'trsh': <list, job.ess_trsh_methods>}>
-                                   }
+                {'directed_scan_type': <str, used for the fig name>,
+                 'scans': <list, entries are lists of torsion indices>,
+                 'directed_scan': <dict>, keys are tuples of '{0:.2f}' formatted dihedrals,
+                                  values are dictionaries with the following keys and values:
+                                  {'energy': <float, energy in kJ/mol>,  # only this is used here
+                                   'xyz': <dict>,
+                                   'is_isomorphic': <bool>,
+                                   'trsh': <list, job.ess_trsh_methods>}>,
+                }
 
         path (str, optional): The folder path to save this 2D image.
         label (str, optional): The species label.

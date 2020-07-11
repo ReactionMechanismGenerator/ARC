@@ -1,7 +1,7 @@
 """
 This module contains functions which are shared across multiple ARC modules.
 As such, it should not import any other ARC module (specifically ones that use the logger defined here)
-  to avoid circular imports.
+to avoid circular imports.
 
 VERSION is the full ARC version, using `semantic versioning <https://semver.org/>`_.
 """
@@ -48,8 +48,8 @@ def initialize_job_types(job_types: dict,
         job_types (dict): Keys are job types, values are booleans of whether or not to consider this job type.
         specific_job_type (str): Specific job type to execute. Legal strings are job types (keys of job_types dict).
 
-    Returns:
-        job_types (dict): An updated (comprehensive) job type dictionary.
+    Returns: dict
+        An updated (comprehensive) job type dictionary.
     """
     if specific_job_type:
         logger.info(f'Specific_job_type {specific_job_type} was requested by the user.')
@@ -106,8 +106,8 @@ def determine_ess(log_file: str) -> str:
     Args:
         log_file (str): The ESS log file path.
 
-    Returns:
-        str: The ESS log class from Arkane.
+    Returns: str
+        The ESS log class from Arkane.
     """
     log = ess_factory(log_file)
     if isinstance(log, GaussianLog):
@@ -133,8 +133,8 @@ def check_ess_settings(ess_settings: Optional[dict] = None) -> dict:
     Args:
         ess_settings (dict, optional): ARC's ESS settings dictionary.
 
-    Returns:
-        dict: An updated ARC ESS dictionary.
+    Returns: dict
+        An updated ARC ESS dictionary.
     """
     if ess_settings is None or not ess_settings:
         return dict()
@@ -291,8 +291,8 @@ def get_git_commit(path: Optional[str] = None) -> Tuple[str, str]:
     Args:
         path (str, optional): The path to check.
 
-    Returns:
-        tuple: The git HEAD commit hash and the git HEAD commit date, each as a string.
+    Returns: tuple
+        The git HEAD commit hash and the git HEAD commit date, each as a string.
     """
     path = path or arc_path
     head, date = '', ''
@@ -312,8 +312,8 @@ def get_git_branch(path: Optional[str] = None) -> str:
     Args:
         path (str, optional): The path to check.
 
-    Returns:
-        str: The git branch name.
+    Returns: str
+        The git branch name.
     """
     path = path or arc_path
     if os.path.exists(os.path.join(path, '.git')):
@@ -330,7 +330,7 @@ def get_git_branch(path: Optional[str] = None) -> str:
 
 def read_yaml_file(path: str,
                    project_directory: Optional[str] = None,
-                   ) -> dict or list:
+                   ) -> Union[dict, list]:
     """
     Read a YAML file (usually an input / restart file, but also conformers file)
     and return the parameters as python variables.
@@ -339,8 +339,8 @@ def read_yaml_file(path: str,
         path (str): The YAML file path to read.
         project_directory (str, optional): The current project directory to rebase upon.
 
-    Returns:
-        dict or list: The content read from the file.
+    Returns: Union[dict, list]
+        The content read from the file.
     """
     if project_directory is not None:
         path = globalize_paths(path, project_directory)
@@ -386,8 +386,8 @@ def globalize_paths(file_path: str,
                          The contents of this file will be changed and saved as a different file.
         project_directory (str): The current project directory to rebase upon.
 
-    Returns:
-        str: A path to the respective file with rebased absolute file paths.
+    Returns: str
+        A path to the respective file with rebased absolute file paths.
     """
     modified = False
     new_lines = list()
@@ -422,8 +422,8 @@ def globalize_path(string: str,
         string (str): A string containing a path to rebase.
         project_directory (str): The current project directory to rebase upon.
 
-    Returns:
-        str: A string with the rebased path.
+    Returns: str
+        A string with the rebased path.
     """
     if '/calcs/Species/' in string or '/calcs/TSs/' in string and project_directory not in string:
         splits = string.split('/calcs/')
@@ -451,8 +451,8 @@ def get_ordinal_indicator(number: int) -> str:
     Args:
         number (int): An integer for which the ordinal indicator will be determined.
 
-    Returns:
-        str: The integer's ordinal indicator.
+    Returns: str
+        The integer's ordinal indicator.
     """
     ordinal_dict = {1: 'st', 2: 'nd', 3: 'rd'}
     if number > 13:
@@ -472,8 +472,8 @@ def get_atom_radius(symbol: str) -> float:
     Raises:
         TypeError: If ``symbol`` is of wrong type.
 
-    Returns:
-        float: The atomic covalent radius (None if not found).
+    Returns: float
+        The atomic covalent radius (None if not found).
     """
     if not isinstance(symbol, str):
         raise TypeError(f'The symbol argument must be string, got {symbol} which is a {type(symbol)}')
@@ -500,8 +500,8 @@ def colliding_atoms(xyz: dict,
         xyz (dict): The Cartesian coordinates.
         threshold (float, optional): The collision threshold to use.
 
-    Returns:
-         bool: ``True`` if they are colliding, ``False`` otherwise.
+    Returns: bool
+        ``True`` if they are colliding, ``False`` otherwise.
     """
     if len(xyz['symbols']) == 1:
         # monoatomic
@@ -545,8 +545,8 @@ def get_single_bond_length(symbol1: str,
         symbol1 (str): Symbol 1.
         symbol2 (str): Symbol 2.
 
-    Returns:
-        float: The estimated single bond length in Angstrom.
+    Returns: float
+        The estimated single bond length in Angstrom.
     """
     bond1, bond2 = '-'.join([symbol1, symbol2]), '-'.join([symbol2, symbol1])
     if bond1 in SINGLE_BOND_LENGTH.keys():
@@ -563,12 +563,9 @@ def determine_symmetry(xyz: dict) -> Tuple[int, int]:
     Args:
         xyz (dict): The 3D coordinates.
 
-    Returns:
-        int: The external symmetry number.
-    Returns:
-        Tuple[int, int]:
-            - The external symmetry number.
-            - ``1`` if no chiral centers are present, ``2`` if chiral centers are present.
+    Returns: Tuple[int, int]
+        - The external symmetry number.
+        - ``1`` if no chiral centers are present, ``2`` if chiral centers are present.
     """
     atom_numbers = list()  # List of atomic numbers
     for symbol in xyz['symbols']:
@@ -596,7 +593,7 @@ def determine_symmetry(xyz: dict) -> Tuple[int, int]:
     return symmetry, optical_isomers
 
 
-def determine_top_group_indices(mol, atom1, atom2, index=1):
+def determine_top_group_indices(mol, atom1, atom2, index=1) -> Tuple[list, bool]:
     """
     Determine the indices of a "top group" in a molecule.
     The top is defined as all atoms connected to atom2, including atom2, excluding the direction of atom1.
@@ -608,10 +605,9 @@ def determine_top_group_indices(mol, atom1, atom2, index=1):
         atom2 (Atom): The beginning of the top relative to atom1 in mol.
         index (bool, optional): Whether to return 1-index or 0-index conventions. 1 for 1-index.
 
-    Returns:
-        list: The indices of the atoms in the top (either 0-index or 1-index, as requested).
-    Returns:
-        bool: Whether the top has heavy atoms (is not just a hydrogen atom). True if it has heavy atoms.
+    Returns: Tuple[list, bool]
+        - The indices of the atoms in the top (either 0-index or 1-index, as requested).
+        - Whether the top has heavy atoms (is not just a hydrogen atom). True if it has heavy atoms.
     """
     top = list()
     explored_atom_list, atom_list_to_explore1, atom_list_to_explore2 = [atom1], [atom2], []
@@ -641,8 +637,8 @@ def extermum_list(lst: list,
         return_min (bool, optional): Whether to return the minimum or the maximum.
                                     ``True`` for minimum, ``False`` for maximum, ``True`` by default.
 
-    Returns:
-        int: The entry with the minimal value.
+    Returns: int
+        The entry with the minimal value.
     """
     if len(lst) == 0:
         return None
@@ -673,10 +669,9 @@ def sort_two_lists_by_the_first(list1: List[Union[float, int, None]],
     Raises:
         InputError: If types are wrong, or lists are not the same length.
 
-    Returns:
-        list: Sorted values from list1, ignoring None entries.
-    Returns:
-        list: Respective entries from list2.
+    Returns: Tuple[list, list]
+        - Sorted values from list1, ignoring None entries.
+        - Respective entries from list2.
     """
     if not isinstance(list1, (list, tuple)) or not isinstance(list2, (list, tuple)):
         raise InputError(f'Arguments must be lists, got: {type(list1)} and {type(list2)}')
@@ -718,7 +713,7 @@ def key_by_val(dictionary: dict,
     Raises:
         ValueError: If the value could not be found in the dictionary.
 
-    Returns:
+    Returns: Any
         The key.
     """
     for key, val in dictionary.items():
@@ -741,8 +736,8 @@ def almost_equal_lists(iter1: list or tuple or np.ndarray,
         rtol (float, optional): The relative tolerance parameter.
         atol (float, optional): The absolute tolerance parameter.
 
-    Returns:
-        bool: ``True`` if they are almost equal, ``False`` otherwise.
+    Returns: bool
+        ``True`` if they are almost equal, ``False`` otherwise.
     """
     if len(iter1) != len(iter2):
         return False
@@ -773,8 +768,8 @@ def almost_equal_coords(xyz1: dict,
         rtol (float, optional): The relative tolerance parameter.
         atol (float, optional): The absolute tolerance parameter.
 
-    Returns:
-        bool: ``True`` if they are almost equal, ``False`` otherwise.
+    Returns: bool
+        ``True`` if they are almost equal, ``False`` otherwise.
     """
     for xyz_coord1, xyz_coord2 in zip(xyz1['coords'], xyz2['coords']):
         for xyz1_c, xyz2_c in zip(xyz_coord1, xyz_coord2):
@@ -798,8 +793,8 @@ def almost_equal_coords_lists(xyz1: dict,
         rtol (float, optional): The relative tolerance parameter.
         atol (float, optional): The absolute tolerance parameter.
 
-    Returns:
-        bool: Whether at least one entry in each input xyz's is almost equal to an entry in the other xyz.
+    Returns: bool
+        Whether at least one entry in each input xyz's is almost equal to an entry in the other xyz.
     """
     if not isinstance(xyz1, list):
         xyz1 = [xyz1]
@@ -818,8 +813,8 @@ def is_notebook() -> bool:
     """
     Check whether ARC was called from an IPython notebook.
 
-    Returns:
-        bool: ``True`` if ARC was called from a notebook, ``False`` otherwise.
+    Returns: bool
+        ``True`` if ARC was called from a notebook, ``False`` otherwise.
     """
     try:
         shell = get_ipython().__class__.__name__
@@ -840,8 +835,8 @@ def is_str_float(value: str) -> bool:
     Args:
         value (str): The string to check.
 
-    Returns:
-        bool: ``True`` if it can, ``False`` otherwise.
+    Returns: bool
+        ``True`` if it can, ``False`` otherwise.
     """
     try:
         float(value)
@@ -857,8 +852,8 @@ def is_str_int(value: str) -> bool:
     Args:
         value (str): The string to check.
 
-    Returns:
-        bool: ``True`` if it can, ``False`` otherwise.
+    Returns: bool
+        ``True`` if it can, ``False`` otherwise.
     """
     try:
         int(value)
@@ -867,15 +862,15 @@ def is_str_int(value: str) -> bool:
         return False
 
 
-def time_lapse(t0):
+def time_lapse(t0) -> str:
     """
     A helper function returning the elapsed time since t0.
 
     Args:
         t0 (time.pyi): The initial time the count starts from.
 
-    Returns:
-        str: A "D HH:MM:SS" formatted time difference between now and t0.
+    Returns: str
+        A "D HH:MM:SS" formatted time difference between now and t0.
     """
     t = time.time() - t0
     m, s = divmod(t, 60)
@@ -900,9 +895,9 @@ def estimate_orca_mem_cpu_requirement(num_heavy_atoms: int,
         server (str): The name of the server where Orca runs.
         consider_server_limits (bool):  Try to give realistic estimations.
 
-    Returns:
-        Tuple[int, float]:
-            - the amount of total memory (MB) and cpu cores required for the Orca job of given species.
+    Returns: Tuple[int, float]:
+        - The amount of total memory (MB)
+        - The number of cpu cores required for the Orca job for a given species.
     """
     max_server_mem_gb = None
     max_server_cpus = None
@@ -950,10 +945,9 @@ def check_torsion_change(torsions: pd.DataFrame,
                                    E.g.,for the torsions to be scanned, the
                                    differences are equal to the scan resolution.
 
-    Returns:
-        pd.DataFrame: a DataFrame consisting of ``True``/``False``, indicating
-                      which torsions changed significantly. ``True`` for significant
-                      change.
+    Returns: pd.DataFrame
+        a DataFrame consisting of ``True``/``False``, indicating
+        which torsions changed significantly. ``True`` for significant change.
     """
     # First iteration without 180/-180 adjustment
     change = (torsions[index_1] - torsions[index_2] - delta).abs() > threshold
@@ -980,8 +974,8 @@ def is_same_pivot(torsion1: Union[list, str],
         torsion1 (Union[list, str]): The four atom indices representing the first torsion.
         torsion2 (Union: [list, str]): The four atom indices representing the second torsion.
 
-    Returns:
-        Optional[bool]: ``True`` if two torsions share the same pivots.
+    Returns: Optional[bool]
+        ``True`` if two torsions share the same pivots.
     """
     torsion1 = ast.literal_eval(torsion1) if isinstance(torsion1, str) else torsion1
     torsion2 = ast.literal_eval(torsion2) if isinstance(torsion2, str) else torsion2
@@ -1002,8 +996,8 @@ def is_same_sequence_sublist(child_list: list, parent_list: list) -> bool:
         child_list (list): The child list (the pattern to search in the parent list).
         parent_list (list): The parent list.
 
-    Returns:
-        bool: ``True`` if the sublist is in the parent list.
+    Returns: bool
+        ``True`` if the sublist is in the parent list.
     """
     if len(parent_list) < len(child_list):
         return False
@@ -1042,8 +1036,8 @@ def get_ordered_intersection_of_two_lists(l1: list,
         order_by_first_list (bool, optional: Whether to order the output list using the order of the values in the first list.
         return_unique (bool, optional): Whether to return only unique values in the intersection of two lists.
 
-    Returns:
-        list: An ordered list of the intersection of two input lists.
+    Returns: list
+        An ordered list of the intersection of two input lists.
     """
     if order_by_first_list:
         l3 = [v for v in l1 if v in l2]

@@ -23,8 +23,8 @@ def make_rmg_database_object():
     """
     Make a clean RMGDatabase object.
 
-    Returns:
-        RMGDatabase: A clean RMG database object.
+    Returns: RMGDatabase
+        A clean RMG database object.
     """
     rmgdb = RMGDatabase()
     return rmgdb
@@ -159,10 +159,9 @@ def determine_reaction_family(rmgdb, reaction):
         rmgdb (RMGDatabase): The RMG database instance.
         reaction (Reaction): The RMG Reaction object.
 
-    Returns:
-        str: The corresponding RMG reaction's family. None if no family was found or more than one family were found.
-    Returns:
-         bool: Whether the family is its own reverse.
+    Returns: Tuple[str, bool]
+        - The corresponding RMG reaction's family. None if no family was found or more than one family were found.
+        - Whether the family is its own reverse.
     """
     fam_list = loop_families(rmgdb=rmgdb, reaction=reaction)
     families = [fam_l[0] for fam_l in fam_list]
@@ -182,8 +181,8 @@ def loop_families(rmgdb, reaction):
         rmgdb (RMGDatabase): The RMG database instance.
         reaction (Reaction): The RMG Reaction object.
 
-    Returns:
-        list: Entries are corresponding RMG reaction families.
+    Returns: list
+        Entries are corresponding RMG reaction families.
     """
     reaction = reaction.copy()  # use a copy to avoid changing atom order in the molecules by RMG
     fam_list = list()

@@ -97,8 +97,8 @@ def xyz_to_zmat(xyz: Dict[str, tuple],
     Raises:
         ZMatError: If the zmat could not be generated.
 
-    Returns:
-        dict: The z-matrix.
+    Returns: dict
+        The z-matrix.
     """
     fragments = fragments or [list(range(len(xyz['symbols'])))]
     constraints = constraints or dict()
@@ -189,8 +189,8 @@ def determine_r_atoms(zmat: Dict[str, Union[dict, tuple]],
     Raises:
         ZMatError: If the R atoms could not be determined.
 
-    Returns:
-        list: The 0-indexed z-mat R atoms.
+    Returns: list
+        The 0-indexed z-mat R atoms.
     """
     if is_atom_in_new_fragment(atom_index=atom_index, zmat=zmat, fragments=fragments):
         connectivity = None
@@ -318,8 +318,8 @@ def determine_a_atoms(zmat: Dict[str, Union[dict, tuple]],
         ZMatError: If the A atoms could not be determined.
             indices are 0-indexed.
 
-    Returns:
-        list: The 0-indexed z-mat A atoms.
+    Returns: list
+        The 0-indexed z-mat A atoms.
     """
     if r_atoms is not None and is_atom_in_new_fragment(atom_index=atom_index, zmat=zmat,
                                                        fragments=fragments, skip_atoms=r_atoms):

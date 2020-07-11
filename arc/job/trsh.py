@@ -62,14 +62,11 @@ def determine_ess_status(output_path: str,
         job_type (str): The job type (e.g., 'opt, 'freq', 'ts', 'sp').
         software (str, optional): The ESS software.
 
-    Returns:
-        status (str): The status. Either 'done' or 'errored'.
-    Returns:
-        keywords (list): The standardized error keywords.
-    Returns:
-        error (str): A description of the error.
-    Returns:
-        line (str): The parsed line from the ESS output file indicating the error.
+    Returns: Tuple[str, list, str, str]
+        - The status. Either 'done' or 'errored'.
+        - The standardized error keywords.
+        - A description of the error.
+        - The parsed line from the ESS output file indicating the error.
     """
     if software is None:
         software = determine_ess(log_file=output_path)
@@ -438,14 +435,11 @@ def trsh_negative_freq(label: str,
           generate a 360 scan using 30 deg increments and append all 12 results as conformers
           (consider rotor symmetry to append less conformers?)
 
-    Returns:
-        current_neg_freqs_trshed (list): The current troubleshooted negative frequencies.
-    Returns:
-        conformers (list): The new conformers to try optimizing.
-    Returns:
-        output_errors (list): Errors to report.
-    Returns:
-        output_warnings (list): Warnings to report.
+    Returns: Tuple[list, list, list, list]
+        - The current troubleshooted negative frequencies.
+        - The new conformers to try optimizing.
+        - Errors to report.
+        - Warnings to report.
 
     Raises:
         TrshError: If a negative frequency could not be determined.
@@ -529,6 +523,7 @@ def trsh_scan_job(label: str,
     """
     Troubleshooting rotor scans.
     Using the following methods:
+
     1. freeze specific internal coordinates identified by scan_quality_check()
     2. freeze all torsions other than the rotor to be scanned
     3. increasing the scan resolution
@@ -538,26 +533,26 @@ def trsh_scan_job(label: str,
         scan_res (int or float): The scan resolution in degrees.
         scan (list): The four atom indices representing the torsion to be troubleshooted.
         scan_list (list): Entries are the four-atom scan lists (1-indexed) of all torsions
-                           (without duplicate pivots) in this species.
-        methods (dict): The troubleshooting method/s to try.
-                        Example::
+                          (without duplicate pivots) in this species.
+        methods (dict): The troubleshooting method/s to try. Example::
+
                             {'inc_res': None,
                              'freeze': 'all' or [[1, 2, 3, 4], ...]}
+
         log_file (str, optional): The related output file path.
 
     Raises:
         TrshError:
-            - ``scan`` is not included in the ``scan_list``.
-            - Freeze method includes an invalid internal coordinates.
-            - Freeze method does not provide any solution.
 
-    Raises:
+            1. ``scan`` is not included in the ``scan_list``
+            2. Freeze method includes an invalid internal coordinates.
+            3. Freeze method does not provide any solution.
+
         InputError: Invalid `methods` input.
 
-    Returns:
-        Tuple[str, int]:
-            - The scan troubleshooting keywords to be appended to the Gaussian input file.
-            - The new scan resolution in degrees.
+    Returns: Tuple[str, int]
+        - The scan troubleshooting keywords to be appended to the Gaussian input file.
+        - The new scan resolution in degrees.
     """
     if scan not in scan_list:
         raise TrshError(f'Could not find the scan to troubleshoot in the scan list of species {label}')
@@ -675,8 +670,8 @@ def trsh_special_rotor(special_rotor: list,
                       the rotor to be scanned or `frozen` for the rotor were frozen
                       in the previous job
     
-    Returns:
-        list: A list of internal coordinates to be frozen
+    Returns: list
+        A list of internal coordinates to be frozen
     """
     pruning = []
     same_pivots_torsions = []
@@ -759,20 +754,19 @@ def trsh_ess_job(label: str,
         - Don't change the level of theory as a trsh method unless the user explicitly allows it
         - Change server to one that has the same ESS if running out of disk space.
 
-    Returns:
-        tuple:
-            - output_errors (list): Errors to report.
-            - ess_trsh_methods (list): The updated troubleshooting methods tried for this job.
-            - remove_checkfile (bool): Whether to remove the checkfile from the job, `True` to remove.
-            - level_of_theory (Level): The new level of theory dictionary to use.
-            - software (str, optional): The new ESS software to use.
-            - job_type (str): The new job type to use.
-            - fine (bool): whether the new job should use a fine grid, `True` if it should.
-            - trsh_keyword (str): The troubleshooting keyword to use.
-            - memory (float): The new memory in GB to use for the job.
-            - shift (str): The shift to use (only in Molpro).
-            - cpus (int): The total number of cpu cores requested for a job.
-            - couldnt_trsh (bool): Whether a troubleshooting solution was found. `True` if it was not found.
+    Returns: tuple
+        - output_errors (list): Errors to report.
+        - ess_trsh_methods (list): The updated troubleshooting methods tried for this job.
+        - remove_checkfile (bool): Whether to remove the checkfile from the job, `True` to remove.
+        - level_of_theory (Level): The new level of theory dictionary to use.
+        - software (str, optional): The new ESS software to use.
+        - job_type (str): The new job type to use.
+        - fine (bool): whether the new job should use a fine grid, `True` if it should.
+        - trsh_keyword (str): The troubleshooting keyword to use.
+        - memory (float): The new memory in GB to use for the job.
+        - shift (str): The shift to use (only in Molpro).
+        - cpus (int): The total number of cpu cores requested for a job.
+        - couldnt_trsh (bool): Whether a troubleshooting solution was found. `True` if it was not found.
     """
     level_of_theory = Level(repr=level_of_theory)
     output_errors = list()
@@ -1080,8 +1074,8 @@ def trsh_conformer_isomorphism(software: str,
     Raises:
         TrshError: If the requested ``ess_trsh_methods`` is not supported.
 
-    Returns:
-        level_of_theory (str): Tte level of theory to troubleshoot at.
+    Returns: str
+        The level of theory to troubleshoot at.
     """
     ess_trsh_methods = ess_trsh_methods if ess_trsh_methods is not None else list()
     if software == 'gaussian':
@@ -1122,10 +1116,9 @@ def trsh_job_on_server(server: str,
         remote_path (str): The remote path to the job folder.
         server_nodes (list, optional): The nodes already tried on this server for this jobs.
 
-    Returns:
-        str: The new node on the server (or None).
-    Returns:
-        bool: Whether to re-run the job, `True` to rerun.
+    Returns: Tuple[str, bool]
+        - The new node on the server (or None).
+        - Whether to re-run the job, `True` to rerun.
     """
     server_nodes = server_nodes if server_nodes is not None else list()
     cluster_soft = servers[server]['cluster_soft']
@@ -1198,16 +1191,24 @@ def scan_quality_check(label: str,
                        ) -> Tuple[bool, str, str, dict]:
     """
     Checks the scan's quality:
+
     1. Based on intermediate conformers if available:
+
        - whether the initial and final points are consistent
        - whether it is relatively "smooth"
+
     2. Based on the PES curve (if intermediate conformers are unavailable):
+
        - whether the initial and final points are consistent
        - whether it is relatively "smooth"
-    3. Common
+
+    3. Common:
+
        - whether the optimized geometry indeed represents the minimum energy conformer (for a non-TS species)
        - whether the barrier height is reasonable
-    4. Based on requested parameters to preserve
+
+    4. Based on requested parameters to preserve:
+
        - whether specified atom distances to preserve criteria aren't violated
 
     Args:
@@ -1224,12 +1225,11 @@ def scan_quality_check(label: str,
         trajectory (list, optional): Entries are Cartesian coordinates along the scan trajectory.
         original_xyz (dict, optional): The optimized coordinated for the species.
 
-    Returns:
-        Tuple[bool, str, str, dict]:
-            - Whether to invalidate this rotor, ``True`` to invalidate.
-            - Reason for invalidating this rotor.
-            - Error or warning message.
-            - Troubleshooting methods to apply, including conformational changes.
+    Returns: Tuple[bool, str, str, dict]
+        - Whether to invalidate this rotor, ``True`` to invalidate.
+        - Reason for invalidating this rotor.
+        - Error or warning message.
+        - Troubleshooting methods to apply, including conformational changes.
 
     Todo:
         - adjust to ND

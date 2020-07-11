@@ -534,8 +534,8 @@ class ARCSpecies(object):
         Determine the largest distance from the coordinate system origin attributed to one of the molecule's
         atoms in 3D space.
 
-        Returns:
-            float: The radius in Angstrom.
+        Returns: float
+            The radius in Angstrom.
         """
         if self._radius is None:
             self._radius = get_xyz_radius(self.get_xyz())
@@ -1474,8 +1474,8 @@ class ARCSpecies(object):
             allow_nonisomorphic_2d (bool, optional): Whether to allow non-isomorphic representations to pass this test.
             verbose (bool, optional): Whether to log isomorphism findings and errors.
 
-        Returns:
-            bool: Whether the perception of self.final_xyz is isomorphic with self.mol, ``True`` if it is.
+        Returns: bool
+            Whether the perception of self.final_xyz is isomorphic with self.mol, ``True`` if it is.
         """
         mol = mol or self.mol
         xyz = xyz or self.final_xyz
@@ -1546,8 +1546,8 @@ class ARCSpecies(object):
         Other species labels will be <original species label>_BDE_index1_index2_X, where "X" is either "A" or "B",
         and the indices are 1-indexed.
 
-        Returns:
-            list: The scission-resulting species.
+        Returns: list
+            The scission-resulting species.
         """
         all_h = True if 'all_h' in self.bdes else False
         if all_h:
@@ -1584,8 +1584,8 @@ class ARCSpecies(object):
         Args:
             indices (tuple): The atom indices between which to cut (1-indexed, atoms must be bonded).
 
-        Returns:
-            list: The scission-resulting species.
+        Returns: list
+            The scission-resulting species.
         """
         if any([i < 1 for i in indices]):
             raise SpeciesError('Indices must be larger than 0')

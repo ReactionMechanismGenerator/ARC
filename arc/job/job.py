@@ -489,8 +489,8 @@ class Job(object):
         Args:
             time_format (str): Either 'days' (e.g., 5-0:00:00) or 'hours' (e.g., 120:00:00)
 
-        Returns:
-            str: The formatted maximum job time string
+        Returns: str
+            The formatted maximum job time string
         """
         t_delta = datetime.timedelta(hours=self.max_job_time)
         if time_format == 'days':
@@ -1614,8 +1614,8 @@ end
         """
         Deduce the software to be used.
 
-        Returns:
-            str: The deduced software.
+        Returns: str
+            The deduced software.
         """
         self.level.deduce_software(job_type=self.job_type)
         if self.level.software is not None:
@@ -1658,7 +1658,8 @@ end
             val (str): The value to add.
             key1 (str, optional): Key1.
             key2 (str, optional): Key2.
-            separator (str, optional): A separator (e.g., ' '  or '\n') to apply between existing values and new values.
+            separator (str, optional): A separator (e.g., ``' '``  or ``'\\n'``)
+                                       to apply between existing values and new values.
             check_val (bool, optional): Only append ``val`` if it doesn't exist in the dictionary.
         """
         if separator is None:
