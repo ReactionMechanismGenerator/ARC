@@ -35,7 +35,7 @@ Determine harmonic frequencies scaling factor
 
 This tool uses `Truhlar's method`__ to determine frequency scaling factors for the user's choice of level of theory.
 
-__ truhlar_
+__ Truhlar2_
 
 
 External symmetry and optical isomers

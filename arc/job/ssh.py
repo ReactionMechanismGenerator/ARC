@@ -100,10 +100,9 @@ class SSHClient(object):
             command (Union[str, list]): A string or an array of string commands to send.
             remote_path (Optional[str]): The directory path at which the command will be executed.
 
-        Returns:
-            Tuple[list, list]:
-                - A list of lines of standard output stream.
-                - A list of lines of the standard error stream.
+        Returns: Tuple[list, list]:
+            - A list of lines of standard output stream.
+            - A list of lines of the standard error stream.
         """
         if isinstance(command, list):
             command = '; '.join(command)
@@ -208,8 +207,8 @@ class SSHClient(object):
         Args:
             remote_file_path (str): The remote path to be read.
         
-        Returns:
-            list: A list of lines read from the file.
+        Returns: list
+            A list of lines read from the file.
         """
         with self._sftp.open(remote_file_path, 'r') as f_remote:
             content = f_remote.readlines()
@@ -222,9 +221,9 @@ class SSHClient(object):
         Args:
             job_id (int): The job's ID.
 
-        Returns:
-            str: Possible statuses: `before_submission`, `running`, `errored on node xx`,
-                 `done`, and `errored: ...`
+        Returns: str
+            Possible statuses: `before_submission`, `running`, `errored on node xx`,
+            `done`, and `errored: ...`
         """
         cmd = check_status_command[servers[self.server]['cluster_soft']] + ' -u $USER'
         stdout, stderr = self._send_command_to_server(cmd)
@@ -269,8 +268,8 @@ class SSHClient(object):
         """
         Check all jobs submitted by the user on a server.
 
-        Returns:
-            list: A list of job IDs
+        Returns: list
+            A list of job IDs.
         """
         running_jobs_ids = list()
         cmd = check_status_command[servers[self.server]['cluster_soft']] + ' -u $USER'
@@ -289,11 +288,10 @@ class SSHClient(object):
             remote_path (str): The remote path contains the input file
                                and the submission script.
 
-        Returns:
-            Tuple[str, int]:
-                - A string indicate the status of job submission.
-                  Either `errored` or `submitted`.
-                - The job ID of the submitted job.
+        Returns: Tuple[str, int]
+            - A string indicate the status of job submission.
+              Either `errored` or `submitted`.
+            - The job ID of the submitted job.
         """
         job_status = ''
         job_id = 0
@@ -348,10 +346,9 @@ class SSHClient(object):
         """
         Connect via paramiko, and open a SSH session as well as a SFTP session.
 
-        Returns:
-            Tuple[paramiko.sftp_client.SFTPClient, paramiko.SSHClient]:
-                - An SFTP client used to perform remote file operations. 
-                - A high-level representation of a session with an SSH server.
+        Returns: Tuple[paramiko.sftp_client.SFTPClient, paramiko.SSHClient]
+            - An SFTP client used to perform remote file operations.
+            - A high-level representation of a session with an SSH server.
         """
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -387,8 +384,8 @@ class SSHClient(object):
         Args:
             remote_file_path (str): The remote file path to check.
 
-        Returns:
-            datetime.datetime: the last modified time of the file
+        Returns: datetime.datetime
+            The last modified time of the file.
         """
         try:
             timestamp = self._sftp.stat(remote_file_path).st_mtime

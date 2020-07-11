@@ -31,13 +31,12 @@ will cause ARC to execute, considering all previously spawned jobs specified in 
 In restart mode, ARC is aware of all past submitted jobs and collects their
 output files or waits for them to terminate if they are still running.
 
-ARC's adopts the `YAML`__ format for its input/restart files.
+ARC's adopts the `YAML <https://yaml.org/>`_ format for its input/restart files.
 In fact, a restart file is nothing but a very detailed
 input file, and internally ARC treats them the same.
 Other than the file name, the difference is that the restart file
 was automatically generated.
 
-__ yaml_
 
 A (very) simple input file might look like this::
 
@@ -47,14 +46,13 @@ A (very) simple input file might look like this::
       - label: ethanol
         smiles: CCO
 
-All the parameters of `arc.main.ARC`__ class are legal input file keywords.
+All the parameters of :ref:`arc.main.ARC <main>` class are legal input file keywords.
 Specifying species and reactions lists define :ref:`ARCSpecies <species>` and :ref:`ARCReaction <reaction>`
 object. See ARC's API for a complete and updated list of keywords along with their allowed types.
 
-__ api/main.html
 
-
-Additional input file examples are available in ARC's examples folder (`ARC/examples`__).
+Additional input file examples are available in ARC's examples folder
+(`ARC/examples <https://github.com/ReactionMechanismGenerator/ARC/tree/master/examples>`_).
 Another convenient way to see a valid and detailed input file is to run an ARC job
 and peak at the automatically generated ``restart.yml`` file.
 

@@ -420,7 +420,7 @@ calculations for a dataset of 15 small molecules. To avoid this, either pass a k
 factor using the ``freq_scale_factor`` attribute (see :ref:`examples <examples>`), or set the
 ``calc_freq_factor`` attribute to ``False`` (it is ``True`` by default).
 
-__ Truhlar_
+__ Truhlar1_
 
 Isomorphism checks
 ^^^^^^^^^^^^^^^^^^

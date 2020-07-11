@@ -116,10 +116,11 @@ class Scheduler(object):
         ts_guess_level (str or dict, optional): The level of theory to use for TS guess comparisons.
         irc_level (str or dict, optional): The level of theory to use for IRC calculations.
         orbitals_level (str or dict, optional): The level of theory to use for calculating MOs (for plotting).
-        adaptive_levels (dict, optional): A dictionary of levels of theory for ranges of the number of heavy atoms in
-                                          the molecule. Keys are tuples of (min_num_atoms, max_num_atoms), values are
-                                          dictionaries with 'optfreq' and 'sp' as keys and levels of theory as values.
-        rmg_database (RMGDatabase, optional): The RMG database object.
+        adaptive_levels (dict, optional): A dictionary of levels of theory for ranges of the number of heavy atoms
+                                          in the species. Keys are tuples of (min_num_atoms, max_num_atoms),
+                                          values are dictionaries with job type tuples as keys and levels of theory
+                                          as values. 'inf' is accepted an max_num_atoms rmg_database
+                                          (RMGDatabase, optional): The RMG database object.
         job_types (dict, optional): A dictionary of job types to execute. Keys are job types, values are boolean.
         bath_gas (str, optional): A bath gas. Currently used in OneDMin to calc L-J parameters.
                                   Allowed values are He, Ne, Ar, Kr, H2, N2, O2.
@@ -143,9 +144,6 @@ class Scheduler(object):
         species_dict (dict): Keys are labels, values are :ref:`ARCSpecies <species>` objects.
         rxn_list (list): Contains input :ref:`ARCReaction <reaction>` objects.
         unique_species_labels (list): A list of species labels (checked for duplicates).
-        adaptive_levels (dict): A dictionary of levels of theory for ranges of the number of heavy atoms in the
-                                molecule. Keys are tuples of (min_num_atoms, max_num_atoms), values are
-                                dictionaries with 'optfreq' and 'sp' as keys and levels of theory as values.
         job_dict (dict): A dictionary of all scheduled jobs. Keys are species / TS labels,
                          values are dictionaries where keys are job names (corresponding to
                          'running_jobs' if job is running) and values are the Job objects.
@@ -182,9 +180,11 @@ class Scheduler(object):
         ts_guess_level (dict): The level of theory to use for TS guess comparisons.
         irc_level (dict): The level of theory to use for IRC calculations.
         orbitals_level (dict): The level of theory to use for calculating MOs (for plotting).
-        adaptive_levels (dict): A dictionary of levels of theory for ranges of the number of heavy atoms in
-                                  the molecule. Keys are tuples of (min_num_atoms, max_num_atoms), values are
-                                  dictionaries with 'optfreq' and 'sp' as keys and levels of theory as values.
+        adaptive_levels (dict): A dictionary of levels of theory for ranges of the number of heavy atoms
+                                in the species. Keys are tuples of (min_num_atoms, max_num_atoms),
+                                values are dictionaries with job type tuples as keys and levels of theory
+                                as values. 'inf' is accepted an max_num_atoms rmg_database
+                                (RMGDatabase, optional): The RMG database object.
         fine_only (bool): If ``True`` ARC will not run optimization jobs without fine=True
     """
 
@@ -2739,22 +2739,22 @@ class Scheduler(object):
                               ) -> Tuple[bool, dict]:
         """
         Troubleshooting rotor scans
-        Using the following methods: 
+        Using the following methods:
         1. freeze: freezing specific internal coordinates or all torsions other than the scan's pivots
         2. inc_res: increasing the scan resolution.
         3. change conformer: changing to a conformer with a lower energy
 
         Args:
             job (Job): The scan Job object.
-            methods (dict): The troubleshooting method/s to try:
-                            {'freeze': <a list of problematic internal coordinates>,
-                             'inc_res': ``None``,
-                             'change conformer': <a xyz dict>}
+            methods (dict): The troubleshooting method/s to try::
 
-        Returns:
-            Tuple[bool, dict]:
-                - ``True`` if the troubleshooting is valid.
-                - The actions are actual applied in the troubleshooting.
+                {'freeze': <a list of problematic internal coordinates>,
+                 'inc_res': ``None``,
+                 'change conformer': <a xyz dict>}
+
+        Returns: Tuple[bool, dict]:
+            - ``True`` if the troubleshooting is valid.
+            - The actions are actual applied in the troubleshooting.
         """
         label = job.species_name
         trsh_success = False

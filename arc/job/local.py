@@ -33,7 +33,7 @@ def execute_command(command, shell=True, no_fail=False):
         shell (bool): Specifies whether the command should be executed using bash instead of Python
         no_fail (bool): If `True` then ARC will not crash if an error is encountered.
 
-    Returns:
+    Returns: list
         lists of stdin, stdout, stderr corresponding to the commands sent
     """
     # Initialize variables

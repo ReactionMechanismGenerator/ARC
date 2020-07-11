@@ -79,11 +79,13 @@ class ARC(object):
         job_types (dict, optional): A dictionary of job types to execute. Keys are job types, values are boolean.
         arkane_level_of_theory (Union[dict, Level, str], optional):
             The Arkane level of theory to use for AEC and BAC.
+
             Note:
                 This argument is a ``Level`` type, not a ``LevelOfTheory`` type.
                 This argument will only affect AEC/BAC, not the frequency scaling factor.
-        T_min (tuple, optional): The minimum temperature for kinetics computations, e.g., (500, 'K').
-        T_max (tuple, optional): The maximum temperature for kinetics computations, e.g., (3000, 'K').
+
+        T_min (tuple, optional): The minimum temperature for kinetics computations, e.g., ``(500, 'K')``.
+        T_max (tuple, optional): The maximum temperature for kinetics computations, e.g., ``(3000, 'K')``.
         T_count (int, optional): The number of temperature points between ``T_min`` and ``T_max``.
         verbose (int, optional): The logging level to use.
         project_directory (str, optional): The path to the project directory.
@@ -99,6 +101,7 @@ class ARC(object):
             sub-dictionaries are tuples of job types, values are levels of theory (str, dict or Level).
             Job types not defined in adaptive levels will have non-adaptive (regular) levels.
             Example::
+
                 adaptive_levels = {(1, 5):      {('opt', 'freq'): 'wb97xd/6-311+g(2d,2p)',
                                                  'sp': 'ccsd(t)-f12/aug-cc-pvtz-f12'},
                                    (6, 15):     {('opt', 'freq'): 'b3lyp/cbsb7',
@@ -107,6 +110,7 @@ class ARC(object):
                                                  'sp': 'wb97xd/6-311+g(2d,2p)'},
                                    (31, 'inf'): {('opt', 'freq'): 'b3lyp/6-31g(d,p)',
                                                  'sp': 'b3lyp/6-311+g(d,p)'}}
+
         freq_scale_factor (float, optional): The harmonic frequencies scaling factor. Could be automatically determined
                                              if not available in Arkane and not provided by the user.
         calc_freq_factor (bool, optional): Whether to calculate the frequencies scaling factor using Truhlar's method if
