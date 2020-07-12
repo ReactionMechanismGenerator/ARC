@@ -4,6 +4,9 @@ A module for representing a reaction.
 
 from typing import List, Optional
 
+from qcelemental.exceptions import ValidationError
+from qcelemental.models.molecule import Molecule as QCMolecule
+
 from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 
@@ -72,6 +75,9 @@ class ARCReaction(object):
         ts_label (str): The :ref:`ARCSpecies <species>` label of the respective TS.
         preserve_param_in_scan (list): Entries are length two iterables of atom indices (1-indexed) between which
                                        distances and dihedrals of these pivots must be preserved.
+        _atom_map (List[int]): An atom map, mapping the reactant atoms to the product atoms.
+        I.e., an atom map of [0, 2, 1] means that reactant atom 0 matches product atom 0,
+        reactant atom 1 matches product atom 2, and reactant atom 2 matches product atom 1.
     """
     def __init__(self,
                  label: str = '',
@@ -123,12 +129,26 @@ class ARCReaction(object):
             self.ts_methods = ts_methods if ts_methods is not None else default_ts_methods
             self.ts_methods = [tsm.lower() for tsm in self.ts_methods]
             self.ts_xyz_guess = ts_xyz_guess if ts_xyz_guess is not None else list()
+            self._atom_map = None
         if len(self.reactants) > 3 or len(self.products) > 3:
             raise ReactionError(f'An ARC Reaction can have up to three reactants / products. got {len(self.reactants)} '
                                 f'reactants and {len(self.products)} products for reaction {self.label}.')
         if self.ts_xyz_guess is not None and not isinstance(self.ts_xyz_guess, list):
             self.ts_xyz_guess = [self.ts_xyz_guess]
         self.check_atom_balance()
+
+    @property
+    def atom_map(self):
+        """The reactants to products atom map"""
+        if self._atom_map is None \
+                and all(species.get_xyz(generate=False) is not None for species in self.r_species + self.p_species):
+            self._atom_map = self.get_atom_map()
+        return self._atom_map
+
+    @atom_map.setter
+    def atom_map(self, value):
+        """Allow setting the atom map"""
+        self._atom_map = value
 
     def __str__(self) -> str:
         """Return a string representation of the object"""
@@ -154,6 +174,8 @@ class ARCReaction(object):
         reaction_dict['p_species'] = [spc.as_dict() for spc in self.p_species]
         if self.ts_species is not None:
             reaction_dict['ts_species'] = self.ts_species.as_dict()
+        if self._atom_map is not None:
+            reaction_dict['atom_map'] = self._atom_map
         if self.preserve_param_in_scan is not None:
             reaction_dict['preserve_param_in_scan'] = self.preserve_param_in_scan
         if 'rmg_reaction' in reaction_dict:
@@ -208,6 +230,7 @@ class ARCReaction(object):
         self.ts_xyz_guess = reaction_dict['ts_xyz_guess'] if 'ts_xyz_guess' in reaction_dict else list()
         self.preserve_param_in_scan = reaction_dict['preserve_param_in_scan'] \
             if 'preserve_param_in_scan' in reaction_dict else None
+        self._atom_map = reaction_dict['atom_map'] if 'atom_map' in reaction_dict else None
 
     def set_label_reactants_products(self):
         """A helper function for settings the label, reactants, and products attributes for a Reaction"""
@@ -604,3 +627,43 @@ class ARCReaction(object):
                 well_str.count(f' {species.label} ') + \
                 well_str.endswith(f' {species.label}')
         return count
+
+    def get_atom_map(self, verbose: int = 0) -> Optional[List[int]]:
+        """
+        Get the atom mapping of the reactant atoms to the product atoms.
+        I.e., an atom map of [0, 2, 1] means that reactant atom 0 matches product atom 0,
+        reactant atom 1 matches product atom 2, and reactant atom 2 matches product atom 1.
+
+        Employs the Kabsch, Hungarian, and Uno algorithms to exhaustively locate
+        the best alignment for non-oriented, non-ordered 3D structures.
+
+        Args:
+            verbose (int): The verbosity level (0-4).
+
+        Returns: Optional[List[int]]
+            The atom map.
+        """
+        atom_map = None
+        try:
+            reactants = QCMolecule.from_data(
+                data='\n--\n'.join(xyz_to_str(reactant.get_xyz()) for reactant in self.r_species),
+                molecular_charge=self.charge,
+                molecular_multiplicity=self.multiplicity,
+                fragment_charges=[reactant.charge for reactant in self.r_species],
+                fragment_multiplicities=[reactant.multiplicity for reactant in self.r_species],
+                orient=False,
+            )
+            products = QCMolecule.from_data(
+                data='\n--\n'.join(xyz_to_str(product.get_xyz()) for product in self.p_species),
+                molecular_charge=self.charge,
+                molecular_multiplicity=self.multiplicity,
+                fragment_charges=[product.charge for product in self.p_species],
+                fragment_multiplicities=[product.multiplicity for product in self.p_species],
+                orient=False,
+            )
+        except ValidationError as e:
+            logger.warning(f'Could not get atom map for {self}, got:\n{e}')
+        else:
+            data = products.align(ref_mol=reactants, verbose=verbose)[1]
+            atom_map = data['mill'].atommap.tolist()
+        return atom_map
