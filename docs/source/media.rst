@@ -7,8 +7,8 @@ Media
 Introduction to ARC
 ^^^^^^^^^^^^^^^^^^^
 
-This session was given in January 2020 in an RMG workshop hel at MIT.
-It shows a demonstration of ARC and explains what it does.
+This session was given in January 2020 during an RMG workshop held at MIT.
+It explains what ARC does and shows a demonstration of it.
 
 .. raw:: html
 
@@ -20,7 +20,7 @@ It shows a demonstration of ARC and explains what it does.
 ARC How-to
 ^^^^^^^^^^
 
-This session was given via Zoom (during Covid19 social distancing) in Jane 2020
+This session was given via Zoom (during Covid19 social distancing) in June 2020
 in response to users requests. It shows how to use ARC along with advanced features.
 
 

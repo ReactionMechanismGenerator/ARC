@@ -10,6 +10,7 @@ import pybel
 import qcelemental as qcel
 from rdkit import Chem
 from rdkit.Chem import rdMolTransforms as rdMT
+from rdkit.Chem.rdchem import AtomValenceException
 
 from arkane.common import get_element_mass, mass_by_symbol, symbol_by_number
 from rmgpy.exceptions import AtomTypeError
@@ -1443,7 +1444,11 @@ def to_rdkit_mol(mol, remove_h=False, sanitize=True):
     # Make editable mol and rectify the molecule
     rd_mol = rd_mol.GetMol()
     if sanitize:
-        Chem.SanitizeMol(rd_mol)
+        try:
+            Chem.SanitizeMol(rd_mol)
+        except AtomValenceException:
+            # [C-]#[O+] raises this
+            pass
     if remove_h:
         rd_mol = Chem.RemoveHs(rd_mol, sanitize=sanitize)
     return rd_mol
