@@ -950,7 +950,7 @@ class ARCSpecies(object):
                 logger.warning('Could not generate a cheap conformer for {0}'.format(self.label))
                 self.cheap_conformer = None
 
-    def get_xyz(self, generate: bool = True) -> Union[dict, None]:
+    def get_xyz(self, generate: bool = True) -> Optional[dict]:
         """
         Get the highest quality xyz the species has.
         If it doesn't have any 3D information, and if ``generate`` is ``True``, cheaply generate it.
