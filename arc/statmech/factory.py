@@ -36,7 +36,6 @@ def statmech_factory(statmech_adapter_label: str,  # add everything that goes in
                      output_dict: dict,
                      bac_type: Optional[str],
                      sp_level: Optional[Level] = None,
-                     arkane_level_of_theory: Optional[Level] = None,
                      freq_scale_factor: float = 1.0,
                      species: Type[ARCSpecies] = None,
                      reaction: Type[ARCReaction] = None,
