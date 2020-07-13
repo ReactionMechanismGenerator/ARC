@@ -67,8 +67,8 @@ def statmech_factory(statmech_adapter_label: str,  # add everything that goes in
                                        format (``True``, default) or classical two-parameter Arrhenius equation format
                                        (``False``).
 
-    Returns:
-        StatmechAdapter: The requested StatmechAdapter instance, initialized with the respective arguments,
+    Returns: StatmechAdapter
+        The requested StatmechAdapter instance, initialized with the respective arguments,
     """
     statmech_adapter_class = \
         _registered_statmech_adapters[statmech_adapter_label](output_directory=output_directory,

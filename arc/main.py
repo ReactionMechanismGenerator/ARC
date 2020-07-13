@@ -513,8 +513,8 @@ class ARC(object):
         """
         Execute ARC.
 
-        Returns:
-            dict: Status dictionary indicating which species converged successfully.
+        Returns: dict
+            Status dictionary indicating which species converged successfully.
         """
         logger.info('\n')
         for species in self.species:
@@ -644,8 +644,8 @@ class ARC(object):
         """
         Report status and data of all species / reactions.
 
-        Returns:
-            dict: Status dictionary indicating which species converged successfully.
+        Returns: dict
+            Status dictionary indicating which species converged successfully.
         """
         status_dict = {}
         logger.info(f'\n\n\nAll jobs terminated. Summary for project {self.project}:\n')
@@ -1125,8 +1125,8 @@ def process_adaptive_levels(adaptive_levels: Optional[dict]) -> Optional[dict]:
     Args:
         adaptive_levels (dict): The adaptive levels dictionary.
 
-    Returns:
-        dict: The processed adaptive levels dictionary.
+    Returns: dict
+        The processed adaptive levels dictionary.
     """
     if adaptive_levels is None:
         return None
