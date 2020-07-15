@@ -2,12 +2,13 @@
 A module for generating statmech adapters.
 """
 
-from typing import Optional, Type
+from typing import TYPE_CHECKING, Optional, Type
 
-from arc.level import Level
-from arc.reaction import ARCReaction
-from arc.species.species import ARCSpecies
 from arc.statmech.adapter import StatmechAdapter
+if TYPE_CHECKING:
+    from arc.level import Level
+    from arc.reaction import ARCReaction
+    from arc.species.species import ARCSpecies
 
 
 _registered_statmech_adapters = {}
@@ -21,13 +22,13 @@ def register_statmech_adapter(statmech_adapter_label: str,
 
     Args:
         statmech_adapter_label (StatmechEnum): A string representation for a statmech adapter.
-        statmech_adapter_class (typing.Type[StatmechAdapter]): The statmech adapter class (a child of StatmechAdapter).
+        statmech_adapter_class (Type[StatmechAdapter]): The statmech adapter class (a child of StatmechAdapter).
 
     Raises:
-        TypeError: If statmech_class is not a StatmechAdapter instance.
+        TypeError: If statmech_class is not a subclass of StatmechAdapter.
     """
     if not issubclass(statmech_adapter_class, StatmechAdapter):
-        raise TypeError(f'Statmech adapter class {statmech_adapter_class} is not a StatmechAdapter type.')
+        raise TypeError(f'Statmech adapter class {statmech_adapter_class} is not a subclass of StatmechAdapter.')
     _registered_statmech_adapters[statmech_adapter_label] = statmech_adapter_class
 
 
@@ -35,19 +36,18 @@ def statmech_factory(statmech_adapter_label: str,  # add everything that goes in
                      output_directory: str,
                      output_dict: dict,
                      bac_type: Optional[str],
-                     sp_level: Optional[Level] = None,
-                     arkane_level_of_theory: Optional[Level] = None,
+                     sp_level: Optional['Level'] = None,
                      freq_scale_factor: float = 1.0,
-                     species: Type[ARCSpecies] = None,
-                     reaction: Type[ARCReaction] = None,
+                     species: Type['ARCSpecies'] = None,
+                     reaction: Type['ARCReaction'] = None,
                      species_dict: dict = None,
-                     T_min: tuple = None,
-                     T_max: tuple = None,
+                     T_min: Optional[tuple] = None,
+                     T_max: Optional[tuple] = None,
                      T_count: int = 50,
                      three_params: bool = True,
                      ) -> Type[StatmechAdapter]:
     """
-    A factory generating a statmech adapter corresponding to ``statmech_adapter``.
+    A factory generating a statmech adapter corresponding to ``statmech_adapter_label``.
 
     Args:
         statmech_adapter_label (StatmechEnum): A string representation for a statmech adapter.
@@ -69,7 +69,7 @@ def statmech_factory(statmech_adapter_label: str,  # add everything that goes in
                                        (``False``).
 
     Returns:
-        StatmechAdapter: The requested StatmechAdapter instance, initialized with the respective arguments,
+        StatmechAdapter: The requested StatmechAdapter subclass, initialized with the respective arguments.
     """
     statmech_adapter_class = \
         _registered_statmech_adapters[statmech_adapter_label](output_directory=output_directory,
@@ -83,6 +83,6 @@ def statmech_factory(statmech_adapter_label: str,  # add everything that goes in
                                                               T_min=T_min,
                                                               T_max=T_max,
                                                               T_count=T_count,
-                                                              three_params=three_params
+                                                              three_params=three_params,
                                                               )
     return statmech_adapter_class
