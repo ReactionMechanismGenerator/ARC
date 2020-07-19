@@ -176,7 +176,7 @@ class Level(object):
         original_dict = self.__dict__
         clean_dict = {}
         for key, val in original_dict.items():
-            if val is not None and key != 'args' or key =='args' and all([v for v in self.args.values()]):
+            if val is not None and key != 'args' or key == 'args' and all([v for v in self.args.values()]):
                 clean_dict[key] = val
         return clean_dict
 
