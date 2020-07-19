@@ -73,7 +73,7 @@ class ARCSpecies(object):
                               'invalidation_reason': ``str``,
                               'times_dihedral_set': ``int``,
                               'scan_path': <path to scan output file>,
-                              'max_e': ``float``,  # in kJ/mol,
+                              'max_e': ``float``,  # relative to the minimum energy, in kJ/mol,
                               'symmetry': ``int``,
                               'dimensions': ``int``,
                               'original_dihedrals': ``list``,
@@ -1076,8 +1076,8 @@ class ARCSpecies(object):
                 for vals2 in vals1:
                     for val in vals2:
                         if val not in all_pivots:
-                            raise SpeciesError('The pivots {0} do not represent a rotor in species {1}. Valid rotors '
-                                               'are: {2}'.format(val, self.label, all_pivots))
+                            raise SpeciesError(f'The pivots {val} do not represent a rotor in species {self.label}. '
+                                               f'Valid rotors are: {all_pivots}')
             # Modify self.rotors_dict to remove respective 1D rotors dicts and add ND rotors dicts
             rotor_indices_to_del = list()
             for key, vals in directed_rotors.items():
