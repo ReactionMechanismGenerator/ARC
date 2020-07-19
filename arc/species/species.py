@@ -75,7 +75,7 @@ class ARCSpecies(object):
                               'invalidation_reason': ``str``,
                               'times_dihedral_set': ``int``,
                               'scan_path': <path to scan output file>,
-                              'max_e': ``float``,  # in kJ/mol,
+                              'max_e': ``float``,  # relative to the minimum energy, in kJ/mol,
                               'symmetry': ``int``,
                               'dimensions': ``int``,
                               'original_dihedrals': ``list``,
