@@ -88,39 +88,45 @@ levels_ess = {
 }
 
 check_status_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat',
-                        'Slurm': '/usr/bin/squeue'}
+                        'Slurm': '/usr/bin/squeue',
+                        }
 
 submit_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qsub',
-                  'Slurm': '/usr/bin/sbatch'}
-
-delete_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qdel',
-                  'Slurm': '/usr/bin/scancel'}
-
-list_available_nodes_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat -f | grep "/8 " | grep "long" | grep -v "8/8"| grep -v "aAu"',
-                                'Slurm': 'sinfo -o "%n %t %O %E"'}
-
-submit_filename = {'OGE': 'submit.sh',
-                   'Slurm': 'submit.sl'}
-
-t_max_format = {'OGE': 'hours',
-                'Slurm': 'days'}
-
-input_filename = {'gaussian': 'input.gjf',
-                  'molpro': 'input.in',
-                  'onedmin': 'input.in',
-                  'orca': 'input.in',
-                  'qchem': 'input.in',
-                  'terachem': 'input.in',
+                  'Slurm': '/usr/bin/sbatch',
                   }
 
-output_filename = {'gaussian': 'input.log',
-                   'gromacs': 'output.yml',
-                   'molpro': 'input.out',
-                   'onedmin': 'output.out',
-                   'orca': 'input.log',
-                   'qchem': 'output.out',
-                   'terachem': 'output.out',
+delete_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qdel',
+                  'Slurm': '/usr/bin/scancel',
+                  }
+
+list_available_nodes_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat -f | grep "/8 " | grep "long" | grep -v "8/8"| grep -v "aAu"',
+                                'Slurm': 'sinfo -o "%n %t %O %E"',
+                                }
+
+submit_filenames = {'OGE': 'submit.sh',
+                    'Slurm': 'submit.sl',
+                    }
+
+input_filenames = {'gaussian': 'input.gjf',
+                   'molpro': 'input.in',
+                   'onedmin': 'input.in',
+                   'orca': 'input.in',
+                   'qchem': 'input.in',
+                   'terachem': 'input.in',
                    }
+
+output_filenames = {'gaussian': 'input.log',
+                    'gromacs': 'output.yml',
+                    'molpro': 'input.out',
+                    'onedmin': 'output.out',
+                    'orca': 'input.log',
+                    'qchem': 'output.out',
+                    'terachem': 'output.out',
+                    }
+
+t_max_format = {'OGE': 'hours',
+                'Slurm': 'days',
+                }
 
 default_levels_of_theory = {'conformer': 'wb97xd/def2svp',  # it's recommended to choose a method with dispersion
                             'ts_guesses': 'wb97xd/def2svp',
