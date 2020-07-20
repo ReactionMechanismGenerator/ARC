@@ -22,9 +22,9 @@ from arc.imports import settings
 logger = get_logger()
 
 
-check_status_command, delete_command, list_available_nodes_command, servers, submit_command, submit_filename = \
+check_status_command, delete_command, list_available_nodes_command, servers, submit_command, submit_filenames = \
     settings['check_status_command'], settings['delete_command'], settings['list_available_nodes_command'], \
-    settings['servers'], settings['submit_command'], settings['submit_filename'],
+    settings['servers'], settings['submit_command'], settings['submit_filenames'],
 
 
 def check_connections(function: Callable[..., Any]) -> Callable[..., Any]:
@@ -299,7 +299,7 @@ class SSHClient(object):
         job_status = ''
         job_id = 0
         cluster_soft = servers[self.server]['cluster_soft']
-        cmd = submit_command[cluster_soft] + ' ' + submit_filename[cluster_soft]
+        cmd = submit_command[cluster_soft] + ' ' + submit_filenames[cluster_soft]
         stdout, stderr = self._send_command_to_server(cmd, remote_path)
         if len(stderr) > 0 or len(stdout) == 0:
             logger.warning(f'Got stderr when submitting job:\n{stderr}')
