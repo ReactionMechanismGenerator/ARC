@@ -445,7 +445,7 @@ class SSHClient(object):
 
     def change_mode(self,
                     mode: str,
-                    path: str,
+                    file_name: str,
                     recursive: bool = False,
                     remote_path: str = '',
                     ) -> None:
@@ -454,13 +454,15 @@ class SSHClient(object):
 
         Args:
             mode (str): The mode change to be applied, can be either octal or symbolic.
-            path (str): The path to the file or the directory to be changed.
+            file_name (str): The path to the file or the directory to be changed.
             recursive (bool, optional): Whether to recursively change the mode to all files
                                         under a directory.``True`` for recursively change.
             remote_path (str, optional): The directory path at which the command will be executed.
         """
+        if os.path.isfile(remote_path):
+            remote_path = os.path.dirname(remote_path)
         recursive = '-R' if recursive else ''
-        command = f'chmod {recursive} {mode} {path}'
+        command = f'chmod {recursive} {mode} {file_name}'
         self._send_command_to_server(command, remote_path)
 
     def _check_file_exists(self, 
