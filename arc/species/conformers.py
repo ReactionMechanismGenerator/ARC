@@ -481,13 +481,12 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
         new_conformers.extend(newest_conformer_list)
         if not newest_conformer_list:
             newest_conformer_list = [lowest_conf_i]
-        if force_field != 'gromacs':
-            lowest_conf_i = get_lowest_confs(label, newest_conformer_list, n=1)[0]
-            if lowest_conf_i['FF energy'] == base_energy \
-                    and converter.compare_confs(lowest_conf_i['xyz'], base_xyz):
-                break
-            elif lowest_conf_i['FF energy'] < base_energy:
-                base_energy = lowest_conf_i['FF energy']
+        lowest_conf_i = get_lowest_confs(label, newest_conformer_list, n=1)[0]
+        if lowest_conf_i['FF energy'] == base_energy \
+                and converter.compare_confs(lowest_conf_i['xyz'], base_xyz):
+            break
+        elif lowest_conf_i['FF energy'] < base_energy:
+            base_energy = lowest_conf_i['FF energy']
     if plot_path is not None:
         logger.info(converter.xyz_to_str(lowest_conf_i['xyz']))
         arc.plotter.draw_structure(xyz=lowest_conf_i['xyz'])
@@ -674,15 +673,14 @@ def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals
             if conf is not None:
                 torsion_0_indexed = [tor - 1 for tor in torsion]
                 xyz_dihedrals = converter.set_rdkit_dihedrals(conf, rd_mol, torsion_0_indexed, deg_abs=dihedral)
-        if force_field != 'gromacs':
-            xyz_, energy = get_force_field_energies(label, mol=mol, xyz=xyz_dihedrals, optimize=True,
-                                                    force_field=force_field, suppress_warning=True)
-            if energy and xyz_:
-                energies.append(energy[0])
-                if optimize:
-                    xyzs.append(xyz_[0])
-                else:
-                    xyzs.append(xyz_dihedrals)
+        xyz_, energy = get_force_field_energies(label, mol=mol, xyz=xyz_dihedrals, optimize=True,
+                                                force_field=force_field, suppress_warning=True)
+        if energy and xyz_:
+            energies.append(energy[0])
+            if optimize:
+                xyzs.append(xyz_[0])
+            else:
+                xyzs.append(xyz_dihedrals)
         else:
             energies.append(None)
             xyzs.append(xyz_dihedrals)
