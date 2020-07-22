@@ -2291,7 +2291,7 @@ class Scheduler(object):
             logger.info(f'Species {label} has a T1 diagnostic parameter of {self.species_dict[label].t1}{txt}')
             self.output[label]['info'] += f'T1 = {self.species_dict[label].t1}; '
 
-        if self.sp_level.solvation_scheme_level is not None:
+        if self.sp_level is not None and self.sp_level.solvation_scheme_level is not None:
             # a complex solvation correction behavior was requested for the single-point energy value
             if not self.output[label]['job_types']['sp']:
                 # this is the first "original" sp job, spawn two more at the sp_level.solvation_scheme_level level,
