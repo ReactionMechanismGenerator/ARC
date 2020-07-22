@@ -465,13 +465,6 @@ class Level(object):
                                  f'levels_ess is:\n{levels_ess}')
             self.software = 'onedmin'
 
-        # Gromacs
-        if job_type == 'gromacs':
-            if 'gromacs' not in supported_ess:
-                raise ValueError(f'Could not find the Gromacs software to run the MD job {self.method}.\n'
-                                 f'levels_ess is:\n{levels_ess}')
-            self.software = 'gromacs'
-
         # QChem
         if job_type == 'orbitals':
             # currently we only have a script to print orbitals on QChem,
