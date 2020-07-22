@@ -8,6 +8,7 @@ channels:
   - omnia
   - pytorch
   - conda-forge
+  - mjohnson541
 dependencies:
   - cairo
   - cairocffi
@@ -42,6 +43,7 @@ dependencies:
   - pymongo
   - pyparsing
   - pyrdl
+  - pyrms
   - python >=3.7
   - pyyaml
   - quantities
