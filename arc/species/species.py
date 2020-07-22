@@ -176,6 +176,7 @@ class ARCSpecies(object):
         fragments (Optional[List[List[int]]]):
             Fragments represented by this species, i.e., as in a VdW well or a TS.
             Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.
+        occ (int, optional): The number of occupied orbitals (core + val) from a molpro CCSD sp calc.
 
     Attributes:
         label (str): The species' label.
@@ -263,6 +264,7 @@ class ARCSpecies(object):
         fragments (Optional[List[List[int]]]):
             Fragments represented by this species, i.e., as in a VdW well or a TS.
             Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.
+        occ (int, optional): The number of occupied orbitals (core + val) from a molpro CCSD sp calc.
     """
     def __init__(self,
                  adjlist: str = '',
@@ -283,6 +285,7 @@ class ARCSpecies(object):
                  mol: Optional[Molecule] = None,
                  multiplicity: Optional[int] = None,
                  number_of_radicals: Optional[int] = None,
+                 occ: Optional[int] = None,
                  optical_isomers: Optional[int] = None,
                  preserve_param_in_scan: Optional[list] = None,
                  rmg_species: Optional[Species] = None,
@@ -316,6 +319,7 @@ class ARCSpecies(object):
         self.multiplicity = multiplicity
         self.number_of_radicals = number_of_radicals
         self.external_symmetry = external_symmetry
+        self.occ = occ
         self.optical_isomers = optical_isomers
         self.charge = charge
         self.run_time = run_time
@@ -611,6 +615,8 @@ class ARCSpecies(object):
             species_dict['zmat'] = self.zmat
         if self.checkfile is not None:
             species_dict['checkfile'] = self.checkfile
+        if self.occ is not None:
+            species_dict['occ'] = self.occ
         if self.most_stable_conformer is not None:
             species_dict['most_stable_conformer'] = self.most_stable_conformer
         if self.cheap_conformer is not None:
@@ -666,6 +672,7 @@ class ARCSpecies(object):
         self.t1 = species_dict['t1'] if 't1' in species_dict else None
         self.e_elect = species_dict['e_elect'] if 'e_elect' in species_dict else None
         self.e0 = species_dict['e0'] if 'e0' in species_dict else None
+        self.occ = species_dict['occ'] if 'occ' in species_dict else None
         self.arkane_file = species_dict['arkane_file'] if 'arkane_file' in species_dict else None
         self.yml_path = species_dict['yml_path'] if 'yml_path' in species_dict else None
         self.rxn_label = species_dict['rxn_label'] if 'rxn_label' in species_dict else None
