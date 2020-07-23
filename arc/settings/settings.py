@@ -43,8 +43,9 @@ servers = {
         'memory': 256,  # amount of memory per node in GB, optional (default: 16)
     },
     'local': {
-        'cluster_soft': 'OGE',
+        'cluster_soft': 'Slurm',
         'un': '<username>',
+        'cpus': 48,
     },
 }
 
@@ -53,7 +54,7 @@ servers = {
 # Keeping this dictionary empty will cause ARC to scan for software on the servers defined above
 global_ess_settings = {
     'gaussian': ['local', 'server2'],
-    'molpro': 'server2',
+    'molpro': ['local', 'server2'],
     'onedmin': 'server1',
     'orca': 'local',
     'qchem': 'server1',
