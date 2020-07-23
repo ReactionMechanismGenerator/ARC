@@ -1053,12 +1053,14 @@ class ARCSpecies(object):
             SpeciesError: If the pivots don't represent a dihedral in the species.
         """
         if self.directed_rotors:
-            all_pivots = [self.rotors_dict[i]['pivots'] for i in range(self.number_of_rotors)]
+            all_pivots = [rotor_dict['pivots'] for rotor_dict in self.rotors_dict.values()]
             directed_rotors, directed_rotors_scans = dict(), dict()
             for key, vals in self.directed_rotors.items():
                 # reformat as nested lists
                 directed_rotors[key] = list()
                 for val1 in vals:
+                    if len(val1) != 2:
+                        raise SpeciesError(f'directed_scan pivots must be lists of length 2, got {val1}.')
                     if isinstance(val1, (tuple, list)) and isinstance(val1[0], int):
                         corrected_val = val1 if list(val1) in all_pivots else [val1[1], val1[0]]
                         directed_rotors[key].append([list(corrected_val)])
