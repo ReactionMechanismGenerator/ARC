@@ -8,6 +8,7 @@ channels:
   - omnia
   - pytorch
   - conda-forge
+  - psi4
 dependencies:
   - cairo
   - cairocffi
@@ -24,6 +25,7 @@ dependencies:
   - jinja2
   - jupyter
   - lpsolve55
+  - mako
   - markupsafe
   - matplotlib >=2.2.2
   - mock
@@ -36,12 +38,14 @@ dependencies:
   - openbabel
   - pandas >=1.0.1
   - psutil
+  - psi4
   - pydas >=1.0.1
   - pydot
   - pydqed >=1.0.0
   - pymongo
   - pyparsing
   - pyrdl
+  - pytables
   - python >=3.7
   - pyyaml
   - quantities
