@@ -217,6 +217,19 @@ def xyz_to_coords_list(xyz_dict: dict) -> List[List[float]]:
     return coords_list
 
 
+def xyz_to_np_array(xyz_dict: dict) -> np.ndarray:
+    """
+    Get the coords part of an xyz dict as a numpy array.
+
+    Args:
+        xyz_dict (dict): The ARC xyz format.
+
+    Returns: np.ndarray
+        The coordinates.
+    """
+    return np.array(xyz_to_coords_list(xyz_dict), dtype=np.float64)
+
+
 def xyz_to_xyz_file_format(xyz_dict:dict,
                            comment:str='',
                            ) -> str:
