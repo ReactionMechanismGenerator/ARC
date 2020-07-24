@@ -34,7 +34,7 @@ from arc.species.zmat import (KEY_FROM_LEN,
 logger = get_logger()
 
 
-def str_to_xyz(xyz_str):
+def str_to_xyz(xyz_str: str) -> dict:
     """
     Convert a string xyz format to the ARC dict xyz style.
     Note: The ``xyz_str`` argument could also direct to a file path to parse the data from.
@@ -61,11 +61,11 @@ def str_to_xyz(xyz_str):
     Args:
         xyz_str (str): The string xyz format to be converted.
 
-    Returns:
-        dict: The ARC xyz format.
-
     Raises:
         ConverterError: If xyz_str is not a string or does not have four space-separated entries per non empty line.
+
+    Returns: dict
+        The ARC xyz format.
     """
     if not isinstance(xyz_str, str):
         raise ConverterError(f'Expected a string input, got {type(xyz_str)}')
@@ -110,7 +110,9 @@ def str_to_xyz(xyz_str):
     return xyz_dict
 
 
-def xyz_to_str(xyz_dict, isotope_format=None):
+def xyz_to_str(xyz_dict: dict,
+               isotope_format: Optional[str] = None,
+               ) -> str:
     """
     Convert an ARC xyz dictionary format, e.g.::
 
@@ -138,11 +140,11 @@ def xyz_to_str(xyz_dict, isotope_format=None):
                                         By default, isotopes will not be specified. Currently the only supported
                                         option is 'gaussian'.
 
-    Returns:
-        str: The string xyz format.
-
     Raises:
         ConverterError: If input is not a dict or does not have all attributes.
+
+    Returns: str
+        The string xyz format.
     """
     xyz_dict = check_xyz_dict(xyz_dict)
     if xyz_dict is None:
@@ -178,15 +180,15 @@ def xyz_to_str(xyz_dict, isotope_format=None):
     return '\n'.join(xyz_list)
 
 
-def xyz_to_x_y_z(xyz_dict):
+def xyz_to_x_y_z(xyz_dict: dict) -> Tuple[tuple, tuple, tuple]:
     """
     Get the X, Y, and Z coordinates separately from the ARC xyz dictionary format.
 
     Args:
         xyz_dict (dict): The ARC xyz format.
 
-    Returns:
-        Tuple[tuple, tuple, tuple]: The X coordinates, the Y coordinates, the Z coordinates.
+    Returns: Tuple[tuple, tuple, tuple]
+        The X coordinates, the Y coordinates, the Z coordinates.
     """
     xyz_dict = check_xyz_dict(xyz_dict)
     x, y, z = tuple(), tuple(), tuple()
@@ -197,15 +199,15 @@ def xyz_to_x_y_z(xyz_dict):
     return x, y, z
 
 
-def xyz_to_coords_list(xyz_dict):
+def xyz_to_coords_list(xyz_dict: dict) -> List[List[float]]:
     """
-    Get the coords part of an xyz dict as a (mutable) list of lists (rather than a tuple of tuples)
+    Get the coords part of an xyz dict as a (mutable) list of lists (rather than a tuple of tuples).
 
     Args:
         xyz_dict (dict): The ARC xyz format.
 
-    Returns:
-        list: The coordinates.
+    Returns: List[List[float]]
+        The coordinates.
     """
     xyz_dict = check_xyz_dict(xyz_dict)
     coords_tuple = xyz_dict['coords']
@@ -215,7 +217,9 @@ def xyz_to_coords_list(xyz_dict):
     return coords_list
 
 
-def xyz_to_xyz_file_format(xyz_dict, comment=''):
+def xyz_to_xyz_file_format(xyz_dict:dict,
+                           comment:str='',
+                           ) -> str:
     """
     Get the `XYZ file format <https://en.wikipedia.org/wiki/XYZ_file_format>`_ representation
     from the ARC xyz dictionary format.
@@ -225,8 +229,8 @@ def xyz_to_xyz_file_format(xyz_dict, comment=''):
         xyz_dict (dict): The ARC xyz format.
         comment (str, optional): A comment to be shown in the output's 2nd line.
 
-    Returns:
-        str: The XYZ file format.
+    Returns: str
+        The XYZ file format.
 
     Raises:
         ConverterError: If ``xyz_dict`` is of wrong format or ``comment`` is a multiline string.
@@ -253,7 +257,7 @@ def xyz_to_dmat(xyz_dict: dict) -> np.array:
     return dmat
 
 
-def xyz_file_format_to_xyz(xyz_file):
+def xyz_file_format_to_xyz(xyz_file: str) -> dict:
     """
     Get the ARC xyz dictionary format from an
     `XYZ file format <https://en.wikipedia.org/wiki/XYZ_file_format>`_ representation.
@@ -261,11 +265,11 @@ def xyz_file_format_to_xyz(xyz_file):
     Args:
         xyz_file (str): The content of an XYZ file
 
-    Returns:
-        dict: The ARC dictionary xyz format.
-
     Raises:
         ConverterError: If cannot identify the number of atoms entry, of if it is different that the actual number.
+
+    Returns: dict
+        The ARC dictionary xyz format.
     """
     lines = xyz_file.strip().splitlines()
     if not lines[0].isdigit():
@@ -1717,6 +1721,7 @@ def compare_confs(xyz1: dict,
     else:
         return almost_equal_lists(dmat1, dmat2, rtol=rtol, atol=atol)
 
+
 def calc_rmsd(x: np.array,
               y: np.array,
               ) -> float:
@@ -1764,6 +1769,7 @@ def cluster_confs_by_rmsd(xyzs: Iterable[Dict[str, tuple]],
         if all([rmsd > rmsd_threshold for rmsd in tuple(rmsd_list)]):
             distinct_xyzs.append(xyz)
     return tuple(distinct_xyzs)
+
 
 def ics_to_scan_constraints(ics: list,
                             software: Optional[str] = 'gaussian',
