@@ -215,7 +215,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.sched1.initialize_output_dict()
         self.assertFalse(self.sched1._does_output_dict_contain_info())
         empty_species_dict = {'conformers': '',
-                              'convergence': False,
+                              'convergence': None,
                               'errors': '',
                               'info': '',
                               'isomorphism': '',
@@ -235,7 +235,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
                                         'sp': ''},
                               'restart': '',
                               'warnings': ''}
-        initialized_output_dict = {'C2H6':empty_species_dict,
+        initialized_output_dict = {'C2H6': empty_species_dict,
                                    'CtripCO': empty_species_dict,
                                    'methylamine': empty_species_dict,
                                    }
