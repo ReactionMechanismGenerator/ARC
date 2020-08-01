@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import time
+from typing import List, Optional, Union
 
 from arc.common import get_logger
 from arc.exceptions import SettingsError
@@ -203,14 +204,14 @@ def rename_output(local_file_path, software):
         shutil.move(src=os.path.join(os.path.dirname(local_file_path), output_filename[software]), dst=local_file_path)
 
 
-def delete_all_local_arc_jobs(jobs=None):
+def delete_all_local_arc_jobs(jobs: Optional[List[Union[str, int]]] = None):
     """
     Delete all ARC-spawned jobs (with job name starting with `a` and a digit) from the local server.
     Make sure you know what you're doing, so unrelated jobs won't be deleted...
     Useful when terminating ARC while some (ghost) jobs are still running.
 
     Args:
-        jobs (Optional[List[str]]): Specific ARC job IDs to delete.
+        jobs (List[Union[str, int]], optional): Specific ARC job IDs to delete.
     """
     server = 'local'
     if server in servers:
@@ -221,7 +222,7 @@ def delete_all_local_arc_jobs(jobs=None):
             s = re.search(r' a\d+', status_line)
             if s is not None:
                 job_id = s.group()[1:]
-                if job_id in jobs or jobs is None:
+                if jobs is None or job_id in jobs:
                     if servers[server]['cluster_soft'].lower() == 'slurm':
                         server_job_id = status_line.split()[0]
                         delete_job(server_job_id)

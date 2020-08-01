@@ -253,7 +253,7 @@ class SSHClient(object):
         Delete all of the jobs on a specific server.
 
         Args:
-                jobs (List[str, int], optional): Specific ARC job IDs to delete.
+            jobs (List[Union[str, int]], optional): Specific ARC job IDs to delete.
         """
         jobs_message = f'{len(jobs)}' if jobs is not None else 'all'
         print(f'\nDeleting {jobs_message} ARC jobs from {self.server}...')
