@@ -1167,7 +1167,10 @@ end
                     if up_file['source'] == 'path':
                         source_path = up_file['local']
                         destination_path = os.path.join(self.local_path, up_file['name'])
-                        shutil.copyfile(source_path, destination_path)
+                        try:
+                            shutil.copyfile(source_path, destination_path)
+                        except shutil.SameFileError:
+                            pass
                     elif up_file['source'] == 'input_files':
                         with open(os.path.join(self.local_path, up_file['name']), 'w') as f:
                             f.write(input_files[up_file['local']])
@@ -1211,7 +1214,10 @@ end
         else:
             # running locally, just copy the check file to the job folder
             new_check_file_path = os.path.join(self.local_path, 'check.chk')
-            shutil.copyfile(local_check_file_path, new_check_file_path)
+            try:
+                shutil.copyfile(local_check_file_path, new_check_file_path)
+            except shutil.SameFileError:
+                pass
 
     def _download_output_file(self):
         """

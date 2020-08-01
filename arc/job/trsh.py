@@ -460,7 +460,7 @@ def trsh_negative_freq(label: str,
                          'cannot troubleshoot geometry using dihedral modifications.')
             output_warnings.append('rotors = False; ')
         logger.error('Invalidating species.')
-        output_errors.append('Error: Encountered negative frequencies too many times; ')
+        output_errors.append('Error: Encountered negative frequencies too many times; Invalidating species; ')
     else:
         neg_freqs_idx = list()  # store indices w.r.t. vibfreqs
         largest_neg_freq_idx = 0  # index in vibfreqs
