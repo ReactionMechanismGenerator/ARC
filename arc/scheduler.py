@@ -89,7 +89,7 @@ class Scheduler(object):
                                      },
                             'conformers': <comments>,
                             'isomorphism': <comments>,
-                            'convergence': <status>,  # boolean
+                            'convergence': <status>,  # Optional[bool]
                             'restart': <comments>,
                             'info': <comments>,
                             'warnings': <comments>,
@@ -469,6 +469,9 @@ class Scheduler(object):
             self.timer = True
             job_list = list()
             for label in self.unique_species_labels:
+                if self.output[label]['convergence'] is False:
+                    # skip unconverged species
+                    continue
                 # look for completed jobs and decide what jobs to run next
                 self.get_servers_jobs_ids()  # updates `self.servers_jobs_ids`
                 try:
@@ -2720,6 +2723,10 @@ class Scheduler(object):
         self.species_dict[label].neg_freqs_trshed.extend(current_neg_freqs_trshed)
         for output_error in output_errors:
             self.output[label]['errors'] += output_error
+            if 'Invalidating species' in output_error:
+                logger.info(f'Deleting all currently running jobs for species {label}...')
+                self.delete_all_species_jobs(label)
+                self.output[label]['convergence'] = False
         for output_warning in output_warnings:
             self.output[label]['warnings'] += output_warning
         if len(confs):
@@ -3196,7 +3203,7 @@ class Scheduler(object):
                     for key in keys:
                         if key not in self.output[species.label]:
                             if key == 'convergence':
-                                self.output[species.label][key] = False
+                                self.output[species.label][key] = None
                             else:
                                 self.output[species.label][key] = ''
 
