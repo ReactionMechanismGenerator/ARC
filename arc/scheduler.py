@@ -471,6 +471,8 @@ class Scheduler(object):
             for label in self.unique_species_labels:
                 if self.output[label]['convergence'] is False:
                     # skip unconverged species
+                    if label in self.running_jobs:
+                        del self.running_jobs[label]
                     continue
                 # look for completed jobs and decide what jobs to run next
                 self.get_servers_jobs_ids()  # updates `self.servers_jobs_ids`
