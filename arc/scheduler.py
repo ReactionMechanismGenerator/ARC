@@ -2442,10 +2442,10 @@ class Scheduler(object):
         if invalidate:
             self.species_dict[label].rotors_dict[i]['success'] = None if len(actions) else False
 
-        # Better to save the path and invalidation reason for debugging and tracing the file
-        # if ``success`` is null, it means that the job is being troubleshot
+        # Better to save the path and invalidation reason for debugging and tracking the file
+        # if ``success`` is None, it means that the job is being troubleshooted
         self.species_dict[label].rotors_dict[i]['scan_path'] = job.local_path_to_output_file
-        self.species_dict[label].rotors_dict[i]['invalidation_reason'] = invalidation_reason
+        self.species_dict[label].rotors_dict[i]['invalidation_reason'] += invalidation_reason
 
         # If energies were obtained, draw the scan curve
         if energies is not None and len(energies):
@@ -2481,7 +2481,8 @@ class Scheduler(object):
             - adjust to ND, merge with check_directed_scan_job (this one isn't being called)
         """
         # If the job has not converged, troubleshoot
-        invalidate, invalidation_reason, message, actions = scan_quality_check(label=label, pivots=pivots,
+        invalidate, invalidation_reason, message, actions = scan_quality_check(label=label,
+                                                                               pivots=pivots,
                                                                                energies=energies)
         if actions:
             # the rotor scan is problematic, troubleshooting is required
