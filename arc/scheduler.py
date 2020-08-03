@@ -471,6 +471,8 @@ class Scheduler(object):
             for label in self.unique_species_labels:
                 if self.output[label]['convergence'] is False:
                     # skip unconverged species
+                    if label in self.running_jobs:
+                        del self.running_jobs[label]
                     continue
                 # look for completed jobs and decide what jobs to run next
                 self.get_servers_jobs_ids()  # updates `self.servers_jobs_ids`
@@ -1618,7 +1620,7 @@ class Scheduler(object):
                               'top': ``list``,
                               'scan': ``list``,
                               'number_of_running_jobs': ``int``,
-                              'success': ``bool``,
+                              'success': ``Optional[bool]``,
                               'invalidation_reason': ``str``,
                               'times_dihedral_set': ``int``,
                               'scan_path': <path to scan output file>,
@@ -2345,7 +2347,7 @@ class Scheduler(object):
                               'top': ``list``,
                               'scan': ``list``,
                               'number_of_running_jobs': ``int``,
-                              'success': ``bool``,
+                              'success': ``Optional[bool]``,
                               'invalidation_reason': ``str``,
                               'times_dihedral_set': ``int``,
                               'scan_path': <path to scan output file>,
@@ -2436,14 +2438,14 @@ class Scheduler(object):
         else:
             raise SchedulerError(f'Could not match rotor with pivots {job.pivots} in species {label}')
 
-        # This is a bad rotor scan, and we can do nothing about it at this moment.
-        if invalidate and not actions:
-            self.species_dict[label].rotors_dict[i]['success'] = False
+        # This is a bad rotor scan
+        if invalidate:
+            self.species_dict[label].rotors_dict[i]['success'] = None if len(actions) else False
 
-        # Better to save the path and invalidation reason for debugging and tracing the file
-        # if ``success`` is null, it means that the job is being troubleshot
+        # Better to save the path and invalidation reason for debugging and tracking the file
+        # if ``success`` is None, it means that the job is being troubleshooted
         self.species_dict[label].rotors_dict[i]['scan_path'] = job.local_path_to_output_file
-        self.species_dict[label].rotors_dict[i]['invalidation_reason'] = invalidation_reason
+        self.species_dict[label].rotors_dict[i]['invalidation_reason'] += invalidation_reason
 
         # If energies were obtained, draw the scan curve
         if energies is not None and len(energies):
@@ -2479,7 +2481,8 @@ class Scheduler(object):
             - adjust to ND, merge with check_directed_scan_job (this one isn't being called)
         """
         # If the job has not converged, troubleshoot
-        invalidate, invalidation_reason, message, actions = scan_quality_check(label=label, pivots=pivots,
+        invalidate, invalidation_reason, message, actions = scan_quality_check(label=label,
+                                                                               pivots=pivots,
                                                                                energies=energies)
         if actions:
             # the rotor scan is problematic, troubleshooting is required
