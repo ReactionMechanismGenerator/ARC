@@ -1318,6 +1318,7 @@ def scan_quality_check(label: str,
                 broken_bond_label = bond_change.sort_values().index[-1]  # the largest change
                 # Freeze the bonds, no further freezing other ics to prevent over-constraining
                 broken_bonds = [scan_conformers['atoms'][broken_bond_label]]
+                invalidate = True
                 invalidation_reason = f'Bond ({broken_bonds}) broke during the scan.'
                 message = f'Rotor scan of {label} between pivots {pivots} has broken bonds: ' \
                           f'{broken_bonds}. ARC will attempt to troubleshoot this rotor scan.'
@@ -1346,9 +1347,10 @@ def scan_quality_check(label: str,
         # 1.3 Check consistency
         if 0 in changed_ic_dict.keys() and len(changed_ic_dict) == 1:
             # Smooth scan with different initial and final conformer
+            invalidate = True
             invalidation_reason = 'Inconsistent initial and final conformers'
             message = f'Rotor scan of {label} between pivots {pivots} has inconsistent initial ' \
-                      f'and final conformers. Internal coordinates {changed_ic_dict[0]} are different. ' \
+                      f'and final conformers.\nInternal coordinates {changed_ic_dict[0]} are different. ' \
                       f'ARC will attempt to troubleshoot this rotor scan.'
             logger.error(message)
             actions = {'freeze': [scan_conformers['atoms'][ic_label]
@@ -1356,6 +1358,7 @@ def scan_quality_check(label: str,
             return invalidate, invalidation_reason, message, actions
         elif len(changed_ic_dict) > 0:
             # Not smooth scan
+            invalidate = True
             invalidation_reason = 'Significant difference observed between consecutive conformers'
             message = f'Rotor scan of {label} between pivots {pivots} is inconsistent between ' \
                       f'two consecutive conformers.\nInconsistent consecutive conformers and problematic ' \
