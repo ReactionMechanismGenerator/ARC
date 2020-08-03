@@ -985,8 +985,16 @@ def plot_torsion_angles(torsion_angles, torsions_sampling_points=None, wells_dic
     return num_comb
 
 
-def plot_1d_rotor_scan(angles=None, energies=None, results=None, path=None, scan=None, comment='', units='degrees',
-                       original_dihedral=None, label=None):
+def plot_1d_rotor_scan(angles=None,
+                       energies=None,
+                       results=None,
+                       path=None,
+                       scan=None,
+                       comment='',
+                       units='degrees',
+                       original_dihedral=None,
+                       label=None,
+                       ):
     """
     Plots a 1D rotor PES for energy vs. angles. Either ``angles`` and ``energies`` or ``results`` must be given.
 
