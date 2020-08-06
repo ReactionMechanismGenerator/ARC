@@ -1878,8 +1878,10 @@ class Scheduler(object):
                             break
                         if is_isomorphic or are_coords_compliant_with_graph(xyz=xyz, mol=self.species_dict[label].mol):
                             if i == 0:
+                                b_mol_smiles = b_mol.copy(deep=True).to_smiles() \
+                                    if b_mol is not None else '<no 2D structure available>'
                                 logger.info(f'Most stable conformer for species {label} was found to be isomorphic '
-                                            f'with the 2D graph representation {b_mol.copy(deep=True).to_smiles()}\n')
+                                            f'with the 2D graph representation {b_mol_smiles}\n')
                                 conformer_xyz = xyz
                                 if 'passed isomorphism check' not in self.output[label]['conformers']:
                                     self.output[label]['conformers'] += f'most stable conformer ({i}) passed ' \
@@ -1890,12 +1892,14 @@ class Scheduler(object):
                                     mol = molecules_from_xyz(xyzs[0],
                                                              multiplicity=self.species_dict[label].multiplicity,
                                                              charge=self.species_dict[label].charge)[1]
+                                    smiles_1 = self.species_dict[label].mol.copy(deep=True).to_smiles() \
+                                        if self.species_dict[label].mol is not None else '<no 2D structure available>'
+                                    smiles_2 = mol.copy(deep=True).to_smiles() \
+                                        if mol is not None else '<no 2D structure available>'
                                     logger.info(f'A conformer for species {label} was found to be isomorphic with the '
-                                                f'2D graph representation '
-                                                f'{self.species_dict[label].mol.copy(deep=True).to_smiles()}. '
+                                                f'2D graph representation {smiles_1}.\n'
                                                 f'This conformer is {energies[i] - energies[0]:.2f} kJ/mol above the '
-                                                f'most stable one which corresponds to '
-                                                f'{mol.copy(deep=True).to_smiles()} (and is not isomorphic). '
+                                                f'most stable one corresponding to {smiles_2} (and is not isomorphic). '
                                                 f'Using the isomorphic conformer for further geometry optimization.')
                                     self.output[label]['conformers'] += f'Conformer {i} was found to be the lowest ' \
                                                                         f'energy isomorphic conformer; '
@@ -1909,10 +1913,13 @@ class Scheduler(object):
                                 self.output[label]['conformers'] += f'most stable conformer ({i}) did not ' \
                                                                     f'pass isomorphism check; '
                                 self.species_dict[label].conf_is_isomorphic = False
+                                smiles_1 = b_mol.copy(deep=True).to_smiles() \
+                                    if b_mol is not None else '<no 2D structure available>'
+                                smiles_2 = self.species_dict[label].mol.copy(deep=True).to_smiles() \
+                                    if self.species_dict[label].mol is not None else '<no 2D structure available>'
                                 logger.warning(f'Most stable conformer for species {label} with structure '
-                                               f'{b_mol.copy(deep=True).to_smiles()} was found to be NON-isomorphic '
-                                               f'with the 2D graph representation '
-                                               f'{self.species_dict[label].mol.copy(deep=True).to_smiles()}. '
+                                               f'{smiles_1} was found to be NON-isomorphic '
+                                               f'with the 2D graph representation {smiles_2}. '
                                                f'Searching for a different conformer that is isomorphic...')
                 else:
                     # all conformers for the species failed isomorphism test
