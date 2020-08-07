@@ -192,9 +192,9 @@ def parse_geometry(path: str) -> Optional[Dict[str, tuple]]:
             if 'Standard orientation:' in lines[i]:
                 xyz_str = ''
                 j = i
-                while not lines[j].split()[0].isdigit():
+                while len(lines) and not lines[j].split()[0].isdigit():
                     j += 1
-                while '-------------------' not in lines[j]:
+                while len(lines) and '-------------------' not in lines[j]:
                     splits = lines[j].split()
                     xyz_str += f'{qcel.periodictable.to_E(int(splits[1]))}  {splits[3]}  {splits[4]}  {splits[5]}\n'
                     j += 1
@@ -321,11 +321,11 @@ def parse_1d_scan_coords(path: str) -> List[Dict[str, tuple]]:
         if i >= len(lines) or 'Normal termination of Gaussian' in lines[i] or 'Error termination via' in lines[i]:
             done = True
         elif 'Optimization completed' in lines[i]:
-            while 'Input orientation:' not in lines[i]:
+            while len(lines) and 'Input orientation:' not in lines[i]:
                 i += 1
             i += 5
             xyz_str = ''
-            while '--------------------------------------------' not in lines[i]:
+            while len(lines) and '--------------------------------------------' not in lines[i]:
                 splits = lines[i].split()
                 xyz_str += f'{qcel.periodictable.to_E(int(splits[1]))}  {splits[3]}  {splits[4]}  {splits[5]}\n'
                 i += 1
@@ -614,7 +614,7 @@ def parse_trajectory(path: str) -> List[Dict[str, tuple]]:
             elif 'Input orientation:' in lines[i]:
                 i += 5
                 xyz_str = ''
-                while '--------------------------------------------' not in lines[i]:
+                while len(lines) and '--------------------------------------------' not in lines[i]:
                     splits = lines[i].split()
                     xyz_str += f'{qcel.periodictable.to_E(int(splits[1]))}  {splits[3]}  {splits[4]}  {splits[5]}\n'
                     i += 1
@@ -789,11 +789,13 @@ def process_conformers_file(conformers_path: str) -> Tuple[List[Dict[str, tuple]
         if 'conformer' in lines[line_index] and ':' in lines[line_index] and lines[line_index].strip()[-2].isdigit():
             xyz, energy = '', None
             line_index += 1
-            while line_index < len(lines) and lines[line_index].strip() and 'SMILES' not in lines[line_index]\
-                    and 'energy' not in lines[line_index].lower() and 'guess method' not in lines[line_index].lower():
+            while len(lines) and line_index < len(lines) and lines[line_index].strip() \
+                    and 'SMILES' not in lines[line_index] \
+                    and 'energy' not in lines[line_index].lower() \
+                    and 'guess method' not in lines[line_index].lower():
                 xyz += lines[line_index]
                 line_index += 1
-            while line_index < len(lines) and 'conformer' not in lines[line_index]:
+            while len(lines) and line_index < len(lines) and 'conformer' not in lines[line_index]:
                 if 'relative energy:' in lines[line_index].lower():
                     energy = float(lines[line_index].split()[2])
                 line_index += 1
