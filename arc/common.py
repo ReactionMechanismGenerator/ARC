@@ -658,7 +658,7 @@ def sort_two_lists_by_the_first(list1: List[Union[float, int, None]],
     """
     Sort two lists in increasing order by the values of the first list.
     Ignoring None entries from list1 and their respective entries in list2.
-    The function was written in this format rather the more pytonic ``zip(*sorted(zip(list1, list2)))`` style
+    The function was written in this format rather the more pythonic ``zip(*sorted(zip(list1, list2)))`` style
     to accommodate for dictionaries as entries of list2, otherwise a
     ``TypeError: '<' not supported between instances of 'dict' and 'dict'`` error is raised.
 
