@@ -864,4 +864,15 @@ all reactions in the same ARC project.
 Advanced: to recompute the rate coefficient in the modified three-parameter Arrhenius equation format, simply change
 ``three_params`` to ``True`` in the ARC project's restart.yml file, and then restart ARC.
 
+Use external submit scripts
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Sometimes it is desired to use submit scripts stored outside of the ARC repository
+(e.g., when ARC is installed for a group of users on a server, and each user would like to customize
+the scripts used by ARC).
+It is possible to do so by passing a YAML file containing the desired scripts into
+the ``external_submit_scripts`` argument.
+Note that the structure of the YAML file must be identical to that in ARC's submit scripts file
+(e.g., nested dictionaries). An example is available under the examples directory in ARC.
+
 .. include:: links.txt
