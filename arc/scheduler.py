@@ -135,7 +135,9 @@ class Scheduler(object):
         n_confs (int, optional): The number of lowest force field conformers to consider.
         e_confs (float, optional): The energy threshold in kJ/mol above the lowest energy conformer below which
                                    force field conformers are considered.
-        fine_only (bool): If ``True`` ARC will not run optimization jobs without fine=True
+        fine_only (bool): If ``True`` ARC will not run optimization jobs without setting ``fine=True``.
+        external_submit_scripts (str, optional): A path to a YAML file with relevant submit scripts. If given, these
+                                                 scripts will be used instead the ones available in ARC.
 
     Attributes:
         project (str): The project's name. Used for naming the working directory.
@@ -185,7 +187,9 @@ class Scheduler(object):
                                 values are dictionaries with job type tuples as keys and levels of theory
                                 as values. 'inf' is accepted an max_num_atoms rmg_database
                                 (RMGDatabase, optional): The RMG database object.
-        fine_only (bool): If ``True`` ARC will not run optimization jobs without fine=True
+        fine_only (bool): If ``True`` ARC will not run optimization jobs without setting ``fine=True``.
+        external_submit_scripts (str): A path to a YAML file with relevant submit scripts. If given, these
+                                       scripts will be used instead the ones available in ARC.
     """
 
     def __init__(self,
@@ -216,6 +220,7 @@ class Scheduler(object):
                  n_confs: Optional[int] = 10,
                  e_confs: Optional[float] = 5,
                  fine_only: Optional[bool] = False,
+                 external_submit_scripts: Optional[str] = None,
                  ) -> None:
 
         self.project = project
@@ -240,6 +245,7 @@ class Scheduler(object):
         self.dont_gen_confs = dont_gen_confs or list()
         self.job_types = job_types if job_types is not None else default_job_types
         self.fine_only = fine_only
+        self.external_submit_scripts = external_submit_scripts
         self.output = dict()
 
         self.species_dict = dict()
@@ -790,6 +796,7 @@ class Scheduler(object):
                   rotor_index=rotor_index,
                   cpu_cores=cpu_cores,
                   irc_direction=irc_direction,
+                  external_submit_scripts=self.external_submit_scripts,
                   )
         if job.software is not None:
             if conformer < 0:

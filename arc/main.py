@@ -140,6 +140,8 @@ class ARC(object):
         output (dict, optional): Output dictionary with status and final QM file paths for all species.
                                  Only used for restarting.
         running_jobs (dict, optional): A dictionary of jobs submitted in a precious ARC instance, used for restarting.
+        external_submit_scripts (str, optional): A path to a YAML file with relevant submit scripts. If given, these
+                                                 scripts will be used instead the ones available in ARC.
 
     Attributes:
         project (str): The project's name. Used for naming the working directory.
@@ -204,6 +206,8 @@ class ARC(object):
                           jobs without fine=True
         three_params (bool): Compute rate coefficients using the modified three-parameter Arrhenius equation
                              format (``True``) or classical two-parameter Arrhenius equation format (``False``).
+        external_submit_scripts (str): A path to a YAML file with relevant submit scripts. If given, these
+                                       scripts will be used instead the ones available in ARC.
     """
 
     def __init__(self,
@@ -222,6 +226,7 @@ class ARC(object):
                  dont_gen_confs: List[str] = None,
                  e_confs: float = 5.0,
                  ess_settings: Dict[str, Union[str, List[str]]] = None,
+                 external_submit_scripts: Optional[str] = None,
                  freq_level: Optional[Union[str, dict, Level]] = None,
                  freq_scale_factor: Optional[float] = None,
                  irc_level: Optional[Union[str, dict, Level]] = None,
@@ -299,6 +304,7 @@ class ARC(object):
         self.bac_type = bac_type
         self.arkane_level_of_theory = Level(repr=arkane_level_of_theory) if arkane_level_of_theory is not None else None
         self.freq_scale_factor = freq_scale_factor
+        self.external_submit_scripts = external_submit_scripts
 
         # attributes related to level of theory specifications
         self.level_of_theory = level_of_theory
@@ -445,6 +451,8 @@ class ARC(object):
             restart_dict['dont_gen_confs'] = self.dont_gen_confs
         restart_dict['e_confs'] = self.e_confs
         restart_dict['ess_settings'] = self.ess_settings
+        if self.external_submit_scripts is not None:
+            restart_dict['external_submit_scripts'] = self.external_submit_scripts
         if self.freq_level is not None:
             restart_dict['freq_level'] = self.freq_level.as_dict() \
                 if not isinstance(self.freq_level, (dict, str)) else self.freq_level
@@ -556,6 +564,7 @@ class ARC(object):
                                    e_confs=self.e_confs,
                                    dont_gen_confs=self.dont_gen_confs,
                                    fine_only=self.fine_only,
+                                   external_submit_scripts=self.external_submit_scripts,
                                    )
 
         save_yaml_file(path=os.path.join(self.project_directory, 'output', 'status.yml'), content=self.scheduler.output)
