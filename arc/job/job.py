@@ -10,7 +10,7 @@ import shutil
 from pprint import pformat
 from typing import Dict, Optional, Union
 
-from arc.common import get_logger
+from arc.common import get_logger, read_yaml_file
 from arc.exceptions import JobError, InputError
 from arc.job.inputs import input_files
 from arc.job.local import (get_last_modified_time,
@@ -97,6 +97,8 @@ class Job(object):
         testing (bool, optional): Whether the object is generated for testing purposes, True if it is.
         cpu_cores (int, optional): The total number of cpu cores requested for a job.
         irc_direction (str, optional): The direction of the IRC job (`forward` or `reverse`).
+        external_submit_scripts (str, optional): A path to a YAML file with relevant submit scripts. If given, these
+                                                 scripts will be used instead the ones available in ARC.
 
     Attributes:
         project (str): The project's name. Used for naming the directory.
@@ -177,6 +179,8 @@ class Job(object):
         directed_scan_type (str): The type of the directed scan.
         rotor_index (int): The 0-indexed rotor number (key) in the species.rotors_dict dictionary.
         irc_direction (str): The direction of the IRC job (`forward` or `reverse`).
+        external_submit_scripts (str): A path to a YAML file with relevant submit scripts. If given, these
+                                       scripts will be used instead the ones available in ARC.
     """
     def __init__(self,
                  project: str,
@@ -224,6 +228,7 @@ class Job(object):
                  testing: bool = False,
                  cpu_cores: Optional[int] = None,
                  irc_direction: Optional[str] = None,
+                 external_submit_scripts: Optional[str] = None,
                  ):
         self.project = project
         self.project_directory = project_directory
@@ -280,6 +285,7 @@ class Job(object):
         self.cpu_cores = cpu_cores
         self.total_job_memory_gb = total_job_memory_gb or default_job_settings.get('job_total_memory_gb', 14)
         self.irc_direction = irc_direction
+        self.external_submit_scripts = external_submit_scripts
 
         # allowed job types:
         job_types = ['conformer', 'opt', 'freq', 'optfreq', 'sp', 'composite', 'bde', 'scan', 'directed_scan',
@@ -511,6 +517,8 @@ class Job(object):
         """
         Write the Job's submit script.
         """
+        scripts = read_yaml_file(self.external_submit_scripts) if self.external_submit_scripts is not None \
+            else submit_scripts
         un = servers[self.server]['un']  # user name
         size = int(self.radius * 4) if self.radius is not None else None
         if self.max_job_time > 9999 or self.max_job_time <= 0:
@@ -526,12 +534,12 @@ class Job(object):
             else:
                 architecture = '\n#$ -l magnycours'
         try:
-            self.submit = submit_scripts[self.server][self.software.lower()].format(
+            self.submit = scripts[self.server][self.software.lower()].format(
                 name=self.job_server_name, un=un, t_max=t_max, memory=int(self.submit_script_memory),
                 cpus=self.cpu_cores, architecture=architecture, size=size)
         except KeyError:
             submit_scripts_for_printing = dict()
-            for server, values in submit_scripts.items():
+            for server, values in scripts.items():
                 submit_scripts_for_printing[server] = list()
                 for software in values.keys():
                     submit_scripts_for_printing[server].append(software)
