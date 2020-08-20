@@ -29,10 +29,12 @@ from rmgpy.qm.qmdata import QMData
 from rmgpy.qm.symmetry import PointGroupCalculator
 
 from arc.exceptions import InputError, SettingsError
-from arc.settings import arc_path, default_job_types, servers
+from arc.settings import default_job_types, servers
 
 
 logger = logging.getLogger('arc')
+
+arc_path = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))  # absolute path to the ARC folder
 
 VERSION = '1.1.0'
 

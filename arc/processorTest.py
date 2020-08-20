@@ -5,11 +5,9 @@
 This module contains unit tests for the arc.processor module
 """
 
-import os
 import unittest
 
 import arc.processor as processor
-from arc.common import arc_path
 from arc.species.species import ARCSpecies
 
 

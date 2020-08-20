@@ -11,12 +11,12 @@ import shutil
 
 import arc.rmgdb as rmgdb
 import arc.parser as parser
-from arc.common import almost_equal_coords_lists
+from arc.common import arc_path, almost_equal_coords_lists
 from arc.job.job import Job
 from arc.level import Level
 from arc.plotter import save_conformers_file
 from arc.scheduler import Scheduler
-from arc.settings import arc_path, default_levels_of_theory
+from arc.settings import default_levels_of_theory
 from arc.species.species import ARCSpecies
 
 

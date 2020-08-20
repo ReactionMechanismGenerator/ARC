@@ -10,7 +10,7 @@ import shutil
 from pprint import pformat
 from typing import Dict, Optional, Union
 
-from arc.common import get_logger
+from arc.common import arc_path, get_logger
 from arc.exceptions import JobError, InputError
 from arc.job.inputs import input_files
 from arc.job.local import (get_last_modified_time,
@@ -24,8 +24,7 @@ from arc.job.ssh import SSHClient
 from arc.job.trsh import determine_ess_status, trsh_job_on_server
 from arc.level import Level
 from arc.plotter import save_geo
-from arc.settings import (arc_path,
-                          default_job_settings,
+from arc.settings import (default_job_settings,
                           servers,
                           submit_filename,
                           t_max_format,

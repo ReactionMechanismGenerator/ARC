@@ -15,9 +15,8 @@ from rmgpy.data.rmg import RMGDatabase
 from rmgpy.molecule.molecule import Molecule
 from rmgpy.species import Species
 
-from arc.common import read_yaml_file
+from arc.common import arc_path, read_yaml_file
 from arc.main import ARC
-from arc.settings import arc_path
 
 
 class TestARC(unittest.TestCase):

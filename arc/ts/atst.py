@@ -4,8 +4,8 @@ A module for calling AutoTST
 
 import os
 
+from arc.common import arc_path
 from arc.exceptions import TSError
-from arc.settings import arc_path
 from arc.species.converter import str_to_xyz
 
 

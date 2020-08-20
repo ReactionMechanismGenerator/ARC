@@ -9,7 +9,8 @@ import os
 import unittest
 
 import arc.job.trsh as trsh
-from arc.settings import arc_path, supported_ess
+from arc.common import arc_path
+from arc.settings import supported_ess
 from arc.parser import parse_1d_scan_energies
 
 

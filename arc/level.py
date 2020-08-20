@@ -12,8 +12,8 @@ from arkane.encorr.bac import BAC
 from arkane.encorr.corr import assign_frequency_scale_factor
 from arkane.modelchem import METHODS_THAT_REQUIRE_SOFTWARE, LevelOfTheory, standardize_name
 
-from arc.common import get_logger, get_ordered_intersection_of_two_lists, read_yaml_file
-from arc.settings import arc_path, levels_ess, supported_ess
+from arc.common import arc_path, get_logger, get_ordered_intersection_of_two_lists, read_yaml_file
+from arc.settings import levels_ess, supported_ess
 
 
 logger = get_logger()
