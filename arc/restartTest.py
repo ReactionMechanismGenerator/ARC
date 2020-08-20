@@ -10,7 +10,7 @@ import shutil
 import unittest
 import warnings
 
-from rmgpy import settings
+from rmgpy import settings as rmg_settings
 from rmgpy.data.rmg import RMGDatabase
 from rmgpy.molecule.molecule import Molecule
 from rmgpy.species import Species
@@ -128,13 +128,13 @@ class TestARC(unittest.TestCase):
 
         thermo_library_path = os.path.join(project_directory, 'output', 'RMG libraries', 'thermo',
                                            'arc_project_for_testing_delete_after_usage_restart_thermo.py')
-        new_thermo_library_path = os.path.join(settings['database.directory'], 'thermo', 'libraries',
+        new_thermo_library_path = os.path.join(rmg_settings['database.directory'], 'thermo', 'libraries',
                                                'arc_project_for_testing_delete_after_usage_restart_thermo.py')
         # copy the generated library to RMG-database
         shutil.copyfile(thermo_library_path, new_thermo_library_path)
         db = RMGDatabase()
         db.load(
-            path=settings['database.directory'],
+            path=rmg_settings['database.directory'],
             thermo_libraries=['arc_project_for_testing_delete_after_usage_restart_thermo'],
             transport_libraries=[],
             reaction_libraries=[],

@@ -4,7 +4,7 @@ A module for working with the RMG database.
 
 import os
 
-from rmgpy import settings
+from rmgpy import settings as rmg_settings
 from rmgpy.data.kinetics.common import find_degenerate_reactions
 from rmgpy.data.rmg import RMGDatabase
 from rmgpy.exceptions import KineticsError
@@ -16,7 +16,7 @@ from arc.exceptions import InputError
 
 logger = get_logger()
 
-db_path = settings['database.directory']
+db_path = rmg_settings['database.directory']
 
 
 def make_rmg_database_object():
