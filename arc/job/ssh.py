@@ -183,21 +183,43 @@ class SSHClient(object):
         Raises:
             ServerError: If the file cannot be downloaded with maximum times to try
         """
+        # Check if the file exists on the remote server
+        # This step will also check the connection of the SSHClient
         if not self._check_file_exists(remote_file_path):
-            # Check if a file exists
-            # This doesn't have a real impact now to avoid screwing up ESS trsh
-            # but introduce an opportunity for better troubleshooting.
-            # The current behavior is that if the remote path does not exist
-            # an empty file will be created at the local path
+            # For paramiko 2.7.1 and higher, if the remote file does not existed, then
+            # IOError ('[Errno 2] No such file) will be raised when calling `sftp.get()`
+            # The behavior in the previous versions is creating an empty file at `localpath`
             logger.debug(
                 f'{remote_file_path} does not exist on {self.server}.')
+            raise InputError(f'{remote_file_path} does not exist on {self.server}.')
+
+        # Download the file by `get()` method
         try:
             self._sftp.get(remotepath=remote_file_path,
                            localpath=local_file_path)
-        except IOError:
+        except IOError as e:
+            # Catch IOError other than 'no such file' error
             logger.debug(
-                f'Got an IOError when trying to download file {remote_file_path} from {self.server}')
-            raise ServerError(f'Could not download file {remote_file_path} from {self.server}. ')
+                f'Got an IOError ({e}) when trying to download file {remote_file_path}'
+                f'from {self.server}')
+            raise ServerError(f'Could not download file {remote_file_path} from {self.server}.\n'
+                              f'Got: {e}.')
+        except Exception as e:
+            # Catch all other error
+            # TODO: simplify this blocks when we understand the behavior of `sftp.get()` better
+            logger.debug(
+                f'Got an error ({e}) which hinders ARC from downloading file {remote_file_path}')
+            raise ServerError(f'Could not download file {remote_file_path} from {self.server}.\n'
+                              f'Got: {e}.')
+
+        # Check if the file is correctly downloaded
+        if not os.path.isfile(local_file_path):
+            logger.debug(f'Cannot find the downloaded file {local_file_path}. SFTP seems to work, '
+                         f'but the file {remote_file_path} was not actually downloaded.')
+            raise ServerError(f'Could not download file {remote_file_path} from {self.server}. '
+                              f'Download process is done, but the local file {local_file_path} '
+                              f'cannot be found.')
+        logger.debug(f'Successfully download file {remote_file_path} from {self.server}.')
 
     @check_connections
     def read_remote_file(self, remote_file_path: str) -> list:
@@ -454,6 +476,19 @@ class SSHClient(object):
         recursive = '-R' if recursive else ''
         command = f'chmod {recursive} {mode} {path}'
         self._send_command_to_server(command, remote_path)
+
+    def remove_dir(self, remote_path: str) -> None:
+        """
+        Remove a directory on the server.
+
+        Args:
+            remote_path (str): The path to the directory to be removed on the remote server.
+        """
+        command = f'rm -r "{remote_path}"'
+        _, stderr = self._send_command_to_server(command)
+        if stderr:
+            raise ServerError(
+                f'Cannot remove dir for the given path ({remote_path}).\nGot: {stderr}')
 
     def _check_file_exists(self, 
                            remote_file_path: str,
