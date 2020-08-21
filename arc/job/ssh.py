@@ -16,15 +16,15 @@ import paramiko
 
 from arc.common import get_logger
 from arc.exceptions import InputError, ServerError
-from arc.settings import (check_status_command,
-                          delete_command,
-                          list_available_nodes_command,
-                          servers,
-                          submit_command,
-                          submit_filename)
+from arc.imports import settings
 
 
 logger = get_logger()
+
+
+check_status_command, delete_command, list_available_nodes_command, servers, submit_command, submit_filename = \
+    settings['check_status_command'], settings['delete_command'], settings['list_available_nodes_command'], \
+    settings['servers'], settings['submit_command'], settings['submit_filename'],
 
 
 def check_connections(function: Callable[..., Any]) -> Callable[..., Any]:

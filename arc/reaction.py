@@ -13,12 +13,15 @@ from rmgpy.species import Species
 import arc.rmgdb as rmgdb
 from arc.common import extermum_list, get_logger
 from arc.exceptions import ReactionError, InputError
-from arc.settings import default_ts_methods
+from arc.imports import settings
 from arc.species.converter import xyz_to_str
 from arc.species.species import ARCSpecies, check_atom_balance
 
 
 logger = get_logger()
+
+
+default_ts_methods = settings['default_ts_methods']
 
 
 class ARCReaction(object):

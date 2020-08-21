@@ -12,31 +12,33 @@ from typing import Dict, Optional, Union
 
 from arc.common import arc_path, get_logger
 from arc.exceptions import JobError, InputError
+from arc.imports import settings
 from arc.job.inputs import input_files
 from arc.job.local import (get_last_modified_time,
                            submit_job,
                            delete_job,
                            execute_command,
                            check_job_status,
-                           rename_output)
+                           rename_output,
+                           )
 from arc.job.submit import submit_scripts
 from arc.job.ssh import SSHClient
 from arc.job.trsh import determine_ess_status, trsh_job_on_server
 from arc.level import Level
 from arc.plotter import save_geo
-from arc.settings import (default_job_settings,
-                          servers,
-                          submit_filename,
-                          t_max_format,
-                          input_filename,
-                          output_filename,
-                          rotor_scan_resolution,
-                          orca_default_options_dict)
 from arc.species.converter import check_xyz_dict, xyz_to_str
 from arc.species.vectors import calculate_dihedral_angle
 
 
 logger = get_logger()
+
+
+default_job_settings, servers, submit_filename, t_max_format, input_filename, output_filename, \
+    rotor_scan_resolution, orca_default_options_dict = settings['default_job_settings'], settings['servers'], \
+                                                       settings['submit_filename'], settings['t_max_format'], \
+                                                       settings['input_filename'], settings['output_filename'], \
+                                                       settings['rotor_scan_resolution'], \
+                                                       settings['orca_default_options_dict']
 
 
 class Job(object):

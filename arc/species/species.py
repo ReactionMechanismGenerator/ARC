@@ -25,13 +25,13 @@ from arc.common import (colliding_atoms,
                         get_logger,
                         get_single_bond_length)
 from arc.exceptions import SpeciesError, RotorError, InputError, TSError
+from arc.imports import settings
 from arc.level import Level
 from arc.parser import (parse_1d_scan_energies,
                         parse_dipole_moment,
                         parse_polarizability,
                         parse_xyz_from_file,
                         process_conformers_file)
-from arc.settings import default_ts_methods, valid_chars, minimum_barrier
 from arc.species import conformers
 from arc.species.converter import (check_isomorphism,
                                    check_xyz_dict,
@@ -52,6 +52,11 @@ from arc.ts import atst
 
 
 logger = get_logger()
+
+
+default_ts_methods, valid_chars, minimum_barrier = settings['default_ts_methods'], \
+                                                   settings['valid_chars'], \
+                                                   settings['minimum_barrier']
 
 
 class ARCSpecies(object):

@@ -12,18 +12,21 @@ import time
 from IPython.display import display
 from typing import List, Optional, Tuple, Union
 
+from arc import parser, plotter
 from arc.common import (extermum_list,
                         get_logger,
                         get_ordinal_indicator,
                         read_yaml_file,
                         save_yaml_file,
-                        sort_two_lists_by_the_first)
-from arc import parser, plotter
+                        sort_two_lists_by_the_first,
+                        )
 from arc.exceptions import (InputError,
                             SanitizationError,
                             SchedulerError,
                             SpeciesError,
-                            TrshError)
+                            TrshError,
+                            )
+from arc.imports import settings
 from arc.job.job import Job
 from arc.job.local import check_running_jobs_ids
 from arc.job.ssh import SSHClient
@@ -31,7 +34,8 @@ from arc.job.trsh import (scan_quality_check,
                           trsh_conformer_isomorphism,
                           trsh_ess_job,
                           trsh_negative_freq,
-                          trsh_scan_job)
+                          trsh_scan_job,
+                          )
 from arc.level import Level
 from arc.species.species import (ARCSpecies,
                                  are_coords_compliant_with_graph,
@@ -43,13 +47,18 @@ from arc.species.converter import (check_isomorphism,
                                    standardize_xyz_string,
                                    str_to_xyz,
                                    xyz_to_coords_list,
-                                   xyz_to_str)
-from arc.settings import default_job_settings, default_job_types, rotor_scan_resolution
+                                   xyz_to_str,
+                                   )
 import arc.rmgdb as rmgdb
 import arc.species.conformers as conformers  # import after importing plotter to avoid circular import
 from arc.species.vectors import get_angle, calculate_dihedral_angle
 
 logger = get_logger()
+
+
+default_job_settings, default_job_types, rotor_scan_resolution = settings['default_job_settings'], \
+                                                                 settings['default_job_types'], \
+                                                                 settings['rotor_scan_resolution']
 
 
 class Scheduler(object):

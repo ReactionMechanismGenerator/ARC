@@ -18,18 +18,10 @@ from arc.common import (check_torsion_change,
                         is_str_float,
                         )
 from arc.exceptions import InputError, SpeciesError, TrshError
+from arc.imports import settings
 from arc.level import Level
 from arc.job.local import execute_command
 from arc.job.ssh import SSHClient
-from arc.settings import (delete_command,
-                          inconsistency_ab,
-                          inconsistency_az,
-                          maximum_barrier,
-                          preserve_params_in_scan,
-                          rotor_scan_resolution,
-                          servers,
-                          submit_filename,
-                          )
 from arc.species import ARCSpecies
 from arc.species.conformers import determine_smallest_atom_index_in_scan
 from arc.species.converter import (ics_to_scan_constraints,
@@ -47,6 +39,12 @@ from arc.parser import (parse_1d_scan_coords,
 
 
 logger = get_logger()
+
+
+delete_command, inconsistency_ab, inconsistency_az, maximum_barrier, preserve_params_in_scan, rotor_scan_resolution, \
+    servers, submit_filename = settings['delete_command'], settings['inconsistency_ab'], settings['inconsistency_az'], \
+                               settings['maximum_barrier'], settings['preserve_params_in_scan'], \
+                               settings['rotor_scan_resolution'], settings['servers'], settings['submit_filename']
 
 
 def determine_ess_status(output_path: str,

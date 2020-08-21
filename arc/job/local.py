@@ -14,11 +14,15 @@ from typing import List, Optional, Union
 
 from arc.common import get_logger
 from arc.exceptions import SettingsError
+from arc.imports import settings
 from arc.job.ssh import check_job_status_in_stdout
-from arc.settings import servers, check_status_command, submit_command, submit_filename, delete_command, output_filename
 
 
 logger = get_logger()
+
+servers, check_status_command, submit_command, submit_filename, delete_command, output_filename = \
+    settings['servers'], settings['check_status_command'], settings['submit_command'], settings['submit_filename'],\
+    settings['delete_command'], settings['output_filename']
 
 
 def execute_command(command, shell=True, no_fail=False):

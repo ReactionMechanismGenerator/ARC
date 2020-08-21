@@ -15,9 +15,12 @@ import os
 
 from arc.common import arc_path
 from arc.exceptions import InputError
+from arc.imports import settings
 from arc.job.local import delete_all_local_arc_jobs
 from arc.job.ssh import delete_all_arc_jobs
-from arc.settings import servers
+
+
+servers = settings['servers']
 
 
 def parse_command_line_arguments(command_line_args=None):
