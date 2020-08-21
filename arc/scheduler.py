@@ -671,14 +671,6 @@ class Scheduler(object):
                             self.process_conformers(label)
                         self.timer = False
                         break
-                    elif 'gromacs' in job_name \
-                            and self.job_dict[label]['gromacs'][job_name].job_id not in self.servers_jobs_ids:
-                        job = self.job_dict[label]['gromacs'][job_name]
-                        successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
-                        if successful_server_termination:
-                            self.check_md_job(label=label, job=job)
-                        self.timer = False
-                        break
 
                 if self.species_dict[label].is_ts and not self.species_dict[label].ts_conf_spawned \
                         and not any([tsg.success is None for tsg in self.species_dict[label].ts_guesses]):
@@ -951,11 +943,6 @@ class Scheduler(object):
                 if not log_info_printed:
                     logger.info('\nStarting (non-TS) species conformational analysis...\n')
                     log_info_printed = True
-                if self.species_dict[label].force_field == 'fit':
-                    # first run a Gaussian blyp/svp/svpfit job for force field parameters fitting
-                    if self.species_dict[label].cheap_conformer is None:
-                        self.species_dict[label].get_cheap_conformer()
-                    self.run_force_field_fit_job(label)
                 else:
                     if self.species_dict[label].force_field == 'cheap':
                         # just embed in RDKit and use MMFF94s for opt and energies
@@ -1269,61 +1256,6 @@ class Scheduler(object):
                          job_type='onedmin',
                          level_of_theory='')
 
-    def run_force_field_fit_job(self, label):
-        """
-        Spawn a force field parameter fitting job (currently only Gaussian is supported for this task).
-
-        Args:
-            label (str): The species label.
-        """
-        if self.species_dict[label].svpfit_output_file is not None \
-                and os.path.isfile(self.species_dict[label].svpfit_output_file):
-            # a force field parameter fit job was already spawned, use this file
-            ff_param_fit_path = os.path.join(self.project_directory, 'calcs', 'Species', label, 'ff_param_fit')
-            if not os.path.isdir(ff_param_fit_path):
-                os.makedirs(ff_param_fit_path)
-            ff_param_fit_path = os.path.join(ff_param_fit_path, 'gaussian.out')
-            shutil.copyfile(self.species_dict[label].svpfit_output_file, ff_param_fit_path)
-            self.output[label]['ff_param_fit'] = True
-            self.spawn_md_jobs(label)
-        elif 'gaussian' not in self.ess_settings:
-            logger.error(f'Cannot execute a force field parameter fitting job in Gaussian. Gaussian  is missing from '
-                         f'the ess_settings dictionary. Generating standard MMFF94s conformers instead for '
-                         f'species {label}, although its force_field attribute was set to "fit".')
-            self.species_dict[label].force_field = 'MMFF94s'
-            self.species_dict[label].generate_conformers(n_confs=self.n_confs,
-                                                         e_confs=self.e_confs,
-                                                         plot_path=os.path.join(self.project_directory, 'output',
-                                                                                'Species', label, 'geometry',
-                                                                                'conformers'))
-            self.process_conformers(label)
-        else:
-            if 'ff_param_fit' not in self.job_dict[label]:
-                self.run_job(label=label,
-                             xyz=self.species_dict[label].get_xyz(),
-                             job_type='ff_param_fit',
-                             level_of_theory='blyp/svp/svpfit')
-                # todo: this level of theory format (two /) is incompatible with current job level treatment
-
-    def run_gromacs_job(self, label, confs):
-        """
-        Run a Gromacs MD job.
-
-        Args:
-            label (str): The species label.
-            confs (str): The path to a YAML file with array-format coordinates to optimize.
-        """
-        if 'gromacs' not in self.ess_settings:
-            logger.error('Cannot execute a Gromacs MD job without the Gromacs software')
-        else:
-            self.run_job(label=label,
-                         xyz=None,
-                         job_type='gromacs',
-                         level_of_theory='',
-                         confs=confs,
-                         radius=self.species_dict[label].radius,
-                         )
-
     def spawn_post_opt_jobs(self,
                             label: str,
                             job_name: str,
@@ -1563,73 +1495,6 @@ class Scheduler(object):
                     elif (self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][index] == max_num - 1
                           and index < len(scans) - 1):
                         self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][index] = 0
-
-    def spawn_md_jobs(self, label, prev_conf_list=None, num_confs=None):
-        """
-        Embed conformers and run a molecular dynamics optimization using a fitted force field.
-        Then generate conformers using combinations of the detected torsion wells, and re-run until converging.
-
-        Args:
-            label (str): The species label.
-            prev_conf_list (list, optional): The previous conformers (entries are two length lists, not dicts).
-                                             If not given, a first Gromacs job will be spawned.
-            num_confs (int, optional): The number of conformers to generate.
-        """
-        if not self.species_dict[label].rotors_dict and self.species_dict[label].rotors_dict is not None:
-            self.species_dict[label].determine_rotors()
-        torsions, tops = list(), list()
-        for rotor_dict in self.species_dict[label].rotors_dict.values():
-            torsions.append(rotor_dict['scan'])
-            tops.append(rotor_dict['top'])
-
-        if prev_conf_list is None:
-            # first time spawning MD jobs for this species
-            if self.species_dict[label].mol_list is not None:
-                self.species_dict[label].mol_list = [conformers.update_mol(mol)
-                                                     for mol in self.species_dict[label].mol_list]
-                number_of_heavy_atoms = len([atom for atom in self.species_dict[label].mol_list[0].atoms
-                                             if atom.is_non_hydrogen()])
-            else:
-                xyz = self.species_dict[label].get_xyz()
-                number_of_heavy_atoms = sum([1 for symbol in xyz['symbols'] if symbol != 'H'])
-            num_confs = num_confs or conformers.determine_number_of_conformers_to_generate(
-                heavy_atoms=number_of_heavy_atoms,
-                torsion_num=len(torsions),
-                label=label)[0]
-            coords = list()
-            for mol in self.species_dict[label].mol_list:
-                # embed conformers (but don't optimize)
-                rd_mol = conformers.embed_rdkit(label=label, mol=mol, num_confs=num_confs, xyz=None)
-                for i in range(rd_mol.GetNumConformers()):
-                    conf, coord = rd_mol.GetConformer(i), list()
-                    for j in range(conf.GetNumAtoms()):
-                        pt = conf.GetAtomPosition(j)
-                        coord.append([pt.x, pt.y, pt.z])
-                    coords.append(coord)
-            embedded_confs_path = os.path.join(self.project_directory, 'calcs', 'Species', label,
-                                               'ff_param_fit', 'embedded_conformers.yml')  # list of lists
-            save_yaml_file(path=embedded_confs_path, content=coords)
-            self.run_gromacs_job(label, confs=embedded_confs_path)
-        else:
-            # a previous Gromacs job was submitted, generate specific conformers via deduce_new_conformers()
-            confs = list()
-            confs_path = os.path.join(self.project_directory, 'calcs', 'Species', label,
-                                      'ff_param_fit', 'conformers.yml')  # list of dicts
-            if os.path.isfile(confs_path):
-                confs = read_yaml_file(confs_path)
-            for prev_conf in prev_conf_list:
-                confs.append({'xyz': prev_conf[0], 'FF energy': prev_conf[1], 'source': 'Gromacs', 'index': len(confs)})
-            save_yaml_file(path=confs_path, content=confs)  # save for the next iteration and for archiving
-
-            confs = conformers.determine_dihedrals(confs, torsions)
-            new_conformers = conformers.deduce_new_conformers(label=label, conformers=confs, torsions=torsions,
-                                                              tops=tops, mol_list=self.species_dict[label].mol_list,
-                                                              plot_path=False)[0]
-            new_confs_path = os.path.join(self.project_directory, 'calcs', 'Species', label,
-                                          'ff_param_fit', 'new_conformers.yml')  # list of lists
-            coords = [new_conf['xyz'] for new_conf in new_conformers]
-            save_yaml_file(path=new_confs_path, content=coords)
-            self.run_gromacs_job(label, confs=new_confs_path)
 
     def process_directed_scans(self, label, pivots):
         """
@@ -2616,68 +2481,6 @@ class Scheduler(object):
             self.troubleshoot_ess(label=label,
                                   job=job,
                                   level_of_theory=self.scan_level)
-
-    def check_md_job(self, label, job, max_iterations=10):
-        """
-        Check whether the MD spawning algorithm converged on a single structure.
-        If not converged, spawn another MD job (up to a maximum number of jobs).
-        If it did converge, save the resulting lowest conformers and DFT them.
-
-        Args:
-             label (str): The species label.
-             job (Job): The Gromacs MD job to check.
-             max_iterations (int, optional): The maximal number of MD trials per species.
-        """
-        done = False
-        conf_list = read_yaml_file(job.local_path_to_output_file)
-        lowest_conf = conformers.get_lowest_confs(label=label, confs=conf_list, n=1)[0]
-        if self.species_dict[label].recent_md_conformer is None:
-            self.species_dict[label].recent_md_conformer = lowest_conf + [0]
-        else:
-            if self.species_dict[label].recent_md_conformer[2] >= max_iterations:
-                logger.error(f'Could not converge on a single conformer using Gromacs for species {label} '
-                             f'even after {max_iterations} iterations. Using the latest conformer.')
-                done = True
-            elif lowest_conf[1] < self.species_dict[label].recent_md_conformer[1]:
-                # unconverged
-                self.species_dict[label].recent_md_conformer = lowest_conf \
-                                                               + [self.species_dict[label].recent_md_conformer[2] + 1]
-            elif lowest_conf[1] == self.species_dict[label].recent_md_conformer[1]:
-                if compare_confs(lowest_conf[0], self.species_dict[label].recent_md_conformer[0]):
-                    # converged
-                    done = True
-                else:
-                    # same energy but different conformer? for now we'll consider it as converged
-                    logger.warning(f'MD jobs for {label} converged with same energy conformer by different xyz:\n'
-                                   f'{self.species_dict[label].recent_md_conformer[0]}\n\nand\n\n{lowest_conf[0]}')
-                    done = True  # Todo: reconsider
-            else:
-                # why did we found a higher conformer?
-                logger.error(f'Could not converge on a single conformer using Gromacs for species {label}, got a higher'
-                             f'energy conformer. Using the latest lowest conformer.')
-                done = True
-        if done:
-            # process conformers and DFT them
-            logger.info(f'Final conformer for {label}:\n{lowest_conf[0]}')
-            plotter.draw_structure(xyz=lowest_conf[0], species=self.species_dict[label])
-            lowest_confs = conformers.get_lowest_confs(label=label,
-                                                       confs=conf_list,
-                                                       n=self.n_confs,
-                                                       e=self.e_confs)
-            self.species_dict[label].conformers.extend(standardize_xyz_string(conf[0]) for conf in lowest_confs)
-            self.species_dict[label].conformer_energies = [None] * len(lowest_confs)
-            self.process_conformers(label=label)
-            self.output[label]['job_types']['gromacs'] = True
-        else:
-            # spawn a new MD simulation
-            ordinal = get_ordinal_indicator(self.species_dict[label].recent_md_conformer[2] + 1)
-            logger.info(f'{self.species_dict[label].recent_md_conformer[2] + 1}{ordinal} conformer for '
-                        f'{label}:\n{lowest_conf[0]}')
-            plotter.draw_structure(xyz=lowest_conf[0], species=self.species_dict[label])
-            ordinal = get_ordinal_indicator(self.species_dict[label].recent_md_conformer[2] + 2)
-            logger.info(f'Spawning the {self.species_dict[label].recent_md_conformer[2] + 2}{ordinal} round of MD '
-                        f'simulations for {label}')
-            self.spawn_md_jobs(label, prev_conf_list=conf_list)
 
     def check_all_done(self, label):
         """
