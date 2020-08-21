@@ -388,6 +388,19 @@ def save_yaml_file(path: str,
         f.write(yaml_str)
 
 
+def from_yaml(yaml_str: str) -> Union[dict, list]:
+    """
+    Read a YAML string and decode to the respective Python object.
+
+    Args:
+        yaml_str (str): The YAML string content.
+
+    Returns: Union[dict, list]
+        The respective Python object.
+    """
+    return yaml.load(stream=yaml_str, Loader=yaml.FullLoader)
+
+
 def to_yaml(py_content: Union[list, dict]) -> str:
     """
     Convert a Python list or dictionary to a YAML string format.
