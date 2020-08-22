@@ -12,8 +12,7 @@ from typing import Dict, Optional, Union
 
 from arc.common import arc_path, get_logger
 from arc.exceptions import JobError, InputError
-from arc.imports import settings
-from arc.job.inputs import input_files
+from arc.imports import settings, input_files, submit_scripts
 from arc.job.local import (get_last_modified_time,
                            submit_job,
                            delete_job,
@@ -21,7 +20,6 @@ from arc.job.local import (get_last_modified_time,
                            check_job_status,
                            rename_output,
                            )
-from arc.job.submit import submit_scripts
 from arc.job.ssh import SSHClient
 from arc.job.trsh import determine_ess_status, trsh_job_on_server
 from arc.level import Level
