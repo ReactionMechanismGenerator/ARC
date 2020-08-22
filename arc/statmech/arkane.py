@@ -23,7 +23,7 @@ import rmgpy.constants as constants
 import arc.plotter as plotter
 from arc.common import get_logger
 from arc.exceptions import InputError, RotorError
-from arc.job.inputs import input_files
+from arc.imports import input_files
 from arc.level import Level
 from arc.reaction import ARCReaction
 from arc.species.species import ARCSpecies, determine_rotor_symmetry, determine_rotor_type
