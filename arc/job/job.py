@@ -535,7 +535,7 @@ class Job(object):
                 for software in values.keys():
                     submit_scripts_for_printing[server].append(software)
             logger.error('Could not find submit script for server {0} and software {1}. Make sure your submit scripts '
-                         '(in arc/job/submit.py) are updated with the servers and software defined in arc/settings.py\n'
+                         '(in arc/job/submit.py) are updated with the servers and software defined in settings.py\n'
                          'Alternatively, It is possible that you defined parameters in curly braces (e.g., {{PARAM}}) '
                          'in your submit script/s. To avoid error, replace them with double curly braces (e.g., '
                          '{{{{PARAM}}}} instead of {{PARAM}}.\nIdentified the following submit scripts:\n{2}'.format(

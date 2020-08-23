@@ -304,7 +304,7 @@ class SSHClient(object):
             for line in stderr:
                 if 'Requested node configuration is not available' in line:
                     logger.warning(f'User may be requesting more resources than are available. Please check server '
-                                   f'settings, such as cpus and memory, in ARC/arc/settings.py')
+                                   f'settings, such as cpus and memory, in ARC/arc/settings/settings.py')
         elif 'submitted' in stdout[0].lower():
             job_status = 'running'
             if cluster_soft.lower() == 'oge':
