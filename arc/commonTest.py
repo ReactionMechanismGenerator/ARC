@@ -554,7 +554,7 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
 
         num_heavy_atoms_2 = 12
         est_cpu_2, est_memory_2 = common.estimate_orca_mem_cpu_requirement(num_heavy_atoms_2, 'server2', True)
-        expected_cpu_2, expected_memory_2 = 48, 96000.0
+        expected_cpu_2, expected_memory_2 = 24, 48000.0
         self.assertEqual(est_cpu_2, expected_cpu_2)
         self.assertEqual(est_memory_2, expected_memory_2)
 
