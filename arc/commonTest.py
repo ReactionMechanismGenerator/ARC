@@ -16,8 +16,11 @@ from rmgpy.molecule.molecule import Molecule
 
 import arc.common as common
 from arc.exceptions import InputError, SettingsError
-from arc.settings import servers
+from arc.imports import settings
 import arc.species.converter as converter
+
+
+servers = settings['servers']
 
 
 class TestCommon(unittest.TestCase):

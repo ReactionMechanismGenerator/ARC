@@ -11,9 +11,12 @@ import unittest
 
 from arc.common import arc_path
 from arc.exceptions import InputError
+from arc.imports import settings
 from arc.main import ARC, process_adaptive_levels
-from arc.settings import servers
 from arc.species.species import ARCSpecies
+
+
+servers = settings['servers']
 
 
 class TestARC(unittest.TestCase):

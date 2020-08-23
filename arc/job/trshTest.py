@@ -10,8 +10,11 @@ import unittest
 
 import arc.job.trsh as trsh
 from arc.common import arc_path
-from arc.settings import supported_ess
+from arc.imports import settings
 from arc.parser import parse_1d_scan_energies
+
+
+supported_ess = settings['supported_ess']
 
 
 class TestTrsh(unittest.TestCase):

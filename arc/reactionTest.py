@@ -12,9 +12,12 @@ from rmgpy.species import Species
 
 import arc.rmgdb as rmgdb
 from arc.exceptions import ReactionError
+from arc.imports import settings
 from arc.reaction import ARCReaction
-from arc.settings import default_ts_methods
 from arc.species import ARCSpecies
+
+
+default_ts_methods = settings['default_ts_methods']
 
 
 class TestARCReaction(unittest.TestCase):

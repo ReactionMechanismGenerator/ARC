@@ -16,8 +16,11 @@ from arc.job.job import Job
 from arc.level import Level
 from arc.plotter import save_conformers_file
 from arc.scheduler import Scheduler
-from arc.settings import default_levels_of_theory
+from arc.imports import settings
 from arc.species.species import ARCSpecies
+
+
+default_levels_of_theory = settings['default_levels_of_theory']
 
 
 class TestScheduler(unittest.TestCase):
