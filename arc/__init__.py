@@ -2,6 +2,7 @@ import arc.exceptions
 import arc.main
 from arc.main import ARC
 import arc.common
+import arc.imports
 import arc.level
 import arc.parser
 import arc.plotter
