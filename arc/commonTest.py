@@ -16,8 +16,11 @@ from rmgpy.molecule.molecule import Molecule
 
 import arc.common as common
 from arc.exceptions import InputError, SettingsError
-from arc.settings import arc_path, servers
+from arc.imports import settings
 import arc.species.converter as converter
+
+
+servers = settings['servers']
 
 
 class TestCommon(unittest.TestCase):
@@ -44,7 +47,7 @@ class TestCommon(unittest.TestCase):
 
     def test_read_yaml_file(self):
         """Test the read_yaml_file() function"""
-        restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart', '1_restart_thermo', 'restart.yml')
+        restart_path = os.path.join(common.arc_path, 'arc', 'testing', 'restart', '1_restart_thermo', 'restart.yml')
         input_dict = common.read_yaml_file(restart_path)
         self.assertIsInstance(input_dict, dict)
         self.assertTrue('reactions' in input_dict)
@@ -364,9 +367,9 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
 
     def test_determine_ess(self):
         """Test the determine_ess function"""
-        gaussian = os.path.join(arc_path, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
-        qchem = os.path.join(arc_path, 'arc', 'testing', 'freq', 'C2H6_freq_QChem.out')
-        molpro = os.path.join(arc_path, 'arc', 'testing', 'freq', 'CH2O_freq_molpro.out')
+        gaussian = os.path.join(common.arc_path, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
+        qchem = os.path.join(common.arc_path, 'arc', 'testing', 'freq', 'C2H6_freq_QChem.out')
+        molpro = os.path.join(common.arc_path, 'arc', 'testing', 'freq', 'CH2O_freq_molpro.out')
 
         self.assertEqual(common.determine_ess(gaussian), 'gaussian')
         self.assertEqual(common.determine_ess(qchem), 'qchem')
@@ -507,7 +510,7 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
 
     def test_globalize_paths(self):
         """Test modifying a file's contents to correct absolute file paths"""
-        project_directory = os.path.join(arc_path, 'arc', 'testing', 'restart', '4_globalized_paths')
+        project_directory = os.path.join(common.arc_path, 'arc', 'testing', 'restart', '4_globalized_paths')
         restart_path = os.path.join(project_directory, 'restart_paths.yml')
         common.globalize_paths(file_path=restart_path, project_directory=project_directory)
         globalized_restart_path = os.path.join(project_directory, 'restart_paths_globalized.yml')
@@ -551,7 +554,7 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
 
         num_heavy_atoms_2 = 12
         est_cpu_2, est_memory_2 = common.estimate_orca_mem_cpu_requirement(num_heavy_atoms_2, 'server2', True)
-        expected_cpu_2, expected_memory_2 = 48, 96000.0
+        expected_cpu_2, expected_memory_2 = 24, 48000.0
         self.assertEqual(est_cpu_2, expected_cpu_2)
         self.assertEqual(est_memory_2, expected_memory_2)
 
@@ -618,7 +621,7 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
         """
         A function that is run ONCE after all unit tests in this class.
         """
-        globalized_restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart', '4_globalized_paths',
+        globalized_restart_path = os.path.join(common.arc_path, 'arc', 'testing', 'restart', '4_globalized_paths',
                                                'restart_paths_globalized.yml')
         os.remove(path=globalized_restart_path)
 

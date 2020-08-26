@@ -29,12 +29,17 @@ from rmgpy.qm.qmdata import QMData
 from rmgpy.qm.symmetry import PointGroupCalculator
 
 from arc.exceptions import InputError, SettingsError
-from arc.settings import arc_path, default_job_types, servers
+from arc.imports import settings
 
 
 logger = logging.getLogger('arc')
 
+arc_path = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))  # absolute path to the ARC folder
+
 VERSION = '1.1.0'
+
+
+default_job_types, servers = settings['default_job_types'], settings['servers']
 
 
 def initialize_job_types(job_types: dict,
@@ -138,20 +143,20 @@ def check_ess_settings(ess_settings: Optional[dict] = None) -> dict:
     """
     if ess_settings is None or not ess_settings:
         return dict()
-    settings = dict()
+    settings_dict = dict()
     for software, server_list in ess_settings.items():
         if isinstance(server_list, str):
-            settings[software] = [server_list]
+            settings_dict[software] = [server_list]
         elif isinstance(server_list, list):
             for server in server_list:
                 if not isinstance(server, str):
                     raise SettingsError(f'Server name could only be a string. Got {server} which is {type(server)}')
-                settings[software.lower()] = server_list
+                settings_dict[software.lower()] = server_list
         else:
             raise SettingsError(f'Servers in the ess_settings dictionary could either be a string or a list of '
                                 f'strings. Got: {server_list} which is a {type(server_list)}')
     # run checks:
-    for ess, server_list in settings.items():
+    for ess, server_list in settings_dict.items():
         if ess.lower() not in ['gaussian', 'qchem', 'molpro', 'orca', 'terachem', 'onedmin', 'gromacs']:
             raise SettingsError(f'Recognized ESS software are Gaussian, QChem, Molpro, Orca, TeraChem or OneDMin. '
                                 f'Got: {ess}')
@@ -159,8 +164,8 @@ def check_ess_settings(ess_settings: Optional[dict] = None) -> dict:
             if not isinstance(server, bool) and server.lower() not in list(servers.keys()):
                 server_names = [name for name in servers.keys()]
                 raise SettingsError(f'Recognized servers are {server_names}. Got: {server}')
-    logger.info(f'\nUsing the following ESS settings:\n{pprint.pformat(settings)}\n')
-    return settings
+    logger.info(f'\nUsing the following ESS settings:\n{pprint.pformat(settings_dict)}\n')
+    return settings_dict
 
 
 def initialize_log(log_file: str,
@@ -584,8 +589,8 @@ def determine_symmetry(xyz: dict) -> Tuple[int, int]:
         atomCoords=(coords, 'angstrom'),
         energy=(0.0, 'kcal/mol')  # Only needed to avoid error
     )
-    settings = type('', (), dict(symmetryPath='symmetry', scratchDirectory=scr_dir))()
-    pgc = PointGroupCalculator(settings, unique_id, qmdata)
+    symmetry_settings = type('', (), dict(symmetryPath='symmetry', scratchDirectory=scr_dir))()
+    pgc = PointGroupCalculator(symmetry_settings, unique_id, qmdata)
     pg = pgc.calculate()
     if pg is not None:
         symmetry = pg.symmetry_number

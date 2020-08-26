@@ -13,7 +13,7 @@ import unittest
 
 from arc.job.job import Job
 from arc.level import Level
-from arc.settings import arc_path
+from arc.common import arc_path
 
 
 class TestJob(unittest.TestCase):

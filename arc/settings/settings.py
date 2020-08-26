@@ -2,7 +2,6 @@
 ARC's settings
 """
 
-import os
 import string
 
 # Users should update the following server dictionary.
@@ -40,8 +39,8 @@ servers = {
         'address': 'server2.host.edu',
         'un': '<username>',
         'key': 'path_to_rsa_key',
-        'cpus': 48,  # number of cpu's per node, optional (default: 8)
-        'memory': 128,  # amount of memory per node in GB, optional (default: 16)
+        'cpus': 24,  # number of cpu's per node, optional (default: 8)
+        'memory': 256,  # amount of memory per node in GB, optional (default: 16)
     },
     'local': {
         'cluster_soft': 'OGE',
@@ -152,8 +151,6 @@ orca_default_options_dict = {
 
 # default_ts_methods = ['QST2', 'DEGSM', 'NEB', 'Kinbot', 'AutoTST']
 default_ts_methods = []
-
-arc_path = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))  # absolute path to the ARC folder
 
 valid_chars = "-_()[]=., %s%s" % (string.ascii_letters, string.digits)
 

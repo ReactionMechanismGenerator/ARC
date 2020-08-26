@@ -11,7 +11,7 @@ import shutil
 import unittest
 
 import arc.job.local as local
-from arc.settings import arc_path
+from arc.common import arc_path
 
 
 class TestLocal(unittest.TestCase):

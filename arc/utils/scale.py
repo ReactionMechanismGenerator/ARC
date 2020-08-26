@@ -10,15 +10,16 @@ import time
 from typing import List, Optional, Union
 import shutil
 
-from arc.common import (check_ess_settings,
+from arc.common import (arc_path,
+                        check_ess_settings,
                         get_logger,
                         initialize_job_types,
                         initialize_log,
-                        time_lapse)
+                        time_lapse,
+                        )
 from arc.level import Level
 from arc.parser import parse_zpe
 from arc.scheduler import Scheduler
-from arc.settings import arc_path
 from arc.species.species import ARCSpecies
 
 try:

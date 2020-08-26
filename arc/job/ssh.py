@@ -16,15 +16,15 @@ import paramiko
 
 from arc.common import get_logger
 from arc.exceptions import InputError, ServerError
-from arc.settings import (check_status_command,
-                          delete_command,
-                          list_available_nodes_command,
-                          servers,
-                          submit_command,
-                          submit_filename)
+from arc.imports import settings
 
 
 logger = get_logger()
+
+
+check_status_command, delete_command, list_available_nodes_command, servers, submit_command, submit_filename = \
+    settings['check_status_command'], settings['delete_command'], settings['list_available_nodes_command'], \
+    settings['servers'], settings['submit_command'], settings['submit_filename'],
 
 
 def check_connections(function: Callable[..., Any]) -> Callable[..., Any]:
@@ -304,7 +304,7 @@ class SSHClient(object):
             for line in stderr:
                 if 'Requested node configuration is not available' in line:
                     logger.warning(f'User may be requesting more resources than are available. Please check server '
-                                   f'settings, such as cpus and memory, in ARC/arc/settings.py')
+                                   f'settings, such as cpus and memory, in ARC/arc/settings/settings.py')
         elif 'submitted' in stdout[0].lower():
             job_status = 'running'
             if cluster_soft.lower() == 'oge':

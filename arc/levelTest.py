@@ -10,9 +10,8 @@ import unittest
 
 from arkane.modelchem import LevelOfTheory
 
-from arc.common import read_yaml_file
+from arc.common import arc_path, read_yaml_file
 from arc.level import Level
-from arc.settings import arc_path
 
 
 class TestLevel(unittest.TestCase):

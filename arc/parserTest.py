@@ -10,7 +10,7 @@ import os
 import unittest
 
 import arc.parser as parser
-from arc.settings import arc_path
+from arc.common import arc_path
 from arc.species import ARCSpecies
 from arc.species.converter import xyz_to_str
 

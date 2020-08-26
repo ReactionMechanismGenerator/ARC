@@ -23,7 +23,7 @@ from rmgpy.species import Species
 
 import arc.rmgdb as rmgdb
 from arc.common import (VERSION,
-                        time_lapse,
+                        arc_path,
                         check_ess_settings,
                         get_logger,
                         globalize_path,
@@ -31,14 +31,15 @@ from arc.common import (VERSION,
                         initialize_log,
                         log_footer,
                         save_yaml_file,
+                        time_lapse,
                         )
 from arc.exceptions import InputError, SettingsError, SpeciesError
+from arc.imports import settings
 from arc.level import Level
 from arc.job.ssh import SSHClient
 from arc.processor import process_arc_project
 from arc.reaction import ARCReaction
 from arc.scheduler import Scheduler
-from arc.settings import arc_path, default_levels_of_theory, servers, valid_chars, default_job_types
 from arc.species.species import ARCSpecies
 from arc.utils.scale import determine_scaling_factors
 
@@ -49,6 +50,11 @@ except ImportError:
 
 
 logger = get_logger()
+
+
+default_levels_of_theory, servers, valid_chars, default_job_types, default_job_settings, global_ess_settings = \
+    settings['default_levels_of_theory'], settings['servers'], settings['valid_chars'], settings['default_job_types'], \
+    settings['default_job_settings'], settings['global_ess_settings']
 
 
 class ARC(object):

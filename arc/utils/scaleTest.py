@@ -9,12 +9,12 @@ import os
 import shutil
 import unittest
 
-from arc.common import almost_equal_coords_lists
-from arc.settings import arc_path
+from arc.common import almost_equal_coords_lists, arc_path
 from arc.utils.scale import (calculate_truhlar_scaling_factors,
                              get_species_list,
                              rename_level,
-                             summarize_results)
+                             summarize_results,
+                             )
 
 
 class TestScale(unittest.TestCase):

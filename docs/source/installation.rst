@@ -51,8 +51,33 @@ Install dependencies
      source activate arc_env
 
 
-Generate RSA SSH keys and define servers
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Create a ``.arc`` folder
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+Users are encouraged to create a ``.arc`` folder under their ``HOME`` folder on the machine running ARC.
+Copy (and modify as appropriate, see below) the following python files
+from the ARC repository into the newly created folder:
+``<base_folder>/ARC/arc/settings/settings.py`` --> ``HOME/.arc/settings.py``
+``<base_folder>/ARC/arc/settings/input.py`` --> ``HOME/.arc/input.py``
+``<base_folder>/ARC/arc/settings/submit.py`` --> ``HOME/.arc/submit.py``
+
+By doing this, ARC will use the respective settings and definitions from these copied files
+to override its defaults. Users many (carefully) modify the definitions in the local files
+as appropriate. Note that you may choose to copy only some of these files, in which case the
+definitions from any non-copied files will be taken from ARC's defaults (e.g., most users will
+not need to modify ``input.py``).  Note also that definitions within these files may be partial
+(i.e., you may keep only those parameters you may wish to change within each file), and that any
+missing parameter will be assigned its default value from ARC's defaults.
+
+Principally ARC would also work fine if users directly change the respective files within ARC's repository
+instead of making copies. However, modifying the files in ARC directly may cause merging conflicts when
+updating ARC. The down side is that users are responsible to keep their copies up to date with ARC's format
+if major changes are made. Such changes will be listed under the Release Notes and will result in an increase
+of the MINOR version number (i.e., ,major.MINOR.patch, e.g., `1.1.5` --> `1.2.0`).
+
+
+Generating RSA SSH keys and defining servers
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The first two directives are only required if you'd like ARC to access remote servers
 (ARC could also run "locally" on a server).
@@ -60,10 +85,10 @@ The first two directives are only required if you'd like ARC to access remote se
 - Generate RSA SSH keys for your favorite server/s on which relevant electronic structure software
   (ESS, e.g., Gaussian etc.) are installed. `Instructions for generating RSA keys could be found here
   <https://www.digitalocean.com/community/tutorials/how-to-set-up-ssh-keys--2>`_.
-- Copy the RSA SSH key path/s on your local machine to ARC/arc/settings.py in the servers
+- Copy the RSA SSH key path/s on your local machine to ``settings.py`` in the servers
   dictionary under keys.
-- Update the ``servers`` dictionary in `ARC/arc/settings.py
-  <https://github.com/ReactionMechanismGenerator/ARC/blob/master/arc/settings.py>`_.
+- Update the ``servers`` dictionary in your copy of ARC's `settings.py
+  <https://github.com/ReactionMechanismGenerator/ARC/blob/master/arc/settings/settings.py>`_.
 
   * A local server must be named with the reserved keyword ``local``. ``cluster_soft`` and username (``un``) are
     mandatory.
@@ -78,8 +103,8 @@ The first two directives are only required if you'd like ARC to access remote se
   * In certain ESS, the maximum number of CPU cores allowed for a calculation depends on system size. If a job crashes
     for this reason, ARC will attempt to re-run the job with fewer CPU cores.
 
-- Update the ``default_job_settings`` dictionary in `ARC/arc/settings.py
-  <https://github.com/ReactionMechanismGenerator/ARC/blob/master/arc/settings.py>`_.
+- Update the ``default_job_settings`` dictionary in your copy of ARC's `settings.py
+  <https://github.com/ReactionMechanismGenerator/ARC/blob/master/arc/settings/settings.py>`_.
 
   * This dictionary contains default job memory, cpu, and time settings.
   * A default ESS job in ARC has 14 GB of memory, 8 cpu cores, and 120 hours of maximum execution time. The default
@@ -89,8 +114,8 @@ The first two directives are only required if you'd like ARC to access remote se
     The ``job_max_server_node_memory_allocation`` key stands for the maximum percentage of total node memory ARC will
     use when troubleshoot a job. The default value is 80%.
 
-- Update the submit scripts in `ARC/arc/job/submit.py
-  <https://github.com/ReactionMechanismGenerator/ARC/blob/master/arc/job/submit.py>`_
+- Update the submit scripts in your copy of ARC's `submit.py
+  <https://github.com/ReactionMechanismGenerator/ARC/blob/master/arc/settings/submit.py>`_
   according to your servers' definitions.
   * See the given template examples, and follow the structure of nested dictionaries (by server name, then by ESS name).
   * Preserve the variables in curly braces (e.g., ``{memory}``), so that ARC is able to auto-complete them.
@@ -101,8 +126,9 @@ Associating software with servers
 ARC keeps track of software location on servers using a Python dictionary associating the different software (keys)
 with the servers they are installed on (values). The server name must be consistent with the respective definition
 in the ``servers`` dictionary mentioned above. Typically, you would update the ``global_ess_settings`` dictionary in
-`ARC/arc/settings.py <https://github.com/ReactionMechanismGenerator/ARC/blob/master/arc/settings.py>`_ to reflect
-your software and servers, for example::
+your copy of ARC's
+`settings.py <https://github.com/ReactionMechanismGenerator/ARC/blob/master/arc/settings/settings.py>`_
+to reflect your software and servers, for example::
 
   global_ess_settings = {
       'gaussian': ['server1', 'server2'],
@@ -136,8 +162,8 @@ Cluster software definitions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 ARC supports Slurm and Oracle/Sun Grid Engine (OGE / SGE). If you're using other `cluster software`__, or if your
-server's definitions are different that ARC's, you should also modify the following variables in
-`ARC/arc/settings.py <https://github.com/ReactionMechanismGenerator/ARC/blob/master/arc/settings.py>`_:
+server's definitions are different that ARC's, you should also modify the following variables in your copy of ARC's
+`settings.py <https://github.com/ReactionMechanismGenerator/ARC/blob/master/arc/settings/settings.py>`_:
 
 - ``check_status_command``
 - ``submit_command``
@@ -201,8 +227,9 @@ Updating ARC
 ARC is being updated frequently. Make sure to update ARC and enjoy new features and bug fixes.
 
 Note:
-    It is highly recommended to backup files you manually changed in ARC before updating the version,
-    these are usually `ARC/arc/settings.py` and `ARC/arc/job/submit.py`.
+    If you change ARC's parameters within the repository rather than copies thereof as explained above,
+    it is highly recommended to backup the files you manually changed before updating ARC.
+    These are usually `ARC/arc/settings/settings.py` and `ARC/arc/settings/submit.py`.
 
 You can update ARC to a specific version, or to the most recent developer version.
 To get the most recent developer version, do the following

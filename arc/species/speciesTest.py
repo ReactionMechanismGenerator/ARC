@@ -14,11 +14,10 @@ from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 from rmgpy.transport import TransportData
 
-from arc.common import almost_equal_coords_lists
+from arc.common import almost_equal_coords_lists, arc_path
 from arc.exceptions import SpeciesError
 from arc.level import Level
 from arc.plotter import save_conformers_file
-from arc.settings import arc_path
 from arc.species.converter import (check_isomorphism,
                                    molecules_from_xyz,
                                    str_to_xyz,

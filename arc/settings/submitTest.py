@@ -7,7 +7,7 @@ This module contains unit tests of the arc.job.submit module
 
 import unittest
 
-from arc.job.submit import submit_scripts
+from arc.settings.submit import submit_scripts
 
 
 class TestSubmit(unittest.TestCase):
