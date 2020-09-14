@@ -14,19 +14,11 @@ from mako.template import Template
 
 from arc.common import get_logger
 from arc.exceptions import JobError
+from arc.imports import incore_commands, settings
 from arc.job.adapter import JobAdapter, constraint_type_dict
 from arc.job.factory import register_job_adapter
 from arc.job.local import execute_command, submit_job
 from arc.job.ssh import SSHClient
-from arc.settings import (default_job_settings,
-                          global_ess_settings,
-                          input_filenames,
-                          output_filenames,
-                          rotor_scan_resolution,
-                          servers,
-                          submit_filenames,
-                          )
-from arc.job.submit import incore_commands
 from arc.species.converter import xyz_to_str
 
 if TYPE_CHECKING:
@@ -36,6 +28,11 @@ if TYPE_CHECKING:
     from arc.species import ARCSpecies
 
 logger = get_logger()
+
+default_job_settings, global_ess_settings, input_filenames, output_filenames, rotor_scan_resolution, servers, \
+    submit_filenames = settings['default_job_settings'], settings['global_ess_settings'], settings['input_filenames'], \
+                       settings['output_filenames'], settings['rotor_scan_resolution'], settings['servers'], \
+                       settings['submit_filenames']
 
 input_template = """***,${label}
 memory,${memory},m;
@@ -81,6 +78,7 @@ class MolproAdapter(JobAdapter):
         checkfile (str, optional): The path to a previous Gaussian checkfile to be used in the current job.
         constraints (list, optional): A list of constraints to use during an optimization or scan.
         cpu_cores (int, optional): The total number of cpu cores requested for a job.
+        dihedrals (List[float], optional): The dihedral angels corresponding to self.torsions.
         ess_settings (dict, optional): A dictionary of available ESS and a corresponding server list.
         ess_trsh_methods (List[str], optional): A list of troubleshooting methods already tried out.
         fine (bool, optional): Whether to use fine geometry optimization parameters. Default: ``False``
@@ -99,6 +97,7 @@ class MolproAdapter(JobAdapter):
                                               Either ``reactions`` or ``species`` must be given.
         tasks (int, optional): The number of tasks to use in a job array (each task has several threads).
         testing (bool, optional): Whether the object is generated for testing purposes, ``True`` if it is.
+        torsions (List[List[int]], optional): The 0-indexed atom indices of the torsions identifying this scan point.
     """
 
     def __init__(self,
@@ -112,6 +111,7 @@ class MolproAdapter(JobAdapter):
                  checkfile: Optional[str] = None,
                  constraints: Optional[List[Tuple[List[int], float]]] = None,
                  cpu_cores: Optional[str] = None,
+                 dihedrals: Optional[List[float]] = None,
                  ess_settings: Optional[dict] = None,
                  ess_trsh_methods: Optional[List[str]] = None,
                  fine: bool = False,
@@ -129,6 +129,7 @@ class MolproAdapter(JobAdapter):
                  species: Optional[List['ARCSpecies']] = None,
                  tasks: Optional[int] = None,
                  testing: bool = False,
+                 torsions: List[List[int]] = None,
                  ):
 
         self.job_adapter = 'molpro'
@@ -144,6 +145,7 @@ class MolproAdapter(JobAdapter):
         self.checkfile = checkfile
         self.constraints = constraints or list()
         self.cpu_cores = cpu_cores
+        self.dihedrals = dihedrals
         self.ess_settings = ess_settings or global_ess_settings
         self.ess_trsh_methods = ess_trsh_methods or list()
         self.fine = fine
@@ -163,6 +165,7 @@ class MolproAdapter(JobAdapter):
         self.species = species
         self.tasks = tasks
         self.testing = testing
+        self.torsions = torsions
 
         if self.species is None:
             raise ValueError('Cannot execute Molpro without an ARCSpecies object.')
