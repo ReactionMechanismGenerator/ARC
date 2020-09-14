@@ -2,7 +2,7 @@
 A module for representing a reaction.
 """
 
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from qcelemental.exceptions import ValidationError
 from qcelemental.models.molecule import Molecule as QCMolecule
@@ -14,7 +14,7 @@ import arc.rmgdb as rmgdb
 from arc.common import extermum_list, get_logger
 from arc.exceptions import ReactionError, InputError
 from arc.imports import settings
-from arc.species.converter import xyz_to_str
+from arc.species.converter import check_xyz_dict, xyz_to_str
 from arc.species.species import ARCSpecies, check_atom_balance
 
 
@@ -79,8 +79,8 @@ class ARCReaction(object):
         preserve_param_in_scan (list): Entries are length two iterables of atom indices (1-indexed) between which
                                        distances and dihedrals of these pivots must be preserved.
         _atom_map (List[int]): An atom map, mapping the reactant atoms to the product atoms.
-        I.e., an atom map of [0, 2, 1] means that reactant atom 0 matches product atom 0,
-        reactant atom 1 matches product atom 2, and reactant atom 2 matches product atom 1.
+                               I.e., an atom map of [0, 2, 1] means that reactant atom 0 matches product atom 0,
+                               reactant atom 1 matches product atom 2, and reactant atom 2 matches product atom 1.
     """
     def __init__(self,
                  label: str = '',
@@ -670,3 +670,67 @@ class ARCReaction(object):
             data = products.align(ref_mol=reactants, verbose=verbose)[1]
             atom_map = data['mill'].atommap.tolist()
         return atom_map
+
+    def get_reactants_xyz(self, return_format='str') -> Union[dict, str]:
+        """
+        Get a combined string/dict representation of the cartesian coordinates of all reactant species.
+
+        Args:
+            return_format (str): Either ``'dict'`` to return a dict format or ``'str'`` to return a string format.
+                          Default: ``'str'``.
+
+        Returns: Union[dict, str]
+            The combined cartesian coordinates
+
+        Todo:
+            identify flux pairs like in RMG
+            orient a line: cm1 - X -- Y - cm2 if there are two reactants
+        """
+        if len(self.r_species) == 1:
+            xyz_dict = self.r_species[0].get_xyz()
+        elif len(self.r_species) == 2:
+            xyz_dict = {'symbols': tuple(), 'isotopes': tuple(), 'coords': tuple()}
+            for reactant in self.r_species:
+                xyz = reactant.get_xyz()
+                xyz_dict['symbols'] += xyz['symbols']
+                xyz_dict['isotopes'] += xyz['isotopes']
+                xyz_dict['coords'] += xyz['coords']
+        else:
+            raise NotImplementedError(f'Reactants xyz is only implemented for up to 2 reactants, '
+                                      f'got {len(self.r_species)}.')
+
+        xyz_dict = check_xyz_dict(xyz_dict)
+        if return_format == 'str':
+            xyz_dict = xyz_to_str(xyz_dict)
+        return xyz_dict
+
+    def get_products_xyz(self, return_format='str') -> Union[dict, str]:
+        """
+        Get a combined string/dict representation of the cartesian coordinates of all product species.
+        The resulting coordinates are ordered as the reactants using an atom map.
+
+        Args:
+            return_format (str): Either ``'dict'`` to return a dict format or ``'str'`` to return a string format.
+                          Default: ``'str'``.
+
+        Returns: Union[dict, str]
+            The combined cartesian coordinates
+
+        Todo:
+            identify flux pairs like in RMG
+            orient a line: cm1 - X - Y - cm2 if there are two reactants
+        """
+        xyz_dict = mapped_xyz_dict = {'symbols': tuple(), 'isotopes': tuple(), 'coords': tuple()}
+        for product in self.p_species:
+            xyz = product.get_xyz()
+            xyz_dict['symbols'] += xyz['symbols']
+            xyz_dict['isotopes'] += xyz['isotopes']
+            xyz_dict['coords'] += xyz['coords']
+        for i in range(len(xyz_dict['symbols'])):
+            mapped_xyz_dict['symbols'] += (xyz_dict['symbols'][self.atom_map[i]],)
+            mapped_xyz_dict['isotopes'] += (xyz_dict['isotopes'][self.atom_map[i]],)
+            mapped_xyz_dict['coords'] += (xyz_dict['coords'][self.atom_map[i]],)
+        mapped_xyz_dict = check_xyz_dict(mapped_xyz_dict)
+        if return_format == 'str':
+            mapped_xyz_dict = xyz_to_str(mapped_xyz_dict)
+        return mapped_xyz_dict
