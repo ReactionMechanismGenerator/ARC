@@ -7,7 +7,7 @@ import sys
 
 import arc.settings.settings as arc_settings
 from arc.settings.inputs import input_files
-from arc.settings.submit import submit_scripts
+from arc.settings.submit import incore_commands, pipe_submit, submit_scripts
 
 
 # Common imports where the user can optionally put a modified copy of an ARC file un their ~/.arc folder
@@ -29,8 +29,19 @@ local_arc_submit_path = os.path.join(local_arc_path, 'submit.py')
 if os.path.isfile(local_arc_submit_path):
     if local_arc_path not in sys.path:
         sys.path.insert(1, local_arc_path)
-    from submit import submit_scripts as local_submit_scripts
-    submit_scripts.update(local_submit_scripts)
+    try:
+        from submit import incore_commands as local_incore_commands
+        incore_commands.update(local_incore_commands)
+    except ImportError:
+        pass
+        from submit import pipe_submit as local_pipe_submit
+        pipe_submit.update(local_pipe_submit)
+    except ImportError:
+        pass
+        from submit import submit_scripts as local_submit_scripts
+        submit_scripts.update(local_submit_scripts)
+    except ImportError:
+        pass
 
 local_arc_inputs_path = os.path.join(local_arc_path, 'inputs.py')
 if os.path.isfile(local_arc_inputs_path):
