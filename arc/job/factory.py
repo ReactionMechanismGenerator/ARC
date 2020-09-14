@@ -45,6 +45,7 @@ def statmech_factory(job_adapter: str,
                      checkfile: Optional[str] = None,
                      constraints: Optional[List[Tuple[List[int], float]]] = None,
                      cpu_cores: Optional[str] = None,
+                     dihedrals: Optional[List[float]] = None,
                      ess_settings: Optional[dict] = None,
                      ess_trsh_methods: Optional[List[str]] = None,
                      fine: bool = False,
@@ -62,6 +63,7 @@ def statmech_factory(job_adapter: str,
                      species: Optional[List['ARCSpecies']] = None,
                      tasks: Optional[int] = None,
                      testing: bool = False,
+                     torsions: List[List[int]] = None,
                      ) -> JobAdapter:
     """
     A factory generating a job adapter corresponding to ``job_adapter``.
@@ -88,7 +90,8 @@ def statmech_factory(job_adapter: str,
                                       and the second entry is the constraint value in Angstroms or degrees.
         cpu_cores (int, optional): The total number of cpu cores requested for a job.
                                    ARC adopts the following naming system to describe computing hardware hierarchy:
-                                   node > cpu > cpu_cores > cpu_threads
+                                   node > cpu > cpu_cores > cpu_threads.
+        dihedrals (List[float], optional): The dihedral angels corresponding to self.torsions.
         ess_settings (dict, optional): A dictionary of available ESS and a corresponding server list.
         ess_trsh_methods (List[str], optional): A list of troubleshooting methods already tried out.
         fine (bool, optional): Whether to use fine geometry optimization parameters. Default: ``False``.
@@ -114,6 +117,7 @@ def statmech_factory(job_adapter: str,
                                               Either ``reactions`` or ``species`` must be given.
         tasks (int, optional): The number of tasks to use in a job array (each task has several threads).
         testing (bool, optional): Whether the object is generated for testing purposes, ``True`` if it is.
+        torsions (List[List[int]], optional): The 0-indexed atom indices of the torsions identifying this scan point.
 
         # species_label (str): The species/TS label. Used for naming the directory.  # use the species/reaction
         # xyz (dict): The xyz geometry. Used for the calculation.  # use the species initial/final xyz or conformers
@@ -122,24 +126,15 @@ def statmech_factory(job_adapter: str,
         # shift (str, optional): A string representation alpha- and beta-spin orbitals shifts (molpro only).  # use args
         # software (str, optional): The electronic structure software to be used.  # use self.job_adapter
         # is_ts (bool): Whether this species represents a transition structure. Default: ``False``.  # use species
-        # pivots (list, optional): The rotor scan pivots, if the job type is scan. Not used directly in these methods,
-        #                          but used to identify the rotor.  # use scan[1:3]
-        # scan_trsh (str, optional): A troubleshooting method for rotor scans.  # use args['keywords']['scan_trsh']
         # server (str, optional): Server's name.
         # occ (int, optional): The number of occupied orbitals (core + val) from a molpro CCSD sp calc.
-        # scan_res (int, optional): The rotor scan resolution in degrees.  # use args['trsh']['scan_res']
         # number_of_radicals (int, optional): The number of radicals (inputted by the user, ARC won't attempt to
         #                                     determine it). Defaults to None. Important, e.g., if a Species is a bi-rad
         #                                     singlet, in which case the job should be unrestricted with
         #                                     multiplicity = 1.  # use the species
         # radius (float, optional): The species radius in Angstrom.  # use the species
-        # directed_scans (list): Entries are lists of four-atom dihedral scan indices to constrain during a directed scan.
-        # directed_dihedrals (list): The dihedral angles of a directed scan job corresponding to ``directed_scans``.  # pass in constraints
-        # directed_scan_type (str): The type of the directed scan.
-        # scan (List[List[List[int]]], optional): The inner-most entries are lists representing 1-indexed atom labels for
-        #                                         dihedral scans. The intermediate list level represent a mode
-        #                                         (a 1D scan mode will have just one entry here, 2D will have two, etc.)
-        #                                         The top level list represents all scan modes that require calculations.
+        # pivots (list, optional): The rotor scan pivots, if the job type is scan. Not used directly in these methods,
+        #                          but used to identify the rotor.  # use scan[1:3]
         # scan_type (str, optional): The scan type. Either of: ``'ess'``, ``'brute_force_sp'``, ``'brute_force_opt'``,
         #                            ``'cont_opt'``, ``'brute_force_sp_diagonal'``, ``'brute_force_opt_diagonal'``,
         #                            ``'cont_opt_diagonal'``.
@@ -170,6 +165,7 @@ def statmech_factory(job_adapter: str,
                                                                checkfile=checkfile,
                                                                constraints=constraints,
                                                                cpu_cores=cpu_cores,
+                                                               dihedrals=dihedrals,
                                                                ess_settings=ess_settings,
                                                                ess_trsh_methods=ess_trsh_methods,
                                                                fine=fine,
@@ -187,5 +183,6 @@ def statmech_factory(job_adapter: str,
                                                                species=species,
                                                                tasks=tasks,
                                                                testing=testing,
+                                                               torsions=torsions,
                                                                )
     return statmech_adapter_class
