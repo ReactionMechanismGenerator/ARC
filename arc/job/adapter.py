@@ -11,18 +11,19 @@ or be submitted to the queue, in which case a powerful job array will be automat
 
 import csv
 import datetime
+import itertools
 import math
 import os
 import shutil
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import pandas as pd
 
-from arc.common import get_logger
+from arc.common import arc_path, get_logger
 from arc.exceptions import JobError
-from arc.job.inputs import input_files
+from arc.imports import input_files, pipe_submit, settings, submit_scripts
 from arc.job.local import (get_last_modified_time,
                            delete_job,
                            execute_command,
@@ -30,20 +31,21 @@ from arc.job.local import (get_last_modified_time,
                            rename_output,
                            )
 from arc.job.ssh import SSHClient
-from arc.job.scans import generate_scan_points
-from arc.job.submit import pipe_submit, submit_scripts
-from arc.settings import (arc_path,
-                          default_job_settings,
-                          servers,
-                          submit_filenames,
-                          t_max_format,
-                          output_filenames,
-                          )
-from arc.species.converter import xyz_to_str
 from arc.job.trsh import determine_ess_status
+from arc.species.converter import xyz_to_str
+from arc.species.vectors import get_angle, calculate_dihedral_angle
+
+if TYPE_CHECKING:
+    from arc.species import ARCSpecies
 
 
 logger = get_logger()
+
+default_job_settings, servers, submit_filenames, t_max_format, input_filename, output_filenames, \
+    rotor_scan_resolution, orca_default_options_dict, tasks_coeff = \
+    settings['default_job_settings'], settings['servers'], settings['submit_filenames'], settings['t_max_format'], \
+    settings['input_filename'], settings['output_filenames'], settings['rotor_scan_resolution'], \
+    settings['orca_default_options_dict'], settings['tasks_coeff']
 
 constraint_type_dict = {2: 'B', 3: 'A', 4: 'D'}
 
@@ -110,6 +112,108 @@ class JobExecutionTypeEnum(str, Enum):
     """
     incore = 'incore'
     queue = 'queue'
+
+
+class DataPoint(object):
+    """
+    A class for representing a data point dictionary (a single job) per species for the HDF5 file.
+
+    Args:
+        job_types (List[str]): The job types to be executed in sequence.
+        label (str): The species label.
+        level (dict): The level of theory, a Level.dict() representation.
+        xyz_1 (dict): The cartesian coordinates to consider.
+        args (dict, str, optional): Methods (including troubleshooting) to be used in input files.
+        bath_gas (str, optional): A bath gas. Currently only used in OneDMin to calculate L-J parameters.
+        charge (int): The species (or TS) charge.
+        constraints (List[Tuple[List[int], float]], optional): Optimization constraint.
+        cpu_cores (int, optional): The total number of cpu cores requested for a job.
+        dihedrals (List[float], optional): The dihedral angels corresponding to self.torsions.
+        fine (bool, optional): Whether to use fine geometry optimization parameters. Default: ``False``.
+        irc_direction (str, optional): The direction of the IRC job (`forward` or `reverse`).
+        multiplicity (int): The species (or TS) multiplicity.
+        torsions (List[List[int]], optional): The 0-indexed atom indices of the torsions identifying this scan point.
+        xyz_2 (dict, optional): Additional cartesian coordinates to consider in double-ended TS search methods.
+    """
+
+    def __init__(self,
+                 job_types: List[str],
+                 label: str,
+                 level: dict,
+                 xyz_1: dict,
+                 args: Optional[Union[dict, str]] = None,
+                 bath_gas: Optional[str] = None,
+                 charge: int = 0,
+                 constraints: Optional[List[Tuple[List[int], float]]] = None,
+                 cpu_cores: Optional[str] = None,
+                 dihedrals: Optional[List[float]] = None,
+                 fine: bool = False,
+                 irc_direction: Optional[str] = None,
+                 multiplicity: int = 1,
+                 torsions: Optional[List[List[int]]] = None,
+                 xyz_2: Optional[dict] = None,
+                 ):
+        self.job_types = job_types
+        self.label = label
+        self.level = level
+        self.xyz_1 = xyz_1
+
+        self.args = args
+        self.bath_gas = bath_gas
+        self.charge = charge
+        self.constraints = constraints
+        self.cpu_cores = cpu_cores
+        self.dihedrals = dihedrals
+        self.fine = fine
+        self.irc_direction = irc_direction
+        self.multiplicity = multiplicity
+        self.torsions = torsions
+        self.xyz_2 = xyz_2
+
+        self.status = 0
+
+        # initialize outputs
+        self.electronic_energy = None
+        self.error = None
+        self.frequencies = None
+        self.xyz_out = None
+
+    def as_dict(self):
+        """
+        A dictionary representation of the object, not storing default or trivial data.
+
+        Returns: dict
+            The dictionary representation.
+        """
+        result = {'job_types': self.job_types,
+                  'label': self.label,
+                  'level': self.level,
+                  'xyz_1': self.xyz_1,
+                  'status': self.status,
+                  'electronic_energy': self.electronic_energy,
+                  'error': self.error,
+                  'frequencies': self.frequencies,
+                  'xyz_out': self.xyz_out,
+                  }
+        if self.args is not None:
+            result['args'] = self.args
+        if self.bath_gas is not None:
+            result['bath_gas'] = self.bath_gas
+        if self.charge != 0:
+            result['charge'] = self.charge
+        if self.constraints is not None:
+            result['constraints'] = self.constraints
+        if self.cpu_cores is not None:
+            result['cpu_cores'] = self.cpu_cores
+        if self.fine:
+            result['fine'] = self.fine
+        if self.irc_direction is not None:
+            result['irc_direction'] = self.irc_direction
+        if self.multiplicity != 1:
+            result['multiplicity'] = self.multiplicity
+        if self.xyz_2 is not None:
+            result['xyz_2'] = self.xyz_2
+        return result
 
 
 class JobAdapter(ABC):
@@ -221,22 +325,24 @@ class JobAdapter(ABC):
                 # gives the following output: 10 -> 4, 100 -> 9, 1000 -> 20, 1e4 -> 43, 1e5 -> 96.
                 # Cap the number of tasks at 100.
                 # Use just 1 or 2 tasks if there are less than 10 processes.
-                self.tasks = 1 if self.number_of_processes <= 2 \
-                    else 2 if self.number_of_processes < 10 \
-                    else min(math.ceil(1.7 * self.number_of_processes ** 0.35), 100)
+                self.tasks = 1 if self.number_of_processes <= tasks_coeff['max_one'] \
+                    else 2 if self.number_of_processes <= tasks_coeff['max_two'] \
+                    else min(math.ceil(tasks_coeff['A'] * self.number_of_processes ** tasks_coeff['b']),
+                             tasks_coeff['cap'])
             self.write_hdf5()
 
     def write_hdf5(self):
         """
         Write the HDF5 data file for job arrays.
         Each data point is a dictionary representation of the DataPoint class.
-        Note: each data point always runs "incore". A job array is created once the pipe is submitted to the queue
-        (rather than running the pipe incore, taking no advantage of the server's potential for parallelization).
+        Note: Each data point will always run "incore". A job array is created once the pipe is submitted to the queue
+        (rather than running the pipe "incore", taking no advantage of the server's potential for parallelization).
         """
         if self.iterate_by:
             data = dict()
             if 'reactions' in self.iterate_by:
                 for reaction in self.reactions:
+                    data[reaction.index] = list()
                     data[reaction.index].append(DataPoint(charge=reaction.charge,
                                                           job_types=[self.job_type],
                                                           label=reaction.label,
@@ -259,7 +365,7 @@ class JobAdapter(ABC):
                                                                  xyz_1=conformer,
                                                                  ).as_dict())
                     elif 'scan' in self.iterate_by:
-                        data[species.label] = generate_scan_points(species=species, scan_res=self.scan_res)
+                        data[species.label].extend(self.generate_scan_points(species=species))
                     elif 'species' in self.iterate_by:
                         data[species.label].append(DataPoint(charge=species.charge,
                                                              job_types=[self.job_type],
@@ -377,47 +483,49 @@ class JobAdapter(ABC):
         """
         Upload the relevant files for the job.
         """
-        if self.execution_type != 'incore' and self.server != 'local':
-            # If the job execution type is incore, then no need to upload any files.
-            # Also, even if the job is submitted to the que, no need to upload files if the server is local.
-            with SSHClient(self.server) as ssh:
+        if not self.testing:
+            if self.execution_type != 'incore' and self.server != 'local':
+                # If the job execution type is incore, then no need to upload any files.
+                # Also, even if the job is submitted to the que, no need to upload files if the server is local.
+                with SSHClient(self.server) as ssh:
+                    for up_file in self.files_to_upload:
+                        logger.debug(f"Uploading {up_file['name']} source {up_file['source']} to {self.server}")
+                        if up_file['source'] == 'path':
+                            ssh.upload_file(remote_file_path=up_file['remote'], local_file_path=up_file['local'])
+                        elif up_file['source'] == 'input_files':
+                            ssh.upload_file(remote_file_path=up_file['remote'], file_string=input_files[up_file['local']])
+                        else:
+                            raise ValueError(f"Unclear file source for {up_file['name']}. Should either be 'path' or "
+                                             f"'input_files', got: {up_file['source']}")
+                        if up_file['make_x']:
+                            ssh.change_mode(mode='+x', file_name=up_file['name'], remote_path=self.remote_path)
+            else:
+                # running locally, just copy the check file, if exists, to the job folder
                 for up_file in self.files_to_upload:
-                    logger.debug(f"Uploading {up_file['name']} source {up_file['source']} to {self.server}")
-                    if up_file['source'] == 'path':
-                        ssh.upload_file(remote_file_path=up_file['remote'], local_file_path=up_file['local'])
-                    elif up_file['source'] == 'input_files':
-                        ssh.upload_file(remote_file_path=up_file['remote'], file_string=input_files[up_file['local']])
-                    else:
-                        raise ValueError(f"Unclear file source for {up_file['name']}. Should either be 'path' or "
-                                         f"'input_files', got: {up_file['source']}")
-                    if up_file['make_x']:
-                        ssh.change_mode(mode='+x', file_name=up_file['name'], remote_path=self.remote_path)
-        else:
-            # running locally, just copy the check file, if exists, to the job folder
-            for up_file in self.files_to_upload:
-                if up_file['name'] == 'checkfile':
-                    try:
-                        shutil.copyfile(src=up_file['local'], dst=os.path.join(self.local_path, 'check.chk'))
-                    except shutil.SameFileError:
-                        pass
-        self.initial_time = datetime.datetime.now()
+                    if up_file['name'] == 'checkfile':
+                        try:
+                            shutil.copyfile(src=up_file['local'], dst=os.path.join(self.local_path, 'check.chk'))
+                        except shutil.SameFileError:
+                            pass
+            self.initial_time = datetime.datetime.now()
 
     def download_files(self):
         """
         Download the relevant files.
         """
-        if self.execution_type != 'incore' and self.server != 'local':
-            # If the job execution type is incore, then no need to download any files.
-            # Also, even if the job is submitted to the que, no need to download files if the server is local.
-            with SSHClient(self.server) as ssh:
-                for dl_file in self.files_to_download:
-                    ssh.download_file(remote_file_path=dl_file['remote'], local_file_path=dl_file['local'])
-                if dl_file['file_name'] == output_filenames[self.job_adapter]:
-                    self.final_time = ssh.get_last_modified_time(remote_file_path=dl_file['local'])
-        elif self.server == 'local':
-            self.final_time = get_last_modified_time(
-                file_path=os.path.join(self.local_path, output_filenames[self.job_adapter]))
-        self.final_time = self.final_time or datetime.datetime.now()
+        if not self.testing:
+            if self.execution_type != 'incore' and self.server != 'local':
+                # If the job execution type is incore, then no need to download any files.
+                # Also, even if the job is submitted to the que, no need to download files if the server is local.
+                with SSHClient(self.server) as ssh:
+                    for dl_file in self.files_to_download:
+                        ssh.download_file(remote_file_path=dl_file['remote'], local_file_path=dl_file['local'])
+                    if dl_file['file_name'] == output_filenames[self.job_adapter]:
+                        self.final_time = ssh.get_last_modified_time(remote_file_path=dl_file['local'])
+            elif self.server == 'local':
+                self.final_time = get_last_modified_time(
+                    file_path=os.path.join(self.local_path, output_filenames[self.job_adapter]))
+            self.final_time = self.final_time or datetime.datetime.now()
 
     def determine_run_time(self):
         """
@@ -842,98 +950,191 @@ class JobAdapter(ABC):
                 'make_x': make_x,
                 }
 
-
-class DataPoint(object):
-    """
-    A class for representing a data point dictionary (a single job) per species for the HDF5 file.
-
-    Args:
-        job_types (List[str]): The job types to be executed in sequence.
-        label (str): The species label.
-        level (dict): The level of theory, a Level.dict() representation.
-        xyz_1 (dict): The cartesian coordinates to consider.
-        args (dict, str, optional): Methods (including troubleshooting) to be used in input files.
-        bath_gas (str, optional): A bath gas. Currently only used in OneDMin to calculate L-J parameters.
-        charge (int): The species (or TS) charge.
-        constraints (List[Tuple[List[int], float]], optional): Optimization constraint.
-        cpu_cores (int, optional): The total number of cpu cores requested for a job.
-        fine (bool, optional): Whether to use fine geometry optimization parameters. Default: ``False``.
-        irc_direction (str, optional): The direction of the IRC job (`forward` or `reverse`).
-        multiplicity (int): The species (or TS) multiplicity.
-        xyz_2 (dict, optional): Additional cartesian coordinates to consider in double-ended TS search methods.
-    """
-
-    def __init__(self,
-                 job_types: List[str],
-                 label: str,
-                 level: dict,
-                 xyz_1: dict,
-                 args: Optional[Union[dict, str]] = None,
-                 bath_gas: Optional[str] = None,
-                 charge: int = 0,
-                 constraints: Optional[List[Tuple[List[int], float]]] = None,
-                 cpu_cores: Optional[str] = None,
-                 fine: bool = False,
-                 irc_direction: Optional[str] = None,
-                 multiplicity: int = 1,
-                 xyz_2: Optional[dict] = None,
-                 ):
-        self.job_types = job_types
-        self.label = label
-        self.level = level
-        self.xyz_1 = xyz_1
-
-        self.args = args
-        self.bath_gas = bath_gas
-        self.charge = charge
-        self.constraints = constraints
-        self.cpu_cores = cpu_cores
-        self.fine = fine
-        self.irc_direction = irc_direction
-        self.multiplicity = multiplicity
-        self.xyz_2 = xyz_2
-
-        self.status = 0
-
-        # initialize outputs
-        self.electronic_energy = None
-        self.error = None
-        self.frequencies = None
-        self.xyz_out = None
-
-    def as_dict(self):
+    def generate_scan_points(self,
+                             species: 'ARCSpecies',
+                             cont_only: bool = False,
+                             ) -> List[DataPoint]:
         """
-        A dictionary representation of the object, not storing default or trivial data.
+        Generate all coordinates in advance for "brute force" (non-continuous) directed scans,
+        or the *next* coordinates for a continuous scan.
 
-        Returns: dict
-            The dictionary representation.
+        Directed scan types could be one of the following: ``'brute_force_sp'``, ``'brute_force_opt'``,
+        ``'brute_force_sp_diagonal'``, ``'brute_force_opt_diagonal'``, ``'cont_opt'``, or ``'cont_opt_diagonal'``.
+        The differentiation between ``'sp'`` and ``'opt'`` is done in at the Job level.
+
+        Args:
+            species (ARCSpecies): The species to consider.
+            cont_only (bool, optional): Whether to only return the next point in continuous scans.
+
+        Raises:
+            ValueError: If the species directed scan type has an unexpected value.
+
+        Returns: List[DataPoint]
+            Entries are DataPoint instances.
         """
-        result = {'job_types': self.job_types,
-                  'label': self.label,
-                  'level': self.level,
-                  'xyz_1': self.xyz_1,
-                  'status': self.status,
-                  'electronic_energy': self.electronic_energy,
-                  'error': self.error,
-                  'frequencies': self.frequencies,
-                  'xyz_out': self.xyz_out,
-                  }
-        if self.args is not None:
-            result['args'] = self.args
-        if self.bath_gas is not None:
-            result['bath_gas'] = self.bath_gas
-        if self.charge != 0:
-            result['charge'] = self.charge
-        if self.constraints is not None:
-            result['constraints'] = self.constraints
-        if self.cpu_cores is not None:
-            result['cpu_cores'] = self.cpu_cores
-        if self.fine:
-            result['fine'] = self.fine
-        if self.irc_direction is not None:
-            result['irc_direction'] = self.irc_direction
-        if self.multiplicity != 1:
-            result['multiplicity'] = self.multiplicity
-        if self.xyz_2 is not None:
-            result['xyz_2'] = self.xyz_2
-        return result
+        data_list = list()
+
+        if divmod(360, self.scan_res)[1]:
+            raise ValueError(f'Got an illegal scan resolution of {self.scan_res}.')
+
+        scan_res = self.args['trsh']['scan_res'] if 'scan_res' in self.args['trsh'] else rotor_scan_resolution
+
+        for rotor_dict in species.rotors_dict.values():
+            directed_scan_type = rotor_dict['directed_scan_type']
+            if cont_only and 'cont' not in directed_scan_type:
+                # visiting this method again for a cont scan should not re-trigger all other scans
+                continue
+
+            scans = rotor_dict['scan']
+            if isinstance(scans[0], int):
+                scans = [scans]
+            xyz = species.get_xyz(generate=True)
+
+            if not ('cont' in directed_scan_type or 'brute' in directed_scan_type or 'ess' in directed_scan_type):
+                raise ValueError(f'directed_scan_type must be either continuous or brute force, got: {directed_scan_type}')
+
+            if directed_scan_type == 'ess' and not rotor_dict['scan_path'] and rotor_dict['success'] is None:
+                # allow the ESS to control the scan
+                torsions = self.torsions or list()
+                if not torsions:
+                    for scan in scans:
+                        # As an internal convention throughout ARCt, "orsions" are 0-indexed, "scans" are 1-indexed.
+                        torsions.append([atom_index - 1 for atom_index in scan])
+                data_list.append(DataPoint(job_types=['scan'],
+                                           label=species.label,
+                                           level=self.level,
+                                           xyz_1=species.get_xyz(generate=True),
+                                           args=self.args,
+                                           charge=species.charge,
+                                           constraints=self.constraints,
+                                           cpu_cores=self.cpu_cores,
+                                           multiplicity=species.multiplicity,
+                                           torsions=torsions,
+                                           ))
+
+            elif 'brute' in directed_scan_type:
+                # spawn jobs all at once
+                dihedrals = dict()
+                for scan in scans:
+                    original_dihedral = calculate_dihedral_angle(coords=xyz['coords'], torsion=scan, index=1)
+                    dihedrals[tuple(scan)] = [round(original_dihedral + i * scan_res
+                                                    if original_dihedral + i * scan_res <= 180.0
+                                                    else original_dihedral + i * scan_res - 360.0, 2)
+                                              for i in range(int(360 / scan_res) + 1)]
+                modified_xyz = xyz.copy()
+                if 'diagonal' not in directed_scan_type:
+                    # Increment dihedrals one by one (results in an ND scan).
+                    all_dihedral_combinations = list(itertools.product(*[dihedrals[tuple(scan)] for scan in scans]))
+                    for dihedral_tuple in all_dihedral_combinations:
+                        for scan, dihedral in zip(scans, dihedral_tuple):
+                            species.set_dihedral(scan=scan, deg_abs=dihedral, count=False, xyz=modified_xyz)
+                            modified_xyz = species.initial_xyz
+                        rotor_dict['number_of_running_jobs'] += 1
+                        data_list.append(DataPoint(job_types=['opt'] if 'opt' in directed_scan_type else ['sp'],
+                                                   label=species.label,
+                                                   level=self.level,
+                                                   xyz_1=modified_xyz.copy(),
+                                                   args=self.args,
+                                                   charge=species.charge,
+                                                   constraints=self.constraints,
+                                                   cpu_cores=self.cpu_cores,
+                                                   multiplicity=species.multiplicity,
+                                                   ))
+                else:
+                    # Increment all dihedrals at once (results in a 1D scan along simultaneously-changing dimensions).
+                    for i in range(len(dihedrals[tuple(scans[0])])):
+                        for scan in scans:
+                            dihedral = dihedrals[tuple(scan)][i]
+                            species.set_dihedral(scan=scan, deg_abs=dihedral, count=False, xyz=modified_xyz)
+                            modified_xyz = species.initial_xyz
+                        directed_dihedrals = [dihedrals[tuple(scan)][i] for scan in scans]
+                        rotor_dict['number_of_running_jobs'] += 1
+                        data_list.append(DataPoint(job_types=['opt'] if 'opt' in directed_scan_type else ['sp'],
+                                                   label=species.label,
+                                                   level=self.level,
+                                                   xyz_1=modified_xyz.copy(),
+                                                   args=self.args,
+                                                   charge=species.charge,
+                                                   constraints=self.constraints,
+                                                   cpu_cores=self.cpu_cores,
+                                                   dihedrals=directed_dihedrals,
+                                                   multiplicity=species.multiplicity,
+                                                   ))
+
+            elif 'cont' in directed_scan_type:
+                # Set up the next DataPoint only.
+                if not len(rotor_dict['cont_indices']):
+                    rotor_dict['cont_indices'] = [0] * len(scans)
+                if not len(rotor_dict['original_dihedrals']):
+                    rotor_dict['original_dihedrals'] = \
+                        [f'{calculate_dihedral_angle(coords=xyz["coords"], torsion=scan, index=1):.2f}'
+                         for scan in rotor_dict['scan']]  # Store the dihedrals as strings for the YAML restart file.
+                scans = rotor_dict['scan']
+                max_num = 360 / scan_res + 1  # Dihedral angles per scan
+                original_dihedrals = list()
+                for dihedral in rotor_dict['original_dihedrals']:
+                    f_dihedral = float(dihedral)
+                    original_dihedrals.append(f_dihedral if f_dihedral < 180.0 else f_dihedral - 360.0)
+                if not any(rotor_dict['cont_indices']):
+                    # This is the first call to the cont_opt directed rotor, spawn the first job w/o changing dihedrals.
+                    data_list.append(DataPoint(job_types=['opt'],
+                                               label=species.label,
+                                               level=self.level,
+                                               xyz_1=species.final_xyz,
+                                               args=self.args,
+                                               charge=species.charge,
+                                               constraints=self.constraints,
+                                               cpu_cores=self.cpu_cores,
+                                               dihedrals=original_dihedrals,
+                                               multiplicity=species.multiplicity,
+                                               ))
+                    rotor_dict['cont_indices'][0] += 1
+                    continue
+                else:
+                    # This is NOT the first call for this cont_opt directed rotor.
+                    # Check whether this rotor is done.
+                    if rotor_dict['cont_indices'][-1] == max_num - 1:  # 0-indexed
+                        # No more counters to increment, all done!
+                        logger.info(f"Completed all jobs for the continuous directed rotor scan for species "
+                                    f"{species.label} between pivots {rotor_dict['pivots']}")
+                        continue
+
+                modified_xyz = xyz.copy()
+                dihedrals = list()
+                for index, (original_dihedral, scan_) in enumerate(zip(original_dihedrals, scans)):
+                    dihedral = original_dihedral + rotor_dict['cont_indices'][index] * scan_res
+                    # Change the original dihedral so we won't end up with two calcs for 180.0, but none for -180.0
+                    # (it only matters for plotting, the geometry is of course the same).
+                    dihedral = dihedral if dihedral <= 180.0 else dihedral - 360.0
+                    dihedrals.append(dihedral)
+                    # Only change the dihedrals in the xyz if this torsion corresponds to the current index,
+                    # or if this is a cont diagonal scan.
+                    # Species.set_dihedral() uses .final_xyz or the given xyz to modify the .initial_xyz
+                    # attribute to the desired dihedral.
+                    species.set_dihedral(scan=scan_, deg_abs=dihedral, count=False, xyz=modified_xyz)
+                    modified_xyz = species.initial_xyz
+                data_list.append(DataPoint(job_types=['opt'],
+                                           label=species.label,
+                                           level=self.level,
+                                           xyz_1=modified_xyz,
+                                           args=self.args,
+                                           charge=species.charge,
+                                           constraints=self.constraints,
+                                           cpu_cores=self.cpu_cores,
+                                           dihedrals=dihedrals,
+                                           multiplicity=species.multiplicity,
+                                           ))
+
+                if 'diagonal' in directed_scan_type:
+                    # Increment ALL counters for a diagonal scan.
+                    rotor_dict['cont_indices'] = [rotor_dict['cont_indices'][0] + 1] * len(scans)
+                else:
+                    # Increment the counter sequentially for a non-diagonal scan.
+                    for index in range(len(scans)):
+                        if rotor_dict['cont_indices'][index] < max_num - 1:
+                            rotor_dict['cont_indices'][index] += 1
+                            break
+                        elif rotor_dict['cont_indices'][index] == max_num - 1 and index < len(scans) - 1:
+                            rotor_dict['cont_indices'][index] = 0
+
+        return data_list
