@@ -191,6 +191,17 @@ preserve_params_in_scan = {
     'dihedral': 20,  # Default: 20 degrees
 }
 
+# Coefficients to be used in a y = A * x ** b fit
+# to determine the number of tasks (workers) to execute in parallel
+# vs the number of processes (individual jobs).
+# This is y = 1.7 x ** 0.35 by default, corresponding the following output:
+# 10 -> 4, 100 -> 9, 1000 -> 20, 1e4 -> 43, 1e5 -> 96.
+# 'cap' is the cap of tasks to ever run in parallel.
+# If the number of processes is equal or lower than 'max_one', only a single task will be spawned.
+# If the number of processes is greater than 'max_one' but equal or lower than 'max_two',
+# only two tasks will be spawned.
+tasks_coeff = {'A': 1.7, 'b': 0.35, 'cap': 100, 'max_one': 2, 'max_two': 9}
+
 # Default job memory, cpu, time settings
 default_job_settings = {
     'job_total_memory_gb': 14,
