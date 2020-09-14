@@ -14,19 +14,11 @@ from mako.template import Template
 
 from arc.common import get_logger
 from arc.exceptions import JobError
+from arc.imports import incore_commands, settings
 from arc.job.adapter import JobAdapter, constraint_type_dict
 from arc.job.factory import register_job_adapter
 from arc.job.local import execute_command, submit_job
 from arc.job.ssh import SSHClient
-from arc.settings import (default_job_settings,
-                          global_ess_settings,
-                          input_filenames,
-                          output_filenames,
-                          rotor_scan_resolution,
-                          servers,
-                          submit_filenames,
-                          )
-from arc.job.submit import incore_commands
 from arc.species.converter import xyz_to_str
 
 if TYPE_CHECKING:
@@ -36,6 +28,11 @@ if TYPE_CHECKING:
     from arc.species import ARCSpecies
 
 logger = get_logger()
+
+default_job_settings, global_ess_settings, input_filenames, output_filenames, rotor_scan_resolution, servers, \
+    submit_filenames = settings['default_job_settings'], settings['global_ess_settings'], settings['input_filenames'], \
+                       settings['output_filenames'], settings['rotor_scan_resolution'], settings['servers'], \
+                       settings['submit_filenames']
 
 
 # job_type_1: '' for sp, irc, or composite methods, 'opt=calcfc', 'opt=(calcfc,ts,noeigen)',
@@ -82,6 +79,7 @@ class GaussianAdapter(JobAdapter):
         checkfile (str, optional): The path to a previous Gaussian checkfile to be used in the current job.
         constraints (list, optional): A list of constraints to use during an optimization or scan.
         cpu_cores (int, optional): The total number of cpu cores requested for a job.
+        dihedrals (List[float], optional): The dihedral angels corresponding to self.torsions.
         ess_settings (dict, optional): A dictionary of available ESS and a corresponding server list.
         ess_trsh_methods (List[str], optional): A list of troubleshooting methods already tried out.
         fine (bool, optional): Whether to use fine geometry optimization parameters. Default: ``False``
@@ -100,6 +98,7 @@ class GaussianAdapter(JobAdapter):
                                               Either ``reactions`` or ``species`` must be given.
         tasks (int, optional): The number of tasks to use in a job array (each task has several threads).
         testing (bool, optional): Whether the object is generated for testing purposes, ``True`` if it is.
+        torsions (List[List[int]], optional): The 0-indexed atom indices of the torsions identifying this scan point.
     """
 
     def __init__(self,
@@ -113,6 +112,7 @@ class GaussianAdapter(JobAdapter):
                  checkfile: Optional[str] = None,
                  constraints: Optional[List[Tuple[List[int], float]]] = None,
                  cpu_cores: Optional[str] = None,
+                 dihedrals: Optional[List[float]] = None,
                  ess_settings: Optional[dict] = None,
                  ess_trsh_methods: Optional[List[str]] = None,
                  fine: bool = False,
@@ -130,10 +130,12 @@ class GaussianAdapter(JobAdapter):
                  species: Optional[List['ARCSpecies']] = None,
                  tasks: Optional[int] = None,
                  testing: bool = False,
+                 torsions: List[List[int]] = None,
                  ):
 
         self.job_adapter = 'gaussian'
 
+        # add an incore execution of cont opt scan directed by ARC
         self.execution_type = execution_type
         self.job_types = job_type if isinstance(job_type, list) else [job_type]  # always a list
         self.job_type = job_type if isinstance(job_type, str) else job_type[0]  # always a string
@@ -145,6 +147,7 @@ class GaussianAdapter(JobAdapter):
         self.checkfile = checkfile
         self.constraints = constraints or list()
         self.cpu_cores = cpu_cores
+        self.dihedrals = dihedrals
         self.ess_settings = ess_settings or global_ess_settings
         self.ess_trsh_methods = ess_trsh_methods or list()
         self.fine = fine
@@ -164,6 +167,7 @@ class GaussianAdapter(JobAdapter):
         self.species = species
         self.tasks = tasks
         self.testing = testing
+        self.torsions = torsions
 
         if self.species is None:
             raise ValueError('Cannot execute Gaussian without an ARCSpecies object.')
@@ -195,7 +199,11 @@ class GaussianAdapter(JobAdapter):
         self.run_time = None
         self.scan_res = self.args['trsh']['scan_res'] if 'scan_res' in self.args['trsh'] else rotor_scan_resolution
         if self.job_type == 'scan' and divmod(360, self.scan_res)[1]:
-            raise JobError(f'Scan job got an illegal rotor scan resolution of {self.scan_res}.')
+            raise ValueError(f'Got an illegal rotor scan resolution of {self.scan_res}.')
+        if self.job_type == 'scan' and not self.species[0].rotors_dict and self.torsions is None:
+            # If this is a scan job type and species.rotors_dict is empty (e.g., via pipe), then torsions must be set up
+            raise ValueError(f'Either a species rotors_dict or torsions must be specified for an ESS scan job.')
+
         self.server = self.args['trsh']['server'] if 'server' in self.args['trsh'] \
             else self.ess_settings[self.job_adapter][0] if isinstance(self.ess_settings[self.job_adapter], list) \
             else self.ess_settings[self.job_adapter]
@@ -317,10 +325,16 @@ class GaussianAdapter(JobAdapter):
         elif self.job_type == 'sp':
             input_dict['job_type_1'] = 'scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
 
-        elif self.job_type == 'scan' and self.species[0].rotors_dict[self.rotor_index]['directed_scan_type'] == 'ess':
+        elif self.job_type == 'scan' and (not self.species[0].rotors_dict or self.species[0].rotors_dict
+                and self.species[0].rotors_dict[self.rotor_index]['directed_scan_type'] == 'ess'):
+            # In a pipe run, the species object is initialized with species.rotors_dict as an empty dict.
             scans = list()
-            for scan_indices in self.species[0].rotors_dict[self.rotor_index]['scan']:
-                scans.append(' '.join([str(atom_index) for atom_index in scan_indices]))
+            if self.species[0].rotors_dict:
+                for scan_indices in self.species[0].rotors_dict[self.rotor_index]['scan']:
+                    scans.append(' '.join([str(atom_index) for atom_index in scan_indices]))
+            else:
+                for torsion in self.torsions:
+                    scans.append(' '.join([str(atom_index + 1) for atom_index in torsion]))
             ts = 'ts, ' if self.is_ts else ''
             input_dict['job_type_1'] = f'opt=({ts}modredundant, calcfc, noeigentest, maxStep=5) scf=(tight, direct) ' \
                                        f'integral=(grid=ultrafine, Acc2E=12)'
