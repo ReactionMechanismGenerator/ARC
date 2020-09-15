@@ -44,15 +44,15 @@ H       2.16904830    0.12689206   -0.07152274
 H      -1.82570782    0.42754384   -0.56130718"""
         cls.spc3 = ARCSpecies(label='CtripCO', smiles='C#CO', xyz=xyz1)
         xyz2 = {'symbols': ('C',), 'isotopes': (12,), 'coords': ((0.0, 0.0, 0.0),)}
-        cls.job1 = Job(project='project_test', ess_settings=cls.ess_settings, species_name='methylamine',
+        cls.job1 = Job(project='project_test', ess_settings=cls.ess_settings, species_label='methylamine',
                        xyz=xyz2, job_type='conformer', conformer=0,
                        level={'method': 'b97-d3', 'basis': '6-311+g(d,p)'},
                        multiplicity=1, project_directory=cls.project_directory, job_num=101)
-        cls.job2 = Job(project='project_test', ess_settings=cls.ess_settings, species_name='methylamine',
+        cls.job2 = Job(project='project_test', ess_settings=cls.ess_settings, species_label='methylamine',
                        xyz=xyz2, job_type='conformer', conformer=1,
                        level={'method': 'b97-d3', 'basis': '6-311+g(d,p)'},
                        multiplicity=1, project_directory=cls.project_directory, job_num=102)
-        cls.job3 = Job(project='project_test', ess_settings=cls.ess_settings, species_name='C2H6', xyz=xyz2,
+        cls.job3 = Job(project='project_test', ess_settings=cls.ess_settings, species_label='C2H6', xyz=xyz2,
                        job_type='freq', level={'method': 'wb97x-d3', 'basis': '6-311+g(d,p)'},
                        multiplicity=1, project_directory=cls.project_directory, software='qchem', job_num=103)
         cls.rmg_database = rmgdb.make_rmg_database_object()

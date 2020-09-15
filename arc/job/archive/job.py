@@ -33,8 +33,8 @@ logger = get_logger()
 
 default_job_settings, servers, submit_filename, t_max_format, input_filename, output_filename, \
     rotor_scan_resolution, orca_default_options_dict = settings['default_job_settings'], settings['servers'], \
-                                                       settings['submit_filename'], settings['t_max_format'], \
-                                                       settings['input_filename'], settings['output_filename'], \
+                                                       settings['submit_filenames'], settings['t_max_format'], \
+                                                       settings['input_filenames'], settings['output_filenames'], \
                                                        settings['rotor_scan_resolution'], \
                                                        settings['orca_default_options_dict']
 
@@ -1375,7 +1375,7 @@ end
                 remote_file_path = os.path.join(self.remote_path, 'out.txt')
                 with SSHClient(self.server) as ssh:
                     try:
-                        ssh.download_file(remote_file_path=remote_file_path, 
+                        ssh.download_file(remote_file_path=remote_file_path,
                                           local_file_path=local_file_path1)
                     except (TypeError, IOError) as e:
                         logger.warning(f'Got the following error when trying to download out.txt for {self.job_name}:')
@@ -1411,7 +1411,7 @@ end
                         remote_file_path = os.path.join(self.remote_path, file_name)
                         try:
                             with SSHClient(self.server) as ssh:
-                                ssh.download_file(remote_file_path=remote_file_path, 
+                                ssh.download_file(remote_file_path=remote_file_path,
                                                   local_file_path=local_file_path)
                         except (TypeError, IOError) as e:
                             logger.warning(f'Got the following error when trying to download {file_name} '
