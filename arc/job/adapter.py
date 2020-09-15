@@ -41,11 +41,9 @@ if TYPE_CHECKING:
 
 logger = get_logger()
 
-default_job_settings, servers, submit_filenames, t_max_format, input_filename, output_filenames, \
-    rotor_scan_resolution, orca_default_options_dict, tasks_coeff = \
+default_job_settings, servers, submit_filenames, t_max_format, output_filenames, rotor_scan_resolution, tasks_coeff = \
     settings['default_job_settings'], settings['servers'], settings['submit_filenames'], settings['t_max_format'], \
-    settings['input_filename'], settings['output_filenames'], settings['rotor_scan_resolution'], \
-    settings['orca_default_options_dict'], settings['tasks_coeff']
+    settings['output_filenames'], settings['rotor_scan_resolution'], settings['tasks_coeff']
 
 constraint_type_dict = {2: 'B', 3: 'A', 4: 'D'}
 
