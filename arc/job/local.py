@@ -20,9 +20,9 @@ from arc.job.ssh import check_job_status_in_stdout
 
 logger = get_logger()
 
-servers, check_status_command, submit_command, submit_filenames, delete_command, output_filename = \
+servers, check_status_command, submit_command, submit_filenames, delete_command, output_filenames = \
     settings['servers'], settings['check_status_command'], settings['submit_command'], settings['submit_filenames'],\
-    settings['delete_command'], settings['output_filename']
+    settings['delete_command'], settings['output_filenames']
 
 
 def execute_command(command, shell=True, no_fail=False):
