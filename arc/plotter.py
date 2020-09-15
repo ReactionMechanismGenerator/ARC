@@ -63,6 +63,9 @@ def draw_structure(xyz=None, species=None, project_directory=None, method='show_
         species (ARCSpecies, optional): A species from which to extract the xyz coordinates to plot.
         project_directory (str, optional): A directory for saving the image (only supported for draw_3d).
         method (str, optional): The method to use, either 'show_sticks', 'draw_3d', or 'scatter'.
+
+    Todo:
+        Add qcelemental.models.Molecule.show (https://github.com/MolSSI/QCElemental/blob/master/qcelemental/models/molecule.py#L427)
     """
     if method not in ['show_sticks', 'draw_3d', 'scatter']:
         raise InputError(f"Recognized methods are 'show_sticks', 'draw_3d', or 'scatter', got: {method}")

@@ -14,11 +14,15 @@ import unittest
 
 import pandas as pd
 
+from arc.common import arc_path
+from arc.imports import settings
 from arc.job.adapter import DataPoint, JobEnum, JobTypeEnum, JobExecutionTypeEnum
 from arc.job.adapters.gaussian import GaussianAdapter
 from arc.level import Level
-from arc.settings import arc_path, servers, submit_filenames
 from arc.species import ARCSpecies
+
+
+servers, submit_filenames = settings['servers'], settings['submit_filenames']
 
 
 class TestEnumerationClasses(unittest.TestCase):
@@ -161,6 +165,32 @@ class TestJobAdapter(unittest.TestCase):
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
                                     testing=True,
                                     )
+        cls.spc_3a = ARCSpecies(label='methanol',
+                                smiles='CO',
+                                directed_rotors={'brute_force_sp': ['all']})
+        cls.spc_3b = ARCSpecies(label='methanol',
+                                smiles='CO',
+                                directed_rotors={'brute_force_opt': ['all']})
+        cls.spc_3c = ARCSpecies(label='methanol',
+                                smiles='CO',
+                                directed_rotors={'cont_opt': ['all']})
+        cls.spc_3d = ARCSpecies(label='methanol',
+                                smiles='CO',
+                                directed_rotors={'brute_force_sp_diagonal': ['all']})
+        cls.spc_3e = ARCSpecies(label='methanol',
+                                smiles='CO',
+                                directed_rotors={'brute_force_opt_diagonal': ['all']})
+        cls.spc_3f = ARCSpecies(label='methanol',
+                                smiles='CO',
+                                directed_rotors={'cont_opt_diagonal': ['all']})
+        cls.job_3 = GaussianAdapter(execution_type='incore',
+                                    job_type='scan',
+                                    level=Level(method='wb97xd', basis='def2-tzvp'),
+                                    project='test_scans',
+                                    project_directory=os.path.join(arc_path, 'arc', 'testing', 'test_JobAdapter_scan'),
+                                    species=[cls.spc_3a, cls.spc_3b, cls.spc_3c, cls.spc_3d, cls.spc_3e, cls.spc_3f],
+                                    testing=True,
+                                    )
 
     def test_determine_job_array_parameters(self):
         """Test determining job array parameters"""
@@ -263,6 +293,13 @@ class TestJobAdapter(unittest.TestCase):
                                        'source': 'input_files',
                                        'make_x': True})
 
+    def test_write_hdf5_for_directed_scans(self):
+        """Test writing the HDF5 file for directed scans"""
+        with pd.HDFStore(os.path.join(self.job_1.local_path, 'data.hdf5')) as store:
+            data = store['df'].to_dict()
+        print(data.keys())
+        self.assertEqual([key for key in data.keys()], ['spc1', 'spc2', 'spc3'])
+
     @classmethod
     def tearDownClass(cls):
         """
@@ -270,6 +307,7 @@ class TestJobAdapter(unittest.TestCase):
         Delete all project directories created during these unit tests
         """
         shutil.rmtree(os.path.join(arc_path, 'arc', 'testing', 'test_JobAdapter'))
+        # shutil.rmtree(os.path.join(arc_path, 'arc', 'testing', 'test_JobAdapter_scan'))
 
 
 if __name__ == '__main__':

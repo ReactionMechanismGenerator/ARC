@@ -7,6 +7,7 @@ import datetime
 import itertools
 import logging
 import os
+import pprint
 import shutil
 import time
 from IPython.display import display
@@ -28,7 +29,7 @@ from arc.exceptions import (InputError,
                             TrshError,
                             )
 from arc.imports import settings
-from arc.job.job import Job
+from arc.job.archive.job import Job
 from arc.job.local import check_running_jobs_ids
 from arc.job.ssh import SSHClient
 from arc.job.trsh import (scan_quality_check,
@@ -486,7 +487,7 @@ class Scheduler(object):
                         self.run_opt_job(species.label, fine=self.fine_only)
         self.run_conformer_jobs()
         while self.running_jobs != {}:  # loop while jobs are still running
-            logger.debug(f'Currently running jobs:\n{self.running_jobs}')
+            logger.debug(f'Currently running jobs:\n{pprint.pformat(self.running_jobs)}')
             self.timer = True
             job_list = list()
             for label in self.unique_species_labels:
@@ -617,7 +618,10 @@ class Scheduler(object):
                             orbitals_path = os.path.join(self.project_directory, 'output', folder_name, label,
                                                          'geometry', 'orbitals.fchk')
                             if os.path.isfile(job.local_path_to_orbitals_file):
-                                shutil.copyfile(job.local_path_to_orbitals_file, orbitals_path)
+                                try:
+                                    shutil.copyfile(job.local_path_to_orbitals_file, orbitals_path)
+                                except shutil.SameFileError:
+                                    pass
                         self.timer = False
                         break
                     elif 'onedmin' in job_name \
@@ -629,7 +633,10 @@ class Scheduler(object):
                             lj_output_path = os.path.join(self.project_directory, 'output', 'Species', label,
                                                           'lennard_jones.dat')
                             if os.path.isfile(job.local_path_to_lj_file):
-                                shutil.copyfile(job.local_path_to_lj_file, lj_output_path)
+                                try:
+                                    shutil.copyfile(job.local_path_to_lj_file, lj_output_path)
+                                except shutil.SameFileError:
+                                    pass
                                 self.output[label]['job_types']['onedmin'] = True
                                 self.species_dict[label].set_transport_data(
                                     lj_path=os.path.join(self.project_directory, 'output', 'Species', label,
@@ -651,7 +658,10 @@ class Scheduler(object):
                                 os.makedirs(ff_param_fit_path)
                             ff_param_fit_path = os.path.join(ff_param_fit_path, 'gaussian.out')
                             if os.path.isfile(job.local_path_to_output_file):
-                                shutil.copyfile(job.local_path_to_output_file, ff_param_fit_path)
+                                try:
+                                    shutil.copyfile(job.local_path_to_output_file, ff_param_fit_path)
+                                except shutil.SameFileError:
+                                    pass
                                 self.output[label]['job_types']['ff_param_fit'] = True
                                 self.spawn_md_jobs(label)
                             else:
@@ -693,7 +703,7 @@ class Scheduler(object):
             t = time.time() - self.report_time
             if t > 3600 and self.running_jobs:
                 self.report_time = time.time()
-                logger.info(f'Currently running jobs:\n{self.running_jobs}')
+                logger.info(f'Currently running jobs:\n{pprint.pformat(self.running_jobs)}')
 
         # After exiting the Scheduler while loop, append all YAML species not directly calculated to the species_dict:
         for spc in self.species_list:
@@ -714,11 +724,9 @@ class Scheduler(object):
                 ess_trsh_methods: Optional[list] = None,
                 scan: Optional[list] = None,
                 pivots: Optional[list] = None,
-                occ: Optional[int] = None,
                 scan_trsh: Optional[str] = '',
                 scan_res: Optional[int] = None,
                 max_job_time: Optional[int] = None,
-                confs: Optional[str] = None,
                 radius: Optional[float] = None,
                 directed_scan_type: Optional[str] = None,
                 directed_scans: Optional[list] = None,
@@ -746,11 +754,9 @@ class Scheduler(object):
                                    (e.g., "2 1 3 5" as a string or [2, 1, 3, 5] as a list of integers).
             pivots (list, optional): The rotor scan pivots, if the job type is scan. Not used directly in these methods,
                                      but used to identify the rotor.
-            occ (int, optional): The number of occupied orbitals (core + val) from a molpro CCSD sp calc.
             scan_trsh (str, optional): A troubleshooting method for rotor scans.
             scan_res (int, optional): The rotor scan resolution in degrees.
             max_job_time (int, optional): The maximal allowed job time on the server in hours.
-            confs (str, optional): A path to the YAML file conformer coordinates for a Gromacs MD job.
             radius (float, optional): The species radius in Angstrom.
             directed_scan_type (str, optional): The type of the directed scan.
             directed_scans (list, optional): Entries are lists of four-atom dihedral scan indices to constrain.
@@ -771,7 +777,7 @@ class Scheduler(object):
                                                             heavy_atoms=self.species_dict[label].number_of_heavy_atoms)
         job = Job(project=self.project,
                   project_directory=self.project_directory,
-                  species_name=label,
+                  species_label=label,
                   multiplicity=species.multiplicity,
                   job_type=job_type,
                   level=Level(repr=level_of_theory),
@@ -790,12 +796,10 @@ class Scheduler(object):
                   scan_trsh=scan_trsh,
                   ess_trsh_methods=ess_trsh_methods,
                   bath_gas=self.bath_gas,
-                  occ=occ,
                   max_job_time=max_job_time,
                   scan_res=scan_res,
                   checkfile=checkfile,
                   number_of_radicals=species.number_of_radicals,
-                  conformers=confs,
                   radius=radius,
                   directed_scan_type=directed_scan_type,
                   directed_scans=directed_scans,
@@ -901,11 +905,9 @@ class Scheduler(object):
                      ess_trsh_methods=job.ess_trsh_methods,
                      scan=job.scan,
                      pivots=job.pivots,
-                     occ=job.occ,
                      scan_trsh=job.scan_trsh,
                      scan_res=job.scan_res,
                      max_job_time=job.max_job_time,
-                     confs=job.conformers,
                      radius=job.radius,
                      directed_scan_type=job.directed_scan_type,
                      directed_scans=job.directed_scans,
@@ -1105,7 +1107,7 @@ class Scheduler(object):
                         job0 = job
                 with open(job0.local_path_to_output_file, 'r') as f:
                     lines = f.readlines()
-                    core = val = 0, 0
+                    core = val = 0
                     for line in lines:
                         if 'NUMBER OF CORE ORBITALS' in line:
                             core = int(line.split()[4])
@@ -1116,12 +1118,11 @@ class Scheduler(object):
                     else:
                         raise SchedulerError(f'Could not determine number of core and valence orbitals from CCSD '
                                              f'sp calculation for {label}')
-                occ = val + core  # the occupied orbitals are the core and valence orbitals
+                self.species_dict[label].occ = val + core  # the occupied orbitals are the core and valence orbitals
                 self.run_job(label=label,
                              xyz=self.species_dict[label].get_xyz(generate=False),
                              level_of_theory='ccsd/vdz',
-                             job_type='sp',
-                             occ=occ)
+                             job_type='sp')
             else:
                 # MRCI was requested but no sp job ran for this species, run CCSD first
                 logger.info(f'running a CCSD job for {label} before MRCI')
@@ -1145,7 +1146,7 @@ class Scheduler(object):
         """
         if self.job_types['rotors'] and isinstance(self.species_dict[label].rotors_dict, dict):
             for i, rotor in self.species_dict[label].rotors_dict.items():
-                # Since this function applied in multiple cases, all cases are listed for debugging
+                # Since this function is relevant for in multiple cases, all cases are listed for debugging
                 # [have not started] success = None, and scan_path = ''
                 # [first time calculating] success = None, and scan_path = ''
                 # [converged, good] success = True, and scan_path is file
@@ -1161,7 +1162,7 @@ class Scheduler(object):
                         continue
                 scan = rotor['scan']
                 if not isinstance(scan[0], list):
-                    # check that a 1D rotors is not linear
+                    # check that a 1D rotor is not linear
                     coords = xyz_to_coords_list(self.species_dict[label].get_xyz())
                     v1 = [c1 - c2 for c1, c2 in zip(coords[scan[0] - 1], coords[scan[1] - 1])]
                     v2 = [c2 - c1 for c1, c2 in zip(coords[scan[1] - 1], coords[scan[2] - 1])]
@@ -2079,7 +2080,10 @@ class Scheduler(object):
                 # copy the frequency file to the species / TS output folder
                 folder_name = 'rxns' if self.species_dict[label].is_ts else 'Species'
                 freq_path = os.path.join(self.project_directory, 'output', folder_name, label, 'geometry', 'freq.out')
-                shutil.copyfile(job.local_path_to_output_file, freq_path)
+                try:
+                    shutil.copyfile(job.local_path_to_output_file, freq_path)
+                except shutil.SameFileError:
+                    pass
                 # set species.polarizability
                 polarizability = parser.parse_polarizability(job.local_path_to_output_file)
                 if polarizability is not None:
@@ -2343,7 +2347,7 @@ class Scheduler(object):
         # If energies were obtained, draw the scan curve
         if energies is not None and len(energies):
             folder_name = 'rxns' if job.is_ts else 'Species'
-            rotor_path = os.path.join(self.project_directory, 'output', folder_name, job.species_name, 'rotors')
+            rotor_path = os.path.join(self.project_directory, 'output', folder_name, job.species_label, 'rotors')
             plotter.plot_1d_rotor_scan(angles=angles,
                                        energies=energies,
                                        path=rotor_path,
@@ -2597,7 +2601,7 @@ class Scheduler(object):
             - ``True`` if the troubleshooting is valid.
             - The actions are actual applied in the troubleshooting.
         """
-        label = job.species_name
+        label = job.species_label
         trsh_success = False
         actual_actions = dict()  # If troubleshooting fails, there will be no action
         # Read used troubleshooting methods

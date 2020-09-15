@@ -32,7 +32,7 @@ class TestJob(unittest.TestCase):
         cls.xyz_c = {'symbols': ('C',), 'isotopes': (12,), 'coords': ((0.0, 0.0, 0.0),)}
         cls.job1 = Job(project='arc_project_for_testing_delete_after_usage3',
                        ess_settings=cls.ess_settings,
-                       species_name='tst_spc',
+                       species_label='tst_spc',
                        xyz=cls.xyz_c,
                        job_type='opt',
                        level=Level(repr={'method': 'b3lyp', 'basis': '6-31+g(d)'}),
@@ -57,7 +57,7 @@ class TestJob(unittest.TestCase):
                          'ess_settings': {'gaussian': ['server1', 'server2'], 'terachem': ['server1'],
                                           'molpro': [u'server2'], 'onedmin': [u'server1'], 'qchem': [u'server1'],
                                           'orca': ['server1']},
-                         'species_name': 'tst_spc',
+                         'species_label': 'tst_spc',
                          'is_ts': False,
                          'fine': True,
                          'job_id': 0,
@@ -72,7 +72,7 @@ class TestJob(unittest.TestCase):
                                    'method_type': 'dft',
                                    'software': 'gaussian',
                                    },
-                         'total_job_memory_gb': 14,
+                         'job_memory_gb': 14,
                          'multiplicity': 1,
                          'project': 'arc_project_for_testing_delete_after_usage3',
                          'project_directory': os.path.join(arc_path, 'Projects', 'project_test'),
@@ -91,7 +91,7 @@ class TestJob(unittest.TestCase):
         job = Job(**job_dict)
         self.assertEqual(job.multiplicity, 1)
         self.assertEqual(job.charge, 0)
-        self.assertEqual(job.species_name, 'tst_spc')
+        self.assertEqual(job.species_label, 'tst_spc')
         self.assertEqual(job.server, 'server1')
         self.assertEqual(job.level.as_dict(), {'method': 'b3lyp', 'basis': '6-31+g(d)',
                                                'method_type': 'dft', 'software': 'gaussian'})
@@ -101,81 +101,81 @@ class TestJob(unittest.TestCase):
 
     def test_automatic_ess_assignment(self):
         """Test that the Job module correctly assigns a software for specific methods and basis sets"""
-        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
+        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_label='tst_spc', xyz=self.xyz_c,
                    job_type='opt', level={'method': 'b3lyp', 'basis': '6-311++G(d,p)'},
                    multiplicity=1, testing=True,
                    project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'gaussian')
 
-        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
+        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_label='tst_spc', xyz=self.xyz_c,
                    job_type='opt', level={'method': 'ccsd(t)', 'basis': 'avtz'},
                    multiplicity=1, testing=True,
                    project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'molpro')
 
-        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
+        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_label='tst_spc', xyz=self.xyz_c,
                    job_type='opt', level={'method': 'wb97xd2', 'basis': '6-311++g(d,p)'},
                    multiplicity=1, testing=True,
                    project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'terachem')
 
-        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
+        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_label='tst_spc', xyz=self.xyz_c,
                    job_type='opt', level={'method': 'wb97x-d3', 'basis': '6-311++g(d,p)'},
                    multiplicity=1, testing=True,
                    project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'qchem')
 
-        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
+        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_label='tst_spc', xyz=self.xyz_c,
                    job_type='opt', level={'method': 'b97', 'basis': '6-311++g(d,p)'},
                    multiplicity=1, testing=True,
                    project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'gaussian')
 
-        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
+        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_label='tst_spc', xyz=self.xyz_c,
                    job_type='opt', level={'method': 'm062x', 'basis': '6-311++g(d,p)'},
                    multiplicity=1, testing=True,
                    project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'gaussian')
 
-        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
+        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_label='tst_spc', xyz=self.xyz_c,
                    job_type='opt', level={'method': 'm06-2x', 'basis': '6-311++g(d,p)'},
                    multiplicity=1, testing=True,
                    project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'qchem')
 
-        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
+        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_label='tst_spc', xyz=self.xyz_c,
                    job_type='scan', level={'method': 'm062x', 'basis': '6-311++g(d,p)'},
                    multiplicity=1, testing=True,
                    project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'gaussian')
 
-        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
+        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_label='tst_spc', xyz=self.xyz_c,
                    job_type='scan', level={'method': 'm06-2x', 'basis': '6-311++g(d,p)'},
                    multiplicity=1, testing=True,
                    project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'qchem')
-        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
+        job0 = Job(project='project_test', ess_settings=self.ess_settings, species_label='tst_spc', xyz=self.xyz_c,
                    job_type='sp', level={'method': 'dlpno-ccsd(t)', 'basis': 'aug-cc-pvtz',
                                          'auxiliary_basis': 'aug-cc-pvtz/c'}, multiplicity=1,
                    testing=True, project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True,
                    job_num=100)
         self.assertEqual(job0.software, 'orca')
 
-        self.assertEqual(job0.total_job_memory_gb, 14)
+        self.assertEqual(job0.job_memory_gb, 14)
         self.assertEqual(job0.max_job_time, 120)
 
     def test_bath_gas(self):
         """Test correctly assigning the bath_gas attribute"""
         self.assertIsNone(self.job1.bath_gas)
 
-        job2 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc',
+        job2 = Job(project='project_test', ess_settings=self.ess_settings, species_label='tst_spc',
                    xyz=self.xyz_c, job_type='onedmin',
                    level={'method': 'b3lyp', 'basis': '6-31+g(d)'}, multiplicity=1,
                    testing=True, project_directory=os.path.join(arc_path, 'Projects', 'project_test'),
                    fine=True, job_num=100)
         self.assertEqual(job2.bath_gas, 'N2')
 
-        job2 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc',
+        job2 = Job(project='project_test', ess_settings=self.ess_settings, species_label='tst_spc',
                    xyz=self.xyz_c, job_type='onedmin',
                    level={'method': 'b3lyp', 'basis': '6-31+g(d)'}, multiplicity=1,
                    testing=True, project_directory=os.path.join(arc_path, 'Projects', 'project_test'),
@@ -237,7 +237,7 @@ class TestJob(unittest.TestCase):
     def test_set_cpu_and_mem(self):
         """Test assigning number of cpu's and memory"""
         self.job1.cpu_cores = 8
-        self.job1.total_job_memory_gb = 14
+        self.job1.job_memory_gb = 14
         self.job1.input_file_memory = None
         self.job1.submit_script_memory = None
         self.job1.server = 'server2'
@@ -331,30 +331,6 @@ class TestJob(unittest.TestCase):
         self.assertEqual(self.job1.additional_files_to_upload[1]['name'], 'coords.yml')
         self.assertFalse(self.job1.additional_files_to_upload[1]['make_x'])
         self.assertIn('coords.yml', self.job1.additional_files_to_upload[1]['remote'])
-
-        self.assertEqual(self.job1.additional_files_to_upload[2]['source'], 'path')
-        self.assertEqual(self.job1.additional_files_to_upload[2]['name'], 'acpype.py')
-        self.assertFalse(self.job1.additional_files_to_upload[2]['make_x'])
-        self.assertIn('acpype.py', self.job1.additional_files_to_upload[2]['remote'])
-        self.assertIn('acpype.py', self.job1.additional_files_to_upload[2]['local'])
-
-        self.assertEqual(self.job1.additional_files_to_upload[3]['source'], 'path')
-        self.assertEqual(self.job1.additional_files_to_upload[3]['name'], 'mdconf.py')
-        self.assertFalse(self.job1.additional_files_to_upload[3]['make_x'])
-        self.assertIn('mdconf.py', self.job1.additional_files_to_upload[3]['remote'])
-        self.assertIn('mdconf.py', self.job1.additional_files_to_upload[3]['local'])
-
-        self.assertEqual(self.job1.additional_files_to_upload[4]['source'], 'path')
-        self.assertEqual(self.job1.additional_files_to_upload[4]['name'], 'M00.tleap')
-        self.assertFalse(self.job1.additional_files_to_upload[4]['make_x'])
-        self.assertIn('M00.tleap', self.job1.additional_files_to_upload[4]['remote'])
-        self.assertIn('M00.tleap', self.job1.additional_files_to_upload[4]['local'])
-
-        self.assertEqual(self.job1.additional_files_to_upload[5]['source'], 'path')
-        self.assertEqual(self.job1.additional_files_to_upload[5]['name'], 'mdp.mdp')
-        self.assertFalse(self.job1.additional_files_to_upload[5]['make_x'])
-        self.assertIn('mdp.mdp', self.job1.additional_files_to_upload[5]['remote'])
-        self.assertIn('mdp.mdp', self.job1.additional_files_to_upload[5]['local'])
 
     def test_format_max_job_time(self):
         """Test that the maximum job time can be formatted properly, including days, minutes, and seconds"""

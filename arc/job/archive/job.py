@@ -33,8 +33,8 @@ logger = get_logger()
 
 default_job_settings, servers, submit_filename, t_max_format, input_filename, output_filename, \
     rotor_scan_resolution, orca_default_options_dict = settings['default_job_settings'], settings['servers'], \
-                                                       settings['submit_filename'], settings['t_max_format'], \
-                                                       settings['input_filename'], settings['output_filename'], \
+                                                       settings['submit_filenames'], settings['t_max_format'], \
+                                                       settings['input_filenames'], settings['output_filenames'], \
                                                        settings['rotor_scan_resolution'], \
                                                        settings['orca_default_options_dict']
 
@@ -1387,7 +1387,7 @@ end
                 remote_file_path = os.path.join(self.remote_path, 'out.txt')
                 with SSHClient(self.server) as ssh:
                     try:
-                        ssh.download_file(remote_file_path=remote_file_path, 
+                        ssh.download_file(remote_file_path=remote_file_path,
                                           local_file_path=local_file_path1)
                     except (TypeError, IOError) as e:
                         logger.warning(f'Got the following error when trying to download out.txt for {self.job_name}:'
@@ -1413,8 +1413,30 @@ end
             content += ''.join([line for line in lines2])
         else:
             if self.server != 'local':
-                raise ValueError(f'Unrecognized cluster software: {cluster_soft}')
-
+                with SSHClient(self.server) as ssh:  # new till `return content`
+                    response = ssh.list_dir(remote_path=self.remote_path)
+            else:
+                response = execute_command('ls -alF {0}'.format(self.local_path))
+            files = list()
+            for line in response[0]:
+                files.append(line.split()[-1])
+            for file_name in files:
+                if 'slurm' in file_name and '.out' in file_name:
+                    local_file_path = os.path.join(self.local_path, file_name)
+                    if self.server != 'local':
+                        remote_file_path = os.path.join(self.remote_path, file_name)
+                        try:
+                            with SSHClient(self.server) as ssh:
+                                ssh.download_file(remote_file_path=remote_file_path,
+                                                  local_file_path=local_file_path)
+                        except (TypeError, IOError) as e:
+                            logger.warning(f'Got the following error when trying to download {file_name} '
+                                           f'for {self.job_name}: {e}')
+                    if os.path.isfile(local_file_path):
+                        with open(local_file_path, 'r') as f:
+                            lines1 = f.readlines()
+                    content += ''.join([line for line in lines1])
+                    content += '\n'
         return content
 
     def _check_job_server_status(self):
