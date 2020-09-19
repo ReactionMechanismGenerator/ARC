@@ -1061,7 +1061,7 @@ def plot_1d_rotor_scan(angles=None,
         else:
             fig_name = f'{pivots}.png'
         fig_path = os.path.join(path, fig_name)
-        plt.savefig(fig_path, dpi=120, facecolor='w', edgecolor='w', orientation='portrait', papertype=None,
+        plt.savefig(fig_path, dpi=120, facecolor='w', edgecolor='w', orientation='portrait',
                     format='png', transparent=False, bbox_inches=None, pad_inches=0.1, metadata=None)
     if is_notebook():
         plt.show()
@@ -1194,9 +1194,10 @@ def plot_2d_rotor_scan(results, path=None, label='', cmap='Blues', resolution=90
     if path is not None:
         fig_name = f'{results["directed_scan_type"]}_{results["scans"]}.png'
         fig_path = os.path.join(path, fig_name)
-        plt.savefig(fig_path, dpi=resolution, facecolor='w', edgecolor='w', orientation='portrait', papertype=None,
+        plt.savefig(fig_path, dpi=resolution, facecolor='w', edgecolor='w', orientation='portrait',
                     format='png', transparent=False, bbox_inches=None, pad_inches=0.1, metadata=None)
 
+    plt.show()
     plt.close(fig=fig)
 
 
