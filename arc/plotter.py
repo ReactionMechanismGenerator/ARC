@@ -1146,22 +1146,26 @@ def plot_2d_rotor_scan(results, path=None, label='', cmap='Blues', resolution=90
             if key in keys_list:
                 energies[i, j] = results['directed_scan'][key]['energy']
             else:
-                key1 = tuple(f'{dihedral:.2f}' for dihedral in [360.0 - phi0, phi1])
-                key2 = tuple(f'{dihedral:.2f}' for dihedral in [phi0, 360.0 - phi1])
-                key3 = tuple(f'{dihedral:.2f}' for dihedral in [360.0 + phi0, phi1])
-                key4 = tuple(f'{dihedral:.2f}' for dihedral in [phi0, 360.0 + phi1])
-                key5 = tuple(f'{dihedral:.2f}' for dihedral in [360.0 + phi0, 360.0 + phi1])
-                key6 = tuple(f'{dihedral:.2f}' for dihedral in [360.0 - phi0, 360.0 - phi1])
-                key7 = tuple(f'{dihedral:.2f}' for dihedral in [-phi0, phi1])
-                key8 = tuple(f'{dihedral:.2f}' for dihedral in [phi0, -phi1])
-                key9 = tuple(f'{dihedral:.2f}' for dihedral in [-phi0, -phi1])
-                for key_ in [key1, key2, key3, key4, key5, key6, key7, key8, key9]:
+                keys = list()
+                keys.append(tuple(f'{dihedral:.2f}' for dihedral in [360.0 - phi0, phi1]))
+                keys.append(tuple(f'{dihedral:.2f}' for dihedral in [phi0, 360.0 - phi1]))
+                keys.append(tuple(f'{dihedral:.2f}' for dihedral in [360.0 + phi0, phi1]))
+                keys.append(tuple(f'{dihedral:.2f}' for dihedral in [phi0, 360.0 + phi1]))
+                keys.append(tuple(f'{dihedral:.2f}' for dihedral in [360.0 + phi0, 360.0 + phi1]))
+                keys.append(tuple(f'{dihedral:.2f}' for dihedral in [360.0 - phi0, 360.0 - phi1]))
+                keys.append(tuple(f'{dihedral:.2f}' for dihedral in [-phi0, phi1]))
+                keys.append(tuple(f'{dihedral:.2f}' for dihedral in [phi0, -phi1]))
+                keys.append(tuple(f'{dihedral:.2f}' for dihedral in [-phi0, -phi1]))
+                keys.append(tuple(f'{dihedral:.2f}' for dihedral in [phi0 - 360.0, phi1]))
+                keys.append(tuple(f'{dihedral:.2f}' for dihedral in [phi0, phi1 - 360.0]))
+                keys.append(tuple(f'{dihedral:.2f}' for dihedral in [phi0 - 360.0, phi1 - 360.0]))
+                for key_ in keys:
                     if key_ in keys_list:
                         energies[i, j] = results['directed_scan'][key_]['energy']
                         break
                 else:
                     logger.warning(f'Could not replace {key} when plotting 2D scan for {label} ({path}).\n'
-                                   f'Tried: {[key1, key2, key3, key4, key5, key6, key7, key8, key9]}.')
+                                   f'Tried: {keys}.')
             if mark_lowest_conformations and energies[i, j] == 0:
                 zero_phi0.append(phi0)
                 zero_phi1.append(phi1)
@@ -1177,10 +1181,11 @@ def plot_2d_rotor_scan(results, path=None, label='', cmap='Blues', resolution=90
     plt.ylabel(f'Dihedral 2 for {results["scans"][1]} (degrees)')
     label = ' for ' + label if label else ''
     plt.title(f'2D scan energies (kJ/mol){label}')
-    min_x = int(np.ceil(np.min(phis0) / 10.0)) * 10
+    # min_x = int(np.ceil(np.min(phis0) / 10.0)) * 10
+    min_x = min_y = -180
     plt.xlim = (min_x, min_x + 360)
     plt.xticks(np.arange(min_x, min_x + 361, step=60))
-    min_y = int(np.ceil(np.min(phis1) / 10.0)) * 10
+    # min_y = int(np.ceil(np.min(phis1) / 10.0)) * 10
     plt.ylim = (min_y, min_y + 360)
     plt.yticks(np.arange(min_y, min_y + 361, step=60))
 
