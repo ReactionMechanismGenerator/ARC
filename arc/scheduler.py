@@ -2815,6 +2815,8 @@ class Scheduler(object):
                          shift=shift,
                          directed_dihedrals=job.directed_dihedrals,
                          directed_scans=job.directed_scans,
+                         directed_scan_type=job.directed_scan_type,
+                         rotor_index=job.rotor_index,
                          cpu_cores=cpu_cores,
                          )
         self.save_restart_dict()
