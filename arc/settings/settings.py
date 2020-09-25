@@ -87,22 +87,34 @@ levels_ess = {
 }
 
 check_status_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat',
-                        'Slurm': '/usr/bin/squeue'}
+                        'Slurm': '/usr/bin/squeue',
+                        'PBS': '/usr/local/bin/qstat',
+                        }
 
 submit_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qsub',
-                  'Slurm': '/usr/bin/sbatch'}
+                  'Slurm': '/usr/bin/sbatch',
+                  'PBS': '/usr/local/bin/qsub',
+                  }
 
 delete_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qdel',
-                  'Slurm': '/usr/bin/scancel'}
+                  'Slurm': '/usr/bin/scancel',
+                  'PBS': '/usr/local/bin/qdel',
+                  }
 
 list_available_nodes_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat -f | grep "/8 " | grep "long" | grep -v "8/8"| grep -v "aAu"',
-                                'Slurm': 'sinfo -o "%n %t %O %E"'}
+                                'Slurm': 'sinfo -o "%n %t %O %E"',
+                                'PBS': 'pbsnodes',
+                                }
 
 submit_filename = {'OGE': 'submit.sh',
-                   'Slurm': 'submit.sl'}
+                   'Slurm': 'submit.sl',
+                   'PBS': 'submit.sh',
+                   }
 
 t_max_format = {'OGE': 'hours',
-                'Slurm': 'days'}
+                'Slurm': 'days',
+                'PBS': 'hours',
+                }
 
 input_filename = {'gaussian': 'input.gjf',
                   'molpro': 'input.in',
