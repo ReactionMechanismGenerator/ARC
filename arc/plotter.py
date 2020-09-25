@@ -1140,11 +1140,14 @@ def plot_2d_rotor_scan(results, path=None, label='', cmap='Blues', resolution=90
     zero_phi0, zero_phi1 = list(), list()
     energies = np.zeros(shape=(phis0.size, phis1.size), dtype=np.float64)
     keys_list = list(results['directed_scan'].keys())
+    e_min = None
     for i, phi0 in enumerate(phis0):
         for j, phi1 in enumerate(phis1):
             key = tuple(f'{dihedral:.2f}' for dihedral in [phi0, phi1])
             if key in keys_list:
                 energies[i, j] = results['directed_scan'][key]['energy']
+                if e_min is None or energies[i, j] < e_min:
+                    e_min = energies[i, j]
             else:
                 keys = list()
                 keys.append(tuple(f'{dihedral:.2f}' for dihedral in [360.0 - phi0, phi1]))
@@ -1159,6 +1162,8 @@ def plot_2d_rotor_scan(results, path=None, label='', cmap='Blues', resolution=90
                 keys.append(tuple(f'{dihedral:.2f}' for dihedral in [phi0 - 360.0, phi1]))
                 keys.append(tuple(f'{dihedral:.2f}' for dihedral in [phi0, phi1 - 360.0]))
                 keys.append(tuple(f'{dihedral:.2f}' for dihedral in [phi0 - 360.0, phi1 - 360.0]))
+                keys.append(tuple(f'{dihedral:.2f}' for dihedral in [phi0 - 360.0, phi1 + 360.0]))
+                keys.append(tuple(f'{dihedral:.2f}' for dihedral in [phi0 + 360.0, phi1 - 360.0]))
                 for key_ in keys:
                     if key_ in keys_list:
                         energies[i, j] = results['directed_scan'][key_]['energy']
@@ -1169,6 +1174,10 @@ def plot_2d_rotor_scan(results, path=None, label='', cmap='Blues', resolution=90
             if mark_lowest_conformations and energies[i, j] == 0:
                 zero_phi0.append(phi0)
                 zero_phi1.append(phi1)
+
+    for i, phi0 in enumerate(phis0):
+        for j, phi1 in enumerate(phis1):
+            energies[i, j] -= e_min
 
     fig = plt.figure(num=None, figsize=(12, 8), dpi=resolution, facecolor='w', edgecolor='k')
 
