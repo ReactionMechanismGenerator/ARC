@@ -219,7 +219,7 @@ class Scheduler(object):
                  restart_dict: Optional[dict] = None,
                  max_job_time: Optional[float] = None,
                  allow_nonisomorphic_2d: Optional[bool] = False,
-                 memory:  Optional[float] = None,
+                 memory: Optional[float] = None,
                  testing: Optional[bool] = False,
                  dont_gen_confs: Optional[list] = None,
                  n_confs: Optional[int] = 10,
@@ -419,7 +419,7 @@ class Scheduler(object):
                             # composite is done; do other jobs
                             if not self.output[species.label]['job_types']['freq'] \
                                     and 'freq' not in list(self.job_dict[species.label].keys()) \
-                                    and (self.species_dict[species.label].is_ts 
+                                    and (self.species_dict[species.label].is_ts
                                          or self.species_dict[species.label].number_of_atoms > 1):
                                 self.run_freq_job(species.label)
                             if self.job_types['rotors']:
@@ -1088,7 +1088,7 @@ class Scheduler(object):
 
             else:
                 raise RuntimeError(f'Unable to set the path for the sp job for species {label}')
-            
+
             return
         if 'sp' not in self.job_dict[label]:  # Check whether or not single point jobs have been spawned yet
             # we're spawning the first sp job for this species
@@ -1197,7 +1197,7 @@ class Scheduler(object):
                             else:
                                 self.spawn_directed_scan_jobs(label, rotor_index=i)
                         else:
-                            self.spawn_directed_scan_jobs(label, rotor_index=i)                    
+                            self.spawn_directed_scan_jobs(label, rotor_index=i)
                 else:
                     # this is a "normal" scan (not directed)
                     # check this job isn't already running on the server(from a restarted project)
@@ -1516,7 +1516,7 @@ class Scheduler(object):
             dihedrals = list()
             for index, (original_dihedral, scan_) in enumerate(zip(original_dihedrals, scans)):
                 dihedral = original_dihedral + \
-                        self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][index] * increment
+                           self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][index] * increment
                 # change the original dihedral so we won't end up with two calcs for 180.0, but none for -180.0
                 # (it only matters for plotting, the geometry is of course the same)
                 dihedral = dihedral if dihedral <= 180.0 else dihedral - 360.0
@@ -1549,7 +1549,7 @@ class Scheduler(object):
                         self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][index] += 1
                         break
                     elif (self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][index] == max_num - 1
-                            and index < len(scans) - 1):
+                          and index < len(scans) - 1):
                         self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][index] = 0
 
     def spawn_md_jobs(self, label, prev_conf_list=None, num_confs=None):
@@ -2417,7 +2417,7 @@ class Scheduler(object):
                     pivots=job.pivots,
                     energies=energies,
                     scan_res=job.scan_res,
-                    used_methods=self.species_dict[label].rotors_dict[i]['trsh_methods'], 
+                    used_methods=self.species_dict[label].rotors_dict[i]['trsh_methods'],
                     log_file=job.local_path_to_output_file,
                     species=self.species_dict[label],
                     preserve_params=self.species_dict[label].preserve_param_in_scan,
@@ -2660,7 +2660,7 @@ class Scheduler(object):
             # spawn a new MD simulation
             ordinal = get_ordinal_indicator(self.species_dict[label].recent_md_conformer[2] + 1)
             logger.info(f'{self.species_dict[label].recent_md_conformer[2] + 1}{ordinal} conformer for '
-                        f'{label}:\n{ lowest_conf[0]}')
+                        f'{label}:\n{lowest_conf[0]}')
             plotter.draw_structure(xyz=lowest_conf[0], species=self.species_dict[label])
             ordinal = get_ordinal_indicator(self.species_dict[label].recent_md_conformer[2] + 2)
             logger.info(f'Spawning the {self.species_dict[label].recent_md_conformer[2] + 2}{ordinal} round of MD '
@@ -2704,8 +2704,8 @@ class Scheduler(object):
                 if any([job_type not in ['conformers', 'opt', 'composite']
                         for job_type in self.job_dict[label].keys()]) else zero_delta
             self.species_dict[label].run_time = self.species_dict[label].run_time \
-                or (conf_time or zero_delta) + (opt_time or zero_delta) \
-                + (comp_time or zero_delta) + (other_time or zero_delta)
+                                                or (conf_time or zero_delta) + (opt_time or zero_delta) \
+                                                + (comp_time or zero_delta) + (other_time or zero_delta)
             logger.info(f'\nAll jobs for species {label} successfully converged. '
                         f'Run time: {self.species_dict[label].run_time}')
         else:
@@ -2968,7 +2968,7 @@ class Scheduler(object):
                 self.species_dict[label].checkfile = job.checkfile
         # determine if the species is a hydrogen (or its isotope) atom
         is_h = self.species_dict[label].number_of_atoms == 1 and \
-            self.species_dict[label].mol.atoms[0].element.symbol in ['H', 'D', 'T']
+               self.species_dict[label].mol.atoms[0].element.symbol in ['H', 'D', 'T']
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, \
             software, job_type, fine, trsh_keyword, memory, shift, cpu_cores, dont_rerun = \
             trsh_ess_job(label=label,
@@ -3009,7 +3009,7 @@ class Scheduler(object):
                          directed_dihedrals=job.directed_dihedrals,
                          directed_scans=job.directed_scans,
                          directed_scan_type=job.directed_scan_type,
-                         rotor_index = job.rotor_index,
+                         rotor_index=job.rotor_index,
                          cpu_cores=cpu_cores,
                          )
         self.save_restart_dict()
