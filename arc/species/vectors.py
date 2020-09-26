@@ -209,6 +209,8 @@ def calculate_dihedral_angle(coords: Union[list, tuple, dict],
         raise TypeError(f'coords must be a list or a tuple, got\n{coords}\nwhich is a {type(coords)}')
     if index not in [0, 1]:
         raise VectorsError(f'index must be either 0 or 1, got {index}')
+    if torsion is None:
+        raise VectorsError(f'torsion cannot be None')
     if len(torsion) != 4:
         raise VectorsError(f'torsion atom list must be of length four, got {len(torsion)}')
     if len(set(torsion)) < 4:

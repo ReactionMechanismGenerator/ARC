@@ -583,7 +583,7 @@ class Scheduler(object):
                             and self.job_dict[label]['scan'][job_name].job_id not in self.servers_jobs_ids:
                         job = self.job_dict[label]['scan'][job_name]
                         successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
-                        if successful_server_termination:
+                        if successful_server_termination and job.directed_scans is None:
                             self.check_scan_job(label=label, job=job)
                         self.timer = False
                         break
@@ -3008,6 +3008,8 @@ class Scheduler(object):
                          shift=shift,
                          directed_dihedrals=job.directed_dihedrals,
                          directed_scans=job.directed_scans,
+                         directed_scan_type=job.directed_scan_type,
+                         rotor_index = job.rotor_index,
                          cpu_cores=cpu_cores,
                          )
         self.save_restart_dict()
