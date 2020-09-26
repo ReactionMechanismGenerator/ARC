@@ -242,6 +242,13 @@ class Job(object):
         self.xyz = check_xyz_dict(xyz)
         self.radius = radius
         self.directed_scan_type = directed_scan_type
+        self.directed_dihedrals = None
+        if directed_dihedrals is not None:
+            if isinstance(directed_dihedrals[0], list):
+                self.directed_dihedrals = [[float(d) for d in dd] for dd in directed_dihedrals]
+            else:
+                self.directed_dihedrals = [float(d) for d in directed_dihedrals]  # it's a string in the restart dict
+
         self.rotor_index = rotor_index
         self.directed_scans = directed_scans
         self.directed_dihedrals = [float(d) for d in directed_dihedrals] if directed_dihedrals is not None \
@@ -394,7 +401,9 @@ class Job(object):
         if self.occ is not None:
             job_dict['occ'] = self.occ
         if self.directed_dihedrals is not None:
-            job_dict['directed_dihedrals'] = ['{0:.2f}'.format(dihedral) for dihedral in self.directed_dihedrals]
+            job_dict['directed_dihedrals'] = ['{0:.2f}'.format(dihedral) if not isinstance(dihedral, list)
+                                              else ['{0:.2f}'.format(d) for d in dihedral]
+                                              for dihedral in self.directed_dihedrals]
         if self.directed_scans is not None:
             job_dict['directed_scans'] = self.directed_scans
         if self.directed_scan_type is not None:
@@ -1290,7 +1299,8 @@ end
         if self.fine:
             logger.info(f'Running job {self.job_name} for {self.species_name} (fine opt)')
         elif self.directed_dihedrals is not None and self.directed_scans is not None:
-            dihedrals = ['{0:.2f}'.format(dihedral) for dihedral in self.directed_dihedrals]
+            dihedrals = ['{0:.2f}'.format(dihedral) if not isinstance(dihedral, list)
+                         else ['{0:.2f}'.format(d) for d in dihedral] for dihedral in self.directed_dihedrals]
             logger.info(f'Running job {self.job_name} for {self.species_name} (pivots: {self.directed_scans}, '
                         f'dihedrals: {dihedrals})')
         elif self.pivots:
