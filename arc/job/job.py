@@ -1374,11 +1374,13 @@ end
     def _get_additional_job_info(self):
         """
         Download the additional information of stdout and stderr from the server.
+        stdout and stderr are named out.txt and err.txt respectively
+        submission script in submit.py should contain -o and -e flags.
         """
         lines1, lines2 = list(), list()
         content = ''
         cluster_soft = servers[self.server]['cluster_soft'].lower()
-        if cluster_soft in ['oge', 'sge']:
+        if cluster_soft in ['oge', 'sge', 'slurm', 'pbs']:
             local_file_path1 = os.path.join(self.local_path, 'out.txt')
             local_file_path2 = os.path.join(self.local_path, 'err.txt')
             if self.server != 'local':
@@ -1388,13 +1390,17 @@ end
                         ssh.download_file(remote_file_path=remote_file_path, 
                                           local_file_path=local_file_path1)
                     except (TypeError, IOError) as e:
-                        logger.warning(f'Got the following error when trying to download out.txt for {self.job_name}:')
+                        logger.warning(f'Got the following error when trying to download out.txt for {self.job_name}:'
+                                       f'Please check that the submission script contains a -o flag '
+                                       f'with stdout named out.txt (e.g., "#SBATCH -o out.txt").')
                         logger.warning(e)
                     remote_file_path = os.path.join(self.remote_path, 'err.txt')
                     try:
                         ssh.download_file(remote_file_path=remote_file_path, local_file_path=local_file_path2)
                     except (TypeError, IOError) as e:
-                        logger.warning(f'Got the following error when trying to download err.txt for {self.job_name}:')
+                        logger.warning(f'Got the following error when trying to download err.txt for {self.job_name}:'
+                                       f'Please check that the submission script contains a -e flag '
+                                       f'with stdout named err.txt (e.g., "#SBATCH -o err.txt").')
                         logger.warning(e)
             if os.path.isfile(local_file_path1):
                 with open(local_file_path1, 'r') as f:
@@ -1405,32 +1411,10 @@ end
             content += ''.join([line for line in lines1])
             content += '\n'
             content += ''.join([line for line in lines2])
-        elif cluster_soft == 'slurm':
+        else:
             if self.server != 'local':
-                with SSHClient(self.server) as ssh:
-                    response = ssh.list_dir(remote_path=self.remote_path)
-            else:
-                response = execute_command('ls -alF {0}'.format(self.local_path))
-            files = list()
-            for line in response[0]:
-                files.append(line.split()[-1])
-            for file_name in files:
-                if 'slurm' in file_name and '.out' in file_name:
-                    local_file_path = os.path.join(self.local_path, file_name)
-                    if self.server != 'local':
-                        remote_file_path = os.path.join(self.remote_path, file_name)
-                        try:
-                            with SSHClient(self.server) as ssh:
-                                ssh.download_file(remote_file_path=remote_file_path, 
-                                                  local_file_path=local_file_path)
-                        except (TypeError, IOError) as e:
-                            logger.warning(f'Got the following error when trying to download {file_name} '
-                                           f'for {self.job_name}: {e}')
-                    if os.path.isfile(local_file_path):
-                        with open(local_file_path, 'r') as f:
-                            lines1 = f.readlines()
-                    content += ''.join([line for line in lines1])
-                    content += '\n'
+                raise ValueError(f'Unrecognized cluster software: {cluster_soft}')
+
         return content
 
     def _check_job_server_status(self):
@@ -1525,12 +1509,13 @@ end
         # determine amount of memory in submit script based on cluster job scheduling system
         cluster_software = servers[self.server].get('cluster_soft').lower()
         if cluster_software in ['oge', 'sge']:
-            # In SGE, `-l h_vmem=5000M` specify the amount of maximum memory required per cpu (all cores) to be 5000 MB.
+            # In SGE, `-l h_vmem=5000M` specifies the amount of maximum memory required per cpu (all cores) to be 5000 MB.
             self.submit_script_memory = math.ceil(total_submit_script_memory)  # MB
         elif cluster_software in ['slurm']:
-            # In Slurm, `#SBATCH --mem-per-cpu={2000}` specify the amount of memory required per cpu core to be 2000 MB.
+            # In Slurm, `#SBATCH --mem-per-cpu={2000}` specifies the amount of memory required per cpu core to be 2000 MB.
             self.submit_script_memory = math.ceil(total_submit_script_memory / self.cpu_cores)  # MB
-
+        elif cluster_software in ['pbs']:
+            self.submit_script_memory = math.ceil(total_submit_script_memory / self.cpu_cores)  # MB
         # determine amount of memory in job input file based on ESS
         if self.software.lower() in ['molpro', 'terachem']:
             # Molpro's and TeraChem's memory is per cpu core and in MW (mega word; 1 MW ~= 8 MB; 1 GB = 128 MW)
