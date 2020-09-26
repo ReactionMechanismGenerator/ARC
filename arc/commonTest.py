@@ -592,7 +592,7 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
         self.assertFalse(common.is_same_sequence_sublist([4, 3, 2], [1, 2, 3, 4]))
 
     def test_get_ordered_intersection_of_two_lists(self):
-        """Test get ordered intersection of two lists."""
+        """Test get ordered intersection of two lists"""
         l1 = [1, 2, 3, 3, 5, 6]
         l2 = [6, 3, 5, 5, 1]
 
@@ -615,6 +615,23 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
         l1 = [1, 2, 3, 3, 5, 6]
         l2 = [7]
         self.assertEqual(common.get_ordered_intersection_of_two_lists(l1, l2), list())
+
+    def test_get_angle_in_180_range(self):
+        """Test the getting a corresponding angle in the -180 to +180 range"""
+        self.assertEqual(common.get_angle_in_180_range(0), 0)
+        self.assertEqual(common.get_angle_in_180_range(10), 10)
+        self.assertEqual(common.get_angle_in_180_range(-5.364589, round_to=None), -5.364589)
+        self.assertEqual(common.get_angle_in_180_range(-5.364589), -5.36)
+        self.assertEqual(common.get_angle_in_180_range(-120), -120)
+        self.assertEqual(common.get_angle_in_180_range(179.999), 180)
+        self.assertEqual(common.get_angle_in_180_range(180), 180)
+        self.assertEqual(common.get_angle_in_180_range(-180), -180)
+        self.assertEqual(common.get_angle_in_180_range(181), -179)
+        self.assertEqual(common.get_angle_in_180_range(360), 0)
+        self.assertEqual(common.get_angle_in_180_range(362), 2)
+        self.assertEqual(common.get_angle_in_180_range(1000), -80)
+        self.assertEqual(common.get_angle_in_180_range(-1000), 80)
+        self.assertEqual(common.get_angle_in_180_range(247.62), -112.38)
 
     @classmethod
     def tearDownClass(cls):
