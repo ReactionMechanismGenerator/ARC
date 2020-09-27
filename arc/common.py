@@ -1054,3 +1054,26 @@ def get_ordered_intersection_of_two_lists(l1: list,
         l3 = [v for v in l3 if v not in lookup and lookup.add(v) is None]
 
     return l3
+
+
+def get_angle_in_180_range(angle: float,
+                           round_to: Optional[int] = 2,
+                           ) -> float:
+    """
+    Get the corresponding angle in the -180 to +180 degree range.
+
+    Args:
+        angle (float): An angle in degrees.
+        round_to (int, optional): The number of decimal figures to round the result to.
+                                  ``None`` to not round. Default: 2.
+
+    Returns:
+        float: The corresponding angle in the -180 to +180 degree range.
+    """
+    angle = float(angle)
+    while not (-180 <= angle <= 180):
+        factor = 360 if angle < -180 else -360
+        angle += factor
+    if round_to is not None:
+        return round(angle, round_to)
+    return angle

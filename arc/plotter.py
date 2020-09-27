@@ -28,6 +28,7 @@ from rmgpy.quantity import ScalarQuantity
 from rmgpy.species import Species
 
 from arc.common import (extermum_list,
+                        get_angle_in_180_range,
                         get_logger,
                         is_notebook,
                         save_yaml_file,
@@ -190,7 +191,7 @@ def plot_3d_mol_as_scatter(xyz, path=None, plot_h=True, show_plot=True, name='',
     ax.scatter(xs=x, ys=y, zs=z, s=sizes, c=colors, depthshade=True)
     for i, symbol in enumerate(symbols):
         text = symbol if index is None else symbol + ' ' + str(i + index)
-        ax.text(x[i]+0.01, y[i]+0.01, z[i]+0.01, text, size=10)
+        ax.text(x[i] + 0.01, y[i] + 0.01, z[i] + 0.01, text, size=10)
     plt.axis('off')
     if show_plot:
         plt.show()
@@ -363,7 +364,7 @@ def draw_thermo_parity_plots(species_list: list,
     thermo_sources = '\nSources of thermoproperties determined by RMG for the parity plots:\n'
     max_label_len = max([len(label) for label in labels])
     for i, label in enumerate(labels):
-        thermo_sources += '   {0}: {1}{2}\n'.format(label, ' '*(max_label_len - len(label)), comments[i])
+        thermo_sources += '   {0}: {1}{2}\n'.format(label, ' ' * (max_label_len - len(label)), comments[i])
     logger.info(thermo_sources)
     if path is not None:
         with open(os.path.join(path, 'thermo.info'), 'w') as f:
@@ -556,8 +557,8 @@ def text_plotter(x_data, y_data, labels, text_positions, axis, txt_width, txt_he
     for x, y, lab, t in zip(x_data, y_data, labels, text_positions):
         axis.text(x - .03, 1.02 * t, f'{lab}', rotation=0, color='black', fontsize=10)
         if y != t:
-            axis.arrow(x, t + 20, 0, y-t, color='blue', alpha=0.2, width=txt_width*0.0,
-                       head_width=.02, head_length=txt_height*0.5,
+            axis.arrow(x, t + 20, 0, y - t, color='blue', alpha=0.2, width=txt_width * 0.0,
+                       head_width=.02, head_length=txt_height * 0.5,
                        zorder=0, length_includes_head=True)
 
 
@@ -903,10 +904,10 @@ def plot_torsion_angles(torsion_angles, torsions_sampling_points=None, wells_dic
         axs.frameon = False
         axs.set_ylabel(str(torsion), labelpad=10)
         axs.set_yticklabels(['' for _ in range(len(torsions))])
-        axs.tick_params(axis='y',         # changes apply to the x-axis
-                        which='both',     # both major and minor ticks are affected
-                        left=False,       # ticks along the bottom edge are off
-                        right=False,      # ticks along the top edge are off
+        axs.tick_params(axis='y',  # changes apply to the x-axis
+                        which='both',  # both major and minor ticks are affected
+                        left=False,  # ticks along the bottom edge are off
+                        right=False,  # ticks along the top edge are off
                         labelleft=False)  # labels along the bottom edge are off
         axs.set_title('Dihedral angle (degrees)')
         axs.axes.xaxis.set_ticks(ticks=ticks)
@@ -955,10 +956,10 @@ def plot_torsion_angles(torsion_angles, torsions_sampling_points=None, wells_dic
             # axs[i].yaxis.label.set_rotation(0)
             if e_conformers is None:
                 axs[i].set_yticklabels(['' for _ in range(len(torsions))])
-                axs[i].tick_params(axis='y',         # changes apply to the x-axis
-                                   which='both',     # both major and minor ticks are affected
-                                   left=False,       # ticks along the bottom edge are off
-                                   right=False,      # ticks along the top edge are off
+                axs[i].tick_params(axis='y',  # changes apply to the x-axis
+                                   which='both',  # both major and minor ticks are affected
+                                   left=False,  # ticks along the bottom edge are off
+                                   right=False,  # ticks along the top edge are off
                                    labelleft=False)  # labels along the bottom edge are off
         axs[0].set_title('Dihedral angle (degrees)')
         # Hide x labels and tick labels for all but bottom plot.
@@ -1139,38 +1140,13 @@ def plot_2d_rotor_scan(results, path=None, label='', cmap='Blues', resolution=90
             phis1 = np.append(phis1, phis1[-1] + res1)
     zero_phi0, zero_phi1 = list(), list()
     energies = np.zeros(shape=(phis0.size, phis1.size), dtype=np.float64)
-    keys_list = list(results['directed_scan'].keys())
     e_min = None
     for i, phi0 in enumerate(phis0):
         for j, phi1 in enumerate(phis1):
-            key = tuple(f'{dihedral:.2f}' for dihedral in [phi0, phi1])
-            if key in keys_list:
-                energies[i, j] = results['directed_scan'][key]['energy']
-                if e_min is None or energies[i, j] < e_min:
-                    e_min = energies[i, j]
-            else:
-                keys = list()
-                keys.append(tuple(f'{dihedral:.2f}' for dihedral in [360.0 - phi0, phi1]))
-                keys.append(tuple(f'{dihedral:.2f}' for dihedral in [phi0, 360.0 - phi1]))
-                keys.append(tuple(f'{dihedral:.2f}' for dihedral in [360.0 + phi0, phi1]))
-                keys.append(tuple(f'{dihedral:.2f}' for dihedral in [phi0, 360.0 + phi1]))
-                keys.append(tuple(f'{dihedral:.2f}' for dihedral in [360.0 + phi0, 360.0 + phi1]))
-                keys.append(tuple(f'{dihedral:.2f}' for dihedral in [360.0 - phi0, 360.0 - phi1]))
-                keys.append(tuple(f'{dihedral:.2f}' for dihedral in [-phi0, phi1]))
-                keys.append(tuple(f'{dihedral:.2f}' for dihedral in [phi0, -phi1]))
-                keys.append(tuple(f'{dihedral:.2f}' for dihedral in [-phi0, -phi1]))
-                keys.append(tuple(f'{dihedral:.2f}' for dihedral in [phi0 - 360.0, phi1]))
-                keys.append(tuple(f'{dihedral:.2f}' for dihedral in [phi0, phi1 - 360.0]))
-                keys.append(tuple(f'{dihedral:.2f}' for dihedral in [phi0 - 360.0, phi1 - 360.0]))
-                keys.append(tuple(f'{dihedral:.2f}' for dihedral in [phi0 - 360.0, phi1 + 360.0]))
-                keys.append(tuple(f'{dihedral:.2f}' for dihedral in [phi0 + 360.0, phi1 - 360.0]))
-                for key_ in keys:
-                    if key_ in keys_list:
-                        energies[i, j] = results['directed_scan'][key_]['energy']
-                        break
-                else:
-                    logger.warning(f'Could not replace {key} when plotting 2D scan for {label} ({path}).\n'
-                                   f'Tried: {keys}.')
+            key = tuple(f'{get_angle_in_180_range(dihedral):.2f}' for dihedral in [phi0, phi1])
+            energies[i, j] = results['directed_scan'][key]['energy']
+            if e_min is None or energies[i, j] < e_min:
+                e_min = energies[i, j]
             if mark_lowest_conformations and energies[i, j] == 0:
                 zero_phi0.append(phi0)
                 zero_phi1.append(phi1)
@@ -1190,11 +1166,9 @@ def plot_2d_rotor_scan(results, path=None, label='', cmap='Blues', resolution=90
     plt.ylabel(f'Dihedral 2 for {results["scans"][1]} (degrees)')
     label = ' for ' + label if label else ''
     plt.title(f'2D scan energies (kJ/mol){label}')
-    # min_x = int(np.ceil(np.min(phis0) / 10.0)) * 10
     min_x = min_y = -180
     plt.xlim = (min_x, min_x + 360)
     plt.xticks(np.arange(min_x, min_x + 361, step=60))
-    # min_y = int(np.ceil(np.min(phis1) / 10.0)) * 10
     plt.ylim = (min_y, min_y + 360)
     plt.yticks(np.arange(min_y, min_y + 361, step=60))
 
