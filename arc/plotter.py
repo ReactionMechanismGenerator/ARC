@@ -1228,8 +1228,8 @@ def save_nd_rotor_yaml(results, path):
     modified_results = results.copy()  # don't dump floats into a YAML file, it's buggy
     for dihedral_tuple, dihedral_dict in results['directed_scan'].items():
         for key, val in dihedral_dict.items():
-            if key == 'energy':
+            if key == 'energy' and not isinstance(val, str):
                 modified_results['directed_scan'][dihedral_tuple][key] = f'{val:.2f}'
-            elif key == 'xyz':
+            elif key == 'xyz' and not isinstance(val, str):
                 modified_results['directed_scan'][dihedral_tuple][key] = xyz_to_str(val)
     save_yaml_file(path=path, content=modified_results)
