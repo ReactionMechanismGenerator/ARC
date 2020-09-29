@@ -1069,8 +1069,14 @@ def plot_1d_rotor_scan(angles=None,
     plt.close(fig=fig)
 
 
-def plot_2d_rotor_scan(results, path=None, label='', cmap='Blues', resolution=90,
-                       mark_lowest_conformations=False, original_dihedrals=None):
+def plot_2d_rotor_scan(results: dict,
+                       path: Optional[str] = None,
+                       label: str = '',
+                       cmap: str = 'Blues',
+                       resolution: int = 90,
+                       mark_lowest_conformations: bool = False,
+                       original_dihedrals: Optional[List[float]] = None,
+                       ):
     """
     Plot a 2D rotor scan.
 
