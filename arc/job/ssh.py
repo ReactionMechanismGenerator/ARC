@@ -275,9 +275,12 @@ class SSHClient(object):
         cmd = check_status_command[servers[self.server]['cluster_soft']] + ' -u $USER'
         stdout = self._send_command_to_server(cmd)[0]
         for i, status_line in enumerate(stdout):
-            if (servers[self.server]['cluster_soft'].lower() == 'slurm' and i > 0)\
-                    or (servers[self.server]['cluster_soft'].lower() == 'oge' and i > 1):
+            if servers['local']['cluster_soft'].lower() == 'slurm' and i > 0:
                 running_jobs_ids.append(int(status_line.split()[0]))
+            elif servers['local']['cluster_soft'].lower() in ['oge', 'sge'] and i > 1:
+                running_jobs_ids.append(int(status_line.split()[0]))
+            elif servers['local']['cluster_soft'].lower() == 'pbs' and i > 4:
+                running_jobs_ids.append(int(status_line.split('.')[0]))
         return running_jobs_ids
 
     def submit_job(self, remote_path: str) -> Tuple[str, int]:
@@ -305,14 +308,17 @@ class SSHClient(object):
                 if 'Requested node configuration is not available' in line:
                     logger.warning(f'User may be requesting more resources than are available. Please check server '
                                    f'settings, such as cpus and memory, in ARC/arc/settings/settings.py')
-        elif 'submitted' in stdout[0].lower():
+        elif servers['local']['cluster_soft'].lower() in ['oge', 'sge'] and 'submitted' in stdout[0].lower():
+            job_id = int(stdout[0].split()[2])
             job_status = 'running'
-            if cluster_soft.lower() == 'oge':
-                job_id = int(stdout[0].split()[2])
-            elif cluster_soft.lower() == 'slurm':
-                job_id = int(stdout[0].split()[3])
-            else:
-                raise ValueError(f'Unrecognized cluster software: {cluster_soft}')
+        elif servers['local']['cluster_soft'].lower() == 'slurm' and 'submitted' in stdout[0].lower():
+            job_id = int(stdout[0].split()[3])
+            job_status = 'running'
+        elif servers['local']['cluster_soft'].lower() == 'pbs':
+            job_id = int(stdout[0].split('.')[0])
+            job_status = 'running'
+        else:
+            raise ValueError(f'Unrecognized cluster software: {cluster_soft}')
         return job_status, job_id
 
     def connect(self) -> None:
@@ -423,7 +429,7 @@ class SSHClient(object):
         cluster_soft = servers[self.server]['cluster_soft']
         cmd = list_available_nodes_command[cluster_soft]
         stdout = self._send_command_to_server(command=cmd)[0]
-        if cluster_soft.lower() == 'oge':
+        if cluster_soft.lower() in ['oge', 'sge']:
             # Stdout line example:
             # long1@node01.cluster           BIP   0/0/8          -NA-     lx24-amd64    aAdu
             nodes = [line.split()[0].split('@')[1]
@@ -433,6 +439,8 @@ class SSHClient(object):
             # node01 alloc 1.00 none
             nodes = [line.split()[0] for line in stdout
                      if line.split()[1] in ['mix', 'alloc', 'idle']]
+        elif cluster_soft.lower() == 'pbs':
+            ValueError(f'cluster software : {cluster_soft} not yet implemented please modify job/ssh.py/list_available_nodes')
         return nodes
 
     def change_mode(self,
@@ -525,22 +533,26 @@ def check_job_status_in_stdout(job_id: int,
             break
     else:
         return 'done'
-    status = status_line.split()[4]
-    if status.lower() in ['r', 'qw', 't']:
-        return 'running'
+    if servers[server]['cluster_soft'].lower() == 'slurm':
+        status = status_line.split()[4]
+        if status.lower() in ['r', 'qw', 't', 'cg']:
+            return 'running'
+        elif status.lower() in ['bf', 'ca', 'f', 'nf', 'st', 'oom']:
+            return 'errored'
+    elif servers[server]['cluster_soft'].lower() == 'pbs':
+        status = status_line.split()[-2]
+        if status.lower() in ['r', 'q', 'c', 'e', 'w']:
+            return 'running'
+        elif status.lower() in ['h', 's']:
+            return 'errored'
+    elif servers[server]['cluster_soft'].lower() in ['oge', 'sge']:
+        status = status_line.split()[4]
+        if status.lower() in ['r', 'qw', 't']:
+            return 'running'
+        elif status.lower() in ['e',]:
+            return 'errored'
     else:
-        if servers[server]['cluster_soft'].lower() == 'oge':
-            if '.cluster' in status_line:
-                try:
-                    return 'errored on node ' + status_line.split()[-1].split('@')[1].split('.')[0][-2:]
-                except IndexError:
-                    return 'errored'
-            else:
-                return 'errored'
-        elif servers[server]['cluster_soft'].lower() == 'slurm':
-            return 'errored on node ' + status_line.split()[-1][-2:]
-        else:
-            raise ValueError(f'Unknown cluster software {servers[server]["cluster_soft"]}')
+        raise ValueError(f'Unknown cluster software {servers[server]["cluster_soft"]}')
 
 
 def delete_all_arc_jobs(server_list: list,
