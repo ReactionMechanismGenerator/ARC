@@ -120,6 +120,13 @@ def check_job_status(job_id):
 
         14428     debug xq1371m2   user_name  R 50-04:04:46      1 node06
 
+    PBS (taken from zeldo.dow.com)::
+
+                                                                                          Req'd       Req'd       Elap
+        Job ID                  Username    Queue    Jobname          SessID  NDS   TSK   Memory      Time    S   Time
+        ----------------------- ----------- -------- ---------------- ------ ----- ------ --------- --------- - ---------
+        2016614.zeldo.local     u780444     workq    scan.pbs          75380     1     10       --  730:00:00 R  00:00:20
+        2016616.zeldo.local     u780444     workq    scan.pbs          75380     1     10       --  730:00:00 R  00:00:20
     """
     server = 'local'
     cmd = check_status_command[servers[server]['cluster_soft']] + ' -u $USER'
@@ -153,9 +160,13 @@ def check_running_jobs_ids():
     cmd = check_status_command[servers['local']['cluster_soft']] + ' -u $USER'
     stdout = execute_command(cmd)[0]
     for i, status_line in enumerate(stdout):
-        if (servers['local']['cluster_soft'].lower() == 'slurm' and i > 0)\
-                or (servers['local']['cluster_soft'].lower() == 'oge' and i > 1):
+        if servers['local']['cluster_soft'].lower() == 'slurm' and i > 0:
             running_jobs_ids.append(int(status_line.split()[0]))
+        elif servers['local']['cluster_soft'].lower() == 'oge' and i > 1:
+            running_jobs_ids.append(int(status_line.split()[0]))
+        elif servers['local']['cluster_soft'].lower() == 'pbs' and i > 4:
+            running_jobs_ids.append(int(status_line.split('.')[0]))
+
     return running_jobs_ids
 
 
@@ -169,14 +180,17 @@ def submit_job(path):
     cmd = 'cd ' + path + '; ' + submit_command[servers['local']['cluster_soft']] + ' '\
         + submit_filename[servers['local']['cluster_soft']]
     stdout = execute_command(cmd)[0]
-    if 'submitted' in stdout[0].lower():
+    if servers['local']['cluster_soft'].lower() in ['oge', 'sge'] and 'submitted' in stdout[0].lower():
+        job_id = int(stdout[0].split()[2])
         job_status = 'running'
-        if servers['local']['cluster_soft'].lower() == 'oge':
-            job_id = int(stdout[0].split()[2])
-        elif servers['local']['cluster_soft'].lower() == 'slurm':
-            job_id = int(stdout[0].split()[3])
-        else:
-            raise ValueError('Unrecognized cluster software {0}'.format(servers['local']['cluster_soft']))
+    elif servers['local']['cluster_soft'].lower() == 'slurm' and 'submitted' in stdout[0].lower():
+        job_id = int(stdout[0].split()[3])
+        job_status = 'running'
+    elif servers['local']['cluster_soft'].lower() == 'pbs':
+        job_id = int(stdout[0].split('.')[0])
+        job_status = 'running'
+    else:
+        raise ValueError('Unrecognized cluster software {0}'.format(servers['local']['cluster_soft']))
     return job_status, job_id
 
 
@@ -231,7 +245,11 @@ def delete_all_local_arc_jobs(jobs: Optional[List[Union[str, int]]] = None):
                         server_job_id = status_line.split()[0]
                         delete_job(server_job_id)
                         print(f'deleted job {job_id} ({server_job_id} on server)')
-                    elif servers[server]['cluster_soft'].lower() == 'oge':
+                    elif servers[server]['cluster_soft'].lower() == 'pbs':
+                        server_job_id = status_line.split()[0]
+                        delete_job(server_job_id)
+                        print(f'deleted job {job_id} ({server_job_id} on server)')
+                    elif servers[server]['cluster_soft'].lower() in ['oge', 'sge']:
                         delete_job(job_id)
                         print(f'deleted job {job_id}')
         print('\ndone.')
