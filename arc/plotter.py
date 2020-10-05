@@ -693,7 +693,7 @@ def save_thermo_lib(species_list: list,
                                               thermo=spc.thermo,
                                               shortDesc=spc.thermo.comment,
                                               longDesc=spc.long_thermo_description)
-                except (InvalidAdjacencyListError, DatabaseError) as e:
+                except (InvalidAdjacencyListError, DatabaseError, ValueError) as e:
                     logger.error(f'Could not save species {spc.label} in the thermo library, got:')
                     logger.info(e)
             else:
@@ -722,7 +722,7 @@ def save_transport_lib(species_list, path, name, lib_long_desc=''):
                                                  transport=spc.transport_data,
                                                  shortDesc=spc.thermo.comment,
                                                  longDesc=description)
-                except InvalidAdjacencyListError as e:
+                except (InvalidAdjacencyListError, ValueError) as e:
                     logger.error(f'Could not save species {spc.label} in the transport library, got:')
                     logger.info(e)
                 logger.info(f'\n\nTransport properties for {spc.label}:')
@@ -1069,8 +1069,14 @@ def plot_1d_rotor_scan(angles=None,
     plt.close(fig=fig)
 
 
-def plot_2d_rotor_scan(results, path=None, label='', cmap='Blues', resolution=90,
-                       mark_lowest_conformations=False, original_dihedrals=None):
+def plot_2d_rotor_scan(results: dict,
+                       path: Optional[str] = None,
+                       label: str = '',
+                       cmap: str = 'Blues',
+                       resolution: int = 90,
+                       mark_lowest_conformations: bool = False,
+                       original_dihedrals: Optional[List[float]] = None,
+                       ):
     """
     Plot a 2D rotor scan.
 
@@ -1228,8 +1234,8 @@ def save_nd_rotor_yaml(results, path):
     modified_results = results.copy()  # don't dump floats into a YAML file, it's buggy
     for dihedral_tuple, dihedral_dict in results['directed_scan'].items():
         for key, val in dihedral_dict.items():
-            if key == 'energy':
+            if key == 'energy' and not isinstance(val, str):
                 modified_results['directed_scan'][dihedral_tuple][key] = f'{val:.2f}'
-            elif key == 'xyz':
+            elif key == 'xyz' and not isinstance(val, str):
                 modified_results['directed_scan'][dihedral_tuple][key] = xyz_to_str(val)
     save_yaml_file(path=path, content=modified_results)
