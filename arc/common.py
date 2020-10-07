@@ -1071,7 +1071,7 @@ def get_angle_in_180_range(angle: float,
         float: The corresponding angle in the -180 to +180 degree range.
     """
     angle = float(angle)
-    while not (-180 <= angle <= 180):
+    while not (-180 <= angle < 180):
         factor = 360 if angle < -180 else -360
         angle += factor
     if round_to is not None:
