@@ -624,7 +624,7 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
         self.assertEqual(common.get_angle_in_180_range(-5.364589), -5.36)
         self.assertEqual(common.get_angle_in_180_range(-120), -120)
         self.assertEqual(common.get_angle_in_180_range(179.999), 180)
-        self.assertEqual(common.get_angle_in_180_range(180), 180)
+        self.assertEqual(common.get_angle_in_180_range(180), -180)
         self.assertEqual(common.get_angle_in_180_range(-180), -180)
         self.assertEqual(common.get_angle_in_180_range(181), -179)
         self.assertEqual(common.get_angle_in_180_range(360), 0)
