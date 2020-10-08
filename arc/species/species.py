@@ -1076,8 +1076,9 @@ class ARCSpecies(object):
                 for vals2 in vals1:
                     for val in vals2:
                         if val not in all_pivots:
-                            raise SpeciesError('The pivots {0} do not represent a rotor in species {1}. Valid rotors '
-                                               'are: {2}'.format(val, self.label, all_pivots))
+                            raise SpeciesError(f'The pivots {val} do not represent a rotor in species {self.label}. '
+                                               f'Valid rotor pivots are: {all_pivots}\n\n'
+                                               f'Species coordinates:\n{xyz_to_str(self.get_xyz())}')
             # Modify self.rotors_dict to remove respective 1D rotors dicts and add ND rotors dicts
             rotor_indices_to_del = list()
             for key, vals in directed_rotors.items():
