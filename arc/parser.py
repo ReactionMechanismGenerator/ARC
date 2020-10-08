@@ -13,7 +13,7 @@ import qcelemental as qcel
 from arkane.exceptions import LogError
 from arkane.ess import ess_factory, GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
 
-from arc.common import determine_ess, get_logger, is_same_pivot
+from arc.common import determine_ess, get_close_tuple, get_logger, is_same_pivot
 from arc.exceptions import InputError, ParserError
 from arc.species.converter import str_to_xyz, xyz_from_data
 
@@ -500,6 +500,8 @@ def parse_nd_scan_energies(path: str,
                             for i, energy in enumerate(energies):
                                 dihedral_list = [dihedrals_dict[torsion][i] for torsion in torsions]  # ordered
                                 key = tuple(f'{dihedral:.2f}' for dihedral in dihedral_list)
+                                # overwrite previous values for a close key if found:
+                                key = get_close_tuple(key, results['directed_scan'].keys()) or key
                                 results['directed_scan'][key] = {'energy': energy}
                             dihedrals_dict = dict()  # keys are torsion tuples, values are dihedral angles
                     break
