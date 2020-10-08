@@ -1071,9 +1071,55 @@ def get_angle_in_180_range(angle: float,
         float: The corresponding angle in the -180 to +180 degree range.
     """
     angle = float(angle)
-    while not (-180 <= angle <= 180):
+    while not (-180 <= angle < 180):
         factor = 360 if angle < -180 else -360
         angle += factor
     if round_to is not None:
         return round(angle, round_to)
     return angle
+
+
+def get_close_tuple(key_1: Tuple[Union[float, str], ...],
+                    keys: List[Tuple[Union[float, str], ...]],
+                    tolerance: float = 0.05,
+                    raise_error: bool = False,
+                    ) -> Optional[Tuple[Union[float, str], Union[float, str]]]:
+    """
+    Get a key from a list of keys close in value to the given key.
+    Even if just one of the items in the key has a close match, use the close value.
+
+    Args:
+        key_1 (Tuple[Union[float, str], Union[float, str]]): The key used for the search.
+        keys (List[Tuple[Union[float, str], Union[float, str]]]): The list of keys to search within.
+        tolerance (float, optional): The tolerance within which keys are determined to be close.
+        raise_error (bool, optional): Whether to raise a ValueError if a close key wasn't found.
+
+    Raises:
+        ValueError: If a key in ``keys`` has a different length than ``key_1``.
+        ValueError: If a close key was not found and ``raise_error`` is ``True``.
+
+    Returns:
+        Optional[Tuple[Union[float, str], ...]]: A key from the keys list close in value to the given key.
+    """
+    key_1_floats = tuple(float(item) for item in key_1)
+    for key_2 in keys:
+        if len(key_1) != len(key_2):
+            raise ValueError(f'Length of key_1, {key_1}, ({len(key_1)}) must be equal to the lengths of all keys '
+                             f'(got a second key, {key_2}, with length {len(key_2)}).')
+        key_2_floats = tuple(float(item) for item in key_2)
+        if all(abs(item_1 - item_2) <= tolerance for item_1, item_2 in zip(key_1_floats, key_2_floats)):
+            return key_2
+
+    updated_key_1 = [None] * len(key_1)
+    for key_2 in keys:
+        key_2_floats = tuple(float(item) for item in key_2)
+        for i, item in enumerate(key_2_floats):
+            if abs(item - key_1_floats[i]) <= tolerance:
+                updated_key_1[i] = key_2[i]
+
+    if any(key is not None for key in updated_key_1):
+        return tuple(updated_key_1[i] or key_1[i] for i in range(len(key_1)))
+    elif not raise_error:
+        # couldn't find a close key
+        return None
+    raise ValueError(f'Could not locate a key close to {key_1} within the tolerance {tolerance} in the given keys list.')

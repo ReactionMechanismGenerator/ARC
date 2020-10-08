@@ -624,7 +624,7 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
         self.assertEqual(common.get_angle_in_180_range(-5.364589), -5.36)
         self.assertEqual(common.get_angle_in_180_range(-120), -120)
         self.assertEqual(common.get_angle_in_180_range(179.999), 180)
-        self.assertEqual(common.get_angle_in_180_range(180), 180)
+        self.assertEqual(common.get_angle_in_180_range(180), -180)
         self.assertEqual(common.get_angle_in_180_range(-180), -180)
         self.assertEqual(common.get_angle_in_180_range(181), -179)
         self.assertEqual(common.get_angle_in_180_range(360), 0)
@@ -632,6 +632,21 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
         self.assertEqual(common.get_angle_in_180_range(1000), -80)
         self.assertEqual(common.get_angle_in_180_range(-1000), 80)
         self.assertEqual(common.get_angle_in_180_range(247.62), -112.38)
+
+    def test_get_close_tuple(self):
+        """Test getting a close tuple of strings from a list of tuples for a given tuple"""
+        keys = [('121.1', '-180.0'), ('129.1', '-180.0'), ('137.1', '-180.0'), ('145.1', '-180.0'), ('153.1', '-180.0'),
+                ('161.1', '-180.0'), ('169.1', '-180.0'), ('177.1', '-180.0'), ('-174.9', '-180.0'),
+                ('-166.9', '-180.0'), ('-158.9', '-180.0')]
+        self.assertEqual(('161.1', '-180.0'), common.get_close_tuple(key_1=('161.1', '-180.0'), keys=keys))
+        self.assertEqual(('161.1', '-180.0'), common.get_close_tuple(key_1=('161.12', '-180.0'), keys=keys))
+        self.assertEqual(('161.1', '-180.0'), common.get_close_tuple(key_1=('161.075', '-180.0'), keys=keys))
+        self.assertEqual(('161.1', '-180.0'), common.get_close_tuple(key_1=(161.075, '-180.0'), keys=keys))
+        self.assertEqual(('161.1', '-180.0'), common.get_close_tuple(key_1=(161.075, -180.03), keys=keys))
+        self.assertEqual(('161.1', '-150.0'), common.get_close_tuple(key_1=('161.12', '-150.0'), keys=keys))
+        self.assertIsNone(common.get_close_tuple(key_1=(1.075, -150.03), keys=keys))
+        with self.assertRaises(ValueError):
+            common.get_close_tuple(key_1=(1.075, -150.03), keys=keys, raise_error=True)
 
     @classmethod
     def tearDownClass(cls):
