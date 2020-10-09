@@ -1148,15 +1148,28 @@ def plot_2d_rotor_scan(results: dict,
     zero_phi0, zero_phi1 = list(), list()
     energies = np.zeros(shape=(phis0.size, phis1.size), dtype=np.float64)
     e_min = None
+    missing_points, max_missing_points = 0, 0.02 * len(phis0) * len(phis1)
     for i, phi0 in enumerate(phis0):
         for j, phi1 in enumerate(phis1):
-            key = tuple(f'{get_angle_in_180_range(dihedral):.1f}' for dihedral in [phi0, phi1])
+            key = tuple(f'{get_angle_in_180_range(dihedral):.2f}' for dihedral in [phi0, phi1])
             try:
                 energies[i, j] = results['directed_scan'][key]['energy']
             except KeyError:
                 # look for a close key
                 new_key = get_close_tuple(key_1=key, keys=results['directed_scan'].keys())
-                energies[i, j] = results['directed_scan'][new_key]['energy']
+                if new_key in list(results['directed_scan'].keys()):
+                    energies[i, j] = results['directed_scan'][new_key]['energy']
+                else:
+                    # Loosen the tolerance for a close key, find a neighbor key instead to fill this gap.
+                    missing_points += 1
+                    if missing_points <= max_missing_points:
+                        new_key = get_close_tuple(key_1=key,
+                                                  keys=results['directed_scan'].keys(),
+                                                  tolerance=1.1 * max(res0, res1))
+                        energies[i, j] = results['directed_scan'][new_key]['energy']
+                    else:
+                        # There are too many gaps in the data.
+                        raise ValueError(f'The 2D scan data for {label} is missing too many points, cannot plot.')
             if e_min is None or energies[i, j] < e_min:
                 e_min = energies[i, j]
             if mark_lowest_conformations and energies[i, j] == 0:
