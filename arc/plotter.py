@@ -1150,7 +1150,7 @@ def plot_2d_rotor_scan(results: dict,
     e_min = None
     for i, phi0 in enumerate(phis0):
         for j, phi1 in enumerate(phis1):
-            key = tuple(f'{get_angle_in_180_range(dihedral):.1f}' for dihedral in [phi0, phi1])
+            key = tuple(f'{get_angle_in_180_range(dihedral):.2f}' for dihedral in [phi0, phi1])
             try:
                 energies[i, j] = results['directed_scan'][key]['energy']
             except KeyError:
