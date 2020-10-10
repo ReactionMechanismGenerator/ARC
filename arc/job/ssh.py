@@ -275,11 +275,11 @@ class SSHClient(object):
         cmd = check_status_command[servers[self.server]['cluster_soft']] + ' -u $USER'
         stdout = self._send_command_to_server(cmd)[0]
         for i, status_line in enumerate(stdout):
-            if servers['local']['cluster_soft'].lower() == 'slurm' and i > 0:
+            if servers[self.server]['cluster_soft'].lower() == 'slurm' and i > 0:
                 running_jobs_ids.append(int(status_line.split()[0]))
-            elif servers['local']['cluster_soft'].lower() in ['oge', 'sge'] and i > 1:
+            elif servers[self.server]['cluster_soft'].lower() in ['oge', 'sge'] and i > 1:
                 running_jobs_ids.append(int(status_line.split()[0]))
-            elif servers['local']['cluster_soft'].lower() == 'pbs' and i > 4:
+            elif servers[self.server]['cluster_soft'].lower() == 'pbs' and i > 4:
                 running_jobs_ids.append(int(status_line.split('.')[0]))
         return running_jobs_ids
 
@@ -308,13 +308,13 @@ class SSHClient(object):
                 if 'Requested node configuration is not available' in line:
                     logger.warning(f'User may be requesting more resources than are available. Please check server '
                                    f'settings, such as cpus and memory, in ARC/arc/settings/settings.py')
-        elif servers['local']['cluster_soft'].lower() in ['oge', 'sge'] and 'submitted' in stdout[0].lower():
+        elif servers[self.server]['cluster_soft'].lower() in ['oge', 'sge'] and 'submitted' in stdout[0].lower():
             job_id = int(stdout[0].split()[2])
             job_status = 'running'
-        elif servers['local']['cluster_soft'].lower() == 'slurm' and 'submitted' in stdout[0].lower():
+        elif servers[self.server]['cluster_soft'].lower() == 'slurm' and 'submitted' in stdout[0].lower():
             job_id = int(stdout[0].split()[3])
             job_status = 'running'
-        elif servers['local']['cluster_soft'].lower() == 'pbs':
+        elif servers[self.server]['cluster_soft'].lower() == 'pbs':
             job_id = int(stdout[0].split('.')[0])
             job_status = 'running'
         else:
