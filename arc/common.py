@@ -35,6 +35,7 @@ from arc.imports import settings
 logger = logging.getLogger('arc')
 
 arc_path = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))  # absolute path to the ARC folder
+local_arc_path = os.path.join(os.getenv("HOME"), '.arc')
 
 VERSION = '1.1.0'
 
