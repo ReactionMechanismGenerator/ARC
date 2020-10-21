@@ -1130,6 +1130,8 @@ def plot_2d_rotor_scan(results: dict,
     if len(results['scans']) != 2:
         raise InputError(f'results must represent a 2D rotor, got {len(results["scans"])}D')
 
+    results['directed_scan'] = clean_scan_results(results['directed_scan'])
+
     # phis0 and phis1 correspond to columns and rows in energies, respectively
     phis0 = np.array(sorted(list(set([float(key[0]) for key in results['directed_scan'].keys()]))), np.float64)
     phis1 = np.array(sorted(list(set([float(key[1]) for key in results['directed_scan'].keys()]))), np.float64)
@@ -1258,3 +1260,30 @@ def save_nd_rotor_yaml(results, path):
             elif key == 'xyz' and not isinstance(val, str):
                 modified_results['directed_scan'][dihedral_tuple][key] = xyz_to_str(val)
     save_yaml_file(path=path, content=modified_results)
+
+
+def clean_scan_results(results: dict) -> dict:
+    """
+    Filter noise of high energy points if the value distribution is such that removing the top 10% points
+    results in values which are significantly lower. Useful for scanning methods which occasionally give
+    extremely high energies by mistake.
+
+    Args:
+        results (dict): The directed snan results dictionary. Keys are dihedral tuples, values are energies.
+
+    Returns:
+        dict: A filtered results dictionary.
+    """
+    results_ = results.copy()
+    for val in results_.values():
+        val['energy'] = float(val['energy'])
+    min_val = min([val['energy'] for val in results_.values()])
+    for val in results_.values():
+        val['energy'] = val['energy'] - min_val
+    max_val = max([val['energy'] for val in results_.values()])
+    cut_down_values = [val['energy'] for val in results_.values() if val['energy'] < 0.9 * max_val]
+    max_cut_down_values = max(cut_down_values)
+    if max_cut_down_values < 0.5 * max_val:
+        # filter high values
+        results_ = {key: val for key, val in results_.items() if val['energy'] < 0.5 * max_val}
+    return results_

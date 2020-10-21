@@ -137,6 +137,28 @@ H      -1.16115119    0.31478894   -0.81506145
 """
         self.assertEqual(content, expected_content)
 
+    def test_clean_scan_results(self):
+        """Test the clean_scan_results function"""
+        correct_results = {(1, 1): {'energy': 0},
+                               (1, 2): {'energy': 7},
+                               (1, 3): {'energy': 4.5},
+                               (1, 4): {'energy': 5}}
+
+        results_1 = {(1, 1): {'energy': -2},
+                     (1, 2): {'energy': '5'},
+                     (1, 3): {'energy': 2.5},
+                     (1, 4): {'energy': 3}}
+        filtered_results_1 = plotter.clean_scan_results(results_1)
+        self.assertEqual(filtered_results_1, correct_results)
+
+        results_2 = {(1, 1): {'energy': '-2'},
+                     (1, 2): {'energy': 5},
+                     (1, 3): {'energy': 2.5},
+                     (1, 4): {'energy': 3},
+                     (1, 5): {'energy': 1100}}
+        filtered_results_2 = plotter.clean_scan_results(results_2)
+        self.assertEqual(filtered_results_2, correct_results)
+
     @classmethod
     def tearDownClass(cls):
         """A function that is run ONCE after all unit tests in this class."""
