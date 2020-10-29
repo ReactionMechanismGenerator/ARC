@@ -4438,5 +4438,279 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         self.assertEqual(len(converter.cluster_confs_by_rmsd(xyzs3)), 4)
 
 
+    def test_calc_rmsd_wrapper(self):
+        #todo: water is just from Avogadro
+        water = {'symbols': ('O', 'H', 'H'),
+                 'isotopes': (16, 1, 1),
+                 'coords': ((-5.51592, 3.73879, -0.0781),
+                  (-4.54091, 3.60486, 0.03153),
+                  (-5.8528, 2.86262, -0.39346))}
+
+        # swap the order of the two hydrogens
+        water_shuffled = {'symbols': ('O', 'H', 'H'),
+                          'isotopes': (16, 1, 1),
+                          'coords': ((-5.51592, 3.73879, -0.0781),
+                           (-5.8528, 2.86262, -0.39346),
+                           (-4.54091, 3.60486, 0.03153))}
+        # todo benzene is just from Avogadro
+        benzene = {'symbols': ('C', 'C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H'),
+                   'isotopes': (12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1),
+                    'coords': ((-6.22823, 3.50946, -0.0),
+                     (-7.39415, 2.73619, -0.0),
+                     (-7.30744, 1.33984, -0.0),
+                     (-6.05481, 0.71675, -0.0),
+                     (-4.88889, 1.49003, -0.0),
+                     (-4.9756, 2.88638, -0.0),
+                     (-6.29532, 4.58972, -0.0),
+                     (-8.36323, 3.21823, 0.0),
+                     (-3.91982, 1.00799, -0.0),
+                     (-4.07361, 3.4846, -0.0),
+                     (-8.20943, 0.74161, 0.0),
+                     (-5.98773, -0.3635, -0.0))}
+
+        # move the first C and H the last C and H
+        benzene_shuffled = {'symbols': ('C', 'C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H'),
+                            'isotopes': (12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1),
+                            'coords': ((-7.39415, 2.73619, -0.0),
+                             (-7.30744, 1.33984, -0.0),
+                             (-6.05481, 0.71675, -0.0),
+                             (-4.88889, 1.49003, -0.0),
+                             (-4.9756, 2.88638, -0.0),
+                             (-6.22823, 3.50946, -0.0),
+                             (-8.36323, 3.21823, 0.0),
+                             (-3.91982, 1.00799, -0.0),
+                             (-4.07361, 3.4846, -0.0),
+                             (-8.20943, 0.74161, 0.0),
+                             (-5.98773, -0.3635, -0.0),
+                             (-6.29532, 4.58972, -0.0))}
+
+        #todo: diels alder is from pyGSM repo example
+        diels_alder_reactant1 = {'symbols': ('C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H'),
+                                 'isotopes': (12, 12, 12, 12, 1, 1, 1, 1, 1, 1),
+                                 'coords': ((-1.06001665, -1.51714564, 0.05288674),
+                                  (-1.82955412, -0.59408623, -0.53968755),
+                                  (-2.01260392, 0.79370866, -0.08977969),
+                                  (-1.09740592, 1.54095108, 0.54110413),
+                                  (-2.40063347, -0.88235561, -1.42321617),
+                                  (-0.51365172, -1.30383154, 0.96828855),
+                                  (-0.96688964, -2.52122005, -0.35117707),
+                                  (-1.32088987, 2.55628492, 0.85667305),
+                                  (-0.09454533, 1.17390089, 0.74481476),
+                                  (-2.98142355, 1.23828062, -0.32070817))}
+        diels_alder_reactant2 = {'symbols': ('C', 'C', 'H', 'H', 'H', 'H'),
+                                 'isotopes': ( 12, 12, 1, 1, 1, 1),
+                                 'coords': ((3.0184144, -0.33274049, 0.53420511),
+                                  (2.4826795, 0.16990394, -0.57660955),
+                                  (3.89171154, 0.11254122, 1.00536203),
+                                  (2.60849064, -1.21591676, 1.01902222),
+                                  (1.60806045, -0.27640639, -1.04373753),
+                                  (2.89526366, 1.05096138, -1.06301386))}
+
+        diels_alder_product = {'symbols': ('C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'C', 'C', 'H', 'H', 'H', 'H'),
+                              'isotopes': (12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 12, 12, 1, 1, 1, 1),
+                              'coords': ((0.01856467, -1.50510245, 0.07175535),
+                               (-1.2547258, -0.70291222, -0.0482828),
+                               (-1.28551058, 0.6332418, -0.08527776),
+                               (-0.04811068, 1.49696591, -0.04422009),
+                               (-2.18794361, -1.26282927, -0.10437525),
+                               (-0.12133841, -2.31635373, 0.79987325),
+                               (0.2266356, -2.00643122, -0.88734886),
+                               (-0.13761965, 2.30980257, -0.77849415),
+                               (0.01956981, 1.99500653, 0.9364469),
+                               (-2.24481452, 1.14593304, -0.15154508),
+                               (1.21601433, -0.63168912, 0.47947978),
+                               (1.22945185, 0.68482088, -0.31033881),
+                               (1.14834814, -0.40532251, 1.552809),
+                               (2.1532721, -1.18259709, 0.3319896),
+                               (1.29564501, 0.45837391, -1.38389788),
+                               (2.11591575, 1.28013898, -0.05856919))}
+
+        diels_alder_product_shuffled = {'symbols': ('C', 'C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
+                                        'isotopes': (12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                                        'coords': ((-1.2547258, -0.70291222, -0.0482828),
+                                         (-1.28551058, 0.6332418, -0.08527776),
+                                         (-0.04811068, 1.49696591, -0.04422009),
+                                         (0.01856467, -1.50510245, 0.07175535),
+                                         (1.21601433, -0.63168912, 0.47947978),
+                                         (1.22945185, 0.68482088, -0.31033881),
+                                         (1.14834814, -0.40532251, 1.552809),
+                                         (-2.18794361, -1.26282927, -0.10437525),
+                                         (-0.12133841, -2.31635373, 0.79987325),
+                                         (0.2266356, -2.00643122, -0.88734886),
+                                         (2.11591575, 1.28013898, -0.05856919),
+                                         (0.01956981, 1.99500653, 0.9364469),
+                                         (-2.24481452, 1.14593304, -0.15154508),
+                                         (-0.13761965, 2.30980257, -0.77849415),
+                                         (2.1532721, -1.18259709, 0.3319896),
+                                         (1.29564501, 0.45837391, -1.38389788))}
+
+        #todo: rxn 4 from data folder in ts_gen_v2 from Colin's GSM calculation
+        bicyclo_2_1_1_hexane = {'symbols': ('C', 'C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
+                                'isotopes': (12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                                'coords': ((0.9169, -0.7547, -0.6859),
+                                 (0.4761, -0.5879, 0.7867),
+                                 (0.8267, 0.908, 0.6094),
+                                 (0.2969, 0.6551, -0.8207),
+                                 (-1.188, 0.3748, -0.5643),
+                                 (-1.0515, -0.5719, 0.6616),
+                                 (0.4766, -1.5695, -1.2656),
+                                 (2.0009, -0.7487, -0.802),
+                                 (0.906, -1.1878, 1.5874),
+                                 (1.901, 1.092, 0.6321),
+                                 (0.3024, 1.6372, 1.2316),
+                                 (0.5446, 1.3161, -1.6499),
+                                 (-1.6691, -0.1071, -1.4173),
+                                 (-1.746, 1.2841, -0.3337),
+                                 (-1.4607, -1.5663, 0.474),
+                                 (-1.5331, -0.1736, 1.5564))}
+        hexa_1_5_diene = {'symbols': ('C', 'C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
+                          'isotopes': (12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                          'coords': ((1.1146, -0.6792, -1.5515),
+                           (0.0125, -0.1634, 1.6512),
+                           (0.903, 0.8155, 1.6218),
+                           (0.1003, 0.1653, -1.652),
+                           (-1.008, 0.371, -0.6592),
+                           (-0.9939, -0.5032, 0.5888),
+                           (1.2581, -1.3098, -0.6816),
+                           (1.8529, -0.7614, -2.3397),
+                           (-0.0294, -0.7972, 2.5344),
+                           (1.0103, 1.4747, 0.768),
+                           (1.5741, 0.9847, 2.4548),
+                           (0.0274, 0.7807, -2.5461),
+                           (-1.9537, 0.2071, -1.1869),
+                           (-1.0296, 1.4281, -0.3689),
+                           (-0.8618, -1.5532, 0.3023),
+                           (-1.9848, -0.4619, 1.0536))}
+
+        hexa_1_5_diene_shuffled = {'symbols': ('C', 'C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
+                                   'isotopes': (12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                                   'coords': ((0.903, 0.8155, 1.6218),
+                                    (0.0125, -0.1634, 1.6512),
+                                    (0.1003, 0.1653, -1.652),
+                                    (-0.9939, -0.5032, 0.5888),
+                                    (1.1146, -0.6792, -1.5515),
+                                    (-1.008, 0.371, -0.6592),
+                                    (1.8529, -0.7614, -2.3397),
+                                    (1.2581, -1.3098, -0.6816),
+                                    (-0.0294, -0.7972, 2.5344),
+                                    (-1.9848, -0.4619, 1.0536),
+                                    (1.5741, 0.9847, 2.4548),
+                                    (0.0274, 0.7807, -2.5461),
+                                    (-1.9537, 0.2071, -1.1869),
+                                    (1.0103, 1.4747, 0.768),
+                                    (-1.0296, 1.4281, -0.3689),
+                                    (-0.8618, -1.5532, 0.3023))}
+
+        # define precision when comparing values
+        precision = 10
+
+        # check that 2 identical molecules have 0 rmsd and their dictionaries are unchanged
+        reactant1_xyz, reactant2_xyz, product1_xyz, product2_xyz, rmsd = converter.calc_rmsd_wrapper(water, water)
+        self.assertEqual(np.round(rmsd, precision), 0)
+        self.assertEqual(reactant1_xyz['symbols'], product1_xyz['symbols'])
+        self.assertEqual(reactant1_xyz['coords'], product1_xyz['coords'])
+
+        # unimolecular "reaction"
+        # check that 2 identical molecules with shuffled atom order have 0 rmsd and their sorted dictionaries are identical
+        reactant1_xyz, reactant2_xyz, product1_xyz, product2_xyz, rmsd = converter.calc_rmsd_wrapper(water,
+                                                                                                     water_shuffled)
+        self.assertEqual(np.round(rmsd, precision), 0)
+        self.assertEqual(reactant1_xyz['symbols'], product1_xyz['symbols'])
+        self.assertEqual(reactant1_xyz['coords'], product1_xyz['coords'])
+
+        # unimolecular "reaction"
+        # check that 2 identical molecules with shuffled atom order have 0 rmsd and their sorted dictionaries are identical
+        reactant1_xyz, reactant2_xyz, product1_xyz, product2_xyz, rmsd = converter.calc_rmsd_wrapper(benzene,
+                                                                                                     benzene_shuffled)
+        self.assertEqual(np.round(rmsd, precision), 0)
+        self.assertEqual(reactant1_xyz['symbols'], product1_xyz['symbols'])
+        self.assertEqual(reactant1_xyz['coords'], product1_xyz['coords'])
+
+        # bimolecular "reaction"
+        # check that 2 identical molecules with shuffled atom order have 0 rmsd and their sorted dictionaries are identical
+        reactant1_xyz, reactant2_xyz, product1_xyz, product2_xyz, rmsd = converter.calc_rmsd_wrapper(reactant1_xyz=water,
+                                                                                                     reactant2_xyz=benzene,
+                                                                                                     product1_xyz=water_shuffled,
+                                                                                                     product2_xyz=benzene_shuffled)
+        self.assertEqual(np.round(rmsd, precision), 0)
+        self.assertEqual(reactant1_xyz['symbols'], product1_xyz['symbols'])
+        self.assertEqual(reactant1_xyz['coords'], product1_xyz['coords'])
+        self.assertEqual(reactant2_xyz['symbols'], product2_xyz['symbols'])
+        self.assertEqual(reactant2_xyz['coords'], product2_xyz['coords'])
+
+        # unimolecular ring-opening reaction
+        reactant1_xyz, reactant2_xyz, product1_xyz, product2_xyz, rmsd_ordered = converter.calc_rmsd_wrapper(bicyclo_2_1_1_hexane,
+                                                                                                             hexa_1_5_diene)
+        self.assertEqual(reactant1_xyz['symbols'], product1_xyz['symbols'])
+        reactant1_xyz, reactant2_xyz, product1_xyz, product2_xyz, rmsd_shuffled = converter.calc_rmsd_wrapper(bicyclo_2_1_1_hexane,
+                                                                                                              hexa_1_5_diene_shuffled)
+        self.assertEqual(reactant1_xyz['symbols'], product1_xyz['symbols'])
+        # check that rmsd of ordered atoms equals rmsd after reordering shuffled atoms
+        self.assertEqual(np.round(rmsd_ordered, precision), np.round(rmsd_shuffled, precision))
+
+        # bimolecular diels alder reaction
+        # reactant and product atoms are ordered
+        reactant1_xyz, reactant2_xyz, product1_xyz, product2_xyz, rmsd_ordered = converter.calc_rmsd_wrapper(reactant1_xyz=diels_alder_reactant1,
+                                                                                                             reactant2_xyz=diels_alder_reactant2,
+                                                                                                             product1_xyz=diels_alder_product,
+                                                                                                             xyz_file_name='diels_alder_ordered')
+        # product atoms are shuffled
+        reactant1_xyz, reactant2_xyz, product1_xyz, product2_xyz, rmsd_shuffled = converter.calc_rmsd_wrapper(reactant1_xyz=diels_alder_reactant1,
+                                                                                                              reactant2_xyz=diels_alder_reactant2,
+                                                                                                              product1_xyz=diels_alder_product_shuffled,
+                                                                                                              xyz_file_name='diels_alder_shuffled')
+        # check that rmsd of ordered atoms equals rmsd after reordering shuffled atoms
+        self.assertEqual(np.round(rmsd_ordered, precision), np.round(rmsd_shuffled, precision))
+
+        def read_xyzs(filename):
+            """
+            Read the xyz file written for DE GSM
+            Args:
+                filename (str): name of xyz file to read
+            Returns:
+                reactant_dict (dict): ARC xyz dictionary for the reactant
+                product_dict (dict): ARC xyz dictionary for the product
+            """
+            lines = open(filename).readlines()
+            num_atoms = int(lines[0])
+            start_atom = 2
+            end_atom = start_atom + num_atoms
+            reactant_str = ""
+            for line in lines[start_atom:end_atom]:
+                reactant_str += line
+            reactant_dict = converter.str_to_xyz(reactant_str)
+
+            start_atom = end_atom + 2
+            end_atom = start_atom + num_atoms
+            product_str = ""
+            for line in lines[start_atom:end_atom]:
+                product_str += line
+            product_dict = converter.str_to_xyz(product_str)
+
+            return reactant_dict, product_dict
+
+        # read in the 2 xyz files as ARC xyz dictionaries
+        import os
+        dir_path = os.path.dirname(os.path.realpath(__file__))
+
+        ordered_xyz = os.path.join(dir_path,'diels_alder_ordered.xyz')
+        shuffled_xyz = os.path.join(dir_path, 'diels_alder_shuffled.xyz')
+
+        reactant_dict_ordered, product_dict_ordered = read_xyzs(ordered_xyz)
+        reactant_dict_shuffled, product_dict_shuffled = read_xyzs(shuffled_xyz)
+
+        # check that all atoms and coordinates are ordered identically
+        self.assertEqual(reactant_dict_ordered['symbols'], product_dict_ordered['symbols'])
+        self.assertEqual(reactant_dict_shuffled['symbols'], product_dict_shuffled['symbols'])
+        self.assertEqual(reactant_dict_ordered['coords'], reactant_dict_shuffled['coords'])
+        self.assertEqual(product_dict_ordered['coords'], product_dict_shuffled['coords'])
+
+        # remove the two diels alder xyz files written during the test
+        files = [ordered_xyz, shuffled_xyz]
+        for file in files:
+            if os.path.isfile(file):
+                os.remove(file)
+
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
