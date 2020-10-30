@@ -528,5 +528,37 @@ cp * "$SubmitDir/"
 rm -rf $WorkDir
 
 """,
+    },
+    'txe1': {
+        # pyGSM: double ended growing string method
+        'pyGSM': """#!/bin/bash -l
+#SBATCH -J {name}
+#SBATCH -N 1
+#SBATCH -n {cpus}
+#SBATCH --time={t_max}
+#SBATCH --mem-per-cpu={memory}
+
+
+# Activate Python environment and run program.
+source activate arc_env
+
+echo "============================================================"
+echo "Job ID : $SLURM_JOB_ID"
+echo "Job Name : $SLURM_JOB_NAME"
+echo "Starting on : $(date)"
+echo "Running on node : $SLURMD_NODENAME"
+echo "Current directory : $(pwd)"
+echo "============================================================"
+
+gsm -xyzfile {path_to_xyz_file} \
+    -mode DE_GSM \
+    -num_nodes {cpus} \ 
+    -package QChem \
+    -lot_inp_file qstart \
+    -coordinate_type DLC > log 2>&1
+
+rm -rf $QCSCRATCH/string_$ID
+
+""",
     }
 }
