@@ -720,7 +720,8 @@ class ARCReaction(object):
             identify flux pairs like in RMG
             orient a line: cm1 - X - Y - cm2 if there are two reactants
         """
-        xyz_dict = mapped_xyz_dict = {'symbols': tuple(), 'isotopes': tuple(), 'coords': tuple()}
+        xyz_dict = {'symbols': tuple(), 'isotopes': tuple(), 'coords': tuple()}
+        mapped_xyz_dict = {'symbols': tuple(), 'isotopes': tuple(), 'coords': tuple()}
         for product in self.p_species:
             xyz = product.get_xyz()
             xyz_dict['symbols'] += xyz['symbols']
