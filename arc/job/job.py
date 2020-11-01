@@ -583,6 +583,7 @@ class Job(object):
 
         if self.software == 'gaussian' and self.level.method_type in ['semiempirical', 'force_field']:
             self.checkfile = None
+        calcfc = ' calcfc,' if len(self.xyz['symbols']) > 1 else ''
 
         # Determine HF/DFT restriction type
         if (self.multiplicity > 1 and self.level.basis) \
@@ -715,16 +716,16 @@ wf,spin={spin},charge={charge};}}
         if self.job_type in ['conformer', 'opt']:
             if self.software == 'gaussian':
                 if self.is_ts:
-                    job_type_1 = 'opt=(ts, calcfc, noeigentest, maxcycles=100)'
+                    job_type_1 = f'opt=(ts,{calcfc} noeigentest, maxcycles=100)'
                 else:
-                    job_type_1 = 'opt=(calcfc)'
+                    job_type_1 = 'opt=(calcfc)' if len(self.xyz['symbols']) > 1 else 'opt'
                 if self.fine:
                     # Note that the Acc2E argument is not available in Gaussian03
                     fine = 'scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
                     if self.is_ts:
-                        job_type_1 = 'opt=(ts, calcfc, noeigentest, tight, maxstep=5, maxcycles=100)'
+                        job_type_1 = f'opt=(ts,{calcfc} noeigentest, tight, maxstep=5, maxcycles=100)'
                     else:
-                        job_type_1 = 'opt=(tight, calcfc, maxstep=5)'
+                        job_type_1 = f'opt=(tight,{calcfc} maxstep=5)'
                 if self.checkfile is not None:
                     job_type_1 += ' guess=read'
                 else:
@@ -854,16 +855,16 @@ name
         elif self.job_type == 'optfreq':
             if self.software == 'gaussian':
                 if self.is_ts:
-                    job_type_1 = 'opt=(ts, calcfc, noeigentest, maxstep=5, maxcycles=100)'
+                    job_type_1 = f'opt=(ts,{calcfc} noeigentest, maxstep=5, maxcycles=100)'
                 else:
-                    job_type_1 = 'opt=(calcfc, noeigentest)'
+                    job_type_1 = f'opt=({calcfc}noeigentest)'
                 job_type_2 = 'freq iop(7/33=1)'
                 if self.fine:
                     fine = 'scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
                     if self.is_ts:
-                        job_type_1 = 'opt=(ts, calcfc, noeigentest, tight, maxstep=5, maxcycles=100)'
+                        job_type_1 = f'opt=(ts,{calcfc} noeigentest, tight, maxstep=5, maxcycles=100)'
                     else:
-                        job_type_1 = 'opt=(calcfc, noeigentest, tight)'
+                        job_type_1 = f'opt=(noeigentest,{calcfc} tight)'
                 if self.checkfile is not None:
                     job_type_1 += ' guess=read'
                 else:
@@ -971,13 +972,13 @@ end
                 if self.fine:
                     fine = 'scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
                 if self.is_ts:
-                    job_type_1 = 'opt=(ts, calcfc, noeigentest, tight, maxstep=5, maxcycles=100)'
+                    job_type_1 = f'opt=(ts,{calcfc} noeigentest, tight, maxstep=5, maxcycles=100)'
                 else:
                     if self.level.method in ['rocbs-qb3']:
                         # No analytic 2nd derivatives (FC) for these methods
                         job_type_1 = 'opt=(noeigentest, tight)'
                     else:
-                        job_type_1 = 'opt=(calcfc, noeigentest, tight)'
+                        job_type_1 = f'opt=(noeigentest,{calcfc} tight)'
                 if self.checkfile is not None:
                     job_type_1 += ' guess=mix'
                 else:
@@ -1002,7 +1003,7 @@ end
                                f'Got neither for job {self.job_name} of {self.species_name}.')
             if self.software == 'gaussian':
                 ts = 'ts, ' if self.is_ts else ''
-                job_type_1 = f'opt=({ts}modredundant, calcfc, noeigentest, maxStep=5) scf=(tight, direct) ' \
+                job_type_1 = f'opt=({ts}modredundant,{calcfc} noeigentest, maxStep=5) scf=(tight, direct) ' \
                              f'integral=(grid=ultrafine, Acc2E=12)'
                 if self.checkfile is not None:
                     job_type_1 += ' guess=read'
@@ -1047,10 +1048,10 @@ end
                     job_type_1 = 'scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
                 else:
                     if self.is_ts:
-                        job_type_1 = 'opt=(ts, modredundant, calcfc, noeigentest, maxStep=5) scf=(tight, direct)' \
+                        job_type_1 = f'opt=(ts, modredundant,{calcfc} noeigentest, maxStep=5) scf=(tight, direct)' \
                                      ' integral=(grid=ultrafine, Acc2E=12)'
                     else:
-                        job_type_1 = 'opt=(modredundant, calcfc, noeigentest, maxStep=5) scf=(tight, direct)' \
+                        job_type_1 = f'opt=(modredundant,{calcfc} noeigentest, maxStep=5) scf=(tight, direct)' \
                                      ' integral=(grid=ultrafine, Acc2E=12)'
                     for directed_scan, directed_dihedral in zip(self.directed_scans, self.directed_dihedrals):
                         scan_atoms = ' '.join([str(num) for num in directed_scan])
