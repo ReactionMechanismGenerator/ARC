@@ -1813,33 +1813,35 @@ def calc_rmsd_wrapper(reactant1_xyz: dict,
         product1_xyz (dict): ARC dictionary of XYZ coordinates of product 1.
         product2_xyz (dict): ARC dictionary of XYZ coordinates of product 2.
         rmsd (float): The RMSD between two species.
+        q_review (array): Array of indices that map product atoms onto reactant atoms.
     """
 
-    def translate_coordinates(molecule1_xyz_dict, molecule2_xyz_dict):
+    def translate_coordinates(molecule1_xyz_dict, molecule2_xyz_dict, size):
         """
         Helper function that is used to translate the coordinates of one of the molecules in a bimolecular reaction
-        if the coordinates of both reactants or products overlap in 3D space.
-
-        :return:
+        if the coordinates of both reactants or both products overlap in 3D space.
+        Args:
+            molecule1_xyz_dict (dict): ARC xyz dictionary for the first molecule.
+            molecule2_xyz_dict (dict): ARC xyz dictionary for the second molecule.
+        Returns:
+            molecule2_xyz_dict (dict): The updated ARC xyz dictionary that has translated molecule 2 away from molecule 1.
         """
         xyz_molecule = xyz_to_str(molecule1_xyz_dict).split('\n')
         xyz_molecule.extend(xyz_to_str(molecule2_xyz_dict).split('\n'))
-        xyz = str(p_size) + '\n' + '\n' + '\n'.join(xyz_molecule) + '\n'
-        molecules_collide = colliding_atoms(str_to_xyz(xyz[4:]))
-        print(molecules_collide)
+        xyz = str(size) + '\n' + '\n' + '\n'.join(xyz_molecule) + '\n'
+        molecules_collide = colliding_atoms(str_to_xyz(xyz[3:]))
 
         # translate coordinates of reactant 2 until the atoms are no longer overlapping
         while molecules_collide:
             # translate coordinates
-            molecule2_xyz_dict['coords'] = np.array(molecule2_xyz_dict['coords']) - 1
+            molecule2_xyz_dict['coords'] = np.array(molecule2_xyz_dict['coords']) - 0.5
 
             xyz_molecule = xyz_to_str(molecule1_xyz_dict).split('\n')
             xyz_molecule.extend(xyz_to_str(molecule2_xyz_dict).split('\n'))
-            xyz = str(p_size) + '\n' + '\n' + '\n'.join(xyz_molecule) + '\n'
-            molecules_collide = colliding_atoms(str_to_xyz(xyz[4:]))
-            print(molecules_collide)
+            xyz = str(size) + '\n' + '\n' + '\n'.join(xyz_molecule) + '\n'
+            molecules_collide = colliding_atoms(str_to_xyz(xyz[3:]))
 
-        # convert the np array of coordinates back to tuples
+        # convert the np array of coordinates back to tuples for the ARC dictionary
         translated_coords = tuple()
         for coord in molecule2_xyz_dict['coords']:
             x, y, z = coord[0], coord[1], coord[2]
@@ -1862,9 +1864,9 @@ def calc_rmsd_wrapper(reactant1_xyz: dict,
         p_size = p_all.shape[0]
         xyz = str(p_size) + '\n' + '\n' + '\n'.join(xyz_reactant) + '\n'
         # convert the xyz string to ARC xyz dictionary and check if the reactants collide
-        reactants_collide = colliding_atoms(str_to_xyz(xyz[4:]))
+        reactants_collide = colliding_atoms(str_to_xyz(xyz[3:]))
         if reactants_collide:
-            reactant2_xyz = translate_coordinates(reactant1_xyz, reactant2_xyz)
+            reactant2_xyz = translate_coordinates(reactant1_xyz, reactant2_xyz, p_size)
 
     # get product/s
     q_all_atoms, q_all = np.array(product1_xyz['symbols']), np.array(product1_xyz['coords'])
@@ -1879,9 +1881,9 @@ def calc_rmsd_wrapper(reactant1_xyz: dict,
         q_size = q_all.shape[0]
         xyz = str(q_size) + '\n' + '\n' + '\n'.join(xyz_product) + '\n'
         # convert the xyz string to ARC xyz dictionary and check if the reactants collide
-        products_collide = colliding_atoms(str_to_xyz(xyz[4:]))
+        products_collide = colliding_atoms(str_to_xyz(xyz[3:]))
         if products_collide:
-            product2_xyz = translate_coordinates(product1_xyz, product2_xyz)
+            product2_xyz = translate_coordinates(product1_xyz, product2_xyz, q_size)
 
     p_size = p_all.shape[0]
     q_size = q_all.shape[0]
@@ -1964,7 +1966,6 @@ def calc_rmsd_wrapper(reactant1_xyz: dict,
 
     # center q on p's original coordinates
     q_all += p_cent
-    product_xyz = calculate_rmsd.set_coordinates(q_all_atoms, q_all, title="product xyz - modified")
 
     # set rotation method
     if rotation_method:
