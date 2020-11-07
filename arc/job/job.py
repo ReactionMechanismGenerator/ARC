@@ -979,6 +979,8 @@ end
                         job_type_1 = 'opt=(noeigentest, tight)'
                     else:
                         job_type_1 = f'opt=(noeigentest,{calcfc} tight)'
+                if len(self.xyz['symbols']) == 1:
+                    job_type_1 += ' iop(1/18=1)'  # don't optimize the geometry for monoatomic species
                 if self.checkfile is not None:
                     job_type_1 += ' guess=mix'
                 else:
