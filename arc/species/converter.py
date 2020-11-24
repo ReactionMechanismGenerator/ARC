@@ -2,6 +2,7 @@
 A module for performing various species-related format conversions.
 """
 
+import copy
 import numpy as np
 import os
 from typing import Dict, Iterable, List, Optional, Tuple, Union
@@ -19,8 +20,9 @@ from rmgpy.quantity import ArrayQuantity
 from rmgpy.species import Species
 from rmgpy.statmech import Conformer
 
-from arc.common import almost_equal_lists, get_atom_radius, get_logger, is_str_float
+from arc.common import almost_equal_lists, colliding_atoms, get_atom_radius, get_logger, is_str_float
 from arc.exceptions import ConverterError, InputError, SanitizationError, SpeciesError
+from arc.species import calculate_rmsd
 from arc.species.xyz_to_2d import MolGraph
 from arc.species.zmat import (KEY_FROM_LEN,
                               _compare_zmats,
@@ -1764,6 +1766,216 @@ def cluster_confs_by_rmsd(xyzs: Iterable[Dict[str, tuple]],
         if all([rmsd > rmsd_threshold for rmsd in tuple(rmsd_list)]):
             distinct_xyzs.append(xyz)
     return tuple(distinct_xyzs)
+
+
+def calc_rmsd_wrapper(reactant1_xyz: dict,
+                      product1_xyz: dict,
+                      reactant2_xyz: Optional[dict] = None,
+                      product2_xyz: Optional[dict] = None,
+                      xyz_file_name: Optional[str] = None,
+                      reorder_method: Optional[str] = 'hungarian',
+                      rotation_method: Optional[str] = 'kabsch',
+                      ):
+    """
+    A wrapper for https://github.com/charnley/rmsd.
+    Reorder the product atoms in the same order as the reactant atoms by minimizing the RMSD.
+
+    #todo: maybe don't include pyGSM in this PR!!!!!!!!!
+    Writes a .xyz file of the reactant and product atoms that will be called by the pyGSM submission script.
+    Args:
+        reactant1_xyz (dict): ARC dictionary of XYZ coordinates for reactant 1.
+        reactant2_xyz (dict): ARC dictionary of XYZ coordinates for reactant 2 in a bimolecular reaction.
+        product1_xyz (dict): XYZ coordinate of product 1.
+        product2_xyz (dict): XYZ coordinate of product 2 in a bimolecular reaction.
+        xyz_file_name (str): Filename when creating the .xyz file for DE GSM to be called by the pyGSM submission script.
+                             If no filename is given, the .xyz file is not created.
+        reorder_method (str): Reorder atoms in product_xyz to find the maximum alignment with reactant_xyz.
+                              Methods are "hungarian" (default), "inertia-hungarian", "brute", "distance", or None if no re-ordering is desired.
+        rotation_method (str): Rotation method. "kabsch" (default), "quaternion" or None.
+    Returns:
+        reactant1_xyz (dict): ARC dictionary of XYZ coordinates of reactant 1.
+        reactant2_xyz (dict): ARC dictionary of XYZ coordinates of reactant 2.
+        product1_xyz (dict): ARC dictionary of XYZ coordinates of product 1.
+        product2_xyz (dict): ARC dictionary of XYZ coordinates of product 2.
+        rmsd (float): The RMSD between two species.
+        q_review (array): Array that maps the product atoms onto the reactant atoms
+    """
+
+    def translate_coordinates(molecule1_xyz_dict: dict,
+                              molecule2_xyz_dict: dict,
+                              ):
+        """
+        Helper function that is used to translate the coordinates of one of the molecules in a bimolecular reaction
+        if the coordinates of both reactants or products overlap in 3D space.
+
+        Args:
+
+        Returns:
+
+        """
+        xyz_molecule = xyz_to_str(molecule1_xyz_dict).split('\n')
+        xyz_molecule.extend(xyz_to_str(molecule2_xyz_dict).split('\n'))
+        xyz = str(p_size) + '\n' + '\n' + '\n'.join(xyz_molecule) + '\n'
+        molecules_collide = colliding_atoms(str_to_xyz(xyz[4:]))
+        print(molecules_collide)
+
+        # translate coordinates of reactant 2 until the atoms are no longer overlapping
+        while molecules_collide:
+            # translate coordinates
+            molecule2_xyz_dict['coords'] = np.array(molecule2_xyz_dict['coords']) - 1
+
+            xyz_molecule = xyz_to_str(molecule1_xyz_dict).split('\n')
+            xyz_molecule.extend(xyz_to_str(molecule2_xyz_dict).split('\n'))
+            xyz = str(p_size) + '\n' + '\n' + '\n'.join(xyz_molecule) + '\n'
+            molecules_collide = colliding_atoms(str_to_xyz(xyz[4:]))
+            print(molecules_collide)
+
+        # convert the np array of coordinates back to tuples
+        translated_coords = tuple()
+        for coord in molecule2_xyz_dict['coords']:
+            x, y, z = coord[0], coord[1], coord[2]
+            tuple_coords = (np.round(x, 4), np.round(y, 4), np.round(z, 4))
+            translated_coords += (tuple_coords,)
+        molecule2_xyz_dict['coords'] = translated_coords
+
+        return molecule2_xyz_dict
+
+
+    # get reactant/s
+    p_all_atoms, p_all = np.array(reactant1_xyz['symbols']), np.array(reactant1_xyz['coords'])
+    xyz_reactant = xyz_to_str(reactant1_xyz).split('\n')
+    if reactant2_xyz:
+        p_all_atoms = np.append(p_all_atoms, np.array(reactant2_xyz['symbols']))
+        p_all = np.append(p_all, np.array(reactant2_xyz['coords']), axis=0)
+        xyz_reactant.extend(xyz_to_str(reactant2_xyz).split('\n'))
+
+        # convert the xyz list to xyz string
+        p_size = p_all.shape[0]
+        xyz = str(p_size) + '\n' + '\n' + '\n'.join(xyz_reactant) + '\n'
+        # convert the xyz string to ARC xyz dictionary and check if the reactants collide
+        reactants_collide = colliding_atoms(str_to_xyz(xyz[4:]))
+        if reactants_collide:
+            reactant2_xyz = translate_coordinates(reactant1_xyz, reactant2_xyz)
+
+    # get product/s
+    q_all_atoms, q_all = np.array(product1_xyz['symbols']), np.array(product1_xyz['coords'])
+    num_atoms_product1 = len(q_all_atoms)
+    xyz_product = xyz_to_str(product1_xyz).split('\n')
+    if product2_xyz:
+        q_all_atoms = np.append(q_all_atoms, np.array(product2_xyz['symbols']))
+        q_all = np.append(q_all, np.array(product2_xyz['coords']), axis=0)
+        xyz_product.extend(xyz_to_str(product2_xyz).split('\n'))
+
+        # convert the xyz list to xyz string
+        q_size = q_all.shape[0]
+        xyz = str(q_size) + '\n' + '\n' + '\n'.join(xyz_product) + '\n'
+        # convert the xyz string to ARC xyz dictionary and check if the reactants collide
+        products_collide = colliding_atoms(str_to_xyz(xyz[4:]))
+        if products_collide:
+            product2_xyz = translate_coordinates(product1_xyz, product2_xyz)
+
+    p_size = p_all.shape[0]
+    q_size = q_all.shape[0]
+
+    if not p_size == q_size:
+        logger.error('Reactant/s and product/s do not have the same number of atoms. Cannot calculate RMSD.')
+
+    # Set local view
+    p_coord = copy.deepcopy(p_all)
+    q_coord = copy.deepcopy(q_all)
+    p_atoms = copy.deepcopy(p_all_atoms)
+    q_atoms = copy.deepcopy(q_all_atoms)
+
+    # Create the centroid of P and Q which is the geometric center of a
+    # N-dimensional region and translate P and Q onto that center.
+    # http://en.wikipedia.org/wiki/Centroid
+    p_cent = calculate_rmsd.centroid(p_coord)
+    q_cent = calculate_rmsd.centroid(q_coord)
+    p_coord -= p_cent
+    q_coord -= q_cent
+
+    # set reorder method
+    if reorder_method:
+        if reorder_method.lower() == "hungarian":
+            reorder_method_func = calculate_rmsd.reorder_hungarian
+
+        elif reorder_method.lower() == "inertia-hungarian":
+            reorder_method_func = calculate_rmsd.reorder_inertia_hungarian
+
+        elif reorder_method.lower() == "brute":
+            reorder_method_func = calculate_rmsd.reorder_brute
+
+        elif reorder_method.lower() == "distance":
+            reorder_method_func = calculate_rmsd.reorder_distance
+
+        else:
+            logger.error(f'Unknown reorder method: {reorder_method}')
+
+    # reorder product atoms based on order of reactant atoms
+    q_review = reorder_method_func(p_atoms, q_atoms, p_coord, q_coord)
+    q_coord = q_coord[q_review]
+    q_atoms = q_atoms[q_review]
+
+    # perform basic checks after reordering
+    if not all(p_atoms == q_atoms):
+        logger.error('Structures are not aligned after reordering...')
+    if q_review.shape[0] != q_all.shape[0]:
+        logger.error('Structures have different number of atoms after reordering...')
+    q_all = q_all[q_review]
+    q_all_atoms = q_all_atoms[q_review]
+
+    reordered_product_xyz = list()
+    for index in q_review:
+        reordered_product_xyz.append(xyz_product[index])
+    reordered_product_xyz_str = '\n'.join(reordered_product_xyz)
+    reordered_product_xyz = np.array(reordered_product_xyz)
+
+    #todo: maybe delete this section
+    # create the xyz file for DE GSM
+    # atoms in reactant/s and product/s must be in the same order
+    # follows this format: https://github.com/ZimmermanGroup/pyGSM/blob/master/data/diels_alder.xyz
+    xyz = str(p_size) + '\n' + '\n' + '\n'.join(xyz_reactant) + '\n'
+    xyz += str(q_size) + '\n' + '\n' + reordered_product_xyz_str + '\n'
+    # if given a file name, write the xyz file used for DE GSM
+    if xyz_file_name:
+        # if given a file name without the full path, write the file to this directory
+        # otherwise, write the file to the given full path
+        if len(xyz_file_name.split('/')) > 1:
+            dir_path = os.path.dirname(os.path.realpath(__file__))
+            xyz_file_name = os.path.join(dir_path, xyz_file_name + '.xyz')
+
+        with open(xyz_file_name, 'w') as f:
+            f.write(xyz)
+
+    # Get rotation matrix
+    U = calculate_rmsd.kabsch(q_coord, p_coord)
+
+    # recenter all atoms and rotate all atoms
+    q_all -= q_cent
+    q_all = np.dot(q_all, U)
+
+    # center q on p's original coordinates
+    q_all += p_cent
+    product_xyz = calculate_rmsd.set_coordinates(q_all_atoms, q_all, title="product xyz - modified")
+
+    # set rotation method
+    if rotation_method:
+        if rotation_method.lower() == "kabsch":
+            rotation_method_func = calculate_rmsd.kabsch_rmsd
+
+        elif rotation_method.lower() == "quaternion":
+            rotation_method_func = calculate_rmsd.quaternion_rmsd
+
+        else:
+            logger.error(f'Unknown rotation method: {rotation_method}')
+    rmsd = rotation_method_func(p_coord, q_coord)
+
+    product1_xyz = str_to_xyz('\n'.join(reordered_product_xyz[q_review < num_atoms_product1]))
+    if product2_xyz:
+        product2_xyz = str_to_xyz('\n'.join(reordered_product_xyz[q_review >= num_atoms_product1]))
+
+    return reactant1_xyz, reactant2_xyz, product1_xyz, product2_xyz, rmsd, q_review
+
 
 def ics_to_scan_constraints(ics: list,
                             software: Optional[str] = 'gaussian',
