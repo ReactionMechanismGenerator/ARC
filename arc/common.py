@@ -30,6 +30,7 @@ from rmgpy.qm.symmetry import PointGroupCalculator
 
 from arc.exceptions import InputError, SettingsError
 from arc.imports import settings
+from arc.species.converter import str_to_xyz
 
 
 logger = logging.getLogger('arc')
@@ -1123,3 +1124,33 @@ def get_close_tuple(key_1: Tuple[Union[float, str], ...],
         # couldn't find a close key
         return None
     raise ValueError(f'Could not locate a key close to {key_1} within the tolerance {tolerance} in the given keys list.')
+
+
+def read_xyzs(filename):
+    """
+    Read the xyz file written for to run double ended growing string method (DE GSM) with pyGSM.
+
+    Args:
+        filename (str): name of xyz file to read
+
+    Returns:
+        reactant_dict (dict): ARC xyz dictionary for the reactant
+        product_dict (dict): ARC xyz dictionary for the product
+    """
+    lines = open(filename).readlines()
+    num_atoms = int(lines[0])
+    start_atom = 2
+    end_atom = start_atom + num_atoms
+    reactant_str = ""
+    for line in lines[start_atom:end_atom]:
+        reactant_str += line
+    reactant_dict = str_to_xyz(reactant_str)
+
+    start_atom = end_atom + 2
+    end_atom = start_atom + num_atoms
+    product_str = ""
+    for line in lines[start_atom:end_atom]:
+        product_str += line
+    product_dict = str_to_xyz(product_str)
+
+    return reactant_dict, product_dict
