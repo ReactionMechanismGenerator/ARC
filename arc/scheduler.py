@@ -352,6 +352,16 @@ class Scheduler(object):
                             rmg_reaction=rxn.rmg_reaction,
                         )
                     )
+                # now generate TSGuess objects for the other methods
+                for i, method in enumerate(rxn.ts_methods):
+                    if method != 'user guess':
+                        ts_guess = TSGuess(
+                            method=method,
+                            rmg_reaction=rxn.rmg_reaction,
+                            arc_reaction=rxn,
+                        )
+                        ts_guess.execute_ts_guess_method()
+                        ts_species.ts_guesses.append(ts_guess)
                 rxn.check_atom_balance()
 
         for species in self.species_list:
