@@ -48,7 +48,7 @@ from arc.species.converter import (check_isomorphism,
                                    xyz_from_data,
                                    xyz_to_str)
 from arc.species.vectors import calculate_distance
-from arc.ts import atst
+from arc.ts import atst, gcn_isomerization
 
 
 logger = get_logger()
@@ -1732,6 +1732,7 @@ class TSGuess(object):
     - NEB (not implemented)
     - Kinbot: requires the RMG family, only works for H,C,O,S (not implemented)
     - AutoTST
+    - GCN Isomerization
 
     Args:
         method (str, optional): The method/source used for the xyz guess.
@@ -1742,6 +1743,7 @@ class TSGuess(object):
         family (str, optional): The RMG family that corresponds to the reaction, if applicable.
         xyz (dict, str, optional): The 3D coordinates guess.
         rmg_reaction (Reaction, optional): An RMG Reaction object.
+        arc_reaction (ARCREaction, optional): An ARC Reaction object.
         ts_dict (dict, optional): A dictionary to create this object from (used when restarting ARC).
         energy (float): Relative energy of all TS conformers in kJ/mol.
 
@@ -1755,6 +1757,7 @@ class TSGuess(object):
                              (product label, product xyz).
         family (str): The RMG family that corresponds to the reaction, if applicable.
         rmg_reaction (Reaction): An RMG Reaction object.
+        arc_reaction (ARCREaction, optional): An ARC Reaction object.
         t0 (float): Initial time of spawning the guess job.
         execution_time (str): Overall execution time for the TS guess method.
         success (bool): Whether the TS guess method succeeded in generating an XYZ guess or not.
@@ -1770,6 +1773,7 @@ class TSGuess(object):
                  family: Optional[str] = None,
                  xyz: Optional[Union[dict, str]] = None,
                  rmg_reaction: Optional[Reaction] = None,
+                 arc_reaction: Optional = None,
                  ts_dict: Optional[dict] = None,
                  energy: Optional[float] = None):
 
@@ -1785,6 +1789,7 @@ class TSGuess(object):
             self.initial_xyz = None
             self.process_xyz(xyz)  # populates self.initial_xyz
             self.success = None
+            self.arc_reaction = arc_reaction
             self.energy = energy
             self.method = method.lower() if method is not None else 'user guess'
             if 'user guess' in self.method:
@@ -1798,7 +1803,7 @@ class TSGuess(object):
             self.family = family
             # if self.family is None and self.method.lower() in ['kinbot', 'autotst']:
             #     raise TSError('No family specified for method {0}'.format(self.method))
-        if not ('user guess' in self.method or 'autotst' in self.method
+        if not ('user guess' in self.method or 'autotst' in self.method or 'gcn isomerization' in self.method
                 or self.method in ['user guess'] + [tsm.lower() for tsm in default_ts_methods]):
             raise TSError('Unrecognized method. Should be either {0}. Got: {1}'.format(
                           ['User guess'] + default_ts_methods, self.method))
@@ -1900,6 +1905,8 @@ class TSGuess(object):
             self.kinbot()
         elif self.method == 'autotst':
             self.autotst()
+        elif self.method == 'gcn isomerization':
+            self.gcn_isomerization()
         else:
             raise TSError('Unrecognized method. Should be either {0}. Got: {1}'.format(
                           ['User guess'] + default_ts_methods, self.method))
@@ -1921,6 +1928,24 @@ class TSGuess(object):
             self.initial_xyz = None
         else:
             self.initial_xyz = atst.autotst(rmg_reaction=self.rmg_reaction, reaction_family=self.family)
+
+    def gcn_isomerization(self):
+        """
+        Determine a TS guess using GCN
+        """
+        # check that this is an isomerization reaction i.e. only one reactant and one product
+        num_reactants = len(self.arc_reaction.r_species)
+        num_products = len(self.arc_reaction.p_species)
+        if num_reactants > 1:
+            raise TSError(f'Error while using GCN with reactants: {self.arc_reaction.r_species}'
+                          f'Isomerization reactions must have only 1 reactant.')
+        if num_products > 1:
+            raise TSError(f'Error while using GCN with products: {self.arc_reaction.p_species}'
+                          f'Isomerization reactions must have only 1 product.')
+
+        ts_xyz_dict_list = gcn_isomerization.gcn_isomerization([self.arc_reaction])
+        # the TSGuess class handles one reaction at a time so there is only one entry in the list
+        self.initial_xyz = ts_xyz_dict_list[0]
 
     def qst2(self):
         """
