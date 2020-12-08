@@ -45,6 +45,8 @@ jobs:
         - cd AutoTST
         - export PYTHONPATH=$PYTHONPATH:$(pwd)
         - cd ..
+        - source devtools/create_env_travis.sh
+        - git clone https://github.com/ReactionMechanismGenerator/ts_gen_v2
         - conda install -y -c conda-forge codecov
         - conda list
         - cd ARC
