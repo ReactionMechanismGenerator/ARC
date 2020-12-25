@@ -17,7 +17,7 @@ _rdkit_periodic_table = GetPeriodicTable()
 
 class Atom(object):
     """
-    Represents an atopm in a molecular graph.
+    Represents an atom in a molecular graph.
     """
 
     def __init__(self, symbol=None, idx=None, coords=np.array([]), frozen=False):
@@ -150,7 +150,7 @@ class MolGraph(object):
                 count = elements['H']
                 formula += 'H{:d}'.format(count) if count > 1 else 'H'
                 del elements['H']
-        keys = elements.keys()
+        keys = list(elements.keys())
         keys.sort()
         for key in keys:
             count = elements[key]

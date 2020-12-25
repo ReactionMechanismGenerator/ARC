@@ -31,7 +31,7 @@ from arc.species.species import (ARCSpecies,
                                  check_xyz,
                                  determine_rotor_symmetry,
                                  determine_rotor_type)
-
+from arc.species.xyz_to_2d import MolGraph
 
 class TestARCSpecies(unittest.TestCase):
     """
@@ -1375,6 +1375,18 @@ class TestTSGuess(unittest.TestCase):
         self.assertEqual(tsg.method, 'autotst')
         self.assertTrue(isinstance(tsg.rmg_reaction, Reaction))
 
+    def test_xyz_to_2d_get_formula(self):
+        xyz_arb = {'symbols': ('H', 'C', 'H', 'H', 'O', 'N', 'O'),
+                 'isotopes': (1, 13, 1, 1, 16, 14, 16),
+                 'coords': ((-1.0, 0.0, 0.0),
+                            (0.0, 0.0, 0.0),
+                            (0.0, -1.0, 0.0),
+                            (0.0, 1.0, 0.0),
+                            (1.0, 0.0, 0.0),
+                            (2.0, 0.0, 0.0),
+                            (3.0, 0.0, 0.0),)}
+        mol_graph_1 = MolGraph(symbols=xyz_arb['symbols'], coords=xyz_arb['coords'])
+        self.assertEqual(mol_graph_1.get_formula(), 'CH3NO2')
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
