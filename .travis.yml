@@ -45,9 +45,10 @@ jobs:
         - cd AutoTST
         - export PYTHONPATH=$PYTHONPATH:$(pwd)
         - cd ..
+        - cd ARC 
+        - make gcn-travis
         - conda install -y -c conda-forge codecov
         - conda list
-        - cd ARC
       script:
         - make test
         - codecov --token=f259713a-7f1d-4e9c-b140-bb3bb371d3ef
