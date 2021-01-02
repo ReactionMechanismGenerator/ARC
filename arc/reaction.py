@@ -4,6 +4,7 @@ A module for representing a reaction.
 
 from typing import List, Optional
 
+import numpy as np
 from qcelemental.exceptions import ValidationError
 from qcelemental.models.molecule import Molecule as QCMolecule
 
@@ -14,7 +15,7 @@ import arc.rmgdb as rmgdb
 from arc.common import extermum_list, get_logger
 from arc.exceptions import ReactionError, InputError
 from arc.imports import settings
-from arc.species.converter import xyz_to_str
+from arc.species.converter import str_to_xyz, xyz_to_str
 from arc.species.species import ARCSpecies, check_atom_balance
 
 
@@ -670,3 +671,29 @@ class ARCReaction(object):
             data = products.align(ref_mol=reactants, verbose=verbose)[1]
             atom_map = data['mill'].atommap.tolist()
         return atom_map
+
+    def get_mapped_product_xyz(self):
+        """
+        Uses the mapping from product onto reactant to create a new ARC Species for the mapped product.
+        For now, only functional for A <=> B reactions.
+
+        Returns:
+            Tuple[dict, ARCSpecies]:
+                dict: Mapped product atoms in ARC dictionary format.
+                ARCSpecies: ARCSpecies object created from mapped coordinates.
+        """
+        product = self.p_species[0]
+        mapping = self.atom_map
+        original_xyz_str = xyz_to_str(product.get_xyz())
+        original_xyz = np.array(original_xyz_str.split('\n'))
+        mapped_xyz = '\n'.join(original_xyz[mapping].tolist())
+        # create another product with the mapped atoms since ARCSpecies objects preserve this ordering
+        # in RDKit objects and in RMG-Py Molecule objects
+        mapped_product = ARCSpecies(label=product.label,
+                                    smiles=product.mol.smiles,
+                                    multiplicity=product.multiplicity,
+                                    charge=product.charge,
+                                    xyz=mapped_xyz,
+                                    )
+        mapped_xyz = str_to_xyz(mapped_xyz)
+        return mapped_xyz, mapped_product
