@@ -41,6 +41,13 @@ Install dependencies
   Make sure to add RMG-Py to your PATH and PYTHONPATH variables as explained in RMG's documentation.
 - If you'd like to use `AutoTST <https://github.com/ReactionMechanismGenerator/AutoTST>`_ in ARC (optional),
   clone it in a separate folder and add it to your PYTHONPATH just as well.
+- If you'd like to use a pre-trained graph convolutional network to quickly predict TS guesses for further optimization,
+  run `make gcn` from ARC's home directory, which clones `TS-GCN <https://github.com/ReactionMechanismGenerator/TS-GCN.git>`_
+  under the same parent folder as the ARC repository. It also sets up the environment to run the network.
+  The original network was published by `Pattanaik et al. <https://chemrxiv.org/articles/Genereting_Transition_States_of_Isomerization_Reactions_with_Deep_Learning/12302084>`_
+  using TensorFlow 1.4 and Python 2.7. This repo uses the same architecture with various minor upgrades, more training data,
+  and is translated into PyTorch Geometric and Python 3.7.
+
 - Create the Anaconda environment for ARC (after changing the directory to the
   installation folder by, e.g., ``cd ~/Code/ARC/``)::
 
