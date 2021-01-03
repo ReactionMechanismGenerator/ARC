@@ -6,6 +6,8 @@ If the species is a transition state (TS), its ``ts_guesses`` attribute will hav
 import datetime
 import numpy as np
 import os
+from rdkit import Chem
+import time
 from typing import List, Optional, Tuple, Union
 
 import rmgpy.molecule.element as elements
@@ -48,7 +50,7 @@ from arc.species.converter import (check_isomorphism,
                                    xyz_from_data,
                                    xyz_to_str)
 from arc.species.vectors import calculate_distance
-from arc.ts import atst
+from arc.ts import atst, gcn
 
 
 logger = get_logger()
@@ -1732,6 +1734,7 @@ class TSGuess(object):
     - NEB (not implemented)
     - Kinbot: requires the RMG family, only works for H,C,O,S (not implemented)
     - AutoTST
+    - GCN
 
     Args:
         method (str, optional): The method/source used for the xyz guess.
@@ -1742,8 +1745,10 @@ class TSGuess(object):
         family (str, optional): The RMG family that corresponds to the reaction, if applicable.
         xyz (dict, str, optional): The 3D coordinates guess.
         rmg_reaction (Reaction, optional): An RMG Reaction object.
+        arc_reaction (ARCReaction, optional): An ARC Reaction object.
         ts_dict (dict, optional): A dictionary to create this object from (used when restarting ARC).
-        energy (float): Relative energy of all TS conformers in kJ/mol.
+        energy (float, optional): Relative energy of all TS conformers in kJ/mol.
+        project_dir (str, optional): Folder path for the project: the input file path or ARC/Projects/project-name.
 
     Attributes:
         initial_xyz (dict): The 3D coordinates guess.
@@ -1755,12 +1760,14 @@ class TSGuess(object):
                              (product label, product xyz).
         family (str): The RMG family that corresponds to the reaction, if applicable.
         rmg_reaction (Reaction): An RMG Reaction object.
+        arc_reaction (ARCReaction, optional): An ARC Reaction object.
         t0 (float): Initial time of spawning the guess job.
         execution_time (str): Overall execution time for the TS guess method.
         success (bool): Whether the TS guess method succeeded in generating an XYZ guess or not.
         energy (float): Relative energy of all TS conformers in kJ/mol.
         index (int): An index corresponding to the conformer jobs spawned for each TSGuess object.
                      Assigned only if self.success is ``True``.
+        project_dir (str): Folder path for the project: the input file path or ARC/Projects/project-name.
 
     """
     def __init__(self,
@@ -1770,8 +1777,11 @@ class TSGuess(object):
                  family: Optional[str] = None,
                  xyz: Optional[Union[dict, str]] = None,
                  rmg_reaction: Optional[Reaction] = None,
+                 arc_reaction: Optional = None,
                  ts_dict: Optional[dict] = None,
-                 energy: Optional[float] = None):
+                 energy: Optional[float] = None,
+                 project_dir: Optional[str] = None,
+                 ):
 
         if ts_dict is not None:
             # Reading from a dictionary
@@ -1786,6 +1796,7 @@ class TSGuess(object):
             self.process_xyz(xyz)  # populates self.initial_xyz
             self.success = None
             self.energy = energy
+            self.project_dir = project_dir
             self.method = method.lower() if method is not None else 'user guess'
             if 'user guess' in self.method:
                 if self.initial_xyz is None:
@@ -1795,10 +1806,11 @@ class TSGuess(object):
             self.reactants_xyz = reactants_xyz if reactants_xyz is not None else list()
             self.products_xyz = products_xyz if products_xyz is not None else list()
             self.rmg_reaction = rmg_reaction
+            self.arc_reaction = arc_reaction
             self.family = family
             # if self.family is None and self.method.lower() in ['kinbot', 'autotst']:
             #     raise TSError('No family specified for method {0}'.format(self.method))
-        if not ('user guess' in self.method or 'autotst' in self.method
+        if not ('user guess' in self.method or 'autotst' in self.method or 'gcn' in self.method
                 or self.method in ['user guess'] + [tsm.lower() for tsm in default_ts_methods]):
             raise TSError('Unrecognized method. Should be either {0}. Got: {1}'.format(
                           ['User guess'] + default_ts_methods, self.method))
@@ -1900,6 +1912,8 @@ class TSGuess(object):
             self.kinbot()
         elif self.method == 'autotst':
             self.autotst()
+        elif self.method == 'gcn':
+            self.gcn()
         else:
             raise TSError('Unrecognized method. Should be either {0}. Got: {1}'.format(
                           ['User guess'] + default_ts_methods, self.method))
@@ -1921,6 +1935,52 @@ class TSGuess(object):
             self.initial_xyz = None
         else:
             self.initial_xyz = atst.autotst(rmg_reaction=self.rmg_reaction, reaction_family=self.family)
+
+    def gcn(self):
+        """
+        Determine a TS guess using a graph convolutional network.
+
+        Reactant and product must each be a single fragment.
+        """
+        # check that this is an isomerization reaction i.e. only one reactant and one product
+        num_reactants = len(self.arc_reaction.r_species)
+        num_products = len(self.arc_reaction.p_species)
+
+        if num_reactants > 1:
+            logger.error(f'Error while using GCN with reactants: {self.arc_reaction.r_species}.\n'
+                         f'Isomerization reactions must have only 1 reactant.')
+        elif num_products > 1:
+            logger.error(f'Error while using GCN with products: {self.arc_reaction.p_species}.\n'
+                         f'Isomerization reactions must have only 1 product.')
+        else:
+            # run GCN
+            reactant = self.arc_reaction.r_species[0]
+            _, r_mol = rdkit_conf_from_mol(reactant.mol, reactant.get_xyz())
+
+            # GCN requires an atom-mapped reaction so map the product atoms onto the reactant atoms
+            _, mapped_product = self.arc_reaction.get_mapped_product_xyz()
+            _, p_mol = rdkit_conf_from_mol(mapped_product.mol, mapped_product.get_xyz())
+
+            # write input files for GCN to the TS project folder
+            ts_path = os.path.join(self.project_dir, 'calcs', 'TSs', self.arc_reaction.ts_label, 'GCN')
+            os.makedirs(ts_path, exist_ok=True)
+
+            r_path = os.path.join(ts_path, 'reactant.sdf')
+            w = Chem.SDWriter(r_path)
+            w.write(r_mol)
+            w.close()
+
+            p_path = os.path.join(ts_path, 'product.sdf')
+            w = Chem.SDWriter(p_path)
+            w.write(p_mol)
+            w.close()
+
+            start = time.time()
+            ts_xyz_dict = gcn.gcn(ts_path)
+            end = time.time()
+            self.execution_time = end - start  # seconds
+            self.success = False if ts_xyz_dict is None else True
+            self.initial_xyz = ts_xyz_dict
 
     def qst2(self):
         """

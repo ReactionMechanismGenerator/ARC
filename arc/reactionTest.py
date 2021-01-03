@@ -962,6 +962,30 @@ class TestARCReaction(unittest.TestCase):
         self.assertEqual(rxn.atom_map, [4, 3, 2, 1, 0, 8, 9, 6, 5, 7])
         self.assertTrue(check_atom_map(rxn))
 
+    def test_get_mapped_product_xyz(self):
+        """Test the Reaction get_mapped_product_xyz method"""
+        # trivial unimolecular with an intentional mixed atom order: H2O <=> H2O
+        h2o_xyz_1 = {'symbols': ('O', 'H', 'H'),
+                     'isotopes': (16, 1, 1),
+                     'coords': ((-0.19827, 0.0, 0.76363),
+                                (0.39781, 0.0, -0.00032),
+                                (-0.19953, 0.0, -0.76330))}
+        r_1 = ARCSpecies(label='H2O', smiles='O', xyz=h2o_xyz_1)
+
+        h2o_xyz_2 = {'symbols': ('H', 'H', 'O'),
+                     'isotopes': (1, 1, 16),
+                     'coords': ((0.39781, 0.0, -0.00032),
+                                (-0.19953, 0.0, -0.76330),
+                                (-0.19827, 0.0, 0.76363))}
+        p_1 = ARCSpecies(label='H2O', smiles='O', xyz=h2o_xyz_2)
+
+        rxn_1 = ARCReaction(reactants=['H2O'], products=['H2O'])
+        rxn_1.r_species = [r_1]
+        rxn_1.p_species = [p_1]
+        _, mapped_product = rxn_1.get_mapped_product_xyz()
+        self.assertEqual(rxn_1.atom_map, [2, 0, 1])
+        self.assertTrue(check_atom_map(rxn_1))
+        self.assertTrue(mapped_product.get_xyz(), h2o_xyz_1)
 
 
 
