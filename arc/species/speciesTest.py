@@ -100,6 +100,44 @@ class TestARCSpecies(unittest.TestCase):
         cls.spc11 = ARCSpecies(label='CCCNO', smiles='CCCNO')  # has chiral N
         cls.spc12 = ARCSpecies(label='[CH](CC[CH]c1ccccc1)c1ccccc1', smiles='[CH](CC[CH]c1ccccc1)c1ccccc1')
 
+    def test_from_yml_file(self):
+        """Test that an ARCSpecies object can succesfully loaded from an Arkane YAML file"""
+
+        n4h6_adj_list = """1  N u0 p1 c0 {2,S} {3,S} {4,S}
+2  H u0 p0 c0 {1,S}
+3  H u0 p0 c0 {1,S}
+4  N u0 p1 c0 {1,S} {5,S} {6,S}
+5  H u0 p0 c0 {4,S}
+6  N u0 p1 c0 {4,S} {7,S} {8,S}
+7  H u0 p0 c0 {6,S}
+8  N u0 p1 c0 {6,S} {9,S} {10,S}
+9  H u0 p0 c0 {8,S}
+10 H u0 p0 c0 {8,S}
+"""
+
+        n4h6_xyz = {'symbols': ('N', 'H', 'H', 'N', 'H', 'N', 'H', 'N', 'H', 'H'),
+                    'isotopes': (14, 1, 1, 14, 1, 14, 1, 14, 1, 1),
+                    'coords': ((1.359965, -0.537228, -0.184462),
+                               (2.339584, -0.30093, -0.289911),
+                               (1.2713739999999998, -1.27116, 0.51544),
+                               (0.669838, 0.659561, 0.217548),
+                               (0.61618, 0.715758, 1.2316809999999996),
+                               (-0.669836, 0.659561, -0.217548),
+                               (-0.616179, 0.715757, -1.231682),
+                               (-1.3599669999999997, -0.537227, 0.184463),
+                               (-2.339586, -0.300928, 0.289904),
+                               (-1.2713739999999998, -1.271158, -0.51544))}
+
+        n4h6_yml_path = os.path.join(arc_path, 'arc', 'testing', 'yml_testing', 'N4H6.yml')
+        n4h6 = ARCSpecies(yml_path=n4h6_yml_path)
+        self.assertEqual(n4h6.mol.to_adjacency_list(), n4h6_adj_list)
+        self.assertEqual(n4h6.charge, 0)
+        self.assertEqual(n4h6.multiplicity, 1)
+        self.assertEqual(n4h6.external_symmetry, 2)
+        self.assertEqual(n4h6.mol.to_smiles(), 'NNNN')
+        self.assertEqual(n4h6.optical_isomers, 2)
+        self.assertEqual(n4h6.get_xyz(), n4h6_xyz)
+
     def test_str(self):
         """Test the string representation of the object"""
         str_representation = str(self.spc9)
