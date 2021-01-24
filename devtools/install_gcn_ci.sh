@@ -2,11 +2,11 @@
 pushd ..
 
 # clone the repo in the parent directory
+cd ..
 git clone https://github.com/ReactionMechanismGenerator/TS-GCN
-cd TS-GCN/devtools
 
 # create the environment
-bash create_env_cpu.sh
+bash TS-GCN/devtools/create_env_cpu.sh
 
 # Restore original directory
 popd
