@@ -34,6 +34,7 @@ from arc.species.species import (ARCSpecies,
                                  determine_rotor_type)
 from arc.species.xyz_to_2d import MolGraph
 
+
 class TestARCSpecies(unittest.TestCase):
     """
     Contains unit tests for the ARCSpecies class
@@ -1432,7 +1433,7 @@ class TestTSGuess(unittest.TestCase):
         Test that ARC can call the GNN to make TS guesses for further optimization.
         """
         # create temporary project directory to delete afterwards
-        project_dir = os.path.join(os.getcwd(), 'tmp')
+        project_dir = os.path.join(arc_path, 'arc', 'testing', 'gcn_tst')
 
         r_xyz = """C  -1.3087    0.0068    0.0318
         C  0.1715   -0.0344    0.0210
@@ -1463,8 +1464,11 @@ class TestTSGuess(unittest.TestCase):
         ts_guess.execute_ts_guess_method()
 
         # verify that the method correctly create TS.xyz
-        ts_path = os.path.join(project_dir, 'calcs', 'TSs', rxn.ts_label, 'GCN')
-        ts_xyz_dict = str_to_xyz(os.path.join(ts_path, "TS.xyz"))
+        print(project_dir)
+        ts_path = os.path.join(project_dir, 'calcs', 'TSs', rxn.ts_label, 'GCN', 'TS.xyz')
+        print(ts_path)
+        print(os.path.isfile(ts_path))
+        ts_xyz_dict = str_to_xyz(ts_path)
         self.assertEqual(len(ts_xyz_dict['symbols']), 9)
         self.assertEqual(ts_xyz_dict['symbols'], ('C', 'C', 'N', 'O', 'N', 'N', 'H', 'H', 'H'))
 
