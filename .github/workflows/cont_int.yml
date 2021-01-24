@@ -31,7 +31,6 @@ jobs:
         git clone https://github.com/ReactionMechanismGenerator/RMG-database
         git clone https://github.com/ReactionMechanismGenerator/AutoTST
         cd ARC
-        make gcn-travis
         conda list
     - name: Lint with flake8
       shell: bash -l {0}
@@ -49,6 +48,7 @@ jobs:
         export PYTHONPATH=$PYTHONPATH:$(pwd)
         cd ..
         cd ARC
+        make gcn-ci
         echo $(pwd)
         echo "$(ls)"
         make test
