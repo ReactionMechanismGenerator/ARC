@@ -26,14 +26,10 @@ jobs:
         cd ..
         git clone https://github.com/ReactionMechanismGenerator/RMG-Py
         cd RMG-Py
-        export PYTHONPATH=$PYTHONPATH:$(pwd)
         make
         cd ..
         git clone https://github.com/ReactionMechanismGenerator/RMG-database
         git clone https://github.com/ReactionMechanismGenerator/AutoTST
-        cd AutoTST
-        export PYTHONPATH=$PYTHONPATH:$(pwd)
-        cd ..
         cd ARC
         make gcn-travis
         conda list
@@ -48,5 +44,10 @@ jobs:
     - name: Test with nosetests
       shell: bash -l {0}
       run: |
+        cd ..
+        cd RMG-Py
+        export PYTHONPATH=$PYTHONPATH:$(pwd)
+        cd ..
+        cd ARC
         make test
         codecov --token=f259713a-7f1d-4e9c-b140-bb3bb371d3ef
