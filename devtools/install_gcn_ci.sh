@@ -6,7 +6,8 @@ cd ..
 git clone https://github.com/ReactionMechanismGenerator/TS-GCN
 
 # create the environment
-bash TS-GCN/devtools/create_env_cpu.sh
+cd TS-GCN/devtools
+bash create_env_cpu.sh
 
 # Restore original directory
 popd
