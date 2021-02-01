@@ -42,7 +42,7 @@ def gcn(ts_path,
     """
 
     # run the GCN as a subprocess
-    p = subprocess.run(f'bash -l {{0}} && {TS_GCN_PYTHON} {os.path.join(TS_GCN_PATH, "inference.py")} '
+    p = subprocess.run(f'{TS_GCN_PYTHON} {os.path.join(TS_GCN_PATH, "inference.py")} '
                        f'--r_sdf_path {os.path.join(ts_path, "reactant.sdf")} '
                        f'--p_sdf_path {os.path.join(ts_path, "product.sdf")} '
                        f'--ts_xyz_path {os.path.join(ts_path, "TS.xyz")} ',
