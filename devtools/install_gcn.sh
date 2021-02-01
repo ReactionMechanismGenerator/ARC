@@ -6,7 +6,8 @@ cd ..
 git clone https://github.com/ReactionMechanismGenerator/TS-GCN
 
 # create the environment
-bash TS-GCN/create_env.sh
+cd TS-GCN
+make conda_env
 
 # Restore original directory
 popd
