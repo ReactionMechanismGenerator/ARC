@@ -181,7 +181,7 @@ class Psi4Adapter(JobAdapter):
                  torsions: List[List[int]] = None,
                  ):
 
-        self.job_adapter = 'gaussian'
+        self.job_adapter = 'psi4'
 
         self.execution_type = execution_type
         self.job_types = job_type if isinstance(job_type, list) else [job_type]  # always a list

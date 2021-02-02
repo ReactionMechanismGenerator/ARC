@@ -34,37 +34,37 @@ def register_job_adapter(job_adapter_label: str,
     _registered_job_adapters[JobEnum(job_adapter_label.lower())] = job_adapter_class
 
 
-def statmech_factory(job_adapter: str,
-                     execution_type: str,
-                     job_type: Union[List[str], str],
-                     level: 'Level',
-                     project: str,
-                     project_directory: str,
-                     args: Optional[Union[dict, str]] = None,
-                     bath_gas: Optional[str] = None,
-                     checkfile: Optional[str] = None,
-                     constraints: Optional[List[Tuple[List[int], float]]] = None,
-                     cpu_cores: Optional[str] = None,
-                     dihedrals: Optional[List[float]] = None,
-                     ess_settings: Optional[dict] = None,
-                     ess_trsh_methods: Optional[List[str]] = None,
-                     fine: bool = False,
-                     initial_time: Optional['datetime.datetime'] = None,
-                     irc_direction: Optional[str] = None,
-                     job_id: Optional[int] = None,
-                     job_memory_gb: float = 14.0,
-                     job_name: Optional[str] = None,
-                     job_num: Optional[int] = None,
-                     job_status: Optional[List[Union[dict, str]]] = None,
-                     max_job_time: Optional[float] = None,
-                     reactions: Optional[List['ARCReaction']] = None,
-                     rotor_index: Optional[int] = None,
-                     server_nodes: Optional[list] = None,
-                     species: Optional[List['ARCSpecies']] = None,
-                     tasks: Optional[int] = None,
-                     testing: bool = False,
-                     torsions: List[List[int]] = None,
-                     ) -> JobAdapter:
+def job_factory(job_adapter: str,
+                execution_type: str,
+                job_type: Union[List[str], str],
+                level: 'Level',
+                project: str,
+                project_directory: str,
+                args: Optional[Union[dict, str]] = None,
+                bath_gas: Optional[str] = None,
+                checkfile: Optional[str] = None,
+                constraints: Optional[List[Tuple[List[int], float]]] = None,
+                cpu_cores: Optional[str] = None,
+                dihedrals: Optional[List[float]] = None,
+                ess_settings: Optional[dict] = None,
+                ess_trsh_methods: Optional[List[str]] = None,
+                fine: bool = False,
+                initial_time: Optional['datetime.datetime'] = None,
+                irc_direction: Optional[str] = None,
+                job_id: Optional[int] = None,
+                job_memory_gb: float = 14.0,
+                job_name: Optional[str] = None,
+                job_num: Optional[int] = None,
+                job_status: Optional[List[Union[dict, str]]] = None,
+                max_job_time: Optional[float] = None,
+                reactions: Optional[List['ARCReaction']] = None,
+                rotor_index: Optional[int] = None,
+                server_nodes: Optional[list] = None,
+                species: Optional[List['ARCSpecies']] = None,
+                tasks: Optional[int] = None,
+                testing: bool = False,
+                torsions: List[List[int]] = None,
+                ) -> JobAdapter:
     """
     A factory generating a job adapter corresponding to ``job_adapter``.
 
@@ -154,7 +154,7 @@ def statmech_factory(job_adapter: str,
     if isinstance(args, str):
         args = {'keyword': {'general': args}}
 
-    statmech_adapter_class = \
+    job_adapter_class = \
         _registered_job_adapters[JobEnum(job_adapter.lower())](execution_type=JobExecutionTypeEnum(execution_type).value,
                                                                job_type=JobTypeEnum(job_type).value,
                                                                level=level,
@@ -185,4 +185,4 @@ def statmech_factory(job_adapter: str,
                                                                testing=testing,
                                                                torsions=torsions,
                                                                )
-    return statmech_adapter_class
+    return job_adapter_class

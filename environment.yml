@@ -31,6 +31,7 @@ dependencies:
   - mock
   - mopac
   - mpmath
+  - more-itertools
   - networkx
   - nose
   - numdifftools

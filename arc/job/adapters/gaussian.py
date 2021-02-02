@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 from mako.template import Template
 
 from arc.common import get_logger
-from arc.exceptions import JobError
 from arc.imports import incore_commands, settings
 from arc.job.adapter import JobAdapter, constraint_type_dict
 from arc.job.factory import register_job_adapter
