@@ -2,7 +2,6 @@
 pushd ..
 
 # clone the repo in the parent directory
-cd ..
 git clone https://github.com/ReactionMechanismGenerator/TS-GCN
 
 # create the environment
