@@ -958,7 +958,7 @@ def check_torsion_change(torsions: pd.DataFrame,
                                    differences are equal to the scan resolution.
 
     Returns: pd.DataFrame
-        a DataFrame consisting of ``True``/``False``, indicating
+        A DataFrame consisting of ``True``/``False``, indicating
         which torsions changed significantly. ``True`` for significant change.
     """
     # First iteration without 180/-180 adjustment
