@@ -342,6 +342,7 @@ class ARCSpecies(object):
 
         if species_dict is None or self.yml_path is not None:
             # Not reading from a dictionary
+            print('OK 1')
             self.force_field = force_field
             self.is_ts = is_ts
             self.ts_conf_spawned = False
@@ -1219,45 +1220,68 @@ class ARCSpecies(object):
                                adjlist: str,
                                mol: Optional[Molecule]):
         """
-        Determine the spin multiplicity of the species
+        Determine the spin multiplicity of the species.
+
+        Args:
+            smiles (str): The SMILES descriptor .
+            adjlist (str): The adjacency list descriptor.
+            mol (Molecule): The respective RMG Molecule object.
         """
-        get_mul_from_xyz = True if self.charge != 0 else False
-        if not get_mul_from_xyz:
-            if mol is not None and mol.multiplicity >= 1:
-                self.multiplicity = mol.multiplicity
-            elif adjlist:
-                mol = Molecule().from_adjacency_list(adjlist, raise_atomtype_exception=False,
-                                                     raise_charge_exception=False)
-                self.multiplicity = mol.multiplicity
-            elif self.mol is not None and self.mol.multiplicity >= 1:
-                self.multiplicity = self.mol.multiplicity
-            elif smiles:
-                mol = Molecule(smiles=smiles)
-                self.multiplicity = mol.multiplicity
-            if self.multiplicity is None or self.multiplicity < 1:
-                get_mul_from_xyz = True
-        if get_mul_from_xyz:
-            xyz = self.get_xyz()
-            if xyz is None and len(self.conformers):
-                xyz = self.conformers[0]
-            if xyz:
-                electrons = 0
-                for symbol in xyz['symbols']:
-                    for number, symb in symbol_by_number.items():
-                        if symbol == symb:
-                            electrons += number
-                            break
-                    else:
-                        raise SpeciesError(f'Could not identify atom symbol {symbol}')
-                electrons -= self.charge
-                if electrons % 2 == 1:
-                    self.multiplicity = 2
-                    logger.warning(f'\nMultiplicity not specified for {self.label}, assuming a value of 2')
-                else:
-                    self.multiplicity = 1
-                    logger.warning(f'\nMultiplicity not specified for {self.label}, assuming a value of 1')
+        if self.charge == 0:
+            self.determine_multiplicity_from_descriptors(smiles=smiles, adjlist=adjlist, mol=mol)
+        if self.multiplicity is None or self.multiplicity < 1:
+            self.determine_multiplicity_from_xyz()
         if self.multiplicity is None:
             raise SpeciesError(f'Could not determine multiplicity for species {self.label}')
+        print(self, self.multiplicity)
+
+    def determine_multiplicity_from_descriptors(self,
+                               smiles: str,
+                               adjlist: str,
+                               mol: Optional[Molecule]):
+        """
+        Determine the spin multiplicity of the species from the chemical descriptors.
+
+        Args:
+            smiles (str): The SMILES descriptor .
+            adjlist (str): The adjacency list descriptor.
+            mol (Molecule): The respective RMG Molecule object.
+        """
+        if mol is not None and mol.multiplicity >= 1:
+            self.multiplicity = mol.multiplicity
+        elif adjlist:
+            mol = Molecule().from_adjacency_list(adjlist, raise_atomtype_exception=False,
+                                                 raise_charge_exception=False)
+            self.multiplicity = mol.multiplicity
+        elif self.mol is not None and self.mol.multiplicity >= 1:
+            self.multiplicity = self.mol.multiplicity
+        elif smiles:
+            mol = Molecule(smiles=smiles)
+            self.multiplicity = mol.multiplicity
+
+    def determine_multiplicity_from_xyz(self):
+        """
+        Determine the spin multiplicity of the species from the xyz.
+        """
+        xyz = self.get_xyz()
+        if xyz is None and len(self.conformers):
+            xyz = self.conformers[0]
+        if xyz:
+            electrons = 0
+            for symbol in xyz['symbols']:
+                for number, symb in symbol_by_number.items():
+                    if symbol == symb:
+                        electrons += number
+                        break
+                else:
+                    raise SpeciesError(f'Could not identify atom symbol {symbol}')
+            electrons -= self.charge
+            if electrons % 2 == 1:
+                self.multiplicity = 2
+                logger.warning(f'\nMultiplicity not specified for {self.label}, assuming a value of 2')
+            else:
+                self.multiplicity = 1
+                logger.warning(f'\nMultiplicity not specified for {self.label}, assuming a value of 1')
 
     def make_ts_report(self):
         """A helper function to write content into the .ts_report attribute"""
