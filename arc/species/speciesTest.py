@@ -1252,6 +1252,20 @@ H       1.11582953    0.94384729   -0.10134685"""
         cation_rad.generate_conformers()
         self.assertTrue(len(cation_rad.conformers))
 
+    def test_determine_multiplicity(self):
+        """Test determining a species multiplicity"""
+        h_rad = ARCSpecies(label='H', smiles='[H]')
+        self.assertEqual(h_rad.multiplicity, 2)
+
+        n2 = ARCSpecies(label='N#N', smiles='N#N')
+        self.assertEqual(n2.multiplicity, 1)
+
+        methyl_peroxyl = ARCSpecies(label='CH3OO', smiles='CO[O]')
+        self.assertEqual(methyl_peroxyl.multiplicity, 2)
+
+        ch_ts = ARCSpecies(label='C--H-TS', xyz='C 0 0 0\nH 1 2 5', is_ts=True)
+        self.assertEqual(ch_ts.multiplicity, 2)
+
     def test_are_coords_compliant_with_graph(self):
         """Test coordinates compliant with 2D graph connectivity"""
         self.assertTrue(are_coords_compliant_with_graph(xyz=self.spc6.get_xyz(), mol=self.spc6.mol))
