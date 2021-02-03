@@ -121,8 +121,8 @@ class ARCReaction(object):
             self.multiplicity = multiplicity
             self.charge = charge
             if self.multiplicity is not None and not isinstance(self.multiplicity, int):
-                raise InputError('Reaction multiplicity must be an integer, got {0} of type {1}.'.format(
-                    self.multiplicity, type(self.multiplicity)))
+                raise InputError(f'Reaction multiplicity must be an integer, '
+                                 f'got {self.multiplicity} which is a {type(self.multiplicity)}.')
             self.reactants = reactants
             self.products = products
             self.rmg_reaction = rmg_reaction
@@ -310,115 +310,65 @@ class ARCReaction(object):
 
     def determine_rxn_multiplicity(self):
         """A helper function for determining the surface multiplicity"""
+        r_species, p_species = self.get_comprehensive_species()
         if self.multiplicity is None:
             ordered_r_mult_list, ordered_p_mult_list = list(), list()
-            if len(self.r_species):
-                if len(self.r_species) == 1:
-                    self.multiplicity = self.r_species[0].multiplicity
-                elif len(self.r_species) == 2:
-                    ordered_r_mult_list = sorted([self.r_species[0].multiplicity,
-                                                  self.r_species[1].multiplicity])
-                elif len(self.r_species) == 3:
-                    ordered_r_mult_list = sorted([self.r_species[0].multiplicity,
-                                                  self.r_species[1].multiplicity,
-                                                  self.r_species[2].multiplicity])
-                if len(self.p_species) == 1:
-                    self.multiplicity = self.p_species[0].multiplicity
-                elif len(self.p_species) == 2:
-                    ordered_p_mult_list = sorted([self.p_species[0].multiplicity,
-                                                  self.p_species[1].multiplicity])
-                elif len(self.p_species) == 3:
-                    ordered_p_mult_list = sorted([self.p_species[0].multiplicity,
-                                                  self.p_species[1].multiplicity,
-                                                  self.p_species[2].multiplicity])
+            if len(r_species):
+                if len(r_species) == 1:
+                    self.multiplicity = r_species[0].multiplicity
+                else:
+                    ordered_r_mult_list = sorted([r_spc.multiplicity for r_spc in r_species])
+                if len(p_species) == 1:
+                    self.multiplicity = p_species[0].multiplicity
+                else:
+                    ordered_p_mult_list = sorted([p_spc.multiplicity for p_spc in p_species])
+
             elif self.rmg_reaction is not None:
                 if len(self.rmg_reaction.reactants) == 1:
                     self.multiplicity = self.rmg_reaction.reactants[0].molecule[0].multiplicity
-                elif len(self.rmg_reaction.reactants) == 2:
-                    ordered_r_mult_list = sorted([self.rmg_reaction.reactants[0].molecule[0].multiplicity,
-                                                  self.rmg_reaction.reactants[1].molecule[0].multiplicity])
-                elif len(self.rmg_reaction.reactants) == 3:
-                    ordered_r_mult_list = sorted([self.rmg_reaction.reactants[0].molecule[0].multiplicity,
-                                                  self.rmg_reaction.reactants[1].molecule[0].multiplicity,
-                                                  self.rmg_reaction.reactants[2].molecule[0].multiplicity])
+                else:
+                    ordered_r_mult_list = sorted([r_spc.molecule[0].multiplicity for r_spc in self.rmg_reaction.reactants])
                 if len(self.rmg_reaction.products) == 1:
                     self.multiplicity = self.rmg_reaction.products[0].molecule[0].multiplicity
-                elif len(self.rmg_reaction.products) == 2:
-                    ordered_p_mult_list = sorted([self.rmg_reaction.products[0].molecule[0].multiplicity,
-                                                  self.rmg_reaction.products[1].molecule[0].multiplicity])
-                elif len(self.rmg_reaction.products) == 3:
-                    ordered_p_mult_list = sorted([self.rmg_reaction.products[0].molecule[0].multiplicity,
-                                                  self.rmg_reaction.products[1].molecule[0].multiplicity,
-                                                  self.rmg_reaction.products[2].molecule[0].multiplicity])
-            if self.multiplicity is None:
-                if ordered_r_mult_list == [1, 1]:
-                    self.multiplicity = 1  # S + S = D
-                elif ordered_r_mult_list == [1, 2]:
-                    self.multiplicity = 2  # S + D = D
-                elif ordered_r_mult_list == [2, 2]:
-                    # D + D = S or T
-                    if ordered_p_mult_list in [[1, 1], [1, 1, 1]]:
-                        self.multiplicity = 1
-                    elif ordered_p_mult_list in [[1, 3], [1, 1, 3]]:
-                        self.multiplicity = 3
-                    else:
-                        self.multiplicity = 1
-                        logger.warning(f'ASSUMING a multiplicity of 1 (singlet) for reaction {self.label}')
-                elif ordered_r_mult_list == [1, 3]:
-                    self.multiplicity = 3  # S + T = T
-                elif ordered_r_mult_list == [2, 3]:
-                    # D + T = D or Q
-                    if ordered_p_mult_list in [[1, 2], [1, 1, 2]]:
-                        self.multiplicity = 2
-                    elif ordered_p_mult_list in [[1, 4], [1, 1, 4]]:
-                        self.multiplicity = 4
-                    else:
-                        self.multiplicity = 2
-                        logger.warning(f'ASSUMING a multiplicity of 2 (doublet) for reaction {self.label}')
-                elif ordered_r_mult_list == [3, 3]:
-                    # T + T = S or T or quintet
-                    if ordered_p_mult_list in [[1, 1], [1, 1, 1]]:
-                        self.multiplicity = 1
-                    elif ordered_p_mult_list in [[1, 3], [1, 1, 3]]:
-                        self.multiplicity = 3
-                    elif ordered_p_mult_list in [[1, 5], [1, 1, 5]]:
-                        self.multiplicity = 5
-                    else:
-                        self.multiplicity = 3
-                        logger.warning(f'ASSUMING a multiplicity of 3 (triplet) for reaction {self.label}')
-                elif ordered_r_mult_list == [1, 1, 1]:
-                    self.multiplicity = 1  # S + S + S = S
-                elif ordered_r_mult_list == [1, 1, 2]:
-                    self.multiplicity = 2  # S + S + D = D
-                elif ordered_r_mult_list == [1, 1, 3]:
-                    self.multiplicity = 3  # S + S + T = T
-                elif ordered_r_mult_list == [1, 2, 2]:
-                    # S + D + D = S or T
-                    if ordered_p_mult_list in [[1, 1], [1, 1, 1]]:
-                        self.multiplicity = 1
-                    elif ordered_p_mult_list in [[1, 3], [1, 1, 3]]:
-                        self.multiplicity = 3
-                    else:
-                        self.multiplicity = 1
-                        logger.warning(f'ASSUMING a multiplicity of 1 (singlet) for reaction {self.label}')
-                elif ordered_r_mult_list == [2, 2, 2]:
-                    # D + D + D = D or Q
-                    if ordered_p_mult_list in [[1, 2], [1, 1, 2]]:
-                        self.multiplicity = 2
-                    elif ordered_p_mult_list in [[1, 4], [1, 1, 4]]:
-                        self.multiplicity = 4
-                    else:
-                        self.multiplicity = 2
-                        logger.warning(f'ASSUMING a multiplicity of 2 (doublet) for reaction {self.label}')
-                elif ordered_r_mult_list == [1, 2, 3]:
-                    # S + D + T = D or Q
-                    if ordered_p_mult_list in [[1, 2], [1, 1, 2]]:
-                        self.multiplicity = 2
-                    elif ordered_p_mult_list in [[1, 4], [1, 1, 4]]:
-                        self.multiplicity = 4
-                    self.multiplicity = 2
-                    logger.warning(f'ASSUMING a multiplicity of 2 (doublet) for reaction {self.label}')
                 else:
+                    ordered_p_mult_list = sorted([p_spc.molecule[0].multiplicity for p_spc in self.rmg_reaction.products])
+            if self.multiplicity is None:
+                for list_1, list_2 in [(ordered_r_mult_list, ordered_p_mult_list),
+                                       (ordered_p_mult_list, ordered_r_mult_list)]:
+                    if all(m == 1 for m in list_1):
+                        self.multiplicity = 1  # S + S = S
+                        break
+                    if 2 in list_1 and all(m == 1 for i, m in enumerate(list_1) if i != list_1.index(2)):
+                        self.multiplicity = 2  # S + D = D
+                        break
+                    if 3 in list_1 and all(m == 1 for i, m in enumerate(list_1) if i != list_1.index(3)):
+                        self.multiplicity = 3  # S + T = T
+                        break
+                    if 4 in list_1 and all(m == 1 for i, m in enumerate(list_1) if i != list_1.index(4)):
+                        self.multiplicity = 4  # S + Q = Q
+                        break
+                    if all(m == 2 for m in list_1):
+                        # D + D = S or T
+                        # D + D + D = D or Q
+                        if len(list_1) % 2 == 0:  # even number of D's in list_1, m must be an odd number
+                            if any(m > 2 for m in list_2):
+                                self.multiplicity = max(list_2) if max(list_2) % 2 == 1 else max(list_2) - 1
+                        else:  # odd number of D's in list_1, m must be even
+                            self.multiplicity = max(list_2) if max(list_2) % 2 == 0 else max(list_2) - 1
+                    if all(m == 3 for m in list_1):
+                        # T + T = S or P
+                        # T + T + T = T or 7
+                        if len(list_1) % 2 == 0:  # even number of T's in list_1, m must be 1 or 5
+                            self.multiplicity = 1
+                            logger.warning(f'ASSUMING a multiplicity of 1 (singlet) for reaction {self.label}')
+                        else:  # odd number of D's in list_1, m must be 3 or 7
+                            self.multiplicity = 3
+                            logger.warning(f'ASSUMING a multiplicity of 3 (triplet) for reaction {self.label}')
+                    if list_1 == [2, 3] and 4 not in list_2:
+                        # D + T = D or Q
+                        self.multiplicity = 2
+                        logger.warning(f'ASSUMING a multiplicity of 2 (doublet) for reaction {self.label}')
+                if self.multiplicity is None:
                     raise ReactionError(f'Could not determine multiplicity for reaction {self.label}')
             logger.info(f'Setting multiplicity of reaction {self.label} to {self.multiplicity}')
 
@@ -631,6 +581,23 @@ class ARCReaction(object):
                 well_str.count(f' {species.label} ') + \
                 well_str.endswith(f' {species.label}')
         return count
+
+    def get_comprehensive_species(self):
+        """
+        Get a list of all reactants and a list of all products, including duplicate species.
+        For example, for self recombination of a radical (R1 + R1), self.r_species will be just [R1],
+        while this method will return [R1, R1].
+
+        Returns:
+            Tuple[List[ARCSpecies], List[ARCSpecies]]:
+                The comprehensive reactants and products species lists, respectively.
+        """
+        r_species, p_species = list(), list()
+        for spc in self.r_species:
+            r_species.extend([spc] * self.get_species_count(species=spc, well=0))
+        for spc in self.p_species:
+            p_species.extend([spc] * self.get_species_count(species=spc, well=1))
+        return r_species, p_species
 
     def get_atom_map(self, verbose: int = 0) -> Optional[List[int]]:
         """
