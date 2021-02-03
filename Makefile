@@ -11,4 +11,4 @@ gcn:
 	bash devtools/install_gcn.sh
 
 gcn-ci:
-	source devtools/install_gcn_ci.sh
+	bash devtools/install_gcn_ci.sh
