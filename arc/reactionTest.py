@@ -46,6 +46,10 @@ class TestARCReaction(unittest.TestCase):
         cls.rxn4 = ARCReaction(reactants=['[NH2]', 'N[NH]'], products=['N', 'N[N]'])
         cls.rxn4.rmg_reaction = Reaction(reactants=[Species().from_smiles('[NH2]'), Species().from_smiles('N[NH]')],
                                          products=[Species().from_smiles('N'), Species().from_smiles('N[N]')])
+        cls.rxn5 = ARCReaction(reactants=['CO[O]', 'CO[O]'], products=['C=O', 'CO', '[O][O]'])
+        cls.rxn5.rmg_reaction = Reaction(reactants=[Species().from_smiles('CO[O]'), Species().from_smiles('CO[O]')],
+                                         products=[Species().from_smiles('C=O'), Species().from_smiles('CO'),
+                                                   Species().from_smiles('[O][O]')])
 
     def test_str(self):
         """Test the string representation of the object"""
@@ -125,6 +129,9 @@ class TestARCReaction(unittest.TestCase):
         self.rxn4.determine_rxn_multiplicity()
         self.assertEqual(self.rxn4.multiplicity, 3)
 
+        self.rxn5.determine_rxn_multiplicity()
+        self.assertEqual(self.rxn5.multiplicity, 3)
+
     def test_check_atom_balance(self):
         """Test the Reaction check_atom_balance method"""
 
@@ -164,6 +171,17 @@ class TestARCReaction(unittest.TestCase):
         self.assertEqual(rxn1.get_species_count(species=spc1, well=1), 0)
         self.assertEqual(rxn1.get_species_count(species=spc2, well=0), 1)
         self.assertEqual(rxn1.get_species_count(species=spc2, well=1), 2)
+
+    def test_get_comprehensive_species(self):
+        """Test identifying duplicate species in reactants/products"""
+        rxn1 = ARCReaction(label='methylperoxyl + methylperoxyl <=> methanol + formaldehyde + O2')
+        rxn1.r_species = [ARCSpecies(label='methylperoxyl', smiles='CO[O]')]
+        rxn1.p_species = [ARCSpecies(label='methanol', smiles='CO'),
+                          ARCSpecies(label='formaldehyde', smiles='C=O'),
+                          ARCSpecies(label='O2', smiles='[O][O]')]
+        r_species, p_species = rxn1.get_comprehensive_species()
+        self.assertEqual(len(r_species), 2)
+        self.assertEqual(len(p_species), 3)
 
     def test_get_atom_map(self):
         """Test getting an atom map for a reaction"""
@@ -986,9 +1004,6 @@ class TestARCReaction(unittest.TestCase):
         self.assertEqual(rxn_1.atom_map, [2, 0, 1])
         self.assertTrue(check_atom_map(rxn_1))
         self.assertTrue(mapped_product.get_xyz(), h2o_xyz_1)
-
-
-
 
 
 def check_atom_map(rxn: ARCReaction) -> bool:
