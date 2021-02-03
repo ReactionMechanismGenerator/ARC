@@ -50,6 +50,8 @@ jobs:
         export PYTHONPATH=$PYTHONPATH:$(pwd)
         cd ..
         cd ARC
+        echo $(pwd)
+        echo "$(ls)"
         make gcn-ci
         cd ..
         cd TS-GCN
