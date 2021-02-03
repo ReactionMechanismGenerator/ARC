@@ -31,13 +31,8 @@ jobs:
         git clone https://github.com/ReactionMechanismGenerator/RMG-database
         git clone https://github.com/ReactionMechanismGenerator/AutoTST
         cd ARC
-        make gcn-ci
         echo $(pwd)
         echo "$(ls)"
-        cd ..
-        echo $(pwd)
-        echo "$(ls)"
-        cd ARC
         conda list
     - name: Lint with flake8
       shell: bash -l {0}
@@ -55,5 +50,14 @@ jobs:
         export PYTHONPATH=$PYTHONPATH:$(pwd)
         cd ..
         cd ARC
+        make gcn-ci
+        cd ..
+        cd TS-GCN
+        echo $(pwd)
+        echo "$(ls)"
+        cd ..
+        cd ARC
+        echo $(pwd)
+        echo "$(ls)"
         make test
         codecov --token=f259713a-7f1d-4e9c-b140-bb3bb371d3ef
