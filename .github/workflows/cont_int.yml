@@ -53,6 +53,8 @@ jobs:
         cd ..
         cd RMG-Py
         export PYTHONPATH=$PYTHONPATH:$(pwd)
+        export $PATH
+        echo $PATH
         cd ..
         cd ARC
         make test
