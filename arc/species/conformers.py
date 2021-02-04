@@ -808,7 +808,11 @@ def determine_dihedrals(conformers, torsions):
     return conformers
 
 
-def determine_torsion_sampling_points(label, torsion_angles, smeared_scan_res=None, symmetry=1):
+def determine_torsion_sampling_points(label: str,
+                                      torsion_angles: list,
+                                      smeared_scan_res: Optional[float] = None,
+                                      symmetry: int = 1,
+                                      ) -> Tuple[list. list]:
     """
     Determine how many points to consider in each well of a torsion for conformer combinations.
 
@@ -819,10 +823,10 @@ def determine_torsion_sampling_points(label, torsion_angles, smeared_scan_res=No
         symmetry (int, optional): The torsion symmetry number.
 
     Returns:
-        list: Sampling points for the torsion.
-    Returns:
-        list: Each entry is a well dictionary with the keys
-        ``start_idx``, ``end_idx``, ``start_angle``, ``end_angle``, ``angles``.
+        Tuple[list. list]:
+            - Sampling points for the torsion.
+            - list: Each entry is a well dictionary with the keys
+              ``start_idx``, ``end_idx``, ``start_angle``, ``end_angle``, ``angles``.
     """
     smeared_scan_res = smeared_scan_res or SMEARED_SCAN_RESOLUTIONS
     sampling_points = list()
@@ -1391,7 +1395,10 @@ def rdkit_force_field(label, rd_mol, force_field='MMFF94s', optimize=True):
     return xyzs, energies
 
 
-def get_wells(label, angles, blank=20):
+def get_wells(label: str,
+              angles: list,
+              blank: int = 20,
+              ) -> list:
     """
     Determine the distinct wells from a list of angles.
 
