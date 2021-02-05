@@ -1464,11 +1464,9 @@ class TestTSGuess(unittest.TestCase):
         ts_guess.execute_ts_guess_method()
 
         # verify that the method correctly create TS.xyz
-        ts_path = os.path.join(project_dir, 'calcs', 'TSs', rxn.ts_label, 'GCN')
-        ts_path2 = os.path.join(ts_path, 'TS.xyz')
-        # raise ValueError(f'{ts_path}\n{os.listdir(ts_path)}\n{ts_path2}\n{os.path.isfile(ts_path2)}')
-        # ts_xyz_dict = str_to_xyz(ts_path)
-        self.assertEqual(ts_guess.initial_xyz, ('C', 'C', 'N', 'O', 'N', 'N', 'H', 'H', 'H'))
+        ts_path = os.path.join(project_dir, 'calcs', 'TSs', rxn.ts_label, 'GCN', 'TS.xyz')
+        ts_xyz_dict = str_to_xyz(ts_path)
+        self.assertEqual(ts_xyz_dict, ('C', 'C', 'N', 'O', 'N', 'N', 'H', 'H', 'H'))
 
         if os.path.exists(project_dir):
             shutil.rmtree(project_dir)
