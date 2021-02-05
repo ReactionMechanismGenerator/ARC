@@ -7,7 +7,8 @@ cd TS-GCN
 git checkout update_devtools_GH_actions
 
 # create the environment
-bash devtools/create_env_cpu.sh
+cd devtools
+bash create_env_cpu.sh
 
 # Restore original directory
 popd
