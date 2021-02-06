@@ -30,6 +30,7 @@ jobs:
         cd ..
         git clone https://github.com/ReactionMechanismGenerator/RMG-database
         git clone https://github.com/ReactionMechanismGenerator/AutoTST
+        conda deactivate
         cd ARC
         make gcn-ci
         echo $(pwd)
