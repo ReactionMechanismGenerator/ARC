@@ -1466,7 +1466,7 @@ class TestTSGuess(unittest.TestCase):
         # verify that the method correctly create TS.xyz
         ts_path = os.path.join(project_dir, 'calcs', 'TSs', rxn.ts_label, 'GCN', 'TS.xyz')
         ts_xyz_dict = str_to_xyz(ts_path)
-        self.assertEqual(ts_xyz_dict, ('C', 'C', 'N', 'O', 'N', 'N', 'H', 'H', 'H'))
+        self.assertEqual(ts_xyz_dict['symbols'], ('C', 'C', 'N', 'O', 'N', 'N', 'H', 'H', 'H'))
 
         if os.path.exists(project_dir):
             shutil.rmtree(project_dir)
