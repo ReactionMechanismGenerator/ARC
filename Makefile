@@ -10,5 +10,5 @@ test test-unittests:
 gcn:
 	bash devtools/install_gcn.sh
 
-gcn-travis:
-	bash devtools/install_gcn_travis.sh
+gcn-cpu:
+	bash devtools/install_gcn_cpu.sh
