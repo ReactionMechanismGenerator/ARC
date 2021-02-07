@@ -20,6 +20,8 @@ pipe_submit = {
 #SBATCH --time={t_max}
 #SBATCH --mem-per-cpu={memory}
 #SBATCH --array=1-{max_task_num}
+#SBATCH -o out.txt
+#SBATCH -e err.txt
 
 source activate arc_env
 
@@ -38,6 +40,8 @@ submit_scripts = {
 #SBATCH -n {cpus}
 #SBATCH --time={t_max}
 #SBATCH --mem-per-cpu={memory}
+#SBATCH -o out.txt
+#SBATCH -e err.txt
 
 export g16root=/home/gridsan/groups/GRPAPI/Software
 export PATH=$g16root/g16/:$g16root/gv:$PATH
@@ -70,6 +74,8 @@ rm -rf $GAUSS_SCRDIR
 #SBATCH -n {cpus}
 #SBATCH --time={t_max}
 #SBATCH --mem-per-cpu={memory}
+#SBATCH -o out.txt
+#SBATCH -e err.txt
 
 echo "============================================================"
 echo "Job ID : $SLURM_JOB_ID"
@@ -108,6 +114,8 @@ rm -rf  $WorkDir
 #SBATCH -n {cpus}
 #SBATCH --time={t_max}
 #SBATCH --mem-per-cpu={memory}
+#SBATCH -o out.txt
+#SBATCH -e err.txt
 
 export PATH=/opt/molpro/molprop_2015_1_linux_x86_64_i8/bin:$PATH
 
@@ -145,8 +153,8 @@ rm -rf $sdir
 #SBATCH -n {cpus}
 #SBATCH --time={t_max}
 #SBATCH --mem-per-cpu={memory}
-#SBATCH -e err.txt
 #SBATCH -o out.txt
+#SBATCH -e err.txt
 {array_key_1}
 
 module add c3ddb/gaussian/09.d01
@@ -192,8 +200,8 @@ rm -rf $WorkDir
 #SBATCH -n {cpus}
 #SBATCH --time={t_max}
 #SBATCH --mem-per-cpu={memory}
-#SBATCH -e err.txt
 #SBATCH -o out.txt
+#SBATCH -e err.txt
 
 module add c3ddb/orca/4.1.2
 module add c3ddb/openmpi/3.1.3
@@ -238,8 +246,8 @@ rm -rf $WorkDir
 #SBATCH -n {cpus}
 #SBATCH --time={t_max}
 #SBATCH --mem-per-cpu={memory}
-#SBATCH -e err.txt
 #SBATCH -o out.txt
+#SBATCH -e err.txt
 
 export g16root=/opt
 which g16
@@ -283,8 +291,8 @@ rm -rf $WorkDir
 #SBATCH -n {cpus}
 #SBATCH --time={t_max}
 #SBATCH --mem-per-cpu={memory}
-#SBATCH -e err.txt
 #SBATCH -o out.txt
+#SBATCH -e err.txt
 
 export PATH=/opt/molpro/molprop_2015_1_linux_x86_64_i8/bin:$PATH
 
@@ -320,8 +328,8 @@ rm -rf $sdir
 #SBATCH -n {cpus}
 #SBATCH --time={t_max}
 #SBATCH --mem-per-cpu={memory}
-#SBATCH -e err.txt
 #SBATCH -o out.txt
+#SBATCH -e err.txt
 
 export PATH=/opt/orca_4_2_1_linux_x86-64_openmpi314/:/opt/openmpi-3.1.4/bin/:$PATH
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/openmpi-3.1.4/lib/:/opt/openmpi-3.1.4/etc
@@ -357,13 +365,13 @@ rm -rf $WorkDir
         # TeraChem
         'terachem': """#!/bin/bash -l
 #SBATCH -J {name}
-#SBATCH -e err.txt
-#SBATCH -o out.txt
 #SBATCH -t {t_max}
 #SBATCH --cpus-per-task=1
 #SBATCH --ntasks-per-node=4
 #SBATCH --gres=gpu:2
 #SBATCH --mem-per-cpu={memory}
+#SBATCH -o out.txt
+#SBATCH -e err.txt
 
 echo "============================================================"
 echo "Job ID : $SLURM_JOB_ID"
@@ -547,8 +555,8 @@ rm -rf $WorkDir
 #SBATCH -n {cpus}
 #SBATCH --time=5-0:00:00
 #SBATCH --mem-per-cpu={memory}
-#SBATCH -e err.txt
 #SBATCH -o out.txt
+#SBATCH -e err.txt
 
 echo "============================================================"
 echo "Job ID : $SLURM_JOB_ID"
