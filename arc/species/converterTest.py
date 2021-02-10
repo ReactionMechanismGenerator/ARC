@@ -613,6 +613,23 @@ R1=1.0912"""
                            [-1.29769464, -1.18742971, 0.0]]
         self.assertEqual(coords, expected_coords)
 
+    def test_xyz_to_kinbot_list(self):
+        """Test the xyz_to_coords_list function"""
+        xyz_dict = {'symbols': ('O', 'N', 'C', 'H', 'H'),
+                    'isotopes': (16, 14, 12, 1, 1),
+                    'coords': ((1.1746411, -0.15309781, 0.0),
+                               (0.06304988, 0.35149648, 0.0),
+                               (-1.12708952, -0.11333971, 0.0),
+                               (-1.93800144, 0.60171738, 0.0),
+                               (-1.29769464, -1.18742971, 0.0))}
+        coords = converter.xyz_to_kinbot_list(xyz_dict)
+        expected_coords = ['O', 1.1746411, -0.15309781, 0.0,
+                           'N', 0.06304988, 0.35149648, 0.0,
+                           'C', -1.12708952, -0.11333971, 0.0,
+                           'H', -1.93800144, 0.60171738, 0.0,
+                           'H', -1.29769464, -1.18742971, 0.0]
+        self.assertEqual(coords, expected_coords)
+
     def test_xyz_to_xyz_file_format(self):
         """Test generating the XYZ file format from the xyz dictionary"""
         xyzf1 = converter.xyz_to_xyz_file_format(xyz_dict=self.xyz1['dict'], comment='test methane xyz conversion')
