@@ -259,6 +259,23 @@ def xyz_to_xyz_file_format(xyz_dict: dict,
     return str(len(xyz_dict['symbols'])) + '\n' + comment.strip() + '\n' + xyz_to_str(xyz_dict) + '\n'
 
 
+def xyz_to_kinbot_list(xyz_dict: dict) -> List[Union[str, float]]:
+    """
+    Get the KinBot xyz format of a single running list of:
+    [symbol0, x0, y0, z0, symbol1, x1, y1, z1,...]
+
+    Args:
+        xyz_dict (dict): The ARC xyz format.
+
+    Returns: List[Union[str, float]]
+        The respective KinBot xyz format.
+    """
+    kinbot_xyz = list()
+    for symbol, coords in zip(xyz_dict['symbols'], xyz_dict['coords']):
+        kinbot_xyz.extend([symbol, coords[0], coords[1], coords[2]])
+    return kinbot_xyz
+
+
 def xyz_to_dmat(xyz_dict: dict) -> Optional[np.array]:
     """
     Convert Cartesian coordinates to a distance matrix.
