@@ -103,7 +103,7 @@ def determine_scaling_factors(levels: List[Union[Level, dict, str]],
         ess_settings = check_ess_settings(ess_settings or global_ess_settings)
 
         Scheduler(project=project, project_directory=project_directory, species_list=species_list,
-                  composite_method=composite_method, opt_level=freq_level, freq_level=freq_level,
+                  composite_method=composite_method, opt_level=freq_level, freq_level=freq_level, sp_level=freq_level,
                   ess_settings=ess_settings, job_types=job_types, allow_nonisomorphic_2d=True)
 
         zpe_dict = dict()
