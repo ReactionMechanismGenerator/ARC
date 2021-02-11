@@ -6,8 +6,6 @@ If the species is a transition state (TS), its ``ts_guesses`` attribute will hav
 import datetime
 import numpy as np
 import os
-from rdkit import Chem
-import time
 from typing import List, Optional, Tuple, Union
 
 import rmgpy.molecule.element as elements
@@ -55,7 +53,6 @@ from arc.species.converter import (check_isomorphism,
                                    xyz_to_str,
                                    )
 from arc.species.vectors import calculate_distance
-from arc.ts import atst, gcn
 
 logger = get_logger()
 
@@ -2136,16 +2133,6 @@ def determine_occ(xyz, charge):
             atom = Atom(element=str(line.split()[0]))
             electrons += atom.number
     electrons -= charge
-
-
-def nearly_equal(a: float,
-                 b: float,
-                 sig_fig: int = 5):
-    """
-    A helper function to determine whether two floats are nearly equal.
-    Can be replaced by math.isclose in Py3
-    """
-    return a == b or int(a*10**sig_fig) == int(b*10**sig_fig)
 
 
 def determine_rotor_symmetry(label: str,
