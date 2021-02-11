@@ -27,9 +27,6 @@ if TYPE_CHECKING:
 logger = get_logger()
 
 
-default_ts_methods = settings['default_ts_methods']
-
-
 class ARCReaction(object):
     """
     A class for representing a chemical reaction.
@@ -50,8 +47,6 @@ class ARCReaction(object):
         p_species (list, optional): A list of products :ref:`ARCSpecies <species>` objects.
         ts_label (str, optional): The :ref:`ARCSpecies <species>` label of the respective TS.
         rmg_reaction (Reaction, optional): An RMG Reaction class.
-        ts_methods (list, optional): Methods to try for generating TS guesses. If an ARCSpecies is a TS and ts_methods
-                                     is empty (passing an empty list), then xyz (user guess) must be given.
         ts_xyz_guess (list, optional): A list of TS XYZ user guesses, each in a string format.
         multiplicity (int, optional): The reaction surface multiplicity. A trivial guess will be made unless provided.
         charge (int, optional): The reaction surface charge.
@@ -78,8 +73,6 @@ class ARCReaction(object):
         rmg_reaction (Reaction): An RMG Reaction class.
         rmg_reactions (list): A list of RMG Reaction objects with RMG rates for comparisons.
         long_kinetic_description (str): A description for the species entry in the thermo library outputted.
-        ts_methods (list): Methods to try for generating TS guesses. If an ARCSpecies is a TS and ts_methods
-                           is empty (passing an empty list), then xyz (user guess) must be given.
         ts_xyz_guess (list): A list of TS XYZ user guesses, each in a string format.
         multiplicity (int): The reaction surface multiplicity. A trivial guess will be made unless provided.
         charge (int): The reaction surface charge.
@@ -101,7 +94,6 @@ class ARCReaction(object):
                  p_species: Optional[List[ARCSpecies]] = None,
                  ts_label: Optional[str] = None,
                  rmg_reaction: Optional[Reaction] = None,
-                 ts_methods: Optional[List[str]] = None,
                  ts_xyz_guess: Optional[list] = None,
                  multiplicity: Optional[int] = None,
                  charge: Optional[int] = None,
@@ -144,8 +136,6 @@ class ARCReaction(object):
                     and not (len(self.r_species) * len(self.p_species)):
                 raise InputError(f'Cannot determine reactants and/or products labels for reaction {self.label}')
             self.set_label_reactants_products()
-            self.ts_methods = ts_methods if ts_methods is not None else default_ts_methods
-            self.ts_methods = [tsm.lower() for tsm in self.ts_methods]
             self.ts_xyz_guess = ts_xyz_guess if ts_xyz_guess is not None else list()
             self.done_opt_r_n_p = None
         if len(self.reactants) > 3 or len(self.products) > 3:
@@ -253,7 +243,6 @@ class ARCReaction(object):
         reaction_dict['family_own_reverse'] = self.family_own_reverse
         reaction_dict['long_kinetic_description'] = self.long_kinetic_description
         reaction_dict['label'] = self.label
-        reaction_dict['ts_methods'] = self.ts_methods
         reaction_dict['ts_xyz_guess'] = self.ts_xyz_guess
         reaction_dict['ts_label'] = self.ts_label
         return reaction_dict
@@ -306,8 +295,6 @@ class ARCReaction(object):
 
         self.long_kinetic_description = reaction_dict['long_kinetic_description'] \
             if 'long_kinetic_description' in reaction_dict else ''
-        self.ts_methods = reaction_dict['ts_methods'] if 'ts_methods' in reaction_dict else default_ts_methods
-        self.ts_methods = [tsm.lower() for tsm in self.ts_methods]
         self.ts_xyz_guess = reaction_dict['ts_xyz_guess'] if 'ts_xyz_guess' in reaction_dict else list()
         self.preserve_param_in_scan = reaction_dict['preserve_param_in_scan'] \
             if 'preserve_param_in_scan' in reaction_dict else None
