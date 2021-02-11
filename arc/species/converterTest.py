@@ -8,6 +8,7 @@ This module contains unit tests of the arc.species.converter module
 import numpy as np
 import unittest
 
+from ase import Atoms
 from rdkit import Chem
 from rdkit.Chem import rdMolTransforms as rdMT, rdchem
 
@@ -3245,6 +3246,17 @@ H      -4.07566100   -0.52115800    0.00003300"""
         self.assertIsInstance(rd_mol, rdchem.Mol)
         rd_mol_block = Chem.MolToMolBlock(rd_mol).splitlines()
         self.check_atom_connectivity_in_rd_mol_block(spc3.mol, rd_mol_block)
+
+    def test_xyz_to_ase(self):
+        """Test the xyz_to_ase function"""
+        atoms_1 = converter.xyz_to_ase(self.xyz1['dict'])
+        self.assertIsInstance(atoms_1, Atoms)
+        self.assertEqual(str(atoms_1.symbols), 'CH4')
+        np.testing.assert_array_equal(atoms_1.positions, [[0., 0., 0.],
+                                                          [0.6300326, 0.6300326, 0.6300326],
+                                                          [-0.6300326, -0.6300326, 0.6300326],
+                                                          [-0.6300326, 0.6300326, -0.6300326],
+                                                          [0.6300326, -0.6300326, -0.6300326]])
 
     def check_atom_connectivity_in_rd_mol_block(self, rmg_mol, rd_mol_block):
         """A helper function for testing"""
