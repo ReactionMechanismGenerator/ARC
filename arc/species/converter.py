@@ -7,6 +7,7 @@ import os
 from typing import Dict, Iterable, List, Optional, Tuple, Union
 
 import qcelemental as qcel
+from ase import Atoms
 from openbabel import pybel
 from rdkit import Chem
 from rdkit.Chem import rdMolTransforms as rdMT
@@ -403,6 +404,19 @@ def sort_xyz_using_indices(xyz_dict: dict,
         symbols.append(xyz_dict['symbols'][i])
         isotopes.append(xyz_dict['isotopes'][i])
     return xyz_from_data(coords=coords, symbols=symbols, isotopes=isotopes)
+
+
+def xyz_to_ase(xyz_dict: dict) -> Atoms:
+    """
+    Convert an xyz dict to an ASE Atoms object.
+
+    Args:
+        xyz_dict (dict): The ARC xyz format.
+
+    Returns:
+        Type[Atoms]: The corresponding ASE Atom object.
+    """
+    return Atoms(xyz_dict['symbols'], xyz_dict['coords'])
 
 
 def rmg_conformer_to_xyz(conformer):
