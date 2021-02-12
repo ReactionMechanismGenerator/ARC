@@ -43,9 +43,9 @@ logger = get_logger()
 
 
 delete_command, inconsistency_ab, inconsistency_az, maximum_barrier, preserve_params_in_scan, rotor_scan_resolution, \
-    servers, submit_filename = settings['delete_command'], settings['inconsistency_ab'], settings['inconsistency_az'], \
-                               settings['maximum_barrier'], settings['preserve_params_in_scan'], \
-                               settings['rotor_scan_resolution'], settings['servers'], settings['submit_filename']
+    servers, submit_filenames = settings['delete_command'], settings['inconsistency_ab'], settings['inconsistency_az'], \
+                                settings['maximum_barrier'], settings['preserve_params_in_scan'], \
+                                settings['rotor_scan_resolution'], settings['servers'], settings['submit_filenames']
 
 
 def determine_ess_status(output_path: str,
@@ -1152,7 +1152,7 @@ def trsh_job_on_server(server: str,
         return None, False
 
     # modify the submit file
-    remote_submit_file = os.path.join(remote_path, submit_filename[cluster_soft])
+    remote_submit_file = os.path.join(remote_path, submit_filenames[cluster_soft])
     with SSHClient(server) as ssh:
         content = ssh.read_remote_file(remote_file_path=remote_submit_file)
     if cluster_soft.lower() == 'oge':
@@ -1177,7 +1177,7 @@ def trsh_job_on_server(server: str,
     # resubmit
     with SSHClient(server) as ssh:
         ssh.upload_file(remote_file_path=os.path.join(remote_path,
-                        submit_filename[cluster_soft]), file_string=content)
+                        submit_filenames[cluster_soft]), file_string=content)
     return node, True
 
 
