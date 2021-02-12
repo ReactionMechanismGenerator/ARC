@@ -104,36 +104,38 @@ delete_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qdel
                   'PBS': '/usr/local/bin/qdel',
                   }
 
-list_available_nodes_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat -f | grep "/8 " | grep "long" | grep -v "8/8"| grep -v "aAu"',
-                                'Slurm': 'sinfo -o "%n %t %O %E"',
-                                'PBS': 'pbsnodes',
-                                }
+list_available_nodes_command = {
+    'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat -f | grep "/8 " | grep "long" | grep -v "8/8"| grep -v "aAu"',
+    'Slurm': 'sinfo -o "%n %t %O %E"',
+    'PBS': 'pbsnodes',
+    }
 
-submit_filename = {'OGE': 'submit.sh',
-                   'Slurm': 'submit.sl',
-                   'PBS': 'submit.sh',
-                   }
+submit_filenames = {'OGE': 'submit.sh',
+                    'Slurm': 'submit.sl',
+                    'PBS': 'submit.sh',
+                    }
 
 t_max_format = {'OGE': 'hours',
                 'Slurm': 'days',
                 'PBS': 'hours',
                 }
 
-input_filename = {'gaussian': 'input.gjf',
-                  'molpro': 'input.in',
-                  'onedmin': 'input.in',
-                  'orca': 'input.in',
-                  'qchem': 'input.in',
-                  'terachem': 'input.in',
-                  }
-
-output_filename = {'gaussian': 'input.log',
-                   'molpro': 'input.out',
-                   'onedmin': 'output.out',
-                   'orca': 'input.log',
-                   'qchem': 'output.out',
-                   'terachem': 'output.out',
+input_filenames = {'gaussian': 'input.gjf',
+                   'molpro': 'input.in',
+                   'onedmin': 'input.in',
+                   'orca': 'input.in',
+                   'qchem': 'input.in',
+                   'terachem': 'input.in',
                    }
+
+output_filenames = {'gaussian': 'input.log',
+                    'gromacs': 'output.yml',
+                    'molpro': 'input.out',
+                    'onedmin': 'output.out',
+                    'orca': 'input.log',
+                    'qchem': 'output.out',
+                    'terachem': 'output.out',
+                    }
 
 default_levels_of_theory = {'conformer': 'wb97xd/def2svp',  # it's recommended to choose a method with dispersion
                             'ts_guesses': 'wb97xd/def2svp',
