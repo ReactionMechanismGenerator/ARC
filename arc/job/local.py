@@ -20,9 +20,9 @@ from arc.job.ssh import check_job_status_in_stdout
 
 logger = get_logger()
 
-servers, check_status_command, submit_command, submit_filename, delete_command, output_filename = \
-    settings['servers'], settings['check_status_command'], settings['submit_command'], settings['submit_filename'],\
-    settings['delete_command'], settings['output_filename']
+servers, check_status_command, submit_command, submit_filenames, delete_command, output_filenames = \
+    settings['servers'], settings['check_status_command'], settings['submit_command'], settings['submit_filenames'],\
+    settings['delete_command'], settings['output_filenames']
 
 
 def execute_command(command, shell=True, no_fail=False):
@@ -178,7 +178,7 @@ def submit_job(path):
     job_status = ''
     job_id = 0
     cmd = 'cd ' + path + '; ' + submit_command[servers['local']['cluster_soft']] + ' '\
-        + submit_filename[servers['local']['cluster_soft']]
+        + submit_filenames[servers['local']['cluster_soft']]
     stdout = execute_command(cmd)[0]
     if servers['local']['cluster_soft'].lower() in ['oge', 'sge'] and 'submitted' in stdout[0].lower():
         job_id = int(stdout[0].split()[2])
@@ -234,8 +234,8 @@ def rename_output(local_file_path, software):
     `software` is the software used for the job by which the original output file name is determined
     """
     software = software.lower()
-    if os.path.isfile(os.path.join(os.path.dirname(local_file_path), output_filename[software])):
-        shutil.move(src=os.path.join(os.path.dirname(local_file_path), output_filename[software]), dst=local_file_path)
+    if os.path.isfile(os.path.join(os.path.dirname(local_file_path), output_filenames[software])):
+        shutil.move(src=os.path.join(os.path.dirname(local_file_path), output_filenames[software]), dst=local_file_path)
 
 
 def delete_all_local_arc_jobs(jobs: Optional[List[Union[str, int]]] = None):
