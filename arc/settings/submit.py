@@ -237,7 +237,7 @@ rm -rf $WorkDir
 """,
     },
 
-    'rmg': {
+    'server1': {
         # Gaussian 16
         'gaussian': """#!/bin/bash -l
 #SBATCH -p long
@@ -281,6 +281,35 @@ cp * "$SubmitDir/"
 
 rm -rf $GAUSS_SCRDIR
 rm -rf $WorkDir
+
+""",
+        # QChem 5.2
+        'qchem': """#!/bin/bash -l
+
+#$ -N {name}
+#$ -l long{architecture}
+#$ -l h_rt={t_max}
+#$ -pe singlenode {cpus}
+#$ -l h=!node60.cluster
+#$ -cwd
+#$ -o out.txt
+#$ -e err.txt
+
+echo "Running on node:"
+hostname
+
+source /opt/qchem/qcenv.sh
+
+export QC=/opt/qchem
+export QCSCRATCH=/scratch/{un}/{name}
+export QCLOCALSCR=/scratch/{un}/{name}/qlscratch
+. $QC/qcenv.sh
+
+mkdir -p /scratch/{un}/{name}/qlscratch
+
+qchem -nt {cpus} input.in output.out
+
+rm -r /scratch/{un}/{name}
 
 """,
         # Molpro 2015
@@ -390,7 +419,7 @@ terachem input.in > output.out
 """,
     },
 
-    'pharos': {
+    'server2': {
         # Gaussian 16
         'gaussian': """#!/bin/bash -l
 
