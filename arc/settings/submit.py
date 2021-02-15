@@ -245,7 +245,7 @@ touch final_time
 """,
     },
 
-    'server2': {
+    'server1': {
         # Gaussian 16
         'gaussian': """#!/bin/bash -l
 #SBATCH -p long
@@ -293,6 +293,35 @@ rm -rf $GAUSS_SCRDIR
 rm -rf $WorkDir
 
 touch final_time
+
+""",
+        # QChem 5.2
+        'qchem': """#!/bin/bash -l
+
+#$ -N {name}
+#$ -l long{architecture}
+#$ -l h_rt={t_max}
+#$ -pe singlenode {cpus}
+#$ -l h=!node60.cluster
+#$ -cwd
+#$ -o out.txt
+#$ -e err.txt
+
+echo "Running on node:"
+hostname
+
+source /opt/qchem/qcenv.sh
+
+export QC=/opt/qchem
+export QCSCRATCH=/scratch/{un}/{name}
+export QCLOCALSCR=/scratch/{un}/{name}/qlscratch
+. $QC/qcenv.sh
+
+mkdir -p /scratch/{un}/{name}/qlscratch
+
+qchem -nt {cpus} input.in output.out
+
+rm -r /scratch/{un}/{name}
 
 """,
         # Molpro 2015
@@ -414,7 +443,7 @@ touch final_time
 """,
     },
 
-    'server1': {
+    'server2': {
         # Gaussian 16
         'gaussian': """#!/bin/bash -l
 
