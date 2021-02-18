@@ -2,7 +2,9 @@
 ARC's settings
 """
 
+import os
 import string
+import sys
 
 # Users should update the following server dictionary.
 # Instructions for RSA key generation can be found here:
@@ -195,3 +197,26 @@ default_job_settings = {
     'job_time_limit_hrs': 120,
     'job_max_server_node_memory_allocation': 0.8,  # e.g., at most 80% node memory will be used
 }
+
+
+# default environment names for sister repos
+TS_GCN_PYTHON, AUTOTST_PYTHON = None, None
+gcn_pypath_1 = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),
+                            'ts_gcn', 'bin', 'python')
+gcn_pypath_2 = os.path.join(os.environ.get('HOME'), 'anaconda3', 'envs', 'ts_gcn', 'bin', 'python')
+gcn_pypath_3 = os.path.join(os.environ.get('HOME'), 'miniconda3', 'envs', 'ts_gcn', 'bin', 'python')
+gcn_pypath_4 = os.path.join(os.environ.get('HOME'), '.conda', 'envs', 'ts_gcn', 'bin', 'python')
+for gcn_pypath in [gcn_pypath_1, gcn_pypath_2, gcn_pypath_3, gcn_pypath_4]:
+    if os.path.isfile(gcn_pypath):
+        TS_GCN_PYTHON = gcn_pypath
+        break
+
+autotst_pypath_1 = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),
+                                'tst_env', 'bin', 'python')
+autotst_pypath_2 = os.path.join(os.environ.get('HOME'), 'anaconda3', 'envs', 'tst_env', 'bin', 'python')
+autotst_pypath_3 = os.path.join(os.environ.get('HOME'), 'miniconda3', 'envs', 'tst_env', 'bin', 'python')
+autotst_pypath_4 = os.path.join(os.environ.get('HOME'), '.conda', 'envs', 'tst_env', 'bin', 'python')
+for autotst_pypath in [autotst_pypath_1, autotst_pypath_2, autotst_pypath_3, autotst_pypath_4]:
+    if os.path.isfile(autotst_pypath):
+        AUTOTST_PYTHON = autotst_pypath
+        break
