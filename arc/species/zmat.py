@@ -1728,12 +1728,12 @@ def get_parameter_from_atom_indices(zmat, indices, xyz_indexed=True):
         xyz_indexed (bool, optional): Whether the atom indices relate to the xyz (and the zmat map will be used)
                                       or they already relate to the zmat. Default is ``True`` (relate to xyz).
 
-    Returns:
-        str or list: The corresponding zmat parameter.
-
     Raises:
         TypeError: If ``indices`` are of wrong type.
         ZMatError: If ``indices`` has a wrong length, or not all indices are in the zmat map.
+
+    Returns: Union[str, list]
+        The corresponding zmat parameter.
     """
     if not isinstance(indices, (list, tuple)):
         raise TypeError(f'indices must be a list, got {indices} which is a {type(indices)}')
