@@ -77,7 +77,7 @@ def xyz_to_zmat(xyz: Dict[str, tuple],
                                       'A_atom', 'A_group',
                                       'D_atom', 'D_group'.
                                       'R', 'A', and 'D' are constrain distances, angles, and dihedrals, respectively.
-                                      Values are lists of atom indices (0-indexed). The atom indices order matters.
+                                      Values are lists of atom index tuples (0-indexed). The atom indices order matters.
                                       Specifying '_atom' will cause only the first atom in the specified list values
                                       to translate/rotate if the corresponding zmat parameter is changed.
                                       Specifying '_group' will cause the entire group connected to the first atom
@@ -104,6 +104,15 @@ def xyz_to_zmat(xyz: Dict[str, tuple],
     constraints = constraints or dict()
     if mol is None and any('group' in constraint_key for constraint_key in constraints.keys()):
         raise ZMatError(f'Cannot generate a constrained zmat without mol. Got mol=None and constraints=\n{constraints}')
+    for constraint_list in constraints.values():
+        for constraint_tuple in constraint_list:
+            for index in constraint_tuple:
+                if mol is not None and index >= len(mol.atoms):
+                    raise ZMatError(f'The following constraints (containing atom index {index}) are invalid for '
+                                    f'a molecule with only {len(mol.atoms)} atoms:\n{constraints}')
+                if index >= len(xyz['symbols']):
+                    raise ZMatError(f'The following constraints (containing atom index {index}) are invalid for '
+                                    f'coordinates with only {len(xyz["symbols"])} atoms:\n{constraints}')
     xyz = xyz.copy()
     zmat = {'symbols': list(), 'coords': list(), 'vars': dict(), 'map': dict()}
     atom_order = get_atom_order(xyz=xyz, mol=mol, constraints_dict=constraints, fragments=fragments)
@@ -162,6 +171,8 @@ def determine_r_atoms(zmat: Dict[str, Union[dict, tuple]],
                       n: int,
                       atom_index: int,
                       r_constraint: Optional[Tuple[int]] = None,
+                      a_constraint: Optional[Tuple[int, int]] = None,
+                      d_constraint: Optional[Tuple[int, int, int]] = None,
                       trivial_assignment: bool = False,
                       fragments: Optional[List[List[int]]] = None,
                       ) -> Optional[List[int]]:
@@ -178,6 +189,10 @@ def determine_r_atoms(zmat: Dict[str, Union[dict, tuple]],
                           (``n`` and ``atom_index`` refer to the same atom, but it might have different indices
                           in the zmat and the molecule/xyz)
         r_constraint (tuple, optional): R-type constraints. The atom index to which the atom being checked is
+                                        constrained. ``None`` if it is not constrained.
+        a_constraint (tuple, optional): A-type constraints. The atom indices to which the atom being checked is
+                                        constrained. ``None`` if it is not constrained.
+        d_constraint (tuple, optional): D-type constraints. The atom indices to which the atom being checked is
                                         constrained. ``None`` if it is not constrained.
         trivial_assignment (bool, optional): Whether to attempt assigning atoms without considering connectivity
                                              if the connectivity assignment fails.
@@ -197,9 +212,14 @@ def determine_r_atoms(zmat: Dict[str, Union[dict, tuple]],
     if len(zmat['coords']) == 0:
         # this is the 1st atom added to the zmat, there's no distance definition here
         r_atoms = None
-    elif r_constraint is not None:
-        # 1. always use the constrains if given
-        r_atoms = [n] + [key_by_val(zmat['map'], atom) for atom in r_constraint[1:]]
+    elif any(constraint is not None for constraint in [r_constraint, a_constraint, d_constraint]):
+        # 1. always use the constraint if given
+        if r_constraint is not None:
+            r_atoms = [n] + [key_by_val(zmat['map'], r_constraint[1])]
+        elif a_constraint is not None:
+            r_atoms = [n] + [key_by_val(zmat['map'], a_constraint[1])]
+        elif d_constraint is not None:
+            r_atoms = [n] + [key_by_val(zmat['map'], d_constraint[1])]
     elif connectivity is not None:
         # 2. use connectivity if the atom is not constrained
         r_atoms = [n]
@@ -287,7 +307,8 @@ def determine_a_atoms(zmat: Dict[str, Union[dict, tuple]],
                       r_atoms: Optional[List[int]],
                       n: int,
                       atom_index: int,
-                      a_constraint: Optional[Tuple[int]] = None,
+                      a_constraint: Optional[Tuple[int, int]] = None,
+                      d_constraint: Optional[Tuple[int, int, int]] = None,
                       a_constraint_type: Optional[str] = None,
                       trivial_assignment: bool = False,
                       fragments: Optional[List[List[int]]] = None,
@@ -306,6 +327,8 @@ def determine_a_atoms(zmat: Dict[str, Union[dict, tuple]],
                           (``n`` and ``atom_index`` refer to the same atom, but it might have different indices
                           in the zmat and the molecule/xyz)
         a_constraint (tuple, optional): A-type constraints. The atom indices to which the atom being checked is
+                                        constrained. ``None`` if it is not constrained.
+        d_constraint (tuple, optional): D-type constraints. The atom indices to which the atom being checked is
                                         constrained. ``None`` if it is not constrained.
         a_constraint_type (str, optional): The A constraint type ('A_atom', or 'A_group').
         trivial_assignment (bool, optional): Whether to attempt assigning atoms without considering connectivity
@@ -330,9 +353,13 @@ def determine_a_atoms(zmat: Dict[str, Union[dict, tuple]],
         # this is the 1st or 2nd atom added to the zmat, there's no angle definition here
         a_atoms = None
     elif a_constraint is not None:
+        # always use the constraint if given
         if a_constraint_type not in ['A_atom', 'A_group', None]:
             raise ZMatError(f'Got an invalid A constraint type "{a_constraint_type}" for {a_constraint}')
         a_atoms = [n] + [key_by_val(zmat['map'], atom) for atom in a_constraint[1:]]
+    elif d_constraint is not None:
+        # consider d_constraint for consistency if a_constraint is None
+        a_atoms = [n] + [key_by_val(zmat['map'], atom) for atom in d_constraint[1:3]]
     elif connectivity is not None:
         a_atoms = [atom for atom in r_atoms]
         for atom in connectivity[zmat['map'][a_atoms[-1]]] + connectivity[atom_index]:
@@ -410,7 +437,7 @@ def determine_a_atoms(zmat: Dict[str, Union[dict, tuple]],
                     j -= 1  # don't loop forever
             if len(a_atoms) == 3:
                 break
-        if len(a_atoms) == 2:
+        if len(a_atoms) == 2 and zmat_index not in a_atoms:
             a_atoms.append(zmat_index)
     if a_atoms is not None and any([a_atom not in list(zmat['map'].keys()) for a_atom in a_atoms[1:]]):
         raise ZMatError(f'The reference A atom in {a_atoms} for the index atom {atom_index} has not been '
@@ -427,7 +454,7 @@ def determine_d_atoms(zmat: Dict[str, Union[dict, tuple]],
                       a_atoms: Optional[List[int]],
                       n: int,
                       atom_index: int,
-                      d_constraint: Optional[Tuple[int]] = None,
+                      d_constraint: Optional[Tuple[int, int, int]] = None,
                       d_constraint_type: Optional[str] = None,
                       specific_atom: Optional[int] = None,
                       dummy: bool = False,
@@ -673,11 +700,10 @@ def _add_nth_atom_to_zmat(zmat: Dict[str, Union[dict, tuple]],
     Raises:
         ZMatError: If the zmat could not be generated.
 
-    Returns:
-        Tuple[Dict[str, tuple], Dict[str, tuple], List[int]]:
-          - The updated zmat.
-          - The xyz coordinates updated with dummy atoms.
-          - A 0- or 1-length list with the skipped atom index.
+    Returns: Tuple[Dict[str, tuple], Dict[str, tuple], List[int]]
+      - The updated zmat.
+      - The xyz coordinates updated with dummy atoms.
+      - A 0- or 1-length list with the skipped atom index.
     """
     coords = xyz['coords']
     skipped_atoms = list()
@@ -686,9 +712,10 @@ def _add_nth_atom_to_zmat(zmat: Dict[str, Union[dict, tuple]],
     a_constraint, a_constraint_type = check_atom_a_constraints(atom_index, constraints)
     d_constraint, d_constraint_type = check_atom_d_constraints(atom_index, constraints)
     if sum([constraint is not None for constraint in [r_constraint, a_constraint, d_constraint]]) > 1:
-        raise ZMatError(f'A single atom cannot be constraint by more than one constraint type, got:\n'
-                        f'{r_constraint_type}: {r_constraint}, {a_constraint_type}: {a_constraint}, '
-                        f'{d_constraint_type}: {d_constraint}.')
+        raise ZMatError(f'A single atom cannot be constrained by more than one constraint type, got:\n'
+                        f'R {r_constraint_type}: {r_constraint}\n'
+                        f'A {a_constraint_type}: {a_constraint}\n'
+                        f'D {d_constraint_type}: {d_constraint}')
     r_constraints_passed, a_constraints_passed, d_constraints_passed = \
         [constraint is None or all([entry in list(zmat['map'].values()) for entry in constraint[1:]])
          for constraint in [r_constraint, a_constraint, d_constraint]]
@@ -711,6 +738,8 @@ def _add_nth_atom_to_zmat(zmat: Dict[str, Union[dict, tuple]],
             n,
             atom_index,
             r_constraint,
+            a_constraint,
+            d_constraint,
             trivial_assignment=any('_atom' in constraint_key for constraint_key in constraints.keys()),
             fragments=fragments,
         )
@@ -726,6 +755,7 @@ def _add_nth_atom_to_zmat(zmat: Dict[str, Union[dict, tuple]],
             n,
             atom_index,
             a_constraint,
+            d_constraint,
             a_constraint_type,
             trivial_assignment=any('_atom' in constraint_key for constraint_key in constraints.keys()),
             fragments=fragments,
@@ -913,7 +943,10 @@ def add_dummy_atom(zmat, xyz, coords, connectivity, r_atoms, a_atoms, n, atom_in
     return zmat, coords, n, r_atoms, a_atoms, specific_last_d_atom
 
 
-def zmat_to_coords(zmat, keep_dummy=False, skip_undefined=False):
+def zmat_to_coords(zmat: dict,
+                   keep_dummy: bool = False,
+                   skip_undefined: bool = False,
+                   ) -> Tuple[List[dict], List[str]]:
     """
     Generate the cartesian coordinates from a zmat dict.
     Considers the zmat atomic map so the returned coordinates is ordered correctly.
@@ -933,13 +966,12 @@ def zmat_to_coords(zmat, keep_dummy=False, skip_undefined=False):
         skip_undefined (bool): Whether to skip atoms with undefined variables, instead of raising an error.
                                ``True`` to skip, default is ``False``.
 
-    Returns:
-        list: The cartesian coordinates.
-    Returns:
-        list: The atomic symbols corresponding to the coordinates.
-
     Raises:
         ZMatError: If zmat if of wrong type or does not contain all keys.
+
+    Returns: Tuple[List[dict], List[str]]
+        - The cartesian coordinates.
+        - The atomic symbols corresponding to the coordinates.
     """
     if not isinstance(zmat, dict):
         raise ZMatError(f'zmat has to be a dictionary, got {type(zmat)}')
@@ -1431,7 +1463,7 @@ def get_atom_order_from_mol(mol: Molecule,
                 else:
                     for constraint in constraints:
                         for atom_index in constraint[::-1]:
-                            if atom_index in fragment:
+                            if atom_index in fragment and atom_index not in atom_order:
                                 atom_order.append(atom_index)
                     for atom1 in mol.atoms:
                         atom1_index = mol.atoms.index(atom1)
@@ -1445,7 +1477,7 @@ def get_atom_order_from_mol(mol: Molecule,
             atom1_index = atoms_to_explore[0]
             atoms_to_explore.pop(0)
             atom1 = mol.atoms[atom1_index]
-            if atom1_index not in top_d and atom1_index in fragment:
+            if atom1_index not in top_d and atom1_index in fragment and atom1_index not in atom_order:
                 atom_order.append(atom1_index)
             else:
                 unexplored.append(atom1_index)
@@ -1464,8 +1496,8 @@ def get_atom_order_from_mol(mol: Molecule,
 
         # now add top_d
         for top_d_atom in top_d:
-            if top_d_atom not in atom_order:
-                atom_order.extend(d for d in top_d if d in fragment)
+            if top_d_atom not in atom_order and top_d_atom in fragment:
+                atom_order.append(top_d_atom)
 
         if len(atom_order) != len(fragment):
             continue
@@ -1496,6 +1528,9 @@ def get_atom_order_from_mol(mol: Molecule,
         # the outer for loop exhausted all possibilities and was unsuccessful
         raise ZMatError(f'Could not derive an atom order from connectivity that answers all '
                         f'constraint criteria:\n{constraints_dict}')
+
+    if len(set(atom_order)) < len(atom_order):
+        raise ZMatError(f'Could not determine a unique atom order!\n({atom_order})')
 
     return atom_order
 
@@ -1775,7 +1810,14 @@ def get_parameter_from_atom_indices(zmat, indices, xyz_indexed=True):
     raise ZMatError(f'Could not find a key corresponding to {key} {indices}.')
 
 
-def _compare_zmats(zmat1, zmat2, r_tol=None, a_tol=None, d_tol=None, verbose=False, symmetric_torsions=None):
+def _compare_zmats(zmat1:dict,
+                   zmat2:dict,
+                   r_tol: Optional[float] = None,
+                   a_tol: Optional[float] = None,
+                   d_tol: Optional[float] = None,
+                   symmetric_torsions: Optional[dict] = None,
+                   verbose: bool = False,
+                   ) -> bool:
     """
     Compare two zmats. The zmats must have identical variables (i.e., derived from the same connectivity or ordered xyz,
     using the same constraints).
@@ -1787,17 +1829,17 @@ def _compare_zmats(zmat1, zmat2, r_tol=None, a_tol=None, d_tol=None, verbose=Fal
         r_tol (float, optional): A tolerance for comparing distances.
         a_tol (float, optional): A tolerance for comparing angles.
         d_tol (float, optional): A tolerance for comparing dihedral angles.
-        verbose (bool, optional): Whether to print a reason for determining the zmats are different if they are,
-                                  ``True`` to print.
         symmetric_torsions (dict, optional): Keys are tuples of 0-indexed scan indices, values are internal rotation
                                              symmetry numbers (sigma). Conformers which only differ by an integer number
                                              times 360 degrees / sigma are considered identical.
-
-    Returns:
-        bool: Whether the two zmats represent the same conformation to the desired tolerance. ``True`` if they do.
+        verbose (bool, optional): Whether to print a reason for determining the zmats are different if they are,
+                                  ``True`` to print.
 
     Raises:
         ZMatError: If the zmats are of wrong type or don't have all attributes.
+
+    Returns: bool
+        Whether the two zmats represent the same conformation to the desired tolerance. ``True`` if they do.
     """
     if not isinstance(zmat1, dict) or not isinstance(zmat2, dict):
         raise ZMatError(f'zmats must be dictionaries, got {type(zmat1)} and {type(zmat2)}')
