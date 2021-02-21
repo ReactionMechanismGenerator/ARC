@@ -41,7 +41,7 @@ import logging
 import sys
 import time
 from itertools import product
-from typing import Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import openbabel as ob
 import pybel as pyb
@@ -99,7 +99,7 @@ COMBINATION_THRESHOLD = 1000
 CONSOLIDATION_TOLS = {'R': 1e-2, 'A': 1e-2, 'D': 1e-2}
 
 
-def generate_conformers(mol_list,
+def generate_conformers(mol_list: Union[List[Molecule], Molecule],
                         label,
                         xyzs=None,
                         torsions=None,
@@ -124,7 +124,7 @@ def generate_conformers(mol_list,
     (resonance structures are assumed to have already been generated and included in the molecule list)
 
     Args:
-        mol_list (list or Molecule): Molecule objects to consider (or Molecule, resonance structures will be generated).
+        mol_list (Union[List[Molecule], Molecule]): Molecule objects to consider (or Molecule, resonance structures will be generated).
         label (str): The species' label.
         xyzs (list), optional: A list of user guess xyzs that will also be taken into account, each in a dict format.
         torsions (list, optional): A list of all possible torsions in the molecule. Will be determined if not given.
@@ -939,7 +939,7 @@ def determine_well_width_tolerance(mean_width):
 
 
 def get_lowest_confs(label: str,
-                     confs: dict or list,
+                     confs: Union[dict, list],
                      n: int = 10,
                      e: float = 5.0,
                      energy: str = 'FF energy',
