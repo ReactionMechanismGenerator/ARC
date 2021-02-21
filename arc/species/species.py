@@ -2105,7 +2105,7 @@ class TSGuess(object):
         """
         self.success = False
 
-    def process_xyz(self, xyz: dict or str):
+    def process_xyz(self, xyz: Union[dict, str]):
         """
         Process the user's input. If ``xyz`` represents a file path, parse it.
 
