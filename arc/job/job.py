@@ -10,7 +10,7 @@ import shutil
 from pprint import pformat
 from typing import Dict, Optional, Union
 
-from arc.common import arc_path, get_logger
+from arc.common import arc_path, get_logger, local_arc_path
 from arc.exceptions import JobError, InputError
 from arc.imports import settings, input_files, submit_scripts
 from arc.job.local import (get_last_modified_time,
@@ -424,7 +424,7 @@ class Job(object):
         """
         Used as the entry number in the database, as well as the job name on the server.
         """
-        csv_path = os.path.join(arc_path, 'initiated_jobs.csv')
+        csv_path = os.path.join(local_arc_path, 'initiated_jobs.csv')
         if not os.path.isfile(csv_path):
             # check file, make index file and write headers if file doesn't exists
             with open(csv_path, 'w') as f:
@@ -445,7 +445,7 @@ class Job(object):
         """
         Write an initiated ARCJob into the initiated_jobs.csv file.
         """
-        csv_path = os.path.join(arc_path, 'initiated_jobs.csv')
+        csv_path = os.path.join(local_arc_path, 'initiated_jobs.csv')
         if self.conformer < 0:  # this is not a conformer search job
             conformer = '-'
         else:
@@ -463,7 +463,7 @@ class Job(object):
         """
         if self.job_status[0] != 'done' or self.job_status[1]['status'] != 'done':
             self.determine_job_status()
-        csv_path = os.path.join(arc_path, 'completed_jobs.csv')
+        csv_path = os.path.join(local_arc_path, 'completed_jobs.csv')
         if not os.path.isfile(csv_path):
             # check file, make index file and write headers if file doesn't exists
             with open(csv_path, 'w') as f:
@@ -473,7 +473,7 @@ class Job(object):
                        'final_time', 'run_time', 'job_status_(server)', 'job_status_(ESS)',
                        'ESS troubleshooting methods used', 'comments']
                 writer.writerow(row)
-        csv_path = os.path.join(arc_path, 'completed_jobs.csv')
+        csv_path = os.path.join(local_arc_path, 'completed_jobs.csv')
         if self.conformer < 0:  # this is not a conformer search job
             conformer = '-'
         else:
