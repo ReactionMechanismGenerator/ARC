@@ -233,6 +233,63 @@ def check_xyz_species_for_drawing(xyz=None, species=None):
     return check_xyz_dict(remove_dummies(xyz))
 
 
+def plot_ts_guesses_by_e_and_method(species: ARCSpecies,
+                                    path: str,
+                                    ):
+    """
+    Save a figure comparing all TS guesses by electronic energy and imaginary frequency.
+
+    Args:
+        species (ARCSpecies): The TS Species to consider.
+        path (str): The path for saving the figure.
+    """
+    if not isinstance(species, ARCSpecies):
+        raise ValueError(f'The species argument must be of an ARC species type, got {species} which is a {type(species)}')
+    if not species.is_ts:
+        raise ValueError(f'The species must be a TS (got species.is_ts = False)')
+    if os.path.isdir(path):
+        path = os.path.join(path, 'ts_guesses.png')
+
+    results = list()  # entries are tuples of (method, electronic energy, imaginary frequency)
+    for tsg in species.ts_guesses:
+        if tsg.energy is not None:
+            results.append((tsg.method, tsg.energy, tsg.imaginary_freqs))
+    ts_results = sorted(results, key=lambda x: x[1], reverse=False)
+    x = np.arange(len(ts_results))  # the label locations
+    width = 0.45  # the width of the bars
+    y = [x[1] for x in ts_results]  # electronic energies
+    if len(y):
+        fig, ax = plt.subplots(figsize=(10, 4), dpi=120)
+        rects = ax.bar(x - width / 2, y, width)
+        auto_label(rects, ts_results, ax)
+        if not species.ts_guesses_exhausted:
+            rects[len(species.chosen_ts_list) - 1].set_color('r')
+        ax.set_ylim(0, max(y) * 1.2)
+        ax.set_ylabel(r'Electronic energy, kJ/mol')
+        ax.set_title(species.rxn_label)
+        ax.set_xticks([])
+        plt.savefig(path, dpi=120, facecolor='w', edgecolor='w', orientation='portrait',
+                    format='png', transparent=False, bbox_inches=None, pad_inches=0.1, metadata=None)
+
+
+def auto_label(rects, ts_results, ax):
+    """Attach a text label above each bar in ``rects``, displaying its height."""
+    for i, rect in enumerate(rects):
+        height = rect.get_height()
+        method = ts_results[i][0]
+        imf = ''
+        if ts_results[i][2] is not None:
+            if not len(ts_results[i][2]):
+                imf = 'not a TS\n'
+            else:
+                imf = '\n'.join(f'{freq:.2f}' for freq in ts_results[i][2]) + '\n'
+        ax.annotate(f'{imf}{height:.2f}\n{method}',
+                    xy=(rect.get_x() + rect.get_width() / 2, height),
+                    xytext=(0, 3),  # 3 points vertical offset
+                    textcoords="offset points",
+                    ha='center', va='bottom')
+
+
 # *** Logging output ***
 
 def log_thermo(label, path):
@@ -673,8 +730,6 @@ def save_irc_traj_animation(irc_f_path, irc_r_path, out_path):
                 f.write(' GradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGrad\n')
             f.write(' Normal termination of Gaussian 16\n')
 
-
-# *** Files (libraries, xyz, conformers) ***
 
 def save_thermo_lib(species_list: list,
                     path: str,
