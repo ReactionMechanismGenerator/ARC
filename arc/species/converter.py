@@ -461,7 +461,7 @@ def xyz_to_rmg_conformer(xyz_dict: dict) -> Optional[Conformer]:
         xyz_dict (dict): The ARC dict xyz style coordinates
 
     Returns:
-        Optional[Conformer]: An rmgpy.statmech.Conformer object containing the desired xyz coordinates
+        Optional[Conformer]: An rmgpy.statmech.Conformer object containing the desired xyz coordinates.
     """
     if xyz_dict is None:
         return None
@@ -1075,8 +1075,8 @@ def xyz_to_pybel_mol(xyz: dict):
     Args:
         xyz (dict): ARC's xyz dictionary format.
 
-    Returns:
-        Optional[OBmol]: An Open Babel molecule.
+    Returns: Optional[OBmol]
+        An Open Babel molecule.
     """
     if xyz is None:
         return None
