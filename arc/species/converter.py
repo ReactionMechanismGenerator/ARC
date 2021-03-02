@@ -264,7 +264,7 @@ def xyz_to_dmat(xyz_dict: dict) -> Optional[np.array]:
     Convert Cartesian coordinates to a distance matrix.
 
     Args:
-        xyz_dict (dict): The Cartesian coordinates,
+        xyz_dict (dict): The Cartesian coordinates.
 
     Returns:
         Optional[np.array]: The distance matrix.
@@ -366,9 +366,11 @@ def sort_xyz_using_indices(xyz_dict: dict,
                            ) -> dict:
     """
     Sort the tuples in an xyz dict according to the given indices.
+
     Args:
         xyz_dict (dict): The Cartesian coordinates.
         indices (List[int]): Entries are 0-indices of the desired order.
+
     Returns:
         dict: The ordered xyz.
     """
@@ -376,7 +378,7 @@ def sort_xyz_using_indices(xyz_dict: dict,
         raise ValueError(f"The number of indices {len(indices)} does not match "
                          f"the number of coordinates {len(xyz_dict['coords'])}")
     if any(i >= len(xyz_dict['coords']) for i in indices):
-        raise ValueError(f"All indices must be lower than the length of the coordinates tuple."
+        raise ValueError(f"All indices must be lower than the length of the coordinates tuple. "
                          f"Got {len(xyz_dict['coords'])} coordinates, and indices of:\n{indices}")
     coords, symbols, isotopes = list(), list(), list()
     for i in indices:
@@ -428,7 +430,7 @@ def xyz_to_rmg_conformer(xyz_dict: dict) -> Optional[Conformer]:
         xyz_dict (dict): The ARC dict xyz style coordinates
 
     Returns:
-        Optional[Conformer]: An rmgpy.statmech.Conformer object containing the desired xyz coordinates
+        Optional[Conformer]: An rmgpy.statmech.Conformer object containing the desired xyz coordinates.
     """
     if xyz_dict is None:
         return None
@@ -586,7 +588,7 @@ def zmat_from_xyz(xyz, mol=None, constraints=None, consolidate=True, consolidati
         mol (Molecule, optional): The corresponding RMG Molecule with connectivity information.
         constraints (dict, optional): Accepted keys are:
                                       'R_atom', 'R_group', 'A_atom', 'A_group', 'D_atom', 'D_group', or 'D_groups'.
-                                      'R', 'A', and 'D', constraining distances, angles, and dihedrals, respectively.
+                                      'R', 'A', and 'D' constrain distances, angles, and dihedrals, respectively.
                                       Values are lists of atom indices (0-indexed) tuples.
                                       The atom indices order matters.
                                       Specifying '_atom' will cause only the last atom in the specified list values
@@ -599,14 +601,13 @@ def zmat_from_xyz(xyz, mol=None, constraints=None, consolidate=True, consolidati
         consolidation_tols (dict, optional): Keys are 'R', 'A', 'D', values are floats representing absolute tolerance
                                              for consolidating almost equal internal coordinates.
 
+    Raises:
+        InputError: If ``xyz`` if of a wrong type.
+
     Returns:
         dict: The Z matrix.
-
-    Raises:
-        InputError: If ``xyz`` if of wrong type.
     """
-    if isinstance(xyz, str):
-        xyz = str_to_xyz(xyz)
+    xyz = str_to_xyz(xyz) if isinstance(xyz, str) else xyz
     if not isinstance(xyz, dict):
         raise InputError(f'xyz must be a dictionary, got {type(xyz)}')
     xyz = remove_dummies(xyz)
@@ -1043,8 +1044,8 @@ def xyz_to_pybel_mol(xyz: dict):
     Args:
         xyz (dict): ARC's xyz dictionary format.
 
-    Returns:
-        Optional[OBmol]: An Open Babel molecule.
+    Returns: Optional[OBmol]
+        An Open Babel molecule.
     """
     if xyz is None:
         return None
@@ -1532,6 +1533,8 @@ def rdkit_conf_from_mol(mol: Molecule,
             - Conformer: An RDKit Conformer object.
             - RDMol: An RDKit Molecule object.
     """
+    if mol is None:
+        raise ConverterError(f'A mol argument must be given, got None.')
     if not isinstance(xyz, dict):
         raise ConverterError('The xyz argument seem to be of wrong type. Expected a dictionary, '
                              'got\n{0}\nwhich is a {1}'.format(xyz, type(xyz)))
