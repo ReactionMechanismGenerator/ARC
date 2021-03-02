@@ -59,8 +59,8 @@ def execute_command(command, shell=True, no_fail=False):
                 return False
             else:
                 _output_command_error_message(command, e, logger.error)
-                logger.error(f'ARC is sleeping for {sleep_time * i} seconds before re-trying,'
-                             f' please check if this is a server issue by executing the command manually on server.')
+                logger.error(f'ARC is sleeping for {sleep_time * i} seconds before retrying.\nPlease check whether '
+                             f'this is a server issue by executing the command manually on the server.')
                 logger.info('ZZZZZ..... ZZZZZ.....')
                 time.sleep(sleep_time * i)  # in seconds
                 i += 1
