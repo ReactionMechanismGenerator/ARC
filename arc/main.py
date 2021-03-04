@@ -43,14 +43,8 @@ from arc.scheduler import Scheduler
 from arc.species.species import ARCSpecies
 from arc.utils.scale import determine_scaling_factors
 
-try:
-    from arc.settings import default_job_settings, global_ess_settings
-except ImportError:
-    default_job_settings, global_ess_settings = dict(), None
-
 
 logger = get_logger()
-
 
 default_levels_of_theory, servers, valid_chars, default_job_types, default_job_settings, global_ess_settings = \
     settings['default_levels_of_theory'], settings['servers'], settings['valid_chars'], settings['default_job_types'], \
