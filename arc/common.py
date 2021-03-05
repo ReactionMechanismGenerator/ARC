@@ -734,8 +734,8 @@ def key_by_val(dictionary: dict,
     raise ValueError(f'Could not find value {value} in the dictionary\n{dictionary}')
 
 
-def almost_equal_lists(iter1: list or tuple or np.ndarray,
-                       iter2: list or tuple or np.ndarray,
+def almost_equal_lists(iter1: Union[list, tuple, np.ndarray],
+                       iter2: Union[list, tuple, np.ndarray],
                        rtol: float = 1e-05,
                        atol: float = 1e-08,
                        ) -> bool:
@@ -958,7 +958,7 @@ def check_torsion_change(torsions: pd.DataFrame,
                                    differences are equal to the scan resolution.
 
     Returns: pd.DataFrame
-        a DataFrame consisting of ``True``/``False``, indicating
+        A DataFrame consisting of ``True``/``False``, indicating
         which torsions changed significantly. ``True`` for significant change.
     """
     # First iteration without 180/-180 adjustment
