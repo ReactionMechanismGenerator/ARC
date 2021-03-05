@@ -817,7 +817,7 @@ class ARC(object):
         for char in self.project:
             if char not in valid_chars:
                 raise InputError(f'A project name (used to naming folders) must contain only valid characters. '
-                                 f'Got {char} in {self.project}.')
+                                 f'Got "{char}" in {self.project}.')
 
     def check_freq_scaling_factor(self):
         """
