@@ -291,6 +291,18 @@ class TestARCReaction(unittest.TestCase):
         rxn_2 = ARCReaction(rmg_reaction=rmg_rxn_2)
         self.assertEqual(rxn_2.label, 'OH + OH <=> O + H2O')
 
+    def test_from_rmg_reaction(self):
+        """Test setting up an ARCReaction from an RMG Reaction"""
+        rmg_rxn_1 = Reaction(reactants=[Species(label='nC3H7', smiles='[CH2]CC')],
+                             products=[Species(label='iC3H7', smiles='C[CH]C')])
+        rxn_1 = ARCReaction(rmg_reaction=rmg_rxn_1)
+        self.assertEqual(rxn_1.label, 'nC3H7 <=> iC3H7')
+
+        rmg_rxn_2 = Reaction(reactants=[Species(label='OH', smiles='[OH]'), Species(label='OH', smiles='[OH]')],
+                             products=[Species(label='O', smiles='[O]'), Species(label='H2O', smiles='O')])
+        rxn_2 = ARCReaction(rmg_reaction=rmg_rxn_2)
+        self.assertEqual(rxn_2.label, 'OH + OH <=> O + H2O')
+
     def test_rmg_reaction_to_str(self):
         """Test the rmg_reaction_to_str() method and the reaction label generated"""
         spc1 = Species().from_smiles('CON=O')
