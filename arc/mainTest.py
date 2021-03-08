@@ -428,7 +428,7 @@ class TestARC(unittest.TestCase):
                     'arc_model_chemistry_test', 'arc_test', 'test', 'unit_test_specific_job', 'wrong']
         for project in projects:
             project_directory = os.path.join(arc_path, 'Projects', project)
-            shutil.rmtree(project_directory)
+            shutil.rmtree(project_directory, ignore_errors=True)
 
 
 if __name__ == '__main__':

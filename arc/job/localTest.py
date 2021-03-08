@@ -48,7 +48,7 @@ class TestLocal(unittest.TestCase):
         local.rename_output(local_file_path=path2, software='gaussian')
         self.assertFalse(os.path.isfile(path1))
         self.assertTrue(os.path.isfile(path2))
-        shutil.rmtree(os.path.join(arc_path, 'scratch'))
+        shutil.rmtree(os.path.join(arc_path, 'scratch'), ignore_errors=True)
 
 
 if __name__ == '__main__':

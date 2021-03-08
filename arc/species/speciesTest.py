@@ -1365,7 +1365,7 @@ H      -1.47626400   -0.10694600   -1.88883800"""
         projects = ['arc_project_for_testing_delete_after_usage4']
         for project in projects:
             project_directory = os.path.join(arc_path, 'Projects', project)
-            shutil.rmtree(project_directory)
+            shutil.rmtree(project_directory, ignore_errors=True)
 
 
 class TestTSGuess(unittest.TestCase):
@@ -1469,7 +1469,7 @@ class TestTSGuess(unittest.TestCase):
         self.assertEqual(ts_xyz_dict['symbols'], ('C', 'C', 'N', 'O', 'N', 'N', 'H', 'H', 'H'))
 
         if os.path.exists(project_dir):
-            shutil.rmtree(project_dir)
+            shutil.rmtree(project_dir, ignore_errors=True)
 
 
 if __name__ == '__main__':

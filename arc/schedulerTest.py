@@ -278,7 +278,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
         projects = ['arc_project_for_testing_delete_after_usage3']
         for project in projects:
             project_directory = os.path.join(arc_path, 'Projects', project)
-            shutil.rmtree(project_directory)
+            shutil.rmtree(project_directory, ignore_errors=True)
 
 
 if __name__ == '__main__':
