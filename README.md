@@ -20,7 +20,7 @@ yet at its core it is simple: It accepts 2D graph representations of chemical sp
 or <a href="https://rmg.mit.edu/">RMG</a>'s
 <a href="https://reactionmechanismgenerator.github.io/RMG-Py/reference/molecule/adjlist.html">adjacency list</a>),
 and  automatically executes, tracks, and processes relevant electronic structure calculation
-jobs on user-defined server\s. The principal outputs of ARC are thermodynamic properties
+jobs on user-defined server(s). The principal outputs of ARC are thermodynamic properties
 (H, S, Cp) and high-pressure limit kinetic rate coefficients of species and reactions of interest.
 
 ## Mission
