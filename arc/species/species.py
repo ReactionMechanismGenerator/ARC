@@ -1054,7 +1054,7 @@ class ARCSpecies(object):
             SpeciesError: If the pivots don't represent a dihedral in the species.
         """
         if self.directed_rotors:
-            all_pivots = [self.rotors_dict[i]['pivots'] for i in range(self.number_of_rotors)]
+            all_pivots = [rotor_dict['pivots'] for rotor_dict in self.rotors_dict.values()]
             directed_rotors, directed_rotors_scans = dict(), dict()
             for key, vals in self.directed_rotors.items():
                 # reformat as nested lists
