@@ -77,7 +77,7 @@ class TestARC(unittest.TestCase):
                                              'software': 'gaussian'},
                          'e_confs': 5.0,
                          'ess_settings': {'gaussian': ['local', 'server2'],
-                                          'molpro': ['server2'],
+                                          'molpro': ['local', 'server2'],
                                           'onedmin': ['server1'],
                                           'orca': ['local'],
                                           'qchem': ['server1'],
