@@ -359,18 +359,20 @@ H      -1.97060638    1.29922153   -0.25658392"""
         self.assertIn([[1, 2, 4, 12]], spc1.directed_rotors['cont_opt'])
         self.assertIn([3, 1, 2, 4], spc1.directed_rotors['brute_force_sp'][0])
         self.assertIn([[3, 1, 2, 4], [2, 1, 3, 9]], spc1.directed_rotors['brute_force_opt'])
-        self.assertEqual(len(spc1.rotors_dict.keys()), 9)
-        self.assertEqual(spc1.rotors_dict[3]['dimensions'], 3)
-        self.assertIn([1, 3], spc1.rotors_dict[3]['pivots'])
-        self.assertIn([1, 2], spc1.rotors_dict[3]['pivots'])
-        self.assertIn([2, 4], spc1.rotors_dict[3]['pivots'])
-        self.assertEqual(spc1.rotors_dict[3]['cont_indices'], [])
+        self.assertEqual(len(spc1.rotors_dict.keys()), 12)
+        self.assertEqual(spc1.rotors_dict[6]['dimensions'], 3)
+        self.assertIn([1, 3], spc1.rotors_dict[6]['pivots'])
+        self.assertIn([1, 2], spc1.rotors_dict[6]['pivots'])
+        self.assertIn([2, 4], spc1.rotors_dict[6]['pivots'])
+        self.assertEqual(spc1.rotors_dict[6]['cont_indices'], [])
 
         spc2 = ARCSpecies(label='propanol', smiles='CCO', directed_rotors={'brute_force_sp': [['all']]})
         spc2.determine_rotors()  # also initializes directed_rotors
         self.assertEqual(spc2.directed_rotors, {'brute_force_sp': [[[4, 1, 2, 3], [1, 2, 3, 9]]]})
-        self.assertEqual(len(spc2.rotors_dict), 1)
-        self.assertEqual(spc2.rotors_dict[0]['dimensions'], 2)
+        self.assertEqual(len(spc2.rotors_dict), 3)
+        self.assertEqual(spc2.rotors_dict[0]['dimensions'], 1)
+        self.assertEqual(spc2.rotors_dict[1]['dimensions'], 1)
+        self.assertEqual(spc2.rotors_dict[2]['dimensions'], 2)
 
     def test_symmetry(self):
         """Test external symmetry and chirality determination"""
@@ -1365,7 +1367,7 @@ H      -1.47626400   -0.10694600   -1.88883800"""
         projects = ['arc_project_for_testing_delete_after_usage4']
         for project in projects:
             project_directory = os.path.join(arc_path, 'Projects', project)
-            shutil.rmtree(project_directory)
+            shutil.rmtree(project_directory, ignore_errors=True)
 
 
 class TestTSGuess(unittest.TestCase):
@@ -1469,7 +1471,7 @@ class TestTSGuess(unittest.TestCase):
         self.assertEqual(ts_xyz_dict['symbols'], ('C', 'C', 'N', 'O', 'N', 'N', 'H', 'H', 'H'))
 
         if os.path.exists(project_dir):
-            shutil.rmtree(project_dir)
+            shutil.rmtree(project_dir, ignore_errors=True)
 
 
 if __name__ == '__main__':

@@ -373,7 +373,7 @@ class TestJob(unittest.TestCase):
         for project in projects:
             project_directory = os.path.join(arc_path, 'Projects', project)
             if os.path.isdir(project_directory):
-                shutil.rmtree(project_directory)
+                shutil.rmtree(project_directory, ignore_errors=True)
 
 
 if __name__ == '__main__':

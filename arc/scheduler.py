@@ -118,14 +118,14 @@ class Scheduler(object):
         rxn_list (list): Contains input :ref:`ARCReaction <reaction>` objects.
         project_directory (str): Folder path for the project: the input file path or ARC/Projects/project-name.
         composite_method (str, optional): A composite method to use.
-        conformer_level (str or dict, optional): The level of theory to use for conformer comparisons.
-        opt_level (str or dict, optional): The level of theory to use for geometry optimizations.
-        freq_level (str or dict, optional): The level of theory to use for frequency calculations.
-        sp_level (str or dict, optional): The level of theory to use for single point energy calculations.
-        scan_level (str or dict, optional): The level of theory to use for torsion scans.
-        ts_guess_level (str or dict, optional): The level of theory to use for TS guess comparisons.
-        irc_level (str or dict, optional): The level of theory to use for IRC calculations.
-        orbitals_level (str or dict, optional): The level of theory to use for calculating MOs (for plotting).
+        conformer_level (Union[str, dict], optional): The level of theory to use for conformer comparisons.
+        opt_level (Union[str, dict], optional): The level of theory to use for geometry optimizations.
+        freq_level (Union[str, dict], optional): The level of theory to use for frequency calculations.
+        sp_level (Union[str, dict], optional): The level of theory to use for single point energy calculations.
+        scan_level (Union[str, dict], optional): The level of theory to use for torsion scans.
+        ts_guess_level (Union[str, dict], optional): The level of theory to use for TS guess comparisons.
+        irc_level (Union[str, dict], optional): The level of theory to use for IRC calculations.
+        orbitals_level (Union[str, dict], optional): The level of theory to use for calculating MOs (for plotting).
         adaptive_levels (dict, optional): A dictionary of levels of theory for ranges of the number of heavy atoms
                                           in the species. Keys are tuples of (min_num_atoms, max_num_atoms),
                                           values are dictionaries with job type tuples as keys and levels of theory

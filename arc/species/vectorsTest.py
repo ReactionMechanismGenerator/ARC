@@ -375,31 +375,31 @@ H      -0.56460509    0.87663914    1.25780346""")
 
     def test_get_vector_length(self):
         """Test getting a vector's length"""
-        
+
         # unit vector
         v1 = [1, 0, 0]
         self.assertEqual(vectors.get_vector_length(v1), 1)
-        
+
         # a vector with 0 entries
         v1 = [0, 0, 0]
         self.assertEqual(vectors.get_vector_length(v1), 0)
-        
+
         # 10D vector
         v1 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
         self.assertAlmostEqual(vectors.get_vector_length(v1), 19.6214169)   # default: places=7
-        
+
         # 1D vector
         v1 = [2]
         self.assertEqual(vectors.get_vector_length(v1), 2)
-        
+
         # a vector with small entries
         v1 = [0.0000001, 0.0000002, 0.0000003]
         self.assertAlmostEqual(vectors.get_vector_length(v1), 0.000000374165739, places=15)
-        
+
         # a vector with large entries
         v1 = [100, 200, 300]
         self.assertAlmostEqual(vectors.get_vector_length(v1), 374.165738677394000)  # default: places=7
-        
+
         # a real example borrowed from test_set_vector_length
         label = 'CNCC'
         pivot = 0

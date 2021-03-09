@@ -219,7 +219,7 @@ class TestARC(unittest.TestCase):
                     ]
         for project in projects:
             project_directory = os.path.join(arc_path, 'Projects', project)
-            shutil.rmtree(project_directory)
+            shutil.rmtree(project_directory, ignore_errors=True)
 
         for file_name in ['arc.log', 'restart_paths_globalized.yml']:
             os.remove(os.path.join(arc_path, 'arc', 'testing', 'restart', '4_globalized_paths', file_name))

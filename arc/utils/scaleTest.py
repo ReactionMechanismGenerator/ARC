@@ -120,7 +120,7 @@ class TestScale(unittest.TestCase):
         Delete all directories created during these unit tests
         """
         path = os.path.join(arc_path, 'Projects', 'scaling_factors_arc_testing_delete_after_usage')
-        shutil.rmtree(path)
+        shutil.rmtree(path, ignore_errors=True)
 
 
 if __name__ == '__main__':

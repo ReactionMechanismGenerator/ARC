@@ -43,14 +43,8 @@ from arc.scheduler import Scheduler
 from arc.species.species import ARCSpecies
 from arc.utils.scale import determine_scaling_factors
 
-try:
-    from arc.settings import default_job_settings, global_ess_settings
-except ImportError:
-    default_job_settings, global_ess_settings = dict(), None
-
 
 logger = get_logger()
-
 
 default_levels_of_theory, servers, valid_chars, default_job_types, default_job_settings, global_ess_settings = \
     settings['default_levels_of_theory'], settings['servers'], settings['valid_chars'], settings['default_job_types'], \
@@ -243,11 +237,11 @@ class ARC(object):
                  output: Optional[dict] = None,
                  project: Optional[str] = None,
                  project_directory: Optional[str] = None,
-                 reactions: Optional[List[ARCReaction]] = None,
+                 reactions: Optional[List[Union[ARCReaction, Reaction]]] = None,
                  running_jobs: Optional[dict] = None,
                  scan_level: Optional[Union[str, dict, Level]] = None,
                  sp_level: Optional[Union[str, dict, Level]] = None,
-                 species: Optional[List[ARCSpecies]] = None,
+                 species: Optional[List[Union[ARCSpecies, Species]]] = None,
                  specific_job_type: str = '',
                  T_min: Optional[Tuple[float, str]] = None,
                  T_max: Optional[Tuple[float, str]] = None,
@@ -380,7 +374,7 @@ class ARC(object):
                         self.species.append(ARCSpecies(is_ts=False, rmg_species=spc))
                         self.unique_species_labels.append(spc.label)
             elif isinstance(rxn, dict):
-                # dict representation for ARCReaction
+                # dict representation for ARCReaction as in a YAML input file
                 indices_to_pop.append(i)
                 converted_reactions.append(ARCReaction(reaction_dict=rxn))
             elif not isinstance(rxn, ARCReaction):
@@ -519,8 +513,8 @@ class ARC(object):
         """
         Execute ARC.
 
-        Returns:
-            dict: Status dictionary indicating which species converged successfully.
+        Returns: dict
+            Status dictionary indicating which species converged successfully.
         """
         logger.info('\n')
         for species in self.species:
@@ -650,8 +644,8 @@ class ARC(object):
         """
         Report status and data of all species / reactions.
 
-        Returns:
-            dict: Status dictionary indicating which species converged successfully.
+        Returns: dict
+            Status dictionary indicating which species converged successfully.
         """
         status_dict = {}
         logger.info(f'\n\n\nAll jobs terminated. Summary for project {self.project}:\n')
@@ -932,7 +926,8 @@ class ARC(object):
             else:
                 logger.warning("Not performing rotor scans, since it was not requested by the user. This might "
                                "compromise finding the best conformer, as dihedral angles won't be corrected. "
-                               "Also, the calculated entropy and heat capacity won't be accurate.")
+                               "Also, the calculated thermodynamic properties and rate coefficients "
+                               "will be less accurate.")
 
             if self.job_types['irc']:
                 if not self.irc_level:
@@ -1006,7 +1001,8 @@ class ARC(object):
             else:
                 logger.warning("Not performing rotor scans, since it was not requested by the user. This might "
                                "compromise finding the best conformer, as dihedral angles won't be corrected. "
-                               "Also, the calculated entropy and heat capacity won't be accurate.")
+                               "Also, the calculated thermodynamic properties and rate coefficients "
+                               "will be less accurate.")
 
             if self.job_types['irc']:
                 if not self.irc_level:
@@ -1131,8 +1127,8 @@ def process_adaptive_levels(adaptive_levels: Optional[dict]) -> Optional[dict]:
     Args:
         adaptive_levels (dict): The adaptive levels dictionary.
 
-    Returns:
-        dict: The processed adaptive levels dictionary.
+    Returns: dict
+        The processed adaptive levels dictionary.
     """
     if adaptive_levels is None:
         return None

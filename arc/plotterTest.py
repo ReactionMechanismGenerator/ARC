@@ -164,7 +164,7 @@ H      -1.16115119    0.31478894   -0.81506145
         """A function that is run ONCE after all unit tests in this class."""
         project = 'arc_project_for_testing_delete_after_usage'
         project_directory = os.path.join(arc_path, 'Projects', project)
-        shutil.rmtree(project_directory)
+        shutil.rmtree(project_directory, ignore_errors=True)
         os.remove(os.path.join(arc_path, 'arc', 'testing', 'bde_report_test.txt'))
 
 

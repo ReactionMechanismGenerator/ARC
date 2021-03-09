@@ -33,7 +33,8 @@ from arc.parser import (parse_1d_scan_energies,
                         parse_dipole_moment,
                         parse_polarizability,
                         parse_xyz_from_file,
-                        process_conformers_file)
+                        process_conformers_file,
+                        )
 from arc.species import conformers
 from arc.species.converter import (check_isomorphism,
                                    check_xyz_dict,
@@ -48,13 +49,12 @@ from arc.species.converter import (check_isomorphism,
                                    str_to_xyz,
                                    translate_to_center_of_mass,
                                    xyz_from_data,
-                                   xyz_to_str)
+                                   xyz_to_str,
+                                   )
 from arc.species.vectors import calculate_distance
 from arc.ts import atst, gcn
 
-
 logger = get_logger()
-
 
 default_ts_methods, valid_chars, minimum_barrier = settings['default_ts_methods'], \
                                                    settings['valid_chars'], \
@@ -75,7 +75,7 @@ class ARCSpecies(object):
                               'invalidation_reason': ``str``,
                               'times_dihedral_set': ``int``,
                               'scan_path': <path to scan output file>,
-                              'max_e': ``float``,  # in kJ/mol,
+                              'max_e': ``float``,  # relative to the minimum energy, in kJ/mol,
                               'symmetry': ``int``,
                               'dimensions': ``int``,
                               'original_dihedrals': ``list``,
@@ -270,6 +270,7 @@ class ARCSpecies(object):
             Fragments represented by this species, i.e., as in a VdW well or a TS.
             Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.
     """
+
     def __init__(self,
                  adjlist: str = '',
                  bdes: Optional[list] = None,
@@ -526,7 +527,7 @@ class ARCSpecies(object):
             elif self.is_ts:
                 for ts_guess in self.ts_guesses:
                     if ts_guess.xyz is not None:
-                        self._number_of_heavy_atoms =\
+                        self._number_of_heavy_atoms = \
                             len([line for line in ts_guess.xyz.splitlines() if line.split()[0] != 'H'])
         return self._number_of_heavy_atoms
 
@@ -1053,12 +1054,14 @@ class ARCSpecies(object):
             SpeciesError: If the pivots don't represent a dihedral in the species.
         """
         if self.directed_rotors:
-            all_pivots = [self.rotors_dict[i]['pivots'] for i in range(self.number_of_rotors)]
+            all_pivots = [rotor_dict['pivots'] for rotor_dict in self.rotors_dict.values()]
             directed_rotors, directed_rotors_scans = dict(), dict()
             for key, vals in self.directed_rotors.items():
                 # reformat as nested lists
                 directed_rotors[key] = list()
                 for val1 in vals:
+                    if len(val1) != 2 and val1 not in ['all', ['all']]:
+                        raise SpeciesError(f'directed_scan pivots must be lists of length 2, got {val1}.')
                     if isinstance(val1, (tuple, list)) and isinstance(val1[0], int):
                         corrected_val = val1 if list(val1) in all_pivots else [val1[1], val1[0]]
                         directed_rotors[key].append([list(corrected_val)])
@@ -1263,7 +1266,10 @@ class ARCSpecies(object):
         """A helper function to write content into the .ts_report attribute"""
         self.ts_report = ''
         if self.chosen_ts_method is not None:
-            self.ts_report += f'TS method summary for {self.label} in {self.rxn_label}\n'
+            self.ts_report += f'TS method summary for {self.label}'
+            if self.rxn_label is not None:
+                self.ts_report += f' in {self.rxn_label}'
+            self.ts_report += f':\n'
             if self.successful_methods:
                 self.ts_report += 'Methods that successfully generated a TS guess:\n'
                 for successful_method in self.successful_methods:
@@ -1273,7 +1279,7 @@ class ARCSpecies(object):
                 for unsuccessful_method in self.unsuccessful_methods:
                     self.ts_report += unsuccessful_method + ','
             self.ts_report += f'\nThe method that generated the best TS guess and its output used for the ' \
-                              f'optimization: {self.chosen_ts_method}'
+                              f'optimization: {self.chosen_ts_method}\n'
 
     def mol_from_xyz(self,
                      xyz: dict = None,
@@ -1664,7 +1670,7 @@ class ARCSpecies(object):
             for atom in mol.atoms:
                 theoretical_charge = elements.PeriodicSystem.valence_electrons[atom.symbol] \
                                      - atom.get_total_bond_order() \
-                                     - atom.radical_electrons -\
+                                     - atom.radical_electrons - \
                                      2 * atom.lone_pairs
                 if theoretical_charge == atom.charge + 1:
                     # we're missing a radical electron on this atom
@@ -2109,7 +2115,7 @@ def determine_rotor_symmetry(label: str,
     for i, e in enumerate(energies):
         # identify peaks and valleys, and determine worst resolutions in the scan
         ip1 = cyclic_index_i_plus_1(i, len(energies))  # i Plus 1
-        im1 = cyclic_index_i_minus_1(i)                # i Minus 1
+        im1 = cyclic_index_i_minus_1(i)  # i Minus 1
         if i == 0 and energies[im1] == e:
             # If the first and last scan points have same energy, change im1
             im1 -= 1
