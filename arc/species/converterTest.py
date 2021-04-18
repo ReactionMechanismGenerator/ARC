@@ -3086,10 +3086,10 @@ H      -4.07566100   -0.52115800    0.00003300"""
         # self.assertEqual(mol11.to_smiles(), 'N(N)[N+](=O)[O-]')  # gives None
         self.assertEqual(mol12.to_smiles(), '[O]N=O')
         # self.assertEqual(mol13.to_smiles(), 'C[N+]([NH-])=O')  # gives None
-        self.assertEqual(mol14.to_smiles(), 'OS(=O)[O]')
+        self.assertEqual(mol14.to_smiles(), '[O]S(=O)O')
         self.assertEqual(mol15.to_smiles(), '[N-]=[N+]=N')
         self.assertEqual(mol16.to_smiles(), '[O]N=C')
-        self.assertEqual(mol17.to_smiles(), 'OS(=O)(=O)O')
+        self.assertEqual(mol17.to_smiles(), '[O-][S+](=O)(O)O')
         self.assertEqual(mol18.to_smiles(), 'O=S(=O)=O')
         self.assertEqual(mol19.to_adjacency_list(), """multiplicity 2
 1 N u1 p1 c0 {4,S} {5,S}
@@ -3624,7 +3624,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
 4 H u0 p0 c0 {2,S}"""
         mol2 = Molecule().from_adjacency_list(adjlist=adj2)
         converter.add_lone_pairs_by_atom_valance(mol2)
-        self.assertEqual(mol2.to_smiles(), 'N[N]')
+        self.assertEqual(mol2.to_smiles(), '[N]N')
         mol2.multiplicity = 1
         converter.add_lone_pairs_by_atom_valance(mol2)
         self.assertEqual(mol2.to_smiles(), '[N-]=[NH2+]')
