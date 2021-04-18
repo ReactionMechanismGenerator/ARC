@@ -6,8 +6,8 @@ import numpy as np
 import os
 from typing import Dict, Iterable, List, Optional, Tuple, Union
 
-import pybel
 import qcelemental as qcel
+from openbabel import pybel
 from rdkit import Chem
 from rdkit.Chem import rdMolTransforms as rdMT
 from rdkit.Chem.rdchem import AtomValenceException

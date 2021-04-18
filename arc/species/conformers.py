@@ -43,8 +43,8 @@ import time
 from itertools import product
 from typing import List, Optional, Tuple, Union
 
-import openbabel as ob
-import pybel as pyb
+from openbabel import openbabel as ob
+from openbabel import pybel as pyb
 from rdkit import Chem
 from rdkit.Chem.rdchem import EditableMol as RDMol
 
