@@ -1118,6 +1118,7 @@ H       1.11582953    0.94384729   -0.10134685"""
                   Cl  -0.5031634975   -0.0109430036    0.0
                   H    1.5281481620   -0.8718549847    0.0"""
         spc6 = ARCSpecies(label='[CH]Cl', smiles='[CH]Cl', xyz=xyz6)
+        self.assertEqual(spc6.get_xyz(), str_to_xyz(xyz6))
 
     def test_scissors(self):
         """Test the scissors method in Species"""
