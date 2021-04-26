@@ -4,6 +4,7 @@ channels:
   - rmg
   - conda-forge
 dependencies:
+  - cython >=0.25.2
   - matplotlib >=1.5
   - nose
   - numpy >=1.10.0
