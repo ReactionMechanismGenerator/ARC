@@ -2,16 +2,13 @@ name: arc_env
 channels:
   - defaults
   - rmg
-  - anaconda
-  - omnia
   - conda-forge
 dependencies:
   - cairo
   - cairocffi
   - rmg::cantera >=2.3.0
-  - cclib >=1.6
+  - conda-forge::cclib >=1.6.3
   - rmg::chemprop
-  - codecov
   - coolprop
   - coverage
   - cython >=0.25.2
@@ -23,16 +20,16 @@ dependencies:
   - jupyter
   - rmg::lpsolve55
   - markupsafe
-  - matplotlib >=2.2.2
-  - mock
+  - matplotlib >=1.5
   - rmg::mopac
   - mpmath
+  - rmg::muq2
   - networkx
   - nose
   - rmg::numdifftools
-  - numpy >=1.15.4
-  - openbabel
-  - pandas >=1.0.1
+  - numpy >=1.10.0
+  - conda-forge::openbabel >= 3
+  - pandas
   - psutil
   - rmg::pydas >=1.0.2
   - pydot
@@ -46,12 +43,6 @@ dependencies:
   - rmg::rdkit >=2020.03.3.0
   - scikit-learn
   - scipy
-  - sphinx_rtd_theme
   - rmg::symmetry
+  - xlrd
   - xlwt
-  - paramiko >=2.6.0
-  - py3dmol >= 0.8.0
-  - ase >=3.15.0
-  - ipython
-  - sphinx
-  - qcelemental
