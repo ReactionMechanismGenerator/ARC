@@ -10,6 +10,8 @@ dependencies:
   - numpy
   - conda-forge::openbabel >= 3
   - pandas
+  - rmg::pydas >=1.0.2
+  - rmg::pydqed >=1.0.1
   - python >=3.7
   - pyyaml
   - rdkit >=2020.03.3.0
