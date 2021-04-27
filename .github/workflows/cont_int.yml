@@ -45,7 +45,8 @@ jobs:
         cd RMG-Py
         export PYTHONPATH=$PYTHONPATH:$(pwd)
         make
-        cd ../ARC
+        cd ..
+        cd ARC
         conda deactivate
         make gcn-cpu
         cd ..
