@@ -1,6 +1,11 @@
 name: continuous integration
 
-on: [push]
+on:
+  push:
+  pull_request:
+    branches:
+      - master
+    types: [opened, synchronize, reopened, ready_for_review, review_requested]
 
 jobs:
   build:
@@ -8,6 +13,9 @@ jobs:
     strategy:
       matrix:
         python-version: [3.7, 3.8]
+    defaults:
+      run:
+        shell: bash -l {0}
 
     steps:
     - uses: actions/checkout@v2
@@ -18,26 +26,29 @@ jobs:
         activate-environment: arc_env
         environment-file: environment.yml
         python-version: ${{ matrix.python-version }}
-        auto-activate-base: false
+
+    - name: Install codecov
+      run: conda install -y -c conda-forge codecov
+    - name: Conda info
+      run: |
+        conda info
+        conda list
 
     - name: Install dependencies
-      shell: bash -l {0}
       run: |
         export PYTHONPATH=$PYTHONPATH:$(pwd)
         conda activate arc_env
+        cd ..
+        git clone https://github.com/ReactionMechanismGenerator/RMG-database
         cd ..
         git clone https://github.com/ReactionMechanismGenerator/RMG-Py
         cd RMG-Py
         export PYTHONPATH=$PYTHONPATH:$(pwd)
         make
-        cd ..
-        git clone https://github.com/ReactionMechanismGenerator/RMG-database
-        cd ARC
+        cd ../ARC
         conda deactivate
         make gcn-cpu
         cd ..
-        echo $(pwd)
-        conda list
 
     - name: Lint with flake8
       shell: bash -l {0}
@@ -48,8 +59,7 @@ jobs:
         # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
         python -m flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
-    - name: Test with nosetests
-      shell: bash -l {0}
+    - name: Unit tests and code coverage
       run: |
         cd ..
         cd RMG-Py
