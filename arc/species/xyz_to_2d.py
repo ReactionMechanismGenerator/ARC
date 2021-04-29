@@ -5,7 +5,7 @@ Written by Colin Grambow
 
 import numpy as np
 
-import pybel
+from openbabel import pybel
 from rdkit import Chem
 from rdkit.Chem import GetPeriodicTable
 

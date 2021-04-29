@@ -290,12 +290,12 @@ class TestZMat(unittest.TestCase):
 
     def test_get_atom_connectivity_from_mol(self):
         """Test listing an atom's connectivity in a molecule"""
-        mol = ARCSpecies(label='c1cc1O', smiles='c1cc1O').mol
+        mol = ARCSpecies(label='OC1CC1', smiles='OC1CC1').mol
         connectivity = dict()
         for i, atom in enumerate(mol.atoms):
             connectivity[i] = zmat.get_atom_connectivity_from_mol(mol, atom)
-        expected_connectivity = {0: [1, 2, 4, 5], 1: [0, 2, 6, 7], 2: [1, 0, 3, 8], 3: [2, 9],
-                                 4: [0], 5: [0], 6: [1], 7: [1], 8: [2], 9: [3]}
+        expected_connectivity = {0: [1, 4], 1: [0, 2, 3, 5], 2: [1, 3, 6, 7], 3: [2, 1, 8, 9],
+                                 4: [0], 5: [1], 6: [2], 7: [2], 8: [3], 9: [3]}
         self.assertEqual(connectivity, expected_connectivity)
 
     def test_get_connectivity(self):
@@ -311,12 +311,12 @@ class TestZMat(unittest.TestCase):
                                         1: [0], 2: [3], 4: [0], 6: [5], 7: [5]})
 
         connectivity = zmat.get_connectivity(
-            mol=ARCSpecies(label='phenanthrene', smiles='c1=ccc2c3cc=ccc3ccc2c1', xyz=self.phenanthrene).mol)
+            mol=ARCSpecies(label='phenanthrene', smiles='C1=CCC2=C3CC=CCC3=CC=C2C1', xyz=self.phenanthrene).mol)
         self.assertEqual(connectivity[2], [1, 3, 16, 17])
         self.assertEqual(len(list(connectivity.keys())), 28)
 
         connectivity = zmat.get_connectivity(
-            mol=ARCSpecies(label='crazy', smiles='CSC(CCO)(Cc1ccc(NO)cc1)C(O[CH2])(COO)C', xyz=self.crazy).mol)
+            mol=ARCSpecies(label='crazy', smiles='OCCC(C(COO)(O[CH2])C)(Cc1ccc(cc1)NO)SC', xyz=self.crazy).mol)
         self.assertEqual(len(list(connectivity.keys())), 46)
 
         connectivity = zmat.get_connectivity(mol=ARCSpecies(label='N', smiles='[N]').mol)
@@ -342,7 +342,7 @@ class TestZMat(unittest.TestCase):
         self.assertEqual(symbols, ['N', 'N', 'N', 'H', 'H', 'H', 'H', 'H'])
 
         atom_order = zmat.get_atom_order_from_mol(
-            ARCSpecies(label='phenanthrene', smiles='c1=ccc2c3cc=ccc3ccc2c1', xyz=self.phenanthrene).mol)
+            ARCSpecies(label='phenanthrene', smiles='C1=CCC2=C3CC=CCC3=CC=C2C1', xyz=self.phenanthrene).mol)
         self.assertEqual(atom_order, [0, 1, 13, 2, 12, 3, 11, 4, 10, 5, 9, 6, 8, 7, 14,
                                       15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27])
         symbols = [self.phenanthrene['symbols'][atom_index] for atom_index in atom_order]
@@ -350,7 +350,7 @@ class TestZMat(unittest.TestCase):
                                    'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'])
 
         atom_order = zmat.get_atom_order_from_mol(
-            ARCSpecies(label='crazy', smiles='CSC(CCO)(Cc1ccc(NO)cc1)C(O[CH2])(COO)C', xyz=self.crazy).mol)
+            ARCSpecies(label='crazy', smiles='OCCC(C(COO)(O[CH2])C)(Cc1ccc(cc1)NO)SC', xyz=self.crazy).mol)
         self.assertEqual(atom_order, [0, 1, 2, 3, 6, 15, 4, 7, 23, 20, 16, 5, 8, 14, 21, 17, 9, 13, 22, 10, 11,
                                       12, 18, 19, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
                                       39, 40, 41, 42, 43, 44, 45])
@@ -360,7 +360,7 @@ class TestZMat(unittest.TestCase):
                                    'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'])
 
         atom_order = zmat.get_atom_order_from_mol(
-            ARCSpecies(label='crazy', smiles='CSC(CCO)(Cc1ccc(NO)cc1)C(O[CH2])(COO)C', xyz=self.crazy).mol,
+            ARCSpecies(label='crazy', smiles='OCCC(C(COO)(O[CH2])C)(Cc1ccc(cc1)NO)SC', xyz=self.crazy).mol,
             constraints_dict={})
         self.assertEqual(atom_order, [0, 1, 2, 3, 6, 15, 4, 7, 23, 20, 16, 5, 8, 14, 21, 17, 9, 13, 22, 10, 11,
                                       12, 18, 19, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,

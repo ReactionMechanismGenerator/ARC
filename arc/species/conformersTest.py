@@ -142,7 +142,7 @@ H      -1.22610851    0.40421362    1.35170355"""
                                                         force_field='MMFF94s', print_logs=False, diastereomers=None,
                                                         n_confs=1, return_all_conformers=False)
         self.assertEqual(len(lowest_confs), 1)
-        self.assertAlmostEqual(lowest_confs[0]['FF energy'], -0.7460169669694667)
+        self.assertAlmostEqual(lowest_confs[0]['FF energy'], -0.7418115656748858)
         expected_xyz = {'symbols': ('C', 'C', 'H', 'H', 'H', 'O', 'H', 'H', 'O'),
                         'isotopes': (12, 12, 1, 1, 1, 16, 1, 1, 16),
                         'coords': ((-1.06401, 0.15134, -0.02907),
@@ -535,7 +535,7 @@ O       1.40839617    0.14303696    0.00000000"""
         xyzs, energies = conformers.openbabel_force_field(label='', mol=spc.mol, num_confs=1,
                                                           force_field='GAFF', method='diverse')
         self.assertEqual(len(xyzs), 1)
-        self.assertAlmostEqual(energies[0], 2.9310163, 3)
+        self.assertAlmostEqual(energies[0], 2.931930, 3)
 
     def test_openbabel_force_field_on_rdkit_conformers(self):
         """Test Open Babel force field on RDKit conformers"""
@@ -576,8 +576,8 @@ O       1.40839617    0.14303696    0.00000000"""
                                     (0.59336, 1.16044, 0.53412),
                                     (2.51642, -0.38757, 0.25036))}]
         self.assertEqual(len(energies), 2)
-        self.assertAlmostEqual(energies[0], 0.2446742680965306)
-        self.assertAlmostEqual(energies[1], -0.7460169699282158)
+        self.assertAlmostEqual(energies[0], 3.4958104235174376)
+        self.assertAlmostEqual(energies[1], -0.7028477774918569)
         # Only symbols instead of the coordinate values are compared.
         # This is due to the unknown behavior of OpenBabel optimization function.
         # With the same iteration number and same initial xyz, the optimized xyzs can
@@ -2065,8 +2065,8 @@ Cl      2.38846685    0.24054066    0.55443324
                                         (5, 4, 6, 7): 204.57856732311797}}]
         mol = ARCSpecies(label='C(O)(S)NC=CO', smiles='C(O)(S)NC=CO', xyz=confs[0]['xyz']).mol  # preserves atom order
         confs = conformers.determine_chirality(conformers=confs, label='C(O)(S)NC=CO', mol=mol)
-        self.assertEqual(confs[0]['chirality'], {(3,): 'NR', (4,): 'S', (5, 6): 'E'})
-        self.assertEqual(confs[1]['chirality'], {(3,): 'NR', (4,): 'R', (5, 6): 'Z'})
+        self.assertEqual(confs[0]['chirality'], {(0,): 'R', (3,): 'NR', (4, 5): 'E'})
+        self.assertEqual(confs[1]['chirality'], {(0,): 'S', (3,): 'NR', (4, 5): 'Z'})
 
     def test_get_lowest_diastereomers(self):
         """Test the getting the lowest diasteroemrs from a given conformers list"""
