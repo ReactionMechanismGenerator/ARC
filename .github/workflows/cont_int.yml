@@ -44,6 +44,7 @@ jobs:
         make gcn-cpu
         cd ..
         echo $(pwd)
+        conda activate arc_env
         conda list
 
     - name: Lint with flake8
