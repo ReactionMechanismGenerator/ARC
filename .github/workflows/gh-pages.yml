@@ -9,20 +9,25 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -l {0}
 
     steps:
       - uses: actions/checkout@v2
 
-      - name: Set up miniconda Python 3.8
+      - name: Set up miniconda Python 3.7
         uses: conda-incubator/setup-miniconda@v2
         with:
-          activate-environment: arc_env
           environment-file: environment.yml
-          python-version: 3.8
+          activate-environment: arc_env
+          python-version: 3.7
           auto-activate-base: false
 
-      - name: Install dependencies and compile the docs
-        shell: bash -l {0}
+      - name: Install codecov
+        run: conda install -y -c conda-forge codecov
+
+      - name: Install dependencies
         run: |
           export PYTHONPATH=$PYTHONPATH:$(pwd)
           conda activate arc_env
@@ -34,11 +39,14 @@ jobs:
           cd ..
           git clone https://github.com/ReactionMechanismGenerator/RMG-database
           cd ARC
+          conda deactivate
+          make gcn-cpu
+          cd ..
           echo $(pwd)
+          conda activate arc_env
           conda list
 
       - name: Compile docs
-        shell: bash -l {0}
         run: |
           export PYTHONPATH=$PYTHONPATH:$(pwd)
           conda activate arc_env
