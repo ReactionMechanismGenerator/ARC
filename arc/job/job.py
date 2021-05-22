@@ -1099,16 +1099,26 @@ end
             save_geo(xyz=self.xyz, path=self.local_path, filename='coord', format_='xyz')
 
         if self.job_type == 'irc':
-            if self.irc_direction is None or self.irc_direction not in ['forward', 'reverse']:
-                raise JobError(f'The IRC direction must be either "forward" or "reverse", got {self.irc_direction}.')
-            if self.fine:
-                # Note that the Acc2E argument is not available in Gaussian03
-                fine = 'scf=(direct) integral=(grid=ultrafine, Acc2E=12)'
-            job_type_1 = f'irc=(CalcAll,{self.irc_direction},maxpoints=50,stepsize=7)'
-            if self.checkfile is not None:
-                job_type_1 += ' guess=read'
-            else:
-                job_type_1 += ' guess=mix'
+            if self.software == 'gaussian':
+                if self.irc_direction is None or self.irc_direction not in ['forward', 'reverse']:
+                    raise JobError(f'The IRC direction must be either "forward" or "reverse", got {self.irc_direction}.')
+                if self.fine:
+                    # Note that the Acc2E argument is not available in Gaussian03
+                    fine = 'scf=(direct) integral=(grid=ultrafine, Acc2E=12)'
+                job_type_1 = f'irc=(CalcAll,{self.irc_direction},maxpoints=50,stepsize=7)'
+                if self.checkfile is not None:
+                    job_type_1 += ' guess=read'
+                else:
+                    job_type_1 += ' guess=mix'
+
+            elif self.software == 'qchem':
+                if self.irc_direction is None or self.irc_direction not in ['forward', 'reverse']:
+                    raise JobError(f'The IRC direction must be either "forward" or "reverse", got {self.irc_direction}.')
+                qchem_rpath_direction = 1 if self.irc_direction == 'forward' else -1
+                # 20 max cycles is the default
+                fine = f'\n   RPATH_DIRECTION {qchem_rpath_direction}\n   RPATH_MAX_CYCLES 20'
+                job_type_1 = 'rpath'
+
 
         elif self.job_type == 'gsm':  # TODO
             pass
