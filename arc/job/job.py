@@ -995,6 +995,11 @@ end
                 scans = [' '.join([str(num) for num in self.scan])]
             elif self.directed_scans is not None:
                 scans = list()
+                print(f'Line 998 in job.py self.directed_scans is: {self.directed_scans}')
+                if type(self.directed_scans[0]) is int:
+                    print(f'line 999')
+                    self.directed_scans = [self.directed_scans]
+                print(f'Line 1002 in job.py self.directed_scans is: {self.directed_scans}')
                 for directed_scan in self.directed_scans:
                     scans.append(' '.join([str(num) for num in directed_scan]))
             else:
