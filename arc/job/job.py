@@ -1021,7 +1021,9 @@ end
                     job_type_1 = 'ts'
                 else:
                     job_type_1 = 'opt'
-                dihedral1 = int(calculate_dihedral_angle(coords=self.xyz['coords'], torsion=self.scan))
+                
+                # both self.directed_scans and self.scan should be list of lists containing 4 atom indices
+                dihedral1 = int(calculate_dihedral_angle(coords=self.xyz['coords'], torsion=self.directed_scans[0]))
                 scan_string = '\n$scan\n'
                 for scan in scans:
                     scan_string += f'tors {scan} {dihedral1} {dihedral1 + 360.0} {self.scan_res}\n'
