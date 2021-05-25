@@ -888,28 +888,28 @@ def trsh_ess_job(label: str,
                         f'DIIS_GDM SCF algorithm')
             ess_trsh_methods.append('SYM_IGNORE')
             trsh_keyword = '\n   SCF_ALGORITHM DIIS_GDM\n   MAX_SCF_CYCLES 250\n   SYM_IGNORE     True'
-        elif 'wB97X-D3/def2-TZVP' not in ess_trsh_methods:
-            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using wB97X-D3/def2-TZVP')
-            ess_trsh_methods.append('wB97X-D3/def2-TZVP')
-            # try converging with wB97X-D3/def2-TZVP
-            level_of_theory = Level(method='wb97x-d3', basis='def2-tzvp')
-        elif 'b3lyp/6-311++g(d,p)' not in ess_trsh_methods:
-            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using b3lyp/6-311++g(d,p)')
-            ess_trsh_methods.append('b3lyp/6-311++g(d,p)')
-            # try converging with B3LYP
-            level_of_theory = Level(method='b3lyp', basis='6-311++g(d,p)')
-        elif 'gaussian' not in ess_trsh_methods \
-                and (available_ess is None or 'gaussian' in [ess.lower() for ess in available_ess]):
-            # Try Gaussian
-            logger.info(f'Troubleshooting {job_type} job using gaussian instead of {software} for {label}')
-            ess_trsh_methods.append('gaussian')
-            software = 'gaussian'
-        elif 'molpro' not in ess_trsh_methods and job_type != 'scan' \
-                and (available_ess is None or 'molpro' in [ess.lower() for ess in available_ess]):
-            # Try molpro
-            logger.info(f'Troubleshooting {job_type} job using molpro instead of {software} for {label}')
-            ess_trsh_methods.append('molpro')
-            software = 'molpro'
+        # elif 'wB97X-D3/def2-TZVP' not in ess_trsh_methods:
+        #     logger.info(f'Troubleshooting {job_type} job in {software} for {label} using wB97X-D3/def2-TZVP')
+        #     ess_trsh_methods.append('wB97X-D3/def2-TZVP')
+        #     # try converging with wB97X-D3/def2-TZVP
+        #     level_of_theory = Level(method='wb97x-d3', basis='def2-tzvp')
+        # elif 'b3lyp/6-311++g(d,p)' not in ess_trsh_methods:
+        #     logger.info(f'Troubleshooting {job_type} job in {software} for {label} using b3lyp/6-311++g(d,p)')
+        #     ess_trsh_methods.append('b3lyp/6-311++g(d,p)')
+        #     # try converging with B3LYP
+        #     level_of_theory = Level(method='b3lyp', basis='6-311++g(d,p)')
+        # elif 'gaussian' not in ess_trsh_methods \
+        #         and (available_ess is None or 'gaussian' in [ess.lower() for ess in available_ess]):
+        #     # Try Gaussian
+        #     logger.info(f'Troubleshooting {job_type} job using gaussian instead of {software} for {label}')
+        #     ess_trsh_methods.append('gaussian')
+        #     software = 'gaussian'
+        # elif 'molpro' not in ess_trsh_methods and job_type != 'scan' \
+        #         and (available_ess is None or 'molpro' in [ess.lower() for ess in available_ess]):
+        #     # Try molpro
+        #     logger.info(f'Troubleshooting {job_type} job using molpro instead of {software} for {label}')
+        #     ess_trsh_methods.append('molpro')
+        #     software = 'molpro'
         else:
             couldnt_trsh = True
 
