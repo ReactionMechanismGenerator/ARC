@@ -16,7 +16,7 @@ from arc.common import extermum_list, get_logger
 from arc.exceptions import ReactionError, InputError
 from arc.imports import settings
 from arc.species.converter import str_to_xyz, xyz_to_str
-from arc.species.species import ARCSpecies, check_atom_balance
+from arc.species.species import ARCSpecies, check_atom_balance, check_label
 
 
 logger = get_logger()
@@ -527,8 +527,8 @@ class ARCReaction(object):
             raise ReactionError(f'Reactants or products in a reaction label must separated with {self.plus} '
                                 f'(has spaces on both sides). Got:{self.label}')
         species_labels = self.label.split(self.arrow)
-        reactants = species_labels[0].split(self.plus)
-        products = species_labels[1].split(self.plus)
+        reactants = [check_label(reactant) for reactant in species_labels[0].split(self.plus)]
+        products = [check_label(product) for product in species_labels[1].split(self.plus)]
         if self.reactants is not None:
             for reactant in reactants:
                 if reactant not in self.reactants:
