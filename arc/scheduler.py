@@ -660,11 +660,6 @@ class Scheduler(object):
                 self.report_time = time.time()
                 logger.info(f'Currently running jobs:\n{self.running_jobs}')
 
-        # After exiting the Scheduler while loop, append all YAML species not directly calculated to the species_dict:
-        for spc in self.species_list:
-            if spc.yml_path is not None:
-                self.species_dict[spc.label] = spc
-
     def run_job(self,
                 label: str,
                 level_of_theory: Union[Level, dict, str],
