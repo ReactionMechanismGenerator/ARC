@@ -162,15 +162,17 @@ def load_rmg_database(rmgdb: RMGDatabase,
 
 
 def determine_reaction_family(rmgdb: RMGDatabase,
-                              reaction:Reaction,
+                              reaction: Reaction,
+                              save_order: bool = False,
                               ) -> Tuple[Optional['KineticsFamily'], bool]:
     """
-    Determine the RMG kinetic family for a given ARCReaction object.
-    Returns None if no family found or more than one family found.
+    Determine the RMG kinetic family for a given ``ARCReaction`` object.
+    Returns ``None`` if no family found or more than one family found.
 
     Args:
         rmgdb (RMGDatabase): The RMG database instance.
         reaction (Reaction): The RMG Reaction object.
+        save_order (bool, optional): Whether to retain atomic order of the RMG ``reaction`` object instance.
 
     Returns: Tuple[Optional[KineticsFamily], bool]
         - The corresponding RMG reaction's family. ``None`` if no family was found or more than one family were found.
@@ -179,7 +181,10 @@ def determine_reaction_family(rmgdb: RMGDatabase,
     fam_list = loop_families(rmgdb=rmgdb, reaction=reaction)
     families = [fam_l[0] for fam_l in fam_list]
     if len(set(families)) == 1:
-        return families[0], families[0].own_reverse
+        family = families[0]
+        if save_order:
+            family.save_order = True
+        return family, family.own_reverse
     else:
         return None, False
 
