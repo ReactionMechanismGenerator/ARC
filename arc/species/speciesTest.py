@@ -14,7 +14,7 @@ from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 from rmgpy.transport import TransportData
 
-from arc.common import almost_equal_coords_lists, arc_path
+from arc.common import almost_equal_coords_lists, ARC_PATH
 from arc.exceptions import SpeciesError
 from arc.level import Level
 from arc.plotter import save_conformers_file
@@ -81,7 +81,7 @@ class TestARCSpecies(unittest.TestCase):
         H       1.4015274689    -0.6230592706    -0.8487058662"""
         cls.spc6 = ARCSpecies(label='N3', xyz=n3_xyz, multiplicity=1, smiles='NNN')
 
-        xyz1 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'AIBN.gjf')
+        xyz1 = os.path.join(ARC_PATH, 'arc', 'testing', 'xyz', 'AIBN.gjf')
         cls.spc7 = ARCSpecies(label='AIBN', smiles='N#CC(C)(C)N=NC(C)(C)C#N', xyz=xyz1)
 
         hso3_xyz = """S      -0.12383700    0.10918200   -0.21334200
@@ -129,7 +129,7 @@ class TestARCSpecies(unittest.TestCase):
                                (-2.339586, -0.300928, 0.289904),
                                (-1.2713739999999998, -1.271158, -0.51544))}
 
-        n4h6_yml_path = os.path.join(arc_path, 'arc', 'testing', 'yml_testing', 'N4H6.yml')
+        n4h6_yml_path = os.path.join(ARC_PATH, 'arc', 'testing', 'yml_testing', 'N4H6.yml')
         n4h6 = ARCSpecies(yml_path=n4h6_yml_path)
         self.assertEqual(n4h6.mol.to_adjacency_list(), n4h6_adj_list)
         self.assertEqual(n4h6.charge, 0)
@@ -565,18 +565,18 @@ H      -1.67091600   -1.35164600   -0.93286400"""
 
     def test_determine_rotor_type(self):
         """Test that we correctly determine whether a rotor is FreeRotor or HinderedRotor"""
-        free_path = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'CH3C(O)O_FreeRotor.out')
-        hindered_path = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'H2O2.out')
+        free_path = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'CH3C(O)O_FreeRotor.out')
+        hindered_path = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'H2O2.out')
         self.assertEqual(determine_rotor_type(free_path), 'FreeRotor')
         self.assertEqual(determine_rotor_type(hindered_path), 'HinderedRotor')
 
     def test_rotor_symmetry(self):
         """Test that ARC automatically determines a correct rotor symmetry"""
-        path1 = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'OOC1CCOCO1.out')  # symmetry = 1; min at -10 o
-        path2 = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'H2O2.out')  # symmetry = 1
-        path3 = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'N2O3.out')  # symmetry = 2
-        path4 = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'sBuOH.out')  # symmetry = 3
-        path5 = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'CH3C(O)O_FreeRotor.out')  # symmetry = 6
+        path1 = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'OOC1CCOCO1.out')  # symmetry = 1; min at -10 o
+        path2 = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'H2O2.out')  # symmetry = 1
+        path3 = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'N2O3.out')  # symmetry = 2
+        path4 = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'sBuOH.out')  # symmetry = 3
+        path5 = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'CH3C(O)O_FreeRotor.out')  # symmetry = 6
 
         sym1, e1, _ = determine_rotor_symmetry(label='label', pivots=[3, 4], rotor_path=path1)
         sym2, e2, _ = determine_rotor_symmetry(label='label', pivots=[3, 4], rotor_path=path2)
@@ -705,7 +705,7 @@ H    2.9757   -2.2266    0.5368"""
         self.assertEqual(len(spc2.conformer_energies), 1)
         self.assertEqual(spc2.multiplicity, 1)
 
-        xyz_path = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'CH3C(O)O.xyz')
+        xyz_path = os.path.join(ARC_PATH, 'arc', 'testing', 'xyz', 'CH3C(O)O.xyz')
         expected_xyz3 = """O      -0.53466300   -1.24850800   -0.02156300
 O      -0.79314200    1.04818800    0.18134200
 C      -0.02397300    0.01171700   -0.37827400
@@ -725,7 +725,7 @@ H      -1.69944700    0.93441600   -0.11271200"""
         self.assertEqual(len(spc3.conformer_energies), 1)
         self.assertEqual(spc3.multiplicity, 1)
 
-        conformers_path = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'conformers_file.txt')
+        conformers_path = os.path.join(ARC_PATH, 'arc', 'testing', 'xyz', 'conformers_file.txt')
         spc4 = ARCSpecies(label='test_spc3', xyz=conformers_path)
         self.assertEqual(len(spc4.conformers), 4)
         self.assertEqual(len(spc4.conformer_energies), 4)
@@ -782,7 +782,7 @@ H      -1.69944700    0.93441600   -0.11271200"""
 
     def test_append_conformers(self):
         """Test that ARC correctly parses its own conformer files"""
-        project_directory = os.path.join(arc_path, 'Projects', 'arc_project_for_testing_delete_after_usage4')
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage4')
         xyzs = [{'symbols': ('O', 'C', 'C', 'H', 'H', 'H'), 'isotopes': (16, 12, 12, 1, 1, 1),
                  'coords': ((1.090687, 0.265168, -0.167063), (2.922041, -1.183357, -0.388849),
                             (2.276555, -0.003739, 0.085435), (2.365448, -1.88781, -0.999146),
@@ -882,11 +882,11 @@ H       1.32129900    0.71837500    0.38017700
     def test_set_transport_data(self):
         """Test the set_transport_data method"""
         self.assertIsInstance(self.spc1.transport_data, TransportData)
-        lj_path = os.path.join(arc_path, 'arc', 'testing', 'NH3_oneDMin.dat')
-        opt_path = os.path.join(arc_path, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
+        lj_path = os.path.join(ARC_PATH, 'arc', 'testing', 'NH3_oneDMin.dat')
+        opt_path = os.path.join(ARC_PATH, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
         bath_gas = 'N2'
         opt_level = Level(repr='CBS-QB3')
-        freq_path = os.path.join(arc_path, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
+        freq_path = os.path.join(ARC_PATH, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
         freq_level = Level(repr='CBS-QB3')
         self.spc1.set_transport_data(lj_path, opt_path, bath_gas, opt_level, freq_path, freq_level)
         self.assertIsInstance(self.spc1.transport_data, TransportData)
@@ -1367,7 +1367,7 @@ H      -1.47626400   -0.10694600   -1.88883800"""
         """
         projects = ['arc_project_for_testing_delete_after_usage4']
         for project in projects:
-            project_directory = os.path.join(arc_path, 'Projects', project)
+            project_directory = os.path.join(ARC_PATH, 'Projects', project)
             shutil.rmtree(project_directory, ignore_errors=True)
 
 
@@ -1436,7 +1436,7 @@ class TestTSGuess(unittest.TestCase):
         Test that ARC can call the GNN to make TS guesses for further optimization.
         """
         # create temporary project directory to delete afterwards
-        project_dir = os.path.join(arc_path, 'arc', 'testing', 'gcn_tst')
+        project_dir = os.path.join(ARC_PATH, 'arc', 'testing', 'gcn_tst')
 
         r_xyz = """C  -1.3087    0.0068    0.0318
         C  0.1715   -0.0344    0.0210

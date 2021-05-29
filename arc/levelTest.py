@@ -10,7 +10,7 @@ import unittest
 
 from arkane.modelchem import LevelOfTheory
 
-from arc.common import arc_path, read_yaml_file
+from arc.common import ARC_PATH, read_yaml_file
 from arc.level import Level
 
 
@@ -142,7 +142,7 @@ class TestLevel(unittest.TestCase):
 
     def test_ess_methods_yml(self):
         """Test reading the ess_methods.yml file"""
-        ess_methods = read_yaml_file(path=os.path.join(arc_path, 'data', 'ess_methods.yml'))
+        ess_methods = read_yaml_file(path=os.path.join(ARC_PATH, 'data', 'ess_methods.yml'))
         self.assertIsInstance(ess_methods, dict)
         for ess, methods in ess_methods.items():
             self.assertIsInstance(ess, str)

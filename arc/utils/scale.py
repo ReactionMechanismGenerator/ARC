@@ -10,7 +10,7 @@ import time
 from typing import List, Optional, Union
 import shutil
 
-from arc.common import (arc_path,
+from arc.common import (ARC_PATH,
                         check_ess_settings,
                         get_logger,
                         initialize_job_types,
@@ -86,7 +86,7 @@ def determine_scaling_factors(levels: List[Union[Level, dict, str]],
         logger.info(f'\nComputing scaling factors at the {level} level of theory...\n\n')
         renamed_level = rename_level(str(level))
         project = 'scaling_' + renamed_level
-        project_directory = os.path.join(arc_path, 'Projects', 'scaling_factors', project)
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'scaling_factors', project)
         if os.path.isdir(project_directory):
             shutil.rmtree(project_directory)
 
@@ -208,7 +208,7 @@ def summarize_results(lambda_zpes: list,
         overall_time (str): A string-format of the overall calculation execution time.
         base_path (str, optional): The path to the scaling factors base folder.
     """
-    base_path = base_path or os.path.join(arc_path, 'Projects', 'scaling_factors')
+    base_path = base_path or os.path.join(ARC_PATH, 'Projects', 'scaling_factors')
     if not os.path.exists(base_path):
         os.makedirs(base_path)
     i, success = 0, False

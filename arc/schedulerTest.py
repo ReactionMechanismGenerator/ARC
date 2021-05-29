@@ -11,7 +11,7 @@ import shutil
 
 import arc.rmgdb as rmgdb
 import arc.parser as parser
-from arc.common import arc_path, almost_equal_coords_lists
+from arc.common import ARC_PATH, almost_equal_coords_lists
 from arc.job.job import Job
 from arc.level import Level
 from arc.plotter import save_conformers_file
@@ -34,7 +34,7 @@ class TestScheduler(unittest.TestCase):
         """
         cls.maxDiff = None
         cls.ess_settings = {'gaussian': ['server1'], 'molpro': ['server2', 'server1'], 'qchem': ['server1']}
-        cls.project_directory = os.path.join(arc_path, 'Projects', 'arc_project_for_testing_delete_after_usage3')
+        cls.project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage3')
         cls.spc1 = ARCSpecies(label='methylamine', smiles='CN')
         cls.spc2 = ARCSpecies(label='C2H6', smiles='CC')
         xyz1 = """C       1.11424367   -0.01231165   -0.11493630
@@ -85,9 +85,9 @@ H      -1.82570782    0.42754384   -0.56130718"""
     def test_conformers(self):
         """Test the parse_conformer_energy() and determine_most_stable_conformer() methods"""
         label = 'methylamine'
-        self.job1.local_path_to_output_file = os.path.join(arc_path, 'arc', 'testing', 'methylamine_conformer_0.out')
+        self.job1.local_path_to_output_file = os.path.join(ARC_PATH, 'arc', 'testing', 'methylamine_conformer_0.out')
         self.job1.job_status = ['done', {'status': 'done', 'keywords': list(), 'error': '', 'line': ''}]
-        self.job2.local_path_to_output_file = os.path.join(arc_path, 'arc', 'testing', 'methylamine_conformer_1.out')
+        self.job2.local_path_to_output_file = os.path.join(ARC_PATH, 'arc', 'testing', 'methylamine_conformer_1.out')
         self.job2.job_status = ['done', {'status': 'done', 'keywords': list(), 'error': '', 'line': ''}]
         self.sched1.job_dict[label] = dict()
         self.sched1.job_dict[label]['conformers'] = dict()
@@ -148,7 +148,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
     def test_check_negative_freq(self):
         """Test the check_negative_freq() method"""
         label = 'C2H6'
-        self.job3.local_path_to_output_file = os.path.join(arc_path, 'arc', 'testing', 'freq', 'C2H6_freq_QChem.out')
+        self.job3.local_path_to_output_file = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'C2H6_freq_QChem.out')
         self.job3.job_status = ['done', {'status': 'done', 'keywords': list(), 'error': '', 'line': ''}]
         vibfreqs = parser.parse_frequencies(path=self.job3.local_path_to_output_file, software=self.job3.software)
         self.assertTrue(self.sched1.check_negative_freq(label=label, job=self.job3, vibfreqs=vibfreqs))
@@ -277,7 +277,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
         """
         projects = ['arc_project_for_testing_delete_after_usage3']
         for project in projects:
-            project_directory = os.path.join(arc_path, 'Projects', project)
+            project_directory = os.path.join(ARC_PATH, 'Projects', project)
             shutil.rmtree(project_directory, ignore_errors=True)
 
 

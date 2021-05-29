@@ -11,7 +11,7 @@ import shutil
 import unittest
 
 import arc.job.local as local
-from arc.common import arc_path
+from arc.common import ARC_PATH
 
 
 class TestLocal(unittest.TestCase):
@@ -33,22 +33,22 @@ class TestLocal(unittest.TestCase):
 
     def test_get_last_modified_time(self):
         """Test the get_last_modified_time() function"""
-        path = os.path.join(arc_path, 'ARC.py')
+        path = os.path.join(ARC_PATH, 'ARC.py')
         t = local.get_last_modified_time(path)
         self.assertIsInstance(t, datetime.datetime)
 
     def test_rename_output(self):
         """Test the rename_output() function"""
-        path1 = os.path.join(arc_path, 'scratch', 'input.log')
-        path2 = os.path.join(arc_path, 'scratch', 'output.out')
-        if not os.path.exists(os.path.join(arc_path, 'scratch')):
-            os.makedirs(os.path.join(arc_path, 'scratch'))
+        path1 = os.path.join(ARC_PATH, 'scratch', 'input.log')
+        path2 = os.path.join(ARC_PATH, 'scratch', 'output.out')
+        if not os.path.exists(os.path.join(ARC_PATH, 'scratch')):
+            os.makedirs(os.path.join(ARC_PATH, 'scratch'))
         with open(path1, 'w'):
             pass
         local.rename_output(local_file_path=path2, software='gaussian')
         self.assertFalse(os.path.isfile(path1))
         self.assertTrue(os.path.isfile(path2))
-        shutil.rmtree(os.path.join(arc_path, 'scratch'), ignore_errors=True)
+        shutil.rmtree(os.path.join(ARC_PATH, 'scratch'), ignore_errors=True)
 
 
 if __name__ == '__main__':

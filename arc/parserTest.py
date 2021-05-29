@@ -10,7 +10,7 @@ import os
 import unittest
 
 import arc.parser as parser
-from arc.common import arc_path
+from arc.common import ARC_PATH
 from arc.species import ARCSpecies
 from arc.species.converter import xyz_to_str
 
@@ -29,17 +29,17 @@ class TestParser(unittest.TestCase):
 
     def test_parse_frequencies(self):
         """Test frequency parsing"""
-        no3_path = os.path.join(arc_path, 'arc', 'testing', 'freq', 'NO3_freq_QChem_fails_on_cclib.out')
-        c2h6_path = os.path.join(arc_path, 'arc', 'testing', 'freq', 'C2H6_freq_QChem.out')
-        so2oo_path = os.path.join(arc_path, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
-        ch2o_path_molpro = os.path.join(arc_path, 'arc', 'testing', 'freq', 'CH2O_freq_molpro.out')
-        ch2o_path_terachem = os.path.join(arc_path, 'arc', 'testing', 'freq', 'CH2O_freq_terachem.dat')
-        ch2o_path_terachem_output = os.path.join(arc_path, 'arc', 'testing', 'freq',
+        no3_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'NO3_freq_QChem_fails_on_cclib.out')
+        c2h6_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'C2H6_freq_QChem.out')
+        so2oo_path = os.path.join(ARC_PATH, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
+        ch2o_path_molpro = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'CH2O_freq_molpro.out')
+        ch2o_path_terachem = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'CH2O_freq_terachem.dat')
+        ch2o_path_terachem_output = os.path.join(ARC_PATH, 'arc', 'testing', 'freq',
                                                  'formaldehyde_freq_terachem_output.out')
-        ncc_path_terachem_output = os.path.join(arc_path, 'arc', 'testing', 'freq',
+        ncc_path_terachem_output = os.path.join(ARC_PATH, 'arc', 'testing', 'freq',
                                                 'ethylamine_freq_terachem_output.out')
-        orca_path = os.path.join(arc_path, 'arc', 'testing', 'freq', 'orca_example_freq.log')
-        dual_freq_path = os.path.join(arc_path, 'arc', 'testing', 'freq', 'dual_freq_output.out')
+        orca_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'orca_example_freq.log')
+        dual_freq_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'dual_freq_output.out')
 
         no3_freqs = parser.parse_frequencies(path=no3_path, software='QChem')
         c2h6_freqs = parser.parse_frequencies(path=c2h6_path, software='QChem')
@@ -89,7 +89,7 @@ class TestParser(unittest.TestCase):
 
     def test_parse_normal_displacement_modes(self):
         """Test parsing frequencies and normal displacement modes"""
-        freq_path = os.path.join(arc_path, 'arc', 'testing', 'freq', 'Gaussian_neg_freq.out')
+        freq_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'Gaussian_neg_freq.out')
         freqs, normal_disp_modes = parser.parse_normal_displacement_modes(path=freq_path)
         expected_freqs = np.array([-18.0696, 127.6948, 174.9499, 207.585, 228.8421, 281.2939, 292.4101,
                                    308.0345, 375.4493, 486.8396, 498.6986, 537.6196, 564.0223, 615.3762,
@@ -107,7 +107,7 @@ class TestParser(unittest.TestCase):
              [0.3, 0.03, 0.41], [0.0, 0.0, -0.15], [0.0, -0.0, 0.01], [0.0, -0.0, 0.21], [0.0, -0.0, 0.19]], np.float64)
         np.testing.assert_almost_equal(normal_disp_modes[0], expected_normal_disp_modes_0)
 
-        freq_path = os.path.join(arc_path, 'arc', 'testing', 'freq', 'CHO_neg_freq.out')
+        freq_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'CHO_neg_freq.out')
         freqs, normal_disp_modes = parser.parse_normal_displacement_modes(path=freq_path)
         expected_freqs = np.array([-1612.8294, 840.8655, 1883.4822, 3498.091], np.float64)
         np.testing.assert_almost_equal(freqs, expected_freqs)
@@ -118,7 +118,7 @@ class TestParser(unittest.TestCase):
              [[0.0, -0.0, 0.02], [-0.0, 0.0, -0.11], [0.0, -0.0, 0.99]]], np.float64)
         np.testing.assert_almost_equal(normal_disp_modes, expected_normal_disp_modes)
 
-        freq_path = os.path.join(arc_path, 'arc', 'testing', 'freq', 'CH3OO_freq_gaussian.out')
+        freq_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'CH3OO_freq_gaussian.out')
         freqs, normal_disp_modes = parser.parse_normal_displacement_modes(path=freq_path)
         expected_freqs = np.array([136.4446, 494.1267, 915.7812, 1131.4603, 1159.9315, 1225.148, 1446.5652,
                                    1474.8065, 1485.6423, 3046.2186, 3134.8026, 3147.5619], np.float64)
@@ -200,17 +200,17 @@ class TestParser(unittest.TestCase):
 
     def test_parse_xyz_from_file(self):
         """Test parsing xyz from a file"""
-        path1 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'CH3C(O)O.gjf')
-        path2 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'CH3C(O)O.xyz')
-        path3 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'AIBN.gjf')
-        path4 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'molpro.in')
-        path5 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'qchem.in')
-        path6 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'qchem_output.out')
-        path7 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'TS.gjf')
-        path8 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'formaldehyde_coords.xyz')
-        path9 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'optim_traj_terachem.xyz')  # test trajectories
-        path10 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'ethane_minimize_terachem_output.out')
-        path11 = os.path.join(arc_path, 'arc', 'testing', 'orca_example_opt.log')
+        path1 = os.path.join(ARC_PATH, 'arc', 'testing', 'xyz', 'CH3C(O)O.gjf')
+        path2 = os.path.join(ARC_PATH, 'arc', 'testing', 'xyz', 'CH3C(O)O.xyz')
+        path3 = os.path.join(ARC_PATH, 'arc', 'testing', 'xyz', 'AIBN.gjf')
+        path4 = os.path.join(ARC_PATH, 'arc', 'testing', 'xyz', 'molpro.in')
+        path5 = os.path.join(ARC_PATH, 'arc', 'testing', 'xyz', 'qchem.in')
+        path6 = os.path.join(ARC_PATH, 'arc', 'testing', 'xyz', 'qchem_output.out')
+        path7 = os.path.join(ARC_PATH, 'arc', 'testing', 'xyz', 'TS.gjf')
+        path8 = os.path.join(ARC_PATH, 'arc', 'testing', 'xyz', 'formaldehyde_coords.xyz')
+        path9 = os.path.join(ARC_PATH, 'arc', 'testing', 'xyz', 'optim_traj_terachem.xyz')  # test trajectories
+        path10 = os.path.join(ARC_PATH, 'arc', 'testing', 'xyz', 'ethane_minimize_terachem_output.out')
+        path11 = os.path.join(ARC_PATH, 'arc', 'testing', 'orca_example_opt.log')
 
         xyz1 = parser.parse_xyz_from_file(path1)
         xyz2 = parser.parse_xyz_from_file(path2)
@@ -265,26 +265,26 @@ H      -0.59436200   -0.94730400    0.00000000"""
     def test_parse_geometry(self):
         """Test parse_geometry()"""
         # Test parsing xyz from a Gaussina file with more than 50 atoms where the iop(2/9=2000) keyword is not specified
-        path1 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'Gaussian_large.log')
+        path1 = os.path.join(ARC_PATH, 'arc', 'testing', 'xyz', 'Gaussian_large.log')
         xyz = parser.parse_geometry(path=path1)
         self.assertIsInstance(xyz, dict)
         self.assertEqual(len(xyz['symbols']), 53)
 
     def test_parse_trajectory(self):
         """Test parsing trajectories"""
-        path = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'scan_optim.xyz')
+        path = os.path.join(ARC_PATH, 'arc', 'testing', 'xyz', 'scan_optim.xyz')
         trajectory = parser.parse_trajectory(path)
         self.assertEqual(len(trajectory), 46)
         self.assertIsInstance(trajectory[0], dict)
         self.assertEqual(len(trajectory[0]['symbols']), 9)
 
-        path = os.path.join(arc_path, 'arc', 'testing', 'irc', 'cyano_irc_1.out')
+        path = os.path.join(ARC_PATH, 'arc', 'testing', 'irc', 'cyano_irc_1.out')
         trajectory = parser.parse_trajectory(path)
         self.assertEqual(len(trajectory), 58)
         self.assertIsInstance(trajectory[0], dict)
         self.assertEqual(len(trajectory[0]['symbols']), 16)
 
-        path = os.path.join(arc_path, 'arc', 'testing', 'irc', 'irc_failed.out')
+        path = os.path.join(ARC_PATH, 'arc', 'testing', 'irc', 'irc_failed.out')
         trajectory = parser.parse_trajectory(path)
         self.assertEqual(len(trajectory), 21)
         self.assertIsInstance(trajectory[0], dict)
@@ -292,7 +292,7 @@ H      -0.59436200   -0.94730400    0.00000000"""
 
     def test_parse_1d_scan_coords(self):
         """Test parsing the optimized coordinates of a torsion scan at each optimization point"""
-        path = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'H2O2.out')
+        path = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'H2O2.out')
         traj = parser.parse_1d_scan_coords(path)
         self.assertEqual(len(traj), 37)
         self.assertEqual(traj[10], {'coords': ((-0.715582, -0.140909, 0.383809),
@@ -304,34 +304,34 @@ H      -0.59436200   -0.94730400    0.00000000"""
 
     def test_parse_t1(self):
         """Test T1 diagnostic parsing"""
-        path = os.path.join(arc_path, 'arc', 'testing', 'sp', 'mehylamine_CCSD(T).out')
+        path = os.path.join(ARC_PATH, 'arc', 'testing', 'sp', 'mehylamine_CCSD(T).out')
         t1 = parser.parse_t1(path)
         self.assertEqual(t1, 0.0086766)
 
     def test_parse_e_elect(self):
         """Test parsing E0 from an sp job output file"""
-        path = os.path.join(arc_path, 'arc', 'testing', 'sp', 'mehylamine_CCSD(T).out')
+        path = os.path.join(ARC_PATH, 'arc', 'testing', 'sp', 'mehylamine_CCSD(T).out')
         e_elect = parser.parse_e_elect(path)
         self.assertAlmostEqual(e_elect, -251377.49160993524)
 
-        path = os.path.join(arc_path, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
+        path = os.path.join(ARC_PATH, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
         e_elect = parser.parse_e_elect(path, zpe_scale_factor=0.99)
         self.assertAlmostEqual(e_elect, -1833127.0939478774)
 
-        path = os.path.join(arc_path, 'arc', 'testing', 'sp', 'formaldehyde_sp_terachem_output.out')
+        path = os.path.join(ARC_PATH, 'arc', 'testing', 'sp', 'formaldehyde_sp_terachem_output.out')
         e_elect = parser.parse_e_elect(path)
         self.assertAlmostEqual(e_elect, -300621.95378630824)
 
-        path = os.path.join(arc_path, 'arc', 'testing', 'sp', 'formaldehyde_sp_terachem_results.dat')
+        path = os.path.join(ARC_PATH, 'arc', 'testing', 'sp', 'formaldehyde_sp_terachem_results.dat')
         e_elect = parser.parse_e_elect(path)
         self.assertAlmostEqual(e_elect, -300621.95378630824)
 
     def test_parse_zpe(self):
         """Test the parse_zpe() function for parsing zero point energies"""
-        path1 = os.path.join(arc_path, 'arc', 'testing', 'freq', 'C2H6_freq_QChem.out')
-        path2 = os.path.join(arc_path, 'arc', 'testing', 'freq', 'CH2O_freq_molpro.out')
-        path3 = os.path.join(arc_path, 'arc', 'testing', 'freq', 'NO3_freq_QChem_fails_on_cclib.out')
-        path4 = os.path.join(arc_path, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
+        path1 = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'C2H6_freq_QChem.out')
+        path2 = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'CH2O_freq_molpro.out')
+        path3 = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'NO3_freq_QChem_fails_on_cclib.out')
+        path4 = os.path.join(ARC_PATH, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
         zpe1, zpe2, zpe3, zpe4 = parser.parse_zpe(path1), parser.parse_zpe(path2), parser.parse_zpe(path3), \
             parser.parse_zpe(path4)
         self.assertAlmostEqual(zpe1, 198.08311200000, 5)
@@ -341,7 +341,7 @@ H      -0.59436200   -0.94730400    0.00000000"""
 
     def test_parse_1d_scan_energies(self):
         """Test parsing a 1D scan output file"""
-        path1 = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'sBuOH.out')
+        path1 = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'sBuOH.out')
         energies, angles = parser.parse_1d_scan_energies(path=path1)
         expected_energies = np.array([1.57530564e-05, 3.98826556e-01, 1.60839959e+00, 3.49030801e+00,
                                       5.74358812e+00, 8.01124810e+00, 9.87649510e+00, 1.10079306e+01,
@@ -362,14 +362,14 @@ H      -0.59436200   -0.94730400    0.00000000"""
         np.testing.assert_almost_equal(energies, expected_energies)
         np.testing.assert_almost_equal(angles, expected_angles)
 
-        path2 = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'scan_1d_curvilinear_error.out')
+        path2 = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'scan_1d_curvilinear_error.out')
         energies_2, angles_2 = parser.parse_1d_scan_energies(path=path2)
         self.assertEqual(energies_2, None)
         self.assertEqual(angles_2, None)
 
     def test_parse_nd_scan_energies(self):
         """Test parsing an ND scan output file"""
-        path1 = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'scan_2D_relaxed_OCdOO.log')
+        path1 = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'scan_2D_relaxed_OCdOO.log')
         results = parser.parse_nd_scan_energies(path=path1, software='gaussian')
         self.assertEqual(results[0]['directed_scan_type'], 'ess_gaussian')
         self.assertEqual(results[0]['scans'], [(4, 1, 2, 5), (4, 1, 3, 6)])
@@ -379,37 +379,37 @@ H      -0.59436200   -0.94730400    0.00000000"""
 
     def test_parse_dipole_moment(self):
         """Test parsing the dipole moment from an opt job output file"""
-        path1 = os.path.join(arc_path, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
+        path1 = os.path.join(ARC_PATH, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
         dm1 = parser.parse_dipole_moment(path1)
         self.assertEqual(dm1, 0.63)
 
-        path2 = os.path.join(arc_path, 'arc', 'testing', 'N2H4_opt_QChem.out')
+        path2 = os.path.join(ARC_PATH, 'arc', 'testing', 'N2H4_opt_QChem.out')
         dm2 = parser.parse_dipole_moment(path2)
         self.assertEqual(dm2, 2.0664)
 
-        path3 = os.path.join(arc_path, 'arc', 'testing', 'freq', 'CH2O_freq_molpro.out')
+        path3 = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'CH2O_freq_molpro.out')
         dm3 = parser.parse_dipole_moment(path3)
         self.assertAlmostEqual(dm3, 2.8840, 4)
 
-        path4 = os.path.join(arc_path, 'arc', 'testing', 'orca_example_opt.log')
+        path4 = os.path.join(ARC_PATH, 'arc', 'testing', 'orca_example_opt.log')
         dm4 = parser.parse_dipole_moment(path4)
         self.assertEqual(dm4, 2.11328)
 
-        path5 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'ethane_minimize_terachem_output.out')
+        path5 = os.path.join(ARC_PATH, 'arc', 'testing', 'xyz', 'ethane_minimize_terachem_output.out')
         dm5 = parser.parse_dipole_moment(path5)
         self.assertAlmostEqual(dm5, 0.000179036, 4)
 
     def test_parse_polarizability(self):
         """Test parsing the polarizability moment from a freq job output file"""
-        path1 = os.path.join(arc_path, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
+        path1 = os.path.join(ARC_PATH, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
         polar1 = parser.parse_polarizability(path1)
         self.assertAlmostEqual(polar1, 3.99506, 4)
 
     def test_process_conformers_file(self):
         """Test processing ARC conformer files"""
-        path1 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'conformers_before_optimization.txt')
-        path2 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'conformers_after_optimization.txt')
-        path3 = os.path.join(arc_path, 'arc', 'testing', 'xyz', 'conformers_file.txt')
+        path1 = os.path.join(ARC_PATH, 'arc', 'testing', 'xyz', 'conformers_before_optimization.txt')
+        path2 = os.path.join(ARC_PATH, 'arc', 'testing', 'xyz', 'conformers_after_optimization.txt')
+        path3 = os.path.join(ARC_PATH, 'arc', 'testing', 'xyz', 'conformers_file.txt')
 
         xyzs, energies = parser.process_conformers_file(path1)
         self.assertEqual(len(xyzs), 3)
@@ -448,7 +448,7 @@ H      -0.59436200   -0.94730400    0.00000000"""
 
     def test_parse_str_blocks(self):
         """Test parsing str blocks"""
-        path = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'H2O2.out')
+        path = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'H2O2.out')
         str_blks = parser.parse_str_blocks(
             path, 'Initial Parameters', '--------', regex=False, tail_count=3)
         desire_str_lists = [
@@ -469,7 +469,7 @@ H      -0.59436200   -0.94730400    0.00000000"""
 
     def test_parse_scan_args(self):
         """Test parsing scan arguments"""
-        path = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'CH2OOH.out')
+        path = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'CH2OOH.out')
         scan_args = parser.parse_scan_args(path)
         self.assertEqual(scan_args['scan'], [4, 1, 2, 3])
         self.assertEqual(scan_args['freeze'], [[1, 2, 3, 6], [2, 3]])
@@ -479,7 +479,7 @@ H      -0.59436200   -0.94730400    0.00000000"""
 
     def test_parse_ic_info(self):
         """Test parsing internal coordinates information"""
-        path = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'CH2OOH.out')
+        path = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'CH2OOH.out')
         ic_info = parser.parse_ic_info(path)
         expected_labels = ['R1', 'R2', 'R3', 'R4', 'R5', 'A1', 'A2',
                            'A3', 'A4', 'A5', 'D1', 'D2', 'D3', 'D4']
@@ -515,7 +515,7 @@ H      -0.59436200   -0.94730400    0.00000000"""
 
     def test_parse_conformers(self):
         """Test parsing internal coordinates of all intermediate conformers in a scan job"""
-        path = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'H2O2.out')
+        path = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'H2O2.out')
         scan_conformers = parser.parse_scan_conformers(path)
         expected_labels = ['R1', 'R2', 'R3', 'A1', 'A2', 'D1']
         expected_types = ['R', 'R', 'R', 'A', 'A', 'D']

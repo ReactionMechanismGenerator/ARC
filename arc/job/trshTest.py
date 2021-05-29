@@ -9,7 +9,7 @@ import os
 import unittest
 
 import arc.job.trsh as trsh
-from arc.common import arc_path
+from arc.common import ARC_PATH
 from arc.imports import settings
 from arc.parser import parse_1d_scan_energies
 
@@ -28,7 +28,7 @@ class TestTrsh(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        path = os.path.join(arc_path, 'arc', 'testing', 'trsh')
+        path = os.path.join(ARC_PATH, 'arc', 'testing', 'trsh')
         cls.base_path = {ess: os.path.join(path, ess) for ess in supported_ess}
 
     def test_determine_ess_status(self):
@@ -502,7 +502,7 @@ class TestTrsh(unittest.TestCase):
 
     def test_trsh_negative_freq(self):
         """Test troubleshooting a negative frequency"""
-        gaussian_neg_freq_path = os.path.join(arc_path, 'arc', 'testing', 'freq', 'Gaussian_neg_freq.out')
+        gaussian_neg_freq_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'Gaussian_neg_freq.out')
         current_neg_freqs_trshed, conformers, output_errors, output_warnings = \
             trsh.trsh_negative_freq(label='2-methoxy_n-methylaniline', log_file=gaussian_neg_freq_path)
         expected_current_neg_freqs_trshed = [-18.07]
@@ -542,7 +542,7 @@ class TestTrsh(unittest.TestCase):
 
     def test_scan_quality_check(self):
         """Test scan quality check for 1D rotor"""
-        log_file = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'CH2OOH.out')
+        log_file = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'CH2OOH.out')
         # Case 1: non-smooth scan which troubleshot once
         case1 = {'label': 'CH2OOH',
                  'pivots': [1, 2],
@@ -567,7 +567,7 @@ class TestTrsh(unittest.TestCase):
         self.assertIn([2, 1, 4, 5], actions['freeze'])
 
         # Case 2: Lower conformer
-        log_file = os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'COCCOO.out')
+        log_file = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'COCCOO.out')
         case2 = {'label': 'COCCOO',
                  'pivots': [2, 5],
                  'energies': parse_1d_scan_energies(log_file)[0],
@@ -609,7 +609,7 @@ class TestTrsh(unittest.TestCase):
                  'scan': [4, 1, 2, 3],
                  'scan_list': [[4, 1, 2, 3], [1, 2, 3, 6]],
                  'methods': {'freeze': [[5, 1, 2, 3], [2, 1, 4, 5]]},
-                 'log_file': os.path.join(arc_path, 'arc', 'testing', 'rotor_scans', 'CH2OOH.out'),
+                 'log_file': os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'CH2OOH.out'),
                 }
         scan_trsh, scan_res = trsh.trsh_scan_job(**case)
         self.assertEqual(scan_trsh, 'D 5 4 1 2 F\nD 1 2 3 6 F\nB 2 3 F\n')

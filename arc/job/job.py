@@ -10,7 +10,7 @@ import shutil
 from pprint import pformat
 from typing import Dict, Optional, Union
 
-from arc.common import arc_path, get_logger
+from arc.common import ARC_PATH, get_logger
 from arc.exceptions import JobError, InputError
 from arc.imports import settings, input_files, submit_scripts
 from arc.job.local import (get_last_modified_time,
@@ -424,7 +424,7 @@ class Job(object):
         """
         Used as the entry number in the database, as well as the job name on the server.
         """
-        csv_path = os.path.join(arc_path, 'initiated_jobs.csv')
+        csv_path = os.path.join(ARC_PATH, 'initiated_jobs.csv')
         if not os.path.isfile(csv_path):
             # check file, make index file and write headers if file doesn't exists
             with open(csv_path, 'w') as f:
@@ -445,7 +445,7 @@ class Job(object):
         """
         Write an initiated ARCJob into the initiated_jobs.csv file.
         """
-        csv_path = os.path.join(arc_path, 'initiated_jobs.csv')
+        csv_path = os.path.join(ARC_PATH, 'initiated_jobs.csv')
         if self.conformer < 0:  # this is not a conformer search job
             conformer = '-'
         else:
@@ -463,7 +463,7 @@ class Job(object):
         """
         if self.job_status[0] != 'done' or self.job_status[1]['status'] != 'done':
             self.determine_job_status()
-        csv_path = os.path.join(arc_path, 'completed_jobs.csv')
+        csv_path = os.path.join(ARC_PATH, 'completed_jobs.csv')
         if not os.path.isfile(csv_path):
             # check file, make index file and write headers if file doesn't exists
             with open(csv_path, 'w') as f:
@@ -473,7 +473,7 @@ class Job(object):
                        'final_time', 'run_time', 'job_status_(server)', 'job_status_(ESS)',
                        'ESS troubleshooting methods used', 'comments']
                 writer.writerow(row)
-        csv_path = os.path.join(arc_path, 'completed_jobs.csv')
+        csv_path = os.path.join(ARC_PATH, 'completed_jobs.csv')
         if self.conformer < 0:  # this is not a conformer search job
             conformer = '-'
         else:
@@ -1590,19 +1590,19 @@ end
                                                     'local': self.conformers,
                                                     'remote': os.path.join(self.remote_path, 'coords.yml')})
             self.additional_files_to_upload.append({'name': 'acpype.py', 'source': 'path', 'make_x': False,
-                                                    'local': os.path.join(arc_path, 'arc', 'scripts', 'conformers',
+                                                    'local': os.path.join(ARC_PATH, 'arc', 'scripts', 'conformers',
                                                                           'acpype.py'),
                                                     'remote': os.path.join(self.remote_path, 'acpype.py')})
             self.additional_files_to_upload.append({'name': 'mdconf.py', 'source': 'path', 'make_x': False,
-                                                    'local': os.path.join(arc_path, 'arc', 'scripts', 'conformers',
+                                                    'local': os.path.join(ARC_PATH, 'arc', 'scripts', 'conformers',
                                                                           'mdconf.py'),
                                                     'remote': os.path.join(self.remote_path, 'mdconf.py')})
             self.additional_files_to_upload.append({'name': 'M00.tleap', 'source': 'path', 'make_x': False,
-                                                    'local': os.path.join(arc_path, 'arc', 'scripts', 'conformers',
+                                                    'local': os.path.join(ARC_PATH, 'arc', 'scripts', 'conformers',
                                                                           'M00.tleap'),
                                                     'remote': os.path.join(self.remote_path, 'M00.tleap')})
             self.additional_files_to_upload.append({'name': 'mdp.mdp', 'source': 'path', 'make_x': False,
-                                                    'local': os.path.join(arc_path, 'arc', 'scripts', 'conformers',
+                                                    'local': os.path.join(ARC_PATH, 'arc', 'scripts', 'conformers',
                                                                           'mdp.mdp'),
                                                     'remote': os.path.join(self.remote_path, 'mdp.mdp')})
             if self.software == 'terachem':

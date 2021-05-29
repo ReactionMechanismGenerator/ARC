@@ -36,7 +36,7 @@ from arc.imports import settings
 logger = logging.getLogger('arc')
 
 # absolute path to the ARC folder
-arc_path = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
+ARC_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 # absolute path to RMG-Py folder
 RMG_PATH = os.path.abspath(os.path.dirname(os.path.dirname(rmgpy.__file__)))
 # absolute path to RMG-database folder
@@ -46,7 +46,7 @@ VERSION = '1.1.0'
 
 # define default values for using the optional GCN to predict TS guesses
 # default assumption is that TS-GCN is installed in the same parent folder as the ARC repository
-TS_GCN_PATH = os.path.join(os.path.dirname(arc_path), 'TS-GCN')
+TS_GCN_PATH = os.path.join(os.path.dirname(ARC_PATH), 'TS-GCN')
 # default environment name for this repo is `ts_gcn`
 TS_GCN_PYTHON = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),
                              'ts_gcn', 'bin', 'python')
@@ -272,7 +272,7 @@ def log_header(project: str,
     logger.log(level, '')
 
 
-    paths_dict = {'ARC': arc_path, 'RMG-Py': RMG_PATH, 'RMG-database': RMG_DATABASE_PATH}
+    paths_dict = {'ARC': ARC_PATH, 'RMG-Py': RMG_PATH, 'RMG-database': RMG_DATABASE_PATH}
     for repo, path in paths_dict.items():
         # Extract HEAD git commit
         head, date = get_git_commit(path)
@@ -316,7 +316,7 @@ def get_git_commit(path: Optional[str] = None) -> Tuple[str, str]:
     Returns: tuple
         The git HEAD commit hash and the git HEAD commit date, each as a string.
     """
-    path = path or arc_path
+    path = path or ARC_PATH
     head, date = '', ''
     if os.path.exists(os.path.join(path, '.git')):
         try:
@@ -337,7 +337,7 @@ def get_git_branch(path: Optional[str] = None) -> str:
     Returns: str
         The git branch name.
     """
-    path = path or arc_path
+    path = path or ARC_PATH
     if os.path.exists(os.path.join(path, '.git')):
         try:
             branch_list = subprocess.check_output(['git', 'branch'], cwd=path).splitlines()
@@ -595,7 +595,7 @@ def determine_symmetry(xyz: dict) -> Tuple[int, int]:
     # coords is an N x 3 numpy.ndarray of atomic coordinates in the same order as `atom_numbers`
     coords = np.array(xyz['coords'], np.float64)
     unique_id = '0'  # Just some name that the SYMMETRY code gives to one of its jobs
-    scr_dir = os.path.join(arc_path, 'scratch')  # Scratch directory that the SYMMETRY code writes its files in
+    scr_dir = os.path.join(ARC_PATH, 'scratch')  # Scratch directory that the SYMMETRY code writes its files in
     if not os.path.exists(scr_dir):
         os.makedirs(scr_dir)
     symmetry = optical_isomers = 1

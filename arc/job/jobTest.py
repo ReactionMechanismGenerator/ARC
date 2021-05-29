@@ -13,7 +13,7 @@ import unittest
 
 from arc.job.job import Job
 from arc.level import Level
-from arc.common import arc_path
+from arc.common import ARC_PATH
 
 
 class TestJob(unittest.TestCase):
@@ -40,7 +40,7 @@ class TestJob(unittest.TestCase):
                        fine=True,
                        job_num=100,
                        testing=True,
-                       project_directory=os.path.join(arc_path, 'Projects', 'project_test'),
+                       project_directory=os.path.join(ARC_PATH, 'Projects', 'project_test'),
                        initial_time=datetime.datetime(2019, 3, 15, 19, 53, 7, 0),
                        final_time='2019-3-15 19:53:08',
                        )
@@ -75,7 +75,7 @@ class TestJob(unittest.TestCase):
                          'total_job_memory_gb': 14,
                          'multiplicity': 1,
                          'project': 'arc_project_for_testing_delete_after_usage3',
-                         'project_directory': os.path.join(arc_path, 'Projects', 'project_test'),
+                         'project_directory': os.path.join(ARC_PATH, 'Projects', 'project_test'),
                          'server': 'server1',
                          'max_job_time': 120,
                          'scan_res': 8.0,
@@ -104,60 +104,60 @@ class TestJob(unittest.TestCase):
         job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
                    job_type='opt', level={'method': 'b3lyp', 'basis': '6-311++G(d,p)'},
                    multiplicity=1, testing=True,
-                   project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
+                   project_directory=os.path.join(ARC_PATH, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'gaussian')
 
         job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
                    job_type='opt', level={'method': 'ccsd(t)', 'basis': 'avtz'},
                    multiplicity=1, testing=True,
-                   project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
+                   project_directory=os.path.join(ARC_PATH, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'molpro')
 
         job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
                    job_type='opt', level={'method': 'wb97xd2', 'basis': '6-311++g(d,p)'},
                    multiplicity=1, testing=True,
-                   project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
+                   project_directory=os.path.join(ARC_PATH, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'terachem')
 
         job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
                    job_type='opt', level={'method': 'wb97x-d3', 'basis': '6-311++g(d,p)'},
                    multiplicity=1, testing=True,
-                   project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
+                   project_directory=os.path.join(ARC_PATH, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'qchem')
 
         job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
                    job_type='opt', level={'method': 'b97', 'basis': '6-311++g(d,p)'},
                    multiplicity=1, testing=True,
-                   project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
+                   project_directory=os.path.join(ARC_PATH, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'gaussian')
 
         job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
                    job_type='opt', level={'method': 'm062x', 'basis': '6-311++g(d,p)'},
                    multiplicity=1, testing=True,
-                   project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
+                   project_directory=os.path.join(ARC_PATH, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'gaussian')
 
         job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
                    job_type='opt', level={'method': 'm06-2x', 'basis': '6-311++g(d,p)'},
                    multiplicity=1, testing=True,
-                   project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
+                   project_directory=os.path.join(ARC_PATH, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'qchem')
 
         job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
                    job_type='scan', level={'method': 'm062x', 'basis': '6-311++g(d,p)'},
                    multiplicity=1, testing=True,
-                   project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
+                   project_directory=os.path.join(ARC_PATH, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'gaussian')
 
         job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
                    job_type='scan', level={'method': 'm06-2x', 'basis': '6-311++g(d,p)'},
                    multiplicity=1, testing=True,
-                   project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True, job_num=100)
+                   project_directory=os.path.join(ARC_PATH, 'Projects', 'project_test'), fine=True, job_num=100)
         self.assertEqual(job0.software, 'qchem')
         job0 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc', xyz=self.xyz_c,
                    job_type='sp', level={'method': 'dlpno-ccsd(t)', 'basis': 'aug-cc-pvtz',
                                          'auxiliary_basis': 'aug-cc-pvtz/c'}, multiplicity=1,
-                   testing=True, project_directory=os.path.join(arc_path, 'Projects', 'project_test'), fine=True,
+                   testing=True, project_directory=os.path.join(ARC_PATH, 'Projects', 'project_test'), fine=True,
                    job_num=100)
         self.assertEqual(job0.software, 'orca')
 
@@ -171,14 +171,14 @@ class TestJob(unittest.TestCase):
         job2 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc',
                    xyz=self.xyz_c, job_type='onedmin',
                    level={'method': 'b3lyp', 'basis': '6-31+g(d)'}, multiplicity=1,
-                   testing=True, project_directory=os.path.join(arc_path, 'Projects', 'project_test'),
+                   testing=True, project_directory=os.path.join(ARC_PATH, 'Projects', 'project_test'),
                    fine=True, job_num=100)
         self.assertEqual(job2.bath_gas, 'N2')
 
         job2 = Job(project='project_test', ess_settings=self.ess_settings, species_name='tst_spc',
                    xyz=self.xyz_c, job_type='onedmin',
                    level={'method': 'b3lyp', 'basis': '6-31+g(d)'}, multiplicity=1,
-                   testing=True, project_directory=os.path.join(arc_path, 'Projects', 'project_test'),
+                   testing=True, project_directory=os.path.join(ARC_PATH, 'Projects', 'project_test'),
                    fine=True, job_num=100, bath_gas='Ar')
         self.assertEqual(job2.bath_gas, 'Ar')
 
@@ -371,7 +371,7 @@ class TestJob(unittest.TestCase):
         """
         projects = ['arc_project_for_testing_delete_after_usage3']
         for project in projects:
-            project_directory = os.path.join(arc_path, 'Projects', project)
+            project_directory = os.path.join(ARC_PATH, 'Projects', project)
             if os.path.isdir(project_directory):
                 shutil.rmtree(project_directory, ignore_errors=True)
 

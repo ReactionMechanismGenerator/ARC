@@ -26,7 +26,7 @@ except ImportError:
     except ImportError:
         has_auto_tst = False
 
-from arc.common import arc_path, get_logger
+from arc.common import ARC_PATH, get_logger
 from arc.exceptions import TSError
 from arc.species.converter import xyz_from_data, xyz_to_str
 
@@ -78,7 +78,7 @@ def main(reaction_label=None, reaction_family=None):
             numbers = reaction.ts.ase_ts.get_atomic_numbers()
             xyz_guess = xyz_to_str(xyz_dict=xyz_from_data(coords=positions, numbers=numbers))
 
-            xyz_path = os.path.join(arc_path, 'arc', 'ts', 'auto_tst.xyz')
+            xyz_path = os.path.join(ARC_PATH, 'arc', 'ts', 'auto_tst.xyz')
 
             with open(xyz_path, 'w') as f:
                 f.write(xyz_guess)
