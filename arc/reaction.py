@@ -432,11 +432,22 @@ class ARCReaction(object):
         if len(self.r_species):
             self.charge = sum([r.charge for r in self.r_species])
 
-    def determine_family(self, rmg_database):
-        """Determine the RMG family and saves the (family, own reverse) tuple in the ``family`` attribute"""
+    def determine_family(self,
+                         rmg_database,
+                         save_order: bool = False,
+                         ):
+        """
+        Determine the RMG family and saves the (family, own reverse) tuple in the ``family`` attribute.
+
+        Args:
+            rmg_database (RMGDatabase): The RMG database instance.
+            save_order (bool, optional): Whether to retain atomic order of the RMG ``reaction`` object instance.
+        """
         if self.rmg_reaction is not None:
             self.family, self.family_own_reverse = rmgdb.determine_reaction_family(rmgdb=rmg_database,
-                                                                                   reaction=self.rmg_reaction)
+                                                                                   reaction=self.rmg_reaction.copy(),
+                                                                                   save_order=save_order,
+                                                                                   )
 
     def check_ts(self, verbose: bool = True) -> bool:
         """
