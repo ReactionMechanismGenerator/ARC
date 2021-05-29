@@ -39,8 +39,10 @@ class ARCReaction(object):
     Args:
         label (str, optional): The reaction's label in the format `r1 + r2 <=> p1 + p2`
                                (or unimolecular on either side, as appropriate).
-        reactants (list, optional): A list of reactants labels corresponding to an :ref:`ARCSpecies <species>`.
-        products (list, optional): A list of products labels corresponding to an :ref:`ARCSpecies <species>`.
+        reactants (list, optional): A list of reactant *labels* corresponding to an :ref:`ARCSpecies <species>`.
+        products (list, optional): A list of product *labels* corresponding to an :ref:`ARCSpecies <species>`.
+        r_species (list, optional): A list of reactants :ref:`ARCSpecies <species>` objects.
+        p_species (list, optional): A list of products :ref:`ARCSpecies <species>` objects.
         ts_label (str, optional): The :ref:`ARCSpecies <species>` label of the respective TS.
         rmg_reaction (Reaction, optional): An RMG Reaction class.
         ts_methods (list, optional): Methods to try for generating TS guesses. If an ARCSpecies is a TS and ts_methods
@@ -56,7 +58,7 @@ class ARCReaction(object):
     Attributes:
         label (str): The reaction's label in the format `r1 + r2 <=> p1 + p2`
                      (or unimolecular on either side, as appropriate).
-        family (str): The RMG kinetic family, if applicable.
+        family (KineticsFamily): The RMG kinetic family, if applicable.
         family_own_reverse (bool): Whether the RMG family is its own reverse.
         reactants (list): A list of reactants labels corresponding to an :ref:`ARCSpecies <species>`.
         products (list): A list of products labels corresponding to an :ref:`ARCSpecies <species>`.
@@ -88,6 +90,8 @@ class ARCReaction(object):
                  label: str = '',
                  reactants: Optional[List[str]] = None,
                  products: Optional[List[str]] = None,
+                 r_species: Optional[List[ARCSpecies]] = None,
+                 p_species: Optional[List[ARCSpecies]] = None,
                  ts_label: Optional[str] = None,
                  rmg_reaction: Optional[Reaction] = None,
                  ts_methods: Optional[List[str]] = None,
@@ -99,8 +103,8 @@ class ARCReaction(object):
                  ):
         self.arrow = ' <=> '
         self.plus = ' + '
-        self.r_species = list()
-        self.p_species = list()
+        self.r_species = r_species or list()
+        self.p_species = p_species or list()
         self.kinetics = None
         self.rmg_kinetics = None
         self.long_kinetic_description = ''
@@ -124,8 +128,8 @@ class ARCReaction(object):
             if self.multiplicity is not None and not isinstance(self.multiplicity, int):
                 raise InputError('Reaction multiplicity must be an integer, got {0} of type {1}.'.format(
                     self.multiplicity, type(self.multiplicity)))
-            self.reactants = reactants
-            self.products = products
+            self.reactants = reactants or [spc.label for spc in self.r_species] or None
+            self.products = products or [spc.label for spc in self.p_species] or None
             self.rmg_reaction = rmg_reaction
             if self.rmg_reaction is None and (self.reactants is None or self.products is None) and not self.label:
                 raise InputError('Cannot determine reactants and/or products labels for reaction {0}'.format(
