@@ -221,9 +221,9 @@ def summarize_results(lambda_zpes: list,
 
     with open(info_file_path, 'w') as f:
         f.write(HEADER)
-        arkane_text = '\n\n\nYou may copy-paste the following harmonic frequencies scaling factor/s to Arkane\n' \
-                      '(paste in the `freq_dict` under assign_frequency_scale_factor() in arkane/statmech.py):\n'
-        arkane_formats = list()
+        database_text = '\n\n\nYou may copy-paste the following harmonic frequencies scaling factor/s to RMG-database\n' \
+                      '(paste in the `freq_dict` in RMG-database/input/quantum_corrections/data.py):\n'
+        database_formats = list()
         harmonic_freq_scaling_factors = list()
         for lambda_zpe, level, zpe_dict, execution_time\
                 in zip(lambda_zpes, levels, zpe_dicts, times):
@@ -241,12 +241,12 @@ def summarize_results(lambda_zpes: list,
             text += f'(execution time: {execution_time})\n'
             logger.info(text)
             f.write(text)
-            arkane_formats.append(f"                 '{level}': {harmonic_freq_scaling_factor:.3f},  # [4]\n")
-        logger.info(arkane_text)
-        f.write(arkane_text)
-        for arkane_format in arkane_formats:
-            logger.info(arkane_format)
-            f.write(arkane_format)
+            database_formats.append(f"             '{level}': {harmonic_freq_scaling_factor:.3f},  # [4]\n")
+        logger.info(database_text)
+        f.write(database_text)
+        for database_format in database_formats:
+            logger.info(database_format)
+            f.write(database_format)
         overall_time_text = f'\n\nScaling factors calculation for {len(levels)} levels of theory completed ' \
                             f'(elapsed time: {overall_time}).\n'
         logger.info(overall_time_text)
