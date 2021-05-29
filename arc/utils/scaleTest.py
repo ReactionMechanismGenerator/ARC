@@ -89,8 +89,8 @@ class TestScale(unittest.TestCase):
         self.assertIn('Scale Factor for Fundamental Frequencies = 0.955\n', lines)
         self.assertIn('Scale Factor for Harmonic Frequencies    = 0.994\n', lines)
         self.assertIn('Scaling factors calculation for 2 levels of theory completed (elapsed time: 8.5).\n', lines)
-        self.assertIn('You may copy-paste the following harmonic frequencies scaling factor/s to Arkane\n', lines)
-        self.assertIn("                 'level1': 0.963,  # [4]\n", lines)
+        self.assertIn('You may copy-paste the following harmonic frequencies scaling factor/s to RMG-database\n', lines)
+        self.assertIn("             'level1': 0.963,  # [4]\n", lines)
 
     def test_get_species_list(self):
         """Test the scale get_species_list() function"""
