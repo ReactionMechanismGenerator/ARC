@@ -664,23 +664,29 @@ class ARCReaction(object):
         return True
 
     def get_species_count(self,
-                          species: ARCSpecies,
+                          species: Optional[ARCSpecies] = None,
+                          label: Optional[str] = None,
                           well: int = 0,
                           ) -> int:
         """
         Get the number of times a species participates in the reactants or products well.
+        Either ``species`` or ``label`` must be given.
 
         Args:
-            species (ARCSpecies): The species to check.
+            species (ARCSpecies, optional): The species to check.
+            label (str, optional): The species label.
             well (int, optional): Either ``0`` or ``1`` for the reactants or products well, respectively.
 
         Returns:
             Union[int, None]: The number of times this species appears in the respective well.
         """
+        if species is None and label is None:
+            raise ValueError('Called get_species_count without a species nor its label.')
+        if well not in [0, 1]:
+            raise ValueError(f'Got well = {well}, expected either 0 or 1.')
+        label = species.label if species is not None else label
         well_str = self.label.split('<=>')[well]
-        count = well_str.startswith(f'{species.label} ') + \
-                well_str.count(f' {species.label} ') + \
-                well_str.endswith(f' {species.label}')
+        count = well_str.startswith(f'{label} ') + well_str.count(f' {label} ') + well_str.endswith(f' {label}')
         return count
 
     def get_atom_map(self, verbose: int = 0) -> Optional[List[int]]:
