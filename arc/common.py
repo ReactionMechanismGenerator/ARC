@@ -24,6 +24,7 @@ import pandas as pd
 import qcelemental as qcel
 
 from arkane.ess import ess_factory, GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
+import rmgpy
 from rmgpy.molecule.element import get_element
 from rmgpy.qm.qmdata import QMData
 from rmgpy.qm.symmetry import PointGroupCalculator
@@ -34,7 +35,12 @@ from arc.imports import settings
 
 logger = logging.getLogger('arc')
 
-arc_path = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))  # absolute path to the ARC folder
+# absolute path to the ARC folder
+arc_path = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
+# absolute path to RMG-Py folder
+RMG_PATH = os.path.abspath(os.path.dirname(os.path.dirname(rmgpy.__file__)))
+# absolute path to RMG-database folder
+RMG_DATABASE_PATH = os.path.abspath(os.path.dirname(rmgpy.settings['database.directory']))
 
 VERSION = '1.1.0'
 
@@ -265,16 +271,20 @@ def log_header(project: str,
     logger.log(level, '###############################################################')
     logger.log(level, '')
 
-    # Extract HEAD git commit from ARC
-    head, date = get_git_commit()
-    branch_name = get_git_branch()
-    if head != '' and date != '':
-        logger.log(level, 'The current git HEAD for ARC is:')
-        logger.log(level, f'    {head}\n    {date}')
-    if branch_name and branch_name != 'master':
-        logger.log(level, f'    (running on the {branch_name} branch)\n')
-    else:
-        logger.log(level, '\n')
+
+    paths_dict = {'ARC': arc_path, 'RMG-Py': RMG_PATH, 'RMG-database': RMG_DATABASE_PATH}
+    for repo, path in paths_dict.items():
+        # Extract HEAD git commit
+        head, date = get_git_commit(path)
+        branch_name = get_git_branch(path)
+        if head != '' and date != '':
+            logger.log(level, f'The current git HEAD for {repo} is:')
+            logger.log(level, f'    {head}\n    {date}')
+        if branch_name and branch_name != 'master':
+            logger.log(level, f'    (running on the {branch_name} branch)\n')
+        else:
+            logger.log(level, '\n')
+
     logger.info(f'Starting project {project}')
 
 
