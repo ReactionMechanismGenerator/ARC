@@ -9,7 +9,7 @@ import os
 import shutil
 import unittest
 
-from arc.common import arc_path
+from arc.common import ARC_PATH
 from arc.exceptions import InputError
 from arc.imports import settings
 from arc.main import ARC, process_adaptive_levels
@@ -174,7 +174,7 @@ class TestARC(unittest.TestCase):
                                      'rotors_dict': {},
                                      'xyzs': []}],
                         'three_params': False,
-                        'project_directory': os.path.join(arc_path, 'Projects',
+                        'project_directory': os.path.join(ARC_PATH, 'Projects',
                                                           'arc_project_for_testing_delete_after_usage_test_from_dict'),
                         }
         arc1 = ARC(project='wrong', freq_scale_factor=0.95)
@@ -196,7 +196,7 @@ class TestARC(unittest.TestCase):
         """Test the from_dict() method of ARC"""
         restart_dict = {'specific_job_type': 'bde',
                         'project': 'unit_test_specific_job',
-                        'project_directory': os.path.join(arc_path, 'Projects', 'unit_test_specific_job'),
+                        'project_directory': os.path.join(ARC_PATH, 'Projects', 'unit_test_specific_job'),
                         }
         arc1 = ARC(**restart_dict)
         job_type_expected = {'conformers': False, 'opt': True, 'freq': True, 'sp': True, 'rotors': False,
@@ -427,7 +427,7 @@ class TestARC(unittest.TestCase):
         projects = ['arc_project_for_testing_delete_after_usage_test_from_dict',
                     'arc_model_chemistry_test', 'arc_test', 'test', 'unit_test_specific_job', 'wrong']
         for project in projects:
-            project_directory = os.path.join(arc_path, 'Projects', project)
+            project_directory = os.path.join(ARC_PATH, 'Projects', project)
             shutil.rmtree(project_directory, ignore_errors=True)
 
 

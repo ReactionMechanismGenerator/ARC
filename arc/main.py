@@ -23,7 +23,7 @@ from rmgpy.species import Species
 
 import arc.rmgdb as rmgdb
 from arc.common import (VERSION,
-                        arc_path,
+                        ARC_PATH,
                         check_ess_settings,
                         get_logger,
                         globalize_path,
@@ -260,7 +260,7 @@ class ARC(object):
         self.__version__ = VERSION
         self.verbose = verbose
         self.project_directory = project_directory if project_directory is not None \
-            else os.path.join(arc_path, 'Projects', self.project)
+            else os.path.join(ARC_PATH, 'Projects', self.project)
         if not os.path.exists(self.project_directory):
             os.makedirs(self.project_directory)
         self.output = output
@@ -339,11 +339,11 @@ class ARC(object):
                 for rotor_num, rotor_dict in spc.rotors_dict.items():
                     if rotor_dict['scan_path'] and not os.path.isfile(rotor_dict['scan_path']) and rotor_dict['success']:
                         # try correcting relative paths
-                        if os.path.isfile(os.path.join(arc_path, rotor_dict['scan_path'])):
-                            spc.rotors_dict[rotor_num]['scan_path'] = os.path.join(arc_path, rotor_dict['scan_path'])
-                        elif os.path.isfile(os.path.join(arc_path, 'Projects', rotor_dict['scan_path'])):
+                        if os.path.isfile(os.path.join(ARC_PATH, rotor_dict['scan_path'])):
+                            spc.rotors_dict[rotor_num]['scan_path'] = os.path.join(ARC_PATH, rotor_dict['scan_path'])
+                        elif os.path.isfile(os.path.join(ARC_PATH, 'Projects', rotor_dict['scan_path'])):
                             spc.rotors_dict[rotor_num]['scan_path'] = \
-                                os.path.join(arc_path, 'Projects', rotor_dict['scan_path'])
+                                os.path.join(ARC_PATH, 'Projects', rotor_dict['scan_path'])
                         else:
                             raise SpeciesError(f'Could not find rotor scan output file for rotor {rotor_num} of '
                                                f'species {spc.label}: {rotor_dict["scan_path"]}')
@@ -1105,10 +1105,10 @@ class ARC(object):
                         if key in ['geo', 'freq', 'sp', 'composite']:
                             if val and not os.path.isfile(val):
                                 # try correcting relative paths
-                                if os.path.isfile(os.path.join(arc_path, val)):
-                                    self.output[label]['paths'][key] = os.path.join(arc_path, val)
-                                elif os.path.isfile(os.path.join(arc_path, 'Projects', val)):
-                                    self.output[label]['paths'][key] = os.path.join(arc_path, 'Projects', val)
+                                if os.path.isfile(os.path.join(ARC_PATH, val)):
+                                    self.output[label]['paths'][key] = os.path.join(ARC_PATH, val)
+                                elif os.path.isfile(os.path.join(ARC_PATH, 'Projects', val)):
+                                    self.output[label]['paths'][key] = os.path.join(ARC_PATH, 'Projects', val)
                                 elif os.path.isfile(os.path.join(globalize_path(
                                         string=val, project_directory=self.project_directory))):
                                     self.output[label]['paths'][key] = globalize_path(

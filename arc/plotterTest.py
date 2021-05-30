@@ -10,7 +10,7 @@ import shutil
 import unittest
 
 import arc.plotter as plotter
-from arc.common import arc_path
+from arc.common import ARC_PATH
 from arc.species.converter import str_to_xyz
 from arc.species.species import ARCSpecies
 
@@ -32,7 +32,7 @@ H      -1.16115119    0.31478894    0.81506145
 H      -1.16115119    0.31478894   -0.81506145""")
         spc.opt_level = 'opt/level'
         project = 'arc_project_for_testing_delete_after_usage'
-        project_directory = os.path.join(arc_path, 'Projects', project)
+        project_directory = os.path.join(ARC_PATH, 'Projects', project)
         xyz_path = os.path.join(project_directory, 'output', 'Species', spc.label, 'geometry', 'methylamine.xyz')
         gjf_path = os.path.join(project_directory, 'output', 'Species', spc.label, 'geometry', 'methylamine.gjf')
         plotter.save_geo(species=spc, project_directory=project_directory)
@@ -69,7 +69,7 @@ H      -1.16115119    0.31478894   -0.81506145
     def test_save_conformers_file(self):
         """test the save_conformers_file function"""
         project = 'arc_project_for_testing_delete_after_usage'
-        project_directory = os.path.join(arc_path, 'Projects', project)
+        project_directory = os.path.join(ARC_PATH, 'Projects', project)
         label = 'butanol'
         spc1 = ARCSpecies(label=label, smiles='CCCCO')
         spc1.generate_conformers(n_confs=3)
@@ -88,7 +88,7 @@ H      -1.16115119    0.31478894   -0.81506145
         angles = [0, 90, 180, 270, 360]
         energies = [0, 10, 0, 10, 0]
         pivots = [1, 2]
-        path = os.path.join(arc_path, 'Projects', project, 'rotors', '{0}_directed_scan.txt'.format(pivots))
+        path = os.path.join(ARC_PATH, 'Projects', project, 'rotors', '{0}_directed_scan.txt'.format(pivots))
         plotter.save_rotor_text_file(angles, energies, path)
         self.assertTrue(os.path.isfile(path))
         with open(path, 'r') as f:
@@ -97,7 +97,7 @@ H      -1.16115119    0.31478894   -0.81506145
 
     def test_log_bde_report(self):
         """Test the log_bde_report() function"""
-        path = os.path.join(arc_path, 'arc', 'testing', 'bde_report_test.txt')
+        path = os.path.join(ARC_PATH, 'arc', 'testing', 'bde_report_test.txt')
         bde_report = {'aniline': {(1, 2): 431.43, (5, 8): 465.36, (6, 9): 458.70, (3, 10): 463.16, (4, 11): 463.16,
                                   (7, 12): 458.70, (1, 13): 372.31, (1, 14): 372.31, (5, 6): 'N/A'}}
         xyz = """N       2.28116100   -0.20275000   -0.29653100
@@ -163,9 +163,9 @@ H      -1.16115119    0.31478894   -0.81506145
     def tearDownClass(cls):
         """A function that is run ONCE after all unit tests in this class."""
         project = 'arc_project_for_testing_delete_after_usage'
-        project_directory = os.path.join(arc_path, 'Projects', project)
+        project_directory = os.path.join(ARC_PATH, 'Projects', project)
         shutil.rmtree(project_directory, ignore_errors=True)
-        os.remove(os.path.join(arc_path, 'arc', 'testing', 'bde_report_test.txt'))
+        os.remove(os.path.join(ARC_PATH, 'arc', 'testing', 'bde_report_test.txt'))
 
 
 if __name__ == '__main__':

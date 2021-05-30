@@ -4,7 +4,7 @@ A module for calling AutoTST
 
 import os
 
-from arc.common import arc_path
+from arc.common import ARC_PATH
 from arc.exceptions import TSError
 from arc.species.converter import str_to_xyz
 
@@ -27,8 +27,8 @@ def autotst(reaction_label=None, rmg_reaction=None, reaction_family=None):
         TSError: if neither ``rmg_reaction`` nor ``reaction_family`` were specified.
     """
     xyz_str = ''
-    xyz_path = os.path.join(arc_path, 'arc', 'ts', 'auto_tst.xyz')
-    run_autotst_path = os.path.join(arc_path, 'arc', 'ts', 'run_autotst.py')
+    xyz_path = os.path.join(ARC_PATH, 'arc', 'ts', 'auto_tst.xyz')
+    run_autotst_path = os.path.join(ARC_PATH, 'arc', 'ts', 'run_autotst.py')
 
     reaction_family = str('H_Abstraction') if reaction_family is None else str(reaction_family)
 

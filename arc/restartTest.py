@@ -15,7 +15,7 @@ from rmgpy.data.rmg import RMGDatabase
 from rmgpy.molecule.molecule import Molecule
 from rmgpy.species import Species
 
-from arc.common import arc_path, read_yaml_file
+from arc.common import ARC_PATH, read_yaml_file
 from arc.main import ARC
 
 
@@ -37,10 +37,10 @@ class TestARC(unittest.TestCase):
         Test restarting ARC through the ARC class in main.py via the input_dict argument of the API
         Rather than through ARC.py. Check that all files are in place and the log file content.
         """
-        restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart', '1_restart_thermo', 'restart.yml')
+        restart_path = os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '1_restart_thermo', 'restart.yml')
         input_dict = read_yaml_file(path=restart_path)
         project = 'arc_project_for_testing_delete_after_usage_restart_thermo'
-        project_directory = os.path.join(arc_path, 'Projects', project)
+        project_directory = os.path.join(ARC_PATH, 'Projects', project)
         input_dict['project'], input_dict['project_directory'] = project, project_directory
         arc1 = ARC(**input_dict)
         arc1.execute()
@@ -160,10 +160,10 @@ class TestARC(unittest.TestCase):
 
     def test_restart_rate(self):
         """Test restarting ARC and attaining reaction a rate coefficient"""
-        restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart', '2_restart_rate', 'restart.yml')
+        restart_path = os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '2_restart_rate', 'restart.yml')
         input_dict = read_yaml_file(path=restart_path)
         project = 'arc_project_for_testing_delete_after_usage_restart_rate'
-        project_directory = os.path.join(arc_path, 'Projects', project)
+        project_directory = os.path.join(ARC_PATH, 'Projects', project)
         input_dict['project'], input_dict['project_directory'] = project, project_directory
         arc1 = ARC(**input_dict)
         arc1.execute()
@@ -180,12 +180,12 @@ class TestARC(unittest.TestCase):
 
     def test_restart_bde(self):
         """Test restarting ARC and attaining reaction a rate coefficient"""
-        restart_path = os.path.join(arc_path, 'arc', 'testing', 'restart', '3_restart_bde', 'restart.yml')
+        restart_path = os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '3_restart_bde', 'restart.yml')
         input_dict = read_yaml_file(path=restart_path)
         arc1 = ARC(**input_dict)
         arc1.execute()
 
-        report_path = os.path.join(arc_path, 'Projects', 'test_restart_bde', 'output', 'BDE_report.txt')
+        report_path = os.path.join(ARC_PATH, 'Projects', 'test_restart_bde', 'output', 'BDE_report.txt')
         with open(report_path, 'r') as f:
             lines = f.readlines()
         self.assertIn(' BDE report for anilino_radical:\n', lines)
@@ -195,7 +195,7 @@ class TestARC(unittest.TestCase):
 
     def test_globalize_paths(self):
         """Test modifying a YAML file's contents to correct absolute file paths"""
-        project_directory = os.path.join(arc_path, 'arc', 'testing', 'restart', '4_globalized_paths')
+        project_directory = os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '4_globalized_paths')
         restart_path = os.path.join(project_directory, 'restart_paths.yml')
         input_dict = read_yaml_file(path=restart_path, project_directory=project_directory)
         input_dict['project_directory'] = project_directory
@@ -218,11 +218,11 @@ class TestARC(unittest.TestCase):
                     'test_restart_bde',
                     ]
         for project in projects:
-            project_directory = os.path.join(arc_path, 'Projects', project)
+            project_directory = os.path.join(ARC_PATH, 'Projects', project)
             shutil.rmtree(project_directory, ignore_errors=True)
 
         for file_name in ['arc.log', 'restart_paths_globalized.yml']:
-            os.remove(os.path.join(arc_path, 'arc', 'testing', 'restart', '4_globalized_paths', file_name))
+            os.remove(os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '4_globalized_paths', file_name))
 
 
 if __name__ == '__main__':

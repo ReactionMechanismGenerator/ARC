@@ -12,7 +12,7 @@ from arkane.encorr.bac import BAC
 from arkane.encorr.corr import assign_frequency_scale_factor
 from arkane.modelchem import METHODS_THAT_REQUIRE_SOFTWARE, LevelOfTheory, standardize_name
 
-from arc.common import arc_path, get_logger, get_ordered_intersection_of_two_lists, read_yaml_file
+from arc.common import ARC_PATH, get_logger, get_ordered_intersection_of_two_lists, read_yaml_file
 from arc.imports import settings
 
 
@@ -527,7 +527,7 @@ class Level(object):
         if self.compatible_ess is None:
             # Don't append if the user already specified a restricted list.
             self.compatible_ess = list()
-            ess_methods = read_yaml_file(path=os.path.join(arc_path, 'data', 'ess_methods.yml'))
+            ess_methods = read_yaml_file(path=os.path.join(ARC_PATH, 'data', 'ess_methods.yml'))
             ess_methods = {ess: [method.lower() for method in methods] for ess, methods in ess_methods.items()}
             if self.method in ess_methods['gaussian']:
                 self.compatible_ess.append('gaussian')

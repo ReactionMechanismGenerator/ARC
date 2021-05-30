@@ -13,7 +13,7 @@ import argparse
 import csv
 import os
 
-from arc.common import arc_path
+from arc.common import ARC_PATH
 from arc.exceptions import InputError
 from arc.imports import settings
 from arc.job.local import delete_all_local_arc_jobs
@@ -66,7 +66,7 @@ def main():
 
     server_list = args.server if args.server else [server for server in servers.keys()]
 
-    csv_path = os.path.join(arc_path, 'initiated_jobs.csv')
+    csv_path = os.path.join(ARC_PATH, 'initiated_jobs.csv')
 
     project, jobs = None, list()
     if args.project:
