@@ -5,12 +5,14 @@
 This module contains unit tests of the arc.reaction module
 """
 
+import os
 import unittest
 
 from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 
 import arc.rmgdb as rmgdb
+from arc.common import ARC_PATH
 from arc.exceptions import ReactionError
 from arc.imports import settings
 from arc.reaction import ARCReaction
@@ -987,8 +989,21 @@ class TestARCReaction(unittest.TestCase):
         self.assertTrue(check_atom_map(rxn_1))
         self.assertTrue(mapped_product.get_xyz(), h2o_xyz_1)
 
+    def test_check_done_opt_r_n_p(self):
+        """Test the check_done_opt_r_n_p() method"""
+        c3_1_path = os.path.join(ARC_PATH, 'arc', 'testing', 'yml_testing', 'C3_1.yml')  # 1-propyl
+        c3_2_path = os.path.join(ARC_PATH, 'arc', 'testing', 'yml_testing', 'C3_2.yml')  # 2-propyl
+        c3_1_spc = ARCSpecies(yml_path=c3_1_path)
+        c3_2_spc = ARCSpecies(yml_path=c3_2_path)
+        rxn_1 = ARCReaction(r_species=[c3_1_spc], p_species=[c3_2_spc])
+        self.assertIsNone(rxn_1.done_opt_r_n_p)
+        rxn_1.check_done_opt_r_n_p()
+        self.assertEqual(rxn_1.done_opt_r_n_p, True)
 
-
+        rxn_2 = ARCReaction(r_species=[ARCSpecies(label='C1_3', smiles='[CH2]CC')],
+                            p_species=[ARCSpecies(label='C3_2', smiles='C[CH]C')])
+        rxn_2.check_done_opt_r_n_p()
+        self.assertEqual(rxn_2.done_opt_r_n_p, False)
 
 
 def check_atom_map(rxn: ARCReaction) -> bool:
