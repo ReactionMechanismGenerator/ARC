@@ -231,10 +231,16 @@ class TestARCReaction(unittest.TestCase):
         rxn1 = ARCReaction(reactants=['CH4', 'OH', 'H2O'], products=['CH3', 'H2O', 'H2O'])
         spc1 = ARCSpecies(label='OH', smiles='[OH]')
         spc2 = ARCSpecies(label='H2O', smiles='O')
+        # check by species
         self.assertEqual(rxn1.get_species_count(species=spc1, well=0), 1)
         self.assertEqual(rxn1.get_species_count(species=spc1, well=1), 0)
         self.assertEqual(rxn1.get_species_count(species=spc2, well=0), 1)
         self.assertEqual(rxn1.get_species_count(species=spc2, well=1), 2)
+        # check by label
+        self.assertEqual(rxn1.get_species_count(label='OH', well=0), 1)
+        self.assertEqual(rxn1.get_species_count(label='OH', well=1), 0)
+        self.assertEqual(rxn1.get_species_count(label='H2O', well=0), 1)
+        self.assertEqual(rxn1.get_species_count(label='H2O', well=1), 2)
 
     def test_get_atom_map(self):
         """Test getting an atom map for a reaction"""
