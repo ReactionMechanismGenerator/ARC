@@ -14,7 +14,7 @@ from typing import Any, Callable, List, Optional, Tuple, Union
 
 import paramiko
 
-from arc.common import get_logger
+from arc.common import get_logger, is_str_int
 from arc.exceptions import InputError, ServerError
 from arc.imports import settings
 
@@ -194,9 +194,8 @@ class SSHClient(object):
             self._sftp.get(remotepath=remote_file_path,
                            localpath=local_file_path)
         except IOError:
-            logger.debug(
-                f'Got an IOError when trying to download file {remote_file_path} from {self.server}')
-            raise ServerError(f'Could not download file {remote_file_path} from {self.server}. ')
+            logger.warning(f'Got an IOError when trying to download file '
+                           f'{remote_file_path} from {self.server}')
 
     @check_connections
     def read_remote_file(self, remote_file_path: str) -> list:
@@ -224,7 +223,7 @@ class SSHClient(object):
             Possible statuses: `before_submission`, `running`, `errored on node xx`,
             `done`, and `errored: ...`
         """
-        cmd = check_status_command[servers[self.server]['cluster_soft']] + ' -u $USER'
+        cmd = check_status_command[servers[self.server]['cluster_soft']]
         stdout, stderr = self._send_command_to_server(cmd)
         # Status line formats:
         # OGE: '540420 0.45326 xq1340b    user_name       r     10/26/2018 11:08:30 long1@node18.cluster'
@@ -242,7 +241,7 @@ class SSHClient(object):
         Args:
             job_id (Union[int, str]): The job's ID.
         """
-        cmd = delete_command[servers[self.server]['cluster_soft']] + ' ' + str(job_id)
+        cmd = f"{delete_command[servers[self.server]['cluster_soft']]} {job_id}"
         self._send_command_to_server(cmd)
 
     def delete_jobs(self,
@@ -270,28 +269,20 @@ class SSHClient(object):
         Returns: list
             A list of job IDs.
         """
-        running_jobs_ids = list()
-        cmd = check_status_command[servers[self.server]['cluster_soft']] + ' -u $USER'
-        stdout = self._send_command_to_server(cmd)[0]
-        job_id = None
-        for i, status_line in enumerate(stdout):
-            if servers[self.server]['cluster_soft'].lower() == 'slurm' and i > 0:
-                job_id = status_line.split()[0]
-                break
-            elif servers[self.server]['cluster_soft'].lower() == 'oge' and i > 1:
-                job_id = status_line.split()[0]
-                break
-            elif servers[self.server]['cluster_soft'].lower() == 'pbs' and i > 4:
-                job_id = status_line.split('.')[0]
-                break
-        if job_id is None:
+        if servers[self.server]['cluster_soft'].lower() not in ['slurm', 'oge', 'sge', 'pbs', 'htcondor']:
             raise ValueError(f"Server cluster software {servers['local']['cluster_soft']} is not supported.")
-        try:
-            job_id = int(job_id)
-        except ValueError:
-            pass
-        running_jobs_ids.append(job_id)
-        return running_jobs_ids
+        running_job_ids = list()
+        cmd = check_status_command[servers[self.server]['cluster_soft']]
+        stdout = self._send_command_to_server(cmd)[0]
+        i_dict = {'slurm': 0, 'oge': 1, 'sge': 1, 'pbs': 4, 'htcondor': -1}
+        split_by_dict = {'slurm': ' ', 'oge': ' ', 'sge': ' ', 'pbs': '.', 'htcondor': ' '}
+        cluster_soft = servers[self.server]['cluster_soft'].lower()
+        for i, status_line in enumerate(stdout):
+            if i > i_dict[cluster_soft]:
+                job_id = status_line.split(split_by_dict[cluster_soft])[0]
+                job_id = job_id.split('.')[0] if '.' in job_id else job_id
+                running_job_ids.append(job_id)
+        return running_job_ids
 
     def submit_job(self, remote_path: str) -> Tuple[str, int]:
         """
@@ -309,7 +300,7 @@ class SSHClient(object):
         job_status = ''
         job_id = 0
         cluster_soft = servers[self.server]['cluster_soft']
-        cmd = submit_command[cluster_soft] + ' ' + submit_filenames[cluster_soft]
+        cmd = f'{submit_command[cluster_soft]} {submit_filenames[cluster_soft]}'
         stdout, stderr = self._send_command_to_server(cmd, remote_path)
         if len(stderr) > 0 or len(stdout) == 0:
             logger.warning(f'Got stderr when submitting job:\n{stderr}')
@@ -319,16 +310,18 @@ class SSHClient(object):
                     logger.warning(f'User may be requesting more resources than are available. Please check server '
                                    f'settings, such as cpus and memory, in ARC/arc/settings/settings.py')
         elif servers[self.server]['cluster_soft'].lower() in ['oge', 'sge'] and 'submitted' in stdout[0].lower():
-            job_id = int(stdout[0].split()[2])
-            job_status = 'running'
+            job_id = stdout[0].split()[2]
         elif servers[self.server]['cluster_soft'].lower() == 'slurm' and 'submitted' in stdout[0].lower():
-            job_id = int(stdout[0].split()[3])
-            job_status = 'running'
+            job_id = stdout[0].split()[3]
         elif servers[self.server]['cluster_soft'].lower() == 'pbs':
-            job_id = int(stdout[0].split('.')[0])
-            job_status = 'running'
+            job_id = stdout[0].split('.')[0]
+        elif servers[self.server]['cluster_soft'].lower() == 'htcondor' and 'submitting' in stdout[0].lower():
+            # Submitting job(s).
+            # 1 job(s) submitted to cluster 443069.
+            job_id = stdout[1].split()[-1][:-1]
         else:
             raise ValueError(f'Unrecognized cluster software: {cluster_soft}')
+        job_status = 'running' if job_id else job_status
         return job_status, job_id
 
     def connect(self) -> None:
@@ -436,9 +429,12 @@ class SSHClient(object):
         Returns:
             list: lines of the node hostnames.
         """
-        cluster_soft = servers[self.server]['cluster_soft']
+        cluster_soft = servers[self.server]['cluster_soft'].lower()
+        if cluster_soft == 'htcondor':
+            return list()
         cmd = list_available_nodes_command[cluster_soft]
         stdout = self._send_command_to_server(command=cmd)[0]
+        nodes = list()
         if cluster_soft.lower() in ['oge', 'sge']:
             # Stdout line example:
             # long1@node01.cluster           BIP   0/0/8          -NA-     lx24-amd64    aAdu
@@ -449,8 +445,8 @@ class SSHClient(object):
             # node01 alloc 1.00 none
             nodes = [line.split()[0] for line in stdout
                      if line.split()[1] in ['mix', 'alloc', 'idle']]
-        elif cluster_soft.lower() == 'pbs':
-            ValueError(f'cluster software : {cluster_soft} not yet implemented please modify job/ssh.py/list_available_nodes')
+        elif cluster_soft.lower() in ['pbs', 'htcondor']:
+            logger.warning(f'Listing available nodes is not yet implemented for {cluster_soft}.')
         return nodes
 
     def change_mode(self,
@@ -460,7 +456,7 @@ class SSHClient(object):
                     remote_path: str = '',
                     ) -> None:
         """
-        Change the mode to a file or a directory.
+        Change the mode of a file or a directory.
 
         Args:
             mode (str): The mode change to be applied, can be either octal or symbolic.
@@ -471,8 +467,8 @@ class SSHClient(object):
         """
         if os.path.isfile(remote_path):
             remote_path = os.path.dirname(remote_path)
-        recursive = '-R' if recursive else ''
-        command = f'chmod {recursive} {mode} {file_name}'
+        recursive = ' -R' if recursive else ''
+        command = f'chmod{recursive} {mode} {file_name}'
         self._send_command_to_server(command, remote_path)
 
     def _check_file_exists(self, 
@@ -563,6 +559,8 @@ def check_job_status_in_stdout(job_id: int,
             return 'running'
         elif status.lower() in ['e',]:
             return 'errored'
+    elif servers[server]['cluster_soft'].lower() == 'htcondor':
+        return 'running'
     else:
         raise ValueError(f'Unknown cluster software {servers[server]["cluster_soft"]}')
 
