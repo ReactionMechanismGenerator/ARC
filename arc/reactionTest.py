@@ -48,6 +48,10 @@ class TestARCReaction(unittest.TestCase):
         cls.rxn4 = ARCReaction(reactants=['[NH2]', 'N[NH]'], products=['N', 'N[N]'])
         cls.rxn4.rmg_reaction = Reaction(reactants=[Species().from_smiles('[NH2]'), Species().from_smiles('N[NH]')],
                                          products=[Species().from_smiles('N'), Species().from_smiles('N[N]')])
+        cls.rxn5 = ARCReaction(r_species=[ARCSpecies(label='NH2', smiles='[NH2]'),
+                                          ARCSpecies(label='N2H3', smiles='N[NH]')],
+                               p_species=[ARCSpecies(label='NH3', smiles='N'),
+                                          ARCSpecies(label='H2NN(S)', smiles='N[N]')])
 
     def test_str(self):
         """Test the string representation of the object"""
@@ -58,26 +62,91 @@ class TestARCReaction(unittest.TestCase):
         self.assertEqual(str_representation, expected_representation)
 
     def test_as_dict(self):
-        """Test Species.as_dict()"""
-        rxn_dict = self.rxn1.as_dict()
-        expected_dict = {'charge': 0,
-                         'multiplicity': None,
-                         'family': None,
-                         'family_own_reverse': 0,
-                         'label': 'CH4 + OH <=> CH3 + H2O',
-                         'long_kinetic_description': u'',
-                         'index': None,
-                         'p_species': [],
-                         'products': ['CH3', 'H2O'],
-                         'r_species': [],
-                         'reactants': ['CH4', 'OH'],
-                         'ts_label': None,
-                         'ts_xyz_guess': [],
-                         'ts_methods': [tsm.lower() for tsm in default_ts_methods]}
-        self.assertEqual(rxn_dict, expected_dict)
+        """Test ARCReaction.as_dict()"""
+        rxn_dict_1 = self.rxn1.as_dict()
+        expected_dict_1 = {'charge': 0,
+                           'multiplicity': None,
+                           'family': None,
+                           'family_own_reverse': 0,
+                           'label': 'CH4 + OH <=> CH3 + H2O',
+                           'long_kinetic_description': u'',
+                           'index': None,
+                           'p_species': [],
+                           'products': ['CH3', 'H2O'],
+                           'r_species': [],
+                           'reactants': ['CH4', 'OH'],
+                           'ts_label': None,
+                           'ts_xyz_guess': [],
+                           'ts_methods': [tsm.lower() for tsm in default_ts_methods]}
+        self.assertEqual(rxn_dict_1, expected_dict_1)
+        self.rxn5.determine_rxn_multiplicity()
+        rxn_dict_5 = self.rxn5.as_dict()
+        # The ``long_thermo_description`` attribute isn't deterministic (order could change)
+        expected_dict_5 = {'label': 'NH2 + N2H3 <=> NH3 + H2NN(S)',
+                           'index': None,
+                           'multiplicity': 3,
+                           'charge': 0,
+                           'reactants': ['NH2', 'N2H3'],
+                           'products': ['NH3', 'H2NN(S)'],
+                           'r_species': [
+                               {'force_field': 'MMFF94s', 'is_ts': False, 'label': 'NH2',
+                                'long_thermo_description': "Bond corrections: {'H-N': 2}\n", 'multiplicity': 2,
+                                'charge': 0, 'compute_thermo': True, 'number_of_rotors': 0, 'arkane_file': None,
+                                'consider_all_diastereomers': True, 'bond_corrections': {'H-N': 2},
+                                'mol': 'multiplicity 2\n1 N u1 p1 c0 {2,S} {3,S}\n2 H u0 p0 c0 {1,S}\n3 H u0 p0 c0 {1,S}\n',
+                                'cheap_conformer': {'symbols': ('N', 'H', 'H'), 'isotopes': (14, 1, 1),
+                                                    'coords': ((0.0001637451536497341, 0.4005949879135532, 0.0),
+                                                               (-0.8317092208339203, -0.19995756341639623, 0.0),
+                                                               (0.8315454756802706, -0.20063742449715688, 0.0))}},
+                               {'force_field': 'MMFF94s', 'is_ts': False, 'label': 'N2H3',
+                                'long_thermo_description': rxn_dict_5['r_species'][1]['long_thermo_description'],
+                                'multiplicity': 2, 'charge': 0, 'compute_thermo': True, 'number_of_rotors': 0,
+                                'arkane_file': None, 'consider_all_diastereomers': True,
+                                'bond_corrections': {'H-N': 3, 'N-N': 1},
+                                'mol': 'multiplicity 2\n1 N u0 p1 c0 {2,S} {3,S} {4,S}\n2 N u1 p1 c0 {1,S} {5,S}\n'
+                                       '3 H u0 p0 c0 {1,S}\n4 H u0 p0 c0 {1,S}\n5 H u0 p0 c0 {2,S}\n',
+                                'cheap_conformer': {'symbols': ('N', 'N', 'H', 'H', 'H'), 'isotopes': (14, 14, 1, 1, 1),
+                                                    'coords': (
+                                                        (-0.4675174917028312, 0.03795671239983328, 0.31180026270939665),
+                                                        (0.7932582300441823, -0.4603809445848479, -0.24114357158613275),
+                                                        (-1.1930718782795982, -0.630349710365508, 0.05027053032331863),
+                                                        (-0.6975300942450738, 0.9023120233747296, -0.17907451961035045),
+                                                        (1.564861234183319, 0.15046191917579124,
+                                                         0.05814729816376877))}}],
+                           'p_species': [{'force_field': 'MMFF94s', 'is_ts': False, 'label': 'NH3',
+                                          'long_thermo_description': "Bond corrections: {'H-N': 3}\n", 'multiplicity': 1,
+                                          'charge': 0, 'compute_thermo': True, 'number_of_rotors': 0, 'arkane_file': None,
+                                          'consider_all_diastereomers': True, 'bond_corrections': {'H-N': 3},
+                                          'mol': '1 N u0 p1 c0 {2,S} {3,S} {4,S}\n2 H u0 p0 c0 {1,S}\n3 H u0 p0 c0 {1,S}\n'
+                                                 '4 H u0 p0 c0 {1,S}\n',
+                                          'cheap_conformer':
+                                              {'symbols': ('N', 'H', 'H', 'H'), 'isotopes': (14, 1, 1, 1),
+                                               'coords': ((0.0006492354002636227, -0.0009969784288894215, 0.2955929244020652),
+                                                          (-0.4178660616416419, 0.842103963871788, -0.09477452075659776),
+                                                          (-0.5203922802597125, -0.7822529247012627, -0.10002797449860866),
+                                                          (0.9376091065010891, -0.05885406074163403, -0.10079042914685925))}},
+                                         {'force_field': 'MMFF94s', 'is_ts': False, 'label': 'H2NN(S)',
+                                          'long_thermo_description': rxn_dict_5['p_species'][1]['long_thermo_description'],
+                                          'multiplicity': 3, 'charge': 0,
+                                          'compute_thermo': True, 'number_of_rotors': 0, 'arkane_file': None,
+                                          'consider_all_diastereomers': True,
+                                          'bond_corrections': {'H-N': 2, 'N-N': 1},
+                                          'mol': 'multiplicity 3\n1 N u0 p1 c0 {2,S} {3,S} {4,S}\n2 N u2 p1 c0 {1,S}\n'
+                                                 '3 H u0 p0 c0 {1,S}\n4 H u0 p0 c0 {1,S}\n',
+                                          'cheap_conformer': {'symbols': ('N', 'N', 'H', 'H'),
+                                                              'isotopes': (14, 14, 1, 1),
+                                                              'coords': (
+                                                  (-0.10718125823118853, 0.0060421411345427285, 0.3020707286226531),
+                                                  (1.2491228001835255, -0.09114963832400867, -0.1070662985243263),
+                                                  (-0.5113253973939348, 0.8541489400603999, -0.09257257722481664),
+                                                  (-0.6306161445584018, -0.7690414428709343, -0.1024318528735103))}}],
+                           'family': None,
+                           'family_own_reverse': 0, 'long_kinetic_description': '', 'ts_methods': [],
+                           'ts_xyz_guess': [], 'ts_label': None}
+        self.assertEqual(rxn_dict_5, expected_dict_5)
 
     def test_from_dict(self):
-        """Test Species.from_dict()"""
+        """Test ARCReaction.from_dict()"""
         rxn_dict = self.rxn1.as_dict()
         rxn = ARCReaction(reaction_dict=rxn_dict)
         self.assertEqual(rxn.label, 'CH4 + OH <=> CH3 + H2O')
