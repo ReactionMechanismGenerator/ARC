@@ -481,7 +481,7 @@ class Level(object):
             self.software = 'orca'
 
         # Gaussian
-        if self.method_type == 'composite' or job_type == 'composite' or job_type == 'ff_param_fit' or job_type == 'irc' \
+        if self.method_type == 'composite' or job_type == 'composite' or job_type == 'irc' \
                 or any([sum(['iop' in value.lower() for value in subdict.values()]) for subdict in self.args.values()]):
             if 'gaussian' not in supported_ess:
                 raise ValueError(f'Could not find Gaussian to run the {self.method}.\n'
