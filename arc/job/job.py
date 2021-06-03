@@ -87,7 +87,6 @@ class Job(object):
                                             determine it). Defaults to None. Important, e.g., if a Species is a bi-rad
                                             singlet, in which case the job should be unrestricted with
                                             multiplicity = 1.
-        conformers (str, optional): A path to the YAML file conformer coordinates for a Gromacs MD job.
         radius (float, optional): The species radius in Angstrom.
         directed_scans (list): Entries are lists of four-atom dihedral scan indices to constrain during a directed scan.
         directed_dihedrals (list): The dihedral angles of a directed scan job corresponding to ``directed_scans``.
@@ -111,7 +110,6 @@ class Job(object):
         radius (float): The species radius in Angstrom.
         n_atoms (int): The number of atoms in self.xyz.
         conformer (int): Conformer number if optimizing conformers.
-        conformers (str): A path to the YAML file conformer coordinates for a Gromacs MD job.
         is_ts (bool): Whether this species represents a transition structure.
         level (Level): The level of theory to use.
         job_type (str): The job's type.
@@ -214,7 +212,6 @@ class Job(object):
                  scan_res: Optional[int] = None,
                  checkfile: Optional[str] = None,
                  number_of_radicals: Optional[int] = None,
-                 conformers: Optional[str] = None,
                  radius: Optional[float] = None,
                  directed_scan_type: Optional[str] = None,
                  directed_scans: Optional[list] = None,
@@ -254,7 +251,6 @@ class Job(object):
         self.directed_dihedrals = [float(d) for d in directed_dihedrals] if directed_dihedrals is not None \
             else directed_scans  # it's a string in the restart dict
         self.conformer = conformer
-        self.conformers = conformers
         self.is_ts = is_ts
         self.ess_trsh_methods = ess_trsh_methods or list()
         self.args = {'keyword': {'general': args}} if isinstance(args, str) else args or dict()
@@ -289,13 +285,11 @@ class Job(object):
 
         # allowed job types:
         job_types = ['conformer', 'opt', 'freq', 'optfreq', 'sp', 'composite', 'bde', 'scan', 'directed_scan',
-                     'gsm', 'irc', 'ts_guess', 'orbitals', 'onedmin', 'ff_param_fit', 'gromacs']
+                     'gsm', 'irc', 'ts_guess', 'orbitals', 'onedmin']
         if self.job_type not in job_types:
             raise ValueError(f'Job type {self.job_type} not understood. Must be one of the following:\n{job_types}')
-        if self.xyz is None and not self.job_type == 'gromacs':
+        if self.xyz is None:
             raise InputError(f'{self.job_type} Job of species {self.species_name} got None for xyz')
-        if self.job_type == 'gromacs' and self.conformers is None:
-            raise InputError(f'{self.job_type} Job of species {self.species_name} got None for conformers')
         if self.job_type == 'directed_scan' and (self.directed_dihedrals is None or self.directed_scans is None
                                                  or self.directed_scan_type is None):
             raise InputError(f'Must have the directed_dihedrals, directed_scans, and directed_scan_type attributes '
@@ -412,8 +406,6 @@ class Job(object):
             job_dict['rotor_index'] = self.rotor_index
         if self.checkfile is not None:
             job_dict['checkfile'] = self.checkfile
-        if self.conformers is not None:
-            job_dict['conformers'] = self.conformers
         if self.radius is not None:
             job_dict['radius'] = self.radius
         if self.irc_direction is not None:
@@ -805,24 +797,6 @@ end
             self.add_to_args(val='\n   NBO           TRUE\n   RUN_NBO6      TRUE\n   '
                                  'PRINT_ORBITALS  TRUE\n   GUI           2',
                              key1='block')
-
-        elif self.job_type == 'ff_param_fit' and self.software == 'gaussian':
-            job_type_1, job_type_2 = 'opt', 'freq'
-            self.input += """
-
---Link1--
-%chk=check.chk
-%mem={memory}mb
-%NProcShared={cpus}
-
-# HF/6-31G(d) SCF=Tight Pop=MK IOp(6/33=2,6/41=10,6/42=17) scf(maxcyc=500) guess=read geom=check Maxdisk=2GB
-
-name
-
-{charge} {multiplicity}
-
-
-"""
 
         elif self.job_type == 'freq':
             if self.software == 'gaussian':
@@ -1526,10 +1500,9 @@ end
         elif self.software.lower() in ['orca']:
             # Orca's memory is per cpu core and in MB
             self.input_file_memory = math.ceil(self.total_job_memory_gb * 1024 / self.cpu_cores)
-        elif self.software.lower() in ['qchem', 'gromacs']:
+        elif self.software.lower() in ['qchem']:
             # QChem manages its memory automatically, for now ARC will not intervene
             # see http://www.q-chem.com/qchem-website/manual/qchem44_manual/CCparallel.html
-            # Also not managing memory for Gromacs
             self.input_file_memory = math.ceil(self.total_job_memory_gb)
 
     def set_file_paths(self):
@@ -1580,31 +1553,6 @@ end
             self.additional_files_to_upload.append({'name': 'qc.mol', 'source': 'input_files', 'make_x': False,
                                                     'local': 'onedmin.qc.mol',
                                                     'remote': os.path.join(self.remote_path, 'qc.mol')})
-        if self.job_type == 'gromacs':
-            self.additional_files_to_upload.append({'name': 'gaussian.out', 'source': 'path', 'make_x': False,
-                                                    'local': os.path.join(self.project_directory, 'calcs', 'Species',
-                                                                          self.species_name, 'ff_param_fit',
-                                                                          'gaussian.out'),
-                                                    'remote': os.path.join(self.remote_path, 'gaussian.out')})
-            self.additional_files_to_upload.append({'name': 'coords.yml', 'source': 'path', 'make_x': False,
-                                                    'local': self.conformers,
-                                                    'remote': os.path.join(self.remote_path, 'coords.yml')})
-            self.additional_files_to_upload.append({'name': 'acpype.py', 'source': 'path', 'make_x': False,
-                                                    'local': os.path.join(ARC_PATH, 'arc', 'scripts', 'conformers',
-                                                                          'acpype.py'),
-                                                    'remote': os.path.join(self.remote_path, 'acpype.py')})
-            self.additional_files_to_upload.append({'name': 'mdconf.py', 'source': 'path', 'make_x': False,
-                                                    'local': os.path.join(ARC_PATH, 'arc', 'scripts', 'conformers',
-                                                                          'mdconf.py'),
-                                                    'remote': os.path.join(self.remote_path, 'mdconf.py')})
-            self.additional_files_to_upload.append({'name': 'M00.tleap', 'source': 'path', 'make_x': False,
-                                                    'local': os.path.join(ARC_PATH, 'arc', 'scripts', 'conformers',
-                                                                          'M00.tleap'),
-                                                    'remote': os.path.join(self.remote_path, 'M00.tleap')})
-            self.additional_files_to_upload.append({'name': 'mdp.mdp', 'source': 'path', 'make_x': False,
-                                                    'local': os.path.join(ARC_PATH, 'arc', 'scripts', 'conformers',
-                                                                          'mdp.mdp'),
-                                                    'remote': os.path.join(self.remote_path, 'mdp.mdp')})
             if self.software == 'terachem':
                 self.additional_files_to_upload.append({'name': 'geo', 'source': 'path', 'make_x': False,
                                                         'local': os.path.join(self.local_path, 'coord.xyz'),

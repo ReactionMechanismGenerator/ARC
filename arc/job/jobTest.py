@@ -317,45 +317,6 @@ class TestJob(unittest.TestCase):
         self.assertIn('qc.mol', self.job1.additional_files_to_upload[2]['remote'])
         self.assertEqual(self.job1.additional_files_to_upload[2]['local'], 'onedmin.qc.mol')
 
-        self.job1.job_type = 'gromacs'
-        self.job1.set_file_paths()
-        self.assertEqual(len(self.job1.additional_files_to_upload), 6)
-
-        self.assertEqual(self.job1.additional_files_to_upload[0]['source'], 'path')
-        self.assertEqual(self.job1.additional_files_to_upload[0]['name'], 'gaussian.out')
-        self.assertFalse(self.job1.additional_files_to_upload[0]['make_x'])
-        self.assertIn('gaussian.out', self.job1.additional_files_to_upload[0]['remote'])
-        self.assertIn('gaussian.out', self.job1.additional_files_to_upload[0]['local'])
-
-        self.assertEqual(self.job1.additional_files_to_upload[1]['source'], 'path')
-        self.assertEqual(self.job1.additional_files_to_upload[1]['name'], 'coords.yml')
-        self.assertFalse(self.job1.additional_files_to_upload[1]['make_x'])
-        self.assertIn('coords.yml', self.job1.additional_files_to_upload[1]['remote'])
-
-        self.assertEqual(self.job1.additional_files_to_upload[2]['source'], 'path')
-        self.assertEqual(self.job1.additional_files_to_upload[2]['name'], 'acpype.py')
-        self.assertFalse(self.job1.additional_files_to_upload[2]['make_x'])
-        self.assertIn('acpype.py', self.job1.additional_files_to_upload[2]['remote'])
-        self.assertIn('acpype.py', self.job1.additional_files_to_upload[2]['local'])
-
-        self.assertEqual(self.job1.additional_files_to_upload[3]['source'], 'path')
-        self.assertEqual(self.job1.additional_files_to_upload[3]['name'], 'mdconf.py')
-        self.assertFalse(self.job1.additional_files_to_upload[3]['make_x'])
-        self.assertIn('mdconf.py', self.job1.additional_files_to_upload[3]['remote'])
-        self.assertIn('mdconf.py', self.job1.additional_files_to_upload[3]['local'])
-
-        self.assertEqual(self.job1.additional_files_to_upload[4]['source'], 'path')
-        self.assertEqual(self.job1.additional_files_to_upload[4]['name'], 'M00.tleap')
-        self.assertFalse(self.job1.additional_files_to_upload[4]['make_x'])
-        self.assertIn('M00.tleap', self.job1.additional_files_to_upload[4]['remote'])
-        self.assertIn('M00.tleap', self.job1.additional_files_to_upload[4]['local'])
-
-        self.assertEqual(self.job1.additional_files_to_upload[5]['source'], 'path')
-        self.assertEqual(self.job1.additional_files_to_upload[5]['name'], 'mdp.mdp')
-        self.assertFalse(self.job1.additional_files_to_upload[5]['make_x'])
-        self.assertIn('mdp.mdp', self.job1.additional_files_to_upload[5]['remote'])
-        self.assertIn('mdp.mdp', self.job1.additional_files_to_upload[5]['local'])
-
     def test_format_max_job_time(self):
         """Test that the maximum job time can be formatted properly, including days, minutes, and seconds"""
         test_job = Job.__new__(Job)
