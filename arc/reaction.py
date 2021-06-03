@@ -14,7 +14,6 @@ from rmgpy.species import Species
 import arc.rmgdb as rmgdb
 from arc.common import extremum_list, get_logger
 from arc.exceptions import ReactionError, InputError
-from arc.imports import settings
 from arc.species.converter import check_xyz_dict, str_to_xyz, xyz_to_str
 from arc.species.species import ARCSpecies, check_atom_balance, check_label
 
@@ -373,7 +372,7 @@ class ARCReaction(object):
         """
         if self.rmg_reaction is None and len(self.r_species) and len(self.p_species) and \
                 all([arc_spc.mol is not None for arc_spc in self.r_species + self.p_species]):
-            reactants, products = self.get_reactants_and_products(arc=False)  # Return RMG Species.
+            reactants, products = self.get_reactants_and_products(arc=False)  # Returns RMG Species.
             self.rmg_reaction = Reaction(reactants=reactants, products=products)
 
     def arc_species_from_rmg_reaction(self):
@@ -743,7 +742,7 @@ class ARCReaction(object):
                                    ) -> Tuple[List[Union[ARCSpecies, Species]], List[Union[ARCSpecies, Species]]]:
         """
         Get a list of reactant and product species including duplicate species, if any.
-        The species could either be ARCSpecies or RMGSpecies.
+        The species could either be ``ARCSpecies`` or ``RMGSpecies`` object instance.
 
         Args:
             arc (bool, optional): Whether to return the species as ARCSpecies (``True``) or as RMG Species (``False``).
