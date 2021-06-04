@@ -1,10 +1,141 @@
 """
-Submit scripts
-sorted in a dictionary with server names as keys
+Submit scripts and incore commands
 """
 
+# commands to execute ESS incore (without cluster software submission)
+# stored as a dictionary with server and software as primary and secondary keys
+incore_commands = {
+    'local': {
+        'gaussian': ['g16 < input.gjf > input.log', 'formchk check.chk check.fchk'],
+    },
+}
 
+# Submission scripts for pipe.py stored as a dictionary with server as the key
+pipe_submit = {
+    'local': """#!/bin/bash -l
+#SBATCH -p normal
+#SBATCH -J {name}
+#SBATCH -N 1
+#SBATCH -n {cpus}
+#SBATCH --time={t_max}
+#SBATCH --mem-per-cpu={memory}
+#SBATCH --array=1-{max_task_num}
+
+source activate arc_env
+
+python {arc_path}/arc/job/scripts/pipe.py {hdf5_path}
+
+""",
+}
+
+# Submission scripts stored as a dictionary with server and software as primary and secondary keys
 submit_scripts = {
+    'local': {
+        'gaussian': """#!/bin/bash -l
+#SBATCH -p normal
+#SBATCH -J {name}
+#SBATCH -N 1
+#SBATCH -n {cpus}
+#SBATCH --time={t_max}
+#SBATCH --mem-per-cpu={memory}
+
+export g16root=/home/gridsan/groups/GRPAPI/Software
+export PATH=$g16root/g16/:$g16root/gv:$PATH
+which g16
+
+echo "============================================================"
+echo "Job ID : $SLURM_JOB_ID"
+echo "Job Name : $SLURM_JOB_NAME"
+echo "Starting on : $(date)"
+echo "Running on node : $SLURMD_NODENAME"
+echo "Current directory : $(pwd)"
+echo "============================================================"
+
+
+GAUSS_SCRDIR=/state/partition1/user/{un}/$SLURM_JOB_NAME-$SLURM_JOB_ID
+export $GAUSS_SCRDIR
+. $g16root/g16/bsd/g16.profile
+
+mkdir -p $GAUSS_SCRDIR
+
+g16 < input.gjf > input.log
+
+rm -rf $GAUSS_SCRDIR
+
+        """,
+        'orca': """#!/bin/bash -l
+#SBATCH -p normal
+#SBATCH -J {name}
+#SBATCH -N 1
+#SBATCH -n {cpus}
+#SBATCH --time={t_max}
+#SBATCH --mem-per-cpu={memory}
+
+echo "============================================================"
+echo "Job ID : $SLURM_JOB_ID"
+echo "Job Name : $SLURM_JOB_NAME"
+echo "Starting on : $(date)"
+echo "Running on node : $SLURMD_NODENAME"
+echo "Current directory : $(pwd)"
+echo "============================================================"
+
+WorkDir=/state/partition1/user/{un}/$SLURM_JOB_NAME-$SLURM_JOB_ID
+SubmitDir=`pwd`
+
+#openmpi
+export PATH=/home/gridsan/alongd/openmpi-3.1.4/bin:$PATH
+export LD_LIBRARY_PATH=/home/gridsan/alongd/openmpi-3.1.4/lib:$LD_LIBRARY_PATH
+
+#Orca
+orcadir=/home/gridsan/alongd/orca_4_2_1_linux_x86-64_openmpi314
+export PATH=/home/gridsan/alongd/orca_4_2_1_linux_x86-64_openmpi314:$PATH
+export LD_LIBRARY_PATH=/home/gridsan/alongd/orca_4_2_1_linux_x86-64_openmpi314:$LD_LIBRARY_PATH
+echo "orcaversion"
+which orca
+mkdir -p $WorkDir
+cd $WorkDir
+cp $SubmitDir/input.in .
+
+$orcadir/orca input.in > input.log
+cp input.log  $SubmitDir/
+rm -rf  $WorkDir 
+
+""",
+        'molpro': """#!/bin/bash -l
+#SBATCH -p long
+#SBATCH -J {name}
+#SBATCH -N 1
+#SBATCH -n {cpus}
+#SBATCH --time={t_max}
+#SBATCH --mem-per-cpu={memory}
+
+export PATH=/opt/molpro/molprop_2015_1_linux_x86_64_i8/bin:$PATH
+
+echo "============================================================"
+echo "Job ID : $SLURM_JOB_ID"
+echo "Job Name : $SLURM_JOB_NAME"
+echo "Starting on : $(date)"
+echo "Running on node : $SLURMD_NODENAME"
+echo "Current directory : $(pwd)"
+echo "============================================================"
+
+sdir=/scratch/{un}/$SLURM_JOB_NAME-$SLURM_JOB_ID
+SubmitDir=`pwd`
+
+mkdir -p $sdir
+cd $sdir
+
+cp "$SubmitDir/input.in" .
+
+molpro -n {cpus} -d $sdir input.in
+
+cp input.* "$SubmitDir/"
+cp geometry*.* "$SubmitDir/"
+
+rm -rf $sdir
+
+""",
+    },
     'c3ddb': {
         # Gaussian 09
         'gaussian': """#!/bin/bash -l
@@ -16,6 +147,7 @@ submit_scripts = {
 #SBATCH --mem-per-cpu={memory}
 #SBATCH -e err.txt
 #SBATCH -o out.txt
+{array_key_1}
 
 module add c3ddb/gaussian/09.d01
 which g09
