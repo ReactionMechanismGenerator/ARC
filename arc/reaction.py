@@ -51,6 +51,8 @@ class ARCReaction(object):
         multiplicity (int, optional): The reaction surface multiplicity. A trivial guess will be made unless provided.
         charge (int, optional): The reaction surface charge.
         reaction_dict (dict, optional): A dictionary to create this object from (used when restarting ARC).
+        species_list (list, optional): A list of ARCSpecies entries for matching reactants and products
+                                       to existing species.
         preserve_param_in_scan (list, optional): Entries are length two iterables of atom indices (1-indexed)
                                                  between which distances and dihedrals of these pivots must be
                                                  preserved. Used for identification of rotors which break a TS.
@@ -99,6 +101,7 @@ class ARCReaction(object):
                  multiplicity: Optional[int] = None,
                  charge: int = 0,
                  reaction_dict: Optional[dict] = None,
+                 species_list: Optional[List[ARCSpecies]] = None,
                  preserve_param_in_scan: Optional[list] = None,
                  ):
         self.arrow = ' <=> '
@@ -117,7 +120,7 @@ class ARCReaction(object):
         self.preserve_param_in_scan = preserve_param_in_scan
         if reaction_dict is not None:
             # Reading from a dictionary
-            self.from_dict(reaction_dict=reaction_dict)
+            self.from_dict(reaction_dict=reaction_dict, species_list=species_list)
         else:
             # Not reading from a dictionary
             self.label = label
@@ -201,7 +204,10 @@ class ARCReaction(object):
         reaction_dict['ts_label'] = self.ts_label
         return reaction_dict
 
-    def from_dict(self, reaction_dict: dict):
+    def from_dict(self,
+                  reaction_dict: dict,
+                  species_list: Optional[list] = None,
+                  ):
         """
         A helper function for loading this object from a dictionary in a YAML file for restarting ARC.
         """
@@ -228,7 +234,7 @@ class ARCReaction(object):
                                  f'Problematic reaction: {self.label}')
             self.reactants = [spc.label for spc in self.rmg_reaction.reactants]
             self.products = [spc.label for spc in self.rmg_reaction.products]
-        self.set_label_reactants_products()
+        self.set_label_reactants_products(species_list)
         if self.ts_label is None:
             self.ts_label = reaction_dict['ts_label'] if 'ts_label' in reaction_dict else None
         self.r_species = [r.from_dict() for r in reaction_dict['r_species']] if 'r_species' in reaction_dict else list()
@@ -245,7 +251,7 @@ class ARCReaction(object):
         self._atom_map = reaction_dict['atom_map'] if 'atom_map' in reaction_dict else None
         self.done_opt_r_n_p = reaction_dict['done_opt_r_n_p'] if 'done_opt_r_n_p' in reaction_dict else None
 
-    def set_label_reactants_products(self):
+    def set_label_reactants_products(self, species_list: Optional[List[ARCSpecies]] = None):
         """A helper function for settings the label, reactants, and products attributes for a Reaction"""
         # first make sure that reactants and products labels are defines (most often used)
         if self.reactants is None or self.products is None:
@@ -261,6 +267,10 @@ class ARCReaction(object):
                     self.products = products.split(self.plus)
                 else:
                     self.products = [products]
+                if not self.r_species and self.reactants is not None:
+                    self.r_species = [spc for spc in species_list if spc.label in self.reactants]
+                if not self.p_species and self.products is not None:
+                    self.p_species = [spc for spc in species_list if spc.label in self.products]
             elif self.rmg_reaction is not None:
                 self.reactants = [r.label for r in self.rmg_reaction.reactants]
                 self.products = [p.label for p in self.rmg_reaction.products]
