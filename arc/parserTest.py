@@ -87,10 +87,10 @@ class TestParser(unittest.TestCase):
                                                   3015.0638,  3018.8871,  3030.1281,  3074.8208,  3079.5256,  3103.8434,
                                                   3109.1728,  3156.4352,  3783.7315], np.float64))
 
-    def test_parse_normal_displacement_modes(self):
-        """Test parsing frequencies and normal displacement modes"""
+    def test_parse_normal_modes_displacement(self):
+        """Test parsing frequencies and normal modes displacement"""
         freq_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'Gaussian_neg_freq.out')
-        freqs, normal_disp_modes = parser.parse_normal_displacement_modes(path=freq_path)
+        freqs, normal_modes_disp = parser.parse_normal_modes_displacement(path=freq_path)
         expected_freqs = np.array([-18.0696, 127.6948, 174.9499, 207.585, 228.8421, 281.2939, 292.4101,
                                    308.0345, 375.4493, 486.8396, 498.6986, 537.6196, 564.0223, 615.3762,
                                    741.8843, 749.3428, 777.1524, 855.3031, 871.055, 962.7075, 977.6181,
@@ -100,30 +100,30 @@ class TestParser(unittest.TestCase):
                                    1587.7095, 1643.0702, 2992.7203, 3045.3662, 3068.6577, 3123.9646, 3158.2579,
                                    3159.3532, 3199.1684, 3211.4927, 3223.942, 3233.9201], np.float64)
         np.testing.assert_almost_equal(freqs, expected_freqs)
-        expected_normal_disp_modes_0 = np.array(
+        expected_normal_modes_disp_0 = np.array(
             [[-0.0, 0.0, -0.09], [-0.0, 0.0, -0.1], [0.0, 0.0, -0.01], [0.0, 0.0, -0.07], [0.0, 0.0, -0.2],
              [-0.0, -0.0, 0.28], [0.0, -0.0, -0.08], [0.0, -0.0, 0.01], [0.0, -0.0, 0.12], [0.0, -0.0, 0.12],
              [0.08, -0.02, -0.04], [-0.08, 0.02, -0.04], [-0.0, 0.0, -0.18], [-0.3, -0.03, 0.41], [-0.0, -0.0, 0.4],
              [0.3, 0.03, 0.41], [0.0, 0.0, -0.15], [0.0, -0.0, 0.01], [0.0, -0.0, 0.21], [0.0, -0.0, 0.19]], np.float64)
-        np.testing.assert_almost_equal(normal_disp_modes[0], expected_normal_disp_modes_0)
+        np.testing.assert_almost_equal(normal_modes_disp[0], expected_normal_modes_disp_0)
 
         freq_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'CHO_neg_freq.out')
-        freqs, normal_disp_modes = parser.parse_normal_displacement_modes(path=freq_path)
+        freqs, normal_modes_disp = parser.parse_normal_modes_displacement(path=freq_path)
         expected_freqs = np.array([-1612.8294, 840.8655, 1883.4822, 3498.091], np.float64)
         np.testing.assert_almost_equal(freqs, expected_freqs)
-        expected_normal_disp_modes = np.array(
+        expected_normal_modes_disp = np.array(
             [[[0.05, 0.03, -0.0], [-0.13, -0.09, 0.0], [0.8, 0.57, -0.0]],
              [[-0.03, 0.05, -0.0], [0.09, -0.13, 0.0], [-0.57, 0.8, 0.0]],
              [[0.0, -0.0, -0.41], [-0.0, 0.0, 0.49], [0.0, -0.0, 0.77]],
              [[0.0, -0.0, 0.02], [-0.0, 0.0, -0.11], [0.0, -0.0, 0.99]]], np.float64)
-        np.testing.assert_almost_equal(normal_disp_modes, expected_normal_disp_modes)
+        np.testing.assert_almost_equal(normal_modes_disp, expected_normal_modes_disp)
 
         freq_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'CH3OO_freq_gaussian.out')
-        freqs, normal_disp_modes = parser.parse_normal_displacement_modes(path=freq_path)
+        freqs, normal_modes_disp = parser.parse_normal_modes_displacement(path=freq_path)
         expected_freqs = np.array([136.4446, 494.1267, 915.7812, 1131.4603, 1159.9315, 1225.148, 1446.5652,
                                    1474.8065, 1485.6423, 3046.2186, 3134.8026, 3147.5619], np.float64)
         np.testing.assert_almost_equal(freqs, expected_freqs)
-        expected_normal_disp_modes = np.array(
+        expected_normal_modes_disp = np.array(
             [[[-0.0, -0.0, 0.02],
               [0.0, 0.0, -0.11],
               [0.0, -0.0, 0.09],
@@ -196,7 +196,7 @@ class TestParser(unittest.TestCase):
               [-0.02, 0.19, 0.31],
               [0.61, 0.6, -0.0],
               [-0.02, 0.19, -0.31]]], np.float64)
-        np.testing.assert_almost_equal(normal_disp_modes, expected_normal_disp_modes)
+        np.testing.assert_almost_equal(normal_modes_disp, expected_normal_modes_disp)
 
     def test_parse_xyz_from_file(self):
         """Test parsing xyz from a file"""
