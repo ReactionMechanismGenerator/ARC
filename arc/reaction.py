@@ -79,9 +79,10 @@ class ARCReaction(object):
         ts_label (str): The :ref:`ARCSpecies <species>` label of the respective TS.
         preserve_param_in_scan (list): Entries are length two iterables of atom indices (1-indexed) between which
                                        distances and dihedrals of these pivots must be preserved.
-        _atom_map (List[int]): An atom map, mapping the reactant atoms to the product atoms.
-        I.e., an atom map of [0, 2, 1] means that reactant atom 0 matches product atom 0,
-        reactant atom 1 matches product atom 2, and reactant atom 2 matches product atom 1.
+        atom_map (List[int]): An atom map, mapping the reactant atoms to the product atoms.
+                              I.e., an atom map of [0, 2, 1] means that reactant atom 0 matches product atom 0,
+                              reactant atom 1 matches product atom 2, and reactant atom 2 matches product atom 1.
+        done_opt_r_n_p (bool): Whether the optimization of all reactants and products is complete.
     """
     def __init__(self,
                  label: str = '',
@@ -134,6 +135,7 @@ class ARCReaction(object):
             self.ts_methods = [tsm.lower() for tsm in self.ts_methods]
             self.ts_xyz_guess = ts_xyz_guess if ts_xyz_guess is not None else list()
             self._atom_map = None
+            self.done_opt_r_n_p = None
         if len(self.reactants) > 3 or len(self.products) > 3:
             raise ReactionError(f'An ARC Reaction can have up to three reactants / products. got {len(self.reactants)} '
                                 f'reactants and {len(self.products)} products for reaction {self.label}.')
@@ -180,6 +182,8 @@ class ARCReaction(object):
             reaction_dict['ts_species'] = self.ts_species.as_dict()
         if self._atom_map is not None:
             reaction_dict['atom_map'] = self._atom_map
+        if self.done_opt_r_n_p is not None:
+            reaction_dict['done_opt_r_n_p'] = self.done_opt_r_n_p
         if self.preserve_param_in_scan is not None:
             reaction_dict['preserve_param_in_scan'] = self.preserve_param_in_scan
         if 'rmg_reaction' in reaction_dict:
@@ -235,6 +239,7 @@ class ARCReaction(object):
         self.preserve_param_in_scan = reaction_dict['preserve_param_in_scan'] \
             if 'preserve_param_in_scan' in reaction_dict else None
         self._atom_map = reaction_dict['atom_map'] if 'atom_map' in reaction_dict else None
+        self.done_opt_r_n_p = reaction_dict['done_opt_r_n_p'] if 'done_opt_r_n_p' in reaction_dict else None
 
     def set_label_reactants_products(self):
         """A helper function for settings the label, reactants, and products attributes for a Reaction"""
@@ -529,6 +534,15 @@ class ARCReaction(object):
                 if product not in [p.label for p in self.p_species]:
                     raise ReactionError(f'Product {product} is not in '
                                         f'self.p_species ({[p.label for p in self.p_species]})')
+
+    def check_done_opt_r_n_p(self):
+        """
+        Check whether the ``final_xyz`` attributes of all ``r_species`` and ``p_species``
+        are populated, and flag ``self.done_opt_r_n_p`` as ``True`` if they are.
+        Useful to know when to spawn TS search jobs.
+        """
+        if not self.done_opt_r_n_p:
+            self.done_opt_r_n_p = all(spc.final_xyz is not None for spc in self.r_species + self.p_species)
 
     def check_atom_balance(self,
                            ts_xyz: Optional[dict] = None,
