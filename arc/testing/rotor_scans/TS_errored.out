@@ -13874,4 +13874,7 @@
  Error termination via Lnk1e in /Local/ce_dana/g09/l103.exe at Sun Jun  6 17:24:47 2021.
  Job cpu time:       0 days  0 hours  3 minutes 21.7 seconds.
  File lengths (MBytes):  RWF=      9 Int=      0 D2E=      0 Chk=      2 Scr=      1
+<<<<<<< master
 
+=======
+>>>>>>> Tests: Test that parse_1d_scan_coords() is robust
