@@ -6,9 +6,7 @@ If the species is a transition state (TS), its ``ts_guesses`` attribute will hav
 import datetime
 import numpy as np
 import os
-from rdkit import Chem
-import time
-from typing import List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import rmgpy.molecule.element as elements
 from arkane.common import ArkaneSpecies, symbol_by_number
@@ -27,6 +25,7 @@ from arc.common import (convert_list_index_0_to_1,
                         determine_top_group_indices,
                         get_logger,
                         get_single_bond_length,
+                        timedelta_from_str,
                         )
 from arc.exceptions import InputError, RotorError, SpeciesError, TSError
 from arc.imports import settings
@@ -56,14 +55,14 @@ from arc.species.converter import (check_isomorphism,
                                    zmat_to_xyz,
                                    )
 from arc.species.vectors import calculate_distance
-from arc.ts import atst, gcn
 from arc.species.zmat import get_parameter_from_atom_indices
 
 logger = get_logger()
 
-default_ts_methods, valid_chars, minimum_barrier = settings['default_ts_methods'], \
-                                                   settings['valid_chars'], \
-                                                   settings['minimum_barrier']
+LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ, valid_chars, minimum_barrier = settings['LOWEST_MAJOR_TS_FREQ'],\
+                                                                            settings['HIGHEST_MAJOR_TS_FREQ'], \
+                                                                            settings['valid_chars'], \
+                                                                            settings['minimum_barrier']
 
 
 class ARCSpecies(object):
@@ -71,6 +70,7 @@ class ARCSpecies(object):
     A class for representing stationary points.
 
     Structures (rotors_dict is initialized in conformers.find_internal_rotors; pivots/scan/top values are 1-indexed)::
+
             rotors_dict: {0: {'pivots': ``List[int]``,  # 1-indexed
                               'top': ``List[int]``,  # 1-indexed
                               'scan': ``List[int]``,  # 1-indexed
@@ -117,9 +117,6 @@ class ARCSpecies(object):
         e0_only (bool, optional): Whether to only run statmech (w/o thermo) to compute E0.
         species_dict (dict, optional): A dictionary to create this object from (used when restarting ARC).
         yml_path (str, optional): Path to an Arkane YAML file representing a species (for loading the object).
-        ts_methods (list, optional): Methods to try for generating TS guesses. If Species is a TS and `ts_methods` is an
-                                     empty list, then xyz (user guess) must be given. If `ts_methods` is None, it will
-                                     be set to the default methods.
         ts_number (int, optional): An auto-generated number associating the TS ARCSpecies object with the corresponding
                                    :ref:`ARCReaction <reaction>` object.
         rxn_label (str, optional): The reaction string (relevant for TSs).
@@ -234,6 +231,7 @@ class ARCSpecies(object):
         successful_methods (list): Methods used to generate a TS guess that successfully generated an XYZ guess.
         unsuccessful_methods (list): Methods used to generate a TS guess that were unsuccessfully.
         chosen_ts (int): The TSGuess index corresponding to the chosen TS conformer used for optimization.
+        chosen_ts_list (List[int]): The TSGuess index corresponding to the TS guesses that were tried out.
         chosen_ts_method (str): The TS method that was actually used for optimization.
         ts_conf_spawned (bool): Whether conformers were already spawned for the Species (representing a TS) based on its
                                 TSGuess objects.
@@ -358,6 +356,7 @@ class ARCSpecies(object):
             self.force_field = force_field
             self.is_ts = is_ts
             self.ts_conf_spawned = False
+            self.ts_guesses_exhausted = False
             self.e_elect = None
             self.e0 = None
             self.arkane_file = None
@@ -369,23 +368,13 @@ class ARCSpecies(object):
             self.preserve_param_in_scan = preserve_param_in_scan
             if self.bdes is not None and not isinstance(self.bdes, list):
                 raise SpeciesError(f'The .bdes argument must be a list, got {self.bdes} which is a {type(self.bdes)}')
-            if self.is_ts:
-                if ts_methods is None:
-                    self.ts_methods = default_ts_methods
-                elif isinstance(ts_methods, list):
-                    self.ts_methods = ts_methods
-                    if not self.ts_methods:
-                        self.ts_methods = ['user guess']
-                else:
-                    raise TSError(f'ts_methods must be a list, got {ts_methods} which is a {type(ts_methods)}')
-            else:
-                self.ts_methods = None
             self.rxn_label = rxn_label
             self.rxn_index = rxn_index
             self.successful_methods = list()
             self.unsuccessful_methods = list()
             self.chosen_ts_method = None
             self.chosen_ts = None
+            self.chosen_ts_list = list()
             self.compute_thermo = compute_thermo if compute_thermo is not None else not self.is_ts
             self.e0_only = e0_only
             self.long_thermo_description = ''
@@ -607,7 +596,6 @@ class ARCSpecies(object):
         species_dict['arkane_file'] = self.arkane_file
         species_dict['consider_all_diastereomers'] = self.consider_all_diastereomers
         if self.is_ts:
-            species_dict['ts_methods'] = self.ts_methods
             species_dict['ts_guesses'] = [tsg.as_dict() for tsg in self.ts_guesses]
             species_dict['ts_conf_spawned'] = self.ts_conf_spawned
             species_dict['ts_guesses_exhausted'] = self.ts_guesses_exhausted
@@ -619,6 +607,7 @@ class ARCSpecies(object):
             species_dict['unsuccessful_methods'] = self.unsuccessful_methods
             species_dict['chosen_ts_method'] = self.chosen_ts_method
             species_dict['chosen_ts'] = self.chosen_ts
+            species_dict['chosen_ts_list'] = self.chosen_ts_list
         if self.original_label is not None:
             species_dict['original_label'] = self.original_label
         if self.e_elect is not None:
@@ -757,15 +746,6 @@ class ARCSpecies(object):
             self.ts_number = species_dict['ts_number'] if 'ts_number' in species_dict else None
             self.ts_guesses_exhausted = species_dict['ts_guesses_exhausted'] if 'ts_guesses_exhausted' in species_dict else False
             self.ts_report = species_dict['ts_report'] if 'ts_report' in species_dict else ''
-            ts_methods = species_dict['ts_methods'] if 'ts_methods' in species_dict else None
-            if ts_methods is None:
-                self.ts_methods = default_ts_methods
-            elif isinstance(ts_methods, list):
-                self.ts_methods = ts_methods
-                if not self.ts_methods:
-                    self.ts_methods = ['user guess']
-            else:
-                raise TSError(f'ts_methods must be a list, got {ts_methods} of type {type(ts_methods)}')
             self.ts_guesses = [TSGuess(ts_dict=tsg) for tsg in species_dict['ts_guesses']] \
                 if 'ts_guesses' in species_dict else list()
             self.successful_methods = species_dict['successful_methods'] \
@@ -774,9 +754,8 @@ class ARCSpecies(object):
                 if 'unsuccessful_methods' in species_dict else list()
             self.chosen_ts_method = species_dict['chosen_ts_method'] if 'chosen_ts_method' in species_dict else None
             self.chosen_ts = species_dict['chosen_ts'] if 'chosen_ts' in species_dict else None
+            self.chosen_ts_list = species_dict['chosen_ts_list'] if 'chosen_ts_list' in species_dict else list()
             self.checkfile = species_dict['checkfile'] if 'checkfile' in species_dict else None
-        else:
-            self.ts_methods = None
         if 'xyz' in species_dict and self.initial_xyz is None and self.final_xyz is None:
             self.process_xyz(species_dict['xyz'])
         self.multiplicity = species_dict['multiplicity'] if 'multiplicity' in species_dict else None
@@ -1158,6 +1137,14 @@ class ARCSpecies(object):
                     elif val1 == ['all']:
                         # 2nd level all, add all pivots, they will be treated together
                         directed_rotors[key].append(all_pivots)
+                    elif len(val1) != 2:
+                        raise SpeciesError(f'directed_scan pivots must be lists of length 2, got {val1}.')
+                    elif isinstance(val1, (tuple, list)) and isinstance(val1[0], int):
+                        corrected_val = val1 if list(val1) in all_pivots else [val1[1], val1[0]]
+                        directed_rotors[key].append([list(corrected_val)])
+                    elif isinstance(val1, (tuple, list)) and isinstance(val1[0], (tuple, list)):
+                        directed_rotors[key].append([list(val2 if list(val2) in all_pivots else [val2[1], val2[0]])
+                                                     for val2 in val1])
             for key, vals1 in directed_rotors.items():
                 # check
                 for vals2 in vals1:
@@ -1345,7 +1332,6 @@ class ARCSpecies(object):
         Args:
             smiles (str): The SMILES descriptor .
             adjlist (str): The adjacency list descriptor.
-            adjlist (str): The adjacency list descriptor.
             mol (Molecule): The respective RMG Molecule object.
         """
         if mol is not None and mol.multiplicity >= 1:
@@ -1353,7 +1339,8 @@ class ARCSpecies(object):
         elif adjlist:
             mol = Molecule().from_adjacency_list(adjlist,
                                                  raise_atomtype_exception=False,
-                                                 raise_charge_exception=False)
+                                                 raise_charge_exception=False,
+                                                 )
             self.multiplicity = mol.multiplicity
         elif self.mol is not None and self.mol.multiplicity >= 1:
             self.multiplicity = self.mol.multiplicity
@@ -1852,63 +1839,63 @@ class ARCSpecies(object):
 
 class TSGuess(object):
     """
-    TSGuess class
-
-    The user can define xyz directly, and the default `method` will be 'User guess'.
-    Alternatively, either ARC or the user can provide reactant/s and product/s geometries with a specified `method`.
-    `method` could be one of the following:
-    - QST2 (not implemented)
-    - DEGSM (not implemented)
-    - NEB (not implemented)
-    - Kinbot: requires the RMG family, only works for H,C,O,S (not implemented)
-    - AutoTST
-    - GCN
+    A class for representing TS a guess.
 
     Args:
+        index (int, optional): A running index of all TSGuess objects belonging to an ARCSpecies object.
         method (str, optional): The method/source used for the xyz guess.
-        reactants_xyz (list, optional): A list of tuples, each containing:
-                                        (reactant label, reactant geometry in string format).
-        products_xyz (list, optional): A list of tuples, each containing:
-                                       (product label, product geometry in string format).
+        method_index (int, optional): A sub-index, used for cases where a single method generates several guesses.
+                                      Counts separately for each direction, 'F' and 'R'.
+        method_direction (str, optional): The reaction direction used for generating the guess ('F' or 'R').
+        constraints (dict, optional): Any constraints to be used when first optimizing this guess
+                                      (i.e., keeping bond lengths of the reactive site constant).
         family (str, optional): The RMG family that corresponds to the reaction, if applicable.
+        success (bool, optional): Whether the TS guess method succeeded in generating an XYZ guess or not.
         xyz (dict, str, optional): The 3D coordinates guess.
         rmg_reaction (Reaction, optional): An RMG Reaction object.
         arc_reaction (ARCReaction, optional): An ARC Reaction object.
         ts_dict (dict, optional): A dictionary to create this object from (used when restarting ARC).
         energy (float, optional): Relative energy of all TS conformers in kJ/mol.
-        project_dir (str, optional): Folder path for the project: the input file path or ARC/Projects/project-name.
+        t0 (datetime.datetime, optional): Initial time of spawning the guess job.
+        execution_time (datetime.timedelta, optional): Overall execution time for the TS guess method.
 
     Attributes:
         initial_xyz (dict): The 3D coordinates guess.
         opt_xyz (dict): The 3D coordinates after optimization at the ts_guesses level.
         method (str): The method/source used for the xyz guess.
-        reactants_xyz (list): A list of tuples, each containing:
-                              (reactant label, reactant xyz).
-        products_xyz (list): A list of tuples, each containing:
-                             (product label, product xyz).
+        method_index (int): A sub-index, used for cases where a single method generates several guesses.
+                            Counts separately for each direction, 'F' and 'R'.
+        method_direction (str): The reaction direction used for generating the guess ('F' or 'R').
         family (str): The RMG family that corresponds to the reaction, if applicable.
         rmg_reaction (Reaction): An RMG Reaction object.
-        arc_reaction (ARCReaction, optional): An ARC Reaction object.
-        t0 (float): Initial time of spawning the guess job.
+        arc_reaction (ARCReaction): An ARC Reaction object.
+        t0 (datetime.datetime, optional): Initial time of spawning the guess job.
         execution_time (str): Overall execution time for the TS guess method.
         success (bool): Whether the TS guess method succeeded in generating an XYZ guess or not.
         energy (float): Relative energy of all TS conformers in kJ/mol.
-        index (int): An index corresponding to the conformer jobs spawned for each TSGuess object.
-                     Assigned only if self.success is ``True``.
-        project_dir (str): Folder path for the project: the input file path or ARC/Projects/project-name.
-
+        index (int): A running index of all TSGuess objects belonging to an ARCSpecies object.
+        imaginary_freqs (List[float]): The imaginary frequencies of the TS guess after optimization.
+        conformer_index (int): An index corresponding to the conformer jobs spawned for each TSGuess object.
+                               Assigned only if self.success is ``True``.
+        successful_irc (bool): Whether the IRS run(s) identified this to be the correct TS by isomorphism of the wells.
+        successful_normal_mode (bool): Whether a normal mode check was successful.
     """
+
     def __init__(self,
+                 index: Optional[int] = None,
                  method: Optional[str] = None,
-                 reactants_xyz: Optional[list] = None,
-                 products_xyz: Optional[list] = None,
+                 method_index: Optional[int] = None,
+                 method_direction: Optional[str] = None,
+                 constraints: Optional[Dict[List[int], int]] = None,
+                 t0: Optional[datetime.datetime] = None,
+                 execution_time: Optional[Union[str, datetime.timedelta]] = None,
+                 success: Optional[bool] = None,
                  family: Optional[str] = None,
                  xyz: Optional[Union[dict, str]] = None,
                  rmg_reaction: Optional[Reaction] = None,
                  arc_reaction: Optional = None,
                  ts_dict: Optional[dict] = None,
                  energy: Optional[float] = None,
-                 project_dir: Optional[str] = None,
                  ):
 
         if ts_dict is not None:
@@ -1916,57 +1903,58 @@ class TSGuess(object):
             self.from_dict(ts_dict=ts_dict)
         else:
             # Not reading from a dictionary
-            self.t0 = None
-            self.index = None
-            self.execution_time = None
+            self.index = index
+            self.method = method.lower() if method is not None else 'user guess'
+            self.method_index = method_index
+            self.method_direction = method_direction
+            self.constraints = constraints
+            self.t0 = t0
+            self.execution_time = execution_time if execution_time is not None else execution_time
             self.opt_xyz = None
             self.initial_xyz = None
             self.process_xyz(xyz)  # populates self.initial_xyz
-            self.success = None
+            self.success = success
             self.energy = energy
-            self.project_dir = project_dir
-            self.method = method.lower() if method is not None else 'user guess'
             if 'user guess' in self.method:
                 if self.initial_xyz is None:
                     raise TSError('If no method is specified, an xyz guess must be given')
                 self.success = True
-                self.execution_time = 0
-            self.reactants_xyz = reactants_xyz if reactants_xyz is not None else list()
-            self.products_xyz = products_xyz if products_xyz is not None else list()
+                self.execution_time = datetime.timedelta(seconds=0)
             self.rmg_reaction = rmg_reaction
             self.arc_reaction = arc_reaction
             self.family = family
-            # if self.family is None and self.method.lower() in ['kinbot', 'autotst']:
-            #     raise TSError('No family specified for method {0}'.format(self.method))
-        if not ('user guess' in self.method or 'autotst' in self.method or 'gcn' in self.method
-                or self.method in ['user guess'] + [tsm.lower() for tsm in default_ts_methods]):
-            raise TSError('Unrecognized method. Should be either {0}. Got: {1}'.format(
-                          ['User guess'] + default_ts_methods, self.method))
+            self.imaginary_freqs = None
+            self.conformer_index = None
+            self.successful_irc = None
+            self.successful_normal_mode = None
 
     def as_dict(self) -> dict:
         """A helper function for dumping this object as a dictionary in a YAML file for restarting ARC"""
         ts_dict = dict()
-        ts_dict['t0'] = self.t0
+        ts_dict['t0'] = str(self.t0.isoformat()) if isinstance(self.t0, datetime.datetime) else self.t0
         ts_dict['method'] = self.method
+        ts_dict['method_index'] = self.method_index
+        ts_dict['method_direction'] = self.method_direction
         ts_dict['success'] = self.success
         ts_dict['energy'] = self.energy
         ts_dict['index'] = self.index
-        ts_dict['execution_time'] = self.execution_time
+        ts_dict['imaginary_freqs'] = [float(f) for f in self.imaginary_freqs] if self.imaginary_freqs is not None else None
+        ts_dict['conformer_index'] = self.conformer_index
+        ts_dict['successful_irc'] = self.successful_irc
+        ts_dict['successful_normal_mode'] = self.successful_normal_mode
+        ts_dict['execution_time'] = str(self.execution_time) if isinstance(self.execution_time, datetime.timedelta) \
+            else self.execution_time
         if self.initial_xyz:
-            ts_dict['initial_xyz'] = self.initial_xyz
+            ts_dict['initial_xyz'] = xyz_to_str(self.initial_xyz)
         if self.opt_xyz:
-            ts_dict['opt_xyz'] = self.opt_xyz
-        if self.reactants_xyz:
-            ts_dict['reactants_xyz'] = self.reactants_xyz
-        if self.products_xyz:
-            ts_dict['products_xyz'] = self.products_xyz
+            ts_dict['opt_xyz'] = xyz_to_str(self.opt_xyz)
         if self.family is not None:
             ts_dict['family'] = self.family
         if self.rmg_reaction is not None:
             rxn_string = ' <=> '.join([' + '.join([spc.molecule[0].copy(deep=True).to_smiles()
                                                    for spc in self.rmg_reaction.reactants]),
-                                      ' + '.join([spc.molecule[0].copy(deep=True).to_smiles()
-                                                  for spc in self.rmg_reaction.products])])
+                                       ' + '.join([spc.molecule[0].copy(deep=True).to_smiles()
+                                                   for spc in self.rmg_reaction.products])])
             ts_dict['rmg_reaction'] = rxn_string
         return ts_dict
 
@@ -1974,22 +1962,29 @@ class TSGuess(object):
         """
         A helper function for loading this object from a dictionary in a YAML file for restarting ARC
         """
-        self.t0 = ts_dict['t0'] if 't0' in ts_dict else None
+        self.t0 = datetime.datetime.fromisoformat(ts_dict['t0']) if 't0' in ts_dict and isinstance(ts_dict['t0'], str) \
+            else ts_dict['t0'] if 't0' in ts_dict else None
         self.index = ts_dict['index'] if 'index' in ts_dict else None
         self.initial_xyz = ts_dict['initial_xyz'] if 'initial_xyz' in ts_dict else None
         self.process_xyz(self.initial_xyz)  # re-populates self.initial_xyz
         self.opt_xyz = ts_dict['opt_xyz'] if 'opt_xyz' in ts_dict else None
         self.success = ts_dict['success'] if 'success' in ts_dict else None
         self.energy = ts_dict['energy'] if 'energy' in ts_dict else None
-        self.execution_time = ts_dict['execution_time'] if 'execution_time' in ts_dict else None
+        self.execution_time = timedelta_from_str(ts_dict['execution_time']) if 'execution_time' in ts_dict \
+            and isinstance(ts_dict['execution_time'], str) \
+            else ts_dict['execution_time'] if 'execution_time' in ts_dict else None
         self.method = ts_dict['method'].lower() if 'method' in ts_dict else 'user guess'
+        self.method_index = ts_dict['method_index'] if 'method_index' in ts_dict else None
+        self.method_direction = ts_dict['method_direction'] if 'method_index' in ts_dict else None
+        self.imaginary_freqs = ts_dict['imaginary_freqs'] if 'imaginary_freqs' in ts_dict else None
+        self.conformer_index = ts_dict['conformer_index'] if 'conformer_index' in ts_dict else None
+        self.successful_irc = ts_dict['successful_irc'] if 'successful_irc' in ts_dict else None
+        self.successful_normal_mode = ts_dict['successful_normal_mode'] if 'successful_normal_mode' in ts_dict else None
         if 'user guess' in self.method:
             if self.initial_xyz is None:
                 raise TSError('If no method is specified, an xyz guess must be given (initial_xyz).')
             self.success = self.success if self.success is not None else True
-            self.execution_time = '0'
-        self.reactants_xyz = ts_dict['reactants_xyz'] if 'reactants_xyz' in ts_dict else list()
-        self.products_xyz = ts_dict['products_xyz'] if 'products_xyz' in ts_dict else list()
+            self.execution_time = datetime.timedelta(seconds=0)
         self.family = ts_dict['family'] if 'family' in ts_dict else None
         if self.family is None and self.method.lower() in ['kinbot', 'autotst']:
             # raise TSError('No family specified for method {0}'.format(self.method))
@@ -2000,8 +1995,8 @@ class TSGuess(object):
             plus = ' + '
             arrow = ' <=> '
             if arrow not in rxn_string:
-                raise TSError('Could not read the reaction string. Expected to find " <=> ". '
-                              'Got: {0}'.format(rxn_string))
+                raise TSError(f'Could not read the reaction string. Expected to find " <=> ".\n'
+                              f'Got: {rxn_string}')
             sides = rxn_string.split(arrow)
             reac = sides[0]
             prod = sides[1]
@@ -2146,11 +2141,58 @@ class TSGuess(object):
         """
         if xyz is not None:
             if not isinstance(xyz, (dict, str)):
-                raise InputError('xyz must be either a dictionary or string, '
-                                 'got:\n{0}\nwhich is a {1}'.format(xyz, type(xyz)))
+                raise InputError(f'xyz must be either a dictionary or string, '
+                                 f'got:\n{xyz}\nwhich is a {type(xyz)}')
             if isinstance(xyz, str):
                 xyz = parse_xyz_from_file(xyz) if os.path.isfile(xyz) else str_to_xyz(xyz)
             self.initial_xyz = check_xyz_dict(xyz)
+
+    def tic(self):
+        """
+        Initialize self.t0.
+        """
+        self.t0 = datetime.datetime.now()
+
+    def tok(self):
+        """
+        Assign the time difference between now and self.t0 into self.execution_time.
+        """
+        if self.t0 is not None:
+            self.execution_time = datetime.datetime.now() - self.t0
+
+    def check_imaginary_frequencies(self) -> bool:
+        """
+        Check that the number of imaginary frequencies make sense.
+        Theoretically a TS should only have one imaginary frequency,
+        however additional imaginary frequency are allowed if they are very small in magnitude.
+        This method does not consider the normal displacement mode check.
+
+        Returns:
+            bool: Whether the imaginary frequencies make sense.
+
+        Todo:
+            Add tests.
+        """
+        if self.imaginary_freqs is None:
+            # Freqs haven't been calculated for this TS guess, do consider it as an optional candidate.
+            return True
+        if len(self.imaginary_freqs) == 0:
+            # Freqs have been calculated, and there are no imaginary frequencies.
+            return False
+        if len(self.imaginary_freqs) == 1 \
+                and LOWEST_MAJOR_TS_FREQ < abs(self.imaginary_freqs[0]) < HIGHEST_MAJOR_TS_FREQ:
+            # Freqs have been calculated, and there is only one imaginary frequency within the right range.
+            return True
+        else:
+            # Freqs have been calculated, and there are several imaginary frequencies.
+            num_major_freqs = 0
+            for im_freq in self.imaginary_freqs:
+                if 25 < abs(im_freq) < 10000:
+                    num_major_freqs += 1
+            if num_major_freqs == 1:
+                # Only one major imaginary frequency.
+                return True
+            return False
 
 
 def determine_occ(xyz, charge):
@@ -2165,16 +2207,6 @@ def determine_occ(xyz, charge):
             atom = Atom(element=str(line.split()[0]))
             electrons += atom.number
     electrons -= charge
-
-
-def nearly_equal(a: float,
-                 b: float,
-                 sig_fig: int = 5):
-    """
-    A helper function to determine whether two floats are nearly equal.
-    Can be replaced by math.isclose in Py3
-    """
-    return a == b or int(a*10**sig_fig) == int(b*10**sig_fig)
 
 
 def determine_rotor_symmetry(label: str,
