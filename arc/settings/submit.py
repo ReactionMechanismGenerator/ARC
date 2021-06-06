@@ -180,26 +180,6 @@ cp geometry*.* "$SubmitDir/"
 rm -rf $sdir
 
 """,
-        # Gromacs
-        'gromacs': """#!/bin/bash -l
-#SBATCH -p long
-#SBATCH -J {name}
-#SBATCH -N 1
-#SBATCH --time={t_max}
-#SBATCH -e err.txt
-#SBATCH -o out.txt
-
-echo "============================================================"
-echo "Job ID : $SLURM_JOB_ID"
-echo "Job Name : $SLURM_JOB_NAME"
-echo "Starting on : $(date)"
-echo "Running on node : $SLURMD_NODENAME"
-echo "Current directory : $(pwd)"
-echo "============================================================"
-
-python mdconf.py -s {size}
-
-""",
         # Orca
         'orca': """#!/bin/bash -l
 #SBATCH -p normal

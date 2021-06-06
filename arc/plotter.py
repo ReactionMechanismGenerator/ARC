@@ -868,8 +868,13 @@ def save_conformers_file(project_directory: str,
 
 # *** Torsions ***
 
-def plot_torsion_angles(torsion_angles, torsions_sampling_points=None, wells_dict=None, e_conformers=None,
-                        de_threshold=5.0, plot_path=None):
+def plot_torsion_angles(torsion_angles,
+                        torsions_sampling_points=None,
+                        wells_dict=None,
+                        e_conformers=None,
+                        de_threshold=5.0,
+                        plot_path=None,
+                        ):
     """
     Plot the torsion angles of the generated conformers.
 
@@ -904,7 +909,8 @@ def plot_torsion_angles(torsion_angles, torsions_sampling_points=None, wells_dic
                      np.zeros_like(np.arange(len(sampling_points[tuple(torsion)]))), 'ro', alpha=0.35, ms=7)
         axs.frameon = False
         axs.set_ylabel(str(torsion), labelpad=10)
-        axs.set_yticklabels(['' for _ in range(len(torsions))])
+        axs.set_yticks(axs.get_yticks().tolist())
+        axs.set_yticklabels(['' for _ in range(len(axs.get_yticks().tolist()))])
         axs.tick_params(axis='y',  # changes apply to the x-axis
                         which='both',  # both major and minor ticks are affected
                         left=False,  # ticks along the bottom edge are off
@@ -956,7 +962,8 @@ def plot_torsion_angles(torsion_angles, torsions_sampling_points=None, wells_dic
             axs[i].set_ylabel(str(torsion), labelpad=10)
             # axs[i].yaxis.label.set_rotation(0)
             if e_conformers is None:
-                axs[i].set_yticklabels(['' for _ in range(len(torsions))])
+                axs[i].set_yticks(axs[i].get_yticks().tolist())
+                axs[i].set_yticklabels(['' for _ in range(len(axs[i].get_yticks().tolist()))])
                 axs[i].tick_params(axis='y',  # changes apply to the x-axis
                                    which='both',  # both major and minor ticks are affected
                                    left=False,  # ticks along the bottom edge are off

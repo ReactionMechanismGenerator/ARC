@@ -420,7 +420,7 @@ def standardize_xyz_string(xyz_str, isotope_format=None):
     return xyz_to_str(xyz_dict=xyz_dict, isotope_format=isotope_format)
 
 
-def check_xyz_dict(xyz):
+def check_xyz_dict(xyz: Union[dict, str]) -> dict:
     """
     Check that the xyz dictionary entered is valid.
     If it is a string, convert it.
@@ -457,7 +457,7 @@ def check_xyz_dict(xyz):
     return xyz_dict
 
 
-def check_zmat_dict(zmat):
+def check_zmat_dict(zmat: Union[dict, str]) -> dict:
     """
     Check that the zmat dictionary entered is valid.
     If it is a string, convert it.
@@ -1461,7 +1461,9 @@ def to_rdkit_mol(mol, remove_h=False, sanitize=True):
     return rd_mol
 
 
-def rdkit_conf_from_mol(mol, xyz):
+def rdkit_conf_from_mol(mol: Molecule,
+                        xyz: dict,
+                        ) -> tuple:
     """
      Generate an RDKit Conformer object from an RMG Molecule object.
 
@@ -1469,13 +1471,13 @@ def rdkit_conf_from_mol(mol, xyz):
         mol (Molecule): The RMG Molecule object.
         xyz (dict): The xyz coordinates (of the conformer, atoms must be ordered as in ``mol``.
 
-    Returns:
-        Conformer: An RDKit Conformer object.
-    Returns:
-        RDMol: An RDKit Molecule object.
-
     Raises:
         ConverterError: if ``xyz`` is of wrong type.
+
+    Returns:
+        tuple:
+            - Conformer: An RDKit Conformer object.
+            - RDMol: An RDKit Molecule object.
     """
     if not isinstance(xyz, dict):
         raise ConverterError('The xyz argument seem to be of wrong type. Expected a dictionary, '

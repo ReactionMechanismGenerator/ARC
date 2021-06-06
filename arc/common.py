@@ -170,7 +170,7 @@ def check_ess_settings(ess_settings: Optional[dict] = None) -> dict:
                                 f'strings. Got: {server_list} which is a {type(server_list)}')
     # run checks:
     for ess, server_list in settings_dict.items():
-        if ess.lower() not in ['gaussian', 'qchem', 'molpro', 'orca', 'terachem', 'onedmin', 'gromacs']:
+        if ess.lower() not in ['gaussian', 'qchem', 'molpro', 'orca', 'terachem', 'onedmin']:
             raise SettingsError(f'Recognized ESS software are Gaussian, QChem, Molpro, Orca, TeraChem or OneDMin. '
                                 f'Got: {ess}')
         for server in server_list:

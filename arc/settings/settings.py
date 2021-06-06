@@ -126,7 +126,6 @@ input_filename = {'gaussian': 'input.gjf',
                   }
 
 output_filename = {'gaussian': 'input.log',
-                   'gromacs': 'output.yml',
                    'molpro': 'input.out',
                    'onedmin': 'output.out',
                    'orca': 'input.log',

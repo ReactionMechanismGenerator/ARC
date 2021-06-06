@@ -465,13 +465,6 @@ class Level(object):
                                  f'levels_ess is:\n{levels_ess}')
             self.software = 'onedmin'
 
-        # Gromacs
-        if job_type == 'gromacs':
-            if 'gromacs' not in supported_ess:
-                raise ValueError(f'Could not find the Gromacs software to run the MD job {self.method}.\n'
-                                 f'levels_ess is:\n{levels_ess}')
-            self.software = 'gromacs'
-
         # QChem
         if job_type == 'orbitals':
             # currently we only have a script to print orbitals on QChem,
@@ -488,7 +481,7 @@ class Level(object):
             self.software = 'orca'
 
         # Gaussian
-        if self.method_type == 'composite' or job_type == 'composite' or job_type == 'ff_param_fit' or job_type == 'irc' \
+        if self.method_type == 'composite' or job_type == 'composite' or job_type == 'irc' \
                 or any([sum(['iop' in value.lower() for value in subdict.values()]) for subdict in self.args.values()]):
             if 'gaussian' not in supported_ess:
                 raise ValueError(f'Could not find Gaussian to run the {self.method}.\n'

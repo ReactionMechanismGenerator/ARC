@@ -33,6 +33,7 @@ from arc.species.species import (ARCSpecies,
                                  determine_rotor_symmetry,
                                  determine_rotor_type)
 from arc.species.xyz_to_2d import MolGraph
+from arc.utils.wip import work_in_progress
 
 
 class TestARCSpecies(unittest.TestCase):
@@ -1431,6 +1432,7 @@ class TestTSGuess(unittest.TestCase):
         mol_graph_1 = MolGraph(symbols=xyz_arb['symbols'], coords=xyz_arb['coords'])
         self.assertEqual(mol_graph_1.get_formula(), 'CH3NO2')
 
+    @work_in_progress
     def test_gcn(self):
         """
         Test that ARC can call the GNN to make TS guesses for further optimization.
