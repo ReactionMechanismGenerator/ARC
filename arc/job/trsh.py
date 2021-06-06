@@ -31,7 +31,7 @@ from arc.species.converter import (ics_to_scan_constraints,
 from arc.species.species import determine_rotor_symmetry
 from arc.species.vectors import calculate_dihedral_angle, calculate_distance
 from arc.parser import (parse_1d_scan_coords,
-                        parse_normal_displacement_modes,
+                        parse_normal_modes_displacement,
                         parse_scan_args,
                         parse_scan_conformers,
                         parse_xyz_from_file,
@@ -448,7 +448,7 @@ def trsh_negative_freq(label: str,
     factor, factor_increase = 1.1, 0.2
     max_times_to_trsh_neg_freq = 5
     try:
-        freqs, normal_disp_modes = parse_normal_displacement_modes(path=log_file)
+        freqs, normal_modes_disp = parse_normal_modes_displacement(path=log_file)
     except NotImplementedError as e:
         logger.error(f'Could not troubleshoot negative frequency for species {label}, got:\n{e}')
         return [], [], output_errors, []
@@ -505,7 +505,7 @@ def trsh_negative_freq(label: str,
         xyz = parse_xyz_from_file(log_file)
         coords = np.array(xyz_to_coords_list(xyz), np.float64)
         for neg_freq_idx in neg_freqs_idx:
-            displacement = normal_disp_modes[neg_freq_idx]
+            displacement = normal_modes_disp[neg_freq_idx]
             coords1 = coords + factor * displacement
             coords2 = coords - factor * displacement
             conformers.append(xyz_from_data(coords=coords1, symbols=xyz['symbols']))
