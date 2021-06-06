@@ -146,6 +146,8 @@ class ARCReaction(object):
                                 f'reactants and {len(self.products)} products for reaction {self.label}.')
         if self.ts_xyz_guess is not None and not isinstance(self.ts_xyz_guess, list):
             self.ts_xyz_guess = [self.ts_xyz_guess]
+        self.arc_species_from_rmg_reaction()
+        self.remove_dup_species()
         self.check_atom_balance()
 
     @property
@@ -566,6 +568,16 @@ class ARCReaction(object):
                     raise ReactionError(f'Product {product} is not in '
                                         f'self.p_species ({[p.label for p in self.p_species]})')
 
+    def remove_dup_species(self):
+        """
+        Make sure each species is consider only once in reactants, products, r_species, and p_species.
+        The same species in the reactants/products is considered through get_species_count().
+        """
+        self.reactants = sorted(list(set(self.reactants)))
+        self.products = sorted(list(set(self.products)))
+        self.r_species = remove_dup_species(self.r_species)
+        self.p_species = remove_dup_species(self.p_species)
+
     def check_done_opt_r_n_p(self):
         """
         Check whether the ``final_xyz`` attributes of all ``r_species`` and ``p_species``
@@ -594,8 +606,6 @@ class ARCReaction(object):
         Returns:
             bool: Whether all wells and TSs are atom balanced.
         """
-        self.arc_species_from_rmg_reaction()
-
         balanced_wells, balanced_ts_xyz, balanced_xyz_guess, balanced_ts_species_mol, balanced_ts_species_xyz = \
             True, True, True, True, True
         r_well, p_well = '', ''
@@ -776,3 +786,23 @@ class ARCReaction(object):
                                     )
         mapped_xyz = str_to_xyz(mapped_xyz)
         return mapped_xyz, mapped_product
+
+
+def remove_dup_species(species_list: List[ARCSpecies]) -> List[ARCSpecies]:
+    """
+    Remove duplicate species for a a species list.
+    Used when assigning r_species and p_species.
+
+    Args:
+        species_list (List[ARCSpecies]): THe species list to process.
+
+    Returns:
+        List[ARCSpecies]: A list of species without duplicates.
+    """
+    if species_list is None or not(len(species_list)):
+        return list()
+    new_species_list = list()
+    for species in species_list:
+        if species.label not in [spc.label for spc in new_species_list]:
+            new_species_list.append(species)
+    return new_species_list
