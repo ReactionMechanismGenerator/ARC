@@ -360,6 +360,8 @@ class Scheduler(object):
                         ts_guess.execute_ts_guess_method()
                         ts_species.ts_guesses.append(ts_guess)
                 rxn.check_atom_balance()
+                rxn.check_done_opt_r_n_p()
+            logger.info('\n\n')
 
         for species in self.species_list:
             if not isinstance(species, ARCSpecies):
