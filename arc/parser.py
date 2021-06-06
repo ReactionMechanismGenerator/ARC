@@ -111,11 +111,11 @@ def parse_frequencies(path: str,
     return freqs
 
 
-def parse_normal_displacement_modes(path: str,
+def parse_normal_modes_displacement(path: str,
                                     software: Optional[str] = None,
                                     ) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Parse frequencies and normal displacement modes.
+    Parse frequencies and normal modes displacement.
 
     Args:
         path (str): The path to the log file.
@@ -128,45 +128,45 @@ def parse_normal_displacement_modes(path: str,
         The frequencies (in cm^-1) and The normal displacement modes.
     """
     software = software or determine_ess(path)
-    freqs, normal_disp_modes, normal_disp_modes_entries = list(), list(), list()
+    freqs, normal_modes_disp, normal_modes_disp_entries = list(), list(), list()
     num_of_freqs_per_line = 3
     with open(path, 'r') as f:
         lines = f.readlines()
     if software == 'gaussian':
-        parse, parse_normal_disp_modes = False, False
+        parse, parse_normal_modes_disp = False, False
         for line in lines:
             if 'Harmonic frequencies (cm**-1)' in line:
                 # e.g.:  Harmonic frequencies (cm**-1), IR intensities (KM/Mole), Raman scattering
                 parse = True
             if parse and len(line.split()) in [0, 1, 3]:
-                parse_normal_disp_modes = False
-                normal_disp_modes.extend(normal_disp_modes_entries)
-                normal_disp_modes_entries = list()
+                parse_normal_modes_disp = False
+                normal_modes_disp.extend(normal_modes_disp_entries)
+                normal_modes_disp_entries = list()
             if parse and 'Frequencies --' in line:
                 # e.g.:  Frequencies --    -18.0696               127.6948               174.9499
                 splits = line.split()
                 freqs.extend(float(freq) for freq in splits[2:])
                 num_of_freqs_per_line = len(splits) - 2
-                normal_disp_modes_entries = list()
-            elif parse_normal_disp_modes:
+                normal_modes_disp_entries = list()
+            elif parse_normal_modes_disp:
                 # parsing, e.g.:
                 #   Atom  AN      X      Y      Z        X      Y      Z        X      Y      Z
                 #      1   6    -0.00   0.00  -0.09    -0.00   0.00  -0.18     0.00  -0.00  -0.16
                 #      2   7    -0.00   0.00  -0.10     0.00  -0.00   0.02     0.00  -0.00   0.26
                 splits = line.split()[2:]
                 for i in range(num_of_freqs_per_line):
-                    if len(normal_disp_modes_entries) < i + 1:
-                        normal_disp_modes_entries.append(list())
-                    normal_disp_modes_entries[i].append(splits[3 * i: 3 * i + 3])
+                    if len(normal_modes_disp_entries) < i + 1:
+                        normal_modes_disp_entries.append(list())
+                    normal_modes_disp_entries[i].append(splits[3 * i: 3 * i + 3])
             elif parse and 'Atom  AN      X      Y      Z' in line:
-                parse_normal_disp_modes = True
+                parse_normal_modes_disp = True
             elif parse and not line or '-------------------' in line:
                 parse = False
     else:
-        raise NotImplementedError(f'parse_normal_displacement_modes is currently not implemented for {software}.')
+        raise NotImplementedError(f'parse_normal_modes_displacement is currently not implemented for {software}.')
     freqs = np.array(freqs, np.float64)
-    normal_disp_modes = np.array(normal_disp_modes, np.float64)
-    return freqs, normal_disp_modes
+    normal_modes_disp = np.array(normal_modes_disp, np.float64)
+    return freqs, normal_modes_disp
 
 
 def parse_geometry(path: str) -> Optional[Dict[str, tuple]]:
