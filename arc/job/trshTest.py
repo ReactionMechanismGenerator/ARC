@@ -545,12 +545,12 @@ class TestTrsh(unittest.TestCase):
         log_file = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'CH2OOH.out')
         # Case 1: non-smooth scan which troubleshot once
         case1 = {'label': 'CH2OOH',
-                 'pivots': [1, 2],
+                 'torsion': [2, 0, 1, 3],
                  'energies': parse_1d_scan_energies(log_file)[0],
                  'scan_res': 4.0,
                  'used_methods': None,
                  'log_file': log_file,
-                }
+                 }
         invalidate, invalidation_reason, message, actions = trsh.scan_quality_check(**case1)
         self.assertTrue(invalidate)
         self.assertEqual(
@@ -569,12 +569,12 @@ class TestTrsh(unittest.TestCase):
         # Case 2: Lower conformer
         log_file = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'COCCOO.out')
         case2 = {'label': 'COCCOO',
-                 'pivots': [2, 5],
+                 'torsion': [2, 1, 4, 5],
                  'energies': parse_1d_scan_energies(log_file)[0],
                  'scan_res': 8.0,
                  'used_methods': None,
                  'log_file': log_file,
-                }
+                 }
         invalidate, invalidation_reason, message, actions = trsh.scan_quality_check(**case2)
         self.assertTrue(invalidate)
         self.assertEqual(
