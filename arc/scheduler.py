@@ -298,8 +298,6 @@ class Scheduler(object):
                     logger.info(f'({family_text})')
                 if rxn.rmg_reaction is not None:
                     display(rxn.rmg_reaction.copy())
-                rxn.determine_rxn_charge()
-                rxn.determine_rxn_multiplicity()
                 rxn.ts_label = rxn.ts_label if rxn.ts_label is not None else f'TS{rxn.index}'
                 with open(rxn_info_path, 'a') as f:
                     f.write(f'{rxn.ts_label}: {rxn.label}')
