@@ -23,7 +23,8 @@ from arc.species.converter import (check_isomorphism,
                                    molecules_from_xyz,
                                    str_to_xyz,
                                    xyz_to_str,
-                                   xyz_to_x_y_z)
+                                   xyz_to_x_y_z,
+                                   )
 from arc.species.species import (ARCSpecies,
                                  TSGuess,
                                  are_coords_compliant_with_graph,
@@ -31,7 +32,8 @@ from arc.species.species import (ARCSpecies,
                                  check_label,
                                  check_xyz,
                                  determine_rotor_symmetry,
-                                 determine_rotor_type)
+                                 determine_rotor_type,
+                                 )
 from arc.species.xyz_to_2d import MolGraph
 from arc.utils.wip import work_in_progress
 
@@ -96,7 +98,7 @@ class TestARCSpecies(unittest.TestCase):
                       2 H u0 p0 c0 {1,S}"""
         nh_s_xyz = """N       0.50949998    0.00000000    0.00000000
                       H      -0.50949998    0.00000000    0.00000000"""
-        cls.spc9 = ARCSpecies(label='NH2(S)', adjlist=nh_s_adj, xyz=nh_s_xyz, multiplicity=1, charge=0)
+        cls.spc9 = ARCSpecies(label='NH2_S_', adjlist=nh_s_adj, xyz=nh_s_xyz, multiplicity=1, charge=0)
 
         cls.spc10 = ARCSpecies(label='CCCCC', smiles='CCCCC')
         cls.spc11 = ARCSpecies(label='CCCNO', smiles='CCCNO')  # has chiral N
@@ -143,7 +145,7 @@ class TestARCSpecies(unittest.TestCase):
     def test_str(self):
         """Test the string representation of the object"""
         str_representation = str(self.spc9)
-        expected_representation = 'ARCSpecies(label=NH2(S), smiles=[NH], is_ts=False, multiplicity=1, charge=0)'
+        expected_representation = 'ARCSpecies(label=NH2_S_, smiles=[NH], is_ts=False, multiplicity=1, charge=0)'
         self.assertEqual(str_representation, expected_representation)
 
     def test_set_mol_list(self):
