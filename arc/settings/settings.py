@@ -194,7 +194,7 @@ inconsistency_ab = 0.3  # maximum allowed inconsistency between consecutive poin
 preserve_params_in_scan = {
     'bond': 0.1,  # Default: 10% of the original bond length
     'angle': 10,  # Default: 10 degrees
-    'dihedral': 20,  # Default: 20 degrees
+    'dihedral': 30,  # Default: 30 degrees
 }
 
 # Coefficients to be used in a ``y = A * x ** b`` fit
