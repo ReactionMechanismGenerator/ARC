@@ -477,7 +477,7 @@ def trsh_negative_freq(label: str,
         if len(neg_freqs_idx) == 1 and not len(neg_freqs_trshed):
             # species has one negative frequency, and has not been troubleshooted for it before
             logger.info(f'Species {label} has a negative frequency ({freqs[largest_neg_freq_idx]}). Perturbing its '
-                        f'geometry using the respective vibrational displacements')
+                        f'geometry using the respective vibrational normal mode displacement(s).')
             neg_freqs_idx = [largest_neg_freq_idx]  # indices of the negative frequencies to troubleshoot for
         elif len(neg_freqs_idx) == 1 and any([np.allclose(freqs[0], vf, rtol=1e-04, atol=1e-02)
                                               for vf in neg_freqs_trshed]):
@@ -485,19 +485,20 @@ def trsh_negative_freq(label: str,
             factor = 1 + factor_increase * (len(neg_freqs_trshed) + 1)
             logger.info(f'Species {label} has a negative frequency ({freqs[largest_neg_freq_idx]}) for the '
                         f'{len(neg_freqs_trshed)} time. Perturbing its geometry using the respective vibrational '
-                        f'displacements, this time using a larger factor (x {factor})')
+                        f'normal mode displacement(s), this time using a larger factor (x {factor})')
             neg_freqs_idx = [largest_neg_freq_idx]  # indices of the negative frequencies to troubleshoot for
         elif len(neg_freqs_idx) > 1 and not any([np.allclose(freqs[0], vf, rtol=1e-04, atol=1e-02)
                                                  for vf in neg_freqs_trshed]):
             # species has more than one negative frequency, and has not been troubleshooted for it before
-            logger.info(f'Species {label} has {len(neg_freqs_idx)} negative frequencies. Perturbing its geometry using the vibrational '
-                        f'displacements of its largest negative frequency, {freqs[largest_neg_freq_idx]}')
+            logger.info(f'Species {label} has {len(neg_freqs_idx)} negative frequencies. Perturbing its geometry using '
+                        f'the vibrational normal mode displacement(s) of its largest negative frequency, '
+                        f'{freqs[largest_neg_freq_idx]}')
             neg_freqs_idx = [largest_neg_freq_idx]  # indices of the negative frequencies to troubleshoot for
         elif len(neg_freqs_idx) > 1 and any([np.allclose(freqs[0], vf, rtol=1e-04, atol=1e-02)
                                              for vf in neg_freqs_trshed]):
             # species has more than one negative frequency, and has been troubleshooted for it before
             logger.info(f'Species {label} has {len(neg_freqs_idx)} negative frequencies. Perturbing its geometry '
-                        f'using the vibrational displacements of ALL negative frequencies')
+                        f'using the vibrational normal mode displacement(s) of ALL negative frequencies')
         # convert a numpy array to a list, imprtant for saving the neg_freqs_trshed species attribute in the restart
         freqs_list = freqs.tolist()
         current_neg_freqs_trshed = [round(freqs_list[i], 2) for i in neg_freqs_idx]  # record trshed negative freqs
@@ -529,7 +530,7 @@ def trsh_scan_job(label: str,
 
     Args:
         label (str): The species label.
-        scan_res (int or float): The scan resolution in degrees.
+        scan_res (int, float): The scan resolution in degrees.
         scan (list): The four atom indices representing the torsion to be troubleshooted.
         scan_list (list): Entries are the four-atom scan lists (1-indexed) of all torsions
                           (without duplicate pivots) in this species.
@@ -1344,7 +1345,7 @@ def scan_quality_check(label: str,
 
         # 1.3 Check consistency
         if 0 in changed_ic_dict.keys() and len(changed_ic_dict) == 1:
-            # Smooth scan with different initial and final conformer
+            # A smooth scan with different initial and final conformer.
             invalidate = True
             invalidation_reason = 'Inconsistent initial and final conformers'
             message = f'Rotor scan of {label} between pivots {pivots} has inconsistent initial ' \
@@ -1355,7 +1356,7 @@ def scan_quality_check(label: str,
                                   for ic_label in changed_ic_dict[0]]}
             return invalidate, invalidation_reason, message, actions
         elif len(changed_ic_dict) > 0:
-            # Not smooth scan
+            # Not a smooth scan.
             invalidate = True
             invalidation_reason = 'Significant difference observed between consecutive conformers'
             message = f'Rotor scan of {label} between pivots {pivots} is inconsistent between ' \
