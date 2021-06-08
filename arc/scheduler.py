@@ -1347,47 +1347,62 @@ class Scheduler(object):
             label (str): The species label.
             job_name (str): The opt job name (used for differentiating between ``opt`` and ``optfreq`` jobs).
         """
-        composite = 'composite' in job_name  # Whether "post composite jobs" need to be spawned
-        if not composite and self.composite_method:
-            # This was originally a composite method, probably troubleshooted as 'opt'
-            self.run_composite_job(label)
-        elif composite and not self.composite_method:
-            # This wasn't originally a composite method, probably troubleshooted as such
-            self.run_opt_job(label, fine=self.fine_only)
-        else:
-            if self.job_types['irc'] and self.species_dict[label].is_ts:
-                self.run_irc_job(label=label, irc_direction='forward')
-                self.run_irc_job(label=label, irc_direction='reverse')
-            if self.species_dict[label].number_of_atoms > 1:
-                if 'freq' not in job_name and self.job_types['freq']:
-                    # this is either an opt or a composite job, spawn freq
-                    self.run_freq_job(label)
-                elif not composite:
-                    # this is an 'optfreq' job type, don't run freq
-                    self.check_freq_job(label=label, job=self.job_dict[label]['optfreq'][job_name])
-            if not composite and self.job_types['sp']:
-                # don't use a solvation correction for this sp job if a solvation_scheme_level was specified
-                self.run_sp_job(label)
-            if self.species_dict[label].mol is None:
-                # useful for TS species where xyz might not be given to perceive a .mol attribute,
-                # and a user guess, if provided, cannot always be trusted
-                self.species_dict[label].mol_from_xyz()
-            if self.job_types['rotors']:
-                if not self.species_dict[label].rotors_dict:
-                    self.species_dict[label].determine_rotors()
-                self.run_scan_jobs(label)
+        composite = 'composite' in job_name  # Whether this was a composite job
 
+        # Check whether this was originally a composite method that was troubleshooted as 'opt'.
+        if not composite and self.composite_method:
+            self.run_composite_job(label)
+            return None
+
+        # Check whether this is a composite job but wasn't originally so (probably troubleshooted as such).
+        if composite and not self.composite_method:
+            self.run_opt_job(label, fine=self.fine_only)
+            return None
+
+        # Spawn IRC if requested and if relevant.
+        if self.job_types['irc'] and self.species_dict[label].is_ts:
+            self.run_irc_job(label=label, irc_direction='forward')
+            self.run_irc_job(label=label, irc_direction='reverse')
+
+        # Spawn freq (or check it if this is a composite job) for polyatomic molecules.
+        if self.species_dict[label].number_of_atoms > 1:
+            if 'freq' not in job_name and self.job_types['freq']:
+                # This is either an opt or a composite job (not an optfreq job), spawn freq.
+                self.run_freq_job(label)
+            if 'optfreq' in job_name:
+                # This is an 'optfreq' job type, don't spawn freq (but do check it).
+                self.check_freq_job(label=label, job=self.job_dict[label]['optfreq'][job_name])
+
+        # Spawn sp after an opt (non-composite) job.
+        if not composite and self.job_types['sp']:
+            self.run_sp_job(label)
+
+        # Perceive the Molecule from xyz.
+        # Useful for TS species where xyz might not be given at the outset to perceive a .mol attribute.
+        if self.species_dict[label].mol is None:
+            self.species_dict[label].mol_from_xyz()
+
+        # Spawn scan jobs.
+        if self.job_types['rotors']:
+            if not self.species_dict[label].rotors_dict:
+                self.species_dict[label].determine_rotors()
+            self.run_scan_jobs(label)
+
+        # Spawn post sp actions if this is a composite job.
         if composite and self.composite_method:
             self.post_sp_actions(label=label,
                                  sp_path=os.path.join(self.job_dict[label]['composite'][job_name].local_path,
                                                       'output.out'))
 
+        # Spawn orbitals job.
         if self.job_types['orbitals'] and 'orbitals' not in self.job_dict[label]:
             self.run_orbitals_job(label)
 
+        # Spawn onedmin job.
         if self.job_types['onedmin'] and not self.species_dict[label].is_ts:
             self.run_onedmin_job(label)
 
+        # Spawn bde jobs.
         if self.job_types['bde'] and self.species_dict[label].bdes is not None:
             bde_species_list = self.species_dict[label].scissors()
             for bde_species in bde_species_list:
@@ -1410,7 +1425,10 @@ class Scheduler(object):
             # determine the lowest energy conformation of radicals generated in BDE calculations
             self.run_conformer_jobs(labels=[species.label for species in bde_species_list
                                             if species.number_of_atoms > 1])
-        self.spawn_ts_jobs()
+
+        # Check whether any reaction was waiting for this species to spawn TS search jobs.
+        if not self.species_dict[label].is_ts:
+            self.spawn_ts_jobs()
 
     def spawn_ts_jobs(self):
         """
