@@ -19,6 +19,8 @@ from arc import parser, plotter
 from arc.common import (extremum_list,
                         get_angle_in_180_range,
                         get_logger,
+                        get_rms_from_normal_mode_disp,
+                        get_rxn_normal_mode_disp_atom_number,
                         save_yaml_file,
                         sort_two_lists_by_the_first,
                         torsions_to_scans,
@@ -2277,6 +2279,30 @@ class Scheduler(object):
                     else:
                         self.species_dict[label].transport_data.comment = \
                             str(f'Polarizability calculated at the {self.freq_level.simple()} level of theory')
+                if self.species_dict[label].is_ts:
+                    # Parse normal mode displacement and invalidate rotors that break a TS.
+                    freqs, normal_mode_disp = parser.parse_normal_mode_displacement(path=job.local_path_to_output_file,
+                                                                                    raise_error=False)
+                    mode_index = list(freqs).index(min(freqs))  # get the index of the |largest| negative frequency
+                    # Get the root mean squares of the normal mode displacement:
+                    normal_disp_mode_rms = get_rms_from_normal_mode_disp(normal_mode_disp, mode_index)
+                    # Get the number of atoms that are expected to have the largest normal mode displacement per family:
+                    atom_number = max(list(set([get_rxn_normal_mode_disp_atom_number(rxn_family=tsg.family)
+                                                for tsg in self.species_dict[label].ts_guesses])))
+                    # Get the indices of the atoms participating in the reaction (which form the reactive zone of the TS):
+                    rxn_zone_atom_indices = sorted(range(len(normal_disp_mode_rms)),
+                                                   key=lambda i: normal_disp_mode_rms[i],
+                                                   reverse=True)[:atom_number]
+                    # Convert atom_indices to be 1-indexed:
+                    rxn_zone_atom_indices = [val + 1 for val in rxn_zone_atom_indices]
+                    # Determine rotors if needed:
+                    if not self.species_dict[label].rotors_dict:
+                        self.species_dict[label].determine_rotors()
+                    # Invalidate rotors in which both pivots are included in the reactive zone:
+                    for rotor in self.species_dict[label].rotors_dict:
+                        if rotor['pivots'][0] in rxn_zone_atom_indices and rotor['pivots'][1] in rxn_zone_atom_indices:
+                            rotor['success'] = False
+                            rotor['invalidation_reason'] += 'Pivots participate in the TS reaction zone (code: pivTS). '
             elif not self.species_dict[label].is_ts:
                 # Only trsh neg freq here for non TS species, trsh TS species is done in check_negative_freq()
                 self.troubleshoot_negative_freq(label=label, job=job)
@@ -2551,8 +2577,9 @@ class Scheduler(object):
                     original_xyz=self.species_dict[label].final_xyz,
                 )
 
-                if len(actions):
-                    # the rotor scan is problematic, troubleshooting is required
+                if len(actions) \
+                        and 'pivTS' not in self.species_dict[label].rotors_dict[job.rotor_index]['invalidation_reason']:
+                    # The rotor scan is problematic (and does not block a TS reaction zone), troubleshooting is required.
                     logger.info(f'Trying to troubleshoot rotor '
                                 f'{self.species_dict[label].rotors_dict[job.rotor_index]["pivots"]} '
                                 f'of species {label} ...')
