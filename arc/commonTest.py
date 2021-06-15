@@ -542,6 +542,18 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
         globalized_string = common.globalize_path(string=string, project_directory='')
         self.assertEqual(globalized_string, string)
 
+    def test_get_number_with_ordinal_indicator(self):
+        """Test the get_number_with_ordinal_indicator() function"""
+        self.assertEqual(common.get_number_with_ordinal_indicator(1), '1st')
+        self.assertEqual(common.get_number_with_ordinal_indicator(2), '2nd')
+        self.assertEqual(common.get_number_with_ordinal_indicator(3), '3rd')
+        self.assertEqual(common.get_number_with_ordinal_indicator(4), '4th')
+        self.assertEqual(common.get_number_with_ordinal_indicator(50), '50th')
+        self.assertEqual(common.get_number_with_ordinal_indicator(23), '23rd')
+        self.assertEqual(common.get_number_with_ordinal_indicator(31), '31st')
+        self.assertEqual(common.get_number_with_ordinal_indicator(22), '22nd')
+        self.assertEqual(common.get_number_with_ordinal_indicator(100), '100th')
+
     def test_estimate_orca_mem_cpu_requirement(self):
         """Test estimating memory and cpu requirements for an Orca job."""
         num_heavy_atoms_0 = 0
