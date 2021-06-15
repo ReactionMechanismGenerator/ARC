@@ -1,17 +1,20 @@
 # Required python packages. You can install them all via something like:
 #    pip install -r requirements.txt
 
-paramiko==2.6.0
+ase>=3.15.0
+cclib>=1.6
+mako
 matplotlib>=2.2.2
 numpy==1.15.4
-cclib>=1.6
-py3Dmol==0.8.0
-ase>=3.15.0
-rdkit>=2019.09.2.0
 openbabel
-pyyaml
 pandas>=1.01
+paramiko==2.6.0
+psi4
+py3Dmol==0.8.0
+pytables
+pyyaml
 qcelemental
+rdkit>=2019.09.2.0
 
 # For running the unit tests
 nose
