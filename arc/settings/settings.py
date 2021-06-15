@@ -188,6 +188,7 @@ minimum_barrier = 1.0   # a rotor threshold (kJ/mol) below which it is considere
 inconsistency_az = 5    # maximum allowed inconsistency (kJ/mol) between initial and final rotor scan points. Default: 5
 inconsistency_ab = 0.3  # maximum allowed inconsistency between consecutive points in the scan given as a fraction
                         # of the maximum scan energy. Default: 30%
+max_rotor_trsh = 4      # maximum number of times to troubleshoot the same rotor scan
 
 # Thresholds for identifying significant changes in bond distance, bond angle,
 # or torsion angle during a rotor scan. For a TS, only 'bond' and 'torsion' are considered.
