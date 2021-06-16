@@ -231,6 +231,7 @@ class ARCSpecies(object):
         chosen_ts (int): The TSGuess index corresponding to the chosen TS conformer used for optimization.
         chosen_ts_list (List[int]): The TSGuess index corresponding to the TS guesses that were tried out.
         chosen_ts_method (str): The TS method that was actually used for optimization.
+        ts_checks (Dict[str, bool]): Checks that a TS species went through.
         ts_conf_spawned (bool): Whether conformers were already spawned for the Species (representing a TS) based on its
                                 TSGuess objects.
         tsg_spawned (bool): If this species is a TS, this attribute describes whether TS guess jobs were already spawned.
@@ -339,6 +340,7 @@ class ARCSpecies(object):
         self.yml_path = None
         self.fragments = fragments
         self.original_label = None
+        self.chosen_ts = None
 
         if species_dict is not None:
             # Reading from a dictionary (it's possible that the dict contain only a 'yml_path' argument, check first)
@@ -371,7 +373,7 @@ class ARCSpecies(object):
             self.successful_methods = list()
             self.unsuccessful_methods = list()
             self.chosen_ts_method = None
-            self.chosen_ts = None
+            self.ts_checks = dict()
             self.chosen_ts_list = list()
             self.compute_thermo = compute_thermo if compute_thermo is not None else not self.is_ts
             self.e0_only = e0_only
@@ -487,6 +489,8 @@ class ARCSpecies(object):
 
         if self.mol is not None and self.mol_list is None:
             self.set_mol_list()
+        if self.is_ts:
+            self.populate_ts_checks()
 
     def __str__(self) -> str:
         """Return a string representation of the object"""
@@ -600,6 +604,7 @@ class ARCSpecies(object):
             species_dict['chosen_ts_method'] = self.chosen_ts_method
             species_dict['chosen_ts'] = self.chosen_ts
             species_dict['chosen_ts_list'] = self.chosen_ts_list
+            species_dict['ts_checks'] = self.ts_checks
         if self.original_label is not None:
             species_dict['original_label'] = self.original_label
         if self.e_elect is not None:
@@ -746,6 +751,7 @@ class ARCSpecies(object):
                 if 'unsuccessful_methods' in species_dict else list()
             self.chosen_ts_method = species_dict['chosen_ts_method'] if 'chosen_ts_method' in species_dict else None
             self.chosen_ts = species_dict['chosen_ts'] if 'chosen_ts' in species_dict else None
+            self.ts_checks = species_dict['ts_checks'] if 'ts_checks' in species_dict else None
             self.chosen_ts_list = species_dict['chosen_ts_list'] if 'chosen_ts_list' in species_dict else list()
             self.checkfile = species_dict['checkfile'] if 'checkfile' in species_dict else None
         if 'xyz' in species_dict and self.initial_xyz is None and self.final_xyz is None:
@@ -1806,6 +1812,14 @@ class ARCSpecies(object):
         spc2.rotors_dict = None
 
         return [spc1, spc2]
+
+    def populate_ts_checks(self):
+        """Populate (or restart) the .ts_checks attribute with default (``False``) values."""
+        self.ts_checks = {'E0': False,
+                          'e_elect': False,
+                          'IRC': False,
+                          'normal_mode_displacement': False,
+                          }
 
 
 class TSGuess(object):
