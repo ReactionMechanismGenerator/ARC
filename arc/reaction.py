@@ -560,6 +560,8 @@ class ARCReaction(object):
         """
         if parameter not in ['E0', 'e_elect']:
             raise ValueError(f"The energy parameter must be either 'E0' or 'e_elect', got: {parameter}")
+
+        # Determine E0 and e_elect.
         r_e0 = None if any([spc.e0 is None for spc in self.r_species]) \
             else sum(spc.e0 * self.get_species_count(species=spc, well=0) for spc in self.r_species)
         p_e0 = None if any([spc.e0 is None for spc in self.p_species]) \
@@ -570,38 +572,43 @@ class ARCReaction(object):
         p_e_elect = None if any([spc.e_elect is None for spc in self.p_species]) \
             else sum(spc.e_elect * self.get_species_count(species=spc, well=1) for spc in self.p_species)
         ts_e_elect = self.ts_species.e_elect
+
+        # Determine the parameter by which to compare.
         r_e = r_e0 if parameter == 'E0' else r_e_elect
         p_e = p_e0 if parameter == 'E0' else p_e_elect
         ts_e = ts_e0 if parameter == 'E0' else ts_e_elect
         min_e = extremum_list([r_e, p_e, ts_e], return_min=True)
         e_str = 'E0' if parameter == 'E0' else 'electronic energy'
-        if any([val is None for val in [r_e, p_e, ts_e]]):
+
+        if any([val is not None for val in [r_e, p_e, ts_e]]):
             if verbose:
-                if e_str != 'E0':
-                    logger.info('\n')
-                    logger.error(f"Could not get {e_str} of all species in reaction {self.label}. Cannot check TS.\n")
-                r_text = f'{r_e:.2f} kJ/mol' if r_e is not None else 'None'
-                ts_text = f'{ts_e:.2f} kJ/mol' if ts_e is not None else 'None'
-                p_text = f'{p_e:.2f} kJ/mol' if p_e is not None else 'None'
-                logger.info(f"Reactants {e_str}: {r_text}\n"
-                            f"TS {e_str}: {ts_text}\n"
-                            f"Products {e_str}: {p_text}")
-            if parameter == 'E0':
-                # Use e_elect instead:
-                return self.check_ts(verbose=verbose, parameter='e_elect')
-            return True
-        if ts_e < r_e or ts_e < p_e:
-            if verbose:
-                logger.error(f'\nTS of reaction {self.label} has a lower E0 value than expected:\n')
-                logger.info(f'Reactants: {r_e - min_e:.2f} kJ/mol\n'
-                            f'TS: {ts_e - min_e:.2f} kJ/mol'
-                            f'\nProducts: {p_e - min_e:.2f} kJ/mol')
-            return False
+                r_text = f'{r_e - min_e:.2f} kJ/mol' if r_e is not None else 'None'
+                ts_text = f'{ts_e - min_e:.2f} kJ/mol' if ts_e is not None else 'None'
+                p_text = f'{p_e - min_e:.2f} kJ/mol' if p_e is not None else 'None'
+                logger.info(f'\nReaction {self.label} has the following path {e_str} energies:\n'
+                            f'Reactants: {r_text}\n'
+                            f'TS: {ts_text}\n'
+                            f'Products: {p_text}')
+
+            if all([val is not None for val in [r_e, p_e, ts_e]]):
+                # We have all params, we can make a quantitative decision.
+                if ts_e > r_e and ts_e > p_e:
+                    # TS is above both wells.
+                    return True
+                # TS is not above both wells.
+                if verbose:
+                    logger.error(f'TS of reaction {self.label} has a lower {e_str} value than expected.')
+                    return False
+            # We don't have all params (some are ``None``).
+        # We don't have any params (they are all ``None``), or we don't have any params and were only checking E0.
+        if parameter == 'E0':
+            # Use e_elect instead:
+            logger.debug(f'Could not get all E0 values for reaction {self.label}, comparing energies using e_elect.')
+            return self.check_ts(verbose=verbose, parameter='e_elect')
         if verbose:
-            logger.info(f'\nReaction {self.label} has the following path E0 energies:\n'
-                        f'Reactants: {r_e - min_e:.2f} kJ/mol\n'
-                        f'TS: {ts_e - min_e:.2f} kJ/mol\n'
-                        f'Products: {p_e - min_e:.2f} kJ/mol')
+            logger.info('\n')
+            logger.error(f"Could not get {e_str} of all species in reaction {self.label}. Cannot check TS.\n")
+        # We don't really know, return ``True``
         return True
 
     def check_attributes(self):
