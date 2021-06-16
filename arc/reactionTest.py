@@ -453,6 +453,58 @@ class TestARCReaction(unittest.TestCase):
         self.assertEqual(len(products), 2)
         self.assertNotEqual(products[0].label, products[1].label)
 
+    def test_check_ts(self):
+        """Test the check_ts() method"""
+        rxn1 = ARCReaction(r_species=[ARCSpecies(label='s1', smiles='C')], p_species=[ARCSpecies(label='s2', smiles='C')])
+        rxn1.ts_species = ARCSpecies(label='TS', is_ts=True)
+        # no data
+        self.assertTrue(rxn1.check_ts)
+        # only E0 (correct)
+        rxn1.r_species[0].e0 = 2
+        rxn1.p_species[0].e0 = 50
+        rxn1.ts_species.e0 = 100
+        self.assertTrue(rxn1.check_ts())
+        # only E0 (incorrect)
+        rxn1.r_species[0].e0 = 2
+        rxn1.p_species[0].e0 = 50
+        rxn1.ts_species.e0 = -100
+        self.assertFalse(rxn1.check_ts())
+        # only E0 (partial data)
+        rxn1.r_species[0].e0 = 2
+        rxn1.p_species[0].e0 = None
+        rxn1.ts_species.e0 = -100
+        self.assertTrue(rxn1.check_ts())
+        # also e_elect (correct)
+        rxn1.r_species[0].e_elect = 2
+        rxn1.p_species[0].e_elect = 50
+        rxn1.ts_species.e_elect = 100
+        self.assertTrue(rxn1.check_ts())
+        # also e_elect (incorrect)
+        rxn1.r_species[0].e_elect = 2
+        rxn1.p_species[0].e_elect = 50
+        rxn1.ts_species.e_elect = -100
+        self.assertFalse(rxn1.check_ts())
+        # also e_elect (partial data)
+        rxn1.r_species[0].e_elect = 2
+        rxn1.p_species[0].e_elect = None
+        rxn1.ts_species.e_elect = -100
+        self.assertTrue(rxn1.check_ts())
+        # check e_elect directly (correct)
+        rxn1.r_species[0].e_elect = 2
+        rxn1.p_species[0].e_elect = 50
+        rxn1.ts_species.e_elect = 100
+        self.assertTrue(rxn1.check_ts(parameter='e_elect'))
+        # check e_elect directly (incorrect)
+        rxn1.r_species[0].e_elect = 2
+        rxn1.p_species[0].e_elect = 50
+        rxn1.ts_species.e_elect = -100
+        self.assertFalse(rxn1.check_ts(parameter='e_elect'))
+        # check e_elect directly (partial data)
+        rxn1.r_species[0].e_elect = 2
+        rxn1.p_species[0].e_elect = 50
+        rxn1.ts_species.e_elect = None
+        self.assertTrue(rxn1.check_ts(parameter='e_elect'))
+
     def test_get_atom_map(self):
         """Test getting an atom map for a reaction"""
 
