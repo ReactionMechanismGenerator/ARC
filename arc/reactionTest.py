@@ -517,6 +517,16 @@ class TestARCReaction(unittest.TestCase):
         rxn1.ts_species.e_elect = None
         self.assertTrue(rxn1.check_ts_energy(parameter='e_elect'))
 
+    def test_check_normal_mode_displacement(self):
+        rxn1 = ARCReaction(r_species=[ARCSpecies(label='[CH2]CC', smiles='[CH2]CC')],
+                           p_species=[ARCSpecies(label='C[CH]C', smiles='C[CH]C')])
+        rxn1.ts_species = ARCSpecies(label='TS1', is_ts=True)
+        self.assertFalse(rxn1.ts_species.ts_checks['normal_mode_displacement'])
+        rxn1.determine_family(rmg_database=self.rmgdb)
+        rxn1.check_normal_mode_displacement([15, 25])
+        self.assertFalse(rxn1.ts_species.ts_checks['normal_mode_displacement'])
+        rxn1.check_normal_mode_displacement([1, 2, 3])
+        self.assertTrue(rxn1.ts_species.ts_checks['normal_mode_displacement'])
 
     def test_get_atom_map(self):
         """Test getting an atom map for a reaction"""
