@@ -219,7 +219,7 @@ def parse_t1(path: str) -> Optional[float]:
         The T1 parameter.
     """
     if not os.path.isfile(path):
-        raise InputError('Could not find file {0}'.format(path))
+        raise InputError(f'Could not find file {path}')
     log = ess_factory(fullpath=path, check_for_errors=False)
     try:
         t1 = log.get_T1_diagnostic()
@@ -264,7 +264,7 @@ def parse_zpe(path: str) -> Optional[float]:
         The calculated zero point energy in kJ/mol.
     """
     if not os.path.isfile(path):
-        raise InputError('Could not find file {0}'.format(path))
+        raise InputError(f'Could not find file {path}')
     log = ess_factory(fullpath=path, check_for_errors=False)
     try:
         zpe = log.load_zero_point_energy() * 0.001  # convert to kJ/mol
