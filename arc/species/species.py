@@ -228,6 +228,7 @@ class ARCSpecies(object):
         chosen_ts_list (List[int]): The TSGuess index corresponding to the TS guesses that were tried out.
         chosen_ts_method (str): The TS method that was actually used for optimization.
         ts_checks (Dict[str, bool]): Checks that a TS species went through.
+        rxn_zone_atom_indices (List[int]): 0-indexed atom indices of the active reaction zone.
         ts_conf_spawned (bool): Whether conformers were already spawned for the Species (representing a TS) based on its
                                 TSGuess objects.
         tsg_spawned (bool): If this species is a TS, this attribute describes whether TS guess jobs were already spawned.
@@ -617,6 +618,7 @@ class ARCSpecies(object):
             species_dict['unsuccessful_methods'] = self.unsuccessful_methods
             species_dict['chosen_ts_method'] = self.chosen_ts_method
             species_dict['chosen_ts'] = self.chosen_ts
+            species_dict['rxn_zone_atom_indices'] = self.rxn_zone_atom_indices
             species_dict['chosen_ts_list'] = self.chosen_ts_list
             species_dict['ts_checks'] = self.ts_checks
         if self.original_label is not None:
@@ -748,6 +750,8 @@ class ARCSpecies(object):
                 if 'unsuccessful_methods' in species_dict else list()
             self.chosen_ts_method = species_dict['chosen_ts_method'] if 'chosen_ts_method' in species_dict else None
             self.chosen_ts = species_dict['chosen_ts'] if 'chosen_ts' in species_dict else None
+            self.rxn_zone_atom_indices = species_dict['rxn_zone_atom_indices'] \
+                if 'rxn_zone_atom_indices' in species_dict else None
             self.ts_checks = species_dict['ts_checks'] if 'ts_checks' in species_dict else None
             self.chosen_ts_list = species_dict['chosen_ts_list'] if 'chosen_ts_list' in species_dict else list()
             self.checkfile = species_dict['checkfile'] if 'checkfile' in species_dict else None
