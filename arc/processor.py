@@ -90,6 +90,8 @@ def process_arc_project(thermo_adapter: str,
     # 1. Rates
     if compute_rates:
         for reaction in reactions:
+            if reaction.ts_species.ts_guesses_exhausted:
+                continue
             species_converged = True
             considered_labels = list()  # Species labels considered in this reaction.
             if output_dict[reaction.ts_label]['convergence']:
