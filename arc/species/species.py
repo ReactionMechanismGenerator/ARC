@@ -1866,6 +1866,7 @@ class TSGuess(object):
                                Assigned only if self.success is ``True``.
         successful_irc (bool): Whether the IRS run(s) identified this to be the correct TS by isomorphism of the wells.
         successful_normal_mode (bool): Whether a normal mode check was successful.
+        errors (str): Problems experienced with this TSGuess. Used for logging.
     """
 
     def __init__(self,
@@ -1914,6 +1915,7 @@ class TSGuess(object):
             self.conformer_index = None
             self.successful_irc = None
             self.successful_normal_mode = None
+            self.errors = ''
 
     def as_dict(self) -> dict:
         """A helper function for dumping this object as a dictionary in a YAML file for restarting ARC"""
@@ -1943,6 +1945,8 @@ class TSGuess(object):
                                        ' + '.join([spc.molecule[0].copy(deep=True).to_smiles()
                                                    for spc in self.rmg_reaction.products])])
             ts_dict['rmg_reaction'] = rxn_string
+        if self.errors:
+            ts_dict['errors'] = self.errors
         return ts_dict
 
     def from_dict(self, ts_dict: dict):
@@ -1973,6 +1977,7 @@ class TSGuess(object):
             self.success = self.success if self.success is not None else True
             self.execution_time = datetime.timedelta(seconds=0)
         self.family = ts_dict['family'] if 'family' in ts_dict else None
+        self.errors = ts_dict['errors'] if 'errors' in ts_dict else ''
         if self.family is None and self.method.lower() in ['kinbot', 'autotst']:
             # raise TSError('No family specified for method {0}'.format(self.method))
             logger.warning('No family specified for method {0}'.format(self.method))
