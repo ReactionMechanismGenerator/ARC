@@ -979,9 +979,14 @@ class ARCSpecies(object):
                         xyz = ts_guess.opt_xyz or ts_guess.initial_xyz
                         return xyz
                 return None
-            elif generate:
+            elif generate and (self.mol is not None or self.mol_list is not None):
                 self.get_cheap_conformer()
-                xyz = self.cheap_conformer
+                if self.cheap_conformer is not None:
+                    xyz = self.cheap_conformer
+                else:
+                    self.generate_conformers(n_confs=1)
+                    if self.conformers is not None:
+                        xyz = self.conformers[0]
         return xyz
 
     def determine_rotors(self) -> None:
