@@ -874,6 +874,8 @@ def save_conformers_file(project_directory: str,
                     content += 'TS guess method: ' + ts_methods[i] + '\n'
                 content += 'Failed to converge'
             content += '\n\n\n'
+        if is_ts:
+            logger.info(content)
         f.write(content)
 
 
