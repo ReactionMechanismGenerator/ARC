@@ -581,7 +581,7 @@ def parse_xyz_from_file(path: str) -> Optional[Dict[str, tuple]]:
     return xyz
 
 
-def parse_trajectory(path: str) -> List[Dict[str, tuple]]:
+def parse_trajectory(path: str) -> Optional[List[Dict[str, tuple]]]:
     """
     Parse all geometries from an xyz trajectory file or an ESS output file.
 
@@ -591,7 +591,7 @@ def parse_trajectory(path: str) -> List[Dict[str, tuple]]:
     Raises:
         ParserError: If the trajectory could not be read.
 
-    Returns: List[Dict[str, tuple]]
+    Returns: Optional[List[Dict[str, tuple]]]
         Entries are xyz's on the trajectory.
     """
     lines = _get_lines_from_file(path)
@@ -654,7 +654,8 @@ def parse_trajectory(path: str) -> List[Dict[str, tuple]]:
             traj.append(str_to_xyz(''.join([xyz_line for xyz_line in xyz_lines])))
 
     if not len(traj):
-        raise ParserError(f'Could not parse trajectory from {path}')
+        logger.error(f'Could not parse trajectory from {path}')
+        return None
     return traj
 
 
