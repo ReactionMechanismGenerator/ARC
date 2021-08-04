@@ -565,7 +565,14 @@ def text_plotter(x_data, y_data, labels, text_positions, axis, txt_width, txt_he
 
 # *** Files (libraries, xyz, conformers) ***
 
-def save_geo(species=None, xyz=None, project_directory=None, path=None, filename=None, format_='all'):
+def save_geo(species: Optional[ARCSpecies] = None,
+             xyz: Optional[dict] = None,
+             project_directory: Optional[str] = None,
+             path: Optional[str] = None,
+             filename: Optional[str] = None,
+             format_: str = 'all',
+             comment: Optional[str] = None,
+             ):
     """
     Save a geometry file.
     If ``species`` is given, .final_xyz will be saved if it is not None, otherwise .initial_xyz will be used.
@@ -579,6 +586,7 @@ def save_geo(species=None, xyz=None, project_directory=None, path=None, filename
         path (str, optional): A specific directory path for saving the files.
         filename (str, optional): A name for the file to save (without suffix).
         format_ (str, optional): The format to save. Either 'xyz', 'gjf' or 'all' for both.
+        comment (str, optional): A comment to be stored in the XYZ file after the number of atoms line.
 
     Raises:
         InputError: If neither species nor xyz were given. Or if neither project_directory nor path were given.
@@ -610,6 +618,8 @@ def save_geo(species=None, xyz=None, project_directory=None, path=None, filename
         xyz_file = f'{number_of_atoms}\n'
         if species is not None:
             xyz_file += f'{species.label} optimized at {species.opt_level}\n'
+        elif comment is not None:
+            xyz_file += f'{comment}\n'
         else:
             xyz_file += 'coordinates\n'
         xyz_file += f'{xyz_str}\n'
