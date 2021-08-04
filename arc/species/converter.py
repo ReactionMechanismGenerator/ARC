@@ -439,6 +439,7 @@ def check_xyz_dict(xyz: Union[dict, str]) -> dict:
     If it is a string, convert it.
     If it is a Z matrix, convert it to cartesian coordinates,
     If isotopes are not in xyz_dict, common values will be added.
+    If a part of the xyz structure is a np.ndarray type, convert it by always calling xyz_from_data().
 
     Args:
          xyz (Union[dict, str]): The xyz dictionary.
@@ -462,8 +463,9 @@ def check_xyz_dict(xyz: Union[dict, str]) -> dict:
     if len(xyz_dict['symbols']) != len(xyz_dict['coords']):
         raise ConverterError(f'Got {len(xyz_dict["symbols"])} symbols and {len(xyz_dict["coords"])} '
                              f'coordinates:\n{xyz_dict}')
-    if 'isotopes' not in list(xyz_dict.keys()):
-        xyz_dict = xyz_from_data(coords=xyz_dict['coords'], symbols=xyz_dict['symbols'])
+    xyz_dict = xyz_from_data(coords=xyz_dict['coords'],
+                             symbols=xyz_dict['symbols'],
+                             isotopes=xyz_dict['isotopes'] if 'isotopes' in list(xyz_dict.keys()) else None)
     if len(xyz_dict['symbols']) != len(xyz_dict['isotopes']):
         raise ConverterError(f'Got {len(xyz_dict["symbols"])} symbols and {len(xyz_dict["isotopes"])} '
                              f'isotopes:\n{xyz_dict}')
