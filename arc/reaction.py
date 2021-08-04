@@ -99,7 +99,7 @@ class ARCReaction(object):
                  ts_methods: Optional[List[str]] = None,
                  ts_xyz_guess: Optional[list] = None,
                  multiplicity: Optional[int] = None,
-                 charge: int = 0,
+                 charge: Optional[int] = None,
                  reaction_dict: Optional[dict] = None,
                  species_list: Optional[List[ARCSpecies]] = None,
                  preserve_param_in_scan: Optional[list] = None,
@@ -118,6 +118,9 @@ class ARCReaction(object):
         self.rmg_reactions = None
         self.ts_xyz_guess = ts_xyz_guess or list()
         self.preserve_param_in_scan = preserve_param_in_scan
+        self._atom_map = None
+        self._multiplicity = multiplicity
+        self._charge = charge
         if reaction_dict is not None:
             # Reading from a dictionary
             self.from_dict(reaction_dict=reaction_dict, species_list=species_list)
@@ -126,11 +129,6 @@ class ARCReaction(object):
             self.label = label
             self.index = None
             self.ts_species = None
-            self.multiplicity = multiplicity
-            self.charge = charge
-            if self.multiplicity is not None and not isinstance(self.multiplicity, int):
-                raise InputError('Reaction multiplicity must be an integer, got {0} of type {1}.'.format(
-                    self.multiplicity, type(self.multiplicity)))
             reactants = reactants or [spc.label for spc in self.r_species]
             self.reactants = [check_label(reactant) for reactant in reactants] if reactants else list()
             products = products or [spc.label for spc in self.p_species] or None
@@ -142,7 +140,6 @@ class ARCReaction(object):
             self.ts_methods = ts_methods if ts_methods is not None else default_ts_methods
             self.ts_methods = [tsm.lower() for tsm in self.ts_methods]
             self.ts_xyz_guess = ts_xyz_guess if ts_xyz_guess is not None else list()
-            self._atom_map = None
             self.done_opt_r_n_p = None
         if len(self.reactants) > 3 or len(self.products) > 3:
             raise ReactionError(f'An ARC Reaction can have up to three reactants / products. got {len(self.reactants)} '
@@ -163,6 +160,40 @@ class ARCReaction(object):
     def atom_map(self, value):
         """Allow setting the atom map"""
         self._atom_map = value
+
+    @property
+    def charge(self):
+        """The net electric charge of the reaction PES"""
+        if self._charge is None:
+            if len(self.r_species):
+                self._charge = self.get_rxn_charge()
+            elif self.rmg_reaction is not None:
+                self._charge = sum([spc.molecule[0].get_net_charge() for spc in
+                                    self.rmg_reaction.reactants + self.rmg_reaction.products])
+        return self._charge
+
+    @charge.setter
+    def charge(self, value):
+        """Allow setting the reaction charge"""
+        if value is not None and not isinstance(value, int):
+            raise InputError(f'Reaction charge must be an integer, got {value} which is a {type(value)}.')
+        self._charge = value
+
+    @property
+    def multiplicity(self):
+        """The electron spin multiplicity of the reaction PES"""
+        if self._multiplicity is None:
+            self._multiplicity = self.get_rxn_multiplicity()
+        return self._multiplicity
+
+    @multiplicity.setter
+    def multiplicity(self, value):
+        """Allow setting the reaction multiplicity"""
+        self._multiplicity = value
+        if value is not None:
+            if not isinstance(value, int):
+                raise InputError(f'Reaction multiplicity must be an integer, got {value} which is a {type(value)}.')
+            logger.info(f'Setting multiplicity of reaction {self.label} to {self._multiplicity}')
 
     def __str__(self) -> str:
         """Return a string representation of the object"""
@@ -250,7 +281,7 @@ class ARCReaction(object):
         self.ts_xyz_guess = reaction_dict['ts_xyz_guess'] if 'ts_xyz_guess' in reaction_dict else list()
         self.preserve_param_in_scan = reaction_dict['preserve_param_in_scan'] \
             if 'preserve_param_in_scan' in reaction_dict else None
-        self._atom_map = reaction_dict['atom_map'] if 'atom_map' in reaction_dict else None
+        self.atom_map = reaction_dict['atom_map'] if 'atom_map' in reaction_dict else None
         self.done_opt_r_n_p = reaction_dict['done_opt_r_n_p'] if 'done_opt_r_n_p' in reaction_dict else None
 
     def set_label_reactants_products(self, species_list: Optional[List[ARCSpecies]] = None):
@@ -328,124 +359,76 @@ class ARCReaction(object):
             self.p_species = [ARCSpecies(label=check_label(spc.label), mol=spc.molecule[0])
                               for spc in self.rmg_reaction.products]
 
-    def determine_rxn_multiplicity(self):
+    def get_rxn_multiplicity(self):
         """A helper function for determining the surface multiplicity"""
-        if self.multiplicity is None:
-            ordered_r_mult_list, ordered_p_mult_list = list(), list()
-            if len(self.r_species):
-                if len(self.r_species) == 1:
-                    self.multiplicity = self.r_species[0].multiplicity
-                elif len(self.r_species) == 2:
-                    ordered_r_mult_list = sorted([self.r_species[0].multiplicity,
-                                                  self.r_species[1].multiplicity])
-                elif len(self.r_species) == 3:
-                    ordered_r_mult_list = sorted([self.r_species[0].multiplicity,
-                                                  self.r_species[1].multiplicity,
-                                                  self.r_species[2].multiplicity])
-                if len(self.p_species) == 1:
-                    self.multiplicity = self.p_species[0].multiplicity
-                elif len(self.p_species) == 2:
-                    ordered_p_mult_list = sorted([self.p_species[0].multiplicity,
-                                                  self.p_species[1].multiplicity])
-                elif len(self.p_species) == 3:
-                    ordered_p_mult_list = sorted([self.p_species[0].multiplicity,
-                                                  self.p_species[1].multiplicity,
-                                                  self.p_species[2].multiplicity])
-            elif self.rmg_reaction is not None:
-                if len(self.rmg_reaction.reactants) == 1:
-                    self.multiplicity = self.rmg_reaction.reactants[0].molecule[0].multiplicity
-                elif len(self.rmg_reaction.reactants) == 2:
-                    ordered_r_mult_list = sorted([self.rmg_reaction.reactants[0].molecule[0].multiplicity,
-                                                  self.rmg_reaction.reactants[1].molecule[0].multiplicity])
-                elif len(self.rmg_reaction.reactants) == 3:
-                    ordered_r_mult_list = sorted([self.rmg_reaction.reactants[0].molecule[0].multiplicity,
-                                                  self.rmg_reaction.reactants[1].molecule[0].multiplicity,
-                                                  self.rmg_reaction.reactants[2].molecule[0].multiplicity])
-                if len(self.rmg_reaction.products) == 1:
-                    self.multiplicity = self.rmg_reaction.products[0].molecule[0].multiplicity
-                elif len(self.rmg_reaction.products) == 2:
-                    ordered_p_mult_list = sorted([self.rmg_reaction.products[0].molecule[0].multiplicity,
-                                                  self.rmg_reaction.products[1].molecule[0].multiplicity])
-                elif len(self.rmg_reaction.products) == 3:
-                    ordered_p_mult_list = sorted([self.rmg_reaction.products[0].molecule[0].multiplicity,
-                                                  self.rmg_reaction.products[1].molecule[0].multiplicity,
-                                                  self.rmg_reaction.products[2].molecule[0].multiplicity])
-            if self.multiplicity is None:
-                if ordered_r_mult_list == [1, 1]:
-                    self.multiplicity = 1  # S + S = D
-                elif ordered_r_mult_list == [1, 2]:
-                    self.multiplicity = 2  # S + D = D
-                elif ordered_r_mult_list == [2, 2]:
-                    # D + D = S or T
-                    if ordered_p_mult_list in [[1, 1], [1, 1, 1]]:
-                        self.multiplicity = 1
-                    elif ordered_p_mult_list in [[1, 3], [1, 1, 3]]:
-                        self.multiplicity = 3
-                    else:
-                        self.multiplicity = 1
-                        logger.warning(f'ASSUMING a multiplicity of 1 (singlet) for reaction {self.label}')
-                elif ordered_r_mult_list == [1, 3]:
-                    self.multiplicity = 3  # S + T = T
-                elif ordered_r_mult_list == [2, 3]:
-                    # D + T = D or Q
-                    if ordered_p_mult_list in [[1, 2], [1, 1, 2]]:
-                        self.multiplicity = 2
-                    elif ordered_p_mult_list in [[1, 4], [1, 1, 4]]:
-                        self.multiplicity = 4
-                    else:
-                        self.multiplicity = 2
-                        logger.warning(f'ASSUMING a multiplicity of 2 (doublet) for reaction {self.label}')
-                elif ordered_r_mult_list == [3, 3]:
-                    # T + T = S or T or quintet
-                    if ordered_p_mult_list in [[1, 1], [1, 1, 1]]:
-                        self.multiplicity = 1
-                    elif ordered_p_mult_list in [[1, 3], [1, 1, 3]]:
-                        self.multiplicity = 3
-                    elif ordered_p_mult_list in [[1, 5], [1, 1, 5]]:
-                        self.multiplicity = 5
-                    else:
-                        self.multiplicity = 3
-                        logger.warning(f'ASSUMING a multiplicity of 3 (triplet) for reaction {self.label}')
-                elif ordered_r_mult_list == [1, 1, 1]:
-                    self.multiplicity = 1  # S + S + S = S
-                elif ordered_r_mult_list == [1, 1, 2]:
-                    self.multiplicity = 2  # S + S + D = D
-                elif ordered_r_mult_list == [1, 1, 3]:
-                    self.multiplicity = 3  # S + S + T = T
-                elif ordered_r_mult_list == [1, 2, 2]:
-                    # S + D + D = S or T
-                    if ordered_p_mult_list in [[1, 1], [1, 1, 1]]:
-                        self.multiplicity = 1
-                    elif ordered_p_mult_list in [[1, 3], [1, 1, 3]]:
-                        self.multiplicity = 3
-                    else:
-                        self.multiplicity = 1
-                        logger.warning(f'ASSUMING a multiplicity of 1 (singlet) for reaction {self.label}')
-                elif ordered_r_mult_list == [2, 2, 2]:
-                    # D + D + D = D or Q
-                    if ordered_p_mult_list in [[1, 2], [1, 1, 2]]:
-                        self.multiplicity = 2
-                    elif ordered_p_mult_list in [[1, 4], [1, 1, 4]]:
-                        self.multiplicity = 4
-                    else:
-                        self.multiplicity = 2
-                        logger.warning(f'ASSUMING a multiplicity of 2 (doublet) for reaction {self.label}')
-                elif ordered_r_mult_list == [1, 2, 3]:
-                    # S + D + T = D or Q
-                    if ordered_p_mult_list in [[1, 2], [1, 1, 2]]:
-                        self.multiplicity = 2
-                    elif ordered_p_mult_list in [[1, 4], [1, 1, 4]]:
-                        self.multiplicity = 4
-                    self.multiplicity = 2
-                    logger.warning(f'ASSUMING a multiplicity of 2 (doublet) for reaction {self.label}')
-                else:
-                    raise ReactionError(f'Could not determine multiplicity for reaction {self.label}')
-            logger.info(f'Setting multiplicity of reaction {self.label} to {self.multiplicity}')
+        reactants, products = self.get_reactants_and_products(arc=True)
+        multiplicity = None
+        ordered_r_mult_list, ordered_p_mult_list = list(), list()
+        if len(reactants):
+            if len(reactants) == 1:
+                return reactants[0].multiplicity
+            if len(products) == 1:
+                return products[0].multiplicity
+            ordered_r_mult_list = sorted([r_spc.multiplicity for r_spc in reactants])
+            ordered_p_mult_list = sorted([p_spc.multiplicity for p_spc in products])
 
-    def determine_rxn_charge(self):
+        elif self.rmg_reaction is not None:
+            if len(self.rmg_reaction.reactants) == 1:
+                return self.rmg_reaction.reactants[0].molecule[0].multiplicity
+            if len(self.rmg_reaction.products) == 1:
+                return self.rmg_reaction.products[0].molecule[0].multiplicity
+            ordered_r_mult_list = sorted([r_spc.molecule[0].multiplicity for r_spc in self.rmg_reaction.reactants])
+            ordered_p_mult_list = sorted([p_spc.molecule[0].multiplicity for p_spc in self.rmg_reaction.products])
+
+        for list_1, list_2 in [(ordered_r_mult_list, ordered_p_mult_list),
+                               (ordered_p_mult_list, ordered_r_mult_list)]:
+            if all(m == 1 for m in list_1) and multiplicity is None:
+                multiplicity = 1  # S + S = S or T
+                break
+            if all(m == 2 for m in list_1) and len(list_1) == 2 \
+                    and all(m == 2 for m in list_2) and len(list_2) == 2 and multiplicity is None:
+                multiplicity = 1  # D + D = S or T
+                break
+            if 2 in list_1 and all(m == 1 for i, m in enumerate(list_1) if i != list_1.index(2)):
+                multiplicity = 2  # S + D = D
+                break
+            if 3 in list_1 and all(m == 1 for i, m in enumerate(list_1) if i != list_1.index(3)):
+                multiplicity = 3  # S + T = T
+                break
+            if 4 in list_1 and all(m == 1 for i, m in enumerate(list_1) if i != list_1.index(4)):
+                multiplicity = 4  # S + Q = Q
+                break
+            if all(m == 2 for m in list_1):
+                # D + D = S or T
+                # D + D + D = D or Q
+                if len(list_1) % 2 == 0:  # even number of D's in list_1, m must be an odd number
+                    if any(m > 2 for m in list_2):
+                        multiplicity = max(list_2) if max(list_2) % 2 == 1 else max(list_2) - 1
+                else:  # odd number of D's in list_1, m must be even
+                    multiplicity = max(list_2) if max(list_2) % 2 == 0 else max(list_2) - 1
+            if all(m == 3 for m in list_1):
+                # T + T = S or P
+                # T + T + T = T or 7
+                if len(list_1) % 2 == 0:  # even number of T's in list_1, m must be 1 or 5
+                    multiplicity = 1
+                    logger.warning(f'ASSUMING a multiplicity of 1 (singlet) for reaction {self.label}')
+                else:  # odd number of D's in list_1, m must be 3 or 7
+                    multiplicity = 3
+                    logger.warning(f'ASSUMING a multiplicity of 3 (triplet) for reaction {self.label}')
+            if list_1 == [2, 3] and 4 not in list_2:
+                # D + T = D or Q
+                multiplicity = 2
+                logger.warning(f'ASSUMING a multiplicity of 2 (doublet) for reaction {self.label}')
+
+        if multiplicity is None:
+            logger.error(f'Could not determine multiplicity for reaction {self.label}')
+            return None
+        return multiplicity
+
+    def get_rxn_charge(self):
         """A helper function for determining the surface charge"""
         if len(self.r_species):
-            self.charge = sum([r.charge for r in self.r_species])
+            return sum([r.charge for r in self.r_species])
 
     def determine_family(self,
                          rmg_database,
