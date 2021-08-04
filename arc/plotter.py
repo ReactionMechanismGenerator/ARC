@@ -651,26 +651,27 @@ def save_irc_traj_animation(irc_f_path, irc_r_path, out_path):
     traj1 = parse_trajectory(irc_f_path)
     traj2 = parse_trajectory(irc_r_path)
 
-    traj = traj1[:1:-1] + traj2[1:-1] + traj2[:1:-1] + traj1[1:-1]
+    if traj1 is not None and traj2 is not None:
+        traj = traj1[:1:-1] + traj2[1:-1] + traj2[:1:-1] + traj1[1:-1]
 
-    with open(out_path, 'w') as f:
-        f.write('Entering Link 1\n')
-        for traj_index, xyz in enumerate(traj):
-            xs, ys, zs = xyz_to_x_y_z(xyz)
-            f.write('                         Standard orientation:\n')
-            f.write(' ---------------------------------------------------------------------\n')
-            f.write(' Center     Atomic     Atomic              Coordinates (Angstroms)\n')
-            f.write(' Number     Number      Type              X           Y           Z\n')
-            f.write(' ---------------------------------------------------------------------\n')
-            for i, symbol in enumerate(xyz['symbols']):
-                el_num, x, y, z = qcel.periodictable.to_Z(symbol), xs[i], ys[i], zs[i]
-                f.write(f'    {i + 1:>5}          {el_num}             0        {x} {y} {z}\n')
-            f.write(' ---------------------------------------------------------------------\n')
-            f.write(' GradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGrad\n')
-            f.write(f' Step number   1 out of a maximum of  29 on scan point     '
-                    f'{traj_index + 1} out of    {len(traj)}\n')
-            f.write(' GradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGrad\n')
-        f.write(' Normal termination of Gaussian 16\n')
+        with open(out_path, 'w') as f:
+            f.write('Entering Link 1\n')
+            for traj_index, xyz in enumerate(traj):
+                xs, ys, zs = xyz_to_x_y_z(xyz)
+                f.write('                         Standard orientation:\n')
+                f.write(' ---------------------------------------------------------------------\n')
+                f.write(' Center     Atomic     Atomic              Coordinates (Angstroms)\n')
+                f.write(' Number     Number      Type              X           Y           Z\n')
+                f.write(' ---------------------------------------------------------------------\n')
+                for i, symbol in enumerate(xyz['symbols']):
+                    el_num, x, y, z = qcel.periodictable.to_Z(symbol), xs[i], ys[i], zs[i]
+                    f.write(f'    {i + 1:>5}          {el_num}             0        {x} {y} {z}\n')
+                f.write(' ---------------------------------------------------------------------\n')
+                f.write(' GradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGrad\n')
+                f.write(f' Step number   1 out of a maximum of  29 on scan point     '
+                        f'{traj_index + 1} out of    {len(traj)}\n')
+                f.write(' GradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGrad\n')
+            f.write(' Normal termination of Gaussian 16\n')
 
 
 # *** Files (libraries, xyz, conformers) ***
