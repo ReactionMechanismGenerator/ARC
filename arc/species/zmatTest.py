@@ -1534,6 +1534,32 @@ class TestZMat(unittest.TestCase):
         self.assertTrue(zmat.is_atom_in_new_fragment(atom_index=46, zmat=zmat1, fragments=fragments))
         self.assertFalse(zmat.is_atom_in_new_fragment(atom_index=44, zmat=zmat1, fragments=fragments))
 
+    def test_up_param(self):
+        """Test bumping up a zmat parameter"""
+        param = 'R_1_2'
+        new_param = zmat.up_param(param, 3)
+        self.assertEqual(new_param, 'R_4_5')
+
+        param = 'A_1_2_9'
+        new_param = zmat.up_param(param, 8)
+        self.assertEqual(new_param, 'A_9_10_17')
+
+        param = 'D_17_0_5_2'
+        new_param = zmat.up_param(param, 3)
+        self.assertEqual(new_param, 'D_20_3_8_5')
+
+        param = 'DX_1_0_5_2'
+        new_param = zmat.up_param(param, 1)
+        self.assertEqual(new_param, 'DX_2_1_6_3')
+
+        param = 'A_5_8_9'
+        new_param = zmat.up_param(param, -3)
+        self.assertEqual(new_param, 'A_2_5_6')
+
+        param = 'A_5_8_9'
+        new_param = zmat.up_param(param, increment_list=[2, 5, -1])
+        self.assertEqual(new_param, 'A_7_13_8')
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
