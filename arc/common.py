@@ -11,6 +11,7 @@ import datetime
 import logging
 import os
 import pprint
+import re
 import shutil
 import subprocess
 import sys
@@ -1154,3 +1155,26 @@ def get_close_tuple(key_1: Tuple[Union[float, str], ...],
         # couldn't find a close key
         return None
     raise ValueError(f'Could not locate a key close to {key_1} within the tolerance {tolerance} in the given keys list.')
+
+
+def timedelta_from_str(time_str: str):
+    """
+    Get a datetime.timedelta object from its str() representation
+
+    Args:
+        time_str (str): The string representation of a datetime.timedelta object.
+
+    Returns:
+        datetime.timedelta: The corresponding timedelta object.
+    """
+    regex = re.compile(r'((?P<hours>\d+?)hr)?((?P<minutes>\d+?)m)?((?P<seconds>\d+?)s)?')
+
+    parts = regex.match(time_str)
+    if not parts:
+        return
+    parts = parts.groupdict()
+    time_params = {}
+    for (name, param) in parts.items():
+        if param:
+            time_params[name] = int(param)
+    return datetime.timedelta(**time_params)
