@@ -2,7 +2,7 @@
 A module for representing a reaction.
 """
 
-from typing import List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import numpy as np
 from qcelemental.exceptions import ValidationError
@@ -15,7 +15,7 @@ import arc.rmgdb as rmgdb
 from arc.common import extermum_list, get_logger
 from arc.exceptions import ReactionError, InputError
 from arc.imports import settings
-from arc.species.converter import str_to_xyz, xyz_to_str
+from arc.species.converter import check_xyz_dict, str_to_xyz, xyz_to_str
 from arc.species.species import ARCSpecies, check_atom_balance, check_label
 
 
@@ -786,6 +786,35 @@ class ARCReaction(object):
                                     )
         mapped_xyz = str_to_xyz(mapped_xyz)
         return mapped_xyz, mapped_product
+
+    def get_products_xyz(self, return_format='str') -> Union[dict, str]:
+        """
+        Get a combined string/dict representation of the cartesian coordinates of all product species.
+        The resulting coordinates are ordered as the reactants using an atom map.
+        Args:
+            return_format (str): Either ``'dict'`` to return a dict format or ``'str'`` to return a string format.
+                          Default: ``'str'``.
+        Returns: Union[dict, str]
+            The combined cartesian coordinates
+        Todo:
+            - identify flux pairs like in RMG
+            - orient a line: cm1 - X - Y - cm2 if there are two reactants
+            - Combine with get_mapped_product_xyz()
+        """
+        xyz_dict = mapped_xyz_dict = {'symbols': tuple(), 'isotopes': tuple(), 'coords': tuple()}
+        for product in self.p_species:
+            xyz = product.get_xyz()
+            xyz_dict['symbols'] += xyz['symbols']
+            xyz_dict['isotopes'] += xyz['isotopes']
+            xyz_dict['coords'] += xyz['coords']
+        for i in range(len(xyz_dict['symbols'])):
+            mapped_xyz_dict['symbols'] += (xyz_dict['symbols'][self.atom_map[i]],)
+            mapped_xyz_dict['isotopes'] += (xyz_dict['isotopes'][self.atom_map[i]],)
+            mapped_xyz_dict['coords'] += (xyz_dict['coords'][self.atom_map[i]],)
+        mapped_xyz_dict = check_xyz_dict(mapped_xyz_dict)
+        if return_format == 'str':
+            mapped_xyz_dict = xyz_to_str(mapped_xyz_dict)
+        return mapped_xyz_dict
 
 
 def remove_dup_species(species_list: List[ARCSpecies]) -> List[ARCSpecies]:
