@@ -376,10 +376,10 @@ def read_yaml_file(path: str,
 
 
 def save_yaml_file(path: str,
-                   content: list or dict,
+                   content: Union[list, dict],
                    ) -> None:
     """
-    Save a YAML file (usually an input / restart file, but also conformers file)
+    Save a YAML file (usually an input / restart file, but also conformers file).
 
     Args:
         path (str): The YAML file path to save.
@@ -387,13 +387,27 @@ def save_yaml_file(path: str,
     """
     if not isinstance(path, str):
         raise InputError(f'path must be a string, got {path} which is a {type(path)}')
-    yaml.add_representer(str, string_representer)
     logger.debug('Creating a restart file...')
-    content = yaml.dump(data=content)
+    yaml_str = to_yaml(py_content=content)
     if '/' in path and os.path.dirname(path) and not os.path.exists(os.path.dirname(path)):
         os.makedirs(os.path.dirname(path))
     with open(path, 'w') as f:
-        f.write(content)
+        f.write(yaml_str)
+
+
+def to_yaml(py_content: Union[list, dict]) -> str:
+    """
+    Convert a Python list or dictionary to a YAML string format.
+
+    Args:
+        py_content (list, dict): The Python content to save.
+
+    Returns: str
+        The corresponding YAML representation.
+    """
+    yaml.add_representer(str, string_representer)
+    yaml_str = yaml.dump(data=py_content)
+    return yaml_str
 
 
 def globalize_paths(file_path: str,
