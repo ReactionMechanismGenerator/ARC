@@ -6,6 +6,7 @@ This module contains unit tests for ARC's common module
 """
 
 import copy
+import datetime
 import os
 import time
 import unittest
@@ -647,6 +648,16 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
         self.assertIsNone(common.get_close_tuple(key_1=(1.075, -150.03), keys=keys))
         with self.assertRaises(ValueError):
             common.get_close_tuple(key_1=(1.075, -150.03), keys=keys, raise_error=True)
+
+    def test_timedelta_from_str(self):
+        """Test reconstructing a timedelta object from its string representation"""
+        t0 = datetime.datetime.now()
+        time.sleep(0.5)
+        delta = datetime.datetime.now() - t0
+        str_delta = str(delta)
+        self.assertIn('0:00:00.5', str_delta)
+        reconstructed_delta = common.timedelta_from_str(str_delta)
+        self.assertIsInstance(reconstructed_delta, datetime.timedelta)
 
     @classmethod
     def tearDownClass(cls):
