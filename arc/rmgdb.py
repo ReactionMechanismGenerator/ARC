@@ -243,7 +243,7 @@ def loop_families(rmgdb: RMGDatabase,
         if len(reaction.products) == 1:
             for fam_rxn in family_reactions_by_r:
                 for product0 in reaction.products[0].molecule:
-                    if same_species_lists([product0], fam_rxn.products):
+                    if same_species_lists([product0], fam_rxn.products, save_order=True):
                         family_reactions_by_rnp.append(fam_rxn)
             degenerate_reactions = find_degenerate_reactions(rxn_list=family_reactions_by_rnp,
                                                              same_reactants=False,
@@ -252,7 +252,7 @@ def loop_families(rmgdb: RMGDatabase,
             for fam_rxn in family_reactions_by_r:
                 for product0 in reaction.products[0].molecule:
                     for product1 in reaction.products[1].molecule:
-                        if same_species_lists([product0, product1], fam_rxn.products):
+                        if same_species_lists([product0, product1], fam_rxn.products, save_order=True):
                             family_reactions_by_rnp.append(fam_rxn)
             degenerate_reactions = find_degenerate_reactions(rxn_list=family_reactions_by_rnp,
                                                              same_reactants=False,
@@ -262,7 +262,7 @@ def loop_families(rmgdb: RMGDatabase,
                 for product0 in reaction.products[0].molecule:
                     for product1 in reaction.products[1].molecule:
                         for product2 in reaction.products[2].molecule:
-                            if same_species_lists([product0, product1, product2], fam_rxn.products):
+                            if same_species_lists([product0, product1, product2], fam_rxn.products, save_order=True):
                                 family_reactions_by_rnp.append(fam_rxn)
             degenerate_reactions = find_degenerate_reactions(rxn_list=family_reactions_by_rnp,
                                                              same_reactants=False,
