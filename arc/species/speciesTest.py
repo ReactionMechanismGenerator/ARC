@@ -566,6 +566,14 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertEqual(spc.mol.to_smiles(), '[OH]')
         self.assertFalse(spc.is_ts)
 
+    def test_copy(self):
+        """Test the copy() method."""
+        spc_copy = self.spc6.copy()
+        self.assertIsNot(self.spc6, spc_copy)
+        self.assertEqual(spc_copy.multiplicity, self.spc6.multiplicity)
+        self.assertEqual(spc_copy.get_xyz()['symbols'], self.spc6.get_xyz()['symbols'])
+        self.assertEqual(spc_copy.mol.to_smiles(), self.spc6.mol.to_smiles())
+
     def test_determine_rotor_type(self):
         """Test that we correctly determine whether a rotor is FreeRotor or HinderedRotor"""
         free_path = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'CH3C(O)O_FreeRotor.out')
