@@ -168,6 +168,7 @@ class ArkaneAdapter(StatmechAdapter):
         Generate a high pressure rate coefficient for a reaction.
         Populates the reaction.kinetics attribute.
         """
+        arkane.input.transition_state_dict = dict()
         ts_species = self.species_dict[self.reaction.ts_label]
         if self.output_dict[ts_species.label]['convergence']:
             success = True
@@ -421,7 +422,6 @@ class ArkaneAdapter(StatmechAdapter):
                         f'Original electronic energy: {e_original * 0.001} kJ/mol\n'
                         f'Solvation correction: {(e_sol - e_no_sol) * 0.001} kJ/mol\n'
                         f'New electronic energy: {(e_original + e_sol - e_no_sol) * 0.001} kJ/mol\n\n')
-            print(f'e_elect final: {(e_original + e_sol - e_no_sol) * 0.001} kJ/mol\n\n')
             input_file = input_files['arkane_input_species_explicit_e']
             input_file = input_file.format(bonds=bonds,
                                            symmetry=species.external_symmetry,
