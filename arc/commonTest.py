@@ -649,6 +649,18 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
         with self.assertRaises(ValueError):
             common.get_close_tuple(key_1=(1.075, -150.03), keys=keys, raise_error=True)
 
+    def test_get_number_with_ordinal_indicator(self):
+        """Test the get_number_with_ordinal_indicator() function"""
+        self.assertEqual(common.get_number_with_ordinal_indicator(1), '1st')
+        self.assertEqual(common.get_number_with_ordinal_indicator(2), '2nd')
+        self.assertEqual(common.get_number_with_ordinal_indicator(3), '3rd')
+        self.assertEqual(common.get_number_with_ordinal_indicator(4), '4th')
+        self.assertEqual(common.get_number_with_ordinal_indicator(50), '50th')
+        self.assertEqual(common.get_number_with_ordinal_indicator(23), '23rd')
+        self.assertEqual(common.get_number_with_ordinal_indicator(31), '31st')
+        self.assertEqual(common.get_number_with_ordinal_indicator(22), '22nd')
+        self.assertEqual(common.get_number_with_ordinal_indicator(100), '100th')
+
     def test_timedelta_from_str(self):
         """Test reconstructing a timedelta object from its string representation"""
         t0 = datetime.datetime.now()
