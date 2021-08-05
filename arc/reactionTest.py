@@ -269,6 +269,16 @@ class TestARCReaction(unittest.TestCase):
         self.assertEqual(rxn.label, 'CH4 + OH <=> CH3 + H2O')
         self.assertEqual(rxn.ts_methods, [tsm.lower() for tsm in default_ts_methods])
 
+    def test_is_isomerization(self):
+        """Test the is_isomerization() method"""
+        self.assertFalse(self.rxn1.is_isomerization())
+        self.assertFalse(self.rxn2.is_isomerization())
+        self.assertTrue(self.rxn3.is_isomerization())
+        self.assertFalse(self.rxn4.is_isomerization())
+        self.assertFalse(self.rxn5.is_isomerization())
+        self.assertFalse(self.rxn6.is_isomerization())
+        self.assertFalse(self.rxn7.is_isomerization())
+
     def test_from_rmg_reaction(self):
         """Test setting up an ARCReaction from an RMG Reaction"""
         rmg_rxn_1 = Reaction(reactants=[Species(label='nC3H7', smiles='[CH2]CC')],
