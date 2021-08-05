@@ -60,6 +60,7 @@ class TestARC(unittest.TestCase):
         self.assertIn('Bond corrections:', long_thermo_description)
         self.assertIn("'C-C': 1", long_thermo_description)
         self.assertIn("'C-H': 6", long_thermo_description)
+        # mol.atoms are not tested since all id's (including connectivity) changes depending on how the test is run.
         expected_dict = {'T_count': 50,
                          'T_max': None,
                          'T_min': None,
@@ -127,14 +128,9 @@ class TestARC(unittest.TestCase):
                                       'is_ts': False,
                                       'label': 'spc1',
                                       'long_thermo_description': long_thermo_description,
-                                      'mol': '1 C u0 p0 c0 {2,S} {3,S} {4,S} {5,S}\n'
-                                             '2 C u0 p0 c0 {1,S} {6,S} {7,S} {8,S}\n'
-                                             '3 H u0 p0 c0 {1,S}\n'
-                                             '4 H u0 p0 c0 {1,S}\n'
-                                             '5 H u0 p0 c0 {1,S}\n'
-                                             '6 H u0 p0 c0 {2,S}\n'
-                                             '7 H u0 p0 c0 {2,S}\n'
-                                             '8 H u0 p0 c0 {2,S}\n',
+                                      'mol': {'atoms': restart_dict['species'][0]['mol']['atoms'],
+                                              'multiplicity': 1,
+                                              'props': {}},
                                       'multiplicity': 1,
                                       'number_of_rotors': 0}],
                          'thermo_adapter': 'Arkane',
