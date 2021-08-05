@@ -1491,14 +1491,18 @@ class TestTSGuess(unittest.TestCase):
         self.assertEqual(tsg_dict, expected_dict)
 
     def test_from_dict(self):
-        """Test TSGuess.from_dict()
-        Also tests that the round trip to and from a dictionary ended in an RMG Reaction object"""
+        """
+        Test TSGuess.from_dict()
+
+        Also tests that the round trip to and from a dictionary ended in an RMG Reaction object.
+        """
         ts_dict = self.tsg1.as_dict()
         tsg = TSGuess(ts_dict=ts_dict)
         self.assertEqual(tsg.method, 'autotst')
         self.assertTrue(isinstance(tsg.rmg_reaction, Reaction))
 
-    def test_xyz_to_2d_get_formula(self):
+    def test_xyz_perception(self):
+        """Test MolGraph.get_formula()"""
         xyz_arb = {'symbols': ('H', 'C', 'H', 'H', 'O', 'N', 'O'),
                  'isotopes': (1, 13, 1, 1, 16, 14, 16),
                  'coords': ((-1.0, 0.0, 0.0),
