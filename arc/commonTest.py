@@ -303,6 +303,9 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
         self.assertEqual(common.key_by_val(d, 9), 3)
         self.assertEqual(common.key_by_val(d, 'X'), 2)
 
+        d = {1: 5, 2: 'X8', 3: 9}
+        self.assertEqual(common.key_by_val(d, 8), 2)
+
         with self.assertRaises(ValueError):
             common.key_by_val(d, 10)
 
