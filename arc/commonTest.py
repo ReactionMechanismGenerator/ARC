@@ -659,6 +659,17 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
         reconstructed_delta = common.timedelta_from_str(str_delta)
         self.assertIsInstance(reconstructed_delta, datetime.timedelta)
 
+    def test_torsions_to_scans(self):
+        """Test the torsions_to_scans() function"""
+        self.assertEqual(common.torsions_to_scans([0, 1, 2, 3]), [[1, 2, 3, 4]])
+        self.assertEqual(common.torsions_to_scans([1, 2, 3, 4], direction=-1), [[0, 1, 2, 3]])
+        self.assertEqual(common.torsions_to_scans([1, 2, 3, 4], direction=2), [[0, 1, 2, 3]])
+        self.assertEqual(common.torsions_to_scans([[0, 1, 2, 3], [5, 7, 8, 9]]), [[1, 2, 3, 4], [6, 8, 9, 10]])
+        with self.assertRaises(TypeError):
+            common.torsions_to_scans('4, 3, 5, 6')
+        with self.assertRaises(ValueError):
+            common.torsions_to_scans([[0, 1, 2, 3], [6, 8, 9, 10]], direction=-1)
+
     @classmethod
     def tearDownClass(cls):
         """
