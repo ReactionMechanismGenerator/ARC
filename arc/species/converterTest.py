@@ -675,6 +675,19 @@ R1=1.0912"""
         self.assertIsInstance(xyz_dict2['coords'], tuple)
         self.assertIsInstance(xyz_dict2['coords'][0], tuple)
 
+    def test_sort_xyz_using_indices(self):
+        """Test the sort_xyz_using_indices() function."""
+        xyz_1 = converter.sort_xyz_using_indices(self.xyz1['dict'], indices=[4, 3, 2, 1, 0])
+        self.assertEqual(xyz_1['symbols'], ('H', 'H', 'H', 'H', 'C'))
+        xyz_2 = converter.sort_xyz_using_indices(self.xyz2['dict'], indices=list(range(7)))
+        self.assertEqual(xyz_2['symbols'], ('S', 'O', 'N', 'C', 'H', 'H', 'H'))
+        xyz_2 = converter.sort_xyz_using_indices(self.xyz2['dict'], indices=[0, 6, 3, 1, 2, 4, 5])
+        self.assertEqual(xyz_2['symbols'], ('S', 'H', 'C', 'O', 'N', 'H', 'H'))
+        with self.assertRaises(ValueError):
+            converter.sort_xyz_using_indices(self.xyz2['dict'], indices=[0, 6, 5])
+        with self.assertRaises(ValueError):
+            converter.sort_xyz_using_indices(self.xyz2['dict'], indices=[0, 6, 5, 35])
+
     def test_conformer_to_xyz_dict(self):
         """Test the rmg_conformer_to_xyz function"""
         xyz_dict = converter.rmg_conformer_to_xyz(self.conformer_12)
