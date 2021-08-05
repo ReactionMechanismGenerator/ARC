@@ -1445,7 +1445,8 @@ H      -1.47626400   -0.10694600   -1.88883800"""
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests
         """
-        projects = ['arc_project_for_testing_delete_after_usage4']
+        projects = ['arc_project_for_testing_delete_after_usage4',
+                    os.path.join(ARC_PATH, 'arc', 'testing', 'gcn_tst')]
         for project in projects:
             project_directory = os.path.join(ARC_PATH, 'Projects', project)
             shutil.rmtree(project_directory, ignore_errors=True)
