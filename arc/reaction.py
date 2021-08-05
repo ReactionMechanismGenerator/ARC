@@ -134,7 +134,10 @@ class ARCReaction(object):
             products = products or [spc.label for spc in self.p_species] or None
             self.products = [check_label(product)[0] for product in products] if products else list()
             self.rmg_reaction = rmg_reaction
-            if self.rmg_reaction is None and (self.reactants is None or self.products is None) and not self.label:
+            if self.rmg_reaction is None \
+                    and (self.reactants is None or self.products is None) \
+                    and (self.r_species is None or self.p_species is None) \
+                    and not self.label:
                 raise InputError(f'Cannot determine reactants and/or products labels for reaction {self.label}')
             self.set_label_reactants_products()
             self.ts_methods = ts_methods if ts_methods is not None else default_ts_methods
@@ -318,6 +321,9 @@ class ARCReaction(object):
             elif self.rmg_reaction is not None:
                 self.reactants = [r.label for r in self.rmg_reaction.reactants]
                 self.products = [p.label for p in self.rmg_reaction.products]
+            elif self.r_species is not None and self.p_species is not None:
+                self.reactants = [r.label for r in self.r_species]
+                self.products = [p.label for p in self.p_species]
         if not self.label:
             if len(self.reactants) and len(self.products):
                 self.label = self.arrow.join([self.plus.join(r for r in self.reactants),
