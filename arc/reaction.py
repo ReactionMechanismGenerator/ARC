@@ -232,7 +232,8 @@ class ARCReaction(object):
             reaction_dict['preserve_param_in_scan'] = self.preserve_param_in_scan
         if 'rmg_reaction' in reaction_dict:
             reaction_dict['rmg_reaction'] = self.rmg_reaction_to_str()
-        reaction_dict['family'] = self.family
+        if self.family is not None:
+            reaction_dict['family'] = self.family.label
         reaction_dict['family_own_reverse'] = self.family_own_reverse
         reaction_dict['long_kinetic_description'] = self.long_kinetic_description
         reaction_dict['label'] = self.label
@@ -254,7 +255,13 @@ class ARCReaction(object):
         self.charge = reaction_dict['charge'] if 'charge' in reaction_dict else 0
         self.reactants = reaction_dict['reactants'] if 'reactants' in reaction_dict else None
         self.products = reaction_dict['products'] if 'products' in reaction_dict else None
-        self.family = reaction_dict['family'] if 'family' in reaction_dict else None
+        if 'family' in reaction_dict and reaction_dict['family'] is not None:
+            db = rmgdb.make_rmg_database_object()
+            rmgdb.load_families_only(db)
+            self.family = rmgdb.get_family(rmgdb=db, label=reaction_dict['family'])
+            self.family.save_order = True
+        else:
+            self.family = None
         self.family_own_reverse = reaction_dict['family_own_reverse'] if 'family_own_reverse' in reaction_dict else 0
         if 'rmg_reaction' in reaction_dict:
             self.rmg_reaction_from_str(reaction_string=reaction_dict['rmg_reaction'])
