@@ -1374,14 +1374,25 @@ H       1.11582953    0.94384729   -0.10134685"""
 
     def test_check_label(self):
         """Test the species check_label() method"""
-        label = check_label('HCN')
+        label, original_label = check_label('HCN')
         self.assertEqual(label, 'HCN')
+        self.assertIsNone(original_label)
 
-        label = check_label('C#N')
+        label, original_label = check_label('H-N')
+        self.assertEqual(label, 'H-N')
+        self.assertIsNone(original_label)
+
+        label, original_label = check_label('C#N')
         self.assertEqual(label, 'CtN')
+        self.assertEqual(original_label, 'C#N')
 
-        label = check_label('C?N')
+        label, original_label = check_label('C+N')
+        self.assertEqual(label, 'CpN')
+        self.assertEqual(original_label, 'C+N')
+
+        label, original_label = check_label('C?N')
         self.assertEqual(label, 'C_N')
+        self.assertEqual(original_label, 'C?N')
 
     def test_check_atom_balance(self):
         """Test the check_atom_balance function"""
