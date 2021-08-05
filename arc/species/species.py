@@ -185,6 +185,7 @@ class ARCSpecies(object):
 
     Attributes:
         label (str): The species' label.
+        original_label (str): The species' label prior to modifications (removing fornidden characters).
         multiplicity (int): The species' electron spin multiplicity. Can be determined from the adjlist/smiles/xyz
                             (If unspecified, assumed to be either a singlet or a doublet).
         charge (int): The species' net charge. Assumed to be 0 if unspecified.
@@ -338,6 +339,7 @@ class ARCSpecies(object):
         self.transport_data = TransportData()
         self.yml_path = None
         self.fragments = fragments
+        self.original_label = None
 
         if species_dict is not None:
             # Reading from a dictionary (it's possible that the dict contain only a 'yml_path' argument, check first)
@@ -486,7 +488,7 @@ class ARCSpecies(object):
                                        f'{self.preserve_param_in_scan}')
                 if 0 in entry:
                     raise SpeciesError(f'preserve_param_in_scan must be 1-indexed, got:\n{self.preserve_param_in_scan}')
-        self.label = check_label(self.label)
+        self.label, self.original_label = check_label(self.label)
         allowed_keys = ['brute_force_sp', 'brute_force_opt', 'cont_opt', 'ess',
                         'brute_force_sp_diagonal', 'brute_force_opt_diagonal', 'cont_opt_diagonal']
         for key in self.directed_rotors.keys():
@@ -608,6 +610,8 @@ class ARCSpecies(object):
             species_dict['unsuccessful_methods'] = self.unsuccessful_methods
             species_dict['chosen_ts_method'] = self.chosen_ts_method
             species_dict['chosen_ts'] = self.chosen_ts
+        if self.original_label is not None:
+            species_dict['original_label'] = self.original_label
         if self.e_elect is not None:
             species_dict['e_elect'] = self.e_elect
         if self.fragments is not None:
@@ -713,6 +717,7 @@ class ARCSpecies(object):
         except KeyError:
             raise InputError('All species must have a label')
         self.run_time = datetime.timedelta(seconds=species_dict['run_time']) if 'run_time' in species_dict else None
+        self.original_label = species_dict['original_label'] if 'original_label' in species_dict else None
         self.t1 = species_dict['t1'] if 't1' in species_dict else None
         self.e_elect = species_dict['e_elect'] if 'e_elect' in species_dict else None
         self.e0 = species_dict['e0'] if 'e0' in species_dict else None
