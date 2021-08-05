@@ -158,12 +158,13 @@ def load_rmg_database(rmgdb: RMGDatabase,
             logger.info('Could not train family {0}'.format(family))
         else:
             family.fill_rules_by_averaging_up(verbose=False)
+        family.save_order = True
     logger.info('\n\n')
 
 
 def determine_reaction_family(rmgdb: RMGDatabase,
                               reaction: Reaction,
-                              save_order: bool = False,
+                              save_order: bool = True,
                               ) -> Tuple[Optional['KineticsFamily'], bool]:
     """
     Determine the RMG kinetic family for a given ``ARCReaction`` object.
