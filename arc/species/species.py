@@ -22,6 +22,7 @@ from rmgpy.statmech import NonlinearRotor, LinearRotor
 from rmgpy.transport import TransportData
 
 from arc.common import (colliding_atoms,
+                        convert_list_index_0_to_1,
                         determine_symmetry,
                         determine_top_group_indices,
                         get_logger,
@@ -1646,7 +1647,7 @@ class ARCSpecies(object):
             raise SpeciesError('Indices must be integers')
         if self.final_xyz is None:
             raise SpeciesError(f'Cannot use scissors without the .final_xyz attribute of species {self.label}')
-        indices = (indices[0] - 1, indices[1] - 1)  # convert to 0-indexed atoms
+        indices = convert_list_index_0_to_1(indices, direction=-1)  # Convert to 0-indexed atoms.
         atom1 = self.mol.atoms[indices[0]]
         atom2 = self.mol.atoms[indices[1]]
         if atom1.is_hydrogen():
