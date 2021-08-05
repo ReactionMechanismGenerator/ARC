@@ -965,16 +965,11 @@ def zmat_to_coords(zmat, keep_dummy=False, skip_undefined=False):
 
     # reorder the xyz according to the zmat map and remove dummy atoms
     ordered_coords, ordered_symbols = list(), list()
-    for i in range(len([symbol for symbol in zmat['symbols'] if symbol != 'X'])):
+    for i in range(len(zmat['symbols'])):
         zmat_index = key_by_val(zmat['map'], i)
-        if zmat_index < len(coords) and i not in coords_to_skip:
+        if zmat_index < len(coords) and i not in coords_to_skip and (zmat['symbols'][zmat_index] != 'X' or keep_dummy):
             ordered_coords.append(coords[zmat_index])
             ordered_symbols.append(zmat['symbols'][zmat_index])
-    if keep_dummy:
-        for key, val in zmat['map'].items():
-            if 'X' in str(val):
-                ordered_coords.append(coords[key])
-                ordered_symbols.append(zmat['symbols'][key])
 
     return ordered_coords, ordered_symbols
 
