@@ -361,6 +361,31 @@ def xyz_from_data(coords, numbers=None, symbols=None, isotopes=None) -> dict:
     return xyz_dict
 
 
+def sort_xyz_using_indices(xyz_dict: dict,
+                           indices: List[int],
+                           ) -> dict:
+    """
+    Sort the tuples in an xyz dict according to the given indices.
+    Args:
+        xyz_dict (dict): The Cartesian coordinates.
+        indices (List[int]): Entries are 0-indices of the desired order.
+    Returns:
+        dict: The ordered xyz.
+    """
+    if len(indices) != len(xyz_dict['coords']):
+        raise ValueError(f"The number of indices {len(indices)} does not match "
+                         f"the number of coordinates {len(xyz_dict['coords'])}")
+    if any(i >= len(xyz_dict['coords']) for i in indices):
+        raise ValueError(f"All indices must be lower than the length of the coordinates tuple."
+                         f"Got {len(xyz_dict['coords'])} coordinates, and indices of:\n{indices}")
+    coords, symbols, isotopes = list(), list(), list()
+    for i in indices:
+        coords.append(xyz_dict['coords'][i])
+        symbols.append(xyz_dict['symbols'][i])
+        isotopes.append(xyz_dict['isotopes'][i])
+    return xyz_from_data(coords=coords, symbols=symbols, isotopes=isotopes)
+
+
 def rmg_conformer_to_xyz(conformer):
     """
     Convert xyz coordinates from an rmgpy.statmech.Conformer object into the ARC dict xyz style.
