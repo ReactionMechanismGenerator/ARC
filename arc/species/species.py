@@ -233,6 +233,9 @@ class ARCSpecies(object):
         chosen_ts_method (str): The TS method that was actually used for optimization.
         ts_conf_spawned (bool): Whether conformers were already spawned for the Species (representing a TS) based on its
                                 TSGuess objects.
+        tsg_spawned (bool): If this species is a TS, this attribute describes whether TS guess jobs were already spawned.
+        ts_guesses_exhausted (bool): Whether all TS guesses were tried out with no luck
+                                     (``True`` if no convergence achieved).
         ts_number (int): An auto-generated number associating the TS ARCSpecies object with the corresponding
                          :ref:`ARCReaction <reaction>` object.
         ts_report (str): A description of all methods used for guessing a TS and their ranking.
@@ -388,6 +391,7 @@ class ARCSpecies(object):
             self.number_of_rotors = 0
             self.rotors_dict = dict()
             self.rmg_species = rmg_species
+            self.tsg_spawned = False
             if bond_corrections is None:
                 self.bond_corrections = dict()
             else:
@@ -595,6 +599,7 @@ class ARCSpecies(object):
             species_dict['ts_methods'] = self.ts_methods
             species_dict['ts_guesses'] = [tsg.as_dict() for tsg in self.ts_guesses]
             species_dict['ts_conf_spawned'] = self.ts_conf_spawned
+            species_dict['ts_guesses_exhausted'] = self.ts_guesses_exhausted
             species_dict['ts_number'] = self.ts_number
             species_dict['ts_report'] = self.ts_report
             species_dict['rxn_label'] = self.rxn_label
@@ -611,6 +616,8 @@ class ARCSpecies(object):
             species_dict['e0'] = self.e0
         if self.e0_only is not False:
             species_dict['e0_only'] = self.e0_only
+        if self.tsg_spawned is not False:
+            species_dict['tsg_spawned'] = self.tsg_spawned
         if self.yml_path is not None:
             species_dict['yml_path'] = self.yml_path
         if self.run_time is not None:
@@ -709,6 +716,7 @@ class ARCSpecies(object):
         self.t1 = species_dict['t1'] if 't1' in species_dict else None
         self.e_elect = species_dict['e_elect'] if 'e_elect' in species_dict else None
         self.e0 = species_dict['e0'] if 'e0' in species_dict else None
+        self.tsg_spawned = species_dict['tsg_spawned'] if 'tsg_spawned' in species_dict else False
         self.occ = species_dict['occ'] if 'occ' in species_dict else None
         self.arkane_file = species_dict['arkane_file'] if 'arkane_file' in species_dict else None
         self.yml_path = species_dict['yml_path'] if 'yml_path' in species_dict else None
@@ -729,9 +737,11 @@ class ARCSpecies(object):
         self.conf_is_isomorphic = species_dict['conf_is_isomorphic'] if 'conf_is_isomorphic' in species_dict else None
         self.zmat = check_zmat_dict(species_dict['zmat']) if 'zmat' in species_dict else None
         self.is_ts = species_dict['is_ts'] if 'is_ts' in species_dict else False
+        self.ts_conf_spawned = species_dict['ts_conf_spawned'] if 'ts_conf_spawned' in species_dict \
+            else False if self.is_ts else None
         if self.is_ts:
-            self.ts_conf_spawned = species_dict['ts_conf_spawned'] if 'ts_conf_spawned' in species_dict else False
             self.ts_number = species_dict['ts_number'] if 'ts_number' in species_dict else None
+            self.ts_guesses_exhausted = species_dict['ts_guesses_exhausted'] if 'ts_guesses_exhausted' in species_dict else False
             self.ts_report = species_dict['ts_report'] if 'ts_report' in species_dict else ''
             ts_methods = species_dict['ts_methods'] if 'ts_methods' in species_dict else None
             if ts_methods is None:
