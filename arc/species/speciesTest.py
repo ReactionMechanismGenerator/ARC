@@ -105,8 +105,7 @@ class TestARCSpecies(unittest.TestCase):
         cls.spc12 = ARCSpecies(label='[CH](CC[CH]c1ccccc1)c1ccccc1', smiles='[CH](CC[CH]c1ccccc1)c1ccccc1')
 
     def test_from_yml_file(self):
-        """Test that an ARCSpecies object can succesfully loaded from an Arkane YAML file"""
-
+        """Test that an ARCSpecies object can successfully be loaded from an Arkane YAML file"""
         n4h6_adj_list = """1  N u0 p1 c0 {2,S} {3,S} {4,S}
 2  H u0 p0 c0 {1,S}
 3  H u0 p0 c0 {1,S}
@@ -118,7 +117,6 @@ class TestARCSpecies(unittest.TestCase):
 9  H u0 p0 c0 {8,S}
 10 H u0 p0 c0 {8,S}
 """
-
         n4h6_xyz = {'symbols': ('N', 'H', 'H', 'N', 'H', 'N', 'H', 'N', 'H', 'H'),
                     'isotopes': (14, 1, 1, 14, 1, 14, 1, 14, 1, 1),
                     'coords': ((1.359965, -0.537228, -0.184462),
@@ -141,6 +139,15 @@ class TestARCSpecies(unittest.TestCase):
         self.assertEqual(n4h6.mol.to_smiles(), 'NNNN')
         self.assertEqual(n4h6.optical_isomers, 2)
         self.assertEqual(n4h6.get_xyz(), n4h6_xyz)
+        self.assertAlmostEqual(n4h6.e0, 273.2465365710362)
+
+        c3_1_yml_path = os.path.join(ARC_PATH, 'arc', 'testing', 'yml_testing', 'C3_1.yml')
+        c3_1 = ARCSpecies(yml_path=c3_1_yml_path)
+        self.assertAlmostEqual(c3_1.e0, 86.34867237178679)
+
+        c3_2_yml_path = os.path.join(ARC_PATH, 'arc', 'testing', 'yml_testing', 'C3_2.yml')
+        c3_2 = ARCSpecies(yml_path=c3_2_yml_path)
+        self.assertAlmostEqual(c3_2.e0, 72.98479932780415)
 
     def test_str(self):
         """Test the string representation of the object"""
