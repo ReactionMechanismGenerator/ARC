@@ -118,6 +118,7 @@ class ARCSpecies(object):
         ts_number (int, optional): An auto-generated number associating the TS ARCSpecies object with the corresponding
                                    :ref:`ARCReaction <reaction>` object.
         rxn_label (str, optional): The reaction string (relevant for TSs).
+        rxn_index (int, optional): The reaction index which is the respective key to the Scheduler rxn_dict.
         external_symmetry (int, optional): The external symmetry of the species (not including rotor symmetries).
         optical_isomers (int, optional): Whether (=2) or not (=1) the species has chiral center/s.
         run_time (timedelta, optional): Overall species execution time.
@@ -234,6 +235,7 @@ class ARCSpecies(object):
                          :ref:`ARCReaction <reaction>` object.
         ts_report (str): A description of all methods used for guessing a TS and their ranking.
         rxn_label (str): The reaction string (relevant for TSs).
+        rxn_index (int): The reaction index which is the respective key to the Scheduler rxn_dict.
         arkane_file (str): Path to the Arkane Species file generated in processor.
         yml_path (str): Path to an Arkane YAML file representing a species (for loading the object).
         checkfile (str): The local path to the latest checkfile by Gaussian for the species.
@@ -294,6 +296,7 @@ class ARCSpecies(object):
                  rmg_species: Optional[Species] = None,
                  run_time: Optional[datetime.timedelta] = None,
                  rxn_label: Optional[str] = None,
+                 rxn_index: Optional[int] = None,
                  smiles: str = '',
                  species_dict: Optional[dict] = None,
                  ts_methods: Optional[List[str]] = None,
@@ -368,6 +371,7 @@ class ARCSpecies(object):
             else:
                 self.ts_methods = None
             self.rxn_label = rxn_label
+            self.rxn_index = rxn_index
             self.successful_methods = list()
             self.unsuccessful_methods = list()
             self.chosen_ts_method = None
@@ -582,6 +586,7 @@ class ARCSpecies(object):
             species_dict['ts_number'] = self.ts_number
             species_dict['ts_report'] = self.ts_report
             species_dict['rxn_label'] = self.rxn_label
+            species_dict['rxn_index'] = self.rxn_index
             species_dict['successful_methods'] = self.successful_methods
             species_dict['unsuccessful_methods'] = self.unsuccessful_methods
             species_dict['chosen_ts_method'] = self.chosen_ts_method
@@ -679,6 +684,7 @@ class ARCSpecies(object):
         self.arkane_file = species_dict['arkane_file'] if 'arkane_file' in species_dict else None
         self.yml_path = species_dict['yml_path'] if 'yml_path' in species_dict else None
         self.rxn_label = species_dict['rxn_label'] if 'rxn_label' in species_dict else None
+        self.rxn_index = species_dict['rxn_index'] if 'rxn_index' in species_dict else None
         self._radius = species_dict['radius'] if 'radius' in species_dict else None
         self.most_stable_conformer = species_dict['most_stable_conformer'] \
             if 'most_stable_conformer' in species_dict else None
