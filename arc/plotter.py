@@ -27,7 +27,7 @@ from rmgpy.exceptions import DatabaseError, InvalidAdjacencyListError
 from rmgpy.quantity import ScalarQuantity
 from rmgpy.species import Species
 
-from arc.common import (extermum_list,
+from arc.common import (extremum_list,
                         get_angle_in_180_range,
                         get_close_tuple,
                         get_logger,
@@ -841,7 +841,7 @@ def save_conformers_file(project_directory: str,
         os.makedirs(geo_dir)
     if energies is not None and any(e is not None for e in energies):
         optimized = True
-        min_e = extermum_list(energies, return_min=True)
+        min_e = extremum_list(energies, return_min=True)
         conf_path = os.path.join(geo_dir, 'conformers_after_optimization.txt')
     else:
         optimized = False
@@ -1252,7 +1252,7 @@ def save_rotor_text_file(angles, energies, path):
         raise InputError('energies and angles must be the same length')
     if not os.path.isdir(os.path.dirname(path)):
         os.makedirs(os.path.dirname(path))
-    min_angle = extermum_list(angles, return_min=True)
+    min_angle = extremum_list(angles, return_min=True)
     angles = [angle - min_angle for angle in angles]  # set first angle to 0
     if energies:
         lines = ['Angle (degrees)        Energy (kJ/mol)\n']

@@ -246,46 +246,46 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
         self.assertEqual(top, [22])
         self.assertFalse(top_has_heavy_atoms)  # H
 
-    def test_extermum_list(self):
-        """Test the extermum_list() function"""
+    def test_extremum_list(self):
+        """Test the extremum_list() function"""
         lst = []
-        min_lst = common.extermum_list(lst)
+        min_lst = common.extremum_list(lst)
         self.assertEqual(min_lst, None)
 
         lst = [None]
-        min_lst = common.extermum_list(lst)
+        min_lst = common.extremum_list(lst)
         self.assertEqual(min_lst, None)
 
         lst = [None, None]
-        min_lst = common.extermum_list(lst)
+        min_lst = common.extremum_list(lst)
         self.assertEqual(min_lst, None)
 
         lst = [0]
-        min_lst = common.extermum_list(lst)
+        min_lst = common.extremum_list(lst)
         self.assertEqual(min_lst, 0)
 
         lst = [-8]
-        min_lst = common.extermum_list(lst)
+        min_lst = common.extremum_list(lst)
         self.assertEqual(min_lst, -8)
 
         lst = [-8, -80]
-        min_lst = common.extermum_list(lst)
+        min_lst = common.extremum_list(lst)
         self.assertEqual(min_lst, -80)
 
         lst = [-8, None]
-        min_lst = common.extermum_list(lst)
+        min_lst = common.extremum_list(lst)
         self.assertEqual(min_lst, -8)
 
         lst = [-8, -8, -8, -8]
-        min_lst = common.extermum_list(lst)
+        min_lst = common.extremum_list(lst)
         self.assertEqual(min_lst, -8)
 
         lst = [-8, None, None, 100, -79, None]
-        min_lst = common.extermum_list(lst)
+        min_lst = common.extremum_list(lst)
         self.assertEqual(min_lst, -79)
 
         lst = [-8, None, None, 100, -79, None]
-        max_lst = common.extermum_list(lst, return_min=False)
+        max_lst = common.extremum_list(lst, return_min=False)
         self.assertEqual(max_lst, 100)
 
     def test_key_by_val(self):

@@ -13,7 +13,7 @@ from IPython.display import display
 from typing import List, Optional, Tuple, Union
 
 from arc import parser, plotter
-from arc.common import (extermum_list,
+from arc.common import (extremum_list,
                         get_angle_in_180_range,
                         get_logger,
                         save_yaml_file,
@@ -1486,7 +1486,7 @@ class Scheduler(object):
                 dihedrals = [[float(dihedral) for dihedral in dihedral_string_tuple]
                              for dihedral_string_tuple in rotor_dict['directed_scan'].keys()]
                 sorted_dihedrals = sorted(dihedrals)
-                min_energy = extermum_list([directed_scan_dihedral['energy']
+                min_energy = extremum_list([directed_scan_dihedral['energy']
                                             for directed_scan_dihedral in rotor_dict['directed_scan'].values()],
                                            return_min=True)
                 trshed_points = 0
@@ -1840,7 +1840,7 @@ class Scheduler(object):
             rxn_txt = '' if self.species_dict[label].rxn_label is None \
                 else f' of reaction {self.species_dict[label].rxn_label}'
             logger.info(f'\n\nGeometry *guesses* of successful TS guesses for {label}{rxn_txt}:')
-            e_min = extermum_list([tsg.energy for tsg in self.species_dict[label].ts_guesses], return_min=True)
+            e_min = extremum_list([tsg.energy for tsg in self.species_dict[label].ts_guesses], return_min=True)
             i_min = None
             for tsg in self.species_dict[label].ts_guesses:
                 if tsg.energy is not None and tsg.energy == e_min:
@@ -2459,14 +2459,14 @@ class Scheduler(object):
                 self.species_dict[label].make_ts_report()
                 logger.info(self.species_dict[label].ts_report + '\n')
             zero_delta = datetime.timedelta(0)
-            conf_time = extermum_list([job.run_time for job in self.job_dict[label]['conformers'].values()],
+            conf_time = extremum_list([job.run_time for job in self.job_dict[label]['conformers'].values()],
                                       return_min=False) \
                 if 'conformers' in self.job_dict[label] else zero_delta
             opt_time = sum_time_delta([job.run_time for job in self.job_dict[label]['opt'].values()]) \
                 if 'opt' in self.job_dict[label] else zero_delta
             comp_time = sum_time_delta([job.run_time for job in self.job_dict[label]['composite'].values()]) \
                 if 'composite' in self.job_dict[label] else zero_delta
-            other_time = extermum_list([sum_time_delta([job.run_time for job in job_dictionary.values()])
+            other_time = extremum_list([sum_time_delta([job.run_time for job in job_dictionary.values()])
                                         for job_type, job_dictionary in self.job_dict[label].items()
                                         if job_type not in ['conformers', 'opt', 'composite']], return_min=False) \
                 if any([job_type not in ['conformers', 'opt', 'composite']
