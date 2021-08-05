@@ -179,7 +179,7 @@ def parse_geometry(path: str) -> Optional[Dict[str, tuple]]:
     Returns: Optional[Dict[str, tuple]]
         The cartesian geometry.
     """
-    log = ess_factory(fullpath=path)
+    log = ess_factory(fullpath=path, check_for_errors=False)
     try:
         coords, number, _ = log.load_geometry()
     except LogError:
@@ -220,7 +220,7 @@ def parse_t1(path: str) -> Optional[float]:
     """
     if not os.path.isfile(path):
         raise InputError('Could not find file {0}'.format(path))
-    log = ess_factory(fullpath=path)
+    log = ess_factory(fullpath=path, check_for_errors=False)
     try:
         t1 = log.get_T1_diagnostic()
     except (LogError, NotImplementedError):
@@ -244,7 +244,7 @@ def parse_e_elect(path: str,
     """
     if not os.path.isfile(path):
         raise InputError(f'Could not find file {path}')
-    log = ess_factory(fullpath=path)
+    log = ess_factory(fullpath=path, check_for_errors=False)
     try:
         e_elect = log.load_energy(zpe_scale_factor) * 0.001  # convert to kJ/mol
     except (LogError, NotImplementedError):
@@ -265,7 +265,7 @@ def parse_zpe(path: str) -> Optional[float]:
     """
     if not os.path.isfile(path):
         raise InputError('Could not find file {0}'.format(path))
-    log = ess_factory(fullpath=path)
+    log = ess_factory(fullpath=path, check_for_errors=False)
     try:
         zpe = log.load_zero_point_energy() * 0.001  # convert to kJ/mol
     except (LogError, NotImplementedError):
@@ -289,7 +289,7 @@ def parse_1d_scan_energies(path: str) -> Tuple[Optional[List[float]], Optional[L
     """
     if not os.path.isfile(path):
         raise InputError(f'Could not find file {path}')
-    log = ess_factory(fullpath=path)
+    log = ess_factory(fullpath=path, check_for_errors=False)
     try:
         energies, angles = log.load_scan_energies()
         energies *= 0.001  # convert to kJ/mol
@@ -311,7 +311,7 @@ def parse_1d_scan_coords(path: str) -> List[Dict[str, tuple]]:
         The Cartesian coordinates.
     """
     lines = _get_lines_from_file(path)
-    log = ess_factory(fullpath=path)
+    log = ess_factory(fullpath=path, check_for_errors=False)
     if not isinstance(log, GaussianLog):
         raise NotImplementedError(f'Currently parse_1d_scan_coords only supports Gaussian files, got {type(log)}')
     traj = list()
@@ -601,7 +601,7 @@ def parse_trajectory(path: str) -> Optional[List[Dict[str, tuple]]]:
     ess_file = False
     if path.split('.')[-1] != 'xyz':
         try:
-            log = ess_factory(fullpath=path)
+            log = ess_factory(fullpath=path, check_for_errors=False)
             ess_file = True
         except InputError:
             ess_file = False
@@ -672,7 +672,7 @@ def parse_dipole_moment(path: str) -> Optional[float]:
         The dipole moment in Debye.
     """
     lines = _get_lines_from_file(path)
-    log = ess_factory(path)
+    log = ess_factory(path, check_for_errors=False)
     dipole_moment = None
     if isinstance(log, GaussianLog):
         # example:
@@ -899,7 +899,7 @@ def parse_scan_args(file_path: str) -> dict:
                'n_atom': <int, the number of atoms of the molecule>,
                }
     """
-    log = ess_factory(fullpath=file_path)
+    log = ess_factory(fullpath=file_path, check_for_errors=False)
     scan_args = {'scan': None, 'freeze': [],
                  'step': 0, 'step_size': 0, 'n_atom': 0}
     if isinstance(log, GaussianLog):
@@ -948,7 +948,7 @@ def parse_ic_info(file_path: str) -> pd.DataFrame:
     Returns: pd.DataFrame
         A DataFrame containing the information of the internal coordinates
     """
-    log = ess_factory(fullpath=file_path)
+    log = ess_factory(fullpath=file_path, check_for_errors=False)
     ic_dict = {item: []
                for item in ['label', 'type', 'atoms', 'redundant', 'scan']}
     scan_args = parse_scan_args(file_path)
@@ -1050,7 +1050,7 @@ def parse_scan_conformers(file_path: str) -> pd.DataFrame:
         pd.DataFrame: a list of conformers containing the all the internal
                        coordinates information in pd.DataFrame
     """
-    log = ess_factory(fullpath=file_path)
+    log = ess_factory(fullpath=file_path, check_for_errors=False)
     scan_args = parse_scan_args(file_path)
     scan_ic_info = parse_ic_info(file_path)
     if isinstance(log, GaussianLog):

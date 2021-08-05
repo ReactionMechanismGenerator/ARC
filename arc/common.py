@@ -128,7 +128,7 @@ def determine_ess(log_file: str) -> str:
     Returns: str
         The ESS log class from Arkane.
     """
-    log = ess_factory(log_file)
+    log = ess_factory(log_file, check_for_errors=False)
     if isinstance(log, GaussianLog):
         return 'gaussian'
     if isinstance(log, MolproLog):
