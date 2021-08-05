@@ -1180,3 +1180,32 @@ def timedelta_from_str(time_str: str):
         if param:
             time_params[name] = int(param)
     return datetime.timedelta(**time_params)
+
+
+def torsions_to_scans(descriptor: Optional[List[List[int]]],
+                      direction: int = 1,
+                      ) -> Optional[List[List[int]]]:
+    """
+    Convert torsions to scans or vice versa.
+    In ARC we define a torsion as a list of four atoms with 0-indices.
+    We define a scan  as a list of four atoms with 1-indices.
+    This function converts one format to the other.
+
+    Args:
+        descriptor (list): The torsions or scans list.
+        direction (int, optional): 1: Convert torsions to scans; -1: Convert scans to torsions.
+
+    Returns:
+        Optional[List[List[int]]]: The converted indices.
+    """
+    if descriptor is None:
+        return None
+    if not isinstance(descriptor, (list, tuple)):
+        raise TypeError(f'Expected a list, got {descriptor} which is a {type(descriptor)}')
+    if not isinstance(descriptor[0], (list, tuple)):
+        descriptor = [descriptor]
+    direction = direction if direction == 1 else -1  # anything other than 1 is translated to -1
+    new_descriptor = [convert_list_index_0_to_1(entry, direction) for entry in descriptor]
+    if any(any(item < 0 for item in entry) for entry in new_descriptor):
+        raise ValueError(f'Got an illegal value when converting:\n{descriptor}\ninto:\n{new_descriptor}')
+    return new_descriptor
