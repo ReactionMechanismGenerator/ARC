@@ -53,7 +53,7 @@ KEY_FROM_LEN = {2: 'R', 3: 'A', 4: 'D'}
 
 def xyz_to_zmat(xyz: Dict[str, tuple],
                 mol: Optional[Molecule] = None,
-                constraints: Optional[Dict[str, List[Tuple[int]]]] = None,
+                constraints: Optional[Dict[str, List[Tuple[int, ...]]]] = None,
                 consolidate: bool = True,
                 consolidation_tols: Dict[str, float] = None,
                 fragments: Optional[List[List[int]]] = None,
@@ -963,7 +963,7 @@ def zmat_to_coords(zmat, keep_dummy=False, skip_undefined=False):
     for i in range(len(zmat['symbols'])):
         coords = _add_nth_atom_to_coords(zmat=zmat, coords=coords, i=i, coords_to_skip=coords_to_skip)
 
-    # reorder the xyz according to the zmat map and remove dummy atoms
+    # Reorder the xyz according to the zmat map and remove dummy atoms if requested.
     ordered_coords, ordered_symbols = list(), list()
     for i in range(len(zmat['symbols'])):
         zmat_index = key_by_val(zmat['map'], i)
@@ -1210,7 +1210,7 @@ def is_angle_linear(angle, tolerance=None):
     Returns:
         bool: Whether the angle is close to 180 or 0 degrees, ``True`` if it is.
     """
-    tol = tolerance if tolerance is not None else TOL_180
+    tol = tolerance or TOL_180
     if 180 - tol < angle <= 180 or 0 <= angle < tol:
         return True
     return False
@@ -1742,18 +1742,18 @@ def get_parameter_from_atom_indices(zmat, indices, xyz_indexed=True):
         raise ZMatError(f'Not all indices ({indices}) are in the zmat map keys ({list(zmat["map"].keys())}).')
     key = '_'.join([KEY_FROM_LEN[len(indices)]] + [str(index) for index in indices])
     if key in list(zmat['vars'].keys()):
-        # it's a non-consolidated key
+        # It's a non-consolidated key.
         return key
-    # it's a consolidated key
+    # It's a consolidated key.
     key = KEY_FROM_LEN[len(indices)]
     for var in zmat['vars'].keys():
         if var[0] == key and tuple(indices) in list(get_atom_indices_from_zmat_parameter(var)):
             return var
-    # If no value found, check whether this is an angle split by a dummy atom
+    # If no value found, check whether this is an angle split by a dummy atom.
     var1, var2 = None, None
     if len(indices) == 3:
         # 180 degree angles aren't given explicitly in the zmat,
-        # they are separated in to two angles using a dummy atom, check if this is the case here
+        # they are separated in to two angles using a dummy atom, check if this is the case here.
         dummy_indices = [str(key) for key, val in zmat['map'].items() if isinstance(val, str) and 'X' in val]
         param1 = 'AX_{0}_{1}_{2}'
         all_parameters = list(zmat['vars'].keys())
@@ -1902,7 +1902,7 @@ def is_atom_in_new_fragment(atom_index: int,
             if atom_index in fragment:
                 if all([z_index in skip_atoms or frag_index not in fragment
                         for z_index, frag_index in zmat['map'].items()]):
-                    # all atoms considered thus far are not in the current fragment, connectivity is meaningless
+                    # All atoms considered thus far are not in the current fragment, connectivity is meaningless.
                     return True
                 break
     return False
