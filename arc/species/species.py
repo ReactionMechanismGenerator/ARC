@@ -1177,9 +1177,10 @@ class ARCSpecies(object):
             for key, vals in directed_rotors.items():
                 # an independent loop, so 1D *directed* scans won't be deleted (treated above)
                 for pivots_list in vals:
-                    new_rotor = {'pivots': pivots_list,
-                                 'top': list(),
-                                 'scan': list(),
+                    new_rotor = {'pivots': pivots_list,  # 1-indexed
+                                 'top': list(),  # 1-indexed
+                                 'scan': list(),  # 1-indexed
+                                 'torsion': list(),  # 0-indexed
                                  'number_of_running_jobs': 0,
                                  'success': None,
                                  'invalidation_reason': '',
@@ -1193,13 +1194,14 @@ class ARCSpecies(object):
                                  'cont_indices': list(),
                                  }
                     for pivots in pivots_list:
-                        for index, rotors_dict in self.rotors_dict.items():
-                            if rotors_dict['pivots'] == pivots:
-                                new_rotor['top'].append(rotors_dict['top'])
-                                new_rotor['scan'].append(rotors_dict['scan'])
+                        for index, rotor_dict in self.rotors_dict.items():
+                            if rotor_dict['pivots'] == pivots:
+                                new_rotor['top'].append(rotor_dict['top'])
+                                new_rotor['scan'].append(rotor_dict['scan'])
+                                new_rotor['torsion'].append(rotor_dict['torsion'])
                                 new_rotor['dimensions'] += 1
-                                if not rotors_dict['directed_scan_type'] and index not in rotor_indices_to_del:
-                                    # remove this rotor dict, an ND one will be created instead
+                                if not rotor_dict['directed_scan_type'] and index not in rotor_indices_to_del:
+                                    # Remove this rotor dict, an ND one will be created instead.
                                     rotor_indices_to_del.append(index)
                                 break
                     if new_rotor['dimensions'] != 1:
