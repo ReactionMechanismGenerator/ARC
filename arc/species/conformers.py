@@ -54,7 +54,7 @@ from rmgpy.molecule.converter import to_ob_mol
 from rmgpy.molecule.molecule import Atom, Bond, Molecule
 from rmgpy.molecule.element import C as C_ELEMENT, H as H_ELEMENT, F as F_ELEMENT, Cl as Cl_ELEMENT, I as I_ELEMENT
 
-from arc.common import logger, determine_top_group_indices
+from arc.common import logger, convert_list_index_0_to_1, determine_top_group_indices
 from arc.exceptions import ConformerError, InputError
 import arc.plotter
 from arc.species import converter, vectors
@@ -1494,12 +1494,14 @@ def find_internal_rotors(mol):
                         rotor['scan'] = [determine_smallest_atom_index_in_scan(atom1=atom1, atom2=atom2, mol=mol)]
                         rotor['scan'].extend([mol.vertices.index(atom1) + 1, mol.vertices.index(atom2) + 1])
                         rotor['scan'].append(determine_smallest_atom_index_in_scan(atom1=atom2, atom2=atom1, mol=mol))
+                        rotor['torsion'] = convert_list_index_0_to_1(rotor['scan'], direction=-1)
 
                         # other keys:
                         rotor['number_of_running_jobs'] = 0
                         rotor['success'] = None
                         rotor['invalidation_reason'] = ''
                         rotor['times_dihedral_set'] = 0
+                        rotor['trsh_counter'] = 0
                         rotor['trsh_methods'] = list()
                         rotor['scan_path'] = ''
                         rotor['directed_scan_type'] = 'ess'  # default to 'ess', changed in initialize_directed_rotors()
