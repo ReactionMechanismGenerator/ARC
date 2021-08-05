@@ -808,6 +808,8 @@ def almost_equal_coords(xyz1: dict,
     Returns: bool
         ``True`` if they are almost equal, ``False`` otherwise.
     """
+    if not isinstance(xyz1, dict) or not isinstance(xyz2, dict):
+        raise TypeError(f'xyz1 and xyz2 must be dictionaries, got {type(xyz1)} and {type(xyz2)}:\n{xyz1}\n{xyz2}')
     for xyz_coord1, xyz_coord2 in zip(xyz1['coords'], xyz2['coords']):
         for xyz1_c, xyz2_c in zip(xyz_coord1, xyz_coord2):
             if not np.isclose([xyz1_c], [xyz2_c], rtol=rtol, atol=atol):
