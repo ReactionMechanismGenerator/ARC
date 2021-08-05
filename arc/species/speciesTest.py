@@ -1007,6 +1007,22 @@ H       2.82319256   -0.46240839   -0.40178723"""
         for atom, symbol in zip(spc5.mol.atoms, xyz5['symbols']):
             self.assertEqual(atom.symbol, symbol)
 
+        xyz6 = """C                  0.50180491   -0.93942231   -0.57086745
+        C                  0.01278145    0.13148427    0.42191407
+        H                  0.28549447    0.06799101    1.45462711
+        H                  1.44553946   -1.32386345   -0.24456986
+        H                  0.61096295   -0.50262210   -1.54153222
+        H                 -0.24653265    2.11136864   -0.37045418
+        C                 -0.86874485    1.29377369   -0.07163907
+        H                 -0.21131163   -1.73585284   -0.61629002
+        H                 -1.51770930    1.60958621    0.71830245
+        H                 -1.45448167    0.96793094   -0.90568876"""
+        spc6 = ARCSpecies(label='C[CH]C', smiles='C[CH]C', xyz=xyz6)
+        for atom, symbol in zip(spc6.mol.atoms, spc6.get_xyz()['symbols']):
+            self.assertEqual(atom.symbol, symbol)
+        for atom, symbol in zip(spc6.mol.atoms, ['C', 'C', 'H', 'H', 'H', 'H', 'C', 'H', 'H', 'H']):
+            self.assertEqual(atom.symbol, symbol)
+
     def test_get_radius(self):
         """Test determining the species radius"""
         spc1 = ARCSpecies(label='r1', smiles='O=C=O')
