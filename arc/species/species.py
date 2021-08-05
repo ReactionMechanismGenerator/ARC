@@ -558,6 +558,16 @@ class ARCSpecies(object):
         """Allow setting the radius"""
         self._radius = value
 
+    def copy(self):
+        """
+        Get a copy of this object instance.
+
+        Returns:
+            ARCSpecies: A copy of this object instance.
+        """
+        species_dict = self.as_dict()
+        return ARCSpecies(species_dict=species_dict)
+
     def as_dict(self) -> dict:
         """A helper function for dumping this object as a dictionary in a YAML file for restarting ARC"""
         species_dict = dict()
