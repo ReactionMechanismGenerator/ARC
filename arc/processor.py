@@ -353,24 +353,24 @@ def process_bdes(label: str,
         return bde_report
     for bde_indices in source.bdes:
         found_a_label = False
-        # index 0 of the tuple:
+        # Index 0 of the tuple:
         if source.mol.atoms[bde_indices[0] - 1].is_hydrogen():
             e1 = species_dict['H'].e0
         else:
             bde_label = f'{label}_BDE_{bde_indices[0]}_{bde_indices[1]}_A'
-            if bde_label not in species_dict:
+            if bde_label not in species_dict.keys():
                 logger.error(f'Could not find BDE species {bde_label} for generating a BDE report for {label}. '
                              f'Not generating a BDE report for this species.')
                 return dict()
             found_a_label = True
             e1 = species_dict[bde_label].e0
-        # index 1 of the tuple:
+        # Index 1 of the tuple:
         if source.mol.atoms[bde_indices[1] - 1].is_hydrogen():
             e2 = species_dict['H'].e0
         else:
             letter = 'B' if found_a_label else 'A'
             bde_label = f'{label}_BDE_{bde_indices[0]}_{bde_indices[1]}_{letter}'
-            if bde_label not in species_dict:
+            if bde_label not in species_dict.keys():
                 logger.error(f'Could not find BDE species {bde_label} for generating a BDE report for {label}. '
                              f'Not generating a BDE report for this species.')
                 return dict()
