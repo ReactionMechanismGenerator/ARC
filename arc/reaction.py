@@ -18,6 +18,9 @@ from arc.imports import settings
 from arc.species.converter import check_xyz_dict, str_to_xyz, xyz_to_str
 from arc.species.species import ARCSpecies, check_atom_balance, check_label
 
+if TYPE_CHECKING:
+    from rmgpy.data.rmg import RMGDatabase
+
 
 logger = get_logger()
 
@@ -307,7 +310,7 @@ class ARCReaction(object):
 
     def set_label_reactants_products(self, species_list: Optional[List[ARCSpecies]] = None):
         """A helper function for settings the label, reactants, and products attributes for a Reaction"""
-        # first make sure that reactants and products labels are defines (most often used)
+        # First make sure that reactants and products labels are defined (most often used).
         if self.reactants is None or self.products is None:
             if self.label:
                 if self.arrow not in self.label:
@@ -339,7 +342,7 @@ class ARCReaction(object):
                 self.label = self.arrow.join([self.plus.join(r.label for r in self.r_species),
                                               self.plus.join(p.label for p in self.p_species)])
             elif self.rmg_reaction is not None:
-                # this will probably never be executed, but OK to keep
+                # This will probably never be executed, but OK to keep.
                 self.label = self.arrow.join([self.plus.join(r.label for r in self.rmg_reaction.reactants),
                                               self.plus.join(p.label for p in self.rmg_reaction.products)])
         if self.rmg_reaction is None:
@@ -394,6 +397,10 @@ class ARCReaction(object):
                 label = check_label(label)[0]
                 self.p_species.append(ARCSpecies(label=label, mol=rmg_product.molecule[0]))
 
+    def get_rxn_charge(self):
+        """A helper function for determining the surface charge"""
+        if len(self.r_species):
+            return sum([r.charge for r in self.r_species])
 
     def get_rxn_multiplicity(self):
         """A helper function for determining the surface multiplicity"""
@@ -461,17 +468,14 @@ class ARCReaction(object):
             return None
         return multiplicity
 
-    def get_rxn_charge(self):
-        """A helper function for determining the surface charge"""
-        if len(self.r_species):
-            return sum([r.charge for r in self.r_species])
-
     def determine_family(self,
-                         rmg_database,
-                         save_order: bool = False,
+                         rmg_database: 'RMGDatabase',
+                         save_order: bool = True,
                          ):
         """
-        Determine the RMG family and saves the (family, own reverse) tuple in the ``family`` attribute.
+        Determine the RMG family.
+        Populates the .family, and .family_own_reverse attributes.
+        A wrapper for rmgdb determine_reaction_family() function.
 
         Args:
             rmg_database (RMGDatabase): The RMG database instance.
@@ -489,7 +493,7 @@ class ARCReaction(object):
                  ) -> bool:
         """
         Check that the TS E0 or electronic energy is above both reactant and product wells.
-        First, E0 is checked, if not available for all species and TS, the electronic energy is checked.
+        By default E0 is checked first. If it is not available for all species and TS, the electronic energy is checked.
         If the check cannot be performed, the method still returns ``True``.
 
         Args:
@@ -696,7 +700,12 @@ class ARCReaction(object):
         if not all([balanced_wells, balanced_ts_xyz, balanced_ts_species_mol,
                     balanced_ts_species_xyz, balanced_xyz_guess]):
             if raise_error:
-                raise ReactionError(f'Reaction {self.label} is not atom balanced.')
+                raise ReactionError(f'The Reaction {self.label} is not atom balanced.\n'
+                                    f'balanced wells: {balanced_wells}\n'
+                                    f'balanced ts xyz: {balanced_ts_xyz}\n'
+                                    f'balanced ts species mol: {balanced_ts_species_mol}\n'
+                                    f'balanced ts species xyz: {balanced_ts_species_xyz}\n'
+                                    f'balanced xyz guess: {balanced_xyz_guess}')
             return False
 
         return True
@@ -716,7 +725,8 @@ class ARCReaction(object):
             well (int, optional): Either ``0`` or ``1`` for the reactants or products well, respectively.
 
         Returns:
-            Union[int, None]: The number of times this species appears in the respective well.
+            Optional[int]:
+                The number of occurrences of this species in the respective well.
         """
         if species is None and label is None:
             raise ValueError('Called get_species_count without a species nor its label.')
@@ -733,27 +743,28 @@ class ARCReaction(object):
                                    ) -> Tuple[List[Union[ARCSpecies, Species]], List[Union[ARCSpecies, Species]]]:
         """
         Get a list of reactant and product species including duplicate species, if any.
-        THe species could either be ARCSpecies or RMGSpecies.
+        The species could either be ARCSpecies or RMGSpecies.
 
         Args:
             arc (bool, optional): Whether to return the species as ARCSpecies (``True``) or as RMG Species (``False``).
 
         Returns:
-            Tuple[List[Optional[ARCSpecies, Species]], List[Optional[ARCSpecies, Species]]]: The reactants and products.
+            Tuple[List[Union[ARCSpecies, Species]], List[Union[ARCSpecies, Species]]]:
+                The reactants and products.
         """
         reactants, products = list(), list()
         for r_spc in self.r_species:
             if arc:
                 reactants.extend([r_spc] * self.get_species_count(species=r_spc, well=0))
             else:
-                reactants.extend([Species(label=r_spc.label, molecule=[r_spc.mol])] * self.get_species_count(
-                    species=r_spc, well=0))
+                reactants.extend([Species(label=r_spc.label, molecule=[r_spc.mol])] *
+                                 self.get_species_count(species=r_spc, well=0))
         for p_spc in self.p_species:
             if arc:
                 products.extend([p_spc] * self.get_species_count(species=p_spc, well=1))
             else:
-                products.extend([Species(label=p_spc.label, molecule=[p_spc.mol])] * self.get_species_count(
-                    species=p_spc, well=1))
+                products.extend([Species(label=p_spc.label, molecule=[p_spc.mol])] *
+                                self.get_species_count(species=p_spc, well=1))
         return reactants, products
 
     def get_atom_map(self, verbose: int = 0) -> Optional[List[int]]:
@@ -761,6 +772,7 @@ class ARCReaction(object):
         Get the atom mapping of the reactant atoms to the product atoms.
         I.e., an atom map of [0, 2, 1] means that reactant atom 0 matches product atom 0,
         reactant atom 1 matches product atom 2, and reactant atom 2 matches product atom 1.
+        All indices are 0-indexed.
 
         Employs the Kabsch, Hungarian, and Uno algorithms to exhaustively locate
         the best alignment for non-oriented, non-ordered 3D structures.
@@ -769,7 +781,7 @@ class ARCReaction(object):
             verbose (int): The verbosity level (0-4).
 
         Returns: Optional[List[int]]
-            The atom map.
+            The atom map, entry indices correspond to reactant indices, entry values correspond to product indices.
         """
         atom_map = None
         try:
@@ -854,11 +866,11 @@ class ARCReaction(object):
 
 def remove_dup_species(species_list: List[ARCSpecies]) -> List[ARCSpecies]:
     """
-    Remove duplicate species for a a species list.
+    Remove duplicate species from a species list.
     Used when assigning r_species and p_species.
 
     Args:
-        species_list (List[ARCSpecies]): THe species list to process.
+        species_list (List[ARCSpecies]): The species list to process.
 
     Returns:
         List[ARCSpecies]: A list of species without duplicates.
