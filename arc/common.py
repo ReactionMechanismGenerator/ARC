@@ -768,7 +768,7 @@ def key_by_val(dictionary: dict,
         The key.
     """
     for key, val in dictionary.items():
-        if val == value:
+        if val == value or (isinstance(value, int) and val == f'X{value}'):
             return key
     raise ValueError(f'Could not find value {value} in the dictionary\n{dictionary}')
 
