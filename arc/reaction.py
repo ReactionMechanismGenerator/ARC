@@ -286,6 +286,15 @@ class ARCReaction(object):
         self.atom_map = reaction_dict['atom_map'] if 'atom_map' in reaction_dict else None
         self.done_opt_r_n_p = reaction_dict['done_opt_r_n_p'] if 'done_opt_r_n_p' in reaction_dict else None
 
+    def is_isomerization(self):
+        """
+        Determine whether this is an isomerization reaction.
+
+        Returns:
+            bool: Whether this is an isomerization reaction.
+        """
+        return True if len(self.r_species) == 1 and len(self.p_species) == 1 else False
+
     def set_label_reactants_products(self, species_list: Optional[List[ARCSpecies]] = None):
         """A helper function for settings the label, reactants, and products attributes for a Reaction"""
         # first make sure that reactants and products labels are defines (most often used)
