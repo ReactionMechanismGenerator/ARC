@@ -171,9 +171,9 @@ def check_ess_settings(ess_settings: Optional[dict] = None) -> dict:
                                 f'strings. Got: {server_list} which is a {type(server_list)}')
     # run checks:
     for ess, server_list in settings_dict.items():
-        if ess.lower() not in ['gaussian', 'qchem', 'molpro', 'orca', 'terachem', 'onedmin']:
-            raise SettingsError(f'Recognized ESS software are Gaussian, QChem, Molpro, Orca, TeraChem or OneDMin. '
-                                f'Got: {ess}')
+        if ess.lower() not in ['gaussian', 'qchem', 'molpro', 'orca', 'terachem', 'onedmin', 'psi4']:
+            raise SettingsError(f'Recognized ESS software are Gaussian, QChem, Molpro, Orca, TeraChem, Psi4, '
+                                f'or OneDMin. Got: {ess}')
         for server in server_list:
             if not isinstance(server, bool) and server.lower() not in list(servers.keys()):
                 server_names = [name for name in servers.keys()]
@@ -272,7 +272,6 @@ def log_header(project: str,
     logger.log(level, '###############################################################')
     logger.log(level, '')
 
-
     paths_dict = {'ARC': ARC_PATH, 'RMG-Py': RMG_PATH, 'RMG-database': RMG_DATABASE_PATH}
     for repo, path in paths_dict.items():
         # Extract HEAD git commit
@@ -286,7 +285,7 @@ def log_header(project: str,
         else:
             logger.log(level, '\n')
 
-    logger.info(f'Starting project {project}')
+    logger.info(f'Starting project {project}\n\n')
 
 
 def log_footer(execution_time: str,
@@ -1131,7 +1130,7 @@ def get_close_tuple(key_1: Tuple[Union[float, str], ...],
                     keys: List[Tuple[Union[float, str], ...]],
                     tolerance: float = 0.05,
                     raise_error: bool = False,
-                    ) -> Optional[Tuple[Union[float, str], Union[float, str]]]:
+                    ) -> Optional[Tuple[Union[float, str], ...]]:
     """
     Get a key from a list of keys close in value to the given key.
     Even if just one of the items in the key has a close match, use the close value.
