@@ -163,7 +163,9 @@ def generate_conformers(mol_list: Union[List[Molecule], Molecule],
         success = False
         try:
             new_mol_list = mol_list.copy(deep=True).generate_resonance_structures(keep_isomorphic=False,
-                                                                                  filter_structures=True)
+                                                                                  filter_structures=True,
+                                                                                  save_order=True,
+                                                                                  )
             success = converter.order_atoms_in_mol_list(ref_mol=mol_list.copy(deep=True), mol_list=new_mol_list)
         except (ValueError, ILPSolutionError, ResonanceError) as e:
             logger.warning(f'Could not generate resonance structures for species {label}. Got: {e}')

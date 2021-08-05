@@ -1591,11 +1591,17 @@ def check_isomorphism(mol1, mol2, filter_structures=True, convert_to_single_bond
 
     if not convert_to_single_bonds:
         try:
-            spc1.generate_resonance_structures(keep_isomorphic=False, filter_structures=filter_structures)
+            spc1.generate_resonance_structures(keep_isomorphic=False,
+                                               filter_structures=filter_structures,
+                                               save_order=True,
+                                               )
         except (AtomTypeError, ValueError):
             pass
         try:
-            spc2.generate_resonance_structures(keep_isomorphic=False, filter_structures=filter_structures)
+            spc2.generate_resonance_structures(keep_isomorphic=False,
+                                               filter_structures=filter_structures,
+                                               save_order=True,
+                                               )
         except (AtomTypeError, ValueError):
             pass
 

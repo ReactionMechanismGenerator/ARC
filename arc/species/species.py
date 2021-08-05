@@ -868,7 +868,9 @@ class ARCSpecies(object):
             if not self.is_ts:
                 try:
                     self.mol_list = self.mol.copy(deep=True).generate_resonance_structures(keep_isomorphic=False,
-                                                                                           filter_structures=True)
+                                                                                           filter_structures=True,
+                                                                                           save_order=True,
+                                                                                           )
                 except (ValueError, ILPSolutionError, ResonanceError) as e:
                     logger.warning(f'Could not generate resonance structures for species {self.label}. Got: {e}')
                     self.mol_list = [self.mol]
@@ -879,7 +881,10 @@ class ARCSpecies(object):
                 # try sorting by IDs, repeat object creation to make sure the original instances remain unchanged
                 mol_copy = self.mol.copy(deep=True)
                 mol_copy.assign_atom_ids()
-                mol_list = mol_copy.generate_resonance_structures(keep_isomorphic=False, filter_structures=True)
+                mol_list = mol_copy.generate_resonance_structures(keep_isomorphic=False,
+                                                                  filter_structures=True,
+                                                                  save_order=True,
+                                                                  )
                 for i in range(len(mol_list)):
                     mol = mol_list[i]  # not looping with mol so the iterator won't change within the loop
                     atoms = list()
