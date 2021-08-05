@@ -323,6 +323,8 @@ def parse_1d_scan_coords(path: str) -> List[Dict[str, tuple]]:
         elif 'Optimization completed' in lines[i]:
             while len(lines) and 'Input orientation:' not in lines[i]:
                 i += 1
+                if 'Error termination via' in lines[i]:
+                    return traj
             i += 5
             xyz_str = ''
             while len(lines) and '--------------------------------------------' not in lines[i]:
