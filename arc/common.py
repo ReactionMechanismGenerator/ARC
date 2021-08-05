@@ -499,6 +499,19 @@ def get_ordinal_indicator(number: int) -> str:
     return 'th'
 
 
+def get_number_with_ordinal_indicator(number: int) -> str:
+    """
+    Returns the number as a string with the ordinal indicator.
+
+    Args:
+        number (int): An integer for which the ordinal indicator will be determined.
+
+    Returns: str
+        The number with the respective ordinal indicator.
+    """
+    return f'{number}{get_ordinal_indicator(number)}'
+
+
 def get_atom_radius(symbol: str) -> float:
     """
     Get the atom covalent radius of an atom in Angstroms.
