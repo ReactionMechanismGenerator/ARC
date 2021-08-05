@@ -818,8 +818,6 @@ class ARC(object):
             if char not in valid_chars:
                 raise InputError(f'A project name (used to naming folders) must contain only valid characters. '
                                  f'Got {char} in {self.project}.')
-            if char == ' ':  # space IS a valid character for other purposes, but isn't valid in project names
-                raise InputError(f'A project name (used to naming folders) must not contain spaces. Got {self.project}.')
 
     def check_freq_scaling_factor(self):
         """
