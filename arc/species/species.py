@@ -14,7 +14,8 @@ import rmgpy.molecule.element as elements
 from arkane.common import ArkaneSpecies, symbol_by_number
 from arkane.statmech import is_linear
 from rmgpy.exceptions import AtomTypeError, InvalidAdjacencyListError, ILPSolutionError, ResonanceError
-from rmgpy.molecule.molecule import Atom, Molecule
+from rmgpy.molecule.element import Element
+from rmgpy.molecule.molecule import Atom, Bond, Molecule
 from rmgpy.molecule.resonance import generate_kekule_structure
 from rmgpy.reaction import Reaction
 from rmgpy.species import Species
@@ -625,7 +626,24 @@ class ARCSpecies(object):
         if self.bond_corrections is not None:
             species_dict['bond_corrections'] = self.bond_corrections
         if self.mol is not None:
-            species_dict['mol'] = self.mol.copy(deep=True).to_adjacency_list()
+            species_dict['mol'] = {'atoms': [{'element': {'number': atom.element.number,
+                                                          'symbol':  atom.element.symbol,
+                                                          'name':  atom.element.name,
+                                                          'mass':  atom.element.mass,
+                                                          'isotope':  atom.element.isotope,
+                                                          },
+                                              'radical_electrons': atom.radical_electrons,
+                                              'charge': atom.charge,
+                                              'label': atom.label,
+                                              'lone_pairs': atom.lone_pairs,
+                                              'id': atom.id,
+                                              'props': atom.props,
+                                              'edges': {atom_2.id: bond.order
+                                                        for atom_2, bond in atom.edges.items()},
+                                              } for atom in self.mol.atoms],
+                                   'multiplicity': self.mol.multiplicity,
+                                   'props': self.mol.props,
+                                   }
         if self.initial_xyz is not None:
             species_dict['initial_xyz'] = xyz_to_str(self.initial_xyz)
         if self.final_xyz is not None:
@@ -750,12 +768,41 @@ class ARCSpecies(object):
         self.optical_isomers = species_dict['optical_isomers'] if 'optical_isomers' in species_dict else None
         self.neg_freqs_trshed = species_dict['neg_freqs_trshed'] if 'neg_freqs_trshed' in species_dict else list()
         self.bond_corrections = species_dict['bond_corrections'] if 'bond_corrections' in species_dict else dict()
-        try:
-            self.mol = Molecule().from_adjacency_list(species_dict['mol'], raise_atomtype_exception=False,
-                                                      raise_charge_exception=False) if 'mol' in species_dict else None
-        except (ValueError, AtomTypeError, InvalidAdjacencyListError) as e:
-            logger.error(f'Could not read RMG adjacency list {species_dict["mol"] if "mol" in species_dict else None}. '
-                         f'Got:\n{e}')
+        if 'mol' in species_dict:
+            if isinstance(species_dict['mol'], str):
+                try:
+                    self.mol = Molecule().from_adjacency_list(species_dict['mol'],
+                                                              raise_atomtype_exception=False,
+                                                              raise_charge_exception=False)
+                except (ValueError, AtomTypeError, InvalidAdjacencyListError) as e:
+                    logger.error(f"Could not read RMG adjacency list {species_dict['mol']}.\nGot:\n{e}")
+            else:
+                self.mol = Molecule(multiplicity=species_dict['mol']['multiplicity'],
+                                    props=species_dict['mol']['props'])
+                atoms = [Atom(element=Element(number=atom_dict['element']['number'],
+                                              symbol=atom_dict['element']['symbol'],
+                                              name=atom_dict['element']['name'],
+                                              mass=atom_dict['element']['mass'],
+                                              isotope=atom_dict['element']['isotope'],
+                                              ),
+                              radical_electrons=atom_dict['radical_electrons'],
+                              charge=atom_dict['charge'],
+                              lone_pairs=atom_dict['lone_pairs'],
+                              id=atom_dict['id'],
+                              props=atom_dict['props'],
+                              ) for atom_dict in species_dict['mol']['atoms']]
+                for i, atom in enumerate(atoms):
+                    edges = dict()
+                    for atom_2_id, bond_order in species_dict['mol']['atoms'][i]['edges'].items():
+                        for atom_2 in atoms:
+                            if atom_2.id == atom_2_id:
+                                break
+                        edges[atom_2] = Bond(atom, atom_2, bond_order)
+                    atom.edges = edges
+                self.mol.atoms = atoms
+                self.mol.update_atomtypes(raise_exception=False)
+                self.mol.identify_ring_membership()
+        else:
             self.mol = None
         smiles = species_dict['smiles'] if 'smiles' in species_dict else None
         inchi = species_dict['inchi'] if 'inchi' in species_dict else None
@@ -875,7 +922,8 @@ class ARCSpecies(object):
         The mol_list attribute is used for identifying rotors and generating conformers,
         """
         if self.mol is not None:
-            self.mol.assign_atom_ids()
+            if all([atom.id == -1 for atom in self.mol.atoms]):
+                self.mol.assign_atom_ids()
             if not self.is_ts:
                 try:
                     self.mol_list = self.mol.copy(deep=True).generate_resonance_structures(keep_isomorphic=False,
