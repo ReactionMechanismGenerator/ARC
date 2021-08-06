@@ -326,3 +326,24 @@ def determine_rmg_kinetics(rmgdb: RMGDatabase,
                             rxn.comment += f'{entry.reference.authors[0]} {entry.reference.year}'
                         rmg_reactions.append(rxn)
     return rmg_reactions
+
+
+def get_family(rmgdb: RMGDatabase,
+               label: str,
+               ) -> Optional['KineticsFamily']:
+    """
+    Get a KineticsFamily object instance corresponding to the input family ``label``.
+
+    Args:
+        rmgdb (RMGDatabase): The RMG database instance.
+        label (str): The label of the desired family.
+
+    Returns:
+        Optional['KineticsFamily']: The desired family object instance.
+    """
+    label = label.lower()
+    for family_label, family in rmgdb.kinetics.families.items():
+        if family_label.lower() == label:
+            family.save_order = True
+            return family
+    return None
