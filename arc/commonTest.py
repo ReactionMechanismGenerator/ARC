@@ -685,6 +685,19 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
         with self.assertRaises(ValueError):
             common.torsions_to_scans([[0, 1, 2, 3], [6, 8, 9, 10]], direction=-1)
 
+    def test_convert_list_index_0_to_1(self):
+        """Test the convert_list_index_0_to_1() function"""
+        self.assertEqual(common.convert_list_index_0_to_1([]), [])
+        self.assertEqual(common.convert_list_index_0_to_1([0]), [1])
+        self.assertEqual(common.convert_list_index_0_to_1([1], direction=-1), [0])
+        self.assertEqual(common.convert_list_index_0_to_1([0, 5, 8]), [1, 6, 9])  # test list
+        self.assertEqual(common.convert_list_index_0_to_1((0, 5, 8), direction=1), (1, 6, 9))  # test tuple
+        self.assertEqual(common.convert_list_index_0_to_1([1, 5, 8], direction=-1), [0, 4, 7])
+        with self.assertRaises(ValueError):
+            common.convert_list_index_0_to_1([-9])
+        with self.assertRaises(ValueError):
+            common.convert_list_index_0_to_1([0], direction=-1)
+
     @classmethod
     def tearDownClass(cls):
         """
