@@ -578,6 +578,24 @@ R1=1.0912"""
         self.assertEqual(y, (0.0, 0.6300326, -0.6300326, 0.6300326, -0.6300326))
         self.assertEqual(z, (0.0, 0.6300326, 0.6300326, -0.6300326, -0.6300326))
 
+    def test_xyz_to_np_array(self):
+        """Test the xyz_to_np_array function"""
+        xyz_dict = {'symbols': ('O', 'N', 'C', 'H', 'H'),
+                    'isotopes': (16, 14, 12, 1, 1),
+                    'coords': ((1.1746411, -0.15309781, 0.0),
+                               (0.06304988, 0.35149648, 0.0),
+                               (-1.12708952, -0.11333971, 0.0),
+                               (-1.93800144, 0.60171738, 0.0),
+                               (-1.29769464, -1.18742971, 0.0))}
+        coords = converter.xyz_to_np_array(xyz_dict)
+        expected_coords = [[1.1746411, -0.15309781, 0.0],
+                           [0.06304988, 0.35149648, 0.0],
+                           [-1.12708952, -0.11333971, 0.0],
+                           [-1.93800144, 0.60171738, 0.0],
+                           [-1.29769464, -1.18742971, 0.0]]
+        self.assertIsInstance(coords, np.ndarray)
+        np.testing.assert_array_equal(coords, expected_coords)
+
     def test_xyz_to_coords_list(self):
         """Test the xyz_to_coords_list function"""
         xyz_dict = {'symbols': ('O', 'N', 'C', 'H', 'H'),
@@ -656,6 +674,19 @@ R1=1.0912"""
         self.assertEqual(xyz_dict2, self.xyz1['dict'])
         self.assertIsInstance(xyz_dict2['coords'], tuple)
         self.assertIsInstance(xyz_dict2['coords'][0], tuple)
+
+    def test_sort_xyz_using_indices(self):
+        """Test the sort_xyz_using_indices() function."""
+        xyz_1 = converter.sort_xyz_using_indices(self.xyz1['dict'], indices=[4, 3, 2, 1, 0])
+        self.assertEqual(xyz_1['symbols'], ('H', 'H', 'H', 'H', 'C'))
+        xyz_2 = converter.sort_xyz_using_indices(self.xyz2['dict'], indices=list(range(7)))
+        self.assertEqual(xyz_2['symbols'], ('S', 'O', 'N', 'C', 'H', 'H', 'H'))
+        xyz_2 = converter.sort_xyz_using_indices(self.xyz2['dict'], indices=[0, 6, 3, 1, 2, 4, 5])
+        self.assertEqual(xyz_2['symbols'], ('S', 'H', 'C', 'O', 'N', 'H', 'H'))
+        with self.assertRaises(ValueError):
+            converter.sort_xyz_using_indices(self.xyz2['dict'], indices=[0, 6, 5])
+        with self.assertRaises(ValueError):
+            converter.sort_xyz_using_indices(self.xyz2['dict'], indices=[0, 6, 5, 35])
 
     def test_conformer_to_xyz_dict(self):
         """Test the rmg_conformer_to_xyz function"""

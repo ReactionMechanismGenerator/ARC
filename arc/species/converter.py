@@ -112,7 +112,7 @@ def str_to_xyz(xyz_str: str) -> dict:
 
 def xyz_to_str(xyz_dict: dict,
                isotope_format: Optional[str] = None,
-               ) -> str:
+               ) -> Optional[str]:
     """
     Convert an ARC xyz dictionary format, e.g.::
 
@@ -143,13 +143,12 @@ def xyz_to_str(xyz_dict: dict,
     Raises:
         ConverterError: If input is not a dict or does not have all attributes.
 
-    Returns: str
+    Returns: Optional[str]
         The string xyz format.
     """
-    xyz_dict = check_xyz_dict(xyz_dict)
     if xyz_dict is None:
-        logger.warning('Got None for xyz_dict')
         return None
+    xyz_dict = check_xyz_dict(xyz_dict)
     recognized_isotope_formats = ['gaussian']
     if any([key not in list(xyz_dict.keys()) for key in ['symbols', 'isotopes', 'coords']]):
         raise ConverterError(f'Missing keys in the xyz dictionary. Expected to find "symbols", "isotopes", and '
@@ -180,16 +179,18 @@ def xyz_to_str(xyz_dict: dict,
     return '\n'.join(xyz_list)
 
 
-def xyz_to_x_y_z(xyz_dict: dict) -> Tuple[tuple, tuple, tuple]:
+def xyz_to_x_y_z(xyz_dict: dict) -> Optional[Tuple[tuple, tuple, tuple]]:
     """
     Get the X, Y, and Z coordinates separately from the ARC xyz dictionary format.
 
     Args:
         xyz_dict (dict): The ARC xyz format.
 
-    Returns: Tuple[tuple, tuple, tuple]
+    Returns: Optional[Tuple[tuple, tuple, tuple]]
         The X coordinates, the Y coordinates, the Z coordinates.
     """
+    if xyz_dict is None:
+        return None
     xyz_dict = check_xyz_dict(xyz_dict)
     x, y, z = tuple(), tuple(), tuple()
     for coord in xyz_dict['coords']:
@@ -199,16 +200,18 @@ def xyz_to_x_y_z(xyz_dict: dict) -> Tuple[tuple, tuple, tuple]:
     return x, y, z
 
 
-def xyz_to_coords_list(xyz_dict: dict) -> List[List[float]]:
+def xyz_to_coords_list(xyz_dict: dict) -> Optional[List[List[float]]]:
     """
     Get the coords part of an xyz dict as a (mutable) list of lists (rather than a tuple of tuples).
 
     Args:
         xyz_dict (dict): The ARC xyz format.
 
-    Returns: List[List[float]]
+    Returns: Optional[List[List[float]]]
         The coordinates.
     """
+    if xyz_dict is None:
+        return None
     xyz_dict = check_xyz_dict(xyz_dict)
     coords_tuple = xyz_dict['coords']
     coords_list = list()
@@ -217,9 +220,22 @@ def xyz_to_coords_list(xyz_dict: dict) -> List[List[float]]:
     return coords_list
 
 
+def xyz_to_np_array(xyz_dict: dict) -> Optional[np.ndarray]:
+    """
+    Get the coords part of an xyz dict as a numpy array.
+
+    Args:
+        xyz_dict (dict): The ARC xyz format.
+
+    Returns: Optional[np.ndarray]
+        The coordinates.
+    """
+    return np.array(xyz_to_coords_list(xyz_dict), dtype=np.float64) if xyz_dict is not None else None
+
+
 def xyz_to_xyz_file_format(xyz_dict: dict,
                            comment: str = '',
-                           ) -> str:
+                           ) -> Optional[str]:
     """
     Get the `XYZ file format <https://en.wikipedia.org/wiki/XYZ_file_format>`_ representation
     from the ARC xyz dictionary format.
@@ -229,19 +245,21 @@ def xyz_to_xyz_file_format(xyz_dict: dict,
         xyz_dict (dict): The ARC xyz format.
         comment (str, optional): A comment to be shown in the output's 2nd line.
 
-    Returns: str
-        The XYZ file format.
-
     Raises:
         ConverterError: If ``xyz_dict`` is of wrong format or ``comment`` is a multiline string.
+
+    Returns: Optional[str]
+        The XYZ file format.
     """
+    if xyz_dict is None:
+        return None
     xyz_dict = check_xyz_dict(xyz_dict)
     if len(comment.splitlines()) > 1:
         raise ConverterError('The comment attribute cannot be a multiline string, got:\n{0}'.format(list(comment)))
     return str(len(xyz_dict['symbols'])) + '\n' + comment.strip() + '\n' + xyz_to_str(xyz_dict) + '\n'
 
 
-def xyz_to_dmat(xyz_dict: dict) -> np.array:
+def xyz_to_dmat(xyz_dict: dict) -> Optional[np.array]:
     """
     Convert Cartesian coordinates to a distance matrix.
 
@@ -249,8 +267,10 @@ def xyz_to_dmat(xyz_dict: dict) -> np.array:
         xyz_dict (dict): The Cartesian coordinates,
 
     Returns:
-        list: the distance matrix.
+        Optional[np.array]: The distance matrix.
     """
+    if xyz_dict is None:
+        return None
     xyz_dict = check_xyz_dict(xyz_dict)
     dmat = qcel.util.misc.distance_matrix(a=np.array(xyz_to_coords_list(xyz_dict)),
                                           b=np.array(xyz_to_coords_list(xyz_dict)))
@@ -284,7 +304,7 @@ def xyz_file_format_to_xyz(xyz_file: str) -> dict:
     return str_to_xyz(xyz_str)
 
 
-def xyz_from_data(coords, numbers=None, symbols=None, isotopes=None):
+def xyz_from_data(coords, numbers=None, symbols=None, isotopes=None) -> dict:
     """
     Get the ARC xyz dictionary format from raw data.
     Either ``numbers`` or ``symbols`` must be specified.
@@ -296,12 +316,12 @@ def xyz_from_data(coords, numbers=None, symbols=None, isotopes=None):
         symbols (tuple, list, optional): Element symbols.
         isotopes (tuple, list, optional): Element isotope numbers.
 
-    Returns:
-        dict: The ARC dictionary xyz format.
-
     Raises:
         ConverterError: If neither ``numbers`` nor ``symbols`` are specified, if both are specified,
                         or if the input lengths aren't consistent.
+
+    Returns:
+        dict: The ARC dictionary xyz format.
     """
     if isinstance(coords, np.ndarray):
         coords = tuple(tuple(coord.tolist()) for coord in coords)
@@ -341,6 +361,31 @@ def xyz_from_data(coords, numbers=None, symbols=None, isotopes=None):
     return xyz_dict
 
 
+def sort_xyz_using_indices(xyz_dict: dict,
+                           indices: List[int],
+                           ) -> dict:
+    """
+    Sort the tuples in an xyz dict according to the given indices.
+    Args:
+        xyz_dict (dict): The Cartesian coordinates.
+        indices (List[int]): Entries are 0-indices of the desired order.
+    Returns:
+        dict: The ordered xyz.
+    """
+    if len(indices) != len(xyz_dict['coords']):
+        raise ValueError(f"The number of indices {len(indices)} does not match "
+                         f"the number of coordinates {len(xyz_dict['coords'])}")
+    if any(i >= len(xyz_dict['coords']) for i in indices):
+        raise ValueError(f"All indices must be lower than the length of the coordinates tuple."
+                         f"Got {len(xyz_dict['coords'])} coordinates, and indices of:\n{indices}")
+    coords, symbols, isotopes = list(), list(), list()
+    for i in indices:
+        coords.append(xyz_dict['coords'][i])
+        symbols.append(xyz_dict['symbols'][i])
+        isotopes.append(xyz_dict['isotopes'][i])
+    return xyz_from_data(coords=coords, symbols=symbols, isotopes=isotopes)
+
+
 def rmg_conformer_to_xyz(conformer):
     """
     Convert xyz coordinates from an rmgpy.statmech.Conformer object into the ARC dict xyz style.
@@ -372,7 +417,7 @@ def rmg_conformer_to_xyz(conformer):
     return xyz_dict
 
 
-def xyz_to_rmg_conformer(xyz_dict):
+def xyz_to_rmg_conformer(xyz_dict: dict) -> Optional[Conformer]:
     """
     Convert the Arc dict xyz style into an rmgpy.statmech.Conformer object containing these coordinates.
 
@@ -383,8 +428,10 @@ def xyz_to_rmg_conformer(xyz_dict):
         xyz_dict (dict): The ARC dict xyz style coordinates
 
     Returns:
-        Conformer: An rmgpy.statmech.Conformer object containing the desired xyz coordinates
+        Optional[Conformer]: An rmgpy.statmech.Conformer object containing the desired xyz coordinates
     """
+    if xyz_dict is None:
+        return None
     xyz_dict = check_xyz_dict(xyz_dict)
     mass_and_number = (get_element_mass(*args) for args in zip(xyz_dict['symbols'], xyz_dict['isotopes']))
     mass, number = zip(*mass_and_number)
@@ -420,12 +467,13 @@ def standardize_xyz_string(xyz_str, isotope_format=None):
     return xyz_to_str(xyz_dict=xyz_dict, isotope_format=isotope_format)
 
 
-def check_xyz_dict(xyz: Union[dict, str]) -> dict:
+def check_xyz_dict(xyz: Union[dict, str]) -> Optional[dict]:
     """
     Check that the xyz dictionary entered is valid.
     If it is a string, convert it.
     If it is a Z matrix, convert it to cartesian coordinates,
     If isotopes are not in xyz_dict, common values will be added.
+    If a part of the xyz structure is a np.ndarray type, convert it by always calling xyz_from_data().
 
     Args:
          xyz (Union[dict, str]): The xyz dictionary.
@@ -433,9 +481,11 @@ def check_xyz_dict(xyz: Union[dict, str]) -> dict:
     Raises:
         ConverterError: If ``xyz`` is of wrong type or is missing symbols or coords.
 
-    Returns: dict
+    Returns: Optional[dict]
         The cartesian coordinates in a dictionary format.
     """
+    if xyz is None:
+        return None
     xyz_dict = str_to_xyz(xyz) if isinstance(xyz, str) else xyz
     if not isinstance(xyz_dict, dict):
         raise ConverterError(f'Expected a dictionary, got {type(xyz_dict)}')
@@ -449,8 +499,9 @@ def check_xyz_dict(xyz: Union[dict, str]) -> dict:
     if len(xyz_dict['symbols']) != len(xyz_dict['coords']):
         raise ConverterError(f'Got {len(xyz_dict["symbols"])} symbols and {len(xyz_dict["coords"])} '
                              f'coordinates:\n{xyz_dict}')
-    if 'isotopes' not in list(xyz_dict.keys()):
-        xyz_dict = xyz_from_data(coords=xyz_dict['coords'], symbols=xyz_dict['symbols'])
+    xyz_dict = xyz_from_data(coords=xyz_dict['coords'],
+                             symbols=xyz_dict['symbols'],
+                             isotopes=xyz_dict['isotopes'] if 'isotopes' in list(xyz_dict.keys()) else None)
     if len(xyz_dict['symbols']) != len(xyz_dict['isotopes']):
         raise ConverterError(f'Got {len(xyz_dict["symbols"])} symbols and {len(xyz_dict["isotopes"])} '
                              f'isotopes:\n{xyz_dict}')
@@ -985,7 +1036,7 @@ def get_most_common_isotope_for_element(element_symbol):
     return isotope
 
 
-def xyz_to_pybel_mol(xyz):
+def xyz_to_pybel_mol(xyz: dict):
     """
     Convert xyz into an Open Babel molecule object.
 
@@ -993,8 +1044,10 @@ def xyz_to_pybel_mol(xyz):
         xyz (dict): ARC's xyz dictionary format.
 
     Returns:
-        OBmol: An Open Babel molecule.
+        Optional[OBmol]: An Open Babel molecule.
     """
+    if xyz is None:
+        return None
     xyz = check_xyz_dict(xyz)
     try:
         pybel_mol = pybel.readstring('xyz', xyz_to_xyz_file_format(xyz))
@@ -1057,7 +1110,7 @@ def elementize(atom):
 def molecules_from_xyz(xyz: Optional[Union[dict, str]],
                        multiplicity: Optional[int] = None,
                        charge: int = 0,
-                       ) -> Tuple[Union[Molecule, None], Union[Molecule, None]]:
+                       ) -> Tuple[Optional[Molecule], Optional[Molecule]]:
     """
     Creating RMG:Molecule objects from xyz with correct atom labeling.
     Based on the MolGraph.perceive_smiles method.
@@ -1068,11 +1121,9 @@ def molecules_from_xyz(xyz: Optional[Union[dict, str]],
         multiplicity (int, optional): The species spin multiplicity.
         charge (int, optional): The species net charge.
 
-    Returns:
-        Molecule: The respective Molecule object with only single bonds.
-    Returns:
-        Molecule: The respective Molecule object with perceived bond orders.
-                  Returns None if unsuccessful to infer bond orders.
+    Returns: Tuple[Optional[Molecule], Optional[Molecule]]
+        - The respective Molecule object with only single bonds.
+        - The respective Molecule object with perceived bond orders.
     """
     if xyz is None:
         return None, None
@@ -1378,16 +1429,18 @@ def update_molecule(mol, to_single_bonds=False):
     return new_mol
 
 
-def s_bonds_mol_from_xyz(xyz):
+def s_bonds_mol_from_xyz(xyz: dict) -> Optional[Molecule]:
     """
     Create a single bonded molecule from xyz using RMG's connect_the_dots() method.
 
     Args:
         xyz (dict): The xyz coordinates.
 
-    Returns:
-        Molecule: The respective molecule with only single bonds.
+    Returns: Optional[Molecule]
+        The respective molecule with only single bonds.
     """
+    if xyz is None:
+        return None
     xyz = check_xyz_dict(xyz)
     mol = Molecule()
     for symbol, coord in zip(xyz['symbols'], xyz['coords']):
@@ -1563,11 +1616,17 @@ def check_isomorphism(mol1, mol2, filter_structures=True, convert_to_single_bond
 
     if not convert_to_single_bonds:
         try:
-            spc1.generate_resonance_structures(keep_isomorphic=False, filter_structures=filter_structures)
+            spc1.generate_resonance_structures(keep_isomorphic=False,
+                                               filter_structures=filter_structures,
+                                               save_order=True,
+                                               )
         except (AtomTypeError, ValueError):
             pass
         try:
-            spc2.generate_resonance_structures(keep_isomorphic=False, filter_structures=filter_structures)
+            spc2.generate_resonance_structures(keep_isomorphic=False,
+                                               filter_structures=filter_structures,
+                                               save_order=True,
+                                               )
         except (AtomTypeError, ValueError):
             pass
 

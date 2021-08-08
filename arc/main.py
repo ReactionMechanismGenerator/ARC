@@ -376,7 +376,7 @@ class ARC(object):
             elif isinstance(rxn, dict):
                 # dict representation for ARCReaction as in a YAML input file
                 indices_to_pop.append(i)
-                converted_reactions.append(ARCReaction(reaction_dict=rxn))
+                converted_reactions.append(ARCReaction(reaction_dict=rxn, species_list=self.species))
             elif not isinstance(rxn, ARCReaction):
                 raise ValueError(f'A reaction should either be an `ARCReaction` object or an RMG `Reaction` object. '
                                  f'Got {type(rxn)} for {rxn}')
@@ -640,6 +640,27 @@ class ARC(object):
             f.write(str(txt))
         self.lib_long_desc = txt
 
+        # Save a YAML file to be used by T3.
+        content = dict()
+        content['species'], content['reactions'] = list(), list()
+        path = os.path.join(self.project_directory, f'{self.project}_info.yml')
+        if os.path.exists(path):
+            os.remove(path)
+        for species in self.species:
+            if not species.is_ts:
+                spc_dict = dict()
+                spc_dict['label'] = species.label
+                spc_dict['success'] = self.scheduler.output[species.label]['convergence']
+                spc_dict['smiles'] = species.mol.copy(deep=True).to_smiles() if species.mol is not None else None
+                spc_dict['adj'] = species.mol.copy(deep=True).to_adjacency_list() if species.mol is not None else None
+                content['species'].append(spc_dict)
+        for reaction in self.reactions:
+            rxn_dict = dict()
+            rxn_dict['label'] = reaction.label
+            rxn_dict['success'] = self.scheduler.output[reaction.ts_species.label]['convergence']
+            content['reactions'].append(rxn_dict)
+        save_yaml_file(path=path, content=content)
+
     def summary(self) -> dict:
         """
         Report status and data of all species / reactions.
@@ -797,8 +818,6 @@ class ARC(object):
             if char not in valid_chars:
                 raise InputError(f'A project name (used to naming folders) must contain only valid characters. '
                                  f'Got {char} in {self.project}.')
-            if char == ' ':  # space IS a valid character for other purposes, but isn't valid in project names
-                raise InputError(f'A project name (used to naming folders) must not contain spaces. Got {self.project}.')
 
     def check_freq_scaling_factor(self):
         """

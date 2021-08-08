@@ -168,6 +168,7 @@ class ArkaneAdapter(StatmechAdapter):
         Generate a high pressure rate coefficient for a reaction.
         Populates the reaction.kinetics attribute.
         """
+        arkane.input.transition_state_dict = dict()
         ts_species = self.species_dict[self.reaction.ts_label]
         if self.output_dict[ts_species.label]['convergence']:
             success = True
@@ -410,18 +411,17 @@ class ArkaneAdapter(StatmechAdapter):
                                            rotors=rotors)
         else:
             # e_elect = e_original + sp_e_sol_corrected - sp_e_uncorrected
-            original_log = ess_factory(self.output_dict[species.label]['paths']['sp'])
+            original_log = ess_factory(self.output_dict[species.label]['paths']['sp'], check_for_errors=False)
             e_original = original_log.load_energy()
-            e_sol_log = ess_factory(self.output_dict[species.label]['paths']['sp_sol'])
+            e_sol_log = ess_factory(self.output_dict[species.label]['paths']['sp_sol'], check_for_errors=False)
             e_sol = e_sol_log.load_energy()
-            e_no_sol_log = ess_factory(self.output_dict[species.label]['paths']['sp_no_sol'])
+            e_no_sol_log = ess_factory(self.output_dict[species.label]['paths']['sp_no_sol'], check_for_errors=False)
             e_no_sol = e_no_sol_log.load_energy()
             e_elect = (e_original + e_sol - e_no_sol) / (constants.E_h * constants.Na)  # convert J/mol to Hartree
             logger.info(f'\nSolvation correction scheme for {species.label}:\n'
                         f'Original electronic energy: {e_original * 0.001} kJ/mol\n'
                         f'Solvation correction: {(e_sol - e_no_sol) * 0.001} kJ/mol\n'
                         f'New electronic energy: {(e_original + e_sol - e_no_sol) * 0.001} kJ/mol\n\n')
-            print(f'e_elect final: {(e_original + e_sol - e_no_sol) * 0.001} kJ/mol\n\n')
             input_file = input_files['arkane_input_species_explicit_e']
             input_file = input_file.format(bonds=bonds,
                                            symmetry=species.external_symmetry,

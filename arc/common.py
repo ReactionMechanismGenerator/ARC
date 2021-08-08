@@ -11,6 +11,7 @@ import datetime
 import logging
 import os
 import pprint
+import re
 import shutil
 import subprocess
 import sys
@@ -127,7 +128,7 @@ def determine_ess(log_file: str) -> str:
     Returns: str
         The ESS log class from Arkane.
     """
-    log = ess_factory(log_file)
+    log = ess_factory(log_file, check_for_errors=False)
     if isinstance(log, GaussianLog):
         return 'gaussian'
     if isinstance(log, MolproLog):
@@ -170,9 +171,9 @@ def check_ess_settings(ess_settings: Optional[dict] = None) -> dict:
                                 f'strings. Got: {server_list} which is a {type(server_list)}')
     # run checks:
     for ess, server_list in settings_dict.items():
-        if ess.lower() not in ['gaussian', 'qchem', 'molpro', 'orca', 'terachem', 'onedmin']:
-            raise SettingsError(f'Recognized ESS software are Gaussian, QChem, Molpro, Orca, TeraChem or OneDMin. '
-                                f'Got: {ess}')
+        if ess.lower() not in ['gaussian', 'qchem', 'molpro', 'orca', 'terachem', 'onedmin', 'psi4']:
+            raise SettingsError(f'Recognized ESS software are Gaussian, QChem, Molpro, Orca, TeraChem, Psi4, '
+                                f'or OneDMin. Got: {ess}')
         for server in server_list:
             if not isinstance(server, bool) and server.lower() not in list(servers.keys()):
                 server_names = [name for name in servers.keys()]
@@ -271,7 +272,6 @@ def log_header(project: str,
     logger.log(level, '###############################################################')
     logger.log(level, '')
 
-
     paths_dict = {'ARC': ARC_PATH, 'RMG-Py': RMG_PATH, 'RMG-database': RMG_DATABASE_PATH}
     for repo, path in paths_dict.items():
         # Extract HEAD git commit
@@ -285,7 +285,7 @@ def log_header(project: str,
         else:
             logger.log(level, '\n')
 
-    logger.info(f'Starting project {project}')
+    logger.info(f'Starting project {project}\n\n')
 
 
 def log_footer(execution_time: str,
@@ -376,10 +376,10 @@ def read_yaml_file(path: str,
 
 
 def save_yaml_file(path: str,
-                   content: list or dict,
+                   content: Union[list, dict],
                    ) -> None:
     """
-    Save a YAML file (usually an input / restart file, but also conformers file)
+    Save a YAML file (usually an input / restart file, but also conformers file).
 
     Args:
         path (str): The YAML file path to save.
@@ -387,13 +387,27 @@ def save_yaml_file(path: str,
     """
     if not isinstance(path, str):
         raise InputError(f'path must be a string, got {path} which is a {type(path)}')
-    yaml.add_representer(str, string_representer)
     logger.debug('Creating a restart file...')
-    content = yaml.dump(data=content)
+    yaml_str = to_yaml(py_content=content)
     if '/' in path and os.path.dirname(path) and not os.path.exists(os.path.dirname(path)):
         os.makedirs(os.path.dirname(path))
     with open(path, 'w') as f:
-        f.write(content)
+        f.write(yaml_str)
+
+
+def to_yaml(py_content: Union[list, dict]) -> str:
+    """
+    Convert a Python list or dictionary to a YAML string format.
+
+    Args:
+        py_content (list, dict): The Python content to save.
+
+    Returns: str
+        The corresponding YAML representation.
+    """
+    yaml.add_representer(str, string_representer)
+    yaml_str = yaml.dump(data=py_content)
+    return yaml_str
 
 
 def globalize_paths(file_path: str,
@@ -482,6 +496,19 @@ def get_ordinal_indicator(number: int) -> str:
     if number in list(ordinal_dict.keys()):
         return ordinal_dict[number]
     return 'th'
+
+
+def get_number_with_ordinal_indicator(number: int) -> str:
+    """
+    Returns the number as a string with the ordinal indicator.
+
+    Args:
+        number (int): An integer for which the ordinal indicator will be determined.
+
+    Returns: str
+        The number with the respective ordinal indicator.
+    """
+    return f'{number}{get_ordinal_indicator(number)}'
 
 
 def get_atom_radius(symbol: str) -> float:
@@ -648,11 +675,12 @@ def determine_top_group_indices(mol, atom1, atom2, index=1) -> Tuple[list, bool]
     return top, not atom2.is_hydrogen()
 
 
-def extermum_list(lst: list,
+def extremum_list(lst: list,
                   return_min: bool = True,
-                  ) -> Union[int, None]:
+                  ) -> Optional[Union[int, None]]:
     """
-    A helper function for finding the minimum of a list of numbers (int/float) where some of the entries might be None.
+    A helper function for finding the extremum (either minimum or maximum) of a list of numbers (int/float)
+    where some of the entries might be ``None``.
 
     Args:
         lst (list): The list.
@@ -660,7 +688,7 @@ def extermum_list(lst: list,
                                     ``True`` for minimum, ``False`` for maximum, ``True`` by default.
 
     Returns: int
-        The entry with the minimal value.
+        The entry with the minimal/maximal value.
     """
     if len(lst) == 0:
         return None
@@ -739,7 +767,7 @@ def key_by_val(dictionary: dict,
         The key.
     """
     for key, val in dictionary.items():
-        if val == value:
+        if val == value or (isinstance(value, int) and val == f'X{value}'):
             return key
     raise ValueError(f'Could not find value {value} in the dictionary\n{dictionary}')
 
@@ -793,6 +821,8 @@ def almost_equal_coords(xyz1: dict,
     Returns: bool
         ``True`` if they are almost equal, ``False`` otherwise.
     """
+    if not isinstance(xyz1, dict) or not isinstance(xyz2, dict):
+        raise TypeError(f'xyz1 and xyz2 must be dictionaries, got {type(xyz1)} and {type(xyz2)}:\n{xyz1}\n{xyz2}')
     for xyz_coord1, xyz_coord2 in zip(xyz1['coords'], xyz2['coords']):
         for xyz1_c, xyz2_c in zip(xyz_coord1, xyz_coord2):
             if not np.isclose([xyz1_c], [xyz2_c], rtol=rtol, atol=atol):
@@ -850,7 +880,7 @@ def is_notebook() -> bool:
         return False  # Probably standard Python interpreter
 
 
-def is_str_float(value: str) -> bool:
+def is_str_float(value: Optional[str]) -> bool:
     """
     Check whether a string can be converted to a floating number.
 
@@ -863,11 +893,11 @@ def is_str_float(value: str) -> bool:
     try:
         float(value)
         return True
-    except ValueError:
+    except (ValueError, TypeError):
         return False
 
 
-def is_str_int(value: str) -> bool:
+def is_str_int(value: Optional[str]) -> bool:
     """
     Check whether a string can be converted to an integer.
 
@@ -880,7 +910,7 @@ def is_str_int(value: str) -> bool:
     try:
         int(value)
         return True
-    except ValueError:
+    except (ValueError, TypeError):
         return False
 
 
@@ -1100,7 +1130,7 @@ def get_close_tuple(key_1: Tuple[Union[float, str], ...],
                     keys: List[Tuple[Union[float, str], ...]],
                     tolerance: float = 0.05,
                     raise_error: bool = False,
-                    ) -> Optional[Tuple[Union[float, str], Union[float, str]]]:
+                    ) -> Optional[Tuple[Union[float, str], ...]]:
     """
     Get a key from a list of keys close in value to the given key.
     Even if just one of the items in the key has a close match, use the close value.
@@ -1140,3 +1170,78 @@ def get_close_tuple(key_1: Tuple[Union[float, str], ...],
         # couldn't find a close key
         return None
     raise ValueError(f'Could not locate a key close to {key_1} within the tolerance {tolerance} in the given keys list.')
+
+
+def timedelta_from_str(time_str: str):
+    """
+    Get a datetime.timedelta object from its str() representation
+
+    Args:
+        time_str (str): The string representation of a datetime.timedelta object.
+
+    Returns:
+        datetime.timedelta: The corresponding timedelta object.
+    """
+    regex = re.compile(r'((?P<hours>\d+?)hr)?((?P<minutes>\d+?)m)?((?P<seconds>\d+?)s)?')
+
+    parts = regex.match(time_str)
+    if not parts:
+        return
+    parts = parts.groupdict()
+    time_params = {}
+    for (name, param) in parts.items():
+        if param:
+            time_params[name] = int(param)
+    return datetime.timedelta(**time_params)
+
+
+def torsions_to_scans(descriptor: Optional[List[List[int]]],
+                      direction: int = 1,
+                      ) -> Optional[List[List[int]]]:
+    """
+    Convert torsions to scans or vice versa.
+    In ARC we define a torsion as a list of four atoms with 0-indices.
+    We define a scan  as a list of four atoms with 1-indices.
+    This function converts one format to the other.
+
+    Args:
+        descriptor (list): The torsions or scans list.
+        direction (int, optional): 1: Convert torsions to scans; -1: Convert scans to torsions.
+
+    Returns:
+        Optional[List[List[int]]]: The converted indices.
+    """
+    if descriptor is None:
+        return None
+    if not isinstance(descriptor, (list, tuple)):
+        raise TypeError(f'Expected a list, got {descriptor} which is a {type(descriptor)}')
+    if not isinstance(descriptor[0], (list, tuple)):
+        descriptor = [descriptor]
+    direction = direction if direction == 1 else -1  # anything other than 1 is translated to -1
+    new_descriptor = [convert_list_index_0_to_1(entry, direction) for entry in descriptor]
+    if any(any(item < 0 for item in entry) for entry in new_descriptor):
+        raise ValueError(f'Got an illegal value when converting:\n{descriptor}\ninto:\n{new_descriptor}')
+    return new_descriptor
+
+
+def convert_list_index_0_to_1(_list: Union[list, tuple], direction: int = 1) -> Union[list, tuple]:
+    """
+    Convert a list from 0-indexed to 1-indexed, or vice versa.
+    Ensures positive values in the resulting list.
+
+    Args:
+        _list (list): The list to be converted.
+        direction (int, optional): Either 1 or -1 to convert 0-indexed to 1-indexed or vice versa, respectively.
+
+    Raises:
+        ValueError: If the new list contains negative values.
+
+    Returns:
+        Union[list, tuple]: The converted indices.
+    """
+    new_list = [item + direction for item in _list]
+    if any(val < 0 for val in new_list):
+        raise ValueError(f'The resulting list from converting {_list} has negative values:\n{new_list}')
+    if isinstance(_list, tuple):
+        new_list = tuple(new_list)
+    return new_list

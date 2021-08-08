@@ -53,7 +53,7 @@ KEY_FROM_LEN = {2: 'R', 3: 'A', 4: 'D'}
 
 def xyz_to_zmat(xyz: Dict[str, tuple],
                 mol: Optional[Molecule] = None,
-                constraints: Optional[Dict[str, List[Tuple[int]]]] = None,
+                constraints: Optional[Dict[str, List[Tuple[int, ...]]]] = None,
                 consolidate: bool = True,
                 consolidation_tols: Dict[str, float] = None,
                 fragments: Optional[List[List[int]]] = None,
@@ -963,18 +963,13 @@ def zmat_to_coords(zmat, keep_dummy=False, skip_undefined=False):
     for i in range(len(zmat['symbols'])):
         coords = _add_nth_atom_to_coords(zmat=zmat, coords=coords, i=i, coords_to_skip=coords_to_skip)
 
-    # reorder the xyz according to the zmat map and remove dummy atoms
+    # Reorder the xyz according to the zmat map and remove dummy atoms if requested.
     ordered_coords, ordered_symbols = list(), list()
-    for i in range(len([symbol for symbol in zmat['symbols'] if symbol != 'X'])):
+    for i in range(len(zmat['symbols'])):
         zmat_index = key_by_val(zmat['map'], i)
-        if zmat_index < len(coords) and i not in coords_to_skip:
+        if zmat_index < len(coords) and i not in coords_to_skip and (zmat['symbols'][zmat_index] != 'X' or keep_dummy):
             ordered_coords.append(coords[zmat_index])
             ordered_symbols.append(zmat['symbols'][zmat_index])
-    if keep_dummy:
-        for key, val in zmat['map'].items():
-            if 'X' in str(val):
-                ordered_coords.append(coords[key])
-                ordered_symbols.append(zmat['symbols'][key])
 
     return ordered_coords, ordered_symbols
 
@@ -1215,7 +1210,7 @@ def is_angle_linear(angle, tolerance=None):
     Returns:
         bool: Whether the angle is close to 180 or 0 degrees, ``True`` if it is.
     """
-    tol = tolerance if tolerance is not None else TOL_180
+    tol = tolerance or TOL_180
     if 180 - tol < angle <= 180 or 0 <= angle < tol:
         return True
     return False
@@ -1747,18 +1742,18 @@ def get_parameter_from_atom_indices(zmat, indices, xyz_indexed=True):
         raise ZMatError(f'Not all indices ({indices}) are in the zmat map keys ({list(zmat["map"].keys())}).')
     key = '_'.join([KEY_FROM_LEN[len(indices)]] + [str(index) for index in indices])
     if key in list(zmat['vars'].keys()):
-        # it's a non-consolidated key
+        # It's a non-consolidated key.
         return key
-    # it's a consolidated key
+    # It's a consolidated key.
     key = KEY_FROM_LEN[len(indices)]
     for var in zmat['vars'].keys():
         if var[0] == key and tuple(indices) in list(get_atom_indices_from_zmat_parameter(var)):
             return var
-    # If no value found, check whether this is an angle split by a dummy atom
+    # If no value found, check whether this is an angle split by a dummy atom.
     var1, var2 = None, None
     if len(indices) == 3:
         # 180 degree angles aren't given explicitly in the zmat,
-        # they are separated in to two angles using a dummy atom, check if this is the case here
+        # they are separated in to two angles using a dummy atom, check if this is the case here.
         dummy_indices = [str(key) for key, val in zmat['map'].items() if isinstance(val, str) and 'X' in val]
         param1 = 'AX_{0}_{1}_{2}'
         all_parameters = list(zmat['vars'].keys())
@@ -1907,7 +1902,43 @@ def is_atom_in_new_fragment(atom_index: int,
             if atom_index in fragment:
                 if all([z_index in skip_atoms or frag_index not in fragment
                         for z_index, frag_index in zmat['map'].items()]):
-                    # all atoms considered thus far are not in the current fragment, connectivity is meaningless
+                    # All atoms considered thus far are not in the current fragment, connectivity is meaningless.
                     return True
                 break
     return False
+
+
+def up_param(param: str,
+             increment: Optional[int] = None,
+             increment_list: Optional[List[int]] = None,
+             ) -> str:
+    """
+    Increase the indices represented by a zmat parameter.
+
+    Args:
+        param (str): The zmat parameter.
+        increment (int, optional): The increment to increase by.
+        increment_list (list, optional): Entries are individual indices to use when incrementing the ``param`` indices.
+
+    Raises:
+        ZMatError: If neither ``increment`` nor ``increment_list`` were specified,
+                   or if the increase resulted in a negative number.
+
+    Returns: str
+        The new parameter with increased indices.
+    """
+    if increment is None and increment_list is None:
+        raise ZMatError('Either increment or increment_list must be specified.')
+    indices = get_atom_indices_from_zmat_parameter(param)[0]
+    if increment is not None:
+        new_indices = [index + increment for index in indices]
+    else:
+        if len(increment_list) != len(indices):
+            raise ZMatError(f'The number of increments in {increment_list} ({len(increment_list)} is different than '
+                            f'the number of indices to increment {indices} ({len(indices)})')
+        new_indices = [index + inc for index, inc in zip(indices, increment_list)]
+    if any(index < 0 for index in new_indices):
+        raise ZMatError(f'Got a negative zmat index when bumping {param} by {increment}')
+    new_indices = [str(index) for index in new_indices]
+    new_param = '_'.join([param.split('_')[0]] + new_indices)
+    return new_param

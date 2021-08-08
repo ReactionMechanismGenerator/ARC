@@ -16,6 +16,7 @@ from arc.exceptions import InputError
 
 if TYPE_CHECKING:
     from rmgpy.data.kinetics.family import KineticsFamily
+    from arc.reaction import ARCReaction
 
 
 logger = get_logger()
@@ -41,7 +42,7 @@ def load_families_only(rmgdb: RMGDatabase,
 
     Args:
         rmgdb (RMGDatabase): The RMG database instance.
-        kinetics_families (str, list, optional): Specific kinetics families to load.
+        kinetics_families (Union[str, list], optional): Specific kinetics families to load.
     """
     if kinetics_families not in ('default', 'all', 'none') and not isinstance(kinetics_families, list):
         raise InputError(f"kinetics families should be either 'default', 'all', 'none', or a list of names, e.g.,"
@@ -155,22 +156,46 @@ def load_rmg_database(rmgdb: RMGDatabase,
         try:
             family.add_rules_from_training(thermo_database=rmgdb.thermo)
         except KineticsError:
-            logger.info('Could not train family {0}'.format(family))
+            logger.info(f'Could not train family {family}')
         else:
             family.fill_rules_by_averaging_up(verbose=False)
+        family.save_order = True
     logger.info('\n\n')
 
 
+def determine_family(reaction: 'ARCReaction',
+                     db: Optional[RMGDatabase] = None,
+                     ):
+    """
+    Determine the RMG reaction family for an ARC reaction.
+    A wrapper for ARCReaction.determine_family().
+    This wrapper is useful because it makes a new instance of the rmgdb if needed.
+
+    Args:
+        reaction ('ARCReaction'): An ARCReaction object instance.
+        db (RMGDatabase, optional): The RMG database instance.
+    """
+    if reaction.family is None:
+        if db is None:
+            db = make_rmg_database_object()
+            load_families_only(db)
+        if reaction.rmg_reaction is None:
+            reaction.rmg_reaction_from_arc_species()
+        reaction.determine_family(db)
+
+
 def determine_reaction_family(rmgdb: RMGDatabase,
-                              reaction:Reaction,
+                              reaction: Reaction,
+                              save_order: bool = True,
                               ) -> Tuple[Optional['KineticsFamily'], bool]:
     """
-    Determine the RMG kinetic family for a given ARCReaction object.
-    Returns None if no family found or more than one family found.
+    Determine the RMG kinetic family for a given ``ARCReaction`` object instance.
+    Returns ``None`` if no family found or more than one family found.
 
     Args:
         rmgdb (RMGDatabase): The RMG database instance.
         reaction (Reaction): The RMG Reaction object.
+        save_order (bool, optional): Whether to retain atomic order of the RMG ``reaction`` object instance.
 
     Returns: Tuple[Optional[KineticsFamily], bool]
         - The corresponding RMG reaction's family. ``None`` if no family was found or more than one family were found.
@@ -179,44 +204,53 @@ def determine_reaction_family(rmgdb: RMGDatabase,
     fam_list = loop_families(rmgdb=rmgdb, reaction=reaction)
     families = [fam_l[0] for fam_l in fam_list]
     if len(set(families)) == 1:
-        return families[0], families[0].own_reverse
+        family = families[0]
+        if save_order:
+            family.save_order = True
+        return family, family.own_reverse
     else:
         return None, False
 
 
 def loop_families(rmgdb: RMGDatabase,
                   reaction: Reaction,
-                  ) -> List['KineticsFamily']:
+                  ) -> List[Tuple['KineticsFamily', list]]:
     """
     Loop through kinetic families and return a list of tuples of (family, degenerate_reactions)
-    `reaction` is an RMG Reaction object.
-    Returns a list of (family, degenerate_reactions) tuples.
+    corresponding to ``reaction``.
 
     Args:
         rmgdb (RMGDatabase): The RMG database instance.
-        reaction (Reaction): The RMG Reaction object.
+        reaction (Reaction): The RMG Reaction object instance.
 
-    Returns: List[KineticsFamily]
-        Entries are corresponding RMG KineticsFamily instances.
+    Returns: List[Tuple['KineticsFamily', list]]
+        Entries are tuples of a corresponding RMG KineticsFamily instance and a list of degenerate reactions.
     """
-    reaction = reaction.copy()  # use a copy to avoid changing atom order in the molecules by RMG
+    reaction = reaction.copy()  # Use a copy to avoid changing atom order in the molecules by RMG.
+    for spc in reaction.reactants + reaction.products:
+        spc.generate_resonance_structures(save_order=True)
     fam_list = list()
     for family in rmgdb.kinetics.families.values():
+        family.save_order = True
         degenerate_reactions = list()
-        family_reactions_by_r = list()  # family reactions for the specified reactants
-        family_reactions_by_rnp = list()  # family reactions for the specified reactants and products
+        family_reactions_by_r = list()  # Family reactions for the specified reactants.
+        family_reactions_by_rnp = list()  # Family reactions for the specified reactants and products.
 
         if len(reaction.reactants) == 1:
             for reactant0 in reaction.reactants[0].molecule:
                 fam_rxn = family.generate_reactions(reactants=[reactant0],
-                                                    products=reaction.products)
+                                                    products=reaction.products,
+                                                    delete_labels=False,
+                                                    )
                 if fam_rxn:
                     family_reactions_by_r.extend(fam_rxn)
         elif len(reaction.reactants) == 2:
             for reactant0 in reaction.reactants[0].molecule:
                 for reactant1 in reaction.reactants[1].molecule:
                     fam_rxn = family.generate_reactions(reactants=[reactant0, reactant1],
-                                                        products=reaction.products)
+                                                        products=reaction.products,
+                                                        delete_labels=False,
+                                                        )
                     if fam_rxn:
                         family_reactions_by_r.extend(fam_rxn)
         elif len(reaction.reactants) == 3:
@@ -224,14 +258,16 @@ def loop_families(rmgdb: RMGDatabase,
                 for reactant1 in reaction.reactants[1].molecule:
                     for reactant2 in reaction.reactants[2].molecule:
                         fam_rxn = family.generate_reactions(reactants=[reactant0, reactant1, reactant2],
-                                                            products=reaction.products)
+                                                            products=reaction.products,
+                                                            delete_labels=False,
+                                                            )
                         if fam_rxn:
                             family_reactions_by_r.extend(fam_rxn)
 
         if len(reaction.products) == 1:
             for fam_rxn in family_reactions_by_r:
                 for product0 in reaction.products[0].molecule:
-                    if same_species_lists([product0], fam_rxn.products):
+                    if same_species_lists([product0], fam_rxn.products, save_order=True):
                         family_reactions_by_rnp.append(fam_rxn)
             degenerate_reactions = find_degenerate_reactions(rxn_list=family_reactions_by_rnp,
                                                              same_reactants=False,
@@ -240,7 +276,7 @@ def loop_families(rmgdb: RMGDatabase,
             for fam_rxn in family_reactions_by_r:
                 for product0 in reaction.products[0].molecule:
                     for product1 in reaction.products[1].molecule:
-                        if same_species_lists([product0, product1], fam_rxn.products):
+                        if same_species_lists([product0, product1], fam_rxn.products, save_order=True):
                             family_reactions_by_rnp.append(fam_rxn)
             degenerate_reactions = find_degenerate_reactions(rxn_list=family_reactions_by_rnp,
                                                              same_reactants=False,
@@ -250,7 +286,7 @@ def loop_families(rmgdb: RMGDatabase,
                 for product0 in reaction.products[0].molecule:
                     for product1 in reaction.products[1].molecule:
                         for product2 in reaction.products[2].molecule:
-                            if same_species_lists([product0, product1, product2], fam_rxn.products):
+                            if same_species_lists([product0, product1, product2], fam_rxn.products, save_order=True):
                                 family_reactions_by_rnp.append(fam_rxn)
             degenerate_reactions = find_degenerate_reactions(rxn_list=family_reactions_by_rnp,
                                                              same_reactants=False,
@@ -314,3 +350,24 @@ def determine_rmg_kinetics(rmgdb: RMGDatabase,
                             rxn.comment += f'{entry.reference.authors[0]} {entry.reference.year}'
                         rmg_reactions.append(rxn)
     return rmg_reactions
+
+
+def get_family(rmgdb: RMGDatabase,
+               label: str,
+               ) -> Optional['KineticsFamily']:
+    """
+    Get a KineticsFamily object instance corresponding to the input family ``label``.
+
+    Args:
+        rmgdb (RMGDatabase): The RMG database instance.
+        label (str): The label of the desired family.
+
+    Returns:
+        Optional['KineticsFamily']: The desired family object instance.
+    """
+    label = label.lower()
+    for family_label, family in rmgdb.kinetics.families.items():
+        if family_label.lower() == label:
+            family.save_order = True
+            return family
+    return None

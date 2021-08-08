@@ -23,7 +23,8 @@ from arc.species.converter import (check_isomorphism,
                                    molecules_from_xyz,
                                    str_to_xyz,
                                    xyz_to_str,
-                                   xyz_to_x_y_z)
+                                   xyz_to_x_y_z,
+                                   )
 from arc.species.species import (ARCSpecies,
                                  TSGuess,
                                  are_coords_compliant_with_graph,
@@ -31,7 +32,8 @@ from arc.species.species import (ARCSpecies,
                                  check_label,
                                  check_xyz,
                                  determine_rotor_symmetry,
-                                 determine_rotor_type)
+                                 determine_rotor_type,
+                                 )
 from arc.species.xyz_to_2d import MolGraph
 from arc.utils.wip import work_in_progress
 
@@ -96,15 +98,14 @@ class TestARCSpecies(unittest.TestCase):
                       2 H u0 p0 c0 {1,S}"""
         nh_s_xyz = """N       0.50949998    0.00000000    0.00000000
                       H      -0.50949998    0.00000000    0.00000000"""
-        cls.spc9 = ARCSpecies(label='NH2(S)', adjlist=nh_s_adj, xyz=nh_s_xyz, multiplicity=1, charge=0)
+        cls.spc9 = ARCSpecies(label='NH2_S_', adjlist=nh_s_adj, xyz=nh_s_xyz, multiplicity=1, charge=0)
 
         cls.spc10 = ARCSpecies(label='CCCCC', smiles='CCCCC')
         cls.spc11 = ARCSpecies(label='CCCNO', smiles='CCCNO')  # has chiral N
         cls.spc12 = ARCSpecies(label='[CH](CC[CH]c1ccccc1)c1ccccc1', smiles='[CH](CC[CH]c1ccccc1)c1ccccc1')
 
     def test_from_yml_file(self):
-        """Test that an ARCSpecies object can succesfully loaded from an Arkane YAML file"""
-
+        """Test that an ARCSpecies object can successfully be loaded from an Arkane YAML file"""
         n4h6_adj_list = """1  N u0 p1 c0 {2,S} {3,S} {4,S}
 2  H u0 p0 c0 {1,S}
 3  H u0 p0 c0 {1,S}
@@ -116,7 +117,6 @@ class TestARCSpecies(unittest.TestCase):
 9  H u0 p0 c0 {8,S}
 10 H u0 p0 c0 {8,S}
 """
-
         n4h6_xyz = {'symbols': ('N', 'H', 'H', 'N', 'H', 'N', 'H', 'N', 'H', 'H'),
                     'isotopes': (14, 1, 1, 14, 1, 14, 1, 14, 1, 1),
                     'coords': ((1.359965, -0.537228, -0.184462),
@@ -139,11 +139,20 @@ class TestARCSpecies(unittest.TestCase):
         self.assertEqual(n4h6.mol.to_smiles(), 'NNNN')
         self.assertEqual(n4h6.optical_isomers, 2)
         self.assertEqual(n4h6.get_xyz(), n4h6_xyz)
+        self.assertAlmostEqual(n4h6.e0, 273.2465365710362)
+
+        c3_1_yml_path = os.path.join(ARC_PATH, 'arc', 'testing', 'yml_testing', 'C3_1.yml')
+        c3_1 = ARCSpecies(yml_path=c3_1_yml_path)
+        self.assertAlmostEqual(c3_1.e0, 86.34867237178679)
+
+        c3_2_yml_path = os.path.join(ARC_PATH, 'arc', 'testing', 'yml_testing', 'C3_2.yml')
+        c3_2 = ARCSpecies(yml_path=c3_2_yml_path)
+        self.assertAlmostEqual(c3_2.e0, 72.98479932780415)
 
     def test_str(self):
         """Test the string representation of the object"""
         str_representation = str(self.spc9)
-        expected_representation = 'ARCSpecies(label=NH2(S), smiles=[NH], is_ts=False, multiplicity=1, charge=0)'
+        expected_representation = 'ARCSpecies(label=NH2_S_, smiles=[NH], is_ts=False, multiplicity=1, charge=0)'
         self.assertEqual(str_representation, expected_representation)
 
     def test_set_mol_list(self):
@@ -536,14 +545,8 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         expected_dict = {'number_of_rotors': 0,
                          'multiplicity': 1,
                          'arkane_file': None,
-                         'mol': """1 C u0 p0 c0 {2,S} {3,S} {4,S} {5,S}
-2 N u0 p1 c0 {1,S} {6,S} {7,S}
-3 H u0 p0 c0 {1,S}
-4 H u0 p0 c0 {1,S}
-5 H u0 p0 c0 {1,S}
-6 H u0 p0 c0 {2,S}
-7 H u0 p0 c0 {2,S}
-""",
+                         'mol': {'atoms': spc_dict['mol']['atoms'],
+                                 'multiplicity': 1, 'props': {}},
                          'compute_thermo': True,
                          'label': 'methylamine',
                          'long_thermo_description': spc_dict['long_thermo_description'],
@@ -553,6 +556,16 @@ H      -1.67091600   -1.35164600   -0.93286400"""
                          'is_ts': False,
                          'bond_corrections': {'C-H': 3, 'C-N': 1, 'H-N': 2}}
         self.assertEqual(spc_dict, expected_dict)
+        self.assertTrue(spc_dict['mol']['atoms'][0]['id'] < -50)
+        self.assertEqual(spc_dict['mol']['atoms'][0]['radical_electrons'], 0)
+        self.assertEqual(spc_dict['mol']['atoms'][0]['charge'], 0)
+        self.assertEqual(spc_dict['mol']['atoms'][0]['lone_pairs'], 0)
+        self.assertEqual(spc_dict['mol']['atoms'][0]['props'], {'inRing': False})
+        self.assertEqual(spc_dict['mol']['atoms'][0]['element']['number'], 6)
+        self.assertEqual(spc_dict['mol']['atoms'][0]['element']['symbol'], 'C')
+        self.assertEqual(spc_dict['mol']['atoms'][0]['element']['name'], 'carbon')
+        self.assertEqual(spc_dict['mol']['atoms'][0]['element']['mass'], 0.01201064046472311)
+        self.assertEqual(spc_dict['mol']['atoms'][0]['element']['isotope'], -1)
 
     def test_from_dict(self):
         """Test Species.from_dict()"""
@@ -563,6 +576,31 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertEqual(spc.label, 'OH')
         self.assertEqual(spc.mol.to_smiles(), '[OH]')
         self.assertFalse(spc.is_ts)
+
+    def test_copy(self):
+        """Test the copy() method."""
+        spc_copy = self.spc6.copy()
+        self.assertIsNot(self.spc6, spc_copy)
+        self.assertEqual(spc_copy.multiplicity, self.spc6.multiplicity)
+        self.assertEqual(spc_copy.get_xyz()['symbols'], self.spc6.get_xyz()['symbols'])
+        self.assertEqual(spc_copy.mol.to_smiles(), self.spc6.mol.to_smiles())
+
+    def test_mol_dict_repr_round_trip(self):
+        """Test that a Molecule object survives the as_dict() and from_dict() round trip with emphasis on atom IDs."""
+        mol = Molecule(smiles='NCC')
+        mol.assign_atom_ids()
+        original_symbols = [atom.element.symbol for atom in mol.atoms]
+        original_ids = [atom.id for atom in mol.atoms]
+        original_adjlist = mol.to_adjacency_list()
+        spc = ARCSpecies(label='EA', mol=mol)
+        species_dict = spc.as_dict()
+        new_spc = ARCSpecies(species_dict=species_dict)
+        new_symbols = [atom.element.symbol for atom in new_spc.mol.atoms]
+        new_ids = [atom.id for atom in new_spc.mol.atoms]
+        new_adjlist = new_spc.mol.to_adjacency_list()
+        self.assertEqual(original_symbols, new_symbols)
+        self.assertEqual(original_ids, new_ids)
+        self.assertEqual(original_adjlist, new_adjlist)
 
     def test_determine_rotor_type(self):
         """Test that we correctly determine whether a rotor is FreeRotor or HinderedRotor"""
@@ -1005,6 +1043,22 @@ H       2.82319256   -0.46240839   -0.40178723"""
         for atom, symbol in zip(spc5.mol.atoms, xyz5['symbols']):
             self.assertEqual(atom.symbol, symbol)
 
+        xyz6 = """C                  0.50180491   -0.93942231   -0.57086745
+        C                  0.01278145    0.13148427    0.42191407
+        H                  0.28549447    0.06799101    1.45462711
+        H                  1.44553946   -1.32386345   -0.24456986
+        H                  0.61096295   -0.50262210   -1.54153222
+        H                 -0.24653265    2.11136864   -0.37045418
+        C                 -0.86874485    1.29377369   -0.07163907
+        H                 -0.21131163   -1.73585284   -0.61629002
+        H                 -1.51770930    1.60958621    0.71830245
+        H                 -1.45448167    0.96793094   -0.90568876"""
+        spc6 = ARCSpecies(label='C[CH]C', smiles='C[CH]C', xyz=xyz6)
+        for atom, symbol in zip(spc6.mol.atoms, spc6.get_xyz()['symbols']):
+            self.assertEqual(atom.symbol, symbol)
+        for atom, symbol in zip(spc6.mol.atoms, ['C', 'C', 'H', 'H', 'H', 'H', 'C', 'H', 'H', 'H']):
+            self.assertEqual(atom.symbol, symbol)
+
     def test_get_radius(self):
         """Test determining the species radius"""
         spc1 = ARCSpecies(label='r1', smiles='O=C=O')
@@ -1257,6 +1311,20 @@ H       1.11582953    0.94384729   -0.10134685"""
         cation_rad.generate_conformers()
         self.assertTrue(len(cation_rad.conformers))
 
+    def test_determine_multiplicity(self):
+        """Test determining a species multiplicity"""
+        h_rad = ARCSpecies(label='H', smiles='[H]')
+        self.assertEqual(h_rad.multiplicity, 2)
+
+        n2 = ARCSpecies(label='N#N', smiles='N#N')
+        self.assertEqual(n2.multiplicity, 1)
+
+        methyl_peroxyl = ARCSpecies(label='CH3OO', smiles='CO[O]')
+        self.assertEqual(methyl_peroxyl.multiplicity, 2)
+
+        ch_ts = ARCSpecies(label='C--H-TS', xyz='C 0 0 0\nH 1 2 5', is_ts=True)
+        self.assertEqual(ch_ts.multiplicity, 2)
+
     def test_are_coords_compliant_with_graph(self):
         """Test coordinates compliant with 2D graph connectivity"""
         self.assertTrue(are_coords_compliant_with_graph(xyz=self.spc6.get_xyz(), mol=self.spc6.mol))
@@ -1313,14 +1381,25 @@ H       1.11582953    0.94384729   -0.10134685"""
 
     def test_check_label(self):
         """Test the species check_label() method"""
-        label = check_label('HCN')
+        label, original_label = check_label('HCN')
         self.assertEqual(label, 'HCN')
+        self.assertIsNone(original_label)
 
-        label = check_label('C#N')
+        label, original_label = check_label('H-N')
+        self.assertEqual(label, 'H-N')
+        self.assertIsNone(original_label)
+
+        label, original_label = check_label('C#N')
         self.assertEqual(label, 'CtN')
+        self.assertEqual(original_label, 'C#N')
 
-        label = check_label('C?N')
+        label, original_label = check_label('C+N')
+        self.assertEqual(label, 'CpN')
+        self.assertEqual(original_label, 'C+N')
+
+        label, original_label = check_label('C?N')
         self.assertEqual(label, 'C_N')
+        self.assertEqual(original_label, 'C?N')
 
     def test_check_atom_balance(self):
         """Test the check_atom_balance function"""
@@ -1366,7 +1445,8 @@ H      -1.47626400   -0.10694600   -1.88883800"""
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests
         """
-        projects = ['arc_project_for_testing_delete_after_usage4']
+        projects = ['arc_project_for_testing_delete_after_usage4',
+                    os.path.join(ARC_PATH, 'arc', 'testing', 'gcn_tst')]
         for project in projects:
             project_directory = os.path.join(ARC_PATH, 'Projects', project)
             shutil.rmtree(project_directory, ignore_errors=True)
@@ -1412,14 +1492,18 @@ class TestTSGuess(unittest.TestCase):
         self.assertEqual(tsg_dict, expected_dict)
 
     def test_from_dict(self):
-        """Test TSGuess.from_dict()
-        Also tests that the round trip to and from a dictionary ended in an RMG Reaction object"""
+        """
+        Test TSGuess.from_dict()
+
+        Also tests that the round trip to and from a dictionary ended in an RMG Reaction object.
+        """
         ts_dict = self.tsg1.as_dict()
         tsg = TSGuess(ts_dict=ts_dict)
         self.assertEqual(tsg.method, 'autotst')
         self.assertTrue(isinstance(tsg.rmg_reaction, Reaction))
 
-    def test_xyz_to_2d_get_formula(self):
+    def test_xyz_perception(self):
+        """Test MolGraph.get_formula()"""
         xyz_arb = {'symbols': ('H', 'C', 'H', 'H', 'O', 'N', 'O'),
                  'isotopes': (1, 13, 1, 1, 16, 14, 16),
                  'coords': ((-1.0, 0.0, 0.0),

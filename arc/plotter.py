@@ -27,7 +27,7 @@ from rmgpy.exceptions import DatabaseError, InvalidAdjacencyListError
 from rmgpy.quantity import ScalarQuantity
 from rmgpy.species import Species
 
-from arc.common import (extermum_list,
+from arc.common import (extremum_list,
                         get_angle_in_180_range,
                         get_close_tuple,
                         get_logger,
@@ -565,7 +565,14 @@ def text_plotter(x_data, y_data, labels, text_positions, axis, txt_width, txt_he
 
 # *** Files (libraries, xyz, conformers) ***
 
-def save_geo(species=None, xyz=None, project_directory=None, path=None, filename=None, format_='all'):
+def save_geo(species: Optional[ARCSpecies] = None,
+             xyz: Optional[dict] = None,
+             project_directory: Optional[str] = None,
+             path: Optional[str] = None,
+             filename: Optional[str] = None,
+             format_: str = 'all',
+             comment: Optional[str] = None,
+             ):
     """
     Save a geometry file.
     If ``species`` is given, .final_xyz will be saved if it is not None, otherwise .initial_xyz will be used.
@@ -579,6 +586,7 @@ def save_geo(species=None, xyz=None, project_directory=None, path=None, filename
         path (str, optional): A specific directory path for saving the files.
         filename (str, optional): A name for the file to save (without suffix).
         format_ (str, optional): The format to save. Either 'xyz', 'gjf' or 'all' for both.
+        comment (str, optional): A comment to be stored in the XYZ file after the number of atoms line.
 
     Raises:
         InputError: If neither species nor xyz were given. Or if neither project_directory nor path were given.
@@ -610,6 +618,8 @@ def save_geo(species=None, xyz=None, project_directory=None, path=None, filename
         xyz_file = f'{number_of_atoms}\n'
         if species is not None:
             xyz_file += f'{species.label} optimized at {species.opt_level}\n'
+        elif comment is not None:
+            xyz_file += f'{comment}\n'
         else:
             xyz_file += 'coordinates\n'
         xyz_file += f'{xyz_str}\n'
@@ -641,26 +651,27 @@ def save_irc_traj_animation(irc_f_path, irc_r_path, out_path):
     traj1 = parse_trajectory(irc_f_path)
     traj2 = parse_trajectory(irc_r_path)
 
-    traj = traj1[:1:-1] + traj2[1:-1] + traj2[:1:-1] + traj1[1:-1]
+    if traj1 is not None and traj2 is not None:
+        traj = traj1[:1:-1] + traj2[1:-1] + traj2[:1:-1] + traj1[1:-1]
 
-    with open(out_path, 'w') as f:
-        f.write('Entering Link 1\n')
-        for traj_index, xyz in enumerate(traj):
-            xs, ys, zs = xyz_to_x_y_z(xyz)
-            f.write('                         Standard orientation:\n')
-            f.write(' ---------------------------------------------------------------------\n')
-            f.write(' Center     Atomic     Atomic              Coordinates (Angstroms)\n')
-            f.write(' Number     Number      Type              X           Y           Z\n')
-            f.write(' ---------------------------------------------------------------------\n')
-            for i, symbol in enumerate(xyz['symbols']):
-                el_num, x, y, z = qcel.periodictable.to_Z(symbol), xs[i], ys[i], zs[i]
-                f.write(f'    {i + 1:>5}          {el_num}             0        {x} {y} {z}\n')
-            f.write(' ---------------------------------------------------------------------\n')
-            f.write(' GradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGrad\n')
-            f.write(f' Step number   1 out of a maximum of  29 on scan point     '
-                    f'{traj_index + 1} out of    {len(traj)}\n')
-            f.write(' GradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGrad\n')
-        f.write(' Normal termination of Gaussian 16\n')
+        with open(out_path, 'w') as f:
+            f.write('Entering Link 1\n')
+            for traj_index, xyz in enumerate(traj):
+                xs, ys, zs = xyz_to_x_y_z(xyz)
+                f.write('                         Standard orientation:\n')
+                f.write(' ---------------------------------------------------------------------\n')
+                f.write(' Center     Atomic     Atomic              Coordinates (Angstroms)\n')
+                f.write(' Number     Number      Type              X           Y           Z\n')
+                f.write(' ---------------------------------------------------------------------\n')
+                for i, symbol in enumerate(xyz['symbols']):
+                    el_num, x, y, z = qcel.periodictable.to_Z(symbol), xs[i], ys[i], zs[i]
+                    f.write(f'    {i + 1:>5}          {el_num}             0        {x} {y} {z}\n')
+                f.write(' ---------------------------------------------------------------------\n')
+                f.write(' GradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGrad\n')
+                f.write(f' Step number   1 out of a maximum of  29 on scan point     '
+                        f'{traj_index + 1} out of    {len(traj)}\n')
+                f.write(' GradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGrad\n')
+            f.write(' Normal termination of Gaussian 16\n')
 
 
 # *** Files (libraries, xyz, conformers) ***
@@ -830,7 +841,7 @@ def save_conformers_file(project_directory: str,
         os.makedirs(geo_dir)
     if energies is not None and any(e is not None for e in energies):
         optimized = True
-        min_e = extermum_list(energies, return_min=True)
+        min_e = extremum_list(energies, return_min=True)
         conf_path = os.path.join(geo_dir, 'conformers_after_optimization.txt')
     else:
         optimized = False
@@ -863,6 +874,8 @@ def save_conformers_file(project_directory: str,
                     content += 'TS guess method: ' + ts_methods[i] + '\n'
                 content += 'Failed to converge'
             content += '\n\n\n'
+        if is_ts:
+            logger.info(content)
         f.write(content)
 
 
@@ -1239,7 +1252,7 @@ def save_rotor_text_file(angles, energies, path):
         raise InputError('energies and angles must be the same length')
     if not os.path.isdir(os.path.dirname(path)):
         os.makedirs(os.path.dirname(path))
-    min_angle = extermum_list(angles, return_min=True)
+    min_angle = extremum_list(angles, return_min=True)
     angles = [angle - min_angle for angle in angles]  # set first angle to 0
     if energies:
         lines = ['Angle (degrees)        Energy (kJ/mol)\n']

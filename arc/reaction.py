@@ -2,7 +2,7 @@
 A module for representing a reaction.
 """
 
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import numpy as np
 from qcelemental.exceptions import ValidationError
@@ -12,11 +12,14 @@ from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 
 import arc.rmgdb as rmgdb
-from arc.common import extermum_list, get_logger
+from arc.common import extremum_list, get_logger
 from arc.exceptions import ReactionError, InputError
 from arc.imports import settings
-from arc.species.converter import str_to_xyz, xyz_to_str
-from arc.species.species import ARCSpecies, check_atom_balance
+from arc.species.converter import check_xyz_dict, str_to_xyz, xyz_to_str
+from arc.species.species import ARCSpecies, check_atom_balance, check_label
+
+if TYPE_CHECKING:
+    from rmgpy.data.rmg import RMGDatabase
 
 
 logger = get_logger()
@@ -39,8 +42,10 @@ class ARCReaction(object):
     Args:
         label (str, optional): The reaction's label in the format `r1 + r2 <=> p1 + p2`
                                (or unimolecular on either side, as appropriate).
-        reactants (list, optional): A list of reactants labels corresponding to an :ref:`ARCSpecies <species>`.
-        products (list, optional): A list of products labels corresponding to an :ref:`ARCSpecies <species>`.
+        reactants (list, optional): A list of reactant *labels* corresponding to an :ref:`ARCSpecies <species>`.
+        products (list, optional): A list of product *labels* corresponding to an :ref:`ARCSpecies <species>`.
+        r_species (list, optional): A list of reactants :ref:`ARCSpecies <species>` objects.
+        p_species (list, optional): A list of products :ref:`ARCSpecies <species>` objects.
         ts_label (str, optional): The :ref:`ARCSpecies <species>` label of the respective TS.
         rmg_reaction (Reaction, optional): An RMG Reaction class.
         ts_methods (list, optional): Methods to try for generating TS guesses. If an ARCSpecies is a TS and ts_methods
@@ -49,6 +54,8 @@ class ARCReaction(object):
         multiplicity (int, optional): The reaction surface multiplicity. A trivial guess will be made unless provided.
         charge (int, optional): The reaction surface charge.
         reaction_dict (dict, optional): A dictionary to create this object from (used when restarting ARC).
+        species_list (list, optional): A list of ARCSpecies entries for matching reactants and products
+                                       to existing species.
         preserve_param_in_scan (list, optional): Entries are length two iterables of atom indices (1-indexed)
                                                  between which distances and dihedrals of these pivots must be
                                                  preserved. Used for identification of rotors which break a TS.
@@ -56,7 +63,7 @@ class ARCReaction(object):
     Attributes:
         label (str): The reaction's label in the format `r1 + r2 <=> p1 + p2`
                      (or unimolecular on either side, as appropriate).
-        family (str): The RMG kinetic family, if applicable.
+        family (KineticsFamily): The RMG kinetic family, if applicable.
         family_own_reverse (bool): Whether the RMG family is its own reverse.
         reactants (list): A list of reactants labels corresponding to an :ref:`ARCSpecies <species>`.
         products (list): A list of products labels corresponding to an :ref:`ARCSpecies <species>`.
@@ -79,27 +86,31 @@ class ARCReaction(object):
         ts_label (str): The :ref:`ARCSpecies <species>` label of the respective TS.
         preserve_param_in_scan (list): Entries are length two iterables of atom indices (1-indexed) between which
                                        distances and dihedrals of these pivots must be preserved.
-        _atom_map (List[int]): An atom map, mapping the reactant atoms to the product atoms.
-        I.e., an atom map of [0, 2, 1] means that reactant atom 0 matches product atom 0,
-        reactant atom 1 matches product atom 2, and reactant atom 2 matches product atom 1.
+        atom_map (List[int]): An atom map, mapping the reactant atoms to the product atoms.
+                              I.e., an atom map of [0, 2, 1] means that reactant atom 0 matches product atom 0,
+                              reactant atom 1 matches product atom 2, and reactant atom 2 matches product atom 1.
+        done_opt_r_n_p (bool): Whether the optimization of all reactants and products is complete.
     """
     def __init__(self,
                  label: str = '',
                  reactants: Optional[List[str]] = None,
                  products: Optional[List[str]] = None,
+                 r_species: Optional[List[ARCSpecies]] = None,
+                 p_species: Optional[List[ARCSpecies]] = None,
                  ts_label: Optional[str] = None,
                  rmg_reaction: Optional[Reaction] = None,
                  ts_methods: Optional[List[str]] = None,
                  ts_xyz_guess: Optional[list] = None,
                  multiplicity: Optional[int] = None,
-                 charge: int = 0,
+                 charge: Optional[int] = None,
                  reaction_dict: Optional[dict] = None,
+                 species_list: Optional[List[ARCSpecies]] = None,
                  preserve_param_in_scan: Optional[list] = None,
                  ):
         self.arrow = ' <=> '
         self.plus = ' + '
-        self.r_species = list()
-        self.p_species = list()
+        self.r_species = r_species or list()
+        self.p_species = p_species or list()
         self.kinetics = None
         self.rmg_kinetics = None
         self.long_kinetic_description = ''
@@ -110,35 +121,39 @@ class ARCReaction(object):
         self.rmg_reactions = None
         self.ts_xyz_guess = ts_xyz_guess or list()
         self.preserve_param_in_scan = preserve_param_in_scan
+        self._atom_map = None
+        self._multiplicity = multiplicity
+        self._charge = charge
         if reaction_dict is not None:
             # Reading from a dictionary
-            self.from_dict(reaction_dict=reaction_dict)
+            self.from_dict(reaction_dict=reaction_dict, species_list=species_list)
         else:
             # Not reading from a dictionary
             self.label = label
             self.index = None
             self.ts_species = None
-            self.multiplicity = multiplicity
-            self.charge = charge
-            if self.multiplicity is not None and not isinstance(self.multiplicity, int):
-                raise InputError('Reaction multiplicity must be an integer, got {0} of type {1}.'.format(
-                    self.multiplicity, type(self.multiplicity)))
-            self.reactants = reactants
-            self.products = products
+            reactants = reactants or [spc.label for spc in self.r_species]
+            self.reactants = [check_label(reactant)[0] for reactant in reactants] if reactants else list()
+            products = products or [spc.label for spc in self.p_species] or None
+            self.products = [check_label(product)[0] for product in products] if products else list()
             self.rmg_reaction = rmg_reaction
-            if self.rmg_reaction is None and (self.reactants is None or self.products is None) and not self.label:
-                raise InputError('Cannot determine reactants and/or products labels for reaction {0}'.format(
-                    self.label))
+            if self.rmg_reaction is None \
+                    and (self.reactants is None or self.products is None) \
+                    and (self.r_species is None or self.p_species is None) \
+                    and not self.label:
+                raise InputError(f'Cannot determine reactants and/or products labels for reaction {self.label}')
             self.set_label_reactants_products()
             self.ts_methods = ts_methods if ts_methods is not None else default_ts_methods
             self.ts_methods = [tsm.lower() for tsm in self.ts_methods]
             self.ts_xyz_guess = ts_xyz_guess if ts_xyz_guess is not None else list()
-            self._atom_map = None
+            self.done_opt_r_n_p = None
         if len(self.reactants) > 3 or len(self.products) > 3:
             raise ReactionError(f'An ARC Reaction can have up to three reactants / products. got {len(self.reactants)} '
                                 f'reactants and {len(self.products)} products for reaction {self.label}.')
         if self.ts_xyz_guess is not None and not isinstance(self.ts_xyz_guess, list):
             self.ts_xyz_guess = [self.ts_xyz_guess]
+        self.arc_species_from_rmg_reaction()
+        self.remove_dup_species()
         self.check_atom_balance()
 
     @property
@@ -153,6 +168,40 @@ class ARCReaction(object):
     def atom_map(self, value):
         """Allow setting the atom map"""
         self._atom_map = value
+
+    @property
+    def charge(self):
+        """The net electric charge of the reaction PES"""
+        if self._charge is None:
+            if len(self.r_species):
+                self._charge = self.get_rxn_charge()
+            elif self.rmg_reaction is not None:
+                self._charge = sum([spc.molecule[0].get_net_charge() for spc in
+                                    self.rmg_reaction.reactants + self.rmg_reaction.products])
+        return self._charge
+
+    @charge.setter
+    def charge(self, value):
+        """Allow setting the reaction charge"""
+        if value is not None and not isinstance(value, int):
+            raise InputError(f'Reaction charge must be an integer, got {value} which is a {type(value)}.')
+        self._charge = value
+
+    @property
+    def multiplicity(self):
+        """The electron spin multiplicity of the reaction PES"""
+        if self._multiplicity is None:
+            self._multiplicity = self.get_rxn_multiplicity()
+        return self._multiplicity
+
+    @multiplicity.setter
+    def multiplicity(self, value):
+        """Allow setting the reaction multiplicity"""
+        self._multiplicity = value
+        if value is not None:
+            if not isinstance(value, int):
+                raise InputError(f'Reaction multiplicity must be an integer, got {value} which is a {type(value)}.')
+            logger.info(f'Setting multiplicity of reaction {self.label} to {self._multiplicity}')
 
     def __str__(self) -> str:
         """Return a string representation of the object"""
@@ -180,11 +229,14 @@ class ARCReaction(object):
             reaction_dict['ts_species'] = self.ts_species.as_dict()
         if self._atom_map is not None:
             reaction_dict['atom_map'] = self._atom_map
+        if self.done_opt_r_n_p is not None:
+            reaction_dict['done_opt_r_n_p'] = self.done_opt_r_n_p
         if self.preserve_param_in_scan is not None:
             reaction_dict['preserve_param_in_scan'] = self.preserve_param_in_scan
         if 'rmg_reaction' in reaction_dict:
             reaction_dict['rmg_reaction'] = self.rmg_reaction_to_str()
-        reaction_dict['family'] = self.family
+        if self.family is not None:
+            reaction_dict['family'] = self.family.label
         reaction_dict['family_own_reverse'] = self.family_own_reverse
         reaction_dict['long_kinetic_description'] = self.long_kinetic_description
         reaction_dict['label'] = self.label
@@ -193,7 +245,10 @@ class ARCReaction(object):
         reaction_dict['ts_label'] = self.ts_label
         return reaction_dict
 
-    def from_dict(self, reaction_dict: dict):
+    def from_dict(self,
+                  reaction_dict: dict,
+                  species_list: Optional[list] = None,
+                  ):
         """
         A helper function for loading this object from a dictionary in a YAML file for restarting ARC.
         """
@@ -203,13 +258,18 @@ class ARCReaction(object):
         self.charge = reaction_dict['charge'] if 'charge' in reaction_dict else 0
         self.reactants = reaction_dict['reactants'] if 'reactants' in reaction_dict else None
         self.products = reaction_dict['products'] if 'products' in reaction_dict else None
-        self.family = reaction_dict['family'] if 'family' in reaction_dict else None
+        if 'family' in reaction_dict and reaction_dict['family'] is not None:
+            db = rmgdb.make_rmg_database_object()
+            rmgdb.load_families_only(db)
+            self.family = rmgdb.get_family(rmgdb=db, label=reaction_dict['family'])
+            self.family.save_order = True
+        else:
+            self.family = None
         self.family_own_reverse = reaction_dict['family_own_reverse'] if 'family_own_reverse' in reaction_dict else 0
         if 'rmg_reaction' in reaction_dict:
             self.rmg_reaction_from_str(reaction_string=reaction_dict['rmg_reaction'])
         else:
             self.rmg_reaction = None
-        self.set_label_reactants_products()
         if self.rmg_reaction is None and (self.reactants is None or self.products is None):
             raise InputError(f'Cannot determine reactants and/or products labels for reaction {self.label}')
         if self.reactants is None or self.products is None:
@@ -218,13 +278,15 @@ class ARCReaction(object):
                                  f'to respective Species in ARC). If an RMG Reaction object was passes, make '
                                  f'sure that all species in the reactants and products are correctly labeled. '
                                  f'Problematic reaction: {self.label}')
-            self.reactants = [spc.label for spc in self.rmg_reaction.reactants]
-            self.products = [spc.label for spc in self.rmg_reaction.products]
-        self.set_label_reactants_products()
+            self.reactants = [check_label(spc.label)[0] for spc in self.rmg_reaction.reactants]
+            self.products = [check_label(spc.label)[0] for spc in self.rmg_reaction.products]
+        self.set_label_reactants_products(species_list)
         if self.ts_label is None:
             self.ts_label = reaction_dict['ts_label'] if 'ts_label' in reaction_dict else None
-        self.r_species = [r.from_dict() for r in reaction_dict['r_species']] if 'r_species' in reaction_dict else list()
-        self.p_species = [p.from_dict() for p in reaction_dict['p_species']] if 'p_species' in reaction_dict else list()
+        self.r_species = [ARCSpecies(species_dict=r_dict) for r_dict in reaction_dict['r_species']] \
+            if 'r_species' in reaction_dict else list()
+        self.p_species = [ARCSpecies(species_dict=p_dict) for p_dict in reaction_dict['p_species']] \
+            if 'p_species' in reaction_dict else list()
         self.ts_species = reaction_dict['ts_species'].from_dict() if 'ts_species' in reaction_dict else None
 
         self.long_kinetic_description = reaction_dict['long_kinetic_description'] \
@@ -234,11 +296,21 @@ class ARCReaction(object):
         self.ts_xyz_guess = reaction_dict['ts_xyz_guess'] if 'ts_xyz_guess' in reaction_dict else list()
         self.preserve_param_in_scan = reaction_dict['preserve_param_in_scan'] \
             if 'preserve_param_in_scan' in reaction_dict else None
-        self._atom_map = reaction_dict['atom_map'] if 'atom_map' in reaction_dict else None
+        self.atom_map = reaction_dict['atom_map'] if 'atom_map' in reaction_dict else None
+        self.done_opt_r_n_p = reaction_dict['done_opt_r_n_p'] if 'done_opt_r_n_p' in reaction_dict else None
 
-    def set_label_reactants_products(self):
+    def is_isomerization(self):
+        """
+        Determine whether this is an isomerization reaction.
+
+        Returns:
+            bool: Whether this is an isomerization reaction.
+        """
+        return True if len(self.r_species) == 1 and len(self.p_species) == 1 else False
+
+    def set_label_reactants_products(self, species_list: Optional[List[ARCSpecies]] = None):
         """A helper function for settings the label, reactants, and products attributes for a Reaction"""
-        # first make sure that reactants and products labels are defines (most often used)
+        # First make sure that reactants and products labels are defined (most often used).
         if self.reactants is None or self.products is None:
             if self.label:
                 if self.arrow not in self.label:
@@ -252,24 +324,33 @@ class ARCReaction(object):
                     self.products = products.split(self.plus)
                 else:
                     self.products = [products]
+                if not self.r_species and self.reactants is not None:
+                    self.r_species = [spc for spc in species_list if spc.label in self.reactants]
+                if not self.p_species and self.products is not None:
+                    self.p_species = [spc for spc in species_list if spc.label in self.products]
             elif self.rmg_reaction is not None:
                 self.reactants = [r.label for r in self.rmg_reaction.reactants]
                 self.products = [p.label for p in self.rmg_reaction.products]
+            elif self.r_species is not None and self.p_species is not None:
+                self.reactants = [r.label for r in self.r_species]
+                self.products = [p.label for p in self.p_species]
         if not self.label:
-            if self.reactants is not None and self.products is not None:
+            if len(self.reactants) and len(self.products):
                 self.label = self.arrow.join([self.plus.join(r for r in self.reactants),
                                               self.plus.join(p for p in self.products)])
-            elif self.r_species is not None and self.p_species is not None:
+            elif len(self.r_species) and len(self.p_species):
                 self.label = self.arrow.join([self.plus.join(r.label for r in self.r_species),
                                               self.plus.join(p.label for p in self.p_species)])
             elif self.rmg_reaction is not None:
-                # this will probably never be executed, but OK to keep
+                # This will probably never be executed, but OK to keep.
                 self.label = self.arrow.join([self.plus.join(r.label for r in self.rmg_reaction.reactants),
                                               self.plus.join(p.label for p in self.rmg_reaction.products)])
         if self.rmg_reaction is None:
             self.rmg_reaction_from_arc_species()
         elif not self.label and (self.reactants is None or self.products is None):
             raise ReactionError('Either a label or reactants and products lists must be specified')
+        self.reactants = [check_label(reactant)[0] for reactant in self.reactants]
+        self.products = [check_label(product)[0] for product in self.products]
 
     def rmg_reaction_to_str(self) -> str:
         """A helper function for dumping the RMG Reaction object as a string for the YAML restart dictionary"""
@@ -292,12 +373,7 @@ class ARCReaction(object):
         """
         if self.rmg_reaction is None and len(self.r_species) and len(self.p_species) and \
                 all([arc_spc.mol is not None for arc_spc in self.r_species + self.p_species]):
-            reactants = [Species(molecule=[r.mol]) for r in self.r_species]
-            for i, reac in enumerate(self.r_species):
-                reactants[i].label = reac.label
-            products = [Species(molecule=[p.mol]) for p in self.p_species]
-            for i, prod in enumerate(self.p_species):
-                products[i].label = prod.label
+            reactants, products = self.get_reactants_and_products(arc=False)  # Return RMG Species.
             self.rmg_reaction = Reaction(reactants=reactants, products=products)
 
     def arc_species_from_rmg_reaction(self):
@@ -305,172 +381,172 @@ class ARCReaction(object):
         A helper function for generating the ARC Species (.r_species and .p_species) from the RMG Reaction object
         """
         if self.rmg_reaction is not None and not len(self.r_species) and not len(self.p_species):
-            self.r_species = [ARCSpecies(label=spc.label, mol=spc.molecule[0]) for spc in self.rmg_reaction.reactants]
-            self.p_species = [ARCSpecies(label=spc.label, mol=spc.molecule[0]) for spc in self.rmg_reaction.products]
-
-    def determine_rxn_multiplicity(self):
-        """A helper function for determining the surface multiplicity"""
-        if self.multiplicity is None:
-            ordered_r_mult_list, ordered_p_mult_list = list(), list()
-            if len(self.r_species):
-                if len(self.r_species) == 1:
-                    self.multiplicity = self.r_species[0].multiplicity
-                elif len(self.r_species) == 2:
-                    ordered_r_mult_list = sorted([self.r_species[0].multiplicity,
-                                                  self.r_species[1].multiplicity])
-                elif len(self.r_species) == 3:
-                    ordered_r_mult_list = sorted([self.r_species[0].multiplicity,
-                                                  self.r_species[1].multiplicity,
-                                                  self.r_species[2].multiplicity])
-                if len(self.p_species) == 1:
-                    self.multiplicity = self.p_species[0].multiplicity
-                elif len(self.p_species) == 2:
-                    ordered_p_mult_list = sorted([self.p_species[0].multiplicity,
-                                                  self.p_species[1].multiplicity])
-                elif len(self.p_species) == 3:
-                    ordered_p_mult_list = sorted([self.p_species[0].multiplicity,
-                                                  self.p_species[1].multiplicity,
-                                                  self.p_species[2].multiplicity])
-            elif self.rmg_reaction is not None:
-                if len(self.rmg_reaction.reactants) == 1:
-                    self.multiplicity = self.rmg_reaction.reactants[0].molecule[0].multiplicity
-                elif len(self.rmg_reaction.reactants) == 2:
-                    ordered_r_mult_list = sorted([self.rmg_reaction.reactants[0].molecule[0].multiplicity,
-                                                  self.rmg_reaction.reactants[1].molecule[0].multiplicity])
-                elif len(self.rmg_reaction.reactants) == 3:
-                    ordered_r_mult_list = sorted([self.rmg_reaction.reactants[0].molecule[0].multiplicity,
-                                                  self.rmg_reaction.reactants[1].molecule[0].multiplicity,
-                                                  self.rmg_reaction.reactants[2].molecule[0].multiplicity])
-                if len(self.rmg_reaction.products) == 1:
-                    self.multiplicity = self.rmg_reaction.products[0].molecule[0].multiplicity
-                elif len(self.rmg_reaction.products) == 2:
-                    ordered_p_mult_list = sorted([self.rmg_reaction.products[0].molecule[0].multiplicity,
-                                                  self.rmg_reaction.products[1].molecule[0].multiplicity])
-                elif len(self.rmg_reaction.products) == 3:
-                    ordered_p_mult_list = sorted([self.rmg_reaction.products[0].molecule[0].multiplicity,
-                                                  self.rmg_reaction.products[1].molecule[0].multiplicity,
-                                                  self.rmg_reaction.products[2].molecule[0].multiplicity])
-            if self.multiplicity is None:
-                if ordered_r_mult_list == [1, 1]:
-                    self.multiplicity = 1  # S + S = D
-                elif ordered_r_mult_list == [1, 2]:
-                    self.multiplicity = 2  # S + D = D
-                elif ordered_r_mult_list == [2, 2]:
-                    # D + D = S or T
-                    if ordered_p_mult_list in [[1, 1], [1, 1, 1]]:
-                        self.multiplicity = 1
-                    elif ordered_p_mult_list in [[1, 3], [1, 1, 3]]:
-                        self.multiplicity = 3
-                    else:
-                        self.multiplicity = 1
-                        logger.warning(f'ASSUMING a multiplicity of 1 (singlet) for reaction {self.label}')
-                elif ordered_r_mult_list == [1, 3]:
-                    self.multiplicity = 3  # S + T = T
-                elif ordered_r_mult_list == [2, 3]:
-                    # D + T = D or Q
-                    if ordered_p_mult_list in [[1, 2], [1, 1, 2]]:
-                        self.multiplicity = 2
-                    elif ordered_p_mult_list in [[1, 4], [1, 1, 4]]:
-                        self.multiplicity = 4
-                    else:
-                        self.multiplicity = 2
-                        logger.warning(f'ASSUMING a multiplicity of 2 (doublet) for reaction {self.label}')
-                elif ordered_r_mult_list == [3, 3]:
-                    # T + T = S or T or quintet
-                    if ordered_p_mult_list in [[1, 1], [1, 1, 1]]:
-                        self.multiplicity = 1
-                    elif ordered_p_mult_list in [[1, 3], [1, 1, 3]]:
-                        self.multiplicity = 3
-                    elif ordered_p_mult_list in [[1, 5], [1, 1, 5]]:
-                        self.multiplicity = 5
-                    else:
-                        self.multiplicity = 3
-                        logger.warning(f'ASSUMING a multiplicity of 3 (triplet) for reaction {self.label}')
-                elif ordered_r_mult_list == [1, 1, 1]:
-                    self.multiplicity = 1  # S + S + S = S
-                elif ordered_r_mult_list == [1, 1, 2]:
-                    self.multiplicity = 2  # S + S + D = D
-                elif ordered_r_mult_list == [1, 1, 3]:
-                    self.multiplicity = 3  # S + S + T = T
-                elif ordered_r_mult_list == [1, 2, 2]:
-                    # S + D + D = S or T
-                    if ordered_p_mult_list in [[1, 1], [1, 1, 1]]:
-                        self.multiplicity = 1
-                    elif ordered_p_mult_list in [[1, 3], [1, 1, 3]]:
-                        self.multiplicity = 3
-                    else:
-                        self.multiplicity = 1
-                        logger.warning(f'ASSUMING a multiplicity of 1 (singlet) for reaction {self.label}')
-                elif ordered_r_mult_list == [2, 2, 2]:
-                    # D + D + D = D or Q
-                    if ordered_p_mult_list in [[1, 2], [1, 1, 2]]:
-                        self.multiplicity = 2
-                    elif ordered_p_mult_list in [[1, 4], [1, 1, 4]]:
-                        self.multiplicity = 4
-                    else:
-                        self.multiplicity = 2
-                        logger.warning(f'ASSUMING a multiplicity of 2 (doublet) for reaction {self.label}')
-                elif ordered_r_mult_list == [1, 2, 3]:
-                    # S + D + T = D or Q
-                    if ordered_p_mult_list in [[1, 2], [1, 1, 2]]:
-                        self.multiplicity = 2
-                    elif ordered_p_mult_list in [[1, 4], [1, 1, 4]]:
-                        self.multiplicity = 4
-                    self.multiplicity = 2
-                    logger.warning(f'ASSUMING a multiplicity of 2 (doublet) for reaction {self.label}')
+            self.r_species, self.p_species = list(), list()
+            for i, rmg_reactant in enumerate(self.rmg_reaction.reactants):
+                if len(self.reactants) > i:
+                    label = self.reactants[i]
                 else:
-                    raise ReactionError(f'Could not determine multiplicity for reaction {self.label}')
-            logger.info(f'Setting multiplicity of reaction {self.label} to {self.multiplicity}')
+                    label = rmg_reactant.label or rmg_reactant.molecule[0].to_smiles()
+                label = check_label(label)[0]
+                self.r_species.append(ARCSpecies(label=label, mol=rmg_reactant.molecule[0]))
+            for i, rmg_product in enumerate(self.rmg_reaction.products):
+                if len(self.products) > i:
+                    label = self.products[i]
+                else:
+                    label = rmg_product.label or rmg_product.molecule[0].to_smiles()
+                label = check_label(label)[0]
+                self.p_species.append(ARCSpecies(label=label, mol=rmg_product.molecule[0]))
 
-    def determine_rxn_charge(self):
+    def get_rxn_charge(self):
         """A helper function for determining the surface charge"""
         if len(self.r_species):
-            self.charge = sum([r.charge for r in self.r_species])
+            return sum([r.charge for r in self.r_species])
 
-    def determine_family(self, rmg_database):
-        """Determine the RMG family and saves the (family, own reverse) tuple in the ``family`` attribute"""
+    def get_rxn_multiplicity(self):
+        """A helper function for determining the surface multiplicity"""
+        reactants, products = self.get_reactants_and_products(arc=True)
+        multiplicity = None
+        ordered_r_mult_list, ordered_p_mult_list = list(), list()
+        if len(reactants):
+            if len(reactants) == 1:
+                return reactants[0].multiplicity
+            if len(products) == 1:
+                return products[0].multiplicity
+            ordered_r_mult_list = sorted([r_spc.multiplicity for r_spc in reactants])
+            ordered_p_mult_list = sorted([p_spc.multiplicity for p_spc in products])
+
+        elif self.rmg_reaction is not None:
+            if len(self.rmg_reaction.reactants) == 1:
+                return self.rmg_reaction.reactants[0].molecule[0].multiplicity
+            if len(self.rmg_reaction.products) == 1:
+                return self.rmg_reaction.products[0].molecule[0].multiplicity
+            ordered_r_mult_list = sorted([r_spc.molecule[0].multiplicity for r_spc in self.rmg_reaction.reactants])
+            ordered_p_mult_list = sorted([p_spc.molecule[0].multiplicity for p_spc in self.rmg_reaction.products])
+
+        for list_1, list_2 in [(ordered_r_mult_list, ordered_p_mult_list),
+                               (ordered_p_mult_list, ordered_r_mult_list)]:
+            if all(m == 1 for m in list_1) and multiplicity is None:
+                multiplicity = 1  # S + S = S or T
+                break
+            if all(m == 2 for m in list_1) and len(list_1) == 2 \
+                    and all(m == 2 for m in list_2) and len(list_2) == 2 and multiplicity is None:
+                multiplicity = 1  # D + D = S or T
+                break
+            if 2 in list_1 and all(m == 1 for i, m in enumerate(list_1) if i != list_1.index(2)):
+                multiplicity = 2  # S + D = D
+                break
+            if 3 in list_1 and all(m == 1 for i, m in enumerate(list_1) if i != list_1.index(3)):
+                multiplicity = 3  # S + T = T
+                break
+            if 4 in list_1 and all(m == 1 for i, m in enumerate(list_1) if i != list_1.index(4)):
+                multiplicity = 4  # S + Q = Q
+                break
+            if all(m == 2 for m in list_1):
+                # D + D = S or T
+                # D + D + D = D or Q
+                if len(list_1) % 2 == 0:  # even number of D's in list_1, m must be an odd number
+                    if any(m > 2 for m in list_2):
+                        multiplicity = max(list_2) if max(list_2) % 2 == 1 else max(list_2) - 1
+                else:  # odd number of D's in list_1, m must be even
+                    multiplicity = max(list_2) if max(list_2) % 2 == 0 else max(list_2) - 1
+            if all(m == 3 for m in list_1):
+                # T + T = S or P
+                # T + T + T = T or 7
+                if len(list_1) % 2 == 0:  # even number of T's in list_1, m must be 1 or 5
+                    multiplicity = 1
+                    logger.warning(f'ASSUMING a multiplicity of 1 (singlet) for reaction {self.label}')
+                else:  # odd number of D's in list_1, m must be 3 or 7
+                    multiplicity = 3
+                    logger.warning(f'ASSUMING a multiplicity of 3 (triplet) for reaction {self.label}')
+            if list_1 == [2, 3] and 4 not in list_2:
+                # D + T = D or Q
+                multiplicity = 2
+                logger.warning(f'ASSUMING a multiplicity of 2 (doublet) for reaction {self.label}')
+
+        if multiplicity is None:
+            logger.error(f'Could not determine multiplicity for reaction {self.label}')
+            return None
+        return multiplicity
+
+    def determine_family(self,
+                         rmg_database: 'RMGDatabase',
+                         save_order: bool = True,
+                         ):
+        """
+        Determine the RMG family.
+        Populates the .family, and .family_own_reverse attributes.
+        A wrapper for rmgdb determine_reaction_family() function.
+
+        Args:
+            rmg_database (RMGDatabase): The RMG database instance.
+            save_order (bool, optional): Whether to retain atomic order of the RMG ``reaction`` object instance.
+        """
         if self.rmg_reaction is not None:
             self.family, self.family_own_reverse = rmgdb.determine_reaction_family(rmgdb=rmg_database,
-                                                                                   reaction=self.rmg_reaction)
+                                                                                   reaction=self.rmg_reaction.copy(),
+                                                                                   save_order=save_order,
+                                                                                   )
 
-    def check_ts(self, verbose: bool = True) -> bool:
+    def check_ts(self,
+                 verbose: bool = True,
+                 parameter: str = 'E0',
+                 ) -> bool:
         """
-        Check that the TS E0 is above both reactants and products wells.
+        Check that the TS E0 or electronic energy is above both reactant and product wells.
+        By default E0 is checked first. If it is not available for all species and TS, the electronic energy is checked.
+        If the check cannot be performed, the method still returns ``True``.
 
         Args:
             verbose (bool, optional): Whether to print logging messages.
+            parameter (str, optional): The energy parameter to consider ('E0' or 'e_elect').
 
         Returns:
-            bool: Whether the TS energy is above both reactants and products wells, ``True`` if it is.
+            bool: Whether the TS E0 or electronic energy is above both reactant and product wells, ``True`` if it is.
         """
+        if parameter not in ['E0', 'e_elect']:
+            raise ValueError(f"The energy parameter must be either 'E0' or 'e_elect', got: {parameter}")
         r_e0 = None if any([spc.e0 is None for spc in self.r_species]) \
-            else sum(spc.e0 for spc in self.r_species)
+            else sum(spc.e0 * self.get_species_count(species=spc, well=0) for spc in self.r_species)
         p_e0 = None if any([spc.e0 is None for spc in self.p_species]) \
-            else sum(spc.e0 for spc in self.p_species)
+            else sum(spc.e0 * self.get_species_count(species=spc, well=1) for spc in self.p_species)
         ts_e0 = self.ts_species.e0
-        min_e = extermum_list([r_e0, p_e0, ts_e0], return_min=True)
-        if any([val is None for val in [r_e0, p_e0, ts_e0]]):
+        r_e_elect = None if any([spc.e_elect is None for spc in self.r_species]) \
+            else sum(spc.e_elect * self.get_species_count(species=spc, well=0) for spc in self.r_species)
+        p_e_elect = None if any([spc.e_elect is None for spc in self.p_species]) \
+            else sum(spc.e_elect * self.get_species_count(species=spc, well=1) for spc in self.p_species)
+        ts_e_elect = self.ts_species.e_elect
+        r_e = r_e0 if parameter == 'E0' else r_e_elect
+        p_e = p_e0 if parameter == 'E0' else p_e_elect
+        ts_e = ts_e0 if parameter == 'E0' else ts_e_elect
+        min_e = extremum_list([r_e, p_e, ts_e], return_min=True)
+        e_str = 'E0' if parameter == 'E0' else 'electronic energy'
+        if any([val is None for val in [r_e, p_e, ts_e]]):
             if verbose:
-                logger.error(f"Could not get E0's of all species in reaction {self.label}. Cannot check TS E0.\n")
-                r_text = f'{r_e0:.2f} kJ/mol' if r_e0 is not None else 'None'
-                ts_text = f'{ts_e0:.2f} kJ/mol' if ts_e0 is not None else 'None'
-                p_text = f'{p_e0:.2f} kJ/mol' if p_e0 is not None else 'None'
-                logger.info(f"Reactants E0: {r_text}\n"
-                            f"TS E0: {ts_text}\n"
-                            f"Products E0: {p_text}")
+                if e_str != 'E0':
+                    logger.info('\n')
+                    logger.error(f"Could not get {e_str} of all species in reaction {self.label}. Cannot check TS.\n")
+                r_text = f'{r_e:.2f} kJ/mol' if r_e is not None else 'None'
+                ts_text = f'{ts_e:.2f} kJ/mol' if ts_e is not None else 'None'
+                p_text = f'{p_e:.2f} kJ/mol' if p_e is not None else 'None'
+                logger.info(f"Reactants {e_str}: {r_text}\n"
+                            f"TS {e_str}: {ts_text}\n"
+                            f"Products {e_str}: {p_text}")
+            if parameter == 'E0':
+                # Use e_elect instead:
+                return self.check_ts(verbose=verbose, parameter='e_elect')
             return True
-        if ts_e0 < r_e0 or ts_e0 < p_e0:
+        if ts_e < r_e or ts_e < p_e:
             if verbose:
-                logger.error(f'TS of reaction {self.label} has a lower E0 value than expected:\n')
-                logger.info(f'Reactants: {r_e0 - min_e:.2f} kJ/mol\n'
-                            f'TS: {ts_e0 - min_e:.2f} kJ/mol'
-                            f'\nProducts: {p_e0 - min_e:.2f} kJ/mol')
+                logger.error(f'\nTS of reaction {self.label} has a lower E0 value than expected:\n')
+                logger.info(f'Reactants: {r_e - min_e:.2f} kJ/mol\n'
+                            f'TS: {ts_e - min_e:.2f} kJ/mol'
+                            f'\nProducts: {p_e - min_e:.2f} kJ/mol')
             return False
         if verbose:
-            logger.info(f'Reaction {self.label} has the following path energies:\n'
-                        f'Reactants: {r_e0 - min_e:.2f} kJ/mol\n'
-                        f'TS: {ts_e0 - min_e:.2f} kJ/mol\n'
-                        f'Products: {p_e0 - min_e:.2f} kJ/mol')
+            logger.info(f'\nReaction {self.label} has the following path E0 energies:\n'
+                        f'Reactants: {r_e - min_e:.2f} kJ/mol\n'
+                        f'TS: {ts_e - min_e:.2f} kJ/mol\n'
+                        f'Products: {p_e - min_e:.2f} kJ/mol')
         return True
 
     def check_attributes(self):
@@ -485,8 +561,8 @@ class ARCReaction(object):
             raise ReactionError(f'Reactants or products in a reaction label must separated with {self.plus} '
                                 f'(has spaces on both sides). Got:{self.label}')
         species_labels = self.label.split(self.arrow)
-        reactants = species_labels[0].split(self.plus)
-        products = species_labels[1].split(self.plus)
+        reactants = [check_label(reactant)[0] for reactant in species_labels[0].split(self.plus)]
+        products = [check_label(product)[0] for product in species_labels[1].split(self.plus)]
         if self.reactants is not None:
             for reactant in reactants:
                 if reactant not in self.reactants:
@@ -530,6 +606,25 @@ class ARCReaction(object):
                     raise ReactionError(f'Product {product} is not in '
                                         f'self.p_species ({[p.label for p in self.p_species]})')
 
+    def remove_dup_species(self):
+        """
+        Make sure each species is consider only once in reactants, products, r_species, and p_species.
+        The same species in the reactants/products is considered through get_species_count().
+        """
+        self.reactants = sorted(list(set(self.reactants)))
+        self.products = sorted(list(set(self.products)))
+        self.r_species = remove_dup_species(self.r_species)
+        self.p_species = remove_dup_species(self.p_species)
+
+    def check_done_opt_r_n_p(self):
+        """
+        Check whether the ``final_xyz`` attributes of all ``r_species`` and ``p_species``
+        are populated, and flag ``self.done_opt_r_n_p`` as ``True`` if they are.
+        Useful to know when to spawn TS search jobs.
+        """
+        if not self.done_opt_r_n_p:
+            self.done_opt_r_n_p = all(spc.final_xyz is not None for spc in self.r_species + self.p_species)
+
     def check_atom_balance(self,
                            ts_xyz: Optional[dict] = None,
                            raise_error: bool = True,
@@ -549,8 +644,6 @@ class ARCReaction(object):
         Returns:
             bool: Whether all wells and TSs are atom balanced.
         """
-        self.arc_species_from_rmg_reaction()
-
         balanced_wells, balanced_ts_xyz, balanced_xyz_guess, balanced_ts_species_mol, balanced_ts_species_xyz = \
             True, True, True, True, True
         r_well, p_well = '', ''
@@ -607,36 +700,79 @@ class ARCReaction(object):
         if not all([balanced_wells, balanced_ts_xyz, balanced_ts_species_mol,
                     balanced_ts_species_xyz, balanced_xyz_guess]):
             if raise_error:
-                raise ReactionError(f'Reaction {self.label} is not atom balanced.')
+                raise ReactionError(f'The Reaction {self.label} is not atom balanced.\n'
+                                    f'balanced wells: {balanced_wells}\n'
+                                    f'balanced ts xyz: {balanced_ts_xyz}\n'
+                                    f'balanced ts species mol: {balanced_ts_species_mol}\n'
+                                    f'balanced ts species xyz: {balanced_ts_species_xyz}\n'
+                                    f'balanced xyz guess: {balanced_xyz_guess}')
             return False
 
         return True
 
     def get_species_count(self,
-                          species: ARCSpecies,
+                          species: Optional[ARCSpecies] = None,
+                          label: Optional[str] = None,
                           well: int = 0,
                           ) -> int:
         """
         Get the number of times a species participates in the reactants or products well.
+        Either ``species`` or ``label`` must be given.
 
         Args:
-            species (ARCSpecies): The species to check.
+            species (ARCSpecies, optional): The species to check.
+            label (str, optional): The species label.
             well (int, optional): Either ``0`` or ``1`` for the reactants or products well, respectively.
 
         Returns:
-            Union[int, None]: The number of times this species appears in the respective well.
+            Optional[int]:
+                The number of occurrences of this species in the respective well.
         """
+        if species is None and label is None:
+            raise ValueError('Called get_species_count without a species nor its label.')
+        if well not in [0, 1]:
+            raise ValueError(f'Got well = {well}, expected either 0 or 1.')
+        label = species.label if species is not None else label
         well_str = self.label.split('<=>')[well]
-        count = well_str.startswith(f'{species.label} ') + \
-                well_str.count(f' {species.label} ') + \
-                well_str.endswith(f' {species.label}')
+        wells = [check_label(spc_label)[0] for spc_label in well_str.strip().split(self.plus)]
+        count = sum([label == spc_label for spc_label in wells])
         return count
+
+    def get_reactants_and_products(self,
+                                   arc: bool = True,
+                                   ) -> Tuple[List[Union[ARCSpecies, Species]], List[Union[ARCSpecies, Species]]]:
+        """
+        Get a list of reactant and product species including duplicate species, if any.
+        The species could either be ARCSpecies or RMGSpecies.
+
+        Args:
+            arc (bool, optional): Whether to return the species as ARCSpecies (``True``) or as RMG Species (``False``).
+
+        Returns:
+            Tuple[List[Union[ARCSpecies, Species]], List[Union[ARCSpecies, Species]]]:
+                The reactants and products.
+        """
+        reactants, products = list(), list()
+        for r_spc in self.r_species:
+            if arc:
+                reactants.extend([r_spc] * self.get_species_count(species=r_spc, well=0))
+            else:
+                reactants.extend([Species(label=r_spc.label, molecule=[r_spc.mol])] *
+                                 self.get_species_count(species=r_spc, well=0))
+        for p_spc in self.p_species:
+            if arc:
+                products.extend([p_spc] * self.get_species_count(species=p_spc, well=1))
+            else:
+                products.extend([Species(label=p_spc.label, molecule=[p_spc.mol])] *
+                                self.get_species_count(species=p_spc, well=1))
+        return reactants, products
 
     def get_atom_map(self, verbose: int = 0) -> Optional[List[int]]:
         """
         Get the atom mapping of the reactant atoms to the product atoms.
         I.e., an atom map of [0, 2, 1] means that reactant atom 0 matches product atom 0,
         reactant atom 1 matches product atom 2, and reactant atom 2 matches product atom 1.
+        All indices are 0-indexed.
 
         Employs the Kabsch, Hungarian, and Uno algorithms to exhaustively locate
         the best alignment for non-oriented, non-ordered 3D structures.
@@ -645,7 +781,7 @@ class ARCReaction(object):
             verbose (int): The verbosity level (0-4).
 
         Returns: Optional[List[int]]
-            The atom map.
+            The atom map, entry indices correspond to reactant indices, entry values correspond to product indices.
         """
         atom_map = None
         try:
@@ -697,3 +833,52 @@ class ARCReaction(object):
                                     )
         mapped_xyz = str_to_xyz(mapped_xyz)
         return mapped_xyz, mapped_product
+
+    def get_products_xyz(self, return_format='str') -> Union[dict, str]:
+        """
+        Get a combined string/dict representation of the cartesian coordinates of all product species.
+        The resulting coordinates are ordered as the reactants using an atom map.
+        Args:
+            return_format (str): Either ``'dict'`` to return a dict format or ``'str'`` to return a string format.
+                          Default: ``'str'``.
+        Returns: Union[dict, str]
+            The combined cartesian coordinates
+        Todo:
+            - identify flux pairs like in RMG
+            - orient a line: cm1 - X - Y - cm2 if there are two reactants
+            - Combine with get_mapped_product_xyz()
+        """
+        xyz_dict = mapped_xyz_dict = {'symbols': tuple(), 'isotopes': tuple(), 'coords': tuple()}
+        for product in self.p_species:
+            xyz = product.get_xyz()
+            xyz_dict['symbols'] += xyz['symbols']
+            xyz_dict['isotopes'] += xyz['isotopes']
+            xyz_dict['coords'] += xyz['coords']
+        for i in range(len(xyz_dict['symbols'])):
+            mapped_xyz_dict['symbols'] += (xyz_dict['symbols'][self.atom_map[i]],)
+            mapped_xyz_dict['isotopes'] += (xyz_dict['isotopes'][self.atom_map[i]],)
+            mapped_xyz_dict['coords'] += (xyz_dict['coords'][self.atom_map[i]],)
+        mapped_xyz_dict = check_xyz_dict(mapped_xyz_dict)
+        if return_format == 'str':
+            mapped_xyz_dict = xyz_to_str(mapped_xyz_dict)
+        return mapped_xyz_dict
+
+
+def remove_dup_species(species_list: List[ARCSpecies]) -> List[ARCSpecies]:
+    """
+    Remove duplicate species from a species list.
+    Used when assigning r_species and p_species.
+
+    Args:
+        species_list (List[ARCSpecies]): The species list to process.
+
+    Returns:
+        List[ARCSpecies]: A list of species without duplicates.
+    """
+    if species_list is None or not(len(species_list)):
+        return list()
+    new_species_list = list()
+    for species in species_list:
+        if species.label not in [spc.label for spc in new_species_list]:
+            new_species_list.append(species)
+    return new_species_list

@@ -6,6 +6,7 @@ This module contains unit tests for ARC's common module
 """
 
 import copy
+import datetime
 import os
 import time
 import unittest
@@ -245,46 +246,46 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
         self.assertEqual(top, [22])
         self.assertFalse(top_has_heavy_atoms)  # H
 
-    def test_extermum_list(self):
-        """Test the extermum_list() function"""
+    def test_extremum_list(self):
+        """Test the extremum_list() function"""
         lst = []
-        min_lst = common.extermum_list(lst)
+        min_lst = common.extremum_list(lst)
         self.assertEqual(min_lst, None)
 
         lst = [None]
-        min_lst = common.extermum_list(lst)
+        min_lst = common.extremum_list(lst)
         self.assertEqual(min_lst, None)
 
         lst = [None, None]
-        min_lst = common.extermum_list(lst)
+        min_lst = common.extremum_list(lst)
         self.assertEqual(min_lst, None)
 
         lst = [0]
-        min_lst = common.extermum_list(lst)
+        min_lst = common.extremum_list(lst)
         self.assertEqual(min_lst, 0)
 
         lst = [-8]
-        min_lst = common.extermum_list(lst)
+        min_lst = common.extremum_list(lst)
         self.assertEqual(min_lst, -8)
 
         lst = [-8, -80]
-        min_lst = common.extermum_list(lst)
+        min_lst = common.extremum_list(lst)
         self.assertEqual(min_lst, -80)
 
         lst = [-8, None]
-        min_lst = common.extermum_list(lst)
+        min_lst = common.extremum_list(lst)
         self.assertEqual(min_lst, -8)
 
         lst = [-8, -8, -8, -8]
-        min_lst = common.extermum_list(lst)
+        min_lst = common.extremum_list(lst)
         self.assertEqual(min_lst, -8)
 
         lst = [-8, None, None, 100, -79, None]
-        min_lst = common.extermum_list(lst)
+        min_lst = common.extremum_list(lst)
         self.assertEqual(min_lst, -79)
 
         lst = [-8, None, None, 100, -79, None]
-        max_lst = common.extermum_list(lst, return_min=False)
+        max_lst = common.extremum_list(lst, return_min=False)
         self.assertEqual(max_lst, 100)
 
     def test_key_by_val(self):
@@ -301,6 +302,9 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
         d = {1: 5, 2: 'X', 3: 9}
         self.assertEqual(common.key_by_val(d, 9), 3)
         self.assertEqual(common.key_by_val(d, 'X'), 2)
+
+        d = {1: 5, 2: 'X8', 3: 9}
+        self.assertEqual(common.key_by_val(d, 8), 2)
 
         with self.assertRaises(ValueError):
             common.key_by_val(d, 10)
@@ -647,6 +651,52 @@ H       1.98414750   -0.79355889   -0.24492049"""  # colliding atoms
         self.assertIsNone(common.get_close_tuple(key_1=(1.075, -150.03), keys=keys))
         with self.assertRaises(ValueError):
             common.get_close_tuple(key_1=(1.075, -150.03), keys=keys, raise_error=True)
+
+    def test_get_number_with_ordinal_indicator(self):
+        """Test the get_number_with_ordinal_indicator() function"""
+        self.assertEqual(common.get_number_with_ordinal_indicator(1), '1st')
+        self.assertEqual(common.get_number_with_ordinal_indicator(2), '2nd')
+        self.assertEqual(common.get_number_with_ordinal_indicator(3), '3rd')
+        self.assertEqual(common.get_number_with_ordinal_indicator(4), '4th')
+        self.assertEqual(common.get_number_with_ordinal_indicator(50), '50th')
+        self.assertEqual(common.get_number_with_ordinal_indicator(23), '23rd')
+        self.assertEqual(common.get_number_with_ordinal_indicator(31), '31st')
+        self.assertEqual(common.get_number_with_ordinal_indicator(22), '22nd')
+        self.assertEqual(common.get_number_with_ordinal_indicator(100), '100th')
+
+    def test_timedelta_from_str(self):
+        """Test reconstructing a timedelta object from its string representation"""
+        t0 = datetime.datetime.now()
+        time.sleep(0.5)
+        delta = datetime.datetime.now() - t0
+        str_delta = str(delta)
+        self.assertIn('0:00:00.5', str_delta)
+        reconstructed_delta = common.timedelta_from_str(str_delta)
+        self.assertIsInstance(reconstructed_delta, datetime.timedelta)
+
+    def test_torsions_to_scans(self):
+        """Test the torsions_to_scans() function"""
+        self.assertEqual(common.torsions_to_scans([0, 1, 2, 3]), [[1, 2, 3, 4]])
+        self.assertEqual(common.torsions_to_scans([1, 2, 3, 4], direction=-1), [[0, 1, 2, 3]])
+        self.assertEqual(common.torsions_to_scans([1, 2, 3, 4], direction=2), [[0, 1, 2, 3]])
+        self.assertEqual(common.torsions_to_scans([[0, 1, 2, 3], [5, 7, 8, 9]]), [[1, 2, 3, 4], [6, 8, 9, 10]])
+        with self.assertRaises(TypeError):
+            common.torsions_to_scans('4, 3, 5, 6')
+        with self.assertRaises(ValueError):
+            common.torsions_to_scans([[0, 1, 2, 3], [6, 8, 9, 10]], direction=-1)
+
+    def test_convert_list_index_0_to_1(self):
+        """Test the convert_list_index_0_to_1() function"""
+        self.assertEqual(common.convert_list_index_0_to_1([]), [])
+        self.assertEqual(common.convert_list_index_0_to_1([0]), [1])
+        self.assertEqual(common.convert_list_index_0_to_1([1], direction=-1), [0])
+        self.assertEqual(common.convert_list_index_0_to_1([0, 5, 8]), [1, 6, 9])  # test list
+        self.assertEqual(common.convert_list_index_0_to_1((0, 5, 8), direction=1), (1, 6, 9))  # test tuple
+        self.assertEqual(common.convert_list_index_0_to_1([1, 5, 8], direction=-1), [0, 4, 7])
+        with self.assertRaises(ValueError):
+            common.convert_list_index_0_to_1([-9])
+        with self.assertRaises(ValueError):
+            common.convert_list_index_0_to_1([0], direction=-1)
 
     @classmethod
     def tearDownClass(cls):
