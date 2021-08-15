@@ -1,6 +1,7 @@
 import arc.exceptions
 import arc.main
 from arc.main import ARC
+import arc.checks
 import arc.common
 import arc.imports
 import arc.level
