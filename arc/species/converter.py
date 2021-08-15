@@ -419,6 +419,31 @@ def xyz_to_ase(xyz_dict: dict) -> Atoms:
     return Atoms(xyz_dict['symbols'], xyz_dict['coords'])
 
 
+def translate_xyz(xyz_dict: dict,
+                  translation: Tuple[float, float, float],
+                  ) -> dict:
+    """
+    Translate xyz.
+
+    Args:
+        xyz_dict (dict): The ARC xyz format.
+        translation (Tuple[float, float, float]): The x, y, z translation vector.
+
+    Returns:
+        dict: The translated xyz.
+    """
+    if all(t == 0 for t in translation):
+        return xyz_dict
+    coords = list()
+    for coord in xyz_dict['coords']:
+        coords.append(tuple(coord[i] + translation[i] for i in range(3)))
+    new_xyz = {'symbols': xyz_dict['symbols'],
+               'isotopes': xyz_dict['isotopes'],
+               'coords': tuple(coords),
+               }
+    return new_xyz
+
+
 def rmg_conformer_to_xyz(conformer):
     """
     Convert xyz coordinates from an rmgpy.statmech.Conformer object into the ARC dict xyz style.
