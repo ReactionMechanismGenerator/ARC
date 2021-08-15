@@ -104,7 +104,7 @@ cp $SubmitDir/input.in .
 
 $orcadir/orca input.in > input.log
 cp input.log  $SubmitDir/
-rm -rf  $WorkDir 
+rm -rf  $WorkDir
 
 """,
         'molpro': """#!/bin/bash -l
@@ -144,92 +144,89 @@ rm -rf $sdir
 
 """,
     },
-    'c3ddb': {
+
+    'atlas': {
+        # Atlas uses HTCondor, see docs here: https://htcondor.readthedocs.io/en/latest/
         # Gaussian 09
-        'gaussian': """#!/bin/bash -l
-#SBATCH -p defq
-#SBATCH -J {name}
-#SBATCH -N 1
-#SBATCH -n {cpus}
-#SBATCH --time={t_max}
-#SBATCH --mem-per-cpu={memory}
-#SBATCH -o out.txt
-#SBATCH -e err.txt
-{array_key_1}
+        'gaussian': """Universe      = vanilla
 
-module add c3ddb/gaussian/09.d01
-which g09
++JobName      = "{name}"
 
-echo "============================================================"
-echo "Job ID : $SLURM_JOB_ID"
-echo "Job Name : $SLURM_JOB_NAME"
-echo "Starting on : $(date)"
-echo "Running on node : $SLURMD_NODENAME"
-echo "Current directory : $(pwd)"
-echo "============================================================"
+log           = job.log
+output        = out.txt
+error         = err.txt
 
-WorkDir=/scratch/users/{un}/$SLURM_JOB_NAME-$SLURM_JOB_ID
-SubmitDir=`pwd`
+getenv        = True
++g09root      = "/Local/ce_dana"
++PATH         = "$(g09root)/g09:$PATH"
++GAUSS_EXEDIR = "$(g09root)/g09:$GAUSS_EXEDIR"
+environment   = "GAUSS_EXEDIR=/Local/ce_dana/g09 GAUSS_SCRDIR=/storage/ce_dana/{un}/scratch/g09/ g09root=/Local/ce_dana"
 
-GAUSS_SCRDIR=/scratch/users/{un}/g09/$SLURM_JOB_NAME-$SLURM_JOB_ID
-export GAUSS_SCRDIR
+should_transfer_files = no
 
-mkdir -p $GAUSS_SCRDIR
-mkdir -p $WorkDir
+executable = job.sh
 
-cd $WorkDir
-. $g09root/g09/bsd/g09.profile
+request_cpus  = {cpus}
+request_memory = {memory}MB
 
-cp "$SubmitDir/input.gjf" .
-cp "$SubmitDir/check.chk" .
+queue
 
-g09 < input.gjf > input.log
-formchk  check.chk check.fchk
-cp * "$SubmitDir/"
+""",
+        # will be renamed to ``job.sh`` when uploaded
+        'gaussian_job': """#!/bin/csh
 
-rm -rf $GAUSS_SCRDIR
-rm -rf $WorkDir
+mkdir -p /storage/ce_dana/{un}/scratch/g09/
+
+source /Local/ce_dana/g09/bsd/g09.login
+
+/Local/ce_dana/g09/g09 < input.gjf > input.log
 
 """,
 
         # Orca
-        'orca': """#!/bin/bash -l
-#SBATCH -p defq
-#SBATCH -J {name}
-#SBATCH -N 1
-#SBATCH -n {cpus}
-#SBATCH --time={t_max}
-#SBATCH --mem-per-cpu={memory}
-#SBATCH -o out.txt
-#SBATCH -e err.txt
+        'orca': """Universe      = vanilla
 
-module add c3ddb/orca/4.1.2
-module add c3ddb/openmpi/3.1.3
-which orca
++JobName      = "{name}"
 
-export ORCA_DIR=/cm/shared/modulefiles/c3ddb/orca/4.1.2/
-export OMPI_DIR=/cm/shared/modulefiles/c3ddb/openmpi/3.1.3/
-export PATH=$PATH:$ORCA_DIR
-export PATH=$PATH:$OMPI_DIR
+log           = job.log
+output        = out.txt
+error         = err.txt
 
-echo "============================================================"
-echo "Job ID : $SLURM_JOB_ID"
-echo "Job Name : $SLURM_JOB_NAME"
-echo "Starting on : $(date)"
-echo "Running on node : $SLURMD_NODENAME"
-echo "Current directory : $(pwd)"
-echo "============================================================"
+getenv        = True
++WorkDir      = "/storage/ce_dana/{un}/scratch/orca/{name}"
+environment   = "WorkDir=/storage/ce_dana/{un}/scratch/orca/{name}"
 
+should_transfer_files = no
 
-WorkDir=/scratch/users/{un}/$SLURM_JOB_NAME-$SLURM_JOB_ID
+executable = job.sh
+
+request_cpus  = {cpus}
+request_memory = {memory}MB
+
+queue
+
+""",
+        # will be renamed to ``job.sh`` when uploaded
+        'orca_job': """#!/bin/bash -l
+
+export OrcaDir=/Local/ce_dana/orca_4_0_1_2_linux_x86-64_openmpi202
+export PATH=$PATH:$OrcaDir
+
+export OMPI_Dir=/Local/ce_dana/openmpi-2.0.2/bin
+export PATH=$PATH:$OMPI_Dir
+
+export LD_LIBRARY_PATH=/Local/ce_dana/openmpi-2.0.2/lib:$LD_LIBRARY_PATH
+
 SubmitDir=`pwd`
+
+which orca
 
 mkdir -p $WorkDir
 cd $WorkDir
 
-cp "$SubmitDir/input.inp" .
+cp "$SubmitDir/input.in" .
 
-${ORCA_DIR}/orca input.inp > input.log
+${OrcaDir}/orca input.in > input.log
 cp * "$SubmitDir/"
 
 rm -rf $WorkDir
@@ -383,9 +380,9 @@ SubmitDir=`pwd`
 mkdir -p $WorkDir
 cd $WorkDir
 
-cp "$SubmitDir/input.inp" .
+cp "$SubmitDir/input.in" .
 
-${ORCA_DIR}/orca input.inp > input.log
+${ORCA_DIR}/orca input.in > input.log
 cp * "$SubmitDir/"
 
 rm -rf $WorkDir
@@ -639,11 +636,10 @@ export GAUSS_SCRDIR=/home/{un}/scratch/$SLURM_JOB_NAME-$SLURM_JOB_ID
 mkdir -p $GAUSS_SCRDIR
 chmod 750 $GAUSS_SCRDIR
 
-
 g16 < input.gjf > input.log
 
 rm -rf $GAUSS_SCRDIR
-    
+
     """,
-    }
+    },
 }

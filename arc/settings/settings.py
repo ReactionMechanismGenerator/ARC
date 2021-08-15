@@ -93,19 +93,22 @@ levels_ess = {
     'terachem': ['pbe'],
 }
 
-check_status_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat',
-                        'Slurm': '/usr/bin/squeue',
-                        'PBS': '/usr/local/bin/qstat',
+check_status_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat -u $USER',
+                        'Slurm': '/usr/bin/squeue -u $USER',
+                        'PBS': '/usr/local/bin/qstat -u $USER',
+                        'HTCondor': """condor_q -cons 'Member(Jobstatus,{1,2})' -af:j '{"0","P","R","X","C","H",">","S"}[JobStatus]' RequestCpus RequestMemory JobName  '(Time() - EnteredCurrentStatus)'""",
                         }
 
 submit_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qsub',
                   'Slurm': '/usr/bin/sbatch',
                   'PBS': '/usr/local/bin/qsub',
+                  'HTCondor': 'condor_submit',
                   }
 
 delete_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qdel',
                   'Slurm': '/usr/bin/scancel',
                   'PBS': '/usr/local/bin/qdel',
+                  'HTCondor': 'condor_rm',
                   }
 
 list_available_nodes_command = {
@@ -117,11 +120,13 @@ list_available_nodes_command = {
 submit_filenames = {'OGE': 'submit.sh',
                     'Slurm': 'submit.sl',
                     'PBS': 'submit.sh',
+                    'HTCondor': 'submit.sub',
                     }
 
 t_max_format = {'OGE': 'hours',
                 'Slurm': 'days',
                 'PBS': 'hours',
+                'HTCondor': 'hours',
                 }
 
 input_filenames = {'gaussian': 'input.gjf',
@@ -191,7 +196,7 @@ preserve_params_in_scan = {
     'dihedral': 20,  # Default: 20 degrees
 }
 
-# Coefficients to be used in a y = A * x ** b fit
+# Coefficients to be used in a ``y = A * x ** b`` fit
 # to determine the number of tasks (workers) to execute in parallel
 # vs the number of processes (individual jobs).
 # This is y = 1.7 x ** 0.35 by default, corresponding the following output:
