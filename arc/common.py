@@ -1217,7 +1217,7 @@ def torsions_to_scans(descriptor: Optional[List[List[int]]],
         raise TypeError(f'Expected a list, got {descriptor} which is a {type(descriptor)}')
     if not isinstance(descriptor[0], (list, tuple)):
         descriptor = [descriptor]
-    direction = direction if direction == 1 else -1  # anything other than 1 is translated to -1
+    direction = direction if direction == 1 else -1  # Anything other than 1 is translated to -1.
     new_descriptor = [convert_list_index_0_to_1(entry, direction) for entry in descriptor]
     if any(any(item < 0 for item in entry) for entry in new_descriptor):
         raise ValueError(f'Got an illegal value when converting:\n{descriptor}\ninto:\n{new_descriptor}')
