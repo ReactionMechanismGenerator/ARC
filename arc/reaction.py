@@ -295,6 +295,15 @@ class ARCReaction(object):
         """
         return True if len(self.r_species) == 1 and len(self.p_species) == 1 else False
 
+    def is_isomerization(self):
+        """
+        Determine whether this is an isomerization reaction.
+
+        Returns:
+            bool: Whether this is an isomerization reaction.
+        """
+        return True if len(self.r_species) == 1 and len(self.p_species) == 1 else False
+
     def set_label_reactants_products(self, species_list: Optional[List[ARCSpecies]] = None):
         """A helper function for settings the label, reactants, and products attributes for a Reaction"""
         # First make sure that reactants and products labels are defined (most often used).
