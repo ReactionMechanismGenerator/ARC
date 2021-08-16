@@ -14,12 +14,8 @@ from rmgpy.species import Species
 import arc.rmgdb as rmgdb
 from arc.common import ARC_PATH
 from arc.exceptions import ReactionError
-from arc.imports import settings
 from arc.reaction import ARCReaction, remove_dup_species
 from arc.species import ARCSpecies
-
-
-default_ts_methods = settings['default_ts_methods']
 
 
 class TestARCReaction(unittest.TestCase):
@@ -170,7 +166,6 @@ class TestARCReaction(unittest.TestCase):
                                           'number_of_rotors': 0}],
                            'reactants': ['CH4', 'OH'],
                            'ts_label': None,
-                           'ts_methods': [],
                            'ts_xyz_guess': []}
         self.assertEqual(rxn_dict_1, expected_dict_1)
 
@@ -258,7 +253,6 @@ class TestARCReaction(unittest.TestCase):
                                           'number_of_rotors': 0}],
                            'reactants': ['N2H3', 'NH2'],
                            'ts_label': None,
-                           'ts_methods': [],
                            'ts_xyz_guess': []}
         self.assertEqual(rxn_dict_6, expected_dict_6)
 
