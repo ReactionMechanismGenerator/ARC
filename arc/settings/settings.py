@@ -66,6 +66,9 @@ global_ess_settings = {
 # Electronic structure software ARC may access (use lowercase):
 supported_ess = ['gaussian', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin']
 
+# TS methods to try when appropriate for a reaction (other than user guesses which are always allowed):
+ts_adapters = ['heuristics', 'AutoTST', 'GCN', 'KinBot']
+
 # List here job types to execute by default
 default_job_types = {'conformers': True,      # defaults to True if not specified
                      'opt': True,             # defaults to True if not specified
@@ -165,9 +168,6 @@ orca_default_options_dict = {
     'global': {'keyword': {'scf_convergence': 'TightSCF',
                            'dlpno_threshold': 'normalPNO'}},
 }
-
-# default_ts_methods = ['QST2', 'DEGSM', 'NEB', 'Kinbot', 'AutoTST']
-default_ts_methods = []
 
 valid_chars = "-_[]=.,%s%s" % (string.ascii_letters, string.digits)
 
