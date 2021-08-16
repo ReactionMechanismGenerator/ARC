@@ -13,6 +13,7 @@ from arc.common import (check_torsion_change,
                         determine_ess,
                         estimate_orca_mem_cpu_requirement,
                         get_logger,
+                        get_number_with_ordinal_indicator,
                         is_same_pivot,
                         is_same_sequence_sublist,
                         is_str_float,
@@ -31,7 +32,7 @@ from arc.species.converter import (ics_to_scan_constraints,
 from arc.species.species import determine_rotor_symmetry
 from arc.species.vectors import calculate_dihedral_angle, calculate_distance
 from arc.parser import (parse_1d_scan_coords,
-                        parse_normal_modes_displacement,
+                        parse_normal_mode_displacement,
                         parse_scan_args,
                         parse_scan_conformers,
                         parse_xyz_from_file,
@@ -445,12 +446,12 @@ def trsh_negative_freq(label: str,
     neg_freqs_trshed = neg_freqs_trshed if neg_freqs_trshed is not None else list()
     job_types = job_types if job_types is not None else ['rotors']
     output_errors, output_warnings, conformers, current_neg_freqs_trshed = list(), list(), list(), list()
-    factor, factor_increase = 1.1, 0.2
-    max_times_to_trsh_neg_freq = 5
-    try:
-        freqs, normal_modes_disp = parse_normal_modes_displacement(path=log_file)
-    except NotImplementedError as e:
-        logger.error(f'Could not troubleshoot negative frequency for species {label}, got:\n{e}')
+    factors = [1.1, 1.25, 1.7, 2.5, 5, 10]
+    factor = factors[0]
+    max_times_to_trsh_neg_freq = len(factors) + 1
+    freqs, normal_modes_disp = parse_normal_mode_displacement(path=log_file, raise_error=False)
+    if not len(normal_modes_disp):
+        logger.error(f'Could not troubleshoot negative frequency for species {label}.')
         return [], [], output_errors, []
     if len(neg_freqs_trshed) > max_times_to_trsh_neg_freq:
         logger.error(f'Species {label} was troubleshooted for negative frequencies too many times.')
@@ -479,12 +480,14 @@ def trsh_negative_freq(label: str,
             logger.info(f'Species {label} has a negative frequency ({freqs[largest_neg_freq_idx]}). Perturbing its '
                         f'geometry using the respective vibrational normal mode displacement(s).')
             neg_freqs_idx = [largest_neg_freq_idx]  # indices of the negative frequencies to troubleshoot for
-        elif len(neg_freqs_idx) == 1 and any([np.allclose(freqs[0], vf, rtol=1e-04, atol=1e-02)
-                                              for vf in neg_freqs_trshed]):
+        elif len(neg_freqs_idx) == 1 \
+                and any([np.allclose(freqs[0], vf, rtol=1e-04, atol=1e-02) for vf in neg_freqs_trshed]) \
+                and len(neg_freqs_trshed) < len(factors):
             # species has one negative frequency, and has been troubleshooted for it before
-            factor = 1 + factor_increase * (len(neg_freqs_trshed) + 1)
+            factor = factors[len(neg_freqs_trshed)]
             logger.info(f'Species {label} has a negative frequency ({freqs[largest_neg_freq_idx]}) for the '
-                        f'{len(neg_freqs_trshed)} time. Perturbing its geometry using the respective vibrational '
+                        f'{get_number_with_ordinal_indicator(len(neg_freqs_trshed))} time. '
+                        f'Perturbing its geometry using the respective vibrational '
                         f'normal mode displacement(s), this time using a larger factor (x {factor})')
             neg_freqs_idx = [largest_neg_freq_idx]  # indices of the negative frequencies to troubleshoot for
         elif len(neg_freqs_idx) > 1 and not any([np.allclose(freqs[0], vf, rtol=1e-04, atol=1e-02)
@@ -1386,7 +1389,7 @@ def scan_quality_check(label: str,
             invalidation_reason = f'initial and final points are inconsistent by more than {inconsistency_az:.2f} kJ/mol'
             message = f'Rotor scan of {label} between pivots {pivots} is inconsistent by more ' \
                       f'than {inconsistency_az:.2f} kJ/mol between initial and final positions. ' \
-                      f'Initial energy = {energies[0]}, final energy = {energies[-1]}. ARC will ' \
+                      f'Initial energy = {energies[0]:.2f}, final energy = {energies[-1]:.2f}. ARC will ' \
                       f'attempt to troubleshoot this rotor scan.'
             logger.error(message)
             actions = {'inc_res': None, 'freeze': 'all'}
