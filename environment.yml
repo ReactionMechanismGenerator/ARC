@@ -55,3 +55,4 @@ dependencies:
   - conda-forge::qcelemental
   - psi4::psi4
   - mako
+  - pytables
