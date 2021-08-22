@@ -257,6 +257,7 @@ class ARCReaction(object):
             self.rmg_reaction_from_str(reaction_string=reaction_dict['rmg_reaction'])
         else:
             self.rmg_reaction = None
+        self.set_label_reactants_products(species_list)
         if self.rmg_reaction is None and (self.reactants is None or self.products is None):
             raise InputError(f'Cannot determine reactants and/or products labels for reaction {self.label}')
         if self.reactants is None or self.products is None:
@@ -267,7 +268,6 @@ class ARCReaction(object):
                                  f'Problematic reaction: {self.label}')
             self.reactants = [check_label(spc.label)[0] for spc in self.rmg_reaction.reactants]
             self.products = [check_label(spc.label)[0] for spc in self.rmg_reaction.products]
-        self.set_label_reactants_products(species_list)
         if self.ts_label is None:
             self.ts_label = reaction_dict['ts_label'] if 'ts_label' in reaction_dict else None
         self.r_species = [ARCSpecies(species_dict=r_dict) for r_dict in reaction_dict['r_species']] \
