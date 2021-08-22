@@ -797,7 +797,8 @@ class ARCSpecies(object):
                     atom.edges = edges
                 self.mol.atoms = atoms
                 self.mol.update_atomtypes(raise_exception=False)
-                self.mol.identify_ring_membership()
+                if not self.is_ts:
+                    self.mol.identify_ring_membership()
         else:
             self.mol = None
         smiles = species_dict['smiles'] if 'smiles' in species_dict else None
