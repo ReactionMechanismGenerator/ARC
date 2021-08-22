@@ -699,7 +699,6 @@ class ARCReaction(object):
                                 self.get_species_count(species=p_spc, well=1))
         return reactants, products
 
-    def determine_ts_rotors(self, rmg_database):
 
     def get_mapped_product_xyz(self):
         """
