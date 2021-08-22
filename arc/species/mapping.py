@@ -36,7 +36,8 @@ def map_reaction(rxn: 'ARCReaction',
 
     Returns:
         Optional[List[int]]:
-            Entry indices are running atom indices of the reactants, entry values are running atom indices of the products.
+            Entry indices are running atom indices of the reactants,
+            corresponding entry values are running atom indices of the products.
     """
     if rxn.family is None:
         rmgdb.determine_family(reaction=rxn, db=db)
@@ -97,7 +98,8 @@ def map_h_abstraction(rxn: 'ARCReaction',
                       ) -> Optional[List[int]]:
     """
     Map a hydrogen abstraction reaction.
-    Strategy: Map R(*1)-H(*2) to R(*1)j and map R*3)j to R(*3)-H(*2). Use scissors to map the backbone.
+    Strategy: Map species R(*1)-H(*2) to species R(*1)j and map species R(*3)j to species R(*3)-H(*2).
+    Use scissors to map the backbone.
 
     Args:
         rxn (ARCReaction): An ARCReaction object instance that belongs to the RMG H_Abstraction reaction family.
@@ -117,42 +119,41 @@ def map_h_abstraction(rxn: 'ARCReaction',
     p_h_index = p_label_dict['*2']
     len_r1, len_p1 = rxn.r_species[0].number_of_atoms, rxn.p_species[0].number_of_atoms
     r1_h2 = 0 if r_h_index < len_r1 else 1  # Identify R(*1)-H(*2), it's either reactant 0 or reactant 1.
-    r3 = 0 if r1_h2 else 1  # Identify R(*3) in the reactants.
+    r3 = 1 - r1_h2  # Identify R(*3) in the reactants.
     r3_h2 = 0 if p_h_index < len_p1 else 1  # Identify R(*3)-H(*2), it's either product 0 or product 1.
-    r1 = 0 if r3_h2 else 1  # Identify R(*1) in the products.
+    r1 = 1 - r3_h2  # Identify R(*1) in the products.
 
     spc_r1_h2 = ARCSpecies(label='R1-H2',
                            mol=rxn.r_species[r1_h2].mol.copy(deep=True),
                            xyz=rxn.r_species[r1_h2].get_xyz(),
-                           bdes=[(r_label_dict['*1'] - r1_h2 * len_r1 + 1,
-                                  r_label_dict['*2'] - r1_h2 * len_r1 + 1)],  # Mark the R(*1)-H(*2) bond for scission.
+                           bdes=[(r_label_dict['*1'] + 1 - r1_h2 * len_r1,
+                                  r_label_dict['*2'] + 1 - r1_h2 * len_r1)],  # Mark the R(*1)-H(*2) bond for scission.
                            )
     spc_r1_h2.final_xyz = spc_r1_h2.get_xyz()  # Scissors require the .final_xyz attribute to be populated.
-    spc_r1_h2_cut = [spc for spc in spc_r1_h2.scissors() if spc.label != 'H'][0]
+    spc_r1_h2_cuts = spc_r1_h2.scissors()
+    spc_r1_h2_cut = [spc for spc in spc_r1_h2_cuts if spc.label != 'H'][0] \
+        if any(spc.label != 'H' for spc in spc_r1_h2_cuts) else spc_r1_h2_cuts[0]  # Treat H2 as well :)
     spc_r3_h2 = ARCSpecies(label='R3-H2',
                            mol=rxn.p_species[r3_h2].mol.copy(deep=True),
                            xyz=rxn.p_species[r3_h2].get_xyz(),
-                           bdes=[(p_label_dict['*3'] - r3_h2 * len_p1 + 1,
-                                  p_label_dict['*2'] - r3_h2 * len_p1 + 1)],  # Mark the R(*3)-H(*2) bond for scission.
+                           bdes=[(p_label_dict['*3'] + 1 - r3_h2 * len_p1,
+                                  p_label_dict['*2'] + 1 - r3_h2 * len_p1)],  # Mark the R(*3)-H(*2) bond for scission.
                            )
     spc_r3_h2.final_xyz = spc_r3_h2.get_xyz()  # Scissors require the .final_xyz attribute to be populated.
-    spc_r3_h2_cut = [spc for spc in spc_r3_h2.scissors() if spc.label != 'H'][0]
+    spc_r3_h2_cuts = spc_r3_h2.scissors()
+    spc_r3_h2_cut = [spc for spc in spc_r3_h2_cuts if spc.label != 'H'][0] \
+        if any(spc.label != 'H' for spc in spc_r3_h2_cuts) else spc_r3_h2_cuts[0]  # Treat H2 as well :)
     map_1 = map_two_species(spc_r1_h2_cut, rxn.p_species[r1])
     map_2 = map_two_species(rxn.r_species[r3], spc_r3_h2_cut)
 
     result = {r_h_index: p_h_index}
-    r_increment = r1_h2 * len_r1
-    p_increment = (1 - r3_h2) * len_p1
-    for i, entry in enumerate(map_1):
-        r_index = i + r_increment + int(i + r_increment >= r_h_index)
-        p_index = entry + p_increment
-        result[r_index] = p_index
-    r_increment = (1 - r1_h2) * len_r1
-    p_increment = r3_h2 * len_p1
-    for i, entry in enumerate(map_2):
-        r_index = i + r_increment
-        p_index = entry + p_increment + int(i + p_increment >= p_h_index)
-        result[r_index] = p_index
+    for r_increment, p_increment, map_ in zip([r1_h2 * len_r1, (1 - r1_h2) * len_r1],
+                                              [(1 - r3_h2) * len_p1, r3_h2 * len_p1],
+                                              [map_1, map_2]):
+        for i, entry in enumerate(map_):
+            r_index = i + r_increment + int(i + r_increment >= r_h_index)
+            p_index = entry + p_increment
+            result[r_index] = p_index
     return [val for key, val in sorted(result.items(), key=lambda item: item[0])]
 
 
@@ -287,9 +288,7 @@ def check_family_for_mapping_function(rxn: 'ARCReaction',
                                       db: Optional['RMGDatabase'] = None,
                                       ) -> bool:
     """
-    Map an intra hydrogen migration reaction.
-    Strategy: Remove the *3 H atom from both the reactant and product to have the same backbone.
-    Map the backbone and add the (known) *3 H atom.
+    Check that the actual reaction family and the desired reaction family are the same.
 
     Args:
         rxn (ARCReaction): An ARCReaction object instance.
