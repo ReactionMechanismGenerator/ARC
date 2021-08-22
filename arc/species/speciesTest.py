@@ -1330,6 +1330,38 @@ H       1.11582953    0.94384729   -0.10134685"""
                                                                       charge=spc.charge)[1]))
         self.assertTrue(any(spc.mol.to_smiles() == 'CO[NH]' for spc in spc_list))
 
+        xyz2 = """ C                  2.66919769   -3.26620310   -0.74374716
+                   H                  2.75753007   -4.15036595   -1.33567513
+                   H                  1.77787951   -3.31806642   -0.15056757
+                   H                  3.52403140   -3.18425165   -0.10554699
+                   O                  2.58649229   -2.11402779   -1.57991769
+                   N                  1.53746313   -2.25602697   -2.43070981
+                   H                  1.84309991   -2.72880952   -3.25551907
+                   S                  0.92376743   -0.70765861   -2.81176827
+                   C                  0.24515773   -0.06442163   -1.29416377
+                   H                  0.49440635   -0.20089032   -0.26642534
+                   C                  0.91953671    1.90163977   -2.36604187
+                   H                  1.60635907    2.48833509   -2.94076293
+                   H                  1.05606550    1.06933422   -3.02405448
+                   C                 -0.52564195    1.78158435   -2.66011055
+                   H                 -0.65465370    1.24680889   -3.58012497
+                   H                 -1.05821524    2.70904379   -2.74109386
+                   C                 -0.94377584    0.94856998   -1.47293837
+                   H                 -1.88836228    0.48072549   -1.65625619
+                   H                 -1.02428550    1.53977616   -0.58246004
+                   O                  1.32323842    0.95413994   -1.37785658"""
+        spc0 = ARCSpecies(label='0',
+                          smiles='CONSC1OCCC1', xyz=xyz0, bdes=[(6, 8), 'all_h'])
+        spc0.final_xyz = spc0.conformers[0]
+        spc_list = spc0.scissors()
+        self.assertEqual(len(spc_list), 14)  # 11 H's, one H species, two non-H cut fragments
+        for spc in spc_list:
+            self.assertTrue(check_isomorphism(mol1=spc.mol,
+                                              mol2=molecules_from_xyz(xyz=spc.conformers[0],
+                                                                      multiplicity=spc.multiplicity,
+                                                                      charge=spc.charge)[1]))
+        self.assertTrue(any(spc.mol.to_smiles() == 'CO[NH]' for spc in spc_list))
+
     def test_net_charged_species(self):
         """Test that we can define, process, and manipulate ions"""
         nh4 = ARCSpecies(label='NH4', smiles='[NH4+]', charge=1)
