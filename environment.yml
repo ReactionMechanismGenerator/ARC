@@ -7,7 +7,7 @@ dependencies:
   - cairo
   - cairocffi
   - rmg::cantera >=2.3.0
-  - conda-forge::cclib >=1.6.3
+  - conda-forge::cclib >=1.7.0
   - rmg::chemprop
   - coolprop
   - coverage
@@ -52,4 +52,7 @@ dependencies:
   - conda-forge::ase >=3.15.0
   - anaconda::ipython
   - anaconda::sphinx
-  - conda-forge::qcelemental == 0.20.0
+  - conda-forge::qcelemental
+  - psi4::psi4
+  - mako
+  - pytables
