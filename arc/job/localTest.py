@@ -26,7 +26,7 @@ class TestLocal(unittest.TestCase):
         self.assertIsInstance(out1, tuple)
         self.assertIsInstance(out1[0], list)
         self.assertIsInstance(out1[0][0], str)
-        self.assertEqual(out1[1], '')
+        self.assertEqual(out1[1], [])
         self.assertIn('arc', out1[0])
         self.assertIn('ARC.py', out1[0])
         self.assertIn('environment.yml', out1[0])
