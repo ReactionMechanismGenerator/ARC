@@ -85,7 +85,7 @@ def map_general_rxn(rxn: 'ARCReaction',
                             )
     if qcmol_1 is None or qcmol_2 is None:
         return None
-    data = qcmol_2.align(ref_mol=qcmol_1, verbose=0)[1]
+    data = qcmol_2.align(ref_mol=qcmol_1, verbose=0, uno_cutoff=15)[1]
     atom_map = data['mill'].atommap.tolist()
     return atom_map
 
@@ -334,7 +334,7 @@ def map_two_species(spc_1: Union[ARCSpecies, Species, Molecule],
     if len(qcmol_1.symbols) != len(qcmol_2.symbols):
         raise ValueError(f'The number of atoms in spc1 ({spc_1.number_of_atoms}) must be equal '
                          f'to the number of atoms in spc1 ({spc_2.number_of_atoms}).')
-    data = qcmol_2.align(ref_mol=qcmol_1, verbose=0)
+    data = qcmol_2.align(ref_mol=qcmol_1, verbose=0, uno_cutoff=15)
     atom_map = data[1]['mill'].atommap.tolist()
     if map_type == 'dict':  # ** Todo: test
         atom_map = {key: val for key, val in enumerate(atom_map)}
