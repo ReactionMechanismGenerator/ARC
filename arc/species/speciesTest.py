@@ -239,9 +239,9 @@ class TestARCSpecies(unittest.TestCase):
         self.assertEqual(len(self.spc11.conformers), 3)
 
         xyz12 = """C       0.00000000    0.00000000    0.00000000
-H       1.07008000   -0.14173100    0.00385900
-H      -0.65776100   -0.85584100   -0.00777700
-H      -0.41231900    0.99757300    0.00391900"""
+                   H       1.07008000   -0.14173100    0.00385900
+                   H      -0.65776100   -0.85584100   -0.00777700
+                   H      -0.41231900    0.99757300    0.00391900"""
         spc12 = ARCSpecies(label='CH3', smiles='[CH3]', xyz=xyz12)
         spc12.generate_conformers()
         self.assertEqual(len(spc12.conformers), 2)
