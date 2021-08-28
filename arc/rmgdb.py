@@ -353,7 +353,7 @@ def determine_rmg_kinetics(rmgdb: RMGDatabase,
 
 
 def get_family(rmgdb: RMGDatabase,
-               label: str,
+               label: Optional[str],
                ) -> Optional['KineticsFamily']:
     """
     Get a KineticsFamily object instance corresponding to the input family ``label``.
@@ -365,6 +365,8 @@ def get_family(rmgdb: RMGDatabase,
     Returns:
         Optional['KineticsFamily']: The desired family object instance.
     """
+    if label is None:
+        return None
     label = label.lower()
     for family_label, family in rmgdb.kinetics.families.items():
         if family_label.lower() == label:
