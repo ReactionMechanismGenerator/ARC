@@ -455,7 +455,8 @@ class ARCSpecies(object):
                         if self.bond_corrections:
                             self.long_thermo_description += f'Bond corrections: {self.bond_corrections}\n'
 
-            if not self.bond_corrections and self.compute_thermo and self.number_of_atoms > 1:
+            if not self.bond_corrections and self.compute_thermo \
+                    and self.number_of_atoms is not None and self.number_of_atoms > 1:
                 logger.warning(f'Cannot determine bond additivity corrections (BAC) for species {self.label} based on '
                                f'xyz coordinates only. For better thermodynamic properties, provide bond corrections.')
 
