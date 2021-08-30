@@ -94,18 +94,15 @@ default_job_settings, global_ess_settings, input_filenames, output_filenames, ro
 # restricted: '' or 'u' for restricted / unrestricted
 # `iop(2/9=2000)` makes Gaussian print the geometry in the input orientation even for molecules with more
 #   than 50 atoms (important so it matches the hessian, and so that Arkane can parse the geometry)
-input_template = """${checkfile}
-%%mem=${memory}mb
-%%NProcShared=${cpus}
-
-#P ${job_type_1} ${restricted}${method}${slash_1}${basis}${slash_2}${auxiliary_basis} ${job_type_2} ${fine} IOp(2/9=2000) ${keywords} ${dispersion}
-
-${label}
-
+input_template = """
+memory ${memory} GB
+molecule {${label}
 ${charge} ${multiplicity}
-${xyz}${scan}${scan_trsh}${block}
+${geometry}
+}
 
-
+set basis ${basis}
+${function}(${function_args})
 """
 
 
@@ -152,7 +149,7 @@ class Psi4Adapter(JobAdapter):
         times_rerun (int, optional): Number of times this job was re-run with the same arguments (no trsh methods).
         torsions (List[List[int]], optional): The 0-indexed atom indices of the torsion(s).
         tsg (int, optional): TSGuess number if optimizing TS guesses.
-        xyz (dict, optional): The 3D coordinates to use. If not give, species.get_xyz() will be used.
+        xyz (dict, optional): The 3D coordinates to use. If not given, species.get_xyz() will be used.
     """
 
     def __init__(self,
@@ -201,9 +198,9 @@ class Psi4Adapter(JobAdapter):
             raise ValueError('Cannot execute Psi4 without an ARCSpecies object.')
 
         if any(arg is None for arg in [job_type, level]):
-            raise ValueError(f'All of the following arguments must be given:\n'
-                             f'job_type, level, project, project_directory\n'
-                             f'Got: {job_type}, {level}, {project}, {project_directory}, respectively')
+            raise ValueError(f'''All of the following arguments must be given:
+                                job_type, level, project, project_directory
+                                {job_type}, {level}, {project}, {project_directory}, respectively''')
 
         self.project = project
         self.project_directory = project_directory
@@ -286,12 +283,52 @@ class Psi4Adapter(JobAdapter):
             self._write_initiated_job_to_csv_file()
 
         check_argument_consistency(self)
+    def get_geometry(self):
+        """
+        Returns: The geometry of the species using the useres data.
+        """
+        if self.xyz is not None:
+            return xyz
+        elif self.species[0] is not None:
+            return self.species[0].get_xyz()
+        else:
+            raise ValueError("Geometric data needed to preform the calculations.")
+
+    input_template = """
+    memory ${memory} GB
+    molecule {${label}
+    ${charge} ${multiplicity}
+    ${geometry}
+    }
+
+    set basis ${basis}
+    ${function}(${function_args})
+    """
+    job_types = ['conformer', 'opt', 'freq', 'optfreq', 'sp', 'composite', 'bde', 'scan', 'directed_scan',
+                 'gsm', 'irc', 'ts_guess', 'orbitals', 'onedmin']
 
     def write_input_file(self) -> None:
         """
         Write the input file to execute the job on the server.
         """
-        pass
+        func = ''
+        if self.job_type in ['conformer','opt','optfreq']:
+            func = 'optimize'
+        elif self.job_type in ['sp']:
+            func = 'energy'
+        else:
+            func = 'frequency'
+        input_dict = {
+            'memory' : self.job_memory_gb
+            'label' : self.species[0].label
+            'charge' : self.species[0].charge
+            'multiplicity' : self.species[0].multiplicity
+            'geometry' : get_geometry()
+            'basis' : self.level.basis
+            'function' : func
+
+        }
+
 
     def set_files(self) -> None:
         """
