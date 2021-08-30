@@ -463,11 +463,9 @@ class ARCSpecies(object):
             self.neg_freqs_trshed = list()
 
         if self.charge is None:
-            logger.debug(f'No charge specified for {self.label}, assuming charge 0.')
             self.charge = 0
         if self.multiplicity is None or self.multiplicity < 1:
             self.determine_multiplicity(smiles, adjlist, self.mol)
-            logger.debug(f'No multiplicity specified for {self.label}, assuming {self.multiplicity}.')
         if not isinstance(self.multiplicity, int) and self.multiplicity is not None:
             raise SpeciesError(f'Multiplicity for species {self.label} is not an integer. '
                                f'Got {self.multiplicity} which is a {type(self.multiplicity)}.')
@@ -774,8 +772,6 @@ class ARCSpecies(object):
             self.process_xyz(species_dict['xyz'])
         self.multiplicity = species_dict['multiplicity'] if 'multiplicity' in species_dict else None
         self.charge = species_dict['charge'] if 'charge' in species_dict else 0
-        if 'charge' not in species_dict:
-            logger.debug(f'No charge specified for {self.label}, assuming charge 0.')
         self.compute_thermo = species_dict['compute_thermo'] if 'compute_thermo' in species_dict else not self.is_ts
         self.e0_only = species_dict['e0_only'] if 'e0_only' in species_dict else False
         self.number_of_radicals = species_dict['number_of_radicals'] if 'number_of_radicals' in species_dict else None
@@ -1013,10 +1009,6 @@ class ARCSpecies(object):
             if len(lowest_confs):
                 self.conformers.extend([conf['xyz'] for conf in lowest_confs])
                 self.conformer_energies.extend([None] * len(lowest_confs))
-                if lowest_confs:
-                    lowest_conf = conformers.get_lowest_confs(label=self.label, confs=lowest_confs, n=1)[0]
-                    logger.debug(f'Most stable force field conformer for {self.label}:\n'
-                                 f'{xyz_to_str(lowest_conf["xyz"])}\n')
             else:
                 xyz = self.get_xyz(generate=False)
                 if xyz is None or not xyz:
