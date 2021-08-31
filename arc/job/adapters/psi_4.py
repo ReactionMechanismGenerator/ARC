@@ -294,30 +294,23 @@ class Psi4Adapter(JobAdapter):
         else:
             raise ValueError("Geometric data needed to preform the calculations.")
 
-    input_template = """
-    memory ${memory} GB
-    molecule {${label}
-    ${charge} ${multiplicity}
-    ${geometry}
-    }
-
-    set basis ${basis}
-    ${function}(${function_args})
-    """
-    job_types = ['conformer', 'opt', 'freq', 'optfreq', 'sp', 'composite', 'bde', 'scan', 'directed_scan',
-                 'gsm', 'irc', 'ts_guess', 'orbitals', 'onedmin']
 
     def write_input_file(self) -> None:
         """
         Write the input file to execute the job on the server.
         """
         func = ''
+        func_arg = ''
         if self.job_type in ['conformer','opt','optfreq']:
             func = 'optimize'
+            func_arg = str(self.level.method) +',' + 'on'
         elif self.job_type in ['sp']:
             func = 'energy'
+            func_arg = str(self.level.method) + ',' + ',on'
         else:
             func = 'frequency'
+
+
         input_dict = {
             'memory' : self.job_memory_gb
             'label' : self.species[0].label
@@ -326,8 +319,9 @@ class Psi4Adapter(JobAdapter):
             'geometry' : get_geometry()
             'basis' : self.level.basis
             'function' : func
-
+            'function args' : func_arg
         }
+
 
 
     def set_files(self) -> None:
