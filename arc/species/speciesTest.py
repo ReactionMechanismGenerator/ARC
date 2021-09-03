@@ -1089,6 +1089,36 @@ H       2.82319256   -0.46240839   -0.40178723"""
         for atom, symbol in zip(spc6.mol.atoms, ['C', 'C', 'H', 'H', 'H', 'H', 'C', 'H', 'H', 'H']):
             self.assertEqual(atom.symbol, symbol)
 
+        xyz7 = {'coords': ((0.02724478716956233, 0.6093829407458188, 0.0),
+                           (-1.3946381818031768, -0.24294788636871906, 0.0),
+                           (1.3673933946336125, -0.36643505437710233, 0.0)),
+                'isotopes': (32, 16, 16), 'symbols': ('S', 'O', 'O')}
+        spc7 = ARCSpecies(label='SO2', smiles='[O][S]=O', xyz=xyz7)
+        for atom, symbol in zip(spc7.mol.atoms, spc7.get_xyz()['symbols']):
+            self.assertEqual(atom.symbol, symbol)
+        for atom, symbol in zip(spc7.mol.atoms, ['S', 'O', 'O']):
+            self.assertEqual(atom.symbol, symbol)
+
+        xyz8 = """C                  0.42854493    1.37396218   -0.06378771
+                  H                  0.92258324    0.49575491   -0.42375735
+                  C                  1.14683468    2.48797667    0.21834452
+                  H                  0.65279661    3.36618328    0.57831609
+                  C                  2.67411846    2.48994130    0.02085939
+                  H                  3.00074251    3.47886113   -0.22460814
+                  O                  3.01854194    1.59675339   -1.04144368
+                  H                  3.97061495    1.59797810   -1.16455130
+                  N                  3.32919606    2.05137935    1.26159979
+                  H                  3.08834048    2.67598628    2.00446907
+                  O                 -0.98964750    1.37213874    0.11958876
+                  H                 -1.39314061    0.77169906   -0.51149404
+                  O                  4.67796616    2.05311435    1.08719734
+                  H                  5.10577193    1.76670654    1.89747679"""
+        spc8 = ARCSpecies(label='S8', smiles='OC=CC(O)NO', xyz=xyz8)
+        for atom, symbol in zip(spc8.mol.atoms, spc8.get_xyz()['symbols']):
+            self.assertEqual(atom.symbol, symbol)
+        for atom, symbol in zip(spc8.mol.atoms, ['C', 'H', 'C', 'H', 'C', 'H', 'O', 'H', 'N', 'H', 'O', 'H', 'O', 'H']):
+            self.assertEqual(atom.symbol, symbol)
+
     def test_get_radius(self):
         """Test determining the species radius"""
         spc1 = ARCSpecies(label='r1', smiles='O=C=O')
