@@ -380,18 +380,21 @@ def xyz_from_data(coords, numbers=None, symbols=None, isotopes=None) -> dict:
 
 
 def sort_xyz_using_indices(xyz_dict: dict,
-                           indices: List[int],
+                           indices: Optional[List[int]],
                            ) -> dict:
     """
     Sort the tuples in an xyz dict according to the given indices.
 
     Args:
         xyz_dict (dict): The Cartesian coordinates.
-        indices (List[int]): Entries are 0-indices of the desired order.
+        indices (Optional[List[int]]): Entries are 0-indices of the desired order.
 
     Returns:
         dict: The ordered xyz.
     """
+    if indices is None:
+        logger.error('Cannot sort xyz without a map.')
+        return xyz_dict
     if len(indices) != len(xyz_dict['coords']):
         raise ValueError(f"The number of indices {len(indices)} does not match "
                          f"the number of coordinates {len(xyz_dict['coords'])}")
@@ -1153,7 +1156,7 @@ def rmg_mol_from_inchi(inchi: str):
 
 def elementize(atom):
     """
-    Convert the atom type of an RMG:Atom object into its general parent element atom type (e.g., `S4d` into `S`).
+    Convert the atom type of an RMG ``Atom`` object into its general parent element atom type (e.g., 'S4d' into 'S').
 
     Args:
         atom (Atom): The atom to process.
