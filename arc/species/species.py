@@ -1398,10 +1398,11 @@ class ARCSpecies(object):
             if len(self.mol.atoms) != len(xyz['symbols']):
                 raise SpeciesError(f'The number of atoms in the molecule and in the cartesian coordinates is different.'
                                    f'\nGot:\n{self.mol.copy(deep=True).to_adjacency_list()}\nand:\n{xyz}')
-            # self.mol should have come from another source, e.g., SMILES or yml
-            perceived_mol = molecules_from_xyz(xyz=xyz,
-                                               multiplicity=self.multiplicity,
-                                               charge=self.charge)[1]
+            # self.mol should have come from another source, e.g., SMILES or yml.
+            perceived_mols = molecules_from_xyz(xyz=xyz,
+                                                multiplicity=self.multiplicity,
+                                                charge=self.charge)
+            perceived_mol = perceived_mols[1] or perceived_mols[0]
             if perceived_mol is not None:
                 allow_nonisomorphic_2d = (self.charge is not None and self.charge) \
                                          or self.mol.has_charge() or perceived_mol.has_charge() \
@@ -1417,8 +1418,7 @@ class ARCSpecies(object):
                                    f'{self.mol.copy(deep=True).to_smiles()}\n'
                                    f'{self.mol.copy(deep=True).to_adjacency_list()}')
                     raise SpeciesError(f'XYZ and the 2D graph representation for {self.label} are not compliant.')
-                else:
-                    self.mol = perceived_mol
+                self.mol = perceived_mol
             else:
                 # molecules_from_xyz() returned None for mol_b
                 # todo: Atom order will not be correct, fix
