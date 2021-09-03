@@ -161,6 +161,15 @@ H      -1.22610851    0.40421362    1.35170355"""
         # More info can be found from PR #332
         self.assertEqual(lowest_confs[0]['xyz']['symbols'], expected_xyz['symbols'])
 
+        # HO2
+        lowest_confs = conformers.generate_conformers(mol_list=[Molecule(smiles='O[O]')],
+                                                      label='HO2',
+                                                      charge=0,
+                                                      multiplicity=2,
+                                                      force_field='MMFF94s',
+                                                      )
+        self.assertEqual(lowest_confs[0]['xyz']['symbols'], ('O', 'O', 'H'))
+
     def test_generate_conformers_with_specific_diastereomers(self):
         """Test the main conformer generation function, considering a specific diastereomer"""
         spc1 = ARCSpecies(label='spc1', smiles='IC=CC(Cl)(I)NF')
@@ -1828,8 +1837,7 @@ Cl      2.38846685    0.24054066    0.55443324
 
     def test_determine_chirality(self):
         """Test determining R/S/E/Z chirality of atom centers and double bonds"""
-
-        # one chiral C center
+        # One chiral C center.
         confs = [{'xyz': {'symbols': ('O', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
                           'isotopes': (16, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
                           'coords': ((-1.3836321615294294, -1.3053014308406108, -0.9378250622062406),
@@ -1875,7 +1883,7 @@ Cl      2.38846685    0.24054066    0.55443324
         self.assertEqual(confs[0]['chirality'], {(1,): 'R'})
         self.assertEqual(confs[1]['chirality'], {(1,): 'S'})
 
-        # one chiral N center
+        # One chiral N center.
         confs = [{'xyz': {'symbols': ('S', 'O', 'N', 'C', 'H', 'H', 'H', 'H', 'H'),
                           'isotopes': (32, 16, 14, 12, 1, 1, 1, 1, 1),
                           'coords': ((0.6642693414954796, 1.2877501906584146, -1.012730946867456),
@@ -1909,7 +1917,7 @@ Cl      2.38846685    0.24054066    0.55443324
         self.assertEqual(confs[0]['chirality'], {(2,): 'NS'})
         self.assertEqual(confs[1]['chirality'], {(2,): 'NR'})
 
-        # one chiral N center
+        # One chiral N center.
         confs = [{'xyz': {'symbols': ('O', 'N', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
                           'isotopes': (16, 14, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1), 'coords': (
             (-1.1260113581472435, 1.3761961818488566, 0.09344599103558728),
@@ -1953,7 +1961,7 @@ Cl      2.38846685    0.24054066    0.55443324
         self.assertEqual(confs[0]['chirality'], {(1,): 'NR'})
         self.assertEqual(confs[1]['chirality'], {(1,): 'NS'})
 
-        # one chiral N center
+        # One chiral N center.
         confs = [{'xyz': {'symbols': ('N', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
                           'isotopes': (14, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1),
                           'coords': ((-0.7073511380114899, 0.8197164661073145, 0.24999885684842907),
@@ -1995,7 +2003,7 @@ Cl      2.38846685    0.24054066    0.55443324
         self.assertEqual(confs[0]['chirality'], {(0,): 'NS'})
         self.assertEqual(confs[1]['chirality'], {(0,): 'NR'})
 
-        # one chiral double bond
+        # One chiral double bond.
         confs = [{'xyz': {'symbols': ('N', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
                           'isotopes': (14, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1),
                           'coords': ((1.6790693468233917, -0.0528568295658936, -0.45240516692920485),
@@ -2076,6 +2084,41 @@ Cl      2.38846685    0.24054066    0.55443324
         confs = conformers.determine_chirality(conformers=confs, label='C(O)(S)NC=CO', mol=mol)
         self.assertEqual(confs[0]['chirality'], {(0,): 'R', (3,): 'NR', (4, 5): 'E'})
         self.assertEqual(confs[1]['chirality'], {(0,): 'S', (3,): 'NR', (4, 5): 'Z'})
+
+        confs = [{'xyz': converter.str_to_xyz("""C                  0.42854493    1.37396218   -0.06378771
+                                                 H                  0.92258324    0.49575491   -0.42375735
+                                                 C                  1.14683468    2.48797667    0.21834452
+                                                 H                  0.65279661    3.36618328    0.57831609
+                                                 C                  2.67411846    2.48994130    0.02085939
+                                                 H                  3.00074251    3.47886113   -0.22460814
+                                                 O                  3.01854194    1.59675339   -1.04144368
+                                                 H                  3.97061495    1.59797810   -1.16455130
+                                                 N                  3.32919606    2.05137935    1.26159979
+                                                 H                  3.08834048    2.67598628    2.00446907
+                                                 O                 -0.98964750    1.37213874    0.11958876
+                                                 H                 -1.39314061    0.77169906   -0.51149404
+                                                 O                  4.67796616    2.05311435    1.08719734
+                                                 H                  5.10577193    1.76670654    1.89747679"""),
+                  'index': 0, 'FF energy': -58.91943006722673, 'source': 'MMFF94'},
+                 {'xyz': converter.str_to_xyz("""C                  0.70455114    1.02471502   -0.59812334
+                                                 H                 -0.29550712    0.65127249   -0.67109010
+                                                 C                  0.99699795    2.01057459    0.28455600
+                                                 H                  0.22784149    2.41551873    0.90850999
+                                                 C                  2.43633411    2.54805275    0.38957346
+                                                 H                  2.91991643    2.46069364   -0.56090880
+                                                 O                  2.40440760    3.92231746    0.78362575
+                                                 H                  1.91959416    4.43147118    0.12992978
+                                                 N                  3.17870469    1.76841111    1.39054541
+                                                 H                  3.20103091    0.80738684    1.11498438
+                                                 O                  1.73248925    0.48352787   -1.43200566
+                                                 H                  2.39027727    1.15999922   -1.60892777
+                                                 O                  2.56405800    1.87944698    2.59863502
+                                                 H                  2.54262482    2.80203029    2.86317361"""),
+                  'index': 2, 'FF energy': -68.39144685068642, 'source': 'MMFF94'}]
+        mol = ARCSpecies(label='S1', smiles='OC=CC(O)NO', xyz=confs[0]['xyz']).mol  # Preserves atom order.
+        confs = conformers.determine_chirality(conformers=confs, label='S1', mol=mol)
+        self.assertEqual(confs[0]['chirality'], {(0, 2): 'E', (4,): 'S', (8,): 'NR'})
+        self.assertEqual(confs[1]['chirality'], {(0, 2): 'Z', (4,): 'R', (8,): 'NR'})
 
     def test_get_lowest_diastereomers(self):
         """Test the getting the lowest diasteroemrs from a given conformers list"""
