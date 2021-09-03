@@ -4,7 +4,6 @@ A module for representing a reaction.
 
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
-import numpy as np
 from qcelemental.exceptions import ValidationError
 from qcelemental.models.molecule import Molecule as QCMolecule
 
@@ -15,7 +14,7 @@ import arc.rmgdb as rmgdb
 from arc.common import extremum_list, get_logger
 from arc.exceptions import ReactionError, InputError
 from arc.imports import settings
-from arc.species.converter import check_xyz_dict, str_to_xyz, xyz_to_str
+from arc.species.converter import check_xyz_dict, sort_xyz_using_indices, xyz_to_str
 from arc.species.species import ARCSpecies, check_atom_balance, check_label
 
 if TYPE_CHECKING:
@@ -821,20 +820,16 @@ class ARCReaction(object):
                 dict: Mapped product atoms in ARC dictionary format.
                 ARCSpecies: ARCSpecies object created from mapped coordinates.
         """
-        product = self.p_species[0]
-        mapping = self.atom_map
-        original_xyz_str = xyz_to_str(product.get_xyz())
-        original_xyz = np.array(original_xyz_str.split('\n'))
-        mapped_xyz = '\n'.join(original_xyz[mapping].tolist())
-        # create another product with the mapped atoms since ARCSpecies objects preserve this ordering
-        # in RDKit objects and in RMG-Py Molecule objects
-        mapped_product = ARCSpecies(label=product.label,
-                                    smiles=product.mol.smiles,
-                                    multiplicity=product.multiplicity,
-                                    charge=product.charge,
+        if len(self.p_species) > 1:
+            raise ValueError(f'Can only return a mapped product for reactions with a single product, '
+                             f'got {len(self.p_species)}.')
+        mapped_xyz = sort_xyz_using_indices(xyz_dict=self.p_species[0].get_xyz(), indices=self.atom_map)
+        mapped_product = ARCSpecies(label=self.p_species[0].label,
+                                    mol=self.p_species[0].mol.copy(deep=True),
+                                    multiplicity=self.p_species[0].multiplicity,
+                                    charge=self.p_species[0].charge,
                                     xyz=mapped_xyz,
                                     )
-        mapped_xyz = str_to_xyz(mapped_xyz)
         return mapped_xyz, mapped_product
 
     def get_reactants_xyz(self, return_format='str') -> Union[dict, str]:
