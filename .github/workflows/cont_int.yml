@@ -41,7 +41,7 @@ jobs:
         git clone https://github.com/ReactionMechanismGenerator/RMG-database
         cd ARC
         conda deactivate
-        make gcn-cpu
+        make install-all
         cd ..
         echo $(pwd)
         conda activate arc_env
@@ -57,6 +57,7 @@ jobs:
 
     - name: Test with nosetests
       run: |
+        . ~/.bashrc
         cd ..
         cd RMG-Py
         export PYTHONPATH=$PYTHONPATH:$(pwd)
