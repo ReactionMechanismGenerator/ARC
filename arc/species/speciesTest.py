@@ -993,6 +993,18 @@ H       1.32129900    0.71837500    0.38017700
                                            {'coords': ((0.5, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)}])
         self.assertEqual(spc4.conformer_energies, [None, None])
 
+    def test_mol_from_xyz(self):
+        """Test the mol_from_xyz() method."""
+        so2_t_xyz = {'coords': ((0.02724478716956233, 0.6093829407458188, 0.0),
+                                (-1.3946381818031768, -0.24294788636871906, 0.0),
+                                (1.3673933946336125, -0.36643505437710233, 0.0)),
+                     'isotopes': (32, 16, 16), 'symbols': ('S', 'O', 'O')}
+        so2 = ARCSpecies(label='SO2', smiles='[O][S]=O')
+        self.assertEqual(so2.multiplicity, 3)
+        self.assertEqual(so2.charge, 0)
+        so2.mol_from_xyz(xyz=so2_t_xyz, get_cheap=False)
+        self.assertEqual([atom.element.symbol for atom in so2.mol.atoms], ['S', 'O', 'O'])
+
     def test_consistent_atom_order(self):
         """Test that the atom order is preserved whether starting from SMILES or from xyz"""
         spc1 = ARCSpecies(label='spc1', smiles='CCCO')
