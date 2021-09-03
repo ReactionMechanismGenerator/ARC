@@ -4,15 +4,17 @@ A module for representing a reaction.
 
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
-import numpy as np
-
 from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 
 import arc.rmgdb as rmgdb
 from arc.common import get_logger
 from arc.exceptions import ReactionError, InputError
-from arc.species.converter import check_xyz_dict, sort_xyz_using_indices, xyz_to_str
+from arc.species.converter import (check_xyz_dict,
+                                   sort_xyz_using_indices,
+                                   translate_to_center_of_mass,
+                                   translate_xyz,
+                                   xyz_to_str)
 from arc.species.mapping import map_reaction
 from arc.species.species import ARCSpecies, check_atom_balance, check_label
 
@@ -702,19 +704,17 @@ class ARCReaction(object):
                                 self.get_species_count(species=p_spc, well=1))
         return reactants, products
 
-    def get_mapped_product_xyz(self):
+    def get_mapped_product_xyz(self) -> Optional[ARCSpecies]:
         """
-        Uses the mapping from product onto reactant to create a new ARC Species for the mapped product.
-        For now, only functional for A <=> B reactions.
+        Get a copy of the product species with mapped cartesian coordinates of a reaction with a single product.
 
         Returns:
-            Tuple[dict, ARCSpecies]:
-                dict: Mapped product atoms in ARC dictionary format.
-                ARCSpecies: ARCSpecies object created from mapped coordinates.
+            Optional[ARCSpecies]: The corresponding ARCSpecies object with mapped coordinates.
         """
         if len(self.p_species) > 1:
-            raise ValueError(f'Can only return a mapped product for reactions with a single product, '
-                             f'got {len(self.p_species)}.')
+            logger.error(f'Can only return a mapped product for reactions with a single product, '
+                         f'got {len(self.p_species)}.')
+            return None
         mapped_xyz = sort_xyz_using_indices(xyz_dict=self.p_species[0].get_xyz(), indices=self.atom_map)
         mapped_product = ARCSpecies(label=self.p_species[0].label,
                                     mol=self.p_species[0].mol.copy(deep=True),
@@ -722,7 +722,7 @@ class ARCReaction(object):
                                     charge=self.p_species[0].charge,
                                     xyz=mapped_xyz,
                                     )
-        return mapped_xyz, mapped_product
+        return mapped_product
 
     def get_reactants_xyz(self, return_format='str') -> Union[dict, str]:
         """
@@ -736,22 +736,24 @@ class ARCReaction(object):
             The combined cartesian coordinates.
 
         Todo:
-            identify flux pairs like in RMG
-            orient a line: cm1 - X -- Y - cm2 if there are two reactants
+            Orient the fragments according to the reactive site.
         """
         xyz_dict = dict()
         if len(self.r_species) == 1:
             xyz_dict = self.r_species[0].get_xyz()
         elif len(self.r_species) >= 2:
             xyz_dict = {'symbols': tuple(), 'isotopes': tuple(), 'coords': tuple()}
-            for reactant in self.r_species:
-                xyz = reactant.get_xyz()
+            for i, reactant in enumerate(self.r_species):
+                xyz = translate_to_center_of_mass(reactant.get_xyz())
+                if i:
+                    xyz = translate_xyz(xyz_dict=xyz,
+                                        translation=(sum(spc.radius for spc in self.r_species[:i]) * 1.1 * i, 0, 0))
                 xyz_dict['symbols'] += xyz['symbols']
                 xyz_dict['isotopes'] += xyz['isotopes']
                 xyz_dict['coords'] += xyz['coords']
-
-        xyz_dict = check_xyz_dict(xyz_dict)
-        xyz_dict = xyz_to_str(xyz_dict) if return_format == 'str' else xyz_dict
+        xyz_dict = translate_to_center_of_mass(check_xyz_dict(xyz_dict))
+        if return_format == 'str':
+            xyz_dict = xyz_to_str(xyz_dict)
         return xyz_dict
 
     def get_products_xyz(self, return_format='str') -> Union[dict, str]:
@@ -767,24 +769,25 @@ class ARCReaction(object):
             The combined cartesian coordinates.
 
         Todo:
-            - identify flux pairs like in RMG
-            - orient a line: cm1 - X - Y - cm2 if there are two reactants
-            - Combine with get_mapped_product_xyz()
+            Orient the fragments according to the reactive site.
         """
-        xyz_dict = mapped_xyz_dict = {'symbols': tuple(), 'isotopes': tuple(), 'coords': tuple()}
-        for product in self.p_species:
-            xyz = product.get_xyz()
-            xyz_dict['symbols'] += xyz['symbols']
-            xyz_dict['isotopes'] += xyz['isotopes']
-            xyz_dict['coords'] += xyz['coords']
-        for i in range(len(xyz_dict['symbols'])):
-            mapped_xyz_dict['symbols'] += (xyz_dict['symbols'][self.atom_map[i]],)
-            mapped_xyz_dict['isotopes'] += (xyz_dict['isotopes'][self.atom_map[i]],)
-            mapped_xyz_dict['coords'] += (xyz_dict['coords'][self.atom_map[i]],)
-        mapped_xyz_dict = check_xyz_dict(mapped_xyz_dict)
+        if len(self.p_species) == 1:
+            xyz_dict = self.p_species[0].get_xyz()
+        else:
+            xyz_dict = {'symbols': tuple(), 'isotopes': tuple(), 'coords': tuple()}
+            for i, product in enumerate(self.p_species):
+                xyz = translate_to_center_of_mass(product.get_xyz())
+                if i:
+                    xyz = translate_xyz(xyz_dict=xyz,
+                                        translation=(sum(spc.radius for spc in self.p_species[:i]) * 1.1 * i, 0, 0))
+                xyz_dict['symbols'] += xyz['symbols']
+                xyz_dict['isotopes'] += xyz['isotopes']
+                xyz_dict['coords'] += xyz['coords']
+        xyz_dict = translate_to_center_of_mass(check_xyz_dict(xyz_dict))
+        xyz_dict = sort_xyz_using_indices(xyz_dict=xyz_dict, indices=self.atom_map)
         if return_format == 'str':
-            mapped_xyz_dict = xyz_to_str(mapped_xyz_dict)
-        return mapped_xyz_dict
+            xyz_dict = xyz_to_str(xyz_dict)
+        return xyz_dict
 
 
 def remove_dup_species(species_list: List[ARCSpecies]) -> List[ARCSpecies]:
