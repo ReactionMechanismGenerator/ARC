@@ -11,7 +11,8 @@ from arc.settings.submit import submit_scripts
 
 
 # Common imports where the user can optionally put a modified copy of an ARC file un their ~/.arc folder
-local_arc_path = os.path.join(os.getenv("HOME"), '.arc')
+home = os.getenv("HOME") or os.path.expanduser("~")
+local_arc_path = os.path.join(home, '.arc')
 
 local_arc_settings_path = os.path.join(local_arc_path, 'settings.py')
 settings = {key: val for key, val in vars(arc_settings).items() if '__' not in key}
