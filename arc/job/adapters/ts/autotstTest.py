@@ -15,7 +15,7 @@ from rmgpy.species import Species
 from arc.common import ARC_PATH
 from arc.job.adapters.ts.autotst_ts import AutoTSTAdapter
 from arc.reaction import ARCReaction
-from arc.rmgdb import make_rmg_database_object, load_families_only
+from arc.rmgdb import make_rmg_database_object, load_families_only, rmg_database_instance_only_fams
 
 
 class TestAutoTSTAdapter(unittest.TestCase):
@@ -29,8 +29,10 @@ class TestAutoTSTAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        cls.rmgdb = make_rmg_database_object()
-        load_families_only(cls.rmgdb)
+        cls.rmgdb = rmg_database_instance_only_fams
+        if cls.rmgdb is None:
+            cls.rmgdb = make_rmg_database_object()
+            load_families_only(cls.rmgdb)
 
     def test_autotst_h_abstraction(self):
         """Test AutoTST for H Abstraction reactions"""

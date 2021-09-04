@@ -42,8 +42,10 @@ class TestHeuristicsAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        cls.rmgdb = rmgdb.make_rmg_database_object()
-        rmgdb.load_families_only(cls.rmgdb)
+        cls.rmgdb = rmgdb.rmg_database_instance_only_fams
+        if cls.rmgdb is None:
+            cls.rmgdb = rmgdb.make_rmg_database_object()
+            rmgdb.load_families_only(cls.rmgdb)
         cls.ccooh_xyz = {'symbols': ('C', 'C', 'O', 'O', 'H', 'H', 'H', 'H', 'H', 'H'),
                          'isotopes': (12, 12, 16, 16, 1, 1, 1, 1, 1, 1),
                          'coords': ((-1.34047, -0.03188, 0.16703), (0.07658, -0.19298, -0.34334),

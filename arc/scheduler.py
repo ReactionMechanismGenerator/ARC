@@ -254,7 +254,7 @@ class Scheduler(object):
         self.species_list = species_list
         self.project_directory = project_directory
 
-        self.rmg_database = rmg_database
+        self.rmg_database = rmg_database or rmgdb.rmg_database_instance_only_fams
         self.restart_dict = restart_dict
         self.rxn_list = rxn_list if rxn_list is not None else list()
         self.max_job_time = max_job_time or default_job_settings.get('job_time_limit_hrs', 120)
@@ -304,8 +304,12 @@ class Scheduler(object):
 
         if len(self.rxn_list):
             rxn_info_path = self.make_reaction_labels_info_file()
-            logger.info("\nLoading RMG's families...")
-            rmgdb.load_families_only(self.rmg_database)
+            if self.rmg_database is None \
+                    or self.rmg_database.kinetics is None \
+                    or self.rmg_database.kinetics.families is None:
+                logger.info("\nLoading RMG's families...")
+                self.rmg_database = rmgdb.make_rmg_database_object()
+                rmgdb.load_families_only(self.rmg_database)
             for rxn in self.rxn_list:
                 logger.info('\n\n')
                 # 1. Update the ARCReaction object and generate an ARCSpecies object for its TS.

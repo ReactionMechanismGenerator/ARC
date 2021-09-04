@@ -247,8 +247,10 @@ class ARCReaction(object):
         self.reactants = reaction_dict.get('reactants') or list()
         self.products = reaction_dict.get('products') or list()
         if 'family' in reaction_dict and reaction_dict['family'] is not None:
-            db = rmgdb.make_rmg_database_object()
-            rmgdb.load_families_only(db)
+            db = rmgdb.rmg_database_instance_only_fams
+            if db is None:
+                db = rmgdb.make_rmg_database_object()
+                rmgdb.load_families_only(db)
             self.family = rmgdb.get_family(rmgdb=db, label=reaction_dict['family'])
             self.family.save_order = True
         else:

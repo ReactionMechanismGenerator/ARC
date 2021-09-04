@@ -15,7 +15,7 @@ from rmgpy.species import Species
 
 import arc.species.mapping as mapping
 from arc.common import check_r_n_p_symbols_between_rmg_and_arc_rxns
-from arc.rmgdb import determine_family, load_families_only, make_rmg_database_object
+from arc.rmgdb import determine_family, load_families_only, make_rmg_database_object, rmg_database_instance_only_fams
 from arc.reaction import ARCReaction
 from arc.species.species import ARCSpecies
 from arc.species.vectors import calculate_dihedral_angle
@@ -32,8 +32,10 @@ class TestMapping(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        cls.rmgdb = make_rmg_database_object()
-        load_families_only(cls.rmgdb)
+        cls.rmgdb = rmg_database_instance_only_fams
+        if cls.rmgdb is None:
+            cls.rmgdb = make_rmg_database_object()
+            load_families_only(cls.rmgdb)
         cls.ch4_xyz = {'symbols': ('C', 'H', 'H', 'H', 'H'), 'isotopes': (12, 1, 1, 1, 1),
                        'coords': ((-5.45906343962835e-10, 4.233517924761169e-10, 2.9505240956083194e-10),
                                   (-0.6505520089868748, -0.7742801979689132, -0.4125187934483119),

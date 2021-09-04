@@ -15,7 +15,7 @@ from rmgpy.species import Species
 from arc.common import ARC_PATH
 from arc.job.adapters.ts.kinbot_ts import KinBotAdapter
 from arc.reaction import ARCReaction
-from arc.rmgdb import make_rmg_database_object, load_families_only
+from arc.rmgdb import make_rmg_database_object, load_families_only, rmg_database_instance_only_fams
 
 
 class TestKinBotAdapter(unittest.TestCase):
@@ -29,8 +29,10 @@ class TestKinBotAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        cls.rmgdb = make_rmg_database_object()
-        load_families_only(cls.rmgdb)
+        cls.rmgdb = rmg_database_instance_only_fams
+        if cls.rmgdb is None:
+            cls.rmgdb = make_rmg_database_object()
+            load_families_only(cls.rmgdb)
 
     def test_intra_h_migration(self):
         """Test KinBot for intra H migration reactions"""

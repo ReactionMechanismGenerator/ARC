@@ -27,8 +27,10 @@ class TestGCNAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        cls.rmgdb = rmgdb.make_rmg_database_object()
-        rmgdb.load_families_only(cls.rmgdb)
+        cls.rmgdb = rmgdb.rmg_database_instance_only_fams
+        if cls.rmgdb is None:
+            cls.rmgdb = rmgdb.make_rmg_database_object()
+            rmgdb.load_families_only(cls.rmgdb)
         cls.output_dir = os.path.join(ARC_PATH, 'arc', 'testing', 'GCN')
         if not os.path.isdir(cls.output_dir):
             os.makedirs(cls.output_dir)

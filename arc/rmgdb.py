@@ -23,6 +23,8 @@ logger = get_logger()
 
 db_path = rmg_settings['database.directory']
 
+rmg_database_instance_only_fams = None
+
 
 def make_rmg_database_object() -> RMGDatabase:
     """
@@ -31,7 +33,7 @@ def make_rmg_database_object() -> RMGDatabase:
     Returns: RMGDatabase
         A clean RMG database object.
     """
-    rmgdb = RMGDatabase()
+    rmgdb = rmg_database_instance_only_fams or RMGDatabase()
     return rmgdb
 
 
@@ -170,6 +172,7 @@ def determine_family(reaction: 'ARCReaction',
         db (RMGDatabase, optional): The RMG database instance.
     """
     if reaction.family is None:
+        db = db or rmg_database_instance_only_fams
         if db is None:
             db = make_rmg_database_object()
             load_families_only(db)
