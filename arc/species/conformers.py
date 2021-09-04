@@ -1065,7 +1065,6 @@ def get_force_field_energies(label: str,
         if force_field.lower() not in ['mmff94', 'mmff94s', 'uff', 'gaff', 'ghemical']:
             raise ConformerError(f'Unrecognized force field for {label}. Should be either MMFF94, MMFF94s, UFF, '
                                  f'Ghemical, or GAFF. Got: {force_field}.')
-        # raise ConformerError(f'Could not generate conformers for species {label}.')
     return xyzs, energies
 
 
