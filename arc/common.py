@@ -387,7 +387,6 @@ def save_yaml_file(path: str,
     """
     if not isinstance(path, str):
         raise InputError(f'path must be a string, got {path} which is a {type(path)}')
-    logger.debug('Creating a restart file...')
     yaml_str = to_yaml(py_content=content)
     if '/' in path and os.path.dirname(path) and not os.path.exists(os.path.dirname(path)):
         os.makedirs(os.path.dirname(path))
