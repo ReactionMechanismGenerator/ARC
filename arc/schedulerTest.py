@@ -12,7 +12,7 @@ import shutil
 import arc.rmgdb as rmgdb
 import arc.parser as parser
 from arc.common import ARC_PATH, almost_equal_coords_lists
-from arc.job.job import Job
+from arc.job.factory import job_factory
 from arc.level import Level
 from arc.plotter import save_conformers_file
 from arc.scheduler import Scheduler
@@ -37,24 +37,25 @@ class TestScheduler(unittest.TestCase):
         cls.project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage3')
         cls.spc1 = ARCSpecies(label='methylamine', smiles='CN')
         cls.spc2 = ARCSpecies(label='C2H6', smiles='CC')
-        xyz1 = """C       1.11424367   -0.01231165   -0.11493630
+        xyz3 = """C       1.11424367   -0.01231165   -0.11493630
 C      -0.07257945   -0.17830906   -0.16010022
 O      -1.38500471   -0.36381519   -0.20928090
 H       2.16904830    0.12689206   -0.07152274
 H      -1.82570782    0.42754384   -0.56130718"""
-        cls.spc3 = ARCSpecies(label='CtripCO', smiles='C#CO', xyz=xyz1)
+        cls.spc3 = ARCSpecies(label='CtripCO', smiles='C#CO', xyz=xyz3)
         xyz2 = {'symbols': ('C',), 'isotopes': (12,), 'coords': ((0.0, 0.0, 0.0),)}
-        cls.job1 = Job(project='project_test', ess_settings=cls.ess_settings, species_name='methylamine',
-                       xyz=xyz2, job_type='conformer', conformer=0,
-                       level={'method': 'b97-d3', 'basis': '6-311+g(d,p)'},
-                       multiplicity=1, project_directory=cls.project_directory, job_num=101)
-        cls.job2 = Job(project='project_test', ess_settings=cls.ess_settings, species_name='methylamine',
-                       xyz=xyz2, job_type='conformer', conformer=1,
-                       level={'method': 'b97-d3', 'basis': '6-311+g(d,p)'},
-                       multiplicity=1, project_directory=cls.project_directory, job_num=102)
-        cls.job3 = Job(project='project_test', ess_settings=cls.ess_settings, species_name='C2H6', xyz=xyz2,
-                       job_type='freq', level={'method': 'wb97x-d3', 'basis': '6-311+g(d,p)'},
-                       multiplicity=1, project_directory=cls.project_directory, software='qchem', job_num=103)
+        cls.job1 = job_factory(job_adapter='gaussian', project='project_test', ess_settings=cls.ess_settings,
+                               species=[cls.spc1], xyz=xyz2, job_type='conformers',
+                               conformer=0, level=Level(repr={'method': 'b97-d3', 'basis': '6-311+g(d,p)'}),
+                               project_directory=cls.project_directory, job_num=101)
+        cls.job2 = job_factory(job_adapter='gaussian', project='project_test', ess_settings=cls.ess_settings,
+                               species=[cls.spc1], xyz=xyz2, job_type='conformers',
+                               conformer=1, level=Level(repr={'method': 'b97-d3', 'basis': '6-311+g(d,p)'}),
+                               project_directory=cls.project_directory, job_num=102)
+        cls.job3 = job_factory(job_adapter='qchem', project='project_test', ess_settings=cls.ess_settings,
+                               species=[cls.spc2], job_type='freq',
+                               level=Level(repr={'method': 'wb97x-d3', 'basis': '6-311+g(d,p)'}),
+                               project_directory=cls.project_directory, job_num=103)
         cls.rmg_database = rmgdb.make_rmg_database_object()
         cls.job_types1 = {'conformers': True,
                           'opt': True,
@@ -150,7 +151,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
         label = 'C2H6'
         self.job3.local_path_to_output_file = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'C2H6_freq_QChem.out')
         self.job3.job_status = ['done', {'status': 'done', 'keywords': list(), 'error': '', 'line': ''}]
-        vibfreqs = parser.parse_frequencies(path=self.job3.local_path_to_output_file, software=self.job3.software)
+        vibfreqs = parser.parse_frequencies(path=self.job3.local_path_to_output_file, software=self.job3.job_adapter)
         self.assertTrue(self.sched1.check_negative_freq(label=label, job=self.job3, vibfreqs=vibfreqs))
 
     def test_determine_adaptive_level(self):
@@ -232,12 +233,8 @@ H      -1.82570782    0.42754384   -0.56130718"""
                                             'opt': False,
                                             'orbitals': False,
                                             'sp': False},
-                              'paths': {'composite': '',
-                                        'freq': '',
-                                        'geo': '',
-                                        'sp': ''},
-                              'restart': '',
-                              'warnings': ''}
+                              'paths': {'composite': '', 'freq': '', 'geo': '', 'sp': ''},
+                              'restart': '', 'warnings': ''}
         initialized_output_dict = {'C2H6': empty_species_dict,
                                    'CtripCO': empty_species_dict,
                                    'methylamine': empty_species_dict,
@@ -258,15 +255,15 @@ H      -1.82570782    0.42754384   -0.56130718"""
     def test_non_rotor(self):
         """Test that a 180 degree angle on either side of a torsion is not considered as a rotor"""
         self.sched1.species_dict['CtripCO'].rotors_dict = {
-            0: {'pivots': [2, 3], 'top': [3, 5], 'scan': [1, 2, 3, 5], 'number_of_running_jobs': 0, 'success': None,
-                'invalidation_reason': '', 'times_dihedral_set': 0, 'trsh_methods': [], 'scan_path': '',
+            0: {'torsion': [1, 2, 3, 4], 'top': [3, 5], 'scan': [1, 2, 3, 5], 'number_of_running_jobs': 0,
+                'success': None, 'invalidation_reason': '', 'times_dihedral_set': 0, 'trsh_methods': [], 'scan_path': '',
                 'directed_scan_type': '', 'directed_scan': {}, 'dimensions': 1, 'original_dihedrals': [],
                 'cont_indices': []}}
         self.sched1.species_dict['CtripCO'].number_of_rotors = 1
         self.sched1.job_types['rotors'] = True
         self.sched1.run_scan_jobs(label='CtripCO')
         self.assertEqual(self.sched1.species_dict['CtripCO'].rotors_dict[0]['invalidation_reason'],
-                         'not a torsional mode (angles = 179.91, 110.38 degrees)')
+                         'not a torsional mode (angles = 0.20, 13.03 degrees)')
         self.assertFalse(self.sched1.species_dict['CtripCO'].rotors_dict[0]['success'])
 
     @classmethod
