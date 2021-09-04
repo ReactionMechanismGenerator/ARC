@@ -118,7 +118,7 @@ def generate_conformers(mol_list: Union[List[Molecule], Molecule],
                         return_all_conformers=False,
                         plot_path=None,
                         print_logs=True,
-                        ) -> Union[list, Tuple[list, list], None]:
+                        ) -> Optional[Union[list, Tuple[list, list]]]:
     """
     Generate conformers for (non-TS) species starting from a list of RMG Molecules.
     (resonance structures are assumed to have already been generated and included in the molecule list)
@@ -155,8 +155,9 @@ def generate_conformers(mol_list: Union[List[Molecule], Molecule],
         ConformerError: If something goes wrong.
         TypeError: If xyzs has entries of a wrong type.
 
-    Returns:
-        list: Lowest conformers.
+    Returns: Optional[Union[list, Tuple[list, list]]]
+        - Lowest conformers
+        - Lowest conformers and all new conformers.
     """
     if isinstance(mol_list, Molecule):
         # try generating resonance structures, but strictly keep atom order
@@ -396,8 +397,8 @@ def generate_conformer_combinations(label, mol, base_xyz, hypothetical_num_comb,
     """
     de_threshold = de_threshold or DE_THRESHOLD
     if hypothetical_num_comb > combination_threshold:
-        # don't generate all combinations, there are simply too many
-        # iteratively modify the lowest conformer until it converges.
+        # Don't generate all combinations, there are simply too many.
+        # Iteratively modify the lowest conformer until it converges.
         logger.debug(f'hypothetical_num_comb for {label} is > {combination_threshold}')
         new_conformers = conformers_combinations_by_lowest_conformer(
             label, mol=mol, base_xyz=base_xyz, multiple_tors=multiple_tors,
@@ -406,7 +407,7 @@ def generate_conformer_combinations(label, mol, base_xyz, hypothetical_num_comb,
             torsion_angles=torsion_angles, multiple_sampling_points_dict=multiple_sampling_points_dict,
             wells_dict=wells_dict, symmetries=symmetries)
     else:
-        # just generate all combinations and get their FF energies
+        # Just generate all combinations and get their FF energies.
         logger.debug(f'hypothetical_num_comb for {label} is < {combination_threshold}')
         new_conformers = generate_all_combinations(label, mol, base_xyz, multiple_tors, multiple_sampling_points,
                                                    len_conformers=len_conformers, force_field=force_field,
@@ -452,15 +453,15 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
         return list()
     else:
         base_energy = base_energy[0]
-    new_conformers = list()  # will be returned
+    new_conformers = list()
     lowest_conf_i = None
     for i in range(max_combination_iterations):
-        newest_conformers_dict, newest_conformer_list = dict(), list()  # conformers from the current iteration
+        newest_conformers_dict, newest_conformer_list = dict(), list()  # Conformers from the current iteration.
         for tor, sampling_points in zip(multiple_tors, multiple_sampling_points):
             xyzs, energies = change_dihedrals_and_force_field_it(label, mol, xyz=base_xyz, torsions=[tor],
                                                                  new_dihedrals=[[sp] for sp in sampling_points],
                                                                  force_field=force_field, optimize=False)
-            newest_conformers_dict[tor] = list()  # keys are torsions for plotting
+            newest_conformers_dict[tor] = list()  # Keys are torsions for plotting.
             for xyz, energy, dihedral in zip(xyzs, energies, sampling_points):
                 exists = False
                 if any([converter.compare_confs(xyz, conf['xyz']) for conf in new_conformers + newest_conformer_list]):
@@ -476,10 +477,8 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
                     if not exists:
                         newest_conformer_list.append(conformer)
                 else:
-                    # if xyz is None, atoms have collided
-                    logger.debug(f'\n\natoms colliding in {label} for torsion {tor} and dihedral {dihedral}:')
-                    logger.debug(xyz)
-                    logger.debug('\n\n')
+                    # If xyz is None, atoms have collided.
+                    logger.debug(f'\n\natoms colliding in {label} for torsion {tor} and dihedral {dihedral}\n')
         new_conformers.extend(newest_conformer_list)
         if not newest_conformer_list:
             newest_conformer_list = [lowest_conf_i]
