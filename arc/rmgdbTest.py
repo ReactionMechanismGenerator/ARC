@@ -70,6 +70,15 @@ class TestRMGDB(unittest.TestCase):
         rmgdb.determine_family(rxn, db=self.rmgdb)
         self.assertEqual(rxn.family.label, 'H_Abstraction')
 
+        r_1 = ARCSpecies(label='C2H6', smiles='CC')
+        r_2 = ARCSpecies(label='CCOOj', smiles='CCO[O]')
+        p_1 = ARCSpecies(label='CCOOH', smiles='CCOO')
+        p_2 = ARCSpecies(label='C2H5', smiles='C[CH2]')
+        rxn = ARCReaction(r_species=[r_1, r_2], p_species=[p_1, p_2])
+        self.assertIsNone(rxn.family)
+        rmgdb.determine_family(rxn, db=self.rmgdb)
+        self.assertEqual(rxn.family.label, 'H_Abstraction')
+
     def test_determining_rmg_kinetics(self):
         """Test the determine_rmg_kinetics() function"""
         r1 = Species().from_smiles('C')
