@@ -8,6 +8,7 @@ from typing import Dict, Iterable, List, Optional, Tuple, Union
 
 import qcelemental as qcel
 from ase import Atoms
+from openbabel import openbabel as ob
 from openbabel import pybel
 from rdkit import Chem
 from rdkit.Chem import rdMolTransforms as rdMT
@@ -32,6 +33,7 @@ from arc.species.zmat import (KEY_FROM_LEN,
                               xyz_to_zmat)
 
 
+ob.obErrorLog.SetOutputLevel(0)
 logger = get_logger()
 
 
