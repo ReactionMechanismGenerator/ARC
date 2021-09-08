@@ -1931,7 +1931,7 @@ def up_param(param: str,
         raise ZMatError('Either increment or increment_list must be specified.')
     indices = get_atom_indices_from_zmat_parameter(param)[0]
     if increment is not None:
-        new_indices = [index + increment for index in indices]
+        new_indices = [0 if not index and increment < 0 else index + increment for index in indices]
     else:
         if len(increment_list) != len(indices):
             raise ZMatError(f'The number of increments in {increment_list} ({len(increment_list)} is different than '
@@ -1942,3 +1942,31 @@ def up_param(param: str,
     new_indices = [str(index) for index in new_indices]
     new_param = '_'.join([param.split('_')[0]] + new_indices)
     return new_param
+
+
+def remove_1st_atom(zmat: dict) -> dict:
+    """
+    Remove the first atom of a zmat.
+    Note: The first atom in 'symbols' with map key 0 is removed,
+    it is not necessarily the first atom in the corresponding xyz with map value 0.
+
+    Args:
+        zmat (dict): The zmat to process.
+
+    Returns:
+        dict: The updated zmat.
+    """
+    new_symbols = tuple(zmat['symbols'][1:])
+    new_coords, removed_vars = list(), list()
+    for i, coords in enumerate(zmat['coords']):
+        if i == 0:
+            continue
+        removed_vars.extend([coord for j, coord in enumerate(coords) if coord is not None and j > i - 2])
+        new_coords.append((up_param(coords[0], increment=-1) if i >= 2 else None,
+                           up_param(coords[1], increment=-1) if i >= 3 else None,
+                           up_param(coords[2], increment=-1) if i >= 4 else None))
+    new_coords = tuple(new_coords)
+    new_vars = {up_param(key, increment=-1): val for key, val in zmat['vars'].items() if key not in removed_vars}
+    val_0 = zmat['map'][0]
+    new_map = {key - 1: val - 1 if val > val_0 else val for key, val in zmat['map'].items() if key != 0}
+    return {'symbols': new_symbols, 'coords': new_coords, 'vars': new_vars, 'map': new_map}
