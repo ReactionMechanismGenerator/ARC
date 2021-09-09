@@ -36,11 +36,11 @@ from arc.imports import settings
 
 logger = logging.getLogger('arc')
 
-# absolute path to the ARC folder
+# Absolute path to the ARC folder.
 ARC_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
-# absolute path to RMG-Py folder
+# Absolute path to RMG-Py folder.
 RMG_PATH = os.path.abspath(os.path.dirname(os.path.dirname(rmgpy.__file__)))
-# absolute path to RMG-database folder
+# Absolute path to RMG-database folder.
 RMG_DATABASE_PATH = os.path.abspath(os.path.dirname(rmgpy.settings['database.directory']))
 
 VERSION = '1.1.0'
@@ -549,17 +549,14 @@ def colliding_atoms(xyz: dict,
         xyz (dict): The Cartesian coordinates.
         threshold (float, optional): The collision threshold to use.
 
-    Returns: bool
-        ``True`` if they are colliding, ``False`` otherwise.
+    Returns:
+        bool: ``True`` if they are colliding, ``False`` otherwise.
     """
     if len(xyz['symbols']) == 1:
         # monoatomic
         return False
-
-    geometry = np.array([np.array(coord, np.float64) * 1.8897259886 for coord in xyz['coords']])  # convert A to Bohr
+    geometry = np.array([np.array(coord, np.float64) * 1.8897259886 for coord in xyz['coords']])  # Convert A to Bohr.
     qcel_out = qcel.molutil.guess_connectivity(symbols=xyz['symbols'], geometry=geometry, threshold=threshold)
-    logger.debug(qcel_out)
-
     return bool(len(qcel_out))
 
 
@@ -830,8 +827,8 @@ def almost_equal_coords(xyz1: dict,
     return True
 
 
-def almost_equal_coords_lists(xyz1: dict,
-                              xyz2: dict,
+def almost_equal_coords_lists(xyz1: Union[List[dict], dict],
+                              xyz2: Union[List[dict], dict],
                               rtol: float = 1e-05,
                               atol: float = 1e-08,
                               ) -> bool:
@@ -840,8 +837,8 @@ def almost_equal_coords_lists(xyz1: dict,
     Useful for comparing xyz's in unit tests.
 
     Args:
-        xyz1 (list, dict): Either a dict-format xyz, or a list of them.
-        xyz2 (list, dict): Either a dict-format xyz, or a list of them.
+        xyz1 (Union[List[dict], dict]): Either a dict-format xyz, or a list of them.
+        xyz2 (Union[List[dict], dict]): Either a dict-format xyz, or a list of them.
         rtol (float, optional): The relative tolerance parameter.
         atol (float, optional): The absolute tolerance parameter.
 
@@ -1217,7 +1214,7 @@ def torsions_to_scans(descriptor: Optional[List[List[int]]],
         raise TypeError(f'Expected a list, got {descriptor} which is a {type(descriptor)}')
     if not isinstance(descriptor[0], (list, tuple)):
         descriptor = [descriptor]
-    direction = direction if direction == 1 else -1  # anything other than 1 is translated to -1
+    direction = direction if direction == 1 else -1  # Anything other than 1 is translated to -1.
     new_descriptor = [convert_list_index_0_to_1(entry, direction) for entry in descriptor]
     if any(any(item < 0 for item in entry) for entry in new_descriptor):
         raise ValueError(f'Got an illegal value when converting:\n{descriptor}\ninto:\n{new_descriptor}')
