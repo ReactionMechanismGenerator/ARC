@@ -502,9 +502,9 @@ class ARCSpecies(object):
     def __str__(self) -> str:
         """Return a string representation of the object"""
         str_representation = 'ARCSpecies('
-        str_representation += f'label={self.label}, '
+        str_representation += f'label="{self.label}", '
         if self.mol is not None:
-            str_representation += f'smiles={self.mol.copy(deep=True).to_smiles()}, '
+            str_representation += f'smiles="{self.mol.copy(deep=True).to_smiles()}", '
         str_representation += f'is_ts={self.is_ts}, '
         str_representation += f'multiplicity={self.multiplicity}, '
         str_representation += f'charge={self.charge})'
@@ -941,19 +941,21 @@ class ARCSpecies(object):
             if all([atom.id == -1 for atom in self.mol.atoms]):
                 self.mol.assign_atom_ids()
             if not self.is_ts:
+                mol_copy = self.mol.copy(deep=True)
+                mol_copy.reactive = True
                 try:
-                    self.mol_list = self.mol.copy(deep=True).generate_resonance_structures(keep_isomorphic=False,
-                                                                                           filter_structures=True,
-                                                                                           save_order=True,
-                                                                                           )
-                except (ValueError, ILPSolutionError, ResonanceError) as e:
+                    self.mol_list = mol_copy.generate_resonance_structures(keep_isomorphic=False,
+                                                                           filter_structures=True,
+                                                                           save_order=True,
+                                                                           )
+                except (AtomTypeError, ValueError, ILPSolutionError, ResonanceError) as e:
                     logger.warning(f'Could not generate resonance structures for species {self.label}. Got: {e}')
                     self.mol_list = [self.mol]
             else:
                 self.mol_list = [self.mol]
             success = order_atoms_in_mol_list(ref_mol=self.mol.copy(deep=True), mol_list=self.mol_list)
             if not success:
-                # try sorting by IDs, repeat object creation to make sure the original instances remain unchanged
+                # Try sorting by IDs, repeat object creation to make sure the original instances remain unchanged.
                 mol_copy = self.mol.copy(deep=True)
                 mol_copy.assign_atom_ids()
                 mol_list = mol_copy.generate_resonance_structures(keep_isomorphic=False,
@@ -961,7 +963,7 @@ class ARCSpecies(object):
                                                                   save_order=True,
                                                                   )
                 for i in range(len(mol_list)):
-                    mol = mol_list[i]  # not looping with mol so the iterator won't change within the loop
+                    mol = mol_list[i]
                     atoms = list()
                     for atom1 in mol_copy.atoms:
                         for atom2 in mol.atoms:
@@ -1005,7 +1007,8 @@ class ARCSpecies(object):
                                                           e_confs=e_confs,
                                                           return_all_conformers=False,
                                                           plot_path=plot_path,
-                                                          diastereomers=diastereomers)
+                                                          diastereomers=diastereomers,
+                                                          )
             if len(lowest_confs):
                 self.conformers.extend([conf['xyz'] for conf in lowest_confs])
                 self.conformer_energies.extend([None] * len(lowest_confs))
@@ -1030,8 +1033,10 @@ class ARCSpecies(object):
         else:
             num_confs = min(500, max(50, len(self.mol.atoms) * 3))
             rd_mol = conformers.embed_rdkit(label=self.label, mol=self.mol, num_confs=num_confs)
-            xyzs, energies = conformers.rdkit_force_field(label=self.label, rd_mol=rd_mol,
-                                                          force_field='MMFF94s')
+            xyzs, energies = conformers.rdkit_force_field(label=self.label,
+                                                          rd_mol=rd_mol,
+                                                          force_field='MMFF94s',
+                                                          )
             if energies:
                 min_energy = min(energies)
                 min_energy_index = energies.index(min_energy)
@@ -1039,7 +1044,7 @@ class ARCSpecies(object):
             elif xyzs:
                 self.cheap_conformer = xyzs[0]
             else:
-                logger.warning('Could not generate a cheap conformer for {0}'.format(self.label))
+                logger.warning(f'Could not generate a cheap conformer for {self.label}')
                 self.cheap_conformer = None
 
     def get_xyz(self, generate: bool = True) -> Optional[dict]:
@@ -1075,7 +1080,7 @@ class ARCSpecies(object):
                         xyz = self.conformers[0]
         return xyz
 
-    def determine_rotors(self) -> None:
+    def determine_rotors(self, verbose: bool = False) -> None:
         """
         Determine possible unique rotors in the species to be treated as hindered rotors,
         taking into account all localized structures.
@@ -1101,13 +1106,14 @@ class ARCSpecies(object):
                     else:
                         self.rotors_dict[self.number_of_rotors] = new_rotor
                         self.number_of_rotors += 1
-        if self.number_of_rotors == 1:
-            logger.info(f'\nFound one possible rotor for {self.label}')
-        elif self.number_of_rotors > 1:
-            logger.info(f'\nFound {self.number_of_rotors} possible rotors for {self.label}')
-        if self.number_of_rotors > 0:
-            logger.info(f'Pivot list(s) for {self.label}: '
-                        f'{[self.rotors_dict[i]["pivots"] for i in range(self.number_of_rotors)]}\n')
+        if verbose:
+            if self.number_of_rotors == 1:
+                logger.info(f'\nFound one possible rotor for {self.label}')
+            elif self.number_of_rotors > 1:
+                logger.info(f'\nFound {self.number_of_rotors} possible rotors for {self.label}')
+            if self.number_of_rotors > 0:
+                logger.info(f'Pivot list(s) for {self.label}: '
+                            f'{[self.rotors_dict[i]["pivots"] for i in range(self.number_of_rotors)]}\n')
         self.initialize_directed_rotors()
 
     def initialize_directed_rotors(self):
@@ -2105,7 +2111,7 @@ class TSGuess(object):
         """
         self.success = False
 
-    def process_xyz(self, xyz: dict or str):
+    def process_xyz(self, xyz: Union[dict, str]):
         """
         Process the user's input. If ``xyz`` represents a file path, parse it.
 
@@ -2424,7 +2430,7 @@ def check_atom_balance(entry_1: Union[dict, str, Molecule],
 
     Args:
         entry_1 (Union[dict, str, Molecule]): Either an xyz (dict or str) or an RMG Molecule object.
-        entry_2 (Union[dict, str, Molecule]):  Either an xyz (dict or str) or an RMG Molecule object.
+        entry_2 (Union[dict, str, Molecule]): Either an xyz (dict or str) or an RMG Molecule object.
         verbose (Optional[bool]): Whether to log the differences if found.
 
     Raises:
