@@ -1049,7 +1049,9 @@ class ARCSpecies(object):
                 logger.warning(f'Could not generate a cheap conformer for {self.label}')
                 self.cheap_conformer = None
 
-    def get_xyz(self, generate: bool = True) -> Optional[dict]:
+    def get_xyz(self, generate: bool = True,
+                return_format: str = 'dict',
+                ) -> Optional[Union[dict, str]]:
         """
         Get the highest quality xyz the species has.
         If it doesn't have any 3D information, and if ``generate`` is ``True``, cheaply generate it.
@@ -1059,9 +1061,10 @@ class ARCSpecies(object):
             generate (bool, optional): Whether to cheaply generate an FF conformer if no xyz is found.
                                        ``True`` to generate. If generate is ``False`` and the species has no xyz data,
                                        the method will return None.
+            return_format (str, optional): Whether to output a 'dict' or a 'str' representation of the respective xyz.
 
         Return:
-             dict: The xyz coordinates.
+             Optional[Union[dict, str]]: The xyz coordinates in the requested representation.
         """
         conf = self.conformers[0] if self.conformers else None
         xyz = self.final_xyz or self.initial_xyz or self.most_stable_conformer or conf or self.cheap_conformer
@@ -1080,6 +1083,8 @@ class ARCSpecies(object):
                     self.generate_conformers(n_confs=1)
                     if self.conformers is not None:
                         xyz = self.conformers[0]
+        if return_format == 'str':
+            xyz = xyz_to_str(xyz)
         return xyz
 
     def determine_rotors(self, verbose: bool = False) -> None:
