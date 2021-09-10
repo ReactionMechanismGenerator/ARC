@@ -1035,6 +1035,8 @@ class ARCSpecies(object):
             rd_mol = conformers.embed_rdkit(label=self.label, mol=self.mol, num_confs=num_confs)
             xyzs, energies = conformers.rdkit_force_field(label=self.label,
                                                           rd_mol=rd_mol,
+                                                          mol=self.mol,
+                                                          num_confs=num_confs,
                                                           force_field='MMFF94s',
                                                           )
             if energies:
