@@ -83,8 +83,8 @@ def load_rmg_database(rmgdb: RMGDatabase,
         include_nist (bool, optional): Whether to include the NIST kinetics libraries,
                                       ``True`` to include, default is ``False``
     """
-    thermo_libraries = thermo_libraries if thermo_libraries is not None else list()
-    reaction_libraries = reaction_libraries if reaction_libraries is not None else list()
+    thermo_libraries = thermo_libraries or list()
+    reaction_libraries = reaction_libraries or list()
     if isinstance(thermo_libraries, str):
         thermo_libraries.replace(' ', '')
         thermo_libraries = [lib for lib in thermo_libraries.split(',')]
@@ -117,22 +117,16 @@ def load_rmg_database(rmgdb: RMGDatabase,
         thermo_libraries = thermo_priority + thermo_libraries
 
     if not reaction_libraries:
-        kinetics_path = os.path.join(db_path, 'kinetics', 'libraries')
-        # Avoid reading .DS_store files for compatibility with Mac OS
-        reaction_libraries = [library for library in os.listdir(kinetics_path) if not library.startswith('.')]
-        indices_to_pop = list()
-        second_level_libraries = list()
-        for i, library in enumerate(reaction_libraries):
-            if not os.path.isfile(os.path.join(kinetics_path, library, 'reactions.py')) and library != 'Surface':
-                indices_to_pop.append(i)
-                # Avoid reading .DS_store files for compatibility with Mac OS (`if not second_level.startswith('.')`)
-                second_level_libraries.extend([library + '/' + second_level
-                                               for second_level in os.listdir(os.path.join(kinetics_path, library))
-                                               if not second_level.startswith('.')])
-        for i in reversed(range(len(reaction_libraries))):  # pop starting from the end, so other indices won't change
-            if i in indices_to_pop or reaction_libraries[i] == 'Surface':
-                reaction_libraries.pop(i)
-        reaction_libraries.extend(second_level_libraries)
+        libraries_path = os.path.join(db_path, 'kinetics', 'libraries')
+        for path, folders, _ in os.walk(libraries_path):
+            if 'Surface' in path:
+                continue
+            for folder in folders:
+                if os.path.isfile(os.path.join(path, folder, 'reactions.py')):
+                    prefix = path.split(libraries_path)[1]
+                    library = os.path.join(prefix, folder)
+                    library = library[1:] if library[0] == '/' else library
+                    reaction_libraries.append(library)
 
     if not load_kinetic_libs:
         reaction_libraries = list()
@@ -312,7 +306,7 @@ def determine_rmg_kinetics(rmgdb: RMGDatabase,
     Returns: List[Reaction]
         All matching RMG reactions (both libraries and families) with a populated ``.kinetics`` attribute.
     """
-    reaction = reaction.copy()  # use a copy to avoid changing atom order in the molecules by RMG
+    reaction = reaction.copy()
     rmg_reactions = list()
     # Libraries:
     for library in rmgdb.kinetics.libraries.values():
