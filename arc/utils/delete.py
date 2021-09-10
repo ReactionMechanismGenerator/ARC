@@ -15,7 +15,7 @@ import os
 
 from arc.common import ARC_PATH
 from arc.exceptions import InputError
-from arc.imports import settings
+from arc.imports import local_arc_path, settings
 from arc.job.local import delete_all_local_arc_jobs
 from arc.job.ssh import delete_all_arc_jobs
 
@@ -39,8 +39,7 @@ def parse_command_line_arguments(command_line_args=None):
                         metavar='Job', help='the job the belongs to a project for which all jobs wil be deleted')
     parser.add_argument('-s', '--server', type=str, nargs=1, default='',
                         metavar='Server', help='the server name from which to delete jobs')
-    parser.add_argument('-a', '--all', type=bool, nargs=1, default=False,
-                        metavar='All', help='delete all ARC jobs')
+    parser.add_argument('-a', '--all', action='store_true', help='delete all ARC jobs')
 
     args = parser.parse_args(command_line_args)
     if args.job:
@@ -61,12 +60,14 @@ def main():
 
     args = parse_command_line_arguments()
 
-    if not args.all and not args.project and not args.job:
-        raise InputError("Either a project (e,g,, '-p project_name'), a job (e.g., '-j a4563'), or ALL (i.e., '-a')")
+    if not args.all and not args.project and not args.job and not args.server:
+        raise InputError("Either a project (e,g,, '-p project_name'), a job (e.g., '-j a4563'), "
+                         "or a server (e,g,, '-s server_name'), or ALL (i.e., '-a')")
 
     server_list = args.server if args.server else [server for server in servers.keys()]
 
-    csv_path = os.path.join(ARC_PATH, 'initiated_jobs.csv')
+    local_arc_path_ = local_arc_path if os.path.isdir(local_arc_path) else ARC_PATH
+    csv_path = os.path.join(local_arc_path_, 'initiated_jobs.csv')
 
     project, jobs = None, list()
     if args.project:
@@ -83,7 +84,7 @@ def main():
             reader = csv.reader(f, dialect='excel')
             for row in reader:
                 if row[1] == project:
-                    jobs.append(f'a{row[0]}')
+                    jobs.append(row[8])
 
     if args.all:
         jobs = None
