@@ -26,7 +26,8 @@ import qcelemental as qcel
 
 from arkane.ess import ess_factory, GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
 import rmgpy
-from rmgpy.molecule.element import get_element
+from rmgpy.molecule.element import Element, get_element
+from rmgpy.molecule.molecule import Atom, Bond, Molecule
 from rmgpy.qm.qmdata import QMData
 from rmgpy.qm.symmetry import PointGroupCalculator
 
@@ -1241,3 +1242,83 @@ def convert_list_index_0_to_1(_list: Union[list, tuple], direction: int = 1) -> 
     if isinstance(_list, tuple):
         new_list = tuple(new_list)
     return new_list
+
+
+def rmg_mol_to_dict_repr(mol: Molecule,
+                         testing: bool = False,
+                         ) -> dict:
+    """
+    Generate a dict representation of an RMG ``Molecule`` object instance.
+
+    Args:
+        mol (Molecule): The RMG ``Molecule`` object instance.
+        testing (bool, optional): Whether this is called during a test, in which case atom IDs should be deterministic.
+
+    Returns:
+        dict: The corresponding dict representation.
+    """
+    if testing:
+        counter = 0
+        for atom in mol.atoms:
+            atom.id = counter
+            counter += 1
+    elif len(mol.atoms) > 1 and mol.atoms[0].id == mol.atoms[1].id:
+        mol.assign_atom_ids()
+    return {'atoms': [{'element': {'number': atom.element.number,
+                                   'symbol': atom.element.symbol,
+                                   'name': atom.element.name,
+                                   'mass': atom.element.mass,
+                                   'isotope': atom.element.isotope,
+                                   },
+                       'radical_electrons': atom.radical_electrons,
+                       'charge': atom.charge,
+                       'label': atom.label,
+                       'lone_pairs': atom.lone_pairs,
+                       'id': atom.id,
+                       'props': atom.props,
+                       'edges': {atom_2.id: bond.order
+                                 for atom_2, bond in atom.edges.items()},
+                       } for atom in mol.atoms],
+            'multiplicity': mol.multiplicity,
+            'props': mol.props,
+            'atom_order': [atom.id for atom in mol.atoms]
+            }
+
+
+def rmg_mol_from_dict_repr(representation: dict,
+                           is_ts: bool = False,
+                           ) -> Optional[Molecule]:
+    """
+    Generate a dict representation of an RMG ``Molecule`` object instance.
+
+    Args:
+        representation (dict): A dict representation of an RMG ``Molecule`` object instance.
+        is_ts (bool, optional): Whether the ``Molecule`` represents a TS.
+
+    Returns:
+        ``Molecule``: The corresponding RMG ``Molecule`` object instance.
+
+    """
+    mol = Molecule(multiplicity=representation['multiplicity'],
+                   props=representation['props'])
+    atoms = {atom_dict['id']: Atom(element=Element(number=atom_dict['element']['number'],
+                                                   symbol=atom_dict['element']['symbol'],
+                                                   name=atom_dict['element']['name'],
+                                                   mass=atom_dict['element']['mass'],
+                                                   isotope=atom_dict['element']['isotope'],
+                                                   ),
+                                   radical_electrons=atom_dict['radical_electrons'],
+                                   charge=atom_dict['charge'],
+                                   lone_pairs=atom_dict['lone_pairs'],
+                                   id=atom_dict['id'],
+                                   props=atom_dict['props'],
+                                   ) for atom_dict in representation['atoms']}
+    mol.atoms = list(atoms[atom_id] for atom_id in representation['atom_order'])
+    for i, atom_1 in enumerate(atoms.values()):
+        for atom_2_id, bond_order in representation['atoms'][i]['edges'].items():
+            bond = Bond(atom_1, atoms[atom_2_id], bond_order)
+            mol.add_bond(bond)
+    mol.update_atomtypes(raise_exception=False)
+    if not is_ts:
+        mol.identify_ring_membership()
+    return mol
