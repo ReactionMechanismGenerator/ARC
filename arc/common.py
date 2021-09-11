@@ -196,7 +196,7 @@ def initialize_log(log_file: str,
         project_directory (str, optional): The path to the project directory.
         verbose (int, optional): Specify the amount of log text seen.
     """
-    # backup and delete an existing log file if needed
+    # Backup and delete an existing log file if needed.
     if project_directory is not None and os.path.isfile(log_file):
         if not os.path.isdir(os.path.join(project_directory, 'log_and_restart_archive')):
             os.mkdir(os.path.join(project_directory, 'log_and_restart_archive'))
@@ -208,7 +208,7 @@ def initialize_log(log_file: str,
     logger.setLevel(verbose)
     logger.propagate = False
 
-    # Use custom level names for cleaner log output
+    # Use custom level names for cleaner log output.
     logging.addLevelName(logging.CRITICAL, 'Critical: ')
     logging.addLevelName(logging.ERROR, 'Error: ')
     logging.addLevelName(logging.WARNING, 'Warning: ')
@@ -216,27 +216,27 @@ def initialize_log(log_file: str,
     logging.addLevelName(logging.DEBUG, '')
     logging.addLevelName(0, '')
 
-    # Create formatter and add to handlers
+    # Create formatter and add to handlers.
     formatter = logging.Formatter('%(levelname)s%(message)s')
 
-    # Remove old handlers before adding ours
+    # Remove old handlers before adding ours.
     while logger.handlers:
         logger.removeHandler(logger.handlers[0])
 
-    # Create console handler; send everything to stdout rather than stderr
+    # Create console handler; send everything to stdout rather than stderr.
     ch = logging.StreamHandler(sys.stdout)
     ch.setLevel(verbose)
     ch.setFormatter(formatter)
     logger.addHandler(ch)
 
-    # Create file handler
+    # Create file handler.
     fh = logging.FileHandler(filename=log_file)
     fh.setLevel(verbose)
     fh.setFormatter(formatter)
     logger.addHandler(fh)
     log_header(project=project)
 
-    # ignore Paramiko, cclib, and matplotlib warnings:
+    # Ignore Paramiko, cclib, and matplotlib warnings:
     warnings.filterwarnings(action='ignore', module='.*paramiko.*')
     warnings.filterwarnings(action='ignore', module='.*cclib.*')
     warnings.filterwarnings(action='ignore', module='.*matplotlib.*')
@@ -258,7 +258,7 @@ def log_header(project: str,
 
     Args:
         project (str): The ARC project name to be logged in the header.
-        level: The desired logging level.
+        level (int, optional): The desired logging level.
     """
     logger.log(level, f'ARC execution initiated on {time.asctime()}')
     logger.log(level, '')
@@ -274,7 +274,7 @@ def log_header(project: str,
 
     paths_dict = {'ARC': ARC_PATH, 'RMG-Py': RMG_PATH, 'RMG-database': RMG_DATABASE_PATH}
     for repo, path in paths_dict.items():
-        # Extract HEAD git commit
+        # Extract HEAD git commit.
         head, date = get_git_commit(path)
         branch_name = get_git_branch(path)
         if head != '' and date != '':
@@ -296,7 +296,7 @@ def log_footer(execution_time: str,
 
     Args:
         execution_time (str): The overall execution time for ARC.
-        level: The desired logging level.
+        level (int, optional): The desired logging level.
     """
     logger.log(level, '')
     logger.log(level, f'Total execution time: {execution_time}')
