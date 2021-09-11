@@ -52,4 +52,4 @@ dependencies:
   - conda-forge::ase >=3.15.0
   - anaconda::ipython
   - anaconda::sphinx
-  - conda-forge::qcelemental
+  - conda-forge::qcelemental == 0.20.0
