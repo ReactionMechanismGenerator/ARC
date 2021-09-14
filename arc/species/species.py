@@ -22,8 +22,7 @@ from rmgpy.species import Species
 from rmgpy.statmech import NonlinearRotor, LinearRotor
 from rmgpy.transport import TransportData
 
-from arc.common import (colliding_atoms,
-                        convert_list_index_0_to_1,
+from arc.common import (convert_list_index_0_to_1,
                         determine_symmetry,
                         determine_top_group_indices,
                         get_logger,
@@ -2380,6 +2379,42 @@ def are_coords_compliant_with_graph(xyz: dict,
                     return False
         checked_atoms.append(atom_index_1)
     return True
+
+
+def colliding_atoms(xyz: dict,
+                    mol: Optional[Molecule] = None,
+                    threshold: float = 0.55,
+                    ) -> bool:
+    """
+        Check whether atoms are too close to each other.
+        A default threshold of 55% the covalent radii of two atoms is used.
+        For example:
+        - C-O collide at 55% * 1.42 A = 0.781 A
+        - N-N collide at 55% * 1.42 A = 0.781 A
+        - C-N collide at 55% * 1.47 A = 0.808 A
+        - C-H collide at 55% * 1.07 A = 0.588 A
+        - H-H collide at 55% * 0.74 A = 0.588 A
+
+        Args:
+            xyz (dict): The Cartesian coordinates.
+            mol (Molecule, optional): The corresponding Molecule object instance with formal charge information.
+            threshold (float, optional): The collision threshold to use.
+
+        Returns:
+            bool: ``True`` if they are colliding, ``False`` otherwise.
+    """
+    if len(xyz['symbols']) == 1:
+        # monoatomic
+        return False
+    for i in range(len(xyz['symbols']) - 1):
+        for j in range(i + 1, len(xyz['symbols'])):
+            actual_r = calculate_distance(coords=xyz['coords'], atoms=[i, j], index=0)
+            charge_1 = mol.atoms[i].charge if mol is not None else 0
+            charge_2 = mol.atoms[j].charge if mol is not None else 0
+            single_bond_r = get_single_bond_length(xyz['symbols'][i], xyz['symbols'][j], charge_1, charge_2)
+            if actual_r < single_bond_r * threshold:
+                return True
+    return False
 
 
 def check_label(label: str,

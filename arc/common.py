@@ -533,34 +533,7 @@ def get_atom_radius(symbol: str) -> float:
     return r
 
 
-def colliding_atoms(xyz: dict,
-                    threshold: float = 0.55,
-                    ) -> bool:
-    """
-    Check whether atoms are too close to each other.
-    A default threshold of 55% the covalent radii of two atoms is used.
-    For example:
-    - C-O collide at 55% * 1.42 A = 0.781 A
-    - N-N collide at 55% * 1.42 A = 0.781 A
-    - C-N collide at 55% * 1.47 A = 0.808 A
-    - C-H collide at 55% * 1.07 A = 0.588 A
-
-    Args:
-        xyz (dict): The Cartesian coordinates.
-        threshold (float, optional): The collision threshold to use.
-
-    Returns:
-        bool: ``True`` if they are colliding, ``False`` otherwise.
-    """
-    if len(xyz['symbols']) == 1:
-        # monoatomic
-        return False
-    geometry = np.array([np.array(coord, np.float64) * 1.8897259886 for coord in xyz['coords']])  # Convert A to Bohr.
-    qcel_out = qcel.molutil.guess_connectivity(symbols=xyz['symbols'], geometry=geometry, threshold=threshold)
-    return bool(len(qcel_out))
-
-
-# a bond length dictionary of single bonds, Angstrom
+# A bond length dictionary of single bonds in Angstrom.
 # https://sites.google.com/site/chempendix/bond-lengths
 # https://courses.lumenlearning.com/suny-potsdam-organicchemistry/chapter/1-3-basics-of-bonding/
 # 'N-O' is taken from the geometry of NH2OH
