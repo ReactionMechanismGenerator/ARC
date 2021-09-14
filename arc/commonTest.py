@@ -407,6 +407,9 @@ class TestCommon(unittest.TestCase):
         self.assertEqual(common.get_single_bond_length('C', 'O'), 1.43)
         self.assertEqual(common.get_single_bond_length('O', 'C'), 1.43)
         self.assertEqual(common.get_single_bond_length('P', 'Si'), 2.5)
+        self.assertEqual(common.get_single_bond_length('N', 'N'), 1.45)
+        self.assertEqual(common.get_single_bond_length('N', 'N', 1, 1), 1.81)
+        self.assertEqual(common.get_single_bond_length('N', 'O', 1, -1), 1.2)
 
     def test_globalize_paths(self):
         """Test modifying a file's contents to correct absolute file paths"""
