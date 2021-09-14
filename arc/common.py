@@ -536,38 +536,44 @@ def get_atom_radius(symbol: str) -> float:
 # A bond length dictionary of single bonds in Angstrom.
 # https://sites.google.com/site/chempendix/bond-lengths
 # https://courses.lumenlearning.com/suny-potsdam-organicchemistry/chapter/1-3-basics-of-bonding/
-# 'N-O' is taken from the geometry of NH2OH
-# todo: combine with partial charge to allow greater distance, e.g., as in N2O4
-# todo: or replace with NBO analysis
-SINGLE_BOND_LENGTH = {'Br-Br': 2.29, 'Br-Cr': 1.94, 'Br-H': 1.41,
-                      'C-C': 1.54, 'C-Cl': 1.77, 'C-F': 1.35, 'C-H': 1.09, 'C-I': 2.13,
-                      'C-N': 1.47, 'C-O': 1.43, 'C-P': 1.87, 'C-S': 1.81, 'C-Si': 1.86,
-                      'Cl-Cl': 1.99, 'Cl-H': 1.27, 'Cl-N': 1.75, 'Cl-Si': 2.03, 'Cl-P': 2.03, 'Cl-S': 2.07,
-                      'F-F': 1.42, 'F-H': 0.92, 'F-P': 1.57, 'F-S': 1.56, 'F-Si': 1.56, 'F-Xe': 1.90,
-                      'H-H': 0.74, 'H-I': 1.61, 'H-N': 1.04, 'H-O': 0.96, 'H-P': 1.42, 'H-S': 1.34, 'H-Si': 1.48,
-                      'I-I': 2.66,
-                      'N-N': 1.45, 'N-O': 1.44,
-                      'O-O': 1.48, 'O-P': 1.63, 'O-S': 1.58, 'O-Si': 1.66,
-                      'P-P': 2.21,
-                      'S-S': 2.05,
-                      'Si-Si': 2.35,
+# 'N-O' is taken from NH2OH, 'N+_N+' and 'N+_O-' are taken from N2O4.
+# 'H_H' was artificially modified from 0.74 to 1.0 since it collides quickly at 0.55.
+SINGLE_BOND_LENGTH = {'Br_Br': 2.29, 'Br_Cr': 1.94, 'Br_H': 1.41,
+                      'C_C': 1.54, 'C_Cl': 1.77, 'C_F': 1.35, 'C_H': 1.09, 'C_I': 2.13,
+                      'C_N': 1.47, 'C_O': 1.43, 'C_P': 1.87, 'C_S': 1.81, 'C_Si': 1.86,
+                      'Cl_Cl': 1.99, 'Cl_H': 1.27, 'Cl_N': 1.75, 'Cl_Si': 2.03, 'Cl_P': 2.03, 'Cl_S': 2.07,
+                      'F_F': 1.42, 'F_H': 0.92, 'F_P': 1.57, 'F_S': 1.56, 'F_Si': 1.56, 'F_Xe': 1.90,
+                      'H_H': 1.0, 'H_I': 1.61, 'H_N': 1.04, 'H_O': 0.96, 'H_P': 1.42, 'H_S': 1.34, 'H_Si': 1.48,
+                      'I_I': 2.66,
+                      'N_N': 1.45, 'N+1_N+1': 1.81, 'N_O': 1.44, 'N+1_O-1': 1.2,
+                      'O_O': 1.48, 'O_P': 1.63, 'O_S': 1.58, 'O_Si': 1.66,
+                      'P_P': 2.21,
+                      'S_S': 2.05,
+                      'Si_Si': 2.35,
                       }
 
 
-def get_single_bond_length(symbol1: str,
-                           symbol2: str,
+def get_single_bond_length(symbol_1: str,
+                           symbol_2: str,
+                           charge_1: int = 0,
+                           charge_2: int = 0,
                            ) -> float:
     """
     Get the an approximate for a single bond length between two elements.
 
     Args:
-        symbol1 (str): Symbol 1.
-        symbol2 (str): Symbol 2.
+        symbol_1 (str): Symbol 1.
+        symbol_2 (str): Symbol 2.
+        charge_1 (int, optional): The partial charge of the atom represented by ``symbol_1``.
+        charge_2 (int, optional): The partial charge of the atom represented by ``symbol_2``.
 
     Returns: float
         The estimated single bond length in Angstrom.
     """
-    bond1, bond2 = '-'.join([symbol1, symbol2]), '-'.join([symbol2, symbol1])
+    if charge_1 and charge_2:
+        symbol_1 = f"{symbol_1}{'+' if charge_1 > 0 else ''}{charge_1}"
+        symbol_2 = f"{symbol_2}{'+' if charge_2 > 0 else ''}{charge_2}"
+    bond1, bond2 = '_'.join([symbol_1, symbol_2]), '_'.join([symbol_2, symbol_1])
     if bond1 in SINGLE_BOND_LENGTH.keys():
         return SINGLE_BOND_LENGTH[bond1]
     if bond2 in SINGLE_BOND_LENGTH.keys():
