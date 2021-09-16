@@ -556,7 +556,8 @@ H      -1.67091600   -1.35164600   -0.93286400"""
                          'is_ts': False,
                          'bond_corrections': {'C-H': 3, 'C-N': 1, 'H-N': 2}}
         self.assertEqual(spc_dict, expected_dict)
-        self.assertTrue(spc_dict['mol']['atoms'][0]['id'] < -50)
+        self.assertEqual(len(set([spc_dict['mol']['atoms'][i]['id'] for i in range(len(spc_dict['mol']['atoms']))])),
+                         len(spc_dict['mol']['atoms']))
         self.assertEqual(spc_dict['mol']['atoms'][0]['radical_electrons'], 0)
         self.assertEqual(spc_dict['mol']['atoms'][0]['charge'], 0)
         self.assertEqual(spc_dict['mol']['atoms'][0]['lone_pairs'], 0)
