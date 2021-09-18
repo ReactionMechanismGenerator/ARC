@@ -138,11 +138,11 @@ H      -1.22610851    0.40421362    1.35170355"""
         O          1.39175        1.59510        0.11494""")
         spc = ARCSpecies(label='CCO[O]', smiles='CCO[O]', xyz=xyz)
         lowest_confs = conformers.generate_conformers(mol_list=spc.mol_list, label=spc.label,
-                                                        charge=spc.charge, multiplicity=spc.multiplicity,
-                                                        force_field='MMFF94s', print_logs=False, diastereomers=None,
-                                                        n_confs=1, return_all_conformers=False)
+                                                      charge=spc.charge, multiplicity=spc.multiplicity,
+                                                      force_field='MMFF94s', print_logs=False, diastereomers=None,
+                                                      n_confs=1, return_all_conformers=False)
         self.assertEqual(len(lowest_confs), 1)
-        self.assertAlmostEqual(lowest_confs[0]['FF energy'], -0.7418115656748858)
+        self.assertAlmostEqual(lowest_confs[0]['FF energy'], -0.74181, 2)
         expected_xyz = {'symbols': ('C', 'C', 'H', 'H', 'H', 'O', 'H', 'H', 'O'),
                         'isotopes': (12, 12, 1, 1, 1, 16, 1, 1, 16),
                         'coords': ((-1.06401, 0.15134, -0.02907),
@@ -576,8 +576,8 @@ O       1.40839617    0.14303696    0.00000000"""
                                     (0.59336, 1.16044, 0.53412),
                                     (2.51642, -0.38757, 0.25036))}]
         self.assertEqual(len(energies), 2)
-        self.assertAlmostEqual(energies[0], 3.4958104235174376)
-        self.assertAlmostEqual(energies[1], -0.7028477774918569)
+        self.assertAlmostEqual(energies[0], 3.49581, 5)
+        self.assertAlmostEqual(energies[1], -0.702848, 5)
         # Only symbols instead of the coordinate values are compared.
         # This is due to the unknown behavior of OpenBabel optimization function.
         # With the same iteration number and same initial xyz, the optimized xyzs can
