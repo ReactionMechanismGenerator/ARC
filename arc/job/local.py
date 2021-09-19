@@ -178,17 +178,35 @@ def check_running_jobs_ids() -> list:
     cluster_soft = servers['local']['cluster_soft'].lower()
     if cluster_soft not in ['slurm', 'oge', 'sge', 'pbs', 'htcondor']:
         raise ValueError(f"Server cluster software {servers['local']['cluster_soft']} is not supported.")
-    running_job_ids = list()
     cmd = check_status_command[servers['local']['cluster_soft']]
     stdout = execute_command(cmd)[0]
+    running_job_ids = parse_running_jobs_ids(stdout, cluster_soft=cluster_soft)
+    return running_job_ids
+
+
+def parse_running_jobs_ids(stdout: List[str],
+                           cluster_soft: Optional[str] = None,
+                           ) -> list:
+    """
+    A helper function for parsing job IDs from the stdout of a job status command.
+
+    Args:
+        stdout (List[str]): The stdout of a job status command.
+        cluster_soft (Optional[str]): The cluster software.
+
+    Returns:
+        List(str): List of job IDs.
+    """
+    cluster_soft = cluster_soft or servers['local']['cluster_soft'].lower()
     i_dict = {'slurm': 0, 'oge': 1, 'sge': 1, 'pbs': 4, 'htcondor': -1}
     split_by_dict = {'slurm': ' ', 'oge': ' ', 'sge': ' ', 'pbs': '.', 'htcondor': '.'}
+    running_job_ids = list()
     for i, status_line in enumerate(stdout):
         if i > i_dict[cluster_soft]:
-            job_id = status_line.split(split_by_dict[cluster_soft])[0]
-            # job_id = f'{job_id}'  # job_id is sometimes a byte, this transforms b'bytes' into "b'bytes'"
-            # if "b'" in job_id:
-            #     job_id = job_id.split("b'")[1].split("'")[0]
+            job_id = status_line.strip().split(split_by_dict[cluster_soft])[0]
+            job_id = f'{job_id}'  # job_id is sometimes a byte, this transforms b'bytes' into "b'bytes'"
+            if "b'" in job_id:
+                job_id = job_id.split("b'")[1].split("'")[0]
             running_job_ids.append(job_id)
     return running_job_ids
 
