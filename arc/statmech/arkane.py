@@ -121,7 +121,7 @@ class ArkaneAdapter(StatmechAdapter):
             e0_only (bool, optional): Whether to only run statmech (w/o thermo) to compute E0.
         """
         if not kinetics_flag:
-            # initialize the Arkane species_dict so that species for which thermo is calculated won't interfere
+            # Initialize the Arkane species_dict so that species for which thermo is calculated won't interfere
             # with species used for a rate coefficient calculation.
             arkane.input.species_dict = dict()
             if self.sp_level.to_arkane_level_of_theory(variant='AEC', raise_error=False, warn=False) is None:
@@ -141,7 +141,7 @@ class ArkaneAdapter(StatmechAdapter):
             self.species.rmg_species = Species(molecule=[self.species.mol])
             self.species.rmg_species.reactive = True
             if self.species.mol_list:
-                # add resonance structures for thermo determination
+                # Add resonance structures for thermo determination.
                 arkane_species.molecule = self.species.mol_list
                 self.species.rmg_species.molecule = self.species.mol_list
             statmech_success = self.run_statmech(arkane_species=arkane_species,
@@ -208,7 +208,7 @@ class ArkaneAdapter(StatmechAdapter):
                     msg = 'using the modified three-parameter Arrhenius equation k = A * (T/T0)^n * exp(-Ea/RT)'
                 else:
                     msg = 'using the classical two-parameter Arrhenius equation k = A * exp(-Ea/RT)'
-                logger.info(f'Calculating rate for reaction {self.reaction.label} {msg}.')
+                logger.info(f'Calculating rate coefficient for reaction {self.reaction.label} {msg}.')
                 try:
                     kinetics_job.execute(output_directory=arkane_output_path, plot=True)
                 except (ValueError, OverflowError) as e:
@@ -228,7 +228,7 @@ class ArkaneAdapter(StatmechAdapter):
                     self.reaction.kinetics = kinetics_job.reaction.kinetics
                     plotter.log_kinetics(ts_species.label, path=arkane_output_path)
 
-        # initialize the Arkane species_dict in case another reaction uses the same species
+        # Initialize the Arkane species_dict in case another reaction uses the same species.
         arkane.input.species_dict = dict()
         clean_output_directory(species_path=os.path.join(self.output_directory, 'rxns', ts_species.label),
                                is_ts=True)
@@ -388,7 +388,7 @@ class ArkaneAdapter(StatmechAdapter):
             if 'rotors' not in species.long_thermo_description:
                 species.long_thermo_description += rotors_description + '\n'
 
-        # write the Arkane species input file
+        # Write the Arkane species input file.
         bac_txt = '' if bac_type is not None else '_no_BAC'
         input_file_path = os.path.join(species_folder_path, f'{species.label}_arkane_input{bac_txt}.py')
         input_file = input_files['arkane_input_species'] if 'sp_sol' not in self.output_dict[species.label]['paths'] \
@@ -417,7 +417,7 @@ class ArkaneAdapter(StatmechAdapter):
             e_sol = e_sol_log.load_energy()
             e_no_sol_log = ess_factory(self.output_dict[species.label]['paths']['sp_no_sol'], check_for_errors=False)
             e_no_sol = e_no_sol_log.load_energy()
-            e_elect = (e_original + e_sol - e_no_sol) / (constants.E_h * constants.Na)  # convert J/mol to Hartree
+            e_elect = (e_original + e_sol - e_no_sol) / (constants.E_h * constants.Na)  # Convert J/mol to Hartree.
             logger.info(f'\nSolvation correction scheme for {species.label}:\n'
                         f'Original electronic energy: {e_original * 0.001} kJ/mol\n'
                         f'Solvation correction: {(e_sol - e_no_sol) * 0.001} kJ/mol\n'
