@@ -391,16 +391,16 @@ class ARC(object):
             logger.info(f'Using the following adaptive levels of theory:\n{self.adaptive_levels}')
         self.ess_settings = check_ess_settings(ess_settings or global_ess_settings)
         if not self.ess_settings:
-            # use the "radar" feature if ess_settings are still unavailable
+            # Use the "radar" feature if ess_settings are still unavailable.
             self.determine_ess_settings()
 
-        # Determine if fine-only behavior is requested before determining chemistry for job types
+        # Determine if fine-only behavior is requested before determining chemistry for job types.
         self.fine_only = False
         if self.job_types['fine'] and not self.job_types['opt']:
             self.fine_only = True
-            self.job_types['opt'] = True  # Run the optimizations, self.fine_only will make sure that they are fine
+            self.job_types['opt'] = True  # Run the optimizations, self.fine_only will make sure that they are fine.
 
-        self.set_levels_of_theory()  # all level of theories should be Level types after this call
+        self.set_levels_of_theory()  # All level of theories should be Level types after this call.
         if self.thermo_adapter == 'Arkane':
             self.check_arkane_level_of_theory()
 
@@ -817,7 +817,7 @@ class ARC(object):
         for char in self.project:
             if char not in valid_chars:
                 raise InputError(f'A project name (used to naming folders) must contain only valid characters. '
-                                 f'Got {char} in {self.project}.')
+                                 f'Got "{char}" in {self.project}.')
 
     def check_freq_scaling_factor(self):
         """
@@ -825,13 +825,13 @@ class ARC(object):
         otherwise, and if ``calc_freq_factor`` is set to ``True``, spawn a calculation for it using Truhlar's method.
         """
         if self.freq_scale_factor is None:
-            # the user did not specify a scaling factor, see if Arkane has it
+            # The user did not specify a scaling factor, see if Arkane has it.
             freq_level = self.composite_method if self.composite_method is not None \
                 else self.freq_level if self.freq_level is not None else None
             if freq_level is not None:
                 arkane_freq_lot = freq_level.to_arkane_level_of_theory(variant='freq')
                 if arkane_freq_lot is not None:
-                    # Arkane has this harmonic frequencies scaling factor
+                    # Arkane has this harmonic frequencies scaling factor.
                     self.freq_scale_factor = assign_frequency_scale_factor(level_of_theory=arkane_freq_lot)
                 else:
                     logger.info(f'Could not determine the harmonic frequencies scaling factor for '
