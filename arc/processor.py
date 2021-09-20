@@ -4,7 +4,6 @@ Processor module for computing thermodynamic properties and rate coefficients us
 
 import os
 import shutil
-from enum import Enum
 from typing import Optional, Type
 
 from rmgpy.data.rmg import RMGDatabase
@@ -17,17 +16,6 @@ from arc.statmech.factory import statmech_factory
 
 
 logger = get_logger()
-
-
-class StatmechEnum(str, Enum):
-    """
-    The supported statmech software adapters.
-    The available adapters are a finite set.
-    """
-
-    arkane = 'arkane'
-    # mesmer = 'mesmer'
-    # mess = 'mess'
 
 
 def process_arc_project(thermo_adapter: str,
@@ -99,10 +87,6 @@ def process_arc_project(thermo_adapter: str,
     if not os.path.isdir(output_directory):
         os.makedirs(output_directory)
 
-    # guarantees that the adapters are supported:
-    thermo_adapter_label = StatmechEnum(thermo_adapter)
-    kinetics_adapter_label = StatmechEnum(kinetics_adapter)
-
     # 1. Rates
     if compute_rates:
         for reaction in reactions:
@@ -116,7 +100,7 @@ def process_arc_project(thermo_adapter: str,
                         continue
                     considered_labels.append(species.label)
                     if output_dict[species.label]['convergence']:
-                        statmech_adapter = statmech_factory(statmech_adapter_label=kinetics_adapter_label,
+                        statmech_adapter = statmech_factory(statmech_adapter_label=kinetics_adapter,
                                                             output_directory=output_directory,
                                                             output_dict=output_dict,
                                                             bac_type=None,
@@ -131,7 +115,7 @@ def process_arc_project(thermo_adapter: str,
                         unconverged_species.append(species)
                         species_converged = False
                 if species_converged:
-                    statmech_adapter = statmech_factory(statmech_adapter_label=kinetics_adapter_label,
+                    statmech_adapter = statmech_factory(statmech_adapter_label=kinetics_adapter,
                                                         output_directory=output_directory,
                                                         output_dict=output_dict,
                                                         bac_type=None,
@@ -161,7 +145,7 @@ def process_arc_project(thermo_adapter: str,
     if compute_thermo:
         for species in species_dict.values():
             if (species.compute_thermo or species.e0_only) and output_dict[species.label]['convergence']:
-                statmech_adapter = statmech_factory(statmech_adapter_label=thermo_adapter_label,
+                statmech_adapter = statmech_factory(statmech_adapter_label=thermo_adapter,
                                                     output_directory=output_directory,
                                                     output_dict=output_dict,
                                                     bac_type=bac_type,

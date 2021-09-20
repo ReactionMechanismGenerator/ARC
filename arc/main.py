@@ -14,6 +14,7 @@ import os
 import shutil
 import time
 from distutils.spawn import find_executable
+from enum import Enum
 from IPython.display import display
 from typing import Dict, List, Optional, Tuple, Union
 
@@ -49,6 +50,16 @@ logger = get_logger()
 default_levels_of_theory, servers, valid_chars, default_job_types, default_job_settings, global_ess_settings = \
     settings['default_levels_of_theory'], settings['servers'], settings['valid_chars'], settings['default_job_types'], \
     settings['default_job_settings'], settings['global_ess_settings']
+
+
+class StatmechEnum(str, Enum):
+    """
+    The supported statmech software adapters.
+    The available adapters are a finite set.
+    """
+    arkane = 'arkane'
+    # mesmer = 'mesmer'
+    # mess = 'mess'
 
 
 class ARC(object):
@@ -279,8 +290,8 @@ class ARC(object):
         self.compute_rates = compute_rates
         self.three_params = three_params
         self.compute_transport = compute_transport
-        self.thermo_adapter = thermo_adapter
-        self.kinetics_adapter = kinetics_adapter
+        self.thermo_adapter = StatmechEnum(thermo_adapter.lower()).value
+        self.kinetics_adapter = StatmechEnum(kinetics_adapter.lower()).value
         self.T_min = T_min
         self.T_max = T_max
         self.T_count = T_count
@@ -401,7 +412,7 @@ class ARC(object):
             self.job_types['opt'] = True  # Run the optimizations, self.fine_only will make sure that they are fine.
 
         self.set_levels_of_theory()  # All level of theories should be Level types after this call.
-        if self.thermo_adapter == 'Arkane':
+        if self.thermo_adapter == 'arkane':
             self.check_arkane_level_of_theory()
 
         if self.job_types['freq'] or self.composite_method is not None:
