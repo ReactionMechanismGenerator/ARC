@@ -111,6 +111,7 @@ class ArkaneAdapter(StatmechAdapter):
     def compute_thermo(self,
                        kinetics_flag: bool = False,
                        e0_only: bool = False,
+                       skip_rotors: bool = False,
                        ) -> None:
         """
         Generate thermodynamic data for a species.
@@ -120,6 +121,7 @@ class ArkaneAdapter(StatmechAdapter):
             kinetics_flag (bool, optional): Whether this call is used for generating species statmech
                                             for a rate coefficient calculation.
             e0_only (bool, optional): Whether to only run statmech (w/o thermo) to compute E0.
+            skip_rotors (bool, optional): Whether to skip internal rotor consideration. Default: ``False``.
         """
         if not kinetics_flag:
             # Initialize the Arkane species_dict so that species for which thermo is calculated won't interfere
@@ -132,7 +134,9 @@ class ArkaneAdapter(StatmechAdapter):
             raise InputError('Cannot not compute thermo without a species object.')
 
         arkane_output_path = self.generate_arkane_species_file(species=self.species,
-                                                               bac_type=self.bac_type)
+                                                               bac_type=self.bac_type,
+                                                               skip_rotors=skip_rotors,
+                                                               )
 
         if arkane_output_path is not None:
             try:
@@ -164,17 +168,26 @@ class ArkaneAdapter(StatmechAdapter):
                 logger.error(f'Could not run statmech job for species {self.species.label}')
         clean_output_directory(species_path=os.path.join(self.output_directory, 'Species', self.species.label))
 
-    def compute_high_p_rate_coefficient(self) -> None:
+    def compute_high_p_rate_coefficient(self,
+                                        skip_rotors: bool = False,
+                                        verbose: bool = True,
+                                        ) -> None:
         """
         Generate a high pressure rate coefficient for a reaction.
         Populates the reaction.kinetics attribute.
+
+        Args:
+            skip_rotors (bool, optional): Whether to skip internal rotor consideration. Default: ``False``.
+            verbose (bool, optional): Whether to log messages. Default: ``True``.
         """
         arkane.input.transition_state_dict = dict()
         ts_species = self.species_dict[self.reaction.ts_label]
         if self.output_dict[ts_species.label]['convergence']:
             success = True
             arkane_output_path = self.generate_arkane_species_file(species=ts_species,
-                                                                   bac_type=None)
+                                                                   bac_type=None,
+                                                                   skip_rotors=skip_rotors,
+                                                                   )
             arkane_ts_species = arkane_transition_state(ts_species.label, ts_species.arkane_file)
             statmech_success = self.run_statmech(arkane_species=arkane_ts_species,
                                                  arkane_file_path=ts_species.arkane_file,
@@ -192,8 +205,9 @@ class ArkaneAdapter(StatmechAdapter):
                                             exemptions=['warnings', 'IRC'],
                                             verbose=True,
                                             ):
-                    logger.error(f'TS {self.reaction.ts_species.label} did not pass all checks, '
-                                 f'not computing rate coefficient.')
+                    if verbose:
+                        logger.error(f'TS {self.reaction.ts_species.label} did not pass all checks, '
+                                     f'not computing rate coefficient.')
                     return None
                 self.reaction.dh_rxn298 = \
                     sum([product.thermo.get_enthalpy(298) * self.reaction.get_species_count(product, well=1)
@@ -212,11 +226,12 @@ class ArkaneAdapter(StatmechAdapter):
                                              tunneling='Eckart')
                 kinetics_job = KineticsJob(reaction=arkane_rxn, Tmin=self.T_min, Tmax=self.T_max, Tcount=self.T_count,
                                            three_params=self.three_params)
-                if self.three_params:
-                    msg = 'using the modified three-parameter Arrhenius equation k = A * (T/T0)^n * exp(-Ea/RT)'
-                else:
-                    msg = 'using the classical two-parameter Arrhenius equation k = A * exp(-Ea/RT)'
-                logger.info(f'Calculating rate coefficient for reaction {self.reaction.label} {msg}.')
+                if verbose:
+                    if self.three_params:
+                        msg = 'using the modified three-parameter Arrhenius equation k = A * (T/T0)^n * exp(-Ea/RT)'
+                    else:
+                        msg = 'using the classical two-parameter Arrhenius equation k = A * exp(-Ea/RT)'
+                    logger.info(f'Calculating rate coefficient for reaction {self.reaction.label} {msg}.')
                 try:
                     kinetics_job.execute(output_directory=arkane_output_path, plot=True)
                 except (ValueError, OverflowError) as e:
@@ -230,7 +245,8 @@ class ArkaneAdapter(StatmechAdapter):
                     #   File "rmgpy/reaction.py", line 818, in rmgpy.reaction.Reaction.calculateTSTRateCoefficient
                     #   File "rmgpy/reaction.py", line 844, in rmgpy.reaction.Reaction.calculateTSTRateCoefficient
                     # OverflowError: math range error
-                    logger.error(f'Failed to generate kinetics for {self.reaction.label}, got:\n{e}')
+                    if verbose:
+                        logger.error(f'Failed to generate kinetics for {self.reaction.label}, got:\n{e}')
                     success = False
                 if success:
                     self.reaction.kinetics = kinetics_job.reaction.kinetics
@@ -296,6 +312,7 @@ class ArkaneAdapter(StatmechAdapter):
     def generate_arkane_species_file(self,
                                      species: Type[ARCSpecies],
                                      bac_type: Optional[str],
+                                     skip_rotors: bool = False,
                                      ) -> Optional[str]:
         """
         A helper function for generating an Arkane Python species file.
@@ -305,6 +322,7 @@ class ArkaneAdapter(StatmechAdapter):
             species (ARCSpecies): The species to process.
             bac_type (str): The bond additivity correction type. 'p' for Petersson- or 'm' for Melius-type BAC.
                             ``None`` to not use BAC.
+            skip_rotors (bool, optional): Whether to skip internal rotor consideration. Default: ``False``.
 
         Returns:
             str: The path to the species arkane folder (Arkane's default output folder).
@@ -344,7 +362,8 @@ class ArkaneAdapter(StatmechAdapter):
             return None
 
         rotors, rotors_description = '', ''
-        if species.rotors_dict is not None and any([i_r_dict['pivots'] for i_r_dict in species.rotors_dict.values()]):
+        if species.rotors_dict is not None and any([i_r_dict['pivots'] for i_r_dict in species.rotors_dict.values()]) \
+                and not skip_rotors:
             rotors = '\n\nrotors = ['
             rotors_description = '1D rotors:\n'
             for i in range(species.number_of_rotors):
