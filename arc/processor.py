@@ -107,11 +107,11 @@ def process_arc_project(thermo_adapter: str,
     if compute_rates:
         for reaction in reactions:
             species_converged = True
-            considered_labels = list()  # species labels considered in this reaction
+            considered_labels = list()  # Species labels considered in this reaction.
             if output_dict[reaction.ts_label]['convergence']:
                 for species in reaction.r_species + reaction.p_species:
                     if species.label in considered_labels:
-                        # consider cases where the same species appears in a reaction both as a reactant
+                        # Consider cases where the same species appears in a reaction both as a reactant
                         # and as a product (e.g., H2O that catalyzes a reaction).
                         continue
                     considered_labels.append(species.label)
