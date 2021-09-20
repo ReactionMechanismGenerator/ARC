@@ -52,9 +52,12 @@ from arc.species.converter import (check_isomorphism,
                                    translate_to_center_of_mass,
                                    xyz_from_data,
                                    xyz_to_str,
+                                   zmat_from_xyz,
+                                   zmat_to_xyz,
                                    )
 from arc.species.vectors import calculate_distance
 from arc.ts import atst, gcn
+from arc.species.zmat import get_parameter_from_atom_indices
 
 logger = get_logger()
 
@@ -1273,11 +1276,25 @@ class ARCSpecies(object):
         if deg_increment == 0 and deg_abs is None:
             logger.warning(f'set_dihedral was called with zero increment for {self.label} with pivots {pivots}')
         else:
-            mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
-            conf, rd_mol = rdkit_conf_from_mol(mol, xyz)
             torsion_0_indexed = [tor - 1 for tor in scan]
-            new_xyz = set_rdkit_dihedrals(conf, rd_mol, torsion_0_indexed, deg_increment=deg_increment, deg_abs=deg_abs)
-            self.initial_xyz = new_xyz
+            mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
+            if mol is not None:
+                conf, rd_mol = rdkit_conf_from_mol(mol, xyz)
+                new_xyz = set_rdkit_dihedrals(conf,
+                                              rd_mol,
+                                              torsion_0_indexed,
+                                              deg_increment=deg_increment,
+                                              deg_abs=deg_abs,
+                                              )
+                self.initial_xyz = new_xyz
+            else:
+                zmat = zmat_from_xyz(xyz=self.get_xyz(),
+                                     constraints={'D_groups': [tuple(torsion_0_indexed)]},
+                                     consolidate=False,
+                                     )
+                param = get_parameter_from_atom_indices(zmat=zmat, indices=torsion_0_indexed, xyz_indexed=True)
+                zmat['vars'][param] = zmat['vars'][param] + deg_increment if deg_increment is not None else deg_abs
+                self.initial_xyz = zmat_to_xyz(zmat)
 
     def determine_symmetry(self) -> None:
         """
