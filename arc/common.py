@@ -50,6 +50,8 @@ ARC_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 RMG_PATH = os.path.abspath(os.path.dirname(os.path.dirname(rmgpy.__file__)))
 # Absolute path to RMG-database folder.
 RMG_DATABASE_PATH = os.path.abspath(os.path.dirname(rmgpy.settings['database.directory']))
+# An identifier for the openbabel standalone file names.
+OB_OUTPUT_NUM = 0
 
 VERSION = '1.1.0'
 
