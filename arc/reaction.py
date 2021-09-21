@@ -369,11 +369,11 @@ class ARCReaction(object):
     def rmg_reaction_from_arc_species(self):
         """
         A helper function for generating the RMG Reaction object from ARCSpecies
-        Used for determining the family
+        Used for determining the family.
         """
         if self.rmg_reaction is None and len(self.r_species) and len(self.p_species) and \
                 all([arc_spc.mol is not None for arc_spc in self.r_species + self.p_species]):
-            reactants, products = self.get_reactants_and_products(arc=False)  # Return RMG Species.
+            reactants, products = self.get_reactants_and_products(arc=False)  # Returns RMG Species.
             self.rmg_reaction = Reaction(reactants=reactants, products=products)
 
     def arc_species_from_rmg_reaction(self):
@@ -743,7 +743,7 @@ class ARCReaction(object):
                                    ) -> Tuple[List[Union[ARCSpecies, Species]], List[Union[ARCSpecies, Species]]]:
         """
         Get a list of reactant and product species including duplicate species, if any.
-        The species could either be ARCSpecies or RMGSpecies.
+        The species could either be ``ARCSpecies`` or ``RMGSpecies`` object instance.
 
         Args:
             arc (bool, optional): Whether to return the species as ARCSpecies (``True``) or as RMG Species (``False``).
@@ -838,9 +838,11 @@ class ARCReaction(object):
         """
         Get a combined string/dict representation of the cartesian coordinates of all product species.
         The resulting coordinates are ordered as the reactants using an atom map.
+
         Args:
             return_format (str): Either ``'dict'`` to return a dict format or ``'str'`` to return a string format.
-                          Default: ``'str'``.
+                                 Default: ``'str'``.
+
         Returns: Union[dict, str]
             The combined cartesian coordinates
         Todo:
