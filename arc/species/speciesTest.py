@@ -74,7 +74,7 @@ class TestARCSpecies(unittest.TestCase):
         6 H u0 p0 c0 {2,S}"""
         cls.spc5 = ARCSpecies(label='N2H4', adjlist=n2h4_adj, multiplicity=1, charge=0)
 
-        n3_xyz = """N      -1.1997440839    -0.1610052059     0.0274738287
+        cls.n3_xyz = """N      -1.1997440839    -0.1610052059     0.0274738287
         H      -1.4016624407    -0.6229695533    -0.8487034080
         H      -0.0000018759     1.2861082773     0.5926077870
         N       0.0000008520     0.5651072858    -0.1124621525
@@ -82,7 +82,7 @@ class TestARCSpecies(unittest.TestCase):
         N       1.1997613019    -0.1609980472     0.0274604887
         H       1.1294795781    -0.8708998550     0.7537444446
         H       1.4015274689    -0.6230592706    -0.8487058662"""
-        cls.spc6 = ARCSpecies(label='N3', xyz=n3_xyz, multiplicity=1, smiles='NNN')
+        cls.spc6 = ARCSpecies(label='N3', xyz=cls.n3_xyz, multiplicity=1, smiles='NNN')
 
         xyz1 = os.path.join(ARC_PATH, 'arc', 'testing', 'xyz', 'AIBN.gjf')
         cls.spc7 = ARCSpecies(label='AIBN', smiles='N#CC(C)(C)N=NC(C)(C)C#N', xyz=xyz1)
@@ -172,6 +172,22 @@ class TestARCSpecies(unittest.TestCase):
                     index2 = mol.atoms.index(atom2)
                     if index1 < index2:
                         self.assertIn(index2, bond_dict[index1])  # check that these atoms are connected in all mols
+
+    def test_get_xyz(self):
+        """Test the get_xyz() method."""
+        n3 = ARCSpecies(label='N3', smiles='NNN', xyz=self.n3_xyz, multiplicity=1)
+        xyz = n3.get_xyz()
+        self.assertIsInstance(xyz, dict)
+        expected_xyz = {'symbols': ('N', 'H', 'H', 'N', 'H', 'N', 'H', 'H'), 'isotopes': (14, 1, 1, 14, 1, 14, 1, 1),
+                        'coords': ((-1.1997440839, -0.1610052059, 0.0274738287), (-1.4016624407, -0.6229695533, -0.848703408),
+                                   (-1.8759e-06, 1.2861082773, 0.592607787), (8.52e-07, 0.5651072858, -0.1124621525),
+                                   (-1.1294692206, -0.8709078271, 0.7537518889), (1.1997613019, -0.1609980472, 0.0274604887),
+                                   (1.1294795781, -0.870899855, 0.7537444446), (1.4015274689, -0.6230592706, -0.8487058662))}
+        self.assertTrue(almost_equal_coords_lists(xyz, expected_xyz))
+
+        xyz = n3.get_xyz(return_format='str')
+        self.assertIsInstance(xyz, str)
+        self.assertEqual(xyz, xyz_to_str(expected_xyz))
 
     def test_conformers(self):
         """Test conformer generation"""
