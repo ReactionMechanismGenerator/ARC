@@ -1322,3 +1322,25 @@ def rmg_mol_from_dict_repr(representation: dict,
     if not is_ts:
         mol.identify_ring_membership()
     return mol
+
+
+def calc_rmsd(x: Union[list, np.array],
+              y: Union[list, np.array],
+              ) -> float:
+    """
+    Compute the root-mean-square deviation between two matrices.
+
+    Args:
+        x (np.array): Matrix 1.
+        y (np.array): Matrix 2.
+
+    Returns:
+        float: The RMSD score of two matrices.
+    """
+    x = np.array(x) if isinstance(x, list) else x
+    y = np.array(y) if isinstance(y, list) else y
+    d = x - y
+    n = x.shape[0]
+    sqr_sum = (d**2).sum()
+    rmsd = np.sqrt(sqr_sum/n)
+    return float(rmsd)

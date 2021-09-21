@@ -21,7 +21,7 @@ from rmgpy.quantity import ArrayQuantity
 from rmgpy.species import Species
 from rmgpy.statmech import Conformer
 
-from arc.common import almost_equal_lists, get_atom_radius, get_logger, is_str_float
+from arc.common import almost_equal_lists, calc_rmsd, get_atom_radius, get_logger, is_str_float
 from arc.exceptions import ConverterError, InputError, SanitizationError, SpeciesError
 from arc.species.xyz_to_2d import MolGraph
 from arc.species.zmat import (KEY_FROM_LEN,
@@ -1848,26 +1848,6 @@ def compare_confs(xyz1: dict,
         return rmsd
     else:
         return almost_equal_lists(dmat1, dmat2, rtol=rtol, atol=atol)
-
-
-def calc_rmsd(x: np.array,
-              y: np.array,
-              ) -> float:
-    """
-    Compute the root-mean-square deviation between two matrices.
-
-    Args:
-        x (np.array): Matrix 1.
-        y (np.array): Matrix 2.
-
-    Returns:
-        float: The RMSD score of two matrices.
-    """
-    d = x - y
-    n = x.shape[0]
-    sqr_sum = (d**2).sum()
-    rmsd = np.sqrt(sqr_sum/n)
-    return float(rmsd)
 
 
 def cluster_confs_by_rmsd(xyzs: Iterable[Dict[str, tuple]],
