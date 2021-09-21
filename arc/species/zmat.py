@@ -107,6 +107,15 @@ def xyz_to_zmat(xyz: Dict[str, tuple],
     constraints = constraints or dict()
     if mol is None and any('group' in constraint_key for constraint_key in constraints.keys()):
         raise ZMatError(f'Cannot generate a constrained zmat without mol. Got mol=None and constraints=\n{constraints}')
+    for constraint_list in constraints.values():
+        for constraint_tuple in constraint_list:
+            for index in constraint_tuple:
+                if mol is not None and index >= len(mol.atoms):
+                    raise ZMatError(f'The following constraints (containing atom index {index}) are invalid for '
+                                    f'a molecule with only {len(mol.atoms)} atoms:\n{constraints}')
+                if index >= len(xyz['symbols']):
+                    raise ZMatError(f'The following constraints (containing atom index {index}) are invalid for '
+                                    f'coordinates with only {len(xyz["symbols"])} atoms:\n{constraints}')
     xyz = xyz.copy()
     zmat = {'symbols': list(), 'coords': list(), 'vars': dict(), 'map': dict()}
     atom_order = get_atom_order(xyz=xyz, mol=mol, constraints_dict=constraints, fragments=fragments)
@@ -433,7 +442,7 @@ def determine_a_atoms(zmat: Dict[str, Union[dict, tuple]],
                     j -= 1  # Don't loop forever.
             if len(a_atoms) == 3:
                 break
-        if len(a_atoms) == 2:
+        if len(a_atoms) == 2 and zmat_index not in a_atoms:
             a_atoms.append(zmat_index)
     if a_atoms is not None and any([a_atom not in list(zmat['map'].keys()) for a_atom in a_atoms[1:]]):
         raise ZMatError(f'The reference A atom in {a_atoms} for the index atom {atom_index} has not been '
@@ -1501,7 +1510,7 @@ def get_atom_order_from_mol(mol: Molecule,
                 else:
                     for constraint in constraints:
                         for atom_index in constraint[::-1]:
-                            if atom_index in fragment:
+                            if atom_index in fragment and atom_index not in atom_order:
                                 atom_order.append(atom_index)
                     for atom1 in mol.atoms:
                         atom1_index = mol.atoms.index(atom1)
@@ -1515,7 +1524,7 @@ def get_atom_order_from_mol(mol: Molecule,
             atom1_index = atoms_to_explore[0]
             atoms_to_explore.pop(0)
             atom1 = mol.atoms[atom1_index]
-            if atom1_index not in top_d and atom1_index in fragment:
+            if atom1_index not in top_d and atom1_index in fragment and atom1_index not in atom_order:
                 atom_order.append(atom1_index)
             else:
                 unexplored.append(atom1_index)
@@ -1566,6 +1575,9 @@ def get_atom_order_from_mol(mol: Molecule,
         # The outer for loop exhausted all possibilities and was unsuccessful.
         raise ZMatError(f'Could not derive an atom order from connectivity that answers all '
                         f'constraint criteria:\n{constraints_dict}')
+
+    if len(set(atom_order)) < len(atom_order):
+        raise ZMatError(f'Could not determine a unique atom order!\n({atom_order})')
 
     return atom_order
 
