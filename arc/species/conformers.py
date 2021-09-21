@@ -38,30 +38,37 @@ Module workflow::
 
 import copy
 import logging
+import os
+import subprocess
 import sys
 import time
 from itertools import product
 from typing import List, Optional, Tuple, Union
 
-from openbabel import openbabel as ob
-from openbabel import pybel as pyb
 from rdkit import Chem
 from rdkit.Chem.rdchem import EditableMol as RDMol
 
 import rmgpy.molecule.group as gr
 from rmgpy.exceptions import ILPSolutionError, ResonanceError
-from rmgpy.molecule.converter import to_ob_mol
 from rmgpy.molecule.molecule import Atom, Bond, Molecule
 from rmgpy.molecule.element import C as C_ELEMENT, H as H_ELEMENT, F as F_ELEMENT, Cl as Cl_ELEMENT, I as I_ELEMENT
 
-from arc.common import (logger,
+from arc.common import (ARC_PATH,
+                        OB_OUTPUT_NUM,
+                        logger,
                         convert_list_index_0_to_1,
                         determine_top_group_indices,
+                        read_yaml_file,
+                        rmg_mol_to_dict_repr,
+                        save_yaml_file,
                         )
 from arc.exceptions import ConformerError, InputError
+from arc.imports import settings
 import arc.plotter
 from arc.species import converter, vectors
 
+
+ARC_PYTHON = settings['ARC_PYTHON']
 
 # The number of conformers to generate per range of heavy atoms in the molecule
 # (will be increased if there are chiral centers)
@@ -1045,13 +1052,14 @@ def get_torsion_angles(label, conformers, torsions):
 
 def get_force_field_energies(label: str,
                              mol: Molecule,
-                             num_confs: int = None,
+                             num_confs: Optional[int] = None,
                              xyz: dict = None,
                              force_field: str = 'MMFF94s',
                              try_uff: bool = True,
                              optimize: bool = True,
                              try_ob: bool = True,
-                             suppress_warning: bool = False) -> Tuple[list, list]:
+                             suppress_warning: bool = False,
+                             ) -> Tuple[list, list]:
     """
     Determine force field energies using RDKit.
     If ``num_confs`` is given, random 3D geometries will be generated. If xyz is given, it will be directly used instead.
@@ -1084,59 +1092,17 @@ def get_force_field_energies(label: str,
         if not suppress_warning:
             logger.warning(f'Using OpenBabel (instead of RDKit) as a fall back method to generate conformers for {label}. '
                            f'This is often slower.')
-        xyzs, energies = openbabel_force_field_on_rdkit_conformers(
-                                            label, rd_mol, force_field=force_field, optimize=optimize)
+        xyzs, energies = openbabel_force_field_on_rdkit_conformers(label,
+                                                                   mol,
+                                                                   num_confs=num_confs,
+                                                                   xyz=xyz,
+                                                                   force_field=force_field,
+                                                                   optimize=optimize,
+                                                                   )
     if not len(xyzs):
         if force_field.lower() not in ['mmff94', 'mmff94s', 'uff', 'gaff', 'ghemical']:
             raise ConformerError(f'Unrecognized force field for {label}. Should be either MMFF94, MMFF94s, UFF, '
                                  f'Ghemical, or GAFF. Got: {force_field}.')
-    return xyzs, energies
-
-
-def openbabel_force_field_on_rdkit_conformers(label, rd_mol, force_field='MMFF94s', optimize=True):
-    """
-    Optimize RDKit conformers by OpenBabel using a force field (MMFF94 or MMFF94s are recommended).
-    This is a fall back method when RDKit fails to generate force field optimized conformers.
-
-    Args:
-        label (str): The species' label.
-        rd_mol (RDKit RDMol): The RDKit molecule with embedded conformers to optimize.
-        force_field (str, optional): The type of force field to use.
-        optimize (bool, optional): Whether to first optimize the conformer using FF. True to optimize.
-
-    Returns:
-        Tuple[list, list]:
-            - Entries are optimized xyz's in a dictionary format.
-            - Entries are float numbers representing the energies (in kJ/mol).
-    """
-    xyzs, energies = list(), list()
-    # Set up Openbabel input and output format
-    obconversion = ob.OBConversion()
-    obconversion.SetInAndOutFormats('xyz', 'xyz')
-    # Set up Openbabel force field
-    ff = ob.OBForceField.FindForceField(force_field)
-    symbols = [rd_atom.GetSymbol() for rd_atom in rd_mol.GetAtoms()]
-    for i in range(rd_mol.GetNumConformers()):
-        # Convert RDKit conformer to xyz string
-        conf = rd_mol.GetConformer(i)
-        xyz_str = f'{conf.GetNumAtoms()}\n\n'
-        for j in range(conf.GetNumAtoms()):
-            xyz_str += symbols[j] + '      '
-            pt = conf.GetAtomPosition(j)
-            xyz_str += '   '.join([str(pt.x), str(pt.y), str(pt.z)]) + '\n'
-        # Build OpenBabel molecule from xyz string
-        ob_mol = ob.OBMol()
-        obconversion.ReadString(ob_mol, xyz_str)
-        ff.Setup(ob_mol)
-        # Optimize the molecule if needed
-        if optimize:
-            ff.ConjugateGradients(2000)
-        # Export xyzs and energies
-        ob_mol.GetCoordinates()
-        ff.GetCoordinates(ob_mol)
-        energies.append(ff.Energy())
-        xyz_str = '\n'.join(obconversion.WriteString(ob_mol).splitlines()[2:])
-        xyzs.append(converter.str_to_xyz(xyz_str))
     return xyzs, energies
 
 
@@ -1145,7 +1111,8 @@ def mix_rdkit_and_openbabel_force_field(label,
                                         num_confs=None,
                                         xyz=None,
                                         force_field='GAFF',
-                                        try_ob=False):
+                                        try_ob=False,
+                                        ):
     """
     Optimize conformers using a force field (GAFF, MMFF94s, MMFF94, UFF, Ghemical)
     Use RDKit to generate the random conformers (OpenBabel isn't good enough),
@@ -1212,85 +1179,89 @@ def openbabel_force_field(label, mol, num_confs=None, xyz=None, force_field='GAF
             - Entries are optimized xyz's in a list format.
             - Entries are float numbers representing the energies in kJ/mol.
     """
+    mol.assign_atom_ids()
+    input_dict = {'function': 'openbabel_force_field',
+                  'label': label,
+                  'mol_dict': rmg_mol_to_dict_repr(mol),
+                  'num_confs': num_confs,
+                  'xyz': xyz,
+                  'force_field': force_field,
+                  'method': method,
+                  }
+    return run_ob_as_subprocess(input_dict)
+
+
+def openbabel_force_field_on_rdkit_conformers(label: str,
+                                              mol: Optional[Molecule] = None,
+                                              num_confs: Optional[int] = None,
+                                              xyz: Optional[dict] = None,
+                                              force_field='MMFF94s',
+                                              optimize=True,
+                                              ) -> Tuple[list, list]:
+    """
+    Optimize RDKit conformers by OpenBabel using a force field (MMFF94 or MMFF94s are recommended).
+    This is a fall back method when RDKit fails to generate force field optimized conformers.
+
+    Args:
+        label (str): The species' label.
+        mol (Molecule): The RMG molecule object with connectivity and bond order information.
+        num_confs (int, optional): The number of random 3D conformations to generate.
+        xyz (dict, optional): The 3D coordinates guess.
+        force_field (str, optional): The type of force field to use.
+        optimize (bool, optional): Whether to first optimize the conformer using FF. True to optimize.
+
+    Returns:
+        Tuple[list, list]:
+            - Entries are optimized xyz's in a dictionary format.
+            - Entries are float numbers representing the energies (in kJ/mol).
+    """
+    mol.assign_atom_ids()
+    input_dict = {'function': 'openbabel_force_field_on_rdkit_conformers',
+                  'label': label,
+                  'mol_dict': rmg_mol_to_dict_repr(mol),
+                  'num_confs': num_confs,
+                  'xyz': xyz,
+                  'force_field': force_field,
+                  'optimize': optimize,
+                  }
+    return run_ob_as_subprocess(input_dict)
+
+
+def run_ob_as_subprocess(input_dict: dict) -> Tuple[list, list]:
+    """
+    Run OpenBabel as a subprocess.
+
+    Args:
+        input_dict (dict): The content of the input file.
+
+    Returns:
+        Tuple[list, list]:
+            - Entries are optimized xyz's in a list format.
+            - Entries are float numbers representing the energies in kJ/mol.
+    """
+    global OB_OUTPUT_NUM
     xyzs, energies = list(), list()
-    ff = ob.OBForceField.FindForceField(force_field)
+    input_file_path = os.path.join(ARC_PATH, 'arc', 'scripts', f'input_{OB_OUTPUT_NUM}.yml')
+    output_file_path = os.path.join(ARC_PATH, 'arc', 'scripts', f'output_{OB_OUTPUT_NUM}.yml')
+    save_yaml_file(input_file_path, input_dict)
 
-    if xyz is not None:
-        # generate an OpenBabel molecule
-        obmol = ob.OBMol()
-        atoms = mol.vertices
-        ob_atom_ids = dict()  # dictionary of OB atom IDs
-        for i, atom in enumerate(atoms):
-            a = obmol.NewAtom()
-            a.SetAtomicNum(atom.number)
-            a.SetVector(xyz['coords'][i][0], xyz['coords'][i][1], xyz['coords'][i][2])
-            if atom.element.isotope != -1:
-                a.SetIsotope(atom.element.isotope)
-            a.SetFormalCharge(atom.charge)
-            ob_atom_ids[atom] = a.GetId()
-        orders = {1: 1, 2: 2, 3: 3, 4: 4, 1.5: 5}
-        for atom1 in mol.vertices:
-            for atom2, bond in atom1.edges.items():
-                if bond.is_hydrogen_bond():
-                    continue
-                index1 = atoms.index(atom1)
-                index2 = atoms.index(atom2)
-                if index1 < index2:
-                    obmol.AddBond(index1 + 1, index2 + 1, orders[bond.order])
+    # Run the OpenBabel as a subprocess.
+    script_path = os.path.join(ARC_PATH, 'arc', 'scripts', 'runopenbabel.py')
+    commands = ['source ~/.bashrc',
+                f'{ARC_PYTHON} {script_path} {input_file_path} {OB_OUTPUT_NUM}']
+    command = '; '.join(commands)
+    OB_OUTPUT_NUM += 1
+    output = subprocess.run(command, shell=True, executable='/bin/bash')
 
-        # optimize
-        ff.Setup(obmol)
-        ff.SetLogLevel(0)
-        ff.SetVDWCutOff(6.0)  # The VDW cut-off distance (default=6.0)
-        ff.SetElectrostaticCutOff(10.0)  # The Electrostatic cut-off distance (default=10.0)
-        ff.SetUpdateFrequency(10)  # The frequency to update the non-bonded pairs (default=10)
-        ff.EnableCutOff(False)  # Use cut-off (default=don't use cut-off)
-        # ff.SetLineSearchType('Newton2Num')
-        ff.SteepestDescentInitialize()  # ConjugateGradientsInitialize
-        v = 1
-        while v:
-            v = ff.SteepestDescentTakeNSteps(1)  # ConjugateGradientsTakeNSteps
-            if ff.DetectExplosion():
-                raise ConformerError(f'Force field {force_field} exploded with method SteepestDescent for {label}')
-        ff.GetCoordinates(obmol)
-
-    elif num_confs is not None:
-        obmol, ob_atom_ids = to_ob_mol(mol, return_mapping=True)
-        pybmol = pyb.Molecule(obmol)
-        pybmol.make3D()
-        obmol = pybmol.OBMol
-        ff.Setup(obmol)
-
-        if method.lower() == 'weighted':
-            ff.WeightedRotorSearch(num_confs, 2000)
-        elif method.lower() == 'random':
-            ff.RandomRotorSearch(num_confs, 2000)
-        elif method.lower() == 'diverse':
-            rmsd_cutoff = 0.5
-            energy_cutoff = 50.
-            confab_verbose = False
-            ff.DiverseConfGen(rmsd_cutoff, num_confs, energy_cutoff, confab_verbose)
-        elif method.lower() == 'systematic':
-            ff.SystematicRotorSearch(num_confs)
-        else:
-            raise ConformerError(f'Could not identify method {method} for {label}')
-    else:
-        raise ConformerError(f'Either num_confs or xyz should be given for {label}')
-
-    ff.GetConformers(obmol)
-    obconversion = ob.OBConversion()
-    obconversion.SetOutFormat('xyz')
-
-    for i in range(obmol.NumConformers()):
-        obmol.SetConformer(i)
-        ff.Setup(obmol)
-        xyz_str = '\n'.join(obconversion.WriteString(obmol).splitlines()[2:])
-        xyz_dict = converter.str_to_xyz(xyz_str)
-        # reorder:
-        xyz_dict['coords'] = tuple(xyz_dict['coords'][ob_atom_ids[mol.atoms[j]]]
-                                   for j in range(len(xyz_dict['coords'])))
-        xyzs.append(xyz_dict)
-        energies.append(ff.Energy())
+    if output.returncode:
+        logger.warning(f'Could not execute OpenBabel in standalone mode.')
+    elif os.path.isfile(output_file_path):
+        output = read_yaml_file(output_file_path)
+        xyzs, energies = output['xyzs'], output['energies']
+    if os.path.isfile(input_file_path):
+        os.remove(input_file_path)
+    if os.path.isfile(output_file_path):
+        os.remove(output_file_path)
     return xyzs, energies
 
 
@@ -1435,12 +1406,13 @@ def rdkit_force_field(label: str,
                                                                maxIters=200,
                                                                ignoreInterfragInteractions=True,
                                                                )
-            except RuntimeError as e:
-                logger.warning(f'Using OpenBabel (instead of RDKit) as a fall back method to generate conformers '
-                               f'for {label}. This is often slower.')
+            except RuntimeError:
                 if try_ob:
+                    logger.warning(f'Using OpenBabel (instead of RDKit) as a fall back method to generate conformers '
+                                   f'for {label}. This is often slower.')
                     xyzs, energies = openbabel_force_field_on_rdkit_conformers(label,
                                                                                mol,
+                                                                               num_confs=num_confs,
                                                                                force_field=force_field,
                                                                                optimize=optimize,
                                                                                )
