@@ -152,7 +152,7 @@ class TestARCSpecies(unittest.TestCase):
     def test_str(self):
         """Test the string representation of the object"""
         str_representation = str(self.spc9)
-        expected_representation = 'ARCSpecies(label=NH2_S_, smiles=[NH], is_ts=False, multiplicity=1, charge=0)'
+        expected_representation = 'ARCSpecies(label="NH2_S_", smiles="[NH]", is_ts=False, multiplicity=1, charge=0)'
         self.assertEqual(str_representation, expected_representation)
 
     def test_set_mol_list(self):
