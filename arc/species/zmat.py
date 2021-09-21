@@ -80,7 +80,7 @@ def xyz_to_zmat(xyz: Dict[str, tuple],
                                       'A_atom', 'A_group',
                                       'D_atom', 'D_group'.
                                       'R', 'A', and 'D' are constrain distances, angles, and dihedrals, respectively.
-                                      Values are lists of atom indices (0-indexed). The atom indices order matters.
+                                      Values are lists of atom index tuples (0-indexed). The atom indices order matters.
                                       Specifying '_atom' will cause only the first atom in the specified list values
                                       to translate/rotate if the corresponding zmat parameter is changed.
                                       Specifying '_group' will cause the entire group connected to the first atom
@@ -730,9 +730,10 @@ def _add_nth_atom_to_zmat(zmat: Dict[str, Union[dict, tuple]],
     a_constraint, a_constraint_type = check_atom_a_constraints(atom_index, constraints)
     d_constraint, d_constraint_type = check_atom_d_constraints(atom_index, constraints)
     if sum([constraint is not None for constraint in [r_constraint, a_constraint, d_constraint]]) > 1:
-        raise ZMatError(f'A single atom cannot be constraint by more than one constraint type, got:\n'
-                        f'{r_constraint_type}: {r_constraint}, {a_constraint_type}: {a_constraint}, '
-                        f'{d_constraint_type}: {d_constraint}.')
+        raise ZMatError(f'A single atom cannot be constrained by more than one constraint type, got:\n'
+                        f'R {r_constraint_type}: {r_constraint}\n'
+                        f'A {a_constraint_type}: {a_constraint}\n'
+                        f'D {d_constraint_type}: {d_constraint}')
     r_constraints_passed, a_constraints_passed, d_constraints_passed = \
         [constraint is None or all([entry in list(zmat['map'].values()) for entry in constraint[1:]])
          for constraint in [r_constraint, a_constraint, d_constraint]]
@@ -978,7 +979,7 @@ def add_dummy_atom(zmat: dict,
 def zmat_to_coords(zmat: dict,
                    keep_dummy: bool = False,
                    skip_undefined: bool = False,
-                   ) -> Tuple[list, list]:
+                   ) -> Tuple[List[dict], List[str]]:
     """
     Generate the cartesian coordinates from a zmat dict.
     Considers the zmat atomic map so the returned coordinates is ordered correctly.
@@ -1001,10 +1002,9 @@ def zmat_to_coords(zmat: dict,
     Raises:
         ZMatError: If zmat if of wrong type or does not contain all keys.
 
-    Returns:
-        Tuple[list, list]:
-            - The cartesian coordinates.
-            - The atomic symbols corresponding to the coordinates.
+    Returns: Tuple[List[dict], List[str]]
+        - The cartesian coordinates.
+        - The atomic symbols corresponding to the coordinates.
     """
     if not isinstance(zmat, dict):
         raise ZMatError(f'zmat has to be a dictionary, got {type(zmat)}')
@@ -1863,13 +1863,13 @@ def get_parameter_from_atom_indices(zmat: dict,
     raise ZMatError(f'Could not find a key corresponding to {key} {indices}.')
 
 
-def _compare_zmats(zmat1: dict,
-                   zmat2: dict,
+def _compare_zmats(zmat1:dict,
+                   zmat2:dict,
                    r_tol: Optional[float] = None,
                    a_tol: Optional[float] = None,
                    d_tol: Optional[float] = None,
-                   verbose: bool = False,
                    symmetric_torsions: Optional[dict] = None,
+                   verbose: bool = False,
                    ) -> bool:
     """
     Compare two zmats. The zmats must have identical variables (i.e., derived from the same connectivity or ordered xyz,
@@ -1882,11 +1882,11 @@ def _compare_zmats(zmat1: dict,
         r_tol (float, optional): A tolerance for comparing distances.
         a_tol (float, optional): A tolerance for comparing angles.
         d_tol (float, optional): A tolerance for comparing dihedral angles.
-        verbose (bool, optional): Whether to print a reason for determining the zmats are different if they are,
-                                  ``True`` to print.
         symmetric_torsions (dict, optional): Keys are tuples of 0-indexed scan indices, values are internal rotation
                                              symmetry numbers (sigma). Conformers which only differ by an integer number
                                              times 360 degrees / sigma are considered identical.
+        verbose (bool, optional): Whether to print a reason for determining the zmats are different if they are,
+                                  ``True`` to print.
 
     Raises:
         ZMatError: If the zmats are of wrong type or don't have all attributes.
