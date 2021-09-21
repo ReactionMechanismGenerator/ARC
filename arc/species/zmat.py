@@ -165,6 +165,8 @@ def determine_r_atoms(zmat: Dict[str, Union[dict, tuple]],
                       n: int,
                       atom_index: int,
                       r_constraint: Optional[Tuple[int]] = None,
+                      a_constraint: Optional[Tuple[int, int]] = None,
+                      d_constraint: Optional[Tuple[int, int, int]] = None,
                       trivial_assignment: bool = False,
                       fragments: Optional[List[List[int]]] = None,
                       ) -> Optional[List[int]]:
@@ -181,6 +183,10 @@ def determine_r_atoms(zmat: Dict[str, Union[dict, tuple]],
                           (``n`` and ``atom_index`` refer to the same atom, but it might have different indices
                           in the zmat and the molecule/xyz)
         r_constraint (tuple, optional): R-type constraints. The atom index to which the atom being checked is
+                                        constrained. ``None`` if it is not constrained.
+        a_constraint (tuple, optional): A-type constraints. The atom indices to which the atom being checked is
+                                        constrained. ``None`` if it is not constrained.
+        d_constraint (tuple, optional): D-type constraints. The atom indices to which the atom being checked is
                                         constrained. ``None`` if it is not constrained.
         trivial_assignment (bool, optional): Whether to attempt assigning atoms without considering connectivity
                                              if the connectivity assignment fails.
@@ -200,9 +206,14 @@ def determine_r_atoms(zmat: Dict[str, Union[dict, tuple]],
     if len(zmat['coords']) == 0:
         # This is the 1st atom added to the zmat, there's no distance definition here.
         r_atoms = None
-    elif r_constraint is not None:
-        # 1. Always use the constrains if given.
-        r_atoms = [n] + [key_by_val(zmat['map'], atom) for atom in r_constraint[1:]]
+    elif any(constraint is not None for constraint in [r_constraint, a_constraint, d_constraint]):
+        # 1. Always use the constraint if given.
+        if r_constraint is not None:
+            r_atoms = [n] + [key_by_val(zmat['map'], r_constraint[1])]
+        elif a_constraint is not None:
+            r_atoms = [n] + [key_by_val(zmat['map'], a_constraint[1])]
+        elif d_constraint is not None:
+            r_atoms = [n] + [key_by_val(zmat['map'], d_constraint[1])]
     elif connectivity is not None:
         # 2. Use connectivity if the atom is not constrained.
         r_atoms = [n]
@@ -290,7 +301,8 @@ def determine_a_atoms(zmat: Dict[str, Union[dict, tuple]],
                       r_atoms: Optional[List[int]],
                       n: int,
                       atom_index: int,
-                      a_constraint: Optional[Tuple[int]] = None,
+                      a_constraint: Optional[Tuple[int, int]] = None,
+                      d_constraint: Optional[Tuple[int, int, int]] = None,
                       a_constraint_type: Optional[str] = None,
                       trivial_assignment: bool = False,
                       fragments: Optional[List[List[int]]] = None,
@@ -309,6 +321,8 @@ def determine_a_atoms(zmat: Dict[str, Union[dict, tuple]],
                           (``n`` and ``atom_index`` refer to the same atom, but it might have different indices
                           in the zmat and the molecule/xyz)
         a_constraint (tuple, optional): A-type constraints. The atom indices to which the atom being checked is
+                                        constrained. ``None`` if it is not constrained.
+        d_constraint (tuple, optional): D-type constraints. The atom indices to which the atom being checked is
                                         constrained. ``None`` if it is not constrained.
         a_constraint_type (str, optional): The A constraint type ('A_atom', or 'A_group').
         trivial_assignment (bool, optional): Whether to attempt assigning atoms without considering connectivity
@@ -333,9 +347,13 @@ def determine_a_atoms(zmat: Dict[str, Union[dict, tuple]],
         # This is the 1st or 2nd atom added to the zmat, there's no angle definition here.
         a_atoms = None
     elif a_constraint is not None:
+        # always use the constraint if given
         if a_constraint_type not in ['A_atom', 'A_group', None]:
             raise ZMatError(f'Got an invalid A constraint type "{a_constraint_type}" for {a_constraint}')
         a_atoms = [n] + [key_by_val(zmat['map'], atom) for atom in a_constraint[1:]]
+    elif d_constraint is not None:
+        # consider d_constraint for consistency if a_constraint is None
+        a_atoms = [n] + [key_by_val(zmat['map'], atom) for atom in d_constraint[1:3]]
     elif connectivity is not None:
         a_atoms = [atom for atom in r_atoms]
         for atom in connectivity[zmat['map'][a_atoms[-1]]] + connectivity[atom_index]:
@@ -432,7 +450,7 @@ def determine_d_atoms(zmat: Dict[str, Union[dict, tuple]],
                       a_atoms: Optional[List[int]],
                       n: int,
                       atom_index: int,
-                      d_constraint: Optional[Tuple[int]] = None,
+                      d_constraint: Optional[Tuple[int, int, int]] = None,
                       d_constraint_type: Optional[str] = None,
                       specific_atom: Optional[int] = None,
                       dummy: bool = False,
@@ -728,6 +746,8 @@ def _add_nth_atom_to_zmat(zmat: Dict[str, Union[dict, tuple]],
             n,
             atom_index,
             r_constraint,
+            a_constraint,
+            d_constraint,
             trivial_assignment=any('_atom' in constraint_key for constraint_key in constraints.keys()),
             fragments=fragments,
         )
@@ -743,6 +763,7 @@ def _add_nth_atom_to_zmat(zmat: Dict[str, Union[dict, tuple]],
             n,
             atom_index,
             a_constraint,
+            d_constraint,
             a_constraint_type,
             trivial_assignment=any('_atom' in constraint_key for constraint_key in constraints.keys()),
             fragments=fragments,
@@ -1513,8 +1534,8 @@ def get_atom_order_from_mol(mol: Molecule,
 
         # Now add top_d.
         for top_d_atom in top_d:
-            if top_d_atom not in atom_order:
-                atom_order.extend(d for d in top_d if d in fragment)
+            if top_d_atom not in atom_order and top_d_atom in fragment:
+                atom_order.append(top_d_atom)
 
         if len(atom_order) != len(fragment):
             continue
