@@ -136,10 +136,9 @@ class ARCReaction(object):
             products = products or [spc.label for spc in self.p_species] or None
             self.products = [check_label(product)[0] for product in products] if products else list()
             self.rmg_reaction = rmg_reaction
-            if self.rmg_reaction is None \
-                    and (self.reactants is None or self.products is None) \
-                    and (self.r_species is None or self.p_species is None) \
-                    and not self.label:
+            if self.rmg_reaction is None and not self.label \
+                    and not (len(self.reactants) * len(self.products)) \
+                    and not (len(self.r_species) * len(self.p_species)):
                 raise InputError(f'Cannot determine reactants and/or products labels for reaction {self.label}')
             self.set_label_reactants_products()
             self.ts_methods = ts_methods if ts_methods is not None else default_ts_methods
@@ -255,8 +254,8 @@ class ARCReaction(object):
         self.label = reaction_dict['label'] if 'label' in reaction_dict else ''
         self.multiplicity = reaction_dict['multiplicity'] if 'multiplicity' in reaction_dict else None
         self.charge = reaction_dict['charge'] if 'charge' in reaction_dict else 0
-        self.reactants = reaction_dict['reactants'] if 'reactants' in reaction_dict else None
-        self.products = reaction_dict['products'] if 'products' in reaction_dict else None
+        self.reactants = reaction_dict.get('reactants') or list()
+        self.products = reaction_dict.get('products') or list()
         if 'family' in reaction_dict and reaction_dict['family'] is not None:
             db = rmgdb.make_rmg_database_object()
             rmgdb.load_families_only(db)
@@ -269,9 +268,9 @@ class ARCReaction(object):
             self.rmg_reaction_from_str(reaction_string=reaction_dict['rmg_reaction'])
         else:
             self.rmg_reaction = None
-        if self.rmg_reaction is None and (self.reactants is None or self.products is None):
+        if self.rmg_reaction is None and not (len(self.reactants) * len(self.products)):
             raise InputError(f'Cannot determine reactants and/or products labels for reaction {self.label}')
-        if self.reactants is None or self.products is None:
+        if not (len(self.reactants) * len(self.products)):
             if not all([spc.label for spc in self.rmg_reaction.reactants + self.rmg_reaction.products]):
                 raise InputError(f'All species in a reaction must be labeled (and the labels must correspond '
                                  f'to respective Species in ARC). If an RMG Reaction object was passes, make '
@@ -286,6 +285,8 @@ class ARCReaction(object):
             if 'r_species' in reaction_dict else list()
         self.p_species = [ARCSpecies(species_dict=p_dict) for p_dict in reaction_dict['p_species']] \
             if 'p_species' in reaction_dict else list()
+        self.reactants = self.reactants or [spc.label for spc in self.r_species]
+        self.products = self.products or [spc.label for spc in self.p_species]
         self.ts_species = reaction_dict['ts_species'].from_dict() if 'ts_species' in reaction_dict else None
 
         self.long_kinetic_description = reaction_dict['long_kinetic_description'] \
@@ -310,7 +311,7 @@ class ARCReaction(object):
     def set_label_reactants_products(self, species_list: Optional[List[ARCSpecies]] = None):
         """A helper function for settings the label, reactants, and products attributes for a Reaction"""
         # First make sure that reactants and products labels are defined (most often used).
-        if self.reactants is None or self.products is None:
+        if not len(self.reactants) or not len(self.products):
             if self.label:
                 if self.arrow not in self.label:
                     raise ReactionError(f'A reaction label must contain an arrow ("{self.arrow}")')
@@ -324,21 +325,21 @@ class ARCReaction(object):
                 else:
                     self.products = [products]
                 if species_list is not None:
-                    if self.reactants is not None and self.products is not None:
+                    if len(self.reactants) and len(self.products):
                         labels = [spc.label for spc in species_list]
                         for spc_label in self.reactants + self.products:
                             if spc_label not in labels:
                                 raise ValueError(f'The species {spc_label} appears in the reaction label\n'
                                                  f'{self.label}\n'
                                                  f'Yet no species with a corresponding label was defined in ARC.')
-                    if not self.r_species and self.reactants is not None:
+                    if not len(self.r_species) and len(self.reactants):
                         self.r_species = [spc for spc in species_list if spc.label in self.reactants]
-                    if not self.p_species and self.products is not None:
+                    if not len(self.p_species) and len(self.products):
                         self.p_species = [spc for spc in species_list if spc.label in self.products]
             elif self.rmg_reaction is not None:
                 self.reactants = [r.label for r in self.rmg_reaction.reactants]
                 self.products = [p.label for p in self.rmg_reaction.products]
-            elif self.r_species is not None and self.p_species is not None:
+            elif len(self.r_species) and len(self.p_species):
                 self.reactants = [r.label for r in self.r_species]
                 self.products = [p.label for p in self.p_species]
         if not self.label:
@@ -354,7 +355,7 @@ class ARCReaction(object):
                                               self.plus.join(p.label for p in self.rmg_reaction.products)])
         if self.rmg_reaction is None:
             self.rmg_reaction_from_arc_species()
-        elif not self.label and (self.reactants is None or self.products is None):
+        elif not self.label and not (len(self.reactants) * len(self.products)):
             raise ReactionError('Either a label or reactants and products lists must be specified')
         self.reactants = [check_label(reactant)[0] for reactant in self.reactants]
         self.products = [check_label(product)[0] for product in self.products]
@@ -573,7 +574,7 @@ class ARCReaction(object):
         species_labels = self.label.split(self.arrow)
         reactants = [check_label(reactant)[0] for reactant in species_labels[0].split(self.plus)]
         products = [check_label(product)[0] for product in species_labels[1].split(self.plus)]
-        if self.reactants is not None:
+        if len(self.reactants):
             for reactant in reactants:
                 if reactant not in self.reactants:
                     raise ReactionError(f'Reactant {reactant} from the reaction label {self.label} '
@@ -581,7 +582,7 @@ class ARCReaction(object):
             for reactant in self.reactants:
                 if reactant not in reactants:
                     raise ReactionError(f'Reactant {reactant} is not in the reaction label ({self.label})')
-        if self.products is not None:
+        if len(self.products):
             for product in products:
                 if product not in self.products:
                     raise ReactionError(f'Product {product} from the reaction {self.label} '
@@ -589,7 +590,7 @@ class ARCReaction(object):
             for product in self.products:
                 if product not in products:
                     raise ReactionError(f'Product {product} is not in the reaction label ({self.label})')
-        if self.r_species is not None:
+        if len(self.r_species):
             for reactant in self.r_species:
                 if reactant.label not in self.reactants:
                     raise ReactionError(f'Reactant {reactant.label} from {self.label} '
@@ -602,7 +603,7 @@ class ARCReaction(object):
                 if reactant not in [r.label for r in self.r_species]:
                     raise ReactionError(f'Reactant {reactant} is not in '
                                         f'self.r_species ({[r.label for r in self.r_species]})')
-        if self.p_species is not None:
+        if len(self.p_species):
             for product in self.p_species:
                 if product.label not in self.products:
                     raise ReactionError(f'Product {product.label} from {self.label} '
