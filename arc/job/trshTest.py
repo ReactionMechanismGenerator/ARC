@@ -550,7 +550,7 @@ class TestTrsh(unittest.TestCase):
                  'scan_res': 4.0,
                  'used_methods': None,
                  'log_file': log_file,
-                }
+                 }
         invalidate, invalidation_reason, message, actions = trsh.scan_quality_check(**case1)
         self.assertTrue(invalidate)
         self.assertEqual(
@@ -558,8 +558,8 @@ class TestTrsh(unittest.TestCase):
         expect_message = 'Rotor scan of CH2OOH between pivots [1, 2] is inconsistent between ' \
                          'two consecutive conformers.\nInconsistent consecutive conformers and ' \
                          'problematic internal coordinates:\nconformer # 63 / # 64        D3, D2' \
-                         '\nconformer # 80 / # 81        D3, D2\nARC will attempt to troubleshoot' \
-                         ' this rotor scan.'
+                         '\nconformer # 80 / # 81        D3, D2\n' \
+                         'ARC will attempt to troubleshoot this rotor scan.'
         self.assertEqual(message, expect_message)
         self.assertEqual(len(actions.keys()), 1)
         self.assertIn('freeze', actions)
@@ -574,7 +574,7 @@ class TestTrsh(unittest.TestCase):
                  'scan_res': 8.0,
                  'used_methods': None,
                  'log_file': log_file,
-                }
+                 }
         invalidate, invalidation_reason, message, actions = trsh.scan_quality_check(**case2)
         self.assertTrue(invalidate)
         self.assertEqual(
@@ -605,11 +605,11 @@ class TestTrsh(unittest.TestCase):
     def test_trsh_scan_job(self):
         """Test troubleshooting problematic 1D rotor scan"""
         case = {'label': 'CH2OOH',
-                 'scan_res': 4.0,
-                 'scan': [4, 1, 2, 3],
-                 'scan_list': [[4, 1, 2, 3], [1, 2, 3, 6]],
-                 'methods': {'freeze': [[5, 1, 2, 3], [2, 1, 4, 5]]},
-                 'log_file': os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'CH2OOH.out'),
+                'scan_res': 4.0,
+                'scan': [4, 1, 2, 3],
+                'scan_list': [[4, 1, 2, 3], [1, 2, 3, 6]],
+                'methods': {'freeze': [[5, 1, 2, 3], [2, 1, 4, 5]]},
+                'log_file': os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'CH2OOH.out'),
                 }
         scan_trsh, scan_res = trsh.trsh_scan_job(**case)
         self.assertEqual(scan_trsh, 'D 5 4 1 2 F\nD 1 2 3 6 F\nB 2 3 F\n')
