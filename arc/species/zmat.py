@@ -1841,7 +1841,7 @@ def _compare_zmats(zmat1: dict,
     """
     Compare two zmats. The zmats must have identical variables (i.e., derived from the same connectivity or ordered xyz,
     using the same constraints).
-    This function does not make use of the zmat map, but does check that it is the identical.
+    This function does not make use of the zmat map, but does check that it is identical.
 
     Args:
         zmat1 (dict): zmat1.
