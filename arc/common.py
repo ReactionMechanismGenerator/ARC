@@ -812,8 +812,8 @@ def almost_equal_coords_lists(xyz1: Union[List[dict], dict],
                               atol: float = 1e-08,
                               ) -> bool:
     """
-    A helper function for checking two lists of xyz's has at least one entry in each that is almost equal.
-    Useful for comparing xyz's in unit tests.
+    A helper function for checking two lists of xyzs has at least one entry in each that is almost equal.
+    Useful for comparing xyzs in unit tests.
 
     Args:
         xyz1 (Union[List[dict], dict]): Either a dict-format xyz, or a list of them.
@@ -822,7 +822,7 @@ def almost_equal_coords_lists(xyz1: Union[List[dict], dict],
         atol (float, optional): The absolute tolerance parameter.
 
     Returns: bool
-        Whether at least one entry in each input xyz's is almost equal to an entry in the other xyz.
+        Whether at least one entry in each input xyzs is almost equal to an entry in the other xyz.
     """
     if not isinstance(xyz1, list):
         xyz1 = [xyz1]
@@ -833,8 +833,8 @@ def almost_equal_coords_lists(xyz1: Union[List[dict], dict],
             if xyz1_entry['symbols'] != xyz2_entry['symbols']:
                 continue
             if almost_equal_coords(xyz1_entry, xyz2_entry, rtol=rtol, atol=atol):
-                return True  # Anytime find one match, return `True`
-    return False  # If no match is found
+                return True
+    return False
 
 
 def is_notebook() -> bool:
@@ -847,13 +847,13 @@ def is_notebook() -> bool:
     try:
         shell = get_ipython().__class__.__name__
         if shell == 'ZMQInteractiveShell':
-            return True  # Jupyter notebook or qtconsole
+            return True  # Jupyter notebook or qtconsole.
         elif shell == 'TerminalInteractiveShell':
-            return False  # Terminal running IPython
+            return False  # Terminal running IPython.
         else:
             return False  # Other type (?)
     except NameError:
-        return False  # Probably standard Python interpreter
+        return False  # Probably standard Python interpreter.
 
 
 def is_str_float(value: Optional[str]) -> bool:
