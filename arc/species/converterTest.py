@@ -22,7 +22,7 @@ from arc.common import almost_equal_coords_lists, almost_equal_lists
 from arc.exceptions import ConverterError
 from arc.species.species import ARCSpecies
 from arc.species.vectors import calculate_dihedral_angle
-from arc.species.zmat import xyz_to_zmat
+from arc.species.zmat import _compare_zmats, xyz_to_zmat
 
 
 class TestConverter(unittest.TestCase):
@@ -919,7 +919,7 @@ X      -0.52389885    0.72654241   -1.86620254"""
                                   'A_9_8_7': 89.27884712999244, 'D_9_8_7_6': 257.69473747832507,
                                   'R_5|6_4|5': 1.7799476413293496},
                          'map': {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7, 8: 8, 9: 9}}
-        self.assertEqual(zmat, expected_zmat)
+        self.assertTrue(_compare_zmats(zmat, expected_zmat))
 
     def test_zmat_to_xyz(self):
         """Check refolding a zmat into cartesian coordinates"""
@@ -2543,11 +2543,11 @@ R9=1.4305
                                  13: 13, 14: 14, 15: 15, 16: 16, 17: 17}}
 
         zmat0 = converter.str_to_zmat(zmat_str_0)
-        self.assertEqual(zmat0, expected_zmat)
+        self.assertTrue(_compare_zmats(zmat0, expected_zmat))
         zmat1 = converter.str_to_zmat(zmat_str_1)
-        self.assertEqual(zmat1, expected_zmat)
+        self.assertTrue(_compare_zmats(zmat1, expected_zmat))
         zmat2 = converter.str_to_zmat(zmat_str_2)
-        # this is a huge molecule, just test some random values:
+        # This is a huge molecule, just test some random values:
         self.assertEqual(zmat2['coords'][4], ('R_4_2', 'A_4_2_3', 'D_4_2_3_1'))
         self.assertEqual(zmat2['vars']['D_40_7_4_6'], 139.3906)
 
