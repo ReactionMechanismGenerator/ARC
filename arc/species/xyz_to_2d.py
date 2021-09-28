@@ -5,6 +5,7 @@ Written by Colin Grambow
 
 import numpy as np
 
+from openbabel import openbabel as ob
 from openbabel import pybel
 from rdkit import Chem
 from rdkit.Chem import GetPeriodicTable
@@ -12,6 +13,7 @@ from rdkit.Chem import GetPeriodicTable
 from arc.exceptions import SanitizationError
 
 
+ob.obErrorLog.SetOutputLevel(0)
 _rdkit_periodic_table = GetPeriodicTable()
 
 

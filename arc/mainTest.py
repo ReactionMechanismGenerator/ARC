@@ -12,11 +12,23 @@ import unittest
 from arc.common import ARC_PATH
 from arc.exceptions import InputError
 from arc.imports import settings
-from arc.main import ARC, process_adaptive_levels
+from arc.main import ARC, StatmechEnum, process_adaptive_levels
 from arc.species.species import ARCSpecies
 
 
 servers = settings['servers']
+
+
+class TestEnumerationClasses(unittest.TestCase):
+    """
+    Contains unit tests for various enumeration classes.
+    """
+
+    def test_statmech_enum(self):
+        """Test the StatmechEnum class"""
+        self.assertEqual(StatmechEnum('arkane').value, 'arkane')
+        with self.assertRaises(ValueError):
+            StatmechEnum('wrong')
 
 
 class TestARC(unittest.TestCase):
@@ -104,7 +116,7 @@ class TestARC(unittest.TestCase):
                                        'orbitals': False,
                                        'rotors': False,
                                        'sp': True},
-                         'kinetics_adapter': 'Arkane',
+                         'kinetics_adapter': 'arkane',
                          'max_job_time': 120,
                          'n_confs': 10,
                          'opt_level': {'basis': '6-311+g(3df,2p)',
@@ -133,7 +145,7 @@ class TestARC(unittest.TestCase):
                                               'props': {}},
                                       'multiplicity': 1,
                                       'number_of_rotors': 0}],
-                         'thermo_adapter': 'Arkane',
+                         'thermo_adapter': 'arkane',
                          'three_params': False}
         # import pprint  # left intentionally for debugging
         # print(pprint.pprint(restart_dict))
@@ -294,7 +306,7 @@ class TestARC(unittest.TestCase):
         self.assertEqual(arc8.sp_level.simple(), 'method/unsupported')
         self.assertEqual(arc8.freq_level.simple(), 'wb97xd/def2tzvp')
 
-        # Test a level not supported by Arkane does raise an error if compute_thermo is True (default)
+        # Test that a level not supported by Arkane does raise an error if compute_thermo is True (default)
         with self.assertRaises(ValueError):
             ARC(project='test', sp_level='method/unsupported', calc_freq_factor=False)
 

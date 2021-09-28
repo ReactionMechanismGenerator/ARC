@@ -265,7 +265,9 @@ def loop_families(rmgdb: RMGDatabase,
                         family_reactions_by_rnp.append(fam_rxn)
             degenerate_reactions = find_degenerate_reactions(rxn_list=family_reactions_by_rnp,
                                                              same_reactants=False,
-                                                             kinetics_database=rmgdb.kinetics)
+                                                             kinetics_database=rmgdb.kinetics,
+                                                             save_order=True
+                                                             )
         elif len(reaction.products) == 2:
             for fam_rxn in family_reactions_by_r:
                 for product0 in reaction.products[0].molecule:
@@ -274,7 +276,9 @@ def loop_families(rmgdb: RMGDatabase,
                             family_reactions_by_rnp.append(fam_rxn)
             degenerate_reactions = find_degenerate_reactions(rxn_list=family_reactions_by_rnp,
                                                              same_reactants=False,
-                                                             kinetics_database=rmgdb.kinetics)
+                                                             kinetics_database=rmgdb.kinetics,
+                                                             save_order=True
+                                                             )
         elif len(reaction.products) == 3:
             for fam_rxn in family_reactions_by_r:
                 for product0 in reaction.products[0].molecule:
@@ -284,7 +288,9 @@ def loop_families(rmgdb: RMGDatabase,
                                 family_reactions_by_rnp.append(fam_rxn)
             degenerate_reactions = find_degenerate_reactions(rxn_list=family_reactions_by_rnp,
                                                              same_reactants=False,
-                                                             kinetics_database=rmgdb.kinetics)
+                                                             kinetics_database=rmgdb.kinetics,
+                                                             save_order=True
+                                                             )
         if degenerate_reactions:
             fam_list.append((family, degenerate_reactions))
     return fam_list
@@ -347,7 +353,7 @@ def determine_rmg_kinetics(rmgdb: RMGDatabase,
 
 
 def get_family(rmgdb: RMGDatabase,
-               label: str,
+               label: Optional[str],
                ) -> Optional['KineticsFamily']:
     """
     Get a KineticsFamily object instance corresponding to the input family ``label``.
@@ -359,6 +365,8 @@ def get_family(rmgdb: RMGDatabase,
     Returns:
         Optional['KineticsFamily']: The desired family object instance.
     """
+    if label is None:
+        return None
     label = label.lower()
     for family_label, family in rmgdb.kinetics.families.items():
         if family_label.lower() == label:

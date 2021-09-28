@@ -26,7 +26,8 @@ import qcelemental as qcel
 
 from arkane.ess import ess_factory, GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
 import rmgpy
-from rmgpy.molecule.element import get_element
+from rmgpy.molecule.element import Element, get_element
+from rmgpy.molecule.molecule import Atom, Bond, Molecule
 from rmgpy.qm.qmdata import QMData
 from rmgpy.qm.symmetry import PointGroupCalculator
 
@@ -532,68 +533,47 @@ def get_atom_radius(symbol: str) -> float:
     return r
 
 
-def colliding_atoms(xyz: dict,
-                    threshold: float = 0.55,
-                    ) -> bool:
-    """
-    Check whether atoms are too close to each other.
-    A default threshold of 55% the covalent radii of two atoms is used.
-    For example:
-    - C-O collide at 55% * 1.42 A = 0.781 A
-    - N-N collide at 55% * 1.42 A = 0.781 A
-    - C-N collide at 55% * 1.47 A = 0.808 A
-    - C-H collide at 55% * 1.07 A = 0.588 A
-
-    Args:
-        xyz (dict): The Cartesian coordinates.
-        threshold (float, optional): The collision threshold to use.
-
-    Returns:
-        bool: ``True`` if they are colliding, ``False`` otherwise.
-    """
-    if len(xyz['symbols']) == 1:
-        # monoatomic
-        return False
-    geometry = np.array([np.array(coord, np.float64) * 1.8897259886 for coord in xyz['coords']])  # Convert A to Bohr.
-    qcel_out = qcel.molutil.guess_connectivity(symbols=xyz['symbols'], geometry=geometry, threshold=threshold)
-    return bool(len(qcel_out))
-
-
-# a bond length dictionary of single bonds, Angstrom
+# A bond length dictionary of single bonds in Angstrom.
 # https://sites.google.com/site/chempendix/bond-lengths
 # https://courses.lumenlearning.com/suny-potsdam-organicchemistry/chapter/1-3-basics-of-bonding/
-# 'N-O' is taken from the geometry of NH2OH
-# todo: combine with partial charge to allow greater distance, e.g., as in N2O4
-# todo: or replace with NBO analysis
-SINGLE_BOND_LENGTH = {'Br-Br': 2.29, 'Br-Cr': 1.94, 'Br-H': 1.41,
-                      'C-C': 1.54, 'C-Cl': 1.77, 'C-F': 1.35, 'C-H': 1.09, 'C-I': 2.13,
-                      'C-N': 1.47, 'C-O': 1.43, 'C-P': 1.87, 'C-S': 1.81, 'C-Si': 1.86,
-                      'Cl-Cl': 1.99, 'Cl-H': 1.27, 'Cl-N': 1.75, 'Cl-Si': 2.03, 'Cl-P': 2.03, 'Cl-S': 2.07,
-                      'F-F': 1.42, 'F-H': 0.92, 'F-P': 1.57, 'F-S': 1.56, 'F-Si': 1.56, 'F-Xe': 1.90,
-                      'H-H': 0.74, 'H-I': 1.61, 'H-N': 1.04, 'H-O': 0.96, 'H-P': 1.42, 'H-S': 1.34, 'H-Si': 1.48,
-                      'I-I': 2.66,
-                      'N-N': 1.45, 'N-O': 1.44,
-                      'O-O': 1.48, 'O-P': 1.63, 'O-S': 1.58, 'O-Si': 1.66,
-                      'P-P': 2.21,
-                      'S-S': 2.05,
-                      'Si-Si': 2.35,
+# 'N-O' is taken from NH2OH, 'N+_N+' and 'N+_O-' are taken from N2O4.
+# 'H_H' was artificially modified from 0.74 to 1.0 since it collides quickly at 0.55.
+SINGLE_BOND_LENGTH = {'Br_Br': 2.29, 'Br_Cr': 1.94, 'Br_H': 1.41,
+                      'C_C': 1.54, 'C_Cl': 1.77, 'C_F': 1.35, 'C_H': 1.09, 'C_I': 2.13,
+                      'C_N': 1.47, 'C_O': 1.43, 'C_P': 1.87, 'C_S': 1.81, 'C_Si': 1.86,
+                      'Cl_Cl': 1.99, 'Cl_H': 1.27, 'Cl_N': 1.75, 'Cl_Si': 2.03, 'Cl_P': 2.03, 'Cl_S': 2.07,
+                      'F_F': 1.42, 'F_H': 0.92, 'F_P': 1.57, 'F_S': 1.56, 'F_Si': 1.56, 'F_Xe': 1.90,
+                      'H_H': 1.0, 'H_I': 1.61, 'H_N': 1.04, 'H_O': 0.96, 'H_P': 1.42, 'H_S': 1.34, 'H_Si': 1.48,
+                      'I_I': 2.66,
+                      'N_N': 1.45, 'N+1_N+1': 1.81, 'N_O': 1.44, 'N+1_O-1': 1.2,
+                      'O_O': 1.48, 'O_P': 1.63, 'O_S': 1.58, 'O_Si': 1.66,
+                      'P_P': 2.21,
+                      'S_S': 2.05,
+                      'Si_Si': 2.35,
                       }
 
 
-def get_single_bond_length(symbol1: str,
-                           symbol2: str,
+def get_single_bond_length(symbol_1: str,
+                           symbol_2: str,
+                           charge_1: int = 0,
+                           charge_2: int = 0,
                            ) -> float:
     """
     Get the an approximate for a single bond length between two elements.
 
     Args:
-        symbol1 (str): Symbol 1.
-        symbol2 (str): Symbol 2.
+        symbol_1 (str): Symbol 1.
+        symbol_2 (str): Symbol 2.
+        charge_1 (int, optional): The partial charge of the atom represented by ``symbol_1``.
+        charge_2 (int, optional): The partial charge of the atom represented by ``symbol_2``.
 
     Returns: float
         The estimated single bond length in Angstrom.
     """
-    bond1, bond2 = '-'.join([symbol1, symbol2]), '-'.join([symbol2, symbol1])
+    if charge_1 and charge_2:
+        symbol_1 = f"{symbol_1}{'+' if charge_1 > 0 else ''}{charge_1}"
+        symbol_2 = f"{symbol_2}{'+' if charge_2 > 0 else ''}{charge_2}"
+    bond1, bond2 = '_'.join([symbol_1, symbol_2]), '_'.join([symbol_2, symbol_1])
     if bond1 in SINGLE_BOND_LENGTH.keys():
         return SINGLE_BOND_LENGTH[bond1]
     if bond2 in SINGLE_BOND_LENGTH.keys():
@@ -832,8 +812,8 @@ def almost_equal_coords_lists(xyz1: Union[List[dict], dict],
                               atol: float = 1e-08,
                               ) -> bool:
     """
-    A helper function for checking two lists of xyz's has at least one entry in each that is almost equal.
-    Useful for comparing xyz's in unit tests.
+    A helper function for checking two lists of xyzs has at least one entry in each that is almost equal.
+    Useful for comparing xyzs in unit tests.
 
     Args:
         xyz1 (Union[List[dict], dict]): Either a dict-format xyz, or a list of them.
@@ -842,7 +822,7 @@ def almost_equal_coords_lists(xyz1: Union[List[dict], dict],
         atol (float, optional): The absolute tolerance parameter.
 
     Returns: bool
-        Whether at least one entry in each input xyz's is almost equal to an entry in the other xyz.
+        Whether at least one entry in each input xyzs is almost equal to an entry in the other xyz.
     """
     if not isinstance(xyz1, list):
         xyz1 = [xyz1]
@@ -853,8 +833,8 @@ def almost_equal_coords_lists(xyz1: Union[List[dict], dict],
             if xyz1_entry['symbols'] != xyz2_entry['symbols']:
                 continue
             if almost_equal_coords(xyz1_entry, xyz2_entry, rtol=rtol, atol=atol):
-                return True  # Anytime find one match, return `True`
-    return False  # If no match is found
+                return True
+    return False
 
 
 def is_notebook() -> bool:
@@ -867,13 +847,13 @@ def is_notebook() -> bool:
     try:
         shell = get_ipython().__class__.__name__
         if shell == 'ZMQInteractiveShell':
-            return True  # Jupyter notebook or qtconsole
+            return True  # Jupyter notebook or qtconsole.
         elif shell == 'TerminalInteractiveShell':
-            return False  # Terminal running IPython
+            return False  # Terminal running IPython.
         else:
             return False  # Other type (?)
     except NameError:
-        return False  # Probably standard Python interpreter
+        return False  # Probably standard Python interpreter.
 
 
 def is_str_float(value: Optional[str]) -> bool:
@@ -1241,3 +1221,105 @@ def convert_list_index_0_to_1(_list: Union[list, tuple], direction: int = 1) -> 
     if isinstance(_list, tuple):
         new_list = tuple(new_list)
     return new_list
+
+
+def rmg_mol_to_dict_repr(mol: Molecule,
+                         testing: bool = False,
+                         ) -> dict:
+    """
+    Generate a dict representation of an RMG ``Molecule`` object instance.
+
+    Args:
+        mol (Molecule): The RMG ``Molecule`` object instance.
+        testing (bool, optional): Whether this is called during a test, in which case atom IDs should be deterministic.
+
+    Returns:
+        dict: The corresponding dict representation.
+    """
+    if testing:
+        counter = 0
+        for atom in mol.atoms:
+            atom.id = counter
+            counter += 1
+    elif len(mol.atoms) > 1 and mol.atoms[0].id == mol.atoms[1].id:
+        mol.assign_atom_ids()
+    return {'atoms': [{'element': {'number': atom.element.number,
+                                   'symbol': atom.element.symbol,
+                                   'name': atom.element.name,
+                                   'mass': atom.element.mass,
+                                   'isotope': atom.element.isotope,
+                                   },
+                       'radical_electrons': atom.radical_electrons,
+                       'charge': atom.charge,
+                       'label': atom.label,
+                       'lone_pairs': atom.lone_pairs,
+                       'id': atom.id,
+                       'props': atom.props,
+                       'edges': {atom_2.id: bond.order
+                                 for atom_2, bond in atom.edges.items()},
+                       } for atom in mol.atoms],
+            'multiplicity': mol.multiplicity,
+            'props': mol.props,
+            'atom_order': [atom.id for atom in mol.atoms]
+            }
+
+
+def rmg_mol_from_dict_repr(representation: dict,
+                           is_ts: bool = False,
+                           ) -> Optional[Molecule]:
+    """
+    Generate a dict representation of an RMG ``Molecule`` object instance.
+
+    Args:
+        representation (dict): A dict representation of an RMG ``Molecule`` object instance.
+        is_ts (bool, optional): Whether the ``Molecule`` represents a TS.
+
+    Returns:
+        ``Molecule``: The corresponding RMG ``Molecule`` object instance.
+
+    """
+    mol = Molecule(multiplicity=representation['multiplicity'],
+                   props=representation['props'])
+    atoms = {atom_dict['id']: Atom(element=Element(number=atom_dict['element']['number'],
+                                                   symbol=atom_dict['element']['symbol'],
+                                                   name=atom_dict['element']['name'],
+                                                   mass=atom_dict['element']['mass'],
+                                                   isotope=atom_dict['element']['isotope'],
+                                                   ),
+                                   radical_electrons=atom_dict['radical_electrons'],
+                                   charge=atom_dict['charge'],
+                                   lone_pairs=atom_dict['lone_pairs'],
+                                   id=atom_dict['id'],
+                                   props=atom_dict['props'],
+                                   ) for atom_dict in representation['atoms']}
+    mol.atoms = list(atoms[atom_id] for atom_id in representation['atom_order'])
+    for i, atom_1 in enumerate(atoms.values()):
+        for atom_2_id, bond_order in representation['atoms'][i]['edges'].items():
+            bond = Bond(atom_1, atoms[atom_2_id], bond_order)
+            mol.add_bond(bond)
+    mol.update_atomtypes(raise_exception=False)
+    if not is_ts:
+        mol.identify_ring_membership()
+    return mol
+
+
+def calc_rmsd(x: Union[list, np.array],
+              y: Union[list, np.array],
+              ) -> float:
+    """
+    Compute the root-mean-square deviation between two matrices.
+
+    Args:
+        x (np.array): Matrix 1.
+        y (np.array): Matrix 2.
+
+    Returns:
+        float: The RMSD score of two matrices.
+    """
+    x = np.array(x) if isinstance(x, list) else x
+    y = np.array(y) if isinstance(y, list) else y
+    d = x - y
+    n = x.shape[0]
+    sqr_sum = (d**2).sum()
+    rmsd = np.sqrt(sqr_sum/n)
+    return float(rmsd)

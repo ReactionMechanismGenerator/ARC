@@ -22,8 +22,7 @@ from rmgpy.species import Species
 from rmgpy.statmech import NonlinearRotor, LinearRotor
 from rmgpy.transport import TransportData
 
-from arc.common import (colliding_atoms,
-                        convert_list_index_0_to_1,
+from arc.common import (convert_list_index_0_to_1,
                         determine_symmetry,
                         determine_top_group_indices,
                         get_logger,
@@ -53,9 +52,12 @@ from arc.species.converter import (check_isomorphism,
                                    translate_to_center_of_mass,
                                    xyz_from_data,
                                    xyz_to_str,
+                                   zmat_from_xyz,
+                                   zmat_to_xyz,
                                    )
 from arc.species.vectors import calculate_distance
 from arc.ts import atst, gcn
+from arc.species.zmat import get_parameter_from_atom_indices
 
 logger = get_logger()
 
@@ -431,12 +433,19 @@ class ARCSpecies(object):
                 self.charge = charge
             if self.mol is None:
                 if adjlist:
-                    self.mol = Molecule().from_adjacency_list(adjlist=adjlist, raise_atomtype_exception=False,
-                                                              raise_charge_exception=False)
+                    self.mol = Molecule().from_adjacency_list(adjlist=adjlist,
+                                                              raise_atomtype_exception=False,
+                                                              raise_charge_exception=False,
+                                                              )
                 elif inchi:
                     self.mol = rmg_mol_from_inchi(inchi)
                 elif smiles:
                     self.mol = Molecule(smiles=smiles)
+                if self.mol is not None:
+                    if self.multiplicity is None:
+                        self.multiplicity = self.mol.multiplicity
+                    if self.charge is None:
+                        self.charge = self.mol.get_net_charge()
             # Perceive molecule from xyz coordinates. This also populates the .mol attribute of the Species.
             # It overrides self.mol generated from adjlist or smiles so xyz and mol will have the same atom order.
             if self.final_xyz or self.initial_xyz or self.most_stable_conformer or self.conformers:
@@ -455,18 +464,17 @@ class ARCSpecies(object):
                         if self.bond_corrections:
                             self.long_thermo_description += f'Bond corrections: {self.bond_corrections}\n'
 
-            if not self.bond_corrections and self.compute_thermo and self.number_of_atoms > 1:
+            if not self.bond_corrections and self.compute_thermo \
+                    and self.number_of_atoms is not None and self.number_of_atoms > 1:
                 logger.warning(f'Cannot determine bond additivity corrections (BAC) for species {self.label} based on '
                                f'xyz coordinates only. For better thermodynamic properties, provide bond corrections.')
 
             self.neg_freqs_trshed = list()
 
         if self.charge is None:
-            logger.debug(f'No charge specified for {self.label}, assuming charge 0.')
             self.charge = 0
         if self.multiplicity is None or self.multiplicity < 1:
             self.determine_multiplicity(smiles, adjlist, self.mol)
-            logger.debug(f'No multiplicity specified for {self.label}, assuming {self.multiplicity}.')
         if not isinstance(self.multiplicity, int) and self.multiplicity is not None:
             raise SpeciesError(f'Multiplicity for species {self.label} is not an integer. '
                                f'Got {self.multiplicity} which is a {type(self.multiplicity)}.')
@@ -773,8 +781,6 @@ class ARCSpecies(object):
             self.process_xyz(species_dict['xyz'])
         self.multiplicity = species_dict['multiplicity'] if 'multiplicity' in species_dict else None
         self.charge = species_dict['charge'] if 'charge' in species_dict else 0
-        if 'charge' not in species_dict:
-            logger.debug(f'No charge specified for {self.label}, assuming charge 0.')
         self.compute_thermo = species_dict['compute_thermo'] if 'compute_thermo' in species_dict else not self.is_ts
         self.e0_only = species_dict['e0_only'] if 'e0_only' in species_dict else False
         self.number_of_radicals = species_dict['number_of_radicals'] if 'number_of_radicals' in species_dict else None
@@ -1012,10 +1018,6 @@ class ARCSpecies(object):
             if len(lowest_confs):
                 self.conformers.extend([conf['xyz'] for conf in lowest_confs])
                 self.conformer_energies.extend([None] * len(lowest_confs))
-                if lowest_confs:
-                    lowest_conf = conformers.get_lowest_confs(label=self.label, confs=lowest_confs, n=1)[0]
-                    logger.debug(f'Most stable force field conformer for {self.label}:\n'
-                                 f'{xyz_to_str(lowest_conf["xyz"])}\n')
             else:
                 xyz = self.get_xyz(generate=False)
                 if xyz is None or not xyz:
@@ -1035,6 +1037,8 @@ class ARCSpecies(object):
             rd_mol = conformers.embed_rdkit(label=self.label, mol=self.mol, num_confs=num_confs)
             xyzs, energies = conformers.rdkit_force_field(label=self.label,
                                                           rd_mol=rd_mol,
+                                                          mol=self.mol,
+                                                          num_confs=num_confs,
                                                           force_field='MMFF94s',
                                                           )
             if energies:
@@ -1047,7 +1051,9 @@ class ARCSpecies(object):
                 logger.warning(f'Could not generate a cheap conformer for {self.label}')
                 self.cheap_conformer = None
 
-    def get_xyz(self, generate: bool = True) -> Optional[dict]:
+    def get_xyz(self, generate: bool = True,
+                return_format: str = 'dict',
+                ) -> Optional[Union[dict, str]]:
         """
         Get the highest quality xyz the species has.
         If it doesn't have any 3D information, and if ``generate`` is ``True``, cheaply generate it.
@@ -1057,9 +1063,10 @@ class ARCSpecies(object):
             generate (bool, optional): Whether to cheaply generate an FF conformer if no xyz is found.
                                        ``True`` to generate. If generate is ``False`` and the species has no xyz data,
                                        the method will return None.
+            return_format (str, optional): Whether to output a 'dict' or a 'str' representation of the respective xyz.
 
         Return:
-             dict: The xyz coordinates.
+             Optional[Union[dict, str]]: The xyz coordinates in the requested representation.
         """
         conf = self.conformers[0] if self.conformers else None
         xyz = self.final_xyz or self.initial_xyz or self.most_stable_conformer or conf or self.cheap_conformer
@@ -1078,6 +1085,8 @@ class ARCSpecies(object):
                     self.generate_conformers(n_confs=1)
                     if self.conformers is not None:
                         xyz = self.conformers[0]
+        if return_format == 'str':
+            xyz = xyz_to_str(xyz)
         return xyz
 
     def determine_rotors(self, verbose: bool = False) -> None:
@@ -1267,11 +1276,25 @@ class ARCSpecies(object):
         if deg_increment == 0 and deg_abs is None:
             logger.warning(f'set_dihedral was called with zero increment for {self.label} with pivots {pivots}')
         else:
-            mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
-            conf, rd_mol = rdkit_conf_from_mol(mol, xyz)
             torsion_0_indexed = [tor - 1 for tor in scan]
-            new_xyz = set_rdkit_dihedrals(conf, rd_mol, torsion_0_indexed, deg_increment=deg_increment, deg_abs=deg_abs)
-            self.initial_xyz = new_xyz
+            mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
+            if mol is not None:
+                conf, rd_mol = rdkit_conf_from_mol(mol, xyz)
+                new_xyz = set_rdkit_dihedrals(conf,
+                                              rd_mol,
+                                              torsion_0_indexed,
+                                              deg_increment=deg_increment,
+                                              deg_abs=deg_abs,
+                                              )
+                self.initial_xyz = new_xyz
+            else:
+                zmat = zmat_from_xyz(xyz=self.get_xyz(),
+                                     constraints={'D_groups': [tuple(torsion_0_indexed)]},
+                                     consolidate=False,
+                                     )
+                param = get_parameter_from_atom_indices(zmat=zmat, indices=torsion_0_indexed, xyz_indexed=True)
+                zmat['vars'][param] = zmat['vars'][param] + deg_increment if deg_increment is not None else deg_abs
+                self.initial_xyz = zmat_to_xyz(zmat)
 
     def determine_symmetry(self) -> None:
         """
@@ -2373,6 +2396,42 @@ def are_coords_compliant_with_graph(xyz: dict,
                     return False
         checked_atoms.append(atom_index_1)
     return True
+
+
+def colliding_atoms(xyz: dict,
+                    mol: Optional[Molecule] = None,
+                    threshold: float = 0.55,
+                    ) -> bool:
+    """
+        Check whether atoms are too close to each other.
+        A default threshold of 55% the covalent radii of two atoms is used.
+        For example:
+        - C-O collide at 55% * 1.42 A = 0.781 A
+        - N-N collide at 55% * 1.42 A = 0.781 A
+        - C-N collide at 55% * 1.47 A = 0.808 A
+        - C-H collide at 55% * 1.07 A = 0.588 A
+        - H-H collide at 55% * 0.74 A = 0.588 A
+
+        Args:
+            xyz (dict): The Cartesian coordinates.
+            mol (Molecule, optional): The corresponding Molecule object instance with formal charge information.
+            threshold (float, optional): The collision threshold to use.
+
+        Returns:
+            bool: ``True`` if they are colliding, ``False`` otherwise.
+    """
+    if len(xyz['symbols']) == 1:
+        # monoatomic
+        return False
+    for i in range(len(xyz['symbols']) - 1):
+        for j in range(i + 1, len(xyz['symbols'])):
+            actual_r = calculate_distance(coords=xyz['coords'], atoms=[i, j], index=0)
+            charge_1 = mol.atoms[i].charge if mol is not None else 0
+            charge_2 = mol.atoms[j].charge if mol is not None else 0
+            single_bond_r = get_single_bond_length(xyz['symbols'][i], xyz['symbols'][j], charge_1, charge_2)
+            if actual_r < single_bond_r * threshold:
+                return True
+    return False
 
 
 def check_label(label: str,

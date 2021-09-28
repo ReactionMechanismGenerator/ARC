@@ -7,6 +7,8 @@ import os
 from typing import Dict, Iterable, List, Optional, Tuple, Union
 
 import qcelemental as qcel
+from ase import Atoms
+from openbabel import openbabel as ob
 from openbabel import pybel
 from rdkit import Chem
 from rdkit.Chem import rdMolTransforms as rdMT
@@ -19,7 +21,7 @@ from rmgpy.quantity import ArrayQuantity
 from rmgpy.species import Species
 from rmgpy.statmech import Conformer
 
-from arc.common import almost_equal_lists, get_atom_radius, get_logger, is_str_float
+from arc.common import almost_equal_lists, calc_rmsd, get_atom_radius, get_logger, is_str_float
 from arc.exceptions import ConverterError, InputError, SanitizationError, SpeciesError
 from arc.species.xyz_to_2d import MolGraph
 from arc.species.zmat import (KEY_FROM_LEN,
@@ -31,6 +33,7 @@ from arc.species.zmat import (KEY_FROM_LEN,
                               xyz_to_zmat)
 
 
+ob.obErrorLog.SetOutputLevel(0)
 logger = get_logger()
 
 
@@ -259,6 +262,23 @@ def xyz_to_xyz_file_format(xyz_dict: dict,
     return str(len(xyz_dict['symbols'])) + '\n' + comment.strip() + '\n' + xyz_to_str(xyz_dict) + '\n'
 
 
+def xyz_to_kinbot_list(xyz_dict: dict) -> List[Union[str, float]]:
+    """
+    Get the KinBot xyz format of a single running list of:
+    [symbol0, x0, y0, z0, symbol1, x1, y1, z1,...]
+
+    Args:
+        xyz_dict (dict): The ARC xyz format.
+
+    Returns: List[Union[str, float]]
+        The respective KinBot xyz format.
+    """
+    kinbot_xyz = list()
+    for symbol, coords in zip(xyz_dict['symbols'], xyz_dict['coords']):
+        kinbot_xyz.extend([symbol, coords[0], coords[1], coords[2]])
+    return kinbot_xyz
+
+
 def xyz_to_dmat(xyz_dict: dict) -> Optional[np.array]:
     """
     Convert Cartesian coordinates to a distance matrix.
@@ -362,18 +382,21 @@ def xyz_from_data(coords, numbers=None, symbols=None, isotopes=None) -> dict:
 
 
 def sort_xyz_using_indices(xyz_dict: dict,
-                           indices: List[int],
+                           indices: Optional[List[int]],
                            ) -> dict:
     """
     Sort the tuples in an xyz dict according to the given indices.
 
     Args:
         xyz_dict (dict): The Cartesian coordinates.
-        indices (List[int]): Entries are 0-indices of the desired order.
+        indices (Optional[List[int]]): Entries are 0-indices of the desired order.
 
     Returns:
         dict: The ordered xyz.
     """
+    if indices is None:
+        logger.error('Cannot sort xyz without a map.')
+        return xyz_dict
     if len(indices) != len(xyz_dict['coords']):
         raise ValueError(f"The number of indices {len(indices)} does not match "
                          f"the number of coordinates {len(xyz_dict['coords'])}")
@@ -386,6 +409,44 @@ def sort_xyz_using_indices(xyz_dict: dict,
         symbols.append(xyz_dict['symbols'][i])
         isotopes.append(xyz_dict['isotopes'][i])
     return xyz_from_data(coords=coords, symbols=symbols, isotopes=isotopes)
+
+
+def xyz_to_ase(xyz_dict: dict) -> Atoms:
+    """
+    Convert an xyz dict to an ASE Atoms object.
+
+    Args:
+        xyz_dict (dict): The ARC xyz format.
+
+    Returns:
+        Type[Atoms]: The corresponding ASE Atom object.
+    """
+    return Atoms(xyz_dict['symbols'], xyz_dict['coords'])
+
+
+def translate_xyz(xyz_dict: dict,
+                  translation: Tuple[float, float, float],
+                  ) -> dict:
+    """
+    Translate xyz.
+
+    Args:
+        xyz_dict (dict): The ARC xyz format.
+        translation (Tuple[float, float, float]): The x, y, z translation vector.
+
+    Returns:
+        dict: The translated xyz.
+    """
+    if all(t == 0 for t in translation):
+        return xyz_dict
+    coords = list()
+    for coord in xyz_dict['coords']:
+        coords.append(tuple(coord[i] + translation[i] for i in range(3)))
+    new_xyz = {'symbols': xyz_dict['symbols'],
+               'isotopes': xyz_dict['isotopes'],
+               'coords': tuple(coords),
+               }
+    return new_xyz
 
 
 def rmg_conformer_to_xyz(conformer):
@@ -1097,7 +1158,7 @@ def rmg_mol_from_inchi(inchi: str):
 
 def elementize(atom):
     """
-    Convert the atom type of an RMG:Atom object into its general parent element atom type (e.g., `S4d` into `S`).
+    Convert the atom type of an RMG ``Atom`` object into its general parent element atom type (e.g., 'S4d' into 'S').
 
     Args:
         atom (Atom): The atom to process.
@@ -1787,26 +1848,6 @@ def compare_confs(xyz1: dict,
         return rmsd
     else:
         return almost_equal_lists(dmat1, dmat2, rtol=rtol, atol=atol)
-
-
-def calc_rmsd(x: np.array,
-              y: np.array,
-              ) -> float:
-    """
-    Compute the root-mean-square deviation between two matrices.
-
-    Args:
-        x (np.array): Matrix 1.
-        y (np.array): Matrix 2.
-
-    Returns:
-        float: The RMSD score of two matrices.
-    """
-    d = x - y
-    n = x.shape[0]
-    sqr_sum = (d**2).sum()
-    rmsd = np.sqrt(sqr_sum/n)
-    return float(rmsd)
 
 
 def cluster_confs_by_rmsd(xyzs: Iterable[Dict[str, tuple]],
