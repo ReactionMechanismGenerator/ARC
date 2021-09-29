@@ -24,6 +24,7 @@ from rmgpy.statmech import Conformer
 from arc.common import almost_equal_lists, calc_rmsd, get_atom_radius, get_logger, is_str_float
 from arc.exceptions import ConverterError, InputError, SanitizationError, SpeciesError
 from arc.species.xyz_to_2d import MolGraph
+from arc.species.xyz_to_smiles import xyz_to_smiles
 from arc.species.zmat import (KEY_FROM_LEN,
                               _compare_zmats,
                               get_all_neighbors,
@@ -640,12 +641,18 @@ def remove_dummies(xyz):
     return xyz_from_data(coords=coords, symbols=symbols, isotopes=isotopes)
 
 
-def zmat_from_xyz(xyz, mol=None, constraints=None, consolidate=True, consolidation_tols=None):
+def zmat_from_xyz(xyz: Union[dict, str],
+                  mol: Optional[Molecule] = None,
+                  constraints: Optional[dict] = None,
+                  consolidate: bool = True,
+                  consolidation_tols: dict = None,
+                  is_ts: bool = False,
+                  ) -> dict:
     """
     Generate a Z matrix from xyz.
 
     Args:
-        xyz (dict, str): The cartesian coordinate, either in a dict or str format.
+        xyz (Union[dict, str]): The cartesian coordinate, either in a dict or str format.
         mol (Molecule, optional): The corresponding RMG Molecule with connectivity information.
         constraints (dict, optional): Accepted keys are:
                                       'R_atom', 'R_group', 'A_atom', 'A_group', 'D_atom', 'D_group', or 'D_groups'.
@@ -661,6 +668,8 @@ def zmat_from_xyz(xyz, mol=None, constraints=None, consolidate=True, consolidati
         consolidate (bool, optional): Whether to consolidate the zmat after generation, ``True`` to consolidate.
         consolidation_tols (dict, optional): Keys are 'R', 'A', 'D', values are floats representing absolute tolerance
                                              for consolidating almost equal internal coordinates.
+        is_ts (bool, optional): Whether this is a representation of a TS.
+                                If it is not, a ``mol`` object will be generated if not given.
 
     Raises:
         InputError: If ``xyz`` if of a wrong type.
@@ -672,8 +681,14 @@ def zmat_from_xyz(xyz, mol=None, constraints=None, consolidate=True, consolidati
     if not isinstance(xyz, dict):
         raise InputError(f'xyz must be a dictionary, got {type(xyz)}')
     xyz = remove_dummies(xyz)
-    return xyz_to_zmat(xyz, mol=mol, constraints=constraints, consolidate=consolidate,
-                       consolidation_tols=consolidation_tols)
+    if mol is None and not is_ts:
+        mol = molecules_from_xyz(xyz=xyz)[1]
+    return xyz_to_zmat(xyz,
+                       mol=mol,
+                       constraints=constraints,
+                       consolidate=consolidate,
+                       consolidation_tols=consolidation_tols,
+                       )
 
 
 def zmat_to_xyz(zmat, keep_dummy=False, xyz_isotopes=None):
@@ -1152,7 +1167,7 @@ def rmg_mol_from_inchi(inchi: str):
     try:
         rmg_mol = Molecule().from_inchi(inchi, raise_atomtype_exception=False)
     except (AtomTypeError, ValueError, KeyError, TypeError) as e:
-        logger.warning(f'Got an Error when trying to create an RMG Molecule object from InChI "{inchi}":\n{e}')
+        logger.debug(f'Got an Error when trying to create an RMG Molecule object from InChI "{inchi}":\n{e}')
         if 'got an unexpected keyword argument' in str(e):
             raise ConverterError('Make sure RMG-Py is up to date and compiled!')
         return None
@@ -1209,15 +1224,17 @@ def molecules_from_xyz(xyz: Optional[Union[dict, str]],
         mol_s1.multiplicity = multiplicity
     mol_s1_updated = update_molecule(mol_s1, to_single_bonds=True)
 
-    # 2. A. Generate a molecule with bond order information using pybel:
+    # 2. Generate a molecule with bond order information using pybel:
     pybel_mol = xyz_to_pybel_mol(xyz)
     if pybel_mol is not None:
         inchi = pybel_to_inchi(pybel_mol, has_h=bool(len([atom.is_hydrogen() for atom in mol_s1_updated.atoms])))
-        mol_bo = rmg_mol_from_inchi(inchi)  # An RMG Molecule with bond orders, but without preserved atom order
+        mol_bo = rmg_mol_from_inchi(inchi)  # An RMG Molecule with bond orders, but without preserved atom order.
 
-    # TODO 2. B. Deduce bond orders from xyz distances (fallback method)
-    # else:
-    #     mol_bo = deduce_bond_orders_from_distances(xyz)
+    # 3. Generate a molecule with bond order information using xyz_to_smiles.
+    if mol_bo is None:
+        smiles_list = xyz_to_smiles(xyz=xyz, charge=charge)
+        if smiles_list is not None:
+            mol_bo = Molecule(smiles=smiles_list[0])
 
     if mol_bo is not None:
         if multiplicity is not None:
