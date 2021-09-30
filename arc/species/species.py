@@ -1210,6 +1210,7 @@ class ARCSpecies(object):
         pivots = scan[1:3]
         rotor = None
         xyz = xyz or self.final_xyz
+        mol = self.mol or molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
         if chk_rotor_list:
             for rotor in self.rotors_dict.values():
                 if rotor['pivots'] == pivots:
@@ -1230,7 +1231,6 @@ class ARCSpecies(object):
             logger.warning(f'set_dihedral was called with zero increment for {self.label} with pivots {pivots}')
         else:
             torsion_0_indexed = [tor - 1 for tor in scan]
-            mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
             if mol is not None:
                 conf, rd_mol = rdkit_conf_from_mol(mol, xyz)
                 new_xyz = set_rdkit_dihedrals(conf,
@@ -1240,14 +1240,6 @@ class ARCSpecies(object):
                                               deg_abs=deg_abs,
                                               )
                 self.initial_xyz = new_xyz
-            else:
-                zmat = zmat_from_xyz(xyz=self.get_xyz(),
-                                     constraints={'D_groups': [tuple(torsion_0_indexed)]},
-                                     consolidate=False,
-                                     )
-                param = get_parameter_from_atom_indices(zmat=zmat, indices=torsion_0_indexed, xyz_indexed=True)
-                zmat['vars'][param] = zmat['vars'][param] + deg_increment if deg_increment is not None else deg_abs
-                self.initial_xyz = zmat_to_xyz(zmat)
 
     def determine_symmetry(self) -> None:
         """
