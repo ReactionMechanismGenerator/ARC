@@ -53,6 +53,12 @@ class TestARC(unittest.TestCase):
                           'lennard_jones': False,
                           'bde': True,
                           }
+        projects = ['arc_project_for_testing_delete_after_usage_test_from_dict',
+                    'arc_model_chemistry_test', 'arc_test', 'test', 'unit_test_specific_job', 'wrong']
+        for project in projects:
+            project_directory = os.path.join(ARC_PATH, 'Projects', project)
+            if os.path.isdir(project_directory):
+                shutil.rmtree(project_directory, ignore_errors=True)
 
     def test_as_dict(self):
         """Test the as_dict() method of ARC"""
@@ -140,7 +146,8 @@ class TestARC(unittest.TestCase):
                                       'is_ts': False,
                                       'label': 'spc1',
                                       'long_thermo_description': long_thermo_description,
-                                      'mol': {'atoms': restart_dict['species'][0]['mol']['atoms'],
+                                      'mol': {'atom_order': restart_dict['species'][0]['mol']['atom_order'],
+                                              'atoms': restart_dict['species'][0]['mol']['atoms'],
                                               'multiplicity': 1,
                                               'props': {}},
                                       'multiplicity': 1,
@@ -436,7 +443,8 @@ class TestARC(unittest.TestCase):
                     'arc_model_chemistry_test', 'arc_test', 'test', 'unit_test_specific_job', 'wrong']
         for project in projects:
             project_directory = os.path.join(ARC_PATH, 'Projects', project)
-            shutil.rmtree(project_directory, ignore_errors=True)
+            if os.path.isdir(project_directory):
+                shutil.rmtree(project_directory, ignore_errors=True)
 
 
 if __name__ == '__main__':
