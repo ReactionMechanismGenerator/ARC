@@ -2352,6 +2352,8 @@ def check_label(label: str,
         - A legal label.
         - The original label if the label was modified, else ``None``.
     """
+    if not isinstance(label, str):
+        raise TypeError(f'A species label must be of string type, got {label} which is a {type(label)}.')
     char_replacement = {'#': 't',
                         '=': 'd',
                         '(': '[',
