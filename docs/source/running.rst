@@ -52,7 +52,7 @@ object. See ARC's API for a complete and updated list of keywords along with the
 
 
 Additional input file examples are available in ARC's examples folder
-(`ARC/examples <https://github.com/ReactionMechanismGenerator/ARC/tree/master/examples>`_).
+(`ARC/examples <https://github.com/ReactionMechanismGenerator/ARC/tree/main/examples>`_).
 Another convenient way to see a valid and detailed input file is to run an ARC job
 and peak at the automatically generated ``restart.yml`` file.
 
@@ -104,7 +104,7 @@ has the benefit of displaying "live" and interactive
 __ jupyter_
 
 Example iPython notebooks are available in the
-`ipython/Demo <https://github.com/ReactionMechanismGenerator/ARC/tree/master/ipython/Demo>`_
+`ipython/Demo <https://github.com/ReactionMechanismGenerator/ARC/tree/main/ipython/Demo>`_
 folder. Various :ref:`standalone tools <tools>` in an iPython format are also available,
 demonstrating different utilizations of the API.
 Users are of course directed to read :ref:`ARC's API <api>`.
