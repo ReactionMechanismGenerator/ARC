@@ -1,6 +1,6 @@
 # This workflow will triage pull requests and apply a label based on the
 # paths that are modified in the pull request.
-# See: https://github.com/actions/labeler/blob/master/README.md
+# See: https://github.com/actions/labeler/blob/main/README.md
 
 name: Labeler
 on: [pull_request]
