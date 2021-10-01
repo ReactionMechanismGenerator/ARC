@@ -281,7 +281,7 @@ def log_header(project: str,
         if head != '' and date != '':
             logger.log(level, f'The current git HEAD for {repo} is:')
             logger.log(level, f'    {head}\n    {date}')
-        if branch_name and branch_name != 'master':
+        if branch_name and branch_name != 'main':
             logger.log(level, f'    (running on the {branch_name} branch)\n')
         else:
             logger.log(level, '\n')

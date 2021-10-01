@@ -6,7 +6,7 @@
 .. _anaconda: https://www.anaconda.com/distribution/
 .. _yaml: https://yaml.org/
 .. _jupyter: https://jupyter.org/
-.. _examplesGitHub: https://github.com/ReactionMechanismGenerator/ARC/tree/master/examples
+.. _examplesGitHub: https://github.com/ReactionMechanismGenerator/ARC/tree/main/examples
 .. _xyz_format: https://en.wikipedia.org/wiki/XYZ_file_format
 .. _Arkane: http://reactionmechanismgenerator.github.io/RMG-Py/users/arkane/input.html
 .. _semantic: https://semver.org/

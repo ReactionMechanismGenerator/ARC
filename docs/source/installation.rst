@@ -95,7 +95,7 @@ The first two directives are only required if you'd like ARC to access remote se
 - Copy the RSA SSH key path/s on your local machine to ``settings.py`` in the servers
   dictionary under keys.
 - Update the ``servers`` dictionary in your copy of ARC's `settings.py
-  <https://github.com/ReactionMechanismGenerator/ARC/blob/master/arc/settings/settings.py>`_.
+  <https://github.com/ReactionMechanismGenerator/ARC/blob/main/arc/settings/settings.py>`_.
 
   * A local server must be named with the reserved keyword ``local``. ``cluster_soft`` and username (``un``) are
     mandatory.
@@ -111,7 +111,7 @@ The first two directives are only required if you'd like ARC to access remote se
     for this reason, ARC will attempt to re-run the job with fewer CPU cores.
 
 - Update the ``default_job_settings`` dictionary in your copy of ARC's `settings.py
-  <https://github.com/ReactionMechanismGenerator/ARC/blob/master/arc/settings/settings.py>`_.
+  <https://github.com/ReactionMechanismGenerator/ARC/blob/main/arc/settings/settings.py>`_.
 
   * This dictionary contains default job memory, cpu, and time settings.
   * A default ESS job in ARC has 14 GB of memory, 8 cpu cores, and 120 hours of maximum execution time. The default
@@ -122,7 +122,7 @@ The first two directives are only required if you'd like ARC to access remote se
     use when troubleshoot a job. The default value is 80%.
 
 - Update the submit scripts in your copy of ARC's `submit.py
-  <https://github.com/ReactionMechanismGenerator/ARC/blob/master/arc/settings/submit.py>`_
+  <https://github.com/ReactionMechanismGenerator/ARC/blob/main/arc/settings/submit.py>`_
   according to your servers' definitions.
   * See the given template examples, and follow the structure of nested dictionaries (by server name, then by ESS name).
   * Preserve the variables in curly braces (e.g., ``{memory}``), so that ARC is able to auto-complete them.
@@ -134,7 +134,7 @@ ARC keeps track of software location on servers using a Python dictionary associ
 with the servers they are installed on (values). The server name must be consistent with the respective definition
 in the ``servers`` dictionary mentioned above. Typically, you would update the ``global_ess_settings`` dictionary in
 your copy of ARC's
-`settings.py <https://github.com/ReactionMechanismGenerator/ARC/blob/master/arc/settings/settings.py>`_
+`settings.py <https://github.com/ReactionMechanismGenerator/ARC/blob/main/arc/settings/settings.py>`_
 to reflect your software and servers, for example::
 
   global_ess_settings = {
@@ -170,7 +170,7 @@ Cluster software definitions
 
 ARC supports Slurm and Oracle/Sun Grid Engine (OGE / SGE). If you're using other `cluster software`__, or if your
 server's definitions are different that ARC's, you should also modify the following variables in your copy of ARC's
-`settings.py <https://github.com/ReactionMechanismGenerator/ARC/blob/master/arc/settings/settings.py>`_:
+`settings.py <https://github.com/ReactionMechanismGenerator/ARC/blob/main/arc/settings/settings.py>`_:
 
 - ``check_status_command``
 - ``submit_command``
@@ -245,10 +245,10 @@ To get the most recent developer version, do the following
     cd ~/Path/to/ARC/
     git stash
     git fetch origin
-    git pull origin master
+    git pull origin main
     git stash pop
 
-The above will update your `master` branch of ARC.
+The above will update your `main` branch of ARC.
 
 To update to a specific version (e.g., version 1.1.0), do the following
 (and make sure to change `~/Path/to/ARC/` accordingly)::
@@ -291,7 +291,7 @@ Resolving a merge conflict consists of three stages:
   updated ARC code). Make the changes and get rid of the unneeded ``<<<<<<< HEAD``,
   ``=======``, and ``>>>>>>> new_branch_to_merge_later`` markings. Repeat for all conflicts.
 - Stage the changed by typing: ``git add .``
-- If you don't plan to commit your changes, unstage them by typing: ``git reset --soft origin/master``
+- If you don't plan to commit your changes, unstage them by typing: ``git reset --soft origin/main``
 
 
 .. include:: links.txt

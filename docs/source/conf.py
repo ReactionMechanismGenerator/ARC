@@ -63,8 +63,8 @@ templates_path = ['_templates']
 # source_suffix = ['.rst', '.md']
 source_suffix = '.rst'
 
-# The master toctree document.
-master_doc = 'index'
+# The main toctree document.
+main_doc = 'index'
 
 
 # A list of default flags for automatically documented items.
@@ -154,7 +154,7 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-    (master_doc, 'ARC.tex', u'ARC Documentation',
+    (main_doc, 'ARC.tex', u'ARC Documentation',
      u'Alon Grinberg Dana', 'manual'),
 ]
 
@@ -164,7 +164,7 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    (master_doc, 'arc', u'ARC Documentation',
+    (main_doc, 'arc', u'ARC Documentation',
      [author], 1)
 ]
 
@@ -175,7 +175,7 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-    (master_doc, 'ARC', u'ARC Documentation',
+    (main_doc, 'ARC', u'ARC Documentation',
      author, 'ARC', 'One line description of project.',
      'Miscellaneous'),
 ]
