@@ -755,7 +755,8 @@ H      -1.67091600   -1.35164600   -0.93286400"""
                                        H      -1.48016200    0.42782200    1.10607600
                                        H      -1.51224100   -0.37064400   -0.48297200""",
                         'is_ts': True, 'label': 'TS0', 'long_thermo_description': '', 'force_field': 'MMFF94s',
-                        'mol': {'atoms': [{'charge': 0, 'edges': {-1: 1.0}, 'radical_electrons': 0,
+                        'mol': {'atom_order': [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
+                                'atoms': [{'charge': 0, 'edges': {-1: 1.0}, 'radical_electrons': 0,
                                            'element': {'isotope': -1, 'mass': 0.01201064046472311, 'name': 'carbon',
                                                        'number': 6, 'symbol': 'C'},
                                            'id': -1, 'label': '', 'lone_pairs': 0, 'props': {'inRing': False}},
