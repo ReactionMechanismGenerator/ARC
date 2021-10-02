@@ -591,7 +591,7 @@ def determine_symmetry(xyz: dict) -> Tuple[int, int]:
     # coords is an N x 3 numpy.ndarray of atomic coordinates in the same order as `atom_numbers`
     coords = np.array(xyz['coords'], np.float64)
     unique_id = '0'  # Just some name that the SYMMETRY code gives to one of its jobs
-    scr_dir = os.path.join(ARC_PATH, 'scratch')  # Scratch directory that the SYMMETRY code writes its files in
+    scr_dir = os.path.join('/tmp', 'symmetry_scratch')  # Scratch directory that the SYMMETRY code writes its files in
     if not os.path.exists(scr_dir):
         os.makedirs(scr_dir)
     symmetry = optical_isomers = 1
