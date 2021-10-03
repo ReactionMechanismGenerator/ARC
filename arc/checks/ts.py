@@ -32,7 +32,6 @@ logger = get_logger()
 
 def check_ts(reaction: 'ARCReaction',
              verbose: bool = True,
-             parameter: str = 'E0',
              job: Optional['JobAdapter'] = None,
              checks: Optional[List[str]] = None,
              ):
@@ -57,8 +56,8 @@ def check_ts(reaction: 'ARCReaction',
         if entry not in ['energy', 'freq', 'IRC', 'rotors']:
             raise ValueError(f"Requested checks could be 'energy', 'freq', 'IRC', or 'rotors', got:\n{checks}")
 
-    if 'energy' in checks or (not reaction.ts_species.ts_checks['E0'] and not reaction.ts_species.ts_checks['e_elect']):
-        check_ts_energy(reaction=reaction, verbose=verbose, parameter=parameter)
+    if 'energy' in checks or not reaction.ts_species.ts_checks['e_elect']:
+        check_ts_energy(reaction=reaction, verbose=verbose)
 
     if 'freq' in checks or (not reaction.ts_species.ts_checks['normal_mode_displacement'] and job is not None):
         check_normal_mode_displacement(reaction, job=job)
@@ -97,73 +96,49 @@ def ts_passed_all_checks(species: 'ARCSpecies',
 
 def check_ts_energy(reaction: 'ARCReaction',
                     verbose: bool = True,
-                    parameter: str = 'E0',
                     ) -> None:
     """
-    Check that the TS E0 or electronic energy is above both reactant and product wells.
-    By default E0 is checked first, if not available for all species and TS, the electronic energy is checked.
-    Sets the respective energy parameter in the ``TS.ts_checks`` dictionary.
+    Check that the TS electronic energy is above both reactant and product wells.
+    Sets the respective energy parameter 'e_elect' in the ``TS.ts_checks`` dictionary.
 
     Args:
         reaction (ARCReaction): The reaction for which the TS is checked.
         verbose (bool, optional): Whether to print logging messages.
-        parameter (str, optional): The energy parameter to consider ('E0' or 'e_elect').
     """
-    if parameter not in ['E0', 'e_elect']:
-        raise ValueError(f"The energy parameter must be either 'E0' or 'e_elect', got: {parameter}")
-
-    # Determine E0 and e_elect.
-    r_e0 = None if any([spc.e0 is None for spc in reaction.r_species]) \
-        else sum(spc.e0 * reaction.get_species_count(species=spc, well=0) for spc in reaction.r_species)
-    p_e0 = None if any([spc.e0 is None for spc in reaction.p_species]) \
-        else sum(spc.e0 * reaction.get_species_count(species=spc, well=1) for spc in reaction.p_species)
-    ts_e0 = reaction.ts_species.e0
     r_e_elect = None if any([spc.e_elect is None for spc in reaction.r_species]) \
         else sum(spc.e_elect * reaction.get_species_count(species=spc, well=0) for spc in reaction.r_species)
     p_e_elect = None if any([spc.e_elect is None for spc in reaction.p_species]) \
         else sum(spc.e_elect * reaction.get_species_count(species=spc, well=1) for spc in reaction.p_species)
     ts_e_elect = reaction.ts_species.e_elect
+    min_e = extremum_list([r_e_elect, p_e_elect, ts_e_elect], return_min=True)
 
-    # Determine the parameter by which to compare.
-    r_e = r_e0 if parameter == 'E0' else r_e_elect
-    p_e = p_e0 if parameter == 'E0' else p_e_elect
-    ts_e = ts_e0 if parameter == 'E0' else ts_e_elect
-    min_e = extremum_list([r_e, p_e, ts_e], return_min=True)
-    e_str = 'E0' if parameter == 'E0' else 'electronic energy'
-
-    if any([val is not None for val in [r_e, p_e, ts_e]]):
+    if any([val is not None for val in [r_e_elect, p_e_elect, ts_e_elect]]):
         if verbose:
-            r_text = f'{r_e - min_e:.2f} kJ/mol' if r_e is not None else 'None'
-            ts_text = f'{ts_e - min_e:.2f} kJ/mol' if ts_e is not None else 'None'
-            p_text = f'{p_e - min_e:.2f} kJ/mol' if p_e is not None else 'None'
-            logger.info(f'\nReaction {reaction.label} (TS {reaction.ts_label}) has the following path {e_str}:\n'
+            r_text = f'{r_e_elect - min_e:.2f} kJ/mol' if r_e_elect is not None else 'None'
+            ts_text = f'{ts_e_elect - min_e:.2f} kJ/mol' if ts_e_elect is not None else 'None'
+            p_text = f'{p_e_elect - min_e:.2f} kJ/mol' if p_e_elect is not None else 'None'
+            logger.info(f'\nReaction {reaction.label} (TS {reaction.ts_label}) has the following path electronic energy:\n'
                         f'Reactants: {r_text}\n'
                         f'TS: {ts_text}\n'
                         f'Products: {p_text}')
 
-        if all([val is not None for val in [r_e, p_e, ts_e]]):
+        if all([val is not None for val in [r_e_elect, p_e_elect, ts_e_elect]]):
             # We have all params, we can make a quantitative decision.
-            if ts_e > r_e and ts_e > p_e:
+            if ts_e_elect > r_e_elect and ts_e_elect > p_e_elect:
                 # TS is above both wells.
-                reaction.ts_species.ts_checks[parameter] = True
+                reaction.ts_species.ts_checks['e_elect'] = True
                 return
             # TS is not above both wells.
             if verbose:
-                logger.error(f'TS of reaction {reaction.label} has a lower {e_str} value than expected.')
-                reaction.ts_species.ts_checks[parameter] = False
+                logger.error(f'TS of reaction {reaction.label} has a lower electronic energy value than expected.')
+                reaction.ts_species.ts_checks['e_elect'] = False
                 return
-        # We don't have all params (some are ``None``).
-    # We don't have any params (they are all ``None``), or we don't have any params and were only checking E0.
-    if parameter == 'E0':
-        # Use e_elect instead:
-        logger.debug(f'Could not get all E0 values for reaction {reaction.label}, comparing energies using e_elect.')
-        check_ts_energy(reaction=reaction, verbose=verbose, parameter='e_elect')
-        return
+    # We don't have any params (they are all ``None``)
     if verbose:
         logger.info('\n')
-        logger.error(f"Could not get {e_str} of all species in reaction {reaction.label}. Cannot check TS.\n")
+        logger.error(f"Could not get electronic energy of all species in reaction {reaction.label}. Cannot check TS.\n")
     # We don't really know, assume ``True``
-    reaction.ts_species.ts_checks[parameter] = True
+    reaction.ts_species.ts_checks['e_elect'] = True
     reaction.ts_species.ts_checks['warnings'] += 'Could not determine TS energy relative to the wells; '
 
 
