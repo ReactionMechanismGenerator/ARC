@@ -155,21 +155,42 @@ H                 -1.28677889    1.04716138   -1.01532486"""
         cls.rxn_6.ts_species = ARCSpecies(label='TS6', is_ts=True,
                                           xyz=os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite', 'TS1_composite_695.out'))
 
+        cls.c2h5no2_xyz = """O                  0.62193295    1.59121319   -0.58381518
+                             N                  0.43574593    0.41740669    0.07732982
+                             O                  1.34135576   -0.35713755    0.18815532
+                             C                 -0.87783860    0.10001361    0.65582554
+                             C                 -1.73002357   -0.64880063   -0.38564362
+                             H                 -1.37248469    1.00642547    0.93625873
+                             H                 -0.74723653   -0.51714586    1.52009245
+                             H                 -1.23537748   -1.55521250   -0.66607681
+                             H                 -2.68617014   -0.87982825    0.03543830
+                             H                 -1.86062564   -0.03164117   -1.24991054"""
+        cls.rxn_7 = ARCReaction(r_species=[ARCSpecies(label='C2H5NO2', smiles='[O-][N+](=O)CC', xyz=cls.c2h5no2_xyz)],
+                                p_species=[ARCSpecies(label='C2H5ONO', smiles='CCON=O')])
+        cls.rxn_7.ts_species = ARCSpecies(label='TS7', is_ts=True,
+                                          xyz=os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite', 'keto_enol_ts.out'))
+
         cls.rxn_2a.determine_family(rmg_database=cls.rmgdb, save_order=True)
         cls.rxn_2b.determine_family(rmg_database=cls.rmgdb, save_order=True)
         cls.rxn_3.determine_family(rmg_database=cls.rmgdb, save_order=True)
         cls.rxn_4.determine_family(rmg_database=cls.rmgdb, save_order=True)
         cls.rxn_5.determine_family(rmg_database=cls.rmgdb, save_order=True)
         cls.rxn_6.determine_family(rmg_database=cls.rmgdb, save_order=True)
+        cls.rxn_7.determine_family(rmg_database=cls.rmgdb, save_order=True)
 
     def test_check_ts(self):
         """Test the check_ts() function."""
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq',
-                                                           'TS_C3_intraH_8.out')  # Correct TS (freq run, not composite).
+        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'TS_C3_intraH_8.out')
         self.rxn_2a.ts_species.populate_ts_checks()
         self.assertFalse(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
         ts.check_ts(reaction=self.rxn_2a, job=self.job1)
         self.assertTrue(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
+
+        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite', 'keto_enol_ts.out')
+        self.rxn_7.ts_species.populate_ts_checks()
+        self.assertFalse(self.rxn_7.ts_species.ts_checks['normal_mode_displacement'])
+        ts.check_ts(reaction=self.rxn_7, job=self.job1)
+        self.assertTrue(self.rxn_7.ts_species.ts_checks['normal_mode_displacement'])
 
     def test_did_ts_pass_all_checks(self):
         """Test the did_ts_pass_all_checks() function"""
