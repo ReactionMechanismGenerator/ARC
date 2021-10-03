@@ -38,14 +38,14 @@ def statmech_factory(statmech_adapter_label: str,  # add everything that goes in
                      bac_type: Optional[str],
                      sp_level: Optional['Level'] = None,
                      freq_scale_factor: float = 1.0,
-                     species: Type['ARCSpecies'] = None,
-                     reaction: Type['ARCReaction'] = None,
+                     species: 'ARCSpecies' = None,
+                     reaction: 'ARCReaction' = None,
                      species_dict: dict = None,
                      T_min: Optional[tuple] = None,
                      T_max: Optional[tuple] = None,
                      T_count: int = 50,
                      three_params: bool = True,
-                     ) -> Type[StatmechAdapter]:
+                     ) -> StatmechAdapter:
     """
     A factory generating a statmech adapter corresponding to ``statmech_adapter_label``.
 
