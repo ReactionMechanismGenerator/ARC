@@ -55,6 +55,7 @@ echo "Running on node : $SLURMD_NODENAME"
 echo "Current directory : $(pwd)"
 echo "============================================================"
 
+touch initial_time
 
 GAUSS_SCRDIR=/state/partition1/user/{un}/$SLURM_JOB_NAME-$SLURM_JOB_ID
 export $GAUSS_SCRDIR
@@ -65,6 +66,8 @@ mkdir -p $GAUSS_SCRDIR
 g16 < input.gjf > input.log
 
 rm -rf $GAUSS_SCRDIR
+
+touch final_time
 
         """,
         'orca': """#!/bin/bash -l
@@ -100,11 +103,16 @@ echo "orcaversion"
 which orca
 mkdir -p $WorkDir
 cd $WorkDir
+
+touch initial_time
+
 cp $SubmitDir/input.in .
 
 $orcadir/orca input.in > input.log
 cp input.log  $SubmitDir/
 rm -rf  $WorkDir
+
+touch final_time
 
 """,
         'molpro': """#!/bin/bash -l
@@ -116,6 +124,8 @@ rm -rf  $WorkDir
 #SBATCH --mem-per-cpu={memory}
 #SBATCH -o out.txt
 #SBATCH -e err.txt
+
+touch initial_time
 
 export PATH=/opt/molpro/molprop_2015_1_linux_x86_64_i8/bin:$PATH
 
@@ -141,6 +151,8 @@ cp input.* "$SubmitDir/"
 cp geometry*.* "$SubmitDir/"
 
 rm -rf $sdir
+
+touch final_time
 
 """,
     },
@@ -175,11 +187,15 @@ queue
         # will be renamed to ``job.sh`` when uploaded
         'gaussian_job': """#!/bin/csh
 
+touch initial_time
+
 mkdir -p /storage/ce_dana/{un}/scratch/g09/
 
 source /Local/ce_dana/g09/bsd/g09.login
 
 /Local/ce_dana/g09/g09 < input.gjf > input.log
+
+touch final_time
 
 """,
 
@@ -224,12 +240,16 @@ which orca
 mkdir -p $WorkDir
 cd $WorkDir
 
+touch initial_time
+
 cp "$SubmitDir/input.in" .
 
 ${OrcaDir}/orca input.in > input.log
 cp * "$SubmitDir/"
 
 rm -rf $WorkDir
+
+touch final_time
 
 """,
     },
@@ -267,6 +287,9 @@ mkdir -p $GAUSS_SCRDIR
 mkdir -p $WorkDir
 
 cd $WorkDir
+
+touch initial_time
+
 . $g16root/g16/bsd/g16.profile
 
 cp "$SubmitDir/input.gjf" .
@@ -278,6 +301,8 @@ cp * "$SubmitDir/"
 
 rm -rf $GAUSS_SCRDIR
 rm -rf $WorkDir
+
+touch final_time
 
 """,
         # QChem 5.2
@@ -295,6 +320,8 @@ rm -rf $WorkDir
 echo "Running on node:"
 hostname
 
+touch initial_time
+
 source /opt/qchem/qcenv.sh
 
 export QC=/opt/qchem
@@ -307,6 +334,8 @@ mkdir -p /scratch/{un}/{name}/qlscratch
 qchem -nt {cpus} input.in output.out
 
 rm -r /scratch/{un}/{name}
+
+touch final_time
 
 """,
         # Molpro 2015
@@ -336,6 +365,8 @@ SubmitDir=`pwd`
 mkdir -p $sdir
 cd $sdir
 
+touch initial_time
+
 cp "$SubmitDir/input.in" .
 
 molpro -n {cpus} -d $sdir input.in
@@ -344,6 +375,8 @@ cp input.* "$SubmitDir/"
 cp geometry*.* "$SubmitDir/"
 
 rm -rf $sdir
+
+touch final_time
 
 """,
         # Orca
@@ -380,12 +413,16 @@ SubmitDir=`pwd`
 mkdir -p $WorkDir
 cd $WorkDir
 
+touch initial_time
+
 cp "$SubmitDir/input.in" .
 
 ${ORCA_DIR}/orca input.in > input.log
 cp * "$SubmitDir/"
 
 rm -rf $WorkDir
+
+touch final_time
 
 """,
         # TeraChem
@@ -407,11 +444,15 @@ echo "Running on node : $SLURMD_NODENAME"
 echo "Current directory : $(pwd)"
 echo "============================================================"
 
+touch initial_time
+
 module load cuda92/toolkit
 module load medsci
 module load terachem
 
 terachem input.in > output.out
+
+touch final_time
 
 """,
     },
@@ -432,6 +473,8 @@ terachem input.in > output.out
 echo "Running on node:"
 hostname
 
+touch initial_time
+
 g16root=/opt
 GAUSS_SCRDIR=/scratch/{un}/{name}
 export g16root GAUSS_SCRDIR
@@ -441,6 +484,8 @@ mkdir -p /scratch/{un}/{name}
 g16 input.gjf
 
 rm -r /scratch/{un}/{name}
+
+touch final_time
 
 """,
         # Gaussian 03
@@ -456,6 +501,8 @@ rm -r /scratch/{un}/{name}
 #$ -o out.txt
 #$ -e err.txt
 
+touch initial_time
+
 echo "Running on node:"
 hostname
 
@@ -468,6 +515,8 @@ mkdir -p /scratch/{un}/{name}
 g03 input.gjf
 
 rm -r /scratch/{un}/{name}
+
+touch final_time
 
 """,
         # QChem 5.2
@@ -485,6 +534,8 @@ rm -r /scratch/{un}/{name}
 echo "Running on node:"
 hostname
 
+touch initial_time
+
 source /opt/qchem/qcenv.sh
 
 export QC=/opt/qchem
@@ -497,6 +548,8 @@ mkdir -p /scratch/{un}/{name}/qlscratch
 qchem -nt {cpus} input.in output.out
 
 rm -r /scratch/{un}/{name}
+
+touch final_time
 
 """,
         # Molpro 2012
@@ -511,12 +564,16 @@ rm -r /scratch/{un}/{name}
 #$ -o out.txt
 #$ -e err.txt
 
+touch initial_time
+
 export PATH=/opt/molpro2012/molprop_2012_1_Linux_x86_64_i8/bin:$PATH
 
 sdir=/scratch/{un}
 mkdir -p /scratch/{un}/qlscratch
 
 molpro -d $sdir -n {cpus} input.in
+
+touch final_time
 
 """,
         # OneDMin
@@ -537,7 +594,11 @@ sdir=/scratch/{un}
 mkdir -p /scratch/{un}/onedmin
 cd $WorkDir
 
+touch initial_time
+
 ~/auto1dmin/exe/auto1dmin.x < input.in > output.out
+
+touch final_time
 
 """,
         # Orca
@@ -564,12 +625,16 @@ SubmitDir=`pwd`
 mkdir -p $WorkDir
 cd $WorkDir
 
+touch initial_time
+
 cp "$SubmitDir/input.in" .
 
 /opt/orca/orca input.in > input.log
 cp * "$SubmitDir/"
 
 rm -rf $WorkDir
+
+touch final_time
 
 """,
     },
@@ -609,11 +674,16 @@ echo "orcaversion"
 which orca
 mkdir -p $WorkDir
 cd $WorkDir
+
+touch initial_time
+
 cp $SubmitDir/input.in .
 
 $orcadir/orca input.in > input.log
 cp input.log  $SubmitDir/
 rm -rf  $WorkDir
+
+touch final_time
         """,
     },
     'pbs_sample': {
@@ -625,6 +695,8 @@ rm -rf  $WorkDir
 #PBS -N {name}
 #PBS -o out.txt
 #PBS -e err.txt
+
+touch initial_time
 
 export g16root=/home/{un}/Software
 export PATH=$g16root/g16/:$g16root/gv:$PATH
@@ -639,6 +711,8 @@ chmod 750 $GAUSS_SCRDIR
 g16 < input.gjf > input.log
 
 rm -rf $GAUSS_SCRDIR
+
+touch final_time
 
     """,
     },
