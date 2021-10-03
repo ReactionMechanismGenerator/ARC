@@ -2317,7 +2317,6 @@ class Scheduler(object):
             # Check E0 of related reactions.
             for rxn in self.rxn_list:
                 if label in rxn.reactants + rxn.products + [rxn.ts_label]:
-                    logger.error(f'Could not calculate a rate coefficient for reaction {rxn.label}, switching TS.')
                     switch_ts = check_rxn_e0(reaction=rxn,
                                              species_dict=self.species_dict,
                                              project_directory=self.project_directory,
@@ -2327,6 +2326,7 @@ class Scheduler(object):
                                              freq_scale_factor=self.freq_scale_factor,
                                              )
                     if switch_ts is True:
+                        logger.error(f'Could not calculate a rate coefficient for reaction {rxn.label}, switching TS.')
                         self.switch_ts(rxn.ts_label)
 
     def check_negative_freq(self,
