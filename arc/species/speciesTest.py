@@ -83,6 +83,14 @@ class TestARCSpecies(unittest.TestCase):
         H       1.4015274689    -0.6230592706    -0.8487058662"""
         cls.spc6 = ARCSpecies(label='N3', xyz=cls.n3_xyz, multiplicity=1, smiles='NNN')
 
+        cls.xyz_0 = """C                 -0.55523587   -0.05171225   -0.10207502
+                       O                 -1.97915424   -0.11085934    0.01564540
+                       H                 -2.30049134   -0.91933285   -0.39020316
+                       O                  0.21054322   -1.25903252   -0.13140363
+                       O                  0.02392670    1.06277903   -0.17985981
+                       O                  0.34507064   -1.66451868   -1.38035653
+                       H                  0.85915943   -2.47502781   -1.40004560"""
+
         xyz1 = os.path.join(ARC_PATH, 'arc', 'testing', 'xyz', 'AIBN.gjf')
         cls.spc7 = ARCSpecies(label='AIBN', smiles='N#CC(C)(C)N=NC(C)(C)C#N', xyz=xyz1)
 
@@ -302,6 +310,14 @@ class TestARCSpecies(unittest.TestCase):
         self.assertEqual(self.spc6.rotors_dict[1]['scan'], [1, 4, 6, 7])
         self.assertEqual(len(self.spc6.rotors_dict[1]['top']), 3)
         self.assertTrue(all([t in [6, 7, 8] for t in self.spc6.rotors_dict[1]['top']]))
+
+        spc_0 = ARCSpecies(label='OHCOOOH', smiles='OC(=O)OO', xyz="/home/alon/xyz.xyz")
+        spc_0.determine_rotors()
+        self.assertEqual(spc_0.rotors_dict[0]['pivots'], [1, 2])
+        self.assertEqual(spc_0.rotors_dict[1]['scan'], [2, 1, 4, 6])
+        self.assertEqual(spc_0.rotors_dict[1]['top'], [4, 6, 7])
+        self.assertEqual(spc_0.rotors_dict[2]['scan'], [1, 4, 6, 7])
+        self.assertEqual(spc_0.rotors_dict[2]['torsion'], [0, 3, 5, 6])
 
         ts_xyz1 = {'symbols': ('O', 'C', 'N', 'C', 'H', 'H', 'H', 'H'),
                    'isotopes': (16, 12, 14, 12, 1, 1, 1, 1),
