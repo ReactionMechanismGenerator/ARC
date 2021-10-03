@@ -19,9 +19,11 @@ from arc.common import (ARC_PATH,
                         read_yaml_file,
                         )
 from arc.species.mapping import find_equivalent_atoms_in_reactants
+from arc.statmech.factory import statmech_factory
 
 if TYPE_CHECKING:
     from arc.job.adapter import JobAdapter
+    from arc.level import Level
     from arc.species.species import ARCSpecies, TSGuess
     from arc.reaction import ARCReaction
 
@@ -44,10 +46,10 @@ def check_ts(reaction: 'ARCReaction',
         add tests
 
     Args:
-        reaction ('ARCReaction'): The reaction for which the TS is checked.
+        reaction (ARCReaction): The reaction for which the TS is checked.
         verbose (bool, optional): Whether to print logging messages.
         parameter (str, optional): The energy parameter to consider ('E0' or 'e_elect').
-        job ('JobAdapter', optional): The frequency job object instance.
+        job (JobAdapter, optional): The frequency job object instance.
         checks (List[str], optional): Specific checks to run. Optional values: 'energy', 'freq', 'IRC', 'rotors'.
     """
     checks = checks or list()
@@ -77,7 +79,7 @@ def ts_passed_all_checks(species: 'ARCSpecies',
     Check whether the TS species passes all checks other than ones specified in ``exemptions``.
 
     Args:
-        species ('ARCSpecies'): The TS species.
+        species (ARCSpecies): The TS species.
         exemptions (List[str], optional): Keys of the TS.ts_checks dict to pass.
         verbose (bool, optional): Whether to log findings.
 
@@ -103,7 +105,7 @@ def check_ts_energy(reaction: 'ARCReaction',
     Sets the respective energy parameter in the ``TS.ts_checks`` dictionary.
 
     Args:
-        reaction ('ARCReaction'): The reaction for which the TS is checked.
+        reaction (ARCReaction): The reaction for which the TS is checked.
         verbose (bool, optional): Whether to print logging messages.
         parameter (str, optional): The energy parameter to consider ('E0' or 'e_elect').
     """
@@ -165,6 +167,72 @@ def check_ts_energy(reaction: 'ARCReaction',
     reaction.ts_species.ts_checks['warnings'] += 'Could not determine TS energy relative to the wells; '
 
 
+def check_rxn_e0(reaction: 'ARCReaction',
+                 species_dict: dict,
+                 project_directory: str,
+                 kinetics_adapter: str,
+                 output: dict,
+                 sp_level: 'Level',
+                 freq_scale_factor: float = 1.0,
+                 ):
+    """
+    A helper function for checking a reaction E0 between wells and a TS using ZPE from statmech.
+
+    Args:
+        reaction (ARCReaction): The reaction for which the TS is checked.
+        species_dict (dict): The Scheduler species dictionary.
+        project_directory (str): The path to ARC's project directory.
+        kinetics_adapter (str): The statmech software to use for kinetic rate coefficient calculations.
+        output (dict): The Scheduler output dictionary.
+        sp_level (Level): The single-point level of theory.
+        freq_scale_factor (float, optional): The frequency scaling factor.
+    """
+    for spc_label in reaction.reactants + reaction.products + [reaction.ts_label]:
+        folder = 'rxns' if species_dict[spc_label].is_ts else 'Species'
+        freq_path = os.path.join(project_directory, 'output', folder, spc_label, 'geometry', 'freq.out')
+        if not os.path.isfile(freq_path):
+            return None
+    considered_labels = list()
+    for species in reaction.r_species + reaction.p_species:
+        if species.label in considered_labels:
+            continue
+        considered_labels.append(species.label)
+        statmech_adapter = statmech_factory(statmech_adapter_label=kinetics_adapter,
+                                            output_directory=os.path.join(project_directory, 'output'),
+                                            output_dict=output,
+                                            bac_type=None,
+                                            sp_level=sp_level,
+                                            freq_scale_factor=freq_scale_factor,
+                                            species=species,
+                                            )
+        statmech_adapter.compute_thermo(kinetics_flag=True,
+                                        e0_only=True,
+                                        skip_rotors=True,
+                                        )
+    statmech_adapter = statmech_factory(statmech_adapter_label=kinetics_adapter,
+                                        output_directory=os.path.join(project_directory, 'output'),
+                                        output_dict=output,
+                                        bac_type=None,
+                                        sp_level=sp_level,
+                                        freq_scale_factor=freq_scale_factor,
+                                        reaction=reaction,
+                                        species_dict=species_dict,
+                                        T_min=(500, 'K'),
+                                        T_max=(1000, 'K'),
+                                        T_count=6,
+                                        )
+    statmech_adapter.compute_high_p_rate_coefficient(skip_rotors=True,
+                                                     verbose=False,
+                                                     )
+    if reaction.kinetics is None:
+        if reaction.ts_species.ts_guesses_exhausted:
+            return False
+        return True  # Switch TS.
+    reaction.ts_species.ts_checks['E0'] = True
+    reaction.kinetics = None
+    return False  # Don't switch TS.
+
+
 def check_normal_mode_displacement(reaction: 'ARCReaction',
                                    job: 'JobAdapter',
                                    rxn_zone_atom_indices: Optional[List[int]] = None,
@@ -176,8 +244,8 @@ def check_normal_mode_displacement(reaction: 'ARCReaction',
     and therefore we must consider symmetry/degeneracy as facilitated by find_equivalent_atoms_in_reactants().
 
     Args:
-        reaction ('ARCReaction'): The reaction for which the TS is checked.
-        job ('JobAdapter'): The frequency job object instance.
+        reaction (ARCReaction): The reaction for which the TS is checked.
+        job (JobAdapter): The frequency job object instance.
         rxn_zone_atom_indices (List[int], optional): The 0-indices of atoms identified by the normal displacement
                                                      mode as the reaction zone. Automatically determined if not given.
     """
@@ -221,8 +289,8 @@ def invalidate_rotors_with_both_pivots_in_a_reactive_zone(reaction: 'ARCReaction
     Invalidate rotors in which both pivots are included in the reactive zone.
 
     Args:
-        reaction ('ARCReaction'): The respective reaction object instance.
-        job ('JobAdapter'): The frequency job object instance.
+        reaction (ARCReaction): The respective reaction object instance.
+        job (JobAdapter): The frequency job object instance.
         rxn_zone_atom_indices (List[int], optional): The 0-indices of atoms identified by the normal displacement
                                                      mode as the reaction zone. Automatically determined if not given.
     """
@@ -245,8 +313,8 @@ def get_rxn_zone_atom_indices(reaction: 'ARCReaction',
     Get the reaction zone atom indices by parsing normal mode displacement.
 
     Args:
-        reaction ('ARCReaction'): The respective reaction object instance.
-        job ('JobAdapter'): The frequency job object instance.
+        reaction (ARCReaction): The respective reaction object instance.
+        job (JobAdapter): The frequency job object instance.
 
     Returns:
         List[int]: The indices of the atoms participating in the reaction.
@@ -332,8 +400,8 @@ def get_expected_num_atoms_with_largest_normal_mode_disp(normal_disp_mode_rms: L
 
     Args:
         normal_disp_mode_rms (List[float]): The RMS of the normal displacement modes.
-        ts_guesses (List['TSGuess']): The TSGuess objects of a TS species.
-        reaction ('ARCReaction'): The respective reaction object instance.
+        ts_guesses (List[TSGuess]): The TSGuess objects of a TS species.
+        reaction (ARCReaction): The respective reaction object instance.
 
     Returns:
         int: The number of atoms to consider that have a significant motions in the normal mode displacement.
@@ -357,7 +425,7 @@ def get_rxn_normal_mode_disp_atom_number(rxn_family: Optional[str] = None,
 
     Args:
         rxn_family (str, optional): The reaction family label.
-        reaction ('ARCReaction', optional): The reaction object instance.
+        reaction (ARCReaction, optional): The reaction object instance.
         rms_list (List[float], optional): The root mean squares of the normal mode displacements.
 
     Raises:
