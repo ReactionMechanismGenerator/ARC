@@ -42,9 +42,9 @@ if TYPE_CHECKING:
 
 logger = get_logger()
 
-default_job_settings, servers, submit_filenames, t_max_format, output_filenames, rotor_scan_resolution, tasks_coeff = \
+default_job_settings, servers, submit_filenames, t_max_format, input_filenames, output_filenames, rotor_scan_resolution, tasks_coeff = \
     settings['default_job_settings'], settings['servers'], settings['submit_filenames'], settings['t_max_format'], \
-    settings['output_filenames'], settings['rotor_scan_resolution'], settings['tasks_coeff']
+    settings['input_filenames'], settings['output_filenames'], settings['rotor_scan_resolution'], settings['tasks_coeff']
 
 constraint_type_dict = {2: 'B', 3: 'A', 4: 'D'}
 
@@ -604,12 +604,39 @@ class JobAdapter(ABC):
                 with SSHClient(self.server) as ssh:
                     for dl_file in self.files_to_download:
                         ssh.download_file(remote_file_path=dl_file['remote'], local_file_path=dl_file['local'])
-                    if dl_file['file_name'] == output_filenames[self.job_adapter]:
-                        self.final_time = ssh.get_last_modified_time(remote_file_path=dl_file['local'])
+                    self.set_initial_and_final_times(initial=False, ssh=ssh)
             elif self.server == 'local':
-                self.final_time = get_last_modified_time(file_path=os.path.join(self.local_path,
-                                                                                output_filenames[self.job_adapter]))
+                self.set_initial_and_final_times(initial=False)
         self.final_time = self.final_time or datetime.datetime.now()
+
+    def set_initial_and_final_times(self, ssh: Optional[SSHClient] = None):
+        """
+        Set the end time of the job.
+
+        Args:
+            ssh (SSHClient, optional): The SSHClient object instance.
+        """
+        # filenames_dict = input_filenames if initial else output_filenames
+        # touched_file_name = 'initial_time' if initial else 'final_time'
+        initial_time, final_time = None, None
+        if ssh is not None:
+            for dl_file in self.files_to_download:
+                initial_time = ssh.get_last_modified_time(remote_file_path_1=os.path.join(self.remote_path,
+                                                                                          'initial_time'))
+                if dl_file['file_name'] == output_filenames[self.job_adapter]:
+                    final_time = ssh.get_last_modified_time(
+                        remote_file_path_1=os.path.join(self.remote_path, 'final_time'),
+                        remote_file_path_2=dl_file['remote'],
+                    )
+                    break
+        elif self.server == 'local':
+            initial_time = get_last_modified_time(file_path_1=os.path.join(self.local_path, 'initial_time'))
+            final_time = get_last_modified_time(
+                file_path_1=os.path.join(self.local_path, 'final_time'),
+                file_path_2=os.path.join(self.local_path, output_filenames[self.job_adapter]),
+            )
+        self.initial_time = initial_time or self.initial_time
+        self.final_time = final_time or datetime.datetime.now()
 
     def determine_run_time(self):
         """
@@ -949,9 +976,12 @@ class JobAdapter(ABC):
         else:
             # If running locally (local queue or incore),
             # just rename the output file to "output.out" for consistency between software.
-            if self.final_time is None:
-                self.final_time = get_last_modified_time(
-                    file_path=os.path.join(self.local_path, output_filenames[self.job_adapter]))
+            if self.final_time is None or self.initial_time is None:
+                if self.server == 'local':
+                    self.set_initial_and_final_times()
+                else:
+                    with SSHClient(self.server) as ssh:
+                        self.set_initial_and_final_times(ssh=ssh)
         rename_output(local_file_path=self.local_path_to_output_file, software=self.job_adapter)
         xyz_path = os.path.join(self.local_path, 'scr', 'optim.xyz')
         if os.path.isfile(xyz_path):
