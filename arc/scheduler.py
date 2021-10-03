@@ -5,7 +5,6 @@ Includes spawning, terminating, checking, and troubleshooting various jobs
 
 import datetime
 import itertools
-import logging
 import os
 import pprint
 import shutil
@@ -17,7 +16,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 from arc import parser, plotter
 from arc.checks.common import get_i_from_job_name, sum_time_delta
-from arc.checks.ts import check_ts
+from arc.checks.ts import check_ts, check_rxn_e0
 from arc.common import (extremum_list,
                         get_angle_in_180_range,
                         get_logger,
@@ -55,7 +54,6 @@ from arc.species.converter import (check_isomorphism,
                                    xyz_to_coords_list,
                                    xyz_to_str,
                                    )
-from arc.statmech.factory import statmech_factory
 import arc.rmgdb as rmgdb
 from arc.species.vectors import get_angle, calculate_dihedral_angle
 
@@ -2316,60 +2314,20 @@ class Scheduler(object):
         if job.job_status[1]['status'] != 'done' or (not freq_ok and not self.species_dict[label].is_ts):
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level)
         if job.job_status[1]['status'] == 'done' and freq_ok:
-            self.check_rxn_e0(label)
-
-    def check_rxn_e0(self, label: str):
-        """
-        A helper function for checking a reaction E0 between wells and TS.
-
-        Args:
-            label (str): The label of a species (could be a TS) for which freq was just computed.
-        """
-        for rxn in self.rxn_list:
-            if label in rxn.reactants + rxn.products + [rxn.ts_label]:
-                for spc_label in rxn.reactants + rxn.products + [rxn.ts_label]:
-                    folder = 'rxns' if self.species_dict[label].is_ts else 'Species'
-                    freq_path = os.path.join(self.project_directory, 'output', folder, spc_label, 'geometry', 'freq.out')
-                    if not os.path.isfile(freq_path):
-                        return None
-                if rxn.ts_species.ts_guesses_exhausted:
-                    return None
-                considered_labels = list()
-                for species in rxn.r_species + rxn.p_species:
-                    if species.label in considered_labels:
-                        continue
-                    considered_labels.append(species.label)
-                    statmech_adapter = statmech_factory(statmech_adapter_label=self.kinetics_adapter,
-                                                        output_directory=os.path.join(self.project_directory, 'output'),
-                                                        output_dict=self.output,
-                                                        bac_type=None,
-                                                        sp_level=self.sp_level,
-                                                        freq_scale_factor=self.freq_scale_factor,
-                                                        species=species,
-                                                        )
-                    statmech_adapter.compute_thermo(kinetics_flag=True,
-                                                    e0_only=True,
-                                                    skip_rotors=True,
-                                                    )
-                statmech_adapter = statmech_factory(statmech_adapter_label=self.kinetics_adapter,
-                                                    output_directory=os.path.join(self.project_directory, 'output'),
-                                                    output_dict=self.output,
-                                                    bac_type=None,
-                                                    sp_level=self.sp_level,
-                                                    freq_scale_factor=self.freq_scale_factor,
-                                                    reaction=rxn,
-                                                    species_dict=self.species_dict,
-                                                    T_min=(500, 'K'),
-                                                    T_max=(1000, 'K'),
-                                                    T_count=6,
-                                                    )
-                statmech_adapter.compute_high_p_rate_coefficient(skip_rotors=True,
-                                                                 verbose=False,
-                                                                 )
-                if rxn.kinetics is None:
+            # Check E0 of related reactions.
+            for rxn in self.rxn_list:
+                if label in rxn.reactants + rxn.products + [rxn.ts_label]:
                     logger.error(f'Could not calculate a rate coefficient for reaction {rxn.label}, switching TS.')
-                    self.switch_ts(rxn.ts_label)
-                rxn.kinetics = None
+                    switch_ts = check_rxn_e0(reaction=rxn,
+                                             species_dict=self.species_dict,
+                                             project_directory=self.project_directory,
+                                             kinetics_adapter=self.kinetics_adapter,
+                                             output=self.output,
+                                             sp_level=self.sp_level,
+                                             freq_scale_factor=self.freq_scale_factor,
+                                             )
+                    if switch_ts is True:
+                        self.switch_ts(rxn.ts_label)
 
     def check_negative_freq(self,
                             label: str,
