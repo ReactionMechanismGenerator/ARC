@@ -176,7 +176,7 @@ def check_ess_settings(ess_settings: Optional[dict] = None) -> dict:
             raise SettingsError(f'Recognized ESS software are Gaussian, QChem, Molpro, Orca, TeraChem, Psi4, '
                                 f'or OneDMin. Got: {ess}')
         for server in server_list:
-            if not isinstance(server, bool) and server.lower() not in list(servers.keys()):
+            if not isinstance(server, bool) and server.lower() not in [s.lower() for s in servers.keys()]:
                 server_names = [name for name in servers.keys()]
                 raise SettingsError(f'Recognized servers are {server_names}. Got: {server}')
     logger.info(f'\nUsing the following ESS settings:\n{pprint.pformat(settings_dict)}\n')
