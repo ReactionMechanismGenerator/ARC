@@ -23,8 +23,9 @@ import pandas as pd
 
 from arc.common import ARC_PATH, get_logger
 from arc.exceptions import JobError
-from arc.imports import pipe_submit, settings, submit_scripts
-from arc.job.local import (check_job_status,
+from arc.imports import local_arc_path, pipe_submit, settings, submit_scripts
+from arc.job.local import (change_mode,
+                           check_job_status,
                            delete_job,
                            get_last_modified_time,
                            rename_output,
@@ -53,44 +54,61 @@ class JobEnum(str, Enum):
     The supported job software adapters.
     The available adapters are a finite set.
 
-    Todo: Add missing adapters
+    Todo: Add the following adapters:
+        - cfour
+        - cosmo
+        - onedmin
+        - openbabel
+        - rdkit
+        - terachem
+        - torchani
+        - turbomol
+        - xtb
+        - gsm
+        - pygsm
+        - neb_ase
+        - neb_terachem
+        - neb_gpr
+        - qst2
+        - user
+        - readuct
+        - copenhagen
+        - fsm
+        - gan
     """
     # ESS
-    arc = 'arc'  # Todo
-    cfour = 'cfour'  # Todo
-    cosmo = 'cosmo'  # Todo
+    cfour = 'cfour'
+    cosmo = 'cosmo'
     gaussian = 'gaussian'
     molpro = 'molpro'
-    onedmin = 'onedmin'  # Todo
-    openbabel = 'openbabel'  # Todo
+    onedmin = 'onedmin'
+    openbabel = 'openbabel'
     orca = 'orca'
-    psi4 = 'psi4'  # Todo
+    psi4 = 'psi4'
     qchem = 'qchem'
-    rdkit = 'rdkit'  # Todo
+    rdkit = 'rdkit'
     terachem = 'terachem'
-    torchani = 'torchani'  # Todo
+    torchani = 'torchani'
     turbomol = 'turbomol'
-    xtb = 'xtb'  # Todo
+    xtb = 'xtb'
 
     # TS search methods
-    # Todo: see https://doi.org/10.1021/acs.jctc.7b00764
-    autotst = 'autotst'  # AutoTST
-    gsm = 'gsm'  # Todo  # double ended growing string method (DE-GSM)
-    pygsm = 'pygsm'  # Todo  # double ended growing string method (DE-GSM): pyGSM: https://github.com/ZimmermanGroup/molecularGSM/wiki
-    heuristics = 'heuristics'  # Todo  # brute force heuristics
-    kinbot = 'kinbot'  # KinBot
+    autotst = 'autotst'  # AutoTST, 10.1021/acs.jpca.7b07361, 10.26434/chemrxiv.13277870.v2
+    gsm = 'gsm'  # Double ended growing string method (DE-GSM), [10.1021/ct400319w, 10.1063/1.4804162]
+    pygsm = 'pygsm'  # Double ended growing string method (DE-GSM): pyGSM: https://github.com/ZimmermanGroup/molecularGSM/wiki
+    heuristics = 'heuristics'  # ARC's heuristics
+    kinbot = 'kinbot'  # KinBot, 10.1016/j.cpc.2019.106947
     gcn = 'gcn'  # Graph neural network for isomerization, https://doi.org/10.1021/acs.jpclett.0c00500
-    neb_ase = 'neb_ase'  # Todo  # NEB in ASE: https://www.scm.com/doc/Tutorials/ADF/Transition_State_with_ASE.html, https://wiki.fysik.dtu.dk/ase/ase/neb.html, https://wiki.fysik.dtu.dk/ase/tutorials/neb/idpp.html#idpp-tutorial., ASE autoNEB: https://wiki.fysik.dtu.dk/ase/dev/_modules/ase/autoneb.html
-    neb_terachem = 'neb_terachem'  # Todo  # NEB in TeraChem
-    # # Todo  NEB GPR:  https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.122.156001
-    qst2 = 'qst2'  # Todo  # Synchronous Transit-Guided Quasi-Newton (STQN) implemented in Gaussian
-    user = 'user'  # Todo  # user guesses
-    #  # Todo   TodoReaDuct: https://doi.org/10.1021/acs.jctc.8b00169
-    # # Todo  Copenhagen: https://chemrxiv.org/articles/Fast_and_Automatic_Estimation_of_Transition_State_Structures_Using_Tight_Binding_Quantum_Chemical_Calculations/12600443/1
-    # # Todo  FSM in QChem: http://www.q-chem.com/qchem-website/manual/qchem43_manual/sect-approx_hess.html
-    # # Todo  NEBTERPOLATION using MD to find TSs: https://pubs.acs.org/doi/full/10.1021/acs.jctc.5b00830?src=recsys
-    # # Todo  https://chemrxiv.org/articles/preprint/Fast_and_Automatic_Estimation_of_Transition_State_Structures_Using_Tight_Binding_Quantum_Chemical_Calculations/12600443
-    # # Todo  (growing string method [10.1021/ct400319w, 10.1063/1.4804162], nudge elastic band [10.1063/1.1329672, 10.1063/1.1323224], synchronous transit and quasi‐Newton methods [https://onlinelibrary.wiley.com/doi/epdf/10.1002/ijch.199300051], KinBot [10.1016/j.cpc.2019.106947], AutoTST [10.1021/acs.jpca.7b07361, 10.26434/chemrxiv.13277870.v2], tight binding reaction path [10.26434/chemrxiv.12600443.v1], freezing string method [10.1021/acs.jctc.5b00407, 10.1063/1.3664901], and deep learning [10.26434/chemrxiv.12302084.v2])
+    neb_ase = 'neb_ase'  # NEB in ASE: https://www.scm.com/doc/Tutorials/ADF/Transition_State_with_ASE.html, https://wiki.fysik.dtu.dk/ase/ase/neb.html, https://wiki.fysik.dtu.dk/ase/tutorials/neb/idpp.html#idpp-tutorial., ASE autoNEB: https://wiki.fysik.dtu.dk/ase/dev/_modules/ase/autoneb.html
+    neb_terachem = 'neb_terachem'  # NEB in TeraChem, [10.1063/1.1329672, 10.1063/1.1323224]
+    neb_gpr = 'neb_gpr'  # NEB GPR:  https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.122.156001
+    neb_terpolation = 'neb_terpolation'  # NEBTERPOLATION using MD to find TSs: https://pubs.acs.org/doi/full/10.1021/acs.jctc.5b00830?src=recsys
+    qst2 = 'qst2'  # Synchronous Transit-Guided Quasi-Newton (STQN) implemented in Gaussian, https://onlinelibrary.wiley.com/doi/epdf/10.1002/ijch.199300051
+    user = 'user'  # user guesses
+    readuct = 'readuct'  # ReaDuct: https://doi.org/10.1021/acs.jctc.8b00169
+    copenhagen = 'copenhagen'  # Copenhagen: https://chemrxiv.org/articles/Fast_and_Automatic_Estimation_of_Transition_State_Structures_Using_Tight_Binding_Quantum_Chemical_Calculations/12600443/1
+    fsm = 'fsm'  # FSM in QChem: http://www.q-chem.com/qchem-website/manual/qchem43_manual/sect-approx_hess.html, 10.1021/acs.jctc.5b00407, 10.1063/1.3664901
+    gan = 'gan'  # Generative adversarial networks, https://doi.org/10.1063/5.0055094
 
 
 class JobTypeEnum(str, Enum):
@@ -281,6 +299,28 @@ class JobAdapter(ABC):
         """
         pass
 
+    def set_job_shell_file_to_upload(self) -> dict:
+        """
+        The HTCondor cluster software does not allow, to the best of our understanding,
+        the inclusion of sell commands in its submit script. As a result, often an additional
+        ``job.sh`` file is required. This method generalizes such cases for all cluster software
+        and will search within the submit_scripts dictionary for the respective server and the
+        respective ESS whether an additional ``<ess>_job`` key is available, where ``<ess>`` is
+        the actual ESS name, e.g., ``gaussian_job``. THis file will be uploaded as ``job.sh``.
+
+        Returns:
+            dict: A file representation.
+        """
+        file_name = 'job.sh'
+        script_key = f'{self.job_adapter}_job'
+        if self.server in submit_scripts.keys() and script_key in submit_scripts[self.server].keys():
+            file_content = submit_scripts[self.server][script_key].format(un='$USER', cpus=self.cpu_cores)
+            with open(os.path.join(self.local_path, file_name), 'w') as f:
+                f.write(file_content)
+                if self.server == 'local':
+                    change_mode(mode='+x', file_name=file_name, path=self.local_path)
+            return self.get_file_property_dictionary(file_name=file_name, make_x=True)
+
     def execute(self):
         """
         Execute a job.
@@ -294,11 +334,8 @@ class JobAdapter(ABC):
 
         A 'pipe' execution type assumes an array of jobs and submits several ARC instances (workers)
         with an HDF5 file with directions.
-        The output is returned within the HDF5 file (Todo: or leave it in the calcs folder?).
+        The output is returned within the HDF5 file.
         The new ARC instance will run all of its jobs incore (it represents one worker).
-
-        Todo:
-            - write pipe submit
         """
         self.upload_files()
         execution_type = JobExecutionTypeEnum(self.execution_type)
@@ -310,17 +347,18 @@ class JobAdapter(ABC):
         elif execution_type == JobExecutionTypeEnum.queue:
             self.execute_queue()
         elif execution_type == JobExecutionTypeEnum.pipe:
-            # Todo: check that HDF5 is available, else raise error
-            # Todo: submit ARC workers with a HDF5 file
+            # Check that the HDF5 file is available, else raise an error.
+            # Submit ARC workers with the HDF5 file.
             pass
-        self.download_files()
+        if not self.restrarted:
+            self._write_initiated_job_to_csv_file()
 
     def determine_job_array_parameters(self):
         """
         Determine the number of tasks to use in a job array
         and whether to iterate by conformers, species, reactions, or scan constraints.
         """
-        # return None  # tmp
+        return None  # tmp
         # Todo: set a capacity for incore jobs per adapter. E.g., 1 for Gaussian, 100 for GCN without parallelization
         # todo: adapters with high capacity should know about it, they're currently set up to only run one instance
         if len(self.job_types) > 1:
@@ -450,6 +488,7 @@ class JobAdapter(ABC):
                 max_task_num=self.tasks,
                 arc_path=ARC_PATH,
                 hdf5_path=os.path.join(self.remote_path, 'data.hdf5'),
+                pwd=self.remote_path if self.server.lower() != 'local' else self.local_path,
             )
         except KeyError:
             if self.tasks is None:
@@ -480,6 +519,7 @@ class JobAdapter(ABC):
         self.local_path_to_output_file = os.path.join(self.local_path, 'output.out')
 
         self.local_path_to_orbitals_file = os.path.join(self.local_path, 'orbitals.fchk')  # todo: qchem
+        self.local_path_to_check_file = os.path.join(self.local_path, 'check.chk')
         self.local_path_to_lj_file = os.path.join(self.local_path, 'lj.dat')  # Todo: onedmin
         self.local_path_to_hess_file = os.path.join(self.local_path, 'input.hess')
         self.local_path_to_xyz = None
@@ -487,9 +527,13 @@ class JobAdapter(ABC):
         if not os.path.isdir(self.local_path):
             os.makedirs(self.local_path)
 
-        # parentheses don't play well in folder names:
-        species_name_remote = self.species_label.replace('(', '_').replace(')', '_')  # todo: why only remote?
-        self.remote_path = os.path.join('runs', 'ARC_Projects', self.project, species_name_remote, self.job_name)
+        if self.server is not None:
+            # Parentheses don't play well in folder names:
+            species_name_remote = self.species_label.replace('(', '_').replace(')', '_')  # todo: why only remote?
+            path = servers[self.server].get('path', '').lower()
+            path = os.path.join(path, servers[self.server]['un']) if path else ''
+            self.remote_path = os.path.join(path, 'runs', 'ARC_Projects', self.project,
+                                            species_name_remote, self.job_name)
 
         self.set_additional_file_paths()
 
@@ -585,7 +629,8 @@ class JobAdapter(ABC):
         This is not an abstract method and should not be overwritten.
         """
         # job_number
-        csv_path = os.path.join(ARC_PATH, 'initiated_jobs.csv')
+        local_arc_path_ = local_arc_path if os.path.isdir(local_arc_path) else ARC_PATH
+        csv_path = os.path.join(local_arc_path_, 'initiated_jobs.csv')
         if os.path.isfile(csv_path):
             # check that this is the updated version
             with open(csv_path, 'r') as f:
@@ -627,7 +672,8 @@ class JobAdapter(ABC):
         Write an initiated ARC job into the initiated_jobs.csv file.
         """
         if not self.testing:
-            csv_path = os.path.join(ARC_PATH, 'initiated_jobs.csv')
+            local_arc_path_ = local_arc_path if os.path.isdir(local_arc_path) else ARC_PATH
+            csv_path = os.path.join(local_arc_path_, 'initiated_jobs.csv')
             with open(csv_path, 'a') as f:
                 writer = csv.writer(f, dialect='excel')
                 row = [self.job_num, self.project, self.species_label, self.job_type, self.is_ts, self.charge,
@@ -642,7 +688,8 @@ class JobAdapter(ABC):
         if not self.testing:
             if self.job_status[0] != 'done' or self.job_status[1]['status'] != 'done':
                 self.determine_job_status()
-            csv_path = os.path.join(ARC_PATH, 'completed_jobs.csv')
+            local_arc_path_ = local_arc_path if os.path.isdir(local_arc_path) else ARC_PATH
+            csv_path = os.path.join(local_arc_path_, 'completed_jobs.csv')
             if os.path.isfile(csv_path):
                 # check that this is the updated version
                 with open(csv_path, 'r') as f:
@@ -659,7 +706,7 @@ class JobAdapter(ABC):
                            'final_time', 'run_time', 'job_status_(server)', 'job_status_(ESS)',
                            'ESS troubleshooting methods used']
                     writer.writerow(row)
-            csv_path = os.path.join(ARC_PATH, 'completed_jobs.csv')
+            csv_path = os.path.join(local_arc_path_, 'completed_jobs.csv')
             with open(csv_path, 'a') as f:
                 writer = csv.writer(f, dialect='excel')
                 job_type = self.job_type
@@ -695,7 +742,7 @@ class JobAdapter(ABC):
             total_submit_script_memory = self.job_memory_gb * 1024 * 1.1  # MB
         # Determine amount of memory in submit script based on cluster job scheduling system.
         cluster_software = servers[self.server].get('cluster_soft').lower()
-        if cluster_software in ['oge', 'sge', 'pbs']:
+        if cluster_software in ['oge', 'sge', 'pbs', 'htcondor']:
             # In SGE, "-l h_vmem=5000M" specifies the amount of maximum memory required for all cores to be 5000 MB.
             self.submit_script_memory = math.ceil(total_submit_script_memory)  # in MB
         elif cluster_software in ['slurm']:
@@ -807,30 +854,29 @@ class JobAdapter(ABC):
         if self.job_status[0] == 'errored':
             return
         self.job_status[0] = self._check_job_server_status() if self.execution_type != 'incore' else 'done'
-        try:
-            self._check_job_ess_status()  # populates self.job_status[1], and downloads the output file
-        except IOError:
-            logger.error(f'Got an IOError when trying to download output file for job {self.job_name}.')
-            content = self._get_additional_job_info()
-            if content:
-                logger.info('Got the following information from the server:')
-                logger.info(content)
-                for line in content.splitlines():
-                    # example:
-                    # slurmstepd: *** JOB 7752164 CANCELLED AT 2019-03-27T00:30:50 DUE TO TIME LIMIT on node096 ***
-                    if 'cancelled' in line.lower() and 'due to time limit' in line.lower():
-                        logger.warning(f'Looks like the job was cancelled on {self.server} due to time limit. '
-                                       f'Got: {line}')
-                        new_max_job_time = self.max_job_time - 24 if self.max_job_time > 25 else 1
-                        logger.warning(f'Setting max job time to {new_max_job_time} (was {self.max_job_time})')
-                        self.max_job_time = new_max_job_time
-                        self.job_status[1]['status'] = 'errored'
-                        self.job_status[1]['keywords'] = ['ServerTimeLimit']
-                        self.job_status[1]['error'] = 'Job cancelled by the server since it reached the maximal ' \
-                                                      'time limit.'
-                        self.job_status[1]['line'] = ''
-            raise
-        if self.job_status[0] == 'running':
+        if self.job_status[0] == 'done':
+            try:
+                self._check_job_ess_status()  # Populates self.job_status[1], and downloads the output file.
+            except IOError:
+                logger.error(f'Got an IOError when trying to download output file for job {self.job_name}.')
+                content = self._get_additional_job_info()
+                if content:
+                    logger.info(f'Got the following information from the server:\n{content}')
+                    for line in content.splitlines():
+                        # example:
+                        # slurmstepd: *** JOB 7752164 CANCELLED AT 2019-03-27T00:30:50 DUE TO TIME LIMIT on node096 ***
+                        if 'cancelled' in line.lower() and 'due to time limit' in line.lower():
+                            logger.warning(f'Looks like the job was cancelled on {self.server} due to time limit. '
+                                           f'Got: {line}')
+                            new_max_job_time = self.max_job_time - 24 if self.max_job_time > 25 else 1
+                            logger.warning(f'Setting max job time to {new_max_job_time} (was {self.max_job_time})')
+                            self.max_job_time = new_max_job_time
+                            self.job_status[1]['status'] = 'errored'
+                            self.job_status[1]['keywords'] = ['ServerTimeLimit']
+                            self.job_status[1]['error'] = 'Job cancelled by the server since it reached the maximal ' \
+                                                          'time limit.'
+                            self.job_status[1]['line'] = ''
+        elif self.job_status[0] == 'running':
             self.job_status[1]['status'] = 'running'
 
     def _get_additional_job_info(self):
@@ -842,7 +888,7 @@ class JobAdapter(ABC):
         lines1, lines2 = list(), list()
         content = ''
         cluster_soft = servers[self.server]['cluster_soft'].lower()
-        if cluster_soft in ['oge', 'sge', 'slurm', 'pbs']:
+        if cluster_soft in ['oge', 'sge', 'slurm', 'pbs', 'htcondor']:
             local_file_path1 = os.path.join(self.local_path, 'out.txt')
             local_file_path2 = os.path.join(self.local_path, 'err.txt')
             if self.server != 'local':
@@ -899,17 +945,17 @@ class JobAdapter(ABC):
                 os.remove(self.local_path_to_orbitals_file)
             if os.path.exists(self.local_path_to_check_file):
                 os.remove(self.local_path_to_check_file)
-            self._download_output_file()  # Also downloads the check file and orbital file if they exist.
+            self.download_files()  # Also downloads the check file and orbital file if they exist.
         else:
             # If running locally (local queue or incore),
             # just rename the output file to "output.out" for consistency between software.
             if self.final_time is None:
                 self.final_time = get_last_modified_time(
                     file_path=os.path.join(self.local_path, output_filenames[self.job_adapter]))
-            rename_output(local_file_path=self.local_path_to_output_file, software=self.job_adapter)
-            xyz_path = os.path.join(self.local_path, 'scr', 'optim.xyz')
-            if os.path.isfile(xyz_path):
-                self.local_path_to_xyz = xyz_path
+        rename_output(local_file_path=self.local_path_to_output_file, software=self.job_adapter)
+        xyz_path = os.path.join(self.local_path, 'scr', 'optim.xyz')
+        if os.path.isfile(xyz_path):
+            self.local_path_to_xyz = xyz_path
         self.determine_run_time()
         if os.path.isfile(self.local_path_to_output_file):
             status, keywords, error, line = determine_ess_status(output_path=self.local_path_to_output_file,
@@ -982,7 +1028,7 @@ class JobAdapter(ABC):
                                      remote: str = '',
                                      source: str = 'path',
                                      make_x: bool = False,
-                                     ):
+                                     ) -> dict:
         """
         Get a dictionary that represents a file to be uploaded or downloaded to/from a server via SSH.
 
@@ -993,6 +1039,9 @@ class JobAdapter(ABC):
             source (str, optional): Either ``'path'`` to treat the ``'local'`` attribute as a file path,
                                     or ``'input_files'`` to take the respective entry from inputs.py.
             make_x (bool, optional): Whether to make the file executable, default: ``False``.
+
+        Returns:
+            dict: A file representation.
         """
         if not file_name:
             raise ValueError('file_name cannot be empty')
