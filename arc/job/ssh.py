@@ -385,22 +385,31 @@ class SSHClient(object):
 
     @check_connections
     def get_last_modified_time(self, 
-                               remote_file_path: str,
+                               remote_file_path_1: str,
+                               remote_file_path_2: Optional[str],
                                ) -> Optional[datetime.datetime]:
         """
-        Get the last modified time of a remote file.
+        Returns the last modified time of ``remote_file_path_1`` if the file exists,
+        else returns the last modified time of ``remote_file_path_2`` if the file exists.
 
         Args:
-            remote_file_path (str): The remote file path to check.
+            remote_file_path_1 (str): The remote path to file 1.
+            remote_file_path_2 (str, optional): The remote path to file .
 
         Returns: datetime.datetime
             The last modified time of the file.
         """
+        timestamp = None
         try:
-            timestamp = self._sftp.stat(remote_file_path).st_mtime
+            timestamp = self._sftp.stat(remote_file_path_1).st_mtime
         except IOError:
-            return None
-        return datetime.datetime.fromtimestamp(timestamp)
+            pass
+        if timestamp is None and remote_file_path_2 is not None:
+            try:
+                timestamp = self._sftp.stat(remote_file_path_2).st_mtime
+            except IOError:
+                return None
+        return datetime.datetime.fromtimestamp(timestamp) if timestamp is not None else None
 
     def list_dir(self, remote_path: str = '') -> list:
         """
