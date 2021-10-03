@@ -344,7 +344,7 @@ class ARCSpecies(object):
         self.rxn_zone_atom_indices = None
 
         if species_dict is not None:
-            # Reading from a dictionary (it's possible that the dict contain only a 'yml_path' argument, check first)
+            # Reading from a dictionary (it's possible that the dict contains only a 'yml_path' argument, check first)
             if 'yml_path' in species_dict:
                 if 'label' in species_dict:
                     self.label = species_dict['label']
@@ -782,8 +782,10 @@ class ARCSpecies(object):
                 self.mol = rmg_mol_from_inchi(inchi)
             elif smiles is not None:
                 self.mol = Molecule(smiles=smiles)
-        if self.mol is None:
-            self.mol_from_xyz()
+        # Perceive molecule from xyz coordinates. This also populates the .mol attribute of the Species.
+        # It overrides self.mol generated from adjlist or smiles so xyz and mol will have the same atom order.
+        if self.final_xyz or self.initial_xyz or self.most_stable_conformer or self.conformers:
+            self.mol_from_xyz(get_cheap=False)
         if self.mol is not None:
             if 'bond_corrections' not in species_dict and not self.is_ts:
                 self.bond_corrections = enumerate_bonds(self.mol)
