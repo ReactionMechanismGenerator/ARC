@@ -158,7 +158,7 @@ class ARCSpecies(object):
                                 resulting in a 1D scan instead of an ND scan.
                                 Values are nested lists. Each value is a list where the entries are either pivot lists
                                 (e.g., [1, 5]) or lists of pivot lists (e.g., [[1, 5], [6, 8]]), or a mix
-                                (e.g., [[4, 8], [[6, 9], [3, 4]]). The requested directed scan type will be executed
+                                (e.g., [[4, 8], [[6, 9], [3, 4]]]). The requested directed scan type will be executed
                                 separately for each list entry in the value. A list entry that contains only two pivots
                                 will result in a 1D scan, while a list entry with N pivots will consider all of them,
                                 and will result in an ND scan if '_diagonal' is not specified.
