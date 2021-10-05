@@ -772,6 +772,9 @@ class JobAdapter(ABC):
         if cluster_software in ['oge', 'sge', 'pbs', 'htcondor']:
             # In SGE, "-l h_vmem=5000M" specifies the amount of maximum memory required for all cores to be 5000 MB.
             self.submit_script_memory = math.ceil(total_submit_script_memory)  # in MB
+        if cluster_software in ['pbs']:
+            # In SGE, "-l h_vmem=5000M" specifies the amount of maximum memory required for all cores to be 5000 MB.
+            self.submit_script_memory = math.ceil(total_submit_script_memory) * 1E3  # in B
         elif cluster_software in ['slurm']:
             # In Slurm, "#SBATCH --mem-per-cpu=2000" specifies the amount of memory required per cpu core to be 2000 MB.
             self.submit_script_memory = math.ceil(total_submit_script_memory / self.cpu_cores)  # in MB
