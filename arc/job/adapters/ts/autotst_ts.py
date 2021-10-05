@@ -16,6 +16,8 @@ from arc.imports import settings
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import check_argument_consistency
 from arc.job.factory import register_job_adapter
+from arc.job.local import submit_job
+from arc.job.ssh import SSHClient
 from arc.plotter import save_geo
 from arc.species.converter import xyz_from_data
 from arc.species.species import ARCSpecies, TSGuess, colliding_atoms
@@ -40,6 +42,11 @@ if TYPE_CHECKING:
 AUTOTST_PYTHON = settings['AUTOTST_PYTHON']
 
 logger = get_logger()
+
+default_job_settings, global_ess_settings, input_filenames, output_filenames, rotor_scan_resolution, servers, \
+    submit_filenames = settings['default_job_settings'], settings['global_ess_settings'], settings['input_filenames'], \
+                       settings['output_filenames'], settings['rotor_scan_resolution'], settings['servers'], \
+                       settings['submit_filenames']
 
 
 class AutoTSTAdapter(JobAdapter):
@@ -212,7 +219,116 @@ class AutoTSTAdapter(JobAdapter):
         """
         Write the input file to execute the job on the server.
         """
-        pass
+
+        HAS_AUTOTST = True
+        try:
+            # new format
+            from autotst.reaction import Reaction as AutoTST_Reaction
+        except (ImportError, ModuleNotFoundError):
+            try:
+                # old format
+                from autotst.reaction import AutoTST_Reaction
+            except (ImportError, ModuleNotFoundError):
+                HAS_AUTOTST = False
+
+        if not HAS_AUTOTST:
+            raise ModuleNotFoundError(f'Could not import AutoTST, make sure it is properly installed.\n'
+                                      f'See {{url}} for more information, or use the MAKEFILE provided with ARC.')
+
+
+
+
+        self.reactions = [self.reactions] if not isinstance(self.reactions, list) else self.reactions
+        for rxn in self.reactions:
+            if rxn.family.label in self.supported_families:
+                if rxn.ts_species is None:
+                    # Mainly used for testing, in an ARC run the TS species should already exist.
+                    rxn.ts_species = ARCSpecies(label='TS',
+                                                is_ts=True,
+                                                charge=rxn.charge,
+                                                multiplicity=rxn.multiplicity,
+                                                )
+                reaction_label_fwd = get_autotst_reaction_string(rxn.rmg_reaction)
+                reaction_label_rev = get_autotst_reaction_string(Reaction(reactants=rxn.rmg_reaction.products,
+                                                                          products=rxn.rmg_reaction.reactants))
+
+                i = 0
+                for reaction_label, direction in zip([reaction_label_fwd, reaction_label_rev], ['F', 'R']):
+                    # run AutoTST as a subprocess in the desired direction
+                    commands = ['source ~/.bashrc']
+                    commands.append(f'{AUTOTST_PYTHON} {self.script_path} {reaction_label} {self.output_path}')
+                    command = '; '.join(commands)
+
+                    tic = datetime.datetime.now()
+
+                    output = subprocess.run(command, shell=True, executable='/bin/bash')
+
+                    tok = datetime.datetime.now() - tic
+
+                    if output.returncode:
+                        direction_str = 'forward' if direction == 'F' else 'reverse'
+                        logger.warning(f'AutoTST subprocess did not give a successful return code for {rxn} '
+                                       f'in the {direction_str} direction.\n'
+                                       f'Got return code: {output.returncode}\n'
+                                       f'stdout: {output.stdout}\n'
+                                       f'stderr: {output.stderr}')
+                    if os.path.isfile(self.output_path):
+                        results = read_yaml_file(path=self.output_path)
+                        if results:
+                            for result in results:
+                                xyz = xyz_from_data(coords=result['coords'], numbers=result['numbers'])
+                                unique = True
+                                for other_tsg in rxn.ts_species.ts_guesses:
+                                    if other_tsg.success and almost_equal_coords(xyz, other_tsg.initial_xyz):
+                                        if 'autotst' not in other_tsg.method.lower():
+                                            other_tsg.method += ' and AutoTST'
+                                        unique = False
+                                        break
+                                if unique:
+                                    ts_guess = TSGuess(method=f'AutoTST',
+                                                       method_direction=direction,
+                                                       method_index=i,
+                                                       t0=tic,
+                                                       execution_time=tok,
+                                                       xyz=xyz,
+                                                       success=True,
+                                                       index=len(rxn.ts_species.ts_guesses),
+                                                       )
+                                    rxn.ts_species.ts_guesses.append(ts_guess)
+                                    save_geo(xyz=xyz,
+                                             path=self.local_path,
+                                             filename=f'AutoTST {direction}',
+                                             format_='xyz',
+                                             comment=f'AutoTST {direction}',
+                                             )
+                                    i += 1
+                        else:
+                            ts_guess = TSGuess(method=f'AutoTST',
+                                               method_direction=direction,
+                                               method_index=i,
+                                               t0=tic,
+                                               execution_time=tok,
+                                               success=False,
+                                               index=len(rxn.ts_species.ts_guesses),
+                                               )
+                            rxn.ts_species.ts_guesses.append(ts_guess)
+                            i += 1
+
+            if len(self.reactions) < 5:
+                successes = len(
+                    [tsg for tsg in rxn.ts_species.ts_guesses if tsg.success and 'autotst' in tsg.method])
+                if successes:
+                    logger.info(f'AutoTST successfully found {successes} TS guesses for {rxn.label}.')
+                else:
+                    logger.info(f'AutoTST did not find any successful TS guesses for {rxn.label}.')
+
+
+
+
+
+
+        with open(os.path.join(self.local_path, input_filenames[self.job_adapter]), 'w') as f:
+            f.write(content)
 
     def set_files(self) -> None:
         """
@@ -236,6 +352,10 @@ class AutoTSTAdapter(JobAdapter):
         Called from set_file_paths() and extends it.
         """
         self.output_path = os.path.join(self.local_path, 'ts_results.yml')
+        self.script_path = os.path.join(ARC_PATH, 'arc', 'job', 'adapters', 'ts', 'scripts',
+                                        'autotst_script.py')
+
+
 
     def set_input_file_memory(self) -> None:
         """
@@ -341,10 +461,109 @@ class AutoTSTAdapter(JobAdapter):
 
     def execute_queue(self):
         """
-        (Execute a job to the server's queue.)
-        A single AutoTST job will always be executed incore.
+        Execute a job to the server's queue.
         """
-        self.execute_incore()
+        self._log_job_execution()
+
+
+
+
+        # Submit to queue, differentiate between local (same machine using its queue) and remote servers.
+        if self.server != 'local':
+            with SSHClient(self.server) as ssh:
+                self.job_status[0], self.job_id = ssh.submit_job(remote_path=self.remote_path)
+        else:
+            # submit to the local queue
+            self.job_status[0], self.job_id = submit_job(path=self.local_path)
+
+
+
+
+        if not HAS_AUTOTST:
+            raise ModuleNotFoundError(f'Could not import AutoTST, make sure it is properly installed.\n'
+                                      f'See {self.url} for more information, or use the MAKEFILE provided with ARC.')
+        self.reactions = [self.reactions] if not isinstance(self.reactions, list) else self.reactions
+        for rxn in self.reactions:
+            if rxn.family.label in self.supported_families:
+                if rxn.ts_species is None:
+                    # Mainly used for testing, in an ARC run the TS species should already exist.
+                    rxn.ts_species = ARCSpecies(label='TS',
+                                                is_ts=True,
+                                                charge=rxn.charge,
+                                                multiplicity=rxn.multiplicity,
+                                                )
+                reaction_label_fwd = get_autotst_reaction_string(rxn.rmg_reaction)
+                reaction_label_rev = get_autotst_reaction_string(Reaction(reactants=rxn.rmg_reaction.products,
+                                                                          products=rxn.rmg_reaction.reactants))
+
+                i = 0
+                for reaction_label, direction in zip([reaction_label_fwd, reaction_label_rev], ['F', 'R']):
+                    # run AutoTST as a subprocess in the desired direction
+                    commands = ['source ~/.bashrc']
+                    commands.append(f'{AUTOTST_PYTHON} {self.script_path} {reaction_label} {self.output_path}')
+                    command = '; '.join(commands)
+
+                    tic = datetime.datetime.now()
+
+                    output = subprocess.run(command, shell=True, executable='/bin/bash')
+
+                    tok = datetime.datetime.now() - tic
+
+                    if output.returncode:
+                        direction_str = 'forward' if direction == 'F' else 'reverse'
+                        logger.warning(f'AutoTST subprocess did not give a successful return code for {rxn} '
+                                       f'in the {direction_str} direction.\n'
+                                       f'Got return code: {output.returncode}\n'
+                                       f'stdout: {output.stdout}\n'
+                                       f'stderr: {output.stderr}')
+                    if os.path.isfile(self.output_path):
+                        results = read_yaml_file(path=self.output_path)
+                        if results:
+                            for result in results:
+                                xyz = xyz_from_data(coords=result['coords'], numbers=result['numbers'])
+                                unique = True
+                                for other_tsg in rxn.ts_species.ts_guesses:
+                                    if other_tsg.success and almost_equal_coords(xyz, other_tsg.initial_xyz):
+                                        if 'autotst' not in other_tsg.method.lower():
+                                            other_tsg.method += ' and AutoTST'
+                                        unique = False
+                                        break
+                                if unique:
+                                    ts_guess = TSGuess(method=f'AutoTST',
+                                                       method_direction=direction,
+                                                       method_index=i,
+                                                       t0=tic,
+                                                       execution_time=tok,
+                                                       xyz=xyz,
+                                                       success=True,
+                                                       index=len(rxn.ts_species.ts_guesses),
+                                                       )
+                                    rxn.ts_species.ts_guesses.append(ts_guess)
+                                    save_geo(xyz=xyz,
+                                             path=self.local_path,
+                                             filename=f'AutoTST {direction}',
+                                             format_='xyz',
+                                             comment=f'AutoTST {direction}',
+                                             )
+                                    i += 1
+                        else:
+                            ts_guess = TSGuess(method=f'AutoTST',
+                                               method_direction=direction,
+                                               method_index=i,
+                                               t0=tic,
+                                               execution_time=tok,
+                                               success=False,
+                                               index=len(rxn.ts_species.ts_guesses),
+                                               )
+                            rxn.ts_species.ts_guesses.append(ts_guess)
+                            i += 1
+
+            if len(self.reactions) < 5:
+                successes = len([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success and 'autotst' in tsg.method])
+                if successes:
+                    logger.info(f'AutoTST successfully found {successes} TS guesses for {rxn.label}.')
+                else:
+                    logger.info(f'AutoTST did not find any successful TS guesses for {rxn.label}.')
 
 
 def get_autotst_reaction_string(rmg_reaction: Reaction) -> str:
