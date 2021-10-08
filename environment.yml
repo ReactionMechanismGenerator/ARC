@@ -40,6 +40,7 @@ dependencies:
   - pymongo
   - pyparsing
   - rmg::pyrdl
+  - rmg::pyrms
   - python >=3.7
   - pyyaml
   - rmg::quantities
