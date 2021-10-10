@@ -202,7 +202,7 @@ class ArkaneAdapter(StatmechAdapter):
                 ts_species.e0 = arkane_ts_species.conformer.E0.value_si * 0.001  # Convert to kJ/mol.
                 check_ts(reaction=self.reaction)
                 if not ts_passed_all_checks(species=self.reaction.ts_species,
-                                            exemptions=['warnings', 'IRC'],
+                                            exemptions=['warnings', 'IRC', 'E0'],
                                             verbose=True,
                                             ):
                     if verbose:
