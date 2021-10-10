@@ -363,6 +363,13 @@ class TestARCReaction(unittest.TestCase):
         rxn_1.check_attributes()
         rxn_1.determine_family(rmg_database=self.rmgdb)
         self.assertEqual(rxn_1.family.label, 'H_Abstraction')
+        rxn_2 = ARCReaction(r_species=[ARCSpecies(label='HNO', smiles='N=O'),
+                                       ARCSpecies(label='NO2', smiles='[O]N=O')],
+                            p_species=[ARCSpecies(label='HNO2', smiles='[O-][NH+]=O'),
+                                       ARCSpecies(label='NO', smiles='[N]=O')])
+        rxn_2.check_attributes()
+        rxn_2.determine_family(rmg_database=self.rmgdb)
+        self.assertEqual(rxn_2.family.label, 'H_Abstraction')
 
     def test_charge_property(self):
         """Test determining charge"""
