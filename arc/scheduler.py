@@ -2311,8 +2311,9 @@ class Scheduler(object):
         if job.job_status[1]['status'] == 'done' and freq_ok:
             # Check E0 of related reactions.
             for rxn in self.rxn_list:
-                if label in rxn.reactants + rxn.products + [rxn.ts_label] \
-                        and all([output_dict['paths']['freq'] for output_dict in self.output]):
+                labels = rxn.reactants + rxn.products + [rxn.ts_label]
+                if label in labels and all([output_dict['paths']['freq']
+                                            for spc_label, output_dict in self.output.items() if spc_label in labels]):
                     switch_ts = check_rxn_e0(reaction=rxn,
                                              species_dict=self.species_dict,
                                              project_directory=self.project_directory,
