@@ -495,16 +495,16 @@ class Scheduler(object):
         for species in self.species_dict.values():
             if species.initial_xyz is None and species.final_xyz is None and species.conformers \
                     and any([e is not None for e in species.conformer_energies]):
-                # the species has no xyz, but has conformers and at least one of the conformers has energy
+                # The species has no xyz, but has conformers and at least one of the conformers has energy.
                 self.determine_most_stable_conformer(species.label)
-                if species.initial_xyz is not None:
-                    if self.composite_method:
-                        self.run_composite_job(species.label)
-                    else:
-                        self.run_opt_job(species.label, fine=self.fine_only)
+            if species.initial_xyz is not None:
+                if self.composite_method:
+                    self.run_composite_job(species.label)
+                else:
+                    self.run_opt_job(species.label, fine=self.fine_only)
         self.run_conformer_jobs()
-        self.spawn_ts_jobs()  # if all reactants/products are already known (Arkane yml or restart), spawn TS searches
-        while self.running_jobs != {}:  # loop while jobs are still running
+        self.spawn_ts_jobs()  # If all reactants/products are already known (Arkane yml or restart), spawn TS searches.
+        while self.running_jobs != {}:
             logger.debug(f'Currently running jobs:\n{pprint.pformat(self.running_jobs)}')
             self.timer = True
             job_list = list()
@@ -2840,7 +2840,8 @@ class Scheduler(object):
             # Todo: any TS which did not converged (any rxn not calculated) should be reported here with full status: Was the family identified? Were TS guesses found? IF so, what's wrong?
         elif not self.species_dict[label].is_ts or self.species_dict[label].ts_guesses_exhausted:
             job_type_status = {key: val for key, val in self.output[label]['job_types'].items()
-                               if key in self.job_types and self.job_types[key]}
+                               if key in self.job_types and self.job_types[key]
+                               and (key != 'irc' or self.species_dict[label].is_ts)}
             logger.error(f'Species {label} did not converge. Job type status is: {job_type_status}')
         # Update restart dictionary and save the yaml restart file:
         self.save_restart_dict()
