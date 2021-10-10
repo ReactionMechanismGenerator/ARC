@@ -198,6 +198,8 @@ def determine_reaction_family(rmgdb: RMGDatabase,
         - The corresponding RMG reaction's family. ``None`` if no family was found or more than one family were found.
         - Whether the family is its own reverse. ``True`` if it is.
     """
+    for rmg_spc in reaction.reactants + reaction.products:
+        rmg_spc.generate_resonance_structures(keep_isomorphic=False, filter_structures=True, save_order=True)
     fam_list = loop_families(rmgdb=rmgdb, reaction=reaction)
     families = [fam_l[0] for fam_l in fam_list]
     if len(set(families)) == 1:
