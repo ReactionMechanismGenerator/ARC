@@ -39,6 +39,8 @@ default_job_settings, global_ess_settings, input_filenames, output_filenames, ro
 
 input_template = """***,${label}
 memory,${memory},m;
+file,1,file1.int    !allocate permanent integral file
+file,2,file2.wfu    !allocate permanent wave-function (dump) file
 geometry={angstrom;
 ${xyz}}
 ${orbitals}
