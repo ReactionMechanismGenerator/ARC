@@ -197,6 +197,7 @@ def check_rxn_e0(reaction: 'ARCReaction',
                                         T_count=6,
                                         )
     statmech_adapter.compute_high_p_rate_coefficient(skip_rotors=True,
+                                                     estimate_dh_rxn=True,
                                                      verbose=True,
                                                      )
     if reaction.kinetics is None:
