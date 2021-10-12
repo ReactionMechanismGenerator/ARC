@@ -1134,6 +1134,7 @@ class ARCSpecies(object):
                                  'success': None,
                                  'invalidation_reason': '',
                                  'times_dihedral_set': 0,
+                                 'trsh_counter': 0,
                                  'trsh_methods': list(),
                                  'scan_path': '',
                                  'directed_scan_type': key,
