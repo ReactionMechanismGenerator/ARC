@@ -102,6 +102,7 @@ ${geometry}
 }
 
 set basis ${basis}
+set reference uhf
 ${function}(${function_args})
 """
 
@@ -191,7 +192,7 @@ class Psi4Adapter(JobAdapter):
 
         self.job_adapter = 'psi4'
         self.execution_type = execution_type or 'incore'
-        self.command = 'psi4.py'
+        self.command = 'psi4'
         self.url = 'http://www.psicode.org/'
 
         if species is None:
@@ -293,8 +294,19 @@ class Psi4Adapter(JobAdapter):
             return self.species[0].get_xyz()
         else:
             raise ValueError("Geometric data needed to preform the calculations.")
-
-
+    def write_func_args(self, func) -> str:
+        func_args = ''
+        dertype = 'gradient'
+        if self.level.method in['wb97xd']:
+            self.level.method = 'wb97x-d'
+            dertype = 'energy'
+        if func == 'optimize':
+            func_args = f"name = '{self.level.method}',return_wfn = 'on',return_history = 'on',engine = 'optking',dertype ='{dertype}'"
+        elif func == 'energy':
+            func_args = f"name = '{self.level.method}',return_wfn = 'on'"
+        else:
+            func_args = f"name = '{self.level.method}',return_wfn = 'on'"
+        return func_args
     def write_input_file(self) -> None:
         """
         Write the input file to execute the job on the server.
@@ -303,26 +315,24 @@ class Psi4Adapter(JobAdapter):
         func_arg = ''
         if self.job_type in ['conformer','opt','optfreq']:
             func = 'optimize'
-            func_arg = str(self.level.method) +',' + 'on'
         elif self.job_type in ['sp']:
             func = 'energy'
-            func_arg = str(self.level.method) + ',' + ',on'
         else:
             func = 'frequency'
-
-
+        func_arg = write_func_args(func)
         input_dict = {
-            'memory' : self.job_memory_gb
-            'label' : self.species[0].label
-            'charge' : self.species[0].charge
-            'multiplicity' : self.species[0].multiplicity
-            'geometry' : get_geometry()
-            'basis' : self.level.basis
-            'function' : func
-            'function args' : func_arg
+            'memory' : self.job_memory_gb;
+            'label' : self.species[0].label;
+            'charge' : self.species[0].charge;
+            'multiplicity' : self.species[0].multiplicity;
+            'geometry' : get_geometry();
+            'basis' : self.level.basis;
+            'function' : func;
+            'function args' : func_arg;
         }
 
-
+        with open(os.path.join(self.local_path, input_filenames[self.job_adapter]), 'w') as f:
+            f.write(Template(input_template).render(**input_dict))
 
     def set_files(self) -> None:
         """
