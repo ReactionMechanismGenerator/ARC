@@ -27,33 +27,10 @@ class TestPSi4Adapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        cls.job_1 = Psi4Adapter(execution_type='incore',
-                                    job_type='composite',
-                                    level=Level(method='cbs-qb3-paraskevas'),
-                                    project='test',
-                                    project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_Psi4Adapter'),
-                                    species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
-                                    testing=True,
-                                    args={'keyword': {'general': 'IOp(1/12=5,3/44=0)'}},
-                                    )
-        cls.job_2 = Psi4Adapter(execution_type='queue',
-                                    job_type='opt',
-                                    level=Level(method='wb97xd',
-                                                basis='def2-TZVP',
-                                                solvation_method='SMD',
-                                                solvent='Water'),
-                                    project='test',
-                                    project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_Psi4Adapter'),
-                                    species=[ARCSpecies(label='spc1', xyz=['O 0 0 1']),
-                                             ARCSpecies(label='spc2', xyz=['O 0 0 2'])],
-                                    testing=True,
-                                    )
         cls.job_3 = Psi4Adapter(execution_type='queue',
                                     job_type='opt',
-                                    level=Level(method='wb97xd',
-                                                basis='def2-TZVP',
-                                                solvation_method='SMD',
-                                                solvent='Water'),
+                                    level=Level(method='wb97x-d',
+                                                basis='def2-TZVP'),
                                     project='test',
                                     project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_Psi4Adapter'),
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
@@ -72,7 +49,7 @@ class TestPSi4Adapter(unittest.TestCase):
         spc_4.determine_rotors()  # also calls initialize_directed_rotors()
         cls.job_4 = Psi4Adapter(execution_type='queue',
                                     job_type='scan',
-                                    level=Level(method='wb97xd',
+                                    level=Level(method='wb97x-d',
                                                 basis='def2-TZVP'),
                                     project='test',
                                     project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_Psi4Adapter'),
@@ -83,7 +60,7 @@ class TestPSi4Adapter(unittest.TestCase):
                                     )
         cls.job_5 = Psi4Adapter(execution_type='queue',
                                     job_type='freq',
-                                    level=Level(method='wb97xd',
+                                    level=Level(method='wb97x-d',
                                                 basis='def2-TZVP'),
                                     project='test',
                                     project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_Psi4Adapter'),
@@ -95,7 +72,7 @@ class TestPSi4Adapter(unittest.TestCase):
                                     )
         cls.job_6 = Psi4Adapter(execution_type='queue',
                                     job_type='optfreq',
-                                    level=Level(method='wb97xd',
+                                    level=Level(method='wb97x-d',
                                                 basis='def2-TZVP'),
                                     project='test',
                                     project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_Psi4Adapter'),
@@ -134,12 +111,12 @@ class TestPSi4Adapter(unittest.TestCase):
             content_3 = f.read()
         job_3_expected_input_file = """
 memory 14.0 GB
-molecule spc1{
-0 1
-O 0 0 1
+molecule {spc1
+0 3
+O       0.00000000    0.00000000    1.00000000
 }
 
-set basis def2-TZVP
+set basis def2-tzvp
 set reference uhf
 optimize(name = 'wb97x-d',return_wfn = 'on',return_history = 'on',engine = 'optking',dertype ='energy')
 """

@@ -280,6 +280,52 @@ rm -rf $GAUSS_SCRDIR
 rm -rf $WorkDir
 
 """,
+        #psi4
+        #change when availalbe
+        'psi4': """#!/bin/bash -l
+#SBATCH -p long
+#SBATCH -J {name}
+#SBATCH -N 1
+#SBATCH -n {cpus}
+#SBATCH --time={t_max}
+#SBATCH --mem-per-cpu={memory}
+#SBATCH -o out.txt
+#SBATCH -e err.txt
+
+export g16root=/opt
+which g16
+
+echo "============================================================"
+echo "Job ID : $SLURM_JOB_ID"
+echo "Job Name : $SLURM_JOB_NAME"
+echo "Starting on : $(date)"
+echo "Running on node : $SLURMD_NODENAME"
+echo "Current directory : $(pwd)"
+echo "============================================================"
+
+WorkDir=/scratch/{un}/$SLURM_JOB_NAME-$SLURM_JOB_ID
+SubmitDir=`pwd`
+
+GAUSS_SCRDIR=/scratch/{un}/g16/$SLURM_JOB_NAME-$SLURM_JOB_ID
+export GAUSS_SCRDIR
+
+mkdir -p $GAUSS_SCRDIR
+mkdir -p $WorkDir
+
+cd $WorkDir
+. $g16root/g16/bsd/g16.profile
+
+cp "$SubmitDir/input.gjf" .
+cp "$SubmitDir/check.chk" .
+
+g16 < input.gjf > input.log
+formchk check.chk check.fchk
+cp * "$SubmitDir/"
+
+rm -rf $GAUSS_SCRDIR
+rm -rf $WorkDir
+
+""",
         # QChem 5.2
         'qchem': """#!/bin/bash -l
 

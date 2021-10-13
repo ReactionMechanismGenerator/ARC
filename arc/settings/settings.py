@@ -93,7 +93,7 @@ levels_ess = {
     'qchem': ['m06-2x'],
     'orca': ['dlpno'],
     'terachem': ['pbe'],
-    'psi4': ['hf','scf']
+    'psi4': ['hf', 'scf']
 }
 
 check_status_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat -u $USER',
@@ -147,7 +147,7 @@ output_filenames = {'gaussian': 'input.log',
                     'onedmin': 'output.out',
                     'orca': 'input.log',
                     'qchem': 'output.out',
-                    'terachem': 'output.out'
+                    'terachem': 'output.out',
                     'psi4': 'output.dat',
                     }
 

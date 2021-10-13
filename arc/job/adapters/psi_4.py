@@ -258,7 +258,7 @@ class Psi4Adapter(JobAdapter):
         self.server = self.args['trsh']['server'] if 'server' in self.args['trsh'] \
             else self.ess_settings[self.job_adapter][0] if isinstance(self.ess_settings[self.job_adapter], list) \
             else self.ess_settings[self.job_adapter]
-        self.label = self.species[0].label
+        self.species_label = self.species[0].label
         if len(self.species) > 1:
             self.species_label += f'_and_{len(self.species) - 1}_others'
 
@@ -289,19 +289,15 @@ class Psi4Adapter(JobAdapter):
         Returns: The geometry of the species using the useres data.
         """
         if self.xyz is not None:
-            return xyz
+            return self.xyz
         elif self.species[0] is not None:
             return self.species[0].get_xyz()
         else:
             raise ValueError("Geometric data needed to preform the calculations.")
     def write_func_args(self, func) -> str:
         func_args = ''
-        dertype = 'gradient'
-        if self.level.method in['wb97xd']:
-            self.level.method = 'wb97x-d'
-            dertype = 'energy'
         if func == 'optimize':
-            func_args = f"name = '{self.level.method}',return_wfn = 'on',return_history = 'on',engine = 'optking',dertype ='{dertype}'"
+            func_args = f"name = '{self.level.method}',return_wfn = 'on',return_history = 'on',engine = 'optking',dertype ='energy'"
         elif func == 'energy':
             func_args = f"name = '{self.level.method}',return_wfn = 'on'"
         else:
@@ -319,18 +315,16 @@ class Psi4Adapter(JobAdapter):
             func = 'energy'
         else:
             func = 'frequency'
-        func_arg = self.write_func_args(func)
         input_dict = {
             'memory': self.job_memory_gb,
             'label': self.species[0].label,
             'charge': self.species[0].charge,
             'multiplicity': self.species[0].multiplicity,
-            'geometry': get_geometry(),
+            'geometry': xyz_to_str(self.get_geometry()),
             'basis': self.level.basis,
             'function': func,
-            'function args': func_arg,
+            'function_args': self.write_func_args(func),
         }
-
         with open(os.path.join(self.local_path, input_filenames[self.job_adapter]), 'w') as f:
             f.write(Template(input_template).render(**input_dict))
 
