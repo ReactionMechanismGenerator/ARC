@@ -62,10 +62,11 @@ global_ess_settings = {
     'orca': 'local',
     'qchem': 'server1',
     'terachem': 'server1',
+    'psi4': 'server1'
 }
 
 # Electronic structure software ARC may access (use lowercase):
-supported_ess = ['gaussian', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin']
+supported_ess = ['gaussian', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin','psi4']
 
 # TS methods to try when appropriate for a reaction (other than user guesses which are always allowed):
 ts_adapters = ['heuristics', 'AutoTST', 'GCN', 'KinBot']
@@ -92,6 +93,7 @@ levels_ess = {
     'qchem': ['m06-2x'],
     'orca': ['dlpno'],
     'terachem': ['pbe'],
+    'psi4': ['hf','scf']
 }
 
 check_status_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat -u $USER',
@@ -136,6 +138,7 @@ input_filenames = {'gaussian': 'input.gjf',
                    'orca': 'input.in',
                    'qchem': 'input.in',
                    'terachem': 'input.in',
+                   'psi4': 'input.dat',
                    }
 
 output_filenames = {'gaussian': 'input.log',
@@ -144,7 +147,8 @@ output_filenames = {'gaussian': 'input.log',
                     'onedmin': 'output.out',
                     'orca': 'input.log',
                     'qchem': 'output.out',
-                    'terachem': 'output.out',
+                    'terachem': 'output.out'
+                    'psi4': 'output.dat',
                     }
 
 default_levels_of_theory = {'conformer': 'wb97xd/def2svp',  # it's recommended to choose a method with dispersion

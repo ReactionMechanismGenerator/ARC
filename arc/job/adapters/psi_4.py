@@ -319,16 +319,16 @@ class Psi4Adapter(JobAdapter):
             func = 'energy'
         else:
             func = 'frequency'
-        func_arg = write_func_args(func)
+        func_arg = self.write_func_args(func)
         input_dict = {
-            'memory' : self.job_memory_gb;
-            'label' : self.species[0].label;
-            'charge' : self.species[0].charge;
-            'multiplicity' : self.species[0].multiplicity;
-            'geometry' : get_geometry();
-            'basis' : self.level.basis;
-            'function' : func;
-            'function args' : func_arg;
+            'memory': self.job_memory_gb,
+            'label': self.species[0].label,
+            'charge': self.species[0].charge,
+            'multiplicity': self.species[0].multiplicity,
+            'geometry': get_geometry(),
+            'basis': self.level.basis,
+            'function': func,
+            'function args': func_arg,
         }
 
         with open(os.path.join(self.local_path, input_filenames[self.job_adapter]), 'w') as f:
