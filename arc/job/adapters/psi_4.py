@@ -96,7 +96,7 @@ default_job_settings, global_ess_settings, input_filenames, output_filenames, ro
 #   than 50 atoms (important so it matches the hessian, and so that Arkane can parse the geometry)
 input_template = """
 memory ${memory} GB
-molecule {${label}
+molecule ${label} {
 ${charge} ${multiplicity}
 ${geometry}
 }
