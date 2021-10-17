@@ -931,6 +931,9 @@ def h_abstraction(arc_reaction: 'ARCReaction',
 
         c = find_distant_neighbor(rmg_mol=rmg_reactant_mol, start=h1)
         d = find_distant_neighbor(rmg_mol=rmg_product_mol, start=h2)
+        print(f'd from find_distant_neighbor: {d}')
+        if d in None:
+            print(rmg_product_mol, rmg_product_mol.atoms, h2)
 
         # d2 describes the B-H-A-C dihedral, populate d2_values if C exists.
         d2_values = list(range(0, 360, dihedral_increment)) if len(rmg_reactant_mol.atoms) > 2 else list()
