@@ -215,43 +215,43 @@ set basis def2-tzvp
 set reference uhf
 optimize(name = 'wb97x-d',return_wfn = 'on',return_history = 'on',engine = 'optking',dertype ='energy')
 """
-    # def test_set_files(self):
-    #     """Test setting files"""
-    #     job_1_files_to_upload = [{'file_name': 'input.dat',
-    #                               'local': os.path.join(self.job_1.local_path, input_filenames[self.job_1.job_adapter]),
-    #                               'remote': os.path.join(self.job_1.remote_path, input_filenames[self.job_1.job_adapter]),
-    #                               'source': 'path',
-    #                               'make_x': False}]
-    #     job_1_files_to_download = [{'file_name': 'input.log',
-    #                                 'local': os.path.join(self.job_1.local_path, output_filenames[self.job_1.job_adapter]),
-    #                                 'remote': os.path.join(self.job_1.remote_path, output_filenames[self.job_1.job_adapter]),
-    #                                 'source': 'path',
-    #                                 'make_x': False},
-    #                                {'file_name': 'check.chk',
-    #                                 'local': os.path.join(self.job_1.local_path, 'check.chk'),
-    #                                 'remote': os.path.join(self.job_1.remote_path, 'check.chk'),
-    #                                 'source': 'path',
-    #                                 'make_x': False}]
-    #     self.assertEqual(self.job_1.files_to_upload, job_1_files_to_upload)
-    #     self.assertEqual(self.job_1.files_to_download, job_1_files_to_download)
-    #
-    #     job_2_files_to_upload = [{'file_name': 'submit.sl',
-    #                               'local': os.path.join(self.job_2.local_path, 'submit.sl'),
-    #                               'remote': os.path.join(self.job_2.remote_path, 'submit.sl'),
-    #                               'source': 'path',
-    #                               'make_x': False},
-    #                              {'file_name': 'data.hdf5',
-    #                               'local': os.path.join(self.job_2.local_path, 'data.hdf5'),
-    #                               'remote': os.path.join(self.job_2.remote_path, 'data.hdf5'),
-    #                               'source': 'path',
-    #                               'make_x': False}]
-    #     job_2_files_to_download = [{'file_name': 'data.hdf5',
-    #                                 'local': os.path.join(self.job_2.local_path, 'data.hdf5'),
-    #                                 'remote': os.path.join(self.job_2.remote_path, 'data.hdf5'),
-    #                                 'source': 'path',
-    #                                 'make_x': False}]
-    #     self.assertEqual(self.job_2.files_to_upload, job_2_files_to_upload)
-    #     self.assertEqual(self.job_2.files_to_download, job_2_files_to_download)
+    def test_set_files(self):
+        """Test setting files"""
+        job_1_files_to_upload = [{'file_name': 'input.dat',
+                                  'local': os.path.join(self.job_1.local_path, input_filenames[self.job_1.job_adapter]),
+                                  'remote': os.path.join(self.job_1.remote_path, input_filenames[self.job_1.job_adapter]),
+                                  'source': 'path',
+                                  'make_x': False}]
+        job_1_files_to_download = [{'file_name': 'input.log',
+                                    'local': os.path.join(self.job_1.local_path, output_filenames[self.job_1.job_adapter]),
+                                    'remote': os.path.join(self.job_1.remote_path, output_filenames[self.job_1.job_adapter]),
+                                    'source': 'path',
+                                    'make_x': False},
+                                   {'file_name': 'check.chk',
+                                    'local': os.path.join(self.job_1.local_path, 'check.chk'),
+                                    'remote': os.path.join(self.job_1.remote_path, 'check.chk'),
+                                    'source': 'path',
+                                    'make_x': False}]
+        self.assertEqual(self.job_1.files_to_upload, job_1_files_to_upload)
+        self.assertEqual(self.job_1.files_to_download, job_1_files_to_download)
+
+        job_2_files_to_upload = [{'file_name': 'submit.sl',
+                                  'local': os.path.join(self.job_2.local_path, 'submit.sl'),
+                                  'remote': os.path.join(self.job_2.remote_path, 'submit.sl'),
+                                  'source': 'path',
+                                  'make_x': False},
+                                 {'file_name': 'data.hdf5',
+                                  'local': os.path.join(self.job_2.local_path, 'data.hdf5'),
+                                  'remote': os.path.join(self.job_2.remote_path, 'data.hdf5'),
+                                  'source': 'path',
+                                  'make_x': False}]
+        job_2_files_to_download = [{'file_name': 'data.hdf5',
+                                    'local': os.path.join(self.job_2.local_path, 'data.hdf5'),
+                                    'remote': os.path.join(self.job_2.remote_path, 'data.hdf5'),
+                                    'source': 'path',
+                                    'make_x': False}]
+        self.assertEqual(self.job_2.files_to_upload, job_2_files_to_upload)
+        self.assertEqual(self.job_2.files_to_download, job_2_files_to_download)
 
     @classmethod
     def tearDownClass(cls):

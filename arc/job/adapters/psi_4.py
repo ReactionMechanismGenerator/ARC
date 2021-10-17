@@ -342,6 +342,7 @@ class Psi4Adapter(JobAdapter):
         from the respective entry in inputs.py
         If ``'make_x'`` is ``True``, the file will be made executable.
         """
+        #### check check file in psi4
         # 1. ** Upload **
         # 1.1. submit file
         if self.execution_type != 'incore':
@@ -388,7 +389,7 @@ class Psi4Adapter(JobAdapter):
         Set the input_file_memory attribute.
         """
         # Gaussian's memory is in MB, total for all cpu cores
-        self.input_file_memory = math.ceil(self.job_memory_gb * 1024)
+        self.input_file_memory = math.ceil(self.job_memory_gb)
 
     def execute_incore(self):
         """
