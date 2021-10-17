@@ -587,7 +587,7 @@ def determine_glue_params(zmat: dict,
     zd = num_atoms_1 + 1 + int(is_a2_linear) if d is not None else None  # The atom index of D in the combined zmat.
     param_a2 = f'A_{zb}_{h1}_{za}'  # B-H-A
     param_d2 = f'D_{zb}_{h1}_{za}_{zc}' if zc is not None else None  # B-H-A-C
-    param_d3 = f'D_{zd}_{zb}_{h1}_{za}' if d3 is not None and d is not None else None  # D-B-H-A
+    param_d3 = f'D_{zd}_{zb}_{h1}_{za}' if d is not None else None  # D-B-H-A
     if is_a2_linear:
         # Add a dummy atom.
         zmat['map'][len(zmat['symbols'])] = f"X{len(zmat['symbols'])}"
@@ -668,7 +668,7 @@ def get_modified_params_from_zmat_2(zmat_1: dict,
                 elif i == 1 and j == 2 and param_d3 is not None:
                     # This is d3.
                     new_coord.append(param_d3)
-                    new_vars[param_d3] = d3
+                    new_vars[param_d3] = d3 or 0
                 else:
                     new_coord.append(None)
         new_coords.append(tuple(new_coord))
