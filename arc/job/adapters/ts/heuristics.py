@@ -605,6 +605,7 @@ def determine_glue_params(zmat: dict,
         param_a2 = f'A_{zb}_{h1}_{zx}'  # B-H-X
         param_d2 = f'D_{zb}_{h1}_{zx}_{za}' if zc is not None else None  # B-H-X-A
         param_d3 = f'D_{zd}_{zb}_{h1}_{zx}' if d3 is not None and d is not None else None  # D-B-H-X
+    print(f'glue params: {param_a2, param_d2, param_d3}')
     return param_a2, param_d2, param_d3
 
 
@@ -666,10 +667,12 @@ def get_modified_params_from_zmat_2(zmat_1: dict,
                     new_coord.append(param_d2)
                     new_vars[param_d2] = d2
                 elif i == 1 and j == 2 and param_d3 is not None:
+                    print(f'param_d3: {param_d3}')
                     # This is d3.
                     new_coord.append(param_d3)
                     new_vars[param_d3] = d3 or 0
                 else:
+                    print(f'param_d3 None: {param_d3}')
                     new_coord.append(None)
         new_coords.append(tuple(new_coord))
     new_map = get_new_zmat_2_map(zmat_1=zmat_1,
