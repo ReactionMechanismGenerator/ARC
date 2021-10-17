@@ -419,7 +419,8 @@ def combine_coordinates_with_redundant_atoms(xyz_1: Union[dict, str],
                               This argument must be given only if the a2 angle is not linear,
                               and mol2 has 3 or more atoms, otherwise it is meaningless.
         d3 (Optional[float]): The dihedral angel (in degrees) between atoms D-B-H-A (dihedral D-B-H-A).
-                              This parameter is mandatory only if atom D exists (i.e., if ``mol2`` has 3 or more atoms).
+                              This parameter is mandatory only if atom D exists (i.e., if ``mol2`` has 3 or more atoms)
+                              and angle a2 is not linear.
         keep_dummy (bool, optional): Whether to keep a dummy atom if added, ``True`` to keep, ``False`` by default.
         reactants_reversed (bool, optional): Whether the reactants were reversed relative to the RMG template.
 
@@ -431,6 +432,7 @@ def combine_coordinates_with_redundant_atoms(xyz_1: Union[dict, str],
           before returning the final cartesian coordinates
     """
     is_a2_linear = is_angle_linear(a2)
+    d3 = d3 if not is_a2_linear else None
 
     if len(mol_1.atoms) == 1 or len(mol_2.atoms) == 1:
         raise ValueError(
@@ -441,8 +443,8 @@ def combine_coordinates_with_redundant_atoms(xyz_1: Union[dict, str],
         raise ValueError('The d2 parameter (the B-H-A-C dihedral) must be given if the a2 angle (B-H-A) is not close '
                          'to 180 degrees, got None.')
     if not is_a2_linear and len(mol_2.atoms) > 2 and d3 is None:
-        raise ValueError('The d3 parameter (the A-H-B-D dihedral) must be given if the a2 angle (B-H-A) is not close '
-                         'to 180 degrees, got None.')
+        raise ValueError('The d3 parameter (the A-H-B-D dihedral) must be given if the a2 angle (B-H-A) is not linear '
+                         'and mol_2 has 3 or more atoms, got None.')
     if len(mol_1.atoms) > 2 and c is None:
         raise ValueError('The c parameter (the index of atom C in xyz1) must be given if mol_1 has 3 or more atoms, '
                          'got None.')
@@ -451,8 +453,6 @@ def combine_coordinates_with_redundant_atoms(xyz_1: Union[dict, str],
                          'got None.')
     if len(mol_1.atoms) > 2 and d2 is None:
         raise ValueError('The d2 parameter (dihedral B-H-A-C) must be given if mol_1 has 3 or more atoms, got None.')
-    if len(mol_2.atoms) > 2 and d3 is None:
-        raise ValueError('The d3 parameter (dihedral D-B-H-A) must be given if mol_2 has 3 or more atoms, got None.')
 
     a = mol_1.atoms.index(list(mol_1.atoms[h1].edges.keys())[0])
     b = mol_2.atoms.index(list(mol_2.atoms[h2].edges.keys())[0])
@@ -929,7 +929,8 @@ def h_abstraction(arc_reaction: 'ARCReaction',
         d = find_distant_neighbor(rmg_mol=rmg_product_mol, start=h2)
 
         # d2 describes the B-H-A-C dihedral, populate d2_values if C exists and the B-H-A angle is not linear.
-        d2_values = list(range(0, 360, dihedral_increment)) if len(rmg_reactant_mol.atoms) > 2 else list()
+        d2_values = list(range(0, 360, dihedral_increment)) if len(rmg_reactant_mol.atoms) > 2 \
+            and not is_angle_linear(a2) else list()
 
         # d3 describes the D-B-H-A dihedral, populate d3_values if D exists.
         d3_values = list(range(0, 360, dihedral_increment)) if len(rmg_product_mol.atoms) > 2 else list()
