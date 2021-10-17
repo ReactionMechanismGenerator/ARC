@@ -489,7 +489,8 @@ def combine_coordinates_with_redundant_atoms(xyz_1: Union[dict, str],
     combined_zmat = {'symbols': new_symbols, 'coords': new_coords, 'vars': new_vars, 'map': new_map}
     for i, coords in enumerate(combined_zmat['coords']):
         if i > 2 and None in coords:
-            raise ValueError(f'Could not combine zmats, got a None parameter beyond the 3rd row:\n{combined_zmat}')
+            raise ValueError(f'Could not combine zmats, got a None parameter beyond the 3rd row:\n'
+                             f'{coords} in:\n{combined_zmat}')
     ts_xyz = zmat_to_xyz(zmat=combined_zmat, keep_dummy=keep_dummy)
     return ts_xyz
 
