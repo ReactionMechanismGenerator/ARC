@@ -928,12 +928,12 @@ def h_abstraction(arc_reaction: 'ARCReaction',
         c = find_distant_neighbor(rmg_mol=rmg_reactant_mol, start=h1)
         d = find_distant_neighbor(rmg_mol=rmg_product_mol, start=h2)
 
-        # d2 describes the B-H-A-C dihedral, populate d2_values if C exists and the B-H-A angle is not linear.
-        d2_values = list(range(0, 360, dihedral_increment)) if len(rmg_reactant_mol.atoms) > 2 \
-            and not is_angle_linear(a2) else list()
+        # d2 describes the B-H-A-C dihedral, populate d2_values if C exists.
+        d2_values = list(range(0, 360, dihedral_increment)) if len(rmg_reactant_mol.atoms) > 2 else list()
 
-        # d3 describes the D-B-H-A dihedral, populate d3_values if D exists.
-        d3_values = list(range(0, 360, dihedral_increment)) if len(rmg_product_mol.atoms) > 2 else list()
+        # d3 describes the D-B-H-A dihedral, populate d3_values if D exists and the B-H-A angle is not linear.
+        d3_values = list(range(0, 360, dihedral_increment)) if len(rmg_product_mol.atoms) > 2 \
+            and not is_angle_linear(a2) else list()
 
         if len(d2_values) and len(d3_values):
             d2_d3_product = list(itertools.product(d2_values, d3_values))
