@@ -57,7 +57,6 @@ name
 """,
 
     'orca': """!{restricted}{method_class} {method} {basis} {auxiliary_basis} {job_options_keywords}
-! NRSCF # using Newton–Raphson SCF algorithm 
 !{job_type_1} 
 {job_type_2}
 %maxcore {memory}
@@ -65,8 +64,6 @@ name
 nprocs {cpus}
 end
 %scf # recommended SCF settings 
-NRMaxIt 400
-NRStart 0.00005
 MaxIter 500
 end
 {job_options_blocks}
