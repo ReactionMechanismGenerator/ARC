@@ -285,9 +285,9 @@ class ARCReaction(object):
         if self.ts_label is None:
             self.ts_label = reaction_dict['ts_label'] if 'ts_label' in reaction_dict else None
         self.r_species = [ARCSpecies(species_dict=r_dict) for r_dict in reaction_dict['r_species']] \
-            if 'r_species' in reaction_dict else list()
+            if 'r_species' in reaction_dict else self.r_species or list()
         self.p_species = [ARCSpecies(species_dict=p_dict) for p_dict in reaction_dict['p_species']] \
-            if 'p_species' in reaction_dict else list()
+            if 'p_species' in reaction_dict else self.p_species or list()
         self.reactants = self.reactants or [spc.label for spc in self.r_species]
         self.products = self.products or [spc.label for spc in self.p_species]
         self.ts_species = reaction_dict['ts_species'].from_dict() if 'ts_species' in reaction_dict else None
