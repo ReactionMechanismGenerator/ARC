@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 from mako.template import Template
 
-from arc.common import get_logger
+from arc.common import get_logger, torsions_to_scans
 from arc.imports import incore_commands, settings
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import (check_argument_consistency,
@@ -25,6 +25,7 @@ from arc.job.ssh import SSHClient
 from arc.level import Level
 from arc.settings.settings import orca_default_options_dict
 from arc.species.converter import xyz_to_str
+from arc.species.vectors import calculate_dihedral_angle
 
 if TYPE_CHECKING:
     from arc.reaction import ARCReaction
@@ -60,6 +61,7 @@ NRMaxIt 400
 NRStart 0.00005
 MaxIter 500
 end
+${scan}
 ${block}
 
 * xyz ${charge} ${multiplicity}
@@ -249,6 +251,7 @@ class OrcaAdapter(JobAdapter):
         """
         input_dict = dict()
         for key in ['block',
+                    'scan',
                     'job_type_1',
                     'job_type_2',
                     'keywords',
@@ -313,6 +316,8 @@ Calc_Hess true # calculation of the exact Hessian before the first opt step
 end               
 """,
                                  key1='block')
+            if 'dlpno' in self.level.method:
+                input_dict['job_type_1'] += '\n!NUMGRAD'  # Numerical gradient for DLPNO opt
 
         elif self.job_type in ['freq', 'optfreq']:
             if self.job_type == 'freq':
@@ -328,6 +333,26 @@ end
 
         elif self.job_type == 'sp':
             input_dict['job_type_1'] = 'sp'
+
+        elif self.job_type == 'scan':
+            scans, torsion_strings = list(), list()
+            if self.rotor_index is not None:
+                if self.species[0].rotors_dict \
+                        and self.species[0].rotors_dict[self.rotor_index]['directed_scan_type'] == 'ess':
+                    scans = self.species[0].rotors_dict[self.rotor_index]['scan']
+                    scans = [scans] if not isinstance(scans[0], list) else scans
+            elif len(self.torsions):
+                scans = torsions_to_scans(self.torsions)
+            if self.torsions is None or not len(self.torsions):
+                self.torsions = torsions_to_scans(scans, direction=-1)
+            for torsion_indices in self.torsions:
+                torsion_strings.append(' '.join([str(atom_index) for atom_index in torsion_indices]))
+            input_dict['job_type_1'] = f"Opt{'Ts' if self.is_ts else ''}"
+            input_dict['scan'] = '%geom Scan'
+            for i, torsion in enumerate(torsion_strings):
+                dihedral = calculate_dihedral_angle(coords=self.species[0].get_xyz(), torsion=self.torsions[i])
+                input_dict['scan'] += f'\nD {torsion} =  {dihedral:.1f}, {dihedral - self.scan_res:.1f}, {self.scan_res:.1f}\n'
+            input_dict['scan'] += '\nend\nend' if len(self.torsions) > 1 else '\nend'
 
         input_dict = update_input_dict_with_args(args=self.args, input_dict=input_dict)
 
