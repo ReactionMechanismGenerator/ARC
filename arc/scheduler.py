@@ -433,10 +433,8 @@ class Scheduler(object):
                             self.run_sp_job(label=species.label)
                         if self.job_types['onedmin']:
                             self.run_onedmin_job(species.label)
-                elif ((species.initial_xyz is not None
-                      or species.final_xyz is not None)
-                      or species.is_ts and species.rxn_label is None) \
-                        and not self.testing:
+                elif ((species.initial_xyz is not None or species.final_xyz is not None)
+                        or species.is_ts and species.rxn_label is None) and not self.testing:
                     # For restarting purposes: check before running jobs whether they were already terminated
                     # (check self.output) or whether they are "currently running" (check self.job_dict)
                     # This section takes care of restarting a Species (including a TS), but does not
@@ -497,11 +495,11 @@ class Scheduler(object):
                     and any([e is not None for e in species.conformer_energies]):
                 # The species has no xyz, but has conformers and at least one of the conformers has energy.
                 self.determine_most_stable_conformer(species.label)
-            if species.initial_xyz is not None:
-                if self.composite_method:
-                    self.run_composite_job(species.label)
-                else:
-                    self.run_opt_job(species.label, fine=self.fine_only)
+                if species.initial_xyz is not None:
+                    if self.composite_method:
+                        self.run_composite_job(species.label)
+                    else:
+                        self.run_opt_job(species.label, fine=self.fine_only)
         self.run_conformer_jobs()
         self.spawn_ts_jobs()  # If all reactants/products are already known (Arkane yml or restart), spawn TS searches.
         while self.running_jobs != {}:
