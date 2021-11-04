@@ -28,24 +28,23 @@ import string
 #    },
 # }
 servers = {
-    'server1': {
-        'cluster_soft': 'OGE',
-        'address': 'server1.host.edu',
-        'un': '<username>',
-        'key': 'path_to_rsa_key',
-    },
-    'server2': {
-        'cluster_soft': 'Slurm',
-        'address': 'server2.host.edu',
-        'un': '<username>',
-        'key': 'path_to_rsa_key',
-        'cpus': 24,  # number of cpu's per node, optional (default: 8)
-        'memory': 256,  # amount of memory per node in GB, optional (default: 16)
-    },
+    # 'server1': {
+    #     'cluster_soft': 'OGE',
+    #     'address': 'server1.host.edu',
+    #     'un': '<username>',
+    #     'key': 'path_to_rsa_key',
+    # },
+    # 'server2': {
+    #     'cluster_soft': 'Slurm',
+    #     'address': 'server2.host.edu',
+    #     'un': '<username>',
+    #     'key': 'path_to_rsa_key',
+    #     'cpus': 48,  # number of cpu's per node, optional (default: 8)
+    #     'memory': 128,  # amount of memory per node in GB, optional (default: 16)
+    # },
     'local': {
         'cluster_soft': 'Slurm',
-        'un': '<username>',
-        'cpus': 48,
+        'un': 'xiaorui',
     },
 }
 
@@ -53,12 +52,12 @@ servers = {
 # An ordered list of servers indicates priority
 # Keeping this dictionary empty will cause ARC to scan for software on the servers defined above
 global_ess_settings = {
-    'gaussian': ['local', 'server2'],
-    'molpro': ['local', 'server2'],
-    'onedmin': 'server1',
-    'orca': 'local',
-    'qchem': 'server1',
-    'terachem': 'server1',
+    'gaussian': ['local'],
+    # 'molpro': 'server2',
+    # 'onedmin': 'server1',
+    # 'orca': 'local',
+    # 'qchem': 'server1',
+    # 'terachem': 'server1',
 }
 
 # List here job types to execute by default
@@ -80,7 +79,7 @@ supported_ess = ['gaussian', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin']  
 # Avoid ascribing the same phrase to more than one software, this may cause undeterministic assignment of software
 # Format is levels_ess = {ess: ['phrase1', 'phrase2'], ess2: ['phrase3', 'phrase3']}
 levels_ess = {
-    'gaussian': ['apfd', 'b3lyp', 'm062x'],
+    'gaussian': ['b3lyp', 'wb97xd', 'm062x'],
     'molpro': ['ccsd', 'cisd', 'vpz'],
     'qchem': ['m06-2x'],
     'orca': ['dlpno'],

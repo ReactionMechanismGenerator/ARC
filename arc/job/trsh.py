@@ -1298,7 +1298,7 @@ def scan_quality_check(label: str,
             changed_ics = change_sum[change_sum == True].index.to_list()
             # Save changes in the format of {conformer index: problematic ics}
             if changed_ics:
-                invalidate = True
+                # invalidate = True
                 changed_ic_dict.update({index_1: changed_ics})
 
         # 1.2 Check broken bond and any lowest conformation
@@ -1308,6 +1308,7 @@ def scan_quality_check(label: str,
             # R(X,Y) refers to bonds in ics
             broken_bonds = [ic for ic in ics if 'R' in ic]
             if broken_bonds and conf_index != 0:
+                invalidate = True
                 # Find the bond that changes the most, to avoid accompanied changes, like C-O transforms
                 # to C=O, which we don't want to freeze. If other bonds need to be frozen as well,
                 # it can be done in the following troubleshooting.
@@ -1344,37 +1345,37 @@ def scan_quality_check(label: str,
             return invalidate, invalidation_reason, message, actions
 
         # 1.3 Check consistency
-        if 0 in changed_ic_dict.keys() and len(changed_ic_dict) == 1:
-            # A smooth scan with different initial and final conformer.
-            invalidate = True
-            invalidation_reason = 'Inconsistent initial and final conformers'
-            message = f'Rotor scan of {label} between pivots {pivots} has inconsistent initial ' \
-                      f'and final conformers.\nInternal coordinates {changed_ic_dict[0]} are different. ' \
-                      f'ARC will attempt to troubleshoot this rotor scan.'
-            logger.error(message)
-            actions = {'freeze': [scan_conformers['atoms'][ic_label]
-                                  for ic_label in changed_ic_dict[0]]}
-            return invalidate, invalidation_reason, message, actions
-        elif len(changed_ic_dict) > 0:
-            # Not a smooth scan.
-            invalidate = True
-            invalidation_reason = 'Significant difference observed between consecutive conformers'
-            message = f'Rotor scan of {label} between pivots {pivots} is inconsistent between ' \
-                      f'two consecutive conformers.\nInconsistent consecutive conformers and problematic ' \
-                      f'internal coordinates:'
-            changed_ic_label = []
-            for index, ics in changed_ic_dict.items():
-                if index > 0:  # Do not include the initial/final differences which may include more ics
-                    message += f'\nconformer #{index:>3d} / #{index+1:>3d}        '
-                    message += ', '.join(ics)
-                changed_ic_label += ics
-            message += '\nARC will attempt to troubleshoot this rotor scan.'
-            # list(set()) is used to remove duplicate labels
-            changed_ic_label = list(set(changed_ic_label))
-            logger.error(message)
-            actions = {'freeze': [scan_conformers['atoms'][ic_label]
-                                  for ic_label in changed_ic_label]}
-            return invalidate, invalidation_reason, message, actions
+        # if 0 in changed_ic_dict.keys() and len(changed_ic_dict) == 1:
+        #     # Smooth scan with different initial and final conformer
+        #     invalidate = True
+        #     invalidation_reason = 'Inconsistent initial and final conformers'
+        #     message = f'Rotor scan of {label} between pivots {pivots} has inconsistent initial ' \
+        #               f'and final conformers.\nInternal coordinates {changed_ic_dict[0]} are different. ' \
+        #               f'ARC will attempt to troubleshoot this rotor scan.'
+        #     logger.error(message)
+        #     actions = {'freeze': [scan_conformers['atoms'][ic_label]
+        #                           for ic_label in changed_ic_dict[0]]}
+        #     return invalidate, invalidation_reason, message, actions
+        # elif len(changed_ic_dict) > 0:
+        #     # Not smooth scan
+        #     invalidate = True
+        #     invalidation_reason = 'Significant difference observed between consecutive conformers'
+        #     message = f'Rotor scan of {label} between pivots {pivots} is inconsistent between ' \
+        #               f'two consecutive conformers.\nInconsistent consecutive conformers and problematic ' \
+        #               f'internal coordinates:'
+        #     changed_ic_label = []
+        #     for index, ics in changed_ic_dict.items():
+        #         if index > 0:  # Do not include the initial/final differences which may include more ics
+        #             message += f'\nconformer #{index:>3d} / #{index+1:>3d}        '
+        #             message += ', '.join(ics)
+        #         changed_ic_label += ics
+        #     message += '\nARC will attempt to troubleshoot this rotor scan.'
+        #     # list(set()) is used to remove duplicate labels
+        #     changed_ic_label = list(set(changed_ic_label))
+        #     logger.error(message)
+        #     actions = {'freeze': [scan_conformers['atoms'][ic_label]
+        #                           for ic_label in changed_ic_label]}
+        #     return invalidate, invalidation_reason, message, actions
 
     else:
         # 2. Check rotor scan quality according to the PES curve
@@ -1443,32 +1444,32 @@ def scan_quality_check(label: str,
             return invalidate, invalidation_reason, message, actions
 
     # 3. Check the barrier height
-    if (np.max(energies) - np.min(energies)) > maximum_barrier:
-        # The barrier for the internal rotation is higher than `maximum_barrier`
-        num_wells = determine_rotor_symmetry(label=label,
-                                             pivots=pivots,
-                                             rotor_path='',
-                                             energies=energies,
-                                             return_num_wells=True,
-                                             log=False,
-                                             )[-1]
-        if num_wells == 1:
-            invalidate = True
-            invalidation_reason = f'The rotor scan has a barrier of {np.max(energies) - np.min(energies):.2f} ' \
-                                  f'kJ/mol, which is higher than the maximal barrier for rotation ' \
-                                  f'({maximum_barrier:.2f} kJ/mol)'
-            message = f'Rotor scan of {label} between pivots {pivots} has a barrier ' \
-                      f'larger than {maximum_barrier:.2f} kJ/mol. Invalidating rotor.'
-            logger.warning(message)
-            return invalidate, invalidation_reason, message, actions
-        else:
-            logger.warning(f'The maximal barrier for rotor {pivots} of {label} is '
-                           f'{(np.max(energies) - np.min(energies)):.2f} kJ/mol, which is higher than the set threshold '
-                           f'of {maximum_barrier} kJ/mol. Since this mode when treated as torsion has {num_wells}, '
-                           f'this mode is not invalidated: treating it as a vibrational mode will be less accurate than '
-                           f'the hindered rotor treatment, since the entropy contribution from the population of '
-                           f'this species at the higher wells will not be taken into account. NOT invalidating this '
-                           f'torsional mode.')
+    # if (np.max(energies) - np.min(energies)) > maximum_barrier:
+    #     # The barrier for the internal rotation is higher than `maximum_barrier`
+    #     num_wells = determine_rotor_symmetry(label=label,
+    #                                          pivots=pivots,
+    #                                          rotor_path='',
+    #                                          energies=energies,
+    #                                          return_num_wells=True,
+    #                                          log=False,
+    #                                          )[-1]
+    #     if num_wells == 1:
+    #         invalidate = True
+    #         invalidation_reason = f'The rotor scan has a barrier of {np.max(energies) - np.min(energies):.2f} ' \
+    #                               f'kJ/mol, which is higher than the maximal barrier for rotation ' \
+    #                               f'({maximum_barrier:.2f} kJ/mol)'
+    #         message = f'Rotor scan of {label} between pivots {pivots} has a barrier ' \
+    #                   f'larger than {maximum_barrier:.2f} kJ/mol. Invalidating rotor.'
+    #         logger.warning(message)
+    #         return invalidate, invalidation_reason, message, actions
+    #     else:
+    #         logger.warning(f'The maximal barrier for rotor {pivots} of {label} is '
+    #                        f'{(np.max(energies) - np.min(energies)):.2f} kJ/mol, which is higher than the set threshold '
+    #                        f'of {maximum_barrier} kJ/mol. Since this mode when treated as torsion has {num_wells}, '
+    #                        f'this mode is not invalidated: treating it as a vibrational mode will be less accurate than '
+    #                        f'the hindered rotor treatment, since the entropy contribution from the population of '
+    #                        f'this species at the higher wells will not be taken into account. NOT invalidating this '
+    #                        f'torsional mode.')
 
     # 4. Check requested atom constraints are preserved (particularly useful for TSs)
     if preserve_params is not None:

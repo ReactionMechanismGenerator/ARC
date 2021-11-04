@@ -485,7 +485,7 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
                 exists = False
                 if any([converter.compare_confs(xyz, conf['xyz']) for conf in new_conformers + newest_conformer_list]):
                     exists = True
-                if xyz is not None:
+                if xyz is not None and energy is not None:
                     conformer = {'index': len_conformers + len(new_conformers) + len(newest_conformer_list),
                                  'xyz': xyz,
                                  'FF energy': round(energy, 3),
@@ -1435,12 +1435,12 @@ def rdkit_force_field(label: str,
                                                                maxIters=200,
                                                                ignoreInterfragInteractions=True,
                                                                )
-            except RuntimeError as e:
+            except (ValueError, RuntimeError) as e:
                 logger.warning(f'Using OpenBabel (instead of RDKit) as a fall back method to generate conformers '
                                f'for {label}. This is often slower.')
                 if try_ob:
                     xyzs, energies = openbabel_force_field_on_rdkit_conformers(label,
-                                                                               mol,
+                                                                               rd_mol,
                                                                                force_field=force_field,
                                                                                optimize=optimize,
                                                                                )
@@ -1566,7 +1566,7 @@ def find_internal_rotors(mol):
                         rotor['trsh_counter'] = 0
                         rotor['trsh_methods'] = list()
                         rotor['scan_path'] = ''
-                        rotor['directed_scan_type'] = 'ess'  # default to 'ess', changed in initialize_directed_rotors()
+                        rotor['directed_scan_type'] = ''  # default to 'ess', changed in initialize_directed_rotors()
                         rotor['directed_scan'] = dict()
                         rotor['dimensions'] = 1
                         rotor['original_dihedrals'] = list()

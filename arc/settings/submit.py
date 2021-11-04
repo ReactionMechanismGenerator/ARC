@@ -5,6 +5,47 @@ sorted in a dictionary with server names as keys
 
 
 submit_scripts = {
+    'local': {
+        # Gaussian 16
+        'gaussian': """#!/bin/bash -l
+#SBATCH -p xeon-p8
+#SBATCH -J {name}
+#SBATCH -N 1
+#SBATCH -c {cpus}
+#SBATCH --time={t_max}
+#SBATCH --mem-per-cpu={memory}
+
+echo "============================================================"
+echo "Job ID : $SLURM_JOB_ID"
+echo "Job Name : $SLURM_JOB_NAME"
+echo "Starting on : $(date)"
+echo "Running on node : $SLURMD_NODENAME"
+echo "Current directory : $(pwd)"
+echo "============================================================"
+
+WorkDir=/home/gridsan/{un}/scratch/$SLURM_JOB_NAME-$SLURM_JOB_ID
+SubmitDir=`pwd`
+
+GAUSS_SCRDIR=/home/gridsan/{un}/scratch/g09/$SLURM_JOB_NAME-$SLURM_JOB_ID
+export GAUSS_SCRDIR
+
+mkdir -p $GAUSS_SCRDIR
+mkdir -p $WorkDir
+
+cd $WorkDir
+. $g16root/g16/bsd/g16.profile
+
+cp "$SubmitDir/input.gjf" .
+cp "$SubmitDir/check.chk" .
+
+g16 < input.gjf > input.log
+formchk  check.chk check.fchk
+cp * "$SubmitDir/"
+
+rm -rf $GAUSS_SCRDIR
+rm -rf $WorkDir
+        
+        """,},
     'c3ddb': {
         # Gaussian 09
         'gaussian': """#!/bin/bash -l
