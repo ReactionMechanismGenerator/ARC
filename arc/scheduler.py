@@ -398,28 +398,30 @@ class Scheduler(object):
             if species.label not in self.job_dict:
                 self.job_dict[species.label] = dict()
             if species.yml_path is None:
-                if self.job_types['rotors'] and not self.species_dict[species.label].number_of_rotors \
-                        and self.species_dict[species.label].rotors_dict is not None:
+                if self.job_types['rotors'] and not species.number_of_rotors and species.rotors_dict is not None:
                     # if species.rotors_dict is None, it means the species is marked to not spawn rotor scans
-                    self.species_dict[species.label].determine_rotors()
-                if not self.job_types['opt'] and self.species_dict[species.label].final_xyz is not None:
+                    species.determine_rotors()
+                if not self.job_types['opt'] and species.final_xyz is not None:
                     # opt wasn't asked for, and it's not needed, declare it as converged
                     self.output[species.label]['job_types']['opt'] = True
+                if not self.job_types['conformers'] and len(species.conformers) == 1:
+                    # conformers weren't asked for, assign initial_xyz
+                    species.initial_xyz = species.conformers[0]
                 if species.label not in self.running_jobs:
                     self.running_jobs[species.label] = list()  # initialize before running the first job
                 if species.number_of_atoms == 1:
                     logger.debug(f'Species {species.label} is monoatomic')
-                    if not self.species_dict[species.label].initial_xyz:
+                    if not species.initial_xyz:
                         # generate a simple "Symbol   0.0   0.0   0.0" coords in a dictionary format
-                        if self.species_dict[species.label].mol is not None:
-                            symbol = self.species_dict[species.label].mol.atoms[0].symbol
+                        if species.mol is not None:
+                            symbol = species.mol.atoms[0].symbol
                         else:
                             symbol = species.label
                             logger.warning(f'Could not determine element of monoatomic species {species.label}. '
                                            f'Assuming element is {symbol}')
                         monoatomic_xyz_dict = str_to_xyz(f'{symbol}   0.0   0.0   0.0')
-                        self.species_dict[species.label].initial_xyz = monoatomic_xyz_dict
-                        self.species_dict[species.label].final_xyz = monoatomic_xyz_dict
+                        species.initial_xyz = monoatomic_xyz_dict
+                        species.final_xyz = monoatomic_xyz_dict
                     if not self.output[species.label]['job_types']['sp'] \
                             and not self.output[species.label]['job_types']['composite'] \
                             and 'sp' not in list(self.job_dict[species.label].keys()) \
@@ -431,9 +433,9 @@ class Scheduler(object):
                             self.run_sp_job(label=species.label)
                         if self.job_types['onedmin']:
                             self.run_onedmin_job(species.label)
-                elif ((self.species_dict[species.label].initial_xyz is not None
-                      or self.species_dict[species.label].final_xyz is not None)
-                      or self.species_dict[species.label].is_ts and self.species_dict[species.label].rxn_label is None) \
+                elif ((species.initial_xyz is not None
+                      or species.final_xyz is not None)
+                      or species.is_ts and species.rxn_label is None) \
                         and not self.testing:
                     # For restarting purposes: check before running jobs whether they were already terminated
                     # (check self.output) or whether they are "currently running" (check self.job_dict)
@@ -449,8 +451,7 @@ class Scheduler(object):
                             # composite is done; do other jobs
                             if not self.output[species.label]['job_types']['freq'] \
                                     and 'freq' not in list(self.job_dict[species.label].keys()) \
-                                    and (self.species_dict[species.label].is_ts
-                                         or self.species_dict[species.label].number_of_atoms > 1):
+                                    and (species.is_ts or species.number_of_atoms > 1):
                                 self.run_freq_job(species.label)
                             if self.job_types['rotors']:
                                 self.run_scan_jobs(species.label)
@@ -467,8 +468,7 @@ class Scheduler(object):
                                 # opt/fine is done, check post-opt job types
                                 if not self.output[species.label]['job_types']['freq'] \
                                         and 'freq' not in list(self.job_dict[species.label].keys()) \
-                                        and (self.species_dict[species.label].is_ts
-                                             or self.species_dict[species.label].number_of_atoms > 1):
+                                        and (species.is_ts or species.number_of_atoms > 1):
                                     self.run_freq_job(species.label)
                                 if not self.output[species.label]['job_types']['sp'] \
                                         and 'sp' not in list(self.job_dict[species.label].keys()):
