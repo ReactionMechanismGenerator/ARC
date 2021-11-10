@@ -222,6 +222,11 @@ def submit_job(path):
     cmd = f"cd {path}; {submit_command[servers['local']['cluster_soft']]} " \
           f"{submit_filenames[servers['local']['cluster_soft']]}"
     stdout, stderr = execute_command(cmd)
+    if not len(stdout):
+        time.sleep(10)
+        stdout, stderr = execute_command(cmd)
+    if not len(stdout):
+        return None
     if stderr == 0:
         logger.warning(f'Got the following error when trying to submit job:\n{stderr}.')
         job_status = 'errored'
