@@ -2,8 +2,8 @@
 A module for atom-mapping a species or a set of species.
 
 Species atom-map logic:
-1. Determine adjacent elements for each heavy atom
-2. Identify and loop superposition possibilities
+1. Fingerprint the species
+2. Identify and loop superimposable candidate backbone mapping
 3. Recursively modify dihedrals until the structures overlap to some tolerance
 4. Determine RMSD to backbone, if good then determine RMSD to H's
 5. When mapping H's on terminal heavy atoms, check whether rotating this rotor will reduce the overall RMSD
