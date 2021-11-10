@@ -1157,23 +1157,25 @@ def plot_2d_rotor_scan(results: dict,
     phis1 = np.array(sorted(list(set([float(key[1]) for key in results['directed_scan'].keys()]))), np.float64)
     # If the last phi equals to the first, it is removed by the above set() call. Bring it back:
     res0, res1 = phis0[1] - phis0[0], phis1[1] - phis1[0]
-    if phis0.size < 360 / res0 + 1:
-        if abs(phis0[0] + 180.0) >= abs(phis0[-1] - 180.0):
-            phis0 = np.insert(phis0, 0, phis0[0] - res0)
-        elif abs(phis0[0] + 180.0) <= abs(phis0[-1] - 180.0):
-            phis0 = np.append(phis0, phis0[-1] + res0)
-    if phis1.size < 360 / res1 + 1:
-        if abs(phis1[0] + 180.0) >= abs(phis1[-1] - 180.0):
-            phis1 = np.insert(phis1, 0, phis1[0] - res1)
-        elif abs(phis1[0] + 180.0) <= abs(phis1[-1] - 180.0):
-            phis1 = np.append(phis1, phis1[-1] + res1)
+    # if phis0.size < 360 / res0 + 1:
+    #     if abs(phis0[0] + 180.0) >= abs(phis0[-1] - 180.0):
+    #         phis0 = np.insert(phis0, 0, phis0[0] - res0)
+    #     elif abs(phis0[0] + 180.0) <= abs(phis0[-1] - 180.0):
+    #         phis0 = np.append(phis0, phis0[-1] + res0)
+    # if phis1.size < 360 / res1 + 1:
+    #     if abs(phis1[0] + 180.0) >= abs(phis1[-1] - 180.0):
+    #         phis1 = np.insert(phis1, 0, phis1[0] - res1)
+    #     elif abs(phis1[0] + 180.0) <= abs(phis1[-1] - 180.0):
+    #         phis1 = np.append(phis1, phis1[-1] + res1)
     zero_phi0, zero_phi1 = list(), list()
     energies = np.zeros(shape=(phis0.size, phis1.size), dtype=np.float64)
     e_min = None
     missing_points, max_missing_points = 0, 0.02 * len(phis0) * len(phis1)
     for i, phi0 in enumerate(phis0):
         for j, phi1 in enumerate(phis1):
-            key = tuple(f'{get_angle_in_180_range(dihedral):.2f}' for dihedral in [phi0, phi1])
+            # key = tuple(f'{get_angle_in_180_range(dihedral):.2f}' for dihedral in [phi0, phi1])
+            # key = (float(phi0), f'{get_angle_in_180_range(phi1):.2f}')
+            key = (float(phi0), float(phi1))
             try:
                 energies[i, j] = results['directed_scan'][key]['energy']
             except KeyError:
@@ -1190,8 +1192,9 @@ def plot_2d_rotor_scan(results: dict,
                                                   tolerance=1.1 * max(res0, res1))
                         energies[i, j] = results['directed_scan'][new_key]['energy']
                     else:
+                        pass
                         # There are too many gaps in the data.
-                        raise ValueError(f'The 2D scan data for {label} is missing too many points, cannot plot.')
+                        # raise ValueError(f'The 2D scan data for {label} is missing too many points, cannot plot.')
             if e_min is None or energies[i, j] < e_min:
                 e_min = energies[i, j]
             if mark_lowest_conformations and energies[i, j] == 0:
@@ -1204,20 +1207,20 @@ def plot_2d_rotor_scan(results: dict,
 
     fig = plt.figure(num=None, figsize=(12, 8), dpi=resolution, facecolor='w', edgecolor='k')
 
-    plt.contourf(phis0, phis1, energies, 20, cmap=cmap)
+    plt.contourf(phis1, phis0, energies, 20, cmap=cmap)
     plt.colorbar()
-    contours = plt.contour(phis0, phis1, energies, 4, colors='black')
+    contours = plt.contour(phis1, phis0, energies, 4, colors='black')
     plt.clabel(contours, inline=True, fontsize=8)
 
-    plt.xlabel(f'Dihedral 1 for {results["scans"][0]} (degrees)')
-    plt.ylabel(f'Dihedral 2 for {results["scans"][1]} (degrees)')
+    plt.xlabel(f'Dihedral for {results["scans"][1]}, degrees')
+    plt.ylabel(f'Distance for {results["scans"][0]}, Angstrom')
     label = ' for ' + label if label else ''
     plt.title(f'2D scan energies (kJ/mol){label}')
     min_x = min_y = -180
     plt.xlim = (min_x, min_x + 360)
     plt.xticks(np.arange(min_x, min_x + 361, step=60))
-    plt.ylim = (min_y, min_y + 360)
-    plt.yticks(np.arange(min_y, min_y + 361, step=60))
+    # plt.ylim = (1.1, 1.9)
+    # plt.yticks(np.arange(1.1, 1.9 + 0.1, step=0.1))
 
     if mark_lowest_conformations:
         # mark the lowest conformations
