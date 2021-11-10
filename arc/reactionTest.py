@@ -449,6 +449,14 @@ class TestARCReaction(unittest.TestCase):
                                       ARCSpecies(label='HN3O2', smiles='[O-][N+](=N)N=O')])
         self.assertTrue(rxn6.check_atom_balance())
 
+        # A reaction that involves charged species
+        rxn7 = ARCReaction(reactants=['C6CNC3', 'OH'], products=['C6COH', 'NC3'],
+                           r_species=[ARCSpecies(label='C6CNC3', smiles='c1ccccc1C[N+](C)(C)C', charge=1, multiplicity=1),
+                                      ARCSpecies(label='OH', smiles='[OH-]', charge=-1, multiplicity=1)],
+                           p_species=[ARCSpecies(label='C6COH', smiles='c1ccccc1CO'),
+                                      ARCSpecies(label='NC3', smiles='CN(C)C')])
+        self.assertTrue(rxn7.check_atom_balance())
+
         # A *non*-balanced reaction
         with self.assertRaises(ReactionError):
             ARCReaction(reactants=['CH4', 'OH'], products=['CH4', 'H2O'],
