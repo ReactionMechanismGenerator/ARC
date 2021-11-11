@@ -1461,6 +1461,9 @@ class Scheduler(object):
                                          tsg=tsg_index,
                                          )
                             tsg_index += 1
+                if all('user guess' in tsg.method for tsg in rxn.ts_species.ts_guesses):
+                    rxn.ts_species.tsg_spawned = True
+                    self.run_conformer_jobs(labels=[rxn.ts_label])
 
     def spawn_directed_scan_jobs(self,
                                  label: str,
