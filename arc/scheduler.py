@@ -159,6 +159,7 @@ class Scheduler(object):
         fine_only (bool): If ``True`` ARC will not run optimization jobs without ``fine=True``.
         kinetics_adapter (str, optional): The statmech software to use for kinetic rate coefficient calculations.
         freq_scale_factor (float, optional): The harmonic frequencies scaling factor.
+        trsh_ess_jobs (bool, optional): Whether to attempt troubleshooting failed ESS jobs. Default is ``True``.
 
     Attributes:
         project (str): The project's name. Used for naming the working directory.
@@ -211,6 +212,7 @@ class Scheduler(object):
         fine_only (bool): If ``True`` ARC will not run optimization jobs without ``fine=True``.
         kinetics_adapter (str): The statmech software to use for kinetic rate coefficient calculations.
         freq_scale_factor (float): The harmonic frequencies scaling factor.
+        trsh_ess_jobs (bool): Whether to attempt troubleshooting failed ESS jobs. Default is ``True``.
     """
 
     def __init__(self,
@@ -241,6 +243,7 @@ class Scheduler(object):
                  n_confs: Optional[int] = 10,
                  e_confs: Optional[float] = 5,
                  fine_only: Optional[bool] = False,
+                 trsh_ess_jobs: Optional[bool] = True,
                  kinetics_adapter: str = 'arkane',
                  freq_scale_factor: float = 1.0,
                  ) -> None:
@@ -268,6 +271,7 @@ class Scheduler(object):
         self.dont_gen_confs = dont_gen_confs or list()
         self.job_types = job_types if job_types is not None else default_job_types
         self.fine_only = fine_only
+        self.trsh_ess_jobs = trsh_ess_jobs
         self.kinetics_adapter = kinetics_adapter
         self.freq_scale_factor = freq_scale_factor
         self.output = dict()
@@ -2151,7 +2155,7 @@ class Scheduler(object):
                         self.output[label]['isomorphism'] += 'composite did not pass isomorphism check; '
                     success &= is_isomorphic
                 return success
-            elif not self.species_dict[label].is_ts:
+            elif not self.species_dict[label].is_ts and self.trsh_ess_jobs:
                 self.troubleshoot_negative_freq(label=label, job=job)
         if job.job_status[1]['status'] != 'done' or (not freq_ok and not self.species_dict[label].is_ts):
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level)
@@ -2222,7 +2226,7 @@ class Scheduler(object):
                     plotter.draw_structure(species=self.species_dict[label],
                                            project_directory=self.project_directory,
                                            method='draw_3d')
-        else:
+        elif self.trsh_ess_jobs:
             self.troubleshoot_opt_jobs(label=label)
         if success:
             return True  # run freq / sp / scan jobs on this optimized geometry
@@ -2276,7 +2280,7 @@ class Scheduler(object):
                                     f'Status is:\n{self.species_dict[label].ts_checks}\n'
                                     f'Searching for a better TS conformer...')
                         self.switch_ts(label)
-            elif not self.species_dict[label].is_ts:
+            elif not self.species_dict[label].is_ts and self.trsh_ess_jobs:
                 # Only trsh neg freq here for non TS species, trsh TS species is done in check_negative_freq().
                 self.troubleshoot_negative_freq(label=label, job=job)
         if job.job_status[1]['status'] != 'done' or (not freq_ok and not self.species_dict[label].is_ts):
@@ -2577,7 +2581,8 @@ class Scheduler(object):
                 )
 
                 if len(list(actions.keys())) \
-                        and 'pivTS' not in self.species_dict[label].rotors_dict[job.rotor_index]['invalidation_reason']:
+                        and 'pivTS' not in self.species_dict[label].rotors_dict[job.rotor_index]['invalidation_reason'] \
+                        and self.trsh_ess_jobs:
                     # The rotor scan is problematic (and does not block a TS reaction zone), troubleshooting is required.
                     logger.info(f'Trying to troubleshoot rotor '
                                 f'{self.species_dict[label].rotors_dict[job.rotor_index]["pivots"]} '
