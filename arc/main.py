@@ -130,8 +130,8 @@ class ARC(object):
         n_confs (int, optional): The number of lowest force field conformers to consider.
         e_confs (float, optional): The energy threshold in kJ/mol above the lowest energy conformer below which
                                    force field conformers are considered.
-        keep_checks (bool, optional): Whether to keep all Gaussian checkfiles when ARC terminates. True to keep,
-                                      default is False.
+        keep_checks (bool, optional): Whether to keep ESS checkfiles when ARC terminates. ``True`` to keep,
+                                      default is ``False``.
         dont_gen_confs (list, optional): A list of species labels for which conformer generation should be avoided
                                          if xyz is given.
         compare_to_rmg (bool, optional): If ``True`` data calculated from the RMG-database will be calculated and
@@ -148,6 +148,7 @@ class ARC(object):
         three_params (bool, optional): Compute rate coefficients using the modified three-parameter Arrhenius equation
                                        format (``True``, default) or classical two-parameter Arrhenius equation format
                                        (``False``).
+        trsh_ess_jobs (bool, optional): Whether to attempt troubleshooting failed ESS jobs. Default is ``True``.
         output (dict, optional): Output dictionary with status and final QM file paths for all species.
                                  Only used for restarting.
         running_jobs (dict, optional): A dictionary of jobs submitted in a precious ARC instance, used for restarting.
@@ -215,6 +216,7 @@ class ARC(object):
                           jobs without fine=True
         three_params (bool): Compute rate coefficients using the modified three-parameter Arrhenius equation
                              format (``True``) or classical two-parameter Arrhenius equation format (``False``).
+        trsh_ess_jobs (bool): Whether to attempt troubleshooting failed ESS jobs. Default is ``True``.
     """
 
     def __init__(self,
@@ -259,6 +261,7 @@ class ARC(object):
                  T_count: int = 50,
                  thermo_adapter: str = 'Arkane',
                  three_params: bool = True,
+                 trsh_ess_jobs: bool = True,
                  ts_guess_level: Optional[Union[str, dict, Level]] = None,
                  verbose=logging.INFO,
                  ):
@@ -289,6 +292,7 @@ class ARC(object):
         self.compute_thermo = compute_thermo
         self.compute_rates = compute_rates
         self.three_params = three_params
+        self.trsh_ess_jobs = trsh_ess_jobs
         self.compute_transport = compute_transport
         self.thermo_adapter = StatmechEnum(thermo_adapter.lower()).value
         self.kinetics_adapter = StatmechEnum(kinetics_adapter.lower()).value
@@ -418,6 +422,11 @@ class ARC(object):
         if self.job_types['freq'] or self.composite_method is not None:
             self.check_freq_scaling_factor()
 
+        if not self.trsh_ess_jobs:
+            logger.info('\n')
+            logger.warning('Not troubleshooting ESS jobs!')
+            logger.info('\n')
+
         self.scheduler = None
         self.restart_dict = self.as_dict()
         self.backup_restart()
@@ -498,6 +507,8 @@ class ARC(object):
         restart_dict['thermo_adapter'] = self.thermo_adapter
         if not self.three_params:
             restart_dict['three_params'] = self.three_params
+        if not self.trsh_ess_jobs:
+            restart_dict['trsh_ess_jobs'] = self.trsh_ess_jobs
         if self.ts_guess_level is not None:
             restart_dict['ts_guess_level'] = self.ts_guess_level.as_dict() \
                 if not isinstance(self.ts_guess_level, (dict, str)) else self.ts_guess_level
@@ -566,6 +577,7 @@ class ARC(object):
                                    n_confs=self.n_confs,
                                    e_confs=self.e_confs,
                                    dont_gen_confs=self.dont_gen_confs,
+                                   trsh_ess_jobs=self.trsh_ess_jobs,
                                    fine_only=self.fine_only,
                                    )
 
