@@ -55,7 +55,7 @@ Install dependencies
 
   Activate the ARC environment every time before you run ARC::
 
-     source activate arc_env
+     conda activate arc_env
 
 
 Create a ``.arc`` folder
