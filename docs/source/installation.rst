@@ -49,7 +49,7 @@ Install dependencies
 
   Activate the ARC environment every time before you run ARC::
 
-     source activate arc_env
+     conda activate arc_env
 - Install the latest **DEVELOPER** version of RMG (which has Arkane).
   It is recommended to follow RMG's `Developer installation by source using Anaconda
   <http://reactionmechanismgenerator.github.io/RMG-Py/users/rmg/installation/index.html
