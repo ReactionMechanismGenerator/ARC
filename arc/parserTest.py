@@ -370,7 +370,7 @@ H      -0.59436200   -0.94730400    0.00000000"""
         path2 = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'scan_1d_curvilinear_error.out')
         energies_2, angles_2 = parser.parse_1d_scan_energies(path=path2)
         self.assertEqual(energies_2, 0.)
-        self.assertEqual(angles_2, None)
+        self.assertEqual(angles_2, 360.)
 
     def test_parse_nd_scan_energies(self):
         """Test parsing an ND scan output file"""
