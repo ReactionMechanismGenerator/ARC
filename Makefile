@@ -7,7 +7,7 @@
 .PHONY : clean gcn gcn-cpu test test-unittests
 
 test test-unittests:
-	nosetests --nocapture --nologcapture --all-modules --verbose --with-coverage --cover-inclusive --cover-package=arc --cover-erase --cover-html --exe --cover-html-dir=testing/coverage
+	python3 -m unittest discover -p *Test.py -v
 
 gcn:
 	bash devtools/install_gcn.sh
