@@ -96,7 +96,7 @@ class TestRMGDB(unittest.TestCase):
         """Test the get_family() function"""
         family_1 = rmgdb.get_family(rmgdb=self.rmgdb, label='ketoenol')
         self.assertIsInstance(family_1, KineticsFamily)
-        self.assertEqual(family_1.label, 'ketoenol')
+        self.assertEqual(family_1.label.lower(), 'ketoenol')
         self.assertTrue(family_1.save_order)
 
         family_2 = rmgdb.get_family(rmgdb=self.rmgdb, label='H_Abstraction')
