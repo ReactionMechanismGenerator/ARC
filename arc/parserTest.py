@@ -365,12 +365,12 @@ H      -0.59436200   -0.94730400    0.00000000"""
                                     224., 232., 240., 248., 256., 264., 272., 280., 288., 296., 304., 312., 320., 328.,
                                     336., 344., 352., 360.], np.float64)
         np.testing.assert_almost_equal(energies, expected_energies)
-        np.testing.assert_almost_equal(angles, expected_angles)
+        np.testing.assert_almost_equal(angles, expected_angles, 3)
 
         path2 = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'scan_1d_curvilinear_error.out')
         energies_2, angles_2 = parser.parse_1d_scan_energies(path=path2)
-        self.assertEqual(energies_2, None)
-        self.assertEqual(angles_2, None)
+        self.assertEqual(energies_2, 0.)
+        self.assertEqual(angles_2, 360.)
 
     def test_parse_nd_scan_energies(self):
         """Test parsing an ND scan output file"""

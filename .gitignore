@@ -29,6 +29,7 @@ examples/
 .coverage
 testing/*
 htmlcov/*
+arc/testing/gcn_tst/
 
 # Scratch
 scratch/

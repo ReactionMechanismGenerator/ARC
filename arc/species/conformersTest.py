@@ -586,7 +586,7 @@ H       0.68104300    0.74807180    0.61546062""")]
                                      (2.51642, -0.38757, 0.25036))}]
         self.assertEqual(len(energies), 2)
         self.assertAlmostEqual(energies[0], 3.49581, 5)
-        self.assertAlmostEqual(energies[1], -0.702848, 5)
+        self.assertAlmostEqual(energies[1], -0.702848, 4)
         # Only symbols instead of the coordinate values are compared.
         # This is due to the unknown behavior of OpenBabel optimization function.
         # With the same iteration number and same initial xyz, the optimized xyzs can
