@@ -383,7 +383,7 @@ def setup_kinbot(mol: 'Molecule',
                  kinbot_xyz: List[Union[str, float]],
                  multiplicity: int,
                  charge: int,
-                 ) -> ReactionGenerator:
+                 ):
     """
     This will setup KinBot to run for a unimolecular reaction starting from the single reactant side.
 
