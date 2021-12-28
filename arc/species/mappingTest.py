@@ -588,7 +588,8 @@ class TestMapping(unittest.TestCase):
         p_1 = ARCSpecies(label='C3H5O', smiles='C[CH]C=O', xyz=self.c3h5o_xyz)
         p_2 = ARCSpecies(label='H2O', smiles='O', xyz=self.h2o_xyz)
         rxn = ARCReaction(r_species=[r_1, r_2], p_species=[p_1, p_2])
-        atom_map = mapping.map_h_abstraction(rxn=rxn, db=self.rmgdb)
+        atom_map = mapping.map_abstractions(rxn=rxn, db=self.rmgdb)
+        atom_map2 = mapping.map_h_abstraction(rxn=rxn, db=self.rmgdb)
         self.assertEqual(atom_map[:4], [0, 1, 3, 4])
         self.assertIn(atom_map[4], [5, 7])
         self.assertIn(atom_map[5], [6, 7])
@@ -596,7 +597,7 @@ class TestMapping(unittest.TestCase):
         self.assertIn(atom_map[7], [2, 11])
         self.assertIn(atom_map[8], [2, 11])
         self.assertEqual(atom_map[9:], [8, 9, 10])
-
+        self.assertEqual(atom_map,atom_map2)
         # C4H10O + OH <=> C4H9O + H2O
         r_1 = ARCSpecies(label='C4H10O', smiles='CC(C)CO', xyz=self.c4h10o_xyz)
         r_2 = ARCSpecies(label='OH', smiles='[OH]', xyz=self.oh_xyz)
@@ -604,12 +605,15 @@ class TestMapping(unittest.TestCase):
         p_2 = ARCSpecies(label='H2O', smiles='O', xyz=self.h2o_xyz)
         rxn = ARCReaction(r_species=[r_1, r_2], p_species=[p_1, p_2])
         atom_map = mapping.map_h_abstraction(rxn=rxn, db=self.rmgdb)
+        atom_map2 = mapping.map_h_abstraction(rxn=rxn, db=self.rmgdb)
         self.assertEqual(atom_map[:5], [0, 3, 4, 5, 6])
         for index in [5, 6, 7]:
             self.assertIn(atom_map[index], [1, 2, 15, 16])
         self.assertEqual(atom_map[8:16], [7, 8, 10, 9, 11, 12, 13, 14])
         self.assertIn(atom_map[16], [15, 16])
-
+        self.assertEqual(atom_map, atom_map2)
+        print(atom_map,atom_map2)
+        raise
         # C3H6O + C4H9O <=> C3H5O + C4H10O
         r_1 = ARCSpecies(label='C3H6O', smiles='CCC=O', xyz=self.c3h6o_xyz)
         r_2 = ARCSpecies(label='C4H9O', smiles='[CH2]C(C)CO', xyz=self.c4h9o_xyz)
