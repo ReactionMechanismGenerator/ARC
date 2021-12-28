@@ -36,6 +36,25 @@ class TestMapping(unittest.TestCase):
         if cls.rmgdb is None:
             cls.rmgdb = make_rmg_database_object()
             load_families_only(cls.rmgdb)
+        cls.ch3cl_xyz = {'symbols': ('Cl', 'C', 'H', 'H', 'H'), 'isotopes': (35, 12, 1, 1, 1),
+                         'coords': ((1.6260450732924123, 0.06950511145502204, -0.029287400909487706),
+                                    (-0.13902319255720844, -0.005942522549225256, 0.0025040105508790877),
+                                    (-0.48751519000626353, -0.5782116958350602, -0.8600292104425608),
+                                    (-0.45894137315516464, -0.4942789247294056, 0.9255869621295756),
+                                    (-0.540565317573775, 1.0089280316586664, -0.038774361328407066))}
+
+        cls.ch3_xyz_2 = {'symbols': ('C', 'H', 'H', 'H'), 'isotopes': (12, 1, 1, 1),
+                         'coords': ((3.3746019998564553e-09, 5.828827384106545e-09, -4.859105107686622e-09),
+                                    (1.0669051052331406, -0.17519582095514982, 0.05416492980439295),
+                                    (-0.6853171627400634, -0.8375353626879753, -0.028085652887100996),
+                                    (-0.3815879458676787, 1.0127311778142964, -0.026079272058187608))}
+
+        cls.h_rad_xyz = {'symbols': ('H',), 'isotopes': (1,), 'coords': ((0, 0, 0),)}
+
+        cls.hcl_xyz ={'symbols': ('H', 'Cl'), 'isotopes': (1, 35),
+                      'coords': ((0.6878248644303301, 0.0, 0.0),
+                                 (-0.6878248644303301, 0.0, 0.0))}
+
         cls.ch4_xyz = {'symbols': ('C', 'H', 'H', 'H', 'H'), 'isotopes': (12, 1, 1, 1, 1),
                        'coords': ((-5.45906343962835e-10, 4.233517924761169e-10, 2.9505240956083194e-10),
                                   (-0.6505520089868748, -0.7742801979689132, -0.4125187934483119),
@@ -79,6 +98,7 @@ class TestMapping(unittest.TestCase):
                                                     ARCSpecies(label='OH', smiles='[OH]', xyz=cls.oh_xyz)],
                                          p_species=[ARCSpecies(label='CH3', smiles='[CH3]', xyz=cls.ch3_xyz),
                                                     ARCSpecies(label='H2O', smiles='O', xyz=cls.h2o_xyz)])
+
         cls.arc_reaction_2 = ARCReaction(label='C3H8 + NH2 <=> nC3H7 + NH3',
                                          r_species=[ARCSpecies(label='C3H8', smiles='CCC',
                                                                xyz="""C      -1.26511392    0.18518050   -0.19976825
@@ -105,6 +125,7 @@ class TestMapping(unittest.TestCase):
                                                                       H      -1.69636720    0.21982441    1.34850246
                                                                       H      -0.39178710    1.38838724    1.61666119"""),
                                                     ARCSpecies(label='NH3', smiles='N', xyz=cls.nh3_xyz)])
+
         cls.arc_reaction_4 = ARCReaction(label='CH2CH2NH2 <=> CH3CH2NH',
                                          r_species=[ARCSpecies(label='CH2CH2NH2', smiles='[CH2]CN',
                                                                xyz="""C      -1.24450121    0.17451352    0.00786829
@@ -126,6 +147,11 @@ class TestMapping(unittest.TestCase):
                                                                       H       0.78091492   -0.31605120    1.13875203
                                                                       H       0.92382278    0.74158978   -0.25822764
                                                                       H       1.97108857   -1.36649904   -0.64094836""")])
+        cls.arc_reaction_5 = ARCReaction(label='H + CCl  <=> HCl + CH3',
+                                         r_species=[ARCSpecies(label='H',smiles='[H]', xyz=cls.h_rad_xyz),
+                                                    ARCSpecies(label='CCl',smiles='ClC', xyz=cls.ch3cl_xyz)],
+                                         p_species=[ARCSpecies(label='HCl',smiles='[H][Cl]', xyz=cls.hcl_xyz),
+                                                    ARCSpecies(label='CH3',smiles='[CH3],' xyz=cls.ch3_xyz_2)])
         cls.rmg_reaction_1 = Reaction(reactants=[Species(smiles='C'), Species(smiles='[OH]')],
                                       products=[Species(smiles='[CH3]'), Species(smiles='O')])
         cls.rmg_reaction_2 = Reaction(reactants=[Species(smiles='[OH]'), Species(smiles='C')],
