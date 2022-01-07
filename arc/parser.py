@@ -113,6 +113,7 @@ def parse_frequencies(path: str,
 
 def parse_normal_mode_displacement(path: str,
                                    software: Optional[str] = None,
+                                   raise_error: bool = True,
                                    ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Parse frequencies and normal mode displacement.
@@ -120,6 +121,7 @@ def parse_normal_mode_displacement(path: str,
     Args:
         path (str): The path to the log file.
         software (str, optional): The software to used to generate the log file.
+        raise_error (bool, optional): Whether to raise an error if the ESS isn't implemented.
 
     Raises:
         NotImplementedError: If the parser is not implemented for the ESS this log file belongs to.
@@ -162,7 +164,7 @@ def parse_normal_mode_displacement(path: str,
                 parse_normal_modes_disp = True
             elif parse and not line or '-------------------' in line:
                 parse = False
-    else:
+    elif raise_error:
         raise NotImplementedError(f'parse_normal_modes_displacement() is currently not implemented for {software}.')
     freqs = np.array(freqs, np.float64)
     normal_mode_disp = np.array(normal_mode_disp, np.float64)
