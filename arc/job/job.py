@@ -1143,7 +1143,7 @@ end
                 self._upload_input_file()
             else:
                 self.initial_time = get_last_modified_time(
-                    file_path=os.path.join(self.local_path, submit_filename[servers[self.server]['cluster_soft']]))
+                    file_path_1=os.path.join(self.local_path, submit_filename[servers[self.server]['cluster_soft']]))
                 # copy additional input files to local running directory
                 for up_file in self.additional_files_to_upload:
                     if up_file['source'] == 'path':
@@ -1182,7 +1182,7 @@ end
                 if up_file['make_x']:
                     ssh.change_mode(mode='+x', path=up_file['name'], remote_path=self.remote_path)
             self.initial_time = ssh.get_last_modified_time(
-                remote_file_path=os.path.join(self.remote_path, submit_filename[servers[self.server]['cluster_soft']]))
+                remote_file_path_1=os.path.join(self.remote_path, submit_filename[servers[self.server]['cluster_soft']]))
 
     def _upload_check_file(self, local_check_file_path=None):
         if self.server != 'local':
@@ -1212,7 +1212,7 @@ end
             ssh.download_file(remote_file_path=remote_file_path, local_file_path=self.local_path_to_output_file)
             if not os.path.isfile(self.local_path_to_output_file):
                 raise JobError(f'output file for {self.job_name} was not downloaded properly')
-            self.final_time = ssh.get_last_modified_time(remote_file_path=remote_file_path)
+            self.final_time = ssh.get_last_modified_time(remote_file_path_1=remote_file_path)
 
             # download orbitals FChk file
             if self.job_type == 'orbitals':
@@ -1418,7 +1418,7 @@ end
             # If running locally, just rename the output file to "output.out" for consistency between software
             if self.final_time is None:
                 self.final_time = get_last_modified_time(
-                    file_path=os.path.join(self.local_path, output_filename[self.software]))
+                    file_path_1=os.path.join(self.local_path, output_filename[self.software]))
             rename_output(local_file_path=self.local_path_to_output_file, software=self.software)
             xyz_path = os.path.join(self.local_path, 'scr', 'optim.xyz')
             if os.path.isfile(xyz_path):
