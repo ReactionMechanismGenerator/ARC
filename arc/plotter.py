@@ -13,7 +13,7 @@ import os
 import shutil
 from matplotlib.backends.backend_pdf import PdfPages
 from mpl_toolkits.mplot3d import Axes3D
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import py3Dmol as p3D
 import qcelemental as qcel
@@ -1224,6 +1224,129 @@ def plot_2d_rotor_scan(results: dict,
         plt.plot(zero_phi0, zero_phi1, color='k', marker='D', markersize=8, linewidth=0)
     if original_dihedrals is not None:
         # mark the original conformation
+        plt.plot(original_dihedrals[0], original_dihedrals[1], color='r', marker='.', markersize=15, linewidth=0)
+
+    if path is not None:
+        fig_name = f'{results["directed_scan_type"]}_{results["scans"]}.png'
+        fig_path = os.path.join(path, fig_name)
+        plt.savefig(fig_path, dpi=resolution, facecolor='w', edgecolor='w', orientation='portrait',
+                    format='png', transparent=False, bbox_inches=None, pad_inches=0.1, metadata=None)
+
+    plt.show()
+    plt.close(fig=fig)
+
+
+def plot_2d_scan_bond_dihedral(results: dict,
+                               path: Optional[str] = None,
+                               label: str = '',
+                               cmap: str = 'Blues',
+                               resolution: int = 90,
+                               font_size: float = 15,
+                               figsize: Tuple[float, float] = (12, 8),
+                               original_dihedrals: Optional[List[float]] = None,
+                               ):
+    """
+    Plot a 2D scan where one coordinate is bond length and another is a dihedral angle.
+
+    Args:
+        results (dict):
+            The results dictionary, dihedrals are assumed to be in degrees (not radians).
+            This dictionary has the following structure::
+                {'directed_scan_type': <str, used for the fig name>,
+                 'scans': <list, entries are lists of torsion indices>,
+                 'directed_scan': <dict>, keys are tuples of '{0:.2f}' formatted dihedrals,
+                                  values are dictionaries with the following keys and values:
+                                  {'energy': <float, energy in kJ/mol>,  # only this is used here
+                                   'xyz': <dict>,
+                                   'is_isomorphic': <bool>,
+                                   'trsh': <list, job.ess_trsh_methods>}>,
+                }
+        path (str, optional): The folder path to save this 2D image.
+        label (str, optional): The species label.
+        cmap (str, optional): The color map to use. See optional arguments below.
+        resolution (int, optional): The image resolution to produce.
+        font_size (float, optional): The sfont size for the figure.
+        figsize (tuple, optional): The size (width, height) of the resulting figure.
+        original_dihedrals (list, optional): Entries are dihedral degrees of the conformer used for the scan.
+                                             If given, the conformer will be marked on the plot with a red dot.
+
+    Raises:
+        TypeError: If ``results`` if of wrong type.
+        InputError: If ``results`` does not represent a 2D rotor.
+
+    Optional arguments for cmap::
+        Accent, Accent_r, Blues, Blues_r, BrBG, BrBG_r, BuGn, BuGn_r, BuPu, BuPu_r, CMRmap, CMRmap_r, Dark2, Dark2_r,
+        GnBu, GnBu_r, Greens, Greens_r, Greys, Greys_r, OrRd, OrRd_r, Oranges, Oranges_r, PRGn, PRGn_r, Paired,
+        Paired_r, Pastel1, Pastel1_r, Pastel2, Pastel2_r, PiYG, PiYG_r, PuBu, PuBuGn, PuBuGn_r, PuBu_r, PuOr, PuOr_r,
+        PuRd, PuRd_r, Purples, Purples_r, RdBu, RdBu_r, RdGy, RdGy_r, RdPu, RdPu_r, RdYlBu, RdYlBu_r, RdYlGn, RdYlGn_r,
+        Reds, Reds_r, Set1, Set1_r, Set2, Set2_r, Set3, Set3_r, Spectral, Spectral_r, Wistia, Wistia_r, YlGn, YlGnBu,
+        YlGnBu_r, YlGn_r, YlOrBr, YlOrBr_r, YlOrRd, YlOrRd_r, afmhot, afmhot_r, autumn, autumn_r, binary, binary_r,
+        bone, bone_r, brg, brg_r, bwr, bwr_r, cividis, cividis_r, cool, cool_r, coolwarm, coolwarm_r, copper, copper_r,
+        cubehelix, cubehelix_r, flag, flag_r, gist_earth, gist_earth_r, gist_gray, gist_gray_r, gist_heat, gist_heat_r,
+        gist_ncar, gist_ncar_r, gist_rainbow, gist_rainbow_r, gist_stern, gist_stern_r, gist_yarg, gist_yarg_r, gnuplot,
+        gnuplot2, gnuplot2_r, gnuplot_r, gray, gray_r, hot, hot_r, hsv, hsv_r, inferno, inferno_r, jet, jet_r, magma,
+        magma_r, nipy_spectral, nipy_spectral_r, ocean, ocean_r, pink, pink_r, plasma, plasma_r, prism, prism_r,
+        rainbow, rainbow_r, seismic, seismic_r, spring, spring_r, summer, summer_r, tab10, tab10_r, tab20, tab20_r,
+        tab20b, tab20b_r, tab20c, tab20c_r, terrain, terrain_r, viridis, viridis_r, winter, winter_r
+    """
+    if not isinstance(results, dict):
+        raise TypeError(f'results must be a dictionary, got {type(results)}')
+    if len(results['scans']) != 2:
+        raise InputError(f'results must represent a 2D rotor, got {len(results["scans"])}D')
+
+    results['directed_scan'] = clean_scan_results(results['directed_scan'])
+
+    phis0 = np.array(sorted(list(set([float(key[0]) for key in results['directed_scan'].keys()]))), np.float64)
+    phis1 = np.array(sorted(list(set([float(key[1]) for key in results['directed_scan'].keys()]))), np.float64)
+    res0, res1 = phis0[1] - phis0[0], phis1[1] - phis1[0]
+    energies = np.zeros(shape=(phis0.size, phis1.size), dtype=np.float64)
+    e_min = None
+    missing_points, max_missing_points = 0, 0.02 * len(phis0) * len(phis1)
+    for i, phi0 in enumerate(phis0):
+        for j, phi1 in enumerate(phis1):
+            key = (float(phi0), float(phi1))
+            try:
+                energies[i, j] = results['directed_scan'][key]['energy']
+            except KeyError:
+                new_key = get_close_tuple(key_1=key, keys=results['directed_scan'].keys())
+                if new_key in list(results['directed_scan'].keys()):
+                    energies[i, j] = results['directed_scan'][new_key]['energy']
+                else:
+                    missing_points += 1
+                    if missing_points <= max_missing_points:
+                        new_key = get_close_tuple(key_1=key,
+                                                  keys=results['directed_scan'].keys(),
+                                                  tolerance=1.1 * max(res0, res1))
+                        energies[i, j] = results['directed_scan'][new_key]['energy']
+                    else:
+                        pass
+                        # There are too many gaps in the data.
+            if e_min is None or energies[i, j] < e_min:
+                e_min = energies[i, j]
+
+    for i, phi0 in enumerate(phis0):
+        for j, phi1 in enumerate(phis1):
+            energies[i, j] -= e_min
+
+    font = {'size': font_size}
+    matplotlib.rc('font', **font)
+
+    fig = plt.figure(num=None, figsize=figsize, dpi=resolution, facecolor='w', edgecolor='k')
+
+    plt.contourf(phis1, phis0, energies, 20, cmap=cmap)
+    plt.colorbar()
+    contours = plt.contour(phis1, phis0, energies, 4, colors='black')
+    plt.clabel(contours, inline=True, fontsize=font_size)
+
+    plt.xlabel(f'Dihedral for {results["scans"][1]}, degrees')
+    plt.ylabel(f'Distance for {results["scans"][0]}, Angstrom')
+    label = ' for ' + label if label else ''
+    plt.title(f'2D scan energies (kJ/mol){label}')
+    min_x = -180
+    plt.xlim = (min_x, min_x + 360)
+    plt.xticks(np.arange(min_x, min_x + 361, step=60))
+
+    if original_dihedrals is not None:
         plt.plot(original_dihedrals[0], original_dihedrals[1], color='r', marker='.', markersize=15, linewidth=0)
 
     if path is not None:
