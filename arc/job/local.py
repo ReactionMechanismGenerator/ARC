@@ -194,13 +194,29 @@ def submit_job(path):
     return job_status, job_id
 
 
-def get_last_modified_time(file_path):
-    """returns the last modified time of `file_path` in a datetime format"""
-    try:
-        timestamp = os.stat(file_path).st_mtime
-    except (IOError, OSError):
-        return None
-    return datetime.datetime.fromtimestamp(timestamp)
+def get_last_modified_time(file_path_1: str,
+                           file_path_2: Optional[str] = None,
+                           ) -> Optional[datetime.datetime]:
+    """
+    Returns the last modified time of ``file_path_1`` if the file exists,
+    else returns the last modified time of ``file_path_2`` if the file exists.
+
+    Args:
+        file_path_1 (str): The path to file 1.
+        file_path_2 (str, optional): The path to file 2.
+    """
+    timestamp = None
+    if os.path.isfile(file_path_1):
+        try:
+            timestamp = os.stat(file_path_1).st_mtime
+        except (IOError, OSError):
+            pass
+    if timestamp is None and file_path_2 is not None:
+        try:
+            timestamp = os.stat(file_path_2).st_mtime
+        except (IOError, OSError):
+            return None
+    return datetime.datetime.fromtimestamp(timestamp) if timestamp is not None else None
 
 
 def write_file(file_path, file_string):
