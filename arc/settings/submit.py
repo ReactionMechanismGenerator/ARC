@@ -28,6 +28,8 @@ echo "Running on node : $SLURMD_NODENAME"
 echo "Current directory : $(pwd)"
 echo "============================================================"
 
+touch initial_time
+
 WorkDir=/scratch/users/{un}/$SLURM_JOB_NAME-$SLURM_JOB_ID
 SubmitDir=`pwd`
 
@@ -49,6 +51,8 @@ cp * "$SubmitDir/"
 
 rm -rf $GAUSS_SCRDIR
 rm -rf $WorkDir
+
+touch final_time
 
 """,
 
@@ -80,6 +84,8 @@ echo "Running on node : $SLURMD_NODENAME"
 echo "Current directory : $(pwd)"
 echo "============================================================"
 
+touch initial_time
+
 
 WorkDir=/scratch/users/{un}/$SLURM_JOB_NAME-$SLURM_JOB_ID
 SubmitDir=`pwd`
@@ -93,6 +99,8 @@ ${ORCA_DIR}/orca input.inp > input.log
 cp * "$SubmitDir/"
 
 rm -rf $WorkDir
+
+touch final_time
 
 """,
     },
@@ -120,6 +128,8 @@ echo "Running on node : $SLURMD_NODENAME"
 echo "Current directory : $(pwd)"
 echo "============================================================"
 
+touch initial_time
+
 WorkDir=/scratch/{un}/$SLURM_JOB_NAME-$SLURM_JOB_ID
 SubmitDir=`pwd`
 
@@ -141,6 +151,8 @@ cp * "$SubmitDir/"
 
 rm -rf $GAUSS_SCRDIR
 rm -rf $WorkDir
+
+touch final_time
 
 """,
         # Molpro 2015
@@ -164,6 +176,8 @@ echo "Running on node : $SLURMD_NODENAME"
 echo "Current directory : $(pwd)"
 echo "============================================================"
 
+touch initial_time
+
 sdir=/scratch/{un}/$SLURM_JOB_NAME-$SLURM_JOB_ID
 SubmitDir=`pwd`
 
@@ -178,6 +192,8 @@ cp input.* "$SubmitDir/"
 cp geometry*.* "$SubmitDir/"
 
 rm -rf $sdir
+
+touch final_time
 
 """,
         # Orca
@@ -208,6 +224,8 @@ echo "Running on node : $SLURMD_NODENAME"
 echo "Current directory : $(pwd)"
 echo "============================================================"
 
+touch initial_time
+
 WorkDir=/scratch/users/{un}/$SLURM_JOB_NAME-$SLURM_JOB_ID
 SubmitDir=`pwd`
 
@@ -220,6 +238,8 @@ ${ORCA_DIR}/orca input.inp > input.log
 cp * "$SubmitDir/"
 
 rm -rf $WorkDir
+
+touch final_time
 
 """,
         # TeraChem
@@ -241,11 +261,15 @@ echo "Running on node : $SLURMD_NODENAME"
 echo "Current directory : $(pwd)"
 echo "============================================================"
 
+touch initial_time
+
 module load cuda92/toolkit
 module load medsci
 module load terachem
 
 terachem input.in > output.out
+
+touch final_time
 
 """,
     },
@@ -266,6 +290,8 @@ terachem input.in > output.out
 echo "Running on node:"
 hostname
 
+touch initial_time
+
 g16root=/opt
 GAUSS_SCRDIR=/scratch/{un}/{name}
 export g16root GAUSS_SCRDIR
@@ -275,6 +301,8 @@ mkdir -p /scratch/{un}/{name}
 g16 input.gjf
 
 rm -r /scratch/{un}/{name}
+
+touch final_time
 
 """,
         # Gaussian 03
@@ -293,6 +321,8 @@ rm -r /scratch/{un}/{name}
 echo "Running on node:"
 hostname
 
+touch initial_time
+
 g03root=/opt
 GAUSS_SCRDIR=/scratch/{un}/{name}
 export g03root GAUSS_SCRDIR
@@ -302,6 +332,8 @@ mkdir -p /scratch/{un}/{name}
 g03 input.gjf
 
 rm -r /scratch/{un}/{name}
+
+touch final_time
 
 """,
         # QChem 5.2
@@ -319,6 +351,8 @@ rm -r /scratch/{un}/{name}
 echo "Running on node:"
 hostname
 
+touch initial_time
+
 source /opt/qchem/qcenv.sh
 
 export QC=/opt/qchem
@@ -331,6 +365,8 @@ mkdir -p /scratch/{un}/{name}/qlscratch
 qchem -nt {cpus} input.in output.out
 
 rm -r /scratch/{un}/{name}
+
+touch final_time
 
 """,
         # Molpro 2012
@@ -345,12 +381,19 @@ rm -r /scratch/{un}/{name}
 #$ -o out.txt
 #$ -e err.txt
 
+echo "Running on node:"
+hostname
+
+touch initial_time
+
 export PATH=/opt/molpro2012/molprop_2012_1_Linux_x86_64_i8/bin:$PATH
 
 sdir=/scratch/{un}
 mkdir -p /scratch/{un}/qlscratch
 
 molpro -d $sdir -n {cpus} input.in
+
+touch final_time
 
 """,
         # OneDMin
@@ -365,6 +408,11 @@ molpro -d $sdir -n {cpus} input.in
 #$ -o out.txt
 #$ -e err.txt
 
+echo "Running on node:"
+hostname
+
+touch initial_time
+
 WorkDir=`pwd`
 cd
 sdir=/scratch/{un}
@@ -372,6 +420,8 @@ mkdir -p /scratch/{un}/onedmin
 cd $WorkDir
 
 ~/auto1dmin/exe/auto1dmin.x < input.in > output.out
+
+touch final_time
 
 """,
         # Orca
@@ -389,6 +439,8 @@ cd $WorkDir
 echo "Running on node:"
 hostname
 
+touch initial_time
+
 export PATH=/opt/orca/:$PATH
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib/:/usr/local/etc
 
@@ -404,6 +456,8 @@ cp "$SubmitDir/input.in" .
 cp * "$SubmitDir/"
 
 rm -rf $WorkDir
+
+touch final_time
 
 """,
     },
@@ -428,6 +482,8 @@ echo "memory per node : $SLURM_MEM_PER_NODE
 echo "memory per cpu : $SLURM_MEM_PER_CPU
 echo "============================================================"
 
+touch initial_time
+
 WorkDir=/state/partition1/user/{un}/$SLURM_JOB_NAME-$SLURM_JOB_ID
 SubmitDir=`pwd`
 
@@ -448,6 +504,9 @@ cp $SubmitDir/input.in .
 $orcadir/orca input.in > input.log
 cp input.log  $SubmitDir/
 rm -rf  $WorkDir
+
+touch final_time
+
         """,
     },
     'pbs_sample': {
@@ -459,6 +518,8 @@ rm -rf  $WorkDir
 #PBS -N {name}
 #PBS -o out.txt
 #PBS -e err.txt
+
+touch initial_time
 
 export g16root=/home/{un}/Software
 export PATH=$g16root/g16/:$g16root/gv:$PATH
@@ -474,6 +535,8 @@ chmod 750 $GAUSS_SCRDIR
 g16 < input.gjf > input.log
 
 rm -rf $GAUSS_SCRDIR
+
+touch final_time
     
     """,
     }
