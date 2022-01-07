@@ -1386,7 +1386,7 @@ def scan_quality_check(label: str,
             invalidation_reason = f'initial and final points are inconsistent by more than {inconsistency_az:.2f} kJ/mol'
             message = f'Rotor scan of {label} between pivots {pivots} is inconsistent by more ' \
                       f'than {inconsistency_az:.2f} kJ/mol between initial and final positions. ' \
-                      f'Initial energy = {energies[0]}, final energy = {energies[-1]}. ARC will ' \
+                      f'Initial energy = {energies[0]:.2f}, final energy = {energies[-1]:.2f}. ARC will ' \
                       f'attempt to troubleshoot this rotor scan.'
             logger.error(message)
             actions = {'inc_res': None, 'freeze': 'all'}
