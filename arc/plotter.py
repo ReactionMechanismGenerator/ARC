@@ -72,7 +72,7 @@ def draw_structure(xyz=None, species=None, project_directory=None, method='show_
     if method == 'show_sticks' and notebook:
         try:
             success = show_sticks(xyz=xyz, species=species, project_directory=project_directory)
-        except (AttributeError, IndexError, InputError):
+        except (AttributeError, IndexError, InputError, TypeError):
             pass
     if method == 'draw_3d' or (method == 'show_sticks' and (not success or not notebook)):
         draw_3d(xyz=xyz, species=species, project_directory=project_directory, save_only=not notebook)
