@@ -97,7 +97,7 @@ rm -rf $WorkDir
 """,
     },
 
-    'rmg': {
+    'server2': {
         # Gaussian 16
         'gaussian': """#!/bin/bash -l
 #SBATCH -p long
@@ -250,7 +250,7 @@ terachem input.in > output.out
 """,
     },
 
-    'pharos': {
+    'server1': {
         # Gaussian 16
         'gaussian': """#!/bin/bash -l
 
