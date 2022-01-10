@@ -36,6 +36,8 @@ class TestLocal(unittest.TestCase):
         path = os.path.join(ARC_PATH, 'ARC.py')
         t = local.get_last_modified_time(path)
         self.assertIsInstance(t, datetime.datetime)
+        t = local.get_last_modified_time('no file', path)
+        self.assertIsInstance(t, datetime.datetime)
 
     def test_rename_output(self):
         """Test the rename_output() function"""

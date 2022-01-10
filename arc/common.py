@@ -395,6 +395,17 @@ def save_yaml_file(path: str,
         f.write(yaml_str)
 
 
+def from_yaml(yaml_str: str) -> Union[dict, list]:
+    """
+    Read a YAML string and decode to the respective Python object.
+    Args:
+        yaml_str (str): The YAML string content.
+    Returns: Union[dict, list]
+        The respective Python object.
+    """
+    return yaml.load(stream=yaml_str, Loader=yaml.FullLoader)
+
+
 def to_yaml(py_content: Union[list, dict]) -> str:
     """
     Convert a Python list or dictionary to a YAML string format.
@@ -592,22 +603,22 @@ def determine_symmetry(xyz: dict) -> Tuple[int, int]:
         - The external symmetry number.
         - ``1`` if no chiral centers are present, ``2`` if chiral centers are present.
     """
-    atom_numbers = list()  # List of atomic numbers
+    atom_numbers = list()
     for symbol in xyz['symbols']:
         atom_numbers.append(get_element(symbol).number)
-    # coords is an N x 3 numpy.ndarray of atomic coordinates in the same order as `atom_numbers`
+    # Coords is an N x 3 numpy.ndarray of atomic coordinates in the same order as `atom_numbers`.
     coords = np.array(xyz['coords'], np.float64)
-    unique_id = '0'  # Just some name that the SYMMETRY code gives to one of its jobs
-    scr_dir = os.path.join(ARC_PATH, 'scratch')  # Scratch directory that the SYMMETRY code writes its files in
+    unique_id = '0'  # Just some name that the SYMMETRY code gives to one of its jobs.
+    scr_dir = os.path.join('/tmp', 'symmetry_scratch')  # Scratch directory that the SYMMETRY code writes its files in.
     if not os.path.exists(scr_dir):
         os.makedirs(scr_dir)
     symmetry = optical_isomers = 1
     qmdata = QMData(
-        groundStateDegeneracy=1,  # Only needed to check if valid QMData
+        groundStateDegeneracy=1,  # Only needed to check if valid QMData.
         numberOfAtoms=len(atom_numbers),
         atomicNumbers=atom_numbers,
         atomCoords=(coords, 'angstrom'),
-        energy=(0.0, 'kcal/mol')  # Only needed to avoid error
+        energy=(0.0, 'kcal/mol')  # Dummy
     )
     symmetry_settings = type('', (), dict(symmetryPath='symmetry', scratchDirectory=scr_dir))()
     pgc = PointGroupCalculator(symmetry_settings, unique_id, qmdata)

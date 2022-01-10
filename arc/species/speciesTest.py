@@ -562,7 +562,8 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         expected_dict = {'number_of_rotors': 0,
                          'multiplicity': 1,
                          'arkane_file': None,
-                         'mol': {'atoms': spc_dict['mol']['atoms'],
+                         'mol': {'atom_order': spc_dict['mol']['atom_order'],
+                                 'atoms': spc_dict['mol']['atoms'],
                                  'multiplicity': 1, 'props': {}},
                          'compute_thermo': True,
                          'label': 'methylamine',
@@ -599,6 +600,7 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         """Test the copy() method."""
         spc_copy = self.spc6.copy()
         self.assertIsNot(self.spc6, spc_copy)
+        self.assertEqual(len(self.spc6.mol.get_all_edges()), len(spc_copy.mol.get_all_edges()))
         self.assertEqual(spc_copy.multiplicity, self.spc6.multiplicity)
         self.assertEqual(spc_copy.get_xyz()['symbols'], self.spc6.get_xyz()['symbols'])
         self.assertEqual(spc_copy.mol.to_smiles(), self.spc6.mol.to_smiles())
@@ -1075,6 +1077,26 @@ H       2.82319256   -0.46240839   -0.40178723"""
         for atom, symbol in zip(spc6.mol.atoms, spc6.get_xyz()['symbols']):
             self.assertEqual(atom.symbol, symbol)
         for atom, symbol in zip(spc6.mol.atoms, ['C', 'C', 'H', 'H', 'H', 'H', 'C', 'H', 'H', 'H']):
+            self.assertEqual(atom.symbol, symbol)
+
+        xyz7 = """C                  0.42854493    1.37396218   -0.06378771
+                  H                  0.92258324    0.49575491   -0.42375735
+                  C                  1.14683468    2.48797667    0.21834452
+                  H                  0.65279661    3.36618328    0.57831609
+                  C                  2.67411846    2.48994130    0.02085939
+                  H                  3.00074251    3.47886113   -0.22460814
+                  O                  3.01854194    1.59675339   -1.04144368
+                  H                  3.97061495    1.59797810   -1.16455130
+                  N                  3.32919606    2.05137935    1.26159979
+                  H                  3.08834048    2.67598628    2.00446907
+                  O                 -0.98964750    1.37213874    0.11958876
+                  H                 -1.39314061    0.77169906   -0.51149404
+                  O                  4.67796616    2.05311435    1.08719734
+                  H                  5.10577193    1.76670654    1.89747679"""
+        spc7 = ARCSpecies(label='spc7', smiles='OC=CC(O)NO', xyz=xyz7)
+        for atom, symbol in zip(spc7.mol.atoms, spc7.get_xyz()['symbols']):
+            self.assertEqual(atom.symbol, symbol)
+        for atom, symbol in zip(spc7.mol.atoms, ['C', 'H', 'C', 'H', 'C', 'H', 'O', 'H', 'N', 'H', 'O', 'H', 'O', 'H']):
             self.assertEqual(atom.symbol, symbol)
 
     def test_get_radius(self):
