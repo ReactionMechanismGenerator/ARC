@@ -20,6 +20,8 @@ from typing import Dict, List, Optional, Tuple, Union
 from arkane.encorr.corr import assign_frequency_scale_factor
 from rmgpy.reaction import Reaction
 from rmgpy.species import Species
+from arkane.modelchem import model_chem_to_lot, LOT, CompositeLevelOfTheory, LevelOfTheory
+from rmgpy.rmgobject import recursive_make_object
 
 import arc.rmgdb as rmgdb
 from arc.common import (VERSION,
@@ -297,7 +299,11 @@ class ARC(object):
         self.t0 = time.time()  # init time
         self.execution_time = None
         self.bac_type = bac_type
-        self.arkane_level_of_theory = Level(repr=arkane_level_of_theory) if arkane_level_of_theory is not None else None
+        if isinstance(arkane_level_of_theory,dict) and "class" in arkane_level_of_theory.keys() and "LevelOfTheory" in arkane_level_of_theory["class"]:
+            self.arkane_level_of_theory = recursive_make_object(arkane_level_of_theory,{"CompositeLevelOfTheory":CompositeLevelOfTheory,
+                                                                                        "LevelOfTheory":LevelOfTheory})
+        else:
+            self.arkane_level_of_theory = Level(repr=arkane_level_of_theory) if arkane_level_of_theory is not None else None
         self.freq_scale_factor = freq_scale_factor
 
         # attributes related to level of theory specifications
@@ -330,6 +336,7 @@ class ARC(object):
             elif not isinstance(spc, ARCSpecies):
                 raise ValueError(f'A species should either be an RMG Species object, an ARCSpecies object, '
                                  f'or a dictionary representation of the later.\nGot: {type(spc)} for {spc}')
+        logger.error([x.label for x in converted_species])
         for i in reversed(range(len(self.species))):  # pop from the end, so other indices won't change
             if i in indices_to_pop:
                 self.species.pop(i)
@@ -349,6 +356,13 @@ class ARC(object):
                                                f'species {spc.label}: {rotor_dict["scan_path"]}')
         if self.job_types['bde']:
             self.add_hydrogen_for_bde()
+
+        c = 0
+        for spc in self.species:
+            if spc.label == "O=C1OCCO1":
+                c += 1
+                if c == 2:
+                    spc.label = "O=C1CCCC1"
         self.determine_unique_species_labels()
 
         # reactions
@@ -422,7 +436,7 @@ class ARC(object):
         restart_dict['allow_nonisomorphic_2d'] = self.allow_nonisomorphic_2d
         if self.arkane_level_of_theory is not None:
             restart_dict['arkane_level_of_theory'] = self.arkane_level_of_theory.as_dict() \
-                if isinstance(self.arkane_level_of_theory, Level) else self.arkane_level_of_theory
+                if isinstance(self.arkane_level_of_theory, Level) or isinstance(self.arkane_level_of_theory, LOT) else self.arkane_level_of_theory
         if self.bac_type != 'p':
             restart_dict['bac_type'] = self.bac_type
         if self.bath_gas is not None:
@@ -525,7 +539,10 @@ class ARC(object):
             else:
                 logger.info(f'Considering species: {species.label}')
                 if species.mol is not None:
-                    display(species.mol.copy(deep=True))
+                    try:
+                        display(species.mol.copy(deep=True))
+                    except:
+                        pass
         logger.info('\n')
         for rxn in self.reactions:
             if not isinstance(rxn, ARCReaction):
@@ -651,8 +668,12 @@ class ARC(object):
                 spc_dict = dict()
                 spc_dict['label'] = species.label
                 spc_dict['success'] = self.scheduler.output[species.label]['convergence']
-                spc_dict['smiles'] = species.mol.copy(deep=True).to_smiles() if species.mol is not None else None
-                spc_dict['adj'] = species.mol.copy(deep=True).to_adjacency_list() if species.mol is not None else None
+                try:
+                    spc_dict['smiles'] = species.mol.copy(deep=True).to_smiles() if species.mol is not None else None
+                    spc_dict['adj'] = species.mol.copy(deep=True).to_adjacency_list() if species.mol is not None else None
+                except:
+                    #spc_dict['smiles'] = species.mol.to_smiles() if species.mol is not None else None
+                    spc_dict['adj'] = species.mol.to_adjacency_list() if species.mol is not None else None
                 content['species'].append(spc_dict)
         for reaction in self.reactions:
             rxn_dict = dict()
@@ -874,6 +895,7 @@ class ARC(object):
             if species.label not in self.unique_species_labels:
                 self.unique_species_labels.append(species.label)
             else:
+                logger.error([x.label for x in self.species])
                 raise ValueError(f'Species label {species.label} is not unique')
 
     def add_hydrogen_for_bde(self):
@@ -1094,9 +1116,20 @@ class ARC(object):
         Check that the level of theory has AEC in Arkane.
         """
         if self.arkane_level_of_theory is None:
-            self.arkane_level_of_theory = self.composite_method if self.composite_method is not None \
-                else self.sp_level if self.sp_level is not None else None
-        if self.arkane_level_of_theory is not None:
+            if self.composite_method:
+                self.arkane_level_of_theory = self.composite_method
+            elif self.sp_level == self.freq_level:
+                self.arkane_level_of_theory = self.sp_level
+            else:
+                if not isinstance(self.freq_level, str):
+                    self.arkane_level_of_theory = model_chem_to_lot(self.sp_level.simple()+"//"+self.freq_level.simple(),
+                                                                freq_settings={"software":self.freq_level.software},
+                                                                energy_settings={"software":self.sp_level.software})
+                else:
+                    self.arkane_level_of_theory = model_chem_to_lot(self.sp_level.simple()+"//"+self.freq_level,
+                                                                freq_settings={"software":self.freq_level.software},
+                                                                energy_settings={"software":self.sp_level.software})
+        if self.arkane_level_of_theory is not None and not isinstance(self.arkane_level_of_theory,LOT):
             self.arkane_level_of_theory.to_arkane_level_of_theory(variant='AEC', raise_error=self.compute_thermo)
         else:
             logger.warning('Could not determine a level of theory to be used for Arkane!')
@@ -1121,6 +1154,8 @@ class ARC(object):
             for label, spc_output in self.output.items():
                 if 'paths' in spc_output:
                     for key, val in spc_output['paths'].items():
+                        if "/TS" in val:
+                            val = val.replace("/Species/","/TSs/")
                         if key in ['geo', 'freq', 'sp', 'composite']:
                             if val and not os.path.isfile(val):
                                 # try correcting relative paths

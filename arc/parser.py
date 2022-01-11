@@ -294,7 +294,7 @@ def parse_1d_scan_energies(path: str) -> Tuple[Optional[List[float]], Optional[L
         energies, angles = log.load_scan_energies()
         energies *= 0.001  # convert to kJ/mol
         angles *= 180 / np.pi  # convert to degrees
-    except (LogError, NotImplementedError, ZeroDivisionError):
+    except (LogError, NotImplementedError, ZeroDivisionError, IndexError):
         logger.warning(f'Could not read energies from {path}')
         energies, angles = None, None
     return energies, angles

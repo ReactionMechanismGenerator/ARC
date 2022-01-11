@@ -772,7 +772,7 @@ wf,spin={spin},charge={charge};}}
                     orca_options_blocks_dict['Calc_Hess'] = """
 %geom
     Calc_Hess true # calculation of the exact Hessian before the first opt step
-end               
+end
 """
                 else:
                     job_type_1 = 'Opt'
@@ -877,7 +877,7 @@ $end
                     orca_options_blocks_dict['Calc_Hess'] = """
 %geom
     Calc_Hess true # calculation of the exact Hessian before the first opt step
-end               
+end
 """
                 else:
                     job_type_1 = 'Opt'
@@ -969,6 +969,8 @@ end
                 scans = [' '.join([str(num) for num in self.scan])]
             elif self.directed_scans is not None:
                 scans = list()
+                if not isinstance(self.directed_scans[0],list):
+                    self.directed_scans = [self.directed_scans]
                 for directed_scan in self.directed_scans:
                     scans.append(' '.join([str(num) for num in directed_scan]))
             else:
@@ -989,11 +991,15 @@ end
                 if self.is_ts:
                     job_type_1 = 'ts'
                 else:
-                    job_type_1 = 'opt'
-                dihedral1 = int(calculate_dihedral_angle(coords=self.xyz['coords'], torsion=self.scan))
+                    job_type_1 = 'pes_scan'
+                if self.directed_scans:
+                    dihedral1s = [int(calculate_dihedral_angle(coords=self.xyz['coords'], torsion=scan)) for scan in self.directed_scans]
+                else:
+                    dihedral1s = [int(calculate_dihedral_angle(coords=self.xyz['coords'], torsion=self.scan))]
                 scan_string = '\n$scan\n'
-                for scan in scans:
-                    scan_string += f'tors {scan} {dihedral1} {dihedral1 + 360.0} {self.scan_res}\n'
+                for q,scan in enumerate(scans):
+                    dihedral1 = dihedral1s[q]
+                    scan_string += f'tors {scan} -180 180 {self.scan_res}\n'
                 scan_string += '$end\n'
             elif self.software == 'terachem':
                 if self.is_ts:
@@ -1211,7 +1217,10 @@ end
             remote_file_path = os.path.join(self.remote_path, output_filename[self.software])
             ssh.download_file(remote_file_path=remote_file_path, local_file_path=self.local_path_to_output_file)
             if not os.path.isfile(self.local_path_to_output_file):
-                raise JobError(f'output file for {self.job_name} was not downloaded properly')
+                if os.path.isfile(self.local_path_to_output_file.replace("/Species/","/TSs/")):
+                    self.local_path_to_output_file = self.local_path_to_output_file.replace("/Species/","/TSs/")
+                else:
+                    raise JobError(f'output file for {self.job_name} was not downloaded properly')
             self.final_time = ssh.get_last_modified_time(remote_file_path=remote_file_path)
 
             # download orbitals FChk file
@@ -1361,7 +1370,7 @@ end
                 remote_file_path = os.path.join(self.remote_path, 'out.txt')
                 with SSHClient(self.server) as ssh:
                     try:
-                        ssh.download_file(remote_file_path=remote_file_path, 
+                        ssh.download_file(remote_file_path=remote_file_path,
                                           local_file_path=local_file_path1)
                     except (TypeError, IOError) as e:
                         logger.warning(f'Got the following error when trying to download out.txt for {self.job_name}:'

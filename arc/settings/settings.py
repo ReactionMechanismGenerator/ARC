@@ -7,59 +7,71 @@ import string
 # Users should update the following server dictionary.
 # Instructions for RSA key generation can be found here:
 # https://www.digitalocean.com/community/tutorials/how-to-set-up-ssh-keys--2
-# If ARC is being executed on a server, and ESS are available on that server, define a server named 'local',
-# for which only the cluster software and user name are required.
-# servers = {
-#     'pharos': {
-#         'cluster_soft': 'OGE',  # Oracle Grid Engine (Sun Grin Engine)
-#         'address': 'pharos.mit.edu',
-#         'un': '<username>',
-#         'key': '/home/<username>/.ssh/known_hosts',
-#     },
-#     'rmg': {
-#         'cluster_soft': 'Slurm',  # Simple Linux Utility for Resource Management
-#         'address': 'rmg.mit.edu',
-#         'un': '<username>',
-#         'key': '/home/<username>/.ssh/id_rsa',
-#     },
-#    'local': {
-#        'cluster_soft': 'OGE',
-#        'un': '<username>',
-#    },
-# }
+# The `precedence` key is optional, and will cause ARC to use the respective server
+# for the specified ESS even if it finds it first on a different server.
+# If this aut-ESS determination method doesn't work for you, you could also
+# just pass an `ess_settings` dictionary to ARC() with the desired software/server as keys/values.
 servers = {
-    'server1': {
-        'cluster_soft': 'OGE',
-        'address': 'server1.host.edu',
-        'un': '<username>',
-        'key': 'path_to_rsa_key',
+    'pharos': {
+        'cluster_soft': 'OGE',  # Oracle Grid Engine (Sun Grin Engine)
+        'address': 'pharos.mit.edu',
+        'un': 'mattsj',
+        'key': '/Users/mattjohnson/.ssh/known_hosts',
     },
-    'server2': {
-        'cluster_soft': 'Slurm',
-        'address': 'server2.host.edu',
-        'un': '<username>',
-        'key': 'path_to_rsa_key',
-        'cpus': 24,  # number of cpu's per node, optional (default: 8)
-        'memory': 256,  # amount of memory per node in GB, optional (default: 16)
+    'rmg': {
+        'cluster_soft': 'Slurm',  # Simple Linux Utility for Resource Management
+        'address': 'rmg.mit.edu',
+        'un': 'mattsj',
+        'key': '/Users/mattjohnson/.ssh/id_rsa',
+    },
+    'c3ddb01': {
+        'cluster_soft':'Slurm',
+        'address': 'c3ddb01.mit.edu',
+        'un': 'mattsj',
+        'key': '/Users/mattjohnson/.ssh/id_rsa',
+    },
+    'supercloud': {
+        'cluster_soft':'Slurm',
+        'address': 'txe1-login.mit.edu',
+        'un': 'mattsj',
+        'key': '/Users/mattjohnson/.ssh/id_rsa',
     },
     'local': {
-        'cluster_soft': 'Slurm',
-        'un': '<username>',
-        'cpus': 48,
+        'cluster_soft':'Slurm', #why do I have to do this???
+        'address': 'c3ddb01.mit.edu',
+        'un': 'mattjohnson',
+        'key': '/Users/mattjohnson/.ssh/id_rsa',
     },
 }
+# servers = {
+#     'server1': {
+#         'cluster_soft': 'OGE',  # Oracle Grid Engine
+#         'address': 'server1.host.edu',
+#         'un': '<username>',
+#         'key': 'path_to_rsa_key',
+#     },
+#     'server2': {
+#         'cluster_soft': 'Slurm',  # Simple Linux Utility for Resource Management
+#         'address': 'server2.host.edu',
+#         'un': '<username>',
+#         'key': 'path_to_rsa_key',
+#         'cpus': 48,  # optional (default: 8)
+#     }
+# }
+
 
 # List here servers you'd like to associate with specific ESS.
 # An ordered list of servers indicates priority
 # Keeping this dictionary empty will cause ARC to scan for software on the servers defined above
-global_ess_settings = {
-    'gaussian': ['local', 'server2'],
-    'molpro': ['local', 'server2'],
-    'onedmin': 'server1',
-    'orca': 'local',
-    'qchem': 'server1',
-    'terachem': 'server1',
-}
+# global_ess_settings = {
+#     'gaussian': ['local', 'server2'],
+#     'molpro': 'server2',
+#     'onedmin': 'server1',
+#     'orca': 'local',
+#     'qchem': 'server1',
+#     'terachem': 'server1',
+# }
+global_ess_settings={"gaussian":"supercloud","qchem":"supercloud","molpro":"supercloud"}
 
 # List here job types to execute by default
 default_job_types = {'conformers': True,      # defaults to True if not specified
@@ -75,6 +87,15 @@ default_job_types = {'conformers': True,      # defaults to True if not specifie
                      }
 
 supported_ess = ['gaussian', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin']  # use lowercase when adding new ones
+# List here servers you'd like to associate with specific ESS.
+# An ordered list of servers indicates priority
+# Keeping this dictionary empty will cause ARC to scan for software on the servers defined above
+global_ess_settings = {
+    'gaussian': ['supercloud','c3ddb01', 'pharos'],
+    'molpro': ['supercloud'],
+    'qchem': ["supercloud"],
+    #'onedmin': 'server1',
+}
 
 # List here (complete or partial) phrases of methods or basis sets you'd like to associate to specific ESS
 # Avoid ascribing the same phrase to more than one software, this may cause undeterministic assignment of software
@@ -133,15 +154,15 @@ output_filename = {'gaussian': 'input.log',
                    'terachem': 'output.out',
                    }
 
-default_levels_of_theory = {'conformer': 'wb97xd/def2svp',  # it's recommended to choose a method with dispersion
-                            'ts_guesses': 'wb97xd/def2svp',
-                            'opt': 'wb97xd/def2tzvp',  # good default for Gaussian
+default_levels_of_theory = {'conformer': 'wb97x-d3/def2svp',  # it's recommended to choose a method with dispersion
+                            'ts_guesses': 'wb97x-d3/def2svp',
+                            'opt': 'wb97x-d3/def2tzvp',  # good default for Gaussian
                             # 'opt': 'wb97m-v/def2tzvp',  # good default for QChem
-                            'freq': 'wb97xd/def2tzvp',  # should be the same level as opt (to calc freq at min E)
-                            'scan': 'wb97xd/def2tzvp',  # should be the same level as freq (to project out rotors)
+                            'freq': 'wb97x-d3/def2tzvp',  # should be the same level as opt (to calc freq at min E)
+                            'scan': 'wb97x-d3/def2tzvp',  # should be the same level as freq (to project out rotors)
                             'sp': 'ccsd(t)-f12/cc-pvtz-f12',  # This should be a level for which BAC is available
                             # 'sp': 'b3lyp/6-311+g(3df,2p)',
-                            'irc': 'wb97xd/def2tzvp',  # should be the same level as opt
+                            'irc': 'wb97x-d3/def2tzvp',  # should be the same level as opt
                             'orbitals': 'wb97x-d3/def2tzvp',  # save orbitals for visualization
                             'scan_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of CBS-QB3
                             'freq_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of CBS-QB3

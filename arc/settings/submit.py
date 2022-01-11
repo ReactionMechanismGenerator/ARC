@@ -5,8 +5,227 @@ sorted in a dictionary with server names as keys
 
 
 submit_scripts = {
-    'c3ddb': {
-        # Gaussian 09
+    'supercloud': {
+        'orca': """#!/bin/bash -l
+#SBATCH -p normal
+#SBATCH -J {name}
+#SBATCH -N 1
+#SBATCH -n {cpus}
+#SBATCH --time=5-0:00:00
+#SBATCH --mem-per-cpu={memory}
+#SBATCH -e err.txt
+#SBATCH -o out.txt
+
+echo "============================================================"
+echo "Job ID : $SLURM_JOB_ID"
+echo "Job Name : $SLURM_JOB_NAME"
+echo "Starting on : $(date)"
+echo "Running on node : $SLURMD_NODENAME"
+echo "Current directory : $(pwd)"
+echo "memory per node : $SLURM_MEM_PER_NODE
+echo "memory per cpu : $SLURM_MEM_PER_CPU
+echo "============================================================"
+
+WorkDir=/state/partition1/user/{un}/$SLURM_JOB_NAME-$SLURM_JOB_ID
+SubmitDir=`pwd`
+
+#openmpi
+export PATH=/home/gridsan/groups/GRPAPI/Software/openmpi-3.1.4/bin:$PATH
+export LD_LIBRARY_PATH=/home/gridsan/groups/GRPAPI/Software/openmpi-3.1.4/lib:$LD_LIBRARY_PATH
+
+#Orca
+orcadir=/home/gridsan/groups/GRPAPI/Software/orca_4_2_1_linux_x86-64_openmpi314
+export PATH=/home/gridsan/groups/GRPAPI/Software/orca_4_2_1_linux_x86-64_openmpi314:$PATH
+export LD_LIBRARY_PATH=/home/gridsan/groups/GRPAPI/Software/orca_4_2_1_linux_x86-64_openmpi314:$LD_LIBRARY_PATH
+echo "orcaversion"
+which orca
+mkdir -p $WorkDir
+cd $WorkDir
+cp $SubmitDir/input.in .
+
+$orcadir/orca input.in > input.log
+cp input.log  $SubmitDir/
+rm -rf  $WorkDir
+        """,
+        # qchem
+        'qchem': """#!/bin/bash -l
+#SBATCH -p normal
+#SBATCH -J {name}
+#SBATCH -N 1
+#SBATCH -n {cpus}
+#SBATCH --time=1-0:00:00
+#SBATCH --mem-per-cpu={memory}
+#SBATCH -e err.txt
+#SBATCH -o out.txt
+
+echo "============================================================"
+echo "Job ID : $SLURM_JOB_ID"
+echo "Job Name : $SLURM_JOB_NAME"
+echo "Starting on : $(date)"
+echo "Running on node : $SLURMD_NODENAME"
+echo "Current directory : $(pwd)"
+echo "memory per node : $SLURM_MEM_PER_NODE
+echo "memory per cpu : $SLURM_MEM_PER_CPU
+echo "============================================================"
+
+START_TIME=$SECONDS
+
+# export qchem environment variables
+source /home/gridsan/groups/RMG/Software/qchem/qcenv.sh
+
+SubmitDir=`pwd`
+echo "Submit directory is:"
+echo $SubmitDir
+
+# create scratch directory
+export QCHEM_SCRDIR=/home/gridsan/kspieker/scratch/$SLURM_JOB_NAME-$SLURM_JOB_ID
+mkdir -p $QCHEM_SCRDIR
+cd $QCHEM_SCRDIR
+
+# copy input to the scratch directory
+cp "$SubmitDir/input.in" .
+
+# run qchem
+qchem -nt {cpus} input.in output.out
+
+# copy output to the submission directory
+cp output.out "$SubmitDir/"
+
+# remove the scratch directory to save disk space
+rm -rf $QCHEM_SCRDIR
+
+ELAPSED_TIME=$(($SECONDS - $START_TIME))
+echo "Elapsed time (s):"
+echo $ELAPSED_TIME
+
+""",
+        'molpro': """#!/bin/bash
+#SBATCH -J {name}
+#SBATCH -N 1
+#SBATCH -n {cpus}
+#SBATCH --time={t_max}
+#SBATCH --mem-per-cpu={memory}
+#SBATCH -e err.txt
+#SBATCH -o out.txt
+
+echo "============================================================"
+echo "Job ID : $SLURM_JOB_ID"
+echo "Job Name : $SLURM_JOB_NAME"
+echo "Starting on : $(date)"
+echo "Running on node : $SLURMD_NODENAME"
+echo "Current directory : $(pwd)"
+echo "============================================================"
+
+START_TIME=$SECONDS
+
+# export molpro executable
+export PATH=/home/gridsan/groups/RMG/Software/molpro:$PATH
+
+# set scratch directory
+sdir=$TMPDIR/molpro/$SLURM_JOB_NAME-$SLURM_JOB_ID
+# sdir=/home/gridsan/kspieker/scratch/molpro/$SLURM_JOB_NAME-$SLURM_JOB_ID
+SubmitDir=`pwd`
+
+mkdir -p $sdir
+cd $sdir
+cp "$SubmitDir/input.in" .
+
+# run molpro
+molpro -n {cpus} -d $sdir input.in
+
+cp input.* "$SubmitDir/"
+cp geometry*.* "$SubmitDir/"
+
+rm -rf $sdir
+
+ELAPSED_TIME=$(($SECONDS - $START_TIME))
+echo "Elapsed time (s):"
+echo $ELAPSED_TIME
+
+""",
+        'gaussian': """#!/bin/bash -l
+#SBATCH -J {name}
+#SBATCH -N 1
+#SBATCH -n {cpus}
+#SBATCH --time={t_max}
+#SBATCH --mem-per-cpu={memory}
+#SBATCH -e err.txt
+#SBATCH -o out.txt
+
+echo "============================================================"
+echo "Job ID : $SLURM_JOB_ID"
+echo "Job Name : $SLURM_JOB_NAME"
+echo "Starting on : $(date)"
+echo "Running on node : $SLURMD_NODENAME"
+echo "Current directory : $(pwd)"
+echo "============================================================"
+
+START_TIME=$SECONDS
+
+export PATH=$PATH:/home/gridsan/groups/RMG/Software/gaussian/g16
+export PATH=$PATH:/home/gridsan/groups/RMG/Software/gaussian/gv
+export g16root=/home/gridsan/groups/RMG/Software/gaussian
+source /home/gridsan/groups/RMG/Software/gaussian/g16/bsd/g16.profile
+which g16
+
+WorkDir=$TMPDIR/gaussian/$SLURM_JOB_NAME-$SLURM_JOB_ID
+SubmitDir=`pwd`
+
+GAUSS_SCRDIR=$TMPDIR/gaussian/g16/$SLURM_JOB_NAME-$SLURM_JOB_ID
+export GAUSS_SCRDIR
+
+mkdir -p $GAUSS_SCRDIR
+mkdir -p $WorkDir
+
+cd $WorkDir
+. $g16root/g16/bsd/g16.profile
+
+cp "$SubmitDir/input.gjf" .
+cp "$SubmitDir/check.chk" .
+
+g16 < input.gjf > input.log
+formchk  check.chk check.fchk
+cp * "$SubmitDir/"
+
+rm -rf $GAUSS_SCRDIR
+rm -rf $WorkDir
+
+ELAPSED_TIME=$(($SECONDS - $START_TIME))
+echo "Elapsed time (s):"
+echo $ELAPSED_TIME
+
+
+"""
+    },
+    'pbs_sample': {
+        'gaussian': """#!/bin/bash -l
+#PBS -q batch
+#PBS -l nodes=1:ppn={cpus}
+#PBS -l mem={memory}mb
+#PBS -l walltime=48:00:00
+#PBS -N {name}
+#PBS -o out.txt
+#PBS -e err.txt
+
+export g16root=/home/{un}/Software
+export PATH=$g16root/g16/:$g16root/gv:$PATH
+which g16
+
+. $g16root/g16/bsd/g16.profile
+
+export GAUSS_SCRDIR=/home/{un}/scratch/$SLURM_JOB_NAME-$SLURM_JOB_ID
+mkdir -p $GAUSS_SCRDIR
+chmod 750 $GAUSS_SCRDIR
+
+
+g16 < input.gjf > input.log
+
+rm -rf $GAUSS_SCRDIR
+
+    """,
+    },
+    'c3ddb01': {
+        # Gaussian09
         'gaussian': """#!/bin/bash -l
 #SBATCH -p defq
 #SBATCH -J {name}
@@ -474,7 +693,7 @@ chmod 750 $GAUSS_SCRDIR
 g16 < input.gjf > input.log
 
 rm -rf $GAUSS_SCRDIR
-    
+
     """,
     }
 }

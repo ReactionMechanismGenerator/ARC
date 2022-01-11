@@ -57,14 +57,14 @@ name
 """,
 
     'orca': """!{restricted}{method_class} {method} {basis} {auxiliary_basis} {job_options_keywords}
-! NRSCF # using Newton–Raphson SCF algorithm 
-!{job_type_1} 
+! NRSCF # using Newton–Raphson SCF algorithm
+!{job_type_1}
 {job_type_2}
 %maxcore {memory}
 %pal # job parallelization settings
 nprocs {cpus}
 end
-%scf # recommended SCF settings 
+%scf # recommended SCF settings
 NRMaxIt 400
 NRStart 0.00005
 MaxIter 500
@@ -85,7 +85,8 @@ $rem
    JOBTYPE       {job_type_1}
    METHOD        {method}
    UNRESTRICTED  {restricted}
-   BASIS         {basis}{fine}{job_options_keywords}{constraint}
+   BASIS         {basis}
+   GEOM_OPT_MAX_CYCLES  250{fine}{job_options_keywords}{constraint}
 $end
 {scan}
 
@@ -96,7 +97,17 @@ memory,{memory},m;
 geometry={{angstrom;
 {xyz}}}
 
-basis={basis}
+basis={{
+h={basis}
+c={basis}
+n={basis}
+o={basis}
+li={basis}
+f={basis}
+cl={basis}
+br={basis}
+s={basis}
+}}
 
 int;
 
@@ -104,7 +115,7 @@ int;
 maxit,1000;
 wf,spin={spin},charge={charge};}}
 
-{restricted}{method};
+{restricted}{method},nocheck; maxit, 80;
 {job_type_1}
 {job_type_2}
 ---;
@@ -213,7 +224,7 @@ frequencies = Log('{freq_path}')
  2 5          ! Rmin, Rmax; allowed center of mass range
 """,
 
-    'onedmin.molpro.x': """molpro -n 1 --nouse-logfile --no-xml-output -L /opt/molpro2012/molprop_2012_1_Linux_x86_64_i8/lib/ -d /scratch/$USER -o qc.out -s qc.in 
+    'onedmin.molpro.x': """molpro -n 1 --nouse-logfile --no-xml-output -L /opt/molpro2012/molprop_2012_1_Linux_x86_64_i8/lib/ -d /scratch/$USER -o qc.out -s qc.in
 """,
 
     'onedmin.qc.mol': """***

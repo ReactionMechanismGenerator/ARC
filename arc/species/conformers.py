@@ -112,7 +112,7 @@ def generate_conformers(mol_list: Union[List[Molecule], Molecule],
                         de_threshold=None,
                         smeared_scan_res=None,
                         combination_threshold=None,
-                        force_field='MMFF94s',
+                        force_field=None,
                         max_combination_iterations=None,
                         diastereomers=None,
                         return_all_conformers=False,
@@ -159,6 +159,7 @@ def generate_conformers(mol_list: Union[List[Molecule], Molecule],
         - Lowest conformers
         - Lowest conformers and all new conformers.
     """
+    force_field = None
     if isinstance(mol_list, Molecule):
         # try generating resonance structures, but strictly keep atom order
         success = False
@@ -250,7 +251,7 @@ def generate_conformers(mol_list: Union[List[Molecule], Molecule],
 
 
 def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_scan_res=None, plot_path=None,
-                          combination_threshold=1000, force_field='MMFF94s', max_combination_iterations=25,
+                          combination_threshold=1000, force_field=None, max_combination_iterations=25,
                           diastereomers=None, de_threshold=None):
     """
     By knowing the existing torsion wells, get the geometries of all important conformers.
@@ -325,8 +326,15 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
             multiple_tors.append(tor)
             multiple_sampling_points.append(points)
 
+    logging.error(len(conformers))
+    if diastereomers:
+        logging.error("diastereomers")
+        logging.error(len(diastereomers))
+    logging.error(mol.to_adjacency_list())
     diastereomeric_conformers = get_lowest_diastereomers(label=label, mol=mol, conformers=conformers,
                                                          diastereomers=diastereomers)
+
+    logging.error(diastereomeric_conformers)
     new_conformers = list()
     for diastereomeric_conformer in diastereomeric_conformers:
         # set symmetric (single well) torsions to the mean of the well
@@ -338,7 +346,14 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
             conf, rd_mol = converter.rdkit_conf_from_mol(mol, base_xyz)
             if conf is not None:
                 base_xyz = converter.set_rdkit_dihedrals(conf, rd_mol, torsion_0_indexed, deg_abs=dihedral)
-
+        if force_field is None:
+            for atm in mol_list[0].atoms:
+                if atm.is_lithium():
+                    force_field = "UFF"
+                    break
+            else:
+                force_field = "MMFF94s"
+        logging.error(force_field)
         new_conformers.extend(generate_conformer_combinations(
             label=label, mol=mol_list[0], base_xyz=base_xyz, hypothetical_num_comb=hypothetical_num_comb,
             multiple_tors=multiple_tors, multiple_sampling_points=multiple_sampling_points,
@@ -354,7 +369,10 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
                                                                          and lowest_conf['chirality'] else ''
         logger.info(f'Lowest force field conformer for {label}{diastereomer}:\n'
                     f'{converter.xyz_to_str(lowest_conf["xyz"])}\n')
-        arc.plotter.draw_structure(xyz=lowest_conf['xyz'])
+        try:
+            arc.plotter.draw_structure(xyz=lowest_conf['xyz'])
+        except:
+            pass
 
     return new_conformers, symmetries
 
@@ -560,7 +578,7 @@ def generate_force_field_conformers(label,
                                     multiplicity,
                                     xyzs=None,
                                     num_confs=None,
-                                    force_field='MMFF94s'):
+                                    force_field=None):
     """
     Generate conformers using RDKit and OpenBabel and optimize them using a force field
     Also consider user guesses in `xyzs`.
@@ -594,6 +612,15 @@ def generate_force_field_conformers(label,
                 f'Using {num_confs} random conformers.')
     for mol in mol_list:
         ff_xyzs, ff_energies = list(), list()
+        if force_field is None:
+            for atm in mol.atoms:
+                if atm.is_lithium():
+                    force_field = "UFF"
+                    break
+            else:
+                force_field = "MMFF94s"
+            logging.error("using")
+            logging.error(force_field)
         try:
             ff_xyzs, ff_energies = get_force_field_energies(label,
                                                             mol,
@@ -1449,7 +1476,7 @@ def check_special_non_rotor_cases(mol, top1, top2):
         bool: ``True`` if this is indeed a special case which should **not** be treated as a torsional mode.
     """
     for top in [top1, top2]:
-        if mol.atoms[top[0] - 1].atomtype.label in ['Ct', 'N3t', 'N5tc'] \
+        if mol.atoms[top[0] - 1].atomtype and mol.atoms[top[0] - 1].atomtype.label in ['Ct', 'N3t', 'N5tc'] \
                 and mol.atoms[top[1] - 1].atomtype.label in ['Ct', 'N3t'] and \
                 (len(top) == 2 or (len(top) == 3 and mol.atoms[top[2] - 1].is_hydrogen())):
             return True

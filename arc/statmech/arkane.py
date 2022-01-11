@@ -17,6 +17,7 @@ from arkane.kinetics import KineticsJob
 from arkane.statmech import StatMechJob
 from arkane.thermo import ThermoJob
 from arkane.ess import ess_factory
+from arkane.modelchem import LOT
 
 import rmgpy.constants as constants
 
@@ -124,7 +125,7 @@ class ArkaneAdapter(StatmechAdapter):
             # Initialize the Arkane species_dict so that species for which thermo is calculated won't interfere
             # with species used for a rate coefficient calculation.
             arkane.input.species_dict = dict()
-            if self.sp_level.to_arkane_level_of_theory(variant='AEC', raise_error=False, warn=False) is None:
+            if not isinstance(self.sp_level,LOT) and self.sp_level.to_arkane_level_of_theory(variant='AEC', raise_error=False, warn=False) is None:
                 raise ValueError(f'Cannot compute thermo without a valid Arkane Level for AEC.')
 
         if self.species is None:
@@ -222,8 +223,20 @@ class ArkaneAdapter(StatmechAdapter):
                     #   File "rmgpy/reaction.py", line 818, in rmgpy.reaction.Reaction.calculateTSTRateCoefficient
                     #   File "rmgpy/reaction.py", line 844, in rmgpy.reaction.Reaction.calculateTSTRateCoefficient
                     # OverflowError: math range error
-                    logger.error(f'Failed to generate kinetics for {self.reaction.label}, got:\n{e}')
-                    success = False
+                    arkane_rxn = arkane_reaction(label=self.reaction.label,
+                                                 reactants=reactant_labels,
+                                                 products=product_labels,
+                                                 transitionState=self.reaction.ts_label,
+                                                 tunneling='')
+                    kinetics_job = KineticsJob(reaction=arkane_rxn, Tmin=self.T_min, Tmax=self.T_max, Tcount=self.T_count,
+                                               three_params=self.three_params)
+                    logger.error("Eckart tunneling may have failed trying without Eckart tunneling")
+                    try:
+                        kinetics_job.execute(output_directory=arkane_output_path, plot=True)
+                    except:
+                        logger.error(f'Failed to generate kinetics for {self.reaction.label}, got:\n{e}')
+                        success = False
+
                 if success:
                     self.reaction.kinetics = kinetics_job.reaction.kinetics
                     plotter.log_kinetics(ts_species.label, path=arkane_output_path)
@@ -264,6 +277,8 @@ class ArkaneAdapter(StatmechAdapter):
         if sp_level is None:
             # if this is a kinetics computation and we don't have a valid model chemistry, don't bother about it
             stat_mech_job.applyAtomEnergyCorrections = False
+        elif isinstance(sp_level,LOT):
+            stat_mech_job.level_of_theory = sp_level
         else:
             stat_mech_job.level_of_theory = sp_level.to_arkane_level_of_theory()
         stat_mech_job.frequencyScaleFactor = self.freq_scale_factor

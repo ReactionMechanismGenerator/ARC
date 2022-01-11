@@ -278,6 +278,7 @@ class Scheduler(object):
             rmgdb.load_families_only(self.rmg_database)
             for rxn in self.rxn_list:
                 logger.info('\n\n')
+                logger.error([spc.label for spc in self.species_list])
                 # update the ARCReaction object and generate an ARCSpecies object for its TS
                 rxn.r_species, rxn.p_species = list(), list()
                 for spc in self.species_list:
@@ -456,11 +457,12 @@ class Scheduler(object):
                                     self.run_scan_jobs(species.label)
             else:
                 # Species is loaded from an Arkane YAML file (no need to execute any job)
-                self.output[species.label]['convergence'] = True
-                self.output[species.label]['info'] += 'Loaded from an Arkane YAML file; '
-                if species.is_ts:
-                    # This is a TS loaded from a YAML file
-                    species.ts_conf_spawned = True
+                if species.label in self.output.keys():
+                    self.output[species.label]['convergence'] = True
+                    self.output[species.label]['info'] += 'Loaded from an Arkane YAML file; '
+                    if species.is_ts:
+                        # This is a TS loaded from a YAML file
+                        species.ts_conf_spawned = True
         self.save_restart = True
         self.timer = True
         if not self.testing:
@@ -471,6 +473,8 @@ class Scheduler(object):
         The main job scheduling block
         """
         for species in self.species_dict.values():
+            if not species.label in self.output.keys() or self.output[species.label]['convergence'] is False:
+                continue
             if species.initial_xyz is None and species.final_xyz is None and species.conformers \
                     and any([e is not None for e in species.conformer_energies]):
                 # the species has no xyz, but has conformers and at least one of the conformers has energy
@@ -486,7 +490,7 @@ class Scheduler(object):
             self.timer = True
             job_list = list()
             for label in self.unique_species_labels:
-                if self.output[label]['convergence'] is False:
+                if self.output[label]['convergence'] is False or self.output[label]['convergence'] is True:
                     # skip unconverged species
                     if label in self.running_jobs:
                         del self.running_jobs[label]
@@ -591,7 +595,7 @@ class Scheduler(object):
                             and self.job_dict[label]['scan'][job_name].job_id not in self.servers_jobs_ids:
                         job = self.job_dict[label]['scan'][job_name]
                         successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
-                        if successful_server_termination and job.directed_scans is None:
+                        if successful_server_termination:# and job.directed_scans is None:
                             self.check_scan_job(label=label, job=job)
                         self.timer = False
                         break
@@ -888,8 +892,9 @@ class Scheduler(object):
                     and all([e is None for e in self.species_dict[label].conformer_energies]) \
                     and self.species_dict[label].number_of_atoms > 1 and not self.output[label]['paths']['geo'] \
                     and self.species_dict[label].yml_path is None \
-                    and (self.job_types['conformers'] and label not in self.dont_gen_confs
-                         or self.species_dict[label].get_xyz(generate=False) is None):
+                    and (self.job_types['conformers'] and label not in self.dont_gen_confs \
+                         or self.species_dict[label].get_xyz(generate=False) is None) \
+                    and self.output[label]['convergence'] != False:
                 # This is not a TS, opt (/composite) did not converged nor running, and conformer energies were not set.
                 # Also, either 'conformers' are set to True in job_types (and it's not in dont_gen_confs),
                 # or they are set to False (or it's in dont_gen_confs), but the species has no 3D information.
@@ -1128,8 +1133,7 @@ class Scheduler(object):
                         continue
                 pivots = rotor['pivots']
                 directed_scan_type = rotor['directed_scan_type'] if 'directed_scan_type' in rotor else ''
-
-                if directed_scan_type:
+                if rotor['directed_scan'] and directed_scan_type:
                     # this is a directed scan
                     # check this job isn't already running on the server (from a restarted project)
                     if 'directed_scan' not in self.job_dict[label]:
@@ -1534,7 +1538,8 @@ class Scheduler(object):
         Args:
             label (str): The species label.
         """
-        plotter.save_conformers_file(project_directory=self.project_directory,
+        try:
+            plotter.save_conformers_file(project_directory=self.project_directory,
                                      label=label,
                                      xyzs=self.species_dict[label].conformers,
                                      level_of_theory=self.conformer_level,
@@ -1542,6 +1547,8 @@ class Scheduler(object):
                                      charge=self.species_dict[label].charge,
                                      is_ts=False,
                                      )  # before optimization
+        except:
+            pass
         self.species_dict[label].conformers_before_opt = tuple(self.species_dict[label].conformers)
         if self.species_dict[label].initial_xyz is None and self.species_dict[label].final_xyz is None \
                 and not self.testing:
@@ -1686,11 +1693,14 @@ class Scheduler(object):
                     xyzs.append(parser.parse_xyz_from_file(path=job.local_path_to_output_file))
             xyzs_in_original_order = xyzs
             energies, xyzs = sort_two_lists_by_the_first(self.species_dict[label].conformer_energies, xyzs)
-            plotter.save_conformers_file(project_directory=self.project_directory, label=label,
+            try:
+                plotter.save_conformers_file(project_directory=self.project_directory, label=label,
                                          xyzs=self.species_dict[label].conformers, level_of_theory=self.conformer_level,
                                          multiplicity=self.species_dict[label].multiplicity,
                                          charge=self.species_dict[label].charge, is_ts=False,
                                          energies=self.species_dict[label].conformer_energies)  # after optimization
+            except:
+                pass
             # Run isomorphism checks if a 2D representation is available
             if self.species_dict[label].mol is not None:
                 for i, xyz in enumerate(xyzs):
@@ -1698,7 +1708,7 @@ class Scheduler(object):
                         b_mol = molecules_from_xyz(xyz,
                                                    multiplicity=self.species_dict[label].multiplicity,
                                                    charge=self.species_dict[label].charge)[1]
-                    except SanitizationError:
+                    except:
                         b_mol = None
                     if b_mol is not None:
                         try:
@@ -1769,7 +1779,7 @@ class Scheduler(object):
                                                        multiplicity=self.species_dict[label].multiplicity,
                                                        charge=self.species_dict[label].charge)[1]
                             smiles_list.append(b_mol.copy(deep=True).to_smiles())
-                        except (SanitizationError, AttributeError):
+                        except:
                             smiles_list.append('Could not perceive molecule')
                     if self.allow_nonisomorphic_2d or self.species_dict[label].charge:
                         # we'll optimize the most stable conformer even if it is not isomorphic to the 2D graph
@@ -1891,7 +1901,10 @@ class Scheduler(object):
             if self.job_types['fine']:
                 self.output[label]['job_types']['fine'] = True  # all composite jobs are fine if fine was asked for
             self.output[label]['paths']['composite'] = os.path.join(job.local_path, 'output.out')
-            self.species_dict[label].opt_level = self.composite_method.simple()
+            try:
+                self.species_dict[label].opt_level = self.composite_method.simple()
+            except:
+                self.species_dict[label].opt_level = "cbs-qb3"
             rxn_str = ''
             if self.species_dict[label].is_ts:
                 rxn_str = f' of reaction {self.species_dict[label].rxn_label}'
@@ -2098,8 +2111,12 @@ class Scheduler(object):
             # This is a CCSD job ran before MRCI. Spawn MRCI
             self.run_sp_job(label)
         elif job.job_status[1]['status'] == 'done':
+            if "TS" in label[0:2]:
+                sp_path = os.path.join(job.local_path, 'output.out').replace("/Species/","/TSs/")
+            else:
+                sp_path = os.path.join(job.local_path, 'output.out')
             self.post_sp_actions(label,
-                                 sp_path=os.path.join(job.local_path, 'output.out'),
+                                 sp_path=sp_path,
                                  level=job.level,
                                  )
             # Update restart dictionary and save the yaml restart file:
@@ -2177,8 +2194,10 @@ class Scheduler(object):
         self.output[label]['paths']['irc'].append(os.path.join(job.local_path, 'output.out'))
         if len(self.output[label]['paths']['irc']) == 2:
             self.output[label]['job_types']['irc'] = True
-            plotter.save_irc_traj_animation(irc_f_path=self.output[label]['paths']['irc'][0],
-                                            irc_r_path=self.output[label]['paths']['irc'][1],
+            irc_f_path = self.output[label]['paths']['irc'][0].replace("/Species/","/TSs/")
+            irc_r_path = self.output[label]['paths']['irc'][1].replace("/Species/","/TSs/")
+            plotter.save_irc_traj_animation(irc_f_path=irc_f_path,
+                                            irc_r_path=irc_r_path,
                                             out_path=os.path.join(self.project_directory, 'output',
                                                                   'rxns', label, 'irc_traj.gjf'))
 
@@ -2232,7 +2251,7 @@ class Scheduler(object):
                 # Read energy profile (in kJ/mol), it may be used in the troubleshooting
                 energies, angles = parser.parse_1d_scan_energies(path=job.local_path_to_output_file)
                 self.species_dict[label].rotors_dict[i]['original_dihedrals'] = \
-                    [calculate_dihedral_angle(coords=job.xyz, torsion=job.scan, index=1, units='degs')]
+                    [calculate_dihedral_angle(coords=job.xyz, torsion=self.species_dict[label].rotors_dict[i]['torsion'], index=1, units='degs')]
                 if energies is None:
                     invalidate = True
                     invalidation_reason = 'Could not read energies'
@@ -2356,11 +2375,19 @@ class Scheduler(object):
                 else:
                     # The conformer is wrong, and changing the dihedral resulted in a non-isomorphic species.
                     self.output[label]['errors'] += f'A lower conformer was found for {label} via a torsion mode, ' \
-                                                    f'but it is not isomorphic with the 2D graph representation ' \
-                                                    f'{self.species_dict[label].mol.copy(deep=True).to_smiles()}. ' \
-                                                    f'Not calculating this species.'
-                    self.output[label]['conformers'] += 'Unconverged'
-                    self.output[label]['convergence'] = False
+                                                     f'but it is not isomorphic with the 2D graph representation ' \
+                                                     f'{self.species_dict[label].mol.copy(deep=True).to_smiles()}. '
+                    #                                 f'Not calculating this species.'
+                    # self.output[label]['conformers'] += 'Unconverged'
+                    # self.output[label]['convergence'] = False
+                    logger.error(f'Directed scan for species {label} for pivots {pivots} failed with: '
+                                 f'{invalidation_reason}. Currently rotor troubleshooting methods do not apply for '
+                                 f'directed scans. Not troubleshooting rotor.')
+                    for rotor_dict in self.species_dict[label].rotors_dict.values():
+                        if rotor_dict['pivots'] == pivots:
+                            rotor_dict['scan_path'] = ''
+                            rotor_dict['invalidation_reason'] = invalidation_reason
+                            rotor_dict['success'] = False
             else:
                 logger.error(f'Directed scan for species {label} for pivots {pivots} failed with: '
                              f'{invalidation_reason}. Currently rotor troubleshooting methods do not apply for '
@@ -2566,23 +2593,32 @@ class Scheduler(object):
             # If not succeed, we are in a situation that we find a lower conformer, but either
             # this is a incorrect conformer or we have applied this troubleshooting before, but it
             # didn't yield a good result.
-            self.delete_all_species_jobs(label)
+
 
             new_xyz = methods['change conformer']
             # Check if the same conformer is used in previous troubleshooting
+            is_isomorphic = None
             for used_trsh_method in used_trsh_methods:
                 if 'change conformer' in used_trsh_method \
                         and compare_confs(new_xyz, used_trsh_method['change conformer']):
+                    #if not ("doubled back" in used_trsh_method) or not used_trsh_method["doubled back"]:
+                    #    used_trsh_method["doubled back"] = True
+                    #    continue
                     # Find we have used this conformer for troubleshooting. Invalid the troubleshooting.
                     logger.error(f'The change conformer method for {label} is invalid. '
                                  f'ARC will not change to the same conformer twice.')
                     break
             else:
+
                 # If the conformer is not used, check isomorphism
-                is_isomorphic = self.species_dict[label].check_xyz_isomorphism(
+                try:
+                    is_isomorphic = self.species_dict[label].check_xyz_isomorphism(
                     allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
                     xyz=new_xyz)
+                except:
+                    is_isomorphic = False
                 if is_isomorphic:
+                    self.delete_all_species_jobs(label)
                     self.species_dict[label].final_xyz = new_xyz
                     # Remove all completed rotor calculation information
                     for rotor in self.species_dict[label].rotors_dict.values():
@@ -2608,13 +2644,25 @@ class Scheduler(object):
                     return trsh_success, actual_actions
 
             # The conformer is wrong, or we are in a loop changing to the same conformers again
-            self.output[label]['errors'] += \
-                f'A lower conformer was found for {label} via a torsion mode, ' \
-                f'but it is not isomorphic with the 2D graph representation ' \
-                f'{self.species_dict[label].mol.copy(deep=True).to_smiles()}. ' \
-                f'Not calculating this species.'
-            self.output[label]['conformers'] += 'Unconverged'
-            self.output[label]['convergence'] = False
+            #logger.error("rotor scan switching back and forth between conformers or trying to switch ot a non-isomorphic conformer invalidating rotor")
+            #rotor['success'] = False
+            #rotor['invalidation_reason'] = "rotor scan switching back and forth between conformers or trying to switch ot a non-isomorphic conformer invalidating rotor"
+            if is_isomorphic == False:
+                for rotor in self.species_dict[label].rotors_dict.values():
+                    if rotor['scan'] == job.scan:
+                        rotor['invalidation_reason'] = 'Rotor scan led to non-isomorphic conformer'
+                        rotor['success'] = False
+                        break
+                return False,methods
+            else:
+                self.delete_all_species_jobs(label)
+                self.output[label]['errors'] += \
+                    f'A lower conformer was found for {label} via a torsion mode, ' \
+                    f'but it is not isomorphic with the 2D graph representation ' \
+                    f'{self.species_dict[label].mol.copy(deep=True).to_smiles()}. '
+                    #f'Not calculating this species.'
+                self.output[label]['conformers'] += 'Unconverged'
+                self.output[label]['convergence'] = False
         else:
             # Freezing or increasing scan resolution
             scan_list = [rotor_dict['scan'] for rotor_dict in
@@ -2633,7 +2681,7 @@ class Scheduler(object):
             except InputError as e:
                 logger.debug(f'Got invalid input for trsh_scan_job: {e}\nJob info:\n{job}')
             else:
-                if scan_trsh or job.scan_res != scan_res \
+                if (scan_trsh or job.scan_res != scan_res) \
                         and {'scan_trsh': scan_trsh, 'scan_res': scan_res} not in used_trsh_methods:
                     # Valid troubleshooting method for freezing or increasing resolution
                     trsh_success = True
@@ -2798,9 +2846,19 @@ class Scheduler(object):
             raise SchedulerError('The troubleshoot_conformer_isomorphism() method got zero conformers.')
 
         # use the first conformer of a species to determine applicable troubleshooting method
-        job = self.job_dict[label]['conformers'][0]
+        logger.error(self.job_dict[label])
 
-        level_of_theory = trsh_conformer_isomorphism(software=job.software, ess_trsh_methods=job.ess_trsh_methods)
+        try:
+            job = self.job_dict[label]['conformers'][0]
+            level_of_theory = trsh_conformer_isomorphism(software=job.software, ess_trsh_methods=job.ess_trsh_methods)
+        except KeyError:
+            try:
+                ind = min(list(self.job_dict[label]['conformers'].keys()))
+                job = self.job_dict[label]['conformers'][ind]
+                level_of_theory = trsh_conformer_isomorphism(software=job.software, ess_trsh_methods=job.ess_trsh_methods)
+            except KeyError:
+                logger.error("No conformer job_dict attribute for {}".format(label))
+                level_of_theory = None
 
         if level_of_theory is None:
             logger.error(f'ARC has attempted all built-in conformer isomorphism troubleshoot methods for species '
@@ -2813,7 +2871,7 @@ class Scheduler(object):
             logger.info(f'Troubleshooting conformer job in {job.software} using {level_of_theory} for species {label}')
 
             # rerun conformer job at higher level for all conformers
-            for conformer in range(0, num_of_conformers):
+            for conformer in self.job_dict[label]['conformers'].keys():
 
                 # initial xyz before troubleshooting
                 xyz = self.species_dict[label].conformers_before_opt[conformer]

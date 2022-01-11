@@ -316,6 +316,7 @@ class ARCSpecies(object):
         self.conformers = list()
         self.conformers_before_opt = None
         self.ts_guesses = list()
+        self.ts_guesses_exhausted = False
         self.cheap_conformer = None
         self.most_stable_conformer = None
         self.recent_md_conformer = None
@@ -402,7 +403,12 @@ class ARCSpecies(object):
 
             if self.yml_path is not None:
                 # a YAML path was given
-                self.from_yml_file(label)
+                try:
+                    self.from_yml_file(label)
+                except Exception as e:
+                    logger.error("YML path error:")
+                    logger.error(self.yml_path)
+                    raise e
             elif self.rmg_species is not None:
                 # an RMG Species was given
                 if not isinstance(self.rmg_species, Species):
@@ -817,7 +823,10 @@ class ARCSpecies(object):
                     atom.edges = edges
                 self.mol.atoms = atoms
                 self.mol.update_atomtypes(raise_exception=False)
-                self.mol.identify_ring_membership()
+                try:
+                    self.mol.identify_ring_membership()
+                except:
+                    pass
         else:
             self.mol = None
         smiles = species_dict['smiles'] if 'smiles' in species_dict else None
@@ -948,7 +957,7 @@ class ARCSpecies(object):
                                                                            filter_structures=True,
                                                                            save_order=True,
                                                                            )
-                except (AtomTypeError, ValueError, ILPSolutionError, ResonanceError) as e:
+                except Exception as e:
                     logger.warning(f'Could not generate resonance structures for species {self.label}. Got: {e}')
                     self.mol_list = [self.mol]
             else:
@@ -1406,15 +1415,19 @@ class ARCSpecies(object):
             # self.mol should have come from another source, e.g., SMILES or yml
             perceived_mol = molecules_from_xyz(xyz=xyz,
                                                multiplicity=self.multiplicity,
-                                               charge=self.charge)[1]
+                                               charge=self.charge,
+                                               mol=self.mol)[1]
             if perceived_mol is not None:
-                allow_nonisomorphic_2d = (self.charge is not None and self.charge) \
+                allow_nonisomorphic_2d = True or (self.charge is not None and self.charge) \
                                          or self.mol.has_charge() or perceived_mol.has_charge() \
                                          or (self.multiplicity is not None and self.multiplicity >= 3) \
                                          or self.mol.multiplicity >= 3 or perceived_mol.multiplicity >= 3
-                isomorphic = self.check_xyz_isomorphism(mol=perceived_mol,
+                try:
+                    isomorphic = self.check_xyz_isomorphism(mol=perceived_mol,
                                                         xyz=xyz,
                                                         allow_nonisomorphic_2d=allow_nonisomorphic_2d)
+                except:
+                    isomorphic = False
                 if not isomorphic:
                     logger.warning(f'XYZ and the 2D graph representation for {self.label} are not isomorphic.\nGot '
                                    f'xyz:\n{xyz}\n\nwhich corresponds to {self.mol.copy(deep=True).to_smiles()}\n'
@@ -1429,7 +1442,7 @@ class ARCSpecies(object):
                 # todo: Atom order will not be correct, fix
                 pass
         else:
-            mol_s, mol_b = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)
+            mol_s, mol_b = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge, mol=self.mol)
             if mol_b is not None and len(mol_b.atoms) == self.number_of_atoms:
                 self.mol = mol_b
             elif mol_s is not None and len(mol_s.atoms) == self.number_of_atoms:

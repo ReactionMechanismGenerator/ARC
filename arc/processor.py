@@ -39,6 +39,7 @@ def process_arc_project(thermo_adapter: str,
                         output_dict: dict,
                         bac_type: Optional[str] = None,
                         sp_level: Optional[Level] = None,
+                        level_of_theory: Optional[Level] = None,
                         freq_scale_factor: float = 1.0,
                         compute_thermo: bool = True,
                         compute_rates: bool = True,
@@ -144,7 +145,10 @@ def process_arc_project(thermo_adapter: str,
                                                         T_count=T_count,
                                                         three_params=three_params,
                                                         )
-                    statmech_adapter.compute_high_p_rate_coefficient()
+                    try:
+                        statmech_adapter.compute_high_p_rate_coefficient()
+                    except Exception as e:
+                        logger.error(e)
                     if reaction.kinetics is not None:
                         rxns_for_kinetics_lib.append(reaction)
                     else:
@@ -169,7 +173,10 @@ def process_arc_project(thermo_adapter: str,
                                                     freq_scale_factor=freq_scale_factor,
                                                     species=species,
                                                     )
-                statmech_adapter.compute_thermo(kinetics_flag=False, e0_only=species.e0_only)
+                try:
+                    statmech_adapter.compute_thermo(kinetics_flag=False, e0_only=species.e0_only)
+                except Exception as e:
+                    logger.error(e)
                 if species.thermo is not None:
                     species_for_thermo_lib.append(species)
                 elif not species.e0_only and species not in unconverged_species:

@@ -30,7 +30,7 @@ check_status_command, delete_command, list_available_nodes_command, servers, sub
 def check_connections(function: Callable[..., Any]) -> Callable[..., Any]:
     """
     A decorator designned for ``SSHClient``to check SSH connections before
-    calling a method. It first checks if ``self._ssh`` is available in a 
+    calling a method. It first checks if ``self._ssh`` is available in a
     SSHClient instance and then checks if you can send ``ls`` and get response
     to make sure your connection still alive. If connection is bad, this
     decorator will reconnect the SSH channel, to avoid connection related
@@ -39,7 +39,10 @@ def check_connections(function: Callable[..., Any]) -> Callable[..., Any]:
     def decorator(*args, **kwargs) -> Any:
         self = args[0]
         if self._ssh is None:  # not sure if some status may cause False
-            self._sftp, self._ssh = self.connect()
+            try:
+                self._sftp, self._ssh = self.connect()
+            except:
+                pass
         # test connection, reference:
         # https://stackoverflow.com/questions/
         # 20147902/how-to-know-if-a-paramiko-ssh-channel-is-disconnected
@@ -66,7 +69,7 @@ class SSHClient(object):
         un (str): The username to use on the server.
         key (str): A path to a file containing the RSA SSH private key to the server.
         _ssh (paramiko.SSHClient): A high-level representation of a session with an SSH server.
-        _sftp (paramiko.sftp_client.SFTPClient): SFTP client used to perform remote file operations. 
+        _sftp (paramiko.sftp_client.SFTPClient): SFTP client used to perform remote file operations.
     """
     def __init__(self, server: str = '') -> None:
         if server == '':
@@ -89,12 +92,12 @@ class SSHClient(object):
         self.close()
 
     @check_connections
-    def _send_command_to_server(self, 
-                                command: Union[str, list], 
+    def _send_command_to_server(self,
+                                command: Union[str, list],
                                 remote_path: str = '',
                                 ) -> Tuple[list, list]:
         """
-        A wrapper for exec_command in paramiko.SSHClient. Send commands to the server. 
+        A wrapper for exec_command in paramiko.SSHClient. Send commands to the server.
 
         Args:
             command (Union[str, list]): A string or an array of string commands to send.
@@ -192,8 +195,13 @@ class SSHClient(object):
             logger.debug(
                 f'{remote_file_path} does not exist on {self.server}.')
         try:
-            self._sftp.get(remotepath=remote_file_path,
+            try:
+                self._sftp.get(remotepath=remote_file_path,
                            localpath=local_file_path)
+            except IOError:
+                lpath = local_file_path.replace("/Species/","/TSs/")
+                self._sftp.get(remotepath=remote_file_path,
+                           localpath=lpath)
         except IOError:
             logger.debug(
                 f'Got an IOError when trying to download file {remote_file_path} from {self.server}')
@@ -206,7 +214,7 @@ class SSHClient(object):
 
         Args:
             remote_file_path (str): The remote path to be read.
-        
+
         Returns: list
             A list of lines read from the file.
         """
@@ -257,7 +265,7 @@ class SSHClient(object):
         """
         jobs_message = f'{len(jobs)}' if jobs is not None else 'all'
         print(f'\nDeleting {jobs_message} ARC jobs from {self.server}...')
-        
+
         running_job_ids = self.check_running_jobs_ids()
         for job_id in running_job_ids:
             if jobs is None or str(job_id) in jobs:
@@ -286,7 +294,7 @@ class SSHClient(object):
     def submit_job(self, remote_path: str) -> Tuple[str, int]:
         """
         Submit a job to the server.
-        
+
         Args:
             remote_path (str): The remote path contains the input file
                                and the submission script.
@@ -360,8 +368,8 @@ class SSHClient(object):
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         ssh.load_system_host_keys(filename=self.key)
         try:
-            # If the server accepts the connection but the SSH daemon doesn't respond in 
-            # 15 seconds (default in paramiko) due to network congestion, faulty switches, 
+            # If the server accepts the connection but the SSH daemon doesn't respond in
+            # 15 seconds (default in paramiko) due to network congestion, faulty switches,
             # etc..., common solution is to enlarging the timeout variable.
             ssh.connect(hostname=self.address, username=self.un, banner_timeout=200)
         except:
@@ -381,7 +389,7 @@ class SSHClient(object):
             self._ssh.close()
 
     @check_connections
-    def get_last_modified_time(self, 
+    def get_last_modified_time(self,
                                remote_file_path: str,
                                ) -> Optional[datetime.datetime]:
         """
@@ -463,7 +471,7 @@ class SSHClient(object):
         command = f'chmod {recursive} {mode} {path}'
         self._send_command_to_server(command, remote_path)
 
-    def _check_file_exists(self, 
+    def _check_file_exists(self,
                            remote_file_path: str,
                            ) -> bool:
         """
@@ -511,7 +519,7 @@ class SSHClient(object):
                 f'Cannot create dir for the given path ({remote_path}).\nGot: {stderr}')
 
 
-def check_job_status_in_stdout(job_id: int, 
+def check_job_status_in_stdout(job_id: int,
                                stdout: Union[list, str],
                                server: str,
                                ) -> str:

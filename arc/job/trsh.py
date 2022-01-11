@@ -558,7 +558,7 @@ def trsh_scan_job(label: str,
         raise TrshError(f'Could not find the scan to troubleshoot in the scan list of species {label}')
     if methods is None:
         raise InputError('Expected to get a dict of methods, got None.')
-    
+
     # Method 1 and method 2
     if 'freeze' in methods:
         # 1. Freeze specific internal coordinates identified by scan_quality_check()
@@ -618,7 +618,7 @@ def trsh_scan_job(label: str,
                         continue
                     to_freeze.append(torsion)
                     pruning += [ic for ic in problematic_ic if is_same_pivot(torsion, ic)]
-        
+
         # 2. Freeze all torsions other than the rotor to be scanned
         if methods['freeze'] == 'all':
             scan_list.pop(scan_list.index(scan))
@@ -669,7 +669,7 @@ def trsh_special_rotor(special_rotor: list,
         special_type: Indicate the type of the special rotor. Either ``scan`` for
                       the rotor to be scanned or `frozen` for the rotor were frozen
                       in the previous job
-    
+
     Returns: list
         A list of internal coordinates to be frozen
     """
@@ -836,13 +836,13 @@ def trsh_ess_job(label: str,
             ess_trsh_methods.append('int=(Acc2E=14)')
             trsh_keyword = 'int=(Acc2E=14)'
         # suggest spawning a cbs-qb3 job if there are not many heavy atoms
-        elif 'cbs-qb3' not in ess_trsh_methods and level_of_theory.method != 'cbs-qb3' \
-                and 'scan' not in job_type and num_heavy_atoms <= 15:
-            # try running CBS-QB3, which is relatively robust.
-            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using CBS-QB3')
-            ess_trsh_methods.append('cbs-qb3')
-            level_of_theory = Level(method='cbs-qb3')
-            job_type = 'composite'
+        # elif 'cbs-qb3' not in ess_trsh_methods and level_of_theory.method != 'cbs-qb3' \
+        #         and 'scan' not in job_type and num_heavy_atoms <= 15:
+        #     # try running CBS-QB3, which is relatively robust.
+        #     logger.info(f'Troubleshooting {job_type} job in {software} for {label} using CBS-QB3')
+        #     ess_trsh_methods.append('cbs-qb3')
+        #     level_of_theory = Level(method='cbs-qb3')
+        #     job_type = 'composite'
         elif 'Memory' in job_status['keywords'] and 'memory' not in ess_trsh_methods:
             # Increase memory allocation
             max_mem = servers[server].get('memory', 128)  # Node memory in GB, defaults to 128 if not specified
@@ -850,13 +850,13 @@ def trsh_ess_job(label: str,
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using more memory: {memory} GB '
                         f'instead of {memory_gb} GB')
             ess_trsh_methods.append('memory')
-        elif level_of_theory.method != 'cbs-qb3' and 'scf=(qc,nosymm) & CBS-QB3' not in ess_trsh_methods \
-                and 'scan' not in job_type and num_heavy_atoms <= 15:
-            # try both qc and nosymm with CBS-QB3
-            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using scf=(qc,nosymm) with CBS-QB3')
-            ess_trsh_methods.append('scf=(qc,nosymm) & CBS-QB3')
-            level_of_theory = Level(method='cbs-qb3')
-            trsh_keyword = 'scf=(qc,nosymm)'
+        # elif level_of_theory.method != 'cbs-qb3' and 'scf=(qc,nosymm) & CBS-QB3' not in ess_trsh_methods \
+        #         and 'scan' not in job_type and num_heavy_atoms <= 15:
+        #     # try both qc and nosymm with CBS-QB3
+        #     logger.info(f'Troubleshooting {job_type} job in {software} for {label} using scf=(qc,nosymm) with CBS-QB3')
+        #     ess_trsh_methods.append('scf=(qc,nosymm) & CBS-QB3')
+        #     level_of_theory = Level(method='cbs-qb3')
+        #     trsh_keyword = 'scf=(qc,nosymm)'
         elif 'qchem' not in ess_trsh_methods and job_type != 'composite' and \
                 (available_ess is None or 'qchem' in [ess.lower() for ess in available_ess]):
             # Try QChem
@@ -873,7 +873,8 @@ def trsh_ess_job(label: str,
             couldnt_trsh = True
 
     elif software == 'qchem':
-        if 'MaxOptCycles' in job_status['keywords'] and 'max_cycles' not in ess_trsh_methods:
+        #if 'MaxOptCycles' in job_status['keywords'] and 'max_cycles' not in ess_trsh_methods:
+        if 'max_cycles' not in ess_trsh_methods:
             # this is a common error, increase max cycles and continue running from last geometry
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using max_cycles')
             ess_trsh_methods.append('max_cycles')
@@ -889,28 +890,28 @@ def trsh_ess_job(label: str,
                         f'DIIS_GDM SCF algorithm')
             ess_trsh_methods.append('SYM_IGNORE')
             trsh_keyword = '\n   SCF_ALGORITHM DIIS_GDM\n   MAX_SCF_CYCLES 250\n   SYM_IGNORE     True'
-        elif 'wB97X-D3/def2-TZVP' not in ess_trsh_methods:
-            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using wB97X-D3/def2-TZVP')
-            ess_trsh_methods.append('wB97X-D3/def2-TZVP')
-            # try converging with wB97X-D3/def2-TZVP
-            level_of_theory = Level(method='wb97x-d3', basis='def2-tzvp')
-        elif 'b3lyp/6-311++g(d,p)' not in ess_trsh_methods:
-            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using b3lyp/6-311++g(d,p)')
-            ess_trsh_methods.append('b3lyp/6-311++g(d,p)')
-            # try converging with B3LYP
-            level_of_theory = Level(method='b3lyp', basis='6-311++g(d,p)')
-        elif 'gaussian' not in ess_trsh_methods \
-                and (available_ess is None or 'gaussian' in [ess.lower() for ess in available_ess]):
-            # Try Gaussian
-            logger.info(f'Troubleshooting {job_type} job using gaussian instead of {software} for {label}')
-            ess_trsh_methods.append('gaussian')
-            software = 'gaussian'
-        elif 'molpro' not in ess_trsh_methods and job_type != 'scan' \
-                and (available_ess is None or 'molpro' in [ess.lower() for ess in available_ess]):
-            # Try molpro
-            logger.info(f'Troubleshooting {job_type} job using molpro instead of {software} for {label}')
-            ess_trsh_methods.append('molpro')
-            software = 'molpro'
+        # elif 'wB97X-D3/def2-TZVP' not in ess_trsh_methods and job_type != "sp":
+        #     logger.info(f'Troubleshooting {job_type} job in {software} for {label} using wB97X-D3/def2-TZVP')
+        #     ess_trsh_methods.append('wB97X-D3/def2-TZVP')
+        #     # try converging with wB97X-D3/def2-TZVP
+        #     level_of_theory = Level(method='wb97x-d3', basis='def2-tzvp')
+        # elif 'b3lyp/6-311++g(d,p)' not in ess_trsh_methods and job_type != "sp":
+        #     logger.info(f'Troubleshooting {job_type} job in {software} for {label} using b3lyp/6-311++g(d,p)')
+        #     ess_trsh_methods.append('b3lyp/6-311++g(d,p)')
+        #     # try converging with B3LYP
+        #     level_of_theory = Level(method='b3lyp', basis='6-311++g(d,p)')
+        # elif 'gaussian' not in ess_trsh_methods \
+        #         and (available_ess is None or 'gaussian' in [ess.lower() for ess in available_ess]):
+        #     # Try Gaussian
+        #     logger.info(f'Troubleshooting {job_type} job using gaussian instead of {software} for {label}')
+        #     ess_trsh_methods.append('gaussian')
+        #     software = 'gaussian'
+        # elif 'molpro' not in ess_trsh_methods and job_type != 'scan' \
+        #         and (available_ess is None or 'molpro' in [ess.lower() for ess in available_ess]):
+        #     # Try molpro
+        #     logger.info(f'Troubleshooting {job_type} job using molpro instead of {software} for {label}')
+        #     ess_trsh_methods.append('molpro')
+        #     software = 'molpro'
         else:
             couldnt_trsh = True
 
@@ -1009,18 +1010,18 @@ def trsh_ess_job(label: str,
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using memory: {memory:.2f} GB '
                         f'instead of {memory_gb} GB')
             shift = 'shift,-1.0,-0.5;'
-        elif 'gaussian' not in ess_trsh_methods\
-                and (available_ess is None or 'gaussian' in [ess.lower() for ess in available_ess]):
-            # Try Gaussian
-            logger.info(f'Troubleshooting {job_type} job using gaussian instead of {software} for {label}')
-            ess_trsh_methods.append('gaussian')
-            software = 'gaussian'
-        elif 'qchem' not in ess_trsh_methods\
-                and (available_ess is None or 'qchem' in [ess.lower() for ess in available_ess]):
-            # Try QChem
-            logger.info(f'Troubleshooting {job_type} job using qchem instead of {software} for {label}')
-            ess_trsh_methods.append('qchem')
-            software = 'qchem'
+        # elif 'gaussian' not in ess_trsh_methods\
+        #         and (available_ess is None or 'gaussian' in [ess.lower() for ess in available_ess]):
+        #     # Try Gaussian
+        #     logger.info(f'Troubleshooting {job_type} job using gaussian instead of {software} for {label}')
+        #     ess_trsh_methods.append('gaussian')
+        #     software = 'gaussian'
+        # elif 'qchem' not in ess_trsh_methods\
+        #         and (available_ess is None or 'qchem' in [ess.lower() for ess in available_ess]):
+        #     # Try QChem
+        #     logger.info(f'Troubleshooting {job_type} job using qchem instead of {software} for {label}')
+        #     ess_trsh_methods.append('qchem')
+        #     software = 'qchem'
         else:
             couldnt_trsh = True
 
@@ -1028,7 +1029,7 @@ def trsh_ess_job(label: str,
         """
         scf diis+a
         maxit 50
-        
+
         solve in freq:
         Maximum gradient component at reference geometry: 2.19e-02
         Maximum component of gradient is too large
@@ -1252,7 +1253,7 @@ def scan_quality_check(label: str,
             logger.warning(message)
 
     # 1. Check based on intermediate conformers
-    if scan_conformers is not None and (species is None or not species.is_ts):
+    if scan_conformers is not None and (species is None or not species.is_ts or not "TS" in species.label):
         bonds = scan_conformers[scan_conformers['type'] == 'R']
         angles = scan_conformers[scan_conformers['type'] == 'A']
         non_scan_rotor = scan_conformers[(scan_conformers['type'] == 'D') \
@@ -1330,7 +1331,7 @@ def scan_quality_check(label: str,
         energy_diff = energies[0] - np.min(energies)
         # Use tighter threshold to find lower conformer
         if energy_diff >= 0.5 or energy_diff > 0.5 * (max(energies) - min(energies)) \
-                and (species is None or not species.is_ts):
+                and (species is None or not species.is_ts or not "TS" in species.label):
             invalidate = True
             invalidation_reason = f'Another conformer for {label} exists which is ' \
                                   f'{energy_diff:.2f} kJ/mol lower.'
@@ -1340,7 +1341,10 @@ def scan_quality_check(label: str,
             # Find the dihedrals in degrees of the lowest conformer:
             min_index = np.argmin(energies)
             conf_xyzs = parse_1d_scan_coords(log_file)
-            actions = {'change conformer': conf_xyzs[min_index]}
+            try:
+                actions = {'change conformer': conf_xyzs[min_index]}
+            except IndexError:
+                actions = {'change conformer': conf_xyzs[min_index-1]}
             return invalidate, invalidation_reason, message, actions
 
         # 1.3 Check consistency
@@ -1406,12 +1410,12 @@ def scan_quality_check(label: str,
                 logger.error(message)
                 # Propose a method
                 # Try increasing resolution firstly, and try increasing res. and freezing all
-                # torsions jointly, afterwards. 
+                # torsions jointly, afterwards.
                 # TODO: If we figure out that solely increasing res. is not effective,
                 # we can simplify the process to actions = {'inc_res': None, 'freeze': 'all'}
                 if any(['scan_res' in used_method for used_method in used_methods]):
                     # Check if increasing scan resolution is ever applied
-                    if not any([used_method['scan_trsh'] != '' for used_method in used_methods]):
+                    if not any([used_method['scan_trsh'] != '' for used_method in used_methods if 'scan_trsh' in used_method.keys()]):
                         # Case where freezing torisions has not been applied
                         actions = {'inc_res': None, 'freeze': 'all'}
                     else:
@@ -1427,7 +1431,7 @@ def scan_quality_check(label: str,
         # 2.3 Check energy and change conformation if needed:
         energy_diff = energies[0] - np.min(energies)
         if energy_diff >= 2 or energy_diff > 0.5 * (max(energies) - min(energies)) \
-                and (species is None or not species.is_ts):
+                and (species is None or not species.is_ts or not "TS" in species.label):
             invalidate = True
             invalidation_reason = f'Another conformer for {label} exists which is {energy_diff:.2f} kJ/mol lower.'
             message = f'Species {label} is not oriented correctly around pivots {pivots}. ' \

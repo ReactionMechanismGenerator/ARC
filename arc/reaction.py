@@ -252,6 +252,7 @@ class ARCReaction(object):
         """
         A helper function for loading this object from a dictionary in a YAML file for restarting ARC.
         """
+        logger.error([x.label for x in species_list])
         self.index = reaction_dict['index'] if 'index' in reaction_dict else None
         self.label = reaction_dict['label'] if 'label' in reaction_dict else ''
         self.multiplicity = reaction_dict['multiplicity'] if 'multiplicity' in reaction_dict else None
@@ -599,6 +600,8 @@ class ARCReaction(object):
                                         f'is not in self.products ({self.reactants})')
             for product in products:
                 if product not in [p.label for p in self.p_species]:
+                    logger.error(product)
+                    logger.error([p.label for p in self.p_species])
                     raise ReactionError(f'Product {product} from the reaction label {self.label} '
                                         f'is not in self.p_species ({[p.label for p in self.p_species]})')
             for product in self.products:
