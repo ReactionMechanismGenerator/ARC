@@ -65,7 +65,7 @@ def map_reaction(rxn: 'ARCReaction',
     fam_func_dict = {'Disproportionation': map_abstractions,  # Mapping a disprop reaction is similar to H_Abs.
                      'H_Abstraction': map_abstractions,
                      'Br_Abstraction': map_abstractions,
-                     'HCl_Abstraction': map_abstractions,
+                     'Cl_Abstraction': map_abstractions,
                      'F_Abstraction': map_abstractions,
                      'HO2_Elimination_from_PeroxyRadical': map_ho2_elimination_from_peroxy_radical,
                      'intra_H_migration': map_intra_h_migration,
@@ -219,89 +219,6 @@ def map_isomerization_reaction(rxn: 'ARCReaction',
 # Family-specific mapping functions:
 
 
-def map_h_abstraction(rxn: 'ARCReaction',
-                      backend: str = 'ARC',
-                      db: Optional['RMGDatabase'] = None,
-                      ) -> Optional[List[int]]:
-    """
-    Map a hydrogen abstraction or a disproportionation reaction (they are principally similar for mapping).
-
-    Strategy:
-        H_Abstraction: Map species R(*1)-H(*2) to species R(*1)j and map species R(*3)j to species R(*3)-H(*2).
-        Disprop: Map species R(*1)j to species R(*1)-H(*4) and map species R(*3)j-R(*2)-H(*4) to species R(*3)=R(*2).
-        Use scissors to map the backbone.
-
-    Args:
-        rxn (ARCReaction): An ARCReaction object instance that belongs to the RMG H_Abstraction reaction family.
-        backend (str, optional): Whether to use ``'QCElemental'`` or ``ARC``'s method as the backend.
-        db (RMGDatabase, optional): The RMG database instance.
-
-    Returns:
-        Optional[List[int]]:
-            Entry indices are running atom indices of the reactants,
-            corresponding entry values are running atom indices of the products.
-    """
-    disprop = False
-    if not check_family_for_mapping_function(rxn=rxn, db=db, family='H_Abstraction'):
-        if check_family_for_mapping_function(rxn=rxn, db=db, family='Disproportionation'):
-            disprop = True
-        else:
-            return None
-
-    atom_labels = ('*1', '*2', '*3') if not disprop else ('*2', '*4', '*1')  # (H, H-anchor, attacking rad)
-
-    rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction=rxn, backend=backend)
-    r_label_dict, p_label_dict = get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=rxn,
-                                                                                      rmg_reaction=rmg_reactions[0])
-    r_h_index = r_label_dict[atom_labels[1]]
-    p_h_index = p_label_dict[atom_labels[1]]
-    len_r1, len_p1 = rxn.r_species[0].number_of_atoms, rxn.p_species[0].number_of_atoms
-    r1_h2 = 0 if r_h_index < len_r1 else 1  # Identify R(*1)-H(*2), it's either reactant 0 or reactant 1.
-    r3 = 1 - r1_h2  # Identify R(*3) in the reactants.
-    r3_h2 = 0 if p_h_index < len_p1 else 1  # Identify R(*3)-H(*2), it's either product 0 or product 1.
-    r1 = 1 - r3_h2  # Identify R(*1) in the products.
-
-    spc_r1_h2 = ARCSpecies(label='R1-H2',
-                           mol=rxn.r_species[r1_h2].mol.copy(deep=True),
-                           xyz=rxn.r_species[r1_h2].get_xyz(),
-                           bdes=[(r_label_dict[atom_labels[0]] + 1 - r1_h2 * len_r1,
-                                  r_label_dict[atom_labels[1]] + 1 - r1_h2 * len_r1)],  # Mark the R(*1)-H(*2) bond for scission.
-                           )
-    spc_r1_h2.final_xyz = spc_r1_h2.get_xyz()  # Scissors requires the .final_xyz attribute to be populated.
-    try:
-        spc_r1_h2_cuts = spc_r1_h2.scissors()
-    except SpeciesError:
-        return None
-    spc_r1_h2_cut = [spc for spc in spc_r1_h2_cuts if spc.label != 'H'][0] \
-        if any(spc.label != 'H' for spc in spc_r1_h2_cuts) else spc_r1_h2_cuts[0]  # Treat H2 as well :)
-    spc_r3_h2 = ARCSpecies(label='R3-H2',
-                           mol=rxn.p_species[r3_h2].mol.copy(deep=True),
-                           xyz=rxn.p_species[r3_h2].get_xyz(),
-                           bdes=[(p_label_dict[atom_labels[2]] + 1 - r3_h2 * len_p1,
-                                  p_label_dict[atom_labels[1]] + 1 - r3_h2 * len_p1)],  # Mark the R(*3)-H(*2) bond for scission.
-                           )
-    spc_r3_h2.final_xyz = spc_r3_h2.get_xyz()
-    try:
-        spc_r3_h2_cuts = spc_r3_h2.scissors()
-    except SpeciesError:
-        return None
-    spc_r3_h2_cut = [spc for spc in spc_r3_h2_cuts if spc.label != 'H'][0] \
-        if any(spc.label != 'H' for spc in spc_r3_h2_cuts) else spc_r3_h2_cuts[0]  # Treat H2 as well :)
-    map_1 = map_two_species(spc_r1_h2_cut, rxn.p_species[r1], backend=backend)
-    map_2 = map_two_species(rxn.r_species[r3], spc_r3_h2_cut, backend=backend)
-
-    result = {r_h_index: p_h_index}
-    for r_increment, p_increment, map_i, j in zip([r1_h2 * len_r1, r3 * len_r1],
-                                                  [r1 * len_p1, r3_h2 * len_p1],
-                                                  [map_1, map_2],
-                                                  [0, 1]):
-        for i, entry in enumerate(map_i):
-            r_index = i + r_increment + (1 - j) * int(i + r_increment >= r_h_index)
-            p_index = entry + p_increment + j * int(i + p_increment >= p_h_index)
-            result[r_index] = p_index
-    return [val for key, val in sorted(result.items(), key=lambda item: item[0])]
-
-
 def map_abstractions(rxn: 'ARCReaction',
                       backend: str = 'ARC',
                       db: Optional['RMGDatabase'] = None,
@@ -340,6 +257,7 @@ def map_abstractions(rxn: 'ARCReaction',
 
     atom_labels = ('*1', '*2', '*3') if not disprop else ('*2', '*4', '*1')  # (H, H-anchor, attacking rad)
     rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction=rxn, backend=backend)
+    print(rmg_reactions)
     r_label_dict, p_label_dict = get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=rxn,
                                                                                       rmg_reaction=rmg_reactions[0])
     r_h_index = r_label_dict[atom_labels[1]]
