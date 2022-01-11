@@ -339,7 +339,6 @@ def map_abstractions(rxn: 'ARCReaction',
         return None
 
     atom_labels = ('*1', '*2', '*3') if not disprop else ('*2', '*4', '*1')  # (H, H-anchor, attacking rad)
-
     rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction=rxn, backend=backend)
     r_label_dict, p_label_dict = get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=rxn,
                                                                                       rmg_reaction=rmg_reactions[0])
@@ -545,7 +544,7 @@ def check_family_for_mapping_function(rxn: 'ARCReaction',
         bool: Whether the reaction family and the desired ``family`` are consistent.
     """
     if rxn.family is None:
-        rmgdb.determine_family(reaction=rxn, db=db)
+        rxn.determine_family(db)
     if rxn.family is None or rxn.family.label != family:
         return False
     return True
