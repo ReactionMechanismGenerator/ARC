@@ -257,7 +257,6 @@ def map_abstractions(rxn: 'ARCReaction',
 
     atom_labels = ('*1', '*2', '*3') if not disprop else ('*2', '*4', '*1')  # (H, H-anchor, attacking rad)
     rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction=rxn, backend=backend)
-    print(rmg_reactions)
     r_label_dict, p_label_dict = get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=rxn,
                                                                                       rmg_reaction=rmg_reactions[0])
     r_h_index = r_label_dict[atom_labels[1]]
