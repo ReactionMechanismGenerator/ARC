@@ -23,6 +23,8 @@ logger = get_logger()
 
 db_path = rmg_settings['database.directory']
 
+rmg_database_instance = None
+
 
 def make_rmg_database_object() -> RMGDatabase:
     """
@@ -31,8 +33,9 @@ def make_rmg_database_object() -> RMGDatabase:
     Returns: RMGDatabase
         A clean RMG database object.
     """
-    rmgdb = RMGDatabase()
-    return rmgdb
+    global rmg_database_instance
+    rmg_database_instance = rmg_database_instance or RMGDatabase()
+    return rmg_database_instance
 
 
 def load_families_only(rmgdb: RMGDatabase,
@@ -48,17 +51,17 @@ def load_families_only(rmgdb: RMGDatabase,
         raise InputError(f"kinetics families should be either 'default', 'all', 'none', or a list of names, e.g.,"
                          f" ['H_Abstraction','R_Recombination'] or ['!Intra_Disproportionation']. "
                          f"Got:\n{kinetics_families}")
-    logger.debug('\n\nLoading only kinetic families from the RMG database...')
-    rmgdb.load(
-        path=db_path,
-        thermo_libraries=list(),
-        transport_libraries='none',
-        reaction_libraries=list(),
-        seed_mechanisms=list(),
-        kinetics_families=kinetics_families,
-        kinetics_depositories=['training'],
-        depository=False,
-    )
+    if rmgdb.kinetics is None or rmgdb.kinetics.families is None:
+        rmgdb.load(
+            path=db_path,
+            thermo_libraries=list(),
+            transport_libraries='none',
+            reaction_libraries=list(),
+            seed_mechanisms=list(),
+            kinetics_families=kinetics_families,
+            kinetics_depositories=['training'],
+            depository=False,
+        )
 
 
 def load_rmg_database(rmgdb: RMGDatabase,
