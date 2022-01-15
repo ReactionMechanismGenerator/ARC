@@ -882,6 +882,8 @@ class TestMapping(unittest.TestCase):
             self.assertIn(atom_map[index], [3, 4, 5])
         self.assertEqual(atom_map[-1], 0)
 
+        # 
+
     # def test_map_ho2_elimination_from_peroxy_radical(self):
     #     """Test the map_ho2_elimination_from_peroxy_radical() function."""
     #     r_xyz = """N      -0.82151000   -0.98211000   -0.58727000
