@@ -2046,7 +2046,7 @@ class TSGuess(object):
             _, r_mol = rdkit_conf_from_mol(reactant.mol, reactant.get_xyz())
 
             # GCN requires an atom-mapped reaction so map the product atoms onto the reactant atoms
-            _, mapped_product = self.arc_reaction.get_mapped_product_xyz()
+            mapped_product = self.arc_reaction.get_single_mapped_product_xyz()
             _, p_mol = rdkit_conf_from_mol(mapped_product.mol, mapped_product.get_xyz())
 
             # write input files for GCN to the TS project folder

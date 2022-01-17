@@ -1598,7 +1598,7 @@ H       1.25408721   -0.86065907   -0.09003883"""
 
         rxn_1 = ARCReaction(reactants=['H2O'], products=['H2O'],
                             r_species=[r_1], p_species=[p_1])
-        _, mapped_product = rxn_1.get_mapped_product_xyz()
+        mapped_product = rxn_1.get_single_mapped_product_xyz()
         self.assertEqual(rxn_1.atom_map, [2, 0, 1])
         self.assertTrue(check_atom_map(rxn_1))
         self.assertTrue(mapped_product.get_xyz(), h2o_xyz_1)
