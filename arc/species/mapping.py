@@ -28,6 +28,7 @@ from arc.species.conformers import determine_chirality
 from arc.species.converter import compare_confs, sort_xyz_using_indices, translate_xyz, xyz_from_data, xyz_to_str
 from arc.species.vectors import calculate_angle, calculate_dihedral_angle, calculate_distance, get_delta_angle
 
+from numpy import unique
 
 if TYPE_CHECKING:
     from rmgpy.data.kinetics.family import TemplateReaction
@@ -1379,3 +1380,34 @@ def add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(spc_1: ARCSpe
     for key, val in dihedral_map_dict.items():
         atom_map[hydrogen_indices_1[key]] = hydrogen_indices_2[val]
     return atom_map
+
+
+def check_atom_map(rxn: ARCReaction) -> bool:
+    """
+    A helper function for testing a reaction atom map.
+    Tests that element symbols are ordered correctly.
+    Note: This is a necessary but not a sufficient condition.
+
+    Args:
+        rxn (ARCReaction): The reaction to examine.
+
+    Returns: bool
+        Whether the atom mapping makes sense.
+        insert np.unique
+    """
+    if len(rxn.atom_map) != sum([spc.number_of_atoms for spc in rxn.r_species]):
+        return False
+    r_elements, p_elements = list(), list()
+    for r_species in rxn.r_species:
+        r_elements.extend(list(r_species.get_xyz()['symbols']))
+    for p_species in rxn.p_species:
+        p_elements.extend(list(p_species.get_xyz()['symbols']))
+    for i, map_i in enumerate(rxn.atom_map):
+        if r_elements[i] != p_elements[map_i]:
+            break
+    if unique(rxn.atom_map) != list(range(len(rxn.atom_map))):
+        return False
+    else:
+        # Did not break, the mapping makes sense.
+        return True
+    return False

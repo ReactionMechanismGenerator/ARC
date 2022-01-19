@@ -22,6 +22,7 @@ make_rmg_database_object,
 rmg_database_instance_only_fams,
 )
 from arc.reaction import ARCReaction
+from arc.species.mapping import check_atom_map
 from arc.species.species import ARCSpecies
 from arc.species.vectors import calculate_dihedral_angle
 
