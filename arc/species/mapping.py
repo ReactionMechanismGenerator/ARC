@@ -1382,11 +1382,12 @@ def add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(spc_1: ARCSpe
     return atom_map
 
 
-def check_atom_map(rxn: ARCReaction) -> bool:
+def check_atom_map(rxn) -> bool:
     """
     A helper function for testing a reaction atom map.
     Tests that element symbols are ordered correctly.
-    Note: This is a necessary but not a sufficient condition.
+    Tests that the elements in the atom map are unique, so that the function is one to one.
+    Note: These are necessary but not a sufficient conditions.
 
     Args:
         rxn (ARCReaction): The reaction to examine.
@@ -1405,8 +1406,10 @@ def check_atom_map(rxn: ARCReaction) -> bool:
     for i, map_i in enumerate(rxn.atom_map):
         if r_elements[i] != p_elements[map_i]:
             break
-    if unique(rxn.atom_map) != list(range(len(rxn.atom_map))):
-        return False
+    for i in range(len(unique(rxn.atom_map))):
+        if unique(rxn.atom_map)[i]!= i:
+            return False
+
     else:
         # Did not break, the mapping makes sense.
         return True
