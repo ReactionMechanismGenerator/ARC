@@ -5,6 +5,8 @@
 This module contains unit tests of the arc.species.conformers module
 """
 
+import os
+
 import unittest
 
 from rdkit.Chem import rdMolTransforms as rdMT
@@ -16,7 +18,7 @@ from rmgpy.molecule.molecule import Molecule
 import arc.species.conformers as conformers
 import arc.species.converter as converter
 import arc.species.vectors as vectors
-from arc.common import almost_equal_coords_lists
+from arc.common import ARC_PATH, almost_equal_coords_lists
 from arc.exceptions import ConformerError
 from arc.species.species import ARCSpecies
 
@@ -568,9 +570,12 @@ H       0.68104300    0.74807180    0.61546062""")]
                                       H         -0.78712        0.56391        0.71847
                                       O          1.39175        1.59510        0.11494""")
         spc = ARCSpecies(label='CCO[O]', smiles='CCO[O]', xyz=xyz)
-        rd_mol = conformers.embed_rdkit(label='', mol=spc.mol, num_confs=2, xyz=xyz)
-        xyzs, energies = conformers.openbabel_force_field_on_rdkit_conformers(label='', rd_mol=rd_mol,
-                                                                              force_field='MMFF94s',)
+        xyzs, energies = conformers.openbabel_force_field_on_rdkit_conformers(label='',
+                                                                              mol=spc.mol,
+                                                                              num_confs=2,
+                                                                              xyz=xyz,
+                                                                              force_field='MMFF94s',
+                                                                              )
         expected_xyzs = [{'symbols': ('C', 'C', 'H', 'H', 'H', 'O', 'H', 'H', 'O'),
                           'isotopes': (12, 12, 1, 1, 1, 16, 1, 1, 16),
                           'coords': ((-0.92004, 0.17591, -0.00274),
@@ -2083,8 +2088,8 @@ Cl      2.38846685    0.24054066    0.55443324
                                         (5, 4, 6, 7): 204.57856732311797}}]
         mol = ARCSpecies(label='C(O)(S)NC=CO', smiles='C(O)(S)NC=CO', xyz=confs[0]['xyz']).mol
         confs = conformers.determine_chirality(conformers=confs, label='C(O)(S)NC=CO', mol=mol)
-        self.assertEqual(confs[0]['chirality'], {(0,): 'R', (3,): 'NR', (4, 5): 'E'})
-        self.assertEqual(confs[1]['chirality'], {(0,): 'S', (3,): 'NR', (4, 5): 'Z'})
+        self.assertEqual(confs[0]['chirality'], {(4,): 'S', (3,): 'NR', (5, 6): 'E'})
+        self.assertEqual(confs[1]['chirality'], {(4,): 'R', (3,): 'NR', (5, 6): 'Z'})
 
         confs = [{'xyz': converter.str_to_xyz("""C                  0.42854493    1.37396218   -0.06378771
                                                  H                  0.92258324    0.49575491   -0.42375735
@@ -2520,6 +2525,16 @@ Cl      2.38846685    0.24054066    0.55443324
             atom1=mol_1.atoms[21],
             atom2=mol_1.atoms[20],
             mol=mol_1), 23)
+
+    @classmethod
+    def tearDownClass(cls):
+        """
+        A function that is run ONCE after all unit tests in this class.
+        """
+        file_paths = [os.path.join(ARC_PATH, 'nul'), os.path.join(ARC_PATH, 'run.out')]
+        for file_path in file_paths:
+            if os.path.isfile(file_path):
+                os.remove(file_path)
 
 
 if __name__ == '__main__':
