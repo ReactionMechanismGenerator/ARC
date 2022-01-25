@@ -318,60 +318,78 @@ def map_ho2_elimination_from_peroxy_radical(rxn: 'ARCReaction',
             Entry indices are running atom indices of the reactants,
             corresponding entry values are running atom indices of the products.
     """
-    if not check_family_for_mapping_function(rxn=rxn, db=db, family='HO2_Elimination_from_PeroxyRadical'):
+    rxn_fwd, flipped = rxn.copy(), False
+    if len(rxn.r_species) == 2 and len(rxn.p_species) == 1:
+        rxn_fwd = rxn_fwd.flip_reaction()
+        flipped = True
+
+    if rxn_fwd.family is None and db is not None:
+        rxn_fwd.determine_family(rmg_database=db, save_order=True)
+    if not check_family_for_mapping_function(rxn=rxn_fwd, db=db, family='HO2_Elimination_from_PeroxyRadical'):
         return None
 
-    rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction=rxn, backend=backend)
-    r_label_dict, p_label_dict = get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=rxn,
+    rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction=rxn_fwd, backend=backend)
+    r_label_dict, p_label_dict = get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=rxn_fwd,
                                                                                       rmg_reaction=rmg_reactions[0])
 
-    if len(rxn.r_species) == 1 and len(rxn.p_species) == 2:
-        r_o3_index = r_label_dict['*3']
-        r_o4_index = r_label_dict['*4']
-        r_h5_index = r_label_dict['*5']
-        # Identify R(*1)=R(*2), it's either product 0 or product 1:
-        r1dr2 = 0 if any(bond.order == 2 for bond in rxn.p_species[0].mol.get_all_edges()) else 1
+    r_o3_index = r_label_dict['*3']
+    r_o4_index = r_label_dict['*4']
+    r_h5_index = r_label_dict['*5']
+    # Identify R(*1)=R(*2), it's either product 0 or product 1:
+    r1dr2 = 0 if any(bond.order == 2 for bond in rxn_fwd.p_species[0].mol.get_all_edges()) else 1
 
-        mol_r_mod = rxn.r_species[0].mol.copy(deep=True)
-        xyz_r_mod = rxn.r_species[0].get_xyz().copy()
-        vertex_indices = sorted([r_o3_index, r_o4_index, r_h5_index], reverse=True)
-        for vertex_index in vertex_indices:
-            mol_r_mod.vertices.remove(mol_r_mod.vertices[vertex_index])
-        xyz_r_mod['symbols'] = tuple(symbol for i, symbol in enumerate(xyz_r_mod['symbols']) if i not in vertex_indices)
-        xyz_r_mod['isotopes'] = tuple(isotope for i, isotope in enumerate(xyz_r_mod['isotopes']) if i not in vertex_indices)
-        xyz_r_mod['coords'] = tuple(coord for i, coord in enumerate(xyz_r_mod['coords']) if i not in vertex_indices)
-        spc_r_mod = ARCSpecies(label='R', mol=mol_r_mod, xyz=xyz_r_mod)
-        spc_r_mod.final_xyz = xyz_r_mod  # .set_dihedral() requires the .final_xyz attribute.
+    mol_r_mod = rxn_fwd.r_species[0].mol.copy(deep=True)
+    mol_r_mod.clear_labeled_atoms()
+    xyz_r_mod = rxn_fwd.r_species[0].get_xyz().copy()
+    vertex_indices = sorted([r_o3_index, r_o4_index, r_h5_index], reverse=True)
+    for vertex_index in vertex_indices:
+        for adj_atom in mol_r_mod.vertices[vertex_index].edges.keys():
+            adj_atom.increment_radical()
+        mol_r_mod.remove_vertex(mol_r_mod.vertices[vertex_index])
+    mol_r_mod.update_multiplicity()
+    xyz_r_mod['symbols'] = tuple(symbol for i, symbol in enumerate(xyz_r_mod['symbols']) if i not in vertex_indices)
+    xyz_r_mod['isotopes'] = tuple(isotope for i, isotope in enumerate(xyz_r_mod['isotopes']) if i not in vertex_indices)
+    xyz_r_mod['coords'] = tuple(coord for i, coord in enumerate(xyz_r_mod['coords']) if i not in vertex_indices)
+    spc_r_mod = ARCSpecies(label='R', mol=mol_r_mod, xyz=xyz_r_mod)
+    spc_r_mod.final_xyz = xyz_r_mod  # .set_dihedral() requires the .final_xyz attribute.
 
-        # Different dihedral angles in the reactant and product will make mapping H atoms hard.
-        # Fix dihedrals between each 4 heavy atom sequences.
-        spc_r_mod.determine_rotors()
-        map_1 = map_2 = map_two_species(spc_r_mod, rxn.p_species[r1dr2], backend=backend)
-        if spc_r_mod.rotors_dict is not None:
-            for rotor in spc_r_mod.rotors_dict.values():
-                torsion = rotor['torsion']
-                if spc_r_mod.mol.atoms[torsion[0]].is_non_hydrogen() and spc_r_mod.mol.atoms[torsion[1]].is_non_hydrogen():
-                    spc_r_mod.set_dihedral(scan=convert_list_index_0_to_1(torsion),
-                                           deg_abs=calculate_dihedral_angle(coords=rxn.p_species[r1dr2].get_xyz(),
-                                                                            torsion=[map_1[t] for t in torsion]),
-                                           chk_rotor_list=False)
-                    spc_r_mod.final_xyz = spc_r_mod.initial_xyz
-            map_2 = map_two_species(spc_r_mod, rxn.p_species[r1dr2], backend=backend)
-        new_map, added_ho2_atoms = list(), list()
-        star_map = {r_o3_index: '*3', r_o4_index: '*4', r_h5_index: '*5'}
-        for i, entry in enumerate(map_2):
-            for j in [i, i + 1, i + 2]:
-                # Check three consecutive indices, we don't know whether the HO2 atoms are mapped consecutively or not.
-                if j in star_map.keys() and j not in added_ho2_atoms:
-                    new_map.append(p_label_dict[star_map[j]])
-                    added_ho2_atoms.append(j)
-                else:
-                    break
-            new_map.append(entry)
-        for _ in range(len(rxn.r_species[0].mol.atoms) - len(new_map)):
-            new_map.append(p_label_dict[star_map[len(new_map)]])
+    map_1 = map_2 = map_two_species(spc_r_mod, rxn_fwd.p_species[r1dr2], backend=backend)
 
-        return new_map
+    if map_2 is None:
+        return None
+
+    # Different dihedral angles in the reactant and product will make mapping H atoms hard.
+    # Fix dihedrals between each 4 heavy atom sequences.
+    spc_r_mod.determine_rotors()
+    if spc_r_mod.rotors_dict is not None:
+        for rotor in spc_r_mod.rotors_dict.values():
+            torsion = rotor['torsion']
+            if spc_r_mod.mol.atoms[torsion[0]].is_non_hydrogen() and spc_r_mod.mol.atoms[torsion[1]].is_non_hydrogen():
+                spc_r_mod.set_dihedral(scan=convert_list_index_0_to_1(torsion),
+                                       deg_abs=calculate_dihedral_angle(coords=rxn_fwd.p_species[r1dr2].get_xyz(),
+                                                                        torsion=[map_1[t] for t in torsion]),
+                                       chk_rotor_list=False)
+                spc_r_mod.final_xyz = spc_r_mod.initial_xyz
+        map_2 = map_two_species(spc_r_mod, rxn_fwd.p_species[r1dr2], backend=backend)
+
+    # Add mapping for the missing O(*3)-O(*4)-H(*5) atoms.
+    new_map, added_ho2_atoms = list(), list()
+    star_map = {r_o3_index: '*3', r_o4_index: '*4', r_h5_index: '*5'}
+    for i, entry in enumerate(map_2):
+        for j in [i + len(added_ho2_atoms), i + 1 + len(added_ho2_atoms), i + 2 + len(added_ho2_atoms)]:
+            # Check three consecutive indices, we don't know whether the HO2 atoms are mapped consecutively or not.
+            if j in star_map.keys() and j not in added_ho2_atoms:
+                new_map.append(p_label_dict[star_map[j]])
+                added_ho2_atoms.append(j)
+            else:
+                break
+        new_map.append(entry)
+
+    # Add mapping for the missing O(*3)-O(*4)-H(*5) atoms that may come at the end of the map.
+    for j in range(len(rxn_fwd.r_species[0].mol.atoms) - len(new_map)):
+        new_map.append(p_label_dict[star_map[len(new_map)]])
+
+    return flip_map(atom_map=new_map) if flipped else new_map
 
 
 def map_intra_h_migration(rxn: 'ARCReaction',
