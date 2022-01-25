@@ -581,10 +581,8 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertEqual(spc_dict['mol']['atoms'][0]['lone_pairs'], 0)
         self.assertEqual(spc_dict['mol']['atoms'][0]['props'], {'inRing': False})
         self.assertEqual(spc_dict['mol']['atoms'][0]['element']['number'], 6)
-        self.assertEqual(spc_dict['mol']['atoms'][0]['element']['symbol'], 'C')
-        self.assertEqual(spc_dict['mol']['atoms'][0]['element']['name'], 'carbon')
-        self.assertEqual(spc_dict['mol']['atoms'][0]['element']['mass'], 0.01201064046472311)
         self.assertEqual(spc_dict['mol']['atoms'][0]['element']['isotope'], -1)
+        self.assertEqual(spc_dict['mol']['atoms'][0]['atomtype'], 'Cs')
 
     def test_from_dict(self):
         """Test Species.from_dict()"""
@@ -603,6 +601,7 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertEqual(len(self.spc6.mol.get_all_edges()), len(spc_copy.mol.get_all_edges()))
         self.assertEqual(spc_copy.multiplicity, self.spc6.multiplicity)
         self.assertEqual(spc_copy.get_xyz()['symbols'], self.spc6.get_xyz()['symbols'])
+        self.assertNotEqual(spc_copy.mol.atoms[0].id, self.spc6.mol.atoms[0].id)
         self.assertEqual(spc_copy.mol.to_smiles(), self.spc6.mol.to_smiles())
 
     def test_mol_dict_repr_round_trip(self):
