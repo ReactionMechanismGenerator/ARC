@@ -1331,6 +1331,6 @@ def calc_rmsd(x: Union[list, np.array],
     y = np.array(y) if isinstance(y, list) else y
     d = x - y
     n = x.shape[0]
-    sqr_sum = (d**2).sum()
-    rmsd = np.sqrt(sqr_sum/n)
+    sqr_sum = (d ** 2).sum()
+    rmsd = np.sqrt(sqr_sum / n)
     return float(rmsd)
