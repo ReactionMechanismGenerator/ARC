@@ -1010,7 +1010,9 @@ class TestMapping(unittest.TestCase):
         self.assertIn(atom_map[10], [9, 10, 11])
         self.assertIn(atom_map[11], [9, 10, 11])
         self.assertTrue(check_atom_map(rxn))
+
         # Br abstraction
+
 
 
 
