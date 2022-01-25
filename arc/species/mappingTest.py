@@ -1348,6 +1348,32 @@ class TestMapping(unittest.TestCase):
         self.assertEqual(atom_map,
                          {0: 0, 1: 6, 2: 5, 3: 1, 4: 2, 5: 3, 6: 4, 7: 7, 8: 8, 9: 10, 10: 9, 11: 11, 12: 12, 13: 13})
 
+    def test_flip_map(self):
+        """Test the flip_map function."""
+        atom_map = [0]
+        flipped_map = mapping.flip_map(atom_map)
+        self.assertEqual(flipped_map, [0])
+
+        atom_map = [0, 1]
+        flipped_map = mapping.flip_map(atom_map)
+        self.assertEqual(flipped_map, [0, 1])
+
+        atom_map = [1, 0]
+        flipped_map = mapping.flip_map(atom_map)
+        self.assertEqual(flipped_map, [1, 0])
+
+        atom_map = [0, 1, 2, 3, 5, 4, 6]
+        flipped_map = mapping.flip_map(atom_map)
+        self.assertEqual(flipped_map, [0, 1, 2, 3, 5, 4, 6])
+
+        atom_map = [0, 1, 2, 8, 7, 4, 5, 3, 6, 9]
+        flipped_map = mapping.flip_map(atom_map)
+        self.assertEqual(flipped_map, [0, 1, 2, 7, 5, 6, 8, 4, 3, 9])
+
+        atom_map = [5, 8, 0, 6, 10, 1, 9, 3, 4, 2, 7]
+        flipped_map = mapping.flip_map(atom_map)
+        self.assertEqual(flipped_map, [2, 5, 9, 7, 8, 0, 3, 10, 1, 6, 4])
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
