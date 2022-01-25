@@ -121,6 +121,9 @@ class TestARCReaction(unittest.TestCase):
                                           ARCSpecies(label='OH', smiles='[OH]', xyz=cls.oh_xyz)],
                                p_species=[ARCSpecies(label='CH3', smiles='[CH3]', xyz=cls.ch3_xyz),
                                           ARCSpecies(label='H2O', smiles='O', xyz=cls.h2o_xyz)])
+        cls.rxn9 = ARCReaction(r_species=[ARCSpecies(label='NCOO', smiles='NCO[O]')],
+                               p_species=[ARCSpecies(label='NHCH2', smiles='N=C'),
+                                          ARCSpecies(label='HO2', smiles='O[O]')])
 
     def test_str(self):
         """Test the string representation of the object"""
@@ -378,6 +381,7 @@ class TestARCReaction(unittest.TestCase):
         self.assertFalse(self.rxn6.is_isomerization())
         self.assertFalse(self.rxn7.is_isomerization())
         self.assertFalse(self.rxn8.is_isomerization())
+        self.assertFalse(self.rxn9.is_isomerization())
 
     def test_from_rmg_reaction(self):
         """Test setting up an ARCReaction from an RMG Reaction"""
@@ -420,6 +424,15 @@ class TestARCReaction(unittest.TestCase):
         self.rxn5.check_attributes()
         self.rxn5.determine_family(rmg_database=self.rmgdb)
         self.assertEqual(self.rxn5.family.label, 'H_Abstraction')
+        self.rxn9.rmg_reaction_from_arc_species()
+        self.rxn9.check_attributes()
+        self.rxn9.determine_family(rmg_database=self.rmgdb)
+        self.assertEqual(self.rxn9.family.label, 'HO2_Elimination_from_PeroxyRadical')
+        rxn_9_flipped = self.rxn9.flip_reaction()
+        rxn_9_flipped.rmg_reaction_from_arc_species()
+        rxn_9_flipped.check_attributes()
+        rxn_9_flipped.determine_family(rmg_database=self.rmgdb)
+        self.assertEqual(rxn_9_flipped.family.label, 'HO2_Elimination_from_PeroxyRadical')
 
     def test_charge_property(self):
         """Test determining charge"""
