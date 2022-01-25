@@ -17,6 +17,7 @@ from arc.exceptions import ReactionError
 from arc.imports import settings
 from arc.reaction import ARCReaction, remove_dup_species
 from arc.species import ARCSpecies
+from arc.species.mapping import flip_map
 from arc.utils.wip import work_in_progress
 
 
@@ -36,6 +37,47 @@ class TestARCReaction(unittest.TestCase):
         cls.maxDiff = None
         cls.rmgdb = rmgdb.make_rmg_database_object()
         rmgdb.load_families_only(cls.rmgdb)
+        cls.h2_xyz = {'coords': ((0, 0, 0.3736550), (0, 0, -0.3736550)), 'isotopes': (1, 1), 'symbols': ('H', 'H')}
+        cls.o2_xyz = {'coords': ((0, 0, 0.6487420), (0, 0, -0.6487420)), 'isotopes': (16, 16), 'symbols': ('O', 'O')}
+        cls.co_xyz = {'coords': ((0, 0, -0.6748240), (0, 0, 0.5061180)), 'isotopes': (12, 16), 'symbols': ('C', 'O')}
+        cls.ho2_xyz = {'coords': ((0.0558910, -0.6204870, 0.0000000),
+                                  (0.0558910, 0.7272050, 0.0000000),
+                                  (-0.8942590, -0.8537420, 0.0000000)),
+                       'isotopes': (16, 16, 1), 'symbols': ('O', 'O', 'H')}
+        cls.ch2_xyz = {'coords': ((-1.3519460059345912e-10, -5.04203763365717e-10, 0.0),
+                                  (-1.064874800478917, -0.016329711355091817, 0.0),
+                                  (1.0648748006141107, 0.016329711859301474, 0.0)),
+                       'isotopes': (12, 1, 1), 'symbols': ('C', 'H', 'H')}
+        cls.nh_xyz = {'coords': ((0.509499983131626, 0.0, 0.0), (-0.509499983131626, 0.0, 0.0)),
+                      'isotopes': (14, 1), 'symbols': ('N', 'H')}
+        cls.ch2choh_xyz = """C      -0.80601307   -0.11773769    0.32792128
+                             C       0.23096883    0.47536513   -0.26437348
+                             O       1.44620485   -0.11266560   -0.46339257
+                             H      -1.74308628    0.41660480    0.45016601
+                             H      -0.75733964   -1.13345488    0.70278513
+                             H       0.21145717    1.48838416   -0.64841675
+                             H       1.41780836   -1.01649567   -0.10468897"""
+        cls.ch3cho_xyz = """C      -0.64851652   -0.03628781   -0.04007233
+                            C       0.84413281    0.04088405    0.05352862
+                            O       1.47323666   -0.23917853    1.06850992
+                            H      -1.06033881    0.94648764   -0.28238370
+                            H      -0.92134271   -0.74783968   -0.82281679
+                            H      -1.04996634   -0.37234114    0.91874740
+                            H       1.36260637    0.37153887   -0.86221771"""
+        cls.ch4_xyz = """C      -0.00000000    0.00000000    0.00000000
+                         H      -0.65055201   -0.77428020   -0.41251879
+                         H      -0.34927558    0.98159583   -0.32768232
+                         H      -0.02233792   -0.04887375    1.09087665
+                         H       1.02216551   -0.15844188   -0.35067554"""
+        cls.oh_xyz = """O       0.48890387    0.00000000    0.00000000
+                        H      -0.48890387    0.00000000    0.00000000"""
+        cls.ch3_xyz = """C       0.00000000    0.00000001   -0.00000000
+                         H       1.06690511   -0.17519582    0.05416493
+                         H      -0.68531716   -0.83753536   -0.02808565
+                         H      -0.38158795    1.01273118   -0.02607927"""
+        cls.h2o_xyz = """O      -0.00032832    0.39781490    0.00000000
+                         H      -0.76330345   -0.19953755    0.00000000
+                         H       0.76363177   -0.19827735    0.00000000"""
         cls.rxn1 = ARCReaction(reactants=['CH4', 'OH'], products=['CH3', 'H2O'],
                                rmg_reaction=Reaction(reactants=[Species(label='CH4', smiles='C'),
                                                                 Species(label='OH', smiles='[OH]')],
@@ -76,33 +118,10 @@ class TestARCReaction(unittest.TestCase):
                                                                                  2 N u2 p1 c0 {1,S}
                                                                                  3 H u0 p0 c0 {1,S}
                                                                                  4 H u0 p0 c0 {1,S}""")])
-        cls.h2_xyz = {'coords': ((0, 0, 0.3736550), (0, 0, -0.3736550)), 'isotopes': (1, 1), 'symbols': ('H', 'H')}
-        cls.o2_xyz = {'coords': ((0, 0, 0.6487420), (0, 0, -0.6487420)), 'isotopes': (16, 16), 'symbols': ('O', 'O')}
-        cls.co_xyz = {'coords': ((0, 0, -0.6748240), (0, 0, 0.5061180)), 'isotopes': (12, 16), 'symbols': ('C', 'O')}
-        cls.ho2_xyz = {'coords': ((0.0558910, -0.6204870, 0.0000000),
-                                  (0.0558910, 0.7272050, 0.0000000),
-                                  (-0.8942590, -0.8537420, 0.0000000)),
-                       'isotopes': (16, 16, 1), 'symbols': ('O', 'O', 'H')}
-        cls.ch2_xyz = {'coords': ((-1.3519460059345912e-10, -5.04203763365717e-10, 0.0),
-                                  (-1.064874800478917, -0.016329711355091817, 0.0),
-                                  (1.0648748006141107, 0.016329711859301474, 0.0)),
-                       'isotopes': (12, 1, 1), 'symbols': ('C', 'H', 'H')}
-        cls.nh_xyz = {'coords': ((0.509499983131626, 0.0, 0.0), (-0.509499983131626, 0.0, 0.0)),
-                      'isotopes': (14, 1), 'symbols': ('N', 'H')}
-        cls.ch2choh_xyz = """C      -0.80601307   -0.11773769    0.32792128
-                             C       0.23096883    0.47536513   -0.26437348
-                             O       1.44620485   -0.11266560   -0.46339257
-                             H      -1.74308628    0.41660480    0.45016601
-                             H      -0.75733964   -1.13345488    0.70278513
-                             H       0.21145717    1.48838416   -0.64841675
-                             H       1.41780836   -1.01649567   -0.10468897"""
-        cls.ch3cho_xyz = """C      -0.64851652   -0.03628781   -0.04007233
-                            C       0.84413281    0.04088405    0.05352862
-                            O       1.47323666   -0.23917853    1.06850992
-                            H      -1.06033881    0.94648764   -0.28238370
-                            H      -0.92134271   -0.74783968   -0.82281679
-                            H      -1.04996634   -0.37234114    0.91874740
-                            H       1.36260637    0.37153887   -0.86221771"""
+        cls.rxn8 = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C', xyz=cls.ch4_xyz),
+                                          ARCSpecies(label='OH', smiles='[OH]', xyz=cls.oh_xyz)],
+                               p_species=[ARCSpecies(label='CH3', smiles='[CH3]', xyz=cls.ch3_xyz),
+                                          ARCSpecies(label='H2O', smiles='O', xyz=cls.h2o_xyz)])
 
     def test_str(self):
         """Test the string representation of the object"""
@@ -312,6 +331,44 @@ class TestARCReaction(unittest.TestCase):
         self.assertEqual(rxn.products, ['CH3', 'H2O'])
         self.assertIsNone(rxn.index)
 
+    def test_copy(self):
+        """Test the copy() method."""
+        rxn_copy = self.rxn8.copy()
+        self.assertIsNot(self.rxn8, rxn_copy)
+        self.assertEqual(self.rxn8.label, rxn_copy.label)
+        self.assertEqual(self.rxn8.multiplicity, rxn_copy.multiplicity)
+        self.assertEqual(self.rxn8.charge, rxn_copy.charge)
+        self.assertTrue(check_atom_map(self.rxn8))
+        self.assertTrue(check_atom_map(rxn_copy))
+        self.assertEqual(self.rxn8.atom_map, rxn_copy.atom_map)
+        self.assertEqual(tuple(spc.label for spc in self.rxn8.r_species),
+                         tuple(spc.label for spc in rxn_copy.r_species))
+        self.assertEqual(tuple(spc.label for spc in self.rxn8.p_species),
+                         tuple(spc.label for spc in rxn_copy.p_species))
+        self.assertNotIn(self.rxn8.r_species[0].mol.atoms[0].id, [atom.id for atom in rxn_copy.r_species[0].mol.atoms
+                                                                  + rxn_copy.p_species[0].mol.atoms])
+
+    def test_flip_reaction(self):
+        """Test the flip_reaction() method."""
+        flipped_rxn = self.rxn8.flip_reaction()
+        self.assertIsNot(self.rxn8, flipped_rxn)
+        self.assertNotEqual(self.rxn8.label, flipped_rxn.label)
+        self.assertEqual(self.rxn8.label.split('<=>')[0].strip(), flipped_rxn.label.split('<=>')[1].strip())
+        self.assertEqual(self.rxn8.label.split('<=>')[1].strip(), flipped_rxn.label.split('<=>')[0].strip())
+        self.assertEqual(self.rxn8.multiplicity, flipped_rxn.multiplicity)
+        self.assertEqual(self.rxn8.charge, flipped_rxn.charge)
+        self.assertTrue(check_atom_map(flipped_rxn))
+        self.assertEqual(self.rxn8.atom_map[0], 0)
+        self.assertEqual(self.rxn8.atom_map[5], 4)
+        self.assertEqual(flipped_rxn.atom_map[0], 0)
+        self.assertEqual(flipped_rxn.atom_map[4], 5)
+        self.assertEqual(tuple(spc.label for spc in self.rxn8.r_species),
+                         tuple(spc.label for spc in flipped_rxn.p_species))
+        self.assertEqual(tuple(spc.label for spc in self.rxn8.p_species),
+                         tuple(spc.label for spc in flipped_rxn.r_species))
+        self.assertNotIn(self.rxn8.r_species[0].mol.atoms[0].id, [atom.id for atom in flipped_rxn.r_species[0].mol.atoms
+                                                                  + flipped_rxn.p_species[0].mol.atoms])
+
     def test_is_isomerization(self):
         """Test the is_isomerization() method"""
         self.assertFalse(self.rxn1.is_isomerization())
@@ -321,6 +378,7 @@ class TestARCReaction(unittest.TestCase):
         self.assertFalse(self.rxn5.is_isomerization())
         self.assertFalse(self.rxn6.is_isomerization())
         self.assertFalse(self.rxn7.is_isomerization())
+        self.assertFalse(self.rxn8.is_isomerization())
 
     def test_from_rmg_reaction(self):
         """Test setting up an ARCReaction from an RMG Reaction"""
