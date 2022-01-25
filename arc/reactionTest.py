@@ -17,7 +17,6 @@ from arc.exceptions import ReactionError
 from arc.imports import settings
 from arc.reaction import ARCReaction, remove_dup_species
 from arc.species import ARCSpecies
-from arc.species.mapping import flip_map
 from arc.utils.wip import work_in_progress
 
 
