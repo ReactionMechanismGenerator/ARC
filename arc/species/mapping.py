@@ -1373,3 +1373,23 @@ def add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(spc_1: ARCSpe
     for key, val in dihedral_map_dict.items():
         atom_map[hydrogen_indices_1[key]] = hydrogen_indices_2[val]
     return atom_map
+
+
+def flip_map(atom_map: Optional[List[int]]) -> Optional[List[int]]:
+    """
+    Flip an atom map so that the products map to the reactants.
+
+    Args:
+        atom_map (List[int]): The atom map in a list format.
+
+    Returns:
+        Optional[List[int]]: The flipped atom map.
+    """
+    if atom_map is None:
+        return None
+    flipped_map = [-1] * len(atom_map)
+    for index, entry in enumerate(atom_map):
+        flipped_map[entry] = index
+    if any(entry < 0 for entry in flipped_map):
+        raise ValueError(f'Cannot flip the atom map {atom_map}')
+    return flipped_map
