@@ -1374,6 +1374,10 @@ class TestMapping(unittest.TestCase):
         flipped_map = mapping.flip_map(atom_map)
         self.assertEqual(flipped_map, [2, 5, 9, 7, 8, 0, 3, 10, 1, 6, 4])
 
+        with self.assertRaises(ValueError):
+            atom_map = [0, 1, 2, 1, 0, 5, 3, 4, 6, 2]
+            mapping.flip_map(atom_map)
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
