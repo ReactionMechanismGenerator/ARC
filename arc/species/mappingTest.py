@@ -629,6 +629,13 @@ class TestMapping(unittest.TestCase):
         self.assertIn(atom_map[12], [14, 15, 16])
         self.assertEqual(atom_map[13:], [10, 11, 12, 13, 17, 18, 20, 19, 21, 22, 23])
 
+    def test_inc_vals(self):
+        """Test creating an atom map via map_two_species() and incrementing all values"""
+        spc1 = ARCSpecies(label='CH4', smiles='C', xyz=self.ch4_xyz)
+        spc2 = ARCSpecies(label='CH4', smiles='C', xyz=self.ch4_xyz_diff_order)
+        atom_map = mapping.map_two_species(spc1, spc2, inc_vals=100)
+        self.assertEqual(atom_map, [102, 100, 101, 103, 104])
+
     def test_map_ho2_elimination_from_peroxy_radical(self):
         """Test the map_ho2_elimination_from_peroxy_radical() function."""
         r_xyz = """N      -0.82151000   -0.98211000   -0.58727000
@@ -685,6 +692,15 @@ class TestMapping(unittest.TestCase):
         self.assertIn(atom_map[10], [7, 8])
         self.assertIn(atom_map[11], [7, 8])
 
+        # Reversed product order
+        rxn_2 = ARCReaction(r_species=[ARCSpecies(label='R', smiles='NC(C=C)O[O]', xyz=r_xyz)],
+                            p_species=[ARCSpecies(label='HO2', smiles='O[O]', xyz=ho2_xyz),
+                                       ARCSpecies(label='P2', smiles='NC=C=C', xyz=p_2_xyz)])
+        atom_map = mapping.map_ho2_elimination_from_peroxy_radical(rxn_2)
+        self.assertEqual(atom_map[:10], [3, 4, 5, 6, 1, 0, 8, 7, 9, 2])
+        self.assertIn(atom_map[10], [10, 11])
+        self.assertIn(atom_map[11], [10, 11])
+
         c2h5o3_xyz = {'coords': ((-1.3476727508427788, -0.49923624257482285, -0.3366372557370102),
                                  (-0.11626816111736853, 0.3110915299407186, 0.018860985632263887),
                                  (0.7531175607750088, 0.3366822240291409, -1.1050387236863213),
@@ -714,28 +730,28 @@ class TestMapping(unittest.TestCase):
         r_1 = ARCSpecies(label='C2H5O3', smiles='CC(O)O[O]', xyz=c2h5o3_xyz)
         p_1 = ARCSpecies(label='C2H4O', smiles='CC=O', xyz=c2h4o_xyz)
         p_2 = ARCSpecies(label='HO2', smiles='O[O]', xyz=ho2_xyz)
-        rxn_3 = ARCReaction(r_species=[r_1], p_species=[p_1, p_2])
-        self.assertEqual(rxn_3.atom_map[:5], [0, 1, 2, 8, 7])
-        self.assertIn(rxn_3.atom_map[5], [4, 5])
-        self.assertIn(rxn_3.atom_map[6], [3, 5])
-        self.assertIn(rxn_3.atom_map[7], [3, 4])
-        self.assertEqual(rxn_3.atom_map[8:], [6, 9])
+        rxn_4 = ARCReaction(r_species=[r_1], p_species=[p_1, p_2])
+        self.assertEqual(rxn_4.atom_map[:5], [0, 1, 2, 8, 7])
+        self.assertIn(rxn_4.atom_map[5], [4, 5])
+        self.assertIn(rxn_4.atom_map[6], [3, 5])
+        self.assertIn(rxn_4.atom_map[7], [3, 4])
+        self.assertEqual(rxn_4.atom_map[8:], [6, 9])
 
         # Reverse HO2 elimination:
-        rxn_4 = ARCReaction(r_species=[p_1, p_2], p_species=[r_1])
-        self.assertEqual(rxn_4.atom_map[:3], [0, 1, 2])
-        self.assertIn(rxn_4.atom_map[3], [6, 7])
-        self.assertIn(rxn_4.atom_map[4], [5, 7])
-        self.assertIn(rxn_4.atom_map[5], [5, 6])
-        self.assertEqual(rxn_4.atom_map[6:], [8, 4, 3, 9])
+        rxn_5 = ARCReaction(r_species=[p_1, p_2], p_species=[r_1])
+        self.assertEqual(rxn_5.atom_map[:3], [0, 1, 2])
+        self.assertIn(rxn_5.atom_map[3], [6, 7])
+        self.assertIn(rxn_5.atom_map[4], [5, 7])
+        self.assertIn(rxn_5.atom_map[5], [5, 6])
+        self.assertEqual(rxn_5.atom_map[6:], [8, 4, 3, 9])
 
         # Reverse HO2 elimination, reversed reactant order:
-        rxn_5 = ARCReaction(r_species=[p_2, p_1], p_species=[r_1])
-        self.assertEqual(rxn_5.atom_map[:6], [4, 3, 9, 0, 1, 2])
-        self.assertIn(rxn_5.atom_map[6], [6, 7])
-        self.assertIn(rxn_5.atom_map[7], [5, 7])
-        self.assertIn(rxn_5.atom_map[8], [5, 6])
-        self.assertEqual(rxn_5.atom_map[9], 8)
+        rxn_6 = ARCReaction(r_species=[p_2, p_1], p_species=[r_1])
+        self.assertEqual(rxn_6.atom_map[:6], [4, 3, 9, 0, 1, 2])
+        self.assertIn(rxn_6.atom_map[6], [6, 7])
+        self.assertIn(rxn_6.atom_map[7], [5, 7])
+        self.assertIn(rxn_6.atom_map[8], [5, 6])
+        self.assertEqual(rxn_6.atom_map[9], 8)
 
     def test_map_intra_h_migration(self):
         """Test the map_intra_h_migration() function."""
