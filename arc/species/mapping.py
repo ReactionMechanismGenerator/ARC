@@ -665,6 +665,7 @@ def map_two_species(spc_1: Union[ARCSpecies, Species, Molecule],
                     backend: str = 'ARC',
                     consider_chirality: bool = True,
                     allow_backend_shift: bool = True,
+                    inc_vals: Optional[int] = None,
                     verbose: bool = False,
                     ) -> Optional[Union[List[int], Dict[int, int]]]:
     """
@@ -681,6 +682,7 @@ def map_two_species(spc_1: Union[ARCSpecies, Species, Molecule],
         backend (str, optional): Whether to use ``'QCElemental'`` or ``ARC``'s method as the backend.
         allow_backend_shift (bool, optional): Whether to try QCElemental's method if ARC's method cannot identify candidates.
         consider_chirality (bool, optional): Whether to consider chirality when fingerprinting.
+        inc_vals (int, optional): An optional integer by which all values in the atom map list will be incremented.
         verbose (bool, optional): Whether to use logging.
 
     Returns:
@@ -770,6 +772,9 @@ def map_two_species(spc_1: Union[ARCSpecies, Species, Molecule],
         atom_map = data[1]['mill'].atommap.tolist()
         if map_type == 'dict':
             atom_map = {key: val for key, val in enumerate(atom_map)}
+
+    if inc_vals is not None:
+        atom_map = [value + inc_vals for value in atom_map]
     return atom_map
 
 
