@@ -353,7 +353,8 @@ def map_ho2_elimination_from_peroxy_radical(rxn: 'ARCReaction',
     spc_r_mod = ARCSpecies(label='R', mol=mol_r_mod, xyz=xyz_r_mod)
     spc_r_mod.final_xyz = xyz_r_mod  # .set_dihedral() requires the .final_xyz attribute.
 
-    map_1 = map_2 = map_two_species(spc_r_mod, rxn_fwd.p_species[r1dr2], backend=backend)
+    inc_vals = 3 if r1dr2 == 1 else None
+    map_1 = map_2 = map_two_species(spc_r_mod, rxn_fwd.p_species[r1dr2], backend=backend, inc_vals=inc_vals)
 
     if map_2 is None:
         return None
@@ -370,7 +371,7 @@ def map_ho2_elimination_from_peroxy_radical(rxn: 'ARCReaction',
                                                                         torsion=[map_1[t] for t in torsion]),
                                        chk_rotor_list=False)
                 spc_r_mod.final_xyz = spc_r_mod.initial_xyz
-        map_2 = map_two_species(spc_r_mod, rxn_fwd.p_species[r1dr2], backend=backend)
+        map_2 = map_two_species(spc_r_mod, rxn_fwd.p_species[r1dr2], backend=backend, inc_vals=inc_vals)
 
     # Add mapping for the missing O(*3)-O(*4)-H(*5) atoms.
     new_map, added_ho2_atoms = list(), list()
