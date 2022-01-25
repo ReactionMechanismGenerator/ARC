@@ -629,7 +629,6 @@ class TestMapping(unittest.TestCase):
         self.assertIn(atom_map[12], [14, 15, 16])
         self.assertEqual(atom_map[13:], [10, 11, 12, 13, 17, 18, 20, 19, 21, 22, 23])
 
-    @work_in_progress
     def test_map_ho2_elimination_from_peroxy_radical(self):
         """Test the map_ho2_elimination_from_peroxy_radical() function."""
         r_xyz = """N      -0.82151000   -0.98211000   -0.58727000
@@ -653,6 +652,22 @@ class TestMapping(unittest.TestCase):
                      H      -1.36374229    0.69906451   -0.66578157
                      H      -2.11095970   -1.29660899    0.57562763
                      H      -0.36304116   -1.66498540    1.07269317"""  # N=CC=C
+        ho2_xyz = """O      -0.18935000    0.42639000    0.00000000
+                     O       1.07669000   -0.17591000    0.00000000
+                     H      -0.88668000   -0.25075000    0.00000000"""  # O[O]
+        rxn_1 = ARCReaction(r_species=[ARCSpecies(label='R', smiles='NC(C=C)O[O]', xyz=r_xyz)],
+                            p_species=[ARCSpecies(label='P1', smiles='N=CC=C', xyz=p_1_xyz),
+                                       ARCSpecies(label='HO2', smiles='O[O]', xyz=ho2_xyz)])
+        atom_map = mapping.map_ho2_elimination_from_peroxy_radical(rxn_1)
+        self.assertEqual(atom_map[:6], [0, 1, 2, 3, 10, 9])
+        self.assertIn(atom_map[6], [4, 11])
+        self.assertIn(atom_map[7], [4, 11])
+        self.assertEqual(atom_map[8], 5)
+        self.assertEqual(atom_map[9], 6)
+        self.assertIn(atom_map[10], [7, 8])
+        self.assertIn(atom_map[11], [7, 8])
+
+        # A different main product
         p_2_xyz = """N      -1.60333711   -0.23049987   -0.35673484
                      C      -0.63074775    0.59837442    0.08043329
                      C       0.59441219    0.18489797    0.16411656
@@ -662,31 +677,65 @@ class TestMapping(unittest.TestCase):
                      H      -0.92437032    1.60768040    0.35200716
                      H       2.49347824   -0.13648710   -0.59717108
                      H       2.18431385   -0.69791121    1.15515621"""  # NC=C=C
-        ho2_xyz = """O      -0.18935000    0.42639000    0.00000000
-                     O       1.07669000   -0.17591000    0.00000000
-                     H      -0.88668000   -0.25075000    0.00000000"""  # O[O]
-        rxn_1 = ARCReaction(r_species=[ARCSpecies(label='R', smiles='NC(C=C)O[O]', xyz=r_xyz)],
-                            p_species=[ARCSpecies(label='P1', smiles='N=CC=C', xyz=p_1_xyz),
-                                       ARCSpecies(label='HO2', smiles='O[O]', xyz=ho2_xyz)])
-        atom_map_1 = mapping.map_ho2_elimination_from_peroxy_radical(rxn_1)
-        self.assertEqual(atom_map_1[:6], [0, 1, 2, 3, 10, 9])
-        self.assertIn(atom_map_1[6], [4, 11])
-        self.assertIn(atom_map_1[7], [4, 11])
-        self.assertEqual(atom_map_1[8], 5)
-        self.assertEqual(atom_map_1[9], 6)
-        self.assertIn(atom_map_1[10], [7, 8])
-        self.assertIn(atom_map_1[11], [7, 8])
         rxn_2 = ARCReaction(r_species=[ARCSpecies(label='R', smiles='NC(C=C)O[O]', xyz=r_xyz)],
-                            p_species=[ARCSpecies(label='P1', smiles='NC=C=C', xyz=p_2_xyz),
+                            p_species=[ARCSpecies(label='P2', smiles='NC=C=C', xyz=p_2_xyz),
                                        ARCSpecies(label='HO2', smiles='O[O]', xyz=ho2_xyz)])
-        atom_map_2 = mapping.map_ho2_elimination_from_peroxy_radical(rxn_2)
-        self.assertEqual(atom_map_2[:6], [0, 1, 2, 3, 10, 9])  # check!!!
-        self.assertIn(atom_map_2[6], [4, 11])  # check!!!
-        self.assertIn(atom_map_2[7], [4, 11])  # check!!!
-        self.assertEqual(atom_map_2[8], 5)  # check!!!
-        self.assertEqual(atom_map_2[9], 6)  # check!!!
-        self.assertIn(atom_map_2[10], [7, 8])  # check!!!
-        self.assertIn(atom_map_2[11], [7, 8])  # check!!!
+        atom_map = mapping.map_ho2_elimination_from_peroxy_radical(rxn_2)
+        self.assertEqual(atom_map[:10], [0, 1, 2, 3, 10, 9, 5, 4, 6, 11])
+        self.assertIn(atom_map[10], [7, 8])
+        self.assertIn(atom_map[11], [7, 8])
+
+        c2h5o3_xyz = {'coords': ((-1.3476727508427788, -0.49923624257482285, -0.3366372557370102),
+                                 (-0.11626816111736853, 0.3110915299407186, 0.018860985632263887),
+                                 (0.7531175607750088, 0.3366822240291409, -1.1050387236863213),
+                                 (0.5228736844989644, -0.3049881931104616, 1.1366016759286774),
+                                 (1.8270658637404131, 0.34102014147584997, 1.2684162942337813),
+                                 (-2.039181700362481, -0.5535509846570477, 0.5100031541057821),
+                                 (-1.865025875161301, -0.06806929272376178, -1.1994046923960628),
+                                 (-1.0711960095793496, -1.5264629385419055, -0.6002175107608478),
+                                 (-0.40133538695862053, 1.3357900487643664, 0.28224155088545305),
+                                 (1.3942569570346546, 1.035594500292526, -0.8890721851777293)),
+                      'isotopes': (12, 12, 16, 16, 16, 1, 1, 1, 1, 1),
+                      'symbols': ('C', 'C', 'O', 'O', 'O', 'H', 'H', 'H', 'H', 'H')}
+        c2h4o_xyz = {'coords': ((-0.6485165220711699, -0.036287809639473964, -0.040072327958319325),
+                                (0.8441328059817381, 0.04088405476411104, 0.05352861712992162),
+                                (1.4799812732494606, 1.0748679945888888, -0.1224478071645769),
+                                (-1.0603388058764294, 0.9464876376852732, -0.28238370478893315),
+                                (-0.9213427138232859, -0.7478396768473443, -0.8228167900899559),
+                                (-1.0499663443190728, -0.37234114306362315, 0.9187474043028493),
+                                (1.3560503068587568, -0.9057710574878411, 0.29544460856901716)),
+                     'isotopes': (12, 12, 16, 1, 1, 1, 1),
+                     'symbols': ('C', 'C', 'O', 'H', 'H', 'H', 'H')}
+        ho2_xyz = {'coords': ((0.0558910, -0.6204870, 0.0000000),
+                              (0.0558910, 0.7272050, 0.0000000),
+                              (-0.8942590, -0.8537420, 0.0000000)),
+                   'isotopes': (16, 16, 1),
+                   'symbols': ('O', 'O', 'H')}
+        r_1 = ARCSpecies(label='C2H5O3', smiles='CC(O)O[O]', xyz=c2h5o3_xyz)
+        p_1 = ARCSpecies(label='C2H4O', smiles='CC=O', xyz=c2h4o_xyz)
+        p_2 = ARCSpecies(label='HO2', smiles='O[O]', xyz=ho2_xyz)
+        rxn_3 = ARCReaction(r_species=[r_1], p_species=[p_1, p_2])
+        self.assertEqual(rxn_3.atom_map[:5], [0, 1, 2, 8, 7])
+        self.assertIn(rxn_3.atom_map[5], [4, 5])
+        self.assertIn(rxn_3.atom_map[6], [3, 5])
+        self.assertIn(rxn_3.atom_map[7], [3, 4])
+        self.assertEqual(rxn_3.atom_map[8:], [6, 9])
+
+        # Reverse HO2 elimination:
+        rxn_4 = ARCReaction(r_species=[p_1, p_2], p_species=[r_1])
+        self.assertEqual(rxn_4.atom_map[:3], [0, 1, 2])
+        self.assertIn(rxn_4.atom_map[3], [6, 7])
+        self.assertIn(rxn_4.atom_map[4], [5, 7])
+        self.assertIn(rxn_4.atom_map[5], [5, 6])
+        self.assertEqual(rxn_4.atom_map[6:], [8, 4, 3, 9])
+
+        # Reverse HO2 elimination, reversed reactant order:
+        rxn_5 = ARCReaction(r_species=[p_2, p_1], p_species=[r_1])
+        self.assertEqual(rxn_5.atom_map[:6], [4, 3, 9, 0, 1, 2])
+        self.assertIn(rxn_5.atom_map[6], [6, 7])
+        self.assertIn(rxn_5.atom_map[7], [5, 7])
+        self.assertIn(rxn_5.atom_map[8], [5, 6])
+        self.assertEqual(rxn_5.atom_map[9], 8)
 
     def test_map_intra_h_migration(self):
         """Test the map_intra_h_migration() function."""
