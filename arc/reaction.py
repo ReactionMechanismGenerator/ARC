@@ -547,6 +547,12 @@ class ARCReaction(object):
                                                                                    reaction=self.rmg_reaction.copy(),
                                                                                    save_order=save_order,
                                                                                    )
+            if self.family is None:
+                rmg_reaction = self.flip_reaction().rmg_reaction
+                self.family, self.family_own_reverse = rmgdb.determine_reaction_family(rmgdb=rmg_database,
+                                                                                       reaction=rmg_reaction,
+                                                                                       save_order=save_order,
+                                                                                       )
 
     def check_ts(self,
                  verbose: bool = True,
