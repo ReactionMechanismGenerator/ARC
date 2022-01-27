@@ -26,6 +26,7 @@ from arc.species.mapping import check_atom_map
 from arc.species.species import ARCSpecies
 from arc.species.vectors import calculate_dihedral_angle
 
+from itertools import permutations
 
 class TestMapping(unittest.TestCase):
     """
@@ -1013,7 +1014,135 @@ class TestMapping(unittest.TestCase):
 
         # Br abstraction
 
+        # OH + CH3Br <=> HOBr + CH3
+        smiles = ['[O][H]', '[CH3]Br', 'OBr', '[CH3]']
+        r_1_xyz = {'symbols': ('O', 'H'), 'isotopes': (16, 1),
+                   'coords': ((0.48890386738601, 0.0, 0.0), (-0.48890386738601, 0.0, 0.0))}
 
+        r_2_xyz = {'symbols': ('C', 'Br', 'H', 'H', 'H'), 'isotopes': (12, 79, 1, 1, 1), 'coords': (
+        (-0.18386469024502916, -0.0018692264481234688, 0.0013619971891954718),
+        (1.7508998155803106, 0.017800204658373744, -0.01296995950979447),
+        (-0.5218757573028803, -0.6458197160504338, -0.8118262063895171),
+        (-0.5338693855859405, 1.0212985296781085, -0.14294057406667127),
+        (-0.5112899824464621, -0.3914097918379277, 0.9663747427767874))}
+
+        p_1_xyz = {'symbols': ('O', 'Br', 'H'), 'isotopes': (16, 79, 1), 'coords': (
+        (-0.3691040522383542, 0.44403140947953346, 0.0), (1.3490312999095744, -0.1319682267704319, 0.0),
+        (-0.9799272476712202, -0.31206318270910166, 0.0))}
+
+        p_2_xyz = {'symbols': ('C', 'H', 'H', 'H'), 'isotopes': (12, 1, 1, 1), 'coords': (
+        (3.3746019998564553e-09, 5.828827384106545e-09, -4.859105107686622e-09),
+        (1.0669051052331406, -0.17519582095514982, 0.05416492980439295),
+        (-0.6853171627400634, -0.8375353626879753, -0.028085652887100996),
+        (-0.3815879458676787, 1.0127311778142964, -0.026079272058187608))}
+
+        r_1 = ARCSpecies(label='r1', smiles=smiles[0], xyz=r_1_xyz)
+        r_2 = ARCSpecies(label='r2', smiles=smiles[1], xyz=r_2_xyz)
+        p_1 = ARCSpecies(label='p1', smiles=smiles[2], xyz=p_1_xyz)
+        p_2 = ARCSpecies(label='p2', smiles=smiles[3], xyz=p_2_xyz)
+
+        rxn1 = ARCReaction(r_species=[r_1, r_2], p_species=[p_1, p_2])
+        atom_map = rxn1.atom_map
+        self.assertEqual(atom_map[:4],[0,2,3,1])
+        self.assertIn(atom_map[4], [4,5,6])
+        self.assertIn(atom_map[5], [4, 5, 6])
+        self.assertIn(atom_map[6], [4, 5, 6])
+        self.assertTrue(check_atom_map(rxn))
+
+        # [H] + CC(=O)Br <=> [H][Br] + C[C](=O)
+        smiles = ['[H]', 'CC(=O)Br', 'C[C](=O)', '[Br][H]']
+        r_1_xyz = {'symbols': ('H',), 'isotopes': (1,), 'coords': ((0.0, 0.0, 0.0),)}
+
+        r_2_xyz = {'symbols': ('C', 'C', 'O', 'Br', 'H', 'H', 'H'), 'isotopes': (12, 12, 16, 79, 1, 1, 1), 'coords': (
+        (-0.7087772076387326, -0.08697184565826255, 0.08295914062572969),
+        (0.7238141593293749, 0.2762480677183181, -0.14965326856248656),
+        (1.1113560248255752, 1.3624373452907719, -0.554840372311578),
+        (2.0636725443687616, -1.041297021241265, 0.20693447296577364),
+        (-0.9844931733249197, -0.9305935329026733, -0.5546432084044857),
+        (-0.8586221633621384, -0.3455305862905263, 1.134123935245044),
+        (-1.3469501841979155, 0.7657075730836449, -0.16488069955797996))}
+
+        p_1_xyz = {'symbols': ('C', 'C', 'O', 'H', 'H', 'H'), 'isotopes': (12, 12, 16, 1, 1, 1), 'coords': (
+        (-0.4758624005470258, 0.015865899777425058, -0.11215987340300927),
+        (0.9456990856850401, -0.031530842469194666, 0.2228995599390481),
+        (2.0897646616994816, -0.06967555524967288, 0.492553667108967),
+        (-1.08983188764878, -0.06771143046366379, 0.7892594299969324),
+        (-0.7261604551815313, 0.9578749227991876, -0.6086176800339509),
+        (-0.7436090040071672, -0.8048229943940851, -0.7839351036079769))}
+
+        p_2_xyz = {'symbols': ('Br', 'H'), 'isotopes': (79, 1),
+                   'coords': ((0.7644788559644482, 0.0, 0.0), (-0.7644788559644482, 0.0, 0.0))}
+        smiles = ['[H]', 'CC(=O)Br', 'C[C](=O)', '[Br][H]']
+        r_1_xyz = {'symbols': ('H',), 'isotopes': (1,), 'coords': ((0.0, 0.0, 0.0),)}
+
+        r_2_xyz = {'symbols': ('C', 'C', 'O', 'Br', 'H', 'H', 'H'), 'isotopes': (12, 12, 16, 79, 1, 1, 1), 'coords': (
+        (-0.7087772076387326, -0.08697184565826255, 0.08295914062572969),
+        (0.7238141593293749, 0.2762480677183181, -0.14965326856248656),
+        (1.1113560248255752, 1.3624373452907719, -0.554840372311578),
+        (2.0636725443687616, -1.041297021241265, 0.20693447296577364),
+        (-0.9844931733249197, -0.9305935329026733, -0.5546432084044857),
+        (-0.8586221633621384, -0.3455305862905263, 1.134123935245044),
+        (-1.3469501841979155, 0.7657075730836449, -0.16488069955797996))}
+
+        p_1_xyz = {'symbols': ('C', 'C', 'O', 'H', 'H', 'H'), 'isotopes': (12, 12, 16, 1, 1, 1), 'coords': (
+        (-0.4758624005470258, 0.015865899777425058, -0.11215987340300927),
+        (0.9456990856850401, -0.031530842469194666, 0.2228995599390481),
+        (2.0897646616994816, -0.06967555524967288, 0.492553667108967),
+        (-1.08983188764878, -0.06771143046366379, 0.7892594299969324),
+        (-0.7261604551815313, 0.9578749227991876, -0.6086176800339509),
+        (-0.7436090040071672, -0.8048229943940851, -0.7839351036079769))}
+
+        p_2_xyz = {'symbols': ('Br', 'H'), 'isotopes': (79, 1),
+                   'coords': ((0.7644788559644482, 0.0, 0.0), (-0.7644788559644482, 0.0, 0.0))}
+
+        r_1 = ARCSpecies(label='r1', smiles=smiles[0], xyz=r_1_xyz)
+        r_2 = ARCSpecies(label='r2', smiles=smiles[1], xyz=r_2_xyz)
+        p_1 = ARCSpecies(label='p1', smiles=smiles[2], xyz=p_1_xyz)
+        p_2 = ARCSpecies(label='p2', smiles=smiles[3], xyz=p_2_xyz)
+
+        rxn = ARCReaction(r_species=[r_1, r_2], p_species=[p_1, p_2])
+        atom_map=rxn.atom_map
+        self.assertEqual(atom_map[0],7)
+        self.assertEqual(atom_map[1:4], [0,1,2])
+        self.assertEqual(atom_map[4],6)
+        self.assertIn(tuple(atom_map[5:]), list(permutations([3,4,5])))
+        self.assertTrue(check_atom_map(rxn))
+
+        #Change Order [H] + CC(=O)Br <=> C[C](=O) + [H][Br]
+        smiles = ['[H]', 'CC(=O)Br', '[H][Br]', 'C[C](=O)']
+        r_1_xyz = {'symbols': ('H',), 'isotopes': (1,), 'coords': ((0.0, 0.0, 0.0),)}
+
+        r_2_xyz = {'symbols': ('C', 'C', 'O', 'Br', 'H', 'H', 'H'), 'isotopes': (12, 12, 16, 79, 1, 1, 1), 'coords': (
+        (-0.7087772076387326, -0.08697184565826255, 0.08295914062572969),
+        (0.7238141593293749, 0.2762480677183181, -0.14965326856248656),
+        (1.1113560248255752, 1.3624373452907719, -0.554840372311578),
+        (2.0636725443687616, -1.041297021241265, 0.20693447296577364),
+        (-0.9844931733249197, -0.9305935329026733, -0.5546432084044857),
+        (-0.8586221633621384, -0.3455305862905263, 1.134123935245044),
+        (-1.3469501841979155, 0.7657075730836449, -0.16488069955797996))}
+
+        p_1_xyz = {'symbols': ('H', 'Br'), 'isotopes': (1, 79),
+                   'coords': ((0.7644788559644482, 0.0, 0.0), (-0.7644788559644482, 0.0, 0.0))}
+
+        p_2_xyz = {'symbols': ('C', 'C', 'O', 'H', 'H', 'H'), 'isotopes': (12, 12, 16, 1, 1, 1), 'coords': (
+        (-0.4758624005470258, 0.015865899777425058, -0.11215987340300927),
+        (0.9456990856850401, -0.031530842469194666, 0.2228995599390481),
+        (2.0897646616994816, -0.06967555524967288, 0.492553667108967),
+        (-1.08983188764878, -0.06771143046366379, 0.7892594299969324),
+        (-0.7261604551815313, 0.9578749227991876, -0.6086176800339509),
+        (-0.7436090040071672, -0.8048229943940851, -0.7839351036079769))}
+
+        r_1 = ARCSpecies(label='r1', smiles=smiles[0], xyz=r_1_xyz)
+        r_2 = ARCSpecies(label='r2', smiles=smiles[1], xyz=r_2_xyz)
+        p_1 = ARCSpecies(label='p1', smiles=smiles[2], xyz=p_1_xyz)
+        p_2 = ARCSpecies(label='p2', smiles=smiles[3], xyz=p_2_xyz)
+
+        rxn = ARCReaction(r_species=[r_1, r_2], p_species=[p_1, p_2])
+        rxn.determine_family(self.rmgdb)
+        atom_map=rxn.atom_map
+        self.assertEqual(atom_map[:5],[0, 2, 3, 4, 1])
+        self.assertIn(tuple(atom_map[5:]),list(permutations([5,6,7])))
+        self.assertTrue(check_atom_map(rxn))
 
 
     # def test_map_ho2_elimination_from_peroxy_radical(self):
@@ -1066,19 +1195,19 @@ class TestMapping(unittest.TestCase):
     #     self.assertEqual(atom_map[9], 6)
     #     self.assertIn(atom_map[10], [7, 8])
     #     self.assertIn(atom_map[11], [7, 8])
-    #
-    # def test_map_intra_h_migration(self):
-    #     """Test the map_intra_h_migration() function."""
-    #     atom_map = mapping.map_intra_h_migration(self.arc_reaction_4)
-    #     self.assertEqual(atom_map[0], 0)
-    #     self.assertEqual(atom_map[1], 1)
-    #     self.assertEqual(atom_map[2], 2)
-    #     self.assertIn(atom_map[3], [3, 4, 5])
-    #     self.assertIn(atom_map[4], [3, 4, 5])
-    #     self.assertIn(atom_map[5], [6, 7])
-    #     self.assertIn(atom_map[6], [6, 7])
-    #     self.assertIn(atom_map[7], [3, 4, 5, 8])
-    #     self.assertIn(atom_map[8], [3, 4, 5, 8])
+
+    def test_map_intra_h_migration(self):
+        """Test the map_intra_h_migration() function."""
+        atom_map = mapping.map_intra_h_migration(self.arc_reaction_4)
+        self.assertEqual(atom_map[0], 0)
+        self.assertEqual(atom_map[1], 1)
+        self.assertEqual(atom_map[2], 2)
+        self.assertIn(atom_map[3], [3, 4, 5])
+        self.assertIn(atom_map[4], [3, 4, 5])
+        self.assertIn(atom_map[5], [6, 7])
+        self.assertIn(atom_map[6], [6, 7])
+        self.assertIn(atom_map[7], [3, 4, 5, 8])
+        self.assertIn(atom_map[8], [3, 4, 5, 8])
 
     def test_map_isomerization_reaction(self):
         """Test the map_isomerization_reaction() function."""
@@ -1118,380 +1247,380 @@ class TestMapping(unittest.TestCase):
         self.assertIn(atom_map[7], [6, 7])
         self.assertIn(atom_map[8], [7, 8])
 
-    # def test_get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(self):
-    #     """Test the get_atom_indices_of_labeled_atoms_in_an_rmg_reaction() function."""
-    #     determine_family(self.arc_reaction_1, db=self.rmgdb)
-    #     rmg_reactions = mapping.get_rmg_reactions_from_arc_reaction(
-    #         arc_reaction=self.arc_reaction_1, db=self.rmgdb
-    #     )
-    #     r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(
-    #         arc_reaction=self.arc_reaction_1, rmg_reaction=rmg_reactions[0]
-    #     )
-    #     self.assertEqual(r_dict["*1"], 0)
-    #     self.assertIn(r_dict["*2"], [1, 2, 3, 4])
-    #     self.assertEqual(r_dict["*3"], 5)
-    #     self.assertEqual(p_dict["*1"], 0)
-    #     self.assertIn(p_dict["*2"], [5, 6])
-    #     self.assertEqual(p_dict["*3"], 4)
-    #     self.assertTrue(
+    def test_get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(self):
+        """Test the get_atom_indices_of_labeled_atoms_in_an_rmg_reaction() function."""
+        determine_family(self.arc_reaction_1, db=self.rmgdb)
+        rmg_reactions = mapping.get_rmg_reactions_from_arc_reaction(
+            arc_reaction=self.arc_reaction_1, db=self.rmgdb
+        )
+        r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(
+            arc_reaction=self.arc_reaction_1, rmg_reaction=rmg_reactions[0]
+        )
+        self.assertEqual(r_dict["*1"], 0)
+        self.assertIn(r_dict["*2"], [1, 2, 3, 4])
+        self.assertEqual(r_dict["*3"], 5)
+        self.assertEqual(p_dict["*1"], 0)
+        self.assertIn(p_dict["*2"], [5, 6])
+        self.assertEqual(p_dict["*3"], 4)
+        self.assertTrue(
 
-    # def test_get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(self):
-    #     """Test the get_atom_indices_of_labeled_atoms_in_an_rmg_reaction() function."""
-    #     determine_family(self.arc_reaction_1, db=self.rmgdb)
-    #     rmg_reactions = mapping.get_rmg_reactions_from_arc_reaction(
-    #         arc_reaction=self.arc_reaction_1, db=self.rmgdb
-    #     )
-    #     r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(
-    #         arc_reaction=self.arc_reaction_1, rmg_reaction=rmg_reactions[0]
-    #     )
-    #     self.assertEqual(r_dict["*1"], 0)
-    #     self.assertIn(r_dict["*2"], [1, 2, 3, 4])
-    #     self.assertEqual(r_dict["*3"], 5)
-    #     self.assertEqual(p_dict["*1"], 0)
-    #     self.assertIn(p_dict["*2"], [5, 6])
-    #     self.assertEqual(p_dict["*3"], 4)
-    #     self.assertTrue(
-    #         check_r_n_p_symbols_between_rmg_and_arc_rxns(
-    #             self.arc_reaction_1, rmg_reactions
-    #         )
-    #     )
-    #
-    #     determine_family(self.arc_reaction_2, db=self.rmgdb)
-    #     rmg_reactions = mapping.get_rmg_reactions_from_arc_reaction(
-    #         arc_reaction=self.arc_reaction_2, db=self.rmgdb
-    #     )
-    #     r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(
-    #         arc_reaction=self.arc_reaction_2, rmg_reaction=rmg_reactions[0]
-    #     )
-    #     self.assertIn(r_dict["*1"], [0, 2])
-    #     self.assertIn(r_dict["*2"], [3, 4, 5, 8, 9, 10])
-    #     self.assertEqual(r_dict["*3"], 11)
-    #     self.assertEqual(p_dict["*1"], 0)
-    #     self.assertIn(p_dict["*2"], [11, 12, 13])
-    #     self.assertEqual(p_dict["*3"], 10)
-    #     self.assertTrue(
-    #         check_r_n_p_symbols_between_rmg_and_arc_rxns(
-    #             self.arc_reaction_2, rmg_reactions
-    #         )
-    #     )
-    #
-    #     determine_family(self.arc_reaction_4, db=self.rmgdb)
-    #     rmg_reactions = mapping.get_rmg_reactions_from_arc_reaction(
-    #         arc_reaction=self.arc_reaction_4, db=self.rmgdb
-    #     )
-    #     r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(
-    #         arc_reaction=self.arc_reaction_4, rmg_reaction=rmg_reactions[0]
-    #     )
-    #     self.assertEqual(r_dict["*1"], 0)
-    #     self.assertEqual(r_dict["*2"], 2)
-    #     self.assertIn(r_dict["*3"], [7, 8])
-    #     self.assertEqual(p_dict["*1"], 0)
-    #     self.assertEqual(p_dict["*2"], 2)
-    #     self.assertIn(p_dict["*3"], [3, 4, 5])
-    #     self.assertTrue(
-    #         check_r_n_p_symbols_between_rmg_and_arc_rxns(
-    #             self.arc_reaction_4, rmg_reactions
-    #         )
-    #     )
-    #
-    #     determine_family(self.rxn_2a, db=self.rmgdb)
-    #     for atom, symbol in zip(
-    #         self.rxn_2a.r_species[0].mol.atoms,
-    #         ["C", "C", "C", "H", "H", "H", "H", "H", "H", "H"],
-    #     ):
-    #         self.assertEqual(atom.symbol, symbol)
-    #     self.assertEqual(self.rxn_2a.r_species[0].mol.atoms[0].radical_electrons, 0)
-    #     self.assertEqual(self.rxn_2a.r_species[0].mol.atoms[1].radical_electrons, 1)
-    #     self.assertEqual(self.rxn_2a.r_species[0].mol.atoms[2].radical_electrons, 0)
-    #     self.assertEqual(self.rxn_2a.p_species[0].mol.atoms[0].radical_electrons, 0)
-    #     self.assertEqual(self.rxn_2a.p_species[0].mol.atoms[1].radical_electrons, 0)
-    #     self.assertEqual(self.rxn_2a.p_species[0].mol.atoms[2].radical_electrons, 1)
-    #     rmg_reactions = mapping.get_rmg_reactions_from_arc_reaction(
-    #         arc_reaction=self.rxn_2a, db=self.rmgdb
-    #     )
-    #     r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(
-    #         arc_reaction=self.rxn_2a, rmg_reaction=rmg_reactions[0]
-    #     )
-    #     self.assertEqual(r_dict["*1"], 1)
-    #     self.assertIn(r_dict["*2"], [0, 2])
-    #     self.assertIn(r_dict["*3"], [4, 5, 6, 7, 8, 9])
-    #     self.assertEqual(p_dict["*1"], 1)
-    #     self.assertEqual(p_dict["*2"], 2)
-    #     self.assertIn(p_dict["*3"], [3, 6])
-    #     self.assertTrue(
-    #         check_r_n_p_symbols_between_rmg_and_arc_rxns(self.rxn_2a, rmg_reactions)
-    #     )
-    #
-    #     determine_family(self.rxn_2b, db=self.rmgdb)
-    #     for atom, symbol in zip(
-    #         self.rxn_2b.r_species[0].mol.atoms,
-    #         ["C", "C", "H", "H", "H", "H", "C", "H", "H", "H"],
-    #     ):
-    #         self.assertEqual(atom.symbol, symbol)
-    #     rmg_reactions = mapping.get_rmg_reactions_from_arc_reaction(
-    #         arc_reaction=self.rxn_2b, db=self.rmgdb
-    #     )
-    #     r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(
-    #         arc_reaction=self.rxn_2b, rmg_reaction=rmg_reactions[0]
-    #     )
-    #     self.assertEqual(r_dict["*1"], 1)
-    #     self.assertIn(r_dict["*2"], [0, 6])
-    #     self.assertIn(r_dict["*3"], [3, 4, 5, 7, 8, 9])
-    #     self.assertEqual(p_dict["*1"], 1)
-    #     self.assertEqual(p_dict["*2"], 2)
-    #     self.assertIn(p_dict["*3"], [3, 6])
-    #     self.assertTrue(
-    #         check_r_n_p_symbols_between_rmg_and_arc_rxns(self.rxn_2b, rmg_reactions)
-    #     )
-    #
-    #     # C3H6O + C4H9O <=> C3H5O + C4H10O
-    #     r_1 = ARCSpecies(label="C3H6O", smiles="CCC=O")
-    #     r_2 = ARCSpecies(label="C4H9O", smiles="[CH2]C(C)CO")
-    #     p_1 = ARCSpecies(label="C3H5O", smiles="C[CH]C=O")
-    #     p_2 = ARCSpecies(label="C4H10O", smiles="CC(C)CO")
-    #     rxn_1 = ARCReaction(
-    #         reactants=["C3H6O", "C4H9O"],
-    #         products=["C3H5O", "C4H10O"],
-    #         r_species=[r_1, r_2],
-    #         p_species=[p_1, p_2],
-    #     )
-    #     determine_family(rxn_1, db=self.rmgdb)
-    #     rmg_reactions = mapping.get_rmg_reactions_from_arc_reaction(
-    #         arc_reaction=rxn_1, db=self.rmgdb
-    #     )
-    #     for rmg_reaction in rmg_reactions:
-    #         r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(
-    #             arc_reaction=rxn_1, rmg_reaction=rmg_reaction
-    #         )
-    #         for d in [r_dict, p_dict]:
-    #             self.assertEqual(len(list(d.keys())), 3)
-    #             keys = list(d.keys())
-    #             for label in ["*1", "*2", "*3"]:
-    #                 self.assertIn(label, keys)
-    #     self.assertTrue(
-    #         check_r_n_p_symbols_between_rmg_and_arc_rxns(rxn_1, rmg_reactions)
-    #     )
-    #
-    #     p_1 = ARCSpecies(
-    #         label="C3H5O", smiles="CC=C[O]"
-    #     )  # Use a wrong resonance structure and repeat the above.
-    #     rxn_2 = ARCReaction(
-    #         reactants=["C3H6O", "C4H9O"],
-    #         products=["C3H5O", "C4H10O"],
-    #         r_species=[r_1, r_2],
-    #         p_species=[p_1, p_2],
-    #     )
-    #     determine_family(rxn_2, db=self.rmgdb)
-    #     rmg_reactions = mapping.get_rmg_reactions_from_arc_reaction(
-    #         arc_reaction=rxn_2, db=self.rmgdb
-    #     )
-    #     for rmg_reaction in rmg_reactions:
-    #         r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(
-    #             arc_reaction=rxn_2, rmg_reaction=rmg_reaction
-    #         )
-    #         for d in [r_dict, p_dict]:
-    #             self.assertEqual(len(list(d.keys())), 3)
-    #             keys = list(d.keys())
-    #             for label in ["*1", "*2", "*3"]:
-    #                 self.assertIn(label, keys)
-    #     self.assertTrue(
-    #         check_r_n_p_symbols_between_rmg_and_arc_rxns(rxn_2, rmg_reactions)
-    #     )
-    #
-    #     # C3H6O + C4H9O <=> C3H5O + C4H10O
-    #     r_1 = ARCSpecies(label="C3H6O", smiles="CCC=O", xyz=self.c3h6o_xyz)
-    #     r_2 = ARCSpecies(label="C4H9O", smiles="[CH2]C(C)CO", xyz=self.c4h9o_xyz)
-    #     p_1 = ARCSpecies(label="C3H5O", smiles="C[CH]C=O", xyz=self.c3h5o_xyz)
-    #     p_2 = ARCSpecies(label="C4H10O", smiles="CC(C)CO", xyz=self.c4h10o_xyz)
-    #     rxn_3 = ARCReaction(
-    #         reactants=["C3H6O", "C4H9O"],
-    #         products=["C3H5O", "C4H10O"],
-    #         r_species=[r_1, r_2],
-    #         p_species=[p_1, p_2],
-    #     )
-    #     determine_family(rxn_3, db=self.rmgdb)
-    #     rmg_reactions = mapping.get_rmg_reactions_from_arc_reaction(
-    #         arc_reaction=rxn_3, db=self.rmgdb
-    #     )
-    #     r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(
-    #         arc_reaction=rxn_3, rmg_reaction=rmg_reactions[0]
-    #     )
-    #     self.assertEqual(r_dict, {"*3": 10, "*1": 1, "*2": 7})
-    #     self.assertEqual(p_dict, {"*1": 1, "*3": 9, "*2": 16})
-    #     self.assertTrue(
-    #         check_r_n_p_symbols_between_rmg_and_arc_rxns(rxn_3, rmg_reactions)
-    #     )
-    #
-    # _p_symbols_between_rmg_and_arc_rxns(
-    #             self.arc_reaction_1, rmg_reactions
-    #         )
-    #     )
-    #
-    #     determine_family(self.arc_reaction_2, db=self.rmgdb)
-    #     rmg_reactions = mapping.get_rmg_reactions_from_arc_reaction(
-    #         arc_reaction=self.arc_reaction_2, db=self.rmgdb
-    #     )
-    #     r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(
-    #         arc_reaction=self.arc_reaction_2, rmg_reaction=rmg_reactions[0]
-    #     )
-    #     self.assertIn(r_dict["*1"], [0, 2])
-    #     self.assertIn(r_dict["*2"], [3, 4, 5, 8, 9, 10])
-    #     self.assertEqual(r_dict["*3"], 11)
-    #     self.assertEqual(p_dict["*1"], 0)
-    #     self.assertIn(p_dict["*2"], [11, 12, 13])
-    #     self.assertEqual(p_dict["*3"], 10)
-    #     self.assertTrue(
-    #         check_r_n_p_symbols_between_rmg_and_arc_rxns(
-    #             self.arc_reaction_2, rmg_reactions
-    #         )
-    #     )
-    #
-    #     determine_family(self.arc_reaction_4, db=self.rmgdb)
-    #     rmg_reactions = mapping.get_rmg_reactions_from_arc_reaction(
-    #         arc_reaction=self.arc_reaction_4, db=self.rmgdb
-    #     )
-    #     r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(
-    #         arc_reaction=self.arc_reaction_4, rmg_reaction=rmg_reactions[0]
-    #     )
-    #     self.assertEqual(r_dict["*1"], 0)
-    #     self.assertEqual(r_dict["*2"], 2)
-    #     self.assertIn(r_dict["*3"], [7, 8])
-    #     self.assertEqual(p_dict["*1"], 0)
-    #     self.assertEqual(p_dict["*2"], 2)
-    #     self.assertIn(p_dict["*3"], [3, 4, 5])
-    #     self.assertTrue(
-    #         check_r_n_p_symbols_between_rmg_and_arc_rxns(
-    #             self.arc_reaction_4, rmg_reactions
-    #         )
-    #     )
-    #
-    #     determine_family(self.rxn_2a, db=self.rmgdb)
-    #     for atom, symbol in zip(
-    #         self.rxn_2a.r_species[0].mol.atoms,
-    #         ["C", "C", "C", "H", "H", "H", "H", "H", "H", "H"],
-    #     ):
-    #         self.assertEqual(atom.symbol, symbol)
-    #     self.assertEqual(self.rxn_2a.r_species[0].mol.atoms[0].radical_electrons, 0)
-    #     self.assertEqual(self.rxn_2a.r_species[0].mol.atoms[1].radical_electrons, 1)
-    #     self.assertEqual(self.rxn_2a.r_species[0].mol.atoms[2].radical_electrons, 0)
-    #     self.assertEqual(self.rxn_2a.p_species[0].mol.atoms[0].radical_electrons, 0)
-    #     self.assertEqual(self.rxn_2a.p_species[0].mol.atoms[1].radical_electrons, 0)
-    #     self.assertEqual(self.rxn_2a.p_species[0].mol.atoms[2].radical_electrons, 1)
-    #     rmg_reactions = mapping.get_rmg_reactions_from_arc_reaction(
-    #         arc_reaction=self.rxn_2a, db=self.rmgdb
-    #     )
-    #     r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(
-    #         arc_reaction=self.rxn_2a, rmg_reaction=rmg_reactions[0]
-    #     )
-    #     self.assertEqual(r_dict["*1"], 1)
-    #     self.assertIn(r_dict["*2"], [0, 2])
-    #     self.assertIn(r_dict["*3"], [4, 5, 6, 7, 8, 9])
-    #     self.assertEqual(p_dict["*1"], 1)
-    #     self.assertEqual(p_dict["*2"], 2)
-    #     self.assertIn(p_dict["*3"], [3, 6])
-    #     self.assertTrue(
-    #         check_r_n_p_symbols_between_rmg_and_arc_rxns(self.rxn_2a, rmg_reactions)
-    #     )
-    #
-    #     determine_family(self.rxn_2b, db=self.rmgdb)
-    #     for atom, symbol in zip(
-    #         self.rxn_2b.r_species[0].mol.atoms,
-    #         ["C", "C", "H", "H", "H", "H", "C", "H", "H", "H"],
-    #     ):
-    #         self.assertEqual(atom.symbol, symbol)
-    #     rmg_reactions = mapping.get_rmg_reactions_from_arc_reaction(
-    #         arc_reaction=self.rxn_2b, db=self.rmgdb
-    #     )
-    #     r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(
-    #         arc_reaction=self.rxn_2b, rmg_reaction=rmg_reactions[0]
-    #     )
-    #     self.assertEqual(r_dict["*1"], 1)
-    #     self.assertIn(r_dict["*2"], [0, 6])
-    #     self.assertIn(r_dict["*3"], [3, 4, 5, 7, 8, 9])
-    #     self.assertEqual(p_dict["*1"], 1)
-    #     self.assertEqual(p_dict["*2"], 2)
-    #     self.assertIn(p_dict["*3"], [3, 6])
-    #     self.assertTrue(
-    #         check_r_n_p_symbols_between_rmg_and_arc_rxns(self.rxn_2b, rmg_reactions)
-    #     )
-    #
-    #     # C3H6O + C4H9O <=> C3H5O + C4H10O
-    #     r_1 = ARCSpecies(label="C3H6O", smiles="CCC=O")
-    #     r_2 = ARCSpecies(label="C4H9O", smiles="[CH2]C(C)CO")
-    #     p_1 = ARCSpecies(label="C3H5O", smiles="C[CH]C=O")
-    #     p_2 = ARCSpecies(label="C4H10O", smiles="CC(C)CO")
-    #     rxn_1 = ARCReaction(
-    #         reactants=["C3H6O", "C4H9O"],
-    #         products=["C3H5O", "C4H10O"],
-    #         r_species=[r_1, r_2],
-    #         p_species=[p_1, p_2],
-    #     )
-    #     determine_family(rxn_1, db=self.rmgdb)
-    #     rmg_reactions = mapping.get_rmg_reactions_from_arc_reaction(
-    #         arc_reaction=rxn_1, db=self.rmgdb
-    #     )
-    #     for rmg_reaction in rmg_reactions:
-    #         r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(
-    #             arc_reaction=rxn_1, rmg_reaction=rmg_reaction
-    #         )
-    #         for d in [r_dict, p_dict]:
-    #             self.assertEqual(len(list(d.keys())), 3)
-    #             keys = list(d.keys())
-    #             for label in ["*1", "*2", "*3"]:
-    #                 self.assertIn(label, keys)
-    #     self.assertTrue(
-    #         check_r_n_p_symbols_between_rmg_and_arc_rxns(rxn_1, rmg_reactions)
-    #     )
-    #
-    #     p_1 = ARCSpecies(
-    #         label="C3H5O", smiles="CC=C[O]"
-    #     )  # Use a wrong resonance structure and repeat the above.
-    #     rxn_2 = ARCReaction(
-    #         reactants=["C3H6O", "C4H9O"],
-    #         products=["C3H5O", "C4H10O"],
-    #         r_species=[r_1, r_2],
-    #         p_species=[p_1, p_2],
-    #     )
-    #     determine_family(rxn_2, db=self.rmgdb)
-    #     rmg_reactions = mapping.get_rmg_reactions_from_arc_reaction(
-    #         arc_reaction=rxn_2, db=self.rmgdb
-    #     )
-    #     for rmg_reaction in rmg_reactions:
-    #         r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(
-    #             arc_reaction=rxn_2, rmg_reaction=rmg_reaction
-    #         )
-    #         for d in [r_dict, p_dict]:
-    #             self.assertEqual(len(list(d.keys())), 3)
-    #             keys = list(d.keys())
-    #             for label in ["*1", "*2", "*3"]:
-    #                 self.assertIn(label, keys)
-    #     self.assertTrue(
-    #         check_r_n_p_symbols_between_rmg_and_arc_rxns(rxn_2, rmg_reactions)
-    #     )
-    #
-    #     # C3H6O + C4H9O <=> C3H5O + C4H10O
-    #     r_1 = ARCSpecies(label="C3H6O", smiles="CCC=O", xyz=self.c3h6o_xyz)
-    #     r_2 = ARCSpecies(label="C4H9O", smiles="[CH2]C(C)CO", xyz=self.c4h9o_xyz)
-    #     p_1 = ARCSpecies(label="C3H5O", smiles="C[CH]C=O", xyz=self.c3h5o_xyz)
-    #     p_2 = ARCSpecies(label="C4H10O", smiles="CC(C)CO", xyz=self.c4h10o_xyz)
-    #     rxn_3 = ARCReaction(
-    #         reactants=["C3H6O", "C4H9O"],
-    #         products=["C3H5O", "C4H10O"],
-    #         r_species=[r_1, r_2],
-    #         p_species=[p_1, p_2],
-    #     )
-    #     determine_family(rxn_3, db=self.rmgdb)
-    #     rmg_reactions = mapping.get_rmg_reactions_from_arc_reaction(
-    #         arc_reaction=rxn_3, db=self.rmgdb
-    #     )
-    #     r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(
-    #         arc_reaction=rxn_3, rmg_reaction=rmg_reactions[0]
-    #     )
-    #     self.assertEqual(r_dict, {"*3": 10, "*1": 1, "*2": 7})
-    #     self.assertEqual(p_dict, {"*1": 1, "*3": 9, "*2": 16})
-    #     self.assertTrue(
-    #         check_r_n_p_symbols_between_rmg_and_arc_rxns(rxn_3, rmg_reactions)
-    #     )
+    def test_get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(self):
+        """Test the get_atom_indices_of_labeled_atoms_in_an_rmg_reaction() function."""
+        determine_family(self.arc_reaction_1, db=self.rmgdb)
+        rmg_reactions = mapping.get_rmg_reactions_from_arc_reaction(
+            arc_reaction=self.arc_reaction_1, db=self.rmgdb
+        )
+        r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(
+            arc_reaction=self.arc_reaction_1, rmg_reaction=rmg_reactions[0]
+        )
+        self.assertEqual(r_dict["*1"], 0)
+        self.assertIn(r_dict["*2"], [1, 2, 3, 4])
+        self.assertEqual(r_dict["*3"], 5)
+        self.assertEqual(p_dict["*1"], 0)
+        self.assertIn(p_dict["*2"], [5, 6])
+        self.assertEqual(p_dict["*3"], 4)
+        self.assertTrue(
+            check_r_n_p_symbols_between_rmg_and_arc_rxns(
+                self.arc_reaction_1, rmg_reactions
+            )
+        )
+
+        determine_family(self.arc_reaction_2, db=self.rmgdb)
+        rmg_reactions = mapping.get_rmg_reactions_from_arc_reaction(
+            arc_reaction=self.arc_reaction_2, db=self.rmgdb
+        )
+        r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(
+            arc_reaction=self.arc_reaction_2, rmg_reaction=rmg_reactions[0]
+        )
+        self.assertIn(r_dict["*1"], [0, 2])
+        self.assertIn(r_dict["*2"], [3, 4, 5, 8, 9, 10])
+        self.assertEqual(r_dict["*3"], 11)
+        self.assertEqual(p_dict["*1"], 0)
+        self.assertIn(p_dict["*2"], [11, 12, 13])
+        self.assertEqual(p_dict["*3"], 10)
+        self.assertTrue(
+            check_r_n_p_symbols_between_rmg_and_arc_rxns(
+                self.arc_reaction_2, rmg_reactions
+            )
+        )
+
+        determine_family(self.arc_reaction_4, db=self.rmgdb)
+        rmg_reactions = mapping.get_rmg_reactions_from_arc_reaction(
+            arc_reaction=self.arc_reaction_4, db=self.rmgdb
+        )
+        r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(
+            arc_reaction=self.arc_reaction_4, rmg_reaction=rmg_reactions[0]
+        )
+        self.assertEqual(r_dict["*1"], 0)
+        self.assertEqual(r_dict["*2"], 2)
+        self.assertIn(r_dict["*3"], [7, 8])
+        self.assertEqual(p_dict["*1"], 0)
+        self.assertEqual(p_dict["*2"], 2)
+        self.assertIn(p_dict["*3"], [3, 4, 5])
+        self.assertTrue(
+            check_r_n_p_symbols_between_rmg_and_arc_rxns(
+                self.arc_reaction_4, rmg_reactions
+            )
+        )
+
+        determine_family(self.rxn_2a, db=self.rmgdb)
+        for atom, symbol in zip(
+            self.rxn_2a.r_species[0].mol.atoms,
+            ["C", "C", "C", "H", "H", "H", "H", "H", "H", "H"],
+        ):
+            self.assertEqual(atom.symbol, symbol)
+        self.assertEqual(self.rxn_2a.r_species[0].mol.atoms[0].radical_electrons, 0)
+        self.assertEqual(self.rxn_2a.r_species[0].mol.atoms[1].radical_electrons, 1)
+        self.assertEqual(self.rxn_2a.r_species[0].mol.atoms[2].radical_electrons, 0)
+        self.assertEqual(self.rxn_2a.p_species[0].mol.atoms[0].radical_electrons, 0)
+        self.assertEqual(self.rxn_2a.p_species[0].mol.atoms[1].radical_electrons, 0)
+        self.assertEqual(self.rxn_2a.p_species[0].mol.atoms[2].radical_electrons, 1)
+        rmg_reactions = mapping.get_rmg_reactions_from_arc_reaction(
+            arc_reaction=self.rxn_2a, db=self.rmgdb
+        )
+        r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(
+            arc_reaction=self.rxn_2a, rmg_reaction=rmg_reactions[0]
+        )
+        self.assertEqual(r_dict["*1"], 1)
+        self.assertIn(r_dict["*2"], [0, 2])
+        self.assertIn(r_dict["*3"], [4, 5, 6, 7, 8, 9])
+        self.assertEqual(p_dict["*1"], 1)
+        self.assertEqual(p_dict["*2"], 2)
+        self.assertIn(p_dict["*3"], [3, 6])
+        self.assertTrue(
+            check_r_n_p_symbols_between_rmg_and_arc_rxns(self.rxn_2a, rmg_reactions)
+        )
+
+        determine_family(self.rxn_2b, db=self.rmgdb)
+        for atom, symbol in zip(
+            self.rxn_2b.r_species[0].mol.atoms,
+            ["C", "C", "H", "H", "H", "H", "C", "H", "H", "H"],
+        ):
+            self.assertEqual(atom.symbol, symbol)
+        rmg_reactions = mapping.get_rmg_reactions_from_arc_reaction(
+            arc_reaction=self.rxn_2b, db=self.rmgdb
+        )
+        r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(
+            arc_reaction=self.rxn_2b, rmg_reaction=rmg_reactions[0]
+        )
+        self.assertEqual(r_dict["*1"], 1)
+        self.assertIn(r_dict["*2"], [0, 6])
+        self.assertIn(r_dict["*3"], [3, 4, 5, 7, 8, 9])
+        self.assertEqual(p_dict["*1"], 1)
+        self.assertEqual(p_dict["*2"], 2)
+        self.assertIn(p_dict["*3"], [3, 6])
+        self.assertTrue(
+            check_r_n_p_symbols_between_rmg_and_arc_rxns(self.rxn_2b, rmg_reactions)
+        )
+
+        # C3H6O + C4H9O <=> C3H5O + C4H10O
+        r_1 = ARCSpecies(label="C3H6O", smiles="CCC=O")
+        r_2 = ARCSpecies(label="C4H9O", smiles="[CH2]C(C)CO")
+        p_1 = ARCSpecies(label="C3H5O", smiles="C[CH]C=O")
+        p_2 = ARCSpecies(label="C4H10O", smiles="CC(C)CO")
+        rxn_1 = ARCReaction(
+            reactants=["C3H6O", "C4H9O"],
+            products=["C3H5O", "C4H10O"],
+            r_species=[r_1, r_2],
+            p_species=[p_1, p_2],
+        )
+        determine_family(rxn_1, db=self.rmgdb)
+        rmg_reactions = mapping.get_rmg_reactions_from_arc_reaction(
+            arc_reaction=rxn_1, db=self.rmgdb
+        )
+        for rmg_reaction in rmg_reactions:
+            r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(
+                arc_reaction=rxn_1, rmg_reaction=rmg_reaction
+            )
+            for d in [r_dict, p_dict]:
+                self.assertEqual(len(list(d.keys())), 3)
+                keys = list(d.keys())
+                for label in ["*1", "*2", "*3"]:
+                    self.assertIn(label, keys)
+        self.assertTrue(
+            check_r_n_p_symbols_between_rmg_and_arc_rxns(rxn_1, rmg_reactions)
+        )
+
+        p_1 = ARCSpecies(
+            label="C3H5O", smiles="CC=C[O]"
+        )  # Use a wrong resonance structure and repeat the above.
+        rxn_2 = ARCReaction(
+            reactants=["C3H6O", "C4H9O"],
+            products=["C3H5O", "C4H10O"],
+            r_species=[r_1, r_2],
+            p_species=[p_1, p_2],
+        )
+        determine_family(rxn_2, db=self.rmgdb)
+        rmg_reactions = mapping.get_rmg_reactions_from_arc_reaction(
+            arc_reaction=rxn_2, db=self.rmgdb
+        )
+        for rmg_reaction in rmg_reactions:
+            r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(
+                arc_reaction=rxn_2, rmg_reaction=rmg_reaction
+            )
+            for d in [r_dict, p_dict]:
+                self.assertEqual(len(list(d.keys())), 3)
+                keys = list(d.keys())
+                for label in ["*1", "*2", "*3"]:
+                    self.assertIn(label, keys)
+        self.assertTrue(
+            check_r_n_p_symbols_between_rmg_and_arc_rxns(rxn_2, rmg_reactions)
+        )
+
+        # C3H6O + C4H9O <=> C3H5O + C4H10O
+        r_1 = ARCSpecies(label="C3H6O", smiles="CCC=O", xyz=self.c3h6o_xyz)
+        r_2 = ARCSpecies(label="C4H9O", smiles="[CH2]C(C)CO", xyz=self.c4h9o_xyz)
+        p_1 = ARCSpecies(label="C3H5O", smiles="C[CH]C=O", xyz=self.c3h5o_xyz)
+        p_2 = ARCSpecies(label="C4H10O", smiles="CC(C)CO", xyz=self.c4h10o_xyz)
+        rxn_3 = ARCReaction(
+            reactants=["C3H6O", "C4H9O"],
+            products=["C3H5O", "C4H10O"],
+            r_species=[r_1, r_2],
+            p_species=[p_1, p_2],
+        )
+        determine_family(rxn_3, db=self.rmgdb)
+        rmg_reactions = mapping.get_rmg_reactions_from_arc_reaction(
+            arc_reaction=rxn_3, db=self.rmgdb
+        )
+        r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(
+            arc_reaction=rxn_3, rmg_reaction=rmg_reactions[0]
+        )
+        self.assertEqual(r_dict, {"*3": 10, "*1": 1, "*2": 7})
+        self.assertEqual(p_dict, {"*1": 1, "*3": 9, "*2": 16})
+        self.assertTrue(
+            check_r_n_p_symbols_between_rmg_and_arc_rxns(rxn_3, rmg_reactions)
+        )
+
+    _p_symbols_between_rmg_and_arc_rxns(
+                self.arc_reaction_1, rmg_reactions
+            )
+        )
+
+        determine_family(self.arc_reaction_2, db=self.rmgdb)
+        rmg_reactions = mapping.get_rmg_reactions_from_arc_reaction(
+            arc_reaction=self.arc_reaction_2, db=self.rmgdb
+        )
+        r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(
+            arc_reaction=self.arc_reaction_2, rmg_reaction=rmg_reactions[0]
+        )
+        self.assertIn(r_dict["*1"], [0, 2])
+        self.assertIn(r_dict["*2"], [3, 4, 5, 8, 9, 10])
+        self.assertEqual(r_dict["*3"], 11)
+        self.assertEqual(p_dict["*1"], 0)
+        self.assertIn(p_dict["*2"], [11, 12, 13])
+        self.assertEqual(p_dict["*3"], 10)
+        self.assertTrue(
+            check_r_n_p_symbols_between_rmg_and_arc_rxns(
+                self.arc_reaction_2, rmg_reactions
+            )
+        )
+
+        determine_family(self.arc_reaction_4, db=self.rmgdb)
+        rmg_reactions = mapping.get_rmg_reactions_from_arc_reaction(
+            arc_reaction=self.arc_reaction_4, db=self.rmgdb
+        )
+        r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(
+            arc_reaction=self.arc_reaction_4, rmg_reaction=rmg_reactions[0]
+        )
+        self.assertEqual(r_dict["*1"], 0)
+        self.assertEqual(r_dict["*2"], 2)
+        self.assertIn(r_dict["*3"], [7, 8])
+        self.assertEqual(p_dict["*1"], 0)
+        self.assertEqual(p_dict["*2"], 2)
+        self.assertIn(p_dict["*3"], [3, 4, 5])
+        self.assertTrue(
+            check_r_n_p_symbols_between_rmg_and_arc_rxns(
+                self.arc_reaction_4, rmg_reactions
+            )
+        )
+
+        determine_family(self.rxn_2a, db=self.rmgdb)
+        for atom, symbol in zip(
+            self.rxn_2a.r_species[0].mol.atoms,
+            ["C", "C", "C", "H", "H", "H", "H", "H", "H", "H"],
+        ):
+            self.assertEqual(atom.symbol, symbol)
+        self.assertEqual(self.rxn_2a.r_species[0].mol.atoms[0].radical_electrons, 0)
+        self.assertEqual(self.rxn_2a.r_species[0].mol.atoms[1].radical_electrons, 1)
+        self.assertEqual(self.rxn_2a.r_species[0].mol.atoms[2].radical_electrons, 0)
+        self.assertEqual(self.rxn_2a.p_species[0].mol.atoms[0].radical_electrons, 0)
+        self.assertEqual(self.rxn_2a.p_species[0].mol.atoms[1].radical_electrons, 0)
+        self.assertEqual(self.rxn_2a.p_species[0].mol.atoms[2].radical_electrons, 1)
+        rmg_reactions = mapping.get_rmg_reactions_from_arc_reaction(
+            arc_reaction=self.rxn_2a, db=self.rmgdb
+        )
+        r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(
+            arc_reaction=self.rxn_2a, rmg_reaction=rmg_reactions[0]
+        )
+        self.assertEqual(r_dict["*1"], 1)
+        self.assertIn(r_dict["*2"], [0, 2])
+        self.assertIn(r_dict["*3"], [4, 5, 6, 7, 8, 9])
+        self.assertEqual(p_dict["*1"], 1)
+        self.assertEqual(p_dict["*2"], 2)
+        self.assertIn(p_dict["*3"], [3, 6])
+        self.assertTrue(
+            check_r_n_p_symbols_between_rmg_and_arc_rxns(self.rxn_2a, rmg_reactions)
+        )
+
+        determine_family(self.rxn_2b, db=self.rmgdb)
+        for atom, symbol in zip(
+            self.rxn_2b.r_species[0].mol.atoms,
+            ["C", "C", "H", "H", "H", "H", "C", "H", "H", "H"],
+        ):
+            self.assertEqual(atom.symbol, symbol)
+        rmg_reactions = mapping.get_rmg_reactions_from_arc_reaction(
+            arc_reaction=self.rxn_2b, db=self.rmgdb
+        )
+        r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(
+            arc_reaction=self.rxn_2b, rmg_reaction=rmg_reactions[0]
+        )
+        self.assertEqual(r_dict["*1"], 1)
+        self.assertIn(r_dict["*2"], [0, 6])
+        self.assertIn(r_dict["*3"], [3, 4, 5, 7, 8, 9])
+        self.assertEqual(p_dict["*1"], 1)
+        self.assertEqual(p_dict["*2"], 2)
+        self.assertIn(p_dict["*3"], [3, 6])
+        self.assertTrue(
+            check_r_n_p_symbols_between_rmg_and_arc_rxns(self.rxn_2b, rmg_reactions)
+        )
+
+        # C3H6O + C4H9O <=> C3H5O + C4H10O
+        r_1 = ARCSpecies(label="C3H6O", smiles="CCC=O")
+        r_2 = ARCSpecies(label="C4H9O", smiles="[CH2]C(C)CO")
+        p_1 = ARCSpecies(label="C3H5O", smiles="C[CH]C=O")
+        p_2 = ARCSpecies(label="C4H10O", smiles="CC(C)CO")
+        rxn_1 = ARCReaction(
+            reactants=["C3H6O", "C4H9O"],
+            products=["C3H5O", "C4H10O"],
+            r_species=[r_1, r_2],
+            p_species=[p_1, p_2],
+        )
+        determine_family(rxn_1, db=self.rmgdb)
+        rmg_reactions = mapping.get_rmg_reactions_from_arc_reaction(
+            arc_reaction=rxn_1, db=self.rmgdb
+        )
+        for rmg_reaction in rmg_reactions:
+            r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(
+                arc_reaction=rxn_1, rmg_reaction=rmg_reaction
+            )
+            for d in [r_dict, p_dict]:
+                self.assertEqual(len(list(d.keys())), 3)
+                keys = list(d.keys())
+                for label in ["*1", "*2", "*3"]:
+                    self.assertIn(label, keys)
+        self.assertTrue(
+            check_r_n_p_symbols_between_rmg_and_arc_rxns(rxn_1, rmg_reactions)
+        )
+
+        p_1 = ARCSpecies(
+            label="C3H5O", smiles="CC=C[O]"
+        )  # Use a wrong resonance structure and repeat the above.
+        rxn_2 = ARCReaction(
+            reactants=["C3H6O", "C4H9O"],
+            products=["C3H5O", "C4H10O"],
+            r_species=[r_1, r_2],
+            p_species=[p_1, p_2],
+        )
+        determine_family(rxn_2, db=self.rmgdb)
+        rmg_reactions = mapping.get_rmg_reactions_from_arc_reaction(
+            arc_reaction=rxn_2, db=self.rmgdb
+        )
+        for rmg_reaction in rmg_reactions:
+            r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(
+                arc_reaction=rxn_2, rmg_reaction=rmg_reaction
+            )
+            for d in [r_dict, p_dict]:
+                self.assertEqual(len(list(d.keys())), 3)
+                keys = list(d.keys())
+                for label in ["*1", "*2", "*3"]:
+                    self.assertIn(label, keys)
+        self.assertTrue(
+            check_r_n_p_symbols_between_rmg_and_arc_rxns(rxn_2, rmg_reactions)
+        )
+
+        # C3H6O + C4H9O <=> C3H5O + C4H10O
+        r_1 = ARCSpecies(label="C3H6O", smiles="CCC=O", xyz=self.c3h6o_xyz)
+        r_2 = ARCSpecies(label="C4H9O", smiles="[CH2]C(C)CO", xyz=self.c4h9o_xyz)
+        p_1 = ARCSpecies(label="C3H5O", smiles="C[CH]C=O", xyz=self.c3h5o_xyz)
+        p_2 = ARCSpecies(label="C4H10O", smiles="CC(C)CO", xyz=self.c4h10o_xyz)
+        rxn_3 = ARCReaction(
+            reactants=["C3H6O", "C4H9O"],
+            products=["C3H5O", "C4H10O"],
+            r_species=[r_1, r_2],
+            p_species=[p_1, p_2],
+        )
+        determine_family(rxn_3, db=self.rmgdb)
+        rmg_reactions = mapping.get_rmg_reactions_from_arc_reaction(
+            arc_reaction=rxn_3, db=self.rmgdb
+        )
+        r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(
+            arc_reaction=rxn_3, rmg_reaction=rmg_reactions[0]
+        )
+        self.assertEqual(r_dict, {"*3": 10, "*1": 1, "*2": 7})
+        self.assertEqual(p_dict, {"*1": 1, "*3": 9, "*2": 16})
+        self.assertTrue(
+            check_r_n_p_symbols_between_rmg_and_arc_rxns(rxn_3, rmg_reactions)
+        )
 
     def test_map_arc_rmg_species(self):
         """Test the map_arc_rmg_species() function."""
