@@ -1262,7 +1262,6 @@ class TestMapping(unittest.TestCase):
         self.assertEqual(p_dict["*1"], 0)
         self.assertIn(p_dict["*2"], [5, 6])
         self.assertEqual(p_dict["*3"], 4)
-        self.assertTrue(
 
     def test_get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(self):
         """Test the get_atom_indices_of_labeled_atoms_in_an_rmg_reaction() function."""
