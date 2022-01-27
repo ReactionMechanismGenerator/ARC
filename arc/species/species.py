@@ -582,11 +582,23 @@ class ARCSpecies(object):
         Returns:
             ARCSpecies: A copy of this object instance.
         """
-        species_dict = self.as_dict()
+        species_dict = self.as_dict(reset_atom_ids=True)
         return ARCSpecies(species_dict=species_dict)
 
-    def as_dict(self) -> dict:
-        """A helper function for dumping this object as a dictionary in a YAML file for restarting ARC"""
+    def as_dict(self,
+                reset_atom_ids: bool = False,
+                ) -> dict:
+        """
+        A helper function for dumping this object as a dictionary in a YAML file for restarting ARC.
+
+        Args:
+            reset_atom_ids (bool, optional): Whether to reset the atom IDs in the .mol Molecule attribute.
+                                             Useful when copying the object to avoid duplicate atom IDs between
+                                             different object instances.
+
+        Returns:
+            dict: The dictionary representation of the object instance.
+        """
         species_dict = dict()
         species_dict['force_field'] = self.force_field
         species_dict['is_ts'] = self.is_ts
@@ -647,7 +659,7 @@ class ARCSpecies(object):
         if self.bond_corrections is not None:
             species_dict['bond_corrections'] = self.bond_corrections
         if self.mol is not None:
-            species_dict['mol'] = rmg_mol_to_dict_repr(self.mol)
+            species_dict['mol'] = rmg_mol_to_dict_repr(self.mol, reset_atom_ids=reset_atom_ids)
         if self.initial_xyz is not None:
             species_dict['initial_xyz'] = xyz_to_str(self.initial_xyz)
         if self.final_xyz is not None:
@@ -2046,7 +2058,7 @@ class TSGuess(object):
             _, r_mol = rdkit_conf_from_mol(reactant.mol, reactant.get_xyz())
 
             # GCN requires an atom-mapped reaction so map the product atoms onto the reactant atoms
-            _, mapped_product = self.arc_reaction.get_mapped_product_xyz()
+            mapped_product = self.arc_reaction.get_single_mapped_product_xyz()
             _, p_mol = rdkit_conf_from_mol(mapped_product.mol, mapped_product.get_xyz())
 
             # write input files for GCN to the TS project folder

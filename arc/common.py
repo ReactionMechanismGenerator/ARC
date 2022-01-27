@@ -18,7 +18,8 @@ import sys
 import time
 import warnings
 import yaml
-from typing import Any, List, Optional, Tuple, Union
+from itertools import chain
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -26,13 +27,19 @@ import qcelemental as qcel
 
 from arkane.ess import ess_factory, GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
 import rmgpy
-from rmgpy.molecule.element import Element, get_element
+from rmgpy.molecule.atomtype import ATOMTYPES
+from rmgpy.molecule.element import get_element
 from rmgpy.molecule.molecule import Atom, Bond, Molecule
 from rmgpy.qm.qmdata import QMData
 from rmgpy.qm.symmetry import PointGroupCalculator
 
 from arc.exceptions import InputError, SettingsError
 from arc.imports import settings
+
+
+if TYPE_CHECKING:
+    from rmgpy.reaction import Reaction
+    from arc.reaction import ARCReaction
 
 
 logger = logging.getLogger('arc')
@@ -1235,6 +1242,7 @@ def convert_list_index_0_to_1(_list: Union[list, tuple], direction: int = 1) -> 
 
 
 def rmg_mol_to_dict_repr(mol: Molecule,
+                         reset_atom_ids: bool = False,
                          testing: bool = False,
                          ) -> dict:
     """
@@ -1242,22 +1250,23 @@ def rmg_mol_to_dict_repr(mol: Molecule,
 
     Args:
         mol (Molecule): The RMG ``Molecule`` object instance.
+        reset_atom_ids (bool, optional): Whether to reset the atom IDs in the .mol Molecule attribute.
+                                         Useful when copying the object to avoid duplicate atom IDs between
+                                         different object instances.
         testing (bool, optional): Whether this is called during a test, in which case atom IDs should be deterministic.
 
     Returns:
         dict: The corresponding dict representation.
     """
+    mol = mol.copy(deep=True)
     if testing:
         counter = 0
         for atom in mol.atoms:
             atom.id = counter
             counter += 1
-    elif len(mol.atoms) > 1 and mol.atoms[0].id == mol.atoms[1].id:
+    elif len(mol.atoms) > 1 and mol.atoms[0].id == mol.atoms[1].id or reset_atom_ids:
         mol.assign_atom_ids()
     return {'atoms': [{'element': {'number': atom.element.number,
-                                   'symbol': atom.element.symbol,
-                                   'name': atom.element.name,
-                                   'mass': atom.element.mass,
                                    'isotope': atom.element.isotope,
                                    },
                        'radical_electrons': atom.radical_electrons,
@@ -1266,6 +1275,7 @@ def rmg_mol_to_dict_repr(mol: Molecule,
                        'lone_pairs': atom.lone_pairs,
                        'id': atom.id,
                        'props': atom.props,
+                       'atomtype': atom.atomtype.label,
                        'edges': {atom_2.id: bond.order
                                  for atom_2, bond in atom.edges.items()},
                        } for atom in mol.atoms],
@@ -1291,26 +1301,26 @@ def rmg_mol_from_dict_repr(representation: dict,
     """
     mol = Molecule(multiplicity=representation['multiplicity'],
                    props=representation['props'])
-    atoms = {atom_dict['id']: Atom(element=Element(number=atom_dict['element']['number'],
-                                                   symbol=atom_dict['element']['symbol'],
-                                                   name=atom_dict['element']['name'],
-                                                   mass=atom_dict['element']['mass'],
-                                                   isotope=atom_dict['element']['isotope'],
-                                                   ),
+    atoms = {atom_dict['id']: Atom(element=get_element(value=atom_dict['element']['number'],
+                                                       isotope=atom_dict['element']['isotope']),
                                    radical_electrons=atom_dict['radical_electrons'],
                                    charge=atom_dict['charge'],
                                    lone_pairs=atom_dict['lone_pairs'],
                                    id=atom_dict['id'],
                                    props=atom_dict['props'],
                                    ) for atom_dict in representation['atoms']}
+    for atom_dict in representation['atoms']:
+        atoms[atom_dict['id']].atomtype = ATOMTYPES[atom_dict['atomtype']]
     mol.atoms = list(atoms[atom_id] for atom_id in representation['atom_order'])
     for i, atom_1 in enumerate(atoms.values()):
         for atom_2_id, bond_order in representation['atoms'][i]['edges'].items():
             bond = Bond(atom_1, atoms[atom_2_id], bond_order)
             mol.add_bond(bond)
     mol.update_atomtypes(raise_exception=False)
+    mol.update_multiplicity()
     if not is_ts:
         mol.identify_ring_membership()
+        mol.update_connectivity_values()
     return mol
 
 
@@ -1331,6 +1341,50 @@ def calc_rmsd(x: Union[list, np.array],
     y = np.array(y) if isinstance(y, list) else y
     d = x - y
     n = x.shape[0]
-    sqr_sum = (d**2).sum()
-    rmsd = np.sqrt(sqr_sum/n)
+    sqr_sum = (d ** 2).sum()
+    rmsd = np.sqrt(sqr_sum / n)
     return float(rmsd)
+
+
+def _check_r_n_p_symbols_between_rmg_and_arc_rxns(arc_reaction: 'ARCReaction',
+                                                  rmg_reactions: List['Reaction'],
+                                                  ) -> bool:
+    """
+    A helper function to check that atom symbols are in the correct order between an ARC reaction
+    and its corresponding RMG reactions generated by the get_rmg_reactions_from_arc_reaction() function.
+    Used internally for testing.
+
+    Args:
+        arc_reaction (ARCReaction): The ARCReaction object to inspect.
+        rmg_reactions (List['Reaction']): Entries are RMG Reaction objects to inspect.
+                                          Could contain either Species or Molecule object as reactants/products.
+
+    Returns:
+        bool: Whether atom symbols are in the same respective order.
+    """
+    result = True
+    num_rs, num_ps = len(arc_reaction.r_species), len(arc_reaction.p_species)
+    arc_r_symbols = [atom.element.symbol for atom in chain(*tuple(arc_reaction.r_species[i].mol.atoms for i in range(num_rs)))]
+    arc_p_symbols = [atom.element.symbol for atom in chain(*tuple(arc_reaction.p_species[i].mol.atoms for i in range(num_ps)))]
+    for rmg_reaction in rmg_reactions:
+        rmg_r_symbols = [atom.element.symbol
+                         for atom in chain(*tuple(rmg_reaction.reactants[i].atoms
+                                                  if isinstance(rmg_reaction.reactants[i], Molecule)
+                                                  else rmg_reaction.reactants[i].molecule[0].atoms
+                                                  for i in range(num_rs)))]
+        rmg_p_symbols = [atom.element.symbol
+                         for atom in chain(*tuple(rmg_reaction.products[i].atoms
+                                                  if isinstance(rmg_reaction.products[i], Molecule)
+                                                  else rmg_reaction.products[i].molecule[0].atoms
+                                                  for i in range(num_ps)))]
+        if any(symbol_1 != symbol_2 for symbol_1, symbol_2 in zip(arc_r_symbols, rmg_r_symbols)):
+            print('\nDifferent element order in reactants between ARC and RMG:')  # Don't modify to logging.
+            print(arc_r_symbols)
+            print(rmg_r_symbols)
+            result = False
+        if any(symbol_1 != symbol_2 for symbol_1, symbol_2 in zip(arc_p_symbols, rmg_p_symbols)):
+            print('\nDifferent element order in products between ARC and RMG:')
+            print(arc_p_symbols)
+            print(rmg_p_symbols)
+            result = False
+    return result

@@ -4,9 +4,6 @@ A module for representing a reaction.
 
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
-from qcelemental.exceptions import ValidationError
-from qcelemental.models.molecule import Molecule as QCMolecule
-
 from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 
@@ -14,7 +11,13 @@ import arc.rmgdb as rmgdb
 from arc.common import extremum_list, get_logger
 from arc.exceptions import ReactionError, InputError
 from arc.imports import settings
-from arc.species.converter import check_xyz_dict, sort_xyz_using_indices, xyz_to_str
+from arc.species.converter import (check_xyz_dict,
+                                   sort_xyz_using_indices,
+                                   translate_to_center_of_mass,
+                                   translate_xyz,
+                                   xyz_to_str,
+                                   )
+from arc.species.mapping import map_reaction
 from arc.species.species import ARCSpecies, check_atom_balance, check_label
 
 if TYPE_CHECKING:
@@ -159,7 +162,7 @@ class ARCReaction(object):
         """The reactants to products atom map"""
         if self._atom_map is None \
                 and all(species.get_xyz(generate=False) is not None for species in self.r_species + self.p_species):
-            self._atom_map = self.get_atom_map()
+            self._atom_map = map_reaction(rxn=self)
         return self._atom_map
 
     @atom_map.setter
@@ -212,8 +215,20 @@ class ARCReaction(object):
         str_representation += f'charge={self.charge})'
         return str_representation
 
-    def as_dict(self) -> dict:
-        """A helper function for dumping this object as a dictionary in a YAML file for restarting ARC"""
+    def as_dict(self,
+                reset_atom_ids: bool = False,
+                ) -> dict:
+        """
+        A helper function for dumping this object as a dictionary in a YAML file for restarting ARC.
+
+        Args:
+            reset_atom_ids (bool, optional): Whether to reset the atom IDs in the .mol Molecule attribute of reactant
+                                             and product species. Useful when copying the object to avoid duplicate
+                                             atom IDs between different object instances.
+
+        Returns:
+            dict: The dictionary representation of the object instance.
+        """
         reaction_dict = dict()
         reaction_dict['label'] = self.label
         reaction_dict['index'] = self.index
@@ -221,8 +236,8 @@ class ARCReaction(object):
         reaction_dict['charge'] = self.charge
         reaction_dict['reactants'] = self.reactants
         reaction_dict['products'] = self.products
-        reaction_dict['r_species'] = [spc.as_dict() for spc in self.r_species]
-        reaction_dict['p_species'] = [spc.as_dict() for spc in self.p_species]
+        reaction_dict['r_species'] = [spc.as_dict(reset_atom_ids=reset_atom_ids) for spc in self.r_species]
+        reaction_dict['p_species'] = [spc.as_dict(reset_atom_ids=reset_atom_ids) for spc in self.p_species]
         if self.ts_species is not None:
             reaction_dict['ts_species'] = self.ts_species.as_dict()
         if self._atom_map is not None:
@@ -298,6 +313,42 @@ class ARCReaction(object):
             if 'preserve_param_in_scan' in reaction_dict else None
         self.atom_map = reaction_dict['atom_map'] if 'atom_map' in reaction_dict else None
         self.done_opt_r_n_p = reaction_dict['done_opt_r_n_p'] if 'done_opt_r_n_p' in reaction_dict else None
+
+    def copy(self):
+        """
+        Get a copy of this object instance.
+
+        Returns:
+            ARCReaction: A copy of this object instance.
+        """
+        reaction_dict = self.as_dict(reset_atom_ids=True)
+        return ARCReaction(reaction_dict=reaction_dict)
+
+    def flip_reaction(self):
+        """
+        Get a copy of this object instance with flipped reactants and products.
+
+        Returns:
+            ARCReaction: A copy of this object instance with flipped reactants and products.
+        """
+        reaction_dict = self.as_dict(reset_atom_ids=True)
+        reset_keys = ['label', 'index', 'atom_map', 'rmg_reaction',
+                      'family', 'family_own_reverse', 'long_kinetic_description']
+        if 'r_species' in reaction_dict.keys() and 'p_species' in reaction_dict.keys():
+            reaction_dict['r_species'], reaction_dict['p_species'] = reaction_dict['p_species'], reaction_dict['r_species']
+        else:
+            reset_keys.extend(['r_species', 'p_species'])
+        if 'reactants' in reaction_dict.keys() and 'products' in reaction_dict.keys():
+            reaction_dict['reactants'], reaction_dict['products'] = reaction_dict['products'], reaction_dict['reactants']
+        else:
+            reset_keys.extend(['reactants', 'products'])
+        for key in reset_keys:
+            if key in reaction_dict.keys():
+                del reaction_dict[key]
+        flipped_rxn = ARCReaction(reaction_dict=reaction_dict)
+        flipped_rxn.set_label_reactants_products()
+        flipped_rxn.rmg_reaction_from_arc_species()
+        return flipped_rxn
 
     def is_isomerization(self):
         """
@@ -497,6 +548,12 @@ class ARCReaction(object):
                                                                                    reaction=self.rmg_reaction.copy(),
                                                                                    save_order=save_order,
                                                                                    )
+            if self.family is None:
+                flipped_rmg_reaction = self.flip_reaction().rmg_reaction
+                self.family, self.family_own_reverse = rmgdb.determine_reaction_family(rmgdb=rmg_database,
+                                                                                       reaction=flipped_rmg_reaction,
+                                                                                       save_order=save_order,
+                                                                                       )
 
     def check_ts(self,
                  verbose: bool = True,
@@ -778,60 +835,17 @@ class ARCReaction(object):
                                 self.get_species_count(species=p_spc, well=1))
         return reactants, products
 
-    def get_atom_map(self, verbose: int = 0) -> Optional[List[int]]:
+    def get_single_mapped_product_xyz(self):
         """
-        Get the atom mapping of the reactant atoms to the product atoms.
-        I.e., an atom map of [0, 2, 1] means that reactant atom 0 matches product atom 0,
-        reactant atom 1 matches product atom 2, and reactant atom 2 matches product atom 1.
-        All indices are 0-indexed.
-
-        Employs the Kabsch, Hungarian, and Uno algorithms to exhaustively locate
-        the best alignment for non-oriented, non-ordered 3D structures.
-
-        Args:
-            verbose (int): The verbosity level (0-4).
-
-        Returns: Optional[List[int]]
-            The atom map, entry indices correspond to reactant indices, entry values correspond to product indices.
-        """
-        atom_map = None
-        try:
-            reactants = QCMolecule.from_data(
-                data='\n--\n'.join(xyz_to_str(reactant.get_xyz()) for reactant in self.r_species),
-                molecular_charge=self.charge,
-                molecular_multiplicity=self.multiplicity,
-                fragment_charges=[reactant.charge for reactant in self.r_species],
-                fragment_multiplicities=[reactant.multiplicity for reactant in self.r_species],
-                orient=False,
-            )
-            products = QCMolecule.from_data(
-                data='\n--\n'.join(xyz_to_str(product.get_xyz()) for product in self.p_species),
-                molecular_charge=self.charge,
-                molecular_multiplicity=self.multiplicity,
-                fragment_charges=[product.charge for product in self.p_species],
-                fragment_multiplicities=[product.multiplicity for product in self.p_species],
-                orient=False,
-            )
-        except ValidationError as e:
-            logger.warning(f'Could not get atom map for {self}, got:\n{e}')
-        else:
-            data = products.align(ref_mol=reactants, verbose=verbose)[1]
-            atom_map = data['mill'].atommap.tolist()
-        return atom_map
-
-    def get_mapped_product_xyz(self):
-        """
-        Uses the mapping from product onto reactant to create a new ARC Species for the mapped product.
-        For now, only functional for A <=> B reactions.
+        Get a copy of the product species with mapped cartesian coordinates of a reaction with a single product.
 
         Returns:
-            Tuple[dict, ARCSpecies]:
-                dict: Mapped product atoms in ARC dictionary format.
-                ARCSpecies: ARCSpecies object created from mapped coordinates.
+            Optional[ARCSpecies]: The corresponding ARCSpecies object with mapped coordinates.
         """
         if len(self.p_species) > 1:
-            raise ValueError(f'Can only return a mapped product for reactions with a single product, '
-                             f'got {len(self.p_species)}.')
+            logger.error(f'Can only return a mapped product for reactions with a single product, '
+                         f'got {len(self.p_species)}.')
+            return None
         mapped_xyz = sort_xyz_using_indices(xyz_dict=self.p_species[0].get_xyz(), indices=self.atom_map)
         mapped_product = ARCSpecies(label=self.p_species[0].label,
                                     mol=self.p_species[0].mol.copy(deep=True),
@@ -839,7 +853,7 @@ class ARCReaction(object):
                                     charge=self.p_species[0].charge,
                                     xyz=mapped_xyz,
                                     )
-        return mapped_xyz, mapped_product
+        return mapped_product
 
     def get_reactants_xyz(self, return_format='str') -> Union[dict, str]:
         """
@@ -853,22 +867,24 @@ class ARCReaction(object):
             The combined cartesian coordinates.
 
         Todo:
-            identify flux pairs like in RMG
-            orient a line: cm1 - X -- Y - cm2 if there are two reactants
+            Orient the fragments according to the reactive site.
         """
         xyz_dict = dict()
         if len(self.r_species) == 1:
             xyz_dict = self.r_species[0].get_xyz()
         elif len(self.r_species) >= 2:
             xyz_dict = {'symbols': tuple(), 'isotopes': tuple(), 'coords': tuple()}
-            for reactant in self.r_species:
-                xyz = reactant.get_xyz()
+            for i, reactant in enumerate(self.r_species):
+                xyz = translate_to_center_of_mass(reactant.get_xyz())
+                if i:
+                    xyz = translate_xyz(xyz_dict=xyz,
+                                        translation=(sum(spc.radius for spc in self.r_species[:i]) * 1.1 * i, 0, 0))
                 xyz_dict['symbols'] += xyz['symbols']
                 xyz_dict['isotopes'] += xyz['isotopes']
                 xyz_dict['coords'] += xyz['coords']
-
-        xyz_dict = check_xyz_dict(xyz_dict)
-        xyz_dict = xyz_to_str(xyz_dict) if return_format == 'str' else xyz_dict
+        xyz_dict = translate_to_center_of_mass(check_xyz_dict(xyz_dict))
+        if return_format == 'str':
+            xyz_dict = xyz_to_str(xyz_dict)
         return xyz_dict
 
     def get_products_xyz(self, return_format='str') -> Union[dict, str]:
@@ -884,24 +900,25 @@ class ARCReaction(object):
             The combined cartesian coordinates.
 
         Todo:
-            - identify flux pairs like in RMG
-            - orient a line: cm1 - X - Y - cm2 if there are two reactants
-            - Combine with get_mapped_product_xyz()
+            Orient the fragments according to the reactive site.
         """
-        xyz_dict = mapped_xyz_dict = {'symbols': tuple(), 'isotopes': tuple(), 'coords': tuple()}
-        for product in self.p_species:
-            xyz = product.get_xyz()
-            xyz_dict['symbols'] += xyz['symbols']
-            xyz_dict['isotopes'] += xyz['isotopes']
-            xyz_dict['coords'] += xyz['coords']
-        for i in range(len(xyz_dict['symbols'])):
-            mapped_xyz_dict['symbols'] += (xyz_dict['symbols'][self.atom_map[i]],)
-            mapped_xyz_dict['isotopes'] += (xyz_dict['isotopes'][self.atom_map[i]],)
-            mapped_xyz_dict['coords'] += (xyz_dict['coords'][self.atom_map[i]],)
-        mapped_xyz_dict = check_xyz_dict(mapped_xyz_dict)
+        if len(self.p_species) == 1:
+            xyz_dict = self.p_species[0].get_xyz()
+        else:
+            xyz_dict = {'symbols': tuple(), 'isotopes': tuple(), 'coords': tuple()}
+            for i, product in enumerate(self.p_species):
+                xyz = translate_to_center_of_mass(product.get_xyz())
+                if i:
+                    xyz = translate_xyz(xyz_dict=xyz,
+                                        translation=(sum(spc.radius for spc in self.p_species[:i]) * 1.1 * i, 0, 0))
+                xyz_dict['symbols'] += xyz['symbols']
+                xyz_dict['isotopes'] += xyz['isotopes']
+                xyz_dict['coords'] += xyz['coords']
+        xyz_dict = translate_to_center_of_mass(check_xyz_dict(xyz_dict))
+        xyz_dict = sort_xyz_using_indices(xyz_dict=xyz_dict, indices=self.atom_map)
         if return_format == 'str':
-            mapped_xyz_dict = xyz_to_str(mapped_xyz_dict)
-        return mapped_xyz_dict
+            xyz_dict = xyz_to_str(xyz_dict)
+        return xyz_dict
 
 
 def remove_dup_species(species_list: List[ARCSpecies]) -> List[ARCSpecies]:
