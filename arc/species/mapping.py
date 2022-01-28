@@ -61,8 +61,6 @@ def map_reaction(rxn: 'ARCReaction',
     if rxn.family is None:
         rmgdb.determine_family(reaction=rxn, db=db)
     if rxn.family is None:
-        rxn.determine_family(db)
-    if rxn.family is None:
         return map_general_rxn(rxn, backend=backend)
 
     fam_func_dict = {'Disproportionation': map_abstractions,  # Mapping a disprop reaction is similar to H_Abs.
