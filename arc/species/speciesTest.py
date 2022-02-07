@@ -14,11 +14,10 @@ from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 from rmgpy.transport import TransportData
 
-from arc.common import almost_equal_coords_lists, ARC_PATH
+from arc.common import ARC_PATH, almost_equal_coords_lists
 from arc.exceptions import SpeciesError
 from arc.level import Level
 from arc.plotter import save_conformers_file
-from arc.reaction import ARCReaction
 from arc.species.converter import (check_isomorphism,
                                    molecules_from_xyz,
                                    str_to_xyz,
@@ -36,7 +35,6 @@ from arc.species.species import (ARCSpecies,
                                  determine_rotor_type,
                                  )
 from arc.species.xyz_to_2d import MolGraph
-from arc.utils.wip import work_in_progress
 
 
 class TestARCSpecies(unittest.TestCase):
@@ -1699,11 +1697,17 @@ class TestTSGuess(unittest.TestCase):
         """Test TSGuess.as_dict()"""
         tsg_dict = self.tsg1.as_dict()
         expected_dict = {'method': 'autotst',
+                         'conformer_index': None,
+                         'imaginary_freqs': None,
+                         'successful_irc': None,
+                         'successful_normal_mode': None,
                          'energy': None,
                          'family': 'H_Abstraction',
                          'index': None,
                          'rmg_reaction': 'CON=O <=> [O-][N+](=O)C',
                          'success': None,
+                         'method_direction': None,
+                         'method_index': None,
                          't0': None,
                          'execution_time': None}
         self.assertEqual(tsg_dict, expected_dict)
@@ -1722,14 +1726,14 @@ class TestTSGuess(unittest.TestCase):
     def test_xyz_perception(self):
         """Test MolGraph.get_formula()"""
         xyz_arb = {'symbols': ('H', 'C', 'H', 'H', 'O', 'N', 'O'),
-                 'isotopes': (1, 13, 1, 1, 16, 14, 16),
-                 'coords': ((-1.0, 0.0, 0.0),
-                            (0.0, 0.0, 0.0),
-                            (0.0, -1.0, 0.0),
-                            (0.0, 1.0, 0.0),
-                            (1.0, 0.0, 0.0),
-                            (2.0, 0.0, 0.0),
-                            (3.0, 0.0, 0.0),)}
+                   'isotopes': (1, 13, 1, 1, 16, 14, 16),
+                   'coords': ((-1.0, 0.0, 0.0),
+                              (0.0, 0.0, 0.0),
+                              (0.0, -1.0, 0.0),
+                              (0.0, 1.0, 0.0),
+                              (1.0, 0.0, 0.0),
+                              (2.0, 0.0, 0.0),
+                              (3.0, 0.0, 0.0),)}
         mol_graph_1 = MolGraph(symbols=xyz_arb['symbols'], coords=xyz_arb['coords'])
         self.assertEqual(mol_graph_1.get_formula(), 'CH3NO2')
 
