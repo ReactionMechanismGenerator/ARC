@@ -1000,12 +1000,15 @@ def modify_coords(coords: Dict[str, tuple],
             indices are 0-indexed.
 
     Raises:
-        InputError: If a group/s modification type is requested but ``mol`` is ``None``,
-                    or if a 'groups' modification type was specified for R or A.
+        InputError: If ``coords`` is not give,
+                    or if a group/s modification type is requested but ``mol`` is ``None``,
+                    or if a 'groups' modification type was specified for 'R' or 'A'.
 
     Returns:
         dict: The respective cartesian (xyz) coordinates reflecting the desired modification.
     """
+    if coords is None:
+        raise InputError(f'coords must be given.')
     if modification_type not in ['atom', 'group', 'groups']:
         raise InputError(f'Allowed modification types are atom, group, or groups, got: {modification_type}.')
     if mol is None and 'group' in modification_type:
