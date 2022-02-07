@@ -42,21 +42,17 @@ from arc.species.converter import (check_isomorphism,
                                    check_xyz_dict,
                                    check_zmat_dict,
                                    get_xyz_radius,
+                                   modify_coords,
                                    molecules_from_xyz,
                                    order_atoms_in_mol_list,
-                                   rdkit_conf_from_mol,
                                    remove_dummies,
                                    rmg_mol_from_inchi,
-                                   set_rdkit_dihedrals,
                                    str_to_xyz,
                                    translate_to_center_of_mass,
                                    xyz_from_data,
                                    xyz_to_str,
-                                   zmat_from_xyz,
-                                   zmat_to_xyz,
                                    )
-from arc.species.vectors import calculate_distance
-from arc.species.zmat import get_parameter_from_atom_indices
+from arc.species.vectors import calculate_distance, calculate_dihedral_angle
 
 logger = get_logger()
 
@@ -791,8 +787,10 @@ class ARCSpecies(object):
                 self.mol = rmg_mol_from_inchi(inchi)
             elif smiles is not None:
                 self.mol = Molecule(smiles=smiles)
-        if self.mol is None:
-            self.mol_from_xyz()
+        # Perceive molecule from xyz coordinates. This also populates the .mol attribute of the Species.
+        # It overrides self.mol generated from adjlist or smiles so xyz and mol will have the same atom order.
+        if self.final_xyz or self.initial_xyz or self.most_stable_conformer or self.conformers:
+            self.mol_from_xyz(get_cheap=False)
         if self.mol is not None:
             if 'bond_corrections' not in species_dict and not self.is_ts:
                 self.bond_corrections = enumerate_bonds(self.mol)
@@ -915,21 +913,7 @@ class ARCSpecies(object):
                 self.mol_list = [self.mol]
             success = order_atoms_in_mol_list(ref_mol=self.mol.copy(deep=True), mol_list=self.mol_list)
             if not success:
-                # Try sorting by IDs, repeat object creation to make sure the original instances remain unchanged.
-                mol_copy = self.mol.copy(deep=True)
-                mol_copy.assign_atom_ids()
-                mol_list = mol_copy.generate_resonance_structures(keep_isomorphic=False,
-                                                                  filter_structures=True,
-                                                                  save_order=True,
-                                                                  )
-                for i in range(len(mol_list)):
-                    mol = mol_list[i]
-                    atoms = list()
-                    for atom1 in mol_copy.atoms:
-                        for atom2 in mol.atoms:
-                            if atom1.id == atom2.id:
-                                atoms.append(atom2)
-                    mol.atoms = atoms
+                self.mol_list = None
 
     def generate_conformers(self,
                             n_confs: int = 10,
@@ -1141,6 +1125,7 @@ class ARCSpecies(object):
                                  'success': None,
                                  'invalidation_reason': '',
                                  'times_dihedral_set': 0,
+                                 'trsh_counter': 0,
                                  'trsh_methods': list(),
                                  'scan_path': '',
                                  'directed_scan_type': key,
@@ -1192,15 +1177,14 @@ class ARCSpecies(object):
                      xyz: dict = None,
                      chk_rotor_list: bool = True):
         """
-        Generated an RDKit molecule object from either self.final_xyz or ``xyz``.
-        Increments the current dihedral angle between atoms i, j, k, l in the `scan` list by 'deg_increment` in degrees.
-        Alternatively, specifying deg_abs will rotate to this desired dihedral.
-        All bonded atoms are moved accordingly. The result is saved in self.initial_xyz.
+        Set the dihedral angle value of the torsion ``scan``.
+        Either increment by a given value or set to an absolute value.
+        All bonded atoms are rotated as groups. The result is saved to ``self.initial_xyz``.
 
         Args:
             scan (list): The atom indices (1-indexed) representing the dihedral.
-            deg_increment (float, optional): The dihedral angle increment.
-            deg_abs (float, optional): The absolute desired dihedral angle.
+            deg_increment (float, optional): The dihedral angle increment in degrees.
+            deg_abs (float, optional): The absolute desired dihedral angle in degrees.
             count (bool, optional): Whether to increment the rotor's times_dihedral_set parameter. `True` to increment.
             xyz (dict, optional): An alternative xyz to use instead of self.final_xyz.
             chk_rotor_list (bool, optional): Whether to check if the changing dihedral is in the rotor list.
@@ -1217,8 +1201,17 @@ class ARCSpecies(object):
         if deg_abs is not None and not isinstance(deg_abs, (int, float)):
             raise TypeError(f'deg_abs must be a float, got {deg_abs} which is a {type(deg_abs)}')
         pivots = scan[1:3]
+        torsion = convert_list_index_0_to_1(scan, direction=-1)
         rotor = None
         xyz = xyz or self.final_xyz
+        if xyz is None:
+            raise ValueError('Cannot set dihedral without xyz')
+        if deg_increment is not None:
+            deg_abs = calculate_dihedral_angle(coords=xyz, torsion=torsion) + deg_increment
+        mol = self.mol
+        if mol is None:
+            mols = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)
+            mol = mols[1] or mols[0]
         if chk_rotor_list:
             for rotor in self.rotors_dict.values():
                 if rotor['pivots'] == pivots:
@@ -1238,25 +1231,13 @@ class ARCSpecies(object):
         if deg_increment == 0 and deg_abs is None:
             logger.warning(f'set_dihedral was called with zero increment for {self.label} with pivots {pivots}')
         else:
-            torsion_0_indexed = [tor - 1 for tor in scan]
-            mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)[1]
-            if mol is not None:
-                conf, rd_mol = rdkit_conf_from_mol(mol, xyz)
-                new_xyz = set_rdkit_dihedrals(conf,
-                                              rd_mol,
-                                              torsion_0_indexed,
-                                              deg_increment=deg_increment,
-                                              deg_abs=deg_abs,
-                                              )
-                self.initial_xyz = new_xyz
-            else:
-                zmat = zmat_from_xyz(xyz=self.get_xyz(),
-                                     constraints={'D_groups': [tuple(torsion_0_indexed)]},
-                                     consolidate=False,
-                                     )
-                param = get_parameter_from_atom_indices(zmat=zmat, indices=torsion_0_indexed, xyz_indexed=True)
-                zmat['vars'][param] = zmat['vars'][param] + deg_increment if deg_increment is not None else deg_abs
-                self.initial_xyz = zmat_to_xyz(zmat)
+            new_xyz = modify_coords(coords=xyz,
+                                    indices=torsion,
+                                    new_value=deg_abs,
+                                    modification_type='groups',
+                                    mol=mol,
+                                    )
+            self.initial_xyz = new_xyz
 
     def determine_symmetry(self) -> None:
         """
