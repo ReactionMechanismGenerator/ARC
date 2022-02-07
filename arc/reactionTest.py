@@ -14,13 +14,9 @@ from rmgpy.species import Species
 import arc.rmgdb as rmgdb
 from arc.common import ARC_PATH
 from arc.exceptions import ReactionError
-from arc.imports import settings
 from arc.reaction import ARCReaction, remove_dup_species
 from arc.species import ARCSpecies
 from arc.utils.wip import work_in_progress
-
-
-default_ts_methods = settings['default_ts_methods']
 
 
 class TestARCReaction(unittest.TestCase):
@@ -124,6 +120,10 @@ class TestARCReaction(unittest.TestCase):
         cls.rxn9 = ARCReaction(r_species=[ARCSpecies(label='NCOO', smiles='NCO[O]')],
                                p_species=[ARCSpecies(label='NHCH2', smiles='N=C'),
                                           ARCSpecies(label='HO2', smiles='O[O]')])
+        cls.rxn10 = ARCReaction(rmg_reaction=Reaction(reactants=[Species(label='HNO', smiles='N=O'),
+                                                                 Species(label='NO2', smiles='O=[N+][O-]')],
+                                                      products=[Species(label='HNO2', smiles='[O-][NH+]=O'),
+                                                                Species(label='NO', smiles='[N]=O')]))
 
     def test_str(self):
         """Test the string representation of the object"""
@@ -223,7 +223,6 @@ class TestARCReaction(unittest.TestCase):
                                           'number_of_rotors': 0}],
                            'reactants': ['CH4', 'OH'],
                            'ts_label': None,
-                           'ts_methods': [],
                            'ts_xyz_guess': []}
         self.assertEqual(rxn_dict_1, expected_dict_1)
 
@@ -315,7 +314,6 @@ class TestARCReaction(unittest.TestCase):
                                           'number_of_rotors': 0}],
                            'reactants': ['N2H3', 'NH2'],
                            'ts_label': None,
-                           'ts_methods': [],
                            'ts_xyz_guess': []}
         self.assertEqual(rxn_dict_6, expected_dict_6)
 
@@ -324,7 +322,6 @@ class TestARCReaction(unittest.TestCase):
         rxn_dict = self.rxn1.as_dict()
         rxn = ARCReaction(reaction_dict=rxn_dict)
         self.assertEqual(rxn.label, 'CH4 + OH <=> CH3 + H2O')
-        self.assertEqual(rxn.ts_methods, [tsm.lower() for tsm in default_ts_methods])
         self.assertEqual(rxn.multiplicity, 2)
         self.assertEqual(rxn.charge, 0)
         self.assertEqual(rxn.family.label, 'H_Abstraction')
@@ -335,6 +332,11 @@ class TestARCReaction(unittest.TestCase):
 
     def test_copy(self):
         """Test the copy() method."""
+        rxn_copy = self.rxn1.copy()
+        self.assertIsNot(self.rxn1, rxn_copy)
+        self.assertEqual(rxn_copy.multiplicity, self.rxn1.multiplicity)
+        self.assertEqual(rxn_copy.label, self.rxn1.label)
+
         rxn_copy = self.rxn8.copy()
         self.assertIsNot(self.rxn8, rxn_copy)
         self.assertEqual(self.rxn8.label, rxn_copy.label)
@@ -352,6 +354,17 @@ class TestARCReaction(unittest.TestCase):
 
     def test_flip_reaction(self):
         """Test the flip_reaction() method."""
+        flipped_rxn = self.rxn1.flip_reaction()
+        self.assertIsNot(self.rxn1, flipped_rxn)
+        self.assertEqual(flipped_rxn.multiplicity, self.rxn1.multiplicity)
+        self.assertNotEqual(flipped_rxn.label, self.rxn1.label)
+        for s1, s2 in zip(self.rxn1.r_species, flipped_rxn.p_species):
+            self.assertEqual(s1.label, s2.label)
+            self.assertTrue(s1.mol.is_isomorphic(s2.mol))
+        for s1, s2 in zip(self.rxn1.p_species, flipped_rxn.r_species):
+            self.assertEqual(s1.label, s2.label)
+            self.assertTrue(s1.mol.is_isomorphic(s2.mol))
+
         flipped_rxn = self.rxn8.flip_reaction()
         self.assertIsNot(self.rxn8, flipped_rxn)
         self.assertNotEqual(self.rxn8.label, flipped_rxn.label)
@@ -433,6 +446,15 @@ class TestARCReaction(unittest.TestCase):
         rxn_9_flipped.check_attributes()
         rxn_9_flipped.determine_family(rmg_database=self.rmgdb)
         self.assertEqual(rxn_9_flipped.family.label, 'HO2_Elimination_from_PeroxyRadical')
+        self.rxn10.determine_family(rmg_database=self.rmgdb)
+        self.assertEqual(self.rxn10.family.label, 'H_Abstraction')
+        rxn_1 = ARCReaction(r_species=[ARCSpecies(label='C2H6', smiles='CC'),
+                                       ARCSpecies(label='CCOOj', smiles='CCO[O]')],
+                            p_species=[ARCSpecies(label='CCOOH', smiles='CCOO'),
+                                       ARCSpecies(label='C2H5', smiles='C[CH2]')])
+        rxn_1.check_attributes()
+        rxn_1.determine_family(rmg_database=self.rmgdb)
+        self.assertEqual(rxn_1.family.label, 'H_Abstraction')
 
     def test_charge_property(self):
         """Test determining charge"""
@@ -511,6 +533,14 @@ class TestARCReaction(unittest.TestCase):
                            p_species=[ARCSpecies(label='NO', smiles='[N]=O'),
                                       ARCSpecies(label='HN3O2', smiles='[O-][N+](=N)N=O')])
         self.assertTrue(rxn6.check_atom_balance())
+
+        # A reaction that involves charged species
+        rxn7 = ARCReaction(reactants=['C6CNC3', 'OH'], products=['C6COH', 'NC3'],
+                           r_species=[ARCSpecies(label='C6CNC3', smiles='c1ccccc1C[N+](C)(C)C', charge=1, multiplicity=1),
+                                      ARCSpecies(label='OH', smiles='[OH-]', charge=-1, multiplicity=1)],
+                           p_species=[ARCSpecies(label='C6COH', smiles='c1ccccc1CO'),
+                                      ARCSpecies(label='NC3', smiles='CN(C)C')])
+        self.assertTrue(rxn7.check_atom_balance())
 
         # A *non*-balanced reaction
         with self.assertRaises(ReactionError):
@@ -1100,8 +1130,7 @@ class TestARCReaction(unittest.TestCase):
                                 (-0.9953709942529645, -0.7170738803381369, -0.11579136415085267),
                                 (-0.8349557675364339, 0.8418549600381088, 0.33540420712720587),
                                 (1.4660803161854115, -0.05734462334294334, -0.32311257978218827)),
-                     'isotopes': (14, 16, 1, 1, 1),
-                     'symbols': ('N', 'O', 'H', 'H', 'H')}
+                     'isotopes': (14, 16, 1, 1, 1), 'symbols': ('N', 'O', 'H', 'H', 'H')}
         r_1 = ARCSpecies(label='NHOH', smiles='[NH]O', xyz=nhoh_xyz)
         r_2 = ARCSpecies(label='HO2', smiles='O[O]', xyz=self.ho2_xyz)
         p_1 = ARCSpecies(label='O2', smiles='[O][O]', xyz=self.o2_xyz)
@@ -1350,7 +1379,7 @@ class TestARCReaction(unittest.TestCase):
                                  (-1.155219150829674, -0.9183344213315149, 0.05431124767380799)),
                       'isotopes': (12, 1, 1, 14, 1, 1),
                       'symbols': ('C', 'H', 'H', 'N', 'H', 'H')}
-        r_1 = ARCSpecies(label='H', smiles='[H]', xyz={'coords': ((0, 0, 0),), 'isotopes': (1,),'symbols': ('H',)})
+        r_1 = ARCSpecies(label='H', smiles='[H]', xyz={'coords': ((0, 0, 0),), 'isotopes': (1,), 'symbols': ('H',)})
         r_2 = ARCSpecies(label='CH3NH2', smiles='CN', xyz=ch3nh2_xyz)
         p_1 = ARCSpecies(label='H2', smiles='[H][H]', xyz=self.h2_xyz)
         p_2 = ARCSpecies(label='CH2NH2', smiles='[CH2]N', xyz=ch2nh2_xyz)
@@ -1423,12 +1452,10 @@ H       1.12853146   -0.86793870    0.06973060"""
                        H      -0.76330345   -0.19953755    0.00000000
                        H       0.76363177   -0.19827735    0.00000000"""
         r_1 = ARCSpecies(label='H2O', smiles='O', xyz=h2o_xyz_1)
-
         h2o_xyz_2 = """H      -0.76330345   -0.19953755    0.00000000
                        H       0.76363177   -0.19827735    0.00000000
                        O      -0.00032832    0.39781490    0.00000000"""
         p_1 = ARCSpecies(label='H2O', smiles='O', xyz=h2o_xyz_2)
-
         rxn_1 = ARCReaction(reactants=['H2O'], products=['H2O'],
                             r_species=[r_1], p_species=[p_1])
         mapped_product = rxn_1.get_single_mapped_product_xyz()
@@ -1437,6 +1464,40 @@ H       1.12853146   -0.86793870    0.06973060"""
         expected_xyz = {'symbols': ('O', 'H', 'H'), 'isotopes': (16, 1, 1),
                         'coords': ((-0.00032832, 0.3978149, 0.0), (-0.76330345, -0.19953755, 0.0),
                                    (0.76363177, -0.19827735, 0.0))}
+        self.assertEqual(mapped_product.get_xyz(), expected_xyz)
+
+        reactant_xyz = """C  -1.3087    0.0068    0.0318
+                          C   0.1715   -0.0344    0.0210
+                          N   0.9054   -0.9001    0.6395
+                          O   2.1683   -0.5483    0.3437
+                          N   2.1499    0.5449   -0.4631
+                          N   0.9613    0.8655   -0.6660
+                          H  -1.6558    0.9505    0.4530
+                          H  -1.6934   -0.0680   -0.9854
+                          H  -1.6986   -0.8169    0.6255"""
+        reactant = ARCSpecies(label='reactant', smiles='C([C]1=[N]O[N]=[N]1)', xyz=reactant_xyz)
+        product_xyz = """C  -1.0108   -0.0114   -0.0610
+                         C   0.4780    0.0191    0.0139
+                         N   1.2974   -0.9930    0.4693
+                         O   0.6928   -1.9845    0.8337
+                         N   1.7456    1.9701   -0.6976
+                         N   1.1642    1.0763   -0.3716
+                         H  -1.4020    0.9134   -0.4821
+                         H  -1.3327   -0.8499   -0.6803
+                         H  -1.4329   -0.1554    0.9349"""
+        product = ARCSpecies(label='product', smiles='[N-]=[N+]=C(N=O)C', xyz=product_xyz)
+        rxn_2 = ARCReaction(r_species=[reactant], p_species=[product])
+        self.assertTrue(check_atom_map(rxn_2))
+        mapped_product = rxn_2.get_single_mapped_product_xyz()
+        self.assertEqual(rxn_2.atom_map[:6], [0, 1, 2, 3, 4, 5])
+        self.assertIn(rxn_2.atom_map[6], [6, 8])
+        self.assertIn(rxn_2.atom_map[7], [6, 7])
+        self.assertIn(rxn_2.atom_map[8], [7, 8])
+        expected_xyz = {'symbols': ('C', 'C', 'N', 'O', 'N', 'N', 'H', 'H', 'H'),
+                        'isotopes': (12, 12, 14, 16, 14, 14, 1, 1, 1),
+                        'coords': ((-1.0108, -0.0114, -0.061), (0.478, 0.0191, 0.0139), (1.2974, -0.993, 0.4693),
+                                   (0.6928, -1.9845, 0.8337), (1.7456, 1.9701, -0.6976), (1.1642, 1.0763, -0.3716),
+                                   (-1.4329, -0.1554, 0.9349), (-1.402, 0.9134, -0.4821), (-1.3327, -0.8499, -0.6803))}
         self.assertEqual(mapped_product.get_xyz(), expected_xyz)
 
         reactant_xyz = """C  -1.3087    0.0068    0.0318
