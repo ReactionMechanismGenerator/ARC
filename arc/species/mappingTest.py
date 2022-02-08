@@ -1356,10 +1356,10 @@ class TestMapping(unittest.TestCase):
         new_dihedrals_2 = [calculate_dihedral_angle(coords=spc2.get_xyz(),
                                                     torsion=[atom_map[t] for t in rotor_dict['torsion']])
                            for rotor_dict in spc1.rotors_dict.values()]
-        self.assertAlmostEqual(original_dihedrals_1[2], 67.81049913527622)
-        self.assertAlmostEqual(original_dihedrals_2[2], 174.65228274664804)
-        self.assertAlmostEqual(new_dihedrals_1[2], 121.23139159126627)
-        self.assertAlmostEqual(new_dihedrals_2[2], 121.23139016907017)
+        self.assertAlmostEqual(original_dihedrals_1[2], 67.810499, 4)
+        self.assertAlmostEqual(original_dihedrals_2[2], 174.652282, 4)
+        self.assertAlmostEqual(new_dihedrals_1[2], 121.231392, 4)
+        self.assertAlmostEqual(new_dihedrals_2[2], 121.231390, 4)
 
     def test_get_backbone_dihedral_deviation_score(self):
         """Test the get_backbone_dihedral_deviation_score function."""
@@ -1368,7 +1368,7 @@ class TestMapping(unittest.TestCase):
         fingerprint_1, fingerprint_2 = mapping.fingerprint(self.spc1), mapping.fingerprint(self.spc2)
         backbone_map = mapping.identify_superimposable_candidates(fingerprint_1, fingerprint_2)[0]
         score = mapping.get_backbone_dihedral_deviation_score(spc_1=self.spc1, spc_2=self.spc2, backbone_map=backbone_map)
-        self.assertAlmostEqual(score, 106.8417836)
+        self.assertAlmostEqual(score, 106.8417836, 4)
 
     def test_get_backbone_dihedral_angles(self):
         """Test the get_backbone_dihedral_angles function."""
@@ -1377,8 +1377,8 @@ class TestMapping(unittest.TestCase):
         torsions = mapping.get_backbone_dihedral_angles(self.spc1, self.spc2, backbone_map={0: 0, 3: 1, 5: 3, 6: 4, 4: 2})
         self.assertEqual(torsions[0]['torsion 1'], [0, 3, 5, 6])
         self.assertEqual(torsions[0]['torsion 2'], [0, 1, 3, 4])
-        self.assertAlmostEqual(torsions[0]['angle 1'], 67.81049913527622)
-        self.assertAlmostEqual(torsions[0]['angle 2'], 174.65228274664804)
+        self.assertAlmostEqual(torsions[0]['angle 1'], 67.810499, 4)
+        self.assertAlmostEqual(torsions[0]['angle 2'], 174.652283, 4)
 
     def test_map_lists(self):
         """Test the map_lists function."""
