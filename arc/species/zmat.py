@@ -1445,7 +1445,6 @@ def get_atom_order_from_mol(mol: Molecule,
                 # Determine the "top" of the *relevant branch* of this torsion
                 # since the first atom (number 0) is the constrained one being changed,
                 # this top is defined from the second atom in the torsion (number 1) to it.
-                logger.debug(f'determining top_d for {constraint_indices[1]} -> {constraint_indices[0]}')
                 top_d = determine_top_group_indices(mol=mol,
                                                     atom1=mol.atoms[constraint_indices[1]],
                                                     atom2=mol.atoms[constraint_indices[0]],
