@@ -290,8 +290,7 @@ class ARCReaction(object):
             if 'p_species' in reaction_dict else self.p_species or list()
         self.reactants = self.reactants or [spc.label for spc in self.r_species]
         self.products = self.products or [spc.label for spc in self.p_species]
-        self.ts_species = reaction_dict['ts_species'].from_dict() if 'ts_species' in reaction_dict else None
-
+        self.ts_species = ARCSpecies(species_dict=reaction_dict['ts_species']) if 'ts_species' in reaction_dict else None
         self.long_kinetic_description = reaction_dict['long_kinetic_description'] \
             if 'long_kinetic_description' in reaction_dict else ''
         self.ts_xyz_guess = reaction_dict['ts_xyz_guess'] if 'ts_xyz_guess' in reaction_dict else list()
