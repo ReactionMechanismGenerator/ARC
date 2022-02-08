@@ -945,35 +945,38 @@ class ARCSpecies(object):
             plot_path (str, optional): A folder path in which the plot will be saved.
                                        If None, the plot will not be shown (nor saved).
         """
-        if not self.is_ts:
-            if not self.charge:
-                mol_list = self.mol_list
-            else:
-                mol_list = [self.mol]
-            if self.consider_all_diastereomers:
-                diastereomers = None
-            else:
-                xyz = self.get_xyz(generate=False)
-                diastereomers = [xyz] if xyz is not None else None
-            lowest_confs = conformers.generate_conformers(mol_list=mol_list,
-                                                          label=self.label,
-                                                          charge=self.charge,
-                                                          multiplicity=self.multiplicity,
-                                                          force_field=self.force_field,
-                                                          print_logs=False,
-                                                          n_confs=n_confs,
-                                                          e_confs=e_confs,
-                                                          return_all_conformers=False,
-                                                          plot_path=plot_path,
-                                                          diastereomers=diastereomers,
-                                                          )
-            if len(lowest_confs):
-                self.conformers.extend([conf['xyz'] for conf in lowest_confs])
-                self.conformer_energies.extend([None] * len(lowest_confs))
-            else:
-                xyz = self.get_xyz(generate=False)
-                if xyz is None or not xyz:
-                    logger.error(f'No 3D coordinates available for species {self.label}!')
+        if self.is_ts:
+            return
+        if self.mol_list is None:
+            self.set_mol_list()
+        if self.mol_list is not None and not self.charge:
+            mol_list = self.mol_list
+        else:
+            mol_list = [self.mol]
+        if self.consider_all_diastereomers:
+            diastereomers = None
+        else:
+            xyz = self.get_xyz(generate=False)
+            diastereomers = [xyz] if xyz is not None else None
+        lowest_confs = conformers.generate_conformers(mol_list=mol_list,
+                                                      label=self.label,
+                                                      charge=self.charge,
+                                                      multiplicity=self.multiplicity,
+                                                      force_field=self.force_field,
+                                                      print_logs=False,
+                                                      n_confs=n_confs,
+                                                      e_confs=e_confs,
+                                                      return_all_conformers=False,
+                                                      plot_path=plot_path,
+                                                      diastereomers=diastereomers,
+                                                      )
+        if len(lowest_confs):
+            self.conformers.extend([conf['xyz'] for conf in lowest_confs])
+            self.conformer_energies.extend([None] * len(lowest_confs))
+        else:
+            xyz = self.get_xyz(generate=False)
+            if xyz is None or not xyz:
+                logger.error(f'No 3D coordinates available for species {self.label}!')
 
     def get_cheap_conformer(self):
         """
@@ -1813,13 +1816,13 @@ class ARCSpecies(object):
         return [spc1, spc2]
 
     def populate_ts_checks(self):
-        """Populate (or restart) the .ts_checks attribute with default (``False``) values."""
+        """Populate (or restart) the .ts_checks attribute with default (``None``) values."""
         if self.is_ts:
-            self.ts_checks = {'E0': False,
-                              'e_elect': False,
-                              'IRC': False,
-                              'freq': False,
-                              'normal_mode_displacement': False,
+            self.ts_checks = {'E0': None,
+                              'e_elect': None,
+                              'IRC': None,
+                              'freq': None,
+                              'normal_mode_displacement': None,
                               'warnings': '',
                               }
 
