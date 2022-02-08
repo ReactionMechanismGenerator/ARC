@@ -915,6 +915,20 @@ class ARCSpecies(object):
             if not success:
                 self.mol_list = None
 
+    def is_monoatomic(self) -> Optional[bool]:
+        """
+        Determine whether the species is monoatomic.
+
+        Returns:
+            Optional[bool]: Whether the species is monoatomic.
+        """
+        if self.mol is not None and len(self.mol.atoms):
+            return len(self.mol.atoms) == 1
+        xyz = self.get_xyz()
+        if xyz is not None:
+            return len(xyz['symbols']) == 1
+        return None
+
     def generate_conformers(self,
                             n_confs: int = 10,
                             e_confs: float = 5,
