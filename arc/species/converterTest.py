@@ -4119,7 +4119,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         new_xyz = converter.modify_coords(coords=xyz1, indices=indices, new_value=new_val,
                                           modification_type=modification_type, mol=mol1)
         self.assertTrue(almost_equal_coords_lists(new_xyz, expected_xyz))
-        self.assertEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol1), new_val)
+        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol1), new_val, 5)
 
         indices, new_val = [1, 0], -1.5
         expected_xyz = {'symbols': ('O', 'C', 'C', 'O', 'H', 'H', 'H', 'H'), 'isotopes': (16, 12, 12, 16, 1, 1, 1, 1),
@@ -4436,7 +4436,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         # test TSs
         indices = [19, 10, 4, 2]
         fragments = [[46, 47, 48, 49, 50, 51, 52], [f + 1 for f in range(45)]]
-        self.assertAlmostEqual(calculate_dihedral_angle(coords=xyz5, torsion=indices, index=1), 56.83358841)
+        self.assertAlmostEqual(calculate_dihedral_angle(coords=xyz5, torsion=indices, index=1), 56.83358841, 3)
         new_xyz = converter.modify_coords(coords=xyz5,
                                           indices=indices,
                                           new_value=300,
@@ -4445,11 +4445,11 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                                           index=1,
                                           fragments=fragments,
                                           )
-        self.assertAlmostEqual(calculate_dihedral_angle(coords=new_xyz, torsion=indices, index=1), 300, places=4)
+        self.assertAlmostEqual(calculate_dihedral_angle(coords=new_xyz, torsion=indices, index=1), 300, places=3)
 
         indices = [1, 2, 3, 5]
         fragments = [[f + 1 for f in range(23)], [24, 25, 26, 27, 28]]
-        self.assertAlmostEqual(calculate_dihedral_angle(coords=xyz6, torsion=indices, index=1), 62.30597206)
+        self.assertAlmostEqual(calculate_dihedral_angle(coords=xyz6, torsion=indices, index=1), 62.30597206, 3)
         new_xyz = converter.modify_coords(coords=xyz6,
                                           indices=indices,
                                           new_value=200,
@@ -4458,7 +4458,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                                           index=1,
                                           fragments=fragments,
                                           )
-        self.assertAlmostEqual(calculate_dihedral_angle(coords=new_xyz, torsion=indices, index=1), 200, places=4)
+        self.assertAlmostEqual(calculate_dihedral_angle(coords=new_xyz, torsion=indices, index=1), 200, places=3)
 
 
     def test_compare_zmats(self):
@@ -4512,7 +4512,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                             (-0.6300326, 0.6300326, -0.6300326),
                             (0.6300326, -0.6300326, -0.6300326))}
         self.assertFalse(converter.compare_confs(ch4_1, ch4_3))
-        self.assertAlmostEqual(converter.compare_confs(ch4_1, ch4_3, rmsd_score=True), 0.0004480326076878692)
+        self.assertAlmostEqual(converter.compare_confs(ch4_1, ch4_3, rmsd_score=True), 0.00044803, 5)
 
 
         occco_1 = {'symbols': ('O', 'C', 'C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
@@ -4549,7 +4549,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                               (1.0743805139106757, -1.9882575918786236, 1.2595102280098387),
                               (0.35195568839394714, -2.3791987519096245, -0.81652943836054))}
         self.assertFalse(converter.compare_confs(occco_1, occco_2))
-        self.assertAlmostEqual(converter.compare_confs(occco_1, occco_2, rmsd_score=True), 1.0094079844245747)
+        self.assertAlmostEqual(converter.compare_confs(occco_1, occco_2, rmsd_score=True), 1.00940798, 5)
 
         occco_3 = {'symbols': ('O', 'C', 'C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
                    'isotopes': (16, 12, 12, 12, 16, 1, 1, 1, 1, 1, 1, 1, 1),
