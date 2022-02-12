@@ -3,7 +3,10 @@
 Credits
 =======
 
-ARC is developed at the `Green Group`__ at MIT.
+ARC is developed at the `Dana Research Group (Technion)`__ and at the `Green Group (MIT)`__.
+
+.. _dana: https://dana.net.technion.ac.il/
+__ dana_
 
 __ greengp_
 
