@@ -760,6 +760,45 @@ class TestCommon(unittest.TestCase):
         rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction=arc_rxn, db=self.rmgdb)
         self.assertTrue(common._check_r_n_p_symbols_between_rmg_and_arc_rxns(arc_rxn, rmg_reactions))
 
+    def test_almost_equal_coords(self):
+        """Test the almost_equal_coords() function"""
+        with self.assertRaises(TypeError):
+            common.almost_equal_coords([1], [2])
+        ch4_a = {'symbols': ('C', 'H', 'H', 'H', 'H'),
+                 'isotopes': (12, 1, 1, 1, 1),
+                 'coords': ((0.0, 0.0, 0.0),
+                            (0.6300326, 0.6300326, 0.6300326),
+                            (-0.6300326, -0.6300326, 0.6300326),
+                            (-0.6300326, 0.6300326, -0.6300326),
+                            (0.6300326, -0.6300326, -0.6300326))}
+        ch4_b = {'symbols': ('H', 'C', 'H', 'H', 'H'),
+                 'isotopes': (1, 12, 1, 1, 1),
+                 'coords': ((0.6300326, 0.6300326, 0.6300326),
+                            (0.0, 0.0, 0.0),
+                            (-0.6300326, -0.6300326, 0.6300326),
+                            (-0.6300326, 0.6300326, -0.6300326),
+                            (0.6300326, -0.6300326, -0.6300326))}
+        ch4_c = {'symbols': ('C', 'H', 'H', 'H', 'H'),
+                 'isotopes': (12, 1, 1, 1, 1),
+                 'coords': ((0.0, 0.0, 0.0),
+                            (0.6300324, 0.6300324, 0.6300324),
+                            (-0.6300324, -0.6300324, 0.6300324),
+                            (-0.6300324, 0.6300324, -0.6300324),
+                            (0.6300324, -0.6300324, -0.6300324))}
+        ch4_d = {'symbols': ('C', 'H', 'H', 'H', 'H'),
+                 'isotopes': (12, 1, 1, 1, 1),
+                 'coords': ((0.0, 0.0, 0.0),
+                            (-0.6300324, -0.6300324, -0.6300324),
+                            (0.6300324, 0.6300324, -0.6300324),
+                            (0.6300324, -0.6300324, 0.6300324),
+                            (-0.6300324, 0.6300324, 0.6300324))}
+        with self.assertRaises(ValueError):
+            common.almost_equal_coords(ch4_a, ch4_b)
+        self.assertTrue(common.almost_equal_coords(ch4_a, ch4_a))
+        self.assertTrue(common.almost_equal_coords(ch4_a, ch4_c))
+        self.assertFalse(common.almost_equal_coords(ch4_a, ch4_d))
+
+
     @classmethod
     def tearDownClass(cls):
         """
