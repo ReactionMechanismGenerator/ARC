@@ -183,6 +183,14 @@ class TestARCSpecies(unittest.TestCase):
                     if index1 < index2:
                         self.assertIn(index2, bond_dict[index1])  # check that these atoms are connected in all mols
 
+    def test_is_monoatomic(self):
+        """Test the is_monoatomic() method."""
+        self.assertFalse(self.spc1.is_monoatomic())
+        self.assertFalse(self.spc2.is_monoatomic())
+        self.assertFalse(self.spc3.is_monoatomic())
+        n_rad = ARCSpecies(label='N', smiles='[N]')
+        self.assertTrue(n_rad.is_monoatomic())
+
     def test_get_xyz(self):
         """Test the get_xyz() method."""
         n3 = ARCSpecies(label='N3', smiles='NNN', xyz=self.n3_xyz, multiplicity=1)
