@@ -528,6 +528,8 @@ class ARCReaction(object):
             rmg_database (RMGDatabase): The RMGDatabase object instance.
             save_order (bool, optional): Whether to retain atomic order of the RMG ``reaction`` object instance.
         """
+        if self.rmg_reaction is None:
+            self.rmg_reaction_from_arc_species()
         if self.rmg_reaction is not None:
             self.family, self.family_own_reverse = rmgdb.determine_reaction_family(rmgdb=rmg_database,
                                                                                    reaction=self.rmg_reaction.copy(),
