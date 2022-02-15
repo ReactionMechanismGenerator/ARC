@@ -4248,7 +4248,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         new_xyz = converter.modify_coords(coords=xyz1, indices=indices, new_value=new_val,
                                           modification_type=modification_type, mol=mol1)
         self.assertTrue(almost_equal_coords_lists(new_xyz, expected_xyz))
-        self.assertEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol1), new_val)
+        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol1), new_val, 5)
 
         # test A_group modification
         indices, new_val = [0, 1, 2], 160
