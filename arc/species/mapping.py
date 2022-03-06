@@ -480,6 +480,7 @@ def map_intra_h_migration(rxn: 'ARCReaction',
 def check_family_for_mapping_function(rxn: 'ARCReaction',
                                       family: str,
                                       db: Optional['RMGDatabase'] = None,
+                                      verbose: bool = True,
                                       ) -> bool:
     """
     Check that the actual reaction family and the desired reaction family are the same.
@@ -488,6 +489,7 @@ def check_family_for_mapping_function(rxn: 'ARCReaction',
         rxn (ARCReaction): An ARCReaction object instance.
         family (str): The desired reaction family to check for.
         db (RMGDatabase, optional): The RMG database instance.
+        verbose (bool): Whether to print a warning if the reaction does not match the family.
 
     Returns:
         bool: Whether the reaction family and the desired ``family`` are consistent.
@@ -495,6 +497,8 @@ def check_family_for_mapping_function(rxn: 'ARCReaction',
     if rxn.family is None:
         rmgdb.determine_family(reaction=rxn, db=db)
     if rxn.family is None or rxn.family.label != family:
+        if verbose:
+            logger.warning(f'Reaction {rxn} does not belong to family {family}.')
         return False
     return True
 
