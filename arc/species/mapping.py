@@ -445,10 +445,14 @@ def map_intra_h_migration(rxn: 'ARCReaction',
     map_ = map_two_species(spc_r_dot, spc_p_dot, backend=backend)
 
     new_map = list()
-    for i, entry in enumerate(map_):
-        if i == r_h_index:
-            new_map.append(p_h_index)
-        new_map.append(entry if entry < p_h_index else entry + 1)
+    if r_h_index == len(map_):
+        new_map = map_ + [p_h_index]
+    else:
+        for i, entry in enumerate(map_):
+            if i == r_h_index:
+                new_map.append(p_h_index)
+            new_map.append(entry if entry < p_h_index else entry + 1)
+
     return new_map
 
 
