@@ -414,17 +414,35 @@ def map_intra_h_migration(rxn: 'ARCReaction',
     """
     if not check_family_for_mapping_function(rxn=rxn, db=db, family='intra_H_migration'):
         return None
+    rxn_fwd, flipped = rxn.copy(), False
 
-    rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction=rxn, backend=backend)
-    r_label_dict, p_label_dict = get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=rxn,
+    rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction=rxn_fwd, backend=backend)
+    r_label_dict, p_label_dict = get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=rxn_fwd,
                                                                                       rmg_reaction=rmg_reactions[0])
+    r_2_index, r_h_index = r_label_dict['*2'], r_label_dict['*3']
+    for neighboring_atom in rxn_fwd.r_species[0].mol.atoms[r_2_index].edges.keys():
+        if rxn_fwd.r_species[0].mol.atoms.index(neighboring_atom) == r_h_index:
+            break
+    else:
+        rxn_fwd = rxn_fwd.flip_reaction()
+        flipped = True
+        rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction=rxn_fwd, backend=backend)
+        r_label_dict, p_label_dict = get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=rxn_fwd,
+                                                                                          rmg_reaction=rmg_reactions[0])
+        r_2_index, r_h_index = r_label_dict['*2'], r_label_dict['*3']
+    for neighboring_atom in rxn_fwd.r_species[0].mol.atoms[r_2_index].edges.keys():
+        if rxn_fwd.r_species[0].mol.atoms.index(neighboring_atom) == r_h_index:
+            break
+    else:
+        logger.warning(f'Intra H migration reaction {rxn} is behaving unexpectedly, could not detect bond between '
+                       f'H*3 and R*2 from either direction.')
+        return None
 
-    r_h_index = r_label_dict['*3']
     p_h_index = p_label_dict['*3']
 
     spc_r = ARCSpecies(label='R',
-                       mol=rxn.r_species[0].mol.copy(deep=True),
-                       xyz=rxn.r_species[0].get_xyz(),
+                       mol=rxn_fwd.r_species[0].mol.copy(deep=True),
+                       xyz=rxn_fwd.r_species[0].get_xyz(),
                        bdes=[(r_label_dict['*2'] + 1, r_label_dict['*3'] + 1)],  # Mark the R(*2)-H(*3) bond for scission.
                        )
     spc_r.final_xyz = spc_r.get_xyz()  # Scissors requires the .final_xyz attribute to be populated.
@@ -433,8 +451,8 @@ def map_intra_h_migration(rxn: 'ARCReaction',
     except SpeciesError:
         return None
     spc_p = ARCSpecies(label='P',
-                       mol=rxn.p_species[0].mol.copy(deep=True),
-                       xyz=rxn.p_species[0].get_xyz(),
+                       mol=rxn_fwd.p_species[0].mol.copy(deep=True),
+                       xyz=rxn_fwd.p_species[0].get_xyz(),
                        bdes=[(p_label_dict['*1'] + 1, p_label_dict['*3'] + 1)],  # Mark the R(*1)-H(*3) bond for scission.
                        )
     spc_p.final_xyz = spc_p.get_xyz()
@@ -453,7 +471,7 @@ def map_intra_h_migration(rxn: 'ARCReaction',
                 new_map.append(p_h_index)
             new_map.append(entry if entry < p_h_index else entry + 1)
 
-    return new_map
+    return flip_map(atom_map=new_map) if flipped else new_map
 
 
 # Mapping functions:
