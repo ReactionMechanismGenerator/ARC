@@ -1248,18 +1248,38 @@ def molecules_from_xyz(xyz: Optional[Union[dict, str]],
         - The respective Molecule object with only single bonds.
         - The respective Molecule object with perceived bond orders.
     """
+#     pass
+#
+#
+# def get_molecules_from_xyz_using_molgraph(xyz: Optional[Union[dict, str]],
+#                                           multiplicity: Optional[int] = None,
+#                                           charge: int = 0,
+#                                           ) -> Tuple[Optional[Molecule], Optional[Molecule]]:
+    """
+    Creating RMG:Molecule objects from xyz with correct atom labeling.
+    Based on the MolGraph.perceive_smiles method.
+    If `multiplicity` is given, the returned species multiplicity will be set to it.
+
+    Args:
+        xyz (dict): The ARC dict format xyz coordinates of the species.
+        multiplicity (int, optional): The species spin multiplicity.
+        charge (int, optional): The species net charge.
+
+    Returns: Tuple[Optional[Molecule], Optional[Molecule]]
+        - The respective Molecule object with only single bonds.
+        - The respective Molecule object with perceived bond orders.
+    """
     if xyz is None:
         return None, None
     xyz = check_xyz_dict(xyz)
-    mol_bo = None
 
-    # 1. Generate a molecule with no bond order information with atoms ordered as in xyz
+    # 1. Generate a molecule with no bond order information with atoms ordered as in xyz.
     mol_graph = MolGraph(symbols=xyz['symbols'], coords=xyz['coords'])
     inferred_connections = mol_graph.infer_connections()
     if inferred_connections:
-        mol_s1 = mol_graph.to_rmg_mol()  # An RMG Molecule with single bonds, atom order corresponds to xyz
+        mol_s1 = mol_graph.to_rmg_mol()  # An RMG Molecule with single bonds, atom order corresponds to xyz.
     else:
-        mol_s1 = s_bonds_mol_from_xyz(xyz)  # An RMG Molecule with single bonds, atom order corresponds to xyz
+        mol_s1 = s_bonds_mol_from_xyz(xyz)  # An RMG Molecule with single bonds, atom order corresponds to xyz.
     if mol_s1 is None:
         logger.error(f'Could not create a 2D graph representation from xyz:\n{xyz_to_str(xyz)}')
         return None, None
@@ -1268,6 +1288,7 @@ def molecules_from_xyz(xyz: Optional[Union[dict, str]],
     mol_s1_updated = update_molecule(mol_s1, to_single_bonds=True)
 
     # 2. Generate a molecule with bond order information using pybel:
+    mol_bo = None
     pybel_mol = xyz_to_pybel_mol(xyz)
     if pybel_mol is not None:
         inchi = pybel_to_inchi(pybel_mol, has_h=bool(len([atom.is_hydrogen() for atom in mol_s1_updated.atoms])))
@@ -1275,9 +1296,12 @@ def molecules_from_xyz(xyz: Optional[Union[dict, str]],
 
     # 3. Generate a molecule with bond order information using xyz_to_smiles.
     if mol_bo is None:
-        smiles_list = xyz_to_smiles(xyz=xyz, charge=charge)
-        if smiles_list is not None:
-            mol_bo = Molecule(smiles=smiles_list[0])
+        try:
+            smiles_list = xyz_to_smiles(xyz=xyz, charge=charge)
+            if smiles_list is not None:
+                mol_bo = Molecule(smiles=smiles_list[0])
+        except:
+            pass
 
     if mol_bo is not None:
         if multiplicity is not None:
@@ -1297,6 +1321,11 @@ def molecules_from_xyz(xyz: Optional[Union[dict, str]],
         except SpeciesError as e:
             logger.warning(f'Cannot infer 2D graph connectivity, failed to set species multiplicity with the '
                            f'following error:\n{e}')
+
+    for mol in [mol_s1_updated, mol_bo]:
+        if mol is not None and mol.multiplicity == 1:
+            for atom in mol.atoms:
+                atom.radical_electrons = 0
 
     return mol_s1_updated, mol_bo
 

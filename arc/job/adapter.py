@@ -49,6 +49,17 @@ default_job_settings, servers, submit_filenames, t_max_format, input_filenames, 
 constraint_type_dict = {2: 'B', 3: 'A', 4: 'D'}
 
 
+# Todo:
+"""
+1. if the list of TSGuesses is exhausted, don't "use the last one" for calculating the rate, it is wrong.
+2. Cluster TSGuesses!
+3. if the TSGuesses are exhausted, try (only once) to generate new ones from stochastic methods, ignoring existing ones (sing clustering)
+
+
+
+"""
+
+
 class JobEnum(str, Enum):
     """
     The supported job software adapters.

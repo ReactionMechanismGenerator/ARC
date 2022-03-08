@@ -1255,15 +1255,15 @@ class TestMapping(unittest.TestCase):
                                        1: {'self': 'S', 'O': [0, 2]},
                                        2: {'self': 'O', 'S': [1]}})
 
-        # so2_t = ARCSpecies(label='SO2', smiles='[O][S]=O', multiplicity=3,  # commented out until atom order of SO2(T) in ARC is fixed
-        #                    xyz={'coords': ((0.02724478716956233, 0.6093829407458188, 0.0),
-        #                                    (-1.3946381818031768, -0.24294788636871906, 0.0),
-        #                                    (1.3673933946336125, -0.36643505437710233, 0.0)),
-        #                         'isotopes': (32, 16, 16), 'symbols': ('S', 'O', 'O')})
-        # fingerprint = mapping.fingerprint(so2_t)
-        # self.assertEqual(fingerprint, {0: {'self': 'S', 'O': [1, 2]},
-        #                                1: {'self': 'O', 'S': [0]},
-        #                                2: {'self': 'O', 'S': [0]}})
+        so2_t = ARCSpecies(label='SO2', smiles='[O][S]=O', multiplicity=3,  # commented out until atom order of SO2(T) in ARC is fixed
+                           xyz={'coords': ((0.02724478716956233, 0.6093829407458188, 0.0),
+                                           (-1.3946381818031768, -0.24294788636871906, 0.0),
+                                           (1.3673933946336125, -0.36643505437710233, 0.0)),
+                                'isotopes': (32, 16, 16), 'symbols': ('S', 'O', 'O')})
+        fingerprint = mapping.fingerprint(so2_t)
+        self.assertEqual(fingerprint, {0: {'self': 'S', 'O': [1, 2]},
+                                       1: {'self': 'O', 'S': [0]},
+                                       2: {'self': 'O', 'S': [0]}})
 
         fingerprint = mapping.fingerprint(self.ccjco)
         self.assertEqual(fingerprint, {0: {'self': 'C', 'C': [1], 'H': [5, 6, 7]},

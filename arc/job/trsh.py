@@ -40,6 +40,12 @@ from arc.parser import (parse_1d_scan_coords,
                         )
 
 
+# todo: pass as job.args['trsh']['server'] etc only if the trsh is not a keyword or a block to be added directly to the ESS input file
+# e.g. send molpro shift as 'trsh' 'shift'
+# molpro trsh vdz
+# trsh scan_trsh
+
+
 logger = get_logger()
 
 
