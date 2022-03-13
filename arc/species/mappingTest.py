@@ -761,6 +761,25 @@ class TestMapping(unittest.TestCase):
         self.assertIn(atom_map[7], [3, 4, 5, 8])
         self.assertIn(atom_map[8], [3, 4, 5, 8])
 
+        # CH2OH <=> CH3O
+        ch2oh_xyz = """C      -0.45684508   -0.05786787   -0.03035793
+                       O       0.82884092   -0.36979664    0.26059161
+                       H      -0.64552049    0.90546331   -0.47022606
+                       H      -1.17752551   -0.82040960    0.21231033
+                       H       0.92128715   -1.25559200    0.65522542"""
+        ch2oh = ARCSpecies(label='reactant', smiles='[CH2]O', xyz=ch2oh_xyz)
+        ch3o_xyz = """C       0.03807240    0.00035621   -0.00484242
+                      O       1.35198769    0.01264937   -0.17195885
+                      H      -0.33965241   -0.14992727    1.02079480
+                      H      -0.51702680    0.90828035   -0.29592912
+                      H      -0.53338088   -0.77135867   -0.54806440"""
+        ch3o = ARCSpecies(label='product', smiles='C[O]', xyz=ch3o_xyz)
+        rxn_1 = ARCReaction(label='reactant <=> product', ts_label='TS1', r_species=[ch2oh], p_species=[ch3o])
+        atom_map_1 = rxn_1.atom_map
+        self.assertEqual(atom_map_1[:2], [0, 1])
+        for index in [2, 3, 4]:
+            self.assertIn(atom_map_1[index], [2, 3, 4])
+
     def test_map_isomerization_reaction(self):
         """Test the map_isomerization_reaction() function."""
         reactant_xyz = """C  -1.3087    0.0068    0.0318
@@ -784,11 +803,11 @@ class TestMapping(unittest.TestCase):
                          H  -1.4329   -0.1554    0.9349"""
         product = ARCSpecies(label='product', smiles='[N-]=[N+]=C(N=O)C', xyz=product_xyz)
         rxn_1 = ARCReaction(label='reactant <=> product', ts_label='TS0', r_species=[reactant], p_species=[product])
-        atom_map = mapping.map_isomerization_reaction(rxn_1)
-        self.assertEqual(atom_map[:6], [0, 1, 2, 3, 4, 5])
-        self.assertIn(atom_map[6], [6, 8])
-        self.assertIn(atom_map[7], [6, 7])
-        self.assertIn(atom_map[8], [7, 8])
+        atom_map_1 = mapping.map_isomerization_reaction(rxn_1)
+        self.assertEqual(atom_map_1[:6], [0, 1, 2, 3, 4, 5])
+        self.assertIn(atom_map_1[6], [6, 8])
+        self.assertIn(atom_map_1[7], [6, 7])
+        self.assertIn(atom_map_1[8], [7, 8])
 
     def test_get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(self):
         """Test the get_atom_indices_of_labeled_atoms_in_an_rmg_reaction() function."""
@@ -1356,10 +1375,10 @@ class TestMapping(unittest.TestCase):
         new_dihedrals_2 = [calculate_dihedral_angle(coords=spc2.get_xyz(),
                                                     torsion=[atom_map[t] for t in rotor_dict['torsion']])
                            for rotor_dict in spc1.rotors_dict.values()]
-        self.assertAlmostEqual(original_dihedrals_1[2], 67.81049913527622)
-        self.assertAlmostEqual(original_dihedrals_2[2], 174.65228274664804)
-        self.assertAlmostEqual(new_dihedrals_1[2], 121.23139159126627)
-        self.assertAlmostEqual(new_dihedrals_2[2], 121.23139016907017)
+        self.assertAlmostEqual(original_dihedrals_1[2], 67.810499, 4)
+        self.assertAlmostEqual(original_dihedrals_2[2], 174.652282, 4)
+        self.assertAlmostEqual(new_dihedrals_1[2], 121.231392, 4)
+        self.assertAlmostEqual(new_dihedrals_2[2], 121.231390, 4)
 
     def test_get_backbone_dihedral_deviation_score(self):
         """Test the get_backbone_dihedral_deviation_score function."""
@@ -1368,7 +1387,7 @@ class TestMapping(unittest.TestCase):
         fingerprint_1, fingerprint_2 = mapping.fingerprint(self.spc1), mapping.fingerprint(self.spc2)
         backbone_map = mapping.identify_superimposable_candidates(fingerprint_1, fingerprint_2)[0]
         score = mapping.get_backbone_dihedral_deviation_score(spc_1=self.spc1, spc_2=self.spc2, backbone_map=backbone_map)
-        self.assertAlmostEqual(score, 106.8417836)
+        self.assertAlmostEqual(score, 106.8417836, 4)
 
     def test_get_backbone_dihedral_angles(self):
         """Test the get_backbone_dihedral_angles function."""
@@ -1377,8 +1396,8 @@ class TestMapping(unittest.TestCase):
         torsions = mapping.get_backbone_dihedral_angles(self.spc1, self.spc2, backbone_map={0: 0, 3: 1, 5: 3, 6: 4, 4: 2})
         self.assertEqual(torsions[0]['torsion 1'], [0, 3, 5, 6])
         self.assertEqual(torsions[0]['torsion 2'], [0, 1, 3, 4])
-        self.assertAlmostEqual(torsions[0]['angle 1'], 67.81049913527622)
-        self.assertAlmostEqual(torsions[0]['angle 2'], 174.65228274664804)
+        self.assertAlmostEqual(torsions[0]['angle 1'], 67.810499, 4)
+        self.assertAlmostEqual(torsions[0]['angle 2'], 174.652283, 4)
 
     def test_map_lists(self):
         """Test the map_lists function."""
