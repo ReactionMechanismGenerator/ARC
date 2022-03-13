@@ -125,26 +125,101 @@ class TestCommon(unittest.TestCase):
 
     def test_determine_top_group_indices(self):
         """Test determining the top group in a molecule"""
-        mol = Molecule(smiles='c1cc(OC)ccc1OC(CC)SF')
-        atom1 = mol.atoms[9]  # this is the C atom at the S, O, H, and C junction
-        atom2a = mol.atoms[10]  # C
-        atom2b = mol.atoms[8]  # O
-        atom2c = mol.atoms[12]  # S
-        atom2d = mol.atoms[21]  # H
+        spc_1 = ARCSpecies(label='spc_1', smiles='CCO', xyz="""C      -0.97459464    0.29181710    0.10303882
+                                                               C       0.39565894   -0.35143697    0.10221676
+                                                               O       0.30253309   -1.63748710   -0.49196889
+                                                               H      -1.68942501   -0.32359616    0.65926091
+                                                               H      -0.93861751    1.28685508    0.55523033
+                                                               H      -1.35943743    0.38135479   -0.91822428
+                                                               H       0.76858330   -0.46187184    1.12485643
+                                                               H       1.10301149    0.25256708   -0.47388355
+                                                               H       1.19485981   -2.02360458   -0.47786539""")
+        top, top_has_heavy_atoms = common.determine_top_group_indices(spc_1.mol,
+                                                                      atom1=spc_1.mol.atoms[0],
+                                                                      atom2=spc_1.mol.atoms[1],
+                                                                      )
+        self.assertEqual(top, [2, 7, 8, 3, 9])
+        top, top_has_heavy_atoms = common.determine_top_group_indices(spc_1.mol,
+                                                                      atom1=spc_1.mol.atoms[0],
+                                                                      atom2=spc_1.mol.atoms[1],
+                                                                      index=0,
+                                                                      )
+        self.assertEqual(top, [1, 6, 7, 2, 8])
 
-        top, top_has_heavy_atoms = common.determine_top_group_indices(mol, atom1, atom2a)
+        spc_2 = ARCSpecies(label='spc_2', smiles='CCl', xyz="""C      -0.13907898   -0.00452380   -0.00236673
+                                                               Cl      1.62669770    0.05291133    0.02768175
+                                                               H      -0.50777491   -0.18308484    1.01009636
+                                                               H      -0.45879122   -0.81430981   -0.66186117
+                                                               H      -0.52105258    0.94900712   -0.37355021""")
+        top, top_has_heavy_atoms = common.determine_top_group_indices(spc_2.mol,
+                                                                      atom1=spc_2.mol.atoms[0],
+                                                                      atom2=spc_2.mol.atoms[1],
+                                                                      index=0,
+                                                                      )
+        self.assertEqual(top, [1])
+
+        spc_3 = ARCSpecies(label='spc_3', smiles='[O]Cl', xyz="""O       0.84074010    0.00000000    0.00000000
+                                                                 Cl     -0.84074010    0.00000000    0.00000000""")
+        top, top_has_heavy_atoms = common.determine_top_group_indices(spc_3.mol,
+                                                                      atom1=spc_3.mol.atoms[0],
+                                                                      atom2=spc_3.mol.atoms[1],
+                                                                      index=0,
+                                                                      )
+        self.assertEqual(top, [1])
+        top, top_has_heavy_atoms = common.determine_top_group_indices(spc_3.mol,
+                                                                      atom1=spc_3.mol.atoms[1],
+                                                                      atom2=spc_3.mol.atoms[0],
+                                                                      index=0,
+                                                                      )
+        self.assertEqual(top, [0])
+
+        spc_4 = ARCSpecies(label='spc_4', smiles='c1cc(OC)ccc1OC(CC)SF',
+                           xyz="""C       0.94215818    0.68259790   -0.88468248
+                                  C       2.26853480    0.67405892   -0.43827136
+                                  C       2.67171279   -0.24624190    0.52623293
+                                  O       3.92802249   -0.36692583    1.05121570
+                                  C       4.91605664    0.53301876    0.56522390
+                                  C       1.73721797   -1.15343774    1.03003385
+                                  C       0.41050395   -1.14495773    0.58353699
+                                  C       0.00403820   -0.21696773   -0.37187302
+                                  O      -1.24786249   -0.09420914   -0.90395655
+                                  C      -2.34211052   -0.74644555   -0.24812824
+                                  C      -3.60183081    0.09941937   -0.49599944
+                                  C      -3.48543146    1.48913951    0.12201008
+                                  S      -2.63174622   -2.42257099   -0.92600337
+                                  F      -3.71723126   -2.90971886    0.13619095
+                                  H       0.63778273    1.40294019   -1.64072806
+                                  H       2.95487566    1.39638959   -0.86636549
+                                  H       4.65183250    1.57078604    0.79400990
+                                  H       5.90677644    0.28085546    0.95761333
+                                  H       4.95383303    0.43163142   -0.52369005
+                                  H       2.04709640   -1.88218094    1.77575511
+                                  H      -0.26284396   -1.88840238    0.99556971
+                                  H      -2.18639696   -0.81327590    0.83508536
+                                  H      -3.77036870    0.22560086   -1.57312199
+                                  H      -4.48612013   -0.39141797   -0.07174634
+                                  H      -2.64439268    2.04641598   -0.30206953
+                                  H      -4.39788184    2.06307772   -0.06860114
+                                  H      -3.34536255    1.42469609    1.20573587""")
+        atom1 = spc_4.mol.atoms[9]  # this is the C atom at the S, O, H, and C junction
+        atom2a = spc_4.mol.atoms[10]  # C
+        atom2b = spc_4.mol.atoms[8]  # O
+        atom2c = spc_4.mol.atoms[12]  # S
+        atom2d = spc_4.mol.atoms[21]  # H
+
+        top, top_has_heavy_atoms = common.determine_top_group_indices(spc_4.mol, atom1, atom2a)
         self.assertEqual(len(top), 7)
         self.assertTrue(top_has_heavy_atoms)
 
-        top, top_has_heavy_atoms = common.determine_top_group_indices(mol, atom1, atom2b)
+        top, top_has_heavy_atoms = common.determine_top_group_indices(spc_4.mol, atom1, atom2b)
         self.assertEqual(len(top), 16)
         self.assertTrue(top_has_heavy_atoms)
 
-        top, top_has_heavy_atoms = common.determine_top_group_indices(mol, atom1, atom2c)
+        top, top_has_heavy_atoms = common.determine_top_group_indices(spc_4.mol, atom1, atom2c)
         self.assertEqual(len(top), 2)
         self.assertTrue(top_has_heavy_atoms)
 
-        top, top_has_heavy_atoms = common.determine_top_group_indices(mol, atom1, atom2d)
+        top, top_has_heavy_atoms = common.determine_top_group_indices(spc_4.mol, atom1, atom2d)
         self.assertEqual(top, [22])
         self.assertFalse(top_has_heavy_atoms)  # H
 
