@@ -19,10 +19,8 @@ from rmgpy.molecule.molecule import Molecule
 import arc.common as common
 from arc.exceptions import InputError, SettingsError
 from arc.imports import settings
-from arc.reaction import ARCReaction
 from arc.rmgdb import make_rmg_database_object, load_families_only
 from arc.species.mapping import get_rmg_reactions_from_arc_reaction
-from arc.species.species import ARCSpecies
 import arc.species.converter as converter
 from arc.reaction import ARCReaction
 from arc.species.species import ARCSpecies
@@ -513,7 +511,6 @@ class TestCommon(unittest.TestCase):
         self.assertFalse(common.is_str_int('.0'))
         self.assertFalse(common.is_str_int('125.84'))
         self.assertFalse(common.is_str_int('0.0'))
-
 
     def test_get_atom_radius(self):
         """Test determining the covalent radius of an atom"""
@@ -1134,7 +1131,6 @@ class TestCommon(unittest.TestCase):
         self.assertTrue(common.almost_equal_coords(ch4_a, ch4_a))
         self.assertTrue(common.almost_equal_coords(ch4_a, ch4_c))
         self.assertFalse(common.almost_equal_coords(ch4_a, ch4_d))
-
 
     @classmethod
     def tearDownClass(cls):
