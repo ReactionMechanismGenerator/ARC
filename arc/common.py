@@ -718,26 +718,63 @@ def extremum_list(lst: list,
                   ) -> Optional[Union[int, None]]:
     """
     A helper function for finding the extremum (either minimum or maximum) of a list of numbers (int/float)
-    where some of the entries might be ``None``.
+    where some entries could be ``None``.
 
     Args:
         lst (list): The list.
         return_min (bool, optional): Whether to return the minimum or the maximum.
                                     ``True`` for minimum, ``False`` for maximum, ``True`` by default.
 
-    Returns: int
+    Returns: Optional[Union[int, None]]
         The entry with the minimal/maximal value.
     """
     if len(lst) == 0:
         return None
-    elif len(lst) == 1:
-        return lst[0]
     elif all([entry is None for entry in lst]):
         return None
+    elif len(lst) == 1:
+        return lst[0]
     if return_min:
         return min([entry for entry in lst if entry is not None])
     else:
         return max([entry for entry in lst if entry is not None])
+
+
+def get_extremum_index(lst: list,
+                       return_min: bool = True,
+                       skip_values: Optional[list] = None
+                       ) -> Optional[Union[int, None]]:
+    """
+    A helper function for finding the extremum (either minimum or maximum) of a list of numbers (int/float)
+    where some entries could be ``None``.
+
+    Args:
+        lst (list): The list.
+        return_min (bool, optional): Whether to return the minimum or the maximum.
+                                    ``True`` for minimum, ``False`` for maximum, ``True`` by default.
+        skip_values (list, optional): Values to skip when checking for extermum, e.g., 0.
+
+    Returns: Optional[Union[int, None]]
+        The index of an entry with the minimal/maximal value.
+    """
+    if len(lst) == 0:
+        return None
+    elif all([entry is None for entry in lst]):
+        return None
+    elif len(lst) == 1:
+        return 0
+    skip_values = skip_values + [None] if skip_values is not None else [None]
+    extremum_index = 0
+    for i, entry in enumerate(lst):
+        if entry in skip_values:
+            continue
+        if return_min:
+            if entry < lst[extremum_index]:
+                extremum_index = i
+        else:
+            if entry > lst[extremum_index]:
+                extremum_index = i
+    return extremum_index
 
 
 def sort_two_lists_by_the_first(list1: List[Union[float, int, None]],
