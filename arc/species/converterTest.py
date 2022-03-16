@@ -3435,7 +3435,7 @@ H      -4.07566100   -0.52115800    0.00003300"""
         rd_mol = converter.to_rdkit_mol(spc1.mol)
         self.assertIsInstance(rd_mol, rdchem.Mol)
         rd_mol_block = Chem.MolToMolBlock(rd_mol).splitlines()
-        self.check_atom_connectivity_in_rd_mol_block(spc1.mol, rd_mol_block)
+        self._check_atom_connectivity_in_rd_mol_block(spc1.mol, rd_mol_block)
 
         xyz = {'symbols': ('O', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
                'isotopes': (16, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
@@ -3458,7 +3458,7 @@ H      -4.07566100   -0.52115800    0.00003300"""
         rd_mol = converter.to_rdkit_mol(spc2.mol)
         self.assertIsInstance(rd_mol, rdchem.Mol)
         rd_mol_block = Chem.MolToMolBlock(rd_mol).splitlines()
-        self.check_atom_connectivity_in_rd_mol_block(spc2.mol, rd_mol_block)
+        self._check_atom_connectivity_in_rd_mol_block(spc2.mol, rd_mol_block)
 
         xyz = {'symbols': ('N', 'N', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C',
                            'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H',
@@ -3514,7 +3514,7 @@ H      -4.07566100   -0.52115800    0.00003300"""
         rd_mol = converter.to_rdkit_mol(spc3.mol)
         self.assertIsInstance(rd_mol, rdchem.Mol)
         rd_mol_block = Chem.MolToMolBlock(rd_mol).splitlines()
-        self.check_atom_connectivity_in_rd_mol_block(spc3.mol, rd_mol_block)
+        self._check_atom_connectivity_in_rd_mol_block(spc3.mol, rd_mol_block)
 
     def test_xyz_to_ase(self):
         """Test the xyz_to_ase function"""
@@ -3548,8 +3548,62 @@ H      -4.07566100   -0.52115800    0.00003300"""
                         }
         self.assertEqual(expected_xyz, converter.translate_xyz(xyz_dict=self.xyz1['dict'], translation=(1, 0, 3)))
 
-    def check_atom_connectivity_in_rd_mol_block(self, rmg_mol, rd_mol_block):
-        """A helper function for testing"""
+    def test_displace_xyz(self):
+        """Test the displace_xyz() function."""
+        xyz = {'symbols': ('N', 'H', 'H', 'N', 'H', 'H', 'N', 'H'), 'isotopes': (14, 1, 1, 14, 1, 1, 14, 1),
+               'coords': ((-0.447353, 0.680147, -0.090895), (-0.451171, 1.142121, 0.814701),
+                          (0.674665, 0.380874, -0.232312), (-1.228559, -0.471121, -0.003769),
+                          (-1.815912, -0.503291, 0.815499), (-1.782278, -0.570663, -0.841674),
+                          (1.909708, -0.148579, -0.070033), (1.740013, -0.849123, 0.669738))}
+        displacement = np.array([[-0.03, -0.02, -0.0], [0.04, -0.08, 0.05], [0.92, -0.34, 0.08], [0.0, 0.04, 0.0],
+                                 [0.0, -0.05, 0.01], [0.09, -0.09, -0.04], [-0.05, 0.02, -0.01], [0.0, 0.03, -0.01]],
+                                np.float64)
+        xyz_1, xyz_2 = converter.displace_xyz(xyz=xyz, displacement=displacement)
+        expected_xyz_1 = {'symbols': ('N', 'H', 'H', 'N', 'H', 'H', 'N', 'H'), 'isotopes': (14, 1, 1, 14, 1, 1, 14, 1),
+                          'coords': ((-0.4754185110901118, 0.6614366592732588, -0.090895),
+                                     (-0.44113195107970876, 1.1220429021594176, 0.827249811150364),
+                                     (0.9055631251666977, 0.29554208417752476, -0.2122339021594176),
+                                     (-1.228559, -0.43370031854651764, -0.003769),
+                                     (-1.815912, -0.515839811150364, 0.8180087622300728),
+                                     (-1.7596901399293448, -0.5932508600706552, -0.8517130489202912),
+                                     (1.862932148183147, -0.1298686592732588, -0.07938817036337059),
+                                     (1.740013, -0.8415937133097816, 0.6672282377699272))}
+        expected_xyz_2 = {'symbols': ('N', 'H', 'H', 'N', 'H', 'H', 'N', 'H'), 'isotopes': (14, 1, 1, 14, 1, 1, 14, 1),
+                          'coords': ((-0.4192874889098882, 0.6988573407267411, -0.090895),
+                                     (-0.4612100489202912, 1.1621990978405823, 0.802152188849636),
+                                     (0.44376687483330224, 0.4662059158224752, -0.2523900978405824),
+                                     (-1.228559, -0.5085416814534824, -0.003769),
+                                     (-1.815912, -0.49074218884963605, 0.8129892377699272),
+                                     (-1.8048658600706553, -0.5480751399293449, -0.8316349510797089),
+                                     (1.956483851816853, -0.16728934072674118, -0.060677829636629405),
+                                     (1.740013, -0.8566522866902183, 0.6722477622300729))}
+        self.assertEqual(xyz_1, expected_xyz_1)
+        self.assertEqual(xyz_2, expected_xyz_2)
+
+        xyz_1, xyz_2 = converter.displace_xyz(xyz=xyz, displacement=displacement, amplitude=0.5)
+        expected_xyz_1 = {'symbols': ('N', 'H', 'H', 'N', 'H', 'H', 'N', 'H'), 'isotopes': (14, 1, 1, 14, 1, 1, 14, 1),
+                          'coords': ((-0.5034840221802236, 0.6427263185465175, -0.090895),
+                                     (-0.4310929021594176, 1.101964804318835, 0.839798622300728),
+                                     (1.1364612503333955, 0.2102101683550495, -0.19215580431883517),
+                                     (-1.228559, -0.39627963709303526, -0.003769),
+                                     (-1.815912, -0.528388622300728, 0.8205185244601456),
+                                     (-1.7371022798586897, -0.6158387201413105, -0.8617520978405825),
+                                     (1.816156296366294, -0.11115831854651761, -0.08874334072674119),
+                                     (1.740013, -0.8340644266195631, 0.6647184755398544))}
+        expected_xyz_2 = {'symbols': ('N', 'H', 'H', 'N', 'H', 'H', 'N', 'H'), 'isotopes': (14, 1, 1, 14, 1, 1, 14, 1),
+                          'coords': ((-0.3912219778197764, 0.7175676814534824, -0.090895),
+                                     (-0.4712490978405824, 1.1822771956811648, 0.789603377699272),
+                                     (0.21286874966660452, 0.5515378316449505, -0.2724681956811648),
+                                     (-1.228559, -0.5459623629069648, -0.003769),
+                                     (-1.815912, -0.47819337769927206, 0.8104794755398543),
+                                     (-1.8274537201413104, -0.5254872798586896, -0.8215959021594176),
+                                     (2.003259703633706, -0.18599968145348236, -0.05132265927325881),
+                                     (1.740013, -0.8641815733804368, 0.6747575244601457))}
+        self.assertEqual(xyz_1, expected_xyz_1)
+        self.assertEqual(xyz_2, expected_xyz_2)
+
+    def _check_atom_connectivity_in_rd_mol_block(self, rmg_mol, rd_mol_block):
+        """An internal helper function for testing."""
         for line in rd_mol_block:
             splits = line.split()
             if len(splits) == 4:
@@ -3557,7 +3611,7 @@ H      -4.07566100   -0.52115800    0.00003300"""
                 self.assertIn(rmg_mol.atoms[index1], list(rmg_mol.atoms[index2].edges.keys()))
 
     def test_rdkit_conf_from_mol(self):
-        """Test rdkit_conf_from_mol"""
+        """Test the rdkit_conf_from_mol() function."""
         b_mol = converter.molecules_from_xyz(self.xyz5['dict'])[1]
         conf, rd_mol = converter.rdkit_conf_from_mol(mol=b_mol, xyz=self.xyz5['dict'])
         self.assertTrue(conf.Is3D())
