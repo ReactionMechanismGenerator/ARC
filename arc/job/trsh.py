@@ -25,7 +25,8 @@ from arc.job.local import execute_command
 from arc.job.ssh import SSHClient
 from arc.species import ARCSpecies
 from arc.species.conformers import determine_smallest_atom_index_in_scan
-from arc.species.converter import (ics_to_scan_constraints,
+from arc.species.converter import (displace_xyz,
+                                   ics_to_scan_constraints,
                                    xyz_from_data,
                                    xyz_to_coords_list,
                                    )
@@ -506,13 +507,10 @@ def trsh_negative_freq(label: str,
         freqs_list = freqs.tolist()
         current_neg_freqs_trshed = [round(freqs_list[i], 2) for i in neg_freqs_idx]  # record trshed negative freqs
         xyz = parse_xyz_from_file(log_file)
-        coords = np.array(xyz_to_coords_list(xyz), np.float64)
         for neg_freq_idx in neg_freqs_idx:
-            displacement = normal_modes_disp[neg_freq_idx]
-            coords1 = coords + factor * displacement
-            coords2 = coords - factor * displacement
-            conformers.append(xyz_from_data(coords=coords1, symbols=xyz['symbols']))
-            conformers.append(xyz_from_data(coords=coords2, symbols=xyz['symbols']))
+            xyz_1, xyz_2 = displace_xyz(xyz=xyz, displacement=normal_modes_disp[neg_freq_idx])
+            conformers.append(xyz_1)
+            conformers.append(xyz_2)
     return current_neg_freqs_trshed, conformers, output_errors, output_warnings
 
 
