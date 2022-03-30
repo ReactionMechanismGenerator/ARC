@@ -1778,31 +1778,11 @@ class ARCSpecies(object):
         mol2.update(raise_atomtype_exception=False)
 
         # match xyz to mol:
-        if len(mol1.atoms) != len(mol2.atoms):
-            # easy
+        if len(mol1.atoms) != len(mol2.atoms): # easy
             if len(mol1.atoms) != len(top1):
                 xyz1, xyz2 = xyz2, xyz1
-<<<<<<< HEAD
-        else:
-            # harder
-            element_dict_mol1, element_dict_top1 = dict(), dict()
-            for atom in mol1.atoms:
-                if atom.element.symbol in element_dict_mol1:
-                    element_dict_mol1[atom.element.symbol] += 1
-                else:
-                    element_dict_mol1[atom.element.symbol] = 1
-            for i in top1:
-                atom = mol_copy.atoms[i - 1]
-                if atom.element.symbol in element_dict_top1:
-                    element_dict_top1[atom.element.symbol] += 1
-                else:
-                    element_dict_top1[atom.element.symbol] = 1
-            for element, count in element_dict_mol1.items():
-                if element not in element_dict_top1 or count != element_dict_top1[element]:
-                    xyz1, xyz2 = xyz2, xyz1
 
-=======
-        elif not mol1.is_isomorphic(mol2): #now we can assume that mol1 != mol2
+        elif not mol1.is_isomorphic(mol2): #Harder, but now we can assume that mol1 != mol2.
             # harder
             if not is_xyz_mol_match(mol1,xyz1):
                 xyz1,xyz2 = xyz2,xyz1
@@ -1811,7 +1791,7 @@ class ARCSpecies(object):
                 raise SpeciesError(f'Could not match the cut products '
                                    f'due to scission in {self.label}')
             
->>>>>>> 70aa7dc0... corrected an error, there is still work to do but the issue is solved :)
+
         spc1 = ARCSpecies(label=label1,
                           mol=mol1,
                           xyz=xyz1,
@@ -1834,9 +1814,7 @@ class ARCSpecies(object):
         return [spc1, spc2]
 
 
-<<<<<<< HEAD
-=======
-def is_xyz_mol_match(mol,xyz)->Boolean:
+def is_xyz_mol_match(mol,xyz):
     """
     A helper function that matches rmgpy.molecule.molecule.Molecule object to an xyz, used in _scissors to match xyz and the cut products.
     
@@ -1876,7 +1854,6 @@ def is_xyz_mol_match(mol,xyz)->Boolean:
     return True
 
 
->>>>>>> 70aa7dc0... corrected an error, there is still work to do but the issue is solved :)
 class TSGuess(object):
     """
     TSGuess class
