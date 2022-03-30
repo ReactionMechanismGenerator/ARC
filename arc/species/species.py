@@ -1782,6 +1782,7 @@ class ARCSpecies(object):
             # easy
             if len(mol1.atoms) != len(top1):
                 xyz1, xyz2 = xyz2, xyz1
+<<<<<<< HEAD
         else:
             # harder
             element_dict_mol1, element_dict_top1 = dict(), dict()
@@ -1800,6 +1801,17 @@ class ARCSpecies(object):
                 if element not in element_dict_top1 or count != element_dict_top1[element]:
                     xyz1, xyz2 = xyz2, xyz1
 
+=======
+        elif not mol1.is_isomorphic(mol2): #now we can assume that mol1 != mol2
+            # harder
+            if not is_xyz_mol_match(mol1,xyz1):
+                xyz1,xyz2 = xyz2,xyz1
+
+            if not is_xyz_mol_match(mol1,xyz1):
+                raise SpeciesError(f'Could not match the cut products '
+                                   f'due to scission in {self.label}')
+            
+>>>>>>> 70aa7dc0... corrected an error, there is still work to do but the issue is solved :)
         spc1 = ARCSpecies(label=label1,
                           mol=mol1,
                           xyz=xyz1,
@@ -1822,6 +1834,49 @@ class ARCSpecies(object):
         return [spc1, spc2]
 
 
+<<<<<<< HEAD
+=======
+def is_xyz_mol_match(mol,xyz)->Boolean:
+    """
+    A helper function that matches rmgpy.molecule.molecule.Molecule object to an xyz, used in _scissors to match xyz and the cut products.
+    
+        Args:
+            mol: rmg Molecule object
+            xyz: coordinates of the cut product
+
+        Returns: list
+            True if the xyz and mol matches, False if not
+    Strategy:
+        TBD
+    """
+
+    element_dict_mol,element_dict_xyz = dict(), dict()
+    for atom in mol.atoms:
+        if atom.element.symbol in element_dict_mol:
+            element_dict_mol[atom.element.symbol] += 1
+        else:
+            element_dict_mol[atom.element.symbol] = 1
+    
+
+    for atom in xyz['symbols']:
+        if atom in element_dict_xyz:
+            element_dict_xyz[atom] += 1
+        else:
+            element_dict_xyz[atom] = 1
+    
+    print(element_dict_mol,element_dict_xyz)
+    
+    for element,count in element_dict_mol.items():
+        if element not in element_dict_xyz or element_dict_xyz[element] != count:
+            return False
+    
+    # Up to here, we know that the mol and xyz shares composition but we do not know about the connectivity.
+    # The problem with connectivity is that we can't find radicals from the xyz alone.
+
+    return True
+
+
+>>>>>>> 70aa7dc0... corrected an error, there is still work to do but the issue is solved :)
 class TSGuess(object):
     """
     TSGuess class

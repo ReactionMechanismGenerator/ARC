@@ -1309,6 +1309,21 @@ H       1.11582953    0.94384729   -0.10134685"""
                                                                       charge=spc.charge)[1]))
         self.assertTrue(any(spc.mol.to_smiles() == 'CO[NH]' for spc in spc_list))
 
+<<<<<<< HEAD
+=======
+        p_1_xyz = {'symbols': ('O', 'Cl'), 'isotopes': (16, 35),
+                   'coords': ((0.8407400963991551, 0.0, 0.0), (-0.8407400963991551, 0.0, 0.0))}
+        spc1 = ARCSpecies(label="R3-X2", smiles="[O]Cl",bdes=[(1, 2)])
+        spc1.final_xyz = spc1.get_xyz()
+        spcs = spc1.scissors()
+        multiplicity= [mult.multiplicity for mult in spcs]
+        self.assertIn(2,multiplicity)
+        self.assertIn(3,multiplicity)
+        
+
+
+
+>>>>>>> 70aa7dc0... corrected an error, there is still work to do but the issue is solved :)
     def test_net_charged_species(self):
         """Test that we can define, process, and manipulate ions"""
         nh4 = ARCSpecies(label='NH4', smiles='[NH4+]', charge=1)
