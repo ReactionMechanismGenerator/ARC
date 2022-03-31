@@ -1842,8 +1842,6 @@ def is_xyz_mol_match(mol,xyz):
         else:
             element_dict_xyz[atom] = 1
     
-    print(element_dict_mol,element_dict_xyz)
-    
     for element,count in element_dict_mol.items():
         if element not in element_dict_xyz or element_dict_xyz[element] != count:
             return False
