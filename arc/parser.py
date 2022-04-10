@@ -127,7 +127,7 @@ def parse_normal_mode_displacement(path: str,
         NotImplementedError: If the parser is not implemented for the ESS this log file belongs to.
 
     Returns: Tuple[np.ndarray, np.ndarray]
-        The frequencies (in cm^-1) and The normal displacement modes.
+        The frequencies (in cm^-1) and the normal mode displacements.
     """
     software = software or determine_ess(path)
     freqs, normal_mode_disp, normal_mode_disp_entries = list(), list(), list()
@@ -135,13 +135,13 @@ def parse_normal_mode_displacement(path: str,
     with open(path, 'r') as f:
         lines = f.readlines()
     if software == 'gaussian':
-        parse, parse_normal_modes_disp = False, False
+        parse, parse_normal_mode_disp = False, False
         for line in lines:
             if 'Harmonic frequencies (cm**-1)' in line:
                 # e.g.:  Harmonic frequencies (cm**-1), IR intensities (KM/Mole), Raman scattering
                 parse = True
             if parse and len(line.split()) in [0, 1, 3]:
-                parse_normal_modes_disp = False
+                parse_normal_mode_disp = False
                 normal_mode_disp.extend(normal_mode_disp_entries)
                 normal_mode_disp_entries = list()
             if parse and 'Frequencies --' in line:
@@ -150,7 +150,7 @@ def parse_normal_mode_displacement(path: str,
                 freqs.extend(float(freq) for freq in splits[2:])
                 num_of_freqs_per_line = len(splits) - 2
                 normal_mode_disp_entries = list()
-            elif parse_normal_modes_disp:
+            elif parse_normal_mode_disp:
                 # parsing, e.g.:
                 #   Atom  AN      X      Y      Z        X      Y      Z        X      Y      Z
                 #      1   6    -0.00   0.00  -0.09    -0.00   0.00  -0.18     0.00  -0.00  -0.16
@@ -161,11 +161,11 @@ def parse_normal_mode_displacement(path: str,
                         normal_mode_disp_entries.append(list())
                     normal_mode_disp_entries[i].append(splits[3 * i: 3 * i + 3])
             elif parse and 'Atom  AN      X      Y      Z' in line:
-                parse_normal_modes_disp = True
+                parse_normal_mode_disp = True
             elif parse and not line or '-------------------' in line:
                 parse = False
     elif raise_error:
-        raise NotImplementedError(f'parse_normal_modes_displacement() is currently not implemented for {software}.')
+        raise NotImplementedError(f'parse_normal_mode_displacement() is currently not implemented for {software}.')
     freqs = np.array(freqs, np.float64)
     normal_mode_disp = np.array(normal_mode_disp, np.float64)
     return freqs, normal_mode_disp
