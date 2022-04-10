@@ -2,7 +2,7 @@
 A module for representing a reaction.
 """
 
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 from rmgpy.reaction import Reaction
 from rmgpy.species import Species
@@ -759,6 +759,30 @@ class ARCReaction(object):
                 products.extend([Species(label=p_spc.label, molecule=[p_spc.mol])] *
                                 self.get_species_count(species=p_spc, well=1))
         return reactants, products
+
+    def get_expected_changing_bonds(self,
+                                    r_label_dict: Dict[str, int],
+                                    ) -> Tuple[Optional[List[Tuple[int, ...]]], Optional[List[Tuple[int, ...]]]]:
+        """
+        Get the expected forming and breaking bonds from the RMG reaction template.
+
+        Args:
+            r_label_dict (Dict[str, int]): The RMG reaction atom labels and corresponding atom indices
+                                           of atoms in a TemplateReaction.
+
+        Returns:
+            Tuple[List[Tuple[int, ...]], List[Tuple[int, ...]]]:
+                A list of tuples of atom indices representing breaking and forming bonds.
+        """
+        if self.family is None:
+            return None, None
+        template_recipe_actions = self.family.forward_recipe.actions
+        # E.g.: [['BREAK_BOND', '*1', 1, '*2'], ['FORM_BOND', '*2', 1, '*3'], ['GAIN_RADICAL', '*1', '1']]
+        expected_breaking_bonds = [tuple(sorted([r_label_dict[action[1]], r_label_dict[action[3]]]))
+                                   for action in template_recipe_actions if action[0] == 'BREAK_BOND']
+        expected_forming_bonds = [tuple(sorted([r_label_dict[action[1]], r_label_dict[action[3]]]))
+                                  for action in template_recipe_actions if action[0] == 'FORM_BOND']
+        return expected_breaking_bonds, expected_forming_bonds
 
     def get_single_mapped_product_xyz(self):
         """
