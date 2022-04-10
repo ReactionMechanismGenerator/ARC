@@ -824,6 +824,26 @@ def sort_two_lists_by_the_first(list1: List[Union[float, int, None]],
     return sorted_list1, sorted_list2
 
 
+def check_that_all_entries_are_in_list(list_1: Union[list, tuple], list_2: Union[list, tuple]) -> bool:
+    """
+    Check that all entries from ``list_2`` are in ``list_1``, and that the lists are the same length.
+    Useful for testing that two lists are equal regardless of entry order.
+
+    Args:
+        list_1 (list, tuple): Entries are floats or ints (could also be None).
+        list_2 (list, tuple): Entries could be anything.
+
+    Returns: bool
+        Whether all entries from ``list_2`` are in ``list_1`` and the lists are the same length.
+    """
+    if len(list_1) != len(list_2):
+        return False
+    for entry in list_2:
+        if entry not in list_1:
+            return False
+    return True
+
+
 def key_by_val(dictionary: dict,
                value: Any,
                ) -> Any:
