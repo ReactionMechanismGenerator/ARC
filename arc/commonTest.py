@@ -476,6 +476,21 @@ class TestCommon(unittest.TestCase):
         self.assertEqual(list1, [])
         self.assertEqual(list2, [])
 
+    def test_check_that_all_entries_are_in_list(self):
+        """Test the check_that_all_entries_are_in_list() function."""
+        list_1 = [2, 5]
+        list_2 = [5, 2]
+        self.assertTrue(common.check_that_all_entries_are_in_list(list_1, list_2))
+        list_1 = [2, 5, 6]
+        list_2 = [2, 5]
+        self.assertFalse(common.check_that_all_entries_are_in_list(list_1, list_2))
+        list_1 = [2, 6]
+        list_2 = [2, 5]
+        self.assertFalse(common.check_that_all_entries_are_in_list(list_1, list_2))
+        list_1 = [(0, 1), (1, 2), (1, 3), (0, 4), (0, 5), (2, 6), (0, 7), (2, 9), (2, 8)]
+        list_2 = [(0, 1), (1, 3), (0, 4), (2, 6), (0, 7), (1, 2), (2, 9), (0, 5), (2, 8)]
+        self.assertTrue(common.check_that_all_entries_are_in_list(list_1, list_2))
+
     def test_is_notebook(self):
         """Test whether ARC is being called from an IPython notebook"""
         is_notebook = common.is_notebook()
