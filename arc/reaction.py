@@ -784,6 +784,25 @@ class ARCReaction(object):
                                   for action in template_recipe_actions if action[0] == 'FORM_BOND']
         return expected_breaking_bonds, expected_forming_bonds
 
+    def get_number_of_atoms_in_reaction_zone(self) -> Optional[int]:
+        """
+        Get the number of atoms that participate in the reaction zone according to the reaction's RMG recipe.
+
+        Returns:
+            int: The number of atoms that participate in the reaction zone.
+        """
+        if self.family is None:
+            return None
+        template_recipe_actions = self.family.forward_recipe.actions
+        # E.g.: [['BREAK_BOND', '*1', 1, '*2'], ['FORM_BOND', '*2', 1, '*3'], ['GAIN_RADICAL', '*1', '1']
+        labels = list()
+        for action in template_recipe_actions:
+            for entry in action:
+                if isinstance(entry, str) and '*' in entry:
+                    labels.append(entry)
+        labels = set(labels)
+        return len(labels)
+
     def get_single_mapped_product_xyz(self):
         """
         Get a copy of the product species with mapped cartesian coordinates of a reaction with a single product.
