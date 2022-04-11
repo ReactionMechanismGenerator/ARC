@@ -626,6 +626,24 @@ class TestARCReaction(unittest.TestCase):
         self.assertEqual(expected_breaking_bonds, [(2, 6)])
         self.assertEqual(expected_forming_bonds, [(1, 6)])
 
+    def test_get_number_of_atoms_in_reaction_zone(self):
+        """Test the get_number_of_atoms_in_reaction_zone() method."""
+        for rxn in [self.rxn1, self.rxn2, self.rxn3, self.rxn4, self.rxn5, self.rxn6, self.rxn7, self.rxn8,
+                    self.rxn9, self.rxn10, self.rxn11]:
+            if rxn.family is None:
+                rxn.determine_family(self.rmgdb)
+        self.assertEqual(self.rxn1.get_number_of_atoms_in_reaction_zone(), 3)  # H_Abstraction
+        self.assertEqual(self.rxn2.get_number_of_atoms_in_reaction_zone(), 4)  # Disprop
+        self.assertEqual(self.rxn3.get_number_of_atoms_in_reaction_zone(), 3)
+        self.assertEqual(self.rxn4.get_number_of_atoms_in_reaction_zone(), 3)
+        self.assertEqual(self.rxn5.get_number_of_atoms_in_reaction_zone(), 3)
+        self.assertEqual(self.rxn6.get_number_of_atoms_in_reaction_zone(), 4)  # Disprop
+        self.assertEqual(self.rxn7.get_number_of_atoms_in_reaction_zone(), 3)
+        self.assertEqual(self.rxn8.get_number_of_atoms_in_reaction_zone(), 3)
+        self.assertEqual(self.rxn9.get_number_of_atoms_in_reaction_zone(), 5)  # HO2_Elimination_from_PeroxyRadical
+        self.assertEqual(self.rxn10.get_number_of_atoms_in_reaction_zone(), 3)
+        self.assertEqual(self.rxn11.get_number_of_atoms_in_reaction_zone(), 3)
+
     def test_get_atom_map(self):
         """Test getting an atom map for a reaction"""
 
