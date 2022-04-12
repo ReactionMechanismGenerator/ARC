@@ -306,6 +306,11 @@ species:
       - 3
       - 4
       - 1
+      torsion:
+      - 4
+      - 2
+      - 3
+      - 0
       scan_path: arc/testing/restart/1_restart_thermo/scan_a19049.out
       success: true
       symmetry: 6
@@ -373,6 +378,11 @@ species:
       - 1
       - 2
       - 4
+      torsion:
+      - 2
+      - 0
+      - 1
+      - 3
       scan_path: arc/testing/restart/1_restart_thermo/scan_a19034.out
       success: true
       symmetry: 1
@@ -445,6 +455,11 @@ species:
       - 1
       - 2
       - 5
+      torsion:
+      - 2
+      - 0
+      - 1
+      - 4
       scan_path: arc/testing/restart/1_restart_thermo/scan_a19040.out
       success: false
       times_dihedral_set: 0
