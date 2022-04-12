@@ -2,6 +2,7 @@ allow_nonisomorphic_2d: false
 calc_freq_factor: false
 compare_to_rmg: false
 composite_method: ''
+bac_type: null
 conformer_level:
   auxiliary_basis: ''
   basis: def2svp
@@ -33,7 +34,7 @@ job_types:
   sp: true
 level_of_theory: ''
 max_job_time: 120
-arkane_level_of_theory: wb97xd/augccpvtz
+arkane_level_of_theory: wb97xd/aug-cc-pvtz
 opt_level:
   auxiliary_basis: ''
   basis: def2tzvp
@@ -460,8 +461,13 @@ species:
   optical_isomers: null
   run_time: 348.0
   rxn_label: NH2 + N2H3 <=> NH + N2H4
+  rxn_zone_atom_indices:
+  - 2
+  - 6
+  - 3
   successful_methods: []
   t1: null
+  tsg_spawned: true
   ts_conf_spawned: true
   ts_guesses:
   - energy: null
@@ -824,9 +830,16 @@ species:
   ts_report: |-
     TS method summary for TS0 in NH2 + N2H3 <=> NH + N2H4
     Methods that successfully generated a TS guess:
-
     The method that generated the best TS guess and its output used for the optimization: user guess 0
   unsuccessful_methods: []
+  ts_checks:
+    E0: true
+    e_elect: true
+    IRC: true
+    freq: true
+    normal_mode_displacement: true
+    warnings: ''
+
 specific_job_type: ''
 ts_guess_level:
   auxiliary_basis: ''
