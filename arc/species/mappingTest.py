@@ -930,6 +930,29 @@ class TestMapping(unittest.TestCase):
         self.assertEqual(p_dict, {'*1': 1, '*3': 9, '*2': 16})
         self.assertTrue(_check_r_n_p_symbols_between_rmg_and_arc_rxns(rxn_3, rmg_reactions))
 
+        # EA + H <=> CH3CHNH2 + H2
+        r_1 = ARCSpecies(label='EA', smiles='NCC', xyz="""N                  1.27511929   -0.21413688   -0.09829069
+                                                          C                  0.04568411    0.51479456    0.24529057
+                                                          C                 -1.17314611   -0.39875221    0.01838707
+                                                          H                  1.35437220   -1.02559828    0.48071654
+                                                          H                  1.24076865   -0.49175940   -1.05836661
+                                                          H                 -0.03911651    1.38305825   -0.37424716
+                                                          H                  0.08243929    0.81185065    1.27257181
+                                                          H                 -1.08834550   -1.26701591    0.63792481
+                                                          H                 -2.06804111    0.13183054    0.26847684
+                                                          H                 -1.20990129   -0.69580830   -1.00889416""")
+        r_2 = ARCSpecies(label='H', smiles='[H]')
+        p_1 = ARCSpecies(label='CH3CHNH2', smiles='C[CH]N')
+        p_2 = ARCSpecies(label='H2', smiles='[H][H]')
+        rxn_4 = ARCReaction(reactants=['EA', 'H'], products=['CH3CHNH2', 'H2'],
+                            r_species=[r_1, r_2], p_species=[p_1, p_2])
+        determine_family(rxn_4, db=self.rmgdb)
+        rmg_reactions = mapping.get_rmg_reactions_from_arc_reaction(arc_reaction=rxn_4, db=self.rmgdb)
+        r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=rxn_4,
+                                                                                      rmg_reaction=rmg_reactions[0])
+        self.assertEqual(r_dict, {'*3': 10, '*1': 1, '*2': 5})
+        self.assertTrue(_check_r_n_p_symbols_between_rmg_and_arc_rxns(rxn_4, rmg_reactions))
+
     def test_map_arc_rmg_species(self):
         """Test the map_arc_rmg_species() function."""
         r_map, p_map = mapping.map_arc_rmg_species(arc_reaction=ARCReaction(r_species=[ARCSpecies(label='CCjC', smiles='C[CH]C')],
