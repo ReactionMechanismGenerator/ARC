@@ -73,6 +73,26 @@ class TestARCReaction(unittest.TestCase):
         cls.h2o_xyz = """O      -0.00032832    0.39781490    0.00000000
                          H      -0.76330345   -0.19953755    0.00000000
                          H       0.76363177   -0.19827735    0.00000000"""
+        cls.ch3chch3_xyz = """C                  0.50180491   -0.93942231   -0.57086745
+                              C                  0.01278145    0.13148427    0.42191407
+                              C                 -0.86874485    1.29377369   -0.07163907
+                              H                  0.28549447    0.06799101    1.45462711
+                              H                  1.44553946   -1.32386345   -0.24456986
+                              H                  0.61096295   -0.50262210   -1.54153222
+                              H                 -0.24653265    2.11136864   -0.37045418
+                              H                 -0.21131163   -1.73585284   -0.61629002
+                              H                 -1.51770930    1.60958621    0.71830245
+                              H                 -1.45448167    0.96793094   -0.90568876"""
+        cls.ch3ch2ch2_xyz = """C                  0.48818717   -0.94549701   -0.55196729
+                               C                  0.35993708    0.29146456    0.35637075
+                               C                 -0.91834764    1.06777042   -0.01096751
+                               H                  0.30640232   -0.02058840    1.37845537
+                               H                  1.37634603   -1.48487836   -0.29673876
+                               H                  0.54172192   -0.63344406   -1.57405191
+                               H                  1.21252186    0.92358349    0.22063264
+                               H                 -0.36439762   -1.57761595   -0.41622918
+                               H                 -1.43807526    1.62776079    0.73816131
+                               H                 -1.28677889    1.04716138   -1.01532486"""
         cls.rxn1 = ARCReaction(reactants=['CH4', 'OH'], products=['CH3', 'H2O'],
                                rmg_reaction=Reaction(reactants=[Species(label='CH4', smiles='C'),
                                                                 Species(label='OH', smiles='[OH]')],
@@ -124,6 +144,8 @@ class TestARCReaction(unittest.TestCase):
                                                                  Species(label='NO2', smiles='O=[N+][O-]')],
                                                       products=[Species(label='HNO2', smiles='[O-][NH+]=O'),
                                                                 Species(label='NO', smiles='[N]=O')]))
+        cls.rxn11 = ARCReaction(r_species=[ARCSpecies(label='C[CH]C', smiles='C[CH]C', xyz=cls.ch3chch3_xyz)],
+                                p_species=[ARCSpecies(label='[CH2]CC', smiles='[CH2]CC', xyz=cls.ch3ch2ch2_xyz)])
 
     def test_str(self):
         """Test the string representation of the object"""
@@ -595,6 +617,14 @@ class TestARCReaction(unittest.TestCase):
         self.assertEqual(len(reactants), 2)
         self.assertEqual(len(products), 2)
         self.assertNotEqual(products[0].label, products[1].label)
+
+    def test_get_expected_changing_bonds(self):
+        """Test the get_expected_changing_bonds() method."""
+        self.rxn11.determine_family(self.rmgdb)
+        expected_breaking_bonds, expected_forming_bonds = self.rxn11.get_expected_changing_bonds(
+            r_label_dict={'*1': 1, '*2': 2, '*3': 6})
+        self.assertEqual(expected_breaking_bonds, [(2, 6)])
+        self.assertEqual(expected_forming_bonds, [(1, 6)])
 
     def test_get_atom_map(self):
         """Test getting an atom map for a reaction"""
