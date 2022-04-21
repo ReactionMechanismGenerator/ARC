@@ -450,6 +450,19 @@ def translate_xyz(xyz_dict: dict,
     return new_xyz
 
 
+def get_element_mass_from_xyz(xyz: dict) -> List[float]:
+    """
+    Get a list of element masses corresponding to the given ``xyz`` considering isotopes.
+
+    Args:
+        xyz (dict): The coordinates.
+
+    Returns:
+        List[float]: The corresponding list of mass in amu.
+    """
+    return [get_element_mass(symbol, isotope)[0] for symbol, isotope in zip(xyz['symbols'], xyz['isotopes'])]
+
+
 def rmg_conformer_to_xyz(conformer):
     """
     Convert xyz coordinates from an rmgpy.statmech.Conformer object into the ARC dict xyz style.
@@ -502,7 +515,6 @@ def xyz_to_rmg_conformer(xyz_dict: dict) -> Optional[Conformer]:
     mass = ArrayQuantity(mass, 'amu')
     number = ArrayQuantity(number, '')
     coordinates = ArrayQuantity(xyz_dict['coords'], 'angstroms')
-
     conformer = Conformer(number=number, mass=mass, coordinates=coordinates)
     return conformer
 
@@ -1741,7 +1753,7 @@ def get_center_of_mass(xyz):
     Returns:
         tuple: The center of mass coordinates.
     """
-    masses = [get_element_mass(symbol, isotope)[0] for symbol, isotope in zip(xyz['symbols'], xyz['isotopes'])]
+    masses = get_element_mass_from_xyz(xyz)
     cm_x, cm_y, cm_z = 0, 0, 0
     for coord, mass in zip(xyz['coords'], masses):
         cm_x += coord[0] * mass
