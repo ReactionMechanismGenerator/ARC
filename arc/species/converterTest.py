@@ -3513,6 +3513,13 @@ H      -4.07566100   -0.52115800    0.00003300"""
                                                           [-0.6300326, 0.6300326, -0.6300326],
                                                           [0.6300326, -0.6300326, -0.6300326]])
 
+    def test_get_element_mass_from_xyz(self):
+        """Test the get_element_mass_from_xyz() function."""
+        mass_list = converter.get_element_mass_from_xyz({'symbols': ('N', 'H', 'H', 'N', 'H', 'H', 'N', 'H'),
+                                                         'isotopes': (14, 1, 1, 14, 1, 1, 14, 1), 'coords': ()})
+        self.assertEqual(mass_list, [14.00307400443, 1.00782503224, 1.00782503224, 14.00307400443,
+                                     1.00782503224, 1.00782503224, 14.00307400443, 1.00782503224])
+
     def test_translate_xyz(self):
         """Test the translate_xyz() function."""
         self.assertEqual(self.xyz1['dict'], converter.translate_xyz(xyz_dict=self.xyz1['dict'], translation=(0, 0, 0)))
