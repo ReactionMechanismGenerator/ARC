@@ -797,7 +797,7 @@ def almost_equal_coords(xyz1: dict,
                         atol: float = 1e-08,
                         ) -> bool:
     """
-    A helper function for checking whether two xyz's are almost equal.
+    A helper function for checking whether two xyz's are almost equal. Also checks equal symbols.
 
     Args:
         xyz1 (dict): Cartesian coordinates.
@@ -810,6 +810,10 @@ def almost_equal_coords(xyz1: dict,
     """
     if not isinstance(xyz1, dict) or not isinstance(xyz2, dict):
         raise TypeError(f'xyz1 and xyz2 must be dictionaries, got {type(xyz1)} and {type(xyz2)}:\n{xyz1}\n{xyz2}')
+    for symbol_1, symbol_2 in zip(xyz1['symbols'], xyz2['symbols']):
+        if symbol_1 != symbol_2:
+            logger.warning(f"Cannot compare coords, xyz1 and xyz2 have different symbols:"
+                           f"\n{xyz1['symbols']}\nand:\n{xyz2['symbols']}")
     for xyz_coord1, xyz_coord2 in zip(xyz1['coords'], xyz2['coords']):
         for xyz1_c, xyz2_c in zip(xyz_coord1, xyz_coord2):
             if not np.isclose([xyz1_c], [xyz2_c], rtol=rtol, atol=atol):
