@@ -1013,6 +1013,9 @@ def zmat_to_coords(zmat: dict,
     if not len(zmat['symbols']) == len(zmat['coords']) == len(zmat['map']):
         raise ZMatError(f'zmat sections symbols, coords, and map have different lengths: {len(zmat["symbols"])}, '
                         f'{len(zmat["coords"])}, and {len(zmat["map"])}, respectively.')
+    for key, value in zmat['vars'].items():
+        if value is None:
+            raise ZMatError(f'Got ``None`` for var {key} in zmat:\n{zmat}')
     var_list = list(zmat['vars'].keys())
     coords_to_skip = list()
     for i, coords in enumerate(zmat['coords']):
