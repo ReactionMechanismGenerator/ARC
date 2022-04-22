@@ -676,7 +676,7 @@ class ARCReaction(object):
 
     def remove_dup_species(self):
         """
-        Make sure each species is consider only once in reactants, products, r_species, and p_species.
+        Make sure each species is considered only once in reactants, products, r_species, and p_species.
         The same species in the reactants/products is considered through get_species_count().
         """
         self.reactants = sorted(list(set(self.reactants)))
@@ -835,7 +835,7 @@ class ARCReaction(object):
                                 self.get_species_count(species=p_spc, well=1))
         return reactants, products
 
-    def get_single_mapped_product_xyz(self):
+    def get_single_mapped_product_xyz(self) -> Optional[ARCSpecies]:
         """
         Get a copy of the product species with mapped cartesian coordinates of a reaction with a single product.
 
