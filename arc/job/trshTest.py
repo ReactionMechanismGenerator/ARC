@@ -276,17 +276,9 @@ class TestTrsh(unittest.TestCase):
         # gaussian: test 1
         job_status = {'keywords': ['CheckFile']}
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
-        memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label,
-                                                                   level_of_theory,
-                                                                   server,
-                                                                   job_status,
-                                                                   job_type,
-                                                                   software,
-                                                                   fine,
-                                                                   memory_gb,
-                                                                   num_heavy_atoms,
-                                                                   cpu_cores,
-                                                                   ess_trsh_methods)
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ess_trsh_methods)
 
         self.assertTrue(remove_checkfile)
         self.assertEqual(software, 'gaussian')
@@ -296,17 +288,9 @@ class TestTrsh(unittest.TestCase):
         # gaussian: test 2
         job_status = {'keywords': ['InternalCoordinateError']}
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
-        memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label,
-                                                                   level_of_theory,
-                                                                   server,
-                                                                   job_status,
-                                                                   job_type,
-                                                                   software,
-                                                                   fine,
-                                                                   memory_gb,
-                                                                   num_heavy_atoms,
-                                                                   cpu_cores,
-                                                                   ess_trsh_methods)
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ess_trsh_methods)
 
         self.assertFalse(remove_checkfile)
         self.assertEqual(trsh_keyword, 'opt=(cartesian,nosymm)')
@@ -314,17 +298,9 @@ class TestTrsh(unittest.TestCase):
         # gaussian: test 3
         job_status = {'keywords': ['tmp']}
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
-        memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label,
-                                                                   level_of_theory,
-                                                                   server,
-                                                                   job_status,
-                                                                   job_type,
-                                                                   software,
-                                                                   fine,
-                                                                   memory_gb,
-                                                                   num_heavy_atoms,
-                                                                   cpu_cores,
-                                                                   ess_trsh_methods)
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ess_trsh_methods)
 
         self.assertIn('cbs-qb3', ess_trsh_methods)
         self.assertEqual(level_of_theory.simple(), 'cbs-qb3')
@@ -336,33 +312,17 @@ class TestTrsh(unittest.TestCase):
         job_status = {'keywords': ['MaxOptCycles', 'Unconverged']}
         # qchem: test 1
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
-        memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label,
-                                                                   level_of_theory,
-                                                                   server,
-                                                                   job_status,
-                                                                   job_type,
-                                                                   software,
-                                                                   fine,
-                                                                   memory_gb,
-                                                                   num_heavy_atoms,
-                                                                   cpu_cores,
-                                                                   ess_trsh_methods)
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('max_cycles', ess_trsh_methods)
 
         # qchem: test 2
         job_status = {'keywords': ['SCF']}
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
-        memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label,
-                                                                   level_of_theory,
-                                                                   server,
-                                                                   job_status,
-                                                                   job_type,
-                                                                   software,
-                                                                   fine,
-                                                                   memory_gb,
-                                                                   num_heavy_atoms,
-                                                                   cpu_cores,
-                                                                   ess_trsh_methods)
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('DIIS_GDM', ess_trsh_methods)
 
         # test molpro
@@ -380,17 +340,9 @@ class TestTrsh(unittest.TestCase):
         memory_gb = 32.0
         ess_trsh_methods = ['change_node']
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
-        memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label,
-                                                                   level_of_theory,
-                                                                   server,
-                                                                   job_status,
-                                                                   job_type,
-                                                                   software,
-                                                                   fine,
-                                                                   memory_gb,
-                                                                   num_heavy_atoms,
-                                                                   cpu_cores,
-                                                                   ess_trsh_methods)
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
         self.assertAlmostEqual(memory, 222.15625)
 
@@ -413,10 +365,9 @@ class TestTrsh(unittest.TestCase):
                                                                   software=software)
         job_status = {'keywords': keywords, 'error': error}
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
-        memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
-                                                                   job_type,
-                                                                   software, fine, memory_gb, num_heavy_atoms,
-                                                                   cpu_cores, ess_trsh_methods)
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
         self.assertEqual(cpu_cores, 32)
         self.assertAlmostEqual(memory, 327)
@@ -440,10 +391,9 @@ class TestTrsh(unittest.TestCase):
         keywords.append('max_total_job_memory')
         job_status = {'keywords': keywords, 'error': error}
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
-        memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
-                                                                   job_type,
-                                                                   software, fine, memory_gb, num_heavy_atoms,
-                                                                   cpu_cores, ess_trsh_methods)
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
         self.assertEqual(cpu_cores, 22)
         self.assertAlmostEqual(memory, 227)
@@ -467,10 +417,9 @@ class TestTrsh(unittest.TestCase):
         keywords.append('max_total_job_memory')
         job_status = {'keywords': keywords, 'error': error}
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
-        memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
-                                                                   job_type,
-                                                                   software, fine, memory_gb, num_heavy_atoms,
-                                                                   cpu_cores, ess_trsh_methods)
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
         self.assertEqual(couldnt_trsh, True)
         self.assertLess(cpu_cores, 1)  # can't really run job with less than 1 cpu ^o^
@@ -493,10 +442,9 @@ class TestTrsh(unittest.TestCase):
                                                                   software=software)
         job_status = {'keywords': keywords, 'error': error}
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
-        memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
-                                                                   job_type,
-                                                                   software, fine, memory_gb, num_heavy_atoms,
-                                                                   cpu_cores, ess_trsh_methods)
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('cpu', ess_trsh_methods)
         self.assertEqual(cpu_cores, 10)
 
@@ -614,6 +562,7 @@ class TestTrsh(unittest.TestCase):
         scan_trsh, scan_res = trsh.trsh_scan_job(**case)
         self.assertEqual(scan_trsh, 'D 5 4 1 2 F\nD 1 2 3 6 F\nB 2 3 F\n')
         self.assertEqual(scan_res, 4.0)
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

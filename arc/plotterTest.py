@@ -140,9 +140,9 @@ H      -1.16115119    0.31478894   -0.81506145
     def test_clean_scan_results(self):
         """Test the clean_scan_results function"""
         correct_results = {(1, 1): {'energy': 0},
-                               (1, 2): {'energy': 7},
-                               (1, 3): {'energy': 4.5},
-                               (1, 4): {'energy': 5}}
+                           (1, 2): {'energy': 7},
+                           (1, 3): {'energy': 4.5},
+                           (1, 4): {'energy': 5}}
 
         results_1 = {(1, 1): {'energy': -2},
                      (1, 2): {'energy': '5'},

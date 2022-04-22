@@ -333,7 +333,7 @@ class TestARC(unittest.TestCase):
 
         # Test using default frequency and orbital level for composite job, also forbid rotors job
         arc10 = ARC(project='test', composite_method='cbs-qb3', calc_freq_factor=False,
-                   job_types={'rotors': False, 'orbitals': True})
+                    job_types={'rotors': False, 'orbitals': True})
         self.assertEqual(arc10.freq_level.simple(), 'b3lyp/cbsb7')
         self.assertIsNone(arc10.scan_level)
         self.assertEqual(arc10.orbitals_level.simple(), 'b3lyp/cbsb7')

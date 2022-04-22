@@ -102,7 +102,7 @@ def load_rmg_database(rmgdb: RMGDatabase,
     if not thermo_libraries:
         thermo_path = os.path.join(db_path, 'thermo', 'libraries')
         for thermo_library_path in os.listdir(thermo_path):
-            # Avoid reading .DS_store files for compatibility with Mac OS
+            # Avoid reading .DS_store files for compatibility with macOS
             if not thermo_library_path.startswith('.'):
                 thermo_library, _ = os.path.splitext(os.path.basename(thermo_library_path))
                 thermo_libraries.append(thermo_library)

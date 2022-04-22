@@ -277,7 +277,7 @@ class ArkaneAdapter(StatmechAdapter):
         if bac_type is not None:
             stat_mech_job.bondEnergyCorrectionType = bac_type
         if sp_level is None:
-            # if this is a kinetics computation and we don't have a valid model chemistry, don't bother about it
+            # If this is a kinetics computation and we don't have a valid model chemistry, don't bother about it.
             stat_mech_job.applyAtomEnergyCorrections = False
         else:
             stat_mech_job.level_of_theory = sp_level.to_arkane_level_of_theory()
@@ -288,7 +288,7 @@ class ArkaneAdapter(StatmechAdapter):
             logger.error(f'Arkane statmech job for species {arkane_species.label} failed with the error message:\n{e}')
             if stat_mech_job.applyBondEnergyCorrections \
                     and 'missing' in str(e).lower() and 'bac parameters for model chemistry' in str(e).lower():
-                # try executing Arkane w/o BACs
+                # Try executing Arkane w/o BACs.
                 logger.warning('Trying to run Arkane without BACs')
                 stat_mech_job.applyBondEnergyCorrections = False
                 try:

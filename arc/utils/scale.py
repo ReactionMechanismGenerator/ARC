@@ -222,7 +222,7 @@ def summarize_results(lambda_zpes: list,
     with open(info_file_path, 'w') as f:
         f.write(HEADER)
         database_text = '\n\n\nYou may copy-paste the following harmonic frequencies scaling factor/s to RMG-database\n' \
-                      '(paste in the `freq_dict` in RMG-database/input/quantum_corrections/data.py):\n'
+                        '(paste in the `freq_dict` in RMG-database/input/quantum_corrections/data.py):\n'
         database_formats = list()
         harmonic_freq_scaling_factors = list()
         for lambda_zpe, level, zpe_dict, execution_time\

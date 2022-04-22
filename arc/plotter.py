@@ -13,7 +13,7 @@ import os
 import shutil
 from matplotlib.backends.backend_pdf import PdfPages
 from mpl_toolkits.mplot3d import Axes3D
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 import py3Dmol as p3D
 import qcelemental as qcel
@@ -379,7 +379,7 @@ def draw_parity_plot(var_arc, var_rmg, labels, var_label, var_units, pp=None):
     Args:
         var_arc (list): The variable calculated by ARC.
         var_rmg (list): The variable estimated by RMG.
-        labels (list): Species labels corresponding the the data in ``var_arc`` and ``var_rmg``.
+        labels (list): Species labels corresponding to the data in ``var_arc`` and ``var_rmg``.
         var_label (str): The variable name.
         var_units (str): The variable units.
         pp (PdfPages, optional): Used for storing the image as a multi-page PFD file.
@@ -812,7 +812,7 @@ def save_kinetics_lib(rxn_list, path, name, lib_long_desc):
 def save_conformers_file(project_directory: str,
                          label: str,
                          xyzs: List[dict],
-                         level_of_theory: Level,
+                         level_of_theory: Union[Level, str],
                          multiplicity: Optional[int] = None,
                          charge: Optional[int] = None,
                          is_ts: bool = False,
@@ -827,7 +827,7 @@ def save_conformers_file(project_directory: str,
         project_directory (str): The path to the project's directory.
         label (str): The species label.
         xyzs (list): Entries are dict-format xyz coordinates of conformers.
-        level_of_theory (Level): The level of theory used for the conformers optimization.
+        level_of_theory (Union[Level, str]): The level of theory used for the conformers' optimization.
         multiplicity (int, optional): The species multiplicity, used for perceiving the molecule.
         charge (int, optional): The species charge, used for perceiving the molecule.
         is_ts (bool, optional): Whether the species represents a TS. True if it does.
@@ -849,7 +849,8 @@ def save_conformers_file(project_directory: str,
     with open(conf_path, 'w') as f:
         content = ''
         if optimized:
-            content += f'Conformers for {label}, optimized at the {level_of_theory.simple()} level:\n\n'
+            level_of_theory = level_of_theory.simple() if isinstance(level_of_theory, Level) else level_of_theory
+            content += f'Conformers for {label}, optimized at the {level_of_theory} level:\n\n'
         for i, xyz in enumerate(xyzs):
             content += f'conformer {i}:\n'
             if xyz is not None:

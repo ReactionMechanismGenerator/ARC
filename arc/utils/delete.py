@@ -5,7 +5,7 @@
 ARC - Automatic Rate Calculator
 
 Caution!!
-Using this module might results in deletion of jobs running on all servers ARC has access to (including 'local').
+Using this module might result in deletion of jobs running on all servers ARC has access to (including 'local').
 Use this only if you are certain in what you're doing to avoid deleting valuable jobs and information loss.
 """
 

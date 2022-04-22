@@ -77,7 +77,7 @@ class ARCSpecies(object):
                               'scan': ``List[int]``,  # 1-indexed
                               'torsion': ``List[int]``,  # 0-indexed
                               'number_of_running_jobs': ``int``,
-                              'success': ``bool``,
+                              'success': Optional[``bool``],  # ``None`` by default
                               'invalidation_reason': ``str``,
                               'times_dihedral_set': ``int``,
                               'scan_path': <path to scan output file>,
@@ -95,10 +95,9 @@ class ARCSpecies(object):
 
     Args:
         label (str, optional): The species label.
-        is_ts (bool, optional): Whether or not the species represents a transition state.
+        is_ts (bool, optional): Whether the species represents a transition state.
         rmg_species (Species, optional): An RMG Species object to be converted to an ARCSpecies object.
-        mol (Molecule, optional): An ``RMG Molecule`` object used for BAC determination.
-                                  Atom order corresponds to the order in .initial_xyz
+        mol (Molecule, optional): An ``RMG Molecule``. Atom order corresponds to the order in .initial_xyz
         xyz (list, str, dict, optional): Entries are either string-format coordinates, file paths, or ARC's dict format.
                                          (If there's only one entry, it could be given directly, not in a list).
                                          The file paths could direct to either a .xyz file, ARC conformers
@@ -109,7 +108,7 @@ class ARCSpecies(object):
         smiles (str, optional): A `SMILES <https://en.wikipedia.org/wiki/Simplified_molecular-input_line-entry_system>`_
                                 representation for the species 2D graph.
         adjlist (str, optional): An `RMG adjacency list
-                                 <http://reactionmechanismgenerator.github.io/RMG-Py/reference/molecule/adjlist.html>`_
+                                 <https://reactionmechanismgenerator.github.io/RMG-Py/reference/molecule/adjlist.html>`_
                                  representation for the species 2D graph.
         inchi (str, optional): An `InChI <https://www.inchi-trust.org/>`_ representation for the species 2D graph.
         bond_corrections (dict, optional): The bond additivity corrections (BAC) to be used. Determined from the
@@ -161,7 +160,7 @@ class ARCSpecies(object):
                                 resulting in a 1D scan instead of an ND scan.
                                 Values are nested lists. Each value is a list where the entries are either pivot lists
                                 (e.g., [1, 5]) or lists of pivot lists (e.g., [[1, 5], [6, 8]]), or a mix
-                                (e.g., [[4, 8], [[6, 9], [3, 4]]). The requested directed scan type will be executed
+                                (e.g., [[4, 8], [[6, 9], [3, 4]]]). The requested directed scan type will be executed
                                 separately for each list entry in the value. A list entry that contains only two pivots
                                 will result in a 1D scan, while a list entry with N pivots will consider all of them,
                                 and will result in an ND scan if '_diagonal' is not specified.
@@ -169,7 +168,7 @@ class ARCSpecies(object):
                                 Note: An 'all' string entry is also allowed in the value list, triggering a directed
                                 internal rotation scan for all torsions in the molecule. If 'all' is specified within
                                 a second level list, then all the dihedrals will be considered together.
-                                Currently ARC does not automatically identify torsions to be treated as ND, and this
+                                Currently, ARC does not automatically identify torsions to be treated as ND, and this
                                 attribute must be specified by the user.
                                 An additional supported key is 'ess', in which case ARC will allow the ESS to take care
                                 of spawning the ND continuous constrained optimizations (not yet implemented).
@@ -346,7 +345,7 @@ class ARCSpecies(object):
         self.original_label = None
 
         if species_dict is not None:
-            # Reading from a dictionary (it's possible that the dict contain only a 'yml_path' argument, check first)
+            # Reading from a dictionary (it's possible that the dict contains only a 'yml_path' argument, check first)
             if 'yml_path' in species_dict:
                 if 'label' in species_dict:
                     self.label = species_dict['label']
@@ -355,7 +354,7 @@ class ARCSpecies(object):
                 self.from_dict(species_dict=species_dict)
 
         if species_dict is None or self.yml_path is not None:
-            # Not reading from a dictionary
+            # Not reading from a dictionary.
             self.force_field = force_field
             self.is_ts = is_ts
             self.ts_conf_spawned = False
@@ -1352,10 +1351,10 @@ class ARCSpecies(object):
             electrons -= self.charge
             if electrons % 2 == 1:
                 self.multiplicity = 2
-                logger.warning(f'\nMultiplicity not specified for {self.label}, assuming a value of 2')
+                logger.debug(f'\nMultiplicity not specified for {self.label}, assuming a value of 2')
             else:
                 self.multiplicity = 1
-                logger.warning(f'\nMultiplicity not specified for {self.label}, assuming a value of 1')
+                logger.debug(f'\nMultiplicity not specified for {self.label}, assuming a value of 1')
 
     def make_ts_report(self):
         """A helper function to write content into the .ts_report attribute"""
@@ -1382,7 +1381,7 @@ class ARCSpecies(object):
                      ) -> None:
         """
         Make sure atom order in self.mol corresponds to xyz.
-        Important for TS discovery and for identifying rotor indices.
+        Important for TS searches and for identifying rotor indices.
         This works by generating a molecule from xyz and using the
         2D structure to confirm that the perceived molecule is correct.
         If ``xyz`` is not given, the species xyz attribute will be used.
@@ -1574,7 +1573,7 @@ class ARCSpecies(object):
         """
         Check whether the perception of self.final_xyz or ``xyz`` is isomorphic with self.mol.
         If it is not isomorphic, compliant coordinates will be checked (equivalent to checking isomorphism without
-        bond order information, only does not necessitates a molecule object, directly checks bond lengths).
+        bond order information, only does not necessitate a molecule object, directly checks bond lengths).
 
         Args:
             mol (Molecule, optional): A molecule to check instead of self.mol.
@@ -2201,13 +2200,13 @@ def determine_rotor_symmetry(label: str,
         tol = max_e
     min_e = energies[0]
     for i, e in enumerate(energies):
-        # sometimes the opt level and scan levels mismatch, causing the minimum to be close to 0 degrees, but not at 0
+        # Sometimes the opt level and scan levels mismatch, causing the minimum to be close to 0 degrees, but not at 0.
         if e < min_e:
             min_e = e
     peaks, valleys = list(), list()  # the peaks and valleys of the scan
     worst_peak_resolution, worst_valley_resolution = 0, 0
     for i, e in enumerate(energies):
-        # identify peaks and valleys, and determine worst resolutions in the scan
+        # Identify peaks and valleys, and determine the worst resolutions in the scan.
         ip1 = cyclic_index_i_plus_1(i, len(energies))  # i Plus 1
         im1 = cyclic_index_i_minus_1(i)  # i Minus 1
         if i == 0 and energies[im1] == e:

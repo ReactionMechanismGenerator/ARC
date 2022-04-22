@@ -602,7 +602,7 @@ def map_arc_rmg_species(arc_reaction: 'ARCReaction',
 
 def find_equivalent_atoms_in_reactants(arc_reaction: 'ARCReaction',
                                        backend: str = 'ARC',
-                                       ) -> Optional[List[List[int]]]:
+                                       ) -> List[List[int]]:
     """
     Find atom indices that are equivalent in the reactants of an ARCReaction
     in the sense that they represent degenerate reaction sites that are indifferentiable in 2D.
@@ -614,7 +614,7 @@ def find_equivalent_atoms_in_reactants(arc_reaction: 'ARCReaction',
         backend (str, optional): Whether to use ``'QCElemental'`` or ``ARC``'s method as the backend.
 
     Returns:
-        Optional[List[List[int]]]: Entries are lists of 0-indices, each such list represents equivalent atoms.
+        List[List[int]]: Entries are lists of 0-indices, each such list represents equivalent atoms.
     """
     rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction, backend=backend)
     dicts = [get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(rmg_reaction=rmg_reaction,

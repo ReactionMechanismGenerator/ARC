@@ -291,7 +291,7 @@ def compare_transport(species_for_transport_lib: list,
     # todo
 
 
-def load_rmg_database(rmg_database: Type[RMGDatabase],
+def load_rmg_database(rmg_database: Optional[Type[RMGDatabase]],
                       species_dict: dict,
                       output_dict: dict,
                       ) -> None:

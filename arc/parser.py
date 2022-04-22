@@ -367,7 +367,7 @@ def parse_nd_scan_energies(path: str,
                                             'trsh': <list, job.ess_trsh_methods>}>
                          },
 
-        The dihedrals angles of the original conformer
+        The dihedral angles of the original conformer
     """
     software = software or determine_ess(path)
     results = {'directed_scan_type': f'ess_{software}',
@@ -853,13 +853,13 @@ def parse_str_blocks(file_path: str,
         line = f.readline()
         while line != '':
             if mode == 'search':
-                # Stop searching if found enough blocks
+                # Stop searching if enough blocks were found.
                 if (len(blks)) == block_count:
                     break
-                # Check if matching the head pattern
+                # Check if matching the head pattern.
                 else:
                     match = search(head_pat, line)
-                    # Switch to 'read' mode
+                    # Switch to 'read' mode.
                     if match:
                         tail_repeat = 0
                         mode = 'read'
@@ -870,7 +870,7 @@ def parse_str_blocks(file_path: str,
                 match = search(tail_pat, line)
                 if match:
                     tail_repeat += 1
-                    # If see enough tail patterns, switch to 'search' mode
+                    # If there are enough tail patterns, switch to 'search' mode.
                     if tail_repeat == tail_count:
                         mode = 'search'
             line = f.readline()
@@ -992,7 +992,7 @@ def parse_ic_info(file_path: str) -> pd.DataFrame:
                     and set(scan_args['scan']) == set(ic_dict['atoms'][-1]):
                 ic_dict['scan'].append(True)
             else:
-                # Currently doesn't support scan of angles
+                # Currently doesn't support scan of angles.
                 ic_dict['scan'].append(False)
     else:
         raise NotImplementedError(f'parse_ic_info() can currently only parse Gaussian output '

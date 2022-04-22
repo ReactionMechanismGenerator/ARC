@@ -148,8 +148,7 @@ def generate_conformers(mol_list: Union[List[Molecule], Molecule],
         de_threshold (float, optional): Energy threshold (in kJ/mol) above which wells will not be considered.
         smeared_scan_res (float, optional): The resolution (in degrees) for scanning smeared wells.
         combination_threshold (int, optional): A threshold below which all combinations will be generated.
-        force_field (str, optional): The type of force field to use (MMFF94, MMFF94s, UFF, GAFF, fit).
-                                     'fit' will first run MMFF94, than fit a custom Amber FF to the species.
+        force_field (str, optional): The type of force field to use (MMFF94, MMFF94s, UFF, GAFF).
         max_combination_iterations (int, optional): The maximum number of times to iteratively search
                                                     for the lowest conformer.
         diastereomers (list, optional): Entries are xyz's in a dictionary format or conformer structures
@@ -960,8 +959,8 @@ def determine_well_width_tolerance(mean_width):
 
 def get_lowest_confs(label: str,
                      confs: Union[dict, list],
-                     n: int = 10,
-                     e: float = 5.0,
+                     n: Optional[int] = 10,
+                     e: Optional[float] = 5.0,
                      energy: str = 'FF energy',
                      ) -> list:
     """
@@ -1096,7 +1095,7 @@ def get_force_field_energies(label: str,
 def openbabel_force_field_on_rdkit_conformers(label, rd_mol, force_field='MMFF94s', optimize=True):
     """
     Optimize RDKit conformers by OpenBabel using a force field (MMFF94 or MMFF94s are recommended).
-    This is a fall back method when RDKit fails to generate force field optimized conformers.
+    This is a fallback method when RDKit fails to generate force field optimized conformers.
 
     Args:
         label (str): The species' label.
@@ -1176,7 +1175,7 @@ def mix_rdkit_and_openbabel_force_field(label,
         unoptimized_xyzs.append(xyz)
 
     if not len(unoptimized_xyzs) and try_ob:
-        # use OB as the fall back method
+        # use OB as the fallback method
         logger.warning(f'Using OpenBabel (instead of RDKit) as a fall back method to generate conformers for {label}. '
                        f'This is often slower, and prohibits ARC from using all features of the conformers module.')
         xyzs, energies = openbabel_force_field(label, mol, num_confs, force_field=force_field)
@@ -1205,7 +1204,7 @@ def openbabel_force_field(label, mol, num_confs=None, xyz=None, force_field='GAF
         xyz (dict, optional): The 3D coordinates.
         force_field (str, optional): The type of force field to use.
         method (str, optional): The conformer searching method to use in OpenBabel.
-                                For method description, see http://openbabel.org/dev-api/group__conformer.shtml
+                                For method description, see https://openbabel.org/dev-api/group__conformer.shtml
 
     Returns:
         Tuple[list, list]:
@@ -1586,7 +1585,7 @@ def determine_smallest_atom_index_in_scan(atom1: Atom,
     This function assumes there ARE additional atoms connected to ``atom1``, and that ``atom2`` is not a hydrogen atom.
 
     Args:
-        atom1 (Atom): The atom who's neighbors will be searched.
+        atom1 (Atom): The atom whose neighbors will be searched.
         atom2 (Atom): An atom connected to ``atom1`` to exclude (a pivotal atom).
         mol (Molecule): The molecule to process.
 
