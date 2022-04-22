@@ -144,7 +144,7 @@ class SSHClient(object):
 
         Raises:
             InputError: If both `local_file_path` or `file_string` are invalid,
-                        or `local_file_path` does not exists.
+                        or `local_file_path` does not exist.
             ServerError: If the file cannot be uploaded with maximum times to try
         """
         if not local_file_path and not file_string:
@@ -350,7 +350,7 @@ class SSHClient(object):
 
     def _connect(self) -> Tuple[paramiko.sftp_client.SFTPClient, paramiko.SSHClient]:
         """
-        Connect via paramiko, and open a SSH session as well as a SFTP session.
+        Connect via paramiko, and open an SSH session as well as a SFTP session.
 
         Returns: Tuple[paramiko.sftp_client.SFTPClient, paramiko.SSHClient]
             - An SFTP client used to perform remote file operations.
@@ -362,7 +362,7 @@ class SSHClient(object):
         try:
             # If the server accepts the connection but the SSH daemon doesn't respond in 
             # 15 seconds (default in paramiko) due to network congestion, faulty switches, 
-            # etc..., common solution is to enlarging the timeout variable.
+            # etc..., common solution is enlarging the timeout variable.
             ssh.connect(hostname=self.address, username=self.un, banner_timeout=200)
         except:
             # This sometimes gives "SSHException: Error reading SSH protocol banner[Error 104] Connection reset by peer"
@@ -482,7 +482,7 @@ class SSHClient(object):
             remote_file_path (str): The path to the file on the remote server.
 
         Returs:
-            bool: If the file exists on the remote server. ``True`` if exist.
+            bool: Whether the file exists on the remote server. ``True`` if it exists.
         """
         command = f'[ -f "{remote_file_path}" ] && echo "File exists"'
         stdout, _ = self._send_command_to_server(command, remote_path='')
@@ -499,7 +499,7 @@ class SSHClient(object):
             remote_dir_path (str): The path to the directory on the remote server.
 
         Returns:
-            bool: If the directory exists on the remote server. ``True`` if exist.
+            bool: Whether the directory exists on the remote server. ``True`` if it exists.
         """
         command = f'[ -d "{remote_dir_path}" ] && echo "Dir exists"'
         stdout, _ = self._send_command_to_server(command)
@@ -558,7 +558,7 @@ def check_job_status_in_stdout(job_id: int,
         status = status_line.split()[4]
         if status.lower() in ['r', 'qw', 't']:
             return 'running'
-        elif status.lower() in ['e',]:
+        elif status.lower() in ['e']:
             return 'errored'
     else:
         raise ValueError(f'Unknown cluster software {servers[server]["cluster_soft"]}')
