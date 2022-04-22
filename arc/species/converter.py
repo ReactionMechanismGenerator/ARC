@@ -65,7 +65,7 @@ def str_to_xyz(xyz_str: str) -> dict:
         xyz_str (str): The string xyz format to be converted.
 
     Raises:
-        ConverterError: If xyz_str is not a string or does not have four space-separated entries per non empty line.
+        ConverterError: If xyz_str is not a string or does not have four space-separated entries per non-empty line.
 
     Returns: dict
         The ARC xyz format.
@@ -306,7 +306,7 @@ def xyz_file_format_to_xyz(xyz_file: str) -> dict:
         xyz_file (str): The content of an XYZ file
 
     Raises:
-        ConverterError: If cannot identify the number of atoms entry, of if it is different that the actual number.
+        ConverterError: If cannot identify the number of atoms entry, or if it is different that the actual number.
 
     Returns: dict
         The ARC dictionary xyz format.
@@ -866,7 +866,7 @@ def split_str_zmat(zmat_str):
         zmat_str (str): The zmat.
 
     Returns:
-        Tuple[str: The coords section, str: The variables section if it exists, else None]
+        Tuple[str, str]: The coords section, The variables section if it exists, else None]
     """
     coords, variables = list(), list()
     flag = False
@@ -1063,8 +1063,8 @@ def modify_coords(coords: Dict[str, tuple],
             else:
                 zmat['vars'][param] += increment
         elif isinstance(param, list):
-            # the requested parameter represents an angle split by a dummy atom,
-            # a list of the two corresponding parameters was be returned
+            # The requested parameter represents an angle split by a dummy atom,
+            # a list of the two corresponding parameters was returned.
             zmat['vars'][param[0]] = new_value - sum(zmat['vars'][par] for par in param[1:])
         new_xyz = zmat_to_xyz(zmat=zmat)
     return new_xyz
@@ -1384,7 +1384,7 @@ def order_atoms_in_mol_list(ref_mol, mol_list):
 
     Args:
         ref_mol (Molecule): The reference Molecule object.
-        mol_list (list): Entries are Molecule objects whos atoms will be reordered according to the reference.
+        mol_list (list): Entries are Molecule objects whose atoms will be reordered according to the reference.
 
     Returns:
         bool: Whether the reordering was successful, ``True`` if it was.
@@ -1516,7 +1516,7 @@ def s_bonds_mol_from_xyz(xyz: dict) -> Optional[Molecule]:
 def to_rdkit_mol(mol, remove_h=False, sanitize=True):
     """
     Convert a molecular structure to an RDKit RDMol object. Uses
-    `RDKit <http://rdkit.org/>`_ to perform the conversion.
+    `RDKit <https://rdkit.org/>`_ to perform the conversion.
     Perceives aromaticity.
     Adopted from rmgpy/molecule/converter.py
 
@@ -1584,7 +1584,7 @@ def rdkit_conf_from_mol(mol: Molecule,
 
     Args:
         mol (Molecule): The RMG Molecule object.
-        xyz (dict): The xyz coordinates (of the conformer, atoms must be ordered as in ``mol``.
+        xyz (dict): The xyz coordinates of the conformer, atoms must be ordered as in ``mol``.
 
     Raises:
         ConverterError: if ``xyz`` is of wrong type.
