@@ -175,8 +175,8 @@ def determine_ess_status(output_path: str,
             for line in reverse_lines:
                 if 'Thank you very much for using Q-Chem' in line:
                     done = True
-                    # if this is an opt job, we must also check that the max num of cycles hasn't been reached,
-                    # so don't break yet
+                    # If this is an opt job, we must also check that the max num of cycles hasn't been reached,
+                    # so don't break yet.
                     if 'opt' not in job_type and 'conformer' not in job_type and 'ts' not in job_type:
                         break
                 elif 'SCF failed' in line:
@@ -184,7 +184,7 @@ def determine_ess_status(output_path: str,
                     error = 'SCF failed'
                     break
                 elif 'error' in line and 'DIIS' not in line:
-                    # these are **normal** lines that we should not capture:
+                    # These are **normal** lines that we should not capture:
                     # "SCF converges when DIIS error is below 1.0E-08", or
                     # "Cycle       Energy         DIIS Error"
                     keywords = ['SCF', 'DIIS']
@@ -265,7 +265,7 @@ def determine_ess_status(output_path: str,
                                 if 'Please increase MaxCore' in message:
                                     try:
                                         # e.g., Please increase MaxCore - by at least ( 9717.9 MB)
-                                        # This message appears multiple times, and suggest different memory at each
+                                        # This message appears multiple times, and suggests different memory at each
                                         # appearance. Need to store all suggested memory values, and then pick the
                                         # largest one. This error msg appears in Orca version 4.2.x
                                         estimated_mem = math.ceil(float(message.split()[-2]))
@@ -502,7 +502,7 @@ def trsh_negative_freq(label: str,
             # species has more than one negative frequency, and has been troubleshooted for it before
             logger.info(f'Species {label} has {len(neg_freqs_idx)} negative frequencies. Perturbing its geometry '
                         f'using the vibrational normal mode displacement(s) of ALL negative frequencies')
-        # convert a numpy array to a list, imprtant for saving the neg_freqs_trshed species attribute in the restart
+        # Convert a numpy array to a list, important for saving the neg_freqs_trshed species attribute in the restart
         freqs_list = freqs.tolist()
         current_neg_freqs_trshed = [round(freqs_list[i], 2) for i in neg_freqs_idx]  # record trshed negative freqs
         xyz = parse_xyz_from_file(log_file)
@@ -701,19 +701,19 @@ def trsh_special_rotor(special_rotor: list,
         elif is_same_pivot(torsion, special_rotor):
             same_pivots_torsions.append(torsion)
     else:
-        # The following block will be executed, only when bond break
-        # is not triggered and same_pivots_torsions is not empty
+        # The following block will be executed only when bond break
+        # is not triggered and same_pivots_torsions is not empty.
         for torsion in same_pivots_torsions:
             pruning.append(torsion)
             if special_type == 'scan':
-                # A rare case which might be due to a double flip of adjacent sp2 atoms
-                # Freeze alignments of both tops
+                # A rare case which might be due to a double flip of adjacent sp2 atoms.
+                # Freeze alignments of both tops.
                 to_freeze.append([torsion[0]] + special_rotor[:-1])
                 to_freeze.append(special_rotor[1:] + [torsion[-1]])
             elif special_type == 'frozen':
-                # If no better solution, just freeze all of the torsions of the same pivots
+                # If no better solution, just freeze all the torsions of the same pivots.
                 to_freeze.append(torsion)
-    # Remove pruned internal coordinates from the problematic_ic list
+    # Remove pruned internal coordinates from the problematic_ic list.
     for torsion in pruning:
         if torsion in problematic_ic:
             problematic_ic.pop(problematic_ic.index(torsion))
@@ -1117,7 +1117,7 @@ def trsh_job_on_server(server: str,
         job_id (int, str): The job's ID on the server.
         job_server_status (str): The job server status (either 'initializing', 'running', 'errored', or 'done').
         remote_path (str): The remote path to the job folder.
-        server_nodes (list, optional): The nodes already tried on this server for this jobs.
+        server_nodes (list, optional): The nodes already tried on this server for this job.
 
     Returns: Tuple[str, bool]
         - The new node on the server (or None).
@@ -1258,8 +1258,7 @@ def scan_quality_check(label: str,
     if scan_conformers is not None and (species is None or not species.is_ts):
         bonds = scan_conformers[scan_conformers['type'] == 'R']
         angles = scan_conformers[scan_conformers['type'] == 'A']
-        non_scan_rotor = scan_conformers[(scan_conformers['type'] == 'D') \
-                                         & (scan_conformers['scan'] == False)]
+        non_scan_rotor = scan_conformers[(scan_conformers['type'] == 'D') & (scan_conformers['scan'] == False)]
         scan_rotor = scan_conformers[scan_conformers['scan'] == True]
 
         # 1.1 Find significant changes of internal coordinates
@@ -1282,7 +1281,7 @@ def scan_quality_check(label: str,
                 continue
             # Identify changes by type
             bond_change = (2 * (bonds[index_1] - bonds[index_2]) /
-                          (bonds[index_1] + bonds[index_2])).abs() > preserve_params_in_scan['bond']
+                           (bonds[index_1] + bonds[index_2])).abs() > preserve_params_in_scan['bond']
             angle_change = (angles[index_1] - angles[index_2]).abs() > preserve_params_in_scan['angle']
             non_scan_rotor_change = check_torsion_change(torsions=non_scan_rotor,
                                                          index_1=index_1,
@@ -1316,7 +1315,7 @@ def scan_quality_check(label: str,
                 # it can be done in the following troubleshooting.
                 bonds = scan_conformers.loc[broken_bonds, :]
                 bond_change = (2 * (bonds[conf_index] - bonds[conf_index - 1]) /
-                              (bonds[conf_index] + bonds[conf_index - 1])).abs()
+                               (bonds[conf_index] + bonds[conf_index - 1])).abs()
                 broken_bond_label = bond_change.sort_values().index[-1]  # the largest change
                 # Freeze the bonds, no further freezing other ics to prevent over-constraining
                 broken_bonds = [scan_conformers['atoms'][broken_bond_label]]
