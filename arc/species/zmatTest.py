@@ -467,11 +467,11 @@ class TestZMat(unittest.TestCase):
 
     def test_zmat_from_xyz(self):
         """Test creating a zmat from xyz"""
-        z = zmat.xyz_to_zmat(self.o)  # just one atoms
+        z = zmat.xyz_to_zmat(self.o)  # Just one atom.
         expected_z = {'symbols': ('O',), 'coords': ((None, None, None),), 'vars': {}, 'map': {0: 0}}
         self.assertEqual(z, expected_z)
 
-        z = zmat.xyz_to_zmat(self.h2)  # just two atoms
+        z = zmat.xyz_to_zmat(self.h2)  # Just two atoms.
         expected_z = {'symbols': ('H', 'H'),
                       'coords': ((None, None, None),
                                  ('R_1_0', None, None)),
@@ -479,7 +479,7 @@ class TestZMat(unittest.TestCase):
                       'map': {0: 0, 1: 1}}
         self.assertTrue(zmat._compare_zmats(z, expected_z, verbose=True))
 
-        z = zmat.xyz_to_zmat(self.ch2, consolidate=False)  # just the first three atoms
+        z = zmat.xyz_to_zmat(self.ch2, consolidate=False)  # Just the first three atoms.
         expected_z = {'symbols': ('C', 'H', 'H'),
                       'coords': ((None, None, None),
                                  ('R_1_0', None, None),
@@ -488,7 +488,7 @@ class TestZMat(unittest.TestCase):
                       'map': {0: 0, 1: 1, 2: 2}}
         self.assertTrue(zmat._compare_zmats(z, expected_z, verbose=True))
 
-        z = zmat.xyz_to_zmat(self.ch2, constraints={'R_atom': [(2, 1)]})  # just the first three atoms w/ a constraint
+        z = zmat.xyz_to_zmat(self.ch2, constraints={'R_atom': [(2, 1)]})  # Just the first three atoms w/ a constraint.
         expected_z = {'symbols': ('C', 'H', 'H'),
                       'coords': ((None, None, None),
                                  ('R_1_0', None, None),
@@ -1191,7 +1191,7 @@ class TestZMat(unittest.TestCase):
         self.assertTrue(zmat._compare_zmats(zmat.consolidate_zmat(z), expected_z, verbose=True))
 
         # test consolidating the same coordinates as CH4 with replaced symbols, expect different consolidation
-        # note that the values of 'R_0|0_1|2' and 'R_0|0_3|4' are the same, but the represent different elements
+        # note that the values of 'R_0|0_1|2' and 'R_0|0_3|4' are the same, but they represent different elements,
         # so they were not consolidated
         z = {'symbols': ('C', 'O', 'O', 'H', 'H'),
              'coords': ((None, None, None),
@@ -1582,9 +1582,9 @@ class TestZMat(unittest.TestCase):
                      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
                       25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45]]
         zmat1 = {'map': {0: 0, 1: 1, 2: 2, 3: 6, 4: 3, 5: 7, 6: 8, 7: 12, 8: 13, 9: 9, 10: 14, 11: 17, 12: 16, 13: 21,
-                        14: 24, 15: 23, 16: 25, 17: 32, 18: 4, 19: 5, 20: 10, 21: 11, 22: 15, 23: 19, 24: 20, 25: 22,
-                        26: 26, 27: 27, 28: 28, 29: 29, 30: 33, 31: 34, 32: 35, 33: 36, 34: 37, 35: 44, 36: 18, 37: 30,
-                        38: 38, 39: 39, 40: 40, 41: 31, 42: 41, 43: 42, 44: 43}}
+                         14: 24, 15: 23, 16: 25, 17: 32, 18: 4, 19: 5, 20: 10, 21: 11, 22: 15, 23: 19, 24: 20, 25: 22,
+                         26: 26, 27: 27, 28: 28, 29: 29, 30: 33, 31: 34, 32: 35, 33: 36, 34: 37, 35: 44, 36: 18, 37: 30,
+                         38: 38, 39: 39, 40: 40, 41: 31, 42: 41, 43: 42, 44: 43}}
         self.assertTrue(zmat.is_atom_in_new_fragment(atom_index=46, zmat=zmat1, fragments=fragments))
         self.assertFalse(zmat.is_atom_in_new_fragment(atom_index=44, zmat=zmat1, fragments=fragments))
 
