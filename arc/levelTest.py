@@ -135,7 +135,7 @@ class TestLevel(unittest.TestCase):
                               'solvent': 'water',
                               'solvation_scheme_level': 'APFD/def2-TZVp'})
         self.assertEqual(level_3.to_arkane_level_of_theory(),
-                         LevelOfTheory(method='dlpno-ccsd(t)', basis='def2tzvp',software='orca'))
+                         LevelOfTheory(method='dlpno-ccsd(t)', basis='def2tzvp', software='orca'))
         self.assertEqual(level_3.to_arkane_level_of_theory(comprehensive=True),
                          LevelOfTheory(method='dlpnoccsd(t)', basis='def2tzvp', auxiliary_basis='def2tzvp/c',
                                        solvent='water', solvation_method='smd', software='orca'))
