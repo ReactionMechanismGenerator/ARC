@@ -370,7 +370,7 @@ def determine_a_atoms(zmat: Dict[str, Union[dict, tuple]],
             if atom in list(zmat['map'].values()):
                 zmat_index = key_by_val(zmat['map'], atom)
                 if atom != atom_index and zmat_index not in a_atoms and not is_dummy(zmat, zmat_index):
-                    # Check whether this atom (B) is part of a linear chain, if it is try to correctly determine
+                    # Check whether this atom (B) is part of a linear chain. If it is, try to correctly determine
                     # dihedrals in this molecule w/o this atom, otherwise it's meaningless, and the zmat looses info.
                     #
                     #                     D (atom_index, r_atoms[0])
@@ -413,7 +413,7 @@ def determine_a_atoms(zmat: Dict[str, Union[dict, tuple]],
     if trivial_assignment and isinstance(a_atoms, list) and len(a_atoms) != 3:
         a_atoms = [atom for atom in r_atoms]
         for i in reversed(range(n)):
-            # Check whether this atom (B) is part of a linear chain, if it is try to correctly determine
+            # Check whether this atom (B) is part of a linear chain. If it is, try to correctly determine
             # dihedrals in this molecule w/o this atom, otherwise it's meaningless, and the zmat looses info.
             #
             #                     D (atom_index, r_atoms[0])
@@ -507,7 +507,7 @@ def determine_d_atoms(zmat: Dict[str, Union[dict, tuple]],
         if d_constraint_type not in ['D_atom', 'D_group']:
             raise ZMatError(f'Got an invalid D constraint type "{d_constraint_type}" for {d_constraint}')
         d_atoms = [n] + [key_by_val(zmat['map'], atom) for atom in d_constraint[1:]]
-    elif specific_atom is not None:
+    elif specific_atom is not None and a_atoms is not None:
         # A specific atom was specified (e.g., a dummy atom was added to assist defining this atom), consider it.
         if not isinstance(specific_atom, int):
             raise ZMatError(f'specific atom must be of type int, got {type(specific_atom)}')
@@ -612,7 +612,7 @@ def determine_d_atoms_from_connectivity(zmat: dict,
             # Atom A is allowed to be a dummy atom only if the atom represented by n is not.
             zmat_index = None
             if atom not in list([zmat['map'][d_atom] for d_atom in d_atoms[1:]]):
-                # Check whether this atom (A) is part of a linear chain, if it is try to correctly determine
+                # Check whether this atom (A) is part of a linear chain. If it is, try to correctly determine
                 # dihedrals in this molecule w/o this atom, otherwise it's meaningless, and the zmat looses info.
                 #
                 #             X       D (atom_index)
@@ -807,8 +807,7 @@ def _add_nth_atom_to_zmat(zmat: Dict[str, Union[dict, tuple]],
         zmat = update_zmat_with_new_atom(zmat, xyz, coords, n, atom_index, r_atoms, a_atoms, d_atoms, added_dummy)
 
     else:
-        # Some constraints did not "pass": some of the atoms the atom represented by ``atom_index`` is constraint to
-        # were not added to the zmat yet; skip this atom until they are.
+        # Some constraints did not "pass": some atoms were not added to the zmat yet; skip this atom until they are.
         skipped_atoms.append(atom_index)
 
     xyz['coords'] = coords  # Update xyz with the updated coords.
@@ -943,7 +942,7 @@ def add_dummy_atom(zmat: dict,
     zmat['vars'][a_str] = 90.0
     if d_str is not None:
         # Determine the dihedral angle of XCBA to be equal to the dihedral angle of DCBA
-        # so later the dihedral of DCXB will be either 180 or 0 degrees, depends on the the order
+        # so later the dihedral of DCXB will be either 180 or 0 degrees, depends on the order
         # in which DCB are considered (and their relative position on a single straight line).
         #
         #       X        E
@@ -962,7 +961,7 @@ def add_dummy_atom(zmat: dict,
         connectivity[int(zmat['map'][n][1:])] = [zmat['map'][r_atoms[1]]]
     # Before adding the original (non-dummy) atom, increase n due to the increased number of atoms.
     n += 1
-    # Store atom "B"'s index for the dihedral of atom D.
+    # Store atom B's index for the dihedral of atom D.
     specific_last_d_atom = a_atoms[-1]
     # Update the r_atoms and a_atoms for the original (non-dummy) atom (d_atoms is set below).
     #
@@ -1000,7 +999,7 @@ def zmat_to_coords(zmat: dict,
                                ``True`` to skip, default is ``False``.
 
     Raises:
-        ZMatError: If zmat if of wrong type or does not contain all keys.
+        ZMatError: If zmat is of wrong type or does not contain all keys.
 
     Returns: Tuple[List[dict], List[str]]
         - The cartesian coordinates.
@@ -1120,7 +1119,7 @@ def _add_nth_atom_to_coords(zmat: dict,
                       cd_length * math.sin(bcd_angle) * math.cos(abcd_dihedral),
                       cd_length * math.sin(bcd_angle) * math.sin(abcd_dihedral)])
         d = m.dot(d)  # Rotate the coordinate system into the reference frame of orientation defined by A, B, C.
-        # Add the coordinates of atom C the the resulting atom D:
+        # Add the coordinates of atom C to the resulting atom D:
         coords.append((d[0] + coords[c_index][0], d[1] + coords[c_index][1], d[2] + coords[c_index][2]))
     return coords
 
@@ -1863,8 +1862,8 @@ def get_parameter_from_atom_indices(zmat: dict,
     raise ZMatError(f'Could not find a key corresponding to {key} {indices}.')
 
 
-def _compare_zmats(zmat1:dict,
-                   zmat2:dict,
+def _compare_zmats(zmat1: dict,
+                   zmat2: dict,
                    r_tol: Optional[float] = None,
                    a_tol: Optional[float] = None,
                    d_tol: Optional[float] = None,
