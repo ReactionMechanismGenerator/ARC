@@ -650,7 +650,7 @@ def determine_top_group_indices(mol, atom1, atom2, index=1) -> Tuple[list, bool]
 
     Returns: Tuple[list, bool]
         - The indices of the atoms in the top (either 0-index or 1-index, as requested).
-        - Whether the top has heavy atoms (is not just a hydrogen atom). True if it has heavy atoms.
+        - Whether the top has heavy atoms (is not just a hydrogen atom). ``True`` if it has heavy atoms.
     """
     top = list()
     explored_atom_list, atom_list_to_explore1, atom_list_to_explore2 = [atom1], [atom2], []
@@ -1079,7 +1079,7 @@ def get_ordered_intersection_of_two_lists(l1: list,
     Args:
         l1 (list): The first list.
         l2 (list): The second list.
-        order_by_first_list (bool, optional: Whether to order the output list using the order of the values in the first list.
+        order_by_first_list (bool, optional): Whether to order the output list using the order of the values in the first list.
         return_unique (bool, optional): Whether to return only unique values in the intersection of two lists.
 
     Returns: list
