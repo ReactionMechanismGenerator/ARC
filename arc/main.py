@@ -573,6 +573,7 @@ class ARC(object):
 
         if not self.keep_checks:
             self.delete_check_files()
+        self.delete_leftovers()
 
         self.save_project_info_file()
 
@@ -873,6 +874,17 @@ class ARC(object):
                         logger.info('\ndeleting all check files...\n')
                         logged = True
                     os.remove(os.path.join(root, file_))
+
+    def delete_leftovers(self):
+        """
+        Delete leftover files, e.g., files created by the Symmetry program.
+        """
+        files_to_delete = ['nul', 'timer.dat', 'run.out']
+        for (root, _, files) in os.walk(self.project_directory):
+            for file_ in files:
+                if file_ in files_to_delete and os.path.isfile(os.path.join(root, file_)):
+                    os.remove(os.path.join(root, file_))
+            break
 
     def determine_unique_species_labels(self):
         """
