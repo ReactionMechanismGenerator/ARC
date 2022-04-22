@@ -4,6 +4,7 @@
 """
 This module contains unit tests of the arc.species.converter module
 """
+import os
 
 import numpy as np
 import unittest
@@ -18,7 +19,7 @@ from rmgpy.species import Species
 from rmgpy.statmech import Conformer
 
 import arc.species.converter as converter
-from arc.common import almost_equal_coords_lists, almost_equal_lists
+from arc.common import ARC_PATH, almost_equal_coords_lists, almost_equal_lists
 from arc.exceptions import ConverterError
 from arc.species.species import ARCSpecies
 from arc.species.vectors import calculate_dihedral_angle
@@ -485,6 +486,10 @@ H       0.63003260   -0.63003260   -0.63003260
                                       (-2.47418, -6.81e-08, -0.625387)
                                       )
                            }
+
+        cls.xyz_dict_13 = {'symbols': ('O', 'N', 'O', 'H'), 'isotopes': (16, 14, 16, 1),
+                           'coords': ((1.082465, -0.311042, 0.517009), (-0.000538, 0.002628, 0.064162),
+                                      (-0.872035, -0.717142, -0.381683), (-0.209893, 1.025557, 0.057233))}
 
         cls.conformer_12 = Conformer(number=ArrayQuantity([9, 6, 6, 6, 6, 6, 6, 9, 1, 1, 1, 1], ''),
                                      mass=ArrayQuantity([18.9984, 12, 12, 12, 12, 12, 12, 18.9984, 1.00783, 1.00783,
@@ -1074,25 +1079,25 @@ X      -0.52389885    0.72654241   -1.86620254"""
                                                          (-2.06314, -0.24194, -0.62839), (-1.53242, -0.70687, 1.00574),
                                                          (-1.51781, 0.99794, 0.49424), (0.24018, -1.21958, -0.68782),
                                                          (0.79344, 0.03863, 0.45152), (1.95991, 1.39912, -1.67215))})
-        expected_zmat_8 = {'symbols': ('C', 'C', 'O', 'O', 'H', 'H', 'H', 'H', 'H', 'H'),
-                           'coords': ((None, None, None), ('R_1_0', None, None), ('R_2_1', 'A_2_1_0', None),
-                                      ('R_3_2', 'A_3_2_0', 'D_3_2_0_1'), ('R_4_3', 'A_4_3_2', 'D_4_3_2_1'),
-                                      ('R_5|6_4|5', 'A_5_4_3', 'D_5_4_3_2'), ('R_5|6_4|5', 'A_6_5_4', 'D_6_5_4_3'),
-                                      ('R_7_6', 'A_7_6_5', 'D_7_6_5_4'), ('R_8_7', 'A_8_7_6', 'D_8_7_6_5'),
-                                      ('R_9_8', 'A_9_8_7', 'D_9_8_7_6')),
-                           'vars': {'R_1_0': 1.5147479951212197, 'R_2_1': 1.4265728986680748,
-                                    'A_2_1_0': 108.63387152978416, 'R_3_2': 1.4559254886404387,
-                                    'A_3_2_0': 142.49656841213346, 'D_3_2_0_1': 359.9876973657817,
-                                    'R_4_3': 3.98136363204172, 'A_4_3_2': 18.97677735007675,
-                                    'D_4_3_2_1': 42.78185046014481, 'A_5_4_3': 93.25065759618667,
-                                    'D_5_4_3_2': 252.54479749290235, 'A_6_5_4': 59.23241987522002,
-                                    'D_6_5_4_3': 73.32692323400327, 'R_7_6': 3.0667881430187114,
-                                    'A_7_6_5': 54.754340590195426, 'D_7_6_5_4': 294.3456575162219,
-                                    'R_8_7': 1.7852968790768806, 'A_8_7_6': 54.69481036370407,
-                                    'D_8_7_6_5': 256.05221542923823, 'R_9_8': 2.7787694262993705,
-                                    'A_9_8_7': 89.27884712999244, 'D_9_8_7_6': 257.69473747832507,
-                                    'R_5|6_4|5': 1.7799476413293496},
-                           'map': {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7, 8: 8, 9: 9}}
+        expected_zmat_8 = {'coords': ((None, None, None), ('R_1_0', None, None), ('R_2_1', 'A_2_1_0', None),
+                                      ('R_3_2', 'A_3_2_1', 'D_3_2_1_0'), ('R_4|6_0|0', 'A_4_0_1', 'D_4_0_1_3'),
+                                      ('R_5_0', 'A_5_0_1', 'D_5|6_0|0_1|1_4|5'),
+                                      ('R_4|6_0|0', 'A_6_0_1', 'D_5|6_0|0_1|1_4|5'),
+                                      ('R_7|8_1|1', 'A_7_1_0', 'D_7_1_0_6'), ('R_7|8_1|1', 'A_8_1_0', 'D_8_1_0_7'),
+                                      ('R_9_3', 'A_9_3_2', 'D_9_3_2_1')),
+                           'map': {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7, 8: 8, 9: 9},
+                           'symbols': ('C', 'C', 'O', 'O', 'H', 'H', 'H', 'H', 'H', 'H'),
+                           'vars': {'A_2_1_0': 108.63387152978416, 'A_3_2_1': 105.58023544826183,
+                                    'A_4_0_1': 110.62463321031589, 'A_5_0_1': 110.91425998596507,
+                                    'A_6_0_1': 110.62270362433773, 'A_7_1_0': 110.20822115119915,
+                                    'A_8_1_0': 110.20143800025897, 'A_9_3_2': 96.30065819269021,
+                                    'D_3_2_1_0': 179.9922243050821, 'D_4_0_1_3': 59.13545080998071,
+                                    'D_5|6_0|0_1|1_4|5': 120.87284125909102, 'D_7_1_0_6': 181.16392677464265,
+                                    'D_8_1_0_7': 239.4199964284852, 'D_9_3_2_1': 242.3527063196313,
+                                    'R_1_0': 1.5147479951212197, 'R_2_1': 1.4265728986680748,
+                                    'R_3_2': 1.4559254886404387, 'R_4|6_0|0': 1.0950148489417413,
+                                    'R_5_0': 1.093567969297245, 'R_7|8_1|1': 1.0951422141311429,
+                                    'R_9_3': 0.9741224704818748}}
         self.assertTrue(_compare_zmats(zmat_8, expected_zmat_8))
 
     def test_zmat_to_xyz(self):
@@ -3158,6 +3163,15 @@ R1=1.0912"""
         for atom1, symbol in zip(s_mol.atoms, self.xyz10['dict']['symbols']):
             self.assertEqual(atom1.symbol, symbol)
 
+        s_mol, b_mol = converter.molecules_from_xyz(self.xyz_dict_13, multiplicity=1, charge=0)
+        for atom1, atom2 in zip(s_mol.atoms, b_mol.atoms):
+            self.assertEqual(atom1.symbol, atom2.symbol)
+        for atom1, symbol in zip(s_mol.atoms, self.xyz_dict_13['symbols']):
+            self.assertEqual(atom1.symbol, symbol)
+        self.assertEqual(s_mol.multiplicity, 1)
+        self.assertEqual(b_mol.multiplicity, 1)
+        self.assertFalse(any(atom.radical_electrons for atom in b_mol.atoms))
+
     def test_unsorted_xyz_mol_from_xyz(self):
         """Test atom order conservation when xyz isn't sorted with heavy atoms first"""
         n3h5 = ARCSpecies(label='N3H5', xyz=self.xyz8['str'], smiles='NNN')
@@ -4726,6 +4740,16 @@ H      -0.81291200   -0.46933500   -0.31111876"""
 
         xyzs3 = [nco_1, nco_2, nco_6, nco_7, nco_8, nco_9]
         self.assertEqual(len(converter.cluster_confs_by_rmsd(xyzs3)), 4)
+
+    @classmethod
+    def tearDownClass(cls):
+        """
+        A function that is run ONCE after all unit tests in this class.
+        """
+        file_paths = [os.path.join(ARC_PATH, 'nul'), os.path.join(ARC_PATH, 'run.out')]
+        for file_path in file_paths:
+            if os.path.isfile(file_path):
+                os.remove(file_path)
 
 
 if __name__ == '__main__':
