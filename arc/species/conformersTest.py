@@ -2083,8 +2083,8 @@ Cl      2.38846685    0.24054066    0.55443324
                                         (5, 4, 6, 7): 204.57856732311797}}]
         mol = ARCSpecies(label='C(O)(S)NC=CO', smiles='C(O)(S)NC=CO', xyz=confs[0]['xyz']).mol
         confs = conformers.determine_chirality(conformers=confs, label='C(O)(S)NC=CO', mol=mol)
-        self.assertEqual(confs[0]['chirality'], {(0,): 'R', (3,): 'NR', (4, 5): 'E'})
-        self.assertEqual(confs[1]['chirality'], {(0,): 'S', (3,): 'NR', (4, 5): 'Z'})
+        self.assertEqual(confs[0]['chirality'], {(3,): 'NR', (4,): 'S', (5, 6): 'E'})
+        self.assertEqual(confs[1]['chirality'], {(3,): 'NR', (4,): 'R', (5, 6): 'Z'})
 
         confs = [{'xyz': converter.str_to_xyz("""C                  0.42854493    1.37396218   -0.06378771
                                                  H                  0.92258324    0.49575491   -0.42375735
