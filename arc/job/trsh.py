@@ -25,10 +25,7 @@ from arc.job.local import execute_command
 from arc.job.ssh import SSHClient
 from arc.species import ARCSpecies
 from arc.species.conformers import determine_smallest_atom_index_in_scan
-from arc.species.converter import (ics_to_scan_constraints,
-                                   xyz_from_data,
-                                   xyz_to_coords_list,
-                                   )
+from arc.species.converter import (displace_xyz, ics_to_scan_constraints)
 from arc.species.species import determine_rotor_symmetry
 from arc.species.vectors import calculate_dihedral_angle, calculate_distance
 from arc.parser import (parse_1d_scan_coords,
@@ -445,7 +442,7 @@ def trsh_negative_freq(label: str,
     neg_freqs_trshed = neg_freqs_trshed if neg_freqs_trshed is not None else list()
     job_types = job_types if job_types is not None else ['rotors']
     output_errors, output_warnings, conformers, current_neg_freqs_trshed = list(), list(), list(), list()
-    factors = [1.1, 1.25, 1.7, 2.5, 5, 10]
+    factors = [0.25, 0.50, 0.75, 1.0, 1.5, 2.5]
     factor = factors[0]
     max_times_to_trsh_neg_freq = len(factors) + 1
     freqs, normal_modes_disp = parse_normal_mode_displacement(path=log_file, raise_error=False)
@@ -477,7 +474,8 @@ def trsh_negative_freq(label: str,
         if len(neg_freqs_idx) == 1 and not len(neg_freqs_trshed):
             # species has one negative frequency, and has not been troubleshooted for it before
             logger.info(f'Species {label} has a negative frequency ({freqs[largest_neg_freq_idx]}). Perturbing its '
-                        f'geometry using the respective vibrational normal mode displacement(s).')
+                        f'geometry using the respective vibrational normal mode displacement(s), '
+                        f'using an amplitude of {factor}.')
             neg_freqs_idx = [largest_neg_freq_idx]  # indices of the negative frequencies to troubleshoot for
         elif len(neg_freqs_idx) == 1 \
                 and any([np.allclose(freqs[0], vf, rtol=1e-04, atol=1e-02) for vf in neg_freqs_trshed]) \
@@ -505,13 +503,10 @@ def trsh_negative_freq(label: str,
         freqs_list = freqs.tolist()
         current_neg_freqs_trshed = [round(freqs_list[i], 2) for i in neg_freqs_idx]  # record trshed negative freqs
         xyz = parse_xyz_from_file(log_file)
-        coords = np.array(xyz_to_coords_list(xyz), np.float64)
         for neg_freq_idx in neg_freqs_idx:
-            displacement = normal_modes_disp[neg_freq_idx]
-            coords1 = coords + factor * displacement
-            coords2 = coords - factor * displacement
-            conformers.append(xyz_from_data(coords=coords1, symbols=xyz['symbols']))
-            conformers.append(xyz_from_data(coords=coords2, symbols=xyz['symbols']))
+            xyz_1, xyz_2 = displace_xyz(xyz=xyz, displacement=normal_modes_disp[neg_freq_idx], amplitude=factor)
+            conformers.append(xyz_1)
+            conformers.append(xyz_2)
     return current_neg_freqs_trshed, conformers, output_errors, output_warnings
 
 
