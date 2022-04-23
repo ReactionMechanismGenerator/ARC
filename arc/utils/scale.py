@@ -116,7 +116,7 @@ def determine_scaling_factors(levels: List[Union[Level, dict, str]],
         times.append(time_lapse(t1))
 
     summarize_results(lambda_zpes=lambda_zpes,
-                      levels=[str(level) for level in levels],
+                      levels=levels,
                       zpe_dicts=zpe_dicts,
                       times=times,
                       overall_time=time_lapse(t0))
@@ -190,7 +190,7 @@ def calculate_truhlar_scaling_factors(zpe_dict: dict,
 
 
 def summarize_results(lambda_zpes: list,
-                      levels: List[str],
+                      levels: List[Union[Level, dict, str]],
                       zpe_dicts: list,
                       times: list,
                       overall_time: str,
@@ -201,7 +201,7 @@ def summarize_results(lambda_zpes: list,
 
     Args:
         lambda_zpes (list): The scale factors for the vibrational zero-point energy, entries are floats.
-        levels (list): Entries are string representations of the frequency levels of theory.
+        levels (list): Entries are the frequency levels of theory.
         zpe_dicts (list): Entries are The calculated vibrational zero-point energies at the requested level of theory.
                           Keys are species labels, values are floats representing the ZPE in J/mol.
         times (list): Entries are string-format of the calculation execution times.
@@ -221,8 +221,9 @@ def summarize_results(lambda_zpes: list,
 
     with open(info_file_path, 'w') as f:
         f.write(HEADER)
-        database_text = '\n\n\nYou may copy-paste the following harmonic frequencies scaling factor/s to RMG-database\n' \
-                        '(paste in the `freq_dict` in RMG-database/input/quantum_corrections/data.py):\n'
+        database_text = '\n\n\nYou may copy-paste the following harmonic frequency scaling factor(s) to ' \
+                        'the RMG-database repository\n' \
+                        '(under the `freq_dict` in RMG-database/input/quantum_corrections/data.py):\n'
         database_formats = list()
         harmonic_freq_scaling_factors = list()
         for lambda_zpe, level, zpe_dict, execution_time\
@@ -231,6 +232,13 @@ def summarize_results(lambda_zpes: list,
             fundamental_freq_scaling_factor = lambda_zpe * 0.974
             harmonic_freq_scaling_factors.append(fundamental_freq_scaling_factor)
             unconverged = [key for key, val in zpe_dict.items() if val is None]
+            arkane_level = level.to_arkane_level_of_theory().simple()
+            arkane_level_str = f"LevelOfTheory(method='{level.method}'"
+            if arkane_level.basis is not None:
+                arkane_level_str += f",basis='{level.basis}'"
+            if arkane_level.software is not None:
+                arkane_level_str += f",software='{level.software}'"
+            arkane_level_str += f")"
 
             text = f'\n\nLevel of theory: {level}\n'
             if unconverged:
@@ -241,7 +249,7 @@ def summarize_results(lambda_zpes: list,
             text += f'(execution time: {execution_time})\n'
             logger.info(text)
             f.write(text)
-            database_formats.append(f"             '{level}': {harmonic_freq_scaling_factor:.3f},  # [4]\n")
+            database_formats.append(f"""             "{arkane_level_str}": {harmonic_freq_scaling_factor:.3f},  # [4]\n""")
         logger.info(database_text)
         f.write(database_text)
         for database_format in database_formats:

@@ -10,6 +10,7 @@ import shutil
 import unittest
 
 from arc.common import almost_equal_coords_lists, ARC_PATH
+from arc.level import Level
 from arc.utils.scale import (calculate_truhlar_scaling_factors,
                              get_species_list,
                              rename_level,
@@ -65,7 +66,9 @@ class TestScale(unittest.TestCase):
     def test_summarize_results(self):
         """Test the scale summarize_results() function"""
         lambda_zpes = [0.95, 0.98]
-        levels_of_theory = ['level1', 'level2']
+        levels_of_theory = [Level(method='CBS-QB3'),
+                            Level(method='B2PLYPD3', basis='Def2TZVP'),
+                            ]
         times = ['3', '5']
         overall_time = '8.5'
         base_path = os.path.join(ARC_PATH, 'Projects', 'scaling_factors_arc_testing_delete_after_usage')
@@ -82,15 +85,16 @@ class TestScale(unittest.TestCase):
         with open(info_file_path, 'r') as f:
             lines = f.readlines()
         self.assertIn('CITATIONS:\n', lines)
-        self.assertIn('Level of theory: level1\n', lines)
-        self.assertIn('Level of theory: level2\n', lines)
+        self.assertIn('Level of theory: cbs-qb3, software: gaussian (composite)\n', lines)
+        self.assertIn('Level of theory: b2plypd3/def2tzvp, software: gaussian (dft)\n', lines)
         self.assertIn('The following species from the standard set did not converge at this level:\n', lines)
         self.assertIn(" ['CO2']\n", lines)
         self.assertIn('Scale Factor for Fundamental Frequencies = 0.955\n', lines)
         self.assertIn('Scale Factor for Harmonic Frequencies    = 0.994\n', lines)
+        self.assertIn('You may copy-paste the following harmonic frequency scaling factor(s) to the RMG-database repository\n', lines)
+        self.assertIn("""             "LevelOfTheory(method='cbs-qb3')": 0.963,  # [4]\n""", lines)
+        self.assertIn("""             "LevelOfTheory(method='b2plypd3',basis='def2tzvp')": 0.994,  # [4]\n""", lines)
         self.assertIn('Scaling factors calculation for 2 levels of theory completed (elapsed time: 8.5).\n', lines)
-        self.assertIn('You may copy-paste the following harmonic frequencies scaling factor/s to RMG-database\n', lines)
-        self.assertIn("             'level1': 0.963,  # [4]\n", lines)
 
     def test_get_species_list(self):
         """Test the scale get_species_list() function"""
