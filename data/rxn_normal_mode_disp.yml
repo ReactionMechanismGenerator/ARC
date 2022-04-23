@@ -1,0 +1,3 @@
+# The number of atoms expected to have the largest normal mode displacement per reaction family
+intra_H_migration: 3
+
