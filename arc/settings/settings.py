@@ -10,7 +10,7 @@ import sys
 # Instructions for RSA key generation can be found here:
 # https://www.digitalocean.com/community/tutorials/how-to-set-up-ssh-keys--2
 # If ARC is being executed on a server, and ESS are available on that server, define a server named 'local',
-# for which only the cluster software and user name are required.
+# for which only the cluster software and username are required.
 # servers = {
 #     'pharos': {
 #         'cluster_soft': 'OGE',  # Oracle Grid Engine (Sun Grin Engine)
@@ -25,6 +25,7 @@ import sys
 #         'key': '/home/<username>/.ssh/id_rsa',
 #     },
 #    'local': {
+#        'path': '/storage/group_name/',  # an absolute path on the server, under which ARC runs will be executed (e.g., '/storage/group_name/$USER/runs/ARC_Projects/project/')
 #        'cluster_soft': 'OGE',
 #        'un': '<username>',
 #    },
@@ -45,7 +46,7 @@ servers = {
         'memory': 256,  # amount of memory per node in GB, optional (default: 16)
     },
     'local': {
-        'cluster_soft': 'Slurm',
+        'cluster_soft': 'HTCondor',
         'un': '<username>',
         'cpus': 48,
     },
@@ -93,19 +94,22 @@ levels_ess = {
     'terachem': ['pbe'],
 }
 
-check_status_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat',
-                        'Slurm': '/usr/bin/squeue',
-                        'PBS': '/usr/local/bin/qstat',
+check_status_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat -u $USER',
+                        'Slurm': '/usr/bin/squeue -u $USER',
+                        'PBS': '/usr/local/bin/qstat -u $USER',
+                        'HTCondor': """condor_q -cons 'Member(Jobstatus,{1,2})' -af:j '{"0","P","R","X","C","H",">","S"}[JobStatus]' RequestCpus RequestMemory JobName  '(Time() - EnteredCurrentStatus)'""",
                         }
 
 submit_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qsub',
                   'Slurm': '/usr/bin/sbatch',
                   'PBS': '/usr/local/bin/qsub',
+                  'HTCondor': 'condor_submit',
                   }
 
 delete_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qdel',
                   'Slurm': '/usr/bin/scancel',
                   'PBS': '/usr/local/bin/qdel',
+                  'HTCondor': 'condor_rm',
                   }
 
 list_available_nodes_command = {
@@ -117,11 +121,13 @@ list_available_nodes_command = {
 submit_filenames = {'OGE': 'submit.sh',
                     'Slurm': 'submit.sl',
                     'PBS': 'submit.sh',
+                    'HTCondor': 'submit.sub',
                     }
 
 t_max_format = {'OGE': 'hours',
                 'Slurm': 'days',
                 'PBS': 'hours',
+                'HTCondor': 'hours',
                 }
 
 input_filenames = {'gaussian': 'input.gjf',
@@ -206,7 +212,7 @@ default_job_settings = {
     'job_total_memory_gb': 14,
     'job_cpu_cores': 8,
     'job_time_limit_hrs': 120,
-    'job_max_server_node_memory_allocation': 0.8,  # e.g., at most 80% node memory will be used
+    'job_max_server_node_memory_allocation': 0.8,  # e.g., at most 80% node memory will be used per job **if needed**
 }
 
 # Criteria for identification of imaginary frequencies for transition states.
