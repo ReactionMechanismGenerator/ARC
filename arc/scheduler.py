@@ -360,6 +360,12 @@ class Scheduler(object):
                         ts_species.ts_guesses.append(ts_guess)
                 rxn.check_atom_balance()
                 rxn.check_done_opt_r_n_p()
+
+                if not self.job_types['opt']:
+                    ts_species.final_xyz = str_to_xyz(rxn.ts_xyz_guess[0])
+                    ts_species.ts_guesses[0].success = True
+                    ts_species.ts_conf_spawned = True
+
             logger.info('\n\n')
 
         for species in self.species_list:
