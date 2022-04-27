@@ -445,7 +445,7 @@ class Scheduler(object):
                                 (self.job_types['fine'] and 'opt' not in list(self.job_dict[species.label].keys())
                                  and 'fine' not in list(self.job_dict[species.label].keys())):
                             # opt/fine isn't running
-                            if not self.output[species.label]['paths']['geo']:
+                            if self.job_types['opt'] and not self.output[species.label]['paths']['geo']:
                                 # opt/fine hasn't finished (and isn't running), so run it
                                 self.run_opt_job(species.label, fine=self.fine_only)
                             else:
