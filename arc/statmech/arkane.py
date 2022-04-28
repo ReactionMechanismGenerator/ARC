@@ -198,7 +198,7 @@ class ArkaneAdapter(StatmechAdapter):
                     reactant_labels.extend([reactant.label] * self.reaction.get_species_count(reactant, well=0))
                 for product in self.reaction.p_species:
                     product_labels.extend([product.label] * self.reaction.get_species_count(product, well=1))
-                arkane_rxn = arkane_reaction(label=self.reaction.label,
+                arkane_rxn = arkane_reaction(label=self.reaction.label+self.reaction.ts_label,
                                              reactants=reactant_labels,
                                              products=product_labels,
                                              transitionState=self.reaction.ts_label,
@@ -223,7 +223,7 @@ class ArkaneAdapter(StatmechAdapter):
                     #   File "rmgpy/reaction.py", line 818, in rmgpy.reaction.Reaction.calculateTSTRateCoefficient
                     #   File "rmgpy/reaction.py", line 844, in rmgpy.reaction.Reaction.calculateTSTRateCoefficient
                     # OverflowError: math range error
-                    arkane_rxn = arkane_reaction(label=self.reaction.label,
+                    arkane_rxn = arkane_reaction(label=self.reaction.label+self.reaction.ts_label,
                                                  reactants=reactant_labels,
                                                  products=product_labels,
                                                  transitionState=self.reaction.ts_label,
