@@ -1067,11 +1067,11 @@ class ARC(object):
             else:
                 logger.debug("Not running molecular orbitals visualization, since it was not requested by the user.")
 
-        if not self.job_types['fine'] and (self.opt_level is not None and self.opt_level.method_type == 'dft'
-                                           or self.composite_method is not None):
-            logger.info('\n')
-            logger.warning('Not using a fine DFT grid for geometry optimization jobs')
-            logger.info('\n')
+        # if not self.job_types['fine'] and (self.opt_level is not None and self.opt_level.method_type == 'dft'
+        #                                    or self.composite_method is not None):
+        #     logger.info('\n')
+        #     logger.warning('Not using a fine DFT grid for geometry optimization jobs')
+        #     logger.info('\n')
 
     def process_level_of_theory(self):
         """
