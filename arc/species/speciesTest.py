@@ -1309,6 +1309,7 @@ H       1.11582953    0.94384729   -0.10134685"""
                                                                       charge=spc.charge)[1]))
         self.assertTrue(any(spc.mol.to_smiles() == 'CO[NH]' for spc in spc_list))
 
+
     def test_net_charged_species(self):
         """Test that we can define, process, and manipulate ions"""
         nh4 = ARCSpecies(label='NH4', smiles='[NH4+]', charge=1)
@@ -1725,7 +1726,7 @@ class TestTSGuess(unittest.TestCase):
         mol_graph_1 = MolGraph(symbols=xyz_arb['symbols'], coords=xyz_arb['coords'])
         self.assertEqual(mol_graph_1.get_formula(), 'CH3NO2')
 
-    @work_in_progress
+
     def test_gcn(self):
         """
         Test that ARC can call the GNN to make TS guesses for further optimization.
