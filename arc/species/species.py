@@ -1381,7 +1381,7 @@ class ARCSpecies(object):
     def mol_from_xyz(self,
                      xyz: dict = None,
                      get_cheap: bool = False,
-                     save_atom_labels=False) -> None:
+                     save_atom_labels: bool =False) -> None:
         """
         Make sure atom order in self.mol corresponds to xyz.
         Important for TS discovery and for identifying rotor indices.
