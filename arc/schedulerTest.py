@@ -253,7 +253,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.assertTrue(self.sched1._does_output_dict_contain_info())
 
     def test_non_rotor(self):
-        """Test that a 180 degree angle on either side of a torsion is not considered as a rotor"""
+        """Test that a 180 degree angle on either side of a torsion is not considered as a rotor."""
         self.sched1.species_dict['CtripCO'].rotors_dict = {
             0: {'torsion': [1, 2, 3, 4], 'top': [3, 5], 'scan': [1, 2, 3, 5], 'number_of_running_jobs': 0,
                 'success': None, 'invalidation_reason': '', 'times_dihedral_set': 0, 'trsh_methods': [], 'scan_path': '',
@@ -265,6 +265,33 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.assertEqual(self.sched1.species_dict['CtripCO'].rotors_dict[0]['invalidation_reason'],
                          'not a torsional mode (angles = 0.20, 13.03 degrees)')
         self.assertFalse(self.sched1.species_dict['CtripCO'].rotors_dict[0]['success'])
+
+    def test_deduce_job_adapter(self):
+        """Test the deduce_job_adapter() method."""
+        level_1 = Level(method='CBS-QB3')
+        job_type_1 = 'composite'
+        job_adapter_1 = self.sched1.deduce_job_adapter(level=level_1, job_type=job_type_1)
+        self.assertEqual(job_adapter_1, 'gaussian')
+
+        level_2 = Level(repr='dlpno-ccsd(t)/def2-svp')
+        job_type_2 = 'sp'
+        job_adapter_2 = self.sched1.deduce_job_adapter(level=level_2, job_type=job_type_2)
+        self.assertEqual(job_adapter_2, 'orca')
+
+        level_3 = Level(repr='ccsd(t)/cc-pvtz')
+        job_type_3 = 'sp'
+        job_adapter_3 = self.sched1.deduce_job_adapter(level=level_3, job_type=job_type_3)
+        self.assertEqual(job_adapter_3, 'molpro')
+
+        level_4 = Level(repr='m06-2x/def2-svp')
+        job_type_4 = 'freq'
+        job_adapter_4 = self.sched1.deduce_job_adapter(level=level_4, job_type=job_type_4)
+        self.assertEqual(job_adapter_4, 'qchem')
+
+        level_5 = Level(repr='pbe/def2-svp')
+        job_type_5 = 'freq'
+        job_adapter_5 = self.sched1.deduce_job_adapter(level=level_5, job_type=job_type_5)
+        self.assertEqual(job_adapter_5, 'terachem')
 
     @classmethod
     def tearDownClass(cls):
