@@ -191,6 +191,16 @@ preserve_params_in_scan = {
     'dihedral': 20,  # Default: 20 degrees
 }
 
+# Coefficients to be used in a y = A * x ** b fit
+# to determine the number of workers in a pipe job to execute in parallel vs. the number of processes.
+# This is y = 2.0 * x ** 0.30 by default, corresponding the following output:
+# 10 -> 4, 100 -> 8, 1000 -> 16, 1e4 -> 32, 1e5 -> 63.
+# 'cap' is the maximal number of workers to use per pipe.
+# If the number of processes is equal or lesser than 'max_one', only a single worker will be used.
+# If the number of processes is greater than 'max_one' but equal or lesser than 'max_two',
+# only two workers will be used.
+workers_coeff = {'A': 2.0, 'b': 0.25, 'cap': 100, 'max_one': 3, 'max_two': 9}
+
 # Default job memory, cpu, time settings
 default_job_settings = {
     'job_total_memory_gb': 14,
