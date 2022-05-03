@@ -1693,7 +1693,8 @@ class ARCSpecies(object):
             indices (tuple): The atom indices between which to cut (1-indexed, atoms must be bonded).
 
         Returns: list
-            The scission-resulting species.
+            The scission-resulting species, a list of either one or two species, if the scissored location is linear,
+            or one if the scission is in a cycle.
         """
         if any([i < 1 for i in indices]):
             raise SpeciesError(f'Scissors indices must be larger than 0 (1-indexed). Got: {indices}.')
