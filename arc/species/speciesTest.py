@@ -1733,7 +1733,6 @@ class TestTSGuess(unittest.TestCase):
         mol_graph_1 = MolGraph(symbols=xyz_arb['symbols'], coords=xyz_arb['coords'])
         self.assertEqual(mol_graph_1.get_formula(), 'CH3NO2')
 
-    @work_in_progress
     def test_gcn(self):
         """
         Test that ARC can call the GNN to make TS guesses for further optimization.
