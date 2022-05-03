@@ -1742,7 +1742,16 @@ class ARCSpecies(object):
             logger.warning(f'Scissors were requested to remove a non-single bond in {self.label}.')
         mol_copy.remove_bond(bond)
         mol_splits = mol_copy.split()
-        if len(mol_splits) == 2:
+        if len(mol_splits) == 1: # If cutting leads to only one split, then the split is cyclic.
+            spc1 = ARCSpecies(label=self.label + '_BDE_' + str(indices[0] + 1) + '_' + str(indices[1] + 1) + '_cyclic',
+                    mol=mol_splits[0],
+                    multiplicity=mol_splits[0].multiplicity,
+                    charge=mol_splits[0].get_net_charge(),
+                    compute_thermo=False,
+                    e0_only=True)
+            spc1.generate_conformers()
+            return [spc1]
+        elif len(mol_splits) == 2:
             mol1, mol2 = mol_splits
         else:
             logger.warning(f'Could not split {self.label} between indices {indices}.')
