@@ -1309,6 +1309,14 @@ H       1.11582953    0.94384729   -0.10134685"""
                                                                       charge=spc.charge)[1]))
         self.assertTrue(any(spc.mol.to_smiles() == 'CO[NH]' for spc in spc_list))
 
+        cycle = ARCSpecies(label="cycle",smiles= "C(1)CC(1)")
+        cycle.bdes = [(1, 2)]
+        cycle.final_xyz = cycle.get_xyz()
+        cycle_scissors = cycle.scissors()
+        cycle_scissors[0].mol.update()
+        self.assertTrue(cycle_scissors[0].mol.is_isomorphic(ARCSpecies(label="check",smiles ="[CH2+]C[CH2+]").mol))
+        self.assertEqual(len(cycle_scissors), 1)
+
     def test_net_charged_species(self):
         """Test that we can define, process, and manipulate ions"""
         nh4 = ARCSpecies(label='NH4', smiles='[NH4+]', charge=1)
