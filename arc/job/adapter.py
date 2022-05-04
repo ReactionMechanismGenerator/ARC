@@ -72,7 +72,6 @@ class JobEnum(str, Enum):
             - neb_terachem  # NEB in TeraChem, [10.1063/1.1329672, 10.1063/1.1323224]
             - neb_gpr  # NEB GPR:  https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.122.156001
             - neb_terpolation  # NEBTERPOLATION using MD to find TSs: https://pubs.acs.org/doi/full/10.1021/acs.jctc.5b00830?src=recsys
-            - qst2  # Synchronous Transit-Guided Quasi-Newton (STQN) implemented in Gaussian, https://onlinelibrary.wiley.com/doi/epdf/10.1002/ijch.199300051
             - readuct  # ReaDuct: https://doi.org/10.1021/acs.jctc.8b00169
             - copenhagen  # Copenhagen: https://chemrxiv.org/articles/Fast_and_Automatic_Estimation_of_Transition_State_Structures_Using_Tight_Binding_Quantum_Chemical_Calculations/12600443/1
             - fsm  # FSM in QChem: http://www.q-chem.com/qchem-website/manual/qchem43_manual/sect-approx_hess.html, 10.1021/acs.jctc.5b00407, 10.1063/1.3664901
@@ -91,6 +90,7 @@ class JobEnum(str, Enum):
     heuristics = 'heuristics'  # ARC's heuristics
     kinbot = 'kinbot'  # KinBot, 10.1016/j.cpc.2019.106947
     gcn = 'gcn'  # Graph neural network for isomerization, https://doi.org/10.1021/acs.jpclett.0c00500
+    qst2 = 'qst2'  # Synchronous Transit-Guided Quasi-Newton (STQN) implemented in Gaussian, https://onlinelibrary.wiley.com/doi/epdf/10.1002/ijch.199300051
     user = 'user'  # user guesses
 
 
