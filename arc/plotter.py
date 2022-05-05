@@ -82,7 +82,7 @@ def draw_structure(xyz=None, species=None, project_directory=None, method='show_
         plot_3d_mol_as_scatter(xyz, path=project_directory, plot_h=True, show_plot=True, name=label, index=0)
 
 
-def show_sticks(xyz=None, species=None, project_directory=None, show_atom_map=True):
+def show_sticks(xyz=None, species=None, project_directory=None, show_atom_indices=False):
     """
     Draws the molecule in a "sticks" style according to the supplied xyz coordinates.
     Returns whether successful of not. If successful, saves the image using draw_3d.
@@ -92,7 +92,7 @@ def show_sticks(xyz=None, species=None, project_directory=None, show_atom_map=Tr
         xyz (str, dict, optional): The coordinates to display.
         species (ARCSpecies, optional): xyz coordinates will be taken from the species.
         project_directory (str): ARC's project directory to save a draw_3d image in.
-        show_atom_map (bool): whether to display atom map numbers on the 3D image.
+        show_atom_indices (bool): whether to display atom indices on the 3D image.
 
     Returns: bool
         Whether the show_sticks drawing was successful. ``True`` if it was.
@@ -113,15 +113,15 @@ def show_sticks(xyz=None, species=None, project_directory=None, show_atom_map=Tr
     p = p3D.view(width=400, height=400)
     p.addModel(mb, 'sdf')
     p.setStyle({'stick': {}})
-    if show_atom_map:
+    if show_atom_indices:
         p.addPropertyLabels("index", "",
                             {'fontSize': 15,
-                            'fontColor': 'white',
-                            'alignment': 'center',
-                            'showBackground': True,
-                            'backgroundOpacity': 0.2,
-                            'backgroundColor': 'black',
-                            })
+                             'fontColor': 'white',
+                             'alignment': 'center',
+                             'showBackground': True,
+                             'backgroundOpacity': 0.2,
+                             'backgroundColor': 'black',
+                             })
     p.zoomTo()
     p.show()
     if project_directory is not None:
