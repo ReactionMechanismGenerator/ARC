@@ -244,8 +244,7 @@ def determine_ess_status(output_path: str,
                                 # e.g., Please increase MaxCore to more than: 289 MB
                                 estimated_mem = float(info.split()[-2]) + 500
                             except ValueError:
-                                error = f'Insufficient Orca job memory. ARC will estimate the amount of memory ' \
-                                        f'required.'
+                                error = 'Insufficient Orca job memory. ARC will estimate the amount of memory required.'
                                 keywords.append('Memory')
                                 break
                             keywords.append('Memory')
@@ -254,7 +253,7 @@ def determine_ess_status(output_path: str,
                             error = f'Orca suggests to increase per cpu core memory to {estimated_mem} MB.'
                             break
                     else:
-                        error = f'SCF error in Orca.'
+                        error = 'SCF error in Orca.'
                     break
                 elif 'ORCA finished by error termination in MDCI' in line:
                     keywords = ['MDCI']
@@ -272,8 +271,8 @@ def determine_ess_status(output_path: str,
                                     except ValueError:
                                         # e.g., Please increase MaxCore
                                         # In old Orca versions, there is no indication on the minimum memory requirement
-                                        error = f'Insufficient Orca job memory. ARC will estimate the amount of ' \
-                                                f'memory required.'
+                                        error = 'Insufficient Orca job memory. ARC will estimate the amount of ' \
+                                                'memory required.'
                                         break
                                     estimated_mem_list.append(estimated_mem)
                             if estimated_mem_list:
@@ -292,14 +291,14 @@ def determine_ess_status(output_path: str,
                             except ValueError:
                                 # e.g., Error (ORCA_MDCI): Number of processes in parallel calculation exceeds
                                 # number of pairs - error msg in Orca version 4.1.x
-                                error = f'Orca cannot utilize cpu cores more than electron pairs in a molecule. ARC ' \
-                                        f'will estimate the number of cpu cores needed based on the number of heavy ' \
-                                        f'atoms in the molecule.'
+                                error = 'Orca cannot utilize cpu cores more than electron pairs in a molecule. ARC ' \
+                                        'will estimate the number of cpu cores needed based on the number of heavy ' \
+                                        'atoms in the molecule.'
                             keywords.append('cpu')
                             line = info
                             break
                     else:
-                        error = f'MDCI error in Orca. Assuming memory allocation error.'
+                        error = 'MDCI error in Orca. Assuming memory allocation error.'
                         keywords.append('Memory')
                     break
                 elif 'Error : multiplicity' in line:
@@ -325,11 +324,11 @@ def determine_ess_status(output_path: str,
                     break
                 elif 'This wavefunction IS NOT FULLY CONVERGED!' in line:
                     keywords = ['Convergence']
-                    error = f'Specified wavefunction method is not converged. Please restart calculation with larger ' \
-                            f'max iterations or with different convergence flags.'
+                    error = 'Specified wavefunction method is not converged. Please restart calculation with larger ' \
+                            'max iterations or with different convergence flags.'
                     break
                 elif 'ORCA finished by error termination in GTOInt' in line:
-                    error = f'GTOInt error in Orca. Assuming memory allocation error.'
+                    error = 'GTOInt error in Orca. Assuming memory allocation error.'
                     keywords.append('GTOInt')
                     keywords.append('Memory')
                     break
@@ -561,7 +560,7 @@ def trsh_scan_job(label: str,
         raise TrshError(f'Could not find the scan to troubleshoot in the scan list of species {label}')
     if methods is None:
         raise InputError('Expected to get a dict of methods, got None.')
-    
+
     # Method 1 and method 2
     if 'freeze' in methods:
         # 1. Freeze specific internal coordinates identified by scan_quality_check()
@@ -621,7 +620,7 @@ def trsh_scan_job(label: str,
                         continue
                     to_freeze.append(torsion)
                     pruning += [ic for ic in problematic_ic if is_same_pivot(torsion, ic)]
-        
+
         # 2. Freeze all torsions other than the rotor to be scanned
         if methods['freeze'] == 'all':
             scan_list.pop(scan_list.index(scan))
@@ -672,7 +671,7 @@ def trsh_special_rotor(special_rotor: list,
         special_type: Indicate the type of the special rotor. Either ``scan`` for
                       the rotor to be scanned or `frozen` for the rotor were frozen
                       in the previous job
-    
+
     Returns: list
         A list of internal coordinates to be frozen
     """
@@ -970,7 +969,7 @@ def trsh_ess_job(label: str,
             if 'cpu' not in ess_trsh_methods:
                 ess_trsh_methods.append('cpu')
         elif 'dlpno' in level_of_theory.method and is_h:
-            logger.error(f'DLPNO method is not supported for H atom (or its isotope D or T) in Orca.')
+            logger.error('DLPNO method is not supported for H atom (or its isotope D or T) in Orca.')
             couldnt_trsh = True
         else:
             couldnt_trsh = True
@@ -1031,7 +1030,7 @@ def trsh_ess_job(label: str,
         """
         scf diis+a
         maxit 50
-        
+
         solve in freq:
         Maximum gradient component at reference geometry: 2.19e-02
         Maximum component of gradient is too large
@@ -1408,7 +1407,7 @@ def scan_quality_check(label: str,
                 logger.error(message)
                 # Propose a method
                 # Try increasing resolution firstly, and try increasing res. and freezing all
-                # torsions jointly, afterwards. 
+                # torsions jointly, afterwards.
                 # TODO: If we figure out that solely increasing res. is not effective,
                 # we can simplify the process to actions = {'inc_res': None, 'freeze': 'all'}
                 if any(['scan_res' in used_method for used_method in used_methods]):
