@@ -987,7 +987,7 @@ def get_lowest_confs(label: str,
         if n < 1:
             raise ConformerError(f'n cannot be lower than 1, got: {n}')
     else:
-        raise ConformerError(f'Either n or e must be specified')
+        raise ConformerError('Either `n` or `e` must be specified')
     if not confs or confs is None:
         raise ConformerError(f'get_lowest_confs() got no conformers for {label}')
 
@@ -1065,7 +1065,7 @@ def get_force_field_energies(label: str,
         try_uff (bool, optional): Whether to try UFF if MMFF94(s) fails. ``True`` by default.
         optimize (bool, optional): Whether to first optimize the conformer using FF. True to optimize.
         try_ob (bool, optional): Whether to try OpenBabel if RDKit fails. ``True`` to try, ``True`` by default.
-        suppress_warning (bool, optional): Wheter to suppress warning of using OpenBabel. ``True`` to suppress, ``False`` by default.
+        suppress_warning (bool, optional): Whether to suppress OpenBabel warnings. ``False`` by default.
 
     Raises:
         ConformerError: If conformers could not be generated.
