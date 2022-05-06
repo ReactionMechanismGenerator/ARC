@@ -41,20 +41,22 @@ jobs:
     - name: Install dependencies
       run: |
         export PYTHONPATH=$PYTHONPATH:$(pwd)
+        echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> ~/.bashrc
         conda activate arc_env
         cd ..
         git clone https://github.com/ReactionMechanismGenerator/RMG-Py
         cd RMG-Py
         export PYTHONPATH=$PYTHONPATH:$(pwd)
+        echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> ~/.bashrc
         make
         cd ..
         git clone https://github.com/ReactionMechanismGenerator/RMG-database
         cd ARC
-        conda deactivate
-        make gcn-cpu
-        cd ..
-        echo $(pwd)
+        source ~/.bashrc
+        make install-all
+        source ~/.bashrc
         conda activate arc_env
+        echo $PYTHONPATH
         conda list
 
     - name: Lint with flake8
@@ -68,11 +70,8 @@ jobs:
 
     - name: Test with python unittest
       run: |
-        cd ..
-        cd RMG-Py
-        export PYTHONPATH=$PYTHONPATH:$(pwd)
-        cd ..
-        cd ARC
+        source ~/.bashrc
         conda activate arc_env
+        echo $PYTHONPATH
         make test
         codecov --token=f259713a-7f1d-4e9c-b140-bb3bb371d3ef
