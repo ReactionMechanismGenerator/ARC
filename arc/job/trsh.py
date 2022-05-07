@@ -154,11 +154,11 @@ def determine_ess_status(output_path: str,
                             'variable in the submit script, it should point to an existing directory. ' \
                             'Make sure to add "mkdir -p $GAUSS_SCRDIR" to your submit script.'
                     line = ''
-                if 'a syntax error was detected' in line.lower():
+                if 'a syntax error was detected' in line.lower() or 'an ambiguous keyword was detected' in line.lower():
                     keywords = ['Syntax']
                     error = 'There was a syntax error in the Gaussian input file. Check your Gaussian input file ' \
                             'template under arc/job/inputs.py. Alternatively, perhaps the level of theory is not ' \
-                            'supported by Gaussian in the format it was given.'
+                            'supported by Gaussian in the specific format it was given.'
                     line = ''
                 if keywords:
                     break
