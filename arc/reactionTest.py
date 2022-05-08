@@ -12,7 +12,7 @@ from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 from arc.species.mapping_engine import check_atom_map
 
-import arc.rmgdb as rmgdb
+from arc.rmgdb import make_rmg_database_object, load_families_only
 from arc.common import ARC_PATH
 from arc.exceptions import ReactionError
 from arc.reaction import ARCReaction, remove_dup_species
@@ -31,8 +31,8 @@ class TestARCReaction(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        cls.rmgdb = rmgdb.make_rmg_database_object()
-        rmgdb.load_families_only(cls.rmgdb)
+        cls.rmgdb = make_rmg_database_object()
+        load_families_only(cls.rmgdb, "all")
         cls.h2_xyz = {'coords': ((0, 0, 0.3736550), (0, 0, -0.3736550)), 'isotopes': (1, 1), 'symbols': ('H', 'H')}
         cls.o2_xyz = {'coords': ((0, 0, 0.6487420), (0, 0, -0.6487420)), 'isotopes': (16, 16), 'symbols': ('O', 'O')}
         cls.co_xyz = {'coords': ((0, 0, -0.6748240), (0, 0, 0.5061180)), 'isotopes': (12, 16), 'symbols': ('C', 'O')}
