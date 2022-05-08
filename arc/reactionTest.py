@@ -1652,38 +1652,5 @@ H       1.12853146   -0.86793870    0.06973060"""
         rxn_2.check_done_opt_r_n_p()
         self.assertEqual(rxn_2.done_opt_r_n_p, False)
 
-
-def check_atom_map(rxn: ARCReaction) -> bool:
-    """
-    A helper function for testing a reaction atom map.
-    Tests that element symbols are ordered correctly.
-    Note: This is a necessary but not a sufficient condition.
-
-    Args:
-        rxn (ARCReaction): The reaction to examine.
-
-    Returns: bool
-        Whether the atom mapping makes sense.
-    """
-    if len(rxn.atom_map) != sum([spc.number_of_atoms for spc in rxn.r_species]):
-        print(f'the number of mapped atoms ({len(rxn.atom_map)}) is different than the number of atoms in the '
-              f'reactants ({sum([spc.number_of_atoms for spc in rxn.r_species])})')
-        return False
-    r_elements, p_elements = list(), list()
-    for r_species in rxn.r_species:
-        r_elements.extend(list(r_species.get_xyz()['symbols']))
-    for p_species in rxn.p_species:
-        p_elements.extend(list(p_species.get_xyz()['symbols']))
-    for i, map_i in enumerate(rxn.atom_map):
-        if r_elements[i] != p_elements[map_i]:
-            print(f'{r_elements}\n{p_elements}')
-            print(f'{r_elements[i]} number {i} maps to {p_elements[map_i]} number {map_i}, which is wrong.')
-            break
-    else:
-        # Did not break, the mapping makes sense.
-        return True
-    return False
-
-
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
