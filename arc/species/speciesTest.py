@@ -2008,6 +2008,15 @@ H       1.11582953    0.94384729   -0.10134685"""
         self.assertTrue(cycle_scissors[0].mol.is_isomorphic(ARCSpecies(label="check",smiles ="[CH2+]C[CH2+]").mol))
         self.assertEqual(len(cycle_scissors), 1)
 
+        p_1_xyz = {'symbols': ('O', 'Cl'), 'isotopes': (16, 35),
+                   'coords': ((0.8407400963991551, 0.0, 0.0), (-0.8407400963991551, 0.0, 0.0))}
+        spc1 = ARCSpecies(label="R3-X2", smiles="[O]Cl", xyz=p_1_xyz, bdes=[(1, 2)])
+        spc1.final_xyz = spc1.get_xyz()
+        cuts = spc1.scissors()
+        self.assertEqual(len(cuts), 2)
+        for cut in cuts:
+            self.assertEqual(cut.mol.atoms[0].element.symbol, cut.get_xyz()['symbols'][0])
+
     def test_net_charged_species(self):
         """Test that we can define, process, and manipulate ions"""
         nh4 = ARCSpecies(label='NH4', smiles='[NH4+]', charge=1)
