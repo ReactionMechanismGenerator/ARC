@@ -6,7 +6,9 @@ If the species is a transition state (TS), its ``ts_guesses`` attribute will hav
 import datetime
 import numpy as np
 import os
-from typing import Dict, List, Optional, Tuple, Union
+from rdkit import Chem
+import time
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import rmgpy.molecule.element as elements
 from arkane.common import ArkaneSpecies, symbol_by_number
@@ -18,6 +20,9 @@ from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 from rmgpy.statmech import NonlinearRotor, LinearRotor
 from rmgpy.transport import TransportData
+
+if TYPE_CHECKING:
+    from arc.reaction import ARCReaction
 
 from arc.common import (convert_list_index_0_to_1,
                         determine_symmetry,
@@ -178,7 +183,7 @@ class ARCSpecies(object):
 
     Attributes:
         label (str): The species' label.
-        original_label (str): The species' label prior to modifications (removing fornidden characters).
+        original_label (str): The species' label prior to modifications (removing forbidden characters).
         multiplicity (int): The species' electron spin multiplicity. Can be determined from the adjlist/smiles/xyz
                             (If unspecified, assumed to be either a singlet or a doublet).
         charge (int): The species' net charge. Assumed to be 0 if unspecified.
@@ -1884,7 +1889,7 @@ class TSGuess(object):
                  family: Optional[str] = None,
                  xyz: Optional[Union[dict, str]] = None,
                  rmg_reaction: Optional[Reaction] = None,
-                 arc_reaction: Optional = None,
+                 arc_reaction: Optional['ARCReaction'] = None,
                  ts_dict: Optional[dict] = None,
                  energy: Optional[float] = None,
                  ):
