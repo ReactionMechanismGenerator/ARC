@@ -704,6 +704,8 @@ class TestARCReaction(unittest.TestCase):
         p_2 = ARCSpecies(label='CH2NH2', smiles='[CH2]N', xyz=ch2nh2_xyz)
         rxn_3 = ARCReaction(reactants=['H', 'CH3NH2'], products=['H2', 'CH2NH2'],
                             r_species=[r_1, r_2], p_species=[p_1, p_2])
+        rxn_3.determine_family(self.rmgdb)
+        self.assertEqual(rxn_3.family.label.lower(), "H_Abstraction".lower())
         self.assertIn(rxn_3.atom_map[0], [0, 1])
         self.assertEqual(rxn_3.atom_map[1:3], [2, 5])
         for index in [3, 4, 5]:
