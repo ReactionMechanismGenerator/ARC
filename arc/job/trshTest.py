@@ -76,9 +76,9 @@ class TestTrsh(unittest.TestCase):
             output_path=path, species_label='Zr2O4H', job_type='opt')
         self.assertEqual(status, 'errored')
         self.assertEqual(keywords, ['Syntax'])
-        self.assertEqual(error, 'There was a syntax error in the Gaussian input file. Check your Gaussian input '
-                                'file template under arc/job/inputs.py. Alternatively, perhaps the level of theory '
-                                'is not supported by Gaussian in the format it was given.')
+        self.assertEqual(error, 'There was a syntax error in the Gaussian input file. Check your Gaussian input file '
+                                'template under arc/job/inputs.py. Alternatively, perhaps the level of theory is not '
+                                'supported by Gaussian in the specific format it was given.')
         self.assertFalse(line)
 
         # QChem
