@@ -1783,27 +1783,18 @@ class ARCSpecies(object):
         mol2.update(raise_atomtype_exception=False)
 
         # match xyz to mol:
-        if len(mol1.atoms) != len(mol2.atoms):
-            # easy
+        if len(mol1.atoms) != len(mol2.atoms): # easy
             if len(mol1.atoms) != len(top1):
                 xyz1, xyz2 = xyz2, xyz1
-        else:
+
+        elif not mol1.is_isomorphic(mol2,save_order=True): #Harder, but now we can assume that mol1 != mol2.
             # harder
-            element_dict_mol1, element_dict_top1 = dict(), dict()
-            for atom in mol1.atoms:
-                if atom.element.symbol in element_dict_mol1:
-                    element_dict_mol1[atom.element.symbol] += 1
-                else:
-                    element_dict_mol1[atom.element.symbol] = 1
-            for i in top1:
-                atom = mol_copy.atoms[i - 1]
-                if atom.element.symbol in element_dict_top1:
-                    element_dict_top1[atom.element.symbol] += 1
-                else:
-                    element_dict_top1[atom.element.symbol] = 1
-            for element, count in element_dict_mol1.items():
-                if element not in element_dict_top1 or count != element_dict_top1[element]:
-                    xyz1, xyz2 = xyz2, xyz1
+            if not is_xyz_mol_match(mol1,xyz1):
+                xyz1,xyz2 = xyz2,xyz1
+
+            if not is_xyz_mol_match(mol1,xyz1):
+                raise SpeciesError(f'Could not match the cut products '
+                                   f'due to scission in {self.label}')
 
         spc1 = ARCSpecies(label=label1,
                           mol=mol1,
@@ -1839,6 +1830,42 @@ class ARCSpecies(object):
                               'warnings': '',
                               }
 
+
+def is_xyz_mol_match(mol,xyz):
+    """
+    A helper function that matches rmgpy.molecule.molecule.Molecule object to an xyz, used in _scissors to match xyz and the cut products.
+    
+        Args:
+            mol: rmg Molecule object
+            xyz: coordinates of the cut product
+        Returns: list
+            True if the xyz and mol matches, False if not
+    Strategy:
+        TBD
+    """
+
+    element_dict_mol,element_dict_xyz = dict(), dict()
+    for atom in mol.atoms:
+        if atom.element.symbol in element_dict_mol:
+            element_dict_mol[atom.element.symbol] += 1
+        else:
+            element_dict_mol[atom.element.symbol] = 1
+    
+
+    for atom in xyz['symbols']:
+        if atom in element_dict_xyz:
+            element_dict_xyz[atom] += 1
+        else:
+            element_dict_xyz[atom] = 1
+    
+    for element,count in element_dict_mol.items():
+        if element not in element_dict_xyz or element_dict_xyz[element] != count:
+            return False
+    
+    # Up to here, we know that the mol and xyz shares composition but we do not know about the connectivity.
+    # The problem with connectivity is that we can't find radicals from the xyz alone.
+
+    return True
 
 class TSGuess(object):
     """
