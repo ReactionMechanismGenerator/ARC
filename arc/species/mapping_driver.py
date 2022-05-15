@@ -1,13 +1,10 @@
 """
-A module for atom-mapping a species or a set of species.
-
-Species atom-map logic:
-1. Fingerprint the species
-2. Identify and loop superimposable candidate backbone mapping
-3. Recursively modify dihedrals until the structures overlap to some tolerance
-4. Determine RMSD to backbone, if good then determine RMSD to H's
-5. When mapping H's on terminal heavy atoms, check whether rotating this rotor will reduce the overall RMSD
-   if there's more than one H on that terminal atom
+This is the engine part of the atom mapping module.
+Here, the edge function for calculation the atom map are located.
+Strategy:
+    1) The ARCReaction object calls map_reaction
+    2) map_reaction make sure that the reaction has family if one can be generated.
+    3) If the reaction is supported by RMG, it is sent to the driver. Else, it is mapped with map_general_rxn.
 """
 
 from typing import TYPE_CHECKING, List, Optional
