@@ -1421,3 +1421,30 @@ def check_family_for_mapping_function(rxn: 'ARCReaction',
     if rxn.family is None or rxn.family.label != family:
         return False
     return True
+
+
+def cuts_on_cycle_of_labeled_mol(spc: 'ARCSpecies')-> bool:
+    """A helper function determining wether or not the scission site opens a cycle.
+        Args:
+            spc1: ARCSpecies with a bdes
+        Returns:
+            True if the scission site is on a ring, None if the speceis is unlabeled, False otherwise"""
+    if not any([atom.label for atom in spc.mol.atoms]):
+        ValueError("cuts_on_cycle_of_labeled_mol recives labeled ARCSpecies only, got an unlabeld species")
+        return None
+    
+    if not spc.mol.is_cyclic():
+        return False
+
+    k = spc.mol.get_deterministic_sssr()
+    labels = [[] for i in range(len(k))]
+    for index, cycle in enumerate(k):
+        for atom in cycle:
+            labels[index].append(int(atom.label))
+    
+    for bde in spc.bdes:
+        for cycle in labels:
+            if bde[0]-1 in cycle and bde[1]-1 in cycle:
+                return True
+
+    return False
