@@ -1389,5 +1389,20 @@ class TestConverter(unittest.TestCase):
         for label1,label2 in zip(atoms,xyz):
             self.assertTrue(label1 == label2)
 
+    def test_cuts_on_cycle_of_labeled_mol(self):
+        """test the cuts_on_cycle_of_labeled_mol function"""
+        spc1 = ARCSpecies(label = "A", smiles="NC1=NC=NC2=C1N=CN2", bdes = [(6,7)])
+        self.assertIsNone(cuts_on_cycle_of_labeled_mol(spc1))
+        for index, atom in enumerate(spc1.mol.atoms):
+            atom.label = str(index)
+        self.assertTrue(cuts_on_cycle_of_labeled_mol(spc1))
+        spc1.bdes = [(1,2)]
+        self.assertFalse(cuts_on_cycle_of_labeled_mol(spc1))
+        spc1.bdes = [(1,2),(6,7)]
+        self.assertTrue(cuts_on_cycle_of_labeled_mol(spc1))
+        spc2 = ARCSpecies(label = "propane", smiles = "CCC",bdes = [(1,2)])
+        self.assertFalse(cuts_on_cycle_of_labeled_mol(spc2))
+    
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
