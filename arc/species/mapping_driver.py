@@ -107,7 +107,7 @@ def map_isomerization_reaction(rxn: 'ARCReaction',
         r_fingerprint, p_fingerprint = fingerprint(spc=rxn.r_species[0]), fingerprint(spc=rxn.p_species[0])
         unique_r_keys, unique_p_keys = list(), list()
         for r_key, r_val in r_fingerprint.items():
-            for p_key, p_val in p_fingerprint.items():
+            for p_val in p_fingerprint.values():
                 if are_adj_elements_in_agreement(r_val, p_val):
                     break
             else:
