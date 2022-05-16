@@ -858,7 +858,7 @@ def str_to_zmat(zmat_str):
     return zmat_dict
 
 
-def split_str_zmat(zmat_str):
+def split_str_zmat(zmat_str) -> Tuple[str, Optional[str]]:
     """
     Split a string zmat into its coordinates and variables sections.
 
@@ -866,7 +866,7 @@ def split_str_zmat(zmat_str):
         zmat_str (str): The zmat.
 
     Returns:
-        Tuple[str, str]: The coords section, The variables section if it exists, else None]
+        Tuple[str, Optional[str]]: The coords section and the variables section if it exists, else ``None``.
     """
     coords, variables = list(), list()
     flag = False
@@ -1600,7 +1600,10 @@ def rdkit_conf_from_mol(mol: Molecule,
         raise ConverterError('The xyz argument seem to be of wrong type. Expected a dictionary, '
                              'got\n{0}\nwhich is a {1}'.format(xyz, type(xyz)))
     rd_mol = to_rdkit_mol(mol=mol, remove_h=False)
-    Chem.AllChem.EmbedMolecule(rd_mol)
+    try:
+        Chem.AllChem.EmbedMolecule(rd_mol)
+    except:
+        pass
     conf = None
     if rd_mol.GetNumConformers():
         conf = rd_mol.GetConformer(id=0)
