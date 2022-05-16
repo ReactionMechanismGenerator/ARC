@@ -330,6 +330,8 @@ class ARCReaction(object):
         for key in reset_keys:
             if key in reaction_dict.keys():
                 del reaction_dict[key]
+        label_splits = self.label.split(self.arrow)
+        reaction_dict['label'] = self.arrow.join([label_splits[1], label_splits[0]])
         flipped_rxn = ARCReaction(reaction_dict=reaction_dict)
         flipped_rxn.set_label_reactants_products()
         flipped_rxn.rmg_reaction_from_arc_species()
