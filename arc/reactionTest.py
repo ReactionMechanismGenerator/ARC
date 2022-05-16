@@ -542,27 +542,38 @@ class TestARCReaction(unittest.TestCase):
                                       ARCSpecies(label='H2O', smiles='O')])
         self.assertTrue(rxn4.check_atom_balance())
 
+        # Another reaction with the same species twice on one side, reading from the reaction label
+        nh2 = ARCSpecies(label='NH2', smiles='[NH2]')
+        h = ARCSpecies(label='H', smiles='[H]')
+        n2h3 = ARCSpecies(label='N2H3', smiles='[NH]N')
+        rxn_label = 'NH2 + NH2 <=> H + N2H3'
+        rxn5 = ARCReaction(reaction_dict={'label': rxn_label}, species_list=[nh2, h, n2h3])
+        self.assertTrue(rxn5.check_atom_balance())
+        rxn5_flipped = rxn5.flip_reaction()
+        self.assertTrue(rxn5_flipped.check_atom_balance())
+
         # Legitimate reactions that previously failed in the atom balance test
-        rxn5 = ARCReaction(reactants=['NH', '[O-][N+](=N)N'], products=['NH2', '[N-]=[N+]([O])N'],
+        rxn6 = ARCReaction(reactants=['NH', '[O-][N+](=N)N'], products=['NH2', '[N-]=[N+]([O])N'],
                            r_species=[ARCSpecies(label='NH', smiles='[NH]'),
                                       ARCSpecies(label='[O-][N+](=N)N', smiles='[O-][N+](=N)N')],
                            p_species=[ARCSpecies(label='NH2', smiles='[NH2]'),
                                       ARCSpecies(label='[N-]=[N+]([O])N', smiles='[N-]=[N+]([O])N')])
-        self.assertTrue(rxn5.check_atom_balance())
-        rxn6 = ARCReaction(reactants=['N3O2', 'HON'], products=['NO', 'HN3O2'],
+        self.assertTrue(rxn6.check_atom_balance())
+
+        rxn7 = ARCReaction(reactants=['N3O2', 'HON'], products=['NO', 'HN3O2'],
                            r_species=[ARCSpecies(label='N3O2', smiles='[N-]=[N+](N=O)[O]'),
                                       ARCSpecies(label='HON', smiles='[OH+]=[N-]')],
                            p_species=[ARCSpecies(label='NO', smiles='[N]=O'),
                                       ARCSpecies(label='HN3O2', smiles='[O-][N+](=N)N=O')])
-        self.assertTrue(rxn6.check_atom_balance())
+        self.assertTrue(rxn7.check_atom_balance())
 
         # A reaction that involves charged species
-        rxn7 = ARCReaction(reactants=['C6CNC3', 'OH'], products=['C6COH', 'NC3'],
+        rxn8 = ARCReaction(reactants=['C6CNC3', 'OH'], products=['C6COH', 'NC3'],
                            r_species=[ARCSpecies(label='C6CNC3', smiles='c1ccccc1C[N+](C)(C)C', charge=1, multiplicity=1),
                                       ARCSpecies(label='OH', smiles='[OH-]', charge=-1, multiplicity=1)],
                            p_species=[ARCSpecies(label='C6COH', smiles='c1ccccc1CO'),
                                       ARCSpecies(label='NC3', smiles='CN(C)C')])
-        self.assertTrue(rxn7.check_atom_balance())
+        self.assertTrue(rxn8.check_atom_balance())
 
         # A *non*-balanced reaction
         with self.assertRaises(ReactionError):
