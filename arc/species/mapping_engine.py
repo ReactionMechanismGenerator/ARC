@@ -136,7 +136,7 @@ def map_arc_rmg_species(arc_reaction: 'ARCReaction',
 
 def find_equivalent_atoms_in_reactants(arc_reaction: 'ARCReaction',
                                        backend: str = 'ARC',
-                                       ) -> Optional[List[List[int]]]:
+                                       ) -> List[List[int]]:
     """
     Find atom indices that are equivalent in the reactants of an ARCReaction
     in the sense that they represent degenerate reaction sites that are indifferentiable in 2D.
@@ -916,12 +916,13 @@ def check_atom_map(rxn) -> bool:
     A helper function for testing a reaction atom map.
     Tests that element symbols are ordered correctly.
     Tests that the elements in the atom map are unique, so that the function is one to one.
-    Note: These are necessary but not a sufficient conditions.
+    Note: These are necessary but not sufficient conditions.
+
     Args:
         rxn (ARCReaction): The reaction to examine.
+    
     Returns: bool
         Whether the atom mapping makes sense.
-        insert np.unique
     """
     if len(rxn.atom_map) != sum([spc.number_of_atoms for spc in rxn.r_species]):
         return False
@@ -934,13 +935,12 @@ def check_atom_map(rxn) -> bool:
         if r_elements[i] != p_elements[map_i]:
             break
     for i in range(len(unique(rxn.atom_map))):
-        if unique(rxn.atom_map)[i]!= i:
+        if unique(rxn.atom_map)[i] != i:
             return False
 
     else:
         # Did not break, the mapping makes sense.
         return True
-    return False
 
 
 def add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(spc_1: ARCSpecies,
@@ -1238,74 +1238,79 @@ def cut_species_for_mapping(reactants: List[ARCSpecies],
                     cuts=new_r.scissors()
                 except:
                     return None
-                main,second = find_main_cut_product(cuts, reactant,bde)
-                r_cuts+=[second]
+                main, second = find_main_cut_product(cuts, reactant,bde)
+                r_cuts += [second]
                 new_r = main
-            r_cuts+=[new_r]
+            r_cuts += [new_r]
         else:
             r_cuts.append(reactant)
-
 
     for index,product in zip(loc_p,products):
         if index==1:
             try:
-                product.final_xyz=product.get_xyz()
-                cuts=product.scissors()
-                if len(cuts) == 1: #only H2 for now
+                product.final_xyz = product.get_xyz()
+                cuts = product.scissors()
+                if len(cuts) == 1: #only H2 and cyclic species for now, todo: modify to include cyclic species.
                     cuts.append(ARCSpecies(label= cuts[0].label, mol=cuts[0].mol.copy(deep=True)))
                     labels = [atom.label for atom in product.mol.atoms]
                     cuts[-1].mol.atoms[0].label = labels[1] if cuts[0].mol.atoms[0].label == labels[0] else labels[0]
-                p_cuts+=cuts
+                p_cuts += cuts
             except SpeciesError:
                 return None
-        elif index>1:
+        elif index > 1:
             bdes = product.bdes
             new_p = ARCSpecies(label="scissors", mol=product.mol.copy(deep=True))
             for bde in bdes:
                 new_p.bdes = [bde]
                 new_p.final_xyz = new_p.get_xyz()
                 try:
-                    cuts=new_p.scissors()
+                    cuts = new_p.scissors()
                 except:
                     return None
-                main,second = find_main_cut_product(cuts, product,bde)
-                p_cuts+=[second]
+                main, second = find_main_cut_product(cuts, product, bde)
+                p_cuts += [second]
                 new_p = main
-            p_cuts+=[new_r]
+            p_cuts += [new_r]
         else:
             p_cuts.append(product)
 
-    return r_cuts,p_cuts
+    return r_cuts, p_cuts
 
 
 def find_main_cut_product(cuts: List["ARCSpecies"],
-                            reactant: "ARCSpecies",
-                            bde: Tuple[int]
-                            )->Tuple["ARCSpecies"]:
+                          reactant: "ARCSpecies",
+                          bde: Tuple[int]
+                          )->Tuple["ARCSpecies", "ARCSpecies"]:
     """
     Differentiate the main product from scissors product.
-    Strategy: use the othe BDE, if the indicis of the atoms are in the bdes, it should be able to cut there.
+    Strategy: use the other BDE, if the indices of the atoms are in the bdes, it should be able to cut there.
+    
     Args:
         cuts: The cut products
         reactant: The reactant with multiple bdes
         bde: the BDE used for scissors.
-    returns:
-        (main,second) in the correct order.
+    
+    Returns:
+        Tuple["ARCSpecies", "ARCSpecies"] in the correct order.
     """
-    list_atom_labels_bdes = [int(atom.label)+1 for atom in reactant.mol.atoms]
     list_atom_labels_cuts_0 = [int(atom.label)+1 for atom in cuts[0].mol.atoms]
     bdes = reactant.bdes
     for bd in bdes:
         if bd == bde:
             continue
         elif bd[0] not in list_atom_labels_cuts_0:
-            return cuts[1],cuts[0]
+            return cuts[1], cuts[0]
     
-    return cuts[0],cuts[1]
+    return cuts[0], cuts[1]
 
 
 def update_xyz(spcs: List[ARCSpecies]) -> List[ARCSpecies]:
-    """A method to update the xyz values of each species after the cutting"""
+    """A helper function, updates the xyz values of each species after cutting. This is important, since the
+    scission sometimes scrambles the Molecule object, and updating the xyz makes up for that.
+    Args:
+        spcs: the scission products that needs to be updated
+    Returns:
+        new: A newely generated copies of the ARCSpecies, with updated xyz"""
     new = list()
     for spc in spcs:
         new_spc = ARCSpecies(label="copy", mol =spc.mol.copy(deep=True))
@@ -1421,7 +1426,7 @@ def check_family_for_mapping_function(rxn: 'ARCReaction',
 
 
 def cuts_on_cycle_of_labeled_mol(spc: 'ARCSpecies')-> bool:
-    """A helper function determining wether or not the scission site opens a cycle.
+    """A helper function determining whether or not the scission site opens a cycle.
         Args:
             spc1: ARCSpecies with a bdes
         Returns:
