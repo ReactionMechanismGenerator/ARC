@@ -1,11 +1,16 @@
-name: continuous integration
+name: CI
 
 on:
   push:
+    branches:
+      - '*'
   pull_request:
     branches:
       - main
     types: [opened, synchronize, reopened, ready_for_review, review_requested]
+  schedule:
+    - cron: '0 0 * * *'
+
 
 jobs:
   build:
@@ -17,16 +22,21 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
-    - name: Set up miniconda Python 3.7
+    - name: Setup Mambaforge Python 3.7
       uses: conda-incubator/setup-miniconda@v2
       with:
         environment-file: environment.yml
+        miniforge-variant: Mambaforge
+        miniforge-version: latest
         activate-environment: arc_env
         python-version: 3.7
-        auto-activate-base: false
+        use-mamba: true
+
+    - name: Update environment
+      run: mamba env update -n arc_env -f environment.yml
 
     - name: Install codecov
-      run: conda install -y -c conda-forge codecov
+      run: mamba install -y -c conda-forge codecov
 
     - name: Install dependencies
       run: |
@@ -49,13 +59,14 @@ jobs:
 
     - name: Lint with flake8
       run: |
-        conda install flake8
+        mamba install flake8
+        mamba config --append channels anaconda
         # stop the build if there are Python syntax errors or undefined names
         python -m flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
         # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
         python -m flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
-    - name: Test with nosetests
+    - name: Test with python unittest
       run: |
         cd ..
         cd RMG-Py

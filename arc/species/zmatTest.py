@@ -1151,7 +1151,9 @@ class TestZMat(unittest.TestCase):
                                    (-3.871932295381926, -0.9306597576029849, -2.5400987960833166),
                                    (-3.440082669618663, 0.6565731451487455, -1.8462094217817948)]
         expected_ordered_symbols = ['C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'C', 'C', 'O', 'O', 'H', 'H', 'H', 'H', 'H']
-        self.assertEqual(ordered_coords, expected_ordered_coords)
+        for coords1, coords2 in zip(expected_ordered_coords, ordered_coords):
+            for coord1, coord2 in zip(coords1, coords2):
+                self.assertAlmostEqual(coord1, coord2)
         self.assertEqual(ordered_symbols, expected_ordered_symbols)
 
         ordered_symbols = zmat.zmat_to_coords(zmat=zmat1, keep_dummy=True)[1]
@@ -1662,14 +1664,15 @@ class TestZMat(unittest.TestCase):
 
         coords, symbols = zmat.zmat_to_coords(expected_zmat_3)
         self.assertEqual(symbols, ['C', 'C', 'H', 'H', 'H', 'H', 'H'])
-        self.assertEqual(coords, [(0.0, 0.0, 0.0),
+        for coords1, coords2 in zip(coords, [(0.0, 0.0, 0.0),
                                   (0.0, 0.0, 1.5120487296562577),
                                   (0.0, 1.0243258057118119, -0.3843844758142396),
                                   (-0.8871049813083173, -0.5121760994984771, -0.38436337480993366),
                                   (-2.635365836667347e-08, -1.0243258057118116, 1.8964332054704973),
                                   (-0.8870987970032913, 0.512186345981728, 1.8964193919074686),
-                                  (0.8871050112557137, 0.5121760476286488, 1.8964121044661915)])
-
+                                  (0.8871050112557137, 0.5121760476286488, 1.8964121044661915)]):
+            for coord1, coord2 in zip(coords1, coords2):
+                self.assertAlmostEqual(coord1, coord2)
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

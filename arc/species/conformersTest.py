@@ -1632,7 +1632,7 @@ O       1.40839617    0.14303696    0.00000000"""
         expected_xyz1 = {'symbols': ('O', 'O', 'C'), 'isotopes': (16, 16, 12),
                          'coords': ((8.749511531958021e-17, 3.469446951953614e-18, 1.405000000524252),
                                     (-1.40486421, -0.01953339, 0.0), (0.0, 0.0, 0.0))}
-        self.assertEqual(new_xyz1, expected_xyz1)
+        self.assertTrue(almost_equal_coords_lists(new_xyz1, expected_xyz1))
 
         xyz2 = converter.str_to_xyz("""Cl      1.47512188   -0.78746253   -0.20393322
 S      -1.45707856   -0.94104506   -0.20275830
