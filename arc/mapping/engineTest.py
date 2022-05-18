@@ -7,8 +7,8 @@ This module contains unit tests of the arc.species.atom_mapping_wf module
 
 import unittest
 import numpy as np
-from random import shuffle
 from rmgpy.data.rmg import RMGDatabase
+from random import shuffle
 
 from arc.common import _check_r_n_p_symbols_between_rmg_and_arc_rxns
 from arc.species import ARCSpecies
@@ -1399,7 +1399,44 @@ class TestConverter(unittest.TestCase):
         self.assertTrue(cuts_on_cycle_of_labeled_mol(spc1))
         spc2 = ARCSpecies(label = "propane", smiles = "CCC",bdes = [(1,2)])
         self.assertFalse(cuts_on_cycle_of_labeled_mol(spc2))
+
+    def test_add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(self):
+        "test the add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion function"
+        spc1 = ARCSpecies(label="c4", smiles = "CCCC")
+        spc2 = spc1.copy()
+        out_dict = add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(spc1,
+                                                                                  spc2,
+                                                                                  spc1.mol.atoms[0],
+                                                                                  spc2.mol.atoms[0],
+                                                                                  [0,1,2,3],
+                                                                                  {0: 0,1: 1,2: 2,3: 3},
+                                                                                  True)
+        for key in range(7):
+            self.assertEqual(out_dict[key], key)
     
+        spc1 = ARCSpecies(label="c4", smiles = "cccc")
+        spc2 = spc1.copy()
+        out_dict = add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(spc1,
+                                                                                  spc2,
+                                                                                  spc1.mol.atoms[0],
+                                                                                  spc2.mol.atoms[0],
+                                                                                  [0,1,2,3],
+                                                                                  {0: 0,1: 1,2: 2,3: 3},
+                                                                                  True)
+        for key in range(4):
+            self.assertEqual(out_dict[key], key)
+
+        spc1 = ARCSpecies(label="cn", smiles = "N1NN1")
+        spc2 = spc1.copy()
+        out_dict = add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(spc1,
+                                                                                  spc2,
+                                                                                  spc1.mol.atoms[0],
+                                                                                  spc2.mol.atoms[0],
+                                                                                  [0,1,2,3],
+                                                                                  {0: 0,1: 1,2: 2,3: 3},
+                                                                                  True)
+        for key in range(4):
+            self.assertEqual(out_dict[key], key)
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
