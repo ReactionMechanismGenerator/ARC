@@ -30,6 +30,7 @@ class StatmechAdapter(ABC):
     @abstractmethod
     def compute_high_p_rate_coefficient(self,
                                         skip_rotors: bool = False,
+                                        estimate_dh_rxn: bool = False,
                                         verbose: bool = True,
                                         ) -> None:
         """
@@ -38,6 +39,9 @@ class StatmechAdapter(ABC):
 
         Args:
             skip_rotors (bool, optional): Whether to skip internal rotor consideration. Default: ``False``.
+            estimate_dh_rxn (bool, optional): Whether to estimate DH reaction instead of computing it. Default: ``False``.
+                                              Useful for checking that the reaction could in principle be computed even
+                                              when thermodynamic properties of reactants and products were still not computed.
             verbose (bool, optional): Whether to log messages. Default: ``True``.
         """
         pass
