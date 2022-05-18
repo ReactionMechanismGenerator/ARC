@@ -1403,28 +1403,6 @@ def glue_maps(maps,pairs_of_reactant_and_products):
     return [val for key, val in sorted(am_dict.items(), key=lambda item: item[0])]
 
 
-def check_family_for_mapping_function(rxn: 'ARCReaction',
-                                      family: str,
-                                      db: Optional['RMGDatabase'] = None,
-                                      ) -> bool:
-    """
-    Check that the actual reaction family and the desired reaction family are the same.
-
-    Args:
-        rxn (ARCReaction): An ARCReaction object instance.
-        family (str): The desired reaction family to check for.
-        db (RMGDatabase, optional): The RMG database instance.
-
-    Returns:
-        bool: Whether the reaction family and the desired ``family`` are consistent.
-    """
-    if rxn.family is None:
-        rxn.determine_family(db)
-    if rxn.family is None or rxn.family.label != family:
-        return False
-    return True
-
-
 def cuts_on_cycle_of_labeled_mol(spc: 'ARCSpecies')-> bool:
     """A helper function determining whether or not the scission site opens a cycle.
         Args:
