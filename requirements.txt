@@ -5,7 +5,7 @@ ase>=3.15.0
 cclib>=1.7.0
 mako
 matplotlib>=2.2.2
-numpy==1.15.4
+numpy==1.21.0
 openbabel
 pandas>=1.01
 paramiko==2.6.0
