@@ -16,7 +16,7 @@ from arc.species.converter import (check_xyz_dict,
                                    translate_xyz,
                                    xyz_to_str,
                                    )
-from arc.species.mapping_driver import map_reaction
+from arc.mapping.driver import map_reaction
 from arc.species.species import ARCSpecies, check_atom_balance, check_label
 
 if TYPE_CHECKING:

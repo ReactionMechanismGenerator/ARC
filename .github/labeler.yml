@@ -21,6 +21,9 @@ tests:
 
 'Module: Main':
   - arc/main.py
+  
+'Module: Mapping':
+  - arc/mapping/*
 
 'Module: Parser':
   - arc/parser.py

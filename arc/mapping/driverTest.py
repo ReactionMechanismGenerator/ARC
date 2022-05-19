@@ -12,14 +12,10 @@ from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 from rmgpy.data.rmg import RMGDatabase
 
-from arc.species.mapping_driver import *
-from arc.common import _check_r_n_p_symbols_between_rmg_and_arc_rxns
-from arc.rmgdb import (
-determine_family,
-load_families_only,
-make_rmg_database_object)
+from arc.mapping.driver import *
+from arc.rmgdb import load_families_only 
 from arc.reaction import ARCReaction
-from arc.species.mapping_engine import check_atom_map
+from arc.mapping.engine import check_atom_map
 from arc.species.species import ARCSpecies
 from arc.utils.wip import work_in_progress
 from numpy import unique

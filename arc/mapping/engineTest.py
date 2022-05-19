@@ -12,9 +12,9 @@ from rmgpy.data.rmg import RMGDatabase
 
 from arc.common import _check_r_n_p_symbols_between_rmg_and_arc_rxns
 from arc.species import ARCSpecies
-from arc.species.mapping_engine import *
+from arc.mapping.engine import *
 from arc.reaction import ARCReaction
-from arc.rmgdb import make_rmg_database_object, load_families_only,determine_family, make_rmg_database_object
+from arc.rmgdb import load_families_only,determine_family
 
 from arc.species.vectors import calculate_dihedral_angle
 
@@ -25,8 +25,6 @@ from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 
 
-from itertools import permutations
-
 class TestConverter(unittest.TestCase):
     """
     Contains unit tests for the mapping_engine module
@@ -36,7 +34,6 @@ class TestConverter(unittest.TestCase):
         """
         A method that is run before all unit tests in this class.
         """
-        #cls.db = make_rmg_database_object()
         cls.db = RMGDatabase()
         load_families_only(cls.db,"all")
         cls.maxDiff = None

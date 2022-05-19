@@ -10,7 +10,7 @@ import unittest
 
 from rmgpy.reaction import Reaction
 from rmgpy.species import Species
-from arc.species.mapping_engine import check_atom_map
+from arc.mapping.engine import check_atom_map
 
 from arc.rmgdb import make_rmg_database_object, load_families_only
 from arc.common import ARC_PATH

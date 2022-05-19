@@ -10,7 +10,7 @@ Strategy:
 from typing import TYPE_CHECKING, List, Optional
 
 import arc.rmgdb as rmgdb
-from arc.species.mapping_engine import map_rxn, create_qc_mol, fingerprint, are_adj_elements_in_agreement,\
+from arc.mapping.engine import map_rxn, create_qc_mol, fingerprint, are_adj_elements_in_agreement,\
                                        iterative_dfs, map_two_species, RESERVED_FINGERPRINT_KEYS
 
 if TYPE_CHECKING:
