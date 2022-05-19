@@ -941,17 +941,7 @@ def add_dummy_atom(zmat: dict,
     zmat['vars'][r_str] = 1.0
     zmat['vars'][a_str] = 90.0
     if d_str is not None:
-        # Determine the dihedral angle of XCBA to be equal to the dihedral angle of DCBA
-        # so later the dihedral of DCXB will be either 180 or 0 degrees, depends on the order
-        # in which DCB are considered (and their relative position on a single straight line).
-        #
-        #       X        E
-        #        \      /
-        #    B -- C -- D  (original atom)
-        #   /
-        #  A
-        zmat['vars'][d_str] = calculate_dihedral_angle(
-            coords=coords, torsion=[atom_index] + [zmat['map'][atom] for atom in d_atoms[1:]])
+        zmat['vars'][d_str] = 180
     # Update xyz with the dummy atom (useful when this atom is used to define dihedrals of other atoms).
     coords = _add_nth_atom_to_coords(zmat=zmat, coords=list(coords), i=n)
     if connectivity is not None:

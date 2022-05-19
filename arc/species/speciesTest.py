@@ -14,11 +14,11 @@ from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 from rmgpy.transport import TransportData
 
-from arc.common import almost_equal_coords_lists, ARC_PATH
+from arc.common import ARC_PATH, almost_equal_coords_lists
+from arc.species.converter import check_xyz_dict
 from arc.exceptions import SpeciesError
 from arc.level import Level
 from arc.plotter import save_conformers_file
-from arc.reaction import ARCReaction
 from arc.species.converter import (check_isomorphism,
                                    molecules_from_xyz,
                                    str_to_xyz,
@@ -36,7 +36,6 @@ from arc.species.species import (ARCSpecies,
                                  determine_rotor_type,
                                  )
 from arc.species.xyz_to_2d import MolGraph
-from arc.utils.wip import work_in_progress
 
 
 class TestARCSpecies(unittest.TestCase):
@@ -52,7 +51,12 @@ class TestARCSpecies(unittest.TestCase):
         # Method 1: RMG Species object (here by SMILES)
         cls.spc1_rmg = Species(molecule=[Molecule(smiles='C=C[O]')])  # delocalized radical + amine
         cls.spc1_rmg.label = 'vinoxy'
-        cls.spc1 = ARCSpecies(rmg_species=cls.spc1_rmg)
+        cls.spc1 = ARCSpecies(rmg_species=cls.spc1_rmg, xyz="""C      -0.68324480   -0.04685539   -0.10883672
+                                                               C       0.63642204    0.05717653    0.10011041
+                                                               O       1.50082619   -0.82476680    0.32598015
+                                                               H      -1.27691852    0.84199331   -0.29048852
+                                                               H      -1.17606821   -1.00974165   -0.10030145
+                                                               H       0.99232452    1.08896899    0.06242974""")
 
         # Method 2: ARCSpecies object by XYZ (also give SMILES for thermo BAC)
         oh_xyz = """O       0.00000000    0.00000000   -0.12002167
@@ -104,6 +108,11 @@ class TestARCSpecies(unittest.TestCase):
         cls.spc10 = ARCSpecies(label='CCCCC', smiles='CCCCC')
         cls.spc11 = ARCSpecies(label='CCCNO', smiles='CCCNO')  # has chiral N
         cls.spc12 = ARCSpecies(label='[CH](CC[CH]c1ccccc1)c1ccccc1', smiles='[CH](CC[CH]c1ccccc1)c1ccccc1')
+        cls.spc13 = ARCSpecies(label='CH3CHCH3', smiles='C[CH]C')
+        cls.spc14 = ARCSpecies(label='HNO2', smiles='[O-][NH+]=O',
+                               xyz={'symbols': ('O', 'N', 'O', 'H'), 'isotopes': (16, 14, 16, 1),
+                                    'coords': ((1.082465, -0.311042, 0.517009), (-0.000538, 0.002628, 0.064162),
+                                               (-0.872035, -0.717142, -0.381683), (-0.209893, 1.025557, 0.057233))})
 
     def test_from_yml_file(self):
         """Test that an ARCSpecies object can successfully be loaded from an Arkane YAML file"""
@@ -173,6 +182,14 @@ class TestARCSpecies(unittest.TestCase):
                     index2 = mol.atoms.index(atom2)
                     if index1 < index2:
                         self.assertIn(index2, bond_dict[index1])  # check that these atoms are connected in all mols
+
+    def test_is_monoatomic(self):
+        """Test the is_monoatomic() method."""
+        self.assertFalse(self.spc1.is_monoatomic())
+        self.assertFalse(self.spc2.is_monoatomic())
+        self.assertFalse(self.spc3.is_monoatomic())
+        n_rad = ARCSpecies(label='N', smiles='[N]')
+        self.assertTrue(n_rad.is_monoatomic())
 
     def test_get_xyz(self):
         """Test the get_xyz() method."""
@@ -303,6 +320,21 @@ class TestARCSpecies(unittest.TestCase):
         self.assertEqual(self.spc6.rotors_dict[1]['scan'], [1, 4, 6, 7])
         self.assertEqual(len(self.spc6.rotors_dict[1]['top']), 3)
         self.assertTrue(all([t in [6, 7, 8] for t in self.spc6.rotors_dict[1]['top']]))
+
+        xyz_0 = """ C                 -0.55523587   -0.05171225   -0.10207502
+                    O                 -1.97915424   -0.11085934    0.01564540
+                    H                 -2.30049134   -0.91933285   -0.39020316
+                    O                  0.21054322   -1.25903252   -0.13140363
+                    O                  0.02392670    1.06277903   -0.17985981
+                    O                  0.34507064   -1.66451868   -1.38035653
+                    H                  0.85915943   -2.47502781   -1.40004560"""
+        spc_0 = ARCSpecies(label='OHCOOOH', smiles='OC(=O)OO', xyz=xyz_0)
+        spc_0.determine_rotors()
+        self.assertEqual(spc_0.rotors_dict[0]['pivots'], [1, 2])
+        self.assertEqual(spc_0.rotors_dict[1]['scan'], [2, 1, 4, 6])
+        self.assertEqual(spc_0.rotors_dict[1]['top'], [4, 6, 7])
+        self.assertEqual(spc_0.rotors_dict[2]['scan'], [1, 4, 6, 7])
+        self.assertEqual(spc_0.rotors_dict[2]['torsion'], [0, 3, 5, 6])
 
         ts_xyz1 = {'symbols': ('O', 'C', 'N', 'C', 'H', 'H', 'H', 'H'),
                    'isotopes': (16, 12, 14, 12, 1, 1, 1, 1),
@@ -594,6 +626,601 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertEqual(spc.mol.to_smiles(), '[OH]')
         self.assertFalse(spc.is_ts)
 
+        species_dict = self.spc13.as_dict()
+        spc = ARCSpecies(species_dict=species_dict)
+        self.assertEqual(spc.multiplicity, 2)
+        self.assertEqual(spc.charge, 0)
+        self.assertEqual(spc.label, 'CH3CHCH3')
+        self.assertEqual(spc.mol.to_smiles(), 'C[CH]C')
+        self.assertFalse(spc.is_ts)
+
+        species_dict = {
+            'arkane_file': None,
+            'bond_corrections': {'C-C': 2, 'C-H': 7},
+            'charge': 0,
+            'cheap_conformer': """C      -1.28873024    0.06292844    0.10889819
+    C       0.01096161   -0.45756396   -0.39342150
+    C       1.28410310    0.11324608    0.12206177
+    H      -1.49844465    1.04581965   -0.32238736
+    H      -1.28247249    0.14649430    1.19953628
+    H      -2.09838469   -0.61664655   -0.17318515
+    H       0.02736023   -1.06013834   -1.29522253
+    H       2.12255117   -0.53409831   -0.15158596
+    H       1.26342625    0.19628892    1.21256167
+    H       1.45962973    1.10366979   -0.30725541""",
+            'compute_thermo': True,
+            'conf_is_isomorphic': True,
+            'conformer_energies': {-310736.67239208287, -310736.6722398039},
+            'conformers': ["""C       1.29970500    0.14644400    0.33188600
+    C      -0.03768600   -0.16670600    0.90640300
+    C      -1.27231500    0.46087300    0.35997600
+    H       1.44120400    1.23441200    0.20525800
+    H       2.11937800   -0.23320300    0.95927900
+    H       1.43056000   -0.29786500   -0.67654600
+    H      -0.13536400   -1.02567100    1.57749500
+    H      -1.52797900    0.06385600   -0.64425600
+    H      -2.14561400    0.28815000    1.00583400
+    H      -1.15029500    1.55122700    0.23360600""",
+                           """C       1.30103900    0.16393300    0.34879900
+                           C      -0.04152900   -0.19847900    0.88071100
+                           C      -1.28197500    0.35864300    0.27435100
+                           H       1.56963800    1.21419300    0.58585100
+                           H       2.09641900   -0.47262500    0.76327200
+                           H       1.33590500    0.08223900   -0.75201500
+                           H      -0.10685900   -0.69364300    1.85448600
+                           H      -1.26682800    0.27562700   -0.82682700
+                           H      -2.18634800   -0.14787200    0.64197300
+                           H      -1.40179300    1.43901800    0.49754100"""],
+            'conformers_before_opt': ["""C       1.29196387    0.15815210    0.32047503
+    C      -0.03887789   -0.17543467    0.89494533
+    C      -1.26222918    0.47039644    0.34836510
+    H       1.40933232    1.23955428    0.20511486
+    H       2.08593721   -0.19903577    0.98301313
+    H       1.41699441   -0.31973461   -0.65525752
+    H      -0.13933823   -1.05339936    1.52398873
+    H      -1.51964710    0.03926484   -0.62319221
+    H      -2.10441807    0.31322346    1.02876738
+    H      -1.11812298    1.54852996    0.23271515""",
+                                      """C       1.29310340    0.17362129    0.33579983
+                                      C      -0.04076055   -0.18590306    0.88714873
+                                      C      -1.27189499    0.36735010    0.26212474
+                                      H       1.55592178    1.19894970    0.61091750
+                                      H       2.05776887   -0.49750870    0.73805031
+                                      H       1.30408843    0.08336402   -0.75426781
+                                      H      -0.10304141   -0.63591124    1.87214802
+                                      H      -1.23406042    0.27508450   -0.82717286
+                                      H      -2.15031563   -0.17969330    0.61716567
+                                      H      -1.39313889    1.42168001    0.52622776"""],
+            'consider_all_diastereomers': True,
+            'e_elect': -310565.27164853434,
+            'final_xyz': """C       1.30187300    0.14621800    0.33152500
+    C      -0.03806200   -0.16945500    0.90272000
+    C      -1.27448200    0.46117100    0.35965700
+    H       1.44177100    1.22731000    0.20493900
+    H       2.11385600   -0.22881400    0.95955100
+    H       1.43997500   -0.29695900   -0.66977600
+    H      -0.13482800   -1.02046600    1.56833500
+    H      -1.53677300    0.06694200   -0.63727300
+    H      -2.13918500    0.29111100    1.00599100
+    H      -1.15255100    1.54445900    0.23326700""",
+            'force_field': 'MMFF94s',
+            'initial_xyz': """C       1.29970500    0.14644400    0.33188600
+    C      -0.03768600   -0.16670600    0.90640300
+    C      -1.27231500    0.46087300    0.35997600
+    H       1.44120400    1.23441200    0.20525800
+    H       2.11937800   -0.23320300    0.95927900
+    H       1.43056000   -0.29786500   -0.67654600
+    H      -0.13536400   -1.02567100    1.57749500
+    H      -1.52797900    0.06385600   -0.64425600
+    H      -2.14561400    0.28815000    1.00583400
+    H      -1.15029500    1.55122700    0.23360600""",
+            'is_ts': False,
+            'label': 'C3_2',
+            'long_thermo_description': "Bond corrections: {'C-H': 7, 'C-C': 2}",
+            'mol': {
+                'atom_order': [-32758, -32757, -32756, -32755, -32754, -32753, -32752, -32751, -32750, -32749],
+                'atoms': [
+                    {'charge': 0, 'edges': {-32757: 1.0, -32755: 1.0, -32754: 1.0, -32753: 1.0},
+                     'element': {'isotope': -1, 'number': 6}, 'atomtype': 'Cs',
+                     'id': -32758, 'label': '', 'lone_pairs': 0, 'props': {'inRing': False}, 'radical_electrons': 0},
+                    {'charge': 0, 'edges': {-32758: 1.0, -32756: 1.0, -32752: 1.0},
+                     'element': {'isotope': -1, 'number': 6}, 'atomtype': 'Cs',
+                     'id': -32757, 'label': '', 'lone_pairs': 0, 'props': {'inRing': False}, 'radical_electrons': 1},
+                    {'charge': 0, 'edges': {-32757: 1.0, -32751: 1.0, -32750: 1.0, -32749: 1.0},
+                     'element': {'isotope': -1, 'number': 6}, 'atomtype': 'Cs',
+                     'id': -32756, 'label': '', 'lone_pairs': 0, 'props': {'inRing': False}, 'radical_electrons': 0},
+                    {'charge': 0, 'edges': {-32758: 1.0},
+                     'element': {'isotope': -1, 'number': 1}, 'atomtype': 'H',
+                     'id': -32755, 'label': '', 'lone_pairs': 0, 'props': {'inRing': False}, 'radical_electrons': 0},
+                    {'charge': 0, 'edges': {-32758: 1.0},
+                     'element': {'isotope': -1, 'number': 1}, 'atomtype': 'H',
+                     'id': -32754, 'label': '', 'lone_pairs': 0, 'props': {'inRing': False}, 'radical_electrons': 0},
+                    {'charge': 0, 'edges': {-32758: 1.0},
+                     'element': {'isotope': -1, 'number': 1}, 'atomtype': 'H',
+                     'id': -32753, 'label': '', 'lone_pairs': 0, 'props': {'inRing': False}, 'radical_electrons': 0},
+                    {'charge': 0, 'edges': {-32757: 1.0},
+                     'element': {'isotope': -1, 'number': 1}, 'atomtype': 'H',
+                     'id': -32752, 'label': '', 'lone_pairs': 0, 'props': {'inRing': False}, 'radical_electrons': 0},
+                    {'charge': 0, 'edges': {-32756: 1.0},
+                     'element': {'isotope': -1, 'number': 1}, 'atomtype': 'H',
+                     'id': -32751, 'label': '', 'lone_pairs': 0, 'props': {'inRing': False}, 'radical_electrons': 0},
+                    {'charge': 0, 'edges': {-32756: 1.0},
+                     'element': {'isotope': -1, 'number': 1}, 'atomtype': 'H',
+                     'id': -32750, 'label': '', 'lone_pairs': 0, 'props': {'inRing': False}, 'radical_electrons': 0},
+                    {'charge': 0, 'edges': {-32756: 1.0},
+                     'element': {'isotope': -1, 'number': 1}, 'atomtype': 'H',
+                     'id': -32749, 'label': '', 'lone_pairs': 0, 'props': {'inRing': False}, 'radical_electrons': 0}],
+                'multiplicity': 2,
+                'props': {}},
+        }
+        spc = ARCSpecies(species_dict=species_dict)
+        self.assertEqual(spc.mol.copy(deep=True).to_smiles(), 'C[CH]C')
+        self.assertEqual(spc.force_field, 'MMFF94s')
+        for index in [0, 1, 2]:
+            self.assertEqual(spc.mol.atoms[index].element.symbol, 'C')
+        for index in [3, 4, 5, 6, 7, 8, 9]:
+            self.assertEqual(spc.mol.atoms[index].element.symbol, 'H')
+        self.assertFalse(spc.mol.is_aromatic())
+
+        species_dict = {'arkane_file': None, 'bond_corrections': {}, 'charge': 0,
+                        'chosen_ts': 12, 'chosen_ts_list': [15, 14, 12], 'chosen_ts_method': 'gcn',
+                        'compute_thermo': False, 'consider_all_diastereomers': True, 'e_elect': -310382.39770689985,
+                        'final_xyz': """C       1.24308800   -0.63728100   -0.83084500
+                                     C       0.47242200   -0.00167700    0.28034600
+                                     C      -0.97840400   -0.32227800    0.48081000
+                                     H       2.31900300   -0.72163700   -0.75942700
+                                     H       0.71709200   -1.25228600   -1.54944600
+                                     H       0.82531600    0.59717200   -0.81605600
+                                     H       1.05269200    0.35819200    1.12279600
+                                     H      -1.10906700   -1.30741000    0.95493200
+                                     H      -1.47674600    0.41900300    1.11033300
+                                     H      -1.51333600   -0.36069700   -0.47419600""",
+                        'initial_xyz': """C       1.24048800   -0.62930500   -0.83486000
+                                       C       0.47277300   -0.00261400    0.27886600
+                                       C      -0.97665700   -0.32246100    0.47924600
+                                       H       2.32489500   -0.72600100   -0.75707500
+                                       H       0.70824900   -1.25659800   -1.55384200
+                                       H       0.82237000    0.60748600   -0.81298600
+                                       H       1.05824200    0.35217700    1.13233100
+                                       H      -1.10589600   -1.30876200    0.96446300
+                                       H      -1.48016200    0.42782200    1.10607600
+                                       H      -1.51224100   -0.37064400   -0.48297200""",
+                        'is_ts': True, 'label': 'TS0', 'long_thermo_description': '', 'force_field': 'MMFF94s',
+                        'mol': {'atom_order': [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
+                                'atoms': [{'charge': 0, 'edges': {-1: 1.0}, 'radical_electrons': 0,
+                                           'element': {'isotope': -1, 'number': 6}, 'atomtype': 'Cs',
+                                           'id': -1, 'label': '', 'lone_pairs': 0, 'props': {'inRing': False}},
+                                          {'charge': 0, 'edges': {-1: 1.0}, 'radical_electrons': 1,
+                                           'element': {'isotope': -1, 'number': 6}, 'atomtype': 'Cs',
+                                           'id': -1, 'label': '', 'lone_pairs': 0, 'props': {'inRing': False}},
+                                          {'charge': 0, 'edges': {-1: 1.0}, 'radical_electrons': 0,
+                                           'element': {'isotope': -1, 'number': 6}, 'atomtype': 'Cs',
+                                           'id': -1, 'label': '', 'lone_pairs': 0, 'props': {'inRing': False}},
+                                          {'charge': 0, 'edges': {-1: 1.0}, 'radical_electrons': 0,
+                                           'element': {'isotope': -1, 'number': 1}, 'atomtype': 'H',
+                                           'id': -1, 'label': '', 'lone_pairs': 0, 'props': {'inRing': False}},
+                                          {'charge': 0, 'edges': {-1: 1.0}, 'radical_electrons': 0,
+                                           'element': {'isotope': -1, 'number': 1}, 'atomtype': 'H',
+                                           'id': -1, 'label': '', 'lone_pairs': 0, 'props': {'inRing': False}},
+                                          {'charge': 0, 'edges': {-1: 1.0}, 'radical_electrons': 0,
+                                           'element': {'isotope': -1, 'number': 1}, 'atomtype': 'H',
+                                           'id': -1, 'label': '', 'lone_pairs': 0, 'props': {'inRing': False}},
+                                          {'charge': 0, 'edges': {-1: 1.0}, 'radical_electrons': 0,
+                                           'element': {'isotope': -1, 'number': 1}, 'atomtype': 'H',
+                                           'id': -1, 'label': '', 'lone_pairs': 0, 'props': {'inRing': False}},
+                                          {'charge': 0, 'edges': {-1: 1.0}, 'radical_electrons': 0,
+                                           'element': {'isotope': -1, 'number': 1}, 'atomtype': 'H',
+                                           'id': -1, 'label': '', 'lone_pairs': 0, 'props': {'inRing': False}},
+                                          {'charge': 0, 'edges': {-1: 1.0}, 'radical_electrons': 0,
+                                           'element': {'isotope': -1, 'number': 1}, 'atomtype': 'H',
+                                           'id': -1, 'label': '', 'lone_pairs': 0, 'props': {'inRing': False}},
+                                          {'charge': 0, 'edges': {-1: 1.0}, 'radical_electrons': 0,
+                                           'element': {'isotope': -1, 'number': 1}, 'atomtype': 'H',
+                                           'id': -1, 'label': '', 'lone_pairs': 0, 'props': {'inRing': False}}],
+                                'multiplicity': 2, 'props': {}},
+                        'multiplicity': 2, 'number_of_rotors': 2, 'opt_level': 'cbs-qb3',
+                        'rotors_dict': {0: {'cont_indices': [], 'dimensions': 1, 'directed_scan': {},
+                                            'directed_scan_type': 'ess',
+                                            'invalidation_reason': 'Pivots participate in the TS reaction zone (code: pivTS). ',
+                                            'number_of_running_jobs': 0, 'original_dihedrals': [], 'pivots': [1, 2],
+                                            'scan': [4, 1, 2, 3], 'scan_path': '', 'success': False,
+                                            'times_dihedral_set': 0, 'top': [1, 4, 5, 6], 'torsion': [3, 0, 1, 2],
+                                            'trsh_counter': 0, 'trsh_methods': []},
+                                        1: {'cont_indices': [], 'dimensions': 1, 'directed_scan': {},
+                                            'directed_scan_type': 'ess', 'invalidation_reason': '',
+                                            'number_of_running_jobs': 0, 'original_dihedrals': [], 'pivots': [2, 3],
+                                            'scan': [1, 2, 3, 8], 'scan_path': '', 'success': None,
+                                            'times_dihedral_set': 0, 'top': [3, 8, 9, 10], 'torsion': [0, 1, 2, 7],
+                                            'trsh_counter': 0, 'trsh_methods': []}},
+                        'run_time': 1238.0, 'rxn_index': 0,
+                        'rxn_label': 'C3_1 <=> C3_2',
+                        'successful_methods': ['autotst', 'autotst', 'autotst', 'autotst',
+                                               'gcn', 'gcn', 'gcn', 'gcn', 'gcn', 'gcn', 'gcn', 'gcn', 'gcn', 'gcn',
+                                               'kinbot', 'kinbot'],
+                        'ts_checks': {'E0': False, 'IRC': False, 'e_elect': True, 'freq': True,
+                                      'normal_mode_displacement': True, 'warnings': ''},
+                        'ts_conf_spawned': True,
+                        'ts_guesses': [{'conformer_index': 0, 'energy': 455.24421061505564,
+                                        'execution_time': '0:00:25.483065',
+                                        'imaginary_freqs': None, 'index': 0,
+                                        'initial_xyz': """C       0.06870000   -0.52310000   -0.65000000
+                                                          C       1.32690000   -0.17800000    0.12310000
+                                                          C      -1.61580000    0.23640000    0.43190000
+                                                          H      -0.94590000   -0.88470000    0.05810000
+                                                          H       0.00080000   -0.05630000   -1.65490000
+                                                          H       1.36660000   -0.77570000    1.05730000
+                                                          H       2.21840000   -0.40920000   -0.49590000
+                                                          H       1.32650000    0.90240000    0.37660000
+                                                          H      -1.31000000    1.13360000    1.01690000
+                                                          H      -2.43630000    0.55470000   -0.26310000""",
+                                        'method': 'autotst', 'method_direction': 'F', 'method_index': 0,
+                                        'opt_xyz': """C       0.47274600   -0.76452100   -0.88459200
+                                                      C       1.44656200   -0.23763200    0.09307300
+                                                      C      -1.72938800    0.32911600    0.28782700
+                                                      H      -1.69734300   -0.70598100    0.63266200
+                                                      H      -0.10051300    0.01283500   -1.43240400
+                                                      H       1.69764900   -0.96652300    0.88086600
+                                                      H       2.37671100   -0.12775000   -0.50513500
+                                                      H       1.24091800    0.74738900    0.54623600
+                                                      H      -1.30693200    1.11824100    0.91137000
+                                                      H      -2.40051000    0.59492500   -0.52990300""",
+                                        'success': True, 'successful_irc': None, 'successful_normal_mode': None,
+                                        't0': '2021-08-22T07:40:04.565352'},
+                                       {'conformer_index': 1, 'energy': 485.01425728958566, 'execution_time': '0:00:25.483065',
+                                        'imaginary_freqs': None, 'index': 1,
+                                        'initial_xyz': """C       1.27140000   -0.19880000    0.27060000
+                                                          C      -1.52300000    0.74650000   -0.35470000
+                                                          C       0.02370000   -0.73290000   -0.41700000
+                                                          H      -0.96230000   -0.12240000   -1.12430000
+                                                          H       1.61070000    0.72270000   -0.24570000
+                                                          H       1.04290000    0.03790000    1.33060000
+                                                          H       2.07780000   -0.96010000    0.22660000
+                                                          H      -1.03890000    1.73950000   -0.25260000
+                                                          H      -2.20860000    0.44390000    0.46320000
+                                                          H      -0.29360000   -1.67630000    0.10330000""",
+                                        'method': 'autotst', 'method_direction': 'F', 'method_index': 1,
+                                        'opt_xyz': """C       1.66858400   -0.47894800    0.18483000
+                                                      C      -2.24898800    1.37779300   -0.16738600
+                                                      C       0.19196200   -0.39189200    0.04997800
+                                                      H      -0.30502700    0.59228700    0.04964900
+                                                      H       2.17438800   -0.42762500   -0.80039200
+                                                      H       2.07468500    0.34685900    0.78841600
+                                                      H       1.98194700   -1.42970200    0.64501700
+                                                      H      -2.70375200    0.74656200    0.62073400
+                                                      H      -2.42994200    0.93691500   -1.16726700
+                                                      H      -0.40375800   -1.27225000   -0.20358000""",
+                                        'success': True, 'successful_irc': None, 'successful_normal_mode': None,
+                                        't0': '2021-08-22T07:40:04.565352'},
+                                       {'conformer_index': 2, 'energy': None, 'execution_time': '0:00:21.880109',
+                                        'imaginary_freqs': None, 'index': 2,
+                                        'initial_xyz': """C       1.71270000   -0.29390000    0.04290000
+                                                          C      -1.29740000   -0.16230000   -0.10640000
+                                                          C      -0.10790000    0.76300000   -0.32970000
+                                                          H       1.08610000    0.51490000   -0.81510000
+                                                          H       1.48670000   -1.37900000   -0.00500000
+                                                          H       2.09490000    0.08260000    1.01380000
+                                                          H      -2.24090000    0.38520000   -0.31090000
+                                                          H      -1.29900000   -0.52400000    0.94300000
+                                                          H      -1.22320000   -1.03060000   -0.79300000
+                                                          H      -0.21210000    1.64410000    0.36030000""",
+                                        'method': 'autotst', 'method_direction': 'R', 'method_index': 2,
+                                        'success': True, 'successful_irc': None, 'successful_normal_mode': None,
+                                        't0': '2021-08-22T07:40:30.067177'},
+                                       {'conformer_index': 3, 'energy': None, 'execution_time': '0:00:21.880109',
+                                        'imaginary_freqs': None, 'index': 3,
+                                        'initial_xyz': """C       0.14170000    0.77420000   -0.31580000
+                                                          C       1.33000000   -0.02950000    0.17580000
+                                                          C      -1.64460000   -0.24370000    0.27000000
+                                                          H      -0.90890000    0.81700000    0.50710000
+                                                          H       0.07300000    0.86010000   -1.42040000
+                                                          H       1.38540000    0.02680000    1.28260000
+                                                          H       2.26370000    0.38470000   -0.25780000
+                                                          H       1.22000000   -1.08930000   -0.13430000
+                                                          H      -2.43100000   -0.17220000   -0.52760000
+                                                          H      -1.42930000   -1.32810000    0.42060000""",
+                                        'method': 'autotst', 'method_direction': 'R', 'method_index': 3,
+                                        'success': True, 'successful_irc': None, 'successful_normal_mode': None,
+                                        't0': '2021-08-22T07:40:30.067177'},
+                                       {'conformer_index': 4, 'energy': None, 'execution_time': '0:00:06.423237',
+                                        'imaginary_freqs': None, 'index': 4,
+                                        'initial_xyz': """C      -0.50205731    0.69866323    0.68881840
+                                                          C       0.86601830   -0.07523254    0.81684917
+                                                          C       1.79938066   -0.06883909   -0.47658044
+                                                          H      -1.20263302    0.73346782    1.43291938
+                                                          H      -0.66235149    1.47553778   -0.12268760
+                                                          H      -0.09058958    0.58470058    0.54704428
+                                                          H       0.80732340   -0.87154227    1.32850742
+                                                          H       2.17241597    0.87013972   -0.69461155
+                                                          H       2.53096390   -0.75815833   -0.33109212
+                                                          H       1.31342387   -0.25284114   -1.40562236""",
+                                        'method': 'gcn', 'method_direction': 'F', 'method_index': None,
+                                        'success': True, 'successful_irc': None, 'successful_normal_mode': None,
+                                        't0': '2021-08-22T07:40:56.929027'},
+                                       {'conformer_index': 5, 'energy': 179.82936736522242,
+                                        'execution_time': '0:00:03.044867', 'imaginary_freqs': None, 'index': 5,
+                                        'initial_xyz': """C      -0.79042125    0.52490389   -0.05857688
+                                                          C       0.10447983   -0.01884642    1.04805517
+                                                          C       0.97251391   -1.07929420    0.99123168
+                                                          H      -1.48476017    1.27402782   -0.17248495
+                                                          H      -0.35744023    0.41111273   -0.96343821
+                                                          H      -1.22865522    0.02419715    0.87522262
+                                                          H      -0.07661759    0.46040890    2.08498836
+                                                          H       1.43652236   -1.30764163    0.05607589
+                                                          H       1.61815691   -1.20334327    1.70499873
+                                                          H       0.39542824   -1.93504274    0.76601362""",
+                                        'method': 'gcn', 'method_direction': 'F', 'method_index': None,
+                                        'opt_xyz': """C      -0.79042125    0.52490389   -0.05857688
+                                                      C       0.10447983   -0.01884642    1.04805517
+                                                      C       0.97251391   -1.07929420    0.99123168
+                                                      H      -1.48476017    1.27402782   -0.17248495
+                                                      H      -0.35744023    0.41111273   -0.96343821
+                                                      H      -1.22865522    0.02419715    0.87522262
+                                                      H      -0.07661759    0.46040890    2.08498836
+                                                      H       1.43652236   -1.30764163    0.05607589
+                                                      H       1.61815691   -1.20334327    1.70499873
+                                                      H       0.39542824   -1.93504274    0.76601362""",
+                                        'success': True, 'successful_irc': None, 'successful_normal_mode': None,
+                                        't0': '2021-08-22T07:41:06.893439'},
+                                       {'conformer_index': 6, 'energy': 179.8294986402616,
+                                        'execution_time': '0:00:02.757137', 'imaginary_freqs': None, 'index': 6,
+                                        'initial_xyz': """C      -0.79042125    0.52490389   -0.05857688
+                                                          C       0.10447983   -0.01884642    1.04805517
+                                                          C       0.97251391   -1.07929420    0.99123168
+                                                          H      -1.48476017    1.27402782   -0.17248495
+                                                          H      -0.35744023    0.41111273   -0.96343821
+                                                          H      -1.22865522    0.02419715    0.87522262
+                                                          H      -0.07661759    0.46040890    2.08498836
+                                                          H       1.43652236   -1.30764163    0.05607589
+                                                          H       1.61815691   -1.20334327    1.70499873
+                                                          H       0.39542824   -1.93504274    0.76601362""",
+                                        'method': 'gcn', 'method_direction': 'F', 'method_index': None,
+                                        'opt_xyz': """C      -0.79042125    0.52490389   -0.05857688
+                                                      C       0.10447983   -0.01884642    1.04805517
+                                                      C       0.97251391   -1.07929420    0.99123168
+                                                      H      -1.48476017    1.27402782   -0.17248495
+                                                      H      -0.35744023    0.41111273   -0.96343821
+                                                      H      -1.22865522    0.02419715    0.87522262
+                                                      H      -0.07661759    0.46040890    2.08498836
+                                                      H       1.43652236   -1.30764163    0.05607589
+                                                      H       1.61815691   -1.20334327    1.70499873
+                                                      H       0.39542824   -1.93504274    0.76601362""",
+                                        'success': True, 'successful_irc': None, 'successful_normal_mode': None,
+                                        't0': '2021-08-22T07:41:13.388827'},
+                                       {'conformer_index': 7, 'energy': 179.8292282137554,
+                                        'execution_time': '0:00:02.840379', 'imaginary_freqs': None, 'index': 7,
+                                        'initial_xyz': """C      -0.79042125    0.52490389   -0.05857688
+                                                          C       0.10447983   -0.01884642    1.04805517
+                                                          C       0.97251391   -1.07929420    0.99123168
+                                                          H      -1.48476017    1.27402782   -0.17248495
+                                                          H      -0.35744023    0.41111273   -0.96343821
+                                                          H      -1.22865522    0.02419715    0.87522262
+                                                          H      -0.07661759    0.46040890    2.08498836
+                                                          H       1.43652236   -1.30764163    0.05607589
+                                                          H       1.61815691   -1.20334327    1.70499873
+                                                          H       0.39542824   -1.93504274    0.76601362""",
+                                        'method': 'gcn', 'method_direction': 'F', 'method_index': None,
+                                        'opt_xyz': """C      -0.79042125    0.52490389   -0.05857688
+                                                      C       0.10447983   -0.01884642    1.04805517
+                                                      C       0.97251391   -1.07929420    0.99123168
+                                                      H      -1.48476017    1.27402782   -0.17248495
+                                                      H      -0.35744023    0.41111273   -0.96343821
+                                                      H      -1.22865522    0.02419715    0.87522262
+                                                      H      -0.07661759    0.46040890    2.08498836
+                                                      H       1.43652236   -1.30764163    0.05607589
+                                                      H       1.61815691   -1.20334327    1.70499873
+                                                      H       0.39542824   -1.93504274    0.76601362""",
+                                        'success': True, 'successful_irc': None, 'successful_normal_mode': None,
+                                        't0': '2021-08-22T07:41:19.049270'},
+                                       {'conformer_index': 8, 'energy': 179.82915207423503,
+                                        'execution_time': '0:00:03.363040', 'imaginary_freqs': None, 'index': 8,
+                                        'initial_xyz': """C      -0.79042125    0.52490389   -0.05857688
+                                                          C       0.10447983   -0.01884642    1.04805517
+                                                          C       0.97251391   -1.07929420    0.99123168
+                                                          H      -1.48476017    1.27402782   -0.17248495
+                                                          H      -0.35744023    0.41111273   -0.96343821
+                                                          H      -1.22865522    0.02419715    0.87522262
+                                                          H      -0.07661759    0.46040890    2.08498836
+                                                          H       1.43652236   -1.30764163    0.05607589
+                                                          H       1.61815691   -1.20334327    1.70499873
+                                                          H       0.39542824   -1.93504274    0.76601362""",
+                                        'method': 'gcn', 'method_direction': 'F', 'method_index': None,
+                                        'opt_xyz': """C      -0.79042125    0.52490389   -0.05857688
+                                                      C       0.10447983   -0.01884642    1.04805517
+                                                      C       0.97251391   -1.07929420    0.99123168
+                                                      H      -1.48476017    1.27402782   -0.17248495
+                                                      H      -0.35744023    0.41111273   -0.96343821
+                                                      H      -1.22865522    0.02419715    0.87522262
+                                                      H      -0.07661759    0.46040890    2.08498836
+                                                      H       1.43652236   -1.30764163    0.05607589
+                                                      H       1.61815691   -1.20334327    1.70499873
+                                                      H       0.39542824   -1.93504274    0.76601362""",
+                                        'success': True, 'successful_irc': None, 'successful_normal_mode': None,
+                                        't0': '2021-08-22T07:41:24.792257'},
+                                       {'conformer_index': 9, 'energy': 179.82950651680585,
+                                        'execution_time': '0:00:03.128026', 'imaginary_freqs': None, 'index': 9,
+                                        'initial_xyz': """C      -0.79042125    0.52490389   -0.05857688
+                                                          C       0.10447983   -0.01884642    1.04805517
+                                                          C       0.97251391   -1.07929420    0.99123168
+                                                          H      -1.48476017    1.27402782   -0.17248495
+                                                          H      -0.35744023    0.41111273   -0.96343821
+                                                          H      -1.22865522    0.02419715    0.87522262
+                                                          H      -0.07661759    0.46040890    2.08498836
+                                                          H       1.43652236   -1.30764163    0.05607589
+                                                          H       1.61815691   -1.20334327    1.70499873
+                                                          H       0.39542824   -1.93504274    0.76601362""",
+                                        'method': 'gcn', 'method_direction': 'F', 'method_index': None,
+                                        'opt_xyz': """C      -0.79042125    0.52490389   -0.05857688
+                                                      C       0.10447983   -0.01884642    1.04805517
+                                                      C       0.97251391   -1.07929420    0.99123168
+                                                      H      -1.48476017    1.27402782   -0.17248495
+                                                      H      -0.35744023    0.41111273   -0.96343821
+                                                      H      -1.22865522    0.02419715    0.87522262
+                                                      H      -0.07661759    0.46040890    2.08498836
+                                                      H       1.43652236   -1.30764163    0.05607589
+                                                      H       1.61815691   -1.20334327    1.70499873
+                                                      H       0.39542824   -1.93504274    0.76601362""",
+                                        'success': True, 'successful_irc': None, 'successful_normal_mode': None,
+                                        't0': '2021-08-22T07:41:31.062516'},
+                                       {'conformer_index': 10, 'energy': 179.82957740523852,
+                                        'execution_time': '0:00:02.815705', 'imaginary_freqs': None, 'index': 10,
+                                        'initial_xyz': """C      -0.79042125    0.52490389   -0.05857688
+                                                          C       0.10447983   -0.01884642    1.04805517
+                                                          C       0.97251391   -1.07929420    0.99123168
+                                                          H      -1.48476017    1.27402782   -0.17248495
+                                                          H      -0.35744023    0.41111273   -0.96343821
+                                                          H      -1.22865522    0.02419715    0.87522262
+                                                          H      -0.07661759    0.46040890    2.08498836
+                                                          H       1.43652236   -1.30764163    0.05607589
+                                                          H       1.61815691   -1.20334327    1.70499873
+                                                          H       0.39542824   -1.93504274    0.76601362""",
+                                        'method': 'gcn', 'method_direction': 'F', 'method_index': None,
+                                        'opt_xyz': """C      -0.79042125    0.52490389   -0.05857688
+                                                      C       0.10447983   -0.01884642    1.04805517
+                                                      C       0.97251391   -1.07929420    0.99123168
+                                                      H      -1.48476017    1.27402782   -0.17248495
+                                                      H      -0.35744023    0.41111273   -0.96343821
+                                                      H      -1.22865522    0.02419715    0.87522262
+                                                      H      -0.07661759    0.46040890    2.08498836
+                                                      H       1.43652236   -1.30764163    0.05607589
+                                                      H       1.61815691   -1.20334327    1.70499873
+                                                      H       0.39542824   -1.93504274    0.76601362""",
+                                        'success': True, 'successful_irc': None, 'successful_normal_mode': None,
+                                        't0': '2021-08-22T07:41:37.126828'},
+                                       {'conformer_index': 11, 'energy': 179.8292675963021,
+                                        'execution_time': '0:00:03.054725', 'imaginary_freqs': None, 'index': 11,
+                                        'initial_xyz': """C      -0.79042125    0.52490389   -0.05857688
+                                                          C       0.10447983   -0.01884642    1.04805517
+                                                          C       0.97251391   -1.07929420    0.99123168
+                                                          H      -1.48476017    1.27402782   -0.17248495
+                                                          H      -0.35744023    0.41111273   -0.96343821
+                                                          H      -1.22865522    0.02419715    0.87522262
+                                                          H      -0.07661759    0.46040890    2.08498836
+                                                          H       1.43652236   -1.30764163    0.05607589
+                                                          H       1.61815691   -1.20334327    1.70499873
+                                                          H       0.39542824   -1.93504274    0.76601362""",
+                                        'method': 'gcn', 'method_direction': 'F', 'method_index': None,
+                                        'opt_xyz': """C      -0.79042125    0.52490389   -0.05857688
+                                                      C       0.10447983   -0.01884642    1.04805517
+                                                      C       0.97251391   -1.07929420    0.99123168
+                                                      H      -1.48476017    1.27402782   -0.17248495
+                                                      H      -0.35744023    0.41111273   -0.96343821
+                                                      H      -1.22865522    0.02419715    0.87522262
+                                                      H      -0.07661759    0.46040890    2.08498836
+                                                      H       1.43652236   -1.30764163    0.05607589
+                                                      H       1.61815691   -1.20334327    1.70499873
+                                                      H       0.39542824   -1.93504274    0.76601362""",
+                                        'success': True, 'successful_irc': None, 'successful_normal_mode': None,
+                                        't0': '2021-08-22T07:41:42.887084'},
+                                       {'conformer_index': 12, 'energy': 179.82911269180477,
+                                        'execution_time': '0:00:03.280951', 'imaginary_freqs': [-1927.8631], 'index': 12,
+                                        'initial_xyz': """C      -0.79042125    0.52490389   -0.05857688
+                                                          C       0.10447983   -0.01884642    1.04805517
+                                                          C       0.97251391   -1.07929420    0.99123168
+                                                          H      -1.48476017    1.27402782   -0.17248495
+                                                          H      -0.35744023    0.41111273   -0.96343821
+                                                          H      -1.22865522    0.02419715    0.87522262
+                                                          H      -0.07661759    0.46040890    2.08498836
+                                                          H       1.43652236   -1.30764163    0.05607589
+                                                          H       1.61815691   -1.20334327    1.70499873
+                                                          H       0.39542824   -1.93504274    0.76601362""",
+                                        'method': 'gcn', 'method_direction': 'F', 'method_index': None,
+                                        'opt_xyz': """C      -0.79042125    0.52490389   -0.05857688
+                                                      C       0.10447983   -0.01884642    1.04805517
+                                                      C       0.97251391   -1.07929420    0.99123168
+                                                      H      -1.48476017    1.27402782   -0.17248495
+                                                      H      -0.35744023    0.41111273   -0.96343821
+                                                      H      -1.22865522    0.02419715    0.87522262
+                                                      H      -0.07661759    0.46040890    2.08498836
+                                                      H       1.43652236   -1.30764163    0.05607589
+                                                      H       1.61815691   -1.20334327    1.70499873
+                                                      H       0.39542824   -1.93504274    0.76601362""",
+                                        'success': True, 'successful_irc': None, 'successful_normal_mode': None,
+                                        't0': '2021-08-22T07:41:48.895399'},
+                                       {'conformer_index': 13, 'energy': 179.82924134132918,
+                                        'execution_time': '0:00:02.906303', 'imaginary_freqs': None, 'index': 13,
+                                        'initial_xyz': """C      -0.79042125    0.52490389   -0.05857688
+                                                          C       0.10447983   -0.01884642    1.04805517
+                                                          C       0.97251391   -1.07929420    0.99123168
+                                                          H      -1.48476017    1.27402782   -0.17248495
+                                                          H      -0.35744023    0.41111273   -0.96343821
+                                                          H      -1.22865522    0.02419715    0.87522262
+                                                          H      -0.07661759    0.46040890    2.08498836
+                                                          H       1.43652236   -1.30764163    0.05607589
+                                                          H       1.61815691   -1.20334327    1.70499873
+                                                          H       0.39542824   -1.93504274    0.76601362""",
+                                        'method': 'gcn', 'method_direction': 'F', 'method_index': None,
+                                        'opt_xyz': """C      -0.79042125    0.52490389   -0.05857688
+                                                      C       0.10447983   -0.01884642    1.04805517
+                                                      C       0.97251391   -1.07929420    0.99123168
+                                                      H      -1.48476017    1.27402782   -0.17248495
+                                                      H      -0.35744023    0.41111273   -0.96343821
+                                                      H      -1.22865522    0.02419715    0.87522262
+                                                      H      -0.07661759    0.46040890    2.08498836
+                                                      H       1.43652236   -1.30764163    0.05607589
+                                                      H       1.61815691   -1.20334327    1.70499873
+                                                      H       0.39542824   -1.93504274    0.76601362""",
+                                        'success': True, 'successful_irc': None, 'successful_normal_mode': None,
+                                        't0': '2021-08-22T07:41:55.030683'},
+                                       {'conformer_index': 14, 'energy': 16.056782611296512,
+                                        'execution_time': '0:00:00.009075', 'imaginary_freqs': [-76.0137], 'index': 14,
+                                        'initial_xyz': """C      -0.79042125    0.52490389   -0.05857688
+                                                          C       0.10447983   -0.01884642    1.04805517
+                                                          C       0.97251391   -1.07929420    0.99123168
+                                                          H      -1.48476017    1.27402782   -0.17248495
+                                                          H      -0.35744023    0.41111273   -0.96343821
+                                                          H      -1.22865522    0.02419715    0.87522262
+                                                          H      -0.07661759    0.46040890    2.08498836
+                                                          H       1.43652236   -1.30764163    0.05607589
+                                                          H       1.61815691   -1.20334327    1.70499873
+                                                          H       0.39542824   -1.93504274    0.76601362""",
+                                        'method': 'kinbot', 'method_direction': 'F', 'method_index': 0,
+                                        'opt_xyz': """C      -0.79042125    0.52490389   -0.05857688
+                                                      C       0.10447983   -0.01884642    1.04805517
+                                                      C       0.97251391   -1.07929420    0.99123168
+                                                      H      -1.48476017    1.27402782   -0.17248495
+                                                      H      -0.35744023    0.41111273   -0.96343821
+                                                      H      -1.22865522    0.02419715    0.87522262
+                                                      H      -0.07661759    0.46040890    2.08498836
+                                                      H       1.43652236   -1.30764163    0.05607589
+                                                      H       1.61815691   -1.20334327    1.70499873
+                                                      H       0.39542824   -1.93504274    0.76601362""",
+                                        'success': True, 'successful_irc': None, 'successful_normal_mode': None,
+                                        't0': '2021-08-22T07:42:00.994920'},
+                                       {'conformer_index': 15, 'energy': 0.0,
+                                        'execution_time': '0:00:00.008971', 'imaginary_freqs': [-117.6316], 'index': 15,
+                                        'initial_xyz': """C      -0.79042125    0.52490389   -0.05857688
+                                                          C       0.10447983   -0.01884642    1.04805517
+                                                          C       0.97251391   -1.07929420    0.99123168
+                                                          H      -1.48476017    1.27402782   -0.17248495
+                                                          H      -0.35744023    0.41111273   -0.96343821
+                                                          H      -1.22865522    0.02419715    0.87522262
+                                                          H      -0.07661759    0.46040890    2.08498836
+                                                          H       1.43652236   -1.30764163    0.05607589
+                                                          H       1.61815691   -1.20334327    1.70499873
+                                                          H       0.39542824   -1.93504274    0.76601362""",
+                                        'method': 'kinbot', 'method_direction': 'R', 'method_index': 1,
+                                        'opt_xyz': """C      -0.79042125    0.52490389   -0.05857688
+                                                      C       0.10447983   -0.01884642    1.04805517
+                                                      C       0.97251391   -1.07929420    0.99123168
+                                                      H      -1.48476017    1.27402782   -0.17248495
+                                                      H      -0.35744023    0.41111273   -0.96343821
+                                                      H      -1.22865522    0.02419715    0.87522262
+                                                      H      -0.07661759    0.46040890    2.08498836
+                                                      H       1.43652236   -1.30764163    0.05607589
+                                                      H       1.61815691   -1.20334327    1.70499873
+                                                      H       0.39542824   -1.93504274    0.76601362""",
+                                        'success': True, 'successful_irc': None, 'successful_normal_mode': None,
+                                        't0': '2021-08-22T07:42:01.052311'}],
+                        'ts_guesses_exhausted': False, 'ts_number': 0,
+                        'ts_report': 'TS method summary for TS0 in C3_1 <=> C3_2:\n'
+                                     'Methods that successfully generated a TS guess:\n'
+                                     'autotst,autotst,autotst,autotst,gcn,gcn,gcn,gcn,gcn,gcn,gcn,gcn,gcn,gcn,kinbot,kinbot,\n'
+                                     'The method that generated the best TS guess and its output used '
+                                     'for the optimization: gcn\n',
+                        'tsg_spawned': True, 'unsuccessful_methods': []}
+        spc = ARCSpecies(species_dict=species_dict)
+        self.assertTrue(spc.is_ts)
+
     def test_copy(self):
         """Test the copy() method."""
         spc_copy = self.spc6.copy()
@@ -603,6 +1230,28 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertEqual(spc_copy.get_xyz()['symbols'], self.spc6.get_xyz()['symbols'])
         self.assertNotEqual(spc_copy.mol.atoms[0].id, self.spc6.mol.atoms[0].id)
         self.assertEqual(spc_copy.mol.to_smiles(), self.spc6.mol.to_smiles())
+
+        adj_list = """multiplicity 2
+                      1  *3 O u0 p2 c0 {2,S} {4,S}
+                      2  *4 O u1 p2 c0 {1,S}
+                      3  *1 N u0 p1 c0 {4,S} {9,S} {10,S}
+                      4  *2 C u0 p0 c0 {1,S} {3,S} {5,S} {7,S}
+                      5     C u0 p0 c0 {4,S} {6,D} {8,S}
+                      6     C u0 p0 c0 {5,D} {11,S} {12,S}
+                      7     H u0 p0 c0 {4,S}
+                      8     H u0 p0 c0 {5,S}
+                      9     H u0 p0 c0 {3,S}
+                      10 *5 H u0 p0 c0 {3,S}
+                      11    H u0 p0 c0 {6,S}
+                      12    H u0 p0 c0 {6,S}"""
+        spc_1 = ARCSpecies(label='labeled_mol', adjlist=adj_list)
+        spc_1_copy = spc_1.copy()
+        self.assertIsNot(spc_1, spc_1_copy)
+        self.assertEqual(len(spc_1.mol.get_all_edges()), len(spc_1_copy.mol.get_all_edges()))
+        self.assertEqual(spc_1_copy.multiplicity, spc_1.multiplicity)
+        self.assertEqual(spc_1_copy.get_xyz()['symbols'], spc_1.get_xyz()['symbols'])
+        self.assertEqual(spc_1_copy.mol.to_smiles(), spc_1.mol.to_smiles())
+        atom_labels = [atom.label for atom in spc_1_copy.mol.atoms]
 
     def test_mol_dict_repr_round_trip(self):
         """Test that a Molecule object survives the as_dict() and from_dict() round trip with emphasis on atom IDs."""
@@ -831,9 +1480,9 @@ H      -1.69944700    0.93441600   -0.11271200"""
 
     def test_preserving_multiplicity(self):
         """Test that multiplicity is being preserved, especially when it is guessed differently from xyz"""
-        multiplicity_list = [2, 2, 1, 1, 1, 1, 1, 2, 1]
+        multiplicity_list = [2, 2, 1, 1, 1, 1, 1, 2, 1, 1, 1, 3, 2, 1]
         for i, spc in enumerate([self.spc1, self.spc2, self.spc3, self.spc4, self.spc5, self.spc6, self.spc7,
-                                 self.spc8, self.spc9]):
+                                 self.spc8, self.spc9, self.spc10, self.spc11, self.spc12, self.spc13, self.spc14]):
             self.assertEqual(spc.multiplicity, multiplicity_list[i])
             self.assertEqual(spc.mol.multiplicity, multiplicity_list[i])
             self.assertTrue(all([structure.multiplicity == spc.multiplicity for structure in spc.mol_list]))
@@ -994,25 +1643,58 @@ H       1.32129900    0.71837500    0.38017700
                                            {'coords': ((0.5, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)}])
         self.assertEqual(spc4.conformer_energies, [None, None])
 
+    def test_mol_from_xyz(self):
+        """Test the mol_from_xyz() method."""
+        # SO2
+        so2_t_xyz = {'coords': ((0.02724478716956233, 0.6093829407458188, 0.0),
+                                (-1.3946381818031768, -0.24294788636871906, 0.0),
+                                (1.3673933946336125, -0.36643505437710233, 0.0)),
+                     'isotopes': (32, 16, 16), 'symbols': ('S', 'O', 'O')}
+        so2 = ARCSpecies(label='SO2', smiles='[O][S]=O')
+        self.assertEqual(so2.multiplicity, 3)
+        self.assertEqual(so2.charge, 0)
+        so2.mol_from_xyz(xyz=so2_t_xyz, get_cheap=False)
+        self.assertEqual([atom.element.symbol for atom in so2.mol.atoms], ['S', 'O', 'O'])
+
     def test_consistent_atom_order(self):
         """Test that the atom order is preserved whether starting from SMILES or from xyz"""
+        xyz9 = """O      -1.17310019   -0.30822930    0.16269772
+                  N      -0.01862708    0.27606468   -0.23594145
+                  O       0.88082996    0.08047613    0.75697323
+                  O       1.92325833   -0.45682027    0.15869847
+                  H      -1.40804717   -0.92667676   -0.57492397
+                  H      -0.20145306    1.30427256   -0.27748999"""
+        spc9 = ARCSpecies(label='S9', smiles='ONO[O]', xyz=xyz9)
+        for atom, symbol in zip(spc9.mol.atoms, spc9.get_xyz()['symbols']):
+            self.assertEqual(atom.symbol, symbol)
+        for atom, symbol in zip(spc9.mol.atoms, ['O', 'N', 'O', 'O', 'H', 'H']):
+            self.assertEqual(atom.symbol, symbol)
+        h_index = 0
+        for atom in spc9.mol.atoms:
+            if atom.is_hydrogen():
+                if not h_index:
+                    self.assertEqual(list(atom.edges.keys())[0].element.symbol, 'O')
+                    h_index += 1
+                else:
+                    self.assertEqual(list(atom.edges.keys())[0].element.symbol, 'N')
+
         spc1 = ARCSpecies(label='spc1', smiles='CCCO')
         xyz1 = spc1.get_xyz()
         for atom, symbol in zip(spc1.mol.atoms, xyz1['symbols']):
             self.assertEqual(atom.symbol, symbol)
 
         xyz2 = """C      -0.37147383   -0.54225753    0.07779977
-C       0.99011397    0.11006088   -0.10715587
-H      -0.33990169   -1.22256017    0.93731544
-H      -0.60100180   -1.16814809   -0.79292035
-H       1.26213386    0.70273091    0.77209458
-O       1.96607463   -0.90691160   -0.28642183
-H       0.99631715    0.75813344   -0.98936747
-H      -1.27803075    1.09840370    1.16400304
-C      -1.46891192    0.48768649    0.27579733
-H      -2.43580767   -0.00829320    0.40610628
-H      -1.54270451    1.15356356   -0.58992943
-H       2.82319256   -0.46240839   -0.40178723"""
+                  C       0.99011397    0.11006088   -0.10715587
+                  H      -0.33990169   -1.22256017    0.93731544
+                  H      -0.60100180   -1.16814809   -0.79292035
+                  H       1.26213386    0.70273091    0.77209458
+                  O       1.96607463   -0.90691160   -0.28642183
+                  H       0.99631715    0.75813344   -0.98936747
+                  H      -1.27803075    1.09840370    1.16400304
+                  C      -1.46891192    0.48768649    0.27579733
+                  H      -2.43580767   -0.00829320    0.40610628
+                  H      -1.54270451    1.15356356   -0.58992943
+                  H       2.82319256   -0.46240839   -0.40178723"""
         spc2 = ARCSpecies(label='spc2', xyz=xyz2)
         for i, atom in enumerate(spc2.mol.atoms):
             self.assertEqual(atom.symbol, spc2.get_xyz()['symbols'][i])
@@ -1096,6 +1778,16 @@ H       2.82319256   -0.46240839   -0.40178723"""
         for atom, symbol in zip(spc7.mol.atoms, spc7.get_xyz()['symbols']):
             self.assertEqual(atom.symbol, symbol)
         for atom, symbol in zip(spc7.mol.atoms, ['C', 'H', 'C', 'H', 'C', 'H', 'O', 'H', 'N', 'H', 'O', 'H', 'O', 'H']):
+            self.assertEqual(atom.symbol, symbol)
+
+        xyz8 = {'coords': ((0.02724478716956233, 0.6093829407458188, 0.0),
+                           (-1.3946381818031768, -0.24294788636871906, 0.0),
+                           (1.3673933946336125, -0.36643505437710233, 0.0)),
+                'isotopes': (32, 16, 16), 'symbols': ('S', 'O', 'O')}
+        spc8 = ARCSpecies(label='SO2', smiles='[O][S]=O', xyz=xyz8)
+        for atom, symbol in zip(spc8.mol.atoms, spc8.get_xyz()['symbols']):
+            self.assertEqual(atom.symbol, symbol)
+        for atom, symbol in zip(spc8.mol.atoms, ['S', 'O', 'O']):
             self.assertEqual(atom.symbol, symbol)
 
     def test_get_radius(self):
@@ -1188,7 +1880,7 @@ H       1.11582953    0.94384729   -0.10134685"""
                   H      -2.87588800   -0.55598400   -0.20545500
                   H       1.15316700   -2.03432300    0.08695500"""
         spc4 = ARCSpecies(label='anilino_radical_BDE_7_12_A', smiles='N=C1[CH]C=C[C]=C1', xyz=xyz4)
-        spc4.final_xyz = xyz4
+        spc4.final_xyz = check_xyz_dict(xyz4)
         is_isomorphic4 = spc4.check_xyz_isomorphism()
         self.assertTrue(is_isomorphic4)
 
@@ -1297,8 +1989,7 @@ H       1.11582953    0.94384729   -0.10134685"""
                    H                 -1.88836228    0.48072549   -1.65625619
                    H                 -1.02428550    1.53977616   -0.58246004
                    O                  1.32323842    0.95413994   -1.37785658"""
-        spc0 = ARCSpecies(label='0',
-                          smiles='CONSC1OCCC1', xyz=xyz0, bdes=[(6, 8), 'all_h'])
+        spc0 = ARCSpecies(label='0', smiles='CONSC1OCCC1', xyz=xyz0, bdes=[(6, 8), 'all_h'])
         spc0.final_xyz = spc0.conformers[0]
         spc_list = spc0.scissors()
         self.assertEqual(len(spc_list), 14)  # 11 H's, one H species, two non-H cut fragments
@@ -1668,6 +2359,11 @@ H      -1.47626400   -0.10694600   -1.88883800"""
             project_directory = os.path.join(ARC_PATH, 'Projects', project)
             shutil.rmtree(project_directory, ignore_errors=True)
 
+        file_paths = [os.path.join(ARC_PATH, 'nul'), os.path.join(ARC_PATH, 'run.out')]
+        for file_path in file_paths:
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+
 
 class TestTSGuess(unittest.TestCase):
     """
@@ -1699,11 +2395,17 @@ class TestTSGuess(unittest.TestCase):
         """Test TSGuess.as_dict()"""
         tsg_dict = self.tsg1.as_dict()
         expected_dict = {'method': 'autotst',
+                         'conformer_index': None,
+                         'imaginary_freqs': None,
+                         'successful_irc': None,
+                         'successful_normal_mode': None,
                          'energy': None,
                          'family': 'H_Abstraction',
                          'index': None,
                          'rmg_reaction': 'CON=O <=> [O-][N+](=O)C',
                          'success': None,
+                         'method_direction': None,
+                         'method_index': None,
                          't0': None,
                          'execution_time': None}
         self.assertEqual(tsg_dict, expected_dict)
@@ -1722,14 +2424,14 @@ class TestTSGuess(unittest.TestCase):
     def test_xyz_perception(self):
         """Test MolGraph.get_formula()"""
         xyz_arb = {'symbols': ('H', 'C', 'H', 'H', 'O', 'N', 'O'),
-                 'isotopes': (1, 13, 1, 1, 16, 14, 16),
-                 'coords': ((-1.0, 0.0, 0.0),
-                            (0.0, 0.0, 0.0),
-                            (0.0, -1.0, 0.0),
-                            (0.0, 1.0, 0.0),
-                            (1.0, 0.0, 0.0),
-                            (2.0, 0.0, 0.0),
-                            (3.0, 0.0, 0.0),)}
+                   'isotopes': (1, 13, 1, 1, 16, 14, 16),
+                   'coords': ((-1.0, 0.0, 0.0),
+                              (0.0, 0.0, 0.0),
+                              (0.0, -1.0, 0.0),
+                              (0.0, 1.0, 0.0),
+                              (1.0, 0.0, 0.0),
+                              (2.0, 0.0, 0.0),
+                              (3.0, 0.0, 0.0),)}
         mol_graph_1 = MolGraph(symbols=xyz_arb['symbols'], coords=xyz_arb['coords'])
         self.assertEqual(mol_graph_1.get_formula(), 'CH3NO2')
 

@@ -53,13 +53,6 @@ RMG_DATABASE_PATH = os.path.abspath(os.path.dirname(rmgpy.settings['database.dir
 
 VERSION = '1.1.0'
 
-# define default values for using the optional GCN to predict TS guesses
-# default assumption is that TS-GCN is installed in the same parent folder as the ARC repository
-TS_GCN_PATH = os.path.join(os.path.dirname(ARC_PATH), 'TS-GCN')
-# default environment name for this repo is `ts_gcn`
-TS_GCN_PYTHON = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),
-                             'ts_gcn', 'bin', 'python')
-
 
 default_job_types, servers = settings['default_job_types'], settings['servers']
 
@@ -577,7 +570,7 @@ def get_single_bond_length(symbol_1: str,
                            charge_2: int = 0,
                            ) -> float:
     """
-    Get the an approximate for a single bond length between two elements.
+    Get an approximate for a single bond length between two elements.
 
     Args:
         symbol_1 (str): Symbol 1.
@@ -597,6 +590,57 @@ def get_single_bond_length(symbol_1: str,
     if bond2 in SINGLE_BOND_LENGTH.keys():
         return SINGLE_BOND_LENGTH[bond2]
     return 2.5
+
+
+def get_bonds_from_dmat(dmat: np.ndarray,
+                        elements: Union[Tuple[str, ...], List[str]],
+                        charges: Optional[List[int]] = None,
+                        tolerance: float = 1.2,
+                        bond_lone_hydrogens: bool = True,
+                        ) -> List[Tuple[int, int]]:
+    """
+    Guess the connectivity of a molecule from its distance matrix representation.
+
+    Args:
+        dmat (np.ndarray): An NxN matrix of atom distances in Angstrom.
+        elements (List[str]): The corresponding element list in the same atomic order.
+        charges (List[int], optional): A corresponding list of formal atomic charges.
+        tolerance (float, optional): A factor by which the single bond length threshold is multiplied for the check.
+        bond_lone_hydrogens (bool, optional): Whether to assign a bond to hydrogen atoms which were not identified
+                                              as bonded. If so, the closest atom will be considered.
+
+    Returns:
+        List[Tuple[int, int]]:
+            A list of tuple entries, each represents a bond and contains sorted atom indices.
+    """
+    if len(elements) != dmat.shape[0] or len(elements) != dmat.shape[1] or len(dmat.shape) != 2:
+        raise ValueError(f'The dimensions of the DMat {dmat.shape} must be equal to the number of elements {len(elements)}')
+    bonds, bonded_hydrogens = list(), list()
+    charges = charges or [0] * len(elements)
+    # Heavy atoms
+    for i, e_1 in enumerate(elements):
+        for j, e_2 in enumerate(elements):
+            if i > j and e_1 != 'H' and e_2 != 'H' and dmat[i, j] < tolerance * \
+                    get_single_bond_length(symbol_1=e_1,
+                                           symbol_2=e_2,
+                                           charge_1=charges[i],
+                                           charge_2=charges[j]):
+                bonds.append(tuple(sorted([i, j])))
+    # Hydrogen atoms except for H--H bonds, make sure each H has only one bond (the closest heavy atom).
+    for i, e_1 in enumerate(elements):
+        if e_1 == 'H':
+            j = get_extremum_index(lst=dmat[i], return_min=True, skip_values=[0])
+            if i != j and (elements[j] != 'H'):
+                bonds.append(tuple(sorted([i, j])))
+                bonded_hydrogens.append(i)
+    # Lone hydrogens, also important for the H2 molecule.
+    if bond_lone_hydrogens:
+        for i, e_1 in enumerate(elements):
+            j = get_extremum_index(lst=dmat[i], return_min=True, skip_values=[0])
+            bond = tuple(sorted([i, j]))
+            if i != j and e_1 == 'H' and i not in bonded_hydrogens and j not in bonded_hydrogens and bond not in bonds:
+                bonds.append(bond)
+    return bonds
 
 
 def determine_symmetry(xyz: dict) -> Tuple[int, int]:
@@ -674,26 +718,63 @@ def extremum_list(lst: list,
                   ) -> Optional[Union[int, None]]:
     """
     A helper function for finding the extremum (either minimum or maximum) of a list of numbers (int/float)
-    where some of the entries might be ``None``.
+    where some entries could be ``None``.
 
     Args:
         lst (list): The list.
         return_min (bool, optional): Whether to return the minimum or the maximum.
                                     ``True`` for minimum, ``False`` for maximum, ``True`` by default.
 
-    Returns: int
+    Returns: Optional[Union[int, None]]
         The entry with the minimal/maximal value.
     """
     if len(lst) == 0:
         return None
-    elif len(lst) == 1:
-        return lst[0]
     elif all([entry is None for entry in lst]):
         return None
+    elif len(lst) == 1:
+        return lst[0]
     if return_min:
         return min([entry for entry in lst if entry is not None])
     else:
         return max([entry for entry in lst if entry is not None])
+
+
+def get_extremum_index(lst: list,
+                       return_min: bool = True,
+                       skip_values: Optional[list] = None
+                       ) -> Optional[Union[int, None]]:
+    """
+    A helper function for finding the extremum (either minimum or maximum) of a list of numbers (int/float)
+    where some entries could be ``None``.
+
+    Args:
+        lst (list): The list.
+        return_min (bool, optional): Whether to return the minimum or the maximum.
+                                    ``True`` for minimum, ``False`` for maximum, ``True`` by default.
+        skip_values (list, optional): Values to skip when checking for extermum, e.g., 0.
+
+    Returns: Optional[Union[int, None]]
+        The index of an entry with the minimal/maximal value.
+    """
+    if len(lst) == 0:
+        return None
+    elif all([entry is None for entry in lst]):
+        return None
+    elif len(lst) == 1:
+        return 0
+    skip_values = skip_values + [None] if skip_values is not None else [None]
+    extremum_index = 0
+    for i, entry in enumerate(lst):
+        if entry in skip_values:
+            continue
+        if return_min:
+            if entry < lst[extremum_index]:
+                extremum_index = i
+        else:
+            if entry > lst[extremum_index]:
+                extremum_index = i
+    return extremum_index
 
 
 def sort_two_lists_by_the_first(list1: List[Union[float, int, None]],
@@ -741,6 +822,26 @@ def sort_two_lists_by_the_first(list1: List[Union[float, int, None]],
     for counter, index in enumerate(sorted_indices):
         sorted_list2[counter] = new_list2[index]
     return sorted_list1, sorted_list2
+
+
+def check_that_all_entries_are_in_list(list_1: Union[list, tuple], list_2: Union[list, tuple]) -> bool:
+    """
+    Check that all entries from ``list_2`` are in ``list_1``, and that the lists are the same length.
+    Useful for testing that two lists are equal regardless of entry order.
+
+    Args:
+        list_1 (list, tuple): Entries are floats or ints (could also be None).
+        list_2 (list, tuple): Entries could be anything.
+
+    Returns: bool
+        Whether all entries from ``list_2`` are in ``list_1`` and the lists are the same length.
+    """
+    if len(list_1) != len(list_2):
+        return False
+    for entry in list_2:
+        if entry not in list_1:
+            return False
+    return True
 
 
 def key_by_val(dictionary: dict,
@@ -804,7 +905,7 @@ def almost_equal_coords(xyz1: dict,
                         atol: float = 1e-08,
                         ) -> bool:
     """
-    A helper function for checking whether two xyz's are almost equal.
+    A helper function for checking whether two xyz's are almost equal. Also checks equal symbols.
 
     Args:
         xyz1 (dict): Cartesian coordinates.
@@ -817,6 +918,10 @@ def almost_equal_coords(xyz1: dict,
     """
     if not isinstance(xyz1, dict) or not isinstance(xyz2, dict):
         raise TypeError(f'xyz1 and xyz2 must be dictionaries, got {type(xyz1)} and {type(xyz2)}:\n{xyz1}\n{xyz2}')
+    for symbol_1, symbol_2 in zip(xyz1['symbols'], xyz2['symbols']):
+        if symbol_1 != symbol_2:
+            logger.warning(f"Cannot compare coords, xyz1 and xyz2 have different symbols:"
+                           f"\n{xyz1['symbols']}\nand:\n{xyz2['symbols']}")
     for xyz_coord1, xyz_coord2 in zip(xyz1['coords'], xyz2['coords']):
         for xyz1_c, xyz2_c in zip(xyz_coord1, xyz_coord2):
             if not np.isclose([xyz1_c], [xyz2_c], rtol=rtol, atol=atol):

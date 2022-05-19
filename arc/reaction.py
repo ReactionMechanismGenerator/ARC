@@ -2,15 +2,14 @@
 A module for representing a reaction.
 """
 
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 
 import arc.rmgdb as rmgdb
-from arc.common import extremum_list, get_logger
+from arc.common import get_logger
 from arc.exceptions import ReactionError, InputError
-from arc.imports import settings
 from arc.species.converter import (check_xyz_dict,
                                    sort_xyz_using_indices,
                                    translate_to_center_of_mass,
@@ -25,9 +24,6 @@ if TYPE_CHECKING:
 
 
 logger = get_logger()
-
-
-default_ts_methods = settings['default_ts_methods']
 
 
 class ARCReaction(object):
@@ -50,8 +46,6 @@ class ARCReaction(object):
         p_species (list, optional): A list of products :ref:`ARCSpecies <species>` objects.
         ts_label (str, optional): The :ref:`ARCSpecies <species>` label of the respective TS.
         rmg_reaction (Reaction, optional): An RMG Reaction class.
-        ts_methods (list, optional): Methods to try for generating TS guesses. If an ARCSpecies is a TS and ts_methods
-                                     is empty (passing an empty list), then xyz (user guess) must be given.
         ts_xyz_guess (list, optional): A list of TS XYZ user guesses, each in a string format.
         multiplicity (int, optional): The reaction surface multiplicity. A trivial guess will be made unless provided.
         charge (int, optional): The reaction surface charge.
@@ -78,8 +72,6 @@ class ARCReaction(object):
         rmg_reaction (Reaction): An RMG Reaction class.
         rmg_reactions (list): A list of RMG Reaction objects with RMG rates for comparisons.
         long_kinetic_description (str): A description for the species entry in the thermo library outputted.
-        ts_methods (list): Methods to try for generating TS guesses. If an ARCSpecies is a TS and ts_methods
-                           is empty (passing an empty list), then xyz (user guess) must be given.
         ts_xyz_guess (list): A list of TS XYZ user guesses, each in a string format.
         multiplicity (int): The reaction surface multiplicity. A trivial guess will be made unless provided.
         charge (int): The reaction surface charge.
@@ -101,7 +93,6 @@ class ARCReaction(object):
                  p_species: Optional[List[ARCSpecies]] = None,
                  ts_label: Optional[str] = None,
                  rmg_reaction: Optional[Reaction] = None,
-                 ts_methods: Optional[List[str]] = None,
                  ts_xyz_guess: Optional[list] = None,
                  multiplicity: Optional[int] = None,
                  charge: Optional[int] = None,
@@ -124,8 +115,8 @@ class ARCReaction(object):
         self.ts_xyz_guess = ts_xyz_guess or list()
         self.preserve_param_in_scan = preserve_param_in_scan
         self._atom_map = None
-        self._multiplicity = multiplicity
         self._charge = charge
+        self._multiplicity = multiplicity
         if reaction_dict is not None:
             # Reading from a dictionary
             self.from_dict(reaction_dict=reaction_dict, species_list=species_list)
@@ -144,8 +135,6 @@ class ARCReaction(object):
                     and not (len(self.r_species) * len(self.p_species)):
                 raise InputError(f'Cannot determine reactants and/or products labels for reaction {self.label}')
             self.set_label_reactants_products()
-            self.ts_methods = ts_methods if ts_methods is not None else default_ts_methods
-            self.ts_methods = [tsm.lower() for tsm in self.ts_methods]
             self.ts_xyz_guess = ts_xyz_guess if ts_xyz_guess is not None else list()
             self.done_opt_r_n_p = None
         if len(self.reactants) > 3 or len(self.products) > 3:
@@ -253,7 +242,6 @@ class ARCReaction(object):
         reaction_dict['family_own_reverse'] = self.family_own_reverse
         reaction_dict['long_kinetic_description'] = self.long_kinetic_description
         reaction_dict['label'] = self.label
-        reaction_dict['ts_methods'] = self.ts_methods
         reaction_dict['ts_xyz_guess'] = self.ts_xyz_guess
         reaction_dict['ts_label'] = self.ts_label
         return reaction_dict
@@ -283,6 +271,7 @@ class ARCReaction(object):
             self.rmg_reaction_from_str(reaction_string=reaction_dict['rmg_reaction'])
         else:
             self.rmg_reaction = None
+        self.set_label_reactants_products(species_list)
         if self.rmg_reaction is None and not (len(self.reactants) * len(self.products)):
             raise InputError(f'Cannot determine reactants and/or products labels for reaction {self.label}')
         if not (len(self.reactants) * len(self.products)):
@@ -293,21 +282,17 @@ class ARCReaction(object):
                                  f'Problematic reaction: {self.label}')
             self.reactants = [check_label(spc.label)[0] for spc in self.rmg_reaction.reactants]
             self.products = [check_label(spc.label)[0] for spc in self.rmg_reaction.products]
-        self.set_label_reactants_products(species_list)
         if self.ts_label is None:
             self.ts_label = reaction_dict['ts_label'] if 'ts_label' in reaction_dict else None
         self.r_species = [ARCSpecies(species_dict=r_dict) for r_dict in reaction_dict['r_species']] \
-            if 'r_species' in reaction_dict else list()
+            if 'r_species' in reaction_dict else self.r_species or list()
         self.p_species = [ARCSpecies(species_dict=p_dict) for p_dict in reaction_dict['p_species']] \
-            if 'p_species' in reaction_dict else list()
+            if 'p_species' in reaction_dict else self.p_species or list()
         self.reactants = self.reactants or [spc.label for spc in self.r_species]
         self.products = self.products or [spc.label for spc in self.p_species]
-        self.ts_species = reaction_dict['ts_species'].from_dict() if 'ts_species' in reaction_dict else None
-
+        self.ts_species = ARCSpecies(species_dict=reaction_dict['ts_species']) if 'ts_species' in reaction_dict else None
         self.long_kinetic_description = reaction_dict['long_kinetic_description'] \
             if 'long_kinetic_description' in reaction_dict else ''
-        self.ts_methods = reaction_dict['ts_methods'] if 'ts_methods' in reaction_dict else default_ts_methods
-        self.ts_methods = [tsm.lower() for tsm in self.ts_methods]
         self.ts_xyz_guess = reaction_dict['ts_xyz_guess'] if 'ts_xyz_guess' in reaction_dict else list()
         self.preserve_param_in_scan = reaction_dict['preserve_param_in_scan'] \
             if 'preserve_param_in_scan' in reaction_dict else None
@@ -345,6 +330,8 @@ class ARCReaction(object):
         for key in reset_keys:
             if key in reaction_dict.keys():
                 del reaction_dict[key]
+        label_splits = self.label.split(self.arrow)
+        reaction_dict['label'] = self.arrow.join([label_splits[1], label_splits[0]])
         flipped_rxn = ARCReaction(reaction_dict=reaction_dict)
         flipped_rxn.set_label_reactants_products()
         flipped_rxn.rmg_reaction_from_arc_species()
@@ -448,14 +435,14 @@ class ARCReaction(object):
                 if len(self.reactants) > i:
                     label = self.reactants[i]
                 else:
-                    label = rmg_reactant.label or rmg_reactant.molecule[0].to_smiles()
+                    label = rmg_reactant.label or rmg_reactant.molecule[0].copy(deep=True).to_smiles()
                 label = check_label(label)[0]
                 self.r_species.append(ARCSpecies(label=label, mol=rmg_reactant.molecule[0]))
             for i, rmg_product in enumerate(self.rmg_reaction.products):
                 if len(self.products) > i:
                     label = self.products[i]
                 else:
-                    label = rmg_product.label or rmg_product.molecule[0].to_smiles()
+                    label = rmg_product.label or rmg_product.molecule[0].copy(deep=True).to_smiles()
                 label = check_label(label)[0]
                 self.p_species.append(ARCSpecies(label=label, mol=rmg_product.molecule[0]))
 
@@ -537,12 +524,14 @@ class ARCReaction(object):
         """
         Determine the RMG family.
         Populates the .family, and .family_own_reverse attributes.
-        A wrapper for rmgdb determine_reaction_family() function.
+        A wrapper for the rmgdb determine_reaction_family() function.
 
         Args:
-            rmg_database (RMGDatabase): The RMG database instance.
+            rmg_database (RMGDatabase): The RMGDatabase object instance.
             save_order (bool, optional): Whether to retain atomic order of the RMG ``reaction`` object instance.
         """
+        if self.rmg_reaction is None:
+            self.rmg_reaction_from_arc_species()
         if self.rmg_reaction is not None:
             self.family, self.family_own_reverse = rmgdb.determine_reaction_family(rmgdb=rmg_database,
                                                                                    reaction=self.rmg_reaction.copy(),
@@ -554,68 +543,6 @@ class ARCReaction(object):
                                                                                        reaction=flipped_rmg_reaction,
                                                                                        save_order=save_order,
                                                                                        )
-
-    def check_ts(self,
-                 verbose: bool = True,
-                 parameter: str = 'E0',
-                 ) -> bool:
-        """
-        Check that the TS E0 or electronic energy is above both reactant and product wells.
-        By default E0 is checked first. If it is not available for all species and TS, the electronic energy is checked.
-        If the check cannot be performed, the method still returns ``True``.
-
-        Args:
-            verbose (bool, optional): Whether to print logging messages.
-            parameter (str, optional): The energy parameter to consider ('E0' or 'e_elect').
-
-        Returns:
-            bool: Whether the TS E0 or electronic energy is above both reactant and product wells, ``True`` if it is.
-        """
-        if parameter not in ['E0', 'e_elect']:
-            raise ValueError(f"The energy parameter must be either 'E0' or 'e_elect', got: {parameter}")
-        r_e0 = None if any([spc.e0 is None for spc in self.r_species]) \
-            else sum(spc.e0 * self.get_species_count(species=spc, well=0) for spc in self.r_species)
-        p_e0 = None if any([spc.e0 is None for spc in self.p_species]) \
-            else sum(spc.e0 * self.get_species_count(species=spc, well=1) for spc in self.p_species)
-        ts_e0 = self.ts_species.e0
-        r_e_elect = None if any([spc.e_elect is None for spc in self.r_species]) \
-            else sum(spc.e_elect * self.get_species_count(species=spc, well=0) for spc in self.r_species)
-        p_e_elect = None if any([spc.e_elect is None for spc in self.p_species]) \
-            else sum(spc.e_elect * self.get_species_count(species=spc, well=1) for spc in self.p_species)
-        ts_e_elect = self.ts_species.e_elect
-        r_e = r_e0 if parameter == 'E0' else r_e_elect
-        p_e = p_e0 if parameter == 'E0' else p_e_elect
-        ts_e = ts_e0 if parameter == 'E0' else ts_e_elect
-        min_e = extremum_list([r_e, p_e, ts_e], return_min=True)
-        e_str = 'E0' if parameter == 'E0' else 'electronic energy'
-        if any([val is None for val in [r_e, p_e, ts_e]]):
-            if verbose:
-                if e_str != 'E0':
-                    logger.info('\n')
-                    logger.error(f"Could not get {e_str} of all species in reaction {self.label}. Cannot check TS.\n")
-                r_text = f'{r_e:.2f} kJ/mol' if r_e is not None else 'None'
-                ts_text = f'{ts_e:.2f} kJ/mol' if ts_e is not None else 'None'
-                p_text = f'{p_e:.2f} kJ/mol' if p_e is not None else 'None'
-                logger.info(f"Reactants {e_str}: {r_text}\n"
-                            f"TS {e_str}: {ts_text}\n"
-                            f"Products {e_str}: {p_text}")
-            if parameter == 'E0':
-                # Use e_elect instead:
-                return self.check_ts(verbose=verbose, parameter='e_elect')
-            return True
-        if ts_e < r_e or ts_e < p_e:
-            if verbose:
-                logger.error(f'\nTS of reaction {self.label} has a lower E0 value than expected:\n')
-                logger.info(f'Reactants: {r_e - min_e:.2f} kJ/mol\n'
-                            f'TS: {ts_e - min_e:.2f} kJ/mol'
-                            f'\nProducts: {p_e - min_e:.2f} kJ/mol')
-            return False
-        if verbose:
-            logger.info(f'\nReaction {self.label} has the following path E0 energies:\n'
-                        f'Reactants: {r_e - min_e:.2f} kJ/mol\n'
-                        f'TS: {ts_e - min_e:.2f} kJ/mol\n'
-                        f'Products: {p_e - min_e:.2f} kJ/mol')
-        return True
 
     def check_attributes(self):
         """Check that the Reaction object is defined correctly"""
@@ -834,6 +761,49 @@ class ARCReaction(object):
                 products.extend([Species(label=p_spc.label, molecule=[p_spc.mol])] *
                                 self.get_species_count(species=p_spc, well=1))
         return reactants, products
+
+    def get_expected_changing_bonds(self,
+                                    r_label_dict: Dict[str, int],
+                                    ) -> Tuple[Optional[List[Tuple[int, ...]]], Optional[List[Tuple[int, ...]]]]:
+        """
+        Get the expected forming and breaking bonds from the RMG reaction template.
+
+        Args:
+            r_label_dict (Dict[str, int]): The RMG reaction atom labels and corresponding atom indices
+                                           of atoms in a TemplateReaction.
+
+        Returns:
+            Tuple[List[Tuple[int, ...]], List[Tuple[int, ...]]]:
+                A list of tuples of atom indices representing breaking and forming bonds.
+        """
+        if self.family is None:
+            return None, None
+        template_recipe_actions = self.family.forward_recipe.actions
+        # E.g.: [['BREAK_BOND', '*1', 1, '*2'], ['FORM_BOND', '*2', 1, '*3'], ['GAIN_RADICAL', '*1', '1']]
+        expected_breaking_bonds = [tuple(sorted([r_label_dict[action[1]], r_label_dict[action[3]]]))
+                                   for action in template_recipe_actions if action[0] == 'BREAK_BOND']
+        expected_forming_bonds = [tuple(sorted([r_label_dict[action[1]], r_label_dict[action[3]]]))
+                                  for action in template_recipe_actions if action[0] == 'FORM_BOND']
+        return expected_breaking_bonds, expected_forming_bonds
+
+    def get_number_of_atoms_in_reaction_zone(self) -> Optional[int]:
+        """
+        Get the number of atoms that participate in the reaction zone according to the reaction's RMG recipe.
+
+        Returns:
+            int: The number of atoms that participate in the reaction zone.
+        """
+        if self.family is None:
+            return None
+        template_recipe_actions = self.family.forward_recipe.actions
+        # E.g.: [['BREAK_BOND', '*1', 1, '*2'], ['FORM_BOND', '*2', 1, '*3'], ['GAIN_RADICAL', '*1', '1']
+        labels = list()
+        for action in template_recipe_actions:
+            for entry in action:
+                if isinstance(entry, str) and '*' in entry:
+                    labels.append(entry)
+        labels = set(labels)
+        return len(labels)
 
     def get_single_mapped_product_xyz(self) -> Optional[ARCSpecies]:
         """

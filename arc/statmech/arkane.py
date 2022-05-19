@@ -21,6 +21,7 @@ from arkane.ess import ess_factory
 import rmgpy.constants as constants
 
 import arc.plotter as plotter
+from arc.checks.ts import check_ts, ts_passed_all_checks
 from arc.common import get_logger
 from arc.exceptions import InputError, RotorError
 from arc.imports import input_files
@@ -127,7 +128,7 @@ class ArkaneAdapter(StatmechAdapter):
             # with species used for a rate coefficient calculation.
             arkane.input.species_dict = dict()
             if self.sp_level.to_arkane_level_of_theory(variant='AEC', raise_error=False, warn=False) is None:
-                raise ValueError(f'Cannot compute thermo without a valid Arkane Level for AEC.')
+                raise ValueError('Cannot compute thermo without a valid Arkane Level for AEC.')
 
         if self.species is None:
             raise InputError('Cannot not compute thermo without a species object.')
@@ -169,6 +170,7 @@ class ArkaneAdapter(StatmechAdapter):
 
     def compute_high_p_rate_coefficient(self,
                                         skip_rotors: bool = False,
+                                        estimate_dh_rxn: bool = False,
                                         verbose: bool = True,
                                         ) -> None:
         """
@@ -177,9 +179,12 @@ class ArkaneAdapter(StatmechAdapter):
 
         Args:
             skip_rotors (bool, optional): Whether to skip internal rotor consideration. Default: ``False``.
+            estimate_dh_rxn (bool, optional): Whether to estimate DH reaction instead of computing it. Default: ``False``.
+                                              Useful for checking that the reaction could in principle be computed even
+                                              when thermodynamic properties of reactants and products were still not computed.
             verbose (bool, optional): Whether to log messages. Default: ``True``.
         """
-        arkane.input.transition_state_dict = dict()
+        arkane.input.transition_state_dict, arkane.input.reaction_dict = dict(), dict()
         ts_species = self.species_dict[self.reaction.ts_label]
         if self.output_dict[ts_species.label]['convergence']:
             success = True
@@ -198,13 +203,36 @@ class ArkaneAdapter(StatmechAdapter):
                 logger.error(f'Could not run statmech job for TS species {ts_species.label} '
                              f'of reaction {self.reaction.label}')
             else:
-                ts_species.e0 = arkane_ts_species.conformer.E0.value_si * 0.001  # convert to kJ/mol
-                self.reaction.check_ts()
-                self.reaction.dh_rxn298 = \
-                    sum([product.thermo.get_enthalpy(298) * self.reaction.get_species_count(product, well=1)
-                         for product in self.reaction.p_species]) \
-                    - sum([reactant.thermo.get_enthalpy(298) * self.reaction.get_species_count(reactant, well=0)
-                           for reactant in self.reaction.r_species])
+                ts_species.e0 = arkane_ts_species.conformer.E0.value_si * 0.001  # Convert to kJ/mol.
+                check_ts(reaction=self.reaction,
+                         checks=['energy', 'freq'],
+                         rxn_zone_atom_indices=ts_species.rxn_zone_atom_indices,
+                         )
+                if not ts_passed_all_checks(species=self.reaction.ts_species,
+                                            exemptions=['warnings', 'IRC', 'E0'],
+                                            verbose=True,
+                                            ):
+                    logger.error(f'TS {self.reaction.ts_species.label} did not pass all checks, '
+                                 f'not computing rate coefficient.')
+                    return None
+                if not estimate_dh_rxn:
+                    self.reaction.dh_rxn298 = \
+                        sum([product.thermo.get_enthalpy(298) * self.reaction.get_species_count(product, well=1)
+                             for product in self.reaction.p_species]) \
+                        - sum([reactant.thermo.get_enthalpy(298) * self.reaction.get_species_count(reactant, well=0)
+                               for reactant in self.reaction.r_species])
+                elif all([spc.e_elect is not None for spc in self.reaction.r_species + self.reaction.p_species]):
+                    self.reaction.dh_rxn298 = \
+                        sum([product.e_elect * 1e3 * self.reaction.get_species_count(product, well=1)
+                             for product in self.reaction.p_species]) \
+                        - sum([reactant.e_elect * 1e3 * self.reaction.get_species_count(reactant, well=0)
+                               for reactant in self.reaction.r_species])
+                elif all([spc.e0 is not None for spc in self.reaction.r_species + self.reaction.p_species]):
+                    self.reaction.dh_rxn298 = \
+                        sum([product.e0 * 1e3 * self.reaction.get_species_count(product, well=1)
+                             for product in self.reaction.p_species]) \
+                        - sum([reactant.e0 * 1e3 * self.reaction.get_species_count(reactant, well=0)
+                               for reactant in self.reaction.r_species])
                 reactant_labels, product_labels = list(), list()
                 for reactant in self.reaction.r_species:
                     reactant_labels.extend([reactant.label] * self.reaction.get_species_count(reactant, well=0))

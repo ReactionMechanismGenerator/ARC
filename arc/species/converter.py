@@ -24,6 +24,7 @@ from rmgpy.statmech import Conformer
 from arc.common import almost_equal_lists, calc_rmsd, get_atom_radius, get_logger, is_str_float
 from arc.exceptions import ConverterError, InputError, SanitizationError, SpeciesError
 from arc.species.xyz_to_2d import MolGraph
+from arc.species.xyz_to_smiles import xyz_to_smiles
 from arc.species.zmat import (KEY_FROM_LEN,
                               _compare_zmats,
                               get_all_neighbors,
@@ -449,6 +450,50 @@ def translate_xyz(xyz_dict: dict,
     return new_xyz
 
 
+def displace_xyz(xyz: dict,
+                 displacement: np.ndarray,
+                 amplitude: float = 0.25,
+                 use_weights: bool = True,
+                 ) -> Tuple[dict, dict]:
+    """
+    Displace the coordinates using the ``displacement`` by the requested ``amplitude`` using atom mass weights.
+
+    Args:
+        xyz (dict): The coordinates.
+        displacement (list): The corresponding xyz displacement for each atom.
+        amplitude (float, optional): The factor multiplication for the displacement.
+        use_weights( bool, optional): Whether to scale displacements by the square root of the respective element mass.
+
+    Returns:
+        Tuple[dict, dict]:
+            The two displaced xyz's, one for each direction (+/-) of the weighted ``displacement``.
+    """
+    coords = xyz_to_coords_list(xyz)
+    weights = [mass ** 0.5 for mass in get_element_mass_from_xyz(xyz)] if use_weights else [1] * len(xyz['symbols'])
+    coords_1 = [[float(coord[0] + amplitude * displacement[i][0] * weights[i]),
+                 float(coord[1] + amplitude * displacement[i][1] * weights[i]),
+                 float(coord[2] + amplitude * displacement[i][2] * weights[i])] for i, coord in enumerate(coords)]
+    coords_2 = [[float(coord[0] - amplitude * displacement[i][0] * weights[i]),
+                 float(coord[1] - amplitude * displacement[i][1] * weights[i]),
+                 float(coord[2] - amplitude * displacement[i][2] * weights[i])] for i, coord in enumerate(coords)]
+    xyz_1 = xyz_from_data(coords=coords_1, symbols=xyz['symbols'], isotopes=xyz['isotopes'])
+    xyz_2 = xyz_from_data(coords=coords_2, symbols=xyz['symbols'], isotopes=xyz['isotopes'])
+    return xyz_1, xyz_2
+
+
+def get_element_mass_from_xyz(xyz: dict) -> List[float]:
+    """
+    Get a list of element masses corresponding to the given ``xyz`` considering isotopes.
+
+    Args:
+        xyz (dict): The coordinates.
+
+    Returns:
+        List[float]: The corresponding list of mass in amu.
+    """
+    return [get_element_mass(symbol, isotope)[0] for symbol, isotope in zip(xyz['symbols'], xyz['isotopes'])]
+
+
 def rmg_conformer_to_xyz(conformer):
     """
     Convert xyz coordinates from an rmgpy.statmech.Conformer object into the ARC dict xyz style.
@@ -501,7 +546,6 @@ def xyz_to_rmg_conformer(xyz_dict: dict) -> Optional[Conformer]:
     mass = ArrayQuantity(mass, 'amu')
     number = ArrayQuantity(number, '')
     coordinates = ArrayQuantity(xyz_dict['coords'], 'angstroms')
-
     conformer = Conformer(number=number, mass=mass, coordinates=coordinates)
     return conformer
 
@@ -640,12 +684,18 @@ def remove_dummies(xyz):
     return xyz_from_data(coords=coords, symbols=symbols, isotopes=isotopes)
 
 
-def zmat_from_xyz(xyz, mol=None, constraints=None, consolidate=True, consolidation_tols=None):
+def zmat_from_xyz(xyz: Union[dict, str],
+                  mol: Optional[Molecule] = None,
+                  constraints: Optional[dict] = None,
+                  consolidate: bool = True,
+                  consolidation_tols: dict = None,
+                  is_ts: bool = False,
+                  ) -> dict:
     """
     Generate a Z matrix from xyz.
 
     Args:
-        xyz (dict, str): The cartesian coordinate, either in a dict or str format.
+        xyz (Union[dict, str]): The cartesian coordinate, either in a dict or str format.
         mol (Molecule, optional): The corresponding RMG Molecule with connectivity information.
         constraints (dict, optional): Accepted keys are:
                                       'R_atom', 'R_group', 'A_atom', 'A_group', 'D_atom', 'D_group', or 'D_groups'.
@@ -661,6 +711,8 @@ def zmat_from_xyz(xyz, mol=None, constraints=None, consolidate=True, consolidati
         consolidate (bool, optional): Whether to consolidate the zmat after generation, ``True`` to consolidate.
         consolidation_tols (dict, optional): Keys are 'R', 'A', 'D', values are floats representing absolute tolerance
                                              for consolidating almost equal internal coordinates.
+        is_ts (bool, optional): Whether this is a representation of a TS.
+                                If it is not, a ``mol`` object will be generated if not given.
 
     Raises:
         InputError: If ``xyz`` if of a wrong type.
@@ -672,8 +724,14 @@ def zmat_from_xyz(xyz, mol=None, constraints=None, consolidate=True, consolidati
     if not isinstance(xyz, dict):
         raise InputError(f'xyz must be a dictionary, got {type(xyz)}')
     xyz = remove_dummies(xyz)
-    return xyz_to_zmat(xyz, mol=mol, constraints=constraints, consolidate=consolidate,
-                       consolidation_tols=consolidation_tols)
+    if mol is None and not is_ts:
+        mol = molecules_from_xyz(xyz=xyz)[1]
+    return xyz_to_zmat(xyz,
+                       mol=mol,
+                       constraints=constraints,
+                       consolidate=consolidate,
+                       consolidation_tols=consolidation_tols,
+                       )
 
 
 def zmat_to_xyz(zmat, keep_dummy=False, xyz_isotopes=None):
@@ -858,7 +916,7 @@ def str_to_zmat(zmat_str):
     return zmat_dict
 
 
-def split_str_zmat(zmat_str):
+def split_str_zmat(zmat_str) -> Tuple[str, Optional[str]]:
     """
     Split a string zmat into its coordinates and variables sections.
 
@@ -866,7 +924,7 @@ def split_str_zmat(zmat_str):
         zmat_str (str): The zmat.
 
     Returns:
-        Tuple[str, str]: The coords section, The variables section if it exists, else None]
+        Tuple[str, Optional[str]]: The coords section and the variables section if it exists, else ``None``.
     """
     coords, variables = list(), list()
     flag = False
@@ -1000,12 +1058,15 @@ def modify_coords(coords: Dict[str, tuple],
             indices are 0-indexed.
 
     Raises:
-        InputError: If a group/s modification type is requested but ``mol`` is ``None``,
-                    or if a 'groups' modification type was specified for R or A.
+        InputError: If ``coords`` is not give,
+                    or if a group/s modification type is requested but ``mol`` is ``None``,
+                    or if a 'groups' modification type was specified for 'R' or 'A'.
 
     Returns:
         dict: The respective cartesian (xyz) coordinates reflecting the desired modification.
     """
+    if coords is None:
+        raise InputError(f'coords must be given.')
     if modification_type not in ['atom', 'group', 'groups']:
         raise InputError(f'Allowed modification types are atom, group, or groups, got: {modification_type}.')
     if mol is None and 'group' in modification_type:
@@ -1149,7 +1210,7 @@ def rmg_mol_from_inchi(inchi: str):
     try:
         rmg_mol = Molecule().from_inchi(inchi, raise_atomtype_exception=False)
     except (AtomTypeError, ValueError, KeyError, TypeError) as e:
-        logger.warning(f'Got an Error when trying to create an RMG Molecule object from InChI "{inchi}":\n{e}')
+        logger.debug(f'Got an Error when trying to create an RMG Molecule object from InChI "{inchi}":\n{e}')
         if 'got an unexpected keyword argument' in str(e):
             raise ConverterError('Make sure RMG-Py is up to date and compiled!')
         return None
@@ -1190,15 +1251,14 @@ def molecules_from_xyz(xyz: Optional[Union[dict, str]],
     if xyz is None:
         return None, None
     xyz = check_xyz_dict(xyz)
-    mol_bo = None
 
-    # 1. Generate a molecule with no bond order information with atoms ordered as in xyz
+    # 1. Generate a molecule with no bond order information with atoms ordered as in xyz.
     mol_graph = MolGraph(symbols=xyz['symbols'], coords=xyz['coords'])
     inferred_connections = mol_graph.infer_connections()
     if inferred_connections:
-        mol_s1 = mol_graph.to_rmg_mol()  # An RMG Molecule with single bonds, atom order corresponds to xyz
+        mol_s1 = mol_graph.to_rmg_mol()  # An RMG Molecule with single bonds, atom order corresponds to xyz.
     else:
-        mol_s1 = s_bonds_mol_from_xyz(xyz)  # An RMG Molecule with single bonds, atom order corresponds to xyz
+        mol_s1 = s_bonds_mol_from_xyz(xyz)  # An RMG Molecule with single bonds, atom order corresponds to xyz.
     if mol_s1 is None:
         logger.error(f'Could not create a 2D graph representation from xyz:\n{xyz_to_str(xyz)}')
         return None, None
@@ -1206,15 +1266,21 @@ def molecules_from_xyz(xyz: Optional[Union[dict, str]],
         mol_s1.multiplicity = multiplicity
     mol_s1_updated = update_molecule(mol_s1, to_single_bonds=True)
 
-    # 2. A. Generate a molecule with bond order information using pybel:
+    # 2. Generate a molecule with bond order information using pybel:
+    mol_bo = None
     pybel_mol = xyz_to_pybel_mol(xyz)
     if pybel_mol is not None:
         inchi = pybel_to_inchi(pybel_mol, has_h=bool(len([atom.is_hydrogen() for atom in mol_s1_updated.atoms])))
-        mol_bo = rmg_mol_from_inchi(inchi)  # An RMG Molecule with bond orders, but without preserved atom order
+        mol_bo = rmg_mol_from_inchi(inchi)  # An RMG Molecule with bond orders, but without preserved atom order.
 
-    # TODO 2. B. Deduce bond orders from xyz distances (fallback method)
-    # else:
-    #     mol_bo = deduce_bond_orders_from_distances(xyz)
+    # 3. Generate a molecule with bond order information using xyz_to_smiles.
+    if mol_bo is None:
+        try:
+            smiles_list = xyz_to_smiles(xyz=xyz, charge=charge)
+            if smiles_list is not None:
+                mol_bo = Molecule(smiles=smiles_list[0])
+        except:
+            pass
 
     if mol_bo is not None:
         if multiplicity is not None:
@@ -1234,6 +1300,11 @@ def molecules_from_xyz(xyz: Optional[Union[dict, str]],
         except SpeciesError as e:
             logger.warning(f'Cannot infer 2D graph connectivity, failed to set species multiplicity with the '
                            f'following error:\n{e}')
+
+    for mol in [mol_s1_updated, mol_bo]:
+        if mol is not None and mol.multiplicity == 1:
+            for atom in mol.atoms:
+                atom.radical_electrons = 0
 
     return mol_s1_updated, mol_bo
 
@@ -1600,7 +1671,10 @@ def rdkit_conf_from_mol(mol: Molecule,
         raise ConverterError('The xyz argument seem to be of wrong type. Expected a dictionary, '
                              'got\n{0}\nwhich is a {1}'.format(xyz, type(xyz)))
     rd_mol = to_rdkit_mol(mol=mol, remove_h=False)
-    Chem.AllChem.EmbedMolecule(rd_mol)
+    try:
+        Chem.AllChem.EmbedMolecule(rd_mol)
+    except:
+        pass
     conf = None
     if rd_mol.GetNumConformers():
         conf = rd_mol.GetConformer(id=0)
@@ -1713,7 +1787,7 @@ def get_center_of_mass(xyz):
     Returns:
         tuple: The center of mass coordinates.
     """
-    masses = [get_element_mass(symbol, isotope)[0] for symbol, isotope in zip(xyz['symbols'], xyz['isotopes'])]
+    masses = get_element_mass_from_xyz(xyz)
     cm_x, cm_y, cm_z = 0, 0, 0
     for coord, mass in zip(xyz['coords'], masses):
         cm_x += coord[0] * mass

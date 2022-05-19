@@ -582,7 +582,8 @@ def generate_force_field_conformers(label,
                                     multiplicity,
                                     xyzs=None,
                                     num_confs=None,
-                                    force_field='MMFF94s'):
+                                    force_field='MMFF94s',
+                                    ) -> List[dict]:
     """
     Generate conformers using RDKit and OpenBabel and optimize them using a force field
     Also consider user guesses in `xyzs`.
@@ -620,7 +621,8 @@ def generate_force_field_conformers(label,
             ff_xyzs, ff_energies = get_force_field_energies(label,
                                                             mol,
                                                             num_confs=num_confs,
-                                                            force_field=force_field)
+                                                            force_field=force_field,
+                                                            )
         except ValueError as e:
             logger.warning(f'Could not generate conformers for {label}, failed with: {e}')
         if ff_xyzs:
@@ -987,7 +989,7 @@ def get_lowest_confs(label: str,
         if n < 1:
             raise ConformerError(f'n cannot be lower than 1, got: {n}')
     else:
-        raise ConformerError(f'Either n or e must be specified')
+        raise ConformerError('Either `n` or `e` must be specified')
     if not confs or confs is None:
         raise ConformerError(f'get_lowest_confs() got no conformers for {label}')
 
@@ -1050,7 +1052,8 @@ def get_force_field_energies(label: str,
                              try_uff: bool = True,
                              optimize: bool = True,
                              try_ob: bool = True,
-                             suppress_warning: bool = False) -> Tuple[list, list]:
+                             suppress_warning: bool = False,
+                             ) -> Tuple[list, list]:
     """
     Determine force field energies using RDKit.
     If ``num_confs`` is given, random 3D geometries will be generated. If xyz is given, it will be directly used instead.
@@ -1065,7 +1068,7 @@ def get_force_field_energies(label: str,
         try_uff (bool, optional): Whether to try UFF if MMFF94(s) fails. ``True`` by default.
         optimize (bool, optional): Whether to first optimize the conformer using FF. True to optimize.
         try_ob (bool, optional): Whether to try OpenBabel if RDKit fails. ``True`` to try, ``True`` by default.
-        suppress_warning (bool, optional): Wheter to suppress warning of using OpenBabel. ``True`` to suppress, ``False`` by default.
+        suppress_warning (bool, optional): Whether to suppress OpenBabel warnings. ``False`` by default.
 
     Raises:
         ConformerError: If conformers could not be generated.
@@ -1078,13 +1081,24 @@ def get_force_field_energies(label: str,
     xyzs, energies = list(), list()
     if force_field.lower() in ['mmff94', 'mmff94s', 'uff']:
         rd_mol = embed_rdkit(label, mol, num_confs=num_confs, xyz=xyz)
-        xyzs, energies = rdkit_force_field(label, rd_mol, mol, force_field=force_field, try_uff=try_uff, optimize=optimize)
+        if rd_mol is not None:
+            xyzs, energies = rdkit_force_field(label,
+                                               rd_mol,
+                                               mol,
+                                               force_field=force_field,
+                                               try_uff=try_uff,
+                                               optimize=optimize,
+                                               )
     if not len(xyzs) and force_field.lower() in ['gaff', 'mmff94', 'mmff94s', 'uff', 'ghemical'] and try_ob:
         if not suppress_warning:
             logger.warning(f'Using OpenBabel (instead of RDKit) as a fall back method to generate conformers for {label}. '
                            f'This is often slower.')
-        xyzs, energies = openbabel_force_field_on_rdkit_conformers(
-                                            label, rd_mol, force_field=force_field, optimize=optimize)
+        xyzs, energies = openbabel_force_field(label,
+                                               mol,
+                                               num_confs,
+                                               xyz=xyz,
+                                               force_field=force_field,
+                                               )
     if not len(xyzs):
         if force_field.lower() not in ['mmff94', 'mmff94s', 'uff', 'gaff', 'ghemical']:
             raise ConformerError(f'Unrecognized force field for {label}. Should be either MMFF94, MMFF94s, UFF, '
@@ -1109,6 +1123,9 @@ def openbabel_force_field_on_rdkit_conformers(label, rd_mol, force_field='MMFF94
             - Entries are float numbers representing the energies (in kJ/mol).
     """
     xyzs, energies = list(), list()
+    if not rd_mol.GetNumConformers():
+        logger.warning(f'Could not generate conformers for {label} via OpenBabel')
+        return xyzs, energies
     # Set up Openbabel input and output format
     obconversion = ob.OBConversion()
     obconversion.SetInAndOutFormats('xyz', 'xyz')
@@ -1165,6 +1182,8 @@ def mix_rdkit_and_openbabel_force_field(label,
     """
     xyzs, energies = list(), list()
     rd_mol = embed_rdkit(label, mol, num_confs=num_confs, xyz=xyz)
+    if rd_mol is None:
+        return xyzs, energies
     unoptimized_xyzs = list()
     for i in range(rd_mol.GetNumConformers()):
         conf, xyz = rd_mol.GetConformer(i), list()
@@ -1215,10 +1234,9 @@ def openbabel_force_field(label, mol, num_confs=None, xyz=None, force_field='GAF
     ff = ob.OBForceField.FindForceField(force_field)
 
     if xyz is not None:
-        # generate an OpenBabel molecule
         obmol = ob.OBMol()
         atoms = mol.vertices
-        ob_atom_ids = dict()  # dictionary of OB atom IDs
+        ob_atom_ids = dict()
         for i, atom in enumerate(atoms):
             a = obmol.NewAtom()
             a.SetAtomicNum(atom.number)
@@ -1244,7 +1262,6 @@ def openbabel_force_field(label, mol, num_confs=None, xyz=None, force_field='GAF
         ff.SetElectrostaticCutOff(10.0)  # The Electrostatic cut-off distance (default=10.0)
         ff.SetUpdateFrequency(10)  # The frequency to update the non-bonded pairs (default=10)
         ff.EnableCutOff(False)  # Use cut-off (default=don't use cut-off)
-        # ff.SetLineSearchType('Newton2Num')
         ff.SteepestDescentInitialize()  # ConjugateGradientsInitialize
         v = 1
         while v:
@@ -1285,7 +1302,6 @@ def openbabel_force_field(label, mol, num_confs=None, xyz=None, force_field='GAF
         ff.Setup(obmol)
         xyz_str = '\n'.join(obconversion.WriteString(obmol).splitlines()[2:])
         xyz_dict = converter.str_to_xyz(xyz_str)
-        # reorder:
         xyz_dict['coords'] = tuple(xyz_dict['coords'][ob_atom_ids[mol.atoms[j]]]
                                    for j in range(len(xyz_dict['coords'])))
         xyzs.append(xyz_dict)
@@ -1304,7 +1320,7 @@ def embed_rdkit(label, mol, num_confs=None, xyz=None):
         xyz (dict, optional): The 3D coordinates.
 
     Returns:
-        RDMol: An RDKIt molecule with embedded conformers.
+        Optional[RDMol]: An RDKIt molecule with embedded conformers.
     """
     if num_confs is None and xyz is None:
         raise ConformerError(f'Either num_confs or xyz must be set when calling embed_rdkit() for {label}')
@@ -1316,8 +1332,11 @@ def embed_rdkit(label, mol, num_confs=None, xyz=None):
         raise ConformerError(f'Argument mol can be either an RMG Molecule or an RDKit RDMol object. '
                              f'Got {type(mol)} for {label}')
     if num_confs is not None:
-        Chem.AllChem.EmbedMultipleConfs(rd_mol, numConfs=num_confs, randomSeed=1, enforceChirality=True)
-        # Chem.AllChem.EmbedMultipleConfs(rd_mol, numConfs=num_confs, randomSeed=15, enforceChirality=False)
+        try:
+            Chem.AllChem.EmbedMultipleConfs(rd_mol, numConfs=num_confs, randomSeed=1, enforceChirality=True)
+        except:
+            logger.warning(f'Could not embed conformers using RDKit for {label}')
+            return None
     elif xyz is not None:
         rd_conf = Chem.Conformer(rd_mol.GetNumAtoms())
         for i in range(rd_mol.GetNumAtoms()):
@@ -1387,7 +1406,7 @@ def rdkit_force_field(label: str,
                       force_field: str = 'MMFF94s',
                       try_uff: bool = True,
                       optimize: bool = True,
-                      try_ob: bool = True,
+                      try_ob: bool = False,
                       ) -> Tuple[list, list]:
     """
     Optimize RDKit conformers using a force field (MMFF94 or MMFF94s are recommended).
@@ -1413,13 +1432,17 @@ def rdkit_force_field(label: str,
         if optimize:
             v, j = 1, 0
             while v == 1 and j < 200:  # v == 1: continue, v == 0: enough steps, v == -1: unable to set up
-                v = Chem.AllChem.MMFFOptimizeMolecule(rd_mol,
-                                                      mmffVariant=force_field,
-                                                      confId=i,
-                                                      maxIters=500,
-                                                      ignoreInterfragInteractions=False,
-                                                      )
-                j += 1
+                try:
+                    v = Chem.AllChem.MMFFOptimizeMolecule(rd_mol,
+                                                          mmffVariant=force_field,
+                                                          confId=i,
+                                                          maxIters=500,
+                                                          ignoreInterfragInteractions=False,
+                                                          )
+                except:
+                    pass
+                else:
+                    j += 1
         mol_properties = Chem.AllChem.MMFFGetMoleculeProperties(rd_mol, mmffVariant=force_field)
         if mol_properties is not None:
             ff = Chem.AllChem.MMFFGetMoleculeForceField(rd_mol, mol_properties, confId=i)
@@ -1434,15 +1457,16 @@ def rdkit_force_field(label: str,
                                                                maxIters=200,
                                                                ignoreInterfragInteractions=True,
                                                                )
-            except RuntimeError as e:
-                logger.warning(f'Using OpenBabel (instead of RDKit) as a fall back method to generate conformers '
-                               f'for {label}. This is often slower.')
+            except RuntimeError:
                 if try_ob:
+                    logger.warning(f'Using OpenBabel (instead of RDKit) as a fall back method to generate conformers '
+                                   f'for {label}. This is often slower.')
                     xyzs, energies = openbabel_force_field_on_rdkit_conformers(label,
-                                                                               mol,
+                                                                               rd_mol,
                                                                                force_field=force_field,
                                                                                optimize=optimize,
                                                                                )
+                    return xyzs, energies
         for i in range(rd_mol.GetNumConformers()):
             if output is not None and output[i][0] == 0:  # The optimization converged.
                 energies.append(output[i][1])
@@ -2012,6 +2036,9 @@ def determine_chirality(conformers, label, mol, force=False):
             continue
         new_xyz = replace_n_with_c_in_xyz(label, mol, conformer['xyz'], chiral_nitrogen_centers, elements_to_insert)
         rd_mol = embed_rdkit(label, new_mol, xyz=new_xyz)
+        if rd_mol is None or not rd_mol.GetNumConformers():
+            continue
+        rd_mol.UpdatePropertyCache(strict=False)
         Chem.rdmolops.AssignStereochemistryFrom3D(rd_mol, 0)
         for i, rd_atom in enumerate(rd_mol.GetAtoms()):
             rd_atom_props_dict = rd_atom.GetPropsAsDict()

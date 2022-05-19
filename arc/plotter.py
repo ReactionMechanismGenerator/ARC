@@ -82,7 +82,7 @@ def draw_structure(xyz=None, species=None, project_directory=None, method='show_
         plot_3d_mol_as_scatter(xyz, path=project_directory, plot_h=True, show_plot=True, name=label, index=0)
 
 
-def show_sticks(xyz=None, species=None, project_directory=None, show_atom_map=True):
+def show_sticks(xyz=None, species=None, project_directory=None, show_atom_indices=False):
     """
     Draws the molecule in a "sticks" style according to the supplied xyz coordinates.
     Returns whether successful of not. If successful, saves the image using draw_3d.
@@ -92,7 +92,7 @@ def show_sticks(xyz=None, species=None, project_directory=None, show_atom_map=Tr
         xyz (str, dict, optional): The coordinates to display.
         species (ARCSpecies, optional): xyz coordinates will be taken from the species.
         project_directory (str): ARC's project directory to save a draw_3d image in.
-        show_atom_map (bool): whether to display atom map numbers on the 3D image.
+        show_atom_indices (bool): whether to display atom indices on the 3D image.
 
     Returns: bool
         Whether the show_sticks drawing was successful. ``True`` if it was.
@@ -113,15 +113,15 @@ def show_sticks(xyz=None, species=None, project_directory=None, show_atom_map=Tr
     p = p3D.view(width=400, height=400)
     p.addModel(mb, 'sdf')
     p.setStyle({'stick': {}})
-    if show_atom_map:
+    if show_atom_indices:
         p.addPropertyLabels("index", "",
                             {'fontSize': 15,
-                            'fontColor': 'white',
-                            'alignment': 'center',
-                            'showBackground': True,
-                            'backgroundOpacity': 0.2,
-                            'backgroundColor': 'black',
-                            })
+                             'fontColor': 'white',
+                             'alignment': 'center',
+                             'showBackground': True,
+                             'backgroundOpacity': 0.2,
+                             'backgroundColor': 'black',
+                             })
     p.zoomTo()
     p.show()
     if project_directory is not None:
@@ -241,6 +241,64 @@ def check_xyz_species_for_drawing(xyz=None, species=None):
     else:
         xyz = species.get_xyz(generate=True)
     return check_xyz_dict(remove_dummies(xyz))
+
+
+def plot_ts_guesses_by_e_and_method(species: ARCSpecies,
+                                    path: str,
+                                    ):
+    """
+    Save a figure comparing all TS guesses by electronic energy and imaginary frequency.
+
+    Args:
+        species (ARCSpecies): The TS Species to consider.
+        path (str): The path for saving the figure.
+    """
+    if not isinstance(species, ARCSpecies):
+        raise ValueError(f'The species argument must be of an ARC species type, '
+                         f'got {species} which is a {type(species)}')
+    if not species.is_ts:
+        raise ValueError('The species must be a TS (got species.is_ts = False)')
+    if os.path.isdir(path):
+        path = os.path.join(path, 'ts_guesses.png')
+
+    results = list()  # entries are tuples of (method, electronic energy, imaginary frequency)
+    for tsg in species.ts_guesses:
+        if tsg.energy is not None:
+            results.append((tsg.method, tsg.energy, tsg.imaginary_freqs))
+    ts_results = sorted(results, key=lambda x: x[1], reverse=False)
+    x = np.arange(len(ts_results))  # the label locations
+    width = 0.45  # the width of the bars
+    y = [x[1] for x in ts_results]  # electronic energies
+    if len(y):
+        fig, ax = plt.subplots(figsize=(10, 4), dpi=120)
+        rects = ax.bar(x - width / 2, y, width)
+        auto_label(rects, ts_results, ax)
+        if not species.ts_guesses_exhausted:
+            rects[len(species.chosen_ts_list) - 1].set_color('r')
+        ax.set_ylim(0, max(y) * 1.2)
+        ax.set_ylabel(r'Electronic energy, kJ/mol')
+        ax.set_title(species.rxn_label)
+        ax.set_xticks([])
+        plt.savefig(path, dpi=120, facecolor='w', edgecolor='w', orientation='portrait',
+                    format='png', transparent=False, bbox_inches=None, pad_inches=0.1, metadata=None)
+
+
+def auto_label(rects, ts_results, ax):
+    """Attach a text label above each bar in ``rects``, displaying its height."""
+    for i, rect in enumerate(rects):
+        height = rect.get_height()
+        method = ts_results[i][0]
+        imf = ''
+        if ts_results[i][2] is not None:
+            if not len(ts_results[i][2]):
+                imf = 'not a TS\n'
+            else:
+                imf = '\n'.join(f'{freq:.2f}' for freq in ts_results[i][2]) + '\n'
+        ax.annotate(f'{imf}{height:.2f}\n{method}',
+                    xy=(rect.get_x() + rect.get_width() / 2, height),
+                    xytext=(0, 3),  # 3 points vertical offset
+                    textcoords="offset points",
+                    ha='center', va='bottom')
 
 
 # *** Logging output ***
@@ -684,8 +742,6 @@ def save_irc_traj_animation(irc_f_path, irc_r_path, out_path):
             f.write(' Normal termination of Gaussian 16\n')
 
 
-# *** Files (libraries, xyz, conformers) ***
-
 def save_thermo_lib(species_list: list,
                     path: str,
                     name: str,
@@ -810,7 +866,7 @@ def save_kinetics_lib(rxn_list, path, name, lib_long_desc):
         kinetics_library.entries = entries
         lib_path = os.path.join(path, 'kinetics', '')
         if os.path.exists(lib_path):
-            shutil.rmtree(lib_path)
+            shutil.rmtree(lib_path, ignore_errors=True)
         try:
             os.makedirs(lib_path)
         except OSError:
@@ -828,6 +884,8 @@ def save_conformers_file(project_directory: str,
                          is_ts: bool = False,
                          energies: Optional[List[float]] = None,
                          ts_methods: Optional[List[str]] = None,
+                         im_freqs: Optional[List[List[float]]] = None,
+                         log_content: bool = False,
                          ):
     """
     Save the conformers before or after optimization.
@@ -844,6 +902,8 @@ def save_conformers_file(project_directory: str,
         energies (list, optional): Entries are energies corresponding to the conformer list in kJ/mol.
                                    If not given (None) then the Species.conformer_energies are used instead.
         ts_methods (list, optional): Entries are method names used to generate the TS guess.
+        im_freqs (list, optional): Entries lists of imaginary frequencies.
+        log_content (bool): Whether to log the content of the conformers file. ``True`` to log, default is ``False``.
     """
     spc_dir = 'rxns' if is_ts else 'Species'
     geo_dir = os.path.join(project_directory, 'output', spc_dir, label, 'geometry', 'conformers')
@@ -874,18 +934,20 @@ def save_conformers_file(project_directory: str,
                     content += f'\nSMILES: {smiles}\n'
                 elif ts_methods is not None:
                     content += f'TS guess method: {ts_methods[i]}\n'
+                if im_freqs is not None and im_freqs[i] is not None:
+                    content += f'Imaginary frequencies: {im_freqs[i]}\n'
                 if optimized:
                     if energies[i] == min_e:
                         content += 'Relative Energy: 0 kJ/mol (lowest)'
                     elif energies[i] is not None:
-                        content += f'Relative Energy: {energies[i] - min_e:.3f} kJ/mol'
+                        content += f'Relative Energy: {energies[i] - min_e:9.3f} kJ/mol'
             else:
                 # Failed to converge
                 if is_ts and ts_methods is not None:
                     content += 'TS guess method: ' + ts_methods[i] + '\n'
                 content += 'Failed to converge'
             content += '\n\n\n'
-        if is_ts:
+        if log_content:
             logger.info(content)
         f.write(content)
 

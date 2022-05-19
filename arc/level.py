@@ -71,7 +71,7 @@ class Level(object):
             raise ValueError(f'Either repr or method must be specified, not both.\n'
                              f'Got: "{self.repr}" and "{self.method}".')
         if self.repr is None and self.method is None:
-            raise ValueError(f'Either repr or method must be specified, got neither.')
+            raise ValueError('Either repr or method must be specified, got neither.')
 
         self.basis = basis
         self.auxiliary_basis = auxiliary_basis
@@ -89,7 +89,7 @@ class Level(object):
                 and (solvation_scheme_level.solvent is not None
                      or solvation_scheme_level.solvation_method is not None
                      or solvation_scheme_level.solvation_scheme_level is not None):
-            raise ValueError(f'Cannot represent a solvation_scheme_level which itself has solvation attributes.')
+            raise ValueError('Cannot represent a solvation_scheme_level which itself has solvation attributes.')
         self.solvation_scheme_level = solvation_scheme_level
         if self.solvation_method is not None and self.solvent is None:
             raise ValueError(f'Cannot represent a level of theory with a solvation method ("{self.solvation_method}") '

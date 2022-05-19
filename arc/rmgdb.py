@@ -172,7 +172,9 @@ def determine_family(reaction: 'ARCReaction',
         reaction ('ARCReaction'): An ARCReaction object instance.
         db (RMGDatabase, optional): The RMG database instance.
     """
+    global rmg_database_instance
     if reaction.family is None:
+        db = db or rmg_database_instance
         if db is None:
             db = make_rmg_database_object()
             load_families_only(db)

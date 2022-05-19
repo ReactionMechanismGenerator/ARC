@@ -22,15 +22,15 @@ from arc.imports import settings
 logger = get_logger()
 
 
-check_status_command, delete_command, list_available_nodes_command, servers, submit_command, submit_filename = \
+check_status_command, delete_command, list_available_nodes_command, servers, submit_command, submit_filenames = \
     settings['check_status_command'], settings['delete_command'], settings['list_available_nodes_command'], \
-    settings['servers'], settings['submit_command'], settings['submit_filename'],
+    settings['servers'], settings['submit_command'], settings['submit_filenames']
 
 
 def check_connections(function: Callable[..., Any]) -> Callable[..., Any]:
     """
     A decorator designned for ``SSHClient``to check SSH connections before
-    calling a method. It first checks if ``self._ssh`` is available in a 
+    calling a method. It first checks if ``self._ssh`` is available in a
     SSHClient instance and then checks if you can send ``ls`` and get response
     to make sure your connection still alive. If connection is bad, this
     decorator will reconnect the SSH channel, to avoid connection related
@@ -66,13 +66,13 @@ class SSHClient(object):
         un (str): The username to use on the server.
         key (str): A path to a file containing the RSA SSH private key to the server.
         _ssh (paramiko.SSHClient): A high-level representation of a session with an SSH server.
-        _sftp (paramiko.sftp_client.SFTPClient): SFTP client used to perform remote file operations. 
+        _sftp (paramiko.sftp_client.SFTPClient): SFTP client used to perform remote file operations.
     """
     def __init__(self, server: str = '') -> None:
         if server == '':
             raise ValueError('A server name must be specified')
         if server not in servers.keys():
-            raise ValueError(f'Server name invalid. Currently defined servers are: {servers.keys()}')
+            raise ValueError(f'Server name "{server}" is invalid. Currently defined servers are: {list(servers.keys())}')
         self.server = server
         self.address = servers[server]['address']
         self.un = servers[server]['un']
@@ -89,12 +89,12 @@ class SSHClient(object):
         self.close()
 
     @check_connections
-    def _send_command_to_server(self, 
-                                command: Union[str, list], 
+    def _send_command_to_server(self,
+                                command: Union[str, list],
                                 remote_path: str = '',
                                 ) -> Tuple[list, list]:
         """
-        A wrapper for exec_command in paramiko.SSHClient. Send commands to the server. 
+        A wrapper for exec_command in paramiko.SSHClient. Send commands to the server.
 
         Args:
             command (Union[str, list]): A string or an array of string commands to send.
@@ -189,15 +189,13 @@ class SSHClient(object):
             # but introduce an opportunity for better troubleshooting.
             # The current behavior is that if the remote path does not exist
             # an empty file will be created at the local path
-            logger.debug(
-                f'{remote_file_path} does not exist on {self.server}.')
+            logger.debug(f'{remote_file_path} does not exist on {self.server}.')
         try:
             self._sftp.get(remotepath=remote_file_path,
                            localpath=local_file_path)
         except IOError:
-            logger.debug(
-                f'Got an IOError when trying to download file {remote_file_path} from {self.server}')
-            raise ServerError(f'Could not download file {remote_file_path} from {self.server}. ')
+            logger.warning(f'Got an IOError when trying to download file '
+                           f'{remote_file_path} from {self.server}')
 
     @check_connections
     def read_remote_file(self, remote_file_path: str) -> list:
@@ -206,7 +204,7 @@ class SSHClient(object):
 
         Args:
             remote_file_path (str): The remote path to be read.
-        
+
         Returns: list
             A list of lines read from the file.
         """
@@ -225,7 +223,7 @@ class SSHClient(object):
             Possible statuses: `before_submission`, `running`, `errored on node xx`,
             `done`, and `errored: ...`
         """
-        cmd = check_status_command[servers[self.server]['cluster_soft']] + ' -u $USER'
+        cmd = check_status_command[servers[self.server]['cluster_soft']]
         stdout, stderr = self._send_command_to_server(cmd)
         # Status line formats:
         # OGE: '540420 0.45326 xq1340b    user_name       r     10/26/2018 11:08:30 long1@node18.cluster'
@@ -243,7 +241,7 @@ class SSHClient(object):
         Args:
             job_id (Union[int, str]): The job's ID.
         """
-        cmd = delete_command[servers[self.server]['cluster_soft']] + ' ' + str(job_id)
+        cmd = f"{delete_command[servers[self.server]['cluster_soft']]} {job_id}"
         self._send_command_to_server(cmd)
 
     def delete_jobs(self,
@@ -257,7 +255,7 @@ class SSHClient(object):
         """
         jobs_message = f'{len(jobs)}' if jobs is not None else 'all'
         print(f'\nDeleting {jobs_message} ARC jobs from {self.server}...')
-        
+
         running_job_ids = self.check_running_jobs_ids()
         for job_id in running_job_ids:
             if jobs is None or str(job_id) in jobs:
@@ -271,22 +269,25 @@ class SSHClient(object):
         Returns: list
             A list of job IDs.
         """
-        running_jobs_ids = list()
-        cmd = check_status_command[servers[self.server]['cluster_soft']] + ' -u $USER'
+        if servers[self.server]['cluster_soft'].lower() not in ['slurm', 'oge', 'sge', 'pbs', 'htcondor']:
+            raise ValueError(f"Server cluster software {servers['local']['cluster_soft']} is not supported.")
+        running_job_ids = list()
+        cmd = check_status_command[servers[self.server]['cluster_soft']]
         stdout = self._send_command_to_server(cmd)[0]
+        i_dict = {'slurm': 0, 'oge': 1, 'sge': 1, 'pbs': 4, 'htcondor': -1}
+        split_by_dict = {'slurm': ' ', 'oge': ' ', 'sge': ' ', 'pbs': '.', 'htcondor': ' '}
+        cluster_soft = servers[self.server]['cluster_soft'].lower()
         for i, status_line in enumerate(stdout):
-            if servers[self.server]['cluster_soft'].lower() == 'slurm' and i > 0:
-                running_jobs_ids.append(int(status_line.split()[0]))
-            elif servers[self.server]['cluster_soft'].lower() in ['oge', 'sge'] and i > 1:
-                running_jobs_ids.append(int(status_line.split()[0]))
-            elif servers[self.server]['cluster_soft'].lower() == 'pbs' and i > 4:
-                running_jobs_ids.append(int(status_line.split('.')[0]))
-        return running_jobs_ids
+            if i > i_dict[cluster_soft]:
+                job_id = status_line.split(split_by_dict[cluster_soft])[0]
+                job_id = job_id.split('.')[0] if '.' in job_id else job_id
+                running_job_ids.append(job_id)
+        return running_job_ids
 
     def submit_job(self, remote_path: str) -> Tuple[str, int]:
         """
         Submit a job to the server.
-        
+
         Args:
             remote_path (str): The remote path contains the input file
                                and the submission script.
@@ -299,26 +300,29 @@ class SSHClient(object):
         job_status = ''
         job_id = 0
         cluster_soft = servers[self.server]['cluster_soft']
-        cmd = submit_command[cluster_soft] + ' ' + submit_filename[cluster_soft]
+        cmd = f'{submit_command[cluster_soft]} {submit_filenames[cluster_soft]}'
         stdout, stderr = self._send_command_to_server(cmd, remote_path)
         if len(stderr) > 0 or len(stdout) == 0:
             logger.warning(f'Got stderr when submitting job:\n{stderr}')
             job_status = 'errored'
             for line in stderr:
                 if 'Requested node configuration is not available' in line:
-                    logger.warning(f'User may be requesting more resources than are available. Please check server '
-                                   f'settings, such as cpus and memory, in ARC/arc/settings/settings.py')
+                    logger.warning('User may be requesting more resources than are available. Please check server '
+                                   'settings, such as cpus and memory, in ARC/arc/settings/settings.py')
         elif servers[self.server]['cluster_soft'].lower() in ['oge', 'sge'] and 'submitted' in stdout[0].lower():
-            job_id = int(stdout[0].split()[2])
-            job_status = 'running'
+            job_id = stdout[0].split()[2]
         elif servers[self.server]['cluster_soft'].lower() == 'slurm' and 'submitted' in stdout[0].lower():
-            job_id = int(stdout[0].split()[3])
-            job_status = 'running'
+            job_id = stdout[0].split()[3]
         elif servers[self.server]['cluster_soft'].lower() == 'pbs':
-            job_id = int(stdout[0].split('.')[0])
-            job_status = 'running'
+            job_id = stdout[0].split('.')[0]
+        elif servers[self.server]['cluster_soft'].lower() == 'htcondor' and 'submitting' in stdout[0].lower():
+            # Submitting job(s).
+            # 1 job(s) submitted to cluster 443069.
+            if len(stdout) and len(stdout[1].split()) and len(stdout[1].split()[-1].split('.')):
+                job_id = stdout[1].split()[-1][:-1]
         else:
             raise ValueError(f'Unrecognized cluster software: {cluster_soft}')
+        job_status = 'running' if job_id else job_status
         return job_status, job_id
 
     def connect(self) -> None:
@@ -360,8 +364,8 @@ class SSHClient(object):
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         ssh.load_system_host_keys(filename=self.key)
         try:
-            # If the server accepts the connection but the SSH daemon doesn't respond in 
-            # 15 seconds (default in paramiko) due to network congestion, faulty switches, 
+            # If the server accepts the connection but the SSH daemon doesn't respond in
+            # 15 seconds (default in paramiko) due to network congestion, faulty switches,
             # etc..., common solution is enlarging the timeout variable.
             ssh.connect(hostname=self.address, username=self.un, banner_timeout=200)
         except:
@@ -381,7 +385,7 @@ class SSHClient(object):
             self._ssh.close()
 
     @check_connections
-    def get_last_modified_time(self, 
+    def get_last_modified_time(self,
                                remote_file_path_1: str,
                                remote_file_path_2: Optional[str],
                                ) -> Optional[datetime.datetime]:
@@ -415,7 +419,7 @@ class SSHClient(object):
         Args:
             remote_path (str, optional): The directory path at which the command will be executed.
         """
-        command = f'ls -alF'
+        command = 'ls -alF'
         return self._send_command_to_server(command, remote_path)[0]
 
     def find_package(self, package_name: str) -> list:
@@ -435,9 +439,12 @@ class SSHClient(object):
         Returns:
             list: lines of the node hostnames.
         """
-        cluster_soft = servers[self.server]['cluster_soft']
+        cluster_soft = servers[self.server]['cluster_soft'].lower()
+        if cluster_soft == 'htcondor':
+            return list()
         cmd = list_available_nodes_command[cluster_soft]
         stdout = self._send_command_to_server(command=cmd)[0]
+        nodes = list()
         if cluster_soft.lower() in ['oge', 'sge']:
             # Stdout line example:
             # long1@node01.cluster           BIP   0/0/8          -NA-     lx24-amd64    aAdu
@@ -448,31 +455,33 @@ class SSHClient(object):
             # node01 alloc 1.00 none
             nodes = [line.split()[0] for line in stdout
                      if line.split()[1] in ['mix', 'alloc', 'idle']]
-        elif cluster_soft.lower() == 'pbs':
-            ValueError(f'cluster software : {cluster_soft} not yet implemented please modify job/ssh.py/list_available_nodes')
+        elif cluster_soft.lower() in ['pbs', 'htcondor']:
+            logger.warning(f'Listing available nodes is not yet implemented for {cluster_soft}.')
         return nodes
 
     def change_mode(self,
                     mode: str,
-                    path: str,
+                    file_name: str,
                     recursive: bool = False,
                     remote_path: str = '',
                     ) -> None:
         """
-        Change the mode to a file or a directory.
+        Change the mode of a file or a directory.
 
         Args:
             mode (str): The mode change to be applied, can be either octal or symbolic.
-            path (str): The path to the file or the directory to be changed.
+            file_name (str): The path to the file or the directory to be changed.
             recursive (bool, optional): Whether to recursively change the mode to all files
                                         under a directory.``True`` for recursively change.
             remote_path (str, optional): The directory path at which the command will be executed.
         """
-        recursive = '-R' if recursive else ''
-        command = f'chmod {recursive} {mode} {path}'
+        if os.path.isfile(remote_path):
+            remote_path = os.path.dirname(remote_path)
+        recursive = ' -R' if recursive else ''
+        command = f'chmod{recursive} {mode} {file_name}'
         self._send_command_to_server(command, remote_path)
 
-    def _check_file_exists(self, 
+    def _check_file_exists(self,
                            remote_file_path: str,
                            ) -> bool:
         """
@@ -520,7 +529,7 @@ class SSHClient(object):
                 f'Cannot create dir for the given path ({remote_path}).\nGot: {stderr}')
 
 
-def check_job_status_in_stdout(job_id: int, 
+def check_job_status_in_stdout(job_id: int,
                                stdout: Union[list, str],
                                server: str,
                                ) -> str:
@@ -544,7 +553,7 @@ def check_job_status_in_stdout(job_id: int,
         return 'done'
     if servers[server]['cluster_soft'].lower() == 'slurm':
         status = status_line.split()[4]
-        if status.lower() in ['r', 'qw', 't', 'cg']:
+        if status.lower() in ['r', 'qw', 't', 'cg', 'pd']:
             return 'running'
         elif status.lower() in ['bf', 'ca', 'f', 'nf', 'st', 'oom']:
             return 'errored'
@@ -560,6 +569,8 @@ def check_job_status_in_stdout(job_id: int,
             return 'running'
         elif status.lower() in ['e']:
             return 'errored'
+    elif servers[server]['cluster_soft'].lower() == 'htcondor':
+        return 'running'
     else:
         raise ValueError(f'Unknown cluster software {servers[server]["cluster_soft"]}')
 

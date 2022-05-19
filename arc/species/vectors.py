@@ -88,7 +88,7 @@ def get_dihedral(v1: List[float],
     if np.vdot(v2_x_v1, v3) > 0:
         dihedral = 2 * np.pi - dihedral
     if np.isnan(dihedral):
-        raise VectorsError('Could not calculate a dihedral angle')
+        raise VectorsError(f'Could not calculate a dihedral angle for\nv1: {v1}, v2: {v2}, v3: {v3}.')
     conversion = 180 / math.pi if 'degs' in units else 1
     return float(dihedral * conversion)
 
