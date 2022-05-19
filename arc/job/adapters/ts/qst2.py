@@ -10,20 +10,25 @@ Documentation: https://gaussian.com/qst2/
 import datetime
 import math
 import os
-import subprocess
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+
+from mako.template import Template
 
 from rmgpy.reaction import Reaction
 
 from arc.common import almost_equal_coords, ARC_PATH, get_logger, read_yaml_file
 from arc.imports import incore_commands, settings
 from arc.job.adapter import JobAdapter
-from arc.job.adapters.common import check_argument_consistency, ts_adapters_by_rmg_family, which
+from arc.job.adapters.common import (check_argument_consistency,
+                                     is_restricted,
+                                     ts_adapters_by_rmg_family,
+                                     update_input_dict_with_args,
+                                     which)
 from arc.job.factory import register_job_adapter
 from arc.job.local import execute_command, submit_job
 from arc.job.ssh import SSHClient
 from arc.plotter import save_geo
-from arc.species.converter import xyz_from_data
+from arc.species.converter import xyz_from_data, xyz_to_str
 from arc.species.species import ARCSpecies, TSGuess, colliding_atoms
 
 if TYPE_CHECKING:
@@ -36,6 +41,25 @@ logger = get_logger()
 
 input_filenames, output_filenames, servers, submit_filenames = \
     settings['input_filenames'], settings['output_filenames'], settings['servers'], settings['submit_filenames']
+
+
+input_template = """%%mem=${memory}mb
+%%NProcShared=${cpus}
+
+#T ${restricted}${method}${slash_1}${basis}${slash_2}${auxiliary_basis} Opt=(QST2) ${keywords} ${dispersion}
+
+reactants
+
+${charge} ${multiplicity}
+${xyz1}
+
+products
+
+${charge} ${multiplicity}
+${xyz2}
+
+
+"""
 
 
 class QST2Adapter(JobAdapter):
@@ -209,8 +233,48 @@ class QST2Adapter(JobAdapter):
         """
         Write the input file to execute the job on the server.
         """
-        # Todo - write QST2 input file
-        pass
+        input_dict = dict()
+        for key in ['dispersion',
+                    'keywords',
+                    'restricted',
+                    'slash_1',
+                    'slash_2',
+                    ]:
+            input_dict[key] = ''
+        input_dict['auxiliary_basis'] = self.level.auxiliary_basis or ''
+        input_dict['basis'] = self.level.basis or ''
+        input_dict['charge'] = self.charge
+        input_dict['cpus'] = self.cpu_cores
+        input_dict['memory'] = self.input_file_memory
+        input_dict['method'] = self.level.method
+        input_dict['multiplicity'] = self.multiplicity
+        input_dict['xyz1'] = self.reactions[0].get_reactants_xyz(return_format='str')
+        input_dict['xyz2'] = self.reactions[0].get_products_xyz(return_format='str')
+
+        if self.level.basis is not None:
+            input_dict['slash_1'] = '/'
+            if self.level.auxiliary_basis is not None:
+                input_dict['slash_2'] = '/'
+
+        if not is_restricted(self):
+            input_dict['restricted'] = 'u'
+
+        if self.level.dispersion is not None:
+            input_dict['dispersion'] = self.level.dispersion
+
+        if self.level.method[:2] == 'ro':
+            self.add_to_args(val='use=L506')
+        else:
+            # xqc will do qc (quadratic convergence) if the job fails w/o it, so use by default
+            self.add_to_args(val='scf=xqc')
+
+        if self.level.solvation_method is not None:
+            input_dict['job_type_1'] += f' SCRF=({self.level.solvation_method}, Solvent={self.level.solvent})'  # Todo: job_type_1
+
+        input_dict = update_input_dict_with_args(args=self.args, input_dict=input_dict)
+
+        with open(os.path.join(self.local_path, input_filenames[self.job_adapter]), 'w') as f:
+            f.write(Template(input_template).render(**input_dict))
 
     def set_files(self) -> None:
         """
