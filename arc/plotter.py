@@ -557,7 +557,6 @@ def _draw_kinetics_plots(rxn_label, arc_k, temperature, rmg_rxns, units, pp, max
                                  'primarySulfurLibrary', 'N-S_interactions', 'NOx2018',
                                  'Nitrogen_Dean_and_Bozzelli', 'FFCM1(-)', 'JetSurF2.0']
     fig = plt.figure(figsize=(8, 6), dpi=120)
-    # plt.rcParams.update({'font.size': 12})
     ax = fig.add_subplot(111)
     plt.title(rxn_label)
     inverse_temperature = [1000 / t for t in temperature]
