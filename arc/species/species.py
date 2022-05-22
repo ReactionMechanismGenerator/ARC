@@ -8,7 +8,7 @@ import numpy as np
 import os
 from rdkit import Chem
 import time
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 import rmgpy.molecule.element as elements
 from arkane.common import ArkaneSpecies, symbol_by_number
@@ -301,7 +301,7 @@ class ARCSpecies(object):
                  run_time: Optional[datetime.timedelta] = None,
                  rxn_label: Optional[str] = None,
                  rxn_index: Optional[int] = None,
-                 save_atom_labels = False,
+                 keep_mol = False,
                  smiles: str = '',
                  species_dict: Optional[dict] = None,
                  ts_number: Optional[int] = None,
@@ -338,7 +338,7 @@ class ARCSpecies(object):
         self.yml_path = None
         self.fragments = fragments
         self.original_label = None
-        self.save_atom_labels = save_atom_labels
+        self.keep_mol = keep_mol
         self.chosen_ts = None
         self.rxn_zone_atom_indices = None
         self.ts_checks = dict()
@@ -438,7 +438,7 @@ class ARCSpecies(object):
             # Perceive molecule from xyz coordinates. This also populates the .mol attribute of the Species.
             # It overrides self.mol generated from adjlist or smiles so xyz and mol will have the same atom order.
             if self.final_xyz or self.initial_xyz or self.most_stable_conformer or self.conformers:
-                self.mol_from_xyz(get_cheap=False,save_atom_labels=self.save_atom_labels)
+                self.mol_from_xyz(get_cheap=False)
             if not self.is_ts:
                 # We don't care about BACs in TSs
                 if self.mol is None:
@@ -1373,8 +1373,7 @@ class ARCSpecies(object):
 
     def mol_from_xyz(self,
                      xyz: dict = None,
-                     get_cheap: bool = False,
-                     save_atom_labels=False) -> None:
+                     get_cheap: bool = False) -> None:
         """
         Make sure atom order in self.mol corresponds to xyz.
         Important for TS searches and for identifying rotor indices.
@@ -1394,14 +1393,9 @@ class ARCSpecies(object):
                 raise SpeciesError(f'The number of atoms in the molecule and in the cartesian coordinates is different.'
                                    f'\nGot:\n{self.mol.copy(deep=True).to_adjacency_list()}\nand:\n{xyz}')
             # self.mol should have come from another source, e.g., SMILES or yml
-            if not save_atom_labels:
-                perceived_mol = molecules_from_xyz(xyz=xyz,
-                                                    charge=self.charge)[1]
-                                                    multiplicity=self.multiplicity,
-            
-            else:
-                perceived_mol = None
-
+            perceived_mol = molecules_from_xyz(xyz=xyz,
+                                                multiplicity=self.multiplicity,
+                                                charge=self.charge)[1]
             if perceived_mol is not None:
                 allow_nonisomorphic_2d = (self.charge is not None and self.charge) \
                                          or self.mol.has_charge() or perceived_mol.has_charge() \
@@ -1417,7 +1411,10 @@ class ARCSpecies(object):
                                    f'{self.mol.copy(deep=True).to_smiles()}\n'
                                    f'{self.mol.copy(deep=True).to_adjacency_list()}')
                     raise SpeciesError(f'XYZ and the 2D graph representation for {self.label} are not compliant.')
-                self.mol = perceived_mol
+                print("about to switching mol")
+                if not self.keep_mol:
+                    print("switching mol")
+                    self.mol = perceived_mol
         else:
             mol_s, mol_b = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)
             if mol_b is not None and len(mol_b.atoms) == self.number_of_atoms:
@@ -1803,7 +1800,7 @@ class ARCSpecies(object):
                           charge=mol1.get_net_charge(),
                           compute_thermo=False,
                           e0_only=True,
-                          save_atom_labels=True)
+                          keep_mol=True)
         spc1.generate_conformers()
         spc1.rotors_dict = None
         spc2 = ARCSpecies(label=label2,
@@ -1813,7 +1810,7 @@ class ARCSpecies(object):
                           charge=mol2.get_net_charge(),
                           compute_thermo=False,
                           e0_only=True,
-                          save_atom_labels=True)
+                          keep_mol=True)
         spc2.generate_conformers()
         spc2.rotors_dict = None
 
