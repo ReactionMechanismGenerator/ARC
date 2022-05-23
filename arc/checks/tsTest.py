@@ -179,6 +179,11 @@ H                 -1.28677889    1.04716138   -1.01532486"""
                                 p_species=[ARCSpecies(label='C2H5ONO', smiles='CCON=O')])
         cls.rxn_7.ts_species = ARCSpecies(label='TS7', is_ts=True,
                                           xyz=os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite', 'keto_enol_ts.out'))
+        cls.rxn_8 = ARCReaction(r_species=[ARCSpecies(label='nC3H7', smiles='[CH2]CC')],
+                                p_species=[ARCSpecies(label='iC3H7', smiles='C[CH]C')])
+        cls.rxn_8.ts_species = ARCSpecies(label='TS8', is_ts=True,
+                                          xyz=os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'TS_nC3H7-iC3H7.out'))
+        cls.rxn_8.ts_label = cls.rxn_8.ts_species.label
 
         cls.rxn_2a.determine_family(rmg_database=cls.rmgdb, save_order=True)
         cls.rxn_2b.determine_family(rmg_database=cls.rmgdb, save_order=True)
@@ -187,6 +192,7 @@ H                 -1.28677889    1.04716138   -1.01532486"""
         cls.rxn_5.determine_family(rmg_database=cls.rmgdb, save_order=True)
         cls.rxn_6.determine_family(rmg_database=cls.rmgdb, save_order=True)
         cls.rxn_7.determine_family(rmg_database=cls.rmgdb, save_order=True)
+        cls.rxn_8.determine_family(rmg_database=cls.rmgdb, save_order=True)
 
         cls.ccooj_xyz = {'symbols': ('C', 'C', 'O', 'O', 'H', 'H', 'H', 'H', 'H'),
                          'isotopes': (12, 12, 16, 16, 1, 1, 1, 1, 1),
@@ -222,6 +228,12 @@ H                 -1.28677889    1.04716138   -1.01532486"""
         self.assertFalse(self.rxn_7.ts_species.ts_checks['normal_mode_displacement'])
         ts.check_ts(reaction=self.rxn_7, job=self.job1)
         self.assertTrue(self.rxn_7.ts_species.ts_checks['normal_mode_displacement'])
+
+        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'TS_nC3H7-iC3H7.out')
+        self.rxn_8.ts_species.populate_ts_checks()
+        self.assertFalse(self.rxn_8.ts_species.ts_checks['normal_mode_displacement'])
+        ts.check_ts(reaction=self.rxn_8, job=self.job1)
+        self.assertTrue(self.rxn_8.ts_species.ts_checks['normal_mode_displacement'])
 
     def test_did_ts_pass_all_checks(self):
         """Test the did_ts_pass_all_checks() function."""
@@ -296,6 +308,49 @@ H                 -1.28677889    1.04716138   -1.01532486"""
         self.assertEqual(change, 'forming')
         change = ts.determine_changing_bond(bond=(0, 1), dmat_bonds_1=dmat_bonds_2, dmat_bonds_2=dmat_bonds_1)
         self.assertEqual(change, 'breaking')
+
+    def test_check_rxn_e0(self):
+        """Test the check_rxn_e0() function."""
+        species_dict = {spc.label: spc for spc in self.rxn_8.r_species + self.rxn_8.p_species + [self.rxn_8.ts_species]}
+        project_directory = os.path.join(ts.ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage5')
+        output_dict = {'iC3H7': {'paths': {'freq': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'iC3H7.out'),
+                                           'sp': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'iC3H7.out'),
+                                           'opt': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'iC3H7.out'),
+                                           'composite': '',
+                                           },
+                                 'convergence': True,
+                                 },
+                       'nC3H7': {'paths': {'freq': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'nC3H7.out'),
+                                           'sp': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'nC3H7.out'),
+                                           'opt': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'nC3H7.out'),
+                                           'composite': '',
+                                           },
+                                 'convergence': True,
+                                 },
+                       'TS8': {'paths': {'freq': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'TS_nC3H7-iC3H7.out'),
+                                         'sp': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'TS_nC3H7-iC3H7.out'),
+                                         'opt': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'TS_nC3H7-iC3H7.out'),
+                                         'composite': '',
+                                         },
+                               'convergence': True,
+                               },
+                       }
+        for spc_label in self.rxn_8.reactants + self.rxn_8.products + [self.rxn_8.ts_label]:
+            folder = 'rxns' if species_dict[spc_label].is_ts else 'Species'
+            base_path = os.path.join(project_directory, 'output', folder, spc_label, 'geometry')
+            os.makedirs(base_path)
+            freq_path = os.path.join(project_directory, 'output', folder, spc_label, 'geometry', 'freq.out')
+            shutil.copy(src=output_dict[spc_label]['paths']['freq'], dst=freq_path)
+
+        check_e0 = ts.check_rxn_e0(reaction=self.rxn_8,
+                                   species_dict=species_dict,
+                                   project_directory=project_directory,
+                                   kinetics_adapter='arkane',
+                                   output=output_dict,
+                                   sp_level=Level(repr='uhf/3-21g'),
+                                   freq_scale_factor=1.0,
+                                   )
+        self.assertTrue(check_e0)
 
     def test_check_normal_mode_displacement(self):
         """Test the check_normal_mode_displacement() function."""
@@ -606,7 +661,7 @@ H                 -1.28677889    1.04716138   -1.01532486"""
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests
         """
-        projects = ['arc_project_for_testing_delete_after_usage4']
+        projects = ['arc_project_for_testing_delete_after_usage4', 'arc_project_for_testing_delete_after_usage5']
         for project in projects:
             project_directory = os.path.join(ARC_PATH, 'Projects', project)
             shutil.rmtree(project_directory, ignore_errors=True)
