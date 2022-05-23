@@ -750,7 +750,7 @@ class ARCSpecies(object):
             self.chosen_ts = species_dict['chosen_ts'] if 'chosen_ts' in species_dict else None
             self.rxn_zone_atom_indices = species_dict['rxn_zone_atom_indices'] \
                 if 'rxn_zone_atom_indices' in species_dict else None
-            self.ts_checks = species_dict['ts_checks'] if 'ts_checks' in species_dict else None
+            self.ts_checks = species_dict['ts_checks'] if 'ts_checks' in species_dict else dict()
             self.chosen_ts_list = species_dict['chosen_ts_list'] if 'chosen_ts_list' in species_dict else list()
             self.checkfile = species_dict['checkfile'] if 'checkfile' in species_dict else None
         if 'xyz' in species_dict and self.initial_xyz is None and self.final_xyz is None:
