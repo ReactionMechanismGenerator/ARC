@@ -1051,7 +1051,7 @@ def get_force_field_energies(label: str,
                              force_field: str = 'MMFF94s',
                              try_uff: bool = True,
                              optimize: bool = True,
-                             try_ob: bool = True,
+                             try_ob: bool = False,
                              suppress_warning: bool = False,
                              ) -> Tuple[list, list]:
     """
@@ -1193,22 +1193,18 @@ def mix_rdkit_and_openbabel_force_field(label,
         xyz = [xyz[j] for j, _ in enumerate(xyz)]  # reorder
         unoptimized_xyzs.append(xyz)
 
-    if not len(unoptimized_xyzs) and try_ob:
-        # use OB as the fallback method
-        logger.warning(f'Using OpenBabel (instead of RDKit) as a fall back method to generate conformers for {label}. '
-                       f'This is often slower, and prohibits ARC from using all features of the conformers module.')
-        xyzs, energies = openbabel_force_field(label, mol, num_confs, force_field=force_field)
+    if try_ob:
+        if not len(unoptimized_xyzs):
+            # use OB as the fallback method
+            logger.warning(f'Using OpenBabel (instead of RDKit) as a fall back method to generate conformers for {label}. '
+                           f'This is often slower, and prohibits ARC from using all features of the conformers module.')
+            xyzs, energies = openbabel_force_field(label, mol, num_confs, force_field=force_field)
 
-    else:
-        for xyz in unoptimized_xyzs:
-            xyzs_, energies_ = openbabel_force_field(label,
-                                                     mol,
-                                                     num_confs,
-                                                     xyz=xyz,
-                                                     force_field=force_field,
-                                                     )
-            xyzs.extend(xyzs_)
-            energies.extend(energies_)
+        else:
+            for xyz in unoptimized_xyzs:
+                xyzs_, energies_ = openbabel_force_field(label, mol, num_confs, xyz=xyz, force_field=force_field)
+                xyzs.extend(xyzs_)
+                energies.extend(energies_)
     return xyzs, energies
 
 
