@@ -301,6 +301,7 @@ class ARCSpecies(object):
                  ts_number: Optional[int] = None,
                  xyz: Optional[Union[list, dict, str]] = None,
                  yml_path: Optional[str] = None,
+                 keep_mol = False,
                  ):
         self.t1 = None
         self.ts_number = ts_number
@@ -335,6 +336,7 @@ class ARCSpecies(object):
         self.chosen_ts = None
         self.rxn_zone_atom_indices = None
         self.ts_checks = dict()
+        self.keep_mol = keep_mol
 
         if species_dict is not None:
             # Reading from a dictionary (it's possible that the dict contains only a 'yml_path' argument, check first)
@@ -1406,7 +1408,8 @@ class ARCSpecies(object):
                                    f'{self.mol.copy(deep=True).to_smiles()}\n'
                                    f'{self.mol.copy(deep=True).to_adjacency_list()}')
                     raise SpeciesError(f'XYZ and the 2D graph representation for {self.label} are not compliant.')
-                self.mol = perceived_mol
+                if not self.keep_mol:
+                    self.mol = perceived_mol
         else:
             mol_s, mol_b = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)
             if mol_b is not None and len(mol_b.atoms) == self.number_of_atoms:
@@ -1675,6 +1678,7 @@ class ARCSpecies(object):
 
         Args:
             indices (tuple): The atom indices between which to cut (1-indexed, atoms must be bonded).
+            keep_atom_labels: a boolean flag, for sorting atom labels in the resulting ARCSpecies.
 
         Returns: list
             The scission-resulting species, a list of either one or two species, if the scissored location is linear,
@@ -1801,7 +1805,8 @@ class ARCSpecies(object):
                           multiplicity=mol1.multiplicity,
                           charge=mol1.get_net_charge(),
                           compute_thermo=False,
-                          e0_only=True)
+                          e0_only=True,
+                          keep_mol=True)
         spc1.generate_conformers()
         spc1.rotors_dict = None
         spc2 = ARCSpecies(label=label2,
@@ -1810,7 +1815,8 @@ class ARCSpecies(object):
                           multiplicity=mol2.multiplicity,
                           charge=mol2.get_net_charge(),
                           compute_thermo=False,
-                          e0_only=True)
+                          e0_only=True,
+                          keep_mol=True)
         spc2.generate_conformers()
         spc2.rotors_dict = None
 
