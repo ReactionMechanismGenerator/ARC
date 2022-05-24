@@ -1247,7 +1247,7 @@ def cut_species_for_mapping(reactants: List[ARCSpecies],
                 main, second = find_main_cut_product(cuts, product, bde)
                 p_cuts += [second]
                 new_p = main
-            p_cuts += [new_r]
+            p_cuts += [new_p]
         else:
             p_cuts.append(product)
 
