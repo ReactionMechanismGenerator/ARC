@@ -1493,3 +1493,25 @@ def _check_r_n_p_symbols_between_rmg_and_arc_rxns(arc_reaction: 'ARCReaction',
             print(rmg_p_symbols)
             result = False
     return result
+
+
+def sort_atoms_in_decending_label_order(mol):
+    """A helper function, helpful in the context of atom mapping.
+    This function reassign the .atoms in Molecule with a list of atoms
+    with the orders based on the labels of the atoms.
+    for example, [int(atom.label) for atom in mol.atoms] is [1, 4, 32, 7],
+    then the function will return the new atom with the order [1, 4, 7, 32]
+    Args:
+        mol: An rmg Molecule object, with labeld atoms
+    Returns:
+        None"""
+    labels = [int(atom.label) for atom in mol.atoms]
+    new_atoms = list()
+    for index in range(max(labels)+1):
+        if index not in labels:
+            continue
+        else:
+            for atom in mol.atoms:
+                if int(atom.label) == index:
+                    new_atoms.append(atom)
+    mol.atoms = new_atoms
