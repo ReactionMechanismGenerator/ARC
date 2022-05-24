@@ -1130,15 +1130,15 @@ class TestConverter(unittest.TestCase):
                                        1: {'self': 'S', 'O': [0, 2]},
                                        2: {'self': 'O', 'S': [1]}})
 
-        # so2_t = ARCSpecies(label='SO2', smiles='[O][S]=O', multiplicity=3,  # commented out until atom order of SO2(T) in ARC is fixed
-        #                    xyz={'coords': ((0.02724478716956233, 0.6093829407458188, 0.0),
-        #                                    (-1.3946381818031768, -0.24294788636871906, 0.0),
-        #                                    (1.3673933946336125, -0.36643505437710233, 0.0)),
-        #                         'isotopes': (32, 16, 16), 'symbols': ('S', 'O', 'O')})
-        # fingerprint = fingerprint(so2_t)
-        # self.assertEqual(fingerprint, {0: {'self': 'S', 'O': [1, 2]},
-        #                                1: {'self': 'O', 'S': [0]},
-        #                                2: {'self': 'O', 'S': [0]}})
+        so2_t = ARCSpecies(label='SO2', smiles='[O][S]=O', multiplicity=3,  # commented out until atom order of SO2(T) in ARC is fixed
+                           xyz={'coords': ((0.02724478716956233, 0.6093829407458188, 0.0),
+                                           (-1.3946381818031768, -0.24294788636871906, 0.0),
+                                           (1.3673933946336125, -0.36643505437710233, 0.0)),
+                                'isotopes': (32, 16, 16), 'symbols': ('S', 'O', 'O')})
+        fingerprint = fingerprint(so2_t)
+        self.assertEqual(fingerprint, {0: {'self': 'S', 'O': [1, 2]},
+                                       1: {'self': 'O', 'S': [0]},
+                                       2: {'self': 'O', 'S': [0]}})
 
         fp = fingerprint(self.ccjco)
         self.assertEqual(fp, {0: {'self': 'C', 'C': [1], 'H': [5, 6, 7]},
@@ -1357,34 +1357,6 @@ class TestConverter(unittest.TestCase):
         make_bond_changes(rxn,l,r_label_dict)
         self.assertTrue(spc2.mol.is_isomorphic(l[0].mol))
 
-
-    def test_update_xyz(self):
-        """tests the update_xyz function"""
-        spc = ARCSpecies(label="test_UX",smiles = "BrC(F)Cl")
-        shuffle(spc.mol.atoms)
-        update_xyz([spc])
-        xyz = spc.get_xyz()["symbols"]
-        atoms = [atom.element.symbol for atom in spc.mol.atoms]
-        for label1,label2 in zip(atoms,xyz):
-            self.assertTrue(label1 == label2)
-        
-
-        spc = ARCSpecies(label="test_UX",smiles = "OCl")
-        shuffle(spc.mol.atoms)
-        update_xyz([spc])
-        xyz = spc.get_xyz()["symbols"]
-        atoms = [atom.element.symbol for atom in spc.mol.atoms]
-        for label1,label2 in zip(atoms,xyz):
-            self.assertTrue(label1 == label2)
-
-
-        spc = ARCSpecies(label="test_UX",smiles = "BrOCl")
-        shuffle(spc.mol.atoms)
-        update_xyz([spc])
-        xyz = spc.get_xyz()["symbols"]
-        atoms = [atom.element.symbol for atom in spc.mol.atoms]
-        for label1,label2 in zip(atoms,xyz):
-            self.assertTrue(label1 == label2)
 
     def test_cuts_on_cycle_of_labeled_mol(self):
         """test the cuts_on_cycle_of_labeled_mol function"""
