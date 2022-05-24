@@ -18,7 +18,7 @@ from rmgpy.molecule import Molecule
 from rmgpy.species import Species
 
 import arc.rmgdb as rmgdb
-from arc.common import convert_list_index_0_to_1, extremum_list, logger, key_by_val
+from arc.common import convert_list_index_0_to_1, extremum_list, logger, key_by_val, sort_atoms_in_decending_label_order
 from arc.exceptions import SpeciesError
 from arc.species import ARCSpecies
 from arc.species.conformers import determine_chirality
@@ -1180,7 +1180,7 @@ def make_bond_changes(rxn: 'ARCReaction',
                     atom2.decrement_radical()
                     r_cut.mol.get_bond(atom1,atom2).order += action[2]
                     r_cut.mol.update()
-
+                    sort_atoms_in_decending_label_order(r_cut.mol)
 
 def assign_labels_to_products(rxn: 'ARCReaction',
                               p_label_dict: dict):
