@@ -1776,8 +1776,8 @@ class ARCSpecies(object):
                     else:
                         raise SpeciesError(f'Could not figure out which atom should gain a radical '
                                            f'due to scission in {self.label}')
-        mol1.update(raise_atomtype_exception=False)
-        mol2.update(raise_atomtype_exception=False)
+        mol1.update(raise_atomtype_exception=False, sort_atoms=False)
+        mol2.update(raise_atomtype_exception=False, sort_atoms=False)
 
         # match xyz to mol:
         if len(mol1.atoms) != len(mol2.atoms):
