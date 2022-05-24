@@ -27,7 +27,7 @@ from arc.common import (convert_list_index_0_to_1,
                         rmg_mol_from_dict_repr,
                         rmg_mol_to_dict_repr,
                         timedelta_from_str,
-                        )
+                        sort_atoms_in_decending_label_order)
 from arc.exceptions import InputError, RotorError, SpeciesError, TSError
 from arc.imports import settings
 from arc.level import Level
@@ -1726,6 +1726,7 @@ class ARCSpecies(object):
             logger.warning(f'Scissors were requested to remove a non-single bond in {self.label}.')
         mol_copy.remove_bond(bond)
         mol_splits = mol_copy.split()
+                sort_atoms_in_decending_label_order(split)
         if len(mol_splits) == 1:  # If cutting leads to only one split, then the split is cyclic.
             spc1 = ARCSpecies(label=self.label + '_BDE_' + str(indices[0] + 1) + '_' + str(indices[1] + 1) + '_cyclic',
                               mol=mol_splits[0],
