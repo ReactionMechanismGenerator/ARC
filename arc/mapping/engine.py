@@ -1201,7 +1201,7 @@ def cut_species_for_mapping(reactants: List[ARCSpecies],
         if index==1:
             try:
                 reactant.final_xyz=reactant.get_xyz()
-                cuts=reactant.scissors()
+                cuts=reactant.scissors(sort_atom_labels=True)
                 r_cuts+=cuts
             except SpeciesError:
                 return None
@@ -1212,7 +1212,7 @@ def cut_species_for_mapping(reactants: List[ARCSpecies],
                 new_r.bdes = [bde]
                 new_r.final_xyz = new_r.get_xyz()
                 try:
-                    cuts=new_r.scissors()
+                    cuts=new_r.scissors(sort_atom_labels=True)
                 except:
                     return None
                 main, second = find_main_cut_product(cuts, reactant,bde)
@@ -1226,7 +1226,7 @@ def cut_species_for_mapping(reactants: List[ARCSpecies],
         if index==1:
             try:
                 product.final_xyz = product.get_xyz()
-                cuts = product.scissors()
+                cuts = product.scissors(sort_atom_labels=True)
                 if len(cuts) == 1: #only H2 and cyclic species for now, todo: modify to include cyclic species.
                     cuts.append(ARCSpecies(label= cuts[0].label, mol=cuts[0].mol.copy(deep=True)))
                     labels = [atom.label for atom in product.mol.atoms]
@@ -1241,7 +1241,7 @@ def cut_species_for_mapping(reactants: List[ARCSpecies],
                 new_p.bdes = [bde]
                 new_p.final_xyz = new_p.get_xyz()
                 try:
-                    cuts = new_p.scissors()
+                    cuts = new_p.scissors(sort_atom_labels=True)
                 except:
                     return None
                 main, second = find_main_cut_product(cuts, product, bde)
