@@ -1836,7 +1836,7 @@ class Scheduler(object):
                     logger.debug(f'Energy for conformer {i} of {label} is None')
         else:
             logger.warning(f'Conformer {i} for {label} did not converge.')
-            if job.times_rerun == 0:
+            if job.times_rerun == 0 and self.trsh_ess_jobs:
                 self._run_a_job(job=job, label=label, rerun=True)
 
     def determine_most_stable_conformer(self, label):
