@@ -189,8 +189,8 @@ def get_rmg_reactions_from_arc_reaction(arc_reaction: 'ARCReaction',
         return None
     if not arc_reaction.family.save_order:
         raise ValueError('Must have the save_order attribute of the family set to True.')
-    rmg_reactions = arc_reaction.family.generate_reactions(reactants=[spc.mol for spc in arc_reaction.r_species],
-                                                           products=[spc.mol for spc in arc_reaction.p_species],
+    rmg_reactions = arc_reaction.family.generate_reactions(reactants=[spc.mol.copy(deep=True) for spc in arc_reaction.r_species],
+                                                           products=[spc.mol.copy(deep=True) for spc in arc_reaction.p_species],
                                                            prod_resonance=True,
                                                            delete_labels=False,
                                                            relabel_atoms=False,
