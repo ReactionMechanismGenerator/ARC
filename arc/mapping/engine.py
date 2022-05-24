@@ -1043,7 +1043,6 @@ def map_rxn(rxn: 'ARCReaction',
                                                                                       rmg_reaction=rmg_reactions[0])
 
     # step 2:
-    assign_labels_to_products(rxn,p_label_dict)
     reactants, products,loc_r,loc_p = prepare_reactants_and_products_for_scissors(rxn, r_label_dict, p_label_dict)
     #step 3:
     label_species_atoms(reactants)
@@ -1051,8 +1050,6 @@ def map_rxn(rxn: 'ARCReaction',
     r_cuts, p_cuts = cut_species_for_mapping(reactants, products,loc_r,loc_p)
 
     make_bond_changes(rxn,r_cuts,r_label_dict)
-
-    r_cuts, p_cuts = update_xyz(r_cuts), update_xyz(p_cuts)
 
     #step 4:
     pairs_of_reactant_and_products = pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
@@ -1182,26 +1179,6 @@ def make_bond_changes(rxn: 'ARCReaction',
                     r_cut.mol.update()
                     sort_atoms_in_decending_label_order(r_cut.mol)
 
-def assign_labels_to_products(rxn: 'ARCReaction',
-                              p_label_dict: dict):
-    """
-    Add the indices to the reactants and products.
-    Args:
-        rxn: ARCReaction object to be mapped
-        p_label_dict: the labels of the products
-        Consider changing in rmgpy.
-
-    Returns:
-        Adding labels to the atoms of the reactants and products, to be identified later.
-    """
-
-    atom_index = 0
-    for product in rxn.p_species:
-        for atom in product.mol.atoms:
-            if atom_index in p_label_dict.values() and (atom.label==str() or atom.label==None):
-                atom.label = key_by_val(p_label_dict,atom_index)
-            atom_index+=1
-
 
 def cut_species_for_mapping(reactants: List[ARCSpecies],
                             products: List[ARCSpecies],
@@ -1302,21 +1279,6 @@ def find_main_cut_product(cuts: List["ARCSpecies"],
             return cuts[1], cuts[0]
     
     return cuts[0], cuts[1]
-
-
-def update_xyz(spcs: List[ARCSpecies]) -> List[ARCSpecies]:
-    """A helper function, updates the xyz values of each species after cutting. This is important, since the
-    scission sometimes scrambles the Molecule object, and updating the xyz makes up for that.
-    Args:
-        spcs: the scission products that needs to be updated
-    Returns:
-        new: A newely generated copies of the ARCSpecies, with updated xyz"""
-    new = list()
-    for spc in spcs:
-        new_spc = ARCSpecies(label="copy", mol =spc.mol.copy(deep=True))
-        new_spc.final_xyz = new_spc.get_xyz()
-        new.append(new_spc)
-    return new
 
 
 def r_cut_p_cuts_isomorphic(reactant, product):
