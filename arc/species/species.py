@@ -1411,9 +1411,7 @@ class ARCSpecies(object):
                                    f'{self.mol.copy(deep=True).to_smiles()}\n'
                                    f'{self.mol.copy(deep=True).to_adjacency_list()}')
                     raise SpeciesError(f'XYZ and the 2D graph representation for {self.label} are not compliant.')
-                print("about to switching mol")
                 if not self.keep_mol:
-                    print("switching mol")
                     self.mol = perceived_mol
         else:
             mol_s, mol_b = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)
