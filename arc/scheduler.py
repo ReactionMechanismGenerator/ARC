@@ -3551,3 +3551,49 @@ class Scheduler(object):
         path = os.path.join(self.project_directory, 'output', 'rxns', 'TS_guess_report.yml')
         if content:
             save_yaml_file(path=path, content=content)
+
+
+def species_has_freq(species_output_dict: dict) -> bool:
+    """
+    Checks whether a species has valid converged frequencies using it's output dict.
+
+    Args:
+        species_output_dict (dict): The species output dict (i.e., Scheduler.output[label]).
+
+    Returns: bool
+        Whether a species has valid converged frequencies.
+    """
+    if species_output_dict['paths']['freq'] or species_output_dict['paths']['composite']:
+        return True
+    return False
+
+
+def species_has_geo(species_output_dict: dict) -> bool:
+    """
+    Checks whether a species has a valid converged geometry using it's output dict.
+
+    Args:
+        species_output_dict (dict): The species output dict (i.e., Scheduler.output[label]).
+
+    Returns: bool
+        Whether a species has a valid converged geometry.
+    """
+    if species_output_dict['paths']['geo'] or species_output_dict['paths']['composite']:
+        return True
+    return False
+
+
+def species_has_sp(species_output_dict: dict) -> bool:
+    """
+    Checks whether a species has a valid converged single-point energy using it's output dict.
+
+    Args:
+        species_output_dict (dict): The species output dict (i.e., Scheduler.output[label]).
+
+    Returns: bool
+        Whether a species has a valid converged single-point energy.
+    """
+    if species_output_dict['paths']['sp'] or species_output_dict['paths']['composite']:
+        return True
+    return False
+
