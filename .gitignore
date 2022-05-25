@@ -18,6 +18,7 @@ venv/
 
 # VS Code Local History files
 .history/*
+arc/.vscode/*
 
 # Projects
 Projects/
