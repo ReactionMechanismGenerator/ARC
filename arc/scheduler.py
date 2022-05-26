@@ -594,19 +594,13 @@ class Scheduler(object):
                             break
                     elif 'composite' in job_name:
                         job = self.job_dict[label]['composite'][job_name]
-                        logger.info(f'\n\n\n\n+++++++\nChecking composite job {job_name} ID {job.job_id}')
-                        logger.info(f'server job IDs: {self.server_job_ids}')
                         if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
-                            logger.info('not running any more')
                             successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
-                            logger.info(f'successful_server_termination: {successful_server_termination}')
                             if successful_server_termination:
                                 success = self.parse_composite_geo(label=label, job=job)
                                 if success:
-                                    logger.info(f'success: {success}')
                                     self.spawn_post_opt_jobs(label=label, job_name=job_name)
                             self.timer = False
-                            logger.info('\n\n\n\n')
                             break
                     elif 'directed_scan' in job_name:
                         job = self.job_dict[label]['directed_scan'][job_name]

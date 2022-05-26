@@ -32,7 +32,7 @@ from arc.common import (convert_list_index_0_to_1,
                         rmg_mol_from_dict_repr,
                         rmg_mol_to_dict_repr,
                         timedelta_from_str,
-                        )
+                        sort_atoms_in_decending_label_order)
 from arc.exceptions import InputError, RotorError, SpeciesError, TSError
 from arc.imports import settings
 from arc.level import Level
@@ -307,6 +307,7 @@ class ARCSpecies(object):
                  ts_number: Optional[int] = None,
                  xyz: Optional[Union[list, dict, str]] = None,
                  yml_path: Optional[str] = None,
+                 keep_mol = False,
                  ):
         self.t1 = None
         self.ts_number = ts_number
@@ -342,6 +343,7 @@ class ARCSpecies(object):
         self.chosen_ts = None
         self.rxn_zone_atom_indices = None
         self.ts_checks = dict()
+        self.keep_mol = keep_mol
 
         if species_dict is not None:
             # Reading from a dictionary (it's possible that the dict contains only a 'yml_path' argument, check first)
@@ -1636,7 +1638,7 @@ class ARCSpecies(object):
                     logger.warning('Allowing nonisomorphic 2D')
         return isomorphic
 
-    def scissors(self) -> list:
+    def scissors(self, sort_atom_labels = False) -> list:
         """
         Cut chemical bonds to create new species from the original one according to the .bdes attribute,
         preserving the 3D geometry other than the scissioned bond.
@@ -1668,19 +1670,20 @@ class ARCSpecies(object):
                                 self.bdes.append(atom_indices)
         resulting_species = list()
         for index_tuple in self.bdes:
-            new_species_list = self._scissors(indices=index_tuple)
+            new_species_list = self._scissors(indices=index_tuple, sort_atom_labels=sort_atom_labels)
             for new_species in new_species_list:
                 if new_species.label not in [existing_species.label for existing_species in resulting_species]:
                     # Mainly checks that the H species doesn't already exist.
                     resulting_species.append(new_species)
         return resulting_species
 
-    def _scissors(self, indices: tuple) -> list:
+    def _scissors(self, indices: tuple, sort_atom_labels = False) -> list:
         """
         Cut a chemical bond to create two new species from the original one, preserving the 3D geometry.
 
         Args:
             indices (tuple): The atom indices between which to cut (1-indexed, atoms must be bonded).
+            keep_atom_labels: a boolean flag, for sorting atom labels in the resulting ARCSpecies.
 
         Returns: list
             The scission-resulting species, a list of either one or two species, if the scissored location is linear,
@@ -1732,6 +1735,10 @@ class ARCSpecies(object):
             logger.warning(f'Scissors were requested to remove a non-single bond in {self.label}.')
         mol_copy.remove_bond(bond)
         mol_splits = mol_copy.split()
+        if sort_atom_labels:
+            for split in mol_splits:
+                sort_atoms_in_decending_label_order(split)
+
         if len(mol_splits) == 1:  # If cutting leads to only one split, then the split is cyclic.
             spc1 = ARCSpecies(label=self.label + '_BDE_' + str(indices[0] + 1) + '_' + str(indices[1] + 1) + '_cyclic',
                               mol=mol_splits[0],
@@ -1774,8 +1781,8 @@ class ARCSpecies(object):
                     else:
                         raise SpeciesError(f'Could not figure out which atom should gain a radical '
                                            f'due to scission in {self.label}')
-        mol1.update(raise_atomtype_exception=False)
-        mol2.update(raise_atomtype_exception=False)
+        mol1.update(raise_atomtype_exception=False, sort_atoms=False)
+        mol2.update(raise_atomtype_exception=False, sort_atoms=False)
 
         # match xyz to mol:
         if len(mol1.atoms) != len(mol2.atoms): # easy

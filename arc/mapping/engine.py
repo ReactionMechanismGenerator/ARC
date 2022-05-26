@@ -18,7 +18,7 @@ from rmgpy.molecule import Molecule
 from rmgpy.species import Species
 
 import arc.rmgdb as rmgdb
-from arc.common import convert_list_index_0_to_1, extremum_list, logger, key_by_val
+from arc.common import convert_list_index_0_to_1, extremum_list, logger, key_by_val, sort_atoms_in_decending_label_order
 from arc.exceptions import SpeciesError
 from arc.species import ARCSpecies
 from arc.species.conformers import determine_chirality
@@ -189,8 +189,8 @@ def get_rmg_reactions_from_arc_reaction(arc_reaction: 'ARCReaction',
         return None
     if not arc_reaction.family.save_order:
         raise ValueError('Must have the save_order attribute of the family set to True.')
-    rmg_reactions = arc_reaction.family.generate_reactions(reactants=[spc.mol for spc in arc_reaction.r_species],
-                                                           products=[spc.mol for spc in arc_reaction.p_species],
+    rmg_reactions = arc_reaction.family.generate_reactions(reactants=[spc.mol.copy(deep=True) for spc in arc_reaction.r_species],
+                                                           products=[spc.mol.copy(deep=True) for spc in arc_reaction.p_species],
                                                            prod_resonance=True,
                                                            delete_labels=False,
                                                            relabel_atoms=False,
@@ -1043,7 +1043,6 @@ def map_rxn(rxn: 'ARCReaction',
                                                                                       rmg_reaction=rmg_reactions[0])
 
     # step 2:
-    assign_labels_to_products(rxn,p_label_dict)
     reactants, products,loc_r,loc_p = prepare_reactants_and_products_for_scissors(rxn, r_label_dict, p_label_dict)
     #step 3:
     label_species_atoms(reactants)
@@ -1051,8 +1050,6 @@ def map_rxn(rxn: 'ARCReaction',
     r_cuts, p_cuts = cut_species_for_mapping(reactants, products,loc_r,loc_p)
 
     make_bond_changes(rxn,r_cuts,r_label_dict)
-
-    #r_cuts, p_cuts = update_xyz(r_cuts), update_xyz(p_cuts)
 
     #step 4:
     pairs_of_reactant_and_products = pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
@@ -1180,27 +1177,7 @@ def make_bond_changes(rxn: 'ARCReaction',
                     atom2.decrement_radical()
                     r_cut.mol.get_bond(atom1,atom2).order += action[2]
                     r_cut.mol.update()
-
-
-def assign_labels_to_products(rxn: 'ARCReaction',
-                              p_label_dict: dict):
-    """
-    Add the indices to the reactants and products.
-    Args:
-        rxn: ARCReaction object to be mapped
-        p_label_dict: the labels of the products
-        Consider changing in rmgpy.
-
-    Returns:
-        Adding labels to the atoms of the reactants and products, to be identified later.
-    """
-
-    atom_index = 0
-    for product in rxn.p_species:
-        for atom in product.mol.atoms:
-            if atom_index in p_label_dict.values() and (atom.label==str() or atom.label==None):
-                atom.label = key_by_val(p_label_dict,atom_index)
-            atom_index+=1
+                    sort_atoms_in_decending_label_order(r_cut.mol)
 
 
 def cut_species_for_mapping(reactants: List[ARCSpecies],
@@ -1224,7 +1201,7 @@ def cut_species_for_mapping(reactants: List[ARCSpecies],
         if index==1:
             try:
                 reactant.final_xyz=reactant.get_xyz()
-                cuts=reactant.scissors()
+                cuts=reactant.scissors(sort_atom_labels=True)
                 r_cuts+=cuts
             except SpeciesError:
                 return None
@@ -1235,7 +1212,7 @@ def cut_species_for_mapping(reactants: List[ARCSpecies],
                 new_r.bdes = [bde]
                 new_r.final_xyz = new_r.get_xyz()
                 try:
-                    cuts=new_r.scissors()
+                    cuts=new_r.scissors(sort_atom_labels=True)
                 except:
                     return None
                 main, second = find_main_cut_product(cuts, reactant,bde)
@@ -1249,7 +1226,7 @@ def cut_species_for_mapping(reactants: List[ARCSpecies],
         if index==1:
             try:
                 product.final_xyz = product.get_xyz()
-                cuts = product.scissors()
+                cuts = product.scissors(sort_atom_labels=True)
                 if len(cuts) == 1: #only H2 and cyclic species for now, todo: modify to include cyclic species.
                     cuts.append(ARCSpecies(label= cuts[0].label, mol=cuts[0].mol.copy(deep=True)))
                     labels = [atom.label for atom in product.mol.atoms]
@@ -1264,13 +1241,13 @@ def cut_species_for_mapping(reactants: List[ARCSpecies],
                 new_p.bdes = [bde]
                 new_p.final_xyz = new_p.get_xyz()
                 try:
-                    cuts = new_p.scissors()
+                    cuts = new_p.scissors(sort_atom_labels=True)
                 except:
                     return None
                 main, second = find_main_cut_product(cuts, product, bde)
                 p_cuts += [second]
                 new_p = main
-            p_cuts += [new_r]
+            p_cuts += [new_p]
         else:
             p_cuts.append(product)
 
@@ -1302,21 +1279,6 @@ def find_main_cut_product(cuts: List["ARCSpecies"],
             return cuts[1], cuts[0]
     
     return cuts[0], cuts[1]
-
-
-# def update_xyz(spcs: List[ARCSpecies]) -> List[ARCSpecies]:
-#     """A helper function, updates the xyz values of each species after cutting. This is important, since the
-#     scission sometimes scrambles the Molecule object, and updating the xyz makes up for that.
-#     Args:
-#         spcs: the scission products that needs to be updated
-#     Returns:
-#         new: A newely generated copies of the ARCSpecies, with updated xyz"""
-#     new = list()
-#     for spc in spcs:
-#         new_spc = ARCSpecies(label="copy", mol =spc.mol.copy(deep=True))
-#         new_spc.final_xyz = new_spc.get_xyz()
-#         new.append(new_spc)
-#     return new
 
 
 def r_cut_p_cuts_isomorphic(reactant, product):

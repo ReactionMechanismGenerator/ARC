@@ -7,8 +7,8 @@ This module contains unit tests of the arc.species.atom_mapping_wf module
 
 import unittest
 import numpy as np
-from rmgpy.data.rmg import RMGDatabase
 from random import shuffle
+from rmgpy.data.rmg import RMGDatabase
 
 from arc.common import _check_r_n_p_symbols_between_rmg_and_arc_rxns
 from arc.species import ARCSpecies
@@ -1130,15 +1130,15 @@ class TestConverter(unittest.TestCase):
                                        1: {'self': 'S', 'O': [0, 2]},
                                        2: {'self': 'O', 'S': [1]}})
 
-        # so2_t = ARCSpecies(label='SO2', smiles='[O][S]=O', multiplicity=3,  # commented out until atom order of SO2(T) in ARC is fixed
-        #                    xyz={'coords': ((0.02724478716956233, 0.6093829407458188, 0.0),
-        #                                    (-1.3946381818031768, -0.24294788636871906, 0.0),
-        #                                    (1.3673933946336125, -0.36643505437710233, 0.0)),
-        #                         'isotopes': (32, 16, 16), 'symbols': ('S', 'O', 'O')})
-        # fingerprint = fingerprint(so2_t)
-        # self.assertEqual(fingerprint, {0: {'self': 'S', 'O': [1, 2]},
-        #                                1: {'self': 'O', 'S': [0]},
-        #                                2: {'self': 'O', 'S': [0]}})
+        so2_t = ARCSpecies(label='SO2', smiles='[O][S]=O', multiplicity=3,  # commented out until atom order of SO2(T) in ARC is fixed
+                           xyz={'coords': ((0.02724478716956233, 0.6093829407458188, 0.0),
+                                           (-1.3946381818031768, -0.24294788636871906, 0.0),
+                                           (1.3673933946336125, -0.36643505437710233, 0.0)),
+                                'isotopes': (32, 16, 16), 'symbols': ('S', 'O', 'O')})
+        fingerprint = fingerprint(so2_t)
+        self.assertEqual(fingerprint, {0: {'self': 'S', 'O': [1, 2]},
+                                       1: {'self': 'O', 'S': [0]},
+                                       2: {'self': 'O', 'S': [0]}})
 
         fp = fingerprint(self.ccjco)
         self.assertEqual(fp, {0: {'self': 'C', 'C': [1], 'H': [5, 6, 7]},
@@ -1358,34 +1358,6 @@ class TestConverter(unittest.TestCase):
         self.assertTrue(spc2.mol.is_isomorphic(l[0].mol))
 
 
-    def test_update_xyz(self):
-        """tests the update_xyz function"""
-        spc = ARCSpecies(label="test_UX",smiles = "BrC(F)Cl")
-        shuffle(spc.mol.atoms)
-        update_xyz([spc])
-        xyz = spc.get_xyz()["symbols"]
-        atoms = [atom.element.symbol for atom in spc.mol.atoms]
-        for label1,label2 in zip(atoms,xyz):
-            self.assertTrue(label1 == label2)
-        
-
-        spc = ARCSpecies(label="test_UX",smiles = "OCl")
-        shuffle(spc.mol.atoms)
-        update_xyz([spc])
-        xyz = spc.get_xyz()["symbols"]
-        atoms = [atom.element.symbol for atom in spc.mol.atoms]
-        for label1,label2 in zip(atoms,xyz):
-            self.assertTrue(label1 == label2)
-
-
-        spc = ARCSpecies(label="test_UX",smiles = "BrOCl")
-        shuffle(spc.mol.atoms)
-        update_xyz([spc])
-        xyz = spc.get_xyz()["symbols"]
-        atoms = [atom.element.symbol for atom in spc.mol.atoms]
-        for label1,label2 in zip(atoms,xyz):
-            self.assertTrue(label1 == label2)
-
     def test_cuts_on_cycle_of_labeled_mol(self):
         """test the cuts_on_cycle_of_labeled_mol function"""
         spc1 = ARCSpecies(label = "A", smiles="NC1=NC=NC2=C1N=CN2", bdes = [(6,7)])
@@ -1399,44 +1371,7 @@ class TestConverter(unittest.TestCase):
         self.assertTrue(cuts_on_cycle_of_labeled_mol(spc1))
         spc2 = ARCSpecies(label = "propane", smiles = "CCC",bdes = [(1,2)])
         self.assertFalse(cuts_on_cycle_of_labeled_mol(spc2))
-
-    def test_add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(self):
-        "test the add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion function"
-        spc1 = ARCSpecies(label="c4", smiles = "CCCC")
-        spc2 = spc1.copy()
-        out_dict = add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(spc1,
-                                                                                  spc2,
-                                                                                  spc1.mol.atoms[0],
-                                                                                  spc2.mol.atoms[0],
-                                                                                  [0,1,2,3],
-                                                                                  {0: 0,1: 1,2: 2,3: 3},
-                                                                                  True)
-        for key in range(7):
-            self.assertEqual(out_dict[key], key)
     
-        spc1 = ARCSpecies(label="c4", smiles = "cccc")
-        spc2 = spc1.copy()
-        out_dict = add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(spc1,
-                                                                                  spc2,
-                                                                                  spc1.mol.atoms[0],
-                                                                                  spc2.mol.atoms[0],
-                                                                                  [0,1,2,3],
-                                                                                  {0: 0,1: 1,2: 2,3: 3},
-                                                                                  True)
-        for key in range(4):
-            self.assertEqual(out_dict[key], key)
-
-        spc1 = ARCSpecies(label="cn", smiles = "N1NN1")
-        spc2 = spc1.copy()
-        out_dict = add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(spc1,
-                                                                                  spc2,
-                                                                                  spc1.mol.atoms[0],
-                                                                                  spc2.mol.atoms[0],
-                                                                                  [0,1,2,3],
-                                                                                  {0: 0,1: 1,2: 2,3: 3},
-                                                                                  True)
-        for key in range(4):
-            self.assertEqual(out_dict[key], key)
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

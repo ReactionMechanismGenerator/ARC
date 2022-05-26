@@ -1148,6 +1148,20 @@ class TestCommon(unittest.TestCase):
         self.assertTrue(common.almost_equal_coords(ch4_a, ch4_c))
         self.assertFalse(common.almost_equal_coords(ch4_a, ch4_d))
 
+    def test_sort_atoms_in_decending_label_order(self):
+        """test the sort_atoms_in_decending_label_order function"""
+        spc1 = ARCSpecies(label="split", smiles = "COCOC")
+        for index, atom in enumerate(spc1.mol.atoms):
+            atom.label = str(index)
+        mol = Molecule(atoms=spc1.mol.atoms)
+        mol.remove_bond(mol.get_bond(mol.atoms[2],mol.atoms[1]))
+        split = mol.split()
+        common.sort_atoms_in_decending_label_order(split[0]), common.sort_atoms_in_decending_label_order(split[1])
+        for molecule in split:
+            labels = [int(atom.label) for atom in molecule.atoms]
+            self.assertEqual(labels, sorted(labels))
+        
+
     @classmethod
     def tearDownClass(cls):
         """
