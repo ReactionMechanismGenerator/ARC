@@ -307,7 +307,6 @@ class ARCSpecies(object):
                  ts_number: Optional[int] = None,
                  xyz: Optional[Union[list, dict, str]] = None,
                  yml_path: Optional[str] = None,
-                 keep_mol = False,
                  ):
         self.t1 = None
         self.ts_number = ts_number
@@ -343,7 +342,6 @@ class ARCSpecies(object):
         self.chosen_ts = None
         self.rxn_zone_atom_indices = None
         self.ts_checks = dict()
-        self.keep_mol = keep_mol
 
         if species_dict is not None:
             # Reading from a dictionary (it's possible that the dict contains only a 'yml_path' argument, check first)
