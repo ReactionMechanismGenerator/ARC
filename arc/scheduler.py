@@ -321,8 +321,6 @@ class Scheduler(object):
                 family_text = ''
                 if rxn.family is not None:
                     family_text = f'identified as belonging to RMG family {rxn.family.label}'
-                    if rxn.family_own_reverse:
-                        family_text += ", which is its own reverse"
                 logger.info(f'Considering reaction: {rxn.label}')
                 if family_text:
                     logger.info(f'({family_text})')
@@ -1159,7 +1157,7 @@ class Scheduler(object):
                 raise RuntimeError(f'Unable to set the path for the sp job for species {label}')
 
             return
-        if 'sp' not in self.job_dict[label]:  # Check whether single point jobs have been spawned yet.
+        if 'sp' not in self.job_dict[label]:  # Check whether single-point energy jobs have been spawned yet.
             # We're spawning the first sp job for this species.
             self.job_dict[label]['sp'] = dict()
         if self.composite_method:
@@ -2280,7 +2278,7 @@ class Scheduler(object):
         if job.job_status[1]['status'] != 'done' or (not freq_ok and not self.species_dict[label].is_ts):
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level)
         if job.job_status[1]['status'] == 'done' and freq_ok:
-            # Check E0 of related reactions.
+            # Check E0 (electronic energy + ZPE) of related reactions, now that we have freqs.
             for rxn in self.rxn_list:
                 labels = rxn.reactants + rxn.products + [rxn.ts_label]
                 if label in labels and all([output_dict['paths']['freq']
@@ -2294,8 +2292,8 @@ class Scheduler(object):
                                              freq_scale_factor=self.freq_scale_factor,
                                              )
                     if switch_ts is True:
-                        logger.error(f'Could not calculate a rate coefficient for reaction {rxn.label}. '
-                                     f'Check status is:\n{rxn.ts_species.ts_checks}.\nSwitching TS.\n')
+                        logger.error(f'TS status for reaction {rxn.label} is:\n{rxn.ts_species.ts_checks}.\n'
+                                     f'Switching TS.\n')
                         self.switch_ts(rxn.ts_label)
 
     def check_negative_freq(self,
@@ -2384,7 +2382,7 @@ class Scheduler(object):
 
     def switch_ts(self, label: str):
         """
-        Try the next optimized TS guess in line if a TS was found to be faulty.
+        Try the next optimized TS guess in line if a previous TS guess was found to be wrong.
 
         Args:
             label (str): The TS species label.
@@ -3381,7 +3379,9 @@ class Scheduler(object):
             save_yaml_file(path=self.restart_path, content=self.restart_dict)
 
     def make_reaction_labels_info_file(self):
-        """A helper function for creating the `reactions labels.info` file"""
+        """
+        A helper function for creating the `reactions labels.info` file.
+        """
         rxn_info_path = os.path.join(self.project_directory, 'output', 'rxns', 'reaction labels.info')
         old_file_path = os.path.join(os.path.join(self.project_directory, 'output', 'rxns', 'reaction labels.old.info'))
         if os.path.isfile(rxn_info_path):
