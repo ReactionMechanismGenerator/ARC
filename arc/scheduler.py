@@ -2146,6 +2146,8 @@ class Scheduler(object):
                     else:
                         self.output[label]['isomorphism'] += 'composite did not pass isomorphism check; '
                     success &= is_isomorphic
+                if success:
+                    self.check_rxn_e0_by_spc(label)
                 return success
             elif not self.species_dict[label].is_ts and self.trsh_ess_jobs:
                 self.troubleshoot_negative_freq(label=label, job=job)
@@ -2221,6 +2223,7 @@ class Scheduler(object):
         elif self.trsh_ess_jobs:
             self.troubleshoot_opt_jobs(label=label)
         if success:
+            self.check_rxn_e0_by_spc(label)
             return True  # run freq / sp / scan jobs on this optimized geometry
         else:
             return False  # return ``False``, so no freq / sp / scan jobs are initiated for this unoptimized geometry
@@ -2237,7 +2240,7 @@ class Scheduler(object):
             label (str): The species label.
             job (JobAdapter): The frequency job object instance.
         """
-        freq_ok = False
+        freq_ok, switch_ts = False, False
         if job.job_status[1]['status'] == 'done':
             if not os.path.isfile(job.local_path_to_output_file):
                 raise SchedulerError('Called check_freq_job with no output file')
@@ -2272,29 +2275,14 @@ class Scheduler(object):
                                     f'Status is:\n{self.species_dict[label].ts_checks}\n'
                                     f'Searching for a better TS conformer...')
                         self.switch_ts(label)
+                        switch_ts = True
             elif not self.species_dict[label].is_ts and self.trsh_ess_jobs:
                 # Only trsh neg freq here for non TS species, trsh TS species is done in check_negative_freq().
                 self.troubleshoot_negative_freq(label=label, job=job)
         if job.job_status[1]['status'] != 'done' or (not freq_ok and not self.species_dict[label].is_ts):
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level)
-        if job.job_status[1]['status'] == 'done' and freq_ok:
-            # Check E0 (electronic energy + ZPE) of related reactions, now that we have freqs.
-            for rxn in self.rxn_list:
-                labels = rxn.reactants + rxn.products + [rxn.ts_label]
-                if label in labels and all([output_dict['paths']['freq']
-                                            for spc_label, output_dict in self.output.items() if spc_label in labels]):
-                    switch_ts = check_rxn_e0(reaction=rxn,
-                                             species_dict=self.species_dict,
-                                             project_directory=self.project_directory,
-                                             kinetics_adapter=self.kinetics_adapter,
-                                             output=self.output,
-                                             sp_level=self.sp_level,
-                                             freq_scale_factor=self.freq_scale_factor,
-                                             )
-                    if switch_ts is True:
-                        logger.error(f'TS status for reaction {rxn.label} is:\n{rxn.ts_species.ts_checks}.\n'
-                                     f'Switching TS.\n')
-                        self.switch_ts(rxn.ts_label)
+        if job.job_status[1]['status'] == 'done' and freq_ok and not switch_ts:
+            self.check_rxn_e0_by_spc(label)
 
     def check_negative_freq(self,
                             label: str,
@@ -2380,6 +2368,32 @@ class Scheduler(object):
                 self.species_dict[label].ts_checks['freq'] = True
                 return True
 
+    def check_rxn_e0_by_spc(self, label: str):
+        """
+        Check the E0 (electronic energy + ZPE) of reactions related to a specific species.
+        Requires all opt + freq computations to be converged for all apecies (and TS) participating in each reaction.
+
+        Args:
+            label (str): A label representing a species.
+        """
+        for rxn in self.rxn_list:
+            labels = rxn.reactants + rxn.products + [rxn.ts_label]
+            if label in labels and not rxn.ts_species.ts_checks['E0'] \
+                    and all([species_has_sp(output_dict) and species_has_freq(output_dict)
+                             for spc_label, output_dict in self.output.items() if spc_label in labels]):
+                switch_ts = check_rxn_e0(reaction=rxn,
+                                         species_dict=self.species_dict,
+                                         project_directory=self.project_directory,
+                                         kinetics_adapter=self.kinetics_adapter,
+                                         output=self.output,
+                                         sp_level=self.sp_level if not self.composite_method else self.composite_method,
+                                         freq_scale_factor=self.freq_scale_factor,
+                                         )
+                if switch_ts is True:
+                    logger.info(f'TS status for reaction {rxn.label} is:\n{rxn.ts_species.ts_checks}.\n'
+                                f'Switching TS.\n')
+                    self.switch_ts(rxn.ts_label)
+
     def switch_ts(self, label: str):
         """
         Try the next optimized TS guess in line if a previous TS guess was found to be wrong.
@@ -2390,6 +2404,10 @@ class Scheduler(object):
         logger.info(f'Switching a TS guess for {label}...')
         self.determine_most_likely_ts_conformer(label=label)  # Look for a different TS guess.
         self.delete_all_species_jobs(label=label)  # Delete other currently running jobs for this TS.
+        self.output[label]['geo'] = self.output[label]['freq'] = self.output[label]['sp'] = self.output[label]['composite'] = ''
+        freq_path = os.path.join(self.project_directory, 'output', 'rxns', label, 'geometry', 'freq.out')
+        if os.path.isfile(freq_path):
+            os.remove(freq_path)
         self.species_dict[label].populate_ts_checks()  # Restart the TS checks dict.
         if not self.species_dict[label].ts_guesses_exhausted and self.species_dict[label].chosen_ts is not None:
             logger.info(f'Optimizing species {label} again using a different TS guess: '
