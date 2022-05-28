@@ -15,7 +15,7 @@ from arc.common import ARC_PATH, almost_equal_coords_lists
 from arc.job.factory import job_factory
 from arc.level import Level
 from arc.plotter import save_conformers_file
-from arc.scheduler import Scheduler
+from arc.scheduler import Scheduler, species_has_freq, species_has_geo, species_has_sp
 from arc.imports import settings
 from arc.species.species import ARCSpecies
 
@@ -292,6 +292,18 @@ H      -1.82570782    0.42754384   -0.56130718"""
         job_type_5 = 'freq'
         job_adapter_5 = self.sched1.deduce_job_adapter(level=level_5, job_type=job_type_5)
         self.assertEqual(job_adapter_5, 'terachem')
+
+    def test_species_has_geo_sp_freq(self):
+        """Test the species_has_geo() / species_has_sp() / species_has_freq() functions."""
+        for property_, species_has_property in zip(['geo', 'sp', 'freq'], [species_has_geo, species_has_sp, species_has_freq]):
+            species_output_dict = {'paths': {property_: False, 'composite': False}}
+            self.assertFalse(species_has_property((species_output_dict)))
+            species_output_dict = {'paths': {property_: True, 'composite': False}}
+            self.assertTrue(species_has_property((species_output_dict)))
+            species_output_dict = {'paths': {property_: False, 'composite': True}}
+            self.assertTrue(species_has_property((species_output_dict)))
+            species_output_dict = {'paths': {property_: True, 'composite': True}}
+            self.assertTrue(species_has_property((species_output_dict)))
 
     @classmethod
     def tearDownClass(cls):
