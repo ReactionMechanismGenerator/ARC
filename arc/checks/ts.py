@@ -203,7 +203,7 @@ def check_rxn_e0(reaction: 'ARCReaction',
                                         bac_type=None,
                                         sp_level=sp_level,
                                         freq_scale_factor=freq_scale_factor,
-                                        reaction=reaction,
+                                        reaction=rxn_copy,
                                         species_dict=species_dict,
                                         T_min=(500, 'K'),
                                         T_max=(1000, 'K'),
@@ -214,11 +214,11 @@ def check_rxn_e0(reaction: 'ARCReaction',
                                                      verbose=True,
                                                      )
     if rxn_copy.kinetics is None:
+        reaction.ts_species.ts_checks['E0'] = False
         if rxn_copy.ts_species.ts_guesses_exhausted:
             return False
         return True  # Switch TS.
     reaction.ts_species.ts_checks['E0'] = True
-    reaction.kinetics = None
     return False  # Don't switch TS.
 
 
