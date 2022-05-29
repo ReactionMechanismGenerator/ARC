@@ -15,10 +15,11 @@ from rmgpy.species import Species
 from arc.common import ARC_PATH
 from arc.job.adapters.ts.autotst_ts import AutoTSTAdapter, HAS_AUTOTST
 from arc.reaction import ARCReaction
+from arc.species import ARCSpecies
 from arc.rmgdb import make_rmg_database_object, load_families_only
 
 
-class TestAutoTSTAdapter(unittest.TestCase):
+class TestQST2Adapter(unittest.TestCase):
     """
     Contains unit tests for the AutoTSTAdapter class.
     """

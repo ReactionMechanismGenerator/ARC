@@ -210,6 +210,7 @@ class QST2Adapter(JobAdapter):
         self.run_time = None
         self.charge = None
         self.multiplicity = reactions[0].multiplicity
+        self.input_file_memory = None
         self.is_ts = True
         self.scan_res = None
         self.set_file_paths()
@@ -228,6 +229,7 @@ class QST2Adapter(JobAdapter):
         self.additional_job_info = None
 
         check_argument_consistency(self)
+        set_input_file_memory(self)
 
     def write_input_file(self) -> None:
         """
