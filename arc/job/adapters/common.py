@@ -83,17 +83,24 @@ def is_restricted(obj) -> bool:
     Returns:
         bool: Whether to run as restricted (``True``) or not (``False``).
     """
-    if (obj.multiplicity > 1 and obj.level.method_type != 'composite') \
-            or (obj.species[0].number_of_radicals is not None and obj.species[0].number_of_radicals > 1):
-        # run an unrestricted electronic structure calculation if the spin multiplicity is greater than one,
-        # or if it is one but the number of radicals is greater than one (e.g., bi-rad singlet)
-        # don't run unrestricted for composite methods such as CBS-QB3, it'll be done automatically if the
-        # multiplicity is greater than one, but do specify uCBS-QB3 for example for bi-rad singlets.
-        if obj.species[0].number_of_radicals is not None and obj.species[0].number_of_radicals > 1:
-            logger.info(f'Using an unrestricted method for species {obj.species_label} which has '
-                        f'{obj.species[0].number_of_radicals} radicals and multiplicity {obj.multiplicity}.')
-        return False
-    return True
+    if obj.species is not None:
+        if (obj.multiplicity > 1 and obj.level.method_type != 'composite') \
+                or (obj.species[0].number_of_radicals is not None and obj.species[0].number_of_radicals > 1):
+            # Run an unrestricted electronic structure calculation if the spin multiplicity is greater than one,
+            # or if it is one but the number of radicals is greater than one (e.g., bi-rad singlet)
+            # don't run unrestricted for composite methods such as CBS-QB3, it'll be done automatically if the
+            # multiplicity is greater than one, but do specify uCBS-QB3 for example for bi-rad singlets.
+            if obj.species[0].number_of_radicals is not None and obj.species[0].number_of_radicals > 1:
+                logger.info(f'Using an unrestricted method for species {obj.species_label} which has '
+                            f'{obj.species[0].number_of_radicals} radicals and multiplicity {obj.multiplicity}.')
+            return False
+        return True
+    elif obj.reactions is not None:
+        if (obj.multiplicity > 1 and obj.level.method_type != 'composite') \
+                or any([spc.number_of_radicals is not None and spc.number_of_radicals > 1 for spc in obj.reactions[0].r_species + obj.reactions[0].p_species]):
+            return False
+        return True
+    raise ValueError(f'The object {type(obj)} must have either a species or a reactions attribute.')
 
 
 def check_argument_consistency(obj: 'JobAdapter'):
