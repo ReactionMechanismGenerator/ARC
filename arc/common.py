@@ -34,7 +34,7 @@ from rmgpy.qm.qmdata import QMData
 from rmgpy.qm.symmetry import PointGroupCalculator
 
 from arc.exceptions import InputError, SettingsError
-from arc.imports import settings
+from arc.imports import home, settings
 
 
 if TYPE_CHECKING:
@@ -663,7 +663,7 @@ def determine_symmetry(xyz: dict) -> Tuple[int, int]:
     # Coords is an N x 3 numpy.ndarray of atomic coordinates in the same order as `atom_numbers`.
     coords = np.array(xyz['coords'], np.float64)
     unique_id = '0'  # Just some name that the SYMMETRY code gives to one of its jobs.
-    scr_dir = os.path.join('/tmp', 'symmetry_scratch')  # Scratch directory that the SYMMETRY code writes its files in.
+    scr_dir = os.path.join(home, 'tmp', 'symmetry_scratch')  # Scratch directory that the SYMMETRY code writes its files in.
     if not os.path.exists(scr_dir):
         os.makedirs(scr_dir)
     symmetry = optical_isomers = 1
