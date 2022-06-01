@@ -1052,6 +1052,7 @@ class JobAdapter(ABC):
         Returns:
             dict: A file representation.
         """
+        make_x = make_x or 'submit' in file_name
         if not file_name:
             raise ValueError('file_name cannot be empty')
         if source not in ['path', 'input_files']:
