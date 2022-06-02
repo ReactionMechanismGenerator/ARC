@@ -54,7 +54,7 @@ logger = get_logger()
 
 # *** Drawings species ***
 
-def draw_structure(xyz=None, species=None, project_directory=None, method='show_sticks', show_atom_map=True):
+def draw_structure(xyz=None, species=None, project_directory=None, method='show_sticks', show_atom_indices=False):
     """
     A helper function for drawing a molecular structure using either show_sticks or draw_3d.
 
@@ -63,7 +63,7 @@ def draw_structure(xyz=None, species=None, project_directory=None, method='show_
         species (ARCSpecies, optional): A species from which to extract the xyz coordinates to plot.
         project_directory (str, optional): A directory for saving the image (only supported for draw_3d).
         method (str, optional): The method to use, either 'show_sticks', 'draw_3d', or 'scatter'.
-        show_atom_map (bool): whether to display atom map numbers on the 3D image.
+        show_atom_indices (bool): whether to display atom indices on the 3D image.
     """
     if method not in ['show_sticks', 'draw_3d', 'scatter']:
         raise InputError(f"Recognized methods are 'show_sticks', 'draw_3d', or 'scatter', got: {method}")
@@ -72,7 +72,7 @@ def draw_structure(xyz=None, species=None, project_directory=None, method='show_
     xyz = check_xyz_species_for_drawing(xyz, species)
     if method == 'show_sticks' and notebook:
         try:
-            success = show_sticks(xyz=xyz, species=species, project_directory=project_directory, show_atom_map=show_atom_map)
+            success = show_sticks(xyz=xyz, species=species, project_directory=project_directory, show_atom_indices=show_atom_indices)
         except (AttributeError, IndexError, InputError, TypeError):
             pass
     if method == 'draw_3d' or (method == 'show_sticks' and (not success or not notebook)):
