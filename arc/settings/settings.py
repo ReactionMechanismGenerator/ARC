@@ -136,6 +136,7 @@ input_filenames = {'gaussian': 'input.gjf',
                    'orca': 'input.in',
                    'qchem': 'input.in',
                    'terachem': 'input.in',
+                   'qst2': 'input.gjf',
                    }
 
 output_filenames = {'gaussian': 'input.log',
@@ -145,6 +146,7 @@ output_filenames = {'gaussian': 'input.log',
                     'orca': 'input.log',
                     'qchem': 'output.out',
                     'terachem': 'output.out',
+                    'qst2': 'input.log',
                     }
 
 default_levels_of_theory = {'conformer': 'wb97xd/def2svp',  # it's recommended to choose a method with dispersion

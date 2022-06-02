@@ -229,7 +229,7 @@ class QST2Adapter(JobAdapter):
         self.additional_job_info = None
 
         check_argument_consistency(self)
-        set_input_file_memory(self)
+
 
     def write_input_file(self) -> None:
         """
