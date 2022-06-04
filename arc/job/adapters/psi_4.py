@@ -206,7 +206,7 @@ class Psi4Adapter(JobAdapter):
         self.server = self.args['trsh']['server'] if 'server' in self.args['trsh'] \
             else self.ess_settings[self.job_adapter][0] if isinstance(self.ess_settings[self.job_adapter], list) \
             else self.ess_settings[self.job_adapter]
-        self.label = self.species[0].label
+        self.species_label = self.species[0].label
         if len(self.species) > 1:
             self.species_label += f'_and_{len(self.species) - 1}_others'
 
@@ -271,7 +271,7 @@ class Psi4Adapter(JobAdapter):
             raise NotImplementedError(f'Psi4 job type {self.job_type} is not implemented')
 
         input_dict = {'memory': self.job_memory_gb,
-                      'label': self.label,
+                      'label': self.species_label,
                       'charge': self.species[0].charge,
                       'multiplicity': self.species[0].multiplicity,
                       'geometry': geometry,
