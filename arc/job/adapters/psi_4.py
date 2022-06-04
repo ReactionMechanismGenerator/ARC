@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 #import psi4
 from mako.template import Template
 
-from arc.common import get_logger
+from arc.common import get_logger, torsions_to_scans
 from arc.imports import incore_commands, settings
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import (check_argument_consistency,
@@ -23,7 +23,7 @@ from arc.job.factory import register_job_adapter
 from arc.job.local import execute_command, submit_job
 from arc.level import Level
 from arc.job.ssh import SSHClient
-from arc.species.converter import xyz_to_str
+from arc.species.converter import xyz_to_str, zmat_from_xyz, zmat_to_str
 
 if TYPE_CHECKING:
     from arc.reaction import ARCReaction
@@ -31,12 +31,13 @@ if TYPE_CHECKING:
 
 logger = get_logger()
 
+constraint_type_dict_optking = {2: 'frozen_distance', 3: 'frozen_angle', 4: 'frozen_dihedral'}  # https://psicode.org/psi4manual/master/optking.html
+constraint_type_dict_geometric = {2: 'distance', 3: 'angle', 4: 'dihedral'}  # https://psicode.org/psi4manual/master/optking.html#interface-to-geometric
+
 default_job_settings, global_ess_settings, input_filenames, output_filenames, rotor_scan_resolution, servers, \
     submit_filenames = settings['default_job_settings'], settings['global_ess_settings'], settings['input_filenames'], \
                        settings['output_filenames'], settings['rotor_scan_resolution'], settings['servers'], \
                        settings['submit_filenames']
-
-# optking: http://www.psicode.org/psi4manual/master/optking.html
 
 input_template = """
 memory ${memory} GB
@@ -44,10 +45,11 @@ molecule ${label} {
 ${charge} ${multiplicity}
 ${geometry}
 }
-
-set basis ${basis}
-set reference uhf
-${function}(${function_args})
+${scan}
+${indent}set basis ${basis}
+${indent}set reference uhf
+${indent}${function}(${function_args})
+${epilogue}
 """
 
 
@@ -231,29 +233,55 @@ class Psi4Adapter(JobAdapter):
         """
         Write the input file to execute the job on the server.
         """
-        if self.job_type in ['conformer', 'opt']:
+        scan, indent, epilogue = '', '', ''
+        geometry = xyz_to_str(self.get_geometry())
+        if self.job_type in ['conformers', 'opt']:
             func = 'optimize'
-        elif self.job_type in ['sp']:
+        elif self.job_type == 'sp':
             func = 'energy'
-        else:
+        elif self.job_type == 'freq':
             func = 'frequency'
+        elif self.job_type == 'scan':
+            func = 'E = optimize'
+            scan += 'PES = list()\n'
+            for i, torsion in enumerate(self.torsions):
+                scan += f'{indent}for t{i} in range({(360.0 / self.scan_res) + 1}):\n'
+                indent += '    '
+            fixed_dihedrals, new_indent = '', '    '
+            scans = torsions_to_scans(self.torsions)
+            for i, scan in enumerate(scans):
+                fixed_dihedrals += f'{indent}{scan[0]} {scan[1]} {scan[2]} {scan[3]} t{i} * {self.scan_res} '
+            scan += f'{indent}set optking fixed_dihedral = {fixed_dihedrals}'
+            epilogue = f'{indent}PES{["[t" + str(i) +"]" for i in range(len(self.torsions))]} = E\n\n' \
+                       f'print("\\nPES energy as a function of phis:\\n")\n'
+            for i, torsion in enumerate(self.torsions):
+                epilogue += f'{new_indent}for t{i} in range({(360.0 / self.scan_res) + 1}):\n'
+                new_indent += '    '
+            epilogue += f'{new_indent}print(PES{["[t" + str(i) +"]" for i in range(len(self.torsions))]})'
+            geometry = zmat_to_str(zmat=zmat_from_xyz(xyz=self.get_geometry(),
+                                                      mol=self.species[0].mol if self.species is not None else None,
+                                                      constraints={'D_groups': self.torsions},
+                                                      consolidate=False,
+                                                      is_ts=self.species[0].is_ts if self.species is not None else False,
+                                                      ),
+                                   zmat_format='psi4',
+                                   consolidate=False,
+                                   )
+        else:
+            raise NotImplementedError(f'Psi4 job type {self.job_type} is not implemented')
 
         input_dict = {'memory': self.job_memory_gb,
                       'label': self.label,
                       'charge': self.species[0].charge,
                       'multiplicity': self.species[0].multiplicity,
-                      'geometry': xyz_to_str(self.get_geometry()),
+                      'geometry': geometry,
                       'basis': self.level.basis,
+                      'scan': scan,
+                      'indent': indent,
                       'function': func,
                       'function_args': self.write_func_args(func),
+                      'epilogue': epilogue,
                       }
-
-        for constraint_tuple in self.constraints:
-            constraint_type = constraint_type_dict[len(constraint_tuple[0])]
-            constraint_atom_indices = ' '.join([str(atom_index) for atom_index in constraint_tuple[0]])
-            input_dict['scan'] = '\n\n' if not input_dict['scan'] else input_dict['scan']
-            input_dict['scan'] += f"{constraint_type} {constraint_atom_indices} ={constraint_tuple[1]:.2f} B\n" \
-                                  f"{constraint_type} {constraint_atom_indices} F"
 
         with open(os.path.join(self.local_path, input_filenames[self.job_adapter]), 'w') as f:
             f.write(Template(input_template).render(**input_dict))
@@ -352,7 +380,7 @@ class Psi4Adapter(JobAdapter):
         elif self.species[0] is not None:
             return self.species[0].get_xyz()
         else:
-            raise ValueError("Geometric data needed to preform the calculations.")
+            raise ValueError("Geometry is required to preform the calculations.")
 
     def write_func_args(self, func) -> str:
         if func == 'optimize':
