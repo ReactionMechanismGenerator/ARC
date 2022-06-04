@@ -726,9 +726,22 @@ def zmat_from_xyz(xyz: Union[dict, str],
     xyz = remove_dummies(xyz)
     if mol is None and not is_ts:
         mol = molecules_from_xyz(xyz=xyz)[1]
+    updated_constraints = dict()
+    for constraint_key, constraint_val in constraints.items():
+        if constraint_key == 'D_groups':
+            if mol is None:
+                raise ValueError(f'Must get a Molecule object if a D_groups constraint is given.')
+            neighbors = get_all_neighbors(mol=mol, atom_index=constraint_val[1])
+            for neighbor in neighbors:
+                if neighbor not in constraint_val:
+                    if 'D_group' not in updated_constraints.keys():
+                        updated_constraints['D_group'] = list()
+                    updated_constraints['D_group'].append(constraint_val)
+        else:
+            updated_constraints[constraint_key] = constraint_val
     return xyz_to_zmat(xyz,
                        mol=mol,
-                       constraints=constraints,
+                       constraints=updated_constraints,
                        consolidate=consolidate,
                        consolidation_tols=consolidation_tols,
                        )
