@@ -79,7 +79,7 @@ def xyz_to_zmat(xyz: Dict[str, tuple],
                                       'R_atom', 'R_group',
                                       'A_atom', 'A_group',
                                       'D_atom', 'D_group'.
-                                      'R', 'A', and 'D' are constrain distances, angles, and dihedrals, respectively.
+                                      'R', 'A', and 'D' are constraint distances, angles, and dihedrals, respectively.
                                       Values are lists of atom index tuples (0-indexed). The atom indices order matters.
                                       Specifying '_atom' will cause only the first atom in the specified list values
                                       to translate/rotate if the corresponding zmat parameter is changed.
