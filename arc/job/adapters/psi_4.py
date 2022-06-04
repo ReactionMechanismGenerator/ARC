@@ -9,14 +9,13 @@ import math
 import os
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
-import psi4
+#import psi4
 from mako.template import Template
 
 from arc.common import get_logger
 from arc.imports import incore_commands, settings
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import (check_argument_consistency,
-                                     is_restricted,
                                      set_job_args,
                                      update_input_dict_with_args,
                                      which)
@@ -37,72 +36,18 @@ default_job_settings, global_ess_settings, input_filenames, output_filenames, ro
                        settings['output_filenames'], settings['rotor_scan_resolution'], settings['servers'], \
                        settings['submit_filenames']
 
-# psi4.core.be_quiet()
-# psi4.core.set_output_file('full_path/output.dat', False)  # don't append
-# psi4.core.print_out('str')  # Prints a string (using printf-like notation) to the output file.
-# psi4.core.close_outfile()
-#
-# psi4.core.set_memory_bytes(int(5e8))  # 4 GB in bytes
-# psi4.core.set_num_threads(8)  # number of threads, int
-#
-# # compute_energy(self: psi4.core.Wavefunction) → float
-# # energy(self: psi4.core.Wavefunction) → float
-# # compute_hessian(self: psi4.core.Wavefunction) → psi4.core.Matrix
-# # hessian(self: psi4.core.Wavefunction)
-# psi4.driver.frequencies(name='scf' or 'mp2' or 'ci5' or 'ccsd', molecule=mol_obj_if_not_the_last_mol_defined)
-# # legacy_frequencies()
-#
-#
-# psi4.core.clean()  # Remove scratch files. Call between independent jobs.
-# psi4.core.clean_options()
-# psi4.core.clean_variables()
-#
-# xyz_str = """O 0 0 0"""
-# psi4.driver.molutil.mol_from_str = psi4.driver.geometry(geom=xyz_str, name='name')
-# psi4.driver.molutil.mol_from_array = psi4.driver.molutil.molecule_from_arrays(
-#     name='label',
-#     units='Angstrom',
-#     geom='Cartesian coordinates as ndarray',
-#     elea='mass number (isotope), ndarray of str int',
-#     elem='element symbols, ndarray of str; either this or elea',
-#     molecular_charge=0,
-#     molecular_multiplicity=1,
-#     connectivity=[(0, 1, 1), (1, 2, 3), (21, 74, 2)],  # 0-indexed atom A, atom B and BO
-# )
-
 # optking: http://www.psicode.org/psi4manual/master/optking.html
 
-
-# constrained op
-# ts opt
-# scan ?
-# fine grid ?
-# r/u ?
-
-
-# trsh: set full_hess_every 1
-
-
-# job_type_1: '' for sp, irc, or composite methods, 'opt=calcfc', 'opt=(calcfc,ts,noeigen)',
-# job_type_2: '' or 'freq iop(7/33=1)' (cannot be combined with CBS-QB3)
-#             'scf=(tight,direct) int=finegrid irc=(rcfc,forward,maxpoints=100,stepsize=10) geom=check' for irc f
-#             'scf=(tight,direct) int=finegrid irc=(rcfc,reverse,maxpoints=100,stepsize=10) geom=check' for irc r
-# scan: '\nD 3 1 5 8 S 36 10.000000' (with the line break)
-# restricted: '' or 'u' for restricted / unrestricted
-# `iop(2/9=2000)` makes Gaussian print the geometry in the input orientation even for molecules with more
-#   than 50 atoms (important so it matches the hessian, and so that Arkane can parse the geometry)
-input_template = """${checkfile}
-%%mem=${memory}mb
-%%NProcShared=${cpus}
-
-#P ${job_type_1} ${restricted}${method}${slash_1}${basis}${slash_2}${auxiliary_basis} ${job_type_2} ${fine} IOp(2/9=2000) ${keywords} ${dispersion}
-
-${label}
-
+input_template = """
+memory ${memory} GB
+molecule ${label} {
 ${charge} ${multiplicity}
-${xyz}${scan}${scan_trsh}${block}
+${geometry}
+}
 
-
+set basis ${basis}
+set reference uhf
+${function}(${function_args})
 """
 
 
@@ -277,9 +222,6 @@ class Psi4Adapter(JobAdapter):
         self.files_to_download = list()
         self.set_files()  # Set the actual files (and write them if relevant).
 
-        if self.checkfile is None and os.path.isfile(os.path.join(self.local_path, 'check.chk')):
-            self.checkfile = os.path.join(self.local_path, 'check.chk')
-
         self.restrarted = bool(job_num)  # If job_num was given, this is a restarted job, don't save as initiated jobs.
         self.additional_job_info = None
 
@@ -289,7 +231,32 @@ class Psi4Adapter(JobAdapter):
         """
         Write the input file to execute the job on the server.
         """
-        pass
+        if self.job_type in ['conformer', 'opt']:
+            func = 'optimize'
+        elif self.job_type in ['sp']:
+            func = 'energy'
+        else:
+            func = 'frequency'
+
+        input_dict = {'memory': self.job_memory_gb,
+                      'label': self.label,
+                      'charge': self.species[0].charge,
+                      'multiplicity': self.species[0].multiplicity,
+                      'geometry': xyz_to_str(self.get_geometry()),
+                      'basis': self.level.basis,
+                      'function': func,
+                      'function_args': self.write_func_args(func),
+                      }
+
+        for constraint_tuple in self.constraints:
+            constraint_type = constraint_type_dict[len(constraint_tuple[0])]
+            constraint_atom_indices = ' '.join([str(atom_index) for atom_index in constraint_tuple[0]])
+            input_dict['scan'] = '\n\n' if not input_dict['scan'] else input_dict['scan']
+            input_dict['scan'] += f"{constraint_type} {constraint_atom_indices} ={constraint_tuple[1]:.2f} B\n" \
+                                  f"{constraint_type} {constraint_atom_indices} F"
+
+        with open(os.path.join(self.local_path, input_filenames[self.job_adapter]), 'w') as f:
+            f.write(Template(input_template).render(**input_dict))
 
     def set_files(self) -> None:
         """
@@ -305,6 +272,7 @@ class Psi4Adapter(JobAdapter):
         from the respective entry in inputs.py
         If ``'make_x'`` is ``True``, the file will be made executable.
         """
+        # Todo: check check file in psi4
         # 1. ** Upload **
         # 1.1. submit file
         if self.execution_type != 'incore':
@@ -377,6 +345,23 @@ class Psi4Adapter(JobAdapter):
         else:
             # submit to the local queue
             self.job_status[0], self.job_id = submit_job(path=self.local_path)
+
+    def get_geometry(self):
+        if self.xyz is not None:
+            return self.xyz
+        elif self.species[0] is not None:
+            return self.species[0].get_xyz()
+        else:
+            raise ValueError("Geometric data needed to preform the calculations.")
+
+    def write_func_args(self, func) -> str:
+        if func == 'optimize':
+            func_args = f"name = '{self.level.method}',return_wfn = 'on',return_history = 'on',engine = 'optking',dertype ='energy'"
+        elif func == 'energy':
+            func_args = f"name = '{self.level.method}',return_wfn = 'on'"
+        else:
+            func_args = f"name = '{self.level.method}',return_wfn = 'on'"
+        return func_args
 
 
 register_job_adapter('psi4', Psi4Adapter)
