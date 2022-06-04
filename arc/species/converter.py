@@ -731,13 +731,14 @@ def zmat_from_xyz(xyz: Union[dict, str],
         if constraint_key == 'D_groups':
             if mol is None:
                 raise ValueError(f'Must get a Molecule object if a D_groups constraint is given.')
-            for d_groups_constraint in constraint_val:
-                neighbors = get_all_neighbors(mol=mol, atom_index=d_groups_constraint[1])
-                for neighbor in neighbors:
-                    if neighbor not in d_groups_constraint:
-                        if 'D_group' not in updated_constraints.keys():
-                            updated_constraints['D_group'] = list()
-                        updated_constraints['D_group'].append(d_groups_constraint)
+            if len(constraint_val) > 1:
+                raise ValueError(f'zmats can only handle one D_group constraint at a time, got:\n{constraints}')
+            neighbors = get_all_neighbors(mol=mol, atom_index=constraint_val[0][1])
+            for neighbor in neighbors:
+                if neighbor not in constraint_val:
+                    if 'D_group' not in updated_constraints.keys():
+                        updated_constraints['D_group'] = list()
+                    updated_constraints['D_group'].append(constraint_val)
         else:
             updated_constraints[constraint_key] = constraint_val
     return xyz_to_zmat(xyz,
