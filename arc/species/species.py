@@ -1158,7 +1158,7 @@ class ARCSpecies(object):
                                 new_rotor['scan'].append(rotor_dict['scan'])
                                 new_rotor['torsion'].append(rotor_dict['torsion'])
                                 new_rotor['dimensions'] += 1
-                                if not rotor_dict['directed_scan_type'] and index not in rotor_indices_to_del:
+                                if rotor_dict['directed_scan_type'] == 'ess' and index not in rotor_indices_to_del:
                                     # Remove this rotor dict, an ND one will be created instead.
                                     rotor_indices_to_del.append(index)
                                 break
@@ -1166,8 +1166,7 @@ class ARCSpecies(object):
                         pass  # Todo: consolidate top
                     self.rotors_dict[max(list(self.rotors_dict.keys())) + 1] = new_rotor
             for i in set(rotor_indices_to_del):
-                if not self.rotors_dict[i]['directed_scan_type']:
-                    del self.rotors_dict[i]
+                del self.rotors_dict[i]
 
             # Renumber the keys so iterative looping will make sense.
             new_rotors_dict = dict()
