@@ -735,10 +735,10 @@ def zmat_from_xyz(xyz: Union[dict, str],
                 raise ValueError(f'zmats can only handle one D_group constraint at a time, got:\n{constraints}')
             neighbors = get_all_neighbors(mol=mol, atom_index=constraint_val[0][1])
             for neighbor in neighbors:
-                if neighbor not in constraint_val:
-                    if 'D_group' not in updated_constraints.keys():
-                        updated_constraints['D_group'] = list()
-                    updated_constraints['D_group'].append(constraint_val)
+                if 'D_group' not in updated_constraints.keys():
+                    updated_constraints['D_group'] = list()
+                if neighbor not in constraint_val and constraint_val[0] not in updated_constraints['D_group']:
+                    updated_constraints['D_group'].extend(constraint_val)
         else:
             updated_constraints[constraint_key] = constraint_val
     return xyz_to_zmat(xyz,
@@ -812,6 +812,8 @@ def zmat_to_str(zmat, zmat_format='gaussian', consolidate=True):
     type_indices = {'R': 1, 'A': 1, 'D': 1}  # consolidation counters
     variables_dict = dict()  # keys are coord (e.g., 'R_2|4_0|0'), values are vars (e.g., 'R1')
     for i, (symbol, coords) in enumerate(zip(symbols, zmat['coords'])):
+        if i:
+            zmat_str += '\n'
         line = f'{symbol:>3}'
         for coord in coords:
             if coord is not None:
@@ -845,7 +847,7 @@ def zmat_to_str(zmat, zmat_format='gaussian', consolidate=True):
             while len(coordinates.split()) < 3:
                 coordinates += '0.0 '
             line = symbol + indices + coordinates[:-1]
-        zmat_str += line + '\n'
+        zmat_str += line
     if zmat_format in ['gaussian']:
         variables_str = ''.join(sorted(variables))
         result = f'{zmat_str}Variables:\n{variables_str}' if consolidate else zmat_str
