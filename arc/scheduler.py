@@ -755,6 +755,9 @@ class Scheduler(object):
         species = self.species_dict[label] if label is not None else None
         memory = memory if memory is not None else self.memory
         checkfile = self.species_dict[label].checkfile if label is not None else None
+        if torsions is None and rotor_index is not None:
+            torsions = species.rotors_dict[rotor_index]['torsion']
+            torsions = [torsions] if not isinstance(torsions[0], list) else torsions
         if self.adaptive_levels is not None and label is not None:
             level_of_theory = self.determine_adaptive_level(original_level_of_theory=level_of_theory, job_type=job_type,
                                                             heavy_atoms=self.species_dict[label].number_of_heavy_atoms)
@@ -779,6 +782,7 @@ class Scheduler(object):
                           conformer=conformer,
                           constraints=None,
                           cpu_cores=cpu_cores,
+                          directed_scan_type=directed_scan_type,
                           ess_settings=self.ess_settings,
                           ess_trsh_methods=ess_trsh_methods,
                           execution_type='incore' if job_adapter in default_incore_adapters else 'queue',
@@ -941,7 +945,7 @@ class Scheduler(object):
                      conformer=job.conformer,
                      cpu_cores=job.cpu_cores,
                      # directed_dihedrals=job.directed_dihedrals,
-                     # directed_scan_type=job.directed_scan_type,
+                     directed_scan_type=job.directed_scan_type,
                      # directed_scans=job.directed_scans,
                      ess_trsh_methods=job.ess_trsh_methods,
                      fine=job.fine,
