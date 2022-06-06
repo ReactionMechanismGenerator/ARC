@@ -58,6 +58,7 @@ class TestEnumerationClasses(unittest.TestCase):
         self.assertEqual(JobTypeEnum('optfreq').value, 'optfreq')
         self.assertEqual(JobTypeEnum('orbitals').value, 'orbitals')
         self.assertEqual(JobTypeEnum('scan').value, 'scan')
+        self.assertEqual(JobTypeEnum('directed_scan').value, 'directed_scan')
         self.assertEqual(JobTypeEnum('sp').value, 'sp')
         self.assertEqual(JobTypeEnum('tsg').value, 'tsg')
         with self.assertRaises(ValueError):
