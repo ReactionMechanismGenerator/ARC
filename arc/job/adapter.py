@@ -1027,7 +1027,8 @@ class JobAdapter(ABC):
             job_server_name = f' ({self.job_server_name})'
         execution_type = {'incore': 'incore job', 'queue': 'queue job', 'pipe': 'job array (pipe)'}[self.execution_type]
         pivots = f' for pivots {[[tor[1] + 1, tor[2] + 1] for tor in self.torsions]}' if self.torsions is not None else ''
-        logger.info(f'Running {local}{execution_type}{server} {self.job_name}{job_server_name}{pivots} '
+        dihedrals = f' for dihedrals {self.directed_dihedrals}' if self.directed_dihedrals is not None else ''
+        logger.info(f'Running {local}{execution_type}{server} {self.job_name}{job_server_name}{pivots}{dihedrals} '
                     f'using {self.job_adapter} for {self.species_label}{info}')
 
     def get_file_property_dictionary(self,
