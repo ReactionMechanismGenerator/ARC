@@ -39,8 +39,7 @@ default_job_settings, global_ess_settings, input_filenames, output_filenames, ro
                        settings['output_filenames'], settings['rotor_scan_resolution'], settings['servers'], \
                        settings['submit_filenames']
 
-input_template = """
-memory ${memory} GB
+input_template = """memory ${memory} GB
 molecule ${label} {
 ${charge} ${multiplicity}
 ${geometry}
@@ -50,6 +49,7 @@ ${indent}set basis ${basis}
 ${indent}set reference uhf
 ${indent}${function}(${function_args})
 ${epilogue}
+
 """
 
 
@@ -242,22 +242,23 @@ class Psi4Adapter(JobAdapter):
         elif self.job_type == 'freq':
             func = 'frequency'
         elif self.job_type == 'scan':
+            # todo: parameter in zmat, or not? zmat or xyz? zero PES in ND
             func = 'E = optimize'
-            scan += 'PES = list()\n'
+            scan += '\nPES = list()\n'
             for i, torsion in enumerate(self.torsions):
-                scan += f'{indent}for t{i} in range({(360.0 / self.scan_res) + 1}):\n'
-                indent += '    '
-            fixed_dihedrals, new_indent = '', '    '
+                scan += f'{indent}for t{i} in range({int((360.0 / self.scan_res) + 1)}):\n'
+                indent += '  '
+            fixed_dihedrals, new_indent = '', ''
             scans = torsions_to_scans(self.torsions)
-            for i, scan in enumerate(scans):
-                fixed_dihedrals += f'{indent}{scan[0]} {scan[1]} {scan[2]} {scan[3]} t{i} * {self.scan_res} '
+            for i, scan_ in enumerate(scans):
+                fixed_dihedrals += f'{scan_[0]} {scan_[1]} {scan_[2]} {scan_[3]} t{i} * {self.scan_res} '
             scan += f'{indent}set optking fixed_dihedral = {fixed_dihedrals}'
-            epilogue = f'{indent}PES{["[t" + str(i) +"]" for i in range(len(self.torsions))]} = E\n\n' \
+            epilogue = f'{indent}PES{"".join(["[t" + str(i) +"]" for i in range(len(self.torsions))])} = E\n\n' \
                        f'print("\\nPES energy as a function of phis:\\n")\n'
             for i, torsion in enumerate(self.torsions):
-                epilogue += f'{new_indent}for t{i} in range({(360.0 / self.scan_res) + 1}):\n'
-                new_indent += '    '
-            epilogue += f'{new_indent}print(PES{["[t" + str(i) +"]" for i in range(len(self.torsions))]})'
+                epilogue += f'for t{i} in range({(360.0 / self.scan_res) + 1}):\n'
+                new_indent += '  '
+            epilogue += f'{new_indent}print(PES{"".join(["[t" + str(i) +"]" for i in range(len(self.torsions))])})'
             geometry = zmat_to_str(zmat=zmat_from_xyz(xyz=self.get_geometry(),
                                                       mol=self.species[0].mol if self.species is not None else None,
                                                       constraints={'D_groups': self.torsions},
@@ -383,12 +384,12 @@ class Psi4Adapter(JobAdapter):
             raise ValueError("Geometry is required to preform the calculations.")
 
     def write_func_args(self, func) -> str:
-        if func == 'optimize':
-            func_args = f"name = '{self.level.method}',return_wfn = 'on',return_history = 'on',engine = 'optking',dertype ='energy'"
+        if func in ['optimize', 'conformers', 'scan', 'E = optimize']:
+            func_args = f"name = '{self.level.method}', return_wfn='on', return_history='on', engine='optking', dertype='energy'"
         elif func == 'energy':
-            func_args = f"name = '{self.level.method}',return_wfn = 'on'"
+            func_args = f"name = '{self.level.method}', return_wfn='on'"
         else:
-            func_args = f"name = '{self.level.method}',return_wfn = 'on'"
+            func_args = f"name = '{self.level.method}', return_wfn='on'"
         return func_args
 
 
