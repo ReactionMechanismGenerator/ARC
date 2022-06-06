@@ -2844,7 +2844,7 @@ class Scheduler(object):
             for job_name in job_names:
                 i = get_i_from_job_name(job_name)
                 if i is None:
-                    job_type = job_name.split('_')[0]
+                    job_type = '_'.join(job_name.split('_')[:-1])  # Consider job types such as 'directed_scan'.
                     job = self.job_dict[label][job_type][job_name]
                 elif 'conformer' in job_name:
                     job = self.job_dict[label]['conformers'][i]
