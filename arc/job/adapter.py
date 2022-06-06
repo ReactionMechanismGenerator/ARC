@@ -109,6 +109,7 @@ class JobTypeEnum(str, Enum):
     optfreq = 'optfreq'
     orbitals = 'orbitals'
     scan = 'scan'
+    directed_scan = 'directed_scan'
     sp = 'sp'
     tsg = 'tsg'  # TS search (TS guess)
 
