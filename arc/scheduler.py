@@ -1508,6 +1508,7 @@ class Scheduler(object):
                 for dihedral_tuple in all_dihedral_combinations:
                     for torsion, dihedral in zip(torsions, dihedral_tuple):
                         self.species_dict[label].set_dihedral(scan=torsion,
+                                                              index=0,
                                                               deg_abs=dihedral,
                                                               count=False,
                                                               xyz=modified_xyz)
@@ -1528,6 +1529,7 @@ class Scheduler(object):
                     for torsion in torsions:
                         dihedral = dihedrals[tuple(torsion)][i]
                         self.species_dict[label].set_dihedral(scan=torsion,
+                                                              index=0,
                                                               deg_abs=dihedral,
                                                               count=False,
                                                               xyz=modified_xyz)
@@ -1598,7 +1600,11 @@ class Scheduler(object):
                 # or if this is a diagonal scan.
                 # Species.set_dihedral() uses .final_xyz or the given xyz to modify the .initial_xyz
                 # attribute to the desired dihedral.
-                self.species_dict[label].set_dihedral(scan=scan_, deg_abs=dihedral, count=False, xyz=modified_xyz)
+                self.species_dict[label].set_dihedral(scan=torsion,
+                                                      index=0,
+                                                      deg_abs=dihedral,
+                                                      count=False,
+                                                      xyz=modified_xyz)
                 modified_xyz = self.species_dict[label].initial_xyz
             self.run_job(label=label,
                          xyz=modified_xyz,
@@ -2666,7 +2672,7 @@ class Scheduler(object):
             if 'change conformer' in actions:
                 # a lower conformation was found
                 deg_increment = actions[1]
-                self.species_dict[label].set_dihedral(scan=scan, deg_increment=deg_increment)
+                self.species_dict[label].set_dihedral(scan=scan, index=1, deg_increment=deg_increment)
                 is_isomorphic = self.species_dict[label].check_xyz_isomorphism(
                     allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
                     xyz=self.species_dict[label].initial_xyz)
