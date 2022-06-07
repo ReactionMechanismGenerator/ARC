@@ -621,6 +621,7 @@ class Scheduler(object):
                                     logger.info(f'\nAll brute force directed scan jobs for species {label} between '
                                                 f'pivots {job.pivots} successfully terminated.\n')
                                     self.process_directed_scans(label, pivots=job.pivots)
+                            shutil.rmtree(job.local_path, ignore_errors=True)
                             self.timer = False
                             break
                     elif 'scan' in job_name and 'directed' not in job_name:
@@ -916,7 +917,15 @@ class Scheduler(object):
                     and job.job_type in ['opt', 'optfreq', 'composite']:
                 check_path = os.path.join(job.local_path, 'check.chk')
                 if os.path.isfile(check_path):
-                    self.species_dict[label].checkfile = check_path
+                    if 'directed_scan' in job.job_name and 'cont' in job.directed_scan_type:
+                        folder_name = 'rxns' if job.is_ts else 'Species'
+                        r_path = os.path.join(self.project_directory, 'output', folder_name, job.species_label, 'rotors')
+                        if not os.path.isdir(r_path):
+                            os.makedirs(r_path)
+                        shutil.copyfile(src=check_path, dst=os.path.join(r_path, 'directed_rotor_check.chk'))
+                        self.species_dict[label].checkfile = os.path.join(r_path, 'directed_rotor_check.chk')
+                    else:
+                        self.species_dict[label].checkfile = check_path
             if job.job_type == 'scan' or job.directed_scan_type == 'ess':
                 for rotors_dict in self.species_dict[label].rotors_dict.values():
                     if rotors_dict['pivots'] == job.pivots:
