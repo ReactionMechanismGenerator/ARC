@@ -1673,5 +1673,6 @@ class TestZMat(unittest.TestCase):
             for coord1, coord2 in zip(coords1, coords2):
                 self.assertAlmostEqual(coord1, coord2)
 
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
