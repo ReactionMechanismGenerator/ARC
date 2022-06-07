@@ -618,7 +618,7 @@ class Scheduler(object):
                                 self.species_dict[label].rotors_dict[job.rotor_index]['number_of_running_jobs'] -= 1
                                 if not self.species_dict[label].rotors_dict[job.rotor_index]['number_of_running_jobs']:
                                     # All brute force scan jobs for these pivots terminated.
-                                    pivots = [scan[1:3] for scan in job.directed_scans]
+                                    pivots = [torsion[1:3] for torsion in job.torsions]
                                     logger.info(f'\nAll brute force directed scan jobs for species {label} between '
                                                 f'pivots {pivots} successfully terminated.\n')
                                     self.process_directed_scans(label, pivots=job.pivots)
@@ -629,8 +629,7 @@ class Scheduler(object):
                         if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
                             job = self.job_dict[label]['scan'][job_name]
                             successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
-                            # If successful_server_termination and job.directed_scans is None:  # todo: consider this once directed_scans are supported
-                            if successful_server_termination:
+                            if successful_server_termination and job.directed_scan_type is None:
                                 self.check_scan_job(label=label, job=job)
                             self.timer = False
                             break
@@ -700,9 +699,8 @@ class Scheduler(object):
                 job_type: str,
                 conformer: Optional[int] = None,
                 cpu_cores: Optional[int] = None,
-                directed_dihedrals: Optional[list] = None,
+                dihedrals: Optional[list] = None,
                 directed_scan_type: Optional[str] = None,
-                directed_scans: Optional[list] = None,
                 ess_trsh_methods: Optional[list] = None,
                 fine: Optional[bool] = False,
                 irc_direction: Optional[str] = None,
@@ -728,10 +726,8 @@ class Scheduler(object):
             job_type (str): The type of job to run.
             conformer (int, optional): Conformer number if optimizing conformers.
             cpu_cores (int, optional): The total number of cpu cores requested for a job.
-            directed_dihedrals (list, optional): The dihedral angles of a directed scan job corresponding
-                                                 to ``directed_scans``.
+            dihedrals (list, optional): The dihedral angles of a directed scan job corresponding to ``torsions``.
             directed_scan_type (str, optional): The type of the directed scan.
-            directed_scans (list, optional): Entries are lists of four-atom dihedral scan indices to constrain.
             ess_trsh_methods (list, optional): A list of troubleshooting methods already tried out for ESS convergence.
             fine (bool, optional): Whether to run an optimization job with a fine grid. `True` to use fine.
             irc_direction (str, optional): The direction to run the IRC computation.
@@ -782,6 +778,7 @@ class Scheduler(object):
                           conformer=conformer,
                           constraints=None,
                           cpu_cores=cpu_cores,
+                          dihedrals=dihedrals,
                           directed_scan_type=directed_scan_type,
                           ess_settings=self.ess_settings,
                           ess_trsh_methods=ess_trsh_methods,
@@ -944,9 +941,8 @@ class Scheduler(object):
         self.run_job(job_type=job.job_type,
                      conformer=job.conformer,
                      cpu_cores=job.cpu_cores,
-                     # directed_dihedrals=job.directed_dihedrals,
+                     dihedrals=job.dihedrals,
                      directed_scan_type=job.directed_scan_type,
-                     # directed_scans=job.directed_scans,
                      ess_trsh_methods=job.ess_trsh_methods,
                      fine=job.fine,
                      irc_direction=job.irc_direction,
@@ -1477,7 +1473,7 @@ class Scheduler(object):
         increment = rotor_scan_resolution
         if divmod(360, increment)[1]:
             raise SchedulerError(f'The directed scan got an illegal scan resolution of {increment}')
-        scans = self.species_dict[label].rotors_dict[rotor_index]['scan']
+        torsions = self.species_dict[label].rotors_dict[rotor_index]['torsion']
         directed_scan_type = self.species_dict[label].rotors_dict[rotor_index]['directed_scan_type']
         xyz = xyz or self.species_dict[label].get_xyz(generate=True)
 
@@ -1485,13 +1481,13 @@ class Scheduler(object):
             raise InputError(f'directed_scan_type must be either continuous or brute force, got: {directed_scan_type}')
 
         if 'ess' in directed_scan_type:
-            # allow the ESS to control the scan
+            # Allow the ESS to control the scan.
             self.run_job(label=label,
                          xyz=xyz,
                          level_of_theory=self.scan_level,
                          job_type='scan',
                          directed_scan_type=directed_scan_type,
-                         directed_scans=scans,
+                         torsions=torsions,
                          rotor_index=rotor_index,
                          )
 
@@ -1499,19 +1495,21 @@ class Scheduler(object):
             # spawn jobs all at once
             dihedrals = dict()
 
-            for scan in scans:
+            for torsion in torsions:
                 original_dihedral = get_angle_in_180_range(calculate_dihedral_angle(coords=xyz['coords'],
-                                                                                    torsion=scan,
-                                                                                    index=1))
-                dihedrals[tuple(scan)] = [get_angle_in_180_range(original_dihedral + i * increment) for i in
-                                          range(int(360 / increment) + 1)]
+                                                                                    torsion=torsion,
+                                                                                    index=0))
+                dihedrals[tuple(torsion)] = [get_angle_in_180_range(original_dihedral + i * increment) for i in
+                                             range(int(360 / increment) + 1)]
             modified_xyz = xyz
             if 'diagonal' not in directed_scan_type:
                 # increment dihedrals one by one (resulting in an ND scan)
-                all_dihedral_combinations = list(itertools.product(*[dihedrals[tuple(scan)] for scan in scans]))
+                all_dihedral_combinations = list(itertools.product(*[dihedrals[tuple(torsion)] for torsion in torsions]))
                 for dihedral_tuple in all_dihedral_combinations:
-                    for scan, dihedral in zip(scans, dihedral_tuple):
-                        self.species_dict[label].set_dihedral(scan=scan, deg_abs=dihedral, count=False,
+                    for torsion, dihedral in zip(torsions, dihedral_tuple):
+                        self.species_dict[label].set_dihedral(scan=torsion,
+                                                              deg_abs=dihedral,
+                                                              count=False,
                                                               xyz=modified_xyz)
                         modified_xyz = self.species_dict[label].initial_xyz
                     self.species_dict[label].rotors_dict[rotor_index]['number_of_running_jobs'] += 1
@@ -1520,54 +1518,56 @@ class Scheduler(object):
                                  level_of_theory=self.scan_level,
                                  job_type='directed_scan',
                                  directed_scan_type=directed_scan_type,
-                                 directed_scans=scans,
-                                 directed_dihedrals=list(dihedral_tuple),
+                                 torsions=torsions,
+                                 dihedrals=list(dihedral_tuple),
                                  rotor_index=rotor_index,
                                  )
             else:
                 # increment all dihedrals at once (resulting in a unique 1D scan along several changing dimensions)
-                for i in range(len(dihedrals[tuple(scans[0])])):
-                    for scan in scans:
-                        dihedral = dihedrals[tuple(scan)][i]
-                        self.species_dict[label].set_dihedral(scan=scan, deg_abs=dihedral, count=False,
+                for i in range(len(dihedrals[tuple(torsions[0])])):
+                    for torsion in torsions:
+                        dihedral = dihedrals[tuple(torsion)][i]
+                        self.species_dict[label].set_dihedral(scan=torsion,
+                                                              deg_abs=dihedral,
+                                                              count=False,
                                                               xyz=modified_xyz)
                         modified_xyz = self.species_dict[label].initial_xyz
-                    directed_dihedrals = [dihedrals[tuple(scan)][i] for scan in scans]
+                    dihedrals = [dihedrals[tuple(torsion)][i] for torsion in torsions]
                     self.species_dict[label].rotors_dict[rotor_index]['number_of_running_jobs'] += 1
                     self.run_job(label=label,
                                  xyz=modified_xyz,
                                  level_of_theory=self.scan_level,
                                  job_type='directed_scan',
                                  directed_scan_type=directed_scan_type,
-                                 directed_scans=scans,
-                                 directed_dihedrals=directed_dihedrals,
+                                 torsions=torsions,
+                                 dihedrals=dihedrals,
                                  rotor_index=rotor_index,
                                  )
 
         elif 'cont' in directed_scan_type:
             # spawn jobs one by one
             if not len(self.species_dict[label].rotors_dict[rotor_index]['cont_indices']):
-                self.species_dict[label].rotors_dict[rotor_index]['cont_indices'] = [0] * len(scans)
+                self.species_dict[label].rotors_dict[rotor_index]['cont_indices'] = [0] * len(torsions)
             if not len(self.species_dict[label].rotors_dict[rotor_index]['original_dihedrals']):
                 self.species_dict[label].rotors_dict[rotor_index]['original_dihedrals'] = \
                     [f'{calculate_dihedral_angle(coords=xyz["coords"], torsion=scan, index=1):.2f}'
                      for scan in self.species_dict[label].rotors_dict[rotor_index]['scan']]  # stores as str for YAML
             rotor_dict = self.species_dict[label].rotors_dict[rotor_index]
-            scans = rotor_dict['scan']
+            torsion = rotor_dict['torsion']
             pivots = rotor_dict['pivots']
             max_num = 360 / increment + 1  # dihedral angles per scan
             original_dihedrals = list()
             for dihedral in rotor_dict['original_dihedrals']:
                 original_dihedrals.append(get_angle_in_180_range(dihedral))
             if not any(self.species_dict[label].rotors_dict[rotor_index]['cont_indices']):
-                # this is the first call for this cont_opt directed rotor, spawn the first job w/o changing dihedrals
+                # This is the first call for this cont_opt directed rotor, spawn the first job w/o changing dihedrals.
                 self.run_job(label=label,
                              xyz=self.species_dict[label].final_xyz,
                              level_of_theory=self.scan_level,
                              job_type='directed_scan',
                              directed_scan_type=directed_scan_type,
-                             directed_scans=scans,
-                             directed_dihedrals=original_dihedrals,
+                             torsions=torsions,
+                             dihedrals=original_dihedrals,
                              rotor_index=rotor_index,
                              )
                 self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][0] += 1
@@ -1587,7 +1587,7 @@ class Scheduler(object):
 
             modified_xyz = xyz
             dihedrals = list()
-            for index, (original_dihedral, scan_) in enumerate(zip(original_dihedrals, scans)):
+            for index, (original_dihedral, scan_) in enumerate(zip(original_dihedrals, torsions)):
                 dihedral = original_dihedral + \
                            self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][index] * increment
                 # Change the original dihedral so we won't end up with two calcs for 180.0, but none for -180.0
@@ -1605,23 +1605,23 @@ class Scheduler(object):
                          level_of_theory=self.scan_level,
                          job_type='directed_scan',
                          directed_scan_type=directed_scan_type,
-                         directed_scans=scans,
-                         directed_dihedrals=dihedrals,
+                         torsions=torsions,
+                         dihedrals=dihedrals,
                          rotor_index=rotor_index,
                          )
 
             if 'diagonal' in directed_scan_type:
                 # increment ALL counters for a diagonal scan
                 self.species_dict[label].rotors_dict[rotor_index]['cont_indices'] = \
-                    [self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][0] + 1] * len(scans)
+                    [self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][0] + 1] * len(torsions)
             else:
                 # increment the counter sequentially (non-diagonal scan)
-                for index in range(len(scans)):
+                for index in range(len(torsions)):
                     if self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][index] < max_num - 1:
                         self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][index] += 1
                         break
                     elif (self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][index] == max_num - 1
-                          and index < len(scans) - 1):
+                          and index < len(torsions) - 1):
                         self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][index] = 0
 
     def process_directed_scans(self, label, pivots):
@@ -1670,7 +1670,7 @@ class Scheduler(object):
                     results = parser.parse_nd_scan_energies(path=rotor_dict['scan_path'])[0]
                 else:
                     results = {'directed_scan_type': rotor_dict['directed_scan_type'],
-                               'scans': rotor_dict['scan'],
+                               'torsions': rotor_dict['torsion'],
                                'directed_scan': rotor_dict['directed_scan']}
                     for dihedral_list in sorted_dihedrals:
                         dihedrals_key = tuple(f'{dihedral:.2f}' for dihedral in dihedral_list)
@@ -3200,9 +3200,8 @@ class Scheduler(object):
                          trsh=trsh_keyword,
                          conformer=conformer,
                          torsions=job.torsions,
-                         # directed_dihedrals=job.directed_dihedrals,
-                         # directed_scans=job.directed_scans,
-                         # directed_scan_type=job.directed_scan_type,
+                         dihedrals=job.dihedrals,
+                         directed_scan_type=job.directed_scan_type,
                          rotor_index=job.rotor_index,
                          cpu_cores=cpu_cores,
                          shift=shift,
