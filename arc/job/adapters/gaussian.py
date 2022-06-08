@@ -332,13 +332,13 @@ class GaussianAdapter(JobAdapter):
 
         elif self.job_type == 'scan':
             scans, scans_strings = list(), list()
-            if self.rotor_index is not None:
-                if self.species[0].rotors_dict \
-                        and self.species[0].rotors_dict[self.rotor_index]['directed_scan_type'] == 'ess':
-                    scans = self.species[0].rotors_dict[self.rotor_index]['scan']
-                    scans = [scans] if not isinstance(scans[0], list) else scans
+            if self.rotor_index is not None and self.species[0].rotors_dict:
+                scans = self.species[0].rotors_dict[self.rotor_index]['scan']
             elif len(self.torsions):
                 scans = torsions_to_scans(self.torsions)
+            else:
+                raise ValueError(f'Could not determine scan parameters for scan job {self.job_name}')
+            scans = [scans] if not isinstance(scans[0], list) else scans
             for scan_indices in scans:
                 scans_strings.append(' '.join([str(atom_index) for atom_index in scan_indices]))
             if self.torsions is None or not len(self.torsions):
