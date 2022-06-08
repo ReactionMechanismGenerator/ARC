@@ -58,7 +58,10 @@ class GCNAdapter(JobAdapter):
         conformer (int, optional): Conformer number if optimizing conformers.
         constraints (list, optional): A list of constraints to use during an optimization or scan.
         cpu_cores (int, optional): The total number of cpu cores requested for a job.
+        dihedral_increment (float, optional): Used by this adapter to determine the number of times to execute GCN
+                                              in each direction (forward and reverse). Default: 10.
         dihedrals (List[float], optional): The dihedral angels corresponding to self.torsions.
+        directed_scan_type (str, optional): The type of the directed scan.
         ess_settings (dict, optional): A dictionary of available ESS and a corresponding server list.
         ess_trsh_methods (List[str], optional): A list of troubleshooting methods already tried out.
         execution_type (str, optional): The execution type, 'incore', 'queue', or 'pipe'.
@@ -84,8 +87,6 @@ class GCNAdapter(JobAdapter):
         torsions (List[List[int]], optional): The 0-indexed atom indices of the torsion(s).
         tsg (int, optional): TSGuess number if optimizing TS guesses.
         xyz (dict, optional): The 3D coordinates to use. If not give, species.get_xyz() will be used.
-        dihedral_increment (float, optional): Used by this adapter to determine the number of times to execute GCN
-                                              in each direction (forward and reverse). Default: 10.
     """
 
     def __init__(self,
@@ -98,7 +99,9 @@ class GCNAdapter(JobAdapter):
                  conformer: Optional[int] = None,
                  constraints: Optional[List[Tuple[List[int], float]]] = None,
                  cpu_cores: Optional[str] = None,
+                 dihedral_increment: Optional[float] = 10,
                  dihedrals: Optional[List[float]] = None,
+                 directed_scan_type: Optional[str] = None,
                  ess_settings: Optional[dict] = None,
                  ess_trsh_methods: Optional[List[str]] = None,
                  execution_type: Optional[str] = None,
@@ -123,7 +126,6 @@ class GCNAdapter(JobAdapter):
                  torsions: Optional[List[List[int]]] = None,
                  tsg: Optional[int] = None,
                  xyz: Optional[dict] = None,
-                 dihedral_increment: Optional[float] = 10,
                  ):
 
         self.job_adapter = 'gcn'
@@ -146,7 +148,9 @@ class GCNAdapter(JobAdapter):
         self.conformer = conformer
         self.constraints = constraints or list()
         self.cpu_cores = cpu_cores
+        self.dihedral_increment = dihedral_increment
         self.dihedrals = dihedrals
+        self.directed_scan_type = directed_scan_type
         self.ess_settings = ess_settings
         self.ess_trsh_methods = ess_trsh_methods or list()
         self.fine = fine
