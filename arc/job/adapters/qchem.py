@@ -269,8 +269,7 @@ class QChemAdapter(JobAdapter):
                                      '\n   GEOM_OPT_TOL_DISPLACEMENT 60' \
                                      '\n   GEOM_OPT_TOL_ENERGY 5'
                 if self.level.method_type == 'dft':
-                    # Use a fine DFT grid, see 4.4.5.2 Standard Quadrature Grids, in
-                    # http://www.q-chem.com/qchem-website/manual/qchem50_manual/sect-DFT.html
+                    # Use a fine DFT grid, see "Standard Quadrature Grids" in QChem's documentation
                     input_dict['fine'] += '\n   XC_GRID 3'
 
         elif self.job_type == 'freq':
