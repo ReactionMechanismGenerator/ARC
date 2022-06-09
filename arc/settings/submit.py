@@ -254,7 +254,9 @@ touch final_time
 #COBALT -t {t_max}
 #COBALT -n {cpus}
 #COBALT -q default 
-#COBALT --attrs mcdram=cache:numa=quad 
+#COBALT --attrs mcdram=cache:numa=quad
+#COBALT -o out.txt
+#COBALT -e err.txt
 #COBALT -A AnMod
 
 . /home/username/Code/psi4conda/etc/profile.d/conda.sh
