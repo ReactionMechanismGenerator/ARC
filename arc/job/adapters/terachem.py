@@ -198,7 +198,8 @@ class TeraChemAdapter(JobAdapter):
         self.server_nodes = server_nodes or list()
         self.species = [species] if species is not None and not isinstance(species, list) else species
         self.testing = testing
-        self.torsions = torsions
+        self.torsions = [torsions] if torsions is not None and not isinstance(torsions[0], list) else torsions
+        self.pivots = [[tor[1] + 1, tor[2] + 1] for tor in self.torsions] if self.torsions is not None else None
         self.tsg = tsg
         self.xyz = xyz or self.species[0].get_xyz()
         self.times_rerun = times_rerun
