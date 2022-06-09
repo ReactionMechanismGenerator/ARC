@@ -211,7 +211,14 @@ def submit_job(path: str,
         Tuple[Optional[str], Optional[str]]: job_status, job_id
     """
     job_status, job_id = '', ''
-    cmd = f"cd {path}; {submit_command[servers['local']['cluster_soft']]} " \
+    if servers['local']['cluster_soft'].lower() == 'cobalt':
+        try:
+            submit_command_ = submit_command[servers['local']['cluster_soft']].format(time='5', nodes=128)  # Todo - make dynamic
+        except KeyError:
+            pass
+    else:
+        submit_command_ = submit_command[servers['local']['cluster_soft']]
+    cmd = f"cd {path}; {submit_command_} " \
           f"{submit_filenames[servers['local']['cluster_soft']]}"
     stdout, stderr = execute_command(cmd)
     if not len(stdout):
