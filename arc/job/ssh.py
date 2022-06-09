@@ -269,13 +269,13 @@ class SSHClient(object):
         Returns: list
             A list of job IDs.
         """
-        if servers[self.server]['cluster_soft'].lower() not in ['slurm', 'oge', 'sge', 'pbs', 'htcondor']:
+        if servers[self.server]['cluster_soft'].lower() not in ['slurm', 'oge', 'sge', 'pbs', 'htcondor', 'cobalt']:
             raise ValueError(f"Server cluster software {servers['local']['cluster_soft']} is not supported.")
         running_job_ids = list()
         cmd = check_status_command[servers[self.server]['cluster_soft']]
         stdout = self._send_command_to_server(cmd)[0]
-        i_dict = {'slurm': 0, 'oge': 1, 'sge': 1, 'pbs': 4, 'htcondor': -1}
-        split_by_dict = {'slurm': ' ', 'oge': ' ', 'sge': ' ', 'pbs': '.', 'htcondor': ' '}
+        i_dict = {'slurm': 0, 'oge': 1, 'sge': 1, 'pbs': 4, 'htcondor': -1, 'cobalt': 1}
+        split_by_dict = {'slurm': ' ', 'oge': ' ', 'sge': ' ', 'pbs': '.', 'htcondor': ' ', 'cobalt': ' '}
         cluster_soft = servers[self.server]['cluster_soft'].lower()
         for i, status_line in enumerate(stdout):
             if i > i_dict[cluster_soft]:
@@ -320,6 +320,8 @@ class SSHClient(object):
             # 1 job(s) submitted to cluster 443069.
             if len(stdout) and len(stdout[1].split()) and len(stdout[1].split()[-1].split('.')):
                 job_id = stdout[1].split()[-1][:-1]
+        elif cluster_soft == 'cobalt' and 'job routed to queue' in stdout[0].lower():
+            job_id = stdout[-1].strip()
         else:
             raise ValueError(f'Unrecognized cluster software: {cluster_soft}')
         job_status = 'running' if job_id else job_status
@@ -440,8 +442,6 @@ class SSHClient(object):
             list: lines of the node hostnames.
         """
         cluster_soft = servers[self.server]['cluster_soft'].lower()
-        if cluster_soft == 'htcondor':
-            return list()
         cmd = list_available_nodes_command[cluster_soft]
         stdout = self._send_command_to_server(command=cmd)[0]
         nodes = list()
@@ -455,8 +455,9 @@ class SSHClient(object):
             # node01 alloc 1.00 none
             nodes = [line.split()[0] for line in stdout
                      if line.split()[1] in ['mix', 'alloc', 'idle']]
-        elif cluster_soft.lower() in ['pbs', 'htcondor']:
+        elif cluster_soft.lower() in ['htcondor', 'cobalt']:
             logger.warning(f'Listing available nodes is not yet implemented for {cluster_soft}.')
+            return list()
         return nodes
 
     def change_mode(self,
@@ -530,7 +531,7 @@ class SSHClient(object):
 
 
 def check_job_status_in_stdout(job_id: Union[int, str],
-                               stdout: Union[list, str],
+                               stdout: Union[List[str], str],
                                server: Optional[str] = None,
                                cluster_soft: Optional[str] = None,
                                ) -> str:
