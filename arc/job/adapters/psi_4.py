@@ -44,6 +44,7 @@ molecule ${label} {
 ${charge} ${multiplicity}
 ${geometry}
 }
+${global_set}
 ${scan}
 ${indent}set basis ${basis}
 ${indent}set reference uhf
@@ -233,7 +234,7 @@ class Psi4Adapter(JobAdapter):
         """
         Write the input file to execute the job on the server.
         """
-        scan, indent, epilogue = '', '', ''
+        scan, indent, epilogue, global_set = '', '', '', ''
         geometry = xyz_to_str(self.get_geometry())
         if self.job_type in ['conformers', 'opt']:
             func = 'optimize'
@@ -271,11 +272,24 @@ class Psi4Adapter(JobAdapter):
         else:
             raise NotImplementedError(f'Psi4 job type {self.job_type} is not implemented')
 
+        dft_spherical_points = 302 if self.fine else 590
+        dft_radial_points = 75 if self.fine else 99
+        dft_basis_tolerance = 1.0E-12 if self.fine else 1.0E-11  # TODO: Trsh to 1.0E-10
+        global_set = f"""set {{
+scf_type df
+dft_spherical_points {dft_spherical_points}
+dft_radial_points {dft_radial_points}
+dft_basis_tolerance {dft_basis_tolerance}
+dft_pruning_scheme robust
+}}
+"""
+
         input_dict = {'memory': self.job_memory_gb,
                       'label': self.species_label,
                       'charge': self.species[0].charge,
                       'multiplicity': self.species[0].multiplicity,
                       'geometry': geometry,
+                      'global_set': global_set,
                       'basis': self.level.basis,
                       'scan': scan,
                       'indent': indent,
