@@ -89,13 +89,13 @@ WorkDir=/state/partition1/user/{un}/$SLURM_JOB_NAME-$SLURM_JOB_ID
 SubmitDir=`pwd`
 
 #openmpi
-export PATH=/home/gridsan/alongd/openmpi-3.1.4/bin:$PATH
-export LD_LIBRARY_PATH=/home/gridsan/alongd/openmpi-3.1.4/lib:$LD_LIBRARY_PATH
+export PATH=/home/gridsan/username/openmpi-3.1.4/bin:$PATH
+export LD_LIBRARY_PATH=/home/gridsan/username/openmpi-3.1.4/lib:$LD_LIBRARY_PATH
 
 #Orca
-orcadir=/home/gridsan/alongd/orca_4_2_1_linux_x86-64_openmpi314
-export PATH=/home/gridsan/alongd/orca_4_2_1_linux_x86-64_openmpi314:$PATH
-export LD_LIBRARY_PATH=/home/gridsan/alongd/orca_4_2_1_linux_x86-64_openmpi314:$LD_LIBRARY_PATH
+orcadir=/home/gridsan/username/orca_4_2_1_linux_x86-64_openmpi314
+export PATH=/home/gridsan/username/orca_4_2_1_linux_x86-64_openmpi314:$PATH
+export LD_LIBRARY_PATH=/home/gridsan/username/orca_4_2_1_linux_x86-64_openmpi314:$LD_LIBRARY_PATH
 echo "orcaversion"
 which orca
 mkdir -p $WorkDir
@@ -241,6 +241,27 @@ cp "$WorkDir/input_property.txt" .
 touch final_time
 
 rm -rf $WorkDir
+
+touch final_time
+
+""",
+    },
+
+    'theta': {
+        # Cobalt cluster software
+        # Psi4
+        'psi4': """#!/bin/bash -l
+#COBALT -t {t_max}
+#COBALT -n {cpus}
+#COBALT -q default 
+#COBALT --attrs mcdram=cache:numa=quad 
+#COBALT -A AnMod
+
+. /home/username/Code/psi4conda/etc/profile.d/conda.sh
+
+touch initial_time
+
+aprun -n {cpus} -N 1 psi4 input.in
 
 touch final_time
 
