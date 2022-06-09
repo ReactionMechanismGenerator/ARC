@@ -529,21 +529,61 @@ class SSHClient(object):
                 f'Cannot create dir for the given path ({remote_path}).\nGot: {stderr}')
 
 
-def check_job_status_in_stdout(job_id: int,
+def check_job_status_in_stdout(job_id: Union[int, str],
                                stdout: Union[list, str],
-                               server: str,
+                               server: Optional[str] = None,
+                               cluster_soft: Optional[str] = None,
                                ) -> str:
     """
     A helper function for checking job status.
+    Status line formats:
+
+    OGE::
+
+        540420 0.45326 xq1340b    user_name       r     10/26/2018 11:08:30 long1@node18.cluster
+
+    Slurm::
+
+        14428     debug xq1371m2   user_name  R 50-04:04:46      1 node06
+
+    PBS (taken from zeldo.dow.com)::
+                                                                                         Req'd       Req'd       Elap
+        Job ID                  Username    Queue    Jobname         SessID  NDS   TSK   Memory      Time    S   Time
+        ----------------------- ----------- -------- --------------- ------ ----- ------ --------- --------- - ---------
+        2016614.zeldo.local     u780444     workq    scan.pbs         75380     1     10       --  730:00:00 R  00:00:20
+        2016616.zeldo.local     u780444     workq    scan.pbs         75380     1     10       --  730:00:00 R  00:00:20
+
+    HTCondor (using ARC's modified condor_q command)::
+
+        3261.0 R 10 28161 a2719 56
+        3263.0 R 10 28161 a2721 23
+        3268.0 R 10 28161 a2726 18
+        3269.0 R 10 28161 a2727 17
+        3270.0 P 10 28161 a2728 23
+
+    Cobalt::
+
+        JobID   User       WallTime  Nodes  State     Location
+        ========================================================
+        602991  user_name  00:01:00  1      queued    None
+        602997  user_name  00:01:00  1      starting  0
+        602998  user_name  00:01:00  1      running   0
+        602998  user_name  00:01:00  1      exiting   0
+        602998  user_name  00:01:00  1      killing   0
 
     Args:
-        job_id (int): the job ID recognized by the server.
+        job_id (Union[int, str]): the job ID recognized by the server.
         stdout (Union[list, str]): The output of a queue status check.
         server (str): The server name.
+        cluster_soft (str): The server cluster software name.
 
     Returns:
         str: The job status on the server ('running', 'done', or 'errored').
     """
+    cluster_soft = cluster_soft or servers[server]['cluster_soft']
+    if cluster_soft is None or not isinstance(cluster_soft, str):
+        raise ValueError('Cannot check for job server status without a server name or a server cluster software name.')
+    cluster_soft = cluster_soft.lower()
     if not isinstance(stdout, list):
         stdout = stdout.splitlines()
     for status_line in stdout:
@@ -551,28 +591,33 @@ def check_job_status_in_stdout(job_id: int,
             break
     else:
         return 'done'
-    if servers[server]['cluster_soft'].lower() == 'slurm':
+    if cluster_soft == 'slurm':
         status = status_line.split()[4]
         if status.lower() in ['r', 'qw', 't', 'cg', 'pd']:
             return 'running'
         elif status.lower() in ['bf', 'ca', 'f', 'nf', 'st', 'oom']:
             return 'errored'
-    elif servers[server]['cluster_soft'].lower() == 'pbs':
+    elif cluster_soft == 'pbs':
         status = status_line.split()[-2]
         if status.lower() in ['r', 'q', 'c', 'e', 'w']:
             return 'running'
         elif status.lower() in ['h', 's']:
             return 'errored'
-    elif servers[server]['cluster_soft'].lower() in ['oge', 'sge']:
+    elif cluster_soft in ['oge', 'sge']:
         status = status_line.split()[4]
         if status.lower() in ['r', 'qw', 't']:
             return 'running'
         elif status.lower() in ['e']:
             return 'errored'
-    elif servers[server]['cluster_soft'].lower() == 'htcondor':
+    elif cluster_soft == 'htcondor':
         return 'running'
+    elif cluster_soft == 'cobalt':
+        status = status_line.split()[4]
+        if status.lower() in ['queued', 'starting', 'running', 'exiting', 'killing']:
+            return 'running'
     else:
         raise ValueError(f'Unknown cluster software {servers[server]["cluster_soft"]}')
+    return 'errored'
 
 
 def delete_all_arc_jobs(server_list: list,
