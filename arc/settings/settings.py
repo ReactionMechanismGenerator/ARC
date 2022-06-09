@@ -170,6 +170,11 @@ default_levels_of_theory = {'conformer': 'wb97xd/def2svp',  # it's recommended t
                             'orbitals_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of CBS-QB3
                             }
 
+
+# List here Job adapters which will be executed "incore" (as opposed to being submitted to a server).
+# The default behavior is "queue", "pipe" will be called whenever needed.
+default_incore_adapters = ['autotst', 'gcn', 'heuristics', 'kinbot']
+
 # Software specific default settings
 # Orca
 # ARC accepts all the Orca options listed in the dictionary below. For specifying additional Orca options, please see

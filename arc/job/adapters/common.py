@@ -69,10 +69,6 @@ ts_adapters_by_rmg_family = {'1+2_Cycloaddition': ['kinbot'],
 all_families_ts_adapters = []
 
 
-# Default is "queue", "pipe" will be called whenever needed. So just list 'incore'.
-default_incore_adapters = ['autotst', 'gcn', 'heuristics', 'kinbot', 'psi4']
-
-
 def is_restricted(obj) -> bool:
     """
     Check whether a Job Adapter should be executed as restricted or unrestricted.
