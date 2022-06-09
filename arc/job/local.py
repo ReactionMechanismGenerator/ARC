@@ -159,7 +159,7 @@ def check_running_jobs_ids() -> List[str]:
         List[str]: List of job IDs.
     """
     cluster_soft = servers['local']['cluster_soft'].lower()
-    if cluster_soft not in ['slurm', 'oge', 'sge', 'pbs', 'htcondor']:
+    if cluster_soft not in ['slurm', 'oge', 'sge', 'pbs', 'htcondor', 'cobalt']:
         raise ValueError(f"Server cluster software {servers['local']['cluster_soft']} is not supported.")
     cmd = check_status_command[servers['local']['cluster_soft']]
     stdout = execute_command(cmd)[0]
@@ -167,7 +167,7 @@ def check_running_jobs_ids() -> List[str]:
     return running_job_ids
 
 
-def parse_running_jobs_ids(stdout: List[str],
+def parse_running_jobs_ids(stdout: Union[List[str], str],
                            cluster_soft: Optional[str] = None,
                            ) -> List[str]:
     """
@@ -180,9 +180,14 @@ def parse_running_jobs_ids(stdout: List[str],
     Returns:
         List(str): List of job IDs.
     """
-    cluster_soft = cluster_soft or servers['local']['cluster_soft'].lower()
-    i_dict = {'slurm': 0, 'oge': 1, 'sge': 1, 'pbs': 4, 'htcondor': -1}
-    split_by_dict = {'slurm': ' ', 'oge': ' ', 'sge': ' ', 'pbs': '.', 'htcondor': '.'}
+    cluster_soft = cluster_soft or servers['local']['cluster_soft']
+    if cluster_soft is None or not isinstance(cluster_soft, str):
+        raise ValueError('Cannot check for job server status without a server name or a server cluster software name.')
+    if not isinstance(stdout, list):
+        stdout = stdout.splitlines()
+    cluster_soft = cluster_soft.lower()
+    i_dict = {'slurm': 0, 'oge': 1, 'sge': 1, 'pbs': 4, 'htcondor': -1, 'cobalt': 1}
+    split_by_dict = {'slurm': ' ', 'oge': ' ', 'sge': ' ', 'pbs': '.', 'htcondor': '.', 'cobalt': ' '}
     running_job_ids = list()
     for i, status_line in enumerate(stdout):
         if i > i_dict[cluster_soft]:
@@ -233,7 +238,8 @@ def _determine_job_id(stdout: List[str],
         stdout (List[str]): The stdout got from submitting a job.
     """
     job_id = ''
-    cluster_soft = cluster_soft or servers['local']['cluster_soft'].lower()
+    cluster_soft = cluster_soft or servers['local']['cluster_soft']
+    cluster_soft = cluster_soft.lower()
     if cluster_soft in ['oge', 'sge'] and 'submitted' in stdout[0].lower():
         job_id = stdout[0].split()[2]
     elif cluster_soft == 'slurm' and 'submitted' in stdout[0].lower():
@@ -243,6 +249,8 @@ def _determine_job_id(stdout: List[str],
     elif cluster_soft == 'htcondor' and 'submitting' in stdout[0].lower():
         if len(stdout) and len(stdout[1].split()) and len(stdout[1].split()[-1].split('.')):
             job_id = stdout[1].split()[-1].split('.')[0]
+    elif cluster_soft == 'cobalt' and 'job routed to queue' in stdout[0].lower():
+        job_id = stdout[-1].strip()
     else:
         raise ValueError(f'Unrecognized cluster software: {cluster_soft}')
     return job_id
@@ -366,6 +374,9 @@ def delete_all_local_arc_jobs(jobs: Optional[List[Union[str, int]]] = None) -> N
                         delete_job(job_name)
                     elif cluster_soft == 'htcondor':
                         server_job_id = status_line.split()[0].split('.')[0]
+                        delete_job(server_job_id)
+                    elif cluster_soft == 'cobalt':
+                        server_job_id = stdout[-1].strip()
                         delete_job(server_job_id)
                     else:
                         raise ValueError(f'Unrecognized cluster software {cluster_soft}.')
