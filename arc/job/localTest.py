@@ -39,18 +39,29 @@ class TestLocal(unittest.TestCase):
     def test_determine_job_id(self):
         """Test determining a job ID from the stdout of a job submission command."""
         # Slurm
-        stdout_1 = ['Submitted batch job 17670585']
-        job_id = local._determine_job_id(stdout_1, cluster_soft='slurm')
+        stdout = ['Submitted batch job 17670585']
+        job_id = local._determine_job_id(stdout, cluster_soft='slurm')
         self.assertEqual(job_id, '17670585')
 
         # HTCondor
-        stdout_2 = ['Submitting job(s).', '1 job(s) submitted to cluster 5263.']
-        job_id = local._determine_job_id(stdout_2)
+        stdout = ['Submitting job(s).', '1 job(s) submitted to cluster 5263.']
+        job_id = local._determine_job_id(stdout)
         self.assertEqual(job_id, '5263')
+
+        # Cobalt
+        stdout = ['Job routed to queue "debug-flat-quad".',
+                  'Memory mode set to flat quad for queue debug-flat-quad',
+                  'WARNING: Filesystem attribute not set for this job submission.',
+                  'This job will be set to request all filesystems.  In the event',
+                  'of a filesystem outage, this job may be put on hold unnecessarily.',
+                  "Setting attrs to:  {'numa': 'quad', 'mcdram': 'flat', 'filesystems': 'home,grand,eagle,theta-fs0'}",
+                  '603441']
+        job_id = local._determine_job_id(stdout, cluster_soft='Cobalt')
+        self.assertEqual(job_id, '603441')
 
         # Wrong server name
         with self.assertRaises(ValueError):
-            local._determine_job_id(stdout_2, cluster_soft='wrong')
+            local._determine_job_id(stdout, cluster_soft='wrong')
 
     def test_get_last_modified_time(self):
         """Test the get_last_modified_time() function"""
@@ -75,10 +86,27 @@ class TestLocal(unittest.TestCase):
 
     def test_parse_running_jobs_ids(self):
         """Test the parse_running_jobs_ids() function"""
+        # OGE
+        stdout = [
+            'job-ID  prior   name       user         state submit/start at     queue                          slots ja-task-ID',
+            '-----------------------------------------------------------------------------------------------------------------',
+            ' 582682 0.45451 a9654      un       e     04/17/2019 16:22:14 long5@node93.cluster              48',
+            ' 588334 0.45451 pf1005a    un       r     05/07/2019 16:24:31 long3@node67.cluster              48',
+            ' 588345 0.45451 a14121     un       r     05/08/2019 02:11:42 long3@node69.cluster              48', ]
+        running_job_ids = local.parse_running_jobs_ids(stdout, cluster_soft='OGE')
+        self.assertEqual(running_job_ids, ['582682', '588334', '588345'])
+        stdout = """job-ID  prior   name       user         state submit/start at     queue                          slots ja-task-ID
+ -----------------------------------------------------------------------------------------------------------------
+ 582685 0.45451 a9654      un       e     04/17/2019 16:22:14 long5@node93.cluster              48
+ 588336 0.45451 pf1005a    un       r     05/07/2019 16:24:31 long3@node67.cluster              48
+ 588347 0.45451 a14121     un       r     05/08/2019 02:11:42 long3@node69.cluster              48 """
+        running_job_ids = local.parse_running_jobs_ids(stdout, cluster_soft='OGE')
+        self.assertEqual(running_job_ids, ['582685', '588336', '588347'])
+
         # Slurm:
         stdout = ['             JOBID PARTITION     NAME     USER ST       TIME  NODES NODELIST(REASON)',
-                  '          10990729    normal     a207   alongd PD       0:00      1 (None)',
-                  '          10990728   xeon-p8  xa1001d   alongd  R       0:05      1 d-19-14-2',
+                  '          10990729    normal     a207   un PD       0:00      1 (None)',
+                  '          10990728   xeon-p8  xa1001d   un  R       0:05      1 d-19-14-2',
                   ]
         running_job_ids = local.parse_running_jobs_ids(stdout, cluster_soft='slurm')
         self.assertEqual(running_job_ids, ['10990729', '10990728'])
@@ -93,8 +121,20 @@ class TestLocal(unittest.TestCase):
                   '11230.0 P 8 6759 a2501 13',
                   '11231.0 P 8 6759 a2502 13',
                   ]
-        running_job_ids = local.parse_running_jobs_ids(stdout, cluster_soft='htcondor')
+        running_job_ids = local.parse_running_jobs_ids(stdout, cluster_soft='HTCondor')
         self.assertEqual(running_job_ids, ['11224', '11225', '11226', '11227', '11228', '11229', '11230', '11231'])
+
+        # Cobalt
+        stdout = ['JobID   User       WallTime  Nodes  State     Location',
+                  '========================================================',
+                  '602991  user_name  00:01:00  1      queued    None',
+                  '602992  user_name  00:01:00  1      starting  0',
+                  '602993  user_name  00:01:00  1      running   0',
+                  '602994  user_name  00:01:00  1      exiting   0',
+                  '602995  user_name  00:01:00  1      errored   0',
+                  '602996  user_name  00:01:00  1      killing   0']
+        running_job_ids = local.parse_running_jobs_ids(stdout, cluster_soft='Cobalt')
+        self.assertEqual(running_job_ids, ['602991', '602992', '602993', '602994', '602995', '602996'])
 
 
 if __name__ == '__main__':
