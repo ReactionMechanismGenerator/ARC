@@ -729,7 +729,7 @@ class JobAdapter(ABC):
             total_submit_script_memory = self.job_memory_gb * 1024 * 1.1  # MB
         # Determine amount of memory in submit script based on cluster job scheduling system.
         cluster_software = servers[self.server].get('cluster_soft').lower()
-        if cluster_software in ['oge', 'sge', 'pbs', 'htcondor']:
+        if cluster_software in ['oge', 'sge', 'pbs', 'htcondor', 'cobalt']:
             # In SGE, "-l h_vmem=5000M" specifies the amount of maximum memory required for all cores to be 5000 MB.
             self.submit_script_memory = math.ceil(total_submit_script_memory)  # in MB
         if cluster_software in ['pbs']:
@@ -881,38 +881,45 @@ class JobAdapter(ABC):
         """
         content = ''
         cluster_soft = servers[self.server]['cluster_soft'].lower()
-        if cluster_soft in ['oge', 'sge', 'slurm', 'pbs', 'htcondor']:
+        if cluster_soft in ['oge', 'sge', 'slurm', 'pbs', 'htcondor', 'cobalt']:
             local_file_path_1 = os.path.join(self.local_path, 'out.txt')
             local_file_path_2 = os.path.join(self.local_path, 'err.txt')
             local_file_path_3 = os.path.join(self.local_path, 'job.log')
-            if self.server != 'local' and self.remote_path is not None:
-                remote_file_path_1 = os.path.join(self.remote_path, 'out.txt')
-                remote_file_path_2 = os.path.join(self.remote_path, 'err.txt')
-                remote_file_path_3 = os.path.join(self.remote_path, 'job.log')
-                with SSHClient(self.server) as ssh:
-                    for local_file_path, remote_file_path in zip([local_file_path_1,
-                                                                  local_file_path_2,
-                                                                  local_file_path_3],
-                                                                 [remote_file_path_1,
-                                                                  remote_file_path_2,
-                                                                  remote_file_path_3]):
-                        try:
-                            ssh.download_file(remote_file_path=remote_file_path,
-                                              local_file_path=local_file_path)
-                        except (TypeError, IOError) as e:
-                            logger.warning(f'Got the following error when trying to download {remote_file_path} for '
-                                           f'{self.job_name}. Please check that the submission script contains -o and -e '
-                                           f'flags with stdout and stderr of out.txt and err.txt, respectively '
-                                           f'(e.g., "#SBATCH -o out.txt"). Error message:')
-                            logger.warning(e)
-            for local_file_path in [local_file_path_1, local_file_path_2, local_file_path_3]:
-                if os.path.isfile(local_file_path):
-                    with open(local_file_path, 'r') as f:
-                        lines = f.readlines()
-                    content += ''.join([line for line in lines])
-                    content += '\n'
         else:
             raise ValueError(f'Unrecognized cluster software: {cluster_soft}')
+        if cluster_soft == 'cobalt':
+            for (root, _, files) in os.walk(self.local_path):
+                for file_ in files:
+                    if os.path.splitext(file_)[1] == '.cobaltlog':
+                        local_file_path_3 = file_
+                        break
+                break
+        if self.server != 'local' and self.remote_path is not None:
+            remote_file_path_1 = os.path.join(self.remote_path, 'out.txt')
+            remote_file_path_2 = os.path.join(self.remote_path, 'err.txt')
+            remote_file_path_3 = os.path.join(self.remote_path, 'job.log')
+            with SSHClient(self.server) as ssh:
+                for local_file_path, remote_file_path in zip([local_file_path_1,
+                                                              local_file_path_2,
+                                                              local_file_path_3],
+                                                             [remote_file_path_1,
+                                                              remote_file_path_2,
+                                                              remote_file_path_3]):
+                    try:
+                        ssh.download_file(remote_file_path=remote_file_path,
+                                          local_file_path=local_file_path)
+                    except (TypeError, IOError) as e:
+                        logger.warning(f'Got the following error when trying to download {remote_file_path} for '
+                                       f'{self.job_name}. Please check that the submission script contains -o and -e '
+                                       f'flags with stdout and stderr of out.txt and err.txt, respectively '
+                                       f'(e.g., "#SBATCH -o out.txt"). Error message:')
+                        logger.warning(e)
+        for local_file_path in [local_file_path_1, local_file_path_2, local_file_path_3]:
+            if os.path.isfile(local_file_path):
+                with open(local_file_path, 'r') as f:
+                    lines = f.readlines()
+                content += ''.join([line for line in lines])
+                content += '\n'
         return content
 
     def _check_job_server_status(self):
