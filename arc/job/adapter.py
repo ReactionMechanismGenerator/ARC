@@ -815,6 +815,12 @@ class JobAdapter(ABC):
             h, s = divmod(t_delta.seconds, 3600)
             h += t_delta.days * 24
             t_max = f"{h}:{':'.join(str(datetime.timedelta(seconds=s)).split(':')[1:])}"
+        elif time_format == 'minutes':
+            # e.g., 60
+            h, s = divmod(t_delta.seconds, 3600)
+            h += t_delta.days * 24
+            m = h * 60 + s / 60
+            t_max = str(int(m))
         else:
             raise JobError(f"Could not determine a format for maximal job time.\n Format is determined by "
                            f"{t_max_format}, but got {servers[self.server]['cluster_soft']} for {self.server}")
