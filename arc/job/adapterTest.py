@@ -332,6 +332,7 @@ class TestJobAdapter(unittest.TestCase):
         test_job.max_job_time = 59.888
         self.assertEqual(test_job.format_max_job_time('days'), '2-11:53:16')
         self.assertEqual(test_job.format_max_job_time('hours'), '59:53:16')
+        self.assertEqual(test_job.format_max_job_time('minutes'), '3593')
 
     def test_add_to_args(self):
         """Test adding parameters to self.args"""
