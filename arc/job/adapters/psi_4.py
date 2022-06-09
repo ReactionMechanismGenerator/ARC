@@ -140,7 +140,7 @@ class Psi4Adapter(JobAdapter):
                  ):
 
         self.job_adapter = 'psi4'
-        self.execution_type = execution_type or 'incore'
+        self.execution_type = execution_type or 'queue'
         self.command = 'psi4.py'
         self.url = 'https://www.psicode.org/'
 
