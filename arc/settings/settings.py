@@ -125,7 +125,7 @@ submit_filenames = {'OGE': 'submit.sh',
                     'Slurm': 'submit.sl',
                     'PBS': 'submit.sh',
                     'HTCondor': 'submit.sub',
-                    'Cobalt': 'submit.sub',
+                    'Cobalt': 'submit.sh',
                     }
 
 t_max_format = {'OGE': 'hours',
