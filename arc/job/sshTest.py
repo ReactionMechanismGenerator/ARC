@@ -20,9 +20,9 @@ class TestSSH(unittest.TestCase):
         # OGE
         stdout_1 = """job-ID  prior   name       user         state submit/start at     queue                          slots ja-task-ID 
 -----------------------------------------------------------------------------------------------------------------
- 582682 0.45451 a9654      alongd       e     04/17/2019 16:22:14 long5@node93.cluster              48
- 588334 0.45451 pf1005a    alongd       r     05/07/2019 16:24:31 long3@node67.cluster              48
- 588345 0.45451 a14121     alongd       r     05/08/2019 02:11:42 long3@node69.cluster              48    """
+ 582682 0.45451 a9654      un       e     04/17/2019 16:22:14 long5@node93.cluster              48
+ 588334 0.45451 pf1005a    un       r     05/07/2019 16:24:31 long3@node67.cluster              48
+ 588345 0.45451 a14121     un       r     05/08/2019 02:11:42 long3@node69.cluster              48    """
         status = ssh.check_job_status_in_stdout(job_id=588345, stdout=stdout_1, server='server1')
         self.assertEqual(status, 'running')
         status = ssh.check_job_status_in_stdout(job_id=582682, stdout=stdout_1, server='server1')
