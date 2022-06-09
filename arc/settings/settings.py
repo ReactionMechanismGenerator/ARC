@@ -105,7 +105,7 @@ submit_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qsub
                   'Slurm': '/usr/bin/sbatch',
                   'PBS': '/usr/local/bin/qsub',
                   'HTCondor': 'condor_submit',
-                  'Cobalt': '/usr/bin/qsub -A ProjectName -t {time_in_min} -q default -n {nodes}',  # Modify ProjectName
+                  'Cobalt': '/usr/bin/qsub -A ProjectName -t {time} -q default -n {nodes}',  # Modify ProjectName
                   }
 
 delete_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qdel',
