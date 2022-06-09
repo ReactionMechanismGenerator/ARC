@@ -98,18 +98,21 @@ check_status_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd6
                         'Slurm': '/usr/bin/squeue -u $USER',
                         'PBS': '/usr/local/bin/qstat -u $USER',
                         'HTCondor': """condor_q -cons 'Member(Jobstatus,{1,2})' -af:j '{"0","P","R","X","C","H",">","S"}[JobStatus]' RequestCpus RequestMemory JobName  '(Time() - EnteredCurrentStatus)'""",
+                        'Cobalt': '/usr/bin/qstat -u $USER',
                         }
 
 submit_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qsub',
                   'Slurm': '/usr/bin/sbatch',
                   'PBS': '/usr/local/bin/qsub',
                   'HTCondor': 'condor_submit',
+                  'Cobalt': '/usr/bin/qsub -A ProjectName -t {time_in_min} -q default -n {nodes}',  # Modify ProjectName
                   }
 
 delete_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qdel',
                   'Slurm': '/usr/bin/scancel',
                   'PBS': '/usr/local/bin/qdel',
                   'HTCondor': 'condor_rm',
+                  'Cobalt': '/usr/bin/qdel',
                   }
 
 list_available_nodes_command = {
@@ -122,12 +125,14 @@ submit_filenames = {'OGE': 'submit.sh',
                     'Slurm': 'submit.sl',
                     'PBS': 'submit.sh',
                     'HTCondor': 'submit.sub',
+                    'Cobalt': 'submit.sub',
                     }
 
 t_max_format = {'OGE': 'hours',
                 'Slurm': 'days',
                 'PBS': 'hours',
                 'HTCondor': 'hours',
+                'Cobalt': 'minutes',
                 }
 
 input_filenames = {'gaussian': 'input.gjf',
