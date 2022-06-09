@@ -219,8 +219,8 @@ def which(command: Union[str, list],
 
     if raise_error and ans is None:
         raise_msg = raise_msg if raise_msg is not None else ''
-        raise ModuleNotFoundError(f"The command {command}"
-                                  f"was not found in envvar PATH nor in PYTHONPATH.\n{raise_msg}")
+        raise ModuleNotFoundError(f"The command {command} "
+                                  f"was not found in PATH nor in PYTHONPATH.\n{raise_msg}")
 
     if return_bool:
         return bool(ans)
