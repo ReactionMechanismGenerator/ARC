@@ -117,33 +117,15 @@ def _format_stdout(stdout: bytes) -> List[str]:
     return list_of_strs
 
 
-def check_job_status(job_id: int) -> str:
+def check_job_status(job_id: Union[int, str]) -> str:
     """
-    Possible status values: ``before_submission``, ``running``, ``errored on node xx``, ``done``
-    Status line formats:
+    Check the job server status.
 
-    OGE::
+    Args:
+        job_id (str): The job ID.
 
-        540420 0.45326 xq1340b    user_name       r     10/26/2018 11:08:30 long1@node18.cluster
-
-    Slurm::
-
-        14428     debug xq1371m2   user_name  R 50-04:04:46      1 node06
-
-    PBS (taken from zeldo.dow.com)::
-                                                                                         Req'd       Req'd       Elap
-        Job ID                  Username    Queue    Jobname         SessID  NDS   TSK   Memory      Time    S   Time
-        ----------------------- ----------- -------- --------------- ------ ----- ------ --------- --------- - ---------
-        2016614.zeldo.local     u780444     workq    scan.pbs         75380     1     10       --  730:00:00 R  00:00:20
-        2016616.zeldo.local     u780444     workq    scan.pbs         75380     1     10       --  730:00:00 R  00:00:20
-
-    HTCondor (using ARC's modified condor_q command)::
-
-        3261.0 R 10 28161 a2719 56
-        3263.0 R 10 28161 a2721 23
-        3268.0 R 10 28161 a2726 18
-        3269.0 R 10 28161 a2727 17
-        3270.0 P 10 28161 a2728 23
+    Returns:
+        str: The job status. Possible values: ``'before_submission'``, ``'running'``, ``'errored on node x'``, ``'done'``.
     """
     server = 'local'
     cmd = check_status_command[servers[server]['cluster_soft']]
