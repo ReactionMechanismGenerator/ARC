@@ -37,6 +37,8 @@ if TYPE_CHECKING:
 
 TS_GCN_PYTHON = settings['TS_GCN_PYTHON']
 
+DIHEDRAL_INCREMENT = 10
+
 logger = get_logger()
 
 
@@ -99,7 +101,7 @@ class GCNAdapter(JobAdapter):
                  conformer: Optional[int] = None,
                  constraints: Optional[List[Tuple[List[int], float]]] = None,
                  cpu_cores: Optional[str] = None,
-                 dihedral_increment: Optional[float] = 10,
+                 dihedral_increment: Optional[float] = None,
                  dihedrals: Optional[List[float]] = None,
                  directed_scan_type: Optional[str] = None,
                  ess_settings: Optional[dict] = None,
@@ -148,7 +150,7 @@ class GCNAdapter(JobAdapter):
         self.conformer = conformer
         self.constraints = constraints or list()
         self.cpu_cores = cpu_cores
-        self.dihedral_increment = dihedral_increment
+        self.dihedral_increment = dihedral_increment or DIHEDRAL_INCREMENT
         self.dihedrals = dihedrals
         self.directed_scan_type = directed_scan_type
         self.ess_settings = ess_settings
