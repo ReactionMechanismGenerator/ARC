@@ -54,7 +54,6 @@ dependencies:
   - conda-forge::qcelemental
   - mako
   - pytables
-  - bsl-py ==0.12.0
   - argon2-cffi ==20.1.0
   - ffmpeg ==4.2.2
   - libgcc-ng ==9.1.0
