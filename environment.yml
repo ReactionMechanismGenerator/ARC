@@ -56,6 +56,5 @@ dependencies:
   - pytables
   - argon2-cffi ==20.1.0
   - ffmpeg ==4.2.2
-  - libgcc-ng ==9.1.0
   - libgfortran-ng ==7.3.0
   - libtiff ==4.1.0
