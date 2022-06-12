@@ -12,7 +12,6 @@ dependencies:
   - coolprop
   - coverage
   - cython >=0.25.2
-  - ffmpeg
   - rmg::gprof2dot
   - graphviz
   - h5py
@@ -47,7 +46,7 @@ dependencies:
   - xlrd
   - xlwt
   - anaconda::sphinx_rtd_theme
-  - anaconda::paramiko >=2.6.0
+  - anaconda::paramiko ==2.7.2
   - conda-forge::py3dmol >= 0.8.0
   - conda-forge::ase >=3.15.0
   - anaconda::ipython
@@ -58,8 +57,6 @@ dependencies:
   - bsl-py ==0.12.0
   - argon2-cffi ==20.1.0
   - ffmpeg ==4.2.2
-  - ffmpeg ==4.2.2
   - libgcc-ng ==9.1.0
   - libgfortran-ng ==7.3.0
   - libtiff ==4.1.0
-  - paramiko ==2.7.2
