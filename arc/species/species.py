@@ -1761,7 +1761,6 @@ class ARCSpecies(object):
             letter = 'B' if used_a_label else 'A'
             label2 = self.label + '_BDE_' + str(indices[0] + 1) + '_' + str(indices[1] + 1) + '_' + letter
 
-        added_radical = list()
         for mol, label in zip([mol1, mol2], [label1, label2]):
             for atom in mol.atoms:
                 theoretical_charge = elements.PeriodicSystem.valence_electrons[atom.symbol] \
@@ -1769,13 +1768,8 @@ class ARCSpecies(object):
                                      - atom.radical_electrons - \
                                      2 * atom.lone_pairs
                 if theoretical_charge == atom.charge + 1:
-                    # we're missing a radical electron on this atom
-                    if label not in added_radical or label == 'H':
-                        atom.radical_electrons += 1
-                        added_radical.append(label)
-                    else:
-                        raise SpeciesError(f'Could not figure out which atom should gain a radical '
-                                           f'due to scission in {self.label}')
+                    # We're missing a radical electron on this atom.
+                    atom.radical_electrons += 1
         mol1.update(raise_atomtype_exception=False, sort_atoms=False)
         mol2.update(raise_atomtype_exception=False, sort_atoms=False)
 
