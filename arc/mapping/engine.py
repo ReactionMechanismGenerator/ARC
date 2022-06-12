@@ -1047,6 +1047,10 @@ def map_rxn(rxn: 'ARCReaction',
     #step 3:
     label_species_atoms(reactants)
     label_species_atoms(products)
+    print('\n\nE1050')
+    print(r.copy().mol.to_smiles() for r in reactants)
+    print(p.copy().mol.to_smiles() for p in products)
+    print(loc_r, loc_p)
     r_cuts, p_cuts = cut_species_for_mapping(reactants, products,loc_r,loc_p)
 
     make_bond_changes(rxn,r_cuts,r_label_dict)
@@ -1203,7 +1207,8 @@ def cut_species_for_mapping(reactants: List[ARCSpecies],
                 reactant.final_xyz=reactant.get_xyz()
                 cuts=reactant.scissors(sort_atom_labels=True)
                 r_cuts+=cuts
-            except SpeciesError:
+            except SpeciesError as e:
+                print(f'E1211 error: {e}')
                 return None
         elif index>1:
             bdes = reactant.bdes
@@ -1213,7 +1218,8 @@ def cut_species_for_mapping(reactants: List[ARCSpecies],
                 new_r.final_xyz = new_r.get_xyz()
                 try:
                     cuts=new_r.scissors(sort_atom_labels=True)
-                except:
+                except Exception as e:
+                    print(f'E1222 error: {e}')
                     return None
                 main, second = find_main_cut_product(cuts, reactant,bde)
                 r_cuts += [second]
@@ -1232,7 +1238,8 @@ def cut_species_for_mapping(reactants: List[ARCSpecies],
                     labels = [atom.label for atom in product.mol.atoms]
                     cuts[-1].mol.atoms[0].label = labels[1] if cuts[0].mol.atoms[0].label == labels[0] else labels[0]
                 p_cuts += cuts
-            except SpeciesError:
+            except SpeciesError as e:
+                print(f'E1242 error: {e}')
                 return None
         elif index > 1:
             bdes = product.bdes
@@ -1242,7 +1249,8 @@ def cut_species_for_mapping(reactants: List[ARCSpecies],
                 new_p.final_xyz = new_p.get_xyz()
                 try:
                     cuts = new_p.scissors(sort_atom_labels=True)
-                except:
+                except Exception as e:
+                    print(f'E1253 error: {e}')
                     return None
                 main, second = find_main_cut_product(cuts, product, bde)
                 p_cuts += [second]
