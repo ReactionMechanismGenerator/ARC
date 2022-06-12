@@ -1048,8 +1048,8 @@ def map_rxn(rxn: 'ARCReaction',
     label_species_atoms(reactants)
     label_species_atoms(products)
     print('\n\nE1050')
-    print(r.copy().mol.to_smiles() for r in reactants)
-    print(p.copy().mol.to_smiles() for p in products)
+    print([r.copy().mol.to_smiles() for r in reactants])
+    print([p.copy().mol.to_smiles() for p in products])
     print(loc_r, loc_p)
     r_cuts, p_cuts = cut_species_for_mapping(reactants, products,loc_r,loc_p)
 
