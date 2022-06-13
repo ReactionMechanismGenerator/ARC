@@ -91,7 +91,7 @@ dependencies:
   - conda-forge::pip ==22.0.3
   - prometheus_client ==0.13.1
   - conda-forge::prompt-toolkit ==3.0.26
-  - conda-forge::prompt_toolkit ==
+  - conda-forge::prompt_toolkit ==3.0.26
   - conda-forge::pkg ==3.0.26
   - conda-forge::protobuf ==3.19.4
   - conda-forge::qtpy ==2.0.1
