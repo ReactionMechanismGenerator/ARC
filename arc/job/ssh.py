@@ -12,7 +12,7 @@ import os
 import time
 from typing import Any, Callable, List, Optional, Tuple, Union
 
-import paramiko
+#import paramiko
 
 from arc.common import get_logger
 from arc.exceptions import InputError, ServerError
@@ -79,7 +79,7 @@ class SSHClient(object):
         self.key = servers[server]['key']
         self._sftp = None
         self._ssh = None
-        logging.getLogger("paramiko").setLevel(logging.WARNING)
+        #logging.getLogger("paramiko").setLevel(logging.WARNING)
 
     def __enter__(self) -> 'SSHClient':
         self.connect()
@@ -352,7 +352,7 @@ class SSHClient(object):
             time.sleep(interval)
         raise ServerError(f'Could not connect to server {self.server} even after {times_tried} trials.')
 
-    def _connect(self) -> Tuple[paramiko.sftp_client.SFTPClient, paramiko.SSHClient]:
+    def _connect(self):
         """
         Connect via paramiko, and open an SSH session as well as a SFTP session.
 
@@ -360,20 +360,21 @@ class SSHClient(object):
             - An SFTP client used to perform remote file operations.
             - A high-level representation of a session with an SSH server.
         """
-        ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.load_system_host_keys(filename=self.key)
-        try:
+        return None, None
+        #ssh = paramiko.SSHClient()
+        #ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        #ssh.load_system_host_keys(filename=self.key)
+        #try:
             # If the server accepts the connection but the SSH daemon doesn't respond in
             # 15 seconds (default in paramiko) due to network congestion, faulty switches,
             # etc..., common solution is enlarging the timeout variable.
-            ssh.connect(hostname=self.address, username=self.un, banner_timeout=200)
-        except:
+            #ssh.connect(hostname=self.address, username=self.un, banner_timeout=200)
+        #except:
             # This sometimes gives "SSHException: Error reading SSH protocol banner[Error 104] Connection reset by peer"
             # Try again:
-            ssh.connect(hostname=self.address, username=self.un, banner_timeout=200)
-        sftp = ssh.open_sftp()
-        return sftp, ssh
+            #ssh.connect(hostname=self.address, username=self.un, banner_timeout=200)
+        #sftp = ssh.open_sftp()
+        #return sftp, ssh
 
     def close(self) -> None:
         """
