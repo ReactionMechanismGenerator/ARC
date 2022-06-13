@@ -3,180 +3,55 @@ channels:
   - defaults
   - rmg
   - conda-forge
-  - psi4
 dependencies:
-  - _libgcc_mutex             0.1
-  - _tflow_select             2.3.0
-  - absl-py                   0.12.0
-  - alabaster                 0.7.12
-  - rmg::algopy ==0.5.7
-  - psi4::ambit ==0.3
-  - argon2-cffi ==20.1.0
-  - conda-forge::ase ==3.22.0
-  - astor ==0.8.1
-  - async_generator ==1.10
-  - atomicwrites ==1.4.0
-  - attrs ==21.2.0
-  - babel ==2.9.1
-  - backcall ==0.2.0
-  - bcrypt ==3.2.0
-  - biopython ==1.78
-  - blas ==1.0
-  - bleach ==3.3.0
-  - blosc  ==1.21.0
-  - boost ==1.67.0
-  - brotlipy ==0.7.0
-  - bzip2 ==1.0.8
-  - c-ares ==1.17.1
-  - ca-certificates ==2021.7.5
   - cairo ==1.16.0
-  - conda-forge::cairocffi ==1.2.0
+  - cairocffi ==1.2.0
   - rmg::cantera ==2.4.0
-  - conda-forge:cclib ==1.7
-  - certifi ==2021.5.30
-  - cffi ==1.14.5
-  - chardet ==4.0.0
+  - conda-forge::cclib ==1.7.1
   - rmg::chemprop ==0.0.1
-  - psi4::chemps2 ==1.8.9
-  - click ==8.0.1
-  - cloudpickle ==1.6.0
-  - rmg::coolprop ==6.2.1
-  - coverage ==5.5
-  - cryptography ==3.4.7
-  - cycler ==0.10.0
-  - cython ==0.29.23
-  - dbus ==1.13.18
-  - decorator ==4.4.2
-  - conda-forge::deepdiff ==5.5.0
-  - defusedxml ==0.7.1
-  - rmg::descriptastorus ==2.2.0
-  - psi4::dkh ==1.2
-  - docutils ==0.17.1
-  - eigen ==3.3.7
-  - entrypoints ==0.3
-  - expat ==2.3.0
-  - ffmpeg ==4.2.2
-  - flask ==1.1.2
-  - fontconfig ==2.13.1
-  - freetype ==2.10.4
-  - future ==0.18.2
-  - gast ==0.4.0
-  - psi4::gau2grid ==1.3.1
-  - psi4::gdma ==2.2.6
-  - glib ==2.68.2
-  - gmp ==6.2.1
-  - gnutls ==3.6.15
-  - google-pasta ==0.2.0
+  - conda-forge::coolprop ==6.4.1
+  - conda-forge::coverage ==6.3.1
+  - conda-forge::cython ==0.29.27
+  - conda-forge::ffmpeg ==4.4.1
   - rmg::gprof2dot ==2017.9.19
-  - rmg::graphviz ==2.38.0
-  - grpcio ==1.36.1
-  - gst-plugins-base ==1.14.0
-  - gstreamer ==1.14.0
-  - gunicorn ==20.1.0
-  - h5py ==2.8.0
-  - hdf5 ==1.10.2
-  - rmg::hyperopt ==0.2.4
-  - icu ==58.2
-  - idna ==2.10
-  - imagesize ==1.2.0
-  - importlib-metadata ==3.10.0
-  - importlib_resources ==5.1.3
-  - intel-openmp ==2021.2.0
-  - ipykernel ==5.3.4
-  - anaconda::ipython ==7.18.1
-  - ipython_genutils ==0.2.0
-  - ipywidgets ==7.6.3
-  - itsdangerous ==2.0.1
-  - jedi ==0.18.0
-  - jinja2 ==3.0.0
-  - joblib ==1.0.1
-  - jpeg ==9b
-  - jsonpickle ==2.0.0
-  - jsonschema ==3.2.0
+  - conda-forge::graphviz ==2.50.0
+  - h5py ==2.10.0
+  - conda-forge::jinja2 ==3.0.3
   - jupyter ==1.0.0
-  - jupyter_client ==6.1.12
-  - jupyter_console ==6.4.0
-  - jupyter_core ==4.7.1
-  - jupyterlab_pygments ==0.1.2
-  - jupyterlab_widgets ==1.0.0
-  - keras-applications ==1.0.8
-  - keras-preprocessing ==1.1.2
-  - kiwisolver ==1.3.1
-  - lame ==3.100
-  - rmg::lapack ==3.6.1
-  - lcms2 ==2.12
-  - ld_impl_linux-64 ==2.33.1
-  - libboost ==1.67.0
-  - libffi ==3.3
-  - libgcc-ng ==9.1.0
-  - rmg::libgfortran ==3.0.0
-  - libgfortran-ng ==7.3.0
-  - libidn2 ==2.3.1
-  - psi4::libint ==1.2.1
-  - libopus ==1.3.1
-  - libpng ==1.6.37
-  - libprotobuf ==3.14.0
-  - libsodium ==1.0.18
-  - libstdcxx-ng ==9.1.0
-  - libtasn1 ==4.16.0
-  - libtiff ==4.1.0
-  - libunistring ==0.9.10
-  - libuuid ==1.0.3
-  - libvpx ==1.7.0
-  - conda-forge::libxc ==4.3.4
-  - libxcb ==1.14
-  - libxml2 ==2.9.10
-  - rmg::lpsolve ==5.5.2.5
   - rmg::lpsolve55 ==5.5
-  - lz4-c ==1.9.3
-  - lzo ==2.10
-  - mako ==1.1.4
-  - markdown ==3.3.4
   - markupsafe ==2.0.1
-  - matplotlib ==3.3.2
-  - matplotlib-base ==3.3.2
-  - mistune ==0.8.4
-  - mkl ==2020.2
-  - mkl-service ==2.3.0
-  - mkl_fft ==1.2.0
-  - mkl_random ==1.1.1
+  - matplotlib >=1.5
   - rmg::mopac ==2017
-  - more-itertools ==8.8.0
   - mpmath ==1.2.1
   - rmg::muq2 ==0.2.0
-  - rmg::nanoflann ==1.3.1
-  - nbclient ==0.5.3
-  - nbconvert ==6.0.7
-  - nbformat ==5.1.3
-  - ncurses ==6.2
-  - nest-asyncio ==1.5.1
-  - nettle ==3.7.2
-  - networkx ==2.5.1
-  - ninja ==1.10.2
-  - rmg::nlopt ==2.6.2
+  - networkx ==2.6.3
   - nose ==1.3.7
-  - notebook ==6.4.0
   - rmg::numdifftools ==0.9.39
-  - numexpr ==2.7.1
   - numpy ==1.15.4
-  - numpy-base ==1.15.4
-  - olefile ==0.46
   - conda-forge::openbabel ==3.1.1
-  - openh264 ==2.1.0
-  - openssl ==1.1.1l
-  - conda-forge::ordered-set ==4.0.2
-  - packaging ==20.9
   - pandas ==1.1.5
-  - pandoc ==2.12
-  - pandocfilters ==1.4.3
-  - anaconda::paramiko ==2.7.2
-  - parso ==0.8.2
-  - patsy ==0.5.1
-  - psi4::pcmsolver ==1.2.1
-  - pcre ==8.44
-  - rmg::periodictable ==1.5.2
-  - pexpect ==4.8.0
-  - pickleshare ==0.7.5
-  - pillow ==8.2.0
-  - conda-forge::pint ==0.17
-  - pip ==21.1.1
+  - psutil ==5.9.0
+  - rmg::pydas ==1.0.2
+  - conda-forge::pydot ==1.4.2
+  - rmg::pydqed ==1.0.1
+  - conda-forge::pymongo ==4.0.1
+  - conda-forge::pyparsing ==3.0.7
+  - rmg::pyrdl ==1.1.2
+  - conda-forge::python ==3.7.12
+  - pyyaml ==6.0
+  - rmg::quantities ==0.12.3
+  - rmg::rdkit ==2020.03.3.0
+  - scikit-learn ==0.23.2
+  - scipy ==1.5.2
+  - rmg::symmetry ==1.0.1
+  - xlrd ==2.0.1
+  - xlwt ==1.3.0
+  - anaconda::sphinx_rtd_theme ==0.4.3
+  - anaconda::paramiko ==2.8.1
+  - conda-forge::py3dmol ==1.8.0
+  - conda-forge::ase ==3.22.1
+  - anaconda::ipython ==7.31.1
+  - anaconda::sphinx ==4.4.0
+  - conda-forge::qcelemental ==0.24.0
+  - mako ==1.1.6
+  - pytables ==3.6.1
