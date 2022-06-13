@@ -65,7 +65,6 @@ dependencies:
   - conda-forge::fontconfig ==2.13.94
   - conda-forge::g-ir-build-tools ==1.70.0
   - conda-forge::g-ir-host-tools ==1.70.0
-  - object-introspection ==1.70.0
   - conda-forge::grpcio ==1.43.0
   - conda-forge::importlib_resources ==5.4.0
   - conda-forge::ipykernel ==6.8.0
@@ -90,7 +89,6 @@ dependencies:
   - prometheus_client ==0.13.1
   - conda-forge::prompt-toolkit ==3.0.26
   - conda-forge::prompt_toolkit ==3.0.26
-  - pkg ==3.0.26
   - conda-forge::protobuf ==3.19.4
   - conda-forge::qtpy ==2.0.1
   - conda-forge::setuptools ==60.7.1
