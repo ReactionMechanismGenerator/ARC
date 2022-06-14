@@ -336,7 +336,8 @@ class ARC(object):
                 if not spc.label:
                     raise InputError(f'Missing label on RMG Species object {spc}')
                 indices_to_pop.append(i)
-                arc_spc = ARCSpecies(is_ts=False, rmg_species=spc)  # assuming an RMG Species is not a TS
+                is_ts = spc.label[:2] == 'TS' and all(char.isdigit() for char in spc.label[2:])
+                arc_spc = ARCSpecies(is_ts=is_ts, rmg_species=spc)
                 converted_species.append(arc_spc)
             elif isinstance(spc, dict):
                 # dict representation for ARCSpecies
