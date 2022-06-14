@@ -3393,8 +3393,8 @@ class Scheduler(object):
                         print([[job_name, get_i_from_job_name(job_name)] for job_name in self.running_jobs[spc.label] if 'conformer' in job_name])
                     print([self.job_dict[spc.label]['conformers'][get_i_from_job_name(job_name)].as_dict()
                            for job_name in self.running_jobs[spc.label] if 'conformer' in job_name])
-                    print([self.job_dict[spc.label]['tsg'][get_i_from_job_name(job_name)].as_dict()
-                           for job_name in self.running_jobs[spc.label] if 'tsg' in job_name])
+                    # print([self.job_dict[spc.label]['tsg'][get_i_from_job_name(job_name)].as_dict()
+                    #        for job_name in self.running_jobs[spc.label] if 'tsg' in job_name])
                     self.restart_dict['running_jobs'][spc.label] = \
                         [self.job_dict[spc.label][job_name.rsplit('_', 1)[0]][job_name].as_dict()
                          for job_name in self.running_jobs[spc.label]
