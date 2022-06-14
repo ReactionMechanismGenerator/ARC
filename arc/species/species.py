@@ -929,6 +929,44 @@ class ARCSpecies(object):
             return len(xyz['symbols']) == 1
         return None
 
+    def is_isomorphic(self, other: Union['ARCSpecies', Species, Molecule]) -> Optional[bool]:
+        """
+        Determine whether the species is isomorphic with ``other``.
+
+        Args:
+            other (Union[ARCSpecies, Species, Molecule]): An ARCSpecies, RMG Species, or RMG Molecule object instance
+                                                          to compare isomorphism with.
+
+        Returns:
+            Optional[bool]: Whether the species is isomorphic with ``other``.
+        """
+        if self.mol is None:
+            return None
+        if isinstance(other, ARCSpecies):
+            if other.mol is None:
+                return None
+            other = other.mol
+        if isinstance(other, Molecule):
+            if self.mol_list is not None and len(self.mol_list):
+                for mol_ in [self.mol] + self.mol_list:
+                    if mol_.copy(deep=True).is_isomorphic(other):
+                        return True
+                return False
+            else:
+                return self.mol.copy(deep=True).is_isomorphic(other)
+        if isinstance(other, Species):
+            for other_mol in other.molecule:
+                if self.mol_list is not None and len(self.mol_list):
+                    for mol_ in [self.mol] + self.mol_list:
+                        if mol_.copy(deep=True).is_isomorphic(other_mol):
+                            return True
+                else:
+                    if self.mol.copy(deep=True).is_isomorphic(other_mol):
+                        return True
+            return False
+        raise SpeciesError(f'can only compare isomorphism to other ARCSpecies, RMG Species, or RMG Molecule '
+                           f'object instances, got {other} which is of type {type(other)}.')
+
     def generate_conformers(self,
                             n_confs: int = 10,
                             e_confs: float = 5,
