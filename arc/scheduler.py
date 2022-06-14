@@ -3268,9 +3268,9 @@ class Scheduler(object):
                     if ('conformer' not in job_description or job_description['conformer'] is None) \
                             and ('tsg' not in job_description or job_description['tsg'] is None):
                         self.running_jobs[spc_label].append(job_description['job_name'])
-                    elif 'conformer' not in job_description:
+                    elif 'conformer' in job_description:
                         self.running_jobs[spc_label].append(f'conformer{job_description["conformer"]}')
-                    elif 'tsg' not in job_description:
+                    elif 'tsg' in job_description:
                         self.running_jobs[spc_label].append(f'tsg{job_description["tsg"]}')
                     for species in self.species_list:
                         if species.label == spc_label:
@@ -3316,7 +3316,7 @@ class Scheduler(object):
                     content += f'\n{spc_label}: '
                     for job_type in self.job_dict[spc_label].keys():
                         for job_name in self.job_dict[spc_label][job_type].keys():
-                            if job_type != 'conformers':
+                            if job_type not in ['conformers', 'tsg']:
                                 content += job_name + ', '
                             elif job_type == 'conformers':
                                 content += self.job_dict[spc_label][job_type][job_name].job_name \
