@@ -188,7 +188,7 @@ class OrcaAdapter(JobAdapter):
         self.ess_settings = ess_settings or global_ess_settings
         self.ess_trsh_methods = ess_trsh_methods or list()
         self.fine = fine
-        self.initial_time = datetime.datetime.strptime(initial_time, '%Y-%m-%d %H:%M:%S') \
+        self.initial_time = datetime.datetime.strptime(initial_time.split('.')[0], '%Y-%m-%d %H:%M:%S') \
             if isinstance(initial_time, str) else initial_time
         self.irc_direction = irc_direction
         self.job_id = job_id
