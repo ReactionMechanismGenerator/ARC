@@ -923,6 +923,10 @@ def h_abstraction(arc_reaction: 'ARCReaction',
     Returns: List[dict]
         Entries are Cartesian coordinates of TS guesses for all reactions.
     """
+
+    print(arc_reaction)
+    print(rmg_reactions)
+
     if not len(rmg_reactions):
         raise ValueError('Cannot generate TS guesses without an RMG Reaction object instance.')
 
@@ -941,6 +945,11 @@ def h_abstraction(arc_reaction: 'ARCReaction',
             products_reversed = True
             break
 
+    print(arc_reaction)
+    print(f'reactants_reversed: {reactants_reversed}')
+    print(f'products_reversed: {products_reversed}')
+    print(f'int not products_reversed: {int(not products_reversed)}')
+    print(f'p_species: {arc_reaction.p_species}')
     arc_reactant = arc_reaction.r_species[int(reactants_reversed)]  # Get R(*1)-H(*2).
     arc_product = arc_reaction.p_species[int(not products_reversed)]  # Get R(*3)-H(*2).
 
