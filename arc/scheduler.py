@@ -3385,6 +3385,16 @@ class Scheduler(object):
             self.restart_dict['running_jobs'] = dict()
             for spc in self.species_dict.values():
                 if spc.label in self.running_jobs:
+                    print([self.job_dict[spc.label][job_name.rsplit('_', 1)[0]][job_name].as_dict()
+                         for job_name in self.running_jobs[spc.label]
+                         if 'conformer' not in job_name and 'tsg' not in job_name])
+                    if any('conformer' in job_name for job_name in self.running_jobs[spc.label]):
+                        print(self.job_dict[spc.label]['conformers'])
+                        print([[job_name, get_i_from_job_name(job_name)] for job_name in self.running_jobs[spc.label] if 'conformer' in job_name])
+                    print([self.job_dict[spc.label]['conformers'][get_i_from_job_name(job_name)].as_dict()
+                           for job_name in self.running_jobs[spc.label] if 'conformer' in job_name])
+                    print([self.job_dict[spc.label]['tsg'][get_i_from_job_name(job_name)].as_dict()
+                           for job_name in self.running_jobs[spc.label] if 'tsg' in job_name])
                     self.restart_dict['running_jobs'][spc.label] = \
                         [self.job_dict[spc.label][job_name.rsplit('_', 1)[0]][job_name].as_dict()
                          for job_name in self.running_jobs[spc.label]
