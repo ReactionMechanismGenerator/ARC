@@ -949,22 +949,21 @@ class ARCSpecies(object):
         if isinstance(other, Molecule):
             if self.mol_list is not None and len(self.mol_list):
                 for mol_ in [self.mol] + self.mol_list:
-                    if mol_.copy(deep=True).is_isomorphic(other):
+                    if mol_.copy(deep=True).is_isomorphic(other.copy(deep=True)):
                         return True
                 return False
             else:
-                return self.mol.copy(deep=True).is_isomorphic(other)
+                return self.mol.copy(deep=True).is_isomorphic(other.copy(deep=True))
         if isinstance(other, Species):
             for other_mol in other.molecule:
                 if self.mol_list is not None and len(self.mol_list):
                     for mol_ in [self.mol] + self.mol_list:
-                        if mol_.copy(deep=True).is_isomorphic(other_mol):
+                        if mol_.copy(deep=True).is_isomorphic(other_mol.copy(deep=True)):
                             return True
                 else:
-                    if self.mol.copy(deep=True).is_isomorphic(other_mol):
-                        return True
+                    return self.mol.copy(deep=True).is_isomorphic(other_mol.copy(deep=True))
             return False
-        raise SpeciesError(f'can only compare isomorphism to other ARCSpecies, RMG Species, or RMG Molecule '
+        raise SpeciesError(f'Can only compare isomorphism to other ARCSpecies, RMG Species, or RMG Molecule '
                            f'object instances, got {other} which is of type {type(other)}.')
 
     def generate_conformers(self,
