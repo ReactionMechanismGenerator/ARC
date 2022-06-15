@@ -479,7 +479,7 @@ class ARCSpecies(object):
                                        f'{self.preserve_param_in_scan}')
                 if 0 in entry:
                     raise SpeciesError(f'preserve_param_in_scan must be 1-indexed, got:\n{self.preserve_param_in_scan}')
-        self.label, self.original_label = check_label(self.label)
+        self.label, self.original_label = check_label(label=self.label, is_ts=self.is_ts)
         allowed_keys = ['brute_force_sp', 'brute_force_opt', 'cont_opt', 'ess',
                         'brute_force_sp_diagonal', 'brute_force_opt_diagonal', 'cont_opt_diagonal']
         for key in self.directed_rotors.keys():
@@ -2353,6 +2353,7 @@ def colliding_atoms(xyz: dict,
 
 
 def check_label(label: str,
+                is_ts: bool = False,
                 verbose: bool = False,
                 ) -> Tuple[str, Optional[str]]:
     """
@@ -2360,7 +2361,12 @@ def check_label(label: str,
 
     Args:
         label (str): A label.
-        verbose (str, optional): Whether to log errors.
+        is_ts (bool, optional): Whether the species label belongs to a TS.
+        verbose (bool, optional): Whether to log errors.
+
+    Raises:
+        TypeError: If the label is not a string type.
+        SpeciesError: If label is illegal and cannot be automatically fixed.
 
     Returns: Tuple[str, Optional[str]]
         - A legal label.
@@ -2368,6 +2374,9 @@ def check_label(label: str,
     """
     if not isinstance(label, str):
         raise TypeError(f'A species label must be a string type, got {label} which is a {type(label)}.')
+    if label[:2] == 'TS' and all(char.isdigit() for char in label[2:]) and not is_ts:
+        raise SpeciesError(f'A non-TS species cannot be named "TS" with a subsequent index, got {label}')
+
     char_replacement = {'#': 't',
                         '=': 'd',
                         '(': '[',
