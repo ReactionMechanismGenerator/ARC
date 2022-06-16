@@ -342,7 +342,7 @@ class TestARCSpecies(unittest.TestCase):
                               (0.86369081, 0.1484285, 0.8912832), (1.78225246, 0.27014716, 0.17691),
                               (2.61878546, 0.38607062, -0.47459418), (-1.62732717, 1.19177937, -0.10791543),
                               (-1.40237804, -0.74595759, 0.87143836), (-0.39285462, -1.26299471, -0.69270021))}
-        spc7 = ARCSpecies(label='TS1', xyz=ts_xyz1)
+        spc7 = ARCSpecies(label='TS1', xyz=ts_xyz1, is_ts=True)
         spc7.determine_rotors()
         self.assertEqual(len(spc7.rotors_dict), 1)
         self.assertEqual(self.spc1.rotors_dict[0]['pivots'], [1, 2])
@@ -379,7 +379,7 @@ class TestARCSpecies(unittest.TestCase):
                               (2.533432, 1.405371, -2.628984), (1.274047, 1.739318, -3.167728),
                               (1.054829, 2.755858, -2.812066), (0.496295, 1.05356, -2.797583),
                               (1.298699, 1.715159, -4.269555))}
-        spc8 = ARCSpecies(label='TS2', xyz=ts_xyz2)
+        spc8 = ARCSpecies(label='TS2', xyz=ts_xyz2, is_ts=True)
         spc8.determine_rotors()
         self.assertEqual(len(spc8.rotors_dict), 8)
         self.assertEqual(spc8.rotors_dict[0]['pivots'], [1, 2])
@@ -2136,6 +2136,17 @@ H       1.11582953    0.94384729   -0.10134685"""
         label, original_label = check_label('C?N')
         self.assertEqual(label, 'C_N')
         self.assertEqual(original_label, 'C?N')
+
+        label, original_label = check_label('TS343', is_ts=True)
+        self.assertEqual(label, 'TS343')
+        self.assertIsNone(original_label)
+
+        h2o = 15
+        with self.assertRaises(TypeError):
+            check_label(h2o)
+
+        with self.assertRaises(SpeciesError):
+            check_label('TS343')
 
     def test_check_atom_balance(self):
         """Test the check_atom_balance function"""
