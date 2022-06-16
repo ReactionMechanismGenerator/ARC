@@ -430,7 +430,7 @@ class ARCSpecies(object):
                         self.charge = self.mol.get_net_charge()
             # Perceive molecule from xyz coordinates. This also populates the .mol attribute of the Species.
             # It overrides self.mol generated from adjlist or smiles so xyz and mol will have the same atom order.
-            if self.final_xyz or self.initial_xyz or self.most_stable_conformer or self.conformers:
+            if self.final_xyz or self.initial_xyz or self.most_stable_conformer or self.conformers or self.ts_guesses:
                 self.mol_from_xyz(get_cheap=False)
             if not self.is_ts:
                 # We don't care about BACs in TSs
@@ -789,7 +789,7 @@ class ARCSpecies(object):
                 self.mol = Molecule(smiles=smiles)
         # Perceive molecule from xyz coordinates. This also populates the .mol attribute of the Species.
         # It overrides self.mol generated from adjlist or smiles so xyz and mol will have the same atom order.
-        if self.final_xyz or self.initial_xyz or self.most_stable_conformer or self.conformers:
+        if self.final_xyz or self.initial_xyz or self.most_stable_conformer or self.conformers or self.ts_guesses:
             self.mol_from_xyz(get_cheap=False)
         if self.mol is not None:
             if 'bond_corrections' not in species_dict and not self.is_ts:
@@ -1506,11 +1506,6 @@ class ARCSpecies(object):
             else:
                 tsg_index = len(self.ts_guesses)
                 for xyz, energy in zip(xyzs, energies):
-                    # make TSGuess objects
-                    # for tsg in self.ts_guesses:
-                    #     if xyz == tsg.xyz:
-                    #         break
-                    # else:
                     self.ts_guesses.append(TSGuess(method=f'user guess {tsg_index}',
                                                    xyz=remove_dummies(xyz),
                                                    energy=energy))
