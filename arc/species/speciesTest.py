@@ -49,7 +49,7 @@ class TestARCSpecies(unittest.TestCase):
         """
         cls.maxDiff = None
         # Method 1: RMG Species object (here by SMILES)
-        cls.spc1_rmg = Species(molecule=[Molecule(smiles='C=C[O]')])  # delocalized radical + amine
+        cls.spc1_rmg = Species(molecule=[Molecule(smiles='C=C[O]')])
         cls.spc1_rmg.label = 'vinoxy'
         cls.spc1 = ARCSpecies(rmg_species=cls.spc1_rmg, xyz="""C      -0.68324480   -0.04685539   -0.10883672
                                                                C       0.63642204    0.05717653    0.10011041
@@ -190,6 +190,16 @@ class TestARCSpecies(unittest.TestCase):
         self.assertFalse(self.spc3.is_monoatomic())
         n_rad = ARCSpecies(label='N', smiles='[N]')
         self.assertTrue(n_rad.is_monoatomic())
+
+    def test_is_isomorphic(self):
+        """Test the is_isomorphic() method."""
+        rmg_mol = Molecule(smiles='C=C[O]')
+        rmg_spc = Species(smiles='[CH2]C=O')
+        arc_spc = ARCSpecies(label='vinoxy', smiles='C=C[O]')
+        self.assertTrue(self.spc1.is_isomorphic(rmg_mol))
+        self.assertTrue(self.spc1.is_isomorphic(rmg_spc))
+        self.assertTrue(self.spc1.is_isomorphic(arc_spc))
+        self.assertFalse(self.spc1.is_isomorphic(self.spc2))
 
     def test_get_xyz(self):
         """Test the get_xyz() method."""
@@ -345,7 +355,7 @@ class TestARCSpecies(unittest.TestCase):
         spc7 = ARCSpecies(label='TS1', xyz=ts_xyz1, is_ts=True)
         spc7.determine_rotors()
         self.assertEqual(len(spc7.rotors_dict), 1)
-        self.assertEqual(self.spc1.rotors_dict[0]['pivots'], [1, 2])
+        self.assertEqual(spc7.rotors_dict[0]['pivots'], [1, 2])
 
         ts_xyz2 = {'symbols': ('N', 'C', 'C', 'C', 'H', 'H', 'C', 'C', 'C', 'C', 'H', 'H', 'C', 'C', 'C', 'H', 'C',
                                'C', 'N', 'H', 'H', 'C', 'H', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'C', 'C', 'C', 'H',
