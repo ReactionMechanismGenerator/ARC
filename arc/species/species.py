@@ -1326,7 +1326,7 @@ class ARCSpecies(object):
             adjlist (str): The adjacency list descriptor.
             mol (Molecule): The respective RMG Molecule object.
         """
-        if self.charge == 0:
+        if self.charge == 0 and not self.is_ts:
             self.determine_multiplicity_from_descriptors(smiles=smiles, adjlist=adjlist, mol=mol)
         if self.multiplicity is None or self.multiplicity < 1:
             self.determine_multiplicity_from_xyz()
