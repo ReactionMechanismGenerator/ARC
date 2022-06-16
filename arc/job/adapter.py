@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import pandas as pd
 
-from arc.common import ARC_PATH, get_logger
+from arc.common import ARC_PATH, get_logger, torsions_to_scans
 from arc.exceptions import JobError
 from arc.imports import local_arc_path, pipe_submit, settings, submit_scripts
 from arc.job.local import (change_mode,
@@ -109,6 +109,7 @@ class JobTypeEnum(str, Enum):
     optfreq = 'optfreq'
     orbitals = 'orbitals'
     scan = 'scan'
+    directed_scan = 'directed_scan'
     sp = 'sp'
     tsg = 'tsg'  # TS search (TS guess)
 
@@ -1026,7 +1027,8 @@ class JobAdapter(ABC):
             job_server_name = f' ({self.job_server_name})'
         execution_type = {'incore': 'incore job', 'queue': 'queue job', 'pipe': 'job array (pipe)'}[self.execution_type]
         pivots = f' for pivots {[[tor[1] + 1, tor[2] + 1] for tor in self.torsions]}' if self.torsions is not None else ''
-        logger.info(f'Running {local}{execution_type}{server} {self.job_name}{job_server_name}{pivots} '
+        dihedrals = f' for dihedrals {self.dihedrals}' if self.dihedrals is not None else ''
+        logger.info(f'Running {local}{execution_type}{server} {self.job_name}{job_server_name}{pivots}{dihedrals} '
                     f'using {self.job_adapter} for {self.species_label}{info}')
 
     def get_file_property_dictionary(self,
@@ -1098,9 +1100,9 @@ class JobAdapter(ABC):
                 # Visiting this method again for a cont scan should not re-trigger all other scans.
                 continue
 
-            scans = rotor_dict['scan']
-            if isinstance(scans[0], int):
-                scans = [scans]
+            torsions = rotor_dict['torsion']
+            if isinstance(torsions[0], int):
+                torsions = [torsions]
             xyz = species.get_xyz(generate=True)
 
             if not ('cont' in directed_scan_type or 'brute' in directed_scan_type or 'ess' in directed_scan_type):
@@ -1108,10 +1110,6 @@ class JobAdapter(ABC):
 
             if directed_scan_type == 'ess' and not rotor_dict['scan_path'] and rotor_dict['success'] is None:
                 # Allow the ESS to control the scan.
-                torsions = list()
-                for scan in scans:
-                    # As an internal convention throughout ARC, "torsions" are 0-indexed, "scans" are 1-indexed.
-                    torsions.append([atom_index - 1 for atom_index in scan])
                 data_list.append(DataPoint(job_types=['scan'],
                                            label=species.label,
                                            level=self.level,
@@ -1127,19 +1125,22 @@ class JobAdapter(ABC):
             elif 'brute' in directed_scan_type:
                 # Spawn jobs all at once.
                 dihedrals = dict()
-                for scan in scans:
-                    original_dihedral = calculate_dihedral_angle(coords=xyz['coords'], torsion=scan, index=1)
-                    dihedrals[tuple(scan)] = [round(original_dihedral + i * scan_res
-                                                    if original_dihedral + i * scan_res <= 180.0
-                                                    else original_dihedral + i * scan_res - 360.0, 2)
-                                              for i in range(int(360 / scan_res) + 1)]
+                for torsion in torsions:
+                    original_dihedral = calculate_dihedral_angle(coords=xyz['coords'], torsion=torsion, index=0)
+                    dihedrals[tuple(torsion)] = [round(original_dihedral + i * scan_res
+                                                       if original_dihedral + i * scan_res <= 180.0
+                                                       else original_dihedral + i * scan_res - 360.0, 2)
+                                                 for i in range(int(360 / scan_res) + 1)]
                 modified_xyz = xyz.copy()
                 if 'diagonal' not in directed_scan_type:
                     # Increment dihedrals one by one (results in an ND scan).
-                    all_dihedral_combinations = list(itertools.product(*[dihedrals[tuple(scan)] for scan in scans]))
+                    all_dihedral_combinations = list(itertools.product(*[dihedrals[tuple(torsion)] for torsion in torsions]))
                     for dihedral_tuple in all_dihedral_combinations:
-                        for scan, dihedral in zip(scans, dihedral_tuple):
-                            species.set_dihedral(scan=scan, deg_abs=dihedral, count=False, xyz=modified_xyz)
+                        for torsion, dihedral in zip(torsions, dihedral_tuple):
+                            species.set_dihedral(scan=torsions_to_scans(torsion),
+                                                 deg_abs=dihedral,
+                                                 count=False,
+                                                 xyz=modified_xyz)
                             modified_xyz = species.initial_xyz
                         rotor_dict['number_of_running_jobs'] += 1
                         data_list.append(DataPoint(job_types=['opt'] if 'opt' in directed_scan_type else ['sp'],
@@ -1154,12 +1155,15 @@ class JobAdapter(ABC):
                                                    ))
                 else:
                     # Increment all dihedrals at once (results in a 1D scan along simultaneously-changing dimensions).
-                    for i in range(len(dihedrals[tuple(scans[0])])):
-                        for scan in scans:
-                            dihedral = dihedrals[tuple(scan)][i]
-                            species.set_dihedral(scan=scan, deg_abs=dihedral, count=False, xyz=modified_xyz)
+                    for i in range(len(dihedrals[tuple(torsions[0])])):
+                        for torsion in torsions:
+                            dihedral = dihedrals[tuple(torsion)][i]
+                            species.set_dihedral(scan=torsions_to_scans(torsion),
+                                                 deg_abs=dihedral,
+                                                 count=False,
+                                                 xyz=modified_xyz)
                             modified_xyz = species.initial_xyz
-                        directed_dihedrals = [dihedrals[tuple(scan)][i] for scan in scans]
+                        directed_dihedrals = [dihedrals[tuple(torsion)][i] for torsion in torsions]
                         rotor_dict['number_of_running_jobs'] += 1
                         data_list.append(DataPoint(job_types=['opt'] if 'opt' in directed_scan_type else ['sp'],
                                                    label=species.label,
@@ -1176,12 +1180,12 @@ class JobAdapter(ABC):
             elif 'cont' in directed_scan_type:
                 # Set up the next DataPoint only.
                 if not len(rotor_dict['cont_indices']):
-                    rotor_dict['cont_indices'] = [0] * len(scans)
+                    rotor_dict['cont_indices'] = [0] * len(torsions)
                 if not len(rotor_dict['original_dihedrals']):
                     rotor_dict['original_dihedrals'] = \
                         [f'{calculate_dihedral_angle(coords=xyz["coords"], torsion=scan, index=1):.2f}'
                          for scan in rotor_dict['scan']]  # Store the dihedrals as strings for the YAML restart file.
-                scans = rotor_dict['scan']
+                torsions = rotor_dict['torsion']
                 max_num = 360 / scan_res + 1  # Dihedral angles per scan
                 original_dihedrals = list()
                 for dihedral in rotor_dict['original_dihedrals']:
@@ -1213,7 +1217,7 @@ class JobAdapter(ABC):
 
                 modified_xyz = xyz.copy()
                 dihedrals = list()
-                for index, (original_dihedral, scan_) in enumerate(zip(original_dihedrals, scans)):
+                for index, (original_dihedral, torsion_) in enumerate(zip(original_dihedrals, torsions)):
                     dihedral = original_dihedral + rotor_dict['cont_indices'][index] * scan_res
                     # Change the original dihedral so we won't end up with two calcs for 180.0, but none for -180.0
                     # (it only matters for plotting, the geometry is of course the same).
@@ -1223,7 +1227,10 @@ class JobAdapter(ABC):
                     # or if this is a cont diagonal scan.
                     # Species.set_dihedral() uses .final_xyz or the given xyz to modify the .initial_xyz
                     # attribute to the desired dihedral.
-                    species.set_dihedral(scan=scan_, deg_abs=dihedral, count=False, xyz=modified_xyz)
+                    species.set_dihedral(scan=torsions_to_scans(torsion_),
+                                         deg_abs=dihedral,
+                                         count=False,
+                                         xyz=modified_xyz)
                     modified_xyz = species.initial_xyz
                 data_list.append(DataPoint(job_types=['opt'],
                                            label=species.label,
@@ -1239,14 +1246,14 @@ class JobAdapter(ABC):
 
                 if 'diagonal' in directed_scan_type:
                     # Increment ALL counters for a diagonal scan.
-                    rotor_dict['cont_indices'] = [rotor_dict['cont_indices'][0] + 1] * len(scans)
+                    rotor_dict['cont_indices'] = [rotor_dict['cont_indices'][0] + 1] * len(torsions)
                 else:
                     # Increment the counter sequentially for a non-diagonal scan.
-                    for index in range(len(scans)):
+                    for index in range(len(torsions)):
                         if rotor_dict['cont_indices'][index] < max_num - 1:
                             rotor_dict['cont_indices'][index] += 1
                             break
-                        elif rotor_dict['cont_indices'][index] == max_num - 1 and index < len(scans) - 1:
+                        elif rotor_dict['cont_indices'][index] == max_num - 1 and index < len(torsions) - 1:
                             rotor_dict['cont_indices'][index] = 0
 
         return data_list

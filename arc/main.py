@@ -26,6 +26,7 @@ import arc.rmgdb as rmgdb
 from arc.common import (VERSION,
                         ARC_PATH,
                         check_ess_settings,
+                        delete_check_files,
                         get_logger,
                         globalize_path,
                         initialize_job_types,
@@ -584,7 +585,7 @@ class ARC(object):
         save_yaml_file(path=os.path.join(self.project_directory, 'output', 'status.yml'), content=self.scheduler.output)
 
         if not self.keep_checks:
-            self.delete_check_files()
+            delete_check_files(self.project_directory)
         self.delete_leftovers()
 
         self.save_project_info_file()
@@ -870,22 +871,6 @@ class ARC(object):
                     else:
                         logger.info('Not calculating it, assuming a frequencies scaling factor of 1.')
                         self.freq_scale_factor = 1
-
-    def delete_check_files(self):
-        """
-        Delete Gaussian and TeraChem checkfiles. They usually take up lots of space
-        and are not needed after ARC terminates.
-        Pass ``True`` to the ``keep_checks`` flag in ARC to avoid deleting check files.
-        """
-        logged = False
-        calcs_path = os.path.join(self.project_directory, 'calcs')
-        for (root, _, files) in os.walk(calcs_path):
-            for file_ in files:
-                if os.path.splitext(file_)[1] == '.chk' and os.path.isfile(os.path.join(root, file_)):
-                    if not logged:
-                        logger.info('\ndeleting all check files...\n')
-                        logged = True
-                    os.remove(os.path.join(root, file_))
 
     def delete_leftovers(self):
         """

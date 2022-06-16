@@ -1158,7 +1158,7 @@ class ARCSpecies(object):
                                 new_rotor['scan'].append(rotor_dict['scan'])
                                 new_rotor['torsion'].append(rotor_dict['torsion'])
                                 new_rotor['dimensions'] += 1
-                                if not rotor_dict['directed_scan_type'] and index not in rotor_indices_to_del:
+                                if rotor_dict['directed_scan_type'] == 'ess' and index not in rotor_indices_to_del:
                                     # Remove this rotor dict, an ND one will be created instead.
                                     rotor_indices_to_del.append(index)
                                 break
@@ -1166,8 +1166,7 @@ class ARCSpecies(object):
                         pass  # Todo: consolidate top
                     self.rotors_dict[max(list(self.rotors_dict.keys())) + 1] = new_rotor
             for i in set(rotor_indices_to_del):
-                if not self.rotors_dict[i]['directed_scan_type']:
-                    del self.rotors_dict[i]
+                del self.rotors_dict[i]
 
             # Renumber the keys so iterative looping will make sense.
             new_rotors_dict = dict()
@@ -1188,10 +1187,11 @@ class ARCSpecies(object):
 
     def set_dihedral(self,
                      scan: list,
-                     deg_increment: float = None,
-                     deg_abs: float = None,
+                     index: int = 1,
+                     deg_increment: Optional[float] = None,
+                     deg_abs: Optional[float] = None,
                      count: bool = True,
-                     xyz: dict = None,
+                     xyz: Optional[dict] = None,
                      chk_rotor_list: bool = True):
         """
         Set the dihedral angle value of the torsion ``scan``.
@@ -1199,7 +1199,8 @@ class ARCSpecies(object):
         All bonded atoms are rotated as groups. The result is saved to ``self.initial_xyz``.
 
         Args:
-            scan (list): The atom indices (1-indexed) representing the dihedral.
+            scan (list): The atom indices representing the dihedral.
+            index (int, optional): Whether the atom indices are 1-indexed (pass ``1``) or 0-indexed (pass ``0``).
             deg_increment (float, optional): The dihedral angle increment in degrees.
             deg_abs (float, optional): The absolute desired dihedral angle in degrees.
             count (bool, optional): Whether to increment the rotor's times_dihedral_set parameter. `True` to increment.
@@ -1218,7 +1219,7 @@ class ARCSpecies(object):
         if deg_abs is not None and not isinstance(deg_abs, (int, float)):
             raise TypeError(f'deg_abs must be a float, got {deg_abs} which is a {type(deg_abs)}')
         pivots = scan[1:3]
-        torsion = convert_list_index_0_to_1(scan, direction=-1)
+        torsion = convert_list_index_0_to_1(scan, direction=-1) if index else scan
         rotor = None
         xyz = xyz or self.final_xyz
         if xyz is None:

@@ -1080,25 +1080,25 @@ def plot_torsion_angles(torsion_angles,
     return num_comb
 
 
-def plot_1d_rotor_scan(angles=None,
-                       energies=None,
-                       results=None,
-                       path=None,
-                       scan=None,
-                       comment='',
-                       units='degrees',
-                       original_dihedral=None,
+def plot_1d_rotor_scan(angles: Optional[Union[list, tuple, np.array]] = None,
+                       energies: Optional[Union[list, tuple, np.array]] = None,
+                       results: Optional[dict] = None,
+                       path: Optional[str] = None,
+                       scan: Optional[Union[list, tuple]] = None,
+                       comment: str = '',
+                       units: str = 'degrees',
+                       original_dihedral: Optional[float] = None,
                        label=None,
                        ):
     """
     Plots a 1D rotor PES for energy vs. angles. Either ``angles`` and ``energies`` or ``results`` must be given.
 
     Args:
-        angles (list, tuple, np.array, optional): Dihedral angles.
-        energies (list, tuple, np.array, optional): The energies in kJ/mol.
+        angles (Union[list, tuple, np.array], optional): Dihedral angles.
+        energies (Union[list, tuple, np.array], optional): The energies in kJ/mol.
         results (dict, optional): The results dictionary, dihedrals are assumed to be in degrees (not radians).
         path (str, optional): The folder path for saving the rotor scan image and comments.
-        scan (list, tuple, optional): The pivotal atoms of the scan.
+        scan (Union[list, tuple], optional): The pivotal atoms of the scan.
         comment (str, optional): Reason for invalidating this rotor.
         units (str, optional): The ``angle`` units, either 'degrees' or 'radians'.
         original_dihedral (float, optional): The actual dihedral angle of this torsion before the scan.

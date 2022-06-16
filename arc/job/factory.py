@@ -44,7 +44,9 @@ def job_factory(job_adapter: str,
                 conformer: Optional[int] = None,
                 constraints: Optional[List[Tuple[List[int], float]]] = None,
                 cpu_cores: Optional[str] = None,
+                dihedral_increment: Optional[float] = None,
                 dihedrals: Optional[List[float]] = None,
+                directed_scan_type: Optional[str] = None,
                 ess_settings: Optional[dict] = None,
                 ess_trsh_methods: Optional[List[str]] = None,
                 execution_type: Optional[str] = None,
@@ -69,7 +71,6 @@ def job_factory(job_adapter: str,
                 torsions: Optional[List[List[int]]] = None,
                 tsg: Optional[int] = None,
                 xyz: Optional[dict] = None,
-                dihedral_increment: Optional[float] = None,
                 ) -> JobAdapter:
     """
     A factory generating a job adapter corresponding to ``job_adapter``.
@@ -95,7 +96,12 @@ def job_factory(job_adapter: str,
         cpu_cores (int, optional): The total number of cpu cores requested for a job.
                                    ARC adopts the following naming system to describe computing hardware hierarchy:
                                    node > cpu > cpu_cores > cpu_threads.
+        dihedral_increment (float, optional): The degrees increment to use when scanning dihedrals of TS guesses.
         dihedrals (List[float], optional): The dihedral angels corresponding to self.torsions.
+        directed_scan_type (str, optional): The type of the directed scan.
+                                            Either ``'ess'``, ``'brute_force_sp'``, ``'brute_force_opt'``,
+                                            ``'cont_opt'``, ``'brute_force_sp_diagonal'``,
+                                            ``'brute_force_opt_diagonal'``, or ``'cont_opt_diagonal'``.
         ess_settings (dict, optional): A dictionary of available ESS and a corresponding server list.
         ess_trsh_methods (List[str], optional): A list of troubleshooting methods already tried out.
         execution_type (str, optional): The execution type, 'incore', 'queue', or 'pipe'.
@@ -128,7 +134,6 @@ def job_factory(job_adapter: str,
         torsions (List[List[int]], optional): The 0-indexed atom indices of the torsion(s).
         tsg (int, optional): TSGuess number if optimizing TS guesses.
         xyz (dict, optional): The 3D coordinates to use. If not give, species.get_xyz() will be used.
-        dihedral_increment (float, optional): The degrees increment to use when scanning dihedrals of TS guesses.
 
         # shift (str, optional): A string representation alpha- and beta-spin orbitals shifts (molpro only).  # use args
         # is_ts (bool): Whether this species represents a transition structure. Default: ``False``.  # use species
@@ -175,7 +180,9 @@ def job_factory(job_adapter: str,
                                                               conformer=conformer,
                                                               constraints=constraints,
                                                               cpu_cores=cpu_cores,
+                                                              dihedral_increment=dihedral_increment,
                                                               dihedrals=dihedrals,
+                                                              directed_scan_type=directed_scan_type,
                                                               ess_settings=ess_settings,
                                                               ess_trsh_methods=ess_trsh_methods,
                                                               execution_type=execution_type,

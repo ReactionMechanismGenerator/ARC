@@ -482,6 +482,25 @@ def globalize_path(string: str,
     return string
 
 
+def delete_check_files(project_directory: str):
+    """
+    Delete ESS checkfiles. They usually take up lots of space and are not needed after ARC terminates.
+    Pass ``True`` to the ``keep_checks`` flag in ARC to avoid deleting check files.
+
+    Args:
+        project_directory (str): The path to the ARC project folder.
+    """
+    logged = False
+    calcs_path = os.path.join(project_directory, 'calcs')
+    for (root, _, files) in os.walk(calcs_path):
+        for file_ in files:
+            if os.path.splitext(file_)[1] == '.chk' and os.path.isfile(os.path.join(root, file_)):
+                if not logged:
+                    logger.info('\ndeleting all check files...\n')
+                    logged = True
+                os.remove(os.path.join(root, file_))
+
+
 def string_representer(dumper, data):
     """
     Add a custom string representer to use block literals for multiline strings.
