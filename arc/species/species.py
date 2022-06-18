@@ -430,7 +430,7 @@ class ARCSpecies(object):
                         self.charge = self.mol.get_net_charge()
             # Perceive molecule from xyz coordinates. This also populates the .mol attribute of the Species.
             # It overrides self.mol generated from adjlist or smiles so xyz and mol will have the same atom order.
-            if self.final_xyz or self.initial_xyz or self.most_stable_conformer or self.conformers:
+            if self.final_xyz or self.initial_xyz or self.most_stable_conformer or self.conformers or self.ts_guesses:
                 self.mol_from_xyz(get_cheap=False)
             if not self.is_ts:
                 # We don't care about BACs in TSs
@@ -479,7 +479,7 @@ class ARCSpecies(object):
                                        f'{self.preserve_param_in_scan}')
                 if 0 in entry:
                     raise SpeciesError(f'preserve_param_in_scan must be 1-indexed, got:\n{self.preserve_param_in_scan}')
-        self.label, self.original_label = check_label(self.label)
+        self.label, self.original_label = check_label(label=self.label, is_ts=self.is_ts)
         allowed_keys = ['brute_force_sp', 'brute_force_opt', 'cont_opt', 'ess',
                         'brute_force_sp_diagonal', 'brute_force_opt_diagonal', 'cont_opt_diagonal']
         for key in self.directed_rotors.keys():
@@ -748,7 +748,7 @@ class ARCSpecies(object):
             self.chosen_ts = species_dict['chosen_ts'] if 'chosen_ts' in species_dict else None
             self.rxn_zone_atom_indices = species_dict['rxn_zone_atom_indices'] \
                 if 'rxn_zone_atom_indices' in species_dict else None
-            self.ts_checks = species_dict['ts_checks'] if 'ts_checks' in species_dict else None
+            self.ts_checks = species_dict['ts_checks'] if 'ts_checks' in species_dict else dict()
             self.chosen_ts_list = species_dict['chosen_ts_list'] if 'chosen_ts_list' in species_dict else list()
             self.checkfile = species_dict['checkfile'] if 'checkfile' in species_dict else None
         if 'xyz' in species_dict and self.initial_xyz is None and self.final_xyz is None:
@@ -789,7 +789,7 @@ class ARCSpecies(object):
                 self.mol = Molecule(smiles=smiles)
         # Perceive molecule from xyz coordinates. This also populates the .mol attribute of the Species.
         # It overrides self.mol generated from adjlist or smiles so xyz and mol will have the same atom order.
-        if self.final_xyz or self.initial_xyz or self.most_stable_conformer or self.conformers:
+        if self.final_xyz or self.initial_xyz or self.most_stable_conformer or self.conformers or self.ts_guesses:
             self.mol_from_xyz(get_cheap=False)
         if self.mol is not None:
             if 'bond_corrections' not in species_dict and not self.is_ts:
@@ -928,6 +928,43 @@ class ARCSpecies(object):
         if xyz is not None:
             return len(xyz['symbols']) == 1
         return None
+
+    def is_isomorphic(self, other: Union['ARCSpecies', Species, Molecule]) -> Optional[bool]:
+        """
+        Determine whether the species is isomorphic with ``other``.
+
+        Args:
+            other (Union[ARCSpecies, Species, Molecule]): An ARCSpecies, RMG Species, or RMG Molecule object instance
+                                                          to compare isomorphism with.
+
+        Returns:
+            Optional[bool]: Whether the species is isomorphic with ``other``.
+        """
+        if self.mol is None:
+            return None
+        if isinstance(other, ARCSpecies):
+            if other.mol is None:
+                return None
+            other = other.mol
+        if isinstance(other, Molecule):
+            if self.mol_list is not None and len(self.mol_list):
+                for mol_ in [self.mol] + self.mol_list:
+                    if mol_.copy(deep=True).is_isomorphic(other.copy(deep=True)):
+                        return True
+                return False
+            else:
+                return self.mol.copy(deep=True).is_isomorphic(other.copy(deep=True))
+        if isinstance(other, Species):
+            for other_mol in other.molecule:
+                if self.mol_list is not None and len(self.mol_list):
+                    for mol_ in [self.mol] + self.mol_list:
+                        if mol_.copy(deep=True).is_isomorphic(other_mol.copy(deep=True)):
+                            return True
+                else:
+                    return self.mol.copy(deep=True).is_isomorphic(other_mol.copy(deep=True))
+            return False
+        raise SpeciesError(f'Can only compare isomorphism to other ARCSpecies, RMG Species, or RMG Molecule '
+                           f'object instances, got {other} which is of type {type(other)}.')
 
     def generate_conformers(self,
                             n_confs: int = 10,
@@ -1289,7 +1326,7 @@ class ARCSpecies(object):
             adjlist (str): The adjacency list descriptor.
             mol (Molecule): The respective RMG Molecule object.
         """
-        if self.charge == 0:
+        if self.charge == 0 and not self.is_ts:
             self.determine_multiplicity_from_descriptors(smiles=smiles, adjlist=adjlist, mol=mol)
         if self.multiplicity is None or self.multiplicity < 1:
             self.determine_multiplicity_from_xyz()
@@ -1469,11 +1506,6 @@ class ARCSpecies(object):
             else:
                 tsg_index = len(self.ts_guesses)
                 for xyz, energy in zip(xyzs, energies):
-                    # make TSGuess objects
-                    # for tsg in self.ts_guesses:
-                    #     if xyz == tsg.xyz:
-                    #         break
-                    # else:
                     self.ts_guesses.append(TSGuess(method=f'user guess {tsg_index}',
                                                    xyz=remove_dummies(xyz),
                                                    energy=energy))
@@ -2316,6 +2348,7 @@ def colliding_atoms(xyz: dict,
 
 
 def check_label(label: str,
+                is_ts: bool = False,
                 verbose: bool = False,
                 ) -> Tuple[str, Optional[str]]:
     """
@@ -2323,7 +2356,12 @@ def check_label(label: str,
 
     Args:
         label (str): A label.
-        verbose (str, optional): Whether to log errors.
+        is_ts (bool, optional): Whether the species label belongs to a TS.
+        verbose (bool, optional): Whether to log errors.
+
+    Raises:
+        TypeError: If the label is not a string type.
+        SpeciesError: If label is illegal and cannot be automatically fixed.
 
     Returns: Tuple[str, Optional[str]]
         - A legal label.
@@ -2331,6 +2369,9 @@ def check_label(label: str,
     """
     if not isinstance(label, str):
         raise TypeError(f'A species label must be a string type, got {label} which is a {type(label)}.')
+    if label[:2] == 'TS' and all(char.isdigit() for char in label[2:]) and not is_ts:
+        raise SpeciesError(f'A non-TS species cannot be named "TS" with a subsequent index, got {label}')
+
     char_replacement = {'#': 't',
                         '=': 'd',
                         '(': '[',

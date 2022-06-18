@@ -34,7 +34,7 @@ from rmgpy.qm.qmdata import QMData
 from rmgpy.qm.symmetry import PointGroupCalculator
 
 from arc.exceptions import InputError, SettingsError
-from arc.imports import settings
+from arc.imports import home, settings
 
 
 if TYPE_CHECKING:
@@ -43,6 +43,7 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger('arc')
+logging.getLogger('matplotlib.font_manager').disabled = True
 
 # Absolute path to the ARC folder.
 ARC_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
@@ -57,7 +58,7 @@ VERSION = '1.1.0'
 default_job_types, servers = settings['default_job_types'], settings['servers']
 
 
-def initialize_job_types(job_types: dict,
+def initialize_job_types(job_types: Optional[dict] = None,
                          specific_job_type: str = '',
                          ) -> dict:
     """
@@ -65,8 +66,8 @@ def initialize_job_types(job_types: dict,
     Returns the comprehensive (default values for missing job types) job types for ARC.
 
     Args:
-        job_types (dict): Keys are job types, values are booleans of whether or not to consider this job type.
-        specific_job_type (str): Specific job type to execute. Legal strings are job types (keys of job_types dict).
+        job_types (dict, optional): Keys are job types, values are booleans of whether or not to consider this job type.
+        specific_job_type (str, optional): Specific job type to execute. Legal strings are job types (keys of job_types dict).
 
     Returns: dict
         An updated (comprehensive) job type dictionary.
@@ -83,8 +84,10 @@ def initialize_job_types(job_types: dict,
             raise InputError(f'Specified job type {specific_job_type} is not supported.')
 
     if specific_job_type == 'bde':
-        bde_default = {'opt': True, 'fine_grid': True, 'freq': True, 'sp': True}
+        bde_default = {'opt': True, 'fine': True, 'freq': True, 'sp': True}
         job_types.update(bde_default)
+        if 'fine_grid' in job_types:
+            del job_types['fine_grid']
 
     defaults_to_true = ['conformers', 'fine', 'freq', 'irc', 'opt', 'rotors', 'sp']
     defaults_to_false = ['bde', 'onedmin', 'orbitals']
@@ -679,7 +682,7 @@ def determine_symmetry(xyz: dict) -> Tuple[int, int]:
     # Coords is an N x 3 numpy.ndarray of atomic coordinates in the same order as `atom_numbers`.
     coords = np.array(xyz['coords'], np.float64)
     unique_id = '0'  # Just some name that the SYMMETRY code gives to one of its jobs.
-    scr_dir = os.path.join('/tmp', 'symmetry_scratch')  # Scratch directory that the SYMMETRY code writes its files in.
+    scr_dir = os.path.join(home, 'tmp', 'symmetry_scratch')  # Scratch directory that the SYMMETRY code writes its files in.
     if not os.path.exists(scr_dir):
         os.makedirs(scr_dir)
     symmetry = optical_isomers = 1

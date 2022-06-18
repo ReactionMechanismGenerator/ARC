@@ -1028,8 +1028,11 @@ class JobAdapter(ABC):
         execution_type = {'incore': 'incore job', 'queue': 'queue job', 'pipe': 'job array (pipe)'}[self.execution_type]
         pivots = f' for pivots {[[tor[1] + 1, tor[2] + 1] for tor in self.torsions]}' if self.torsions is not None else ''
         dihedrals = f' for dihedrals {self.dihedrals}' if self.dihedrals is not None else ''
+        tsconf = f' (conformer {self.species[0].chosen_ts})' if self.species is not None \
+            and len(self.species) == 1 and self.species[0].is_ts and self.species[0].chosen_ts is not None \
+            and 'opt' in self.job_type else ''
         logger.info(f'Running {local}{execution_type}{server} {self.job_name}{job_server_name}{pivots}{dihedrals} '
-                    f'using {self.job_adapter} for {self.species_label}{info}')
+                    f'using {self.job_adapter} for {self.species_label}{info}{tsconf}')
 
     def get_file_property_dictionary(self,
                                      file_name: str,

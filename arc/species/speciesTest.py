@@ -49,7 +49,7 @@ class TestARCSpecies(unittest.TestCase):
         """
         cls.maxDiff = None
         # Method 1: RMG Species object (here by SMILES)
-        cls.spc1_rmg = Species(molecule=[Molecule(smiles='C=C[O]')])  # delocalized radical + amine
+        cls.spc1_rmg = Species(molecule=[Molecule(smiles='C=C[O]')])
         cls.spc1_rmg.label = 'vinoxy'
         cls.spc1 = ARCSpecies(rmg_species=cls.spc1_rmg, xyz="""C      -0.68324480   -0.04685539   -0.10883672
                                                                C       0.63642204    0.05717653    0.10011041
@@ -190,6 +190,16 @@ class TestARCSpecies(unittest.TestCase):
         self.assertFalse(self.spc3.is_monoatomic())
         n_rad = ARCSpecies(label='N', smiles='[N]')
         self.assertTrue(n_rad.is_monoatomic())
+
+    def test_is_isomorphic(self):
+        """Test the is_isomorphic() method."""
+        rmg_mol = Molecule(smiles='C=C[O]')
+        rmg_spc = Species(smiles='[CH2]C=O')
+        arc_spc = ARCSpecies(label='vinoxy', smiles='C=C[O]')
+        self.assertTrue(self.spc1.is_isomorphic(rmg_mol))
+        self.assertTrue(self.spc1.is_isomorphic(rmg_spc))
+        self.assertTrue(self.spc1.is_isomorphic(arc_spc))
+        self.assertFalse(self.spc1.is_isomorphic(self.spc2))
 
     def test_get_xyz(self):
         """Test the get_xyz() method."""
@@ -342,10 +352,10 @@ class TestARCSpecies(unittest.TestCase):
                               (0.86369081, 0.1484285, 0.8912832), (1.78225246, 0.27014716, 0.17691),
                               (2.61878546, 0.38607062, -0.47459418), (-1.62732717, 1.19177937, -0.10791543),
                               (-1.40237804, -0.74595759, 0.87143836), (-0.39285462, -1.26299471, -0.69270021))}
-        spc7 = ARCSpecies(label='TS1', xyz=ts_xyz1)
+        spc7 = ARCSpecies(label='TS1', xyz=ts_xyz1, is_ts=True)
         spc7.determine_rotors()
         self.assertEqual(len(spc7.rotors_dict), 1)
-        self.assertEqual(self.spc1.rotors_dict[0]['pivots'], [1, 2])
+        self.assertEqual(spc7.rotors_dict[0]['pivots'], [1, 2])
 
         ts_xyz2 = {'symbols': ('N', 'C', 'C', 'C', 'H', 'H', 'C', 'C', 'C', 'C', 'H', 'H', 'C', 'C', 'C', 'H', 'C',
                                'C', 'N', 'H', 'H', 'C', 'H', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'C', 'C', 'C', 'H',
@@ -379,7 +389,7 @@ class TestARCSpecies(unittest.TestCase):
                               (2.533432, 1.405371, -2.628984), (1.274047, 1.739318, -3.167728),
                               (1.054829, 2.755858, -2.812066), (0.496295, 1.05356, -2.797583),
                               (1.298699, 1.715159, -4.269555))}
-        spc8 = ARCSpecies(label='TS2', xyz=ts_xyz2)
+        spc8 = ARCSpecies(label='TS2', xyz=ts_xyz2, is_ts=True)
         spc8.determine_rotors()
         self.assertEqual(len(spc8.rotors_dict), 8)
         self.assertEqual(spc8.rotors_dict[0]['pivots'], [1, 2])
@@ -2136,6 +2146,17 @@ H       1.11582953    0.94384729   -0.10134685"""
         label, original_label = check_label('C?N')
         self.assertEqual(label, 'C_N')
         self.assertEqual(original_label, 'C?N')
+
+        label, original_label = check_label('TS343', is_ts=True)
+        self.assertEqual(label, 'TS343')
+        self.assertIsNone(original_label)
+
+        h2o = 15
+        with self.assertRaises(TypeError):
+            check_label(h2o)
+
+        with self.assertRaises(SpeciesError):
+            check_label('TS343')
 
     def test_check_atom_balance(self):
         """Test the check_atom_balance function"""
