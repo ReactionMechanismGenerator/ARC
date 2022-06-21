@@ -1836,7 +1836,8 @@ class ARCSpecies(object):
                           multiplicity=mol1.multiplicity,
                           charge=mol1.get_net_charge(),
                           compute_thermo=False,
-                          e0_only=True)
+                          e0_only=True,
+                          keep_mol=True)
         spc1.generate_conformers()
         spc1.rotors_dict = None
         spc2 = ARCSpecies(label=label2,
@@ -1845,7 +1846,8 @@ class ARCSpecies(object):
                           multiplicity=mol2.multiplicity,
                           charge=mol2.get_net_charge(),
                           compute_thermo=False,
-                          e0_only=True)
+                          e0_only=True,
+                          keep_mol=True)
         spc2.generate_conformers()
         spc2.rotors_dict = None
 
