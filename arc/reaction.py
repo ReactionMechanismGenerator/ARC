@@ -152,7 +152,14 @@ class ARCReaction(object):
         """The reactants to products atom map"""
         if self._atom_map is None \
                 and all(species.get_xyz(generate=False) is not None for species in self.r_species + self.p_species):
-            self._atom_map = map_reaction(rxn=self)
+            try:    
+                self._atom_map = map_reaction(rxn=self)
+            except:
+                try:
+                    self._atom_map = flip_map(map_reaction(rxn=self.flip_reaction()))
+                except:
+                    logger.error(f'The requested ARC Reaction {self} could not be atom mapped.')
+                    self._atom_map = None
         return self._atom_map
 
     @atom_map.setter
