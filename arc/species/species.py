@@ -182,7 +182,7 @@ class ARCSpecies(object):
 
     Attributes:
         label (str): The species' label.
-        original_label (str): The species' label prior to modifications (removing fornidden characters).
+        original_label (str): The species' label prior to modifications (removing forbidden characters).
         multiplicity (int): The species' electron spin multiplicity. Can be determined from the adjlist/smiles/xyz
                             (If unspecified, assumed to be either a singlet or a doublet).
         charge (int): The species' net charge. Assumed to be 0 if unspecified.
