@@ -1515,3 +1515,56 @@ def _check_r_n_p_symbols_between_rmg_and_arc_rxns(arc_reaction: 'ARCReaction',
             print(rmg_p_symbols)
             result = False
     return result
+
+
+def sort_atoms_in_decending_label_order(mol: 'Molecule')-> None:
+    """
+    A helper function, helpful in the context of atom mapping.
+    This function reassign the .atoms in Molecule with a list of atoms
+    with the orders based on the labels of the atoms.
+    for example, [int(atom.label) for atom in mol.atoms] is [1, 4, 32, 7],
+    then the function will return the new atom with the order [1, 4, 7, 32]
+
+    Args:
+        mol: An rmg Molecule object, with labeld atoms
+    
+    Returns:
+        None
+    """
+    labels = [int(atom.label) for atom in mol.atoms]
+    new_atoms = list()
+    for index in range(max(labels)+1):
+        if not index not in labels:
+            for atom in mol.atoms:
+                if int(atom.label) == index:
+                    new_atoms.append(atom)
+    mol.atoms = new_atoms
+
+
+def is_xyz_mol_match(mol: 'Molecule',
+                     xyz: dict) -> bool:
+    """
+    A helper function that matches rmgpy.molecule.molecule.Molecule object to an xyz,
+    used in _scissors to match xyz and the cut products.
+
+    Args:
+        mol: rmg Molecule object
+        xyz: coordinates of the cut product
+    """
+    element_dict_mol = mol.get_element_count()
+    
+    element_dict_xyz = dict()
+    for atom in xyz['symbols']:
+        if atom in element_dict_xyz:
+            element_dict_xyz[atom] += 1
+        else:
+            element_dict_xyz[atom] = 1
+
+    for element, count in element_dict_mol.items():
+        if element not in element_dict_xyz or element_dict_xyz[element] != count:
+            return False
+
+    # Up to here, we know that the mol and xyz shares composition but we do not know about the connectivity.
+    # The problem with connectivity is that we can't find radicals from the xyz alone.
+
+    return True
