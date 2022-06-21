@@ -300,6 +300,7 @@ class ARCSpecies(object):
                  run_time: Optional[datetime.timedelta] = None,
                  rxn_label: Optional[str] = None,
                  rxn_index: Optional[int] = None,
+                 keep_mol = False,
                  smiles: str = '',
                  species_dict: Optional[dict] = None,
                  ts_number: Optional[int] = None,
@@ -336,6 +337,7 @@ class ARCSpecies(object):
         self.yml_path = None
         self.fragments = fragments
         self.original_label = None
+        self.keep_mol = keep_mol
         self.chosen_ts = None
         self.rxn_zone_atom_indices = None
         self.ts_checks = dict()
@@ -1448,7 +1450,8 @@ class ARCSpecies(object):
                                    f'{self.mol.copy(deep=True).to_smiles()}\n'
                                    f'{self.mol.copy(deep=True).to_adjacency_list()}')
                     raise SpeciesError(f'XYZ and the 2D graph representation for {self.label} are not compliant.')
-                self.mol = perceived_mol
+                if not self.keep_mol:
+                    self.mol = perceived_mol
         else:
             mol_s, mol_b = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)
             if mol_b is not None and len(mol_b.atoms) == self.number_of_atoms:
