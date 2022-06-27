@@ -1508,7 +1508,9 @@ class ARCSpecies(object):
                 for xyz, energy in zip(xyzs, energies):
                     self.ts_guesses.append(TSGuess(method=f'user guess {tsg_index}',
                                                    xyz=remove_dummies(xyz),
-                                                   energy=energy))
+                                                   energy=energy,
+                                                   success=True,
+                                                   ))
                     # user guesses are always successful in generating a *guess*:
                     self.ts_guesses[tsg_index].success = True
                     tsg_index += 1
