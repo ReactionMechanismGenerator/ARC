@@ -88,12 +88,15 @@ def process_arc_project(thermo_adapter: str,
         os.makedirs(output_directory)
 
     # 1. Rates
+    print(f'compute rates: {compute_rates}')
     if compute_rates:
+        print(f'computing rates {compute_rates}')
         for reaction in reactions:
             if reaction.ts_species.ts_guesses_exhausted:
                 continue
             species_converged = True
             considered_labels = list()  # Species labels considered in this reaction.
+            print(f"TS converged? {output_dict[reaction.ts_label]['convergence']}")
             if output_dict[reaction.ts_label]['convergence']:
                 for species in reaction.r_species + reaction.p_species:
                     if species.label in considered_labels:
@@ -102,6 +105,7 @@ def process_arc_project(thermo_adapter: str,
                         continue
                     considered_labels.append(species.label)
                     if output_dict[species.label]['convergence']:
+                        print(f'statmech for spc {species.label}')
                         statmech_adapter = statmech_factory(statmech_adapter_label=kinetics_adapter,
                                                             output_directory=output_directory,
                                                             output_dict=output_dict,
@@ -116,7 +120,9 @@ def process_arc_project(thermo_adapter: str,
                                      f'for {reaction.label}')
                         unconverged_species.append(species)
                         species_converged = False
+                print(f'Did all species converge? {species_converged}')
                 if species_converged:
+                    print(f'running statmech for {reaction}')
                     statmech_adapter = statmech_factory(statmech_adapter_label=kinetics_adapter,
                                                         output_directory=output_directory,
                                                         output_dict=output_dict,
@@ -131,12 +137,16 @@ def process_arc_project(thermo_adapter: str,
                                                         three_params=three_params,
                                                         )
                     statmech_adapter.compute_high_p_rate_coefficient()
+                    print(f'computed k. kinetic sis: {reaction.kinetics}')
                     if reaction.kinetics is not None:
                         rxns_for_kinetics_lib.append(reaction)
                     else:
                         unconverged_rxns.append(reaction)
             else:
                 unconverged_rxns.append(reaction)
+        print(f'unconverged rxns: {unconverged_rxns}')
+        print(f'unconverged spcs: {unconverged_species}')
+        print(f'rxns_for_kinetics_lib: {rxns_for_kinetics_lib}')
         if rxns_for_kinetics_lib:
             plotter.save_kinetics_lib(rxn_list=rxns_for_kinetics_lib,
                                       path=libraries_path,

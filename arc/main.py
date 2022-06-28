@@ -372,6 +372,7 @@ class ARC(object):
         self.reactions = reactions or list()
         converted_reactions, indices_to_pop = list(), list()
         for i, rxn in enumerate(self.reactions):
+            print(f'\n\n{rxn}\n\n')
             if isinstance(rxn, Reaction):
                 # RMG Reaction
                 if not rxn.reactants or not rxn.products:
@@ -393,6 +394,10 @@ class ARC(object):
             elif isinstance(rxn, dict):
                 # dict representation for ARCReaction as in a YAML input file
                 indices_to_pop.append(i)
+                # print('\n\n\n')
+                # print(type(rxn))
+                # print(rxn)
+                # print('\n\n\n')
                 converted_reactions.append(ARCReaction(reaction_dict=rxn, species_list=self.species))
             elif not isinstance(rxn, ARCReaction):
                 raise ValueError(f'A reaction should either be an `ARCReaction` object or an RMG `Reaction` object. '

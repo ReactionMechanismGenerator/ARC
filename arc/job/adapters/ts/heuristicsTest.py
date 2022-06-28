@@ -157,6 +157,53 @@ class TestHeuristicsAdapter(unittest.TestCase):
                                'A_7_2_1': 110.56754686774481, 'D_7_2_1_6': 240.00122783407815},
                       'map': {0: 3, 1: 0, 2: 1, 3: 2, 4: 4, 5: 5, 6: 6, 7: 7}}
 
+    def test_heuristics_for_h_abstraction_1(self):
+        """
+        Test that ARC can generate TS guesses based on heuristics for H Abstraction reactions.
+        """
+        # H2NN(T) + NH2OH <=> HNOH + N2H3
+        h2nn_T = ARCSpecies(label='H2NN(T)', smiles='N[N]', xyz="""N      -0.11683414    0.01127870    0.29831799
+                                                                   N       1.25157688   -0.09685670   -0.06521742
+                                                                   H      -0.62983812   -0.76858511   -0.11033878
+                                                                   H      -0.50490462    0.85416310   -0.12276179""")
+        nh2oh = ARCSpecies(label='NH2OH', smiles='NO', xyz="""N      -0.47250171    0.01153669   -0.26249701
+                                                              O       0.84833219   -0.01525253    0.34418564
+                                                              H      -0.90613242    0.80752666    0.21258134
+                                                              H      -0.90702777   -0.82178890    0.14258416
+                                                              H       1.43732971    0.01797984   -0.43685406""")
+        hnoh = ARCSpecies(label='HNOH', smiles='[NH]O', xyz="""N      -0.50692965    0.41873504   -0.14455612
+                                                               O       0.57170424   -0.46163429    0.16022302
+                                                               H      -1.38912965   -0.10266190   -0.06557138
+                                                               H       1.32435502    0.14556134    0.04990519""")
+        n2h3 = ARCSpecies(label='N2H3', smiles='[NH]N', xyz="""N       0.80504028   -0.43647467    0.27810080
+                                                               N      -0.45891190   -0.01180941   -0.32665290
+                                                               H       1.56441769    0.17651812   -0.04695419
+                                                               H      -1.19268061   -0.59812911    0.07243711
+                                                               H      -0.42101721   -0.25205729   -1.31752051""")
+        rxn17 = ARCReaction(r_species=[h2nn_T, nh2oh], p_species=[hnoh, n2h3])
+        rxn17.determine_family(rmg_database=self.rmgdb)
+        self.assertEqual(rxn17.family.label, 'H_Abstraction')
+        heuristics_17 = HeuristicsAdapter(job_type='tsg',
+                                          reactions=[rxn17],
+                                          testing=True,
+                                          project='test',
+                                          project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'heuristics'),
+                                          dihedral_increment=10,
+                                          )
+        heuristics_17.execute_incore()
+        self.assertEqual(len(rxn17.ts_species.ts_guesses), 1)
+        self.assertTrue(rxn17.ts_species.ts_guesses[0].success)
+        self.assertEqual(rxn17.ts_species.ts_guesses[0].initial_xyz['symbols'],
+                         ('N', 'N', 'H', 'H', 'N', 'O', 'H', 'H', 'H'))
+        self.assertEqual(len(rxn17.ts_species.ts_guesses), 9)
+        # import pprint
+        # from arc.species.converter import xyz_to_str
+        # # pprint.pprint(rxn17.ts_species.ts_guesses[0].initial_xyz)
+        # print(xyz_to_str(rxn17.ts_species.ts_guesses[0].initial_xyz))
+        # raise
+
+
+
     def test_heuristics_for_h_abstraction(self):
         """
         Test that ARC can generate TS guesses based on heuristics for H Abstraction reactions.
