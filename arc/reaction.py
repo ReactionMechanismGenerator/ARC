@@ -137,7 +137,7 @@ class ARCReaction(object):
             self.set_label_reactants_products()
             self.ts_xyz_guess = ts_xyz_guess if ts_xyz_guess is not None else list()
             self.done_opt_r_n_p = None
-        if len(self.reactants) > 3 or len(self.products) > 3:
+        if len(self.reactants) > 3 or len(self.products) > 3 and len(self.ts_xyz_guess) == 0:
             raise ReactionError(f'An ARC Reaction can have up to three reactants / products. got {len(self.reactants)} '
                                 f'reactants and {len(self.products)} products for reaction {self.label}.')
         if self.ts_xyz_guess is not None and not isinstance(self.ts_xyz_guess, list):
