@@ -142,10 +142,10 @@ def check_ts_energy(reaction: 'ARCReaction',
                 logger.error(f'TS of reaction {reaction.label} has a lower electronic energy value than expected.')
                 reaction.ts_species.ts_checks['e_elect'] = False
                 return
-    # We don't have any params (they are all ``None``)
+    # We don't have any params (some are ``None``)
     if verbose:
         logger.info('\n')
-        logger.error(f"Could not get electronic energy of all species in reaction {reaction.label}. Cannot check TS.\n")
+        logger.warning(f"Could not get electronic energy of all species in reaction {reaction.label}. Cannot check TS.\n")
     # We don't really know.
     reaction.ts_species.ts_checks['e_elect'] = None
     reaction.ts_species.ts_checks['warnings'] += 'Could not determine TS e_elect relative to the wells; '
