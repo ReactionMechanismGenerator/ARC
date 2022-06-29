@@ -330,7 +330,7 @@ class ARCSpecies(object):
         self.run_time = run_time
         self.checkfile = checkfile
         self.transport_data = TransportData()
-        self.yml_path = None
+        self.yml_path = yml_path
         self.fragments = fragments
         self.original_label = None
         self.chosen_ts = None
