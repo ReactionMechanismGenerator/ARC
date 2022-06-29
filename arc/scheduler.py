@@ -2039,11 +2039,14 @@ class Scheduler(object):
                 rxn_txt = '' if self.species_dict[label].rxn_label is None \
                     else f' of reaction {self.species_dict[label].rxn_label}'
                 logger.info(f'\n\nGeometry *guesses* of successful TS guesses for {label}{rxn_txt}:')
+                logger.info(self.species_dict[label].ts_guesses)
             for tsg in self.species_dict[label].ts_guesses:
                 # Reset e_min to the lowest value regardless of other criteria (imaginary frequencies, IRC, normal modes).
                 if tsg.energy is not None and (e_min is None or tsg.energy < e_min):
                     e_min = tsg.energy
+            logger.info(f'e_min: {e_min}')
             for tsg in self.species_dict[label].ts_guesses:
+                logger.info(tsg, tsg.index, tsg.success)
                 if tsg.index == selected_i:
                     self.species_dict[label].chosen_ts = selected_i
                     self.species_dict[label].chosen_ts_list.append(selected_i)
