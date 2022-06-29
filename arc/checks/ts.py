@@ -117,8 +117,6 @@ def check_ts_energy(reaction: 'ARCReaction',
     p_e_elect = None if any([spc.e_elect is None for spc in reaction.p_species]) \
         else sum(spc.e_elect * reaction.get_species_count(species=spc, well=1) for spc in reaction.p_species)
     ts_e_elect = reaction.ts_species.e_elect
-    if ts_e_elect is None:
-        raise
     min_e = extremum_list([r_e_elect, p_e_elect, ts_e_elect], return_min=True)
 
     if any([val is not None for val in [r_e_elect, p_e_elect, ts_e_elect]]):
