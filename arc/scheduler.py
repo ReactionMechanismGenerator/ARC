@@ -2407,6 +2407,7 @@ class Scheduler(object):
         Args:
             label (str): The TS species label.
         """
+        raise
         logger.info(f'Switching a TS guess for {label}...')
         self.determine_most_likely_ts_conformer(label=label)  # Look for a different TS guess.
         self.delete_all_species_jobs(label=label)  # Delete other currently running jobs for this TS.
