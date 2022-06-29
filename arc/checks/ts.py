@@ -125,7 +125,8 @@ def check_ts_energy(reaction: 'ARCReaction',
             ts_text = f'{ts_e_elect - min_e:.2f} kJ/mol' if ts_e_elect is not None else 'None'
             p_text = f'{p_e_elect - min_e:.2f} kJ/mol' if p_e_elect is not None else 'None'
             logger.info(
-                f'\nReaction {reaction.label} (TS {reaction.ts_label}) has the following path electronic energy:\n'
+                f'\nReaction {reaction.label} (TS {reaction.ts_label}, TSG {reaction.ts_species.chosen_ts}) '
+                f'has the following path electronic energy:\n'
                 f'Reactants: {r_text}\n'
                 f'TS: {ts_text}\n'
                 f'Products: {p_text}')
