@@ -2004,9 +2004,6 @@ class Scheduler(object):
             logger.error(f'No guess converged for TS {label}!\n'
                          f'Cannot compute a rate coefficient for {self.species_dict[label].rxn_label}.')
         else:
-            rxn_txt = '' if self.species_dict[label].rxn_label is None \
-                else f' of reaction {self.species_dict[label].rxn_label}'
-            logger.info(f'\n\nGeometry *guesses* of successful TS guesses for {label}{rxn_txt}:')
             # Select the TSG with the lowest energy given that it has only one significant imaginary frequency.
             # Todo: consider IRC well isomorphism
             e_min, selected_i = None, None
@@ -2023,6 +2020,10 @@ class Scheduler(object):
                 self.species_dict[label].ts_number, self.species_dict[label].chosen_ts = None, None
                 self.species_dict[label].populate_ts_checks()
                 return None
+            else:
+                rxn_txt = '' if self.species_dict[label].rxn_label is None \
+                    else f' of reaction {self.species_dict[label].rxn_label}'
+                logger.info(f'\n\nGeometry *guesses* of successful TS guesses for {label}{rxn_txt}:')
             for tsg in self.species_dict[label].ts_guesses:
                 # Reset e_min to the lowest value regardless of other criteria (imaginary frequencies, IRC, normal modes).
                 if tsg.energy is not None and (e_min is None or tsg.energy < e_min):
