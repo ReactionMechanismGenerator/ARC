@@ -131,7 +131,7 @@ class ArkaneAdapter(StatmechAdapter):
                 raise ValueError('Cannot compute thermo without a valid Arkane Level for AEC.')
 
         if self.species is None:
-            raise InputError('Cannot not compute thermo without a species object.')
+            raise InputError('Cannot compute thermo without a species object.')
 
         arkane_output_path = self.generate_arkane_species_file(species=self.species,
                                                                bac_type=self.bac_type,
