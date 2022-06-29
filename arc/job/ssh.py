@@ -148,7 +148,7 @@ class SSHClient(object):
             ServerError: If the file cannot be uploaded with maximum times to try
         """
         if not local_file_path and not file_string:
-            raise InputError('Cannot not upload file to server. Either `file_string` or `local_file_path`'
+            raise InputError('Cannot upload file to server. Either `file_string` or `local_file_path`'
                              ' must be specified')
         if local_file_path and not os.path.isfile(local_file_path):
             raise InputError(f'Cannot upload a non-existing file. '
