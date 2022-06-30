@@ -32,7 +32,7 @@ class TestRMGDB(unittest.TestCase):
     def test_load_rmg_database(self):
         """Test loading the full RMG database"""
         self.assertTrue(any([fam == 'H_Abstraction' for fam in self.rmgdb.kinetics.families]))
-        self.assertTrue(any([lib == 'BurkeH2O2inN2' for lib in self.rmgdb.kinetics.libraries]))
+        self.assertTrue(any([lib == 'primaryH2O2' for lib in self.rmgdb.kinetics.libraries]))
         self.assertTrue(any([lib == 'thermo_DFT_CCSDTF12_BAC' for lib in self.rmgdb.thermo.libraries]))
         self.assertTrue(any([lib == 'NOx2018' for lib in self.rmgdb.transport.libraries]))
 

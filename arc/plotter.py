@@ -553,7 +553,7 @@ def draw_kinetics_plots(rxn_list, T_min, T_max, T_count=50, path=None):
 
 
 def _draw_kinetics_plots(rxn_label, arc_k, temperature, rmg_rxns, units, pp, max_rmg_rxns=5):
-    kinetics_library_priority = ['BurkeH2O2inN2', 'Klippenstein_Glarborg2016', 'primaryNitrogenLibrary',
+    kinetics_library_priority = ['primaryH2O2', 'Klippenstein_Glarborg2016', 'primaryNitrogenLibrary',
                                  'primarySulfurLibrary', 'N-S_interactions', 'NOx2018',
                                  'Nitrogen_Dean_and_Bozzelli', 'FFCM1(-)', 'JetSurF2.0']
     fig = plt.figure(figsize=(8, 6), dpi=120)
