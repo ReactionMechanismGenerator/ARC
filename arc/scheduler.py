@@ -1440,7 +1440,7 @@ class Scheduler(object):
                                          )
                             tsg_index += 1
                 if all('user guess' in tsg.method for tsg in rxn.ts_species.ts_guesses):
-                    rxn.ts_species.tsg_spawned, rxn.ts_species.ts_guesses_exhausted = True, True
+                    rxn.ts_species.tsg_spawned = True
                     self.run_conformer_jobs(labels=[rxn.ts_label])
 
     def spawn_directed_scan_jobs(self,
@@ -2208,7 +2208,6 @@ class Scheduler(object):
         elif self.trsh_ess_jobs:
             self.troubleshoot_opt_jobs(label=label)
         if success:
-            self.check_rxn_e0_by_spc(label)
             return True  # run freq / sp / scan jobs on this optimized geometry
         else:
             return False  # return ``False``, so no freq / sp / scan jobs are initiated for this unoptimized geometry
@@ -2226,6 +2225,7 @@ class Scheduler(object):
             job (JobAdapter): The frequency job object instance.
         """
         freq_ok, switch_ts = False, False
+        wrong_freq_message = 'wrong number of negative frequencies; '
         if job.job_status[1]['status'] == 'done':
             if not os.path.isfile(job.local_path_to_output_file):
                 raise SchedulerError('Called check_freq_job with no output file')
@@ -2261,12 +2261,16 @@ class Scheduler(object):
                                     f'Searching for a better TS conformer...')
                         self.switch_ts(label)
                         switch_ts = True
+                if wrong_freq_message in self.output[label]['warnings']:
+                    self.output[label]['warnings'] = ''.join(self.output[label]['warnings'].split(wrong_freq_message))
             elif not self.species_dict[label].is_ts and self.trsh_ess_jobs:
                 # Only trsh neg freq here for non TS species, trsh TS species is done in check_negative_freq().
                 self.troubleshoot_negative_freq(label=label, job=job)
+            if not freq_ok:
+                self.output[label]['warnings'] += wrong_freq_message
         if job.job_status[1]['status'] != 'done' or (not freq_ok and not self.species_dict[label].is_ts):
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level)
-        if job.job_status[1]['status'] == 'done' and freq_ok and not switch_ts:
+        if job.job_status[1]['status'] == 'done' and freq_ok and not switch_ts and species_has_sp(self.output[label]):
             self.check_rxn_e0_by_spc(label)
 
     def check_negative_freq(self,
@@ -2364,7 +2368,8 @@ class Scheduler(object):
         for rxn in self.rxn_list:
             labels = rxn.reactants + rxn.products + [rxn.ts_label]
             if label in labels and not rxn.ts_species.ts_checks['E0'] \
-                    and all([species_has_sp(output_dict) and species_has_freq(output_dict)
+                    and all([(species_has_sp(output_dict) and species_has_freq(output_dict))
+                             or self.species_dict[spc_label].yml_path is not None
                              for spc_label, output_dict in self.output.items() if spc_label in labels]):
                 switch_ts = check_rxn_e0(reaction=rxn,
                                          species_dict=self.species_dict,
@@ -2483,12 +2488,16 @@ class Scheduler(object):
         if self.species_dict[label].is_ts:
             for rxn in self.rxn_dict.values():
                 if rxn.ts_label == label:
-                    check_ts(reaction=rxn, verbose=True, checks=['energy'])
-                    if not (rxn.ts_species.ts_checks['E0'] or rxn.ts_species.ts_checks['e_elect']):
-                        logger.info(f'TS {label} did not pass the energy check. '
-                                    f'Status is:\n{self.species_dict[label].ts_checks}\n'
-                                    f'Searching for a better TS conformer...')
-                        self.switch_ts(label=label)
+                    if not rxn.ts_species.ts_checks['e_elect']:
+                        check_ts(reaction=rxn, verbose=True, checks=['energy'])
+                    if species_has_freq(self.output[label]) and not rxn.ts_species.ts_checks['E0']:
+                        self.check_rxn_e0_by_spc(label)
+                        if not (rxn.ts_species.ts_checks['E0'] or rxn.ts_species.ts_checks['e_elect']) \
+                                and (self.output[label]['paths']['freq'] or self.species_dict[label].e0):
+                            logger.info(f'TS {label} did not pass the energy check. '
+                                        f'Status is:\n{self.species_dict[label].ts_checks}\n'
+                                        f'Searching for a better TS conformer...')
+                            self.switch_ts(label=label)
                     break
 
         # set *at the end* to differentiate between sp jobs when using complex solvation corrections
