@@ -268,8 +268,12 @@ class ArkaneAdapter(StatmechAdapter):
                                              transitionState=self.reaction.ts_label,
                                              tunneling='Eckart')
                 logger.info('A 262')
-                kinetics_job = KineticsJob(reaction=arkane_rxn, Tmin=self.T_min, Tmax=self.T_max, Tcount=self.T_count,
-                                           three_params=self.three_params)
+                kinetics_job = KineticsJob(reaction=arkane_rxn,
+                                           Tmin=self.T_min,
+                                           Tmax=self.T_max,
+                                           Tcount=self.T_count,
+                                           three_params=self.three_params,
+                                           )
                 if verbose:
                     if self.three_params:
                         msg = 'using the modified three-parameter Arrhenius equation k = A * (T/T0)^n * exp(-Ea/RT)'
