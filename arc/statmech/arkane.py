@@ -193,12 +193,15 @@ class ArkaneAdapter(StatmechAdapter):
         ts_species = self.species_dict[self.reaction.ts_label]
         logger.info(f'ts species: {ts_species}')
         logger.info(f"convergence: {self.output_dict[ts_species.label]['convergence']}")
+        logger.info('A 196')
         if self.output_dict[ts_species.label]['convergence'] or not require_ts_convergence:
+            logger.info('A 198')
             success = True
             arkane_output_path = self.generate_arkane_species_file(species=ts_species,
                                                                    bac_type=None,
                                                                    skip_rotors=skip_rotors,
                                                                    )
+            logger.info('A 204')
             arkane_ts_species = arkane_transition_state(ts_species.label, ts_species.arkane_file)
             statmech_success = self.run_statmech(arkane_species=arkane_ts_species,
                                                  arkane_file_path=ts_species.arkane_file,
@@ -208,21 +211,25 @@ class ArkaneAdapter(StatmechAdapter):
                                                  use_en_corr=has_en_corr,
                                                  plot=False,
                                                  )
+            logger.info(f'A 214   success {statmech_success}')
             if not statmech_success:
                 logger.error(f'Could not run statmech job for TS species {ts_species.label} '
                              f'of reaction {self.reaction.label}')
+                logger.info('A 218')
             else:
                 ts_species.e0 = arkane_ts_species.conformer.E0.value_si * 0.001  # Convert to kJ/mol.
                 check_ts(reaction=self.reaction,
                          checks=['energy', 'freq'],
                          rxn_zone_atom_indices=ts_species.rxn_zone_atom_indices,
                          )
+                logger.info(f'A 225     E0: {ts_species.e0}')
                 if not ts_passed_all_checks(species=self.reaction.ts_species,
                                             exemptions=['warnings', 'IRC', 'E0'],
                                             verbose=True,
                                             ):
                     logger.error(f'TS {self.reaction.ts_species.label} did not pass all checks, '
                                  f'not computing rate coefficient.')
+                    logger.info('A 232')
                     return None
                 if not estimate_dh_rxn:
                     self.reaction.dh_rxn298 = \
@@ -252,6 +259,7 @@ class ArkaneAdapter(StatmechAdapter):
                                              products=product_labels,
                                              transitionState=self.reaction.ts_label,
                                              tunneling='Eckart')
+                logger.info('A 262')
                 kinetics_job = KineticsJob(reaction=arkane_rxn, Tmin=self.T_min, Tmax=self.T_max, Tcount=self.T_count,
                                            three_params=self.three_params)
                 if verbose:
@@ -261,6 +269,7 @@ class ArkaneAdapter(StatmechAdapter):
                         msg = 'using the classical two-parameter Arrhenius equation k = A * exp(-Ea/RT)'
                     logger.info(f'Calculating rate coefficient for reaction {self.reaction.label} {msg}.')
                 try:
+                    logger.info('A 272')
                     kinetics_job.execute(output_directory=arkane_output_path, plot=True)
                 except (ValueError, OverflowError) as e:
                     # ValueError: One or both of the barrier heights of -9.3526 and 62.683 kJ/mol encountered in Eckart
@@ -278,6 +287,7 @@ class ArkaneAdapter(StatmechAdapter):
                     success = False
                     raise e
                 if success:
+                    logger.info('A 290     SUCCESS!!!!')
                     self.reaction.kinetics = kinetics_job.reaction.kinetics
                     plotter.log_kinetics(ts_species.label, path=arkane_output_path)
 
