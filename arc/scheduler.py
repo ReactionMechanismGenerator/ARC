@@ -2508,7 +2508,8 @@ class Scheduler(object):
                         check_ts(reaction=rxn, verbose=True, checks=['energy'])
                     if species_has_freq(self.output[label]) and not rxn.ts_species.ts_checks['E0']:
                         self.check_rxn_e0_by_spc(label)
-                    if not (rxn.ts_species.ts_checks['E0'] or rxn.ts_species.ts_checks['e_elect']):
+                    if not (rxn.ts_species.ts_checks['E0'] or rxn.ts_species.ts_checks['e_elect']) \
+                            and (self.output[label]['paths']['freq'] or self.species_dict[label].e0):
                         logger.info(f'TS {label} did not pass the energy check. '
                                     f'Status is:\n{self.species_dict[label].ts_checks}\n'
                                     f'Searching for a better TS conformer...')
