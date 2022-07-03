@@ -330,7 +330,6 @@ class ARCSpecies(object):
         self.checkfile = checkfile
         self.transport_data = TransportData()
         self.yml_path = yml_path
-        logger.info(f'setting yamlpath for {self.label}: {self.yml_path}')
         self.fragments = fragments
         self.original_label = None
         self.chosen_ts = None
@@ -491,6 +490,7 @@ class ARCSpecies(object):
             self.set_mol_list()
         if self.is_ts and not any(value is not None for key, value in self.ts_checks.items() if key != 'warnings'):
             self.populate_ts_checks()
+        logger.info(f'setting yamlpath for {self.label}: {self.yml_path}')
 
     def __str__(self) -> str:
         """Return a string representation of the object"""
