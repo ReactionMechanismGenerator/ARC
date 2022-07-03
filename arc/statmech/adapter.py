@@ -31,6 +31,7 @@ class StatmechAdapter(ABC):
     def compute_high_p_rate_coefficient(self,
                                         skip_rotors: bool = False,
                                         estimate_dh_rxn: bool = False,
+                                        require_ts_convergence: bool = True,
                                         verbose: bool = True,
                                         ) -> None:
         """
@@ -42,6 +43,7 @@ class StatmechAdapter(ABC):
             estimate_dh_rxn (bool, optional): Whether to estimate DH reaction instead of computing it. Default: ``False``.
                                               Useful for checking that the reaction could in principle be computed even
                                               when thermodynamic properties of reactants and products were still not computed.
+            require_ts_convergence (bool, optional): Whether to attempt computing a rate only for converged TS species.
             verbose (bool, optional): Whether to log messages. Default: ``True``.
         """
         pass
