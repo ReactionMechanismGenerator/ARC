@@ -2388,15 +2388,12 @@ class Scheduler(object):
         logger.info('\n\n\n                      In check_rxn_e0_by_spc!!')
         for rxn in self.rxn_list:
             labels = rxn.reactants + rxn.products + [rxn.ts_label]
-            logger.info(labels, label in labels)
             logger.info(f"E0 status: {rxn.ts_species.ts_checks['E0']}")
-            for spc_label, output_dict in self.output.items():
-                if spc_label in labels:
-                    logger.info(f'{spc_label}, sp? {species_has_sp(output_dict)} freq? {species_has_freq(output_dict)}')
             if label in labels and not rxn.ts_species.ts_checks['E0'] \
                     and all([(species_has_sp(output_dict) and species_has_freq(output_dict))
                              or self.species_dict[label].yml_path is not None
                              for spc_label, output_dict in self.output.items() if spc_label in labels]):
+                logger.info('Actually checking check_rxn_e0()')
                 switch_ts = check_rxn_e0(reaction=rxn,
                                          species_dict=self.species_dict,
                                          project_directory=self.project_directory,
@@ -2409,6 +2406,7 @@ class Scheduler(object):
                     logger.info(f'TS status for reaction {rxn.label} is:\n{rxn.ts_species.ts_checks}.\n'
                                 f'Switching TS.\n')
                     self.switch_ts(rxn.ts_label)
+            print(f'TS checks: {rxn.ts_species.ts_checks}')
 
     def switch_ts(self, label: str):
         """
