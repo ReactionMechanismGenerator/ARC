@@ -2391,8 +2391,8 @@ class Scheduler(object):
             logger.info(f"E0 status: {rxn.ts_species.ts_checks['E0']}")
             for spc_label, output_dict in self.output.items():
                 if spc_label in labels:
-                    logger.info([(spc_label, species_has_sp(output_dict), species_has_freq(output_dict),
-                           self.species_dict[label].yml_path is not None)
+                    logger.info([f'label: {spc_label}, has sp: {species_has_sp(output_dict)}, has freq: {species_has_freq(output_dict)}, '\
+                           f'yaml path: {self.species_dict[label].yml_path} yaml not None: {self.species_dict[label].yml_path is not None}'
                            for spc_label, output_dict in self.output.items() if spc_label in labels])
                     logger.info(f'spc {spc_label} has yml path {self.species_dict[spc_label].yml_path}')
             if label in labels and not rxn.ts_species.ts_checks['E0'] \
