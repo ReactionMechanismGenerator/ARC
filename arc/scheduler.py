@@ -3459,6 +3459,10 @@ class Scheduler(object):
                            for job_name in self.running_jobs[spc.label] if 'conformer' in job_name] \
                         + [self.job_dict[spc.label]['tsg'][get_i_from_job_name(job_name)].as_dict()
                            for job_name in self.running_jobs[spc.label] if 'tsg' in job_name]
+                    # todo: storing isn't consistent in self.running_jobs[spc.label]:
+                    # {'tsg0': <arc.job.adapters.ts.heuristics.HeuristicsAdapter object at 0x7ff55b2d19d0>, 1: <arc.job.adapters.ts.autotst_ts.AutoTSTAdapter object at 0x7ff55b1c8310>}
+                    # and fetch here accordingly
+                    # is it stored differently for the different adapters??
             logger.debug(f'Dumping restart dictionary:\n{self.restart_dict}')
             save_yaml_file(path=self.restart_path, content=self.restart_dict)
 
