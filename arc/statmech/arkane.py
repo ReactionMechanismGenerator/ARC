@@ -189,6 +189,8 @@ class ArkaneAdapter(StatmechAdapter):
         logger.info(f'\n\n\n\nIn compute_high_p_rate_coefficient')
         arkane.input.transition_state_dict, arkane.input.reaction_dict = dict(), dict()
         ts_species = self.species_dict[self.reaction.ts_label]
+        logger.info(f'ts species: {ts_species}')
+        logger.info(f"convergence: {self.output_dict[ts_species.label]['convergence']}")
         if self.output_dict[ts_species.label]['convergence'] or not require_ts_convergence:
             success = True
             arkane_output_path = self.generate_arkane_species_file(species=ts_species,
