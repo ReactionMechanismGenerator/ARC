@@ -306,7 +306,31 @@ class TestCommon(unittest.TestCase):
         extremum_index = common.get_extremum_index(lst, skip_values=[0])
         self.assertEqual(extremum_index, 0)
 
+    def test_sum_list_entries(self):
+        """Test the sum_list_entries() function."""
+        lst = list()
+        self.assertEqual(common.sum_list_entries(lst), 0)
+
+        lst = [1]
+        self.assertEqual(common.sum_list_entries(lst), 1)
+
+        lst = [-5.26, 7.8]
+        self.assertEqual(common.sum_list_entries(lst), 2.54)
+
+        lst = [-5.26, 7.8, None]
+        self.assertEqual(common.sum_list_entries(lst), None)
+
+        lst = [-5.26, 7.8, 'string']
+        self.assertEqual(common.sum_list_entries(lst), None)
+
+        lst = [-2, 6]
+        self.assertEqual(common.sum_list_entries(lst, multipliers=[2, 1.5]), 5.0)
+
+        lst = [-2, 6, 1]
+        self.assertEqual(common.sum_list_entries(lst, multipliers=[2, 1.5]), 6.0)
+
     def test_key_by_val(self):
+        """Test the key_by_val() function."""
         d = {1: 5, 2: 8}
         self.assertEqual(common.key_by_val(d, 8), 2)
 
