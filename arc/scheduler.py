@@ -2223,7 +2223,8 @@ class Scheduler(object):
                                            method='draw_3d')
         elif self.trsh_ess_jobs:
             self.troubleshoot_opt_jobs(label=label)
-        if success:
+        if success and species_has_freq(label):
+            logger.info('S 2227')
             self.check_rxn_e0_by_spc(label)
             return True  # run freq / sp / scan jobs on this optimized geometry
         else:
@@ -2287,7 +2288,10 @@ class Scheduler(object):
                 self.output[label]['warnings'].append(wrong_freq_message)
         if job.job_status[1]['status'] != 'done' or (not freq_ok and not self.species_dict[label].is_ts):
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level)
+        logger.info('S 2291')
+        logger.info(job.job_status[1]['status'] == 'done', freq_ok, not switch_ts, species_has_sp(self.output[label]))
         if job.job_status[1]['status'] == 'done' and freq_ok and not switch_ts and species_has_sp(self.output[label]):
+            logger.info('S 2293')
             self.check_rxn_e0_by_spc(label)
 
     def check_negative_freq(self,
@@ -2502,18 +2506,23 @@ class Scheduler(object):
                 self.output[label]['paths']['sp'] = original_sp_path  # restore the original path
 
         if self.species_dict[label].is_ts:
+            logger.info('S 2505')
             for rxn in self.rxn_dict.values():
                 if rxn.ts_label == label:
+                    logger.info('S 2508')
                     if not rxn.ts_species.ts_checks['e_elect']:
+                        logger.info('S 2510')
                         check_ts(reaction=rxn, verbose=True, checks=['energy'])
+                    logger.info('S 2512')
                     if species_has_freq(self.output[label]) and not rxn.ts_species.ts_checks['E0']:
+                        logger.info('S 2514')
                         self.check_rxn_e0_by_spc(label)
-                    if not (rxn.ts_species.ts_checks['E0'] or rxn.ts_species.ts_checks['e_elect']) \
-                            and (self.output[label]['paths']['freq'] or self.species_dict[label].e0):
-                        logger.info(f'TS {label} did not pass the energy check. '
-                                    f'Status is:\n{self.species_dict[label].ts_checks}\n'
-                                    f'Searching for a better TS conformer...')
-                        self.switch_ts(label=label)
+                        if not (rxn.ts_species.ts_checks['E0'] or rxn.ts_species.ts_checks['e_elect']) \
+                                and (self.output[label]['paths']['freq'] or self.species_dict[label].e0):
+                            logger.info(f'TS {label} did not pass the energy check. '
+                                        f'Status is:\n{self.species_dict[label].ts_checks}\n'
+                                        f'Searching for a better TS conformer...')
+                            self.switch_ts(label=label)
                     break
 
         # set *at the end* to differentiate between sp jobs when using complex solvation corrections
