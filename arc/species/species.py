@@ -1422,8 +1422,9 @@ class ARCSpecies(object):
                 self.ts_report += '\nMethods that were unsuccessfully in generating a TS guess:\n'
                 for unsuccessful_method in self.unsuccessful_methods:
                     self.ts_report += unsuccessful_method + ','
-            self.ts_report += f'\nThe method that generated the best TS guess and its output used for the ' \
-                              f'optimization: {self.chosen_ts_method}\n'
+            if not self.ts_guesses_exhausted:
+                self.ts_report += f'\nThe method that generated the best TS guess and its output used for the ' \
+                                  f'optimization: {self.chosen_ts_method}\n'
 
     def mol_from_xyz(self,
                      xyz: Optional[dict] = None,
