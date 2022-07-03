@@ -228,9 +228,9 @@ class ArkaneAdapter(StatmechAdapter):
                     logger.info(f'R: {[spc.e0 for spc in self.reaction.r_species]}')
                 logger.info(f'A 225     E0: {ts_species.e0}')
                 if all(spc.e0 is not None for spc in self.reaction.p_species):
-                    logger.info(f'R: {sum([spc.e0 for spc in self.reaction.p_species])}')
+                    logger.info(f'P: {sum([spc.e0 for spc in self.reaction.p_species])}')
                 else:
-                    logger.info(f'R: {[spc.e0 for spc in self.reaction.p_species]}')
+                    logger.info(f'P: {[spc.e0 for spc in self.reaction.p_species]}')
                 if require_ts_convergence and not ts_passed_all_checks(species=self.reaction.ts_species,
                                                                        exemptions=['warnings', 'IRC', 'E0'],
                                                                        verbose=True,
@@ -293,7 +293,6 @@ class ArkaneAdapter(StatmechAdapter):
                     if verbose:
                         logger.error(f'Failed to generate kinetics for {self.reaction.label}, got:\n{e}')
                     success = False
-                    raise e
                 if success:
                     logger.info('A 290     SUCCESS!!!!')
                     self.reaction.kinetics = kinetics_job.reaction.kinetics
