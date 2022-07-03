@@ -135,7 +135,7 @@ def load_rmg_database(rmgdb: RMGDatabase,
         reaction_libraries = list()
     if not load_thermo_libs:
         thermo_libraries = list()
-    # reaction_libraries = list()  # empty library list for debugging
+    reaction_libraries = list()  # empty library list for debugging
     logger.info('\n\nLoading the RMG database...')
 
     kinetics_depositories = ['training', 'NIST'] if include_nist else ['training']
