@@ -201,7 +201,8 @@ class ArkaneAdapter(StatmechAdapter):
                                                  arkane_output_path=arkane_output_path,
                                                  bac_type=None,
                                                  sp_level=self.sp_level,
-                                                 plot=False)
+                                                 plot=False,
+                                                 )
             if not statmech_success:
                 logger.error(f'Could not run statmech job for TS species {ts_species.label} '
                              f'of reaction {self.reaction.label}')
@@ -211,10 +212,10 @@ class ArkaneAdapter(StatmechAdapter):
                          checks=['energy', 'freq'],
                          rxn_zone_atom_indices=ts_species.rxn_zone_atom_indices,
                          )
-                if not ts_passed_all_checks(species=self.reaction.ts_species,
-                                            exemptions=['warnings', 'IRC', 'E0'],
-                                            verbose=True,
-                                            ):
+                if require_ts_convergence and not ts_passed_all_checks(species=self.reaction.ts_species,
+                                                                       exemptions=['warnings', 'IRC', 'E0'],
+                                                                       verbose=True,
+                                                                       ):
                     logger.error(f'TS {self.reaction.ts_species.label} did not pass all checks, '
                                  f'not computing rate coefficient.')
                     return None
@@ -246,8 +247,12 @@ class ArkaneAdapter(StatmechAdapter):
                                              products=product_labels,
                                              transitionState=self.reaction.ts_label,
                                              tunneling='Eckart')
-                kinetics_job = KineticsJob(reaction=arkane_rxn, Tmin=self.T_min, Tmax=self.T_max, Tcount=self.T_count,
-                                           three_params=self.three_params)
+                kinetics_job = KineticsJob(reaction=arkane_rxn,
+                                           Tmin=self.T_min,
+                                           Tmax=self.T_max,
+                                           Tcount=self.T_count,
+                                           three_params=self.three_params,
+                                           )
                 if verbose:
                     if self.three_params:
                         msg = 'using the modified three-parameter Arrhenius equation k = A * (T/T0)^n * exp(-Ea/RT)'
@@ -307,7 +312,7 @@ class ArkaneAdapter(StatmechAdapter):
         stat_mech_job.applyBondEnergyCorrections = bac_type is not None and sp_level is not None
         if bac_type is not None:
             stat_mech_job.bondEnergyCorrectionType = bac_type
-        if sp_level is None:
+        if sp_level is None or not self.arkane_has_en_corr():
             # If this is a kinetics computation and we don't have a valid model chemistry, don't bother about it.
             stat_mech_job.applyAtomEnergyCorrections = False
         else:
