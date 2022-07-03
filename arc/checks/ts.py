@@ -16,6 +16,7 @@ from arc.common import (ARC_PATH,
                         get_logger,
                         get_bonds_from_dmat,
                         read_yaml_file,
+                        sum_list_entries,
                         )
 from arc.imports import settings
 from arc.species.converter import displace_xyz, xyz_to_dmat
@@ -176,14 +177,14 @@ def check_rxn_e0(reaction: 'ARCReaction',
         Optional[bool]: Whether the test failed and the scheduler should switch to a different TS guess,
                         ``None`` if the test couldn't be performed.
     """
-    for spc_label in reaction.reactants + reaction.products + [reaction.ts_label]:
-        folder = 'rxns' if species_dict[spc_label].is_ts else 'Species'
-        freq_path = os.path.join(project_directory, 'output', folder, spc_label, 'geometry', 'freq.out')
-        if not os.path.isfile(freq_path) and not species_dict[spc_label].is_monoatomic():
+    for spc in reaction.r_species + reaction.p_species + [reaction.ts_species]:
+        folder = 'rxns' if species_dict[spc.label].is_ts else 'Species'
+        freq_path = os.path.join(project_directory, 'output', folder, spc.label, 'geometry', 'freq.out')
+        if not spc.yml_path and not os.path.isfile(freq_path) and not species_dict[spc.label].is_monoatomic():
             return None
     considered_labels = list()
     rxn_copy = reaction.copy()
-    for species in rxn_copy.r_species + rxn_copy.p_species:
+    for species in rxn_copy.r_species + rxn_copy.p_species + [rxn_copy.ts_species]:
         if species.label in considered_labels:
             continue
         considered_labels.append(species.label)
@@ -199,23 +200,12 @@ def check_rxn_e0(reaction: 'ARCReaction',
                                         e0_only=True,
                                         skip_rotors=True,
                                         )
-    statmech_adapter = statmech_factory(statmech_adapter_label=kinetics_adapter,
-                                        output_directory=os.path.join(project_directory, 'output'),
-                                        output_dict=output,
-                                        bac_type=None,
-                                        sp_level=sp_level,
-                                        freq_scale_factor=freq_scale_factor,
-                                        reaction=rxn_copy,
-                                        species_dict=species_dict,
-                                        T_min=(500, 'K'),
-                                        T_max=(1000, 'K'),
-                                        T_count=6,
-                                        )
-    statmech_adapter.compute_high_p_rate_coefficient(skip_rotors=True,
-                                                     estimate_dh_rxn=True,
-                                                     verbose=True,
-                                                     )
-    if rxn_copy.kinetics is None:
+    r_e0 = sum_list_entries([r.e0 for r in rxn_copy.r_species],
+                            multipliers=[rxn_copy.get_species_count(species=r, well=0) for r in rxn_copy.r_species])
+    p_e0 = sum_list_entries([p.e0 for p in rxn_copy.p_species],
+                            multipliers=[rxn_copy.get_species_count(species=p, well=1) for p in rxn_copy.p_species])
+    if any(e0 is None for e0 in [r_e0, p_e0, rxn_copy.ts_species.e0]) \
+            or r_e0 >= rxn_copy.ts_species.e0 or p_e0 >= rxn_copy.ts_species.e0:
         reaction.ts_species.ts_checks['E0'] = False
         if rxn_copy.ts_species.ts_guesses_exhausted:
             return False
