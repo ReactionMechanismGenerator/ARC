@@ -223,10 +223,10 @@ class ArkaneAdapter(StatmechAdapter):
                          rxn_zone_atom_indices=ts_species.rxn_zone_atom_indices,
                          )
                 logger.info(f'A 225     E0: {ts_species.e0}')
-                if not ts_passed_all_checks(species=self.reaction.ts_species,
-                                            exemptions=['warnings', 'IRC', 'E0'],
-                                            verbose=True,
-                                            ):
+                if require_ts_convergence and not ts_passed_all_checks(species=self.reaction.ts_species,
+                                                                       exemptions=['warnings', 'IRC', 'E0'],
+                                                                       verbose=True,
+                                                                       ):
                     logger.error(f'TS {self.reaction.ts_species.label} did not pass all checks, '
                                  f'not computing rate coefficient.')
                     logger.info('A 232')
