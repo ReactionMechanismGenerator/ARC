@@ -1985,6 +1985,16 @@ class TSGuess(object):
             self.successful_normal_mode = None
             self.errors = ''
 
+    def __str__(self) -> str:
+        """Return a string representation of the object"""
+        str_representation = 'TSGuess('
+        str_representation += f'index={self.index}, '
+        str_representation += f'method="{self.method}", '
+        str_representation += f'method_index={self.method_index}, '
+        str_representation += f'method_direction="{self.method_direction}", '
+        str_representation += f'success={self.success})'
+        return str_representation
+
     def as_dict(self) -> dict:
         """A helper function for dumping this object as a dictionary in a YAML file for restarting ARC"""
         ts_dict = dict()
