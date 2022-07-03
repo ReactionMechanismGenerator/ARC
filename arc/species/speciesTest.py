@@ -2443,6 +2443,17 @@ class TestTSGuess(unittest.TestCase):
                  H      -2.0093636431     0.0331190314    -0.8327683174
                  H      -2.0093636431     0.0331190314     0.8327683174"""
         cls.tsg2 = TSGuess(xyz=xyz)
+        cls.tsg3 = TSGuess(rmg_reaction=rmg_reaction, method='KinBot', family='H_Abstraction')
+        cls.tsg3.index = 3
+        cls.tsg3.method_index = 1
+        cls.tsg3.method_direction = 'F'
+        cls.tsg3.success = True
+
+    def test_str(self):
+        """Test the string representation of the object"""
+        str_representation = str(self.tsg3)
+        expected_representation = 'TSGuess(index=3, method="kinbot", method_index=1, method_direction="F", success=True)'
+        self.assertEqual(str_representation, expected_representation)
 
     def test_as_dict(self):
         """Test TSGuess.as_dict()"""
