@@ -187,6 +187,7 @@ class ArkaneAdapter(StatmechAdapter):
             require_ts_convergence (bool, optional): Whether to attempt computing a rate only for converged TS species.
             verbose (bool, optional): Whether to log messages. Default: ``True``.
         """
+        has_en_corr = self.check_arkane_en_corr()
         logger.info(f'\n\n\n\nIn compute_high_p_rate_coefficient')
         arkane.input.transition_state_dict, arkane.input.reaction_dict = dict(), dict()
         ts_species = self.species_dict[self.reaction.ts_label]
@@ -204,7 +205,9 @@ class ArkaneAdapter(StatmechAdapter):
                                                  arkane_output_path=arkane_output_path,
                                                  bac_type=None,
                                                  sp_level=self.sp_level,
-                                                 plot=False)
+                                                 use_en_corr=has_en_corr,
+                                                 plot=False,
+                                                 )
             if not statmech_success:
                 logger.error(f'Could not run statmech job for TS species {ts_species.label} '
                              f'of reaction {self.reaction.label}')
@@ -289,6 +292,7 @@ class ArkaneAdapter(StatmechAdapter):
                      arkane_output_path: str = None,
                      bac_type: Optional[str] = None,
                      sp_level: Optional[Level] = None,
+                     use_en_corr: bool = True,
                      plot: bool = False,
                      ) -> bool:
         """
@@ -301,6 +305,7 @@ class ArkaneAdapter(StatmechAdapter):
             bac_type (str, optional): The bond additivity correction type. 'p' for Petersson- or 'm' for Melius-type BAC.
                                       ``None`` to not use BAC.
             sp_level (Level, optional): The level of theory used for energy corrections.
+            use_en_corr (bool, optional): Whether to use Arkane's AECs.
             plot (bool): A flag indicating whether to plot a PDF of the calculated thermo properties (True to plot)
 
         Returns:
@@ -311,7 +316,7 @@ class ArkaneAdapter(StatmechAdapter):
         stat_mech_job.applyBondEnergyCorrections = bac_type is not None and sp_level is not None
         if bac_type is not None:
             stat_mech_job.bondEnergyCorrectionType = bac_type
-        if sp_level is None:
+        if sp_level is None or not use_en_corr:
             # If this is a kinetics computation and we don't have a valid model chemistry, don't bother about it.
             stat_mech_job.applyAtomEnergyCorrections = False
         else:
