@@ -145,10 +145,11 @@ def check_ts_energy(reaction: 'ARCReaction',
     # We don't have any params (some are ``None``)
     if verbose:
         logger.info('\n')
-        logger.warning(f"Could not get electronic energy of all species in reaction {reaction.label}. Cannot check TS.\n")
+        logger.warning(f"Could not get electronic energy for all species in reaction {reaction.label}.\n")
     # We don't really know.
     reaction.ts_species.ts_checks['e_elect'] = None
-    reaction.ts_species.ts_checks['warnings'] += 'Could not determine TS e_elect relative to the wells; '
+    if 'Could not determine TS e_elect relative to the wells; ' not in reaction.ts_species.ts_checks['warnings']:
+        reaction.ts_species.ts_checks['warnings'] += 'Could not determine TS e_elect relative to the wells; '
 
 
 def check_rxn_e0(reaction: 'ARCReaction',
