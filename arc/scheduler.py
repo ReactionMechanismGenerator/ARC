@@ -2389,6 +2389,11 @@ class Scheduler(object):
         for rxn in self.rxn_list:
             labels = rxn.reactants + rxn.products + [rxn.ts_label]
             logger.info(f"E0 status: {rxn.ts_species.ts_checks['E0']}")
+            for spc_label, output_dict in self.output.items():
+                if spc_label in labels:
+                    print([(spc_label, species_has_sp(output_dict), species_has_freq(output_dict),
+                           self.species_dict[label].yml_path is not None)
+                           for spc_label, output_dict in self.output.items() if spc_label in labels])
             if label in labels and not rxn.ts_species.ts_checks['E0'] \
                     and all([(species_has_sp(output_dict) and species_has_freq(output_dict))
                              or self.species_dict[label].yml_path is not None
