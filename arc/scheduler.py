@@ -2223,9 +2223,11 @@ class Scheduler(object):
                                            method='draw_3d')
         elif self.trsh_ess_jobs:
             self.troubleshoot_opt_jobs(label=label)
-        if success and species_has_freq(self.output[label]):
+        if success:
             logger.info('S 2227')
-            self.check_rxn_e0_by_spc(label)
+            if species_has_freq(self.output[label]):
+                logger.info('S 2229')
+                self.check_rxn_e0_by_spc(label)
             return True  # run freq / sp / scan jobs on this optimized geometry
         else:
             return False  # return ``False``, so no freq / sp / scan jobs are initiated for this unoptimized geometry
