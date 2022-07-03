@@ -8,6 +8,7 @@ from typing import Optional, Type
 
 from rmgpy.species import Species
 
+import arkane.encorr.data as data
 import arkane.input
 from arkane.input import (reaction as arkane_reaction,
                           species as arkane_input_species,
@@ -64,8 +65,8 @@ class ArkaneAdapter(StatmechAdapter):
                  bac_type: Optional[str],
                  sp_level: Optional[Level] = None,
                  freq_scale_factor: float = 1.0,
-                 species: Type[ARCSpecies] = None,
-                 reaction: Type[ARCReaction] = None,
+                 species: ARCSpecies = None,
+                 reaction: ARCReaction = None,
                  species_dict: dict = None,
                  T_min: tuple = None,
                  T_max: tuple = None,
@@ -489,6 +490,29 @@ class ArkaneAdapter(StatmechAdapter):
             species.arkane_file = None
 
         return arkane_output_path
+
+    def arkane_has_en_corr(self):
+        """
+        Check whether Arkane has atomic energy corrections (AEC) for the sp_level.
+
+        Returns:
+            bool: Whether Arkane has the respective AEC values.
+        """
+        arkane_energy_level = self.sp_level.to_arkane_level_of_theory()
+        arkane_energy_level = getattr(arkane_energy_level, 'energy', arkane_energy_level)
+        try:
+            atom_energies = data.atom_energies[arkane_energy_level]
+        except KeyError:
+            try:
+                atom_energies = data.atom_energies[arkane_energy_level.simple()]
+            except KeyError:
+                return False
+        if (self.reaction is not None
+            and any(symbol not in atom_energies for symbol in self.reaction.ts_species.get_xyz()['symbols'])) \
+                or (self.species is not None
+                    and any(symbol not in atom_energies for symbol in self.species.get_xyz()['symbols'])):
+            return False
+        return True
 
 
 def clean_output_directory(species_path: str,
