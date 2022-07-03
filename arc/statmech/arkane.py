@@ -184,6 +184,7 @@ class ArkaneAdapter(StatmechAdapter):
                                               when thermodynamic properties of reactants and products were still not computed.
             verbose (bool, optional): Whether to log messages. Default: ``True``.
         """
+        logger.info(f'\n\n\n\nIn compute_high_p_rate_coefficient')
         arkane.input.transition_state_dict, arkane.input.reaction_dict = dict(), dict()
         ts_species = self.species_dict[self.reaction.ts_label]
         if self.output_dict[ts_species.label]['convergence']:
@@ -267,6 +268,7 @@ class ArkaneAdapter(StatmechAdapter):
                     if verbose:
                         logger.error(f'Failed to generate kinetics for {self.reaction.label}, got:\n{e}')
                     success = False
+                    raise e
                 if success:
                     self.reaction.kinetics = kinetics_job.reaction.kinetics
                     plotter.log_kinetics(ts_species.label, path=arkane_output_path)
