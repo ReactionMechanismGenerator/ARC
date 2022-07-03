@@ -350,7 +350,7 @@ H                 -1.28677889    1.04716138   -1.01532486"""
                                    sp_level=Level(repr='uhf/3-21g'),
                                    freq_scale_factor=1.0,
                                    )
-        self.assertTrue(check_e0)
+        self.assertFalse(check_e0)  # Tests whether a TS switch is needed. The E0 check passes, thus we expect ``False``.
 
     def test_check_normal_mode_displacement(self):
         """Test the check_normal_mode_displacement() function."""
