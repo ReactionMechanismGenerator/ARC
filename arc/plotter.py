@@ -275,7 +275,7 @@ def plot_ts_guesses_by_e_and_method(species: ARCSpecies,
         auto_label(rects, ts_results, ax)
         if not species.ts_guesses_exhausted:
             rects[len(species.chosen_ts_list) - 1].set_color('r')
-        ax.set_ylim(0, max(y) * 1.2)
+        ax.set_ylim(0, (max(y) or 1) * 1.2)
         ax.set_ylabel(r'Electronic energy, kJ/mol')
         ax.set_title(species.rxn_label)
         ax.set_xticks([])
