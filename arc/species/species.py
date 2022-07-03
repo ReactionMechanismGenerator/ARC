@@ -330,6 +330,7 @@ class ARCSpecies(object):
         self.checkfile = checkfile
         self.transport_data = TransportData()
         self.yml_path = yml_path
+        logger.info(f'setting yamlpath for {self.label}: {self.yml_path}')
         self.fragments = fragments
         self.original_label = None
         self.chosen_ts = None
