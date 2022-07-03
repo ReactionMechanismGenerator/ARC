@@ -2288,7 +2288,7 @@ class Scheduler(object):
         if job.job_status[1]['status'] != 'done' or (not freq_ok and not self.species_dict[label].is_ts):
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level)
         logger.info('S 2291')
-        logger.info(job.job_status[1]['status'], freq_ok, not switch_ts, species_has_sp(self.output[label]))
+        # logger.info(job.job_status[1]['status'], freq_ok, not switch_ts, species_has_sp(self.output[label]))
         if job.job_status[1]['status'] == 'done' and freq_ok and not switch_ts and species_has_sp(self.output[label]):
             logger.info('S 2293')
             self.check_rxn_e0_by_spc(label)
@@ -2389,12 +2389,12 @@ class Scheduler(object):
         for rxn in self.rxn_list:
             labels = rxn.reactants + rxn.products + [rxn.ts_label]
             logger.info(f"E0 status: {rxn.ts_species.ts_checks['E0']}")
-            for spc_label, output_dict in self.output.items():
-                if spc_label in labels:
-                    logger.info([f'label: {spc_label}, has sp: {species_has_sp(output_dict)}, has freq: {species_has_freq(output_dict)}, '\
-                           f'yaml path: {self.species_dict[spc_label].yml_path} yaml not None: {self.species_dict[spc_label].yml_path is not None}'
-                           for spc_label, output_dict in self.output.items() if spc_label in labels])
-                    logger.info(f'spc {spc_label} has yml path {self.species_dict[spc_label].yml_path}')
+            # for spc_label, output_dict in self.output.items():
+            #     if spc_label in labels:
+            #         logger.info([f'label: {spc_label}, has sp: {species_has_sp(output_dict)}, has freq: {species_has_freq(output_dict)}, '\
+            #                f'yaml path: {self.species_dict[spc_label].yml_path} yaml not None: {self.species_dict[spc_label].yml_path is not None}'
+            #                for spc_label, output_dict in self.output.items() if spc_label in labels])
+            #         logger.info(f'spc {spc_label} has yml path {self.species_dict[spc_label].yml_path}')
             if label in labels and not rxn.ts_species.ts_checks['E0'] \
                     and all([(species_has_sp(output_dict) and species_has_freq(output_dict))
                              or self.species_dict[spc_label].yml_path is not None
