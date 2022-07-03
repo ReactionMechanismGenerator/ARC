@@ -181,6 +181,7 @@ def check_rxn_e0(reaction: 'ARCReaction',
         folder = 'rxns' if species_dict[spc.label].is_ts else 'Species'
         freq_path = os.path.join(project_directory, 'output', folder, spc.label, 'geometry', 'freq.out')
         if not spc.yml_path and not os.path.isfile(freq_path) and not species_dict[spc.label].is_monoatomic():
+            logger.info(f'\n\n\n        Returning None!! its {spc.label} s fault')
             return None
     considered_labels = list()
     rxn_copy = reaction.copy()
@@ -219,6 +220,8 @@ def check_rxn_e0(reaction: 'ARCReaction',
                                                      verbose=True,
                                                      )
     if rxn_copy.kinetics is None:
+        logger.info(f'no kinetics..........!!')
+        logger.info(f'ts_guesses_exhausted: {rxn_copy.ts_species.ts_guesses_exhausted}')
         reaction.ts_species.ts_checks['E0'] = False
         if rxn_copy.ts_species.ts_guesses_exhausted:
             return False
