@@ -2394,7 +2394,8 @@ class Scheduler(object):
                 if spc_label in labels:
                     logger.info(f'{spc_label}, sp? {species_has_sp(output_dict)} freq? {species_has_freq(output_dict)}')
             if label in labels and not rxn.ts_species.ts_checks['E0'] \
-                    and all([species_has_sp(output_dict) and species_has_freq(output_dict)
+                    and all([(species_has_sp(output_dict) and species_has_freq(output_dict))
+                             or self.species_dict[label].yml_path is not None
                              for spc_label, output_dict in self.output.items() if spc_label in labels]):
                 switch_ts = check_rxn_e0(reaction=rxn,
                                          species_dict=self.species_dict,
