@@ -177,10 +177,10 @@ def check_rxn_e0(reaction: 'ARCReaction',
                         ``None`` if the test couldn't be performed.
     """
     logger.info(f'in ts.check_rxn_e0()')
-    for spc_label in reaction.reactants + reaction.products + [reaction.ts_label]:
-        folder = 'rxns' if species_dict[spc_label].is_ts else 'Species'
-        freq_path = os.path.join(project_directory, 'output', folder, spc_label, 'geometry', 'freq.out')
-        if not os.path.isfile(freq_path) and not species_dict[spc_label].is_monoatomic():
+    for spc in reaction.r_species + reaction.p_species + [reaction.ts_species]:
+        folder = 'rxns' if species_dict[spc.label].is_ts else 'Species'
+        freq_path = os.path.join(project_directory, 'output', folder, spc.label, 'geometry', 'freq.out')
+        if not spc.yml_path and not os.path.isfile(freq_path) and not species_dict[spc.label].is_monoatomic():
             return None
     considered_labels = list()
     rxn_copy = reaction.copy()
