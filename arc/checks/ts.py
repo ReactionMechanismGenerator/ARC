@@ -175,6 +175,7 @@ def check_rxn_e0(reaction: 'ARCReaction',
         Optional[bool]: Whether the test failed and the scheduler should switch to a different TS guess,
                         ``None`` if the test couldn't be performed.
     """
+    logger.info(f'in ts.check_rxn_e0()')
     for spc_label in reaction.reactants + reaction.products + [reaction.ts_label]:
         folder = 'rxns' if species_dict[spc_label].is_ts else 'Species'
         freq_path = os.path.join(project_directory, 'output', folder, spc_label, 'geometry', 'freq.out')
@@ -186,6 +187,8 @@ def check_rxn_e0(reaction: 'ARCReaction',
         if species.label in considered_labels:
             continue
         considered_labels.append(species.label)
+        # if species.e0 is not None:
+        logger.info(f'Species {species.label} has E0 {species.e0} and e elect {species.e_elect}')
         statmech_adapter = statmech_factory(statmech_adapter_label=kinetics_adapter,
                                             output_directory=os.path.join(project_directory, 'output'),
                                             output_dict=output,
