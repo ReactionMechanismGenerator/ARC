@@ -189,7 +189,6 @@ def check_rxn_e0(reaction: 'ARCReaction',
         if species.label in considered_labels:
             continue
         considered_labels.append(species.label)
-        # if species.e0 is not None:
         logger.info(f'Species {species.label} has E0 {species.e0} and e elect {species.e_elect}')
         statmech_adapter = statmech_factory(statmech_adapter_label=kinetics_adapter,
                                             output_directory=os.path.join(project_directory, 'output'),
@@ -203,6 +202,16 @@ def check_rxn_e0(reaction: 'ARCReaction',
                                         e0_only=True,
                                         skip_rotors=True,
                                         )
+    logger.info('         *******  Printing from TS!!!!!!')
+    if all(spc.e0 is not None for spc in rxn_copy.r_species):
+        logger.info(f'R: {sum([spc.e0 for spc in rxn_copy.r_species])}')
+    else:
+        logger.info(f'R: {[spc.e0 for spc in rxn_copy.r_species]}')
+    logger.info(f'TS  E0: {rxn_copy.ts_species.e0}')
+    if all(spc.e0 is not None for spc in rxn_copy.p_species):
+        logger.info(f'P: {sum([spc.e0 for spc in rxn_copy.p_species])}')
+    else:
+        logger.info(f'P: {[spc.e0 for spc in rxn_copy.p_species]}')
     statmech_adapter = statmech_factory(statmech_adapter_label=kinetics_adapter,
                                         output_directory=os.path.join(project_directory, 'output'),
                                         output_dict=output,
