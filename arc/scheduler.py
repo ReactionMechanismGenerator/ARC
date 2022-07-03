@@ -684,7 +684,7 @@ class Scheduler(object):
                         del self.running_jobs[label]
 
             if self.timer and len(job_list):
-                time.sleep(30)  # wait 30 sec before bugging the servers again.
+                time.sleep(10)  # wait 30 sec before bugging the servers again.
             t = time.time() - self.report_time
             if t > 3600 and self.running_jobs:
                 self.report_time = time.time()
@@ -2392,7 +2392,7 @@ class Scheduler(object):
             for spc_label, output_dict in self.output.items():
                 if spc_label in labels:
                     logger.info([f'label: {spc_label}, has sp: {species_has_sp(output_dict)}, has freq: {species_has_freq(output_dict)}, '\
-                           f'yaml path: {self.species_dict[label].yml_path} yaml not None: {self.species_dict[label].yml_path is not None}'
+                           f'yaml path: {self.species_dict[spc_label].yml_path} yaml not None: {self.species_dict[spc_label].yml_path is not None}'
                            for spc_label, output_dict in self.output.items() if spc_label in labels])
                     logger.info(f'spc {spc_label} has yml path {self.species_dict[spc_label].yml_path}')
             if label in labels and not rxn.ts_species.ts_checks['E0'] \
