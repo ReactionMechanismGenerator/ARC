@@ -27,6 +27,7 @@ from arc.common import (almost_equal_coords,
                         get_logger,
                         get_single_bond_length,
                         generate_resonance_structures,
+                        is_angle_linear,
                         rmg_mol_from_dict_repr,
                         rmg_mol_to_dict_repr,
                         timedelta_from_str,
@@ -56,7 +57,7 @@ from arc.species.converter import (check_isomorphism,
                                    xyz_from_data,
                                    xyz_to_str,
                                    )
-from arc.species.vectors import calculate_distance, calculate_dihedral_angle
+from arc.species.vectors import calculate_angle, calculate_distance, calculate_dihedral_angle
 
 logger = get_logger()
 
@@ -1289,6 +1290,10 @@ class ARCSpecies(object):
             raise ValueError('Cannot set dihedral without xyz')
         if deg_increment is not None:
             deg_abs = calculate_dihedral_angle(coords=xyz, torsion=torsion) + deg_increment
+        if is_angle_linear(calculate_angle(coords=xyz, atoms=torsion[:3], index=0)) \
+                or is_angle_linear(calculate_angle(coords=xyz, atoms=torsion[1:], index=0)):
+            logger.warning(f'Cannot change a dihedral that contains a linear segment. Got torsion:{torsion}, xyz:\n{xyz}')
+            return None
         mol = self.mol
         if mol is None:
             mols = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)
