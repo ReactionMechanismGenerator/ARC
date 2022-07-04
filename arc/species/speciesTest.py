@@ -2434,16 +2434,24 @@ class TestTSGuess(unittest.TestCase):
         spc2.label = 'CNO2'
         rmg_reaction = Reaction(reactants=[spc1], products=[spc2])
         cls.tsg1 = TSGuess(rmg_reaction=rmg_reaction, method='AutoTST', family='H_Abstraction')
-        xyz = """N       0.9177905887     0.5194617797     0.0000000000
-                 H       1.8140204898     1.0381941417     0.0000000000
-                 H      -0.4763167868     0.7509348722     0.0000000000
-                 N       0.9992350860    -0.7048575683     0.0000000000
-                 N      -1.4430010939     0.0274543367     0.0000000000
-                 H      -0.6371484821    -0.7497769134     0.0000000000
-                 H      -2.0093636431     0.0331190314    -0.8327683174
-                 H      -2.0093636431     0.0331190314     0.8327683174"""
-        cls.tsg2 = TSGuess(xyz=xyz)
-        cls.tsg3 = TSGuess(rmg_reaction=rmg_reaction, method='KinBot', family='H_Abstraction')
+        cls.xyz_2 = """N       0.9177905887     0.5194617797     0.0000000000
+                   H       1.8140204898     1.0381941417     0.0000000000
+                   H      -0.4763167868     0.7509348722     0.0000000000
+                   N       0.9992350860    -0.7048575683     0.0000000000
+                   N      -1.4430010939     0.0274543367     0.0000000000
+                   H      -0.6371484821    -0.7497769134     0.0000000000
+                   H      -2.0093636431     0.0331190314    -0.8327683174
+                   H      -2.0093636431     0.0331190314     0.8327683174"""
+        cls.tsg2 = TSGuess(xyz=cls.xyz_2)
+        cls.xyz_3 = """N       1.9177905887     0.5194617797     0.0000000000
+                   H       1.8140204898     1.0381941417     0.0000000000
+                   H      -0.4763167868     0.7509348722     0.0000000000
+                   N       0.9992350860    -0.7048575683     0.0000000000
+                   N      -1.4430010939     0.0274543367     0.0000000000
+                   H      -0.6371484821    -0.7497769134     0.0000000000
+                   H      -2.0093636431     0.0331190314    -0.8327683174
+                   H      -2.0093636431     0.0331190314     0.8327683174"""
+        cls.tsg3 = TSGuess(rmg_reaction=rmg_reaction, method='KinBot', family='H_Abstraction', xyz=cls.xyz_3)
         cls.tsg3.index = 3
         cls.tsg3.method_index = 1
         cls.tsg3.method_direction = 'F'
@@ -2498,6 +2506,12 @@ class TestTSGuess(unittest.TestCase):
                               (3.0, 0.0, 0.0),)}
         mol_graph_1 = MolGraph(symbols=xyz_arb['symbols'], coords=xyz_arb['coords'])
         self.assertEqual(mol_graph_1.get_formula(), 'CH3NO2')
+
+    def test_almost_equal_tsgs(self):
+        """Test the almost_equal_tsgs() method."""
+        self.assertTrue(self.tsg2.almost_equal_tsgs(self.tsg2))
+        self.assertFalse(self.tsg3.almost_equal_tsgs(self.tsg2))
+        self.assertFalse(self.tsg2.almost_equal_tsgs(self.tsg3))
 
 
 if __name__ == '__main__':
