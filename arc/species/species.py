@@ -2136,6 +2136,24 @@ class TSGuess(object):
                 xyz = parse_xyz_from_file(xyz) if os.path.isfile(xyz) else str_to_xyz(xyz)
             self.initial_xyz = check_xyz_dict(xyz)
 
+    def get_xyz(self,
+                return_format: str = 'dict',
+                ) -> Optional[Union[dict, str]]:
+        """
+        Get the highest quality xyz the TSGuess has.
+        Returns ``None`` if no xyz can be retrieved.
+
+        Args:
+            return_format (str, optional): Whether to output a 'dict' or a 'str' representation of the respective xyz.
+
+        Return:
+             Optional[Union[dict, str]]: The xyz coordinates in the requested representation.
+        """
+        xyz = self.opt_xyz or self.initial_xyz
+        if return_format == 'str':
+            xyz = xyz_to_str(xyz)
+        return xyz
+
     def almost_equal_tsgs(self, other: 'TSGuess') -> bool:
         """
         Determine whether two TSGuess object instances represent the same geometry.
