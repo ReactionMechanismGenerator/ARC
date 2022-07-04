@@ -1959,6 +1959,7 @@ class TSGuess(object):
         successful_irc (bool): Whether the IRS run(s) identified this to be the correct TS by isomorphism of the wells.
         successful_normal_mode (bool): Whether a normal mode check was successful.
         errors (str): Problems experienced with this TSGuess. Used for logging.
+        cluster (List[int]): Indices of TSGuess object instances clustered together.
     """
 
     def __init__(self,
@@ -1976,6 +1977,7 @@ class TSGuess(object):
                  arc_reaction: Optional = None,
                  ts_dict: Optional[dict] = None,
                  energy: Optional[float] = None,
+                 cluster: Optional[List[int]] = None,
                  ):
 
         if ts_dict is not None:
@@ -1995,6 +1997,7 @@ class TSGuess(object):
             self.process_xyz(xyz)  # populates self.initial_xyz
             self.success = success
             self.energy = energy
+            self.cluster = cluster
             if 'user guess' in self.method:
                 if self.initial_xyz is None:
                     raise TSError('If no method is specified, an xyz guess must be given')
@@ -2016,6 +2019,8 @@ class TSGuess(object):
         str_representation += f'method="{self.method}", '
         str_representation += f'method_index={self.method_index}, '
         str_representation += f'method_direction="{self.method_direction}", '
+        if self.cluster is not None:
+            str_representation += f'cluster="{self.cluster}", '
         str_representation += f'success={self.success})'
         return str_representation
 
@@ -2033,6 +2038,8 @@ class TSGuess(object):
         ts_dict['conformer_index'] = self.conformer_index
         ts_dict['successful_irc'] = self.successful_irc
         ts_dict['successful_normal_mode'] = self.successful_normal_mode
+        if self.cluster is not None:
+            ts_dict['energy'] = self.cluster
         ts_dict['execution_time'] = str(self.execution_time) if isinstance(self.execution_time, datetime.timedelta) \
             else self.execution_time
         if self.initial_xyz:
@@ -2063,6 +2070,7 @@ class TSGuess(object):
         self.opt_xyz = ts_dict['opt_xyz'] if 'opt_xyz' in ts_dict else None
         self.success = ts_dict['success'] if 'success' in ts_dict else None
         self.energy = ts_dict['energy'] if 'energy' in ts_dict else None
+        self.cluster = ts_dict['cluster'] if 'cluster' in ts_dict else None
         self.execution_time = timedelta_from_str(ts_dict['execution_time']) if 'execution_time' in ts_dict \
             and isinstance(ts_dict['execution_time'], str) \
             else ts_dict['execution_time'] if 'execution_time' in ts_dict else None
