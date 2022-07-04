@@ -900,6 +900,15 @@ class TestCommon(unittest.TestCase):
         l2 = [7]
         self.assertEqual(common.get_ordered_intersection_of_two_lists(l1, l2), list())
 
+    def test_is_angle_linear(self):
+        """Test whether an angle is close to 180 or 0 degrees"""
+        self.assertTrue(common.is_angle_linear(180.0))
+        self.assertTrue(common.is_angle_linear(179.8))
+        self.assertTrue(common.is_angle_linear(0.01))
+        self.assertFalse(common.is_angle_linear(0.9))
+        self.assertFalse(common.is_angle_linear(150.0))
+        self.assertTrue(common.is_angle_linear(angle=3.0, tolerance=5.0))
+
     def test_get_angle_in_180_range(self):
         """Test the getting a corresponding angle in the -180 to +180 range"""
         self.assertEqual(common.get_angle_in_180_range(0), 0)
