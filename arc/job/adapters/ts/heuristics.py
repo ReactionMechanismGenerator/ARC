@@ -28,7 +28,7 @@ from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 from arkane.statmech import is_linear
 
-from arc.common import almost_equal_coords, get_logger, key_by_val
+from arc.common import almost_equal_coords, get_logger, is_angle_linear, key_by_val
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import check_argument_consistency, ts_adapters_by_rmg_family
 from arc.job.factory import register_job_adapter
@@ -36,7 +36,7 @@ from arc.plotter import save_geo
 from arc.species.converter import compare_zmats, zmat_from_xyz, zmat_to_xyz
 from arc.species.mapping import map_arc_rmg_species, map_two_species
 from arc.species.species import ARCSpecies, TSGuess, colliding_atoms
-from arc.species.zmat import get_parameter_from_atom_indices, is_angle_linear, remove_1st_atom, up_param
+from arc.species.zmat import get_parameter_from_atom_indices, remove_1st_atom, up_param
 
 if TYPE_CHECKING:
     from rmgpy.data.kinetics.family import KineticsFamily
