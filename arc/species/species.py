@@ -1422,6 +1422,26 @@ class ARCSpecies(object):
                 self.ts_report += f'\nThe method that generated the best TS guess and its output used for the ' \
                                   f'optimization: {self.chosen_ts_method}\n'
 
+    def cluster_tsgs(self):
+        """
+        Cluster TSGuesses.
+        """
+        if not self.is_ts or not len(self.ts_guesses):
+            return None
+        cluster_tsgs = list()
+        for tsg in self.ts_guesses:
+            for cluster_tsg in cluster_tsgs:
+                if cluster_tsg.almost_equal_tsgs(tsg):
+                    if tsg.method not in cluster_tsg.method:
+                        cluster_tsg.cluster.append(tsg.index)
+                        cluster_tsg.method += f' + {tsg.method}'
+                        cluster_tsg.execution_time += f' + {tsg.execution_time}'
+                    break
+            else:
+                tsg.cluster = [tsg.index]
+                cluster_tsgs.append(tsg)
+        self.ts_guesses = cluster_tsgs
+
     def mol_from_xyz(self,
                      xyz: Optional[dict] = None,
                      get_cheap: bool = False,

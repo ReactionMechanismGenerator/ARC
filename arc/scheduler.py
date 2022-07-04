@@ -1019,6 +1019,7 @@ class Scheduler(object):
         Args:
             label (str): The TS species label.
         """
+        self.species_dict[label].cluster_tsgs()
         plotter.save_conformers_file(
             project_directory=self.project_directory,
             label=label,
@@ -1976,6 +1977,7 @@ class Scheduler(object):
         Args:
             label (str): The TS species label.
         """
+        self.species_dict[label].cluster_tsgs()
         if not self.species_dict[label].is_ts:
             raise SchedulerError('determine_most_likely_ts_conformer() method only processes transition state guesses.')
         if not self.species_dict[label].successful_methods:
