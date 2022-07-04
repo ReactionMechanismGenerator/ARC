@@ -2537,6 +2537,14 @@ class TestTSGuess(unittest.TestCase):
         self.assertEqual(tsg.method, 'autotst')
         self.assertTrue(isinstance(tsg.rmg_reaction, Reaction))
 
+    def test_get_xyz(self):
+        """Test the get_xyz() method"""
+        self.assertIsNone(self.tsg1.get_xyz())
+        self.assertEqual(self.tsg2.get_xyz()['symbols'], ('N', 'H', 'H', 'N', 'N', 'H', 'H', 'H'))
+        tsg = TSGuess(xyz=self.xyz_2)
+        tsg.opt_xyz = {'symbols': ('C',), 'coords': ((-1.0, 0.0, 0.0),)}
+        self.assertEqual(tsg.get_xyz()['symbols'], ('C',))
+
     def test_xyz_perception(self):
         """Test MolGraph.get_formula()"""
         xyz_arb = {'symbols': ('H', 'C', 'H', 'H', 'O', 'N', 'O'),
