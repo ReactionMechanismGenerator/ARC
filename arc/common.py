@@ -1253,6 +1253,24 @@ def get_ordered_intersection_of_two_lists(l1: list,
     return l3
 
 
+def is_angle_linear(angle: float,
+                    tolerance: float = 0.9,
+                    ) -> bool:
+    """
+    Check whether an angle is close to 180 or 0 degrees.
+
+    Args:
+        angle (float): The angle in degrees.
+        tolerance (float): The tolerance to consider.
+
+    Returns:
+        bool: Whether the angle is close to 180 or 0 degrees, ``True`` if it is.
+    """
+    if 180 - tolerance < angle <= 180 or 0 <= angle < tolerance:
+        return True
+    return False
+
+
 def get_angle_in_180_range(angle: float,
                            round_to: Optional[int] = 2,
                            ) -> float:
