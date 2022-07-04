@@ -6,6 +6,7 @@ If the species is a transition state (TS), its ``ts_guesses`` attribute will hav
 import datetime
 import numpy as np
 import os
+from math import isclose
 from typing import Dict, List, Optional, Tuple, Union
 
 import rmgpy.molecule.element as elements
@@ -19,7 +20,8 @@ from rmgpy.species import Species
 from rmgpy.statmech import NonlinearRotor, LinearRotor
 from rmgpy.transport import TransportData
 
-from arc.common import (convert_list_index_0_to_1,
+from arc.common import (almost_equal_coords,
+                        convert_list_index_0_to_1,
                         determine_symmetry,
                         determine_top_group_indices,
                         get_logger,
@@ -42,6 +44,7 @@ from arc.species import conformers
 from arc.species.converter import (check_isomorphism,
                                    check_xyz_dict,
                                    check_zmat_dict,
+                                   compare_confs,
                                    get_xyz_radius,
                                    modify_coords,
                                    molecules_from_xyz,
@@ -2097,6 +2100,27 @@ class TSGuess(object):
             if isinstance(xyz, str):
                 xyz = parse_xyz_from_file(xyz) if os.path.isfile(xyz) else str_to_xyz(xyz)
             self.initial_xyz = check_xyz_dict(xyz)
+
+    def almost_equal_tsgs(self, other: 'TSGuess') -> bool:
+        """
+        Determine whether two TSGuess object instances represent the same geometry.
+
+        Args:
+            other (TSGuess): The other TSGuess object instance to compare to.
+
+        Returns:
+            bool: Whether the two TSGuess object instances represent the same geometry.
+        """
+        if self.success != other.success or \
+                (self.energy is not None and other.energy is not None
+                 and not isclose(self.energy, other.energy, abs_tol=0.1)) or \
+                (self.imaginary_freqs is not None and other.imaginary_freqs is not None
+                 and not isclose(self.imaginary_freqs, other.imaginary_freqs, abs_tol=0.1)):
+            return False
+        if almost_equal_coords(xyz1=self.get_xyz(), xyz2=other.get_xyz()) \
+                or compare_confs(xyz1=self.get_xyz(), xyz2=other.get_xyz(), rmsd_score=False):
+            return True
+        return False
 
     def tic(self):
         """
