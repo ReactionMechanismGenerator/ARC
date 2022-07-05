@@ -1884,8 +1884,8 @@ def compare_zmats(z1, z2, r_tol=0.01, a_tol=2, d_tol=2, verbose=False, symmetric
 
 def compare_confs(xyz1: dict,
                   xyz2: dict,
-                  rtol: float = 1e-5,
-                  atol: float = 1e-5,
+                  rtol: float = 0.01,
+                  atol: float = 0.1,
                   rmsd_score: bool = False,
                   ) -> Union[float, bool]:
     """
@@ -1910,7 +1910,7 @@ def compare_confs(xyz1: dict,
     xyz1, xyz2 = check_xyz_dict(xyz1), check_xyz_dict(xyz2)
     dmat1, dmat2 = xyz_to_dmat(xyz1), xyz_to_dmat(xyz2)
     if rmsd_score:
-        # distance matrix is symmetric, only need the upper triangular part to compute rmsd
+        # Distance matrix is symmetric, only need the upper triangular part to compute rmsd.
         rmsd = calc_rmsd(np.triu(dmat1), np.triu(dmat2))
         return rmsd
     else:
