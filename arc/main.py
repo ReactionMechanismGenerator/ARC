@@ -1107,6 +1107,10 @@ class ARC(object):
             else:
                 self.sp_level = sp
                 self.opt_level = opt
+                if self.irc_level is None:
+                    self.irc_level = opt
+                if self.scan_level is None:
+                    self.scan_level = opt
 
         self.level_of_theory = ''  # Reset the level_of_theory argument to avoid conflicts upon restarting ARC.
 
