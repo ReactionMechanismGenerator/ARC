@@ -2044,7 +2044,7 @@ class TSGuess(object):
         ts_dict['successful_irc'] = self.successful_irc
         ts_dict['successful_normal_mode'] = self.successful_normal_mode
         if self.cluster is not None:
-            ts_dict['energy'] = self.cluster
+            ts_dict['cluster'] = self.cluster
         ts_dict['execution_time'] = str(self.execution_time) if isinstance(self.execution_time, datetime.timedelta) \
             else self.execution_time
         if self.initial_xyz:
