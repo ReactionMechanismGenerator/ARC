@@ -2029,13 +2029,23 @@ class TSGuess(object):
         str_representation += f'success={self.success})'
         return str_representation
 
-    def as_dict(self) -> dict:
-        """A helper function for dumping this object as a dictionary in a YAML file for restarting ARC"""
+    def as_dict(self, for_report: bool = False) -> dict:
+        """
+        A helper function for dumping this object as a dictionary.
+
+        Args:
+            for_report (bool, optional): Whether to generate a concise dictionary representation
+                                         for the final_ts_guess_report.
+
+        Returns:
+            dict: The dictionary representation.
+        """
         ts_dict = dict()
-        ts_dict['t0'] = str(self.t0.isoformat()) if isinstance(self.t0, datetime.datetime) else self.t0
         ts_dict['method'] = self.method
         ts_dict['method_index'] = self.method_index
         ts_dict['method_direction'] = self.method_direction
+        ts_dict['execution_time'] = str(self.execution_time) if isinstance(self.execution_time, datetime.timedelta) \
+            else self.execution_time
         ts_dict['success'] = self.success
         ts_dict['energy'] = self.energy
         ts_dict['index'] = self.index
@@ -2043,24 +2053,24 @@ class TSGuess(object):
         ts_dict['conformer_index'] = self.conformer_index
         ts_dict['successful_irc'] = self.successful_irc
         ts_dict['successful_normal_mode'] = self.successful_normal_mode
-        if self.cluster is not None:
-            ts_dict['cluster'] = self.cluster
-        ts_dict['execution_time'] = str(self.execution_time) if isinstance(self.execution_time, datetime.timedelta) \
-            else self.execution_time
-        if self.initial_xyz:
+        if self.initial_xyz or for_report:
             ts_dict['initial_xyz'] = xyz_to_str(self.initial_xyz)
-        if self.opt_xyz:
+        if self.opt_xyz or for_report:
             ts_dict['opt_xyz'] = xyz_to_str(self.opt_xyz)
-        if self.family is not None:
-            ts_dict['family'] = self.family
-        if self.rmg_reaction is not None:
-            rxn_string = ' <=> '.join([' + '.join([spc.molecule[0].copy(deep=True).to_smiles()
-                                                   for spc in self.rmg_reaction.reactants]),
-                                       ' + '.join([spc.molecule[0].copy(deep=True).to_smiles()
-                                                   for spc in self.rmg_reaction.products])])
-            ts_dict['rmg_reaction'] = rxn_string
-        if self.errors:
-            ts_dict['errors'] = self.errors
+        if not for_report:
+            ts_dict['t0'] = str(self.t0.isoformat()) if isinstance(self.t0, datetime.datetime) else self.t0
+            if self.cluster is not None:
+                ts_dict['cluster'] = self.cluster
+            if self.family is not None:
+                ts_dict['family'] = self.family
+            if self.rmg_reaction is not None:
+                rxn_string = ' <=> '.join([' + '.join([spc.molecule[0].copy(deep=True).to_smiles()
+                                                       for spc in self.rmg_reaction.reactants]),
+                                           ' + '.join([spc.molecule[0].copy(deep=True).to_smiles()
+                                                       for spc in self.rmg_reaction.products])])
+                ts_dict['rmg_reaction'] = rxn_string
+            if self.errors:
+                ts_dict['errors'] = self.errors
         return ts_dict
 
     def from_dict(self, ts_dict: dict):
