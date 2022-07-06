@@ -2454,7 +2454,7 @@ class Scheduler(object):
         if self.species_dict[label].t1 is not None:
             txt = ''
             if self.species_dict[label].t1 > 0.02:
-                txt += ". Looks like it requires multireference treatment, I wouldn't trust it's calculated energy!"
+                txt += ". Looks like it should be treated using a multireference single-point energy method."
             elif self.species_dict[label].t1 > 0.015:
                 txt += ". It might have multireference characteristic."
             logger.info(f'Species {label} has a T1 diagnostic parameter of {self.species_dict[label].t1}{txt}')
