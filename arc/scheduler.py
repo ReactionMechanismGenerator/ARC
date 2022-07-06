@@ -21,6 +21,7 @@ from arc.common import (extremum_list,
                         get_angle_in_180_range,
                         get_logger,
                         get_number_with_ordinal_indicator,
+                        is_angle_linear,
                         save_yaml_file,
                         sort_two_lists_by_the_first,
                         torsions_to_scans,
@@ -1230,7 +1231,7 @@ class Scheduler(object):
                     v2 = [c2 - c1 for c1, c2 in zip(coords[torsions[1]], coords[torsions[2]])]
                     v3 = [c1 - c2 for c1, c2 in zip(coords[torsions[2]], coords[torsions[3]])]
                     angle1, angle2 = get_angle(v1, v2, units='degs'), get_angle(v2, v3, units='degs')
-                    if any([abs(angle - 180.0) < 0.25 or abs(angle) < 0.25 for angle in [angle1, angle2]]):
+                    if any([is_angle_linear(angle, tolerance=0.3) for angle in [angle1, angle2]]):
                         # This is not a torsional mode, invalidate rotor.
                         rotor['success'] = False
                         rotor['invalidation_reason'] = \
