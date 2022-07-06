@@ -1444,8 +1444,8 @@ class ARCSpecies(object):
         for tsg in self.ts_guesses:
             for cluster_tsg in cluster_tsgs:
                 if cluster_tsg.almost_equal_tsgs(tsg):
+                    cluster_tsg.cluster.append(tsg.index)
                     if tsg.method not in cluster_tsg.method:
-                        cluster_tsg.cluster.append(tsg.index)
                         cluster_tsg.method += f' + {tsg.method}'
                         cluster_tsg.execution_time += f' + {tsg.execution_time}'
                     break
