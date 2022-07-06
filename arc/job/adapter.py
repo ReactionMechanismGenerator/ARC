@@ -63,6 +63,7 @@ class JobEnum(str, Enum):
             - rdkit
             - terachem
             - torchani
+            - AIMNet (https://github.com/aiqm/aimnet)
             - turbomol
             - xtb
         - TS search:
