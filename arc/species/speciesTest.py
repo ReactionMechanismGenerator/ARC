@@ -2151,6 +2151,8 @@ H       1.11582953    0.94384729   -0.10134685"""
         self.assertEqual(len(spc_3.ts_guesses), 12)
         spc_3.cluster_tsgs()
         self.assertEqual(len(spc_3.ts_guesses), 6)
+        indices = [cluster.index for cluster in spc_3.ts_guesses]
+        self.assertEqual(indices, [0, 1, 2, 4, 7, 9])
 
         spc_3 = ARCSpecies(label='TS_3', is_ts=True)
         for i in range(12):
