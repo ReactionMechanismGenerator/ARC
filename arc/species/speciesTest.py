@@ -18,6 +18,7 @@ from arc.common import ARC_PATH, almost_equal_coords_lists
 from arc.species.converter import check_xyz_dict
 from arc.exceptions import SpeciesError
 from arc.level import Level
+from arc.parser import parse_e_elect
 from arc.plotter import save_conformers_file
 from arc.species.converter import (check_isomorphism,
                                    molecules_from_xyz,
@@ -2081,6 +2082,91 @@ H       1.11582953    0.94384729   -0.10134685"""
 
         ch_ts = ARCSpecies(label='C--H-TS', xyz='C 0 0 0\nH 1 2 5', is_ts=True)
         self.assertEqual(ch_ts.multiplicity, 2)
+
+    def test_cluster_tsgs(self):
+        """Test the cluster_tsgs() method."""
+        xyz_1 = """N       0.9177905887     0.5194617797     0.0000000000
+                   H       1.8140204898     1.0381941417     0.0000000000
+                   H      -0.4763167868     0.7509348722     0.0000000000
+                   N       0.9992350860    -0.7048575683     0.0000000000
+                   N      -1.4430010939     0.0274543367     0.0000000000
+                   H      -0.6371484821    -0.7497769134     0.0000000000
+                   H      -2.0093636431     0.0331190314    -0.8327683174
+                   H      -2.0093636431     0.0331190314     0.8327683174"""
+        xyz_2 = """N       0.9177905899     0.5194617794     0.0000000010
+                   H       1.8140204898     1.0381941417     0.0000000055
+                   H      -0.4763167868     0.7509348792     0.0000000000
+                   N       0.9992350860    -0.7048575683     0.0000000010
+                   N      -1.4430010939     0.0274543357     0.0000000055
+                   H      -0.6371484821    -0.7497769124     0.0000000020
+                   H      -2.0093636433     0.0331190312    -0.8327683174
+                   H      -2.0093636431     0.0331190314     0.8327683174"""  # Similar but not identical to xyz_1.
+        xyz_3 = """N       9.9177905887     0.5194617797     0.0000000000
+                   H       1.8140204898     1.0381941417     0.0000000000
+                   H      -0.4763167868     0.7509348722     0.0000000000
+                   N       0.9992350860    -0.7048575683     0.0000000000
+                   N      -1.4430010939     0.0274543367     0.0000000000
+                   H      -0.6371484821    -0.7497769134     0.0000000000
+                   H      -2.0093636431     0.0331190314    -0.8327683174
+                   H      -2.0093636431     0.0331190314     0.8327683174"""  # Different from xyz_1 and xyz_2.
+        spc_1 = ARCSpecies(label='TS_1', is_ts=True)
+        spc_1.ts_guesses = [TSGuess(index=0, method='user guess 0', xyz=xyz_1),
+                            TSGuess(index=1, method='KinBot', success=True, xyz=xyz_2),
+                            TSGuess(index=2, method='KinBot', success=True, xyz=xyz_2),
+                            TSGuess(index=3, method='GCN', success=True, xyz=xyz_3),
+                            ]
+        for tsg in spc_1.ts_guesses:
+            tsg.execution_time = '00:00:02'
+        self.assertEqual(len(spc_1.ts_guesses), 4)
+        spc_1.cluster_tsgs()
+        self.assertEqual(len(spc_1.ts_guesses), 2)
+        self.assertEqual(spc_1.ts_guesses[0].method, 'user guess 0 + kinbot')
+        self.assertEqual(spc_1.ts_guesses[0].execution_time, '00:00:02 + 00:00:02')
+        self.assertEqual(spc_1.ts_guesses[0].index, 0)
+        self.assertEqual(spc_1.ts_guesses[1].method, 'gcn')
+        self.assertEqual(spc_1.ts_guesses[1].execution_time, '00:00:02')
+        self.assertEqual(spc_1.ts_guesses[1].index, 3)
+        spc_2 = ARCSpecies(label='TS_2', is_ts=True)
+        for i in range(12):
+            path = os.path.join(ARC_PATH, 'arc', 'testing', 'TS_confs', f'TS0_conf_{i}_input.gjf')  # input geometry
+            spc_2.ts_guesses.append(TSGuess(index=i,
+                                            method='heuristics',
+                                            method_index=i,
+                                            xyz=str_to_xyz(path),
+                                            ))
+            spc_2.ts_guesses[-1].execution_time = '00:00:01'
+        self.assertEqual(len(spc_2.ts_guesses), 12)
+        spc_2.cluster_tsgs()
+        self.assertEqual(len(spc_2.ts_guesses), 12)  # Expect input geometries to be distinct.
+
+        spc_3 = ARCSpecies(label='TS_3', is_ts=True)
+        for i in range(12):
+            path = os.path.join(ARC_PATH, 'arc', 'testing', 'TS_confs', f'TS0_conf_{i}.out')
+            spc_3.ts_guesses.append(TSGuess(index=i,
+                                            method='heuristics',
+                                            method_index=i,
+                                            xyz=str_to_xyz(path),
+                                            ))
+            spc_3.ts_guesses[-1].execution_time = '00:00:01'
+        self.assertEqual(len(spc_3.ts_guesses), 12)
+        spc_3.cluster_tsgs()
+        self.assertEqual(len(spc_3.ts_guesses), 6)
+        indices = [cluster.index for cluster in spc_3.ts_guesses]
+        self.assertEqual(indices, [0, 1, 2, 4, 7, 9])
+
+        spc_3 = ARCSpecies(label='TS_3', is_ts=True)
+        for i in range(12):
+            path = os.path.join(ARC_PATH, 'arc', 'testing', 'TS_confs', f'TS0_conf_{i}.out')
+            spc_3.ts_guesses.append(TSGuess(index=i,
+                                            method='heuristics',
+                                            method_index=i,
+                                            energy=parse_e_elect(path),
+                                            xyz=str_to_xyz(path),
+                                            ))
+            spc_3.ts_guesses[-1].execution_time = '00:00:01'
+        self.assertEqual(len(spc_3.ts_guesses), 12)
+        spc_3.cluster_tsgs()
+        self.assertEqual(len(spc_3.ts_guesses), 6)
 
     def test_are_coords_compliant_with_graph(self):
         """Test coordinates compliant with 2D graph connectivity"""
