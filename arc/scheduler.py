@@ -439,29 +439,27 @@ class Scheduler(object):
                                 self.run_scan_jobs(species.label)
                     else:
                         # non-composite-related restart
-                        if ('opt' not in list(self.job_dict[species.label].keys()) and not self.job_types['fine']) or \
+                        if ('opt' not in self.job_dict[species.label].keys() and not self.job_types['fine']) or \
                                 (self.job_types['fine'] and 'opt' not in list(self.job_dict[species.label].keys())
                                  and 'fine' not in list(self.job_dict[species.label].keys())):
                             # opt/fine isn't running
                             if not self.output[species.label]['paths']['geo'] and self.job_types['opt']:
                                 # opt/fine hasn't finished (and isn't running), so run it
                                 self.run_opt_job(species.label, fine=self.fine_only)
-                            else:
-                                # opt/fine is done, check post-opt job types
-                                if not self.output[species.label]['job_types']['freq'] \
-                                        and 'freq' not in list(self.job_dict[species.label].keys()) \
-                                        and (species.is_ts or species.number_of_atoms > 1):
-                                    self.run_freq_job(species.label)
-                                if not self.output[species.label]['job_types']['sp'] \
-                                        and 'sp' not in list(self.job_dict[species.label].keys()):
-                                    self.run_sp_job(species.label)
-                                if self.job_types['rotors'] and \
-                                        any(spc.rotors_dict is not None and
-                                            any(rotor_dict['success'] is False and not rotor_dict['invalidation_reason']
-                                                for rotor_dict in spc.rotors_dict.values())
-                                            for spc in self.species_list):
-                                    # some restart-related checks are performed within run_scan_jobs()
-                                    self.run_scan_jobs(species.label)
+                        if self.output[species.label]['paths']['geo'] and 'sp' not in self.job_dict[species.label].keys() \
+                                and not self.output[species.label]['paths']['sp'] and self.job_types['sp']:
+                            self.run_sp_job(species.label)
+                        if self.output[species.label]['paths']['geo'] and 'freq' not in self.job_dict[species.label].keys() \
+                                and not self.output[species.label]['paths']['freq'] and self.job_types['freq']\
+                                and (species.is_ts or species.number_of_atoms > 1):
+                            self.run_freq_job(species.label)
+                        if self.output[species.label]['paths']['geo'] and self.job_types['rotors'] and \
+                                any(spc.rotors_dict is not None and
+                                    any(rotor_dict['success'] is False and not rotor_dict['invalidation_reason']
+                                        for rotor_dict in spc.rotors_dict.values())
+                                    for spc in self.species_list):
+                            # Additional restart-related checks are performed within run_scan_jobs().
+                            self.run_scan_jobs(species.label)
             else:
                 # Species is loaded from an Arkane YAML file (no need to execute any job)
                 self.output[species.label]['convergence'] = True
