@@ -3501,22 +3501,7 @@ class Scheduler(object):
                     ts_dict['family'] = None
                 ts_guesses = dict()
                 for tsg in species.ts_guesses:
-                    ts_guess = dict()
-                    ts_guess['initial_xyz'] = xyz_to_str(tsg.initial_xyz)
-                    ts_guess['opt_xyz'] = xyz_to_str(tsg.opt_xyz)
-                    ts_guess['method'] = tsg.method
-                    ts_guess['method_index'] = tsg.method_index
-                    ts_guess['method_direction'] = tsg.method_direction
-                    ts_guess['execution_time'] = str(tsg.execution_time) \
-                        if isinstance(tsg.execution_time, datetime.timedelta) else tsg.execution_time
-                    ts_guess['success'] = tsg.success
-                    ts_guess['energy'] = tsg.energy
-                    ts_guess['imaginary_freqs'] = [float(f) for f in tsg.imaginary_freqs] \
-                        if tsg.imaginary_freqs is not None else None
-                    ts_guess['conformer_index'] = tsg.conformer_index
-                    ts_guess['successful_irc'] = tsg.successful_irc
-                    ts_guess['successful_normal_mode'] = tsg.successful_normal_mode
-                    ts_guesses[tsg.index] = ts_guess
+                    ts_guesses[tsg.index] = tsg.as_dict(for_report=True)
                 ts_dict['ts_guesses'] = ts_guesses
                 content[species.label] = ts_dict
                 tsg_fig_path = os.path.join(self.project_directory, 'output', 'rxns', species.label, 'ts_guesses.png')
