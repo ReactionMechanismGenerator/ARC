@@ -849,7 +849,7 @@ class JobAdapter(ABC):
                 logger.error(f'Got an IOError when trying to download output file for job {self.job_name}.')
             self._get_additional_job_info()
             if self.additional_job_info:
-                logger.info(f'Got the following information from the server:\n{self.additional_job_info}')
+                logger.debug(f'Got the following information from the server:\n{self.additional_job_info}')
                 for line in self.additional_job_info.splitlines():
                     # Example:
                     # slurmstepd: *** JOB 7752164 CANCELLED AT 2019-03-27T00:30:50 DUE TO TIME LIMIT on node096 ***
