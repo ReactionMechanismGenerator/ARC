@@ -2578,6 +2578,12 @@ class TestTSGuess(unittest.TestCase):
         tsg = TSGuess(ts_dict=ts_dict)
         self.assertEqual(tsg.method, 'autotst')
         self.assertTrue(isinstance(tsg.rmg_reaction, Reaction))
+        ts_dict_for_report = self.tsg1.as_dict(for_report=True)
+        print(ts_dict_for_report.keys())
+        self.assertEqual(list(ts_dict_for_report.keys()),
+                         ['method', 'method_index', 'method_direction', 'execution_time', 'success', 'energy', 'index',
+                          'imaginary_freqs', 'conformer_index', 'successful_irc', 'successful_normal_mode',
+                          'initial_xyz', 'opt_xyz'])
 
     def test_get_xyz(self):
         """Test the get_xyz() method"""
