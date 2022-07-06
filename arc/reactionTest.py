@@ -515,6 +515,14 @@ class TestARCReaction(unittest.TestCase):
                             p_species=[ARCSpecies(label='OH', smiles='[OH]'), ARCSpecies(label='OH', smiles='[OH]')])
         self.assertEqual(rxn_4.multiplicity, 1)
 
+        rxn_5 = ARCReaction(r_species=[ARCSpecies(label='N', smiles='[N]'), ARCSpecies(label='HNO', smiles='N=O')],
+                            p_species=[ARCSpecies(label='NO', smiles='[N]=O'),
+                                       ARCSpecies(label='NH', smiles='[NH]')])
+        self.assertEqual(rxn_5.multiplicity, 4)
+        rxn_5 = ARCReaction(r_species=[ARCSpecies(label='N', smiles='[N]'), ARCSpecies(label='HNO', smiles='N=O')],
+                            p_species=[ARCSpecies(label='NO', smiles='[N]=O'), ARCSpecies(label='NH', smiles='[NH]')])
+        self.assertEqual(rxn_5.multiplicity, 4)
+
     def test_check_atom_balance(self):
         """Test the Reaction check_atom_balance method"""
 
