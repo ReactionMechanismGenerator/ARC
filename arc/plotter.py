@@ -274,7 +274,8 @@ def plot_ts_guesses_by_e_and_method(species: ARCSpecies,
         rects = ax.bar(x - width / 2, y, width)
         auto_label(rects, ts_results, ax)
         if not species.ts_guesses_exhausted:
-            rects[len(species.chosen_ts_list) - 1].set_color('r')
+            tsg_indices_dict = {cluster.index: i for i, cluster in enumerate(species.ts_guesses)}
+            rects[tsg_indices_dict[species.chosen_ts]].set_color('r')
         ax.set_ylim(0, (max(y) or 1) * 1.2)
         ax.set_ylabel(r'Electronic energy, kJ/mol')
         ax.set_title(species.rxn_label)
