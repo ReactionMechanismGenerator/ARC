@@ -362,6 +362,8 @@ class ARCReaction(object):
                     self.products = products.split(self.plus)
                 else:
                     self.products = [products]
+                self.reactants = [reactant.strip() for reactant in self.reactants]
+                self.products = [product.strip() for product in self.products]
                 if species_list is not None:
                     if len(self.reactants) and len(self.products):
                         labels = [spc.label for spc in species_list]
