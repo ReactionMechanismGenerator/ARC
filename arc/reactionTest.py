@@ -1653,8 +1653,9 @@ H       1.12853146   -0.86793870    0.06973060"""
         self.assertEqual(rxn_1.reactants, ['H2NO', 'HNO'])
         self.assertEqual(rxn_1.products, ['NH2OH', 'NO'])
 
-        rxn_2 = ARCReaction(reaction_dict={'label': 'HNO + H2NO <=> NO + NH2OH '})
-        rxn_2.set_label_reactants_products(species_list=[hno, h2no, no, nh2oh])
+        rxn_2 = ARCReaction(reaction_dict={'label': 'HNO + H2NO <=> NO + NH2OH '},
+                            species_list=[hno, h2no, no, nh2oh],
+                            )
         self.assertEqual(rxn_2.reactants, ['H2NO', 'HNO'])
         self.assertEqual(rxn_2.products, ['NH2OH', 'NO'])
 
