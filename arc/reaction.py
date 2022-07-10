@@ -367,15 +367,18 @@ class ARCReaction(object):
                 if species_list is not None:
                     if len(self.reactants) and len(self.products):
                         labels = [spc.label for spc in species_list]
+                        original_labels = [spc.original_label for spc in species_list]
                         for spc_label in self.reactants + self.products:
-                            if spc_label not in labels:
+                            if spc_label not in labels + original_labels:
                                 raise ValueError(f'The species {spc_label} appears in the reaction label\n'
                                                  f'{self.label}\n'
                                                  f'Yet no species with a corresponding label was defined in ARC.')
                     if not len(self.r_species) and len(self.reactants):
-                        self.r_species = [spc for spc in species_list if spc.label in self.reactants]
+                        self.r_species = [spc for spc in species_list if spc.label in self.reactants
+                                          or spc.original_label in self.reactants]
                     if not len(self.p_species) and len(self.products):
-                        self.p_species = [spc for spc in species_list if spc.label in self.products]
+                        self.p_species = [spc for spc in species_list if spc.label in self.products
+                                          or spc.original_label in self.products]
             elif self.rmg_reaction is not None:
                 self.reactants = [r.label for r in self.rmg_reaction.reactants]
                 self.products = [p.label for p in self.rmg_reaction.products]
