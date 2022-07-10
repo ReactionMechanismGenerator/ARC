@@ -1641,6 +1641,24 @@ H       1.12853146   -0.86793870    0.06973060"""
         rxn_2.check_done_opt_r_n_p()
         self.assertEqual(rxn_2.done_opt_r_n_p, False)
 
+    def tests_white_space_in_reaction_label(self):
+        """Test that an extra white space in the reaction label does not confuse ARC."""
+        hno = ARCSpecies(label='HNO', smiles='N=O')
+        h2no = ARCSpecies(label='H2NO', smiles='N[O]')
+        no = ARCSpecies(label='NO', smiles='[N]=O')
+        nh2oh = ARCSpecies(label='NH2OH', smiles='NO')
+        rxn_1 = ARCReaction(label='HNO + H2NO <=> NO + NH2OH ',
+                            r_species=[hno, h2no], p_species=[no, nh2oh],
+                            )
+        self.assertEqual(rxn_1.reactants, ['H2NO', 'HNO'])
+        self.assertEqual(rxn_1.products, ['NH2OH', 'NO'])
+
+        rxn_2 = ARCReaction(reaction_dict={'label': 'HNO + H2NO <=> NO + NH2OH '},
+                            species_list=[hno, h2no, no, nh2oh],
+                            )
+        self.assertEqual(rxn_2.reactants, ['H2NO', 'HNO'])
+        self.assertEqual(rxn_2.products, ['NH2OH', 'NO'])
+
 
 def check_atom_map(rxn: ARCReaction) -> bool:
     """
