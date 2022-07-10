@@ -40,10 +40,10 @@ class ARCReaction(object):
     Args:
         label (str, optional): The reaction's label in the format `r1 + r2 <=> p1 + p2`
                                (or unimolecular on either side, as appropriate).
-        reactants (list, optional): A list of reactant *labels* corresponding to an :ref:`ARCSpecies <species>`.
-        products (list, optional): A list of product *labels* corresponding to an :ref:`ARCSpecies <species>`.
-        r_species (list, optional): A list of reactants :ref:`ARCSpecies <species>` objects.
-        p_species (list, optional): A list of products :ref:`ARCSpecies <species>` objects.
+        reactants (List[str], optional): A list of reactant *labels* corresponding to an :ref:`ARCSpecies <species>`.
+        products (List[str], optional): A list of product *labels* corresponding to an :ref:`ARCSpecies <species>`.
+        r_species (List[ARCSpecies], optional): A list of reactants :ref:`ARCSpecies <species>` objects.
+        p_species (List[ARCSpecies], optional): A list of products :ref:`ARCSpecies <species>` objects.
         ts_label (str, optional): The :ref:`ARCSpecies <species>` label of the respective TS.
         rmg_reaction (Reaction, optional): An RMG Reaction class.
         ts_xyz_guess (list, optional): A list of TS XYZ user guesses, each in a string format.
@@ -61,10 +61,10 @@ class ARCReaction(object):
                      (or unimolecular on either side, as appropriate).
         family (KineticsFamily): The RMG kinetic family, if applicable.
         family_own_reverse (bool): Whether the RMG family is its own reverse.
-        reactants (list): A list of reactants labels corresponding to an :ref:`ARCSpecies <species>`.
-        products (list): A list of products labels corresponding to an :ref:`ARCSpecies <species>`.
-        r_species (list): A list of reactants :ref:`ARCSpecies <species>` objects.
-        p_species (list): A list of products :ref:`ARCSpecies <species>` objects.
+        reactants (List[str]): A list of reactants labels corresponding to an :ref:`ARCSpecies <species>`.
+        products (List[str]): A list of products labels corresponding to an :ref:`ARCSpecies <species>`.
+        r_species (List[ARCSpecies]): A list of reactants :ref:`ARCSpecies <species>` objects.
+        p_species (List[ARCSpecies]): A list of products :ref:`ARCSpecies <species>` objects.
         ts_species (ARCSpecies): The :ref:`ARCSpecies <species>` corresponding to the reaction's TS.
         dh_rxn298 (float): The heat of reaction at 298K.
         kinetics (Arrhenius): The high pressure limit rate coefficient calculated by ARC.
