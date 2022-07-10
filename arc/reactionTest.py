@@ -1659,6 +1659,24 @@ H       1.12853146   -0.86793870    0.06973060"""
         self.assertEqual(rxn_2.reactants, ['H2NO', 'HNO'])
         self.assertEqual(rxn_2.products, ['NH2OH', 'NO'])
 
+    def tests_special_characters_in_reaction_label(self):
+        """Test that the respective species objects can be identified from a reaction label with a special character."""
+        no2 = ARCSpecies(label='NO2', smiles='[O]N=O')
+        nh3o = ARCSpecies(label='[O-][NH3+]', smiles='[O-][NH3+]')
+        hono = ARCSpecies(label='HONO', smiles='ON=O')
+        h2no = ARCSpecies(label='H2NO', smiles='N[O]')
+        rxn_1 = ARCReaction(label='NO2 + [O-][NH3+] <=> HONO + H2NO',
+                            r_species=[no2, nh3o], p_species=[hono, h2no],
+                            )
+        self.assertEqual(rxn_1.reactants, ['NO2', '[O-][NH3p]'])
+        self.assertEqual(rxn_1.products, ['H2NO', 'HONO'])
+
+        rxn_2 = ARCReaction(reaction_dict={'label': 'NO2 + [O-][NH3+] <=> HONO + H2NO'},
+                            species_list=[no2, nh3o, hono, h2no],
+                            )
+        self.assertEqual(rxn_2.reactants, ['NO2', '[O-][NH3p]'])
+        self.assertEqual(rxn_2.products, ['H2NO', 'HONO'])
+
 
 def check_atom_map(rxn: ARCReaction) -> bool:
     """
