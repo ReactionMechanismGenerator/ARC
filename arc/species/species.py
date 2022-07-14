@@ -1403,7 +1403,7 @@ class ARCSpecies(object):
                               f'optimization: {self.chosen_ts_method}\n'
 
     def mol_from_xyz(self,
-                     xyz: dict = None,
+                     xyz: Optional[dict] = None,
                      get_cheap: bool = False,
                      ) -> None:
         """
@@ -1418,7 +1418,14 @@ class ARCSpecies(object):
             get_cheap (bool, optional): Whether to generate conformers if the species has no xyz data.
         """
         if xyz is None:
-            xyz = self.get_xyz(generate=get_cheap)
+            xyz = self.get_xyz(generate=get_cheap, return_format='dict')
+        if xyz is None:
+            return None
+
+        if len(xyz['symbols']) == 2 and xyz['symbols'][0] == xyz['symbols'][1] \
+                and xyz['symbols'][0] in ['O', 'S'] and self.multiplicity == 3:
+            # Hard-coded for triplet O2 and S2: Don't perceive mol.
+            return None
 
         if self.mol is not None:
             if len(self.mol.atoms) != len(xyz['symbols']):
