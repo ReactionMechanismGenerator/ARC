@@ -204,13 +204,19 @@ def generate_conformers(mol_list: Union[List[Molecule], Molecule],
                                  f'got {type(mol)}')
     mol_list = [update_mol(mol) for mol in mol_list]
 
-    # a quick bypass for mono-atomic species:
+    # A quick bypass for monoatomic and diatomic species:
+    confs = None
     if len(mol_list[0].atoms) == 1:
         confs = [generate_monoatomic_conformer(symbol=mol_list[0].atoms[0].element.symbol)]
-        if not return_all_conformers:
-            return confs
-        else:
+    elif len(mol_list[0].atoms) == 2:
+        confs = [generate_diatomic_conformer(symbol_1=mol_list[0].atoms[0].element.symbol,
+                                             symbol_2=mol_list[0].atoms[1].element.symbol,
+                                             multiplicity=multiplicity,
+                                             )]
+    if confs is not None:
+        if return_all_conformers:
             return confs, confs
+        return confs
 
     if xyzs is not None and any([not isinstance(xyz, dict) for xyz in xyzs]):
         raise TypeError(f"xyz entries of xyzs must be dictionaries, e.g.:\n\n"
