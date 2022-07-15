@@ -1032,12 +1032,17 @@ class ARCSpecies(object):
     def get_cheap_conformer(self):
         """
         Cheaply (limiting the number of possible conformers) get a reasonable conformer,
-        this could very well not be the best (lowest) one.
+        this could very well not be the best (lowest energy) one.
         """
-        # a quick bypass for mono-atomic species:
-        if self.number_of_atoms == 1:
+        if self.is_monoatomic():
             self.cheap_conformer = \
                 conformers.generate_monoatomic_conformer(symbol=self.mol_list[0].atoms[0].element.symbol)['xyz']
+            self.initial_xyz = self.final_xyz = self.cheap_conformer
+        elif self.is_diatomic():
+            self.cheap_conformer = \
+                conformers.generate_diatomic_conformer(symbol_1=self.mol_list[0].atoms[0].element.symbol,
+                                                       symbol_2=self.mol_list[0].atoms[1].element.symbol,
+                                                       multiplicity=self.multiplicity)['xyz']
         else:
             num_confs = min(500, max(50, len(self.mol.atoms) * 3))
             rd_mol = conformers.embed_rdkit(label=self.label, mol=self.mol, num_confs=num_confs)
@@ -1057,7 +1062,8 @@ class ARCSpecies(object):
                 logger.warning(f'Could not generate a cheap conformer for {self.label}')
                 self.cheap_conformer = None
 
-    def get_xyz(self, generate: bool = True,
+    def get_xyz(self,
+                generate: bool = True,
                 return_format: str = 'dict',
                 ) -> Optional[Union[dict, str]]:
         """
