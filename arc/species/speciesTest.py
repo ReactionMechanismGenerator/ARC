@@ -60,7 +60,7 @@ class TestARCSpecies(unittest.TestCase):
 
         # Method 2: ARCSpecies object by XYZ (also give SMILES for thermo BAC)
         oh_xyz = """O       0.00000000    0.00000000   -0.12002167
-        H       0.00000000    0.00000000    0.85098324"""
+                    H       0.00000000    0.00000000    0.85098324"""
         cls.spc2 = ARCSpecies(label='OH', xyz=oh_xyz, smiles='[OH]', multiplicity=2, charge=0)
 
         # Method 3: ARCSpecies object by SMILES
@@ -190,6 +190,17 @@ class TestARCSpecies(unittest.TestCase):
         self.assertFalse(self.spc3.is_monoatomic())
         n_rad = ARCSpecies(label='N', smiles='[N]')
         self.assertTrue(n_rad.is_monoatomic())
+
+    def test_is_diatomic(self):
+        """Test the is_diatomic() method."""
+        self.assertFalse(self.spc1.is_diatomic())
+        self.assertTrue(self.spc2.is_diatomic())
+        self.assertFalse(self.spc3.is_diatomic())
+        self.assertFalse(self.spc4.is_diatomic())
+        n_rad = ARCSpecies(label='N', smiles='[N]')
+        self.assertFalse(n_rad.is_diatomic())
+        n2 = ARCSpecies(label='N2', smiles='N#N')
+        self.assertTrue(n2.is_diatomic())
 
     def test_is_isomorphic(self):
         """Test the is_isomorphic() method."""
