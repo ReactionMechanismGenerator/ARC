@@ -929,6 +929,20 @@ class ARCSpecies(object):
             return len(xyz['symbols']) == 1
         return None
 
+    def is_diatomic(self) -> Optional[bool]:
+        """
+        Determine whether the species is diatomic.
+
+        Returns:
+            Optional[bool]: Whether the species is diatomic.
+        """
+        if self.mol is not None and len(self.mol.atoms):
+            return len(self.mol.atoms) == 2
+        xyz = self.get_xyz()
+        if xyz is not None:
+            return len(xyz['symbols']) == 2
+        return None
+
     def is_isomorphic(self, other: Union['ARCSpecies', Species, Molecule]) -> Optional[bool]:
         """
         Determine whether the species is isomorphic with ``other``.
