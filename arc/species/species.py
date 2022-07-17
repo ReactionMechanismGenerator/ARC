@@ -2379,11 +2379,11 @@ def check_label(label: str,
                 verbose: bool = False,
                 ) -> Tuple[str, Optional[str]]:
     """
-    Check whether a species (or reaction) label is illegal, modify it if needed.
+    Check whether a species (or reaction) label is legal, modify it if needed.
 
     Args:
         label (str): A label.
-        is_ts (bool, optional): Whether the species label belongs to a TS.
+        is_ts (bool, optional): Whether the species label belongs to a transition state.
         verbose (bool, optional): Whether to log errors.
 
     Raises:
