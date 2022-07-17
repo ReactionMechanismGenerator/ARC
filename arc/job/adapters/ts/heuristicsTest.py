@@ -1003,6 +1003,42 @@ class TestHeuristicsAdapter(unittest.TestCase):
                                                         (-0.24126731380591912, -1.1854584049033523, 0.25056549328076716),
                                                         (-0.24126731380591912, -2.3138262157211655, -0.9993080355777685))}))
 
+        # HO2 + H2NN(T) <=> O2 + N2H3
+        ho2_xyz = """O 0.0553530 -0.6124600 0.0000000
+                     O 0.0553530 0.7190720 0.0000000
+                     H -0.8856540 -0.8528960 0.0000000"""  # tmp
+        ho2 = ARCSpecies(label='HO2', smiles='O[O]', xyz=ho2_xyz)  # tmp
+        h2nnt = ARCSpecies(label='H2NN(T)', smiles='[N]N', xyz="""N       1.25464159   -0.04494405   -0.06271952
+                                                                  N      -0.11832785   -0.00810069    0.29783210
+                                                                  H      -0.59897890   -0.78596704   -0.15190060
+                                                                  H      -0.53733484    0.83901179   -0.08321197""")
+        o2 = ARCSpecies(label='O2', smiles='[O][O]', xyz="""O	0.0000000	0.0000000	0.6029240
+                                                            O	0.0000000	0.0000000	-0.6029240""")
+        n2h3 = ARCSpecies(label='N2H3', smiles='N[NH]')
+        rxn17 = ARCReaction(r_species=[ho2, h2nnt], p_species=[o2, n2h3])
+        rxn17.determine_family(rmg_database=self.rmgdb)
+        self.assertEqual(rxn17.family.label, 'H_Abstraction')
+        heuristics_16 = HeuristicsAdapter(job_type='tsg',
+                                          reactions=[rxn17],
+                                          testing=True,
+                                          project='test',
+                                          project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'heuristics'),
+                                          dihedral_increment=60,
+                                          )
+        heuristics_16.execute_incore()
+        self.assertEqual(len(rxn17.ts_species.ts_guesses), 6)
+        self.assertTrue(rxn17.ts_species.ts_guesses[0].success)
+        self.assertTrue(almost_equal_coords(rxn17.ts_species.ts_guesses[0].initial_xyz,
+                                            {'symbols': ('O', 'O', 'H', 'N', 'N', 'H', 'H'),
+                                             'isotopes': (16, 16, 1, 14, 14, 1, 1),
+                                             'coords': ((0.013593215731698737, -1.347070871626458, 0.36164270540431365),
+                                                        (0.013593215731698737, -1.347070871626458, -0.9698892962207406),
+                                                        (0.013593215731698737, -0.21786249639185695, 0.6501658548665676),
+                                                        (0.013593215731698737, 0.9780697857982745, 0.9557375776492565),
+                                                        (0.013593215731698737, 1.793420788206805, -0.26034039898121963),
+                                                        (0.0829706072265909, 2.768175658285228, 0.033768621055696224),
+                                                        (-0.9057700201426672, 1.6996105936782921, -0.6927116617671318))}))
+
     def test_keeping_atom_order_in_ts(self):
         """Test that the generated TS has the same atom order as in the reactants"""
         # reactant_reversed, products_reversed = False, False

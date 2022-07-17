@@ -229,8 +229,8 @@ class TestARCReaction(unittest.TestCase):
                                          {'arkane_file': None,
                                           'bond_corrections': {'H-O': 1},
                                           'charge': 0,
-                                          'cheap_conformer': 'O       0.48890387    0.00000000    0.00000000\n'
-                                                             'H      -0.48890387    0.00000000    0.00000000',
+                                          'cheap_conformer': 'O       0.00000000    0.00000000    0.61310000\n'
+                                                             'H       0.00000000    0.00000000   -0.61310000',
                                           'compute_thermo': True,
                                           'consider_all_diastereomers': True,
                                           'force_field': 'MMFF94s',

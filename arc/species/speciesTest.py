@@ -60,7 +60,7 @@ class TestARCSpecies(unittest.TestCase):
 
         # Method 2: ARCSpecies object by XYZ (also give SMILES for thermo BAC)
         oh_xyz = """O       0.00000000    0.00000000   -0.12002167
-        H       0.00000000    0.00000000    0.85098324"""
+                    H       0.00000000    0.00000000    0.85098324"""
         cls.spc2 = ARCSpecies(label='OH', xyz=oh_xyz, smiles='[OH]', multiplicity=2, charge=0)
 
         # Method 3: ARCSpecies object by SMILES
@@ -190,6 +190,17 @@ class TestARCSpecies(unittest.TestCase):
         self.assertFalse(self.spc3.is_monoatomic())
         n_rad = ARCSpecies(label='N', smiles='[N]')
         self.assertTrue(n_rad.is_monoatomic())
+
+    def test_is_diatomic(self):
+        """Test the is_diatomic() method."""
+        self.assertFalse(self.spc1.is_diatomic())
+        self.assertTrue(self.spc2.is_diatomic())
+        self.assertFalse(self.spc3.is_diatomic())
+        self.assertFalse(self.spc4.is_diatomic())
+        n_rad = ARCSpecies(label='N', smiles='[N]')
+        self.assertFalse(n_rad.is_diatomic())
+        n2 = ARCSpecies(label='N2', smiles='N#N')
+        self.assertTrue(n2.is_diatomic())
 
     def test_is_isomorphic(self):
         """Test the is_isomorphic() method."""
@@ -2365,6 +2376,29 @@ H      -1.47626400   -0.10694600   -1.88883800"""
         self.assertTrue(colliding_atoms(str_to_xyz(xyz_2)))
         self.assertTrue(colliding_atoms(str_to_xyz(xyz_3)))
         self.assertTrue(colliding_atoms(str_to_xyz(xyz_4)))
+
+    def test_correct_representation_of_o2_and_s2(self):
+        """Test that ARC represents O2 and S2 correctly."""
+        o2 = ARCSpecies(label='O2', smiles='[O][O]', xyz="""O   0.0000000   0.0000000   0.6029240
+                                                            O   0.0000000   0.0000000  -0.6029240""")
+        for mol in o2.mol_list:
+            print(f'mol lost')
+            print(mol.to_smiles())
+        self.assertEqual(o2.multiplicity, 3)
+        self.assertEqual(o2.mol.to_smiles(), '[O][O]')
+        self.assertEqual(o2.mol.to_adjacency_list(), """multiplicity 3
+1 O u1 p2 c0 {2,S}
+2 O u1 p2 c0 {1,S}
+""")
+
+        s2 = ARCSpecies(label='S2', smiles='[S][S]', xyz="""S   0.0000000   0.0000000   0.9496880
+                                                            S   0.0000000   0.0000000  -0.9496880""")
+        self.assertEqual(s2.multiplicity, 3)
+        self.assertEqual(s2.mol.to_smiles(), '[S][S]')
+        self.assertEqual(s2.mol.to_adjacency_list(), """multiplicity 3
+1 S u1 p2 c0 {2,S}
+2 S u1 p2 c0 {1,S}
+""")
 
     @classmethod
     def tearDownClass(cls):

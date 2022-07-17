@@ -929,6 +929,20 @@ class ARCSpecies(object):
             return len(xyz['symbols']) == 1
         return None
 
+    def is_diatomic(self) -> Optional[bool]:
+        """
+        Determine whether the species is diatomic.
+
+        Returns:
+            Optional[bool]: Whether the species is diatomic.
+        """
+        if self.mol is not None and len(self.mol.atoms):
+            return len(self.mol.atoms) == 2
+        xyz = self.get_xyz()
+        if xyz is not None:
+            return len(xyz['symbols']) == 2
+        return None
+
     def is_isomorphic(self, other: Union['ARCSpecies', Species, Molecule]) -> Optional[bool]:
         """
         Determine whether the species is isomorphic with ``other``.
@@ -1018,12 +1032,17 @@ class ARCSpecies(object):
     def get_cheap_conformer(self):
         """
         Cheaply (limiting the number of possible conformers) get a reasonable conformer,
-        this could very well not be the best (lowest) one.
+        this could very well not be the best (lowest energy) one.
         """
-        # a quick bypass for mono-atomic species:
-        if self.number_of_atoms == 1:
+        if self.is_monoatomic():
             self.cheap_conformer = \
                 conformers.generate_monoatomic_conformer(symbol=self.mol_list[0].atoms[0].element.symbol)['xyz']
+            self.initial_xyz = self.final_xyz = self.cheap_conformer
+        elif self.is_diatomic():
+            self.cheap_conformer = \
+                conformers.generate_diatomic_conformer(symbol_1=self.mol_list[0].atoms[0].element.symbol,
+                                                       symbol_2=self.mol_list[0].atoms[1].element.symbol,
+                                                       multiplicity=self.multiplicity)['xyz']
         else:
             num_confs = min(500, max(50, len(self.mol.atoms) * 3))
             rd_mol = conformers.embed_rdkit(label=self.label, mol=self.mol, num_confs=num_confs)
@@ -1043,7 +1062,8 @@ class ARCSpecies(object):
                 logger.warning(f'Could not generate a cheap conformer for {self.label}')
                 self.cheap_conformer = None
 
-    def get_xyz(self, generate: bool = True,
+    def get_xyz(self,
+                generate: bool = True,
                 return_format: str = 'dict',
                 ) -> Optional[Union[dict, str]]:
         """
@@ -1403,7 +1423,7 @@ class ARCSpecies(object):
                               f'optimization: {self.chosen_ts_method}\n'
 
     def mol_from_xyz(self,
-                     xyz: dict = None,
+                     xyz: Optional[dict] = None,
                      get_cheap: bool = False,
                      ) -> None:
         """
@@ -1418,7 +1438,14 @@ class ARCSpecies(object):
             get_cheap (bool, optional): Whether to generate conformers if the species has no xyz data.
         """
         if xyz is None:
-            xyz = self.get_xyz(generate=get_cheap)
+            xyz = self.get_xyz(generate=get_cheap, return_format='dict')
+        if xyz is None:
+            return None
+
+        if len(xyz['symbols']) == 2 and xyz['symbols'][0] == xyz['symbols'][1] \
+                and xyz['symbols'][0] in ['O', 'S'] and self.multiplicity == 3:
+            # Hard-coded for triplet O2 and S2: Don't perceive mol.
+            return None
 
         if self.mol is not None:
             if len(self.mol.atoms) != len(xyz['symbols']):
@@ -2352,11 +2379,11 @@ def check_label(label: str,
                 verbose: bool = False,
                 ) -> Tuple[str, Optional[str]]:
     """
-    Check whether a species (or reaction) label is illegal, modify it if needed.
+    Check whether a species (or reaction) label is legal, modify it if needed.
 
     Args:
         label (str): A label.
-        is_ts (bool, optional): Whether the species label belongs to a TS.
+        is_ts (bool, optional): Whether the species label belongs to a transition state.
         verbose (bool, optional): Whether to log errors.
 
     Raises:

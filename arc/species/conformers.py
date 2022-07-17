@@ -54,9 +54,10 @@ from rmgpy.molecule.converter import to_ob_mol
 from rmgpy.molecule.molecule import Atom, Bond, Molecule
 from rmgpy.molecule.element import C as C_ELEMENT, H as H_ELEMENT, F as F_ELEMENT, Cl as Cl_ELEMENT, I as I_ELEMENT
 
-from arc.common import (logger,
-                        convert_list_index_0_to_1,
+from arc.common import (convert_list_index_0_to_1,
                         determine_top_group_indices,
+                        get_single_bond_length,
+                        logger,
                         )
 from arc.exceptions import ConformerError, InputError
 import arc.plotter
@@ -203,13 +204,19 @@ def generate_conformers(mol_list: Union[List[Molecule], Molecule],
                                  f'got {type(mol)}')
     mol_list = [update_mol(mol) for mol in mol_list]
 
-    # a quick bypass for mono-atomic species:
+    # A quick bypass for monoatomic and diatomic species:
+    confs = None
     if len(mol_list[0].atoms) == 1:
         confs = [generate_monoatomic_conformer(symbol=mol_list[0].atoms[0].element.symbol)]
-        if not return_all_conformers:
-            return confs
-        else:
+    elif len(mol_list[0].atoms) == 2:
+        confs = [generate_diatomic_conformer(symbol_1=mol_list[0].atoms[0].element.symbol,
+                                             symbol_2=mol_list[0].atoms[1].element.symbol,
+                                             multiplicity=multiplicity,
+                                             )]
+    if confs is not None:
+        if return_all_conformers:
             return confs, confs
+        return confs
 
     if xyzs is not None and any([not isinstance(xyz, dict) for xyz in xyzs]):
         raise TypeError(f"xyz entries of xyzs must be dictionaries, e.g.:\n\n"
@@ -1680,7 +1687,7 @@ def update_mol(mol):
     return mol
 
 
-def generate_monoatomic_conformer(symbol):
+def generate_monoatomic_conformer(symbol: str) -> dict:
     """
     Generate a conformer for a monoatomic species.
 
@@ -1697,6 +1704,78 @@ def generate_monoatomic_conformer(symbol):
             'FF energy': 0.0,
             'chirality': None,
             'source': 'monoatomic species',
+            'torsion_dihedrals': None,
+            }
+    return conf
+
+
+def generate_diatomic_conformer(symbol_1: str,
+                                symbol_2: str,
+                                multiplicity: Optional[int] = None,
+                                ) -> dict:
+    """
+    Generate a conformer for a diatomic species.
+    Data from CCCBDB.
+
+    Args:
+        symbol_1 (str): The atomic symbol of atom 1.
+        symbol_2 (str): The atomic symbol of atom 2.
+        multiplicity (int, optional): The diatomic species multiplicity
+
+    Returns:
+        dict: The diatomic conformer.
+    """
+    r = None
+    if multiplicity is not None:
+        if symbol_1 == symbol_2:
+            if symbol_1 == 'H' and multiplicity == 1:
+                r = 0.3710
+            if symbol_1 == 'O' and multiplicity == 3:
+                r = 0.6029
+            elif symbol_1 == 'O' and multiplicity == 1:
+                r = 0.6088
+            elif symbol_1 == 'S' and multiplicity == 3:
+                r = 0.9492
+            elif symbol_1 == 'S' and multiplicity == 1:
+                r = 0.9655
+            elif symbol_1 == 'N' and multiplicity == 1:
+                r = 0.5491
+            elif symbol_1 == 'N' and multiplicity == 3:
+                r = 0.6059
+        else:
+            symbols = [symbol_1, symbol_2]
+            if 'O' in symbols and 'H' in symbols and multiplicity == 2:
+                r = 0.6131
+            elif 'N' in symbols and 'H' in symbols and multiplicity == 3:
+                r = 0.5197
+            elif 'N' in symbols and 'H' in symbols and multiplicity == 1:
+                r = 0.5165
+            elif 'C' in symbols and 'O' in symbols and multiplicity == 1:
+                r = 0.5647
+            elif 'C' in symbols and 'S' in symbols and multiplicity == 1:
+                r = 0.7752
+            elif 'C' in symbols and 'H' in symbols and multiplicity == 2:
+                r = 0.5585
+            elif 'C' in symbols and 'H' in symbols and multiplicity == 4:
+                r = 0.5456
+            elif 'N' in symbols and 'O' in symbols and multiplicity == 2:
+                r = 0.5740
+            elif 'S' in symbols and 'O' in symbols and multiplicity == 3:
+                r = 0.7414
+            elif 'S' in symbols and 'O' in symbols and multiplicity == 1:
+                r = 0.7498
+            elif 'S' in symbols and 'H' in symbols and multiplicity == 1:
+                r = 0.6690
+    if r is None:
+        r = get_single_bond_length(symbol_1, symbol_2) * 0.5
+    conf = {'xyz': {'symbols': (symbol_1, symbol_2),
+                    'isotopes': (converter.get_most_common_isotope_for_element(symbol_1),
+                                 converter.get_most_common_isotope_for_element(symbol_2)),
+                    'coords': ((0.0, 0.0, r), (0.0, 0.0, -1 * r))},
+            'index': 0,
+            'FF energy': 0.0,
+            'chirality': None,
+            'source': 'diatomic species',
             'torsion_dihedrals': None,
             }
     return conf

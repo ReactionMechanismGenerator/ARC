@@ -50,7 +50,6 @@ from arc.species.species import (ARCSpecies,
 from arc.species.converter import (check_isomorphism,
                                    compare_confs,
                                    molecules_from_xyz,
-                                   str_to_xyz,
                                    xyz_to_coords_list,
                                    xyz_to_str,
                                    )
@@ -405,19 +404,7 @@ class Scheduler(object):
                     species.initial_xyz = species.conformers[0]
                 if species.label not in self.running_jobs:
                     self.running_jobs[species.label] = list()  # initialize before running the first job
-                if species.number_of_atoms == 1:
-                    logger.debug(f'Species {species.label} is monoatomic')
-                    if not species.initial_xyz:
-                        # generate a simple "Symbol   0.0   0.0   0.0" coords in a dictionary format
-                        if species.mol is not None:
-                            symbol = species.mol.atoms[0].symbol
-                        else:
-                            symbol = species.label
-                            logger.warning(f'Could not determine element of monoatomic species {species.label}. '
-                                           f'Assuming element is {symbol}')
-                        monoatomic_xyz_dict = str_to_xyz(f'{symbol}   0.0   0.0   0.0')
-                        species.initial_xyz = monoatomic_xyz_dict
-                        species.final_xyz = monoatomic_xyz_dict
+                if species.is_monoatomic():
                     if not self.output[species.label]['job_types']['sp'] \
                             and not self.output[species.label]['job_types']['composite'] \
                             and 'sp' not in list(self.job_dict[species.label].keys()) \

@@ -2447,6 +2447,62 @@ Cl      2.38846685    0.24054066    0.55443324
                          'source': 'monoatomic species', 'torsion_dihedrals': None}
         self.assertEqual(conf, expected_conf)
 
+    def test_generate_diatomic_conformer(self):
+        """Test generating a diatomic conformer"""
+        conf = conformers.generate_diatomic_conformer('O', 'O')
+        expected_conf = {'xyz': {'symbols': ('O', 'O'), 'isotopes': (16, 16),
+                                 'coords': ((0.0, 0.0, 0.74), (0.0, 0.0, -0.74))},
+                         'index': 0, 'FF energy': 0.0, 'chirality': None,
+                         'source': 'diatomic species', 'torsion_dihedrals': None}
+        self.assertEqual(conf, expected_conf)
+
+        conf = conformers.generate_diatomic_conformer('O', 'O', multiplicity=3)
+        expected_conf = {'xyz': {'symbols': ('O', 'O'), 'isotopes': (16, 16),
+                                 'coords': ((0.0, 0.0, 0.6029), (0.0, 0.0, -0.6029))},
+                         'index': 0, 'FF energy': 0.0, 'chirality': None,
+                         'source': 'diatomic species', 'torsion_dihedrals': None}
+        self.assertEqual(conf, expected_conf)
+
+        conf = conformers.generate_diatomic_conformer('O', 'O', multiplicity=1)
+        expected_coords = ((0.0, 0.0, 0.6088), (0.0, 0.0, -0.6088))
+        self.assertEqual(conf['xyz']['coords'], expected_coords)
+
+        conf = conformers.generate_diatomic_conformer('N', 'N', multiplicity=1)
+        expected_coords = ((0.0, 0.0, 0.5491), (0.0, 0.0, -0.5491))
+        self.assertEqual(conf['xyz']['coords'], expected_coords)
+
+        conf = conformers.generate_diatomic_conformer('C', 'O', multiplicity=1)
+        expected_coords = ((0.0, 0.0, 0.5647), (0.0, 0.0, -0.5647))
+        self.assertEqual(conf['xyz']['coords'], expected_coords)
+
+        conf = conformers.generate_diatomic_conformer('O', 'C', multiplicity=1)
+        expected_coords = ((0.0, 0.0, 0.5647), (0.0, 0.0, -0.5647))
+        self.assertEqual(conf['xyz']['coords'], expected_coords)
+
+        conf = conformers.generate_diatomic_conformer('O', 'S', multiplicity=1)
+        expected_coords = ((0.0, 0.0, 0.7498), (0.0, 0.0, -0.7498))
+        self.assertEqual(conf['xyz']['coords'], expected_coords)
+
+        conf = conformers.generate_diatomic_conformer('O', 'S', multiplicity=3)
+        expected_coords = ((0.0, 0.0, 0.7414), (0.0, 0.0, -0.7414))
+        self.assertEqual(conf['xyz']['coords'], expected_coords)
+
+        conf = conformers.generate_diatomic_conformer('O', 'N', multiplicity=2)
+        expected_coords = ((0.0, 0.0, 0.5740), (0.0, 0.0, -0.5740))
+        self.assertEqual(conf['xyz']['coords'], expected_coords)
+
+        conf = conformers.generate_diatomic_conformer('N', 'S', multiplicity=2)
+        expected_coords = ((0.0, 0.0, 1.25), (0.0, 0.0, -1.25))
+        self.assertEqual(conf['xyz']['coords'], expected_coords)
+
+        conf = conformers.generate_diatomic_conformer('O', 'H', multiplicity=2)
+        expected_xyz = {'symbols': ('O', 'H'), 'isotopes': (16, 1), 'coords': ((0.0, 0.0, 0.6131), (0.0, 0.0, -0.6131))}
+        self.assertEqual(conf['xyz'], expected_xyz)
+
+        conf = conformers.generate_diatomic_conformer('H', 'O', multiplicity=2)
+        expected_xyz = {'symbols': ('H', 'O'), 'isotopes': (1, 16), 'coords': ((0.0, 0.0, 0.6131), (0.0, 0.0, -0.6131))}
+        self.assertEqual(conf['xyz'], expected_xyz)
+
     def test_determine_smallest_atom_index_in_scan(self):
         """Test determine_smallest_atom_index_in_scan()"""
         xyz_0 = """O                  2.26520400   -1.90260200   -2.47777200
