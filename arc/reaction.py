@@ -769,7 +769,7 @@ class ARCReaction(object):
 
     def get_expected_changing_bonds(self,
                                     r_label_dict: Dict[str, int],
-                                    ) -> Tuple[Optional[List[Tuple[int, ...]]], Optional[List[Tuple[int, ...]]]]:
+                                    ) -> Tuple[Optional[List[Tuple[int, int]]], Optional[List[Tuple[int, int]]]]:
         """
         Get the expected forming and breaking bonds from the RMG reaction template.
 
@@ -778,7 +778,7 @@ class ARCReaction(object):
                                            of atoms in a TemplateReaction.
 
         Returns:
-            Tuple[List[Tuple[int, ...]], List[Tuple[int, ...]]]:
+            Tuple[List[Tuple[int, int]], List[Tuple[int, int]]]:
                 A list of tuples of atom indices representing breaking and forming bonds.
         """
         if self.family is None:
