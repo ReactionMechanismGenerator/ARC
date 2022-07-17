@@ -378,7 +378,7 @@ def get_rms_from_normal_mode_disp(normal_mode_disp: np.ndarray,
                                   ) -> List[float]:
     """
     Get the root mean squares of the normal mode displacements.
-    Use atom mass weights if `reaction` is given.
+    Use atom mass weights if ``reaction`` is given.
 
     Args:
         normal_mode_disp (np.ndarray): The normal mode displacement array.
@@ -388,15 +388,10 @@ def get_rms_from_normal_mode_disp(normal_mode_disp: np.ndarray,
     Returns:
         List[float]: The RMS of the normal mode displacements.
     """
-    rms, masses = list(), list()
     mode_index = get_index_of_abs_largest_neg_freq(freqs)
     nmd = normal_mode_disp[mode_index]
-    if reaction is not None:
-        for reactant in reaction.r_species:
-            for atom in reactant.mol.atoms:
-                masses.append(atom.element.mass)
-    else:
-        masses = [1] * len(nmd)
+    masses = reaction.get_element_mass() if reaction is not None else [1] * len(nmd)
+    rms = list()
     for i, entry in enumerate(nmd):
         rms.append(((entry[0] ** 2 + entry[1] ** 2 + entry[2] ** 2) ** 0.5) * masses[i] ** 0.55)
     return rms
