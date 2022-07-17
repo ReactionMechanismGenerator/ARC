@@ -351,6 +351,40 @@ class TestCommon(unittest.TestCase):
         with self.assertRaises(ValueError):
             common.key_by_val(d, 10)
 
+    def test_almost_equal_lists(self):
+        """Test the almost_equal_lists() function."""
+        l1 = [0]
+        l2 = [0]
+        self.assertTrue(common.almost_equal_lists(l1, l2))
+
+        l1, l2 = [0.0000000001], [0]
+        l1, l2 = [0.0000000001], [0]
+        self.assertTrue(common.almost_equal_lists(l1, l2))
+
+        l1 = [[1, 2.0000000005], [3, 5]]
+        l2 = [[1, 2],            [3, 5.00000001]]
+        self.assertTrue(common.almost_equal_lists(l1, l2))
+
+        l1 = [[1, 2.005], [3, 5]]
+        l2 = [[1, 2],     [3, 5.01]]
+        self.assertTrue(common.almost_equal_lists(l1, l2, rtol=0.01, atol=0.1))
+
+        l1 = [[1, 6], [3, 5]]
+        l2 = [[1, 2], [3, 5.01]]
+        self.assertFalse(common.almost_equal_lists(l1, l2, rtol=0.01, atol=0.1))
+
+        l1 = [[1, 2], [3, 5],    [4, 8]]
+        l2 = [[1, 2], [3, 5.01], [4, 500]]
+        self.assertFalse(common.almost_equal_lists(l1, l2, rtol=0.01, atol=0.1))
+
+        l1 = [[1, [2, 10, (8, 9.9005)]], [3, 5]]
+        l2 = [[1, [2, 10, (8, 9.9)]],    [3, 5]]
+        self.assertTrue(common.almost_equal_lists(l1, l2, rtol=0.01, atol=0.1))
+
+        l1 = [[1, [2, 10, (8, 9.9005)]], [3, 5]]
+        l2 = [[1, [2, 10, (8, 999.9)]],  [3, 5]]
+        self.assertFalse(common.almost_equal_lists(l1, l2, rtol=0.01, atol=0.1))
+
     def test_initialize_job_with_given_job_type(self):
         """Test the initialize_job_types() function"""
         job_types = {'conformers': False, 'opt': True, 'fine': True, 'freq': True, 'sp': False, 'rotors': False, 'irc': True}
