@@ -939,7 +939,8 @@ def almost_equal_lists(iter1: Union[list, tuple, np.ndarray],
         return False
     for entry1, entry2 in zip(iter1, iter2):
         if isinstance(entry1, (list, tuple, np.ndarray)) and isinstance(entry2, (list, tuple, np.ndarray)):
-            return almost_equal_lists(iter1=entry1, iter2=entry2, rtol=rtol, atol=atol)
+            if not almost_equal_lists(iter1=entry1, iter2=entry2, rtol=rtol, atol=atol):
+                return False
         else:
             if isinstance(entry1, (int, float)) and isinstance(entry2, (int, float)):
                 if not np.isclose([entry1], [entry2], rtol=rtol, atol=atol):
