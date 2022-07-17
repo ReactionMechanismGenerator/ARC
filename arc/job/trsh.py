@@ -105,7 +105,10 @@ def determine_ess_status(output_path: str,
                         keywords = ['GL401']
                     elif 'l502.exe' in line:
                         keywords = ['SCF', 'GL502']
-                        error = 'Unconverged SCF.'
+                        error = 'Unconverged SCF'
+                    elif 'l508.exe' in line:
+                        keywords = ['no_xqc', 'GL508']
+                        error = 'Unconverged'
                     elif 'l716.exe' in line:
                         keywords = ['ZMat', 'GL716']
                         error = 'Angle in z-matrix outside the allowed range 0 < x < 180.'
