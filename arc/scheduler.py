@@ -683,6 +683,7 @@ class Scheduler(object):
                 job_type: str,
                 conformer: Optional[int] = None,
                 cpu_cores: Optional[int] = None,
+                dihedral_increment: Optional[float] = None,
                 dihedrals: Optional[list] = None,
                 directed_scan_type: Optional[str] = None,
                 ess_trsh_methods: Optional[list] = None,
@@ -710,6 +711,7 @@ class Scheduler(object):
             job_type (str): The type of job to run.
             conformer (int, optional): Conformer number if optimizing conformers.
             cpu_cores (int, optional): The total number of cpu cores requested for a job.
+            dihedral_increment (float, optional): The degrees increment to use when scanning dihedrals of TS guesses.
             dihedrals (list, optional): The dihedral angles of a directed scan job corresponding to ``torsions``.
             directed_scan_type (str, optional): The type of the directed scan.
             ess_trsh_methods (list, optional): A list of troubleshooting methods already tried out for ESS convergence.
@@ -762,6 +764,7 @@ class Scheduler(object):
                           conformer=conformer,
                           constraints=None,
                           cpu_cores=cpu_cores,
+                          dihedral_increment=dihedral_increment,
                           dihedrals=dihedrals,
                           directed_scan_type=directed_scan_type,
                           ess_settings=self.ess_settings,
