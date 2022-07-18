@@ -335,6 +335,47 @@ def check_bond_changes(expected_breaking_bonds: Optional[List[Tuple[int, int]]],
             if not do_other_bonds_change_more(expected_breaking_bonds, expected_forming_bonds, dmat_1, dmat_2, reaction):
                 return True
     return False
+
+
+def do_other_bonds_change_more(expected_breaking_bonds: Optional[List[Tuple[int, int]]],
+                               expected_forming_bonds: Optional[List[Tuple[int, int]]],
+                               dmat_1: Optional[np.array],
+                               dmat_2: Optional[np.array],
+                               reaction: 'ARCReaction',
+                               factor: float = 2.0,
+                               ) -> Optional[bool]:
+    """
+    Check if any bonds which are not in the list of expected modified bonds
+    change in length significantly more than the expected modified bonds.
+
+    Args:
+        expected_breaking_bonds (Optional[List[Tuple[int, int]]]): The expected breaking bonds from the RMG reaction template.
+        expected_forming_bonds (Optional[List[Tuple[int, int]]]): The expected forming bonds from the RMG reaction template.
+        dmat_1 (Optional[np.array]): The perturbed distance matrix in direction 1.
+        dmat_2 (Optional[np.array]): The perturbed distance matrix in direction 2.
+        reaction (ARCReaction): The reaction for which the TS is checked.
+        factor (float, optional): A multiplication factor used to check whether a bonds change significantly more
+                                  than the bonds expected to change.
+
+    Returns:
+        Optional[bool]: Whether unexpected bonds change in length more than the expected ones.
+    """
+    if dmat_1 is None or dmat_2 is None:
+        return None
+    expected_changing_bonds = list()
+    for expected_bonds in [expected_breaking_bonds, expected_forming_bonds]:
+        if expected_bonds is not None:
+            expected_changing_bonds.extend(expected_bonds)
+    masses = reaction.get_element_mass()
+    diff = dmat_2 - dmat_1
+    for i in range(len(diff)):
+        for j in range(len(diff)):
+            diff[i][j] = float(abs(diff[i][j])) * ((masses[i] * masses[j]) / (masses[i] + masses[j])) ** 0.55
+    max_bond_diff = max([diff[bond[0]][bond[1]] for bond in expected_changing_bonds]) if len(expected_changing_bonds) else 0
+    for i in range(len(diff)):
+        for j in range(len(diff)):
+            if i < j and diff[i][j] > max_bond_diff * factor:
+                return True
     return False
 
 
